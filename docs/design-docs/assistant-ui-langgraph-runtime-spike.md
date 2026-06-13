@@ -247,6 +247,8 @@ Useful local source findings:
 - The `typescript/ui-react` reconnect example persists thread identity across refresh and consumes token-level projection through `useMessages(stream)`. Moldy should use DB-owned conversation/thread ids instead of browser-generated ids, but E2E should verify refresh during active streaming does not duplicate tokens or submit a second run.
 - The subagent and subagent-status examples confirm the UI split already chosen in the plan: root coordinator messages, subagent discovery/status through `thread.subagents`/`run.subagents`, and scoped subagent messages/tool calls only when detail is needed.
 - The custom transformer and A2A examples confirm Moldy-specific artifacts, memory, trace, and domain events should travel as `custom` or `custom:{name}` channels without degrading core `messages`, `tools`, `values`, `updates`, `tasks`, `lifecycle`, `input`, or `checkpoints` semantics.
+- The cookbook examples are single-process demos. Moldy's BFF must treat any in-memory event broker as a live optimization and rely on persisted protocol events for reconnect/replay. Multi-worker production needs either sticky routing or a shared broker/store.
+- Scoped selectors are intentionally lazy, but each unique selector/namespace can become an extra subscription. Moldy's UI should cap simultaneously expanded live subagent detail cards and prefer HTTP/2 in production if many scoped SSE subscriptions can be open.
 
 `/Users/chester/dev/deep-agents-ui` is useful as a DeepAgents product UI reference, not as a runtime recommendation:
 
@@ -268,6 +270,7 @@ Useful local source findings:
 - Public hooks include `useLangChainState<T>(key, defaultValue?)`, `useLangChainInterruptState`, `useLangChainSubmit`, `useLangChainSend`, and `useLangChainSendCommand`.
 - `useLangChainState<T>` reads `stream.values[key]` from assistant-ui runtime extras. This directly addresses DeepAgents `todos`/`files` and avoids reconstructing state from partial tool-call streams.
 - `useStreamRuntime` already handles root messages, basic tool calls/results, auto-cancelling pending tool calls, attachment/feedback adapters, raw state submission, command submission, interrupt state, and `stream.stop()` cancellation wiring.
+- Verify installed helper exports before importing optional assistant-ui utilities. In particular, `makeAssistantDataUI` should be treated as version-dependent; if it is not exported, reasoning summaries should use the installed message part/data renderer extension point instead of adding a package fork.
 - The local docs explicitly compare `react-langchain` and `react-langgraph`. `react-langchain` is newer and thinner, while `react-langgraph` still has broader coverage for subgraph events, generative UI messages, message metadata, and event handler hooks.
 - `examples/with-langchain` demonstrates the intended minimal shape: `useStreamRuntime(...)` in a provider and `useLangChainState<Todo[]>("todos", [])` in a side panel.
 
@@ -385,6 +388,7 @@ After the `langgraphjs` source review, the preferred implementation direction is
 - Treat `@assistant-ui/react-langgraph` as a fuller source reference/fallback because its full runtime accumulates namespaced subgraph tuple messages into the root message list, while Moldy needs coordinator and subagent transcripts separated.
 - Implement the Moldy BFF as an Agent Streaming Protocol compatible HTTP/SSE server where practical, so the frontend can use `HttpAgentServerAdapter` instead of a fully custom browser transport.
 - Treat the custom-backend HTTP surface as `commands`, `stream`, `state`, and `history`; `commands` plus `stream` alone is not sufficient for SDK hydration, refresh, checkpoint/history, edit, or regenerate flows.
+- Capture the installed SDK's actual state/history fetch URLs during implementation. `HttpAgentServerAdapter` covers transport wiring, but history may be fetched through SDK thread history helpers rather than the same command/stream path builder.
 - Use `deep-agents-ui` only for DeepAgents-specific state UI patterns: `todos` progress panels, `files` panels, file preview/edit actions, and inline HITL/tool expansion. Do not copy its runtime stack over the `@langchain/react` + local assistant-ui bridge decision.
 - Keep full `@assistant-ui/react-langgraph` runtime adoption only as a fallback if the local `@langchain/react` wrapper proves impossible and the root/subagent transcript mixing can be solved explicitly.
 
@@ -412,6 +416,8 @@ type MoldyLangGraphStreamEvent = {
 That projection is now considered a compatibility/view adapter, not the canonical event store. The canonical persisted stream should retain the protocol fields needed by `@langchain/react`, `HttpAgentServerAdapter`, replay, subagent namespace routing, and debugging.
 
 For Python-backed direct v3, the BFF adapter also needs the compatibility behavior shown in the streaming-cookbook: unwrap `(payload, metadata)` tuples for JS assemblers, synthesize missing `tools` lifecycle events from `values.messages` when raw `tools` events are absent, preserve `custom:{name}` channels, and serialize SDK-compatible thread state/history.
+
+The BFF adapter also needs to preserve Moldy's non-chat side effects. UI usage display can be driven from final message metadata or protocol usage events, but spend aggregation must still flow through the hook path that feeds `SpendHook` and `spend_queue`. Public share pages are another non-chat consumer: `TurnTrace.events` and `frontend/src/lib/share/extract-chips.ts` must continue to render tool/subagent/artifact chips from both historical Moldy SSE traces and new canonical protocol traces.
 
 For DeepAgents state UI, preserve both event streams and state snapshots. `todos` should be read from `values.todos` when present. Moldy file UI is artifact-first because the current runtime uses a filesystem backend; custom artifact/file events and persisted `conversation_artifacts` / `artifact_versions` are the primary durable file source, while `values.files` is optional reconciliation input only when the real runtime state includes it.
 
@@ -442,3 +448,5 @@ The implementation must include a regression test for both paths: direct v3 with
 - Browser SSE disconnects should detach only. Explicit user cancellation should route to Moldy's run cancel semantics, while detach/reconnect should keep the backend run alive for replay/reattach.
 - Persist selected `values` snapshots or checkpoint references, not every full `values` payload. Long conversations can make full-state event persistence unbounded.
 - Use `multitask_strategy: "reject"` by default to match Moldy's single-active-run UX.
+- Keep checkpointer-backed state/history routes mindful of the current small psycopg connection pool. The pool size should become configurable before the new runtime adds more state/history traffic.
+- Keep public share trace chip rendering backward compatible while introducing canonical protocol event persistence.

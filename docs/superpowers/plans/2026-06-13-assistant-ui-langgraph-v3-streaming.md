@@ -39,6 +39,8 @@ These decisions close the remaining spike questions and should be treated as imp
 - **Values persistence:** stream `values` live for selectors, but persist only selected values snapshots or checkpoint references. Do not append every full `values` state snapshot into `message_events` for long conversations.
 - **Multitask policy:** default `multitask_strategy` is `reject`, matching Moldy's current single-active-run UX. Add other strategies only behind explicit product decisions.
 - **Draft conversations:** create the conversation through Moldy's existing REST path first, bind the returned `conversation_id` as the LangGraph `thread_id`, then use the normal conversation-scoped protocol paths. Do not require the browser to invent or pass a draft `thread_id` path segment before the DB-owned conversation exists.
+- **Usage accounting split:** preserve two separate usage paths. UI token/cost display must still hydrate from final message metadata or an equivalent protocol usage event, while backend spend accounting must still flow through `SpendHook` / `spend_queue`; do not assume `save_token_usage` alone covers aggregate spend.
+- **Shared-page traces:** public share rendering currently uses `frontend/src/lib/types/share.ts` `TurnTrace.events`, `frontend/src/lib/share/extract-chips.ts`, and `frontend/src/app/shared/[shareId]/page.tsx`. New canonical protocol events must either be projected into the legacy trace-chip shape or `extract-chips.ts` must learn the protocol event shape so shared tool/subagent chips do not disappear.
 
 ### Spike result: 2026-06-13
 
@@ -105,6 +107,7 @@ Key impact on this plan:
 - `/Users/chester/dev/assistant-ui/packages/react-langgraph` is also official source, and it is the fuller assistant-ui LangGraph adapter. It exposes `useLangGraphRuntime`, `useLangGraphMessages`, `LangGraphMessageAccumulator`, `convertLangChainMessages`, `useLangGraphMessageMetadata`, `useLangGraphUIMessages`, event handlers, checkpoint-aware edit/regenerate, cancellation, and generative UI support.
 - The `react-langgraph` source is not the best primary runtime for Moldy's DeepAgents UI because `useLangGraphMessages` accumulates namespaced `messages|...` subgraph tuple events into the same root message list, preserving tuple-only subgraph messages through final `values` reconciliation. That is useful for generic LangGraph assistant-ui behavior, but Moldy needs coordinator messages in the root transcript and subagent messages/tool calls rendered lazily in subagent cards or panels.
 - Final frontend adapter decision: use direct `@langchain/react` as the stream owner, build a local single-stream Moldy wrapper for assistant-ui, reuse `react-langchain` for lightweight conversion/submission patterns, and reuse `react-langgraph` as a reference or utility source for message accumulation, metadata, UI messages, and checkpoint behavior. Do not fork either assistant-ui package at the start.
+- `@assistant-ui/react` helper exports must be verified against the installed version before use. In particular, do not assume `makeAssistantDataUI` is exported; if it is absent, implement reasoning rendering through the installed message part/data renderer extension point and record the fallback in this plan.
 
 ### BFF position: production boundary, not semantic translation layer
 
@@ -683,9 +686,10 @@ If a model or provider returns private reasoning content, it must be redacted or
 | Interrupt | `updates.__interrupt__` or load interrupt state | runtime interrupt state | existing HiTL UI |
 | Artifact file event | `custom` plus optional `values.files` reconciliation | custom handler or UI message | right rail artifact update |
 | Memory proposal/save/delete | `custom` | custom handler | toast and cache invalidation |
+| Usage metadata | final message metadata, final `values.messages`, or protocol/custom usage event | message metadata / footer data | token usage popover and composer usage bar |
 | Metadata/checkpoint | `metadata`, `values`, `getCheckpointId` | message metadata / checkpoint hook | edit/regenerate mapping |
 | Error | `error` or namespaced `error|...` | runtime error handlers | toast and message status |
-| Run finished | stream completion plus final `values` | runtime terminal | usage footer, refetch |
+| Run finished | stream completion plus final `values` | runtime terminal | usage footer, spend hook completion, refetch |
 
 For the new primary path, `LangGraph event` means the canonical protocol event consumed by `@langchain/react`. The `assistant-ui target` column is a view bridge concern: it describes how the preserved stream state should be represented in assistant-ui primitives, not the backend's source-of-truth event format.
 
@@ -721,6 +725,7 @@ The legacy adapter must be one-way: LangGraph event stream -> Moldy SSE. Do not 
 - `backend/app/agent_runtime/langgraph_streaming.py`
   - Stream runner that calls `agent.astream_events(..., version="v3")` and emits canonical protocol events.
   - Fall back to multi-mode `agent.astream(...)` only when direct v3 is unavailable.
+  - Preserve the `usage_sink` / hook result path so `SpendHook` and `spend_queue` continue to receive successful run usage.
 - `backend/app/agent_runtime/assistant_ui_event_projection.py`
   - Optional view adapter from canonical protocol events to assistant-ui `{ event, data }` events.
 - `backend/app/agent_runtime/legacy_event_projection.py`
@@ -809,6 +814,12 @@ The legacy adapter must be one-way: LangGraph event stream -> Moldy SSE. Do not 
   - Use only as no-activity fallback.
 - `frontend/src/lib/chat/tool-ui-registry.ts`
   - Register reasoning/data UI if required by assistant-ui data parts.
+- `frontend/src/app/shared/[shareId]/page.tsx`
+  - Keep public shared conversation chips working from stored trace events after canonical protocol events are introduced.
+- `frontend/src/lib/share/extract-chips.ts`
+  - Accept canonical protocol events directly or consume a protocol-to-legacy trace projection.
+- `frontend/src/lib/types/share.ts`
+  - Extend `TurnTrace.events` typing only if the share API returns canonical protocol events; otherwise keep the public DTO stable and project on the backend.
 - `frontend/messages/ko.json`
   - Add Korean labels for activity states.
 - `frontend/messages/en.json`
@@ -1861,6 +1872,7 @@ class HistoryRequest(BaseModel):
 ```
 
 The router must reject unknown command methods with an Agent Protocol style error response instead of silently falling back to legacy Moldy SSE behavior.
+For `run.start`, missing or `None` `multitask_strategy` must be coerced to `"reject"` server-side before the runtime is called. This keeps the BFF contract aligned with Moldy's existing one-active-run UX even if the frontend omits the field.
 
 Return headers:
 
@@ -1910,7 +1922,9 @@ For thread state/history routes:
 - state and history routes must read/write through the LangGraph checkpointer when a checkpoint exists;
 - `message_events` is an event log plus checkpoint-reference store for replay/debugging, not a full SDK state/history store;
 - state and history routes must not reconstruct runtime state from Moldy display messages alone when a checkpointer snapshot is available;
-- compatibility state loaders for assistant-ui must derive from these canonical state routes.
+- compatibility state loaders for assistant-ui must derive from these canonical state routes;
+- route implementations must avoid per-render checkpointer calls. Add request-level caching/deduping where the frontend can trigger state and history hydration close together;
+- before adding load tests, make the LangGraph checkpointer pool size configurable. Current local guidance notes the psycopg `AsyncConnectionPool` behaves like a fixed 4-connection pool when min/max are not specified, so the new state/history routes must not silently multiply pool pressure.
 
 - [ ] **Step 4: Tests**
 
@@ -1925,6 +1939,7 @@ Tests must cover:
 - Python-style `(payload, metadata)` message/tool tuples are unwrapped before frontend delivery,
 - tool lifecycle events are synthesized from `values.messages` when raw `tools` events are absent and are not duplicated when raw `tools` events exist,
 - `GET state`, `POST state`, and `POST history` return SDK-compatible shapes,
+- missing `multitask_strategy` is treated as `reject`,
 - stale active run emits stale event,
 - headers include `X-Stream-Protocol: langgraph_v3`.
 
@@ -1961,7 +1976,7 @@ git commit -m "feat(chat): expose LangGraph protocol endpoints"
 - include CSRF for POST,
 - capture `X-Run-Id`, `X-Conversation-Id`, and `X-Resume-Mode` from command/stream responses where exposed,
 - build thread-bound `commands` and `stream` paths as functions of `threadId`,
-- expose or document the matching `state` and `history` paths used by LangGraph SDK hydration/history calls,
+- verify the installed `@langchain/react` / `@langchain/langgraph-sdk` clients' exact fetch URLs for state and history before finalizing path overrides. `HttpAgentServerAdapter` covers command/stream/state transport, while history may be called through SDK thread history helpers such as `client.threads.history`; capture the actual requests in a unit/integration test and document the matching BFF paths,
 - bootstrap newly created conversation threads through `GET /state` and `POST /state` before mounting `StreamProvider`,
 - support existing conversation and draft conversation paths,
 - forward fetch overrides to include Moldy auth/CSRF headers.
@@ -2182,6 +2197,7 @@ Use `@langchain/react` selectors/effects:
 - keep scoped subagent message/tool-call details out of the root assistant message until the card/panel asks to render them,
 - update artifact and memory stores from `custom` events.
 - reconcile optional `values.files` into the artifact/file panel without duplicating custom artifact events.
+- preserve final usage data for `TokenUsagePopover`, composer usage totals, and persisted message metadata. If the installed runtime exposes usage only through message metadata, add a small usage selector/helper instead of deriving usage from visible text.
 - keep replay cursor state (`event_id`/`seq`) outside assistant-ui messages so refresh/reconnect can deduplicate without changing visible message ids.
 
 During implementation, inspect installed `@langchain/react` and assistant-ui package types and keep the bridge strongly typed. Do not use `any`; use `unknown` plus type guards.
@@ -2306,6 +2322,7 @@ Use the official Deep Agents frontend pattern while keeping assistant-ui as the 
 - show subagent `name`, `status`, path/namespace, task input, latest output preview, and tool-call count;
 - render scoped messages/tool calls only when the card is expanded or the subagent right rail panel is open;
 - auto-collapse completed cards when there are five or more subagents in the turn;
+- cap simultaneously expanded live subagent detail cards. Each expanded card can mount scoped selector subscriptions such as `useMessages(stream, subagent)` and `useToolCalls(stream, subagent)`, so the UI should keep only a small number of live expanded cards by default and move bulk inspection to a right rail or explicit "open details" action;
 - show per-subagent errors inside that card without marking the whole assistant message failed unless the parent run fails.
 
 `SubagentProgress` should show completed/total counts for the current assistant turn and a compact progress bar.
@@ -2327,6 +2344,7 @@ Render above `StreamingMessageLoadingIndicator` for the active assistant message
 If the assistant-ui bridge maps visible reasoning as data parts, register `ReasoningUI` through `makeAssistantDataUI`. If reasoning arrives as protocol/custom activity events only, render it inside `RunActivityStrip`.
 
 The renderer must label content as a summary/status, not private chain-of-thought.
+Before importing `makeAssistantDataUI`, verify the installed `@assistant-ui/react` package exports it. If it does not, use the installed assistant-ui message part/data renderer API and add that fallback to `frontend/src/lib/chat/tool-ui-registry.ts` tests.
 
 - [ ] **Step 5: Tests**
 
@@ -2419,6 +2437,15 @@ Pass assistant-ui adapters:
 
 Confirm uploaded attachment ids are included in POST stream body for both existing and draft conversations.
 
+- [ ] **Step 4a: Usage and spend parity**
+
+Preserve the existing split between UI usage display and backend spend accounting:
+
+- UI usage display: final assistant message metadata, final `values.messages`, or an explicit protocol/custom usage event must populate the same token usage popover and composer usage total currently derived from `message_end.usage` and persisted messages.
+- Raw token rows: if the current runtime still writes `token_usages`, keep that behavior for audit/backward compatibility.
+- Spend aggregates: successful streamed runs must still invoke the hook path that produces `HookResult` usage and lets `backend/app/hooks/builtin/spend_hook.py` enqueue `SpendEntry` into `spend_queue`.
+- Tests must verify a streamed LangGraph run updates visible usage metadata and triggers the spend hook path without relying on `save_token_usage` as the only accounting mechanism.
+
 - [ ] **Step 5: Tests**
 
 Run and extend:
@@ -2436,6 +2463,8 @@ Backend:
 cd backend
 uv run pytest tests/agent_runtime tests/routers/test_conversation_agent_protocol_stream.py
 ```
+
+Add or extend backend tests around `backend/app/agent_runtime/agent_stream_runner.py`, `backend/app/agent_runtime/langgraph_streaming.py`, and `backend/app/hooks/builtin/spend_hook.py` so the new stream path proves it still emits hook usage on success.
 
 - [ ] **Step 6: Commit**
 
@@ -2527,9 +2556,13 @@ git commit -m "feat(chat): support checkpoints in LangGraph runtime"
 
 - Modify: `frontend/src/lib/sse/stream-resume-attach.ts`
 - Modify: `frontend/src/lib/ag-ui/chat-run-consumer.ts`
+- Modify: `frontend/src/app/shared/[shareId]/page.tsx`
+- Modify: `frontend/src/lib/share/extract-chips.ts`
+- Modify: `frontend/src/lib/types/share.ts`
 - Modify: `backend/app/routers/conversation_ag_ui.py`
 - Modify: `backend/app/agent_runtime/ag_ui_adapter.py`
 - Test: AG-UI compatibility tests
+- Test: `frontend/src/lib/share/extract-chips.test.ts`
 
 - [ ] **Step 1: Keep AG-UI as external compatibility**
 
@@ -2543,6 +2576,14 @@ Remove or ignore `NEXT_PUBLIC_CHAT_STREAM_PROTOCOL=ag_ui` from the main chat run
 
 Change AG-UI backend adapter to derive from stored canonical protocol events when they are present. Keep support for old Moldy SSE rows for existing stored traces.
 
+- [ ] **Step 3a: Preserve public share trace chips**
+
+The public share page groups stored assistant-turn events through `TurnTrace.events` and `extractChips(turn)`. When new turns persist canonical protocol events:
+
+- either add a backend projection that returns share traces in the existing legacy chip event shape, or update `extract-chips.ts` to support canonical protocol events directly;
+- keep `frontend/src/app/shared/[shareId]/page.tsx` able to show tool chips, subagent chips, and artifact/memory chips for both historical Moldy SSE traces and new LangGraph protocol traces;
+- preserve the public share DTO if possible. If `TurnTrace.events` must accept both shapes, use discriminated TypeScript unions and type guards, not `any`.
+
 - [ ] **Step 4: Tests**
 
 AG-UI tests should assert:
@@ -2551,6 +2592,12 @@ AG-UI tests should assert:
 - tool events still convert,
 - custom Moldy file/memory events still convert,
 - thinking/reasoning events are not lost if present in LangGraph records.
+
+Share tests should assert:
+
+- `extractChips` renders tool, subagent, artifact, and memory chips from canonical protocol events,
+- historical Moldy SSE trace events still render chips,
+- the shared page shows chips next to the correct assistant turn after a protocol-backed conversation is shared.
 
 - [ ] **Step 5: Commit**
 
@@ -2596,6 +2643,8 @@ Add an E2E test that:
 - refreshes while a slow stream is still running and verifies reconnect/replay continues without starting a second run,
 - refreshes the page,
 - verifies persisted messages, subagent cards, tool-call status, and artifacts still render without duplicate tokens or duplicate tool calls,
+- verifies usage totals and token popover data still appear after final response and refresh,
+- publishes the conversation and verifies `/shared/{shareId}` shows tool/subagent/artifact chips from the stored protocol-backed turn trace,
 - verifies edit/regenerate or history-aware reload can read the checkpoint/state history for the thread.
 
 The test must fail if refresh submits a second `run.start` for the same prompt. Track this by asserting the backend helper/run list shows one run id for the original run after reconnect.
@@ -2709,6 +2758,7 @@ The migration is complete when all criteria are true:
 - Text streams smoothly.
 - Tool calls show running, args, result, completion/error.
 - Tool calls still show lifecycle states when Python v3 emits tool calls/results only through `values.messages`, via backend synthesis that does not duplicate raw `tools` events.
+- Token usage UI still renders final prompt/completion/cache/cost fields where available, and backend spend aggregation still flows through `SpendHook` / `spend_queue`.
 - Planning/todo updates produce a visible "계획을 세우는 중" activity.
 - `values.todos` renders a DeepAgents task state panel grouped by pending, in-progress, and completed.
 - Moldy artifacts hydrate a file/artifact panel with preview, copy/download, and edit/save where supported; optional `values.files` reconciles into that panel without becoming the required source.
@@ -2728,6 +2778,7 @@ The migration is complete when all criteria are true:
 - Refresh during an active stream reconnects to the same conversation/thread/run and does not submit another `run.start`.
 - Edit/regenerate uses checkpoint ids and does not fork from the wrong state.
 - Existing AG-UI endpoint still works for external clients.
+- Public shared conversations still render tool/subagent/artifact chips from `TurnTrace.events` for both historical Moldy SSE traces and new LangGraph protocol traces.
 - Backend tests, frontend unit tests, lint, design-system lint, i18n lint, build, and the new E2E pass.
 
 ---
@@ -2762,6 +2813,16 @@ Guardrail:
 - Treat `GET state`, `POST state`, and `POST history` as part of the official custom-backend contract, not optional debug endpoints.
 - Add router tests that create/bootstrap a thread, load state, update state, read history, and then stream a run from the same `thread_id`.
 - Keep assistant-ui compatibility state loaders derived from the canonical LangGraph state route.
+- Capture the installed SDK's actual state/history fetch paths in tests before relying on route assumptions. History may use SDK thread APIs rather than the same path builder used for stream commands.
+
+### Risk: state/history routes exhaust the LangGraph checkpointer pool
+
+Guardrail:
+
+- Make the checkpointer `AsyncConnectionPool` min/max configurable before enabling the new state/history routes under load.
+- Dedupe state/history fetches in the frontend transport and avoid firing them on every render.
+- Add a focused load or concurrency regression test that runs a few active streams while state/history hydration is requested.
+- Document the chosen pool sizing in `AGENTS.md` or the deployment env guide when the migration lands.
 
 ### Risk: Python v3 event payloads are not directly consumable by JS assemblers
 
@@ -2795,6 +2856,8 @@ Guardrail:
 - Use `stream.subagents` discovery snapshots for cards and progress.
 - Render scoped subagent messages/tool calls only when a card or right rail panel is expanded.
 - Auto-collapse completed cards when a turn has five or more subagents.
+- Cap simultaneously expanded live subagent detail subscriptions, because each unique scoped selector/namespace can open an additional SSE subscription in the browser.
+- Prefer HTTP/2 at the reverse proxy for production if many scoped SSE subscriptions can be open at once; under HTTP/1.1, browser per-origin connection limits can make expanded subagent cards starve other requests.
 - Add unit and E2E coverage for subagent card placement, scoped detail rendering, per-subagent error display, and refresh/replay.
 
 ### Risk: DeepAgents files are treated only as transient artifact events
@@ -2845,6 +2908,22 @@ Guardrail:
 - Derive AG-UI from stored canonical protocol events for new traces.
 - Keep old Moldy SSE conversion only for historical trace rows.
 
+### Risk: in-memory stream broker breaks under multi-worker deployment
+
+Guardrail:
+
+- Treat the current `EventBroker` style design as single-process unless a shared broker/store is added.
+- Keep new attach/replay behavior backed by persisted protocol events so a reconnect can recover even if the live broker is gone.
+- If the backend runs multiple workers before a shared broker exists, route a conversation/run consistently to one worker or disable live cross-worker assumptions.
+
+### Risk: public share pages lose tool chips after protocol migration
+
+Guardrail:
+
+- Keep `TurnTrace.events` backward compatible or add an explicit protocol-to-share projection.
+- Add tests for `frontend/src/lib/share/extract-chips.ts` with canonical protocol fixtures.
+- Add E2E coverage that shares a protocol-backed conversation and verifies tool/subagent/artifact chips on `/shared/{shareId}`.
+
 ---
 
 ## 10. Rollout Plan
@@ -2866,6 +2945,7 @@ Precondition: merge, rebase onto, or explicitly compare against the separate E2E
 ## 11. Self-Review Checklist
 
 - [ ] Every current stream feature has a LangGraph runtime mapping: text, tools, files, memory, HITL, usage, stale, cancel.
+- [ ] Usage is verified separately for UI message metadata and backend `SpendHook` / `spend_queue` aggregation.
 - [ ] `@langchain/react` is used as the canonical stream runtime for the new path, with assistant-ui used deliberately as the chat surface.
 - [ ] AG-UI is not used as an internal lossy bridge.
 - [ ] Backend stores canonical protocol events, not only legacy text/tool events.
@@ -2873,6 +2953,8 @@ Precondition: merge, rebase onto, or explicitly compare against the separate E2E
 - [ ] Frontend activity UI is semantic and compact.
 - [ ] Subagent UI follows the official pattern: root coordinator transcript, `stream.subagents` discovery, cards under spawning tool calls, lazy scoped detail rendering.
 - [ ] Current SDK `subgraphs` alias, raw `tasks`, and raw `tools` channels are covered in backend and frontend tests.
+- [ ] Shared conversation traces and `extract-chips.ts` support both historical Moldy SSE events and new canonical protocol events.
+- [ ] State/history route tests verify the installed SDK's actual request paths and do not assume a path shape without evidence.
 - [ ] Async/background subagents render as task status activities distinct from inline v3 subagent cards.
 - [ ] Raw v3 `event_id`, sequence/order, and namespace metadata are preserved through live stream, storage, replay, and debugging views.
 - [ ] Hidden chain-of-thought is not exposed.
