@@ -7,16 +7,14 @@ import {
   type AttachmentAdapter,
   type FeedbackAdapter,
 } from '@assistant-ui/react'
-import { useStream, type UseStreamReturn } from '@langchain/react'
-import {
-  convertLangChainBaseMessage,
-  type LangChainBaseMessage,
-} from '@assistant-ui/react-langchain'
+import { useStream } from '@langchain/react'
+import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
+import { convertLangChainBaseMessage } from '@assistant-ui/react-langchain'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import type { RunActivity } from './activity-model'
 
 interface MoldyGraphState {
-  messages: LangChainBaseMessage[]
+  messages: BaseMessage[]
   todos?: unknown
   files?: unknown
   async_tasks?: unknown
@@ -41,10 +39,16 @@ function appendMessageText(message: {
     .map((part) => {
       if (typeof part === 'string') return part
       if (typeof part !== 'object' || part === null) return ''
-      const text = (part as { text?: unknown }).text
-      return typeof text === 'string' ? text : ''
+      return 'text' in part && typeof part.text === 'string' ? part.text : ''
     })
     .join('')
+}
+
+function convertMoldyLangChainMessage(
+  message: BaseMessage,
+  metadata: Parameters<typeof convertLangChainBaseMessage>[1],
+) {
+  return convertLangChainBaseMessage(message, metadata)
 }
 
 export function useMoldyLangGraphStream({
@@ -53,15 +57,17 @@ export function useMoldyLangGraphStream({
   feedbackAdapter,
   attachmentAdapter,
 }: UseMoldyLangGraphStreamOptions) {
-  const transport = useMemo(() => createMoldyAgentTransport(conversationId), [conversationId])
+  const transport = useMemo(
+    () => createMoldyAgentTransport(conversationId, agentId),
+    [agentId, conversationId],
+  )
   const stream = useStream<MoldyGraphState>({
     transport,
     threadId: conversationId,
-    assistantId: agentId,
   })
   const messages = useExternalMessageConverter({
-    callback: convertLangChainBaseMessage,
-    messages: stream.messages as LangChainBaseMessage[],
+    callback: convertMoldyLangChainMessage,
+    messages: stream.messages,
     isRunning: stream.isLoading,
   })
   const adapters = useMemo(() => {
@@ -78,7 +84,7 @@ export function useMoldyLangGraphStream({
     }) => {
       const content = appendMessageText(message).trim()
       if (!content) return
-      await stream.submit({ messages: [{ type: 'human', content }] })
+      await stream.submit({ messages: [new HumanMessage(content)] })
     },
     [stream],
   )
@@ -94,16 +100,23 @@ export function useMoldyLangGraphStream({
     onCancel,
   })
 
-  return {
-    stream: stream as UseStreamReturn<MoldyGraphState>,
-    assistantRuntime,
-    activities: [] as readonly RunActivity[],
-    sendMessage: async (content: string) => {
+  const sendMessage = useCallback(
+    async (content: string) => {
       const trimmed = content.trim()
       if (!trimmed) return
-      await stream.submit({ messages: [{ type: 'human', content: trimmed }] })
+      await stream.submit({ messages: [new HumanMessage(trimmed)] })
     },
-    onResumeDecisions: async () => {},
-    registerDecision: async () => {},
+    [stream],
+  )
+  const onResumeDecisions = useCallback(async () => {}, [])
+  const registerDecision = useCallback(async () => {}, [])
+
+  return {
+    stream,
+    assistantRuntime,
+    activities: [] as readonly RunActivity[],
+    sendMessage,
+    onResumeDecisions,
+    registerDecision,
   }
 }

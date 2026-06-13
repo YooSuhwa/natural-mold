@@ -39,12 +39,40 @@ function withMoldyAuth(baseFetch: typeof fetch): typeof fetch {
   }
 }
 
+type ProtocolCommand = Parameters<HttpAgentServerAdapter['send']>[0]
+type ProtocolSendResult = ReturnType<HttpAgentServerAdapter['send']>
+
+function commandWithAgentId(command: ProtocolCommand, agentId: string): ProtocolCommand {
+  if (command.method !== 'run.start') return command
+  return {
+    ...command,
+    params: {
+      ...command.params,
+      assistant_id: agentId,
+    },
+  }
+}
+
+class MoldyHttpAgentServerAdapter extends HttpAgentServerAdapter {
+  readonly #agentId: string
+
+  constructor(agentId: string, options: ConstructorParameters<typeof HttpAgentServerAdapter>[0]) {
+    super(options)
+    this.#agentId = agentId
+  }
+
+  override send(command: ProtocolCommand): ProtocolSendResult {
+    return super.send(commandWithAgentId(command, this.#agentId))
+  }
+}
+
 export function createMoldyAgentTransport(
   conversationId: string,
+  agentId: string,
   options: MoldyAgentTransportOptions = {},
 ): HttpAgentServerAdapter {
   const authedFetch = withMoldyAuth(options.fetch ?? fetch)
-  return new HttpAgentServerAdapter({
+  return new MoldyHttpAgentServerAdapter(agentId, {
     apiUrl: options.apiBase ?? API_BASE,
     threadId: conversationId,
     fetch: authedFetch,

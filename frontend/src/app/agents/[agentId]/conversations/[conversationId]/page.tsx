@@ -3,17 +3,8 @@
 import { use, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
-import {
-  Settings2Icon,
-  SquarePenIcon,
-  SparklesIcon,
-  MoreHorizontalIcon,
-  ActivityIcon,
-  FilesIcon,
-} from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
-import type { Agent, Conversation, Message } from '@/lib/types'
+import type { Conversation, Message } from '@/lib/types'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useSession } from '@/lib/auth/session'
 import {
@@ -31,24 +22,15 @@ import {
   conversationRuntimeStatusAtom,
   type ConversationRuntimeStatus,
 } from '@/lib/stores/chat-navigator-store'
-import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
-import { HiTLContext } from '@/lib/chat/hitl-context'
-import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
-import { Button } from '@/components/ui/button'
-import { AssistantThread } from '@/components/chat/assistant-thread'
+import { getChatRuntimeMode } from '@/lib/chat/runtime-mode'
+import { ChatRuntimeSection } from '@/components/chat/chat-runtime-section'
+import { ChatEmptyState } from '@/components/chat/chat-empty-state'
+import { ChatPageHeader } from '@/components/chat/chat-page-header'
 import { AgentSkillsRow } from '@/components/chat/agent-skills-row'
 import { ChatRightRail } from '@/components/chat/right-rail/chat-right-rail'
-import { AgentAvatar } from '@/components/agent/agent-avatar'
-import { AgentContextPopover } from '@/components/agent/agent-context-popover'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
 
 const EMPTY_MESSAGES: Message[] = []
 
@@ -188,26 +170,27 @@ export default function ChatPage({
     queryClient.invalidateQueries({ queryKey: conversationKeys.messages(conversationId) })
   })
 
-  const { runtime, onResumeDecisions, registerDecision } = useChatRuntime({
-    messages,
-    totalCost: envelope?.total_estimated_cost,
-    streamFn,
-    onStreamEnd,
-    conversationId: activeConversationId ?? undefined,
-    feedbackAdapter,
-    attachmentAdapter: moldyAttachmentAdapter,
-    activeRun: envelope?.active_run ?? null,
-    latestRun: envelope?.latest_run ?? null,
-  })
-
-  const hitlValue = useMemo(
-    () => ({ onResumeDecisions, registerDecision }),
-    [onResumeDecisions, registerDecision],
-  )
+  const runtimeMode = getChatRuntimeMode()
+  const useLangGraphRuntime = runtimeMode === 'langgraph_v3' && activeConversationId !== null
 
   function handleNewConversation() {
     router.push(`/agents/${agentId}/conversations/new`)
   }
+  const handleOpenTrace = useCallback(() => {
+    router.push(`/agents/${agentId}/conversations/${conversationId}/traces`)
+  }, [agentId, conversationId, router])
+  const handleOpenSettings = useCallback(() => {
+    router.push(`/agents/${agentId}/settings`)
+  }, [agentId, router])
+  const handleToggleArtifacts = useCallback(() => {
+    setRightRail((current) => toggleArtifactListRailState(current, conversationId))
+  }, [conversationId, setRightRail])
+  const handleRuntimeStatusChange = useCallback(
+    (status: ConversationRuntimeStatus) => {
+      if (activeConversationId) setRuntimeStatus(activeConversationId, status)
+    },
+    [activeConversationId, setRuntimeStatus],
+  )
 
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
 
@@ -215,53 +198,15 @@ export default function ChatPage({
     <div className="moldy-app-surface flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
       {/* 메인 채팅 카드 */}
       <section className="moldy-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="moldy-panel-header flex items-center justify-between px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-sm font-semibold">
-              {currentTitle ?? agent?.name ?? <Skeleton className="inline-block h-4 w-24" />}
-            </h1>
-            <AgentContextPopover agent={agent} agentId={agentId} />
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t('artifacts')}
-              onClick={() =>
-                setRightRail((current) => toggleArtifactListRailState(current, conversationId))
-              }
-            >
-              <FilesIcon className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t('traceDebugger')}
-              onClick={() =>
-                router.push(`/agents/${agentId}/conversations/${conversationId}/traces`)
-              }
-            >
-              <ActivityIcon className="size-4" />
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={<Button variant="ghost" size="icon-sm" aria-label={t('menu')} />}
-              >
-                <MoreHorizontalIcon className="size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleNewConversation}>
-                  <SquarePenIcon />
-                  {t('newConversation')}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push(`/agents/${agentId}/settings`)}>
-                  <Settings2Icon />
-                  {t('settings')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
+        <ChatPageHeader
+          agent={agent}
+          agentId={agentId}
+          title={currentTitle}
+          onNewConversation={handleNewConversation}
+          onOpenSettings={handleOpenSettings}
+          onOpenTrace={handleOpenTrace}
+          onToggleArtifacts={handleToggleArtifacts}
+        />
 
         {/* Agent skills row (P2-10 — visualizes attached skills) */}
         <AgentSkillsRow skills={agent?.skills} />
@@ -279,22 +224,25 @@ export default function ChatPage({
             </div>
           </div>
         ) : (
-          <AssistantRuntimeProvider runtime={runtime}>
-            <HiTLContext.Provider value={hitlValue}>
-              <AssistantThread
-                agentImageUrl={agent?.image_url}
-                agentName={agent?.name}
-                user={user}
-                modelName={agent?.model?.display_name}
-                showTokenBar
-                showMessageTimestamp
-                enableAttachments
-                emptyContent={emptyContent}
-                toolUI={ALL_TOOL_UI}
-                conversationId={activeConversationId ?? undefined}
-              />
-            </HiTLContext.Provider>
-          </AssistantRuntimeProvider>
+          <ChatRuntimeSection
+            activeConversationId={activeConversationId}
+            activeRun={envelope?.active_run ?? null}
+            agentId={agentId}
+            agentImageUrl={agent?.image_url}
+            agentName={agent?.name}
+            attachmentAdapter={moldyAttachmentAdapter}
+            emptyContent={emptyContent}
+            feedbackAdapter={feedbackAdapter}
+            latestRun={envelope?.latest_run ?? null}
+            messages={messages}
+            modelName={agent?.model?.display_name}
+            onRuntimeStatusChange={handleRuntimeStatusChange}
+            onStreamEnd={onStreamEnd}
+            streamFn={streamFn}
+            totalCost={envelope?.total_estimated_cost}
+            useLangGraphRuntime={useLangGraphRuntime}
+            user={user}
+          />
         )}
       </section>
 
@@ -303,52 +251,6 @@ export default function ChatPage({
         conversationId={activeConversationId}
         className="moldy-panel overflow-hidden"
       />
-    </div>
-  )
-}
-
-interface ChatEmptyStateProps {
-  agent: Agent | undefined
-  fallback: string
-}
-
-function ChatEmptyState({ agent, fallback }: ChatEmptyStateProps) {
-  const t = useTranslations('chat')
-  // AssistantRuntimeProvider 컨텍스트 안에서만 동작 — emptyContent는 provider 자식
-  const composer = useComposerRuntime({ optional: true })
-  const openerQuestions = agent?.opener_questions ?? []
-
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="mb-4">
-        <AgentAvatar
-          imageUrl={agent?.image_url ?? null}
-          name={agent?.name ?? t('defaultAgentName')}
-          size="lg"
-        />
-      </div>
-      <h2 className="mb-1 text-lg font-semibold">{agent?.name ?? fallback}</h2>
-      {agent?.description && (
-        <p className="mb-4 max-w-md text-sm text-muted-foreground">{agent.description}</p>
-      )}
-      <div className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground ring-1 ring-primary-strong/15">
-        <SparklesIcon className="size-3.5" />
-        <span>{fallback}</span>
-      </div>
-      {openerQuestions.length > 0 && (
-        <div className="mt-6 flex max-w-2xl flex-wrap justify-center gap-2">
-          {openerQuestions.map((q) => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => composer?.setText(q)}
-              className="rounded-full border border-primary-strong/20 bg-background/80 px-3 py-1.5 text-xs transition-colors hover:bg-primary hover:text-primary-foreground"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

@@ -2012,8 +2012,8 @@ git commit -m "feat(chat): expose LangGraph protocol endpoints"
 Implementation status:
 
 - [x] `@assistant-ui/react-langchain` is installed so the frontend can reuse the official assistant-ui wrapper around `@langchain/react`.
-- [x] `moldy-agent-transport.ts` creates the stock `HttpAgentServerAdapter` against Moldy's conversation-scoped BFF protocol endpoints, includes cookies, adds CSRF for mutating protocol requests, and exposes command/stream/state path overrides.
-- [x] Transport tests verify command and state URLs, cookie credentials, and CSRF behavior against the installed SDK adapter.
+- [x] `moldy-agent-transport.ts` creates the stock `HttpAgentServerAdapter` against Moldy's conversation-scoped BFF protocol endpoints, includes cookies, adds CSRF for mutating protocol requests, exposes command/stream/state path overrides, and wraps `send()` to replace the SDK custom-adapter sentinel `assistant_id` with the real Moldy `agentId` on `run.start`.
+- [x] Transport tests verify command and state URLs, cookie credentials, CSRF behavior, and `run.start.params.assistant_id` injection against the installed SDK adapter.
 - [x] `activity-model.ts` reduces canonical protocol events into typed run activities for responding, thinking, tools, planning, subagents, background subagents, artifacts, memory, checkpoints, reconnecting, interrupts, and errors.
 - [x] Reducer tests cover tool lifecycle, namespaced subagents, lifecycle/task events, `async_tasks`, todos, custom artifact/memory events, and error propagation.
 - [ ] The transport does not yet implement draft conversation creation or `X-Run-Id` / `X-Conversation-Id` response capture; the current backend command response still exposes `run_id` in the protocol body.
@@ -2036,16 +2036,33 @@ Export:
 
 ```typescript
 export interface MoldyAgentTransportOptions {
+  apiBase?: string
+  fetch?: typeof fetch
+}
+
+export function createMoldyAgentTransport(
+  conversationId: string,
+  agentId: string,
+  options?: MoldyAgentTransportOptions,
+): HttpAgentServerAdapter
+```
+
+Installed `@langchain/react@1.0.23` / `@langchain/langgraph-sdk@1.9.22` note:
+
+- In the custom `transport: AgentServerAdapter` branch, `useStream` does not type-accept `assistantId`; the controller uses the sentinel `"_"`.
+- Moldy's adapter must therefore rewrite `run.start.params.assistant_id` to the real `agentId` inside the transport wrapper before the command reaches the BFF.
+- The hook should call `useStream({ transport, threadId })`, not `useStream({ transport, threadId, assistantId })`.
+
+Future draft support should extend this shape, for example:
+
+```typescript
+export interface DraftMoldyAgentTransportOptions extends MoldyAgentTransportOptions {
   agentId: string
   conversationId?: string
   isDraftConversation: boolean
   onConversationCreated?: (conversationId: string) => void
   onRunId?: (runId: string) => void
 }
-
-export function createMoldyAgentTransport(
-  options: MoldyAgentTransportOptions,
-): HttpAgentServerAdapter
 ```
 
 - [ ] **Step 2: Implement activity reducer**
@@ -2148,20 +2165,26 @@ git commit -m "feat(chat): add LangGraph stream client state"
 **Files:**
 
 - Create: `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts`
-- Create: `frontend/src/lib/chat/langgraph-runtime/assistant-ui-bridge.ts`
-- Create: `frontend/src/lib/chat/langgraph-runtime/event-handlers.ts`
+- Create: `frontend/src/components/chat/chat-runtime-section.tsx`
+- Create: `frontend/src/components/chat/chat-empty-state.tsx`
+- Create: `frontend/src/components/chat/chat-page-header.tsx`
+- Deferred create: `frontend/src/lib/chat/langgraph-runtime/assistant-ui-bridge.ts`
+- Deferred create: `frontend/src/lib/chat/langgraph-runtime/event-handlers.ts`
 - Modify: `frontend/src/app/agents/[agentId]/conversations/[conversationId]/page.tsx`
 - Test: `frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
-- Test: `frontend/src/lib/chat/langgraph-runtime/__tests__/assistant-ui-bridge.test.tsx`
+- Test: `frontend/src/components/chat/__tests__/chat-runtime-section.test.tsx`
+- Deferred test: `frontend/src/lib/chat/langgraph-runtime/__tests__/assistant-ui-bridge.test.tsx`
 
 Implementation status:
 
 - [x] `use-moldy-langgraph-stream.ts` now creates the single Moldy-owned `@langchain/react` `useStream` instance with `createMoldyAgentTransport`.
 - [x] The hook exposes the raw `stream` object for future DeepAgents selectors and bridges root coordinator messages into assistant-ui with `useExternalStoreRuntime`.
 - [x] The bridge reuses `convertLangChainBaseMessage` from `@assistant-ui/react-langchain`, while still keeping the underlying stream accessible to Moldy.
-- [x] The hook forwards assistant-ui feedback/attachment adapters and routes new user messages/cancel actions through `stream.submit` / `stream.stop`.
-- [x] Hook tests verify one stream is created, assistant-ui runtime options are wired, and new messages submit through the same stream.
-- [ ] HITL resume, activity side effects, artifact/memory reducers, subagent scoped selectors, edit/regenerate, draft conversation start, and visible page selection are still pending.
+- [x] The hook forwards assistant-ui feedback/attachment adapters and routes new user messages/cancel actions through `stream.submit` with `HumanMessage` / `stream.stop`.
+- [x] `ChatRuntimeSection` splits legacy and LangGraph runtime providers so only one side-effecting stream hook mounts at a time.
+- [x] The conversation page reads `NEXT_PUBLIC_CHAT_RUNTIME` through `getChatRuntimeMode()` and mounts the LangGraph provider only for existing conversations when `langgraph_v3` is selected. Draft `new` conversations remain on legacy SSE until draft creation is ported.
+- [x] Hook and section tests verify one stream is created, assistant-ui runtime options are wired, new messages submit through the same stream, legacy mode still calls `useChatRuntime`, `langgraph_v3` mode calls `useMoldyLangGraphStream`, draft conversations fall back to legacy, and LangGraph loading transitions update navigator status/invalidate on settle.
+- [ ] HITL resume, activity side effects, artifact/memory reducers, subagent scoped selectors, edit/regenerate, and draft conversation start are still pending.
 
 - [ ] **Step 1: Implement the Moldy-owned `@langchain/react` stream path**
 
@@ -2268,17 +2291,22 @@ In `page.tsx`:
 
 ```typescript
 const runtimeMode = getChatRuntimeMode()
+const useLangGraphRuntime = runtimeMode === 'langgraph_v3' && activeConversationId !== null
 
-const legacyRuntime = useChatRuntime(legacyRuntimeOptions)
-const langGraphRuntime = useMoldyLangGraphStream(langGraphRuntimeOptions)
-
-const activeRuntime = runtimeMode === 'langgraph_v3' ? langGraphRuntime : legacyRuntime
+return (
+  <ChatRuntimeSection
+    activeConversationId={activeConversationId}
+    useLangGraphRuntime={useLangGraphRuntime}
+    // existing assistant-ui thread props and adapters...
+  />
+)
 ```
 
-Keep hook order stable. If both hooks cannot be called safely because they start side effects, split the provider into two child components:
+Keep hook order stable. Since both runtime hooks start side effects, split the provider into child components:
 
-- `LegacyChatRuntimeProvider`
-- `LangGraphV3ChatRuntimeProvider`
+- `LegacyRuntimeSection` calls `useChatRuntime`;
+- `LangGraphRuntimeSection` calls `useMoldyLangGraphStream`;
+- `ChatRuntimeSection` chooses which child to mount.
 
 Only mount one provider based on `runtimeMode`.
 
@@ -2289,6 +2317,8 @@ Test:
 - legacy mode still calls `useChatRuntime`,
 - langgraph_v3 mode renders the local Moldy single-stream provider,
 - assistant-ui root messages are converted from the same `@langchain/react` stream object used by DeepAgents panels,
+- draft conversation ids keep the legacy runtime until the draft-create path is implemented,
+- LangGraph run loading transitions call navigator status updates and `onStreamEnd(false)` when the run settles,
 - `stream.values` / `useValues(stream)` reads `todos` and `files` from runtime state,
 - HITL resume uses installed `@langchain/react` submit/respond command APIs without a Moldy-only resume payload,
 - namespaced subagent messages do not appear in the root assistant transcript,
@@ -2299,8 +2329,10 @@ Test:
 
 ```bash
 cd frontend
-pnpm test src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx src/lib/chat/langgraph-runtime/__tests__/assistant-ui-bridge.test.tsx
-pnpm lint
+pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-model.test.ts src/lib/chat/langgraph-runtime/__tests__/moldy-agent-transport.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/__tests__/runtime-mode.test.ts
+pnpm exec tsc --noEmit
+pnpm exec eslint 'src/app/agents/[agentId]/conversations/[conversationId]/page.tsx' src/components/chat/chat-runtime-section.tsx src/components/chat/chat-empty-state.tsx src/components/chat/chat-page-header.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/activity-model.ts src/lib/chat/langgraph-runtime/moldy-agent-transport.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/moldy-agent-transport.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+pnpm lint:design-system
 ```
 
 - [ ] **Step 6: Commit**

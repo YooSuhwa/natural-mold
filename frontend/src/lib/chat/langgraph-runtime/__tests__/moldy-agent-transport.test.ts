@@ -24,12 +24,16 @@ describe('createMoldyAgentTransport', () => {
         result: { run_id: 'run-1' },
       }),
     )
-    const transport = createMoldyAgentTransport('conversation 1', {
+    const transport = createMoldyAgentTransport('conversation 1', 'agent-1', {
       apiBase: 'http://api.test',
       fetch: fetchMock,
     })
 
-    await transport.send({ id: 1, method: 'run.start', params: {} })
+    await transport.send({
+      id: 1,
+      method: 'run.start',
+      params: { assistant_id: '_', input: { messages: [] } },
+    })
 
     expect(fetchMock).toHaveBeenCalledOnce()
     const [url, init] = fetchMock.mock.calls[0]
@@ -39,6 +43,10 @@ describe('createMoldyAgentTransport', () => {
     expect(init?.method).toBe('POST')
     expect(init?.credentials).toBe('include')
     expect(new Headers(init?.headers).get('X-CSRF-Token')).toBe('csrf-1')
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      method: 'run.start',
+      params: { assistant_id: 'agent-1' },
+    })
   })
 
   it('uses the state path for SDK hydration without adding CSRF to GET requests', async () => {
@@ -50,7 +58,7 @@ describe('createMoldyAgentTransport', () => {
         tasks: [],
       }),
     )
-    const transport = createMoldyAgentTransport('conversation-2', {
+    const transport = createMoldyAgentTransport('conversation-2', 'agent-2', {
       apiBase: 'http://api.test',
       fetch: fetchMock,
     })

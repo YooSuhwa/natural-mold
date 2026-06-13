@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { useMoldyLangGraphStream } from '../use-moldy-langgraph-stream'
+import type { AttachmentAdapter, CompleteAttachment, PendingAttachment } from '@assistant-ui/react'
 
 const mocks = vi.hoisted(() => {
   const stream = {
@@ -42,7 +43,26 @@ vi.mock('@assistant-ui/react-langchain', () => ({
 describe('useMoldyLangGraphStream', () => {
   it('creates one LangChain stream and bridges it into assistant-ui', () => {
     const feedbackAdapter = { submit: vi.fn() }
-    const attachmentAdapter = { accept: 'image/*' }
+    const attachmentAdapter: AttachmentAdapter = {
+      accept: 'image/*',
+      add: vi.fn(
+        async (state: { file: File }): Promise<PendingAttachment> => ({
+          id: 'pending-attachment',
+          type: 'file',
+          name: state.file.name,
+          contentType: state.file.type,
+          file: state.file,
+          status: { type: 'requires-action', reason: 'composer-send' },
+        }),
+      ),
+      send: vi.fn(
+        async (attachment): Promise<CompleteAttachment> => ({
+          ...attachment,
+          status: { type: 'complete' },
+        }),
+      ),
+      remove: vi.fn(async () => {}),
+    }
 
     const { result } = renderHook(() =>
       useMoldyLangGraphStream({
@@ -53,11 +73,10 @@ describe('useMoldyLangGraphStream', () => {
       }),
     )
 
-    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith('conversation-1')
+    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith('conversation-1', 'agent-1')
     expect(mocks.useStream).toHaveBeenCalledWith({
       transport: { kind: 'transport', conversationId: 'conversation-1' },
       threadId: 'conversation-1',
-      assistantId: 'agent-1',
     })
     expect(mocks.useExternalStoreRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -89,7 +108,7 @@ describe('useMoldyLangGraphStream', () => {
     await runtimeOptions.onCancel()
 
     expect(mocks.stream.submit).toHaveBeenCalledWith({
-      messages: [{ type: 'human', content: 'hello' }],
+      messages: [expect.objectContaining({ content: 'hello' })],
     })
     expect(mocks.stream.stop).toHaveBeenCalled()
   })

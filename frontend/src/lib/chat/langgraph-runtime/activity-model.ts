@@ -73,6 +73,10 @@ function eventData(event: ProtocolEvent): unknown {
   return event.params?.data
 }
 
+function dataRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : { payload: value }
+}
+
 function eventNamespace(event: ProtocolEvent): string[] {
   return event.params?.namespace ?? []
 }
@@ -124,7 +128,7 @@ function activityBase(
 function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): RunActivity[] {
   const data = eventData(event)
   const namespace = eventNamespace(event)
-  let next = current
+  let next: RunActivity[] = [...current]
   if (namespace.length > 0) {
     next = upsertActivity(next, {
       ...activityBase(event, 'subagent', namespaceKey(namespace)),
@@ -175,7 +179,7 @@ function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): 
 
 function reduceTools(current: readonly RunActivity[], event: ProtocolEvent): RunActivity[] {
   const data = eventData(event)
-  if (!isRecord(data)) return current
+  if (!isRecord(data)) return [...current]
   const toolCallId = textValue(data.tool_call_id) ?? textValue(data.id) ?? `seq-${event.seq ?? 0}`
   const name = textValue(data.tool_name) ?? textValue(data.name) ?? 'Tool'
   const status = statusFromValue(data.status ?? data.event)
@@ -191,8 +195,8 @@ function reduceTools(current: readonly RunActivity[], event: ProtocolEvent): Run
 
 function reduceState(current: readonly RunActivity[], event: ProtocolEvent): RunActivity[] {
   const data = eventData(event)
-  if (!isRecord(data)) return current
-  let next = current
+  if (!isRecord(data)) return [...current]
+  let next: RunActivity[] = [...current]
   if (Array.isArray(data.todos)) {
     const todos = asRecords(data.todos)
     const incomplete = todos.some((todo) => {
@@ -231,7 +235,7 @@ function reduceState(current: readonly RunActivity[], event: ProtocolEvent): Run
 
 function reduceLifecycle(current: readonly RunActivity[], event: ProtocolEvent): RunActivity[] {
   const data = eventData(event)
-  if (!isRecord(data)) return current
+  if (!isRecord(data)) return [...current]
   const namespace = eventNamespace(event)
   const id = textValue(data.trigger_call_id) ?? textValue(data.id) ?? namespaceKey(namespace)
   const status = statusFromValue(data.status ?? data.event)
@@ -275,7 +279,7 @@ function reduceCustom(current: readonly RunActivity[], event: ProtocolEvent): Ru
       data: isRecord(data) ? data : { payload: data },
     })
   }
-  return current
+  return [...current]
 }
 
 export function reduceActivity(
@@ -283,11 +287,12 @@ export function reduceActivity(
   event: ProtocolEvent,
 ): RunActivity[] {
   if (event.method === 'error') {
+    const data = eventData(event)
     return upsertActivity(markRunningAsError(current, event), {
       ...activityBase(event, 'error', 'stream'),
       status: 'error',
       title: 'Error',
-      data: isRecord(eventData(event)) ? eventData(event) : { payload: eventData(event) },
+      data: dataRecord(data),
     })
   }
   if (event.method === 'messages') return reduceMessages(current, event)
@@ -296,15 +301,16 @@ export function reduceActivity(
   if (event.method === 'tasks' || event.method === 'lifecycle')
     return reduceLifecycle(current, event)
   if (event.method === 'checkpoints') {
+    const data = eventData(event)
     return upsertActivity(current, {
       ...activityBase(event, 'checkpoint', String(event.seq ?? 'latest')),
       status: 'complete',
       title: 'Checkpoint',
-      data: isRecord(eventData(event)) ? eventData(event) : { payload: eventData(event) },
+      data: dataRecord(data),
     })
   }
   if (event.method === 'custom' || event.method.startsWith('custom:')) {
     return reduceCustom(current, event)
   }
-  return current
+  return [...current]
 }
