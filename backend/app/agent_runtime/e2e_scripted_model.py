@@ -140,7 +140,9 @@ class E2EScriptedChatModel(BaseChatModel):
     ) -> ChatResult:
         human_text = self._latest_human_text(messages)
         if is_langgraph_v3_subagent_prompt(human_text):
-            return ChatResult(generations=[ChatGeneration(message=langgraph_v3_subagent_response())])
+            return ChatResult(
+                generations=[ChatGeneration(message=langgraph_v3_subagent_response())]
+            )
 
         if is_langgraph_v3_prompt(human_text):
             message = langgraph_v3_message(

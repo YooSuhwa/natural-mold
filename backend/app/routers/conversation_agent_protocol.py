@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.routers import conversation_agent_protocol_state as state_api
 from app.routers.conversation_agent_protocol_attach import wait_for_live_broker_or_terminal
 from app.routers.conversation_agent_protocol_commands import handle_thread_command
 from app.routers.conversation_agent_protocol_contracts import (
@@ -107,7 +108,12 @@ async def update_thread_state(
         thread_id=thread_id,
         user_id=user.id,
     )
-    return state_response(conversation, values=request.values)
+    return await state_api.update_thread_state_response(
+        db,
+        conversation=conversation,
+        request=request,
+        user=user,
+    )
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/history")
@@ -125,15 +131,7 @@ async def get_thread_history(
         thread_id=thread_id,
         user_id=user.id,
     )
-    snapshot = await load_thread_state_snapshot(conversation)
-    return [
-        state_response(
-            conversation,
-            values=snapshot.values,
-            checkpoint_by_message_id=snapshot.checkpoint_by_message_id,
-        )
-        for _ in range(min(request.limit, 1))
-    ]
+    return await state_api.load_thread_history_response(conversation, request)
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/stream/events")

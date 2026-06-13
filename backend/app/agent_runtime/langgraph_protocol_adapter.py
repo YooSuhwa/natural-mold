@@ -7,6 +7,13 @@ from typing import Any
 from app.agent_runtime.langgraph_tool_event_synthesis import synthesize_tool_events_from_values
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
 
+__all__ = [
+    "adapt_stream_mode_chunk",
+    "adapt_v3_protocol_event",
+    "extract_subagent_discovery",
+    "synthesize_tool_events_from_values",
+]
+
 RAW_PROTOCOL_METHODS = {
     "values",
     "updates",

@@ -208,7 +208,9 @@ def test_e2e_scripted_model_langgraph_v3_generates_artifact_after_subagent() -> 
             "name": "execute_in_skill",
             "args": {
                 "skill_directory": "/skills/docx-document",
-                "command": "node scripts/create_langgraph_v3_artifacts.cjs --prefix moldy-langgraph-v3",
+                "command": (
+                    "node scripts/create_langgraph_v3_artifacts.cjs --prefix moldy-langgraph-v3"
+                ),
             },
             "id": "call_e2e_langgraph_v3_docx",
             "type": "tool_call",

@@ -1850,11 +1850,11 @@ Implementation status:
 - [x] Stored canonical protocol events replay from `message_events` and support `Last-Event-ID` / `last_event_id` cursors.
 - [x] Lifecycle/input subscriptions use a thread-level stream that replays persisted events, follows the latest live broker across run rotations, and keeps the same SDK subscription alive through HITL resume.
 - [x] Idle thread-level replay polling is throttled so long-lived lifecycle subscriptions do not query the DB every 50ms while no broker is active.
-- [x] `GET state`, compatibility state, and `history` now read the active LangGraph checkpoint branch when the checkpointer is initialized and return SDK-coercible `values.messages` wire objects (`type: "human" | "ai" | "tool" | ...`). They retain the previous empty fallback shape when no checkpoint exists.
+- [x] `GET state`, compatibility state, and `history` now read the active LangGraph checkpoint branch when the checkpointer is initialized and return SDK-coercible `values.messages` wire objects (`type: "human" | "ai" | "tool" | ...`). `POST history` returns checkpoint-specific snapshots instead of copies of the current state. They retain the previous empty fallback shape when no checkpoint exists.
 - [x] `input.respond` is implemented for single-interrupt and batched interrupt decisions. The BFF maps it to a resume `ConversationRun` and calls LangGraph with `Command(resume=...)`.
 - [x] Pending `input.requested` interrupts hydrate from `GET state` as SDK-compatible `tasks[].interrupts`, and compatibility state exposes the same `interrupts` list for Moldy bridge code.
-- [ ] Cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
-- [ ] `POST state` still returns the submitted SDK-compatible shape and does not yet apply updates through the LangGraph checkpointer/runtime API.
+- [ ] Protocol command-level cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
+- [x] `POST state` now applies updates through the compiled LangGraph runtime/checkpointer API (`aget_state -> aupdate_state -> aget_state`) and returns the resulting SDK-compatible state shape.
 - [x] Active run without broker returns `409 RUN_ATTACH_RETRY` while fresh. If the heartbeat is stale, the protocol route transitions the run to `stale`, finalizes run outputs, replays stored protocol events, and appends a `custom:stale` protocol event.
 - [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed. Artifact product side effects now run from `custom:file_event`, and memory custom events now invalidate memory state plus toast through the LangGraph runtime. Usage and other custom projections still need explicit reducers.
 
@@ -1991,6 +1991,13 @@ For thread state/history routes:
 - compatibility state loaders for assistant-ui must derive from these canonical state routes;
 - route implementations must avoid per-render checkpointer calls. Add request-level caching/deduping where the frontend can trigger state and history hydration close together;
 - before adding load tests, make the LangGraph checkpointer pool size configurable. Current local guidance notes the psycopg `AsyncConnectionPool` behaves like a fixed 4-connection pool when min/max are not specified, so the new state/history routes must not silently multiply pool pressure.
+
+Current implementation note:
+
+- `GET state` and compatibility state hydrate active-branch messages plus pending interrupts.
+- `POST state` now goes through the compiled DeepAgents/LangGraph graph and updates `conversations.active_branch_checkpoint_id` when LangGraph returns a new checkpoint.
+- `POST history` reads checkpoint-specific snapshots from the LangGraph checkpointer, supports `limit` and `before.checkpoint_id`, computes message checkpoint metadata from the same checkpoint collection, and no longer fabricates history by duplicating the current snapshot.
+- Cross-request state/history de-duping and checkpointer pool sizing are still open before load-style E2E.
 
 - [ ] **Step 4: Tests**
 
@@ -2205,7 +2212,7 @@ Implementation status:
 - [x] `use-moldy-langgraph-stream.ts` now creates the single Moldy-owned `@langchain/react` `useStream` instance with `createMoldyAgentTransport`.
 - [x] The hook exposes the raw `stream` object for future DeepAgents selectors and bridges root coordinator messages into assistant-ui with `useExternalStoreRuntime`.
 - [x] The bridge reuses `convertLangChainBaseMessage` from `@assistant-ui/react-langchain`, while still keeping the underlying stream accessible to Moldy.
-- [x] The hook forwards assistant-ui feedback/attachment adapters and routes new user messages/cancel actions through `stream.submit` with `HumanMessage` / `stream.stop`.
+- [x] The hook forwards assistant-ui feedback/attachment adapters, routes new user messages through `stream.submit` with `HumanMessage`, and routes explicit cancel through Moldy's authenticated run-cancel API before `stream.disconnect()`.
 - [x] `ChatRuntimeSection` splits legacy and LangGraph runtime providers so only one side-effecting stream hook mounts at a time.
 - [x] The conversation page reads `NEXT_PUBLIC_CHAT_RUNTIME` through `getChatRuntimeMode()` and mounts the LangGraph provider only for existing conversations when `langgraph_v3` is selected. Draft `new` conversations remain on legacy SSE until draft creation is ported.
 - [x] Hook and section tests verify one stream is created, assistant-ui runtime options are wired, new messages submit through the same stream, legacy mode still calls `useChatRuntime`, `langgraph_v3` mode calls `useMoldyLangGraphStream`, draft conversations fall back to legacy, and LangGraph loading transitions update navigator status/invalidate on settle.
@@ -3080,7 +3087,15 @@ git commit -m "refactor(chat): keep AG-UI as compatibility stream"
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/design-docs/adr-006-assistant-ui-runtime.md` or create a new ADR if ADR-006 is historical
 
-- [ ] **Step 1: E2E scenario**
+Validation evidence captured on 2026-06-13:
+
+- `frontend/e2e/chat-langgraph-v3.spec.ts` exists and passes against a real local backend/frontend stack with `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3`, isolated ports `3200/8201`, and the deterministic `e2e_scripted` model.
+- The E2E covers run start, interrupt approval, reconnect without duplicate `run.start`, `values.todos`, delegated subagent scoped output, artifacts/file rail, usage metadata, history endpoint access, refresh replay, and public share rendering.
+- Captures were written to `output/e2e-captures/20260613-langgraph-v3-streaming/01-live-state.png` and `output/e2e-captures/20260613-langgraph-v3-streaming/02-artifact-rail.png`; both were verified as valid 1280x720 PNGs and visually inspected.
+- Full backend and frontend command evidence in this implementation pass: backend `pytest` 1956 passed / 2 deselected, backend `ruff check .` passed, frontend `vitest --run` 149 files / 681 tests passed, frontend `lint` passed with one non-fatal TanStack Table compiler warning, `lint:i18n` passed, `lint:design-system` passed, `tsc --noEmit` passed, and `pnpm build` passed.
+- Remaining visual QA gap: separate mobile viewport capture/review is still pending.
+
+- [x] **Step 1: E2E scenario**
 
 Add or extend `frontend/e2e/fixtures.ts` with a deterministic LangGraph v3 runtime fixture:
 
@@ -3153,7 +3168,7 @@ Verify:
 - reconnect indicator does not conflict with activity strip,
 - thinking/reasoning label does not expose hidden chain-of-thought.
 
-- [ ] **Step 3: Full verification commands**
+- [x] **Step 3: Full verification commands**
 
 Backend:
 
@@ -3181,7 +3196,7 @@ cd frontend
 NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 pnpm exec playwright test e2e/chat-langgraph-v3.spec.ts
 ```
 
-- [ ] **Step 4: Documentation**
+- [x] **Step 4: Documentation**
 
 Update architecture docs with:
 

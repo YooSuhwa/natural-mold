@@ -9,6 +9,7 @@ import {
 } from '@assistant-ui/react'
 import { useChannel, useStream, type Channel } from '@langchain/react'
 import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
+import { useSetAtom } from 'jotai'
 import { reduceProtocolActivity } from './activity-protocol'
 import { useLangGraphArtifactEffects } from './artifact-events'
 import { selectDeepAgentsState } from './deepagents-state'
@@ -26,6 +27,8 @@ import { useLangGraphUsageEffects } from './usage-events'
 import { convertMoldyLangChainMessage } from './langchain-message-conversion'
 import type { RunActivity } from './activity-model'
 import { createHiTLDecisionCoordinator, type HiTLDecisionCoordinator } from '../standard-interrupt'
+import { conversationRunsApi } from '@/lib/api/conversation-runs'
+import { chatCancelInFlightAtom } from '@/lib/stores/chat-store'
 import type { Decision } from '@/lib/types'
 
 interface MoldyGraphState {
@@ -143,13 +146,26 @@ export function useMoldyLangGraphStream({
   feedbackAdapter,
   attachmentAdapter,
 }: UseMoldyLangGraphStreamOptions) {
+  const setChatCancelInFlight = useSetAtom(chatCancelInFlightAtom)
+  const activeRunIdRef = useRef<string | null>(null)
   const transport = useMemo(
     () => createMoldyAgentTransport(conversationId, agentId),
     [agentId, conversationId],
   )
+  useEffect(() => {
+    activeRunIdRef.current = null
+  }, [conversationId])
+  const onRunCreated = useCallback((run: { runId?: string | null }) => {
+    activeRunIdRef.current = run.runId ?? null
+  }, [])
+  const onRunCompleted = useCallback(() => {
+    activeRunIdRef.current = null
+  }, [])
   const stream = useStream<MoldyGraphState>({
     transport,
     threadId: conversationId,
+    onCreated: onRunCreated,
+    onCompleted: onRunCompleted,
   })
   const activityEvents = useChannel(stream, ACTIVITY_CHANNELS, undefined, { bufferSize: 300 })
   const activities = useMemo(
@@ -229,8 +245,18 @@ export function useMoldyLangGraphStream({
     }
   }, [feedbackAdapter, attachmentAdapter])
   const onCancel = useCallback(async () => {
-    await stream.stop()
-  }, [stream])
+    const runId = activeRunIdRef.current
+    setChatCancelInFlight(true)
+    try {
+      if (runId) {
+        await conversationRunsApi.cancel(conversationId, runId)
+        activeRunIdRef.current = null
+      }
+    } finally {
+      await stream.disconnect()
+      setChatCancelInFlight(false)
+    }
+  }, [conversationId, setChatCancelInFlight, stream])
 
   const rememberResolvedInterrupt = useCallback(
     (interruptId: string | null, decisions: readonly Decision[]) => {

@@ -17,6 +17,7 @@ class ThreadCheckpoint(BaseModel):
 
     thread_id: str | None = None
     checkpoint_id: str | None = None
+    checkpoint_ns: str | None = None
 
 
 class InputRespondEntry(BaseModel):
@@ -100,33 +101,41 @@ def state_response(
     conversation: Conversation,
     *,
     values: dict[str, Any] | None = None,
+    next_nodes: list[str] | None = None,
     tasks: list[dict[str, Any]] | None = None,
+    checkpoint_id: str | None = None,
+    checkpoint_ns: str = "",
     checkpoint_by_message_id: dict[str, str] | None = None,
+    metadata_source: str = "moldy_bff_fallback",
+    created_at: str | None = None,
+    parent_checkpoint: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     state_values = dict(values or {})
     state_values.setdefault("messages", [])
+    resolved_checkpoint_id = checkpoint_id or conversation.active_branch_checkpoint_id
     checkpoint = (
         {
             "thread_id": str(conversation.id),
-            "checkpoint_id": conversation.active_branch_checkpoint_id,
+            "checkpoint_id": resolved_checkpoint_id,
+            "checkpoint_ns": checkpoint_ns,
         }
-        if conversation.active_branch_checkpoint_id
+        if resolved_checkpoint_id
         else None
     )
     metadata: dict[str, Any] = {
         "conversation_id": str(conversation.id),
         "agent_id": str(conversation.agent_id),
-        "source": "moldy_bff_fallback",
+        "source": metadata_source,
         "checkpoint_by_message_id": dict(checkpoint_by_message_id or {}),
     }
     return {
         "values": state_values,
-        "next": [],
+        "next": next_nodes or [],
         "tasks": tasks or [],
         "checkpoint": checkpoint,
         "metadata": metadata,
-        "created_at": conversation.updated_at.isoformat(),
-        "parent_checkpoint": None,
+        "created_at": created_at or conversation.updated_at.isoformat(),
+        "parent_checkpoint": parent_checkpoint,
     }
 
 

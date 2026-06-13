@@ -294,3 +294,42 @@ async def test_thread_state_exposes_checkpoint_mapping_for_messages(
         "user-raw-1": "ck-user",
         "assistant-raw-1": "ck-assistant",
     }
+
+
+@pytest.mark.asyncio
+async def test_thread_history_returns_checkpoint_snapshots_instead_of_current_state_copies(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    parent = _CheckpointSlim(
+        checkpoint_id="ck-user",
+        parent_checkpoint_id=None,
+        messages=[HumanMessage(id="user-history-1", content="hello")],
+    )
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck-assistant",
+        parent_checkpoint_id="ck-user",
+        messages=[
+            HumanMessage(id="user-history-1", content="hello"),
+            AIMessage(id="assistant-history-1", content="hi"),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_runtime.get_checkpointer",
+        lambda: _FakeCheckpointer([leaf, parent]),
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/history",
+        json={"limit": 2},
+    )
+
+    assert response.status_code == 200
+    history = response.json()
+    assert [state["checkpoint"]["checkpoint_id"] for state in history] == [
+        "ck-assistant",
+        "ck-user",
+    ]
+    assert [len(state["values"]["messages"]) for state in history] == [2, 1]

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_events import stored_protocol_event
+from app.agent_runtime.runtime_config import AgentConfig
 from app.main import create_app
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -20,6 +21,36 @@ from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from tests.conftest import TEST_USER_ID
+
+
+class _FakeSnapshot:
+    def __init__(self, *, values: dict[str, Any], checkpoint_id: str | None) -> None:
+        self.values = values
+        self.config = {"configurable": {"checkpoint_id": checkpoint_id}}
+        self.next: tuple[str, ...] = ()
+        self.tasks: tuple[dict[str, Any], ...] = ()
+        self.metadata: dict[str, Any] = {}
+        self.created_at: str | None = None
+
+
+class _FakeStateGraph:
+    def __init__(self) -> None:
+        self.snapshot = _FakeSnapshot(values={}, checkpoint_id=None)
+        self.updates: list[tuple[dict[str, Any], dict[str, Any], str | None, str | None]] = []
+
+    async def aget_state(self, _config: dict[str, Any]) -> _FakeSnapshot:
+        return self.snapshot
+
+    async def aupdate_state(
+        self,
+        config: dict[str, Any],
+        values: dict[str, Any],
+        *,
+        as_node: str | None,
+        task_id: str | None = None,
+    ) -> None:
+        self.updates.append((config, values, as_node, task_id))
+        self.snapshot = _FakeSnapshot(values=values, checkpoint_id="ck-updated")
 
 
 async def _seed_conversation(
@@ -216,14 +247,59 @@ async def test_command_rejects_unknown_methods_with_agent_protocol_error(
 async def test_thread_state_and_history_use_sdk_compatible_shapes(
     client: AsyncClient,
     db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation = await _seed_conversation(db)
     state_url = f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    fake_graph = _FakeStateGraph()
+
+    async def fake_resolve_agent_context(
+        _db: AsyncSession,
+        conversation_id: uuid.UUID,
+        _user: Any,
+        *,
+        checkpoint_id: str | None = None,
+    ) -> AgentConfig:
+        assert checkpoint_id is None
+        return AgentConfig(
+            provider="openai",
+            model_name="gpt-4o",
+            api_key=None,
+            base_url=None,
+            system_prompt="You are helpful.",
+            tools_config=[],
+            thread_id=str(conversation_id),
+            agent_id=str(conversation.agent_id),
+            user_id=str(TEST_USER_ID),
+        )
+
+    async def fake_prepare_agent(
+        cfg: AgentConfig,
+        *,
+        messages_history: list[dict[str, str]],
+        is_trigger_mode: bool = False,
+    ) -> tuple[_FakeStateGraph, list[Any], dict[str, Any]]:
+        assert cfg.thread_id == str(conversation.id)
+        assert messages_history == []
+        assert is_trigger_mode is False
+        return fake_graph, [], {"configurable": {"thread_id": cfg.thread_id}}
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state.resolve_agent_context",
+        fake_resolve_agent_context,
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state._prepare_agent",
+        fake_prepare_agent,
+    )
 
     state_response = await client.get(state_url)
     update_response = await client.post(
         state_url,
-        json={"values": {"todos": [{"id": "t1", "content": "plan"}]}},
+        json={
+            "values": {"todos": [{"id": "t1", "content": "plan"}]},
+            "task_id": "task-state-1",
+        },
     )
     history_response = await client.post(
         f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/history",
@@ -241,11 +317,18 @@ async def test_thread_state_and_history_use_sdk_compatible_shapes(
     updated = update_response.json()
     assert updated["values"]["messages"] == []
     assert updated["values"]["todos"] == [{"id": "t1", "content": "plan"}]
+    assert updated["checkpoint"]["checkpoint_id"] == "ck-updated"
+    assert fake_graph.updates == [
+        (
+            {"configurable": {"thread_id": str(conversation.id)}},
+            {"todos": [{"id": "t1", "content": "plan"}]},
+            "__start__",
+            "task-state-1",
+        )
+    ]
 
     assert history_response.status_code == 200
-    history = history_response.json()
-    assert len(history) == 1
-    assert history[0]["values"] == {"messages": []}
+    assert history_response.json() == []
 
 
 @pytest.mark.asyncio
