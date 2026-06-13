@@ -11,6 +11,7 @@ import { useChannel, useStream, type Channel } from '@langchain/react'
 import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
 import { convertLangChainBaseMessage } from '@assistant-ui/react-langchain'
 import { reduceProtocolActivity } from './activity-protocol'
+import { useLangGraphArtifactEffects } from './artifact-events'
 import { selectDeepAgentsState } from './deepagents-state'
 import { appendInterruptToolCallMessages, standardPayloadsFromInterrupts } from './hitl-interrupts'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
@@ -103,9 +104,14 @@ export function useMoldyLangGraphStream({
     () => appendInterruptToolCallMessages(stream.messages, interruptPayloads),
     [stream.messages, interruptPayloads],
   )
+  const messagesWithArtifacts = useLangGraphArtifactEffects({
+    stream,
+    conversationId,
+    messages: messagesWithInterrupts,
+  })
   const messages = useExternalMessageConverter({
     callback: convertMoldyLangChainMessage,
-    messages: messagesWithInterrupts,
+    messages: messagesWithArtifacts,
     isRunning: stream.isLoading,
   })
   const coordinatorsRef = useRef(new Map<string, HiTLDecisionCoordinator>())

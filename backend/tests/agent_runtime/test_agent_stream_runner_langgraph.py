@@ -93,6 +93,42 @@ async def test_execute_agent_stream_langgraph_passes_state_dict_inputs(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_execute_agent_stream_langgraph_passes_artifact_recorder(monkeypatch) -> None:
+    from app.agent_runtime import langgraph_agent_stream_runner
+
+    captured: dict[str, Any] = {}
+    recorder = object()
+
+    async def fake_prepare_agent(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+        captured["messages_history"] = messages_history
+        return "agent", ["lc-message"], {"configurable": {"thread_id": "thread-runner"}}
+
+    async def fake_stream(_agent, _input, _config, **kwargs):
+        captured["kwargs"] = kwargs
+        yield "protocol-chunk"
+
+    monkeypatch.setattr(langgraph_agent_stream_runner, "_prepare_agent", fake_prepare_agent)
+    monkeypatch.setattr(
+        langgraph_agent_stream_runner,
+        "stream_agent_response_langgraph",
+        fake_stream,
+    )
+
+    chunks = [
+        chunk
+        async for chunk in langgraph_agent_stream_runner.execute_agent_stream_langgraph(
+            _cfg(),
+            [{"role": "user", "content": "hello"}],
+            artifact_recorder=recorder,
+            run_id="run-artifacts",
+        )
+    ]
+
+    assert chunks == ["protocol-chunk"]
+    assert captured["kwargs"]["artifact_recorder"] is recorder
+
+
+@pytest.mark.asyncio
 async def test_resume_agent_stream_langgraph_passes_command_resume(monkeypatch) -> None:
     from app.agent_runtime import langgraph_agent_stream_runner
 

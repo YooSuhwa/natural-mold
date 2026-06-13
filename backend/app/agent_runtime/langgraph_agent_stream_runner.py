@@ -27,6 +27,7 @@ async def _run_langgraph_agent_stream(
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
+    artifact_recorder: Any | None = None,
     moldy_source: str = "chat",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -70,6 +71,7 @@ async def _run_langgraph_agent_stream(
                 broker=broker,
                 persist_callback=persist_callback,
                 run_id=run_id,
+                artifact_recorder=artifact_recorder,
             ):
                 yield chunk
     except asyncio.CancelledError:
@@ -104,6 +106,7 @@ async def execute_agent_stream_langgraph(
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
+    artifact_recorder: Any | None = None,
     moldy_source: str = "chat",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -117,6 +120,7 @@ async def execute_agent_stream_langgraph(
             broker=broker,
             persist_callback=persist_callback,
             run_id=run_id,
+            artifact_recorder=artifact_recorder,
             moldy_source=moldy_source,
             langfuse_sink=langfuse_sink,
         ):
@@ -132,6 +136,7 @@ async def execute_agent_stream_langgraph(
         broker=broker,
         persist_callback=persist_callback,
         run_id=run_id,
+        artifact_recorder=artifact_recorder,
         moldy_source=moldy_source,
         langfuse_sink=langfuse_sink,
     ):
@@ -147,6 +152,7 @@ async def resume_agent_stream_langgraph(
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
+    artifact_recorder: Any | None = None,
     moldy_source: str = "resume",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -159,6 +165,7 @@ async def resume_agent_stream_langgraph(
         broker=broker,
         persist_callback=persist_callback,
         run_id=run_id,
+        artifact_recorder=artifact_recorder,
         moldy_source=moldy_source,
         langfuse_sink=langfuse_sink,
     ):

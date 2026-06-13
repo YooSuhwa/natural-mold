@@ -1833,7 +1833,7 @@ Implementation status:
 - [ ] Cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
 - [ ] `POST state` still returns the submitted SDK-compatible shape and does not yet apply updates through the LangGraph checkpointer/runtime API.
 - [ ] Active run without broker currently returns `409 RUN_ATTACH_RETRY`; stale-run detection/finalization is still follow-up.
-- [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed, but product side effects such as memory/artifact projections from those protocol payloads still need explicit reducers.
+- [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed. Artifact product side effects now run from `custom:file_event`; memory, usage, and other custom projections still need explicit reducers.
 
 - [ ] **Step 1: Add endpoints**
 
@@ -2188,7 +2188,7 @@ Implementation status:
 - [x] Hook and section tests verify one stream is created, assistant-ui runtime options are wired, new messages submit through the same stream, legacy mode still calls `useChatRuntime`, `langgraph_v3` mode calls `useMoldyLangGraphStream`, draft conversations fall back to legacy, and LangGraph loading transitions update navigator status/invalidate on settle.
 - [x] Live HITL resume is wired through the single `@langchain/react` stream: `stream.interrupts` is projected into Moldy's existing approval/input tool UI, and decisions resume via `stream.respond` / backend `input.respond`.
 - [x] Pending interrupt state hydration now feeds the same `stream.interrupts` projection path after refresh.
-- [ ] Activity side effects, artifact/memory reducers, subagent scoped selectors, edit/regenerate, and draft conversation start are still pending.
+- [ ] Activity side effects, memory reducers, subagent scoped selectors, edit/regenerate, and draft conversation start are still pending. Artifact reducers are wired for the LangGraph runtime.
 
 - [ ] **Step 1: Implement the Moldy-owned `@langchain/react` stream path**
 
@@ -2615,7 +2615,7 @@ Still open after this slice:
 - browser/E2E verification with a real paused HITL agent,
 - nested or namespaced interrupt behavior beyond the root stream path.
 
-- [ ] **Step 2: Artifacts**
+- [x] **Step 2: Artifacts**
 
 Map artifact custom events to:
 
@@ -2625,6 +2625,13 @@ Map artifact custom events to:
 - `artifactKeys.all` invalidation.
 
 Do not wait for `message_end` to show artifact previews.
+
+Implemented in this slice:
+
+- `backend/app/agent_runtime/langgraph_agent_stream_runner.py` now accepts and forwards the existing `artifact_recorder` for execute and resume v3 runs.
+- `backend/app/agent_runtime/langgraph_streaming.py` prepares the artifact recorder, observes protocol `tools` completion events, and emits synthetic `custom:file_event` protocol events after persisted artifact deltas are collected.
+- `frontend/src/lib/chat/langgraph-runtime/artifact-events.ts` consumes `custom:file_event` / named custom artifact events through `useChannelEffect(replay: true)`, deduplicates by protocol event id, updates `upsertChatArtifactAtom`, updates live assistant message artifact cards via `upsertArtifactList`, opens the artifact preview right rail, and invalidates `artifactKeys.all`.
+- `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts` routes LangGraph messages through the artifact effect before handing them to assistant-ui.
 
 - [ ] **Step 3: Memory**
 
@@ -2672,6 +2679,17 @@ cd frontend
 pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/hitl-interrupts.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx src/components/chat/tool-ui/__tests__/approval-card.test.tsx
 pnpm exec tsc --noEmit
 pnpm exec eslint src/lib/chat/langgraph-runtime/hitl-interrupts.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/hitl-interrupts.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx src/lib/chat/hitl-context.ts src/components/chat/tool-ui/approval-card.tsx src/components/chat/tool-ui/user-input-ui.tsx
+```
+
+Focused artifact verification added in this slice:
+
+```bash
+backend/.venv/bin/python -m pytest backend/tests/agent_runtime/test_langgraph_streaming.py backend/tests/agent_runtime/test_agent_stream_runner_langgraph.py
+backend/.venv/bin/python -m py_compile backend/app/agent_runtime/langgraph_streaming.py backend/app/agent_runtime/langgraph_agent_stream_runner.py backend/tests/agent_runtime/test_langgraph_streaming.py backend/tests/agent_runtime/test_agent_stream_runner_langgraph.py
+
+pnpm --dir frontend exec vitest run src/lib/chat/langgraph-runtime/__tests__/artifact-events.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+pnpm --dir frontend exec tsc --noEmit
+pnpm --dir frontend exec eslint src/lib/chat/langgraph-runtime/artifact-events.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/artifact-events.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
 ```
 
 Backend:

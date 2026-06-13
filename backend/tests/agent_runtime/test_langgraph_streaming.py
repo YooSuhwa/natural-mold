@@ -46,6 +46,24 @@ class ErrorAgent:
         return _stream()
 
 
+class FakeArtifactRecorder:
+    def __init__(self) -> None:
+        self.prepared = False
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def prepare(self) -> None:
+        self.prepared = True
+
+    async def collect_after_tool_result(
+        self,
+        *,
+        tool_name: str,
+        tool_call_id: str | None,
+    ) -> list[dict[str, object]]:
+        self.calls.append((tool_name, tool_call_id))
+        return [{"op": "created", "id": "artifact-1", "path": "report.md"}]
+
+
 def _sse_payload(raw: str) -> dict[str, Any]:
     data_line = next(line for line in raw.splitlines() if line.startswith("data: "))
     payload = json.loads(data_line.removeprefix("data: "))
@@ -132,3 +150,45 @@ async def test_langgraph_streaming_reports_stream_errors() -> None:
     assert payload["method"] == "error"
     assert payload["params"]["data"] == {"message": "stream failed"}
     assert errors[0].message == "stream failed"
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_emits_file_event_after_artifact_tool_result() -> None:
+    raw_event = {
+        "type": "event",
+        "method": "tools",
+        "params": {
+            "namespace": [],
+            "data": {
+                "event": "tool-finished",
+                "tool_name": "execute_in_skill",
+                "tool_call_id": "call-1",
+                "output": "done",
+            },
+        },
+        "seq": 1,
+        "event_id": "tool-finished-1",
+    }
+    recorder = FakeArtifactRecorder()
+    agent = ProtocolAgent([raw_event])
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-artifacts"}},
+            artifact_recorder=recorder,
+            run_id="run-artifacts",
+        )
+    ]
+
+    payloads = [_sse_payload(chunk) for chunk in chunks]
+    assert recorder.prepared is True
+    assert recorder.calls == [("execute_in_skill", "call-1")]
+    assert [payload["method"] for payload in payloads] == ["tools", "custom:file_event"]
+    assert payloads[1]["params"]["data"] == {
+        "op": "created",
+        "id": "artifact-1",
+        "path": "report.md",
+    }

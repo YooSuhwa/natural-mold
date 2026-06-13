@@ -1,4 +1,6 @@
 import { renderHook } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMoldyLangGraphStream } from '../use-moldy-langgraph-stream'
 import type { AttachmentAdapter, CompleteAttachment, PendingAttachment } from '@assistant-ui/react'
@@ -38,6 +40,7 @@ const mocks = vi.hoisted(() => {
     })),
     useStream: vi.fn(() => stream),
     useChannel: vi.fn(() => []),
+    useChannelEffect: vi.fn(),
     useExternalMessageConverter: vi.fn((options: { messages: readonly unknown[] }) => {
       void options
       return [{ id: 'converted' }]
@@ -53,6 +56,7 @@ vi.mock('../moldy-agent-transport', () => ({
 
 vi.mock('@langchain/react', () => ({
   useChannel: mocks.useChannel,
+  useChannelEffect: mocks.useChannelEffect,
   useStream: mocks.useStream,
 }))
 
@@ -65,6 +69,13 @@ vi.mock('@assistant-ui/react-langchain', () => ({
   convertLangChainBaseMessage: mocks.convertLangChainBaseMessage,
 }))
 
+function createQueryWrapper() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return function QueryWrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+}
+
 describe('useMoldyLangGraphStream', () => {
   beforeEach(() => {
     mocks.stream.messages = []
@@ -74,6 +85,7 @@ describe('useMoldyLangGraphStream', () => {
     mocks.stream.respond.mockClear()
     mocks.stream.respondAll.mockClear()
     mocks.stream.stop.mockClear()
+    mocks.useChannelEffect.mockClear()
     mocks.useExternalMessageConverter.mockClear()
     mocks.useExternalStoreRuntime.mockClear()
   })
@@ -101,13 +113,15 @@ describe('useMoldyLangGraphStream', () => {
       remove: vi.fn(async () => {}),
     }
 
-    const { result } = renderHook(() =>
-      useMoldyLangGraphStream({
-        agentId: 'agent-1',
-        conversationId: 'conversation-1',
-        feedbackAdapter,
-        attachmentAdapter,
-      }),
+    const { result } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-1',
+          conversationId: 'conversation-1',
+          feedbackAdapter,
+          attachmentAdapter,
+        }),
+      { wrapper: createQueryWrapper() },
     )
 
     expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith('conversation-1', 'agent-1')
@@ -132,11 +146,13 @@ describe('useMoldyLangGraphStream', () => {
   })
 
   it('submits new assistant-ui messages through the same LangChain stream', async () => {
-    renderHook(() =>
-      useMoldyLangGraphStream({
-        agentId: 'agent-2',
-        conversationId: 'conversation-2',
-      }),
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-2',
+          conversationId: 'conversation-2',
+        }),
+      { wrapper: createQueryWrapper() },
     )
 
     const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
@@ -163,11 +179,13 @@ describe('useMoldyLangGraphStream', () => {
       },
     ]
 
-    renderHook(() =>
-      useMoldyLangGraphStream({
-        agentId: 'agent-hitl',
-        conversationId: 'conversation-hitl',
-      }),
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hitl',
+          conversationId: 'conversation-hitl',
+        }),
+      { wrapper: createQueryWrapper() },
     )
 
     const calls = mocks.useExternalMessageConverter.mock.calls
@@ -188,11 +206,13 @@ describe('useMoldyLangGraphStream', () => {
   })
 
   it('resumes a targeted LangGraph interrupt with standard decisions', async () => {
-    const { result } = renderHook(() =>
-      useMoldyLangGraphStream({
-        agentId: 'agent-hitl',
-        conversationId: 'conversation-hitl',
-      }),
+    const { result } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hitl',
+          conversationId: 'conversation-hitl',
+        }),
+      { wrapper: createQueryWrapper() },
     )
 
     await result.current.onResumeDecisions([{ type: 'approve' }], '승인', 'intr-1')
@@ -219,11 +239,13 @@ describe('useMoldyLangGraphStream', () => {
         },
       },
     ]
-    const { result } = renderHook(() =>
-      useMoldyLangGraphStream({
-        agentId: 'agent-hitl',
-        conversationId: 'conversation-hitl',
-      }),
+    const { result } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hitl',
+          conversationId: 'conversation-hitl',
+        }),
+      { wrapper: createQueryWrapper() },
     )
 
     await result.current.registerDecision(
