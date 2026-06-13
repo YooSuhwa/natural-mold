@@ -1234,11 +1234,21 @@ uv run ruff check app/agent_runtime/langgraph_protocol_adapter.py tests/agent_ru
 **Files:**
 
 - Create: `backend/app/agent_runtime/langgraph_streaming.py`
+- Create: `backend/app/agent_runtime/langgraph_agent_stream_runner.py`
 - Create: `backend/app/agent_runtime/legacy_event_projection.py`
-- Modify: `backend/app/agent_runtime/agent_stream_runner.py`
+- Modify: `backend/app/agent_runtime/executor.py`
 - Test: `backend/tests/agent_runtime/test_legacy_event_projection.py`
+- Test: `backend/tests/agent_runtime/test_langgraph_streaming.py`
+- Test: `backend/tests/agent_runtime/test_agent_stream_runner_langgraph.py`
 
-- [ ] **Step 1: Implement `langgraph_streaming.py`**
+Implementation status:
+
+- [x] `langgraph_streaming.py` emits canonical `StoredProtocolEvent` SSE, dual-writes to `EventBroker`, persists the same canonical events, and falls back to multi-mode `astream` when direct v3 cannot be opened.
+- [x] The parallel runner entrypoint is implemented in `langgraph_agent_stream_runner.py` and exported through `executor.py`. It intentionally does not grow the already-large legacy `agent_stream_runner.py`.
+- [x] The legacy projection helper exists in `legacy_event_projection.py`.
+- [ ] Moldy side effects for artifacts, memory, usage, audit, stale/live route attachment, and full run lifecycle still need to be wired into the BFF command/run path.
+
+- [x] **Step 1: Implement `langgraph_streaming.py`**
 
 The runner must call:
 
@@ -1268,9 +1278,9 @@ Responsibilities:
 - publish the same records through the broker;
 - emit protocol SSE consumable by `HttpAgentServerAdapter`;
 - preserve `X-Run-Id`, attach/replay, stale, and cancellation behavior;
-- run Moldy side effects for artifacts, memory, usage, audit, and traces from `custom`, `updates`, and final `values` where appropriate.
+- follow-up: run Moldy side effects for artifacts, memory, usage, audit, and traces from `custom`, `updates`, and final `values` where appropriate.
 
-- [ ] **Step 2: Implement legacy adapter**
+- [x] **Step 2: Implement legacy adapter**
 
 Map canonical protocol events to current Moldy SSE only for the feature-flagged legacy path:
 
@@ -1282,11 +1292,13 @@ Map canonical protocol events to current Moldy SSE only for the feature-flagged 
 
 This adapter is intentionally lossy and must not feed the new runtime.
 
-- [ ] **Step 3: Add runner switch**
+- [x] **Step 3: Add runner switch**
 
-Add a parallel function in `agent_stream_runner.py`, for example `execute_agent_stream_langgraph`, that prepares the existing agent exactly like the legacy runner and delegates to `stream_agent_response_langgraph`.
+Add a parallel function, for example `execute_agent_stream_langgraph`, that prepares the existing agent exactly like the legacy runner and delegates to `stream_agent_response_langgraph`.
 
-- [ ] **Step 4: Verify**
+Implementation note: Moldy now uses `langgraph_agent_stream_runner.py` instead of adding the new entrypoint to `agent_stream_runner.py`, because the legacy file is already large and should stay focused on the existing SSE path.
+
+- [x] **Step 4: Verify**
 
 ```bash
 cd backend
