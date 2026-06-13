@@ -465,6 +465,7 @@ export function useChatRuntime({
       mergeMessagesForRender({
         messages,
         streamingMessages,
+        // eslint-disable-next-line react-hooks/refs -- merge needs the last committed snapshot without triggering renders.
         previousMessages: prevMessagesRef.current,
         isRunning,
       }),

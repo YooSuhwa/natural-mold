@@ -41,7 +41,48 @@ globalThis.ResizeObserver ??= ResizeObserverPolyfill as unknown as typeof Resize
 globalThis.IntersectionObserver ??=
   IntersectionObserverPolyfill as unknown as typeof IntersectionObserver
 
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>()
+  return {
+    get length() {
+      return store.size
+    },
+    clear: () => {
+      store.clear()
+    },
+    getItem: (key: string) => store.get(key) ?? null,
+    key: (index: number) => Array.from(store.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      store.delete(key)
+    },
+    setItem: (key: string, value: string) => {
+      store.set(key, value)
+    },
+  }
+}
+
+function hasStorageApi(value: unknown): value is Storage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'getItem' in value &&
+    'setItem' in value &&
+    'removeItem' in value &&
+    'clear' in value
+  )
+}
+
+function ensureWindowStorage(key: 'localStorage' | 'sessionStorage'): void {
+  if (hasStorageApi(window[key])) return
+  Object.defineProperty(window, key, {
+    configurable: true,
+    value: createMemoryStorage(),
+  })
+}
+
 if (typeof window !== 'undefined') {
+  ensureWindowStorage('localStorage')
+  ensureWindowStorage('sessionStorage')
   if (!window.matchMedia) {
     window.matchMedia = (query: string) =>
       ({

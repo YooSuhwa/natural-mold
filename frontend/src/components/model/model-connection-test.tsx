@@ -10,7 +10,7 @@
  * attribution.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
@@ -68,6 +68,7 @@ export function ModelConnectionTest(props: Props) {
   const test = useTestModel()
   const [result, setResult] = useState<ModelTestResponse | null>(null)
   const [showDetails, setShowDetails] = useState(false)
+  const propsKey = useMemo(() => JSON.stringify(props), [props])
 
   const runTest = useCallback(async () => {
     setShowDetails(false)
@@ -113,11 +114,12 @@ export function ModelConnectionTest(props: Props) {
       onComplete?.(synthetic)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [credentialId, JSON.stringify(props), onComplete])
+  }, [credentialId, propsKey, onComplete])
 
   useEffect(() => {
     if (!autoStart) return
     if (!credentialId) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-start intentionally kicks off one mutation on mount.
     runTest()
     // We intentionally fire on mount only; subsequent runs are user-initiated.
     // eslint-disable-next-line react-hooks/exhaustive-deps
