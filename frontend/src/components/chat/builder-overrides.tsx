@@ -5,9 +5,9 @@ import Image from 'next/image'
 import Markdown from 'react-markdown'
 import { useTranslations } from 'next-intl'
 import {
+  AuiIf,
   MessagePrimitive,
   ComposerPrimitive,
-  ThreadPrimitive,
   useAui,
   useAuiState,
   useMessagePartText,
@@ -294,12 +294,12 @@ export function BuilderComposer({ modelLabel }: { modelLabel?: string }) {
               <span aria-hidden className="moldy-builder-composer-divider" />
               {modelLabel && <span className="moldy-builder-model-label">{modelLabel}</span>}
             </div>
-            <ThreadPrimitive.If running={false}>
+            <AuiIf condition={(s) => !s.thread.isRunning}>
               <BuilderSendButton />
-            </ThreadPrimitive.If>
-            <ThreadPrimitive.If running={true}>
+            </AuiIf>
+            <AuiIf condition={(s) => s.thread.isRunning}>
               <BuilderStopButton />
-            </ThreadPrimitive.If>
+            </AuiIf>
           </div>
         </ComposerPrimitive.Root>
       </div>

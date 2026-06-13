@@ -104,6 +104,13 @@ vi.mock('@assistant-ui/react', () => {
         getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),
       }),
     }),
+    AuiIf: ({
+      condition,
+      children,
+    }: {
+      condition: (s: { thread: { isRunning: boolean; isEmpty: boolean } }) => boolean
+      children?: ReactNode
+    }) => (condition({ thread: { isRunning: false, isEmpty: false } }) ? <>{children}</> : null),
     getExternalStoreMessages: () => [],
     makeAssistantToolUI: () => () => <div data-testid="tool-ui" />,
   }

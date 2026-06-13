@@ -18,12 +18,12 @@ vi.mock('@assistant-ui/react', () => {
       Viewport: passthrough,
       Empty: () => null,
       Messages: ({
-        components,
+        children,
       }: {
-        components: {
-          UserEditComposer: () => ReactNode
-        }
-      }) => <>{components.UserEditComposer()}</>,
+        children: (props: {
+          message: { role: string; composer: { isEditing: boolean } }
+        }) => ReactNode
+      }) => <>{children({ message: { role: 'user', composer: { isEditing: true } } })}</>,
       ViewportFooter: () => null,
       ScrollToBottom: childPassthrough,
       If: ({ children }: { children?: ReactNode }) => <>{children}</>,
@@ -92,6 +92,13 @@ vi.mock('@assistant-ui/react', () => {
         getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),
       }),
     }),
+    AuiIf: ({
+      condition,
+      children,
+    }: {
+      condition: (s: { thread: { isRunning: boolean; isEmpty: boolean } }) => boolean
+      children?: ReactNode
+    }) => (condition({ thread: { isRunning: false, isEmpty: false } }) ? <>{children}</> : null),
     makeAssistantToolUI: () => () => <div data-testid="tool-ui" />,
     useMessagePartText: () => ({ text: '' }),
   }

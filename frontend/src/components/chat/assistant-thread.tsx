@@ -2,6 +2,7 @@
 
 import { lazy, Suspense, useCallback, useMemo, useState, type UIEvent } from 'react'
 import {
+  AuiIf,
   ThreadPrimitive,
   MessagePrimitive,
   ComposerPrimitive,
@@ -230,9 +231,9 @@ function StreamingMessageLoadingIndicator({ className }: { className?: string })
   const isStreamingMessage = useIsStreamingMessage()
   if (!isStreamingMessage) return null
   return (
-    <ThreadPrimitive.If running={true}>
+    <AuiIf condition={(s) => s.thread.isRunning}>
       <WittyLoadingMessage className={cn('pointer-events-none mb-1 px-1', className)} />
-    </ThreadPrimitive.If>
+    </AuiIf>
   )
 }
 
@@ -746,13 +747,13 @@ export function AssistantThread({
           className="min-h-0 flex-1 overflow-y-auto"
           onScroll={handleViewportScroll}
         >
-          <ThreadPrimitive.Empty>
+          <AuiIf condition={(s) => s.thread.isEmpty}>
             {emptyContent ?? (
               <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
                 <p className="text-sm">{tPage('emptyState')}</p>
               </div>
             )}
-          </ThreadPrimitive.Empty>
+          </AuiIf>
 
           <div
             className={cn(
@@ -897,17 +898,17 @@ function ThreadComposer({
             </ComposerPrimitive.AddAttachment>
           )}
         </div>
-        <ThreadPrimitive.If running={false}>
+        <AuiIf condition={(s) => !s.thread.isRunning}>
           <ComposerPrimitive.Send asChild>
             <Button type="submit" size="icon-sm" className="rounded-full">
               <SendIcon className="size-4" />
               <span className="sr-only">{t('sendButton')}</span>
             </Button>
           </ComposerPrimitive.Send>
-        </ThreadPrimitive.If>
-        <ThreadPrimitive.If running={true}>
+        </AuiIf>
+        <AuiIf condition={(s) => s.thread.isRunning}>
           <StopButton />
-        </ThreadPrimitive.If>
+        </AuiIf>
       </div>
     </ComposerPrimitive.Root>
   )
