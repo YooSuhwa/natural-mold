@@ -19,10 +19,10 @@ from pydantic import PrivateAttr
 
 from app.agent_runtime.e2e_langgraph_v3_script import (
     LANGGRAPH_V3_MARKER,
-    LANGGRAPH_V3_SUBAGENT_PARTS,
     is_langgraph_v3_prompt,
     is_langgraph_v3_subagent_prompt,
     langgraph_v3_message,
+    langgraph_v3_subagent_parts,
     langgraph_v3_subagent_response,
 )
 
@@ -69,6 +69,41 @@ SLOW_STREAM_PARTS = (
     "after ",
     "detached ",
     "navigation.",
+)
+VISUAL_SLOW_STREAM_MARKER = "E2E_VISUAL_SLOW_STREAM"
+VISUAL_SLOW_STREAM_PARTS = (
+    "E2E visual ",
+    "stream ",
+    "fixture ",
+    "is ",
+    "still ",
+    "running; ",
+    "the ",
+    "assistant ",
+    "response ",
+    "is ",
+    "partial, ",
+    "the ",
+    "thread ",
+    "remains ",
+    "active, ",
+    "and ",
+    "the ",
+    "capture ",
+    "should ",
+    "show ",
+    "an ",
+    "in-progress ",
+    "message ",
+    "before ",
+    "the ",
+    "remaining ",
+    "chunks ",
+    "arrive; ",
+    "visual ",
+    "stream ",
+    "fixture ",
+    "complete.",
 )
 ARTIFACT_SLOW_FINAL_MARKER = "E2E_ARTIFACT_SLOW_FINAL"
 ARTIFACT_SLOW_FINAL_PARTS = (
@@ -141,7 +176,7 @@ class E2EScriptedChatModel(BaseChatModel):
         human_text = self._latest_human_text(messages)
         if is_langgraph_v3_subagent_prompt(human_text):
             return ChatResult(
-                generations=[ChatGeneration(message=langgraph_v3_subagent_response())]
+                generations=[ChatGeneration(message=langgraph_v3_subagent_response(human_text))]
             )
 
         if is_langgraph_v3_prompt(human_text):
@@ -164,6 +199,9 @@ class E2EScriptedChatModel(BaseChatModel):
 
         if SLOW_STREAM_MARKER in human_text:
             message = AIMessage(content="".join(SLOW_STREAM_PARTS))
+            return ChatResult(generations=[ChatGeneration(message=message)])
+        if VISUAL_SLOW_STREAM_MARKER in human_text:
+            message = AIMessage(content="".join(VISUAL_SLOW_STREAM_PARTS))
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         for marker, tool_args in SCRIPTED_DOCUMENT_COMMANDS.items():
@@ -192,7 +230,7 @@ class E2EScriptedChatModel(BaseChatModel):
     ):
         human_text = self._latest_human_text(messages)
         if is_langgraph_v3_subagent_prompt(human_text):
-            for part in LANGGRAPH_V3_SUBAGENT_PARTS:
+            for part in langgraph_v3_subagent_parts(human_text):
                 if self.slow_stream_delay_seconds > 0:
                     time.sleep(self.slow_stream_delay_seconds)
                 yield ChatGenerationChunk(message=AIMessageChunk(content=part))
@@ -210,6 +248,12 @@ class E2EScriptedChatModel(BaseChatModel):
             return
         if SLOW_STREAM_MARKER in human_text:
             for part in SLOW_STREAM_PARTS:
+                if self.slow_stream_delay_seconds > 0:
+                    time.sleep(self.slow_stream_delay_seconds)
+                yield ChatGenerationChunk(message=AIMessageChunk(content=part))
+            return
+        if VISUAL_SLOW_STREAM_MARKER in human_text:
+            for part in VISUAL_SLOW_STREAM_PARTS:
                 if self.slow_stream_delay_seconds > 0:
                     time.sleep(self.slow_stream_delay_seconds)
                 yield ChatGenerationChunk(message=AIMessageChunk(content=part))
@@ -240,4 +284,5 @@ __all__ = [
     "LANGGRAPH_V3_MARKER",
     "SCRIPTED_DOCUMENT_COMMANDS",
     "SLOW_STREAM_MARKER",
+    "VISUAL_SLOW_STREAM_MARKER",
 ]

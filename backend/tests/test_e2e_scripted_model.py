@@ -81,6 +81,20 @@ def test_e2e_scripted_model_streams_slow_marker_in_chunks() -> None:
     assert "E2E slow stream completed" in content
 
 
+def test_e2e_scripted_model_streams_visual_slow_marker_in_chunks() -> None:
+    model = E2EScriptedChatModel(
+        model="document-artifact-scripted",
+        slow_stream_delay_seconds=0,
+    )
+
+    chunks = list(model.stream([HumanMessage(content="E2E_VISUAL_SLOW_STREAM")]))
+    content = "".join(str(chunk.content) for chunk in chunks)
+
+    assert len([chunk for chunk in chunks if chunk.content]) >= 20
+    assert "E2E visual stream fixture is still running" in content
+    assert content.endswith("fixture complete.")
+
+
 def test_e2e_scripted_model_streams_slow_final_after_tool_result_marker() -> None:
     model = E2EScriptedChatModel(
         model="document-artifact-scripted",
@@ -187,6 +201,31 @@ def test_e2e_scripted_model_langgraph_v3_delegates_after_todos() -> None:
     ]
 
 
+def test_e2e_scripted_model_langgraph_v3_can_request_slow_subagent() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "write_todos"}, {"name": "task"}, {"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content="E2E_LANGGRAPH_V3 slow_subagent=true subagent=agent_1234abcd"),
+            ToolMessage(content="todos saved", tool_call_id="call_e2e_langgraph_v3_todos"),
+        ]
+    )
+
+    assert result.tool_calls == [
+        {
+            "name": "task",
+            "args": {
+                "subagent_type": "agent_1234abcd",
+                "description": "E2E_SUBAGENT_SLOW summarize scoped LangGraph v3 work.",
+            },
+            "id": "call_e2e_langgraph_v3_subagent",
+            "type": "tool_call",
+        }
+    ]
+
+
 def test_e2e_scripted_model_langgraph_v3_generates_artifact_after_subagent() -> None:
     model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
         [{"name": "write_todos"}, {"name": "task"}, {"name": "execute_in_skill"}]
@@ -266,6 +305,21 @@ def test_e2e_scripted_model_streams_langgraph_v3_subagent_marker_in_chunks() -> 
 
     assert len([chunk for chunk in chunks if chunk.content]) >= 3
     assert content == "E2E subagent scoped result ready."
+
+
+def test_e2e_scripted_model_streams_slow_langgraph_v3_subagent_marker() -> None:
+    model = E2EScriptedChatModel(
+        model="document-artifact-scripted",
+        slow_stream_delay_seconds=0,
+    )
+
+    chunks = list(model.stream([HumanMessage(content="E2E_SUBAGENT_SLOW visual matrix")]))
+    content = "".join(str(chunk.content) for chunk in chunks)
+
+    assert len([chunk for chunk in chunks if chunk.content]) >= 10
+    assert content.startswith("E2E subagent visual matrix:")
+    assert "subagent delta still open" in content
+    assert content.endswith("ready.")
 
 
 @pytest.mark.asyncio
