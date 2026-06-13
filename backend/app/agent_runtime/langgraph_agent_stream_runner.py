@@ -52,6 +52,7 @@ async def _run_langgraph_agent_stream(
     if ctx is not None:
         await hooks.run_pre(ctx)
     started = time.monotonic()
+    usage_sink: dict[str, Any] = {}
     stream_errors = error_sink if error_sink is not None else []
 
     activate = getattr(langfuse_ctx, "activate", None)
@@ -67,6 +68,9 @@ async def _run_langgraph_agent_stream(
                 actual_input,
                 config,
                 trace_sink=trace_sink,
+                cost_per_input_token=cfg.cost_per_input_token,
+                cost_per_output_token=cfg.cost_per_output_token,
+                usage_sink=usage_sink,
                 error_sink=stream_errors,
                 broker=broker,
                 persist_callback=persist_callback,
@@ -75,6 +79,14 @@ async def _run_langgraph_agent_stream(
             ):
                 yield chunk
     except asyncio.CancelledError:
+        if ctx is not None and usage_sink:
+            await hooks.run_post(
+                ctx,
+                _hook_result_from_usage(
+                    int((time.monotonic() - started) * 1000),
+                    usage_sink,
+                ),
+            )
         raise
     except Exception as exc:
         if ctx is not None:
@@ -90,7 +102,7 @@ async def _run_langgraph_agent_stream(
     if ctx is not None:
         await hooks.run_post(
             ctx,
-            _hook_result_from_usage(int((time.monotonic() - started) * 1000), {}),
+            _hook_result_from_usage(int((time.monotonic() - started) * 1000), usage_sink),
         )
 
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import pytest
 
 from app.agent_runtime.runtime_config import AgentConfig
+from app.hooks import HookResult
 
 
 def _cfg() -> AgentConfig:
@@ -17,6 +19,70 @@ def _cfg() -> AgentConfig:
         tools_config=[],
         thread_id="thread-runner",
     )
+
+
+def _cfg_with_hooks() -> AgentConfig:
+    return AgentConfig(
+        provider="fake",
+        model_name="fake-chat",
+        api_key=None,
+        base_url=None,
+        system_prompt="You are helpful.",
+        tools_config=[],
+        thread_id="thread-runner",
+        user_id=str(uuid.uuid4()),
+        cost_per_input_token=0.01,
+        cost_per_output_token=0.02,
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_agent_stream_langgraph_posts_usage_to_hooks(monkeypatch) -> None:
+    from app.agent_runtime import langgraph_agent_stream_runner
+
+    posted: list[HookResult] = []
+
+    async def fake_prepare_agent(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+        return "agent", ["lc-message"], {"configurable": {"thread_id": "thread-runner"}}
+
+    async def fake_stream(_agent, _input, _config, **kwargs):
+        kwargs["usage_sink"].update(
+            {
+                "prompt_tokens": 12,
+                "completion_tokens": 5,
+                "estimated_cost": 0.22,
+            }
+        )
+        yield "protocol-chunk"
+
+    async def fake_run_pre(_ctx) -> None:
+        return None
+
+    async def fake_run_post(_ctx, result: HookResult) -> None:
+        posted.append(result)
+
+    monkeypatch.setattr(langgraph_agent_stream_runner, "_prepare_agent", fake_prepare_agent)
+    monkeypatch.setattr(
+        langgraph_agent_stream_runner,
+        "stream_agent_response_langgraph",
+        fake_stream,
+    )
+    monkeypatch.setattr(langgraph_agent_stream_runner.hooks, "run_pre", fake_run_pre)
+    monkeypatch.setattr(langgraph_agent_stream_runner.hooks, "run_post", fake_run_post)
+
+    chunks = [
+        chunk
+        async for chunk in langgraph_agent_stream_runner.execute_agent_stream_langgraph(
+            _cfg_with_hooks(),
+            [{"role": "user", "content": "hello"}],
+            run_id="run-usage",
+        )
+    ]
+
+    assert chunks == ["protocol-chunk"]
+    assert posted[0].tokens_in == 12
+    assert posted[0].tokens_out == 5
+    assert posted[0].cost_usd == 0.22
 
 
 @pytest.mark.asyncio

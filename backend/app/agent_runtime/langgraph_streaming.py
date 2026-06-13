@@ -23,6 +23,7 @@ from app.agent_runtime.protocol_side_effects import (
     collect_protocol_side_effect_events,
     prepare_artifact_recorder,
 )
+from app.agent_runtime.protocol_usage import collect_protocol_usage_event
 from app.agent_runtime.streaming import ArtifactEventRecorder, PersistCallback, StreamErrorRecord
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,9 @@ async def stream_agent_response_langgraph(
     config: dict[str, Any],
     *,
     trace_sink: list[dict[str, Any]] | None = None,
+    cost_per_input_token: float | None = None,
+    cost_per_output_token: float | None = None,
+    usage_sink: dict[str, Any] | None = None,
     error_sink: list[StreamErrorRecord] | None = None,
     broker: EventBroker | None = None,
     persist_callback: PersistCallback | None = None,
@@ -120,6 +124,7 @@ async def stream_agent_response_langgraph(
     fallback_seq = 0
     side_effect_seq = 0
     emitted: list[dict[str, Any]] = []
+    seen_usage_keys: set[tuple[str | None, int, int, int, int, float | None]] = set()
 
     def emit(event: StoredProtocolEvent) -> str:
         event_dict = dict(event)
@@ -154,6 +159,16 @@ async def stream_agent_response_langgraph(
                     thread_id=thread_id,
                 )
                 yield emit(event)
+                usage_event, side_effect_seq = collect_protocol_usage_event(
+                    event,
+                    next_seq=side_effect_seq,
+                    seen_keys=seen_usage_keys,
+                    usage_sink=usage_sink,
+                    cost_per_input_token=cost_per_input_token,
+                    cost_per_output_token=cost_per_output_token,
+                )
+                if usage_event is not None:
+                    yield emit(usage_event)
                 side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
                     event,
                     artifact_recorder=artifact_recorder,
@@ -175,6 +190,16 @@ async def stream_agent_response_langgraph(
                     seq=fallback_seq,
                 )
                 yield emit(event)
+                usage_event, side_effect_seq = collect_protocol_usage_event(
+                    event,
+                    next_seq=side_effect_seq,
+                    seen_keys=seen_usage_keys,
+                    usage_sink=usage_sink,
+                    cost_per_input_token=cost_per_input_token,
+                    cost_per_output_token=cost_per_output_token,
+                )
+                if usage_event is not None:
+                    yield emit(usage_event)
                 side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
                     event,
                     artifact_recorder=artifact_recorder,

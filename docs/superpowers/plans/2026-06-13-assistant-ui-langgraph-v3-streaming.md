@@ -2667,7 +2667,7 @@ Implemented in this slice:
 - Feedback adapters were already passed through the LangGraph runtime section; this slice adds regression coverage that attachments now travel through the same runtime path.
 - Draft conversations still intentionally use the legacy runtime until LangGraph draft creation is ported; the existing `streamStartConversation` path already includes uploaded attachment ids in the legacy POST body.
 
-- [ ] **Step 4a: Usage and spend parity**
+- [x] **Step 4a: Usage and spend parity**
 
 Preserve the existing split between UI usage display and backend spend accounting:
 
@@ -2675,6 +2675,26 @@ Preserve the existing split between UI usage display and backend spend accountin
 - Raw token rows: if the current runtime still writes `token_usages`, keep that behavior for audit/backward compatibility.
 - Spend aggregates: successful streamed runs must still invoke the hook path that produces `HookResult` usage and lets `backend/app/hooks/builtin/spend_hook.py` enqueue `SpendEntry` into `spend_queue`.
 - Tests must verify a streamed LangGraph run updates visible usage metadata and triggers the spend hook path without relying on `save_token_usage` as the only accounting mechanism.
+
+Implemented in this slice:
+
+- `backend/app/agent_runtime/protocol_usage.py` extracts LangChain/LangGraph usage metadata from v3 `messages` and final `values.messages` payloads, normalizes it to Moldy's `TokenUsageBreakdown` shape, and emits a canonical `custom:usage` protocol event.
+- `backend/app/agent_runtime/langgraph_streaming.py` now projects that usage event while also updating a `usage_sink` shared with the runner. The projection is deduped by assistant message id and token/cost signature so final `messages` and `values` repeats do not double-count.
+- `backend/app/agent_runtime/langgraph_agent_stream_runner.py` now mirrors the legacy SSE runner's accounting behavior: it passes model token prices into the stream adapter, keeps a usage sink, posts partial usage on cancellation, and sends the final `HookResult` through `hooks.run_post`.
+- `frontend/src/lib/chat/langgraph-runtime/usage-events.ts` consumes `custom:usage` through the same shared `@langchain/react` stream, also hydrates usage directly from LangGraph message `usage_metadata` when the stream state already contains final messages, attaches usage to assistant messages via `additional_kwargs.metadata.usage` for the official `@assistant-ui/react-langchain` converter, and updates `sessionTokenUsageAtom` for the composer usage total.
+
+Focused verification added in this slice:
+
+```bash
+cd backend
+./.venv/bin/pytest tests/agent_runtime/test_langgraph_streaming.py tests/agent_runtime/test_agent_stream_runner_langgraph.py
+/Users/chester/.hermes/bin/uvx ruff check app/agent_runtime/protocol_usage.py app/agent_runtime/langgraph_streaming.py app/agent_runtime/langgraph_agent_stream_runner.py tests/agent_runtime/test_langgraph_streaming.py tests/agent_runtime/test_agent_stream_runner_langgraph.py
+
+cd frontend
+pnpm exec vitest run src/lib/chat/langgraph-runtime
+pnpm exec tsc --noEmit
+pnpm exec eslint src/lib/chat/langgraph-runtime/usage-events.ts src/lib/chat/langgraph-runtime/usage-normalization.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-usage.test.tsx
+```
 
 - [ ] **Step 5: Tests**
 

@@ -72,6 +72,66 @@ def _sse_payload(raw: str) -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
+async def test_langgraph_streaming_projects_usage_metadata_to_custom_event() -> None:
+    raw_event = {
+        "type": "event",
+        "method": "messages",
+        "params": {
+            "namespace": [],
+            "data": {
+                "id": "assistant-usage-1",
+                "type": "AIMessageChunk",
+                "content": "",
+                "usage_metadata": {
+                    "input_tokens": 12,
+                    "output_tokens": 5,
+                    "input_token_details": {
+                        "cache_creation": 2,
+                        "cache_read": 3,
+                    },
+                },
+            },
+        },
+        "seq": 1,
+        "event_id": "usage-upstream-1",
+    }
+    usage_sink: dict[str, Any] = {}
+    agent = ProtocolAgent([raw_event])
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-usage"}},
+            cost_per_input_token=0.01,
+            cost_per_output_token=0.02,
+            usage_sink=usage_sink,
+            run_id="run-usage",
+        )
+    ]
+
+    payloads = [_sse_payload(chunk) for chunk in chunks]
+    assert [payload["method"] for payload in payloads] == ["messages", "custom:usage"]
+    assert payloads[1]["params"]["data"] == {
+        "assistant_msg_id": "assistant-usage-1",
+        "run_id": "run-usage",
+        "prompt_tokens": 12,
+        "completion_tokens": 5,
+        "cache_creation_tokens": 2,
+        "cache_read_tokens": 3,
+        "estimated_cost": 0.22,
+    }
+    assert usage_sink == {
+        "prompt_tokens": 12,
+        "completion_tokens": 5,
+        "cache_creation_tokens": 2,
+        "cache_read_tokens": 3,
+        "estimated_cost": 0.22,
+    }
+
+
+@pytest.mark.asyncio
 async def test_langgraph_streaming_emits_protocol_sse_and_dual_writes() -> None:
     raw_event = {
         "type": "event",

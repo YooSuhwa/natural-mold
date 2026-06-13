@@ -16,6 +16,7 @@ import { selectDeepAgentsState } from './deepagents-state'
 import { appendInterruptToolCallMessages, standardPayloadsFromInterrupts } from './hitl-interrupts'
 import { useLangGraphMemoryEffects } from './memory-events'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
+import { useLangGraphUsageEffects } from './usage-events'
 import type { RunActivity } from './activity-model'
 import { createHiTLDecisionCoordinator, type HiTLDecisionCoordinator } from '../standard-interrupt'
 import type { Decision } from '@/lib/types'
@@ -62,9 +63,7 @@ function appendMessageText(message: {
     .join('')
 }
 
-function attachmentRefs(message: {
-  attachments?: readonly { id?: unknown }[]
-}): { id: string }[] {
+function attachmentRefs(message: { attachments?: readonly { id?: unknown }[] }): { id: string }[] {
   return (
     message.attachments
       ?.map((attachment) => (typeof attachment.id === 'string' ? { id: attachment.id } : null))
@@ -120,10 +119,14 @@ export function useMoldyLangGraphStream({
     conversationId,
     messages: messagesWithInterrupts,
   })
+  const messagesWithUsage = useLangGraphUsageEffects({
+    stream,
+    messages: messagesWithArtifacts,
+  })
   useLangGraphMemoryEffects({ stream })
   const messages = useExternalMessageConverter({
     callback: convertMoldyLangChainMessage,
-    messages: messagesWithArtifacts,
+    messages: messagesWithUsage,
     isRunning: stream.isLoading,
   })
   const coordinatorsRef = useRef(new Map<string, HiTLDecisionCoordinator>())
