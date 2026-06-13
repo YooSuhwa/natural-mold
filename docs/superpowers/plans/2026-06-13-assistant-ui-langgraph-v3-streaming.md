@@ -1829,8 +1829,8 @@ Implementation status:
 - [x] Stored canonical protocol events replay from `message_events` and support `Last-Event-ID` / `last_event_id` cursors.
 - [x] `GET state`, compatibility state, and `history` now read the active LangGraph checkpoint branch when the checkpointer is initialized and return SDK-coercible `values.messages` wire objects (`type: "human" | "ai" | "tool" | ...`). They retain the previous empty fallback shape when no checkpoint exists.
 - [x] `input.respond` is implemented for single-interrupt and batched interrupt decisions. The BFF maps it to a resume `ConversationRun` and calls LangGraph with `Command(resume=...)`.
+- [x] Pending `input.requested` interrupts hydrate from `GET state` as SDK-compatible `tasks[].interrupts`, and compatibility state exposes the same `interrupts` list for Moldy bridge code.
 - [ ] Cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
-- [ ] Pending interrupt hydration from `GET state` / compatibility state is still incomplete; live-stream interrupts render and resume, but refresh while a run is paused needs a follow-up state task projection.
 - [ ] `POST state` still returns the submitted SDK-compatible shape and does not yet apply updates through the LangGraph checkpointer/runtime API.
 - [ ] Active run without broker currently returns `409 RUN_ATTACH_RETRY`; stale-run detection/finalization is still follow-up.
 - [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed, but product side effects such as memory/artifact projections from those protocol payloads still need explicit reducers.
@@ -2187,7 +2187,8 @@ Implementation status:
 - [x] The conversation page reads `NEXT_PUBLIC_CHAT_RUNTIME` through `getChatRuntimeMode()` and mounts the LangGraph provider only for existing conversations when `langgraph_v3` is selected. Draft `new` conversations remain on legacy SSE until draft creation is ported.
 - [x] Hook and section tests verify one stream is created, assistant-ui runtime options are wired, new messages submit through the same stream, legacy mode still calls `useChatRuntime`, `langgraph_v3` mode calls `useMoldyLangGraphStream`, draft conversations fall back to legacy, and LangGraph loading transitions update navigator status/invalidate on settle.
 - [x] Live HITL resume is wired through the single `@langchain/react` stream: `stream.interrupts` is projected into Moldy's existing approval/input tool UI, and decisions resume via `stream.respond` / backend `input.respond`.
-- [ ] Pending interrupt state hydration, activity side effects, artifact/memory reducers, subagent scoped selectors, edit/regenerate, and draft conversation start are still pending.
+- [x] Pending interrupt state hydration now feeds the same `stream.interrupts` projection path after refresh.
+- [ ] Activity side effects, artifact/memory reducers, subagent scoped selectors, edit/regenerate, and draft conversation start are still pending.
 
 - [ ] **Step 1: Implement the Moldy-owned `@langchain/react` stream path**
 
@@ -2583,9 +2584,9 @@ git commit -m "feat(chat): render semantic agent activity"
 - Modify: `backend/app/agent_runtime/langgraph_streaming.py`
 - Test: existing HITL, artifact, memory tests plus new runtime tests
 
-- [x] **Step 1: HITL live interrupt projection and resume**
+- [x] **Step 1: HITL live interrupt projection, hydration, and resume**
 
-Map live `@langchain/react` interrupt state to the existing `StandardInterruptPayload` shape:
+Map live and hydrated `@langchain/react` interrupt state to the existing `StandardInterruptPayload` shape:
 
 - keep `interrupt_id`,
 - keep `action_requests`,
@@ -2606,11 +2607,12 @@ Implemented in this slice:
 - `approval-card.tsx` and `user-input-ui.tsx` pass the HITL interrupt id through `registerDecision`, avoiding accidental resume against the wrong pending interrupt.
 - `backend/app/routers/conversation_agent_protocol_commands.py` handles Agent Streaming Protocol `input.respond` and starts `resume_agent_stream_langgraph`.
 - `backend/app/agent_runtime/langgraph_agent_stream_runner.py` resumes LangGraph with `Command(resume=...)`.
+- `backend/app/routers/conversation_agent_protocol_interrupts.py` projects unresolved `input.requested` events from the latest interrupted run into SDK-compatible `tasks[].interrupts` for refresh hydration.
+- `backend/app/services/conversation_run_worker.py` treats v3 `input.requested` events as interrupted terminal runs, so the pending interrupt can be discovered durably.
 
 Still open after this slice:
 
 - browser/E2E verification with a real paused HITL agent,
-- refresh/hydration support for pending interrupts from `GET state` / compatibility state,
 - nested or namespaced interrupt behavior beyond the root stream path.
 
 - [ ] **Step 2: Artifacts**
@@ -2684,6 +2686,7 @@ Focused backend HITL resume verification added in this slice:
 ```bash
 cd backend
 .venv/bin/pytest tests/test_conversation_agent_protocol_router.py tests/test_conversation_agent_protocol_commands.py tests/agent_runtime/test_agent_stream_runner_langgraph.py
+.venv/bin/pytest tests/test_conversation_agent_protocol_state_hydration.py tests/test_conversation_run_worker_interrupt_detection.py tests/agent_runtime/test_langgraph_protocol_adapter.py tests/agent_runtime/test_protocol_events.py
 ```
 
 Add or extend backend tests around `backend/app/agent_runtime/agent_stream_runner.py`, `backend/app/agent_runtime/langgraph_streaming.py`, and `backend/app/hooks/builtin/spend_hook.py` so the new stream path proves it still emits hook usage on success.

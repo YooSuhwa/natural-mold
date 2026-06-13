@@ -17,6 +17,10 @@ from app.routers.conversation_agent_protocol_contracts import (
     protocol_headers,
     state_response,
 )
+from app.routers.conversation_agent_protocol_interrupts import (
+    interrupts_from_tasks,
+    load_pending_interrupt_tasks,
+)
 from app.routers.conversation_agent_protocol_replay import (
     load_protocol_events,
     protocol_replay_generator,
@@ -72,7 +76,12 @@ async def get_thread_state(
         thread_id=thread_id,
         user_id=user.id,
     )
-    return state_response(conversation, values=await load_thread_state_values(conversation))
+    tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
+    return state_response(
+        conversation,
+        values=await load_thread_state_values(conversation),
+        tasks=tasks,
+    )
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/state")
@@ -178,12 +187,17 @@ async def get_compat_thread_state(
         thread_id=str(conversation_id),
         user_id=user.id,
     )
-    state = state_response(conversation, values=await load_thread_state_values(conversation))
+    tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
+    state = state_response(
+        conversation,
+        values=await load_thread_state_values(conversation),
+        tasks=tasks,
+    )
     return {
         "thread_id": str(conversation.id),
         "values": state["values"],
         "messages": state["values"]["messages"],
-        "interrupts": [],
+        "interrupts": interrupts_from_tasks(tasks),
         "checkpoint_by_message_id": {},
         "active_run": None,
         "latest_run": None,

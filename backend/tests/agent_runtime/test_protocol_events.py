@@ -122,6 +122,18 @@ def test_matches_custom_named_channel() -> None:
     assert not matches_subscription(event, {"channels": ["custom:memory"]})
 
 
+def test_matches_input_requested_when_subscribed_to_input_channel() -> None:
+    event = stored_protocol_event(
+        run_id="run-1",
+        thread_id="thread-1",
+        seq=3,
+        method="input.requested",
+        data={"interrupt_id": "intr-1", "payload": {"question": "approve?"}},
+    )
+
+    assert matches_subscription(event, {"channels": ["input"]})
+
+
 def test_rejects_non_json_data() -> None:
     with pytest.raises(TypeError, match="JSON serializable"):
         stored_protocol_event(

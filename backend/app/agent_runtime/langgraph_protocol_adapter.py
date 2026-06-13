@@ -13,6 +13,7 @@ RAW_PROTOCOL_METHODS = {
     "tools",
     "lifecycle",
     "input",
+    "input.requested",
     "checkpoints",
     "tasks",
     "custom",

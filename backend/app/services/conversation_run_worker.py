@@ -15,6 +15,10 @@ from app.config import settings
 from app.dependencies import CurrentUser
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service
+from app.services.conversation_run_interrupts import (
+    has_interrupt_events,
+    interrupt_id_from_events,
+)
 from app.services import conversation_stream_service as stream_service
 from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_stream_service import StreamCtx
@@ -353,18 +357,6 @@ def _trace_status_for_run(status: conversation_run_service.RunStatus) -> str:
     return "failed"
 
 
-def _interrupt_id_from_events(events: list[dict[str, Any]]) -> str | None:
-    for event in reversed(events):
-        if event.get("event") != event_names.INTERRUPT:
-            continue
-        data = event.get("data")
-        if not isinstance(data, dict):
-            continue
-        interrupt_id = data.get("interrupt_id")
-        return interrupt_id if isinstance(interrupt_id, str) and interrupt_id else None
-    return None
-
-
 async def _run_conversation(
     *,
     run_id: uuid.UUID,
@@ -439,9 +431,9 @@ async def _run_conversation(
 
         if ctx.has_stream_error():
             final_status = "failed"
-        elif any(event.get("event") == event_names.INTERRUPT for event in ctx.trace_sink):
+        elif has_interrupt_events(ctx.trace_sink):
             final_status = "interrupted"
-            interrupt_id = _interrupt_id_from_events(ctx.trace_sink)
+            interrupt_id = interrupt_id_from_events(ctx.trace_sink)
     except asyncio.CancelledError:
         cancel_reason = registry.cancel_reason(run_id)
         if cancel_reason == "shutdown":

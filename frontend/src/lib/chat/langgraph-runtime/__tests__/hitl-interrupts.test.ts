@@ -35,6 +35,22 @@ describe('standardPayloadFromInterrupt', () => {
     })
   })
 
+  it('normalizes live input.requested interrupts from LangGraph React', () => {
+    const payload = standardPayloadFromInterrupt({
+      interruptId: 'intr-live',
+      payload: {
+        action_requests: [{ name: 'send_email', args: { to: 'team@example.com' } }],
+        review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve'] }],
+      },
+    })
+
+    expect(payload).toEqual({
+      interrupt_id: 'intr-live',
+      action_requests: [{ name: 'send_email', args: { to: 'team@example.com' } }],
+      review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve'] }],
+    })
+  })
+
   it('adapts native ask_user interrupt values', () => {
     const payload = standardPayloadFromInterrupt({
       id: 'intr-ask',

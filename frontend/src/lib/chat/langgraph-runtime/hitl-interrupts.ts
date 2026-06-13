@@ -10,6 +10,8 @@ import { standardInterruptToToolCalls } from '@/lib/chat/standard-interrupt'
 export interface LangGraphInterruptLike {
   readonly id?: string
   readonly value?: unknown
+  readonly interruptId?: string
+  readonly payload?: unknown
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -107,10 +109,11 @@ export function standardPayloadFromInterrupt(
   interrupt: LangGraphInterruptLike,
   index = 0,
 ): StandardInterruptPayload | null {
-  const value = recordValue(interrupt.value)
+  const value = recordValue(interrupt.value) ?? recordValue(interrupt.payload)
   if (!value) return null
   const interruptId =
     textValue(interrupt.id) ??
+    textValue(interrupt.interruptId) ??
     textValue(value.interrupt_id) ??
     textValue(value.interruptId) ??
     `interrupt-${index + 1}`

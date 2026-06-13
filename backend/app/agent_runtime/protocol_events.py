@@ -159,6 +159,8 @@ def _matches_channels(event: StoredProtocolEvent, channels: list[str] | None) ->
     for channel in channels:
         if channel == method:
             return True
+        if channel == "input" and method.startswith("input."):
+            return True
         if channel == "custom" and (method == "custom" or custom is not None):
             return True
         if custom is not None and channel == custom:

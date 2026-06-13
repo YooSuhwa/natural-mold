@@ -100,6 +100,7 @@ def state_response(
     conversation: Conversation,
     *,
     values: dict[str, Any] | None = None,
+    tasks: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     state_values = dict(values or {})
     state_values.setdefault("messages", [])
@@ -114,7 +115,7 @@ def state_response(
     return {
         "values": state_values,
         "next": [],
-        "tasks": [],
+        "tasks": tasks or [],
         "checkpoint": checkpoint,
         "metadata": {
             "conversation_id": str(conversation.id),

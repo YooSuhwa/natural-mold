@@ -83,6 +83,31 @@ def test_unknown_method_becomes_named_custom_payload() -> None:
     assert event["data"] == {"name": "a2a", "payload": {"peer": "agent-b"}}
 
 
+def test_v3_input_requested_preserves_protocol_interrupt_method() -> None:
+    event = adapt_v3_protocol_event(
+        {
+            "type": "event",
+            "method": "input.requested",
+            "params": {
+                "namespace": ["tools:call-1"],
+                "data": {
+                    "interrupt_id": "intr-1",
+                    "payload": {"action_requests": [], "review_configs": []},
+                },
+            },
+            "seq": 5,
+            "event_id": "evt-input-1",
+        },
+        run_id="run-1",
+        thread_id="thread-1",
+    )
+
+    assert event["method"] == "input.requested"
+    assert event["namespace"] == ["tools:call-1"]
+    assert event["data"]["interrupt_id"] == "intr-1"
+    assert event["data"]["payload"] == {"action_requests": [], "review_configs": []}
+
+
 def test_non_json_message_object_serializes_stable_fields() -> None:
     event = adapt_v3_protocol_event(
         {
