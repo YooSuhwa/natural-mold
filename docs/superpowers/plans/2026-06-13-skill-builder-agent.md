@@ -3001,31 +3001,31 @@ Expected: service tests pass.
 - [x] Record `skill_revision.rollback` when rollback succeeds.
 - [x] Use `audit_service.record_event(...)` and pass `request` so request id, IP, and user-agent match existing audit behavior.
 - [x] Add route include in `backend/app/main.py`.
-- [ ] Add API tests:
+- [x] Add API tests:
   - [x] `POST /api/skill-builder` creates a create-mode session
   - [x] `POST /api/skill-builder` returns `409 SYSTEM_LLM_NOT_CONFIGURED` when `text_primary` is not configured
   - [x] `POST /api/skill-builder` with `mode="improve"` creates a session from an owned source skill
   - [x] `POST /api/skill-builder` with `mode="improve"` returns 404 for another user's skill
-  - `GET /api/skill-builder/{id}` returns only owned sessions
+  - [x] `GET /api/skill-builder/{id}` returns only owned sessions
   - [x] `POST /validate` persists validation result
   - [x] `POST /confirm` returns `SkillResponse`
   - [x] `POST /confirm` returns 409 for improve-mode hash conflict
-  - cross-user session access returns 404
-  - session create writes `skill_builder.session_create`
-  - System LLM readiness failure writes `skill_builder.system_model_missing` without creating a session
+  - [x] cross-user session access returns 404
+  - [x] session create writes `skill_builder.session_create`
+  - [x] System LLM readiness failure writes `skill_builder.system_model_missing` without creating a session
   - [x] confirm create writes `skill_builder.confirm_create`
   - [x] improve apply writes `skill_builder.apply_improvement`
-  - improve conflict writes `skill_builder.apply_conflict` with no file content in metadata
+  - [x] improve conflict writes `skill_builder.apply_conflict` with no file content in metadata
   - [x] `GET /api/skills/{skill_id}/revisions` lists only owned skill revisions
   - [x] `GET /api/skills/{skill_id}/revisions/{revision_id}` returns changelog and compatibility metadata
   - [x] `POST /api/skills/{skill_id}/revisions/{revision_id}/rollback` creates a new rollback revision
   - [x] rollback on another user's skill returns 404
-  - rollback writes `skill_revision.rollback` without file bodies in metadata
+  - [x] rollback writes `skill_revision.rollback` without file bodies in metadata
 - [x] Run:
 
 ```bash
 cd backend
-uv run pytest tests/test_skill_builder_api.py tests/test_skill_revisions_api.py tests/test_skill_builder_audit.py -q
+uv run pytest tests/test_skill_builder_api.py tests/test_skill_builder_api_contracts.py tests/test_skill_revisions_api.py tests/test_skill_builder_audit.py -q
 ```
 
 Expected: API tests pass.
