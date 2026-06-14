@@ -121,6 +121,21 @@ test.describe('Skill evaluation actions', () => {
       }
       if (
         method === 'POST' &&
+        pathName === '/api/skills/skill-visual/evaluations/set-complete/estimate'
+      ) {
+        return route.fulfill({
+          json: {
+            case_count: 1,
+            model_call_count: 2,
+            estimated_seconds: 8,
+            timeout_seconds: 60,
+            estimated_cost_usd: 0.0042,
+            uses_baseline_comparison: true,
+          },
+        })
+      }
+      if (
+        method === 'POST' &&
         pathName === '/api/skills/skill-visual/evaluations/set-complete/runs'
       ) {
         rerunRequested = true
@@ -168,9 +183,17 @@ test.describe('Skill evaluation actions', () => {
     })
 
     await page.getByRole('button', { name: '회귀 평가 평가 다시 실행' }).click()
+    await expect(page.getByRole('alertdialog', { name: '평가 실행 확인' })).toBeVisible()
+    await page.screenshot({
+      path: path.join(captureDir, 'evaluation-estimate-confirmation.png'),
+      fullPage: false,
+    })
+    await page.getByRole('button', { name: '평가 실행' }).click()
+    await expect(page.getByRole('alertdialog', { name: '평가 실행 확인' })).toBeHidden()
+    await expect.poll(() => rerunRequested).toBe(true)
+
     await page.getByRole('button', { name: '핵심 평가 평가 취소' }).click()
 
-    expect(rerunRequested).toBe(true)
-    expect(cancelRequested).toBe(true)
+    await expect.poll(() => cancelRequested).toBe(true)
   })
 })

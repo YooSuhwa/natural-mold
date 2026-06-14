@@ -3411,7 +3411,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [ ] On rollback success, refresh skill data, files/content, evaluation summaries, and revision list.
 - [ ] Render `PortableCompatibilityPanel` in builder preview and revision detail.
 - [ ] Show latest evaluation summary, stale badge, reusable evaluation sets, run history, and selected run details.
-- [ ] Show estimate confirmation before creating an evaluation run.
+- [x] Show estimate confirmation before creating an evaluation run.
 - [x] Add a rerun action that creates a new `SkillEvaluationRun` for the selected evaluation set.
 - [x] Add a cancel action for queued/running/grading runs.
 - [ ] Show improvement conflict state when the backend returns 409 for a changed base hash.
@@ -3486,7 +3486,7 @@ Expected: no new lint/design/i18n errors.
 ```bash
 cd frontend
 pnpm exec vitest run src/components/skill/__tests__/skill-evaluation-tab.test.tsx src/components/skill/__tests__/skill-quality-badges.test.tsx tests/pages/skills.test.tsx
-pnpm exec eslint src/components/skill/skill-evaluation-tab.tsx src/components/skill/__tests__/skill-evaluation-tab.test.tsx
+pnpm exec eslint src/components/skill/skill-evaluation-tab.tsx src/components/skill/skill-evaluation-estimate-dialog.tsx src/components/skill/__tests__/skill-evaluation-tab.test.tsx
 pnpm exec eslint --no-ignore e2e/skill-evaluation-actions.spec.ts
 pnpm exec tsc --noEmit --pretty false
 PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3112 E2E_BACKEND_PORT=8112 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-evaluation-actions.spec.ts --workers=1

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { CircleStop, RefreshCw } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -10,10 +10,16 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   useCancelSkillEvaluationRun,
   useCreateSkillEvaluationRun,
+  useEstimateSkillEvaluationRun,
   useSkillEvaluationSets,
 } from '@/lib/hooks/use-skill-evaluations'
-import type { SkillEvaluationRunStatus, SkillEvaluationSet } from '@/lib/types/skill-evaluation'
+import type {
+  SkillEvaluationRunEstimate,
+  SkillEvaluationRunStatus,
+  SkillEvaluationSet,
+} from '@/lib/types/skill-evaluation'
 
+import { SkillEvaluationEstimateDialog } from './skill-evaluation-estimate-dialog'
 import { SkillEvaluationSummaryBadge } from './skill-evaluation-summary-badge'
 
 const CANCELLABLE_RUN_STATUS: Record<SkillEvaluationRunStatus, boolean> = {
@@ -73,10 +79,28 @@ function SkillEvaluationSetCard({
 }) {
   const t = useTranslations('skill.detailDialog.evaluation')
   const runAgain = useCreateSkillEvaluationRun(skillId, set.id)
+  const estimateRun = useEstimateSkillEvaluationRun(skillId, set.id)
   const cancelRun = useCancelSkillEvaluationRun(skillId, set.id)
+  const [estimate, setEstimate] = useState<SkillEvaluationRunEstimate | null>(null)
+  const [estimateOpen, setEstimateOpen] = useState(false)
   const latestRun = set.latest_run
   const canCancel = latestRun ? CANCELLABLE_RUN_STATUS[latestRun.status] : false
-  const isMutating = runAgain.isPending || cancelRun.isPending
+  const isMutating = runAgain.isPending || estimateRun.isPending || cancelRun.isPending
+
+  function requestRunAgain(): void {
+    estimateRun.mutate(undefined, {
+      onSuccess: (nextEstimate) => {
+        setEstimate(nextEstimate)
+        setEstimateOpen(true)
+      },
+    })
+  }
+
+  function confirmRunAgain(): void {
+    runAgain.mutate(undefined, {
+      onSuccess: () => setEstimateOpen(false),
+    })
+  }
 
   return (
     <article className="rounded-lg border border-border/70 p-3">
@@ -134,13 +158,21 @@ function SkillEvaluationSetCard({
             size="sm"
             disabled={isMutating}
             aria-label={t('runAgainFor', { name: set.name })}
-            onClick={() => runAgain.mutate()}
+            onClick={requestRunAgain}
           >
             <RefreshCw aria-hidden="true" />
-            {runAgain.isPending ? t('runAgainPending') : t('runAgain')}
+            {estimateRun.isPending ? t('estimatePending') : t('runAgain')}
           </Button>
         )}
       </div>
+      <SkillEvaluationEstimateDialog
+        open={estimateOpen}
+        setName={set.name}
+        estimate={estimate}
+        isPending={runAgain.isPending}
+        onOpenChange={setEstimateOpen}
+        onConfirm={confirmRunAgain}
+      />
     </article>
   )
 }

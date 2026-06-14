@@ -1,16 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { render, screen, userEvent } from '../../../../tests/test-utils'
-import type { SkillEvaluationSet } from '@/lib/types/skill-evaluation'
+import type { SkillEvaluationRunEstimate, SkillEvaluationSet } from '@/lib/types/skill-evaluation'
 
 import { SkillEvaluationTab } from '../skill-evaluation-tab'
 
 const mockUseSkillEvaluationSets = vi.fn()
+const mockEstimateRun = vi.fn(
+  (
+    _variables: undefined,
+    options?: { readonly onSuccess?: (data: SkillEvaluationRunEstimate) => void },
+  ) => {
+    options?.onSuccess?.(evaluationEstimate)
+  },
+)
 const mockCreateRun = vi.fn()
 const mockCancelRun = vi.fn()
 
+const evaluationEstimate: SkillEvaluationRunEstimate = {
+  case_count: 2,
+  model_call_count: 4,
+  estimated_seconds: 12,
+  timeout_seconds: 60,
+  estimated_cost_usd: 0.0123,
+  uses_baseline_comparison: true,
+}
+
 vi.mock('@/lib/hooks/use-skill-evaluations', () => ({
   useSkillEvaluationSets: (...args: readonly unknown[]) => mockUseSkillEvaluationSets(...args),
+  useEstimateSkillEvaluationRun: () => ({
+    mutate: mockEstimateRun,
+    isPending: false,
+  }),
   useCreateSkillEvaluationRun: () => ({
     mutate: mockCreateRun,
     isPending: false,
@@ -40,6 +61,7 @@ function buildEvaluationSet(overrides: Partial<SkillEvaluationSet>): SkillEvalua
 describe('SkillEvaluationTab', () => {
   beforeEach(() => {
     mockUseSkillEvaluationSets.mockReset()
+    mockEstimateRun.mockClear()
     mockCreateRun.mockReset()
     mockCancelRun.mockReset()
   })
@@ -97,6 +119,12 @@ describe('SkillEvaluationTab', () => {
     render(<SkillEvaluationTab skillId="skill-1" onClose={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: '품질 평가 평가 다시 실행' }))
+
+    expect(mockEstimateRun).toHaveBeenCalledOnce()
+    expect(mockCreateRun).not.toHaveBeenCalled()
+    expect(screen.getByRole('alertdialog', { name: '평가 실행 확인' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '평가 실행' }))
 
     expect(mockCreateRun).toHaveBeenCalledOnce()
     expect(mockCancelRun).not.toHaveBeenCalled()
