@@ -55,6 +55,10 @@ async def mark_completed(
     run.summary = result.summary
     run.benchmark = result.benchmark
     run.case_results = result.case_results
+    run.runner_model = result.runner_model
+    run.runner_version = result.runner_version
+    run.grader_prompt_version = result.grader_prompt_version
+    run.eval_schema_version = result.eval_schema_version
     run.error_message = None
     run.completed_at = _now()
     await db.flush()

@@ -17,6 +17,7 @@ from app.routers.skill_evaluations_support import (
     load_evaluation_set_or_404,
     load_skill_or_404,
     record_evaluation_audit,
+    require_evaluation_system_llm,
 )
 from app.schemas.skill_evaluation import (
     SkillEvaluationRunCancelRequest,
@@ -162,6 +163,13 @@ async def create_skill_evaluation_run(
         raise marketplace_credential_required(
             f"missing required skill credential bindings: {', '.join(missing)}"
         )
+    await require_evaluation_system_llm(
+        db,
+        user=user,
+        request=request,
+        skill_id=skill.id,
+        evaluation_set_id=evaluation_set.id,
+    )
     try:
         skill_evaluation_worker.reserve_slot()
     except SkillEvaluationQueueFull as exc:

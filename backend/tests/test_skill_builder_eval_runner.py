@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from app.agent_runtime.skill_builder.eval_runner import (
     EvalCaseResult,
+    GraderResultError,
     aggregate_benchmark,
     prepare_eval_output_dirs,
+    validate_grader_result,
 )
 
 
@@ -37,6 +39,12 @@ def test_aggregate_benchmark_computes_pass_rates_and_delta() -> None:
         "with_skill_mean_score": 0.9,
         "without_skill_mean_score": 0.4,
         "mean_score_delta": 0.5,
+        "with_skill_min_score": 0.8,
+        "without_skill_min_score": 0.2,
+        "with_skill_max_score": 1,
+        "without_skill_max_score": 0.6,
+        "with_skill_stddev_score": 0.1,
+        "without_skill_stddev_score": 0.2,
     }
 
 
@@ -49,3 +57,21 @@ def test_aggregate_benchmark_handles_empty_baseline() -> None:
     assert benchmark["case_count"] == 1
     assert benchmark["without_skill_pass_rate"] == 0
     assert benchmark["mean_score_delta"] == 1
+
+
+def test_validate_grader_result_rejects_missing_evidence_claims() -> None:
+    weak = {
+        "expectations": ["follow instructions"],
+        "summary": {"case_count": 1},
+        "execution_metrics": {"model_call_count": 1},
+        "timing": {"total_seconds": 1},
+        "claims": [],
+        "eval_feedback": [],
+    }
+
+    try:
+        validate_grader_result(weak)
+    except GraderResultError as exc:
+        assert "evidence claim" in str(exc)
+    else:
+        raise AssertionError("weak grader result should fail")

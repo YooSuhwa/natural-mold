@@ -3082,13 +3082,17 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 
 - Create: `backend/app/agent_runtime/skill_builder/eval_runner.py`
 - Create: `backend/app/agent_runtime/skill_builder/eval_templates.py`
+- Create: `backend/app/services/skill_builder_eval_service.py`
 - Create: `backend/app/services/skill_evaluation_worker.py`
+- Create: `backend/app/routers/skill_builder_evals.py`
 - Extend: `backend/app/schemas/skill_builder.py`
 - Extend: `backend/app/services/skill_builder_service.py`
 - Extend: `backend/app/routers/skill_builder.py`
+- Modify: `backend/app/router_registry.py`
 - Modify: `backend/app/marketplace/skill_runtime.py`
 - Modify: `backend/app/agent_runtime/skill_executor.py`
 - Create: `backend/tests/test_skill_builder_eval_runner.py`
+- Create: `backend/tests/test_skill_builder_eval_api.py`
 - Create: `backend/tests/test_skill_builder_eval_templates.py`
 - Create: `backend/tests/test_skill_evaluation_worker.py`
 - Create: `backend/tests/test_skill_executor_credential_audit.py`
@@ -3097,31 +3101,31 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [x] Implement internal template selection from the Internal Evaluation Templates section.
 - [x] Implement the bounded worker/queue behavior from the Evaluation Execution Infrastructure section.
 - [x] Generate 2-3 realistic eval prompts from intent when the user asks to test.
-- [ ] Do not expose evaluation template selection as a default user-facing picker.
-- [ ] Allow optional eval-case review only for advanced or low-confidence flows.
+- [x] Do not expose evaluation template selection as a default user-facing picker.
+- [x] Allow optional eval-case review only for advanced or low-confidence flows.
 - [x] Add eval runner output directory contract for with-skill and without-skill runs.
-- [ ] Run with-skill and without-skill configurations into separate output folders.
+- [x] Run with-skill and without-skill configurations into separate output folders.
 - [ ] Use the current selected-skill runtime mount pattern for with-skill evaluation runs.
 - [ ] Reuse or refactor the `execute_in_skill` command policy instead of adding another subprocess parser.
 - [ ] Enforce timeout, selected-skill path validation, credential redaction, and output directory scoping for eval scripts.
-- [ ] Refuse eval execution that needs required user credentials when bindings are missing.
-- [ ] Return `SYSTEM_LLM_NOT_CONFIGURED` before creating execution artifacts when grader/model-based evaluation lacks the system model.
+- [x] Refuse eval execution that needs required user credentials when bindings are missing.
+- [x] Return `SYSTEM_LLM_NOT_CONFIGURED` before creating execution artifacts when grader/model-based evaluation lacks the system model.
 - [x] Refuse eval network execution when the skill uses `curl` or external URLs but lacks `execution_profile.requires_network: true`.
 - [x] Extend `SkillToolContext` with non-secret audit correlation fields needed by `execute_in_skill`: user id, agent id, thread id, and optional run id.
 - [x] Add best-effort credential-use audit writes in `execute_in_skill` for each unique injected user credential.
 - [x] The credential audit metadata must include only `kind`, skill id/slug, requirement key, agent id, thread id, run id, command executable, and timeout seconds.
-- [ ] Implement grader result format with `expectations`, `summary`, `execution_metrics`, `timing`, `claims`, and `eval_feedback`.
+- [x] Implement grader result format with `expectations`, `summary`, `execution_metrics`, `timing`, `claims`, and `eval_feedback`.
 - [x] Implement initial benchmark aggregation with pass-rate, mean-score, and delta.
-- [ ] Extend benchmark aggregation with stddev/min/max.
-- [ ] Persist the aggregate to `session.eval_result`.
+- [x] Extend benchmark aggregation with stddev/min/max.
+- [x] Persist the aggregate to `session.eval_result`.
 - [ ] Add tests:
   - [x] eval runner creates with-skill and without-skill output directories
   - [x] template selection chooses `structured_extraction` for action-item/table skills
   - [x] template selection chooses `research` for citation/source skills
-  - grader fails weak/missing output evidence
+  - [x] grader fails weak/missing output evidence
   - [x] benchmark aggregation computes pass rate and delta
-  - eval runner refuses missing credential bindings before creating execution artifacts
-  - eval runner refuses missing system model before creating execution artifacts
+  - [x] eval runner refuses missing credential bindings before creating execution artifacts
+  - [x] eval runner refuses missing system model before creating execution artifacts
   - [x] eval runner refuses undeclared network execution
   - [x] worker enforces max concurrency and queue-full behavior
   - worker cancellation moves queued runs directly to cancelled and running runs through cooperative cancellation
@@ -3139,7 +3143,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 
 ```bash
 cd backend
-uv run pytest tests/test_skill_builder_eval_runner.py tests/test_skill_builder_eval_templates.py tests/test_skill_evaluation_worker.py tests/test_skill_executor_credential_audit.py -q
+uv run pytest tests/test_skill_builder_eval_runner.py tests/test_skill_builder_eval_api.py tests/test_skill_builder_eval_templates.py tests/test_skill_evaluation_worker.py tests/test_skill_executor_credential_audit.py -q
 ```
 
 Expected: eval runner tests pass.
@@ -3189,11 +3193,11 @@ Expected: eval runner tests pass.
   - [x] rerun creates a new `SkillEvaluationRun`
   - [x] rerun enqueues the run instead of executing the full evaluation inside the HTTP request
   - [x] queue-full returns `SKILL_EVALUATION_QUEUE_FULL`
-  - missing System LLM returns `SYSTEM_LLM_NOT_CONFIGURED` before a run row is created
+  - [x] missing System LLM returns `SYSTEM_LLM_NOT_CONFIGURED` before a run row is created
   - [x] cancel transitions an active run to `cancelled`
   - cancel sets `cancellation_requested_at` for running/grading runs
   - stale detection works when skill content hash changes after a run
-  - skill detail response includes `health`
+  - [x] skill detail response includes `health`
   - [x] cross-user access returns 404
   - [x] missing required skill credential binding returns `MARKETPLACE_CREDENTIAL_REQUIRED` and no run row is created
   - run create/cancel/complete/failure audit events contain IDs and summary metrics but no prompts or outputs

@@ -6,8 +6,12 @@ from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.credentials import service as credential_service
+from app.models.skill_evaluation import SkillEvaluationRun
+from app.models.system_llm_setting import SystemLlmSetting
 from app.routers import skill_evaluations as skill_evaluations_router
 from app.skills import service as skill_service
 from tests.conftest import TEST_USER_ID
@@ -47,6 +51,25 @@ def _skill_content() -> str:
         "---\n\n"
         "Use when testing evaluation behavior.\n"
     )
+
+
+async def _configure_system_llm(db: AsyncSession) -> None:
+    credential = await credential_service.create(
+        db,
+        user_id=None,
+        definition_key="openai",
+        name="evaluation-key",
+        data={"api_key": "sk-test"},
+        is_system=True,
+    )
+    db.add(
+        SystemLlmSetting(
+            role="text_primary",
+            credential_id=credential.id,
+            model_name="gpt-5.4",
+        )
+    )
+    await db.commit()
 
 
 async def _create_skill(db: AsyncSession, tmp_path: Path):
@@ -93,6 +116,7 @@ async def test_estimate_and_create_run(
     tmp_path: Path,
     evaluation_worker: RecordingEvaluationWorker,
 ) -> None:
+    await _configure_system_llm(db)
     skill = await _create_skill(db, tmp_path)
     created = await client.post(
         f"/api/skills/{skill.id}/evaluations",
@@ -119,6 +143,8 @@ async def test_create_run_returns_queue_full_when_worker_rejects(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    await _configure_system_llm(db)
+
     class FullEvaluationWorker:
         def reserve_slot(self) -> None:
             raise skill_evaluations_router.SkillEvaluationQueueFull("full")
@@ -155,6 +181,7 @@ async def test_cancel_queued_run(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await _configure_system_llm(db)
     skill = await _create_skill(db, tmp_path)
     created = await client.post(
         f"/api/skills/{skill.id}/evaluations",
@@ -200,6 +227,28 @@ async def test_create_run_requires_required_credential_binding(
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "MARKETPLACE_CREDENTIAL_REQUIRED"
+
+
+async def test_create_run_requires_system_llm_before_run_row(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+    evaluation_worker: RecordingEvaluationWorker,
+) -> None:
+    skill = await _create_skill(db, tmp_path)
+    created = await client.post(
+        f"/api/skills/{skill.id}/evaluations",
+        json={"name": "Smoke", "evals": [{"input": "a"}]},
+    )
+    set_id = created.json()["id"]
+
+    response = await client.post(f"/api/skills/{skill.id}/evaluations/{set_id}/runs")
+    result = await db.execute(select(SkillEvaluationRun))
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "SYSTEM_LLM_NOT_CONFIGURED"
+    assert result.scalars().all() == []
+    assert evaluation_worker.enqueued_run_ids == []
 
 
 async def test_list_evaluations_for_unowned_skill_returns_404(client: AsyncClient) -> None:

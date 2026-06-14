@@ -6,10 +6,18 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser
-from app.error_codes import skill_evaluation_set_not_found, skill_not_found
+from app.error_codes import (
+    skill_evaluation_set_not_found,
+    skill_not_found,
+    system_llm_not_configured,
+)
 from app.models.skill import Skill
 from app.models.skill_evaluation import SkillEvaluationSet
 from app.services import audit_service, skill_evaluation_service
+from app.services.system_credential_resolver import (
+    SystemModelNotConfiguredError,
+    resolve_system_model,
+)
 from app.skills import service as skill_service
 
 
@@ -74,3 +82,28 @@ async def record_evaluation_audit(
             **(metadata or {}),
         },
     )
+
+
+async def require_evaluation_system_llm(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    request: Request,
+    skill_id: uuid.UUID,
+    evaluation_set_id: uuid.UUID,
+) -> None:
+    try:
+        await resolve_system_model(db, "text_primary")
+    except SystemModelNotConfiguredError as exc:
+        await record_evaluation_audit(
+            db,
+            user=user,
+            request=request,
+            action="skill_evaluation.system_model_missing",
+            skill_id=skill_id,
+            evaluation_set_id=evaluation_set_id,
+            outcome="denied",
+            metadata={"reason_code": "SYSTEM_LLM_NOT_CONFIGURED"},
+        )
+        await db.commit()
+        raise system_llm_not_configured() from exc
