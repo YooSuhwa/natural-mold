@@ -2767,19 +2767,19 @@ Skill Builder SSE wire contract:
 - Modify: `backend/app/models/__init__.py`
 - Modify: `backend/app/models/skill.py`
 
-- [ ] Add the `SkillBuilderStatus` enum and response/request schemas exactly as defined in the Data Model section.
-- [ ] Add `SkillBuilderMode` and fields for `source_skill_id`, `base_skill_version`, `base_content_hash`, and `base_snapshot`.
-- [ ] Add the SQLAlchemy model with JSON fields for messages, intent, draft package, validation, compatibility, changelog, eval, and trigger eval results.
-- [ ] Add `SkillEvaluationSet` and `SkillEvaluationRun` models exactly as defined in the Persistent Skill Evaluation Models section.
-- [ ] Add `SkillRevision` exactly as defined in the Skill Revision History section.
-- [ ] Add nullable `current_revision_id` to `Skill`.
-- [ ] Add `cancellation_requested_at` and `cancellation_reason` to `SkillEvaluationRun`.
-- [ ] Include evaluation template/version fields, run estimate JSON, runner version, grader prompt version, and eval schema version in the migration.
-- [ ] Include `skill_revisions` table, indexes, unique constraint, and `skills.current_revision_id` in the migration.
+- [x] Add the `SkillBuilderStatus` enum and response/request schemas exactly as defined in the Data Model section.
+- [x] Add `SkillBuilderMode` and fields for `source_skill_id`, `base_skill_version`, `base_content_hash`, and `base_snapshot`.
+- [x] Add the SQLAlchemy model with JSON fields for messages, intent, draft package, validation, compatibility, changelog, eval, and trigger eval results.
+- [x] Add `SkillEvaluationSet` and `SkillEvaluationRun` models exactly as defined in the Persistent Skill Evaluation Models section.
+- [x] Add `SkillRevision` exactly as defined in the Skill Revision History section.
+- [x] Add nullable `current_revision_id` to `Skill`.
+- [x] Add `cancellation_requested_at` and `cancellation_reason` to `SkillEvaluationRun`.
+- [x] Include evaluation template/version fields, run estimate JSON, runner version, grader prompt version, and eval schema version in the migration.
+- [x] Include `skill_revisions` table, indexes, unique constraint, and `skills.current_revision_id` in the migration.
 - [x] Add backend settings for `SKILL_EVALUATION_ENABLED`, `SKILL_EVALUATION_MAX_CONCURRENT`, `SKILL_EVALUATION_QUEUE_MAX_SIZE`, `SKILL_EVALUATION_RUN_TIMEOUT_SECONDS`, and `SKILL_EVALUATION_CASE_TIMEOUT_SECONDS`.
-- [ ] Add the Alembic migration with `down_revision` set to the current output of `uv run alembic heads`. Use `"m63_chat_navigator_indexes"` only if it is still the single head at execution time.
-- [ ] Export `SkillBuilderSession`, `SkillEvaluationSet`, `SkillEvaluationRun`, and `SkillRevision` from `backend/app/models/__init__.py`.
-- [ ] Run:
+- [x] Add the Alembic migration with `down_revision` set to the current output of `uv run alembic heads`. Use `"m63_chat_navigator_indexes"` only if it is still the single head at execution time.
+- [x] Export `SkillBuilderSession`, `SkillEvaluationSet`, `SkillEvaluationRun`, and `SkillRevision` from `backend/app/models/__init__.py`.
+- [x] Run:
 
 ```bash
 cd backend
@@ -2788,7 +2788,7 @@ uv run alembic upgrade head
 
 Expected: migration applies and creates `skill_builder_sessions`, `skill_evaluation_sets`, `skill_evaluation_runs`, `skill_revisions`, and `skills.current_revision_id`.
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd backend
@@ -2808,7 +2808,7 @@ Expected: existing storage-path tests still pass.
 
 - [x] Implement `normalize_draft_path` and `build_skill_zip_bytes` from the Draft Package Builder section.
 - [x] Implement `compute_package_tree_hash` from the Package Skill Content Hash Invariant section.
-- [ ] Add tests:
+- [x] Add tests:
   - [x] valid draft package imports through `extract_package`
   - [x] missing `SKILL.md` raises `ValueError`
   - [x] `../secret.txt` raises `ValueError`
@@ -2817,7 +2817,7 @@ Expected: existing storage-path tests still pass.
   - [x] deterministic package tree hash is stable for identical bytes
   - [x] changing `SKILL.md`, `scripts/`, `references/`, or `agents/*.yaml` changes the package tree hash
   - [x] symlink or non-regular package entries fail closed
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd backend
@@ -2835,17 +2835,17 @@ Expected: all new package builder tests pass.
 - Create: `backend/tests/test_skill_builder_validator.py`
 - Create: `backend/tests/test_skill_compatibility.py`
 
-- [ ] Implement validation rules from the Skill Validator section.
+- [x] Implement validation rules from the Skill Validator section.
 - [x] Use `parse_skill_md` for metadata parsing.
 - [x] Use a temporary directory and `scan_package()` for secret scanning.
 - [x] Validate `agents/moldy.yaml.credential_requirements` against the Credential-Aware Sandbox And Audit Policy section.
 - [x] Validate each `definition_key` by importing `app.credentials.definitions` and checking `app.credentials.registry.registry`.
 - [x] Validate `env_map` direction as `{credential_field_name: env_var_name}` and reject entries that map env vars to field names.
-- [ ] Warn when scripts or `SKILL.md` instructions use `curl` or obvious network URLs without `execution_profile.requires_network: true`.
+- [x] Warn when scripts or `SKILL.md` instructions use `curl` or obvious network URLs without `execution_profile.requires_network: true`.
 - [x] Implement `check_portable_compatibility(draft_package)` in `backend/app/skills/compatibility.py`.
 - [x] Include compatibility result in validation output with per-target `status`, `issues`, and aggregate counts.
 - [x] Return structured issues with `code`, `severity`, `path`, and `message`.
-- [ ] Add tests:
+- [x] Add tests:
   - [x] missing `SKILL.md` is an error
   - [x] missing frontmatter description is an error
   - [x] weak trigger description is a warning
@@ -2862,7 +2862,7 @@ Expected: all new package builder tests pass.
   - [x] absolute local paths in `SKILL.md` are compatibility warnings
   - [x] generated changelog text inside `SKILL.md` is a compatibility warning
   - [x] valid portable package returns `valid=True`
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd backend
@@ -2933,35 +2933,35 @@ Expected: all validator tests pass.
 
 - [x] Implement `save_draft_package` and `save_validation_result`.
 - [x] Implement `claim_for_confirming` using the same atomic update pattern as `builder_service.claim_for_confirming`.
-- [ ] Implement `confirm_session` using the confirm flow in this plan.
+- [x] Implement `confirm_session` using the confirm flow in this plan.
 - [ ] Return non-secret audit metadata from confirm/apply helpers: session id, mode, source skill id, file counts, changed counts, credential requirement count, old hash, and new hash.
 - [x] In improve mode, apply confirmed changes to the existing skill only when `base_content_hash` still matches the current skill hash.
 - [ ] During confirm, convert `evals/evals.json` and `session.eval_result` into `SkillEvaluationSet` and `SkillEvaluationRun` rows linked to the finalized skill.
 - [ ] Add tests:
-  - session ownership is enforced by query helper
-  - confirm refuses sessions with validation errors
+  - [x] session ownership is enforced by query helper
+  - [x] confirm refuses sessions with validation errors
   - confirm is idempotent after completion
-  - confirm stores `credential_requirements` and `execution_profile` on `Skill`
+  - [x] confirm stores `credential_requirements` and `execution_profile` on `Skill`
   - confirm creates package-kind skill with `origin_kind="created_by_me"` and `source_kind="user"`
-  - improve session stores `source_skill_id`, base version, base content hash, and base snapshot
-  - improve confirm updates an existing text skill
+  - [x] improve session stores `source_skill_id`, base version, base content hash, and base snapshot
+  - [x] improve confirm updates an existing text skill
   - improve confirm updates changed package files and preserves unchanged files
-  - improve confirm returns 409 when the current skill hash differs from `base_content_hash`
+  - [x] improve confirm returns 409 when the current skill hash differs from `base_content_hash`
   - confirm creates an evaluation set when the draft contains evals
   - confirm copies builder-time eval results into a skill evaluation run
-  - evaluation run snapshots `skill.version` and `skill.content_hash`
+  - [x] evaluation run snapshots `skill.version` and `skill.content_hash`
   - package file update changes `skill.content_hash`
   - package file delete changes `skill.content_hash`
   - identical package file write keeps the same `skill.content_hash`
-  - package content hash change makes the latest completed evaluation stale by comparison
+  - [x] package content hash change makes the latest completed evaluation stale by comparison
   - evaluation run snapshots runner/grader/schema versions
-  - `estimate_run` returns no DB row and includes case count, model call count, timeout, and approximate cost
-  - `cancel_run` transitions queued/running/grading to cancelled and rejects completed runs
-  - health state returns `needs_rerun` when content hash differs
+  - [x] `estimate_run` returns no DB row and includes case count, model call count, timeout, and approximate cost
+  - [x] `cancel_run` transitions queued/running/grading to cancelled and rejects completed runs
+  - [x] health state returns `needs_rerun` when content hash differs
   - confirm audit metadata excludes prompt text, generated file content, stdout/stderr, and credential values
-  - `create_revision_for_skill` writes a zip snapshot and increments `revision_number`
-  - `rollback_to_revision` creates a new rollback revision and updates the skill row
-  - rollback does not mutate the restored-from revision
+  - [x] `create_revision_for_skill` writes a zip snapshot and increments `revision_number`
+  - [x] `rollback_to_revision` creates a new rollback revision and updates the skill row
+  - [x] rollback does not mutate the restored-from revision
   - revision changelog is stored on `SkillRevision`, not in `SKILL.md`
   - backfill creates a baseline revision for a legacy skill and is idempotent
   - first mutation of a legacy skill creates a baseline revision before the mutation revision
@@ -2985,11 +2985,11 @@ Expected: service tests pass.
 - Create: `backend/tests/test_skill_builder_api.py`
 - Create: `backend/tests/test_skill_revisions_api.py`
 
-- [ ] Add REST endpoints from the API Contract section.
+- [x] Add REST endpoints from the API Contract section.
 - [x] Add revision endpoints from the API Contract section.
 - [x] Add SSE endpoints using the same `StreamingResponse` headers as `backend/app/routers/builder.py:153`.
-- [ ] Include CSRF dependency on mutating endpoints.
-- [ ] Convert missing `text_primary` System LLM setup into `409 SYSTEM_LLM_NOT_CONFIGURED` for builder start/message/eval paths that need the hidden model.
+- [x] Include CSRF dependency on mutating endpoints.
+- [x] Convert missing `text_primary` System LLM setup into `409 SYSTEM_LLM_NOT_CONFIGURED` for builder start/message/eval paths that need the hidden model.
 - [x] Record `skill_builder.session_create` when `POST /api/skill-builder` succeeds.
 - [x] Record `skill_builder.system_model_missing` with outcome `denied` when System LLM readiness blocks the builder.
 - [x] Record `skill_builder.validation_failed` when `POST /validate` persists error-level issues.
@@ -2999,27 +2999,27 @@ Expected: service tests pass.
 - [x] Record `skill_builder.apply_conflict` with outcome `denied` when improve-mode hash conflict returns 409.
 - [ ] Record `skill_revision.create` whenever a revision snapshot is created by service calls in this feature.
 - [x] Record `skill_revision.rollback` when rollback succeeds.
-- [ ] Use `audit_service.record_event(...)` and pass `request` so request id, IP, and user-agent match existing audit behavior.
+- [x] Use `audit_service.record_event(...)` and pass `request` so request id, IP, and user-agent match existing audit behavior.
 - [x] Add route include in `backend/app/main.py`.
 - [ ] Add API tests:
-  - `POST /api/skill-builder` creates a create-mode session
-  - `POST /api/skill-builder` returns `409 SYSTEM_LLM_NOT_CONFIGURED` when `text_primary` is not configured
-  - `POST /api/skill-builder` with `mode="improve"` creates a session from an owned source skill
-  - `POST /api/skill-builder` with `mode="improve"` returns 404 for another user's skill
+  - [x] `POST /api/skill-builder` creates a create-mode session
+  - [x] `POST /api/skill-builder` returns `409 SYSTEM_LLM_NOT_CONFIGURED` when `text_primary` is not configured
+  - [x] `POST /api/skill-builder` with `mode="improve"` creates a session from an owned source skill
+  - [x] `POST /api/skill-builder` with `mode="improve"` returns 404 for another user's skill
   - `GET /api/skill-builder/{id}` returns only owned sessions
-  - `POST /validate` persists validation result
-  - `POST /confirm` returns `SkillResponse`
-  - `POST /confirm` returns 409 for improve-mode hash conflict
+  - [x] `POST /validate` persists validation result
+  - [x] `POST /confirm` returns `SkillResponse`
+  - [x] `POST /confirm` returns 409 for improve-mode hash conflict
   - cross-user session access returns 404
   - session create writes `skill_builder.session_create`
   - System LLM readiness failure writes `skill_builder.system_model_missing` without creating a session
   - confirm create writes `skill_builder.confirm_create`
   - improve apply writes `skill_builder.apply_improvement`
   - improve conflict writes `skill_builder.apply_conflict` with no file content in metadata
-  - `GET /api/skills/{skill_id}/revisions` lists only owned skill revisions
-  - `GET /api/skills/{skill_id}/revisions/{revision_id}` returns changelog and compatibility metadata
-  - `POST /api/skills/{skill_id}/revisions/{revision_id}/rollback` creates a new rollback revision
-  - rollback on another user's skill returns 404
+  - [x] `GET /api/skills/{skill_id}/revisions` lists only owned skill revisions
+  - [x] `GET /api/skills/{skill_id}/revisions/{revision_id}` returns changelog and compatibility metadata
+  - [x] `POST /api/skills/{skill_id}/revisions/{revision_id}/rollback` creates a new rollback revision
+  - [x] rollback on another user's skill returns 404
   - rollback writes `skill_revision.rollback` without file bodies in metadata
 - [ ] Run:
 
@@ -3113,19 +3113,19 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [ ] Extend benchmark aggregation with stddev/min/max.
 - [ ] Persist the aggregate to `session.eval_result`.
 - [ ] Add tests:
-  - eval runner creates with-skill and without-skill output directories
-  - template selection chooses `structured_extraction` for action-item/table skills
-  - template selection chooses `research` for citation/source skills
+  - [x] eval runner creates with-skill and without-skill output directories
+  - [x] template selection chooses `structured_extraction` for action-item/table skills
+  - [x] template selection chooses `research` for citation/source skills
   - grader fails weak/missing output evidence
-  - benchmark aggregation computes pass rate and delta
+  - [x] benchmark aggregation computes pass rate and delta
   - eval runner refuses missing credential bindings before creating execution artifacts
   - eval runner refuses missing system model before creating execution artifacts
-  - eval runner refuses undeclared network execution
-  - worker enforces max concurrency and queue-full behavior
+  - [x] eval runner refuses undeclared network execution
+  - [x] worker enforces max concurrency and queue-full behavior
   - worker cancellation moves queued runs directly to cancelled and running runs through cooperative cancellation
-  - startup reconciliation marks stale running/grading rows interrupted
-  - credential audit rows are written when `execute_in_skill` injects a bound credential
-  - credential audit metadata does not contain decrypted values, stdout, stderr, or raw command arguments
+  - [x] startup reconciliation marks stale running/grading rows interrupted
+  - [x] credential audit rows are written when `execute_in_skill` injects a bound credential
+  - [x] credential audit metadata does not contain decrypted values, stdout, stderr, or raw command arguments
 - [x] Add regression coverage for `execute_in_skill` credential audit rows and sanitized metadata.
 - [x] Add regression coverage for undeclared `curl` execution denial and sanitized `skill_security.sandbox_denied` metadata.
 - [x] Add regression coverage for internal eval template selection: structured extraction, research, and general task fallback.
@@ -3133,7 +3133,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [x] Add regression coverage for deterministic eval case generation from structured extraction, research, and general templates.
 - [x] Add regression coverage for eval runner output directories and initial benchmark aggregation.
 - [x] Add regression coverage for worker max concurrency enforcement.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd backend
@@ -3161,14 +3161,14 @@ Expected: eval runner tests pass.
 - Create: `backend/tests/test_skill_evaluation_worker.py`
 - Extend: `backend/tests/test_skills_api_regression.py`
 
-- [ ] Add response/request schemas for evaluation sets, run summaries, run detail, and latest evaluation summary.
-- [ ] Add `/api/skills/{skill_id}/evaluations` endpoints from the API Contract section.
+- [x] Add response/request schemas for evaluation sets, run summaries, run detail, and latest evaluation summary.
+- [x] Add `/api/skills/{skill_id}/evaluations` endpoints from the API Contract section.
 - [x] Add `/estimate` and `/runs/{run_id}/cancel` endpoints.
 - [x] Make `POST /runs` commit a queued run and enqueue it through `SkillEvaluationWorker`; do not execute the full evaluation inside the request handler.
 - [x] Register `SkillEvaluationWorker` in app lifespan with startup interrupted-run reconciliation and shutdown stop.
 - [x] Persist installed-skill eval runs in `skill_evaluation_runs`, not normal `conversation_runs`.
 - [x] Enforce ownership by loading the parent skill through `skill_service.get_skill`.
-- [ ] Add CSRF dependency to create/update/delete/run endpoints.
+- [x] Add CSRF dependency to create/update/delete/run endpoints.
 - [x] Populate `latest_evaluation_summary` in skill list and detail responses without N+1 queries.
 - [x] Populate `health` in skill list and detail responses.
 - [x] Implement run creation so it snapshots the current `skill.version` and `skill.content_hash`.
@@ -3181,19 +3181,19 @@ Expected: eval runner tests pass.
 - [x] Record `skill_security.sandbox_denied` when the eval runner blocks undeclared network access before launch.
 - [ ] Extend `skill_security.sandbox_denied` coverage to unsupported executables, path traversal, and timeout policy violations before launch.
 - [ ] Add API tests:
-  - list returns evaluation sets owned by the skill owner
-  - create set persists eval prompts and expectations
-  - estimate returns case count, model calls, approximate cost, and timeout
-  - rerun creates a new `SkillEvaluationRun`
-  - rerun enqueues the run instead of executing the full evaluation inside the HTTP request
-  - queue-full returns `SKILL_EVALUATION_QUEUE_FULL`
+  - [x] list returns evaluation sets owned by the skill owner
+  - [x] create set persists eval prompts and expectations
+  - [x] estimate returns case count, model calls, approximate cost, and timeout
+  - [x] rerun creates a new `SkillEvaluationRun`
+  - [x] rerun enqueues the run instead of executing the full evaluation inside the HTTP request
+  - [x] queue-full returns `SKILL_EVALUATION_QUEUE_FULL`
   - missing System LLM returns `SYSTEM_LLM_NOT_CONFIGURED` before a run row is created
-  - cancel transitions an active run to `cancelled`
+  - [x] cancel transitions an active run to `cancelled`
   - cancel sets `cancellation_requested_at` for running/grading runs
   - stale detection works when skill content hash changes after a run
   - skill detail response includes `health`
-  - cross-user access returns 404
-  - missing required skill credential binding returns `MARKETPLACE_CREDENTIAL_REQUIRED` and no run row is created
+  - [x] cross-user access returns 404
+  - [x] missing required skill credential binding returns `MARKETPLACE_CREDENTIAL_REQUIRED` and no run row is created
   - run create/cancel/complete/failure audit events contain IDs and summary metrics but no prompts or outputs
   - sandbox denial audit event contains reason code and executable only, not raw command arguments
 - [x] Add regression coverage for run enqueue, queue-full rollback, background queue consumption, worker complete/fail transitions, cancelled-run skip, and interrupted running/grading reconciliation.
