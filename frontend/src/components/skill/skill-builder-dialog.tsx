@@ -3,22 +3,17 @@
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import {
-  AlertTriangle,
-  CheckCircle2,
-  FileCode2,
-  Loader2,
-  MessageSquareText,
-  Sparkles,
-} from 'lucide-react'
+import { CheckCircle2, FileCode2, Loader2, MessageSquareText, Sparkles } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { DomainIconTile } from '@/components/shared/icon'
 import { ApiError } from '@/lib/api/client'
+import { useSession } from '@/lib/auth/session'
 import { useConfirmSkillBuilderSession, useStartSkillBuilder } from '@/lib/hooks/use-skill-builder'
 import { SkillBuilderPreview } from './skill-builder-preview'
+import { ImprovementConflict, SystemLlmReadiness } from './skill-builder-status-panels'
 import type { SkillBuilderMode, SkillBuilderSession } from '@/lib/types'
 
 type SkillBuilderOpenTab = 'content' | 'evaluation'
@@ -72,6 +67,7 @@ function SkillBuilderDialogInner({
   const t = useTranslations('skill.builderDialog')
   const start = useStartSkillBuilder()
   const confirm = useConfirmSkillBuilderSession()
+  const { data: user } = useSession()
   const [request, setRequest] = useState(initialRequest)
   const [session, setSession] = useState<SkillBuilderSession | null>(null)
   const [systemLlmMissing, setSystemLlmMissing] = useState(false)
@@ -158,7 +154,9 @@ function SkillBuilderDialogInner({
               )}
               onChange={(event) => setRequest(event.target.value)}
             />
-            {systemLlmMissing ? <SystemLlmReadiness /> : null}
+            {systemLlmMissing ? (
+              <SystemLlmReadiness isSuperUser={Boolean(user?.is_super_user)} />
+            ) : null}
             {sourceConflict ? (
               <ImprovementConflict
                 reloadPending={start.isPending}
@@ -210,54 +208,5 @@ function SkillBuilderDialogInner({
         </Button>
       </DialogShell.Footer>
     </>
-  )
-}
-
-function ImprovementConflict({
-  reloadPending,
-  onReloadLatest,
-  onDiscard,
-}: {
-  readonly reloadPending: boolean
-  readonly onReloadLatest: () => void
-  readonly onDiscard: () => void
-}) {
-  const t = useTranslations('skill.builderDialog.conflict')
-  return (
-    <div className="moldy-status-surface moldy-status-warn flex flex-col gap-3 rounded-md p-3">
-      <div className="flex items-start gap-3">
-        <AlertTriangle className="moldy-status-icon mt-0.5 size-4 shrink-0" />
-        <div>
-          <p className="moldy-status-text text-sm font-semibold">{t('title')}</p>
-          <p className="moldy-status-muted-text mt-1 text-xs">{t('description')}</p>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" onClick={onReloadLatest} disabled={reloadPending}>
-          {reloadPending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Sparkles className="size-4" />
-          )}
-          {t('reloadLatest')}
-        </Button>
-        <Button type="button" variant="outline" size="sm" onClick={onDiscard}>
-          {t('discard')}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-function SystemLlmReadiness() {
-  const t = useTranslations('skill.builderDialog.systemLlm')
-  return (
-    <div className="moldy-status-surface moldy-status-warn flex items-start gap-3 rounded-md p-3">
-      <AlertTriangle className="moldy-status-icon mt-0.5 size-4 shrink-0" />
-      <div>
-        <p className="moldy-status-text text-sm font-semibold">{t('title')}</p>
-        <p className="moldy-status-muted-text mt-1 text-xs">{t('description')}</p>
-      </div>
-    </div>
   )
 }

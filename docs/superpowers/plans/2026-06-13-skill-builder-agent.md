@@ -3321,7 +3321,7 @@ Expected: lint passes or reports only existing unrelated issues. Fix new issues 
 - [x] Render portable compatibility result with target chips for OpenAI/Codex, Claude Code, and Vercel Agent Skills.
 - [x] Render eval benchmark when `draft_package.benchmark` or `session.eval_result` exists.
 - [x] Confirm creates a skill and calls `onCreated(created.id, { openTab })` so the existing detail dialog can open on `evaluation` when evals exist.
-- [ ] Add component tests for the System LLM readiness state, including normal-user and super-user copy variants.
+- [x] Add component tests for the System LLM readiness state, including normal-user and super-user copy variants.
 - [x] Add i18n messages in both Korean and English.
 - [x] Run:
 
@@ -3541,7 +3541,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev -- --port 3000
 - [ ] Open `/skills`.
 - [ ] Verify the primary page CTA is "대화로 만들기".
 - [ ] Verify `/skills` uses kind tabs plus state filter chips for credential/evaluation/publish states instead of sending the user to separate skill management pages.
-- [ ] Temporarily test a missing `text_primary` System LLM configuration in a safe local DB or mocked API response and verify the conversational builder shows the readiness state instead of a generic 500/toast, while Text and Package Upload still work.
+- [x] Temporarily test a missing `text_primary` System LLM configuration in a safe local DB or mocked API response and verify the conversational builder shows the readiness state instead of a generic 500/toast, while Text and Package Upload still work.
 - [ ] Click "대화로 만들기".
 - [ ] Verify opening the Skill Builder does not navigate into a normal conversation thread, create a normal conversation run, or require the normal chat `ChatRuntimeSection`.
 - [ ] Ask for a concrete skill, for example:

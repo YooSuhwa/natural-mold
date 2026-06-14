@@ -6,11 +6,22 @@ import { render, screen, userEvent, waitFor } from '../../../../tests/test-utils
 import type { Skill } from '@/lib/types/skill'
 import type { SkillBuilderSession } from '@/lib/types/skill-builder'
 
+type MockSession = {
+  readonly data: { readonly is_super_user: boolean } | null
+  readonly isPending: boolean
+}
+
+const mockUseSession = vi.hoisted(() => vi.fn<() => MockSession>())
+
 vi.mock('@/lib/api/skill-builder', () => ({
   skillBuilderApi: {
     start: vi.fn(),
     confirm: vi.fn(),
   },
+}))
+
+vi.mock('@/lib/auth/session', () => ({
+  useSession: mockUseSession,
 }))
 
 const skill: Skill = {
@@ -89,10 +100,11 @@ const session: SkillBuilderSession = {
 describe('SkillBuilderDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUseSession.mockReturnValue({ data: { is_super_user: false }, isPending: false })
     vi.mocked(skillBuilderApi.confirm).mockResolvedValue(skill)
   })
 
-  it('shows a System LLM readiness state when the hidden builder model is unavailable', async () => {
+  it('shows normal users that an administrator needs to configure the builder model', async () => {
     vi.mocked(skillBuilderApi.start).mockRejectedValue(
       new ApiError(409, 'SYSTEM_LLM_NOT_CONFIGURED', '시스템 LLM 설정이 필요합니다'),
     )
@@ -104,8 +116,34 @@ describe('SkillBuilderDialog', () => {
 
     expect(await screen.findByText('시스템 LLM 설정이 필요합니다')).toBeInTheDocument()
     expect(
-      screen.getByText('텍스트 또는 패키지 업로드는 계속 사용할 수 있습니다.'),
+      screen.getByText(
+        '스킬 빌더 모델 설정이 필요합니다. 관리자에게 설정을 요청하세요. 텍스트 또는 패키지 업로드는 계속 사용할 수 있습니다.',
+      ),
     ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'System LLM 설정 열기' })).not.toBeInTheDocument()
+  })
+
+  it('shows super users a direct System LLM settings action when the builder model is missing', async () => {
+    mockUseSession.mockReturnValue({ data: { is_super_user: true }, isPending: false })
+    vi.mocked(skillBuilderApi.start).mockRejectedValue(
+      new ApiError(409, 'SYSTEM_LLM_NOT_CONFIGURED', '시스템 LLM 설정이 필요합니다'),
+    )
+
+    render(<SkillBuilderDialog open mode="create" onOpenChange={vi.fn()} />)
+
+    await userEvent.type(screen.getByLabelText('요청'), '회의록 스킬을 만들어줘')
+    await userEvent.click(screen.getByRole('button', { name: '대화 시작' }))
+
+    expect(await screen.findByText('시스템 LLM 설정이 필요합니다')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        '스킬 빌더는 text_primary 시스템 모델을 사용합니다. System LLM 설정에서 모델과 시스템 자격증명을 연결하세요. 설정 전에도 텍스트 또는 패키지 업로드는 계속 사용할 수 있습니다.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'System LLM 설정 열기' })).toHaveAttribute(
+      'href',
+      '/settings/system-llm',
+    )
   })
 
   it('starts improve sessions with the source skill id and confirms the created skill', async () => {

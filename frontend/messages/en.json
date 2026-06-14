@@ -2484,7 +2484,10 @@
       },
       "systemLlm": {
         "title": "System LLM setup is required",
-        "description": "Text creation and package upload are still available."
+        "description": "Text creation and package upload are still available.",
+        "userDescription": "The Skill Builder model needs administrator setup. Text creation and package upload are still available.",
+        "adminDescription": "Skill Builder uses the text_primary system model. Connect a model and system credential in System LLM Settings. Text creation and package upload are still available until setup is complete.",
+        "settingsAction": "Open System LLM Settings"
       },
       "conflict": {
         "title": "Skill changed",
