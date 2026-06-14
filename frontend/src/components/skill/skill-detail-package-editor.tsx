@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
+import { skillsApi } from '@/lib/api/skills'
 import {
   useDeleteSkill,
   useDeleteSkillFile,
@@ -222,6 +223,7 @@ export function PackageSkillEditor({
         deletePending={removeSkill.isPending}
         savePending={setFile.isPending}
         saveDisabled={!currentDirty || setFile.isPending}
+        exportHref={skillsApi.exportUrl(skillId)}
         sizeBytes={skill?.size_bytes ?? 0}
         version={skill?.version ?? null}
         usedByCount={skill?.used_by_count ?? 0}

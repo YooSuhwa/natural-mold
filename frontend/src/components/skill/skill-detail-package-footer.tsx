@@ -1,6 +1,6 @@
 'use client'
 
-import { Loader2, Save, Trash2 } from 'lucide-react'
+import { Download, Loader2, Save, Trash2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
@@ -11,6 +11,7 @@ type SkillDetailPackageFooterProps = {
   readonly deletePending: boolean
   readonly savePending: boolean
   readonly saveDisabled: boolean
+  readonly exportHref: string
   readonly sizeBytes: number
   readonly version: string | null
   readonly usedByCount: number
@@ -26,6 +27,7 @@ export function SkillDetailPackageFooter({
   deletePending,
   savePending,
   saveDisabled,
+  exportHref,
   sizeBytes,
   version,
   usedByCount,
@@ -66,6 +68,10 @@ export function SkillDetailPackageFooter({
           count: usedByCount,
         })}
       </span>
+      <Button variant="outline" render={<a href={exportHref} download />}>
+        <Download className="size-4" />
+        {t('exportPackage')}
+      </Button>
       <Button variant="outline" onClick={onClose}>
         {t('close')}
       </Button>

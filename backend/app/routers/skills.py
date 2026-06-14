@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
@@ -23,6 +23,7 @@ from app.schemas.skill import (
 from app.services import skill_revision_mutations
 from app.skills import service as skill_service
 from app.skills.inspector import SkillMetadataError
+from app.skills.package_exporter import build_installed_skill_zip_bytes
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
 
@@ -218,6 +219,30 @@ async def get_text_content(
         raise invalid_skill_package("only text skills expose plain content")
     content = await skill_service.read_text_content(skill)
     return SkillTextContentResponse(content=content)
+
+
+@router.get("/{skill_id}/export")
+async def export_package_skill(
+    skill_id: uuid.UUID,
+    include_evals: bool = Query(default=False),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> Response:
+    skill = await skill_service.get_skill(db, skill_id, user.id)
+    if not skill:
+        raise skill_not_found()
+    if skill.kind != "package":
+        raise invalid_skill_package("only package skills can be exported")
+    try:
+        zip_bytes = build_installed_skill_zip_bytes(skill, include_evals=include_evals)
+    except ValueError as exc:
+        raise invalid_skill_package(str(exc)) from None
+    filename = f"{skill_service.slugify(skill.slug or skill.name)}.skill"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.delete("/{skill_id}", status_code=204)

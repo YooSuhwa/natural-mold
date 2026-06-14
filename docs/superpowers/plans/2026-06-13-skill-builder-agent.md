@@ -1156,6 +1156,22 @@ Revision behavior:
 - Rollback returns the updated `SkillResponse` plus the new revision summary.
 - Rollback marks latest evaluation summary stale by content-hash comparison; it does not mutate old eval rows.
 
+Add installed package export support to the existing Skill API.
+
+Endpoint:
+
+```text
+GET /api/skills/{skill_id}/export?include_evals=false
+```
+
+Export behavior:
+
+- Only package skills can be exported; text skills return `INVALID_SKILL_PACKAGE`.
+- The response is an `application/zip` attachment named `{skill.slug}.skill`.
+- The exported archive keeps the package folder wrapper and includes the current installed files.
+- `evals/` is excluded by default so portable `.skill` downloads stay focused on runtime instructions and assets.
+- `include_evals=true` is an explicit escape hatch for internal backup/debug workflows.
+
 Required behavior:
 
 - All mutating endpoints use `Depends(verify_csrf)`.
@@ -3447,6 +3463,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add focused `getVisibleSkillDetailTabs` tests for hidden optional tabs, credential requirements, evaluation signal, history signal, and deep links.
 - [x] Add focused `skill-state-filters` tests for stale rerun, publication/local state, and combined filters.
 - [x] Add focused `ToolsSkillsDialog` skill picker tests for compact skill quality badges without rerun/cancel controls.
+- [x] Add package detail/API regression coverage for the `.skill` export action, default export URL, and optional eval artifact inclusion.
 - [x] Add mock-only Playwright coverage for installed skill evaluation rerun/cancel controls in `frontend/e2e/skill-evaluation-actions.spec.ts`.
 - [x] Add mock-only Playwright coverage for installed skill history rendering in `frontend/e2e/skill-history.spec.ts`.
 - [x] Add mock-only Playwright coverage for `/skills` state filter chips in `frontend/e2e/skill-state-filters.spec.ts`.
@@ -3485,7 +3502,7 @@ Expected: no new lint errors.
 
 ```bash
 cd backend
-uv run pytest tests/test_skills.py tests/test_skills_api_regression.py tests/test_skill_bindings.py -q
+uv run pytest tests/test_skills.py tests/test_skill_export.py tests/test_skills_api_regression.py tests/test_skill_bindings.py -q
 ```
 
 Expected: existing skill behavior still passes.
@@ -3531,6 +3548,8 @@ pnpm exec eslint --no-ignore e2e/skill-history.spec.ts
 PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3113 E2E_BACKEND_PORT=8113 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-history.spec.ts --workers=1
 pnpm exec vitest run tests/components/agent/tools-skills-dialog-quality.test.tsx
 pnpm exec eslint tests/components/agent/tools-skills-dialog-quality.test.tsx
+pnpm exec vitest run src/components/skill/__tests__/skill-detail-dialog.test.tsx src/components/skill/__tests__/skill-detail-package-footer.test.tsx src/lib/api/__tests__/skills-api.test.ts
+pnpm exec eslint src/lib/api/skills.ts src/lib/api/__tests__/skills-api.test.ts src/components/skill/skill-detail-package-editor.tsx src/components/skill/skill-detail-package-footer.tsx src/components/skill/__tests__/skill-detail-dialog.test.tsx src/components/skill/__tests__/skill-detail-package-footer.test.tsx
 pnpm exec eslint --no-ignore e2e/skill-builder-create.spec.ts
 PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3114 E2E_BACKEND_PORT=8114 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-builder-create.spec.ts --workers=1
 ```
@@ -3711,7 +3730,7 @@ The MVP is useful without evals, but its data model and UI should already have f
 - [ ] Skill credential injection through `execute_in_skill` writes credential-use audit records without leaking credential values.
 - [ ] Builder/evaluation audit events appear in `/settings/audit` with sanitized metadata and no prompt/output/file-body leakage.
 - [ ] Evaluation runner uses the same sandbox, timeout, path, env, and redaction policy as current skill execution.
-- [ ] Generated package can be exported as `.skill` without `evals/` by default.
+- [x] Generated package can be exported as `.skill` without `evals/` by default.
 - [x] Backend tests pass.
 - [x] Frontend lint/build/design/i18n checks pass.
 - [ ] Manual `/skills` flow succeeds end to end.
