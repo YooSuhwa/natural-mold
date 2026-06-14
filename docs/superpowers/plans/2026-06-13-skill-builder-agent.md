@@ -3698,37 +3698,37 @@ The MVP is useful without evals, but its data model and UI should already have f
 
 - [ ] New Skill Builder can create a package skill from chat.
 - [ ] Existing skills can be improved through chat and applied back to the same skill row.
-- [ ] Improve mode shows file diffs and blocks stale-base overwrites with a conflict state.
-- [ ] Existing text skill creation still works.
-- [ ] Existing package upload still works.
+- [x] Improve mode shows file diffs and blocks stale-base overwrites with a conflict state.
+- [x] Existing text skill creation still works.
+- [x] Existing package upload still works.
 - [ ] Existing package file editor still works on builder-created skills.
-- [ ] Package skill file update/delete/upload recalculates `content_hash` and marks old evaluations stale by comparison.
-- [ ] Credential requirement panel shows generated requirements.
+- [x] Package skill file update/delete/upload recalculates `content_hash` and marks old evaluations stale by comparison.
+- [x] Credential requirement panel shows generated requirements.
 - [x] `/skills` primary CTA starts conversational skill creation.
 - [x] Skill Builder works in the default app shell, where normal chat uses `langgraph_v3` unless `NEXT_PUBLIC_CHAT_RUNTIME=legacy`.
-- [ ] Missing System LLM configuration shows a readiness state and does not break text creation or package upload.
-- [ ] Skill cards show compact evaluation status without losing marketplace publish/manage actions.
-- [ ] Skill detail dialog has stable `Content` or `Files` editing plus conditionally visible `Credentials`, `Evaluation`, `History`, and `Metadata` surfaces.
-- [ ] Every skill-changing operation creates an immutable skill revision snapshot.
-- [ ] Legacy skills with no revision history get a baseline backfill path or a clear history empty-state before first mutation.
-- [ ] History tab lists revisions and can roll back to an earlier snapshot by creating a new rollback revision.
-- [ ] Improve mode generates a human-readable changelog before apply and stores it on the resulting revision.
-- [ ] Changelog, revision history, compatibility reports, and eval reports are not appended to `SKILL.md`.
+- [x] Missing System LLM configuration shows a readiness state and does not break text creation or package upload.
+- [x] Skill cards show compact evaluation status without losing marketplace publish/manage actions.
+- [x] Skill detail dialog has stable `Content` or `Files` editing plus conditionally visible `Credentials`, `Evaluation`, `History`, and `Metadata` surfaces.
+- [x] Every skill-changing operation creates an immutable skill revision snapshot.
+- [x] Legacy skills with no revision history get a baseline backfill path or a clear history empty-state before first mutation.
+- [x] History tab lists revisions and can roll back to an earlier snapshot by creating a new rollback revision.
+- [x] Improve mode generates a human-readable changelog before apply and stores it on the resulting revision.
+- [x] Changelog, revision history, compatibility reports, and eval reports are not appended to `SKILL.md`.
 - [x] Agent settings skill picker shows compact evaluation status without rerun/detail controls.
-- [ ] Every installed skill can show evaluation sets, latest result, run history, and rerun controls.
-- [ ] Evaluation templates are selected automatically; users are not forced through a preset picker.
-- [ ] Evaluation runs store template/version metadata, estimate, runner version, grader prompt version, and eval schema version.
-- [ ] Evaluation runs are created as durable queued rows and executed through a bounded worker, not through a long HTTP request.
-- [ ] Evaluation rerun shows a cost/time estimate and supports cancellation or timeout status.
-- [ ] Skill Health summary appears on cards/detail and reacts to missing evals, stale runs, missing credentials, running evals, failed evals, and low pass rate.
-- [ ] Builder-time evals are attached to the finalized skill as reusable evaluation records.
-- [ ] Validation catches missing metadata, weak descriptions, unsafe paths, and secrets.
-- [ ] Validation catches invalid credential requirements, unknown credential definitions, reversed `env_map`, and undeclared network usage.
-- [ ] Validation catches portable compatibility issues for OpenAI/Codex, Claude Code, and Vercel Agent Skills targets.
-- [ ] Missing required skill credentials block evaluation and guide the user to the `Credentials` tab.
-- [ ] Skill credential binding upsert/delete continues to write existing skill audit events.
-- [ ] Skill credential injection through `execute_in_skill` writes credential-use audit records without leaking credential values.
-- [ ] Builder/evaluation audit events appear in `/settings/audit` with sanitized metadata and no prompt/output/file-body leakage.
+- [x] Every installed skill can show evaluation sets, latest result, run history, and rerun controls.
+- [x] Evaluation templates are selected automatically; users are not forced through a preset picker.
+- [x] Evaluation runs store template/version metadata, estimate, runner version, grader prompt version, and eval schema version.
+- [x] Evaluation runs are created as durable queued rows and executed through a bounded worker, not through a long HTTP request.
+- [x] Evaluation rerun shows a cost/time estimate and supports cancellation or timeout status.
+- [x] Skill Health summary appears on cards/detail and reacts to missing evals, stale runs, missing credentials, running evals, failed evals, and low pass rate.
+- [x] Builder-time evals are attached to the finalized skill as reusable evaluation records.
+- [x] Validation catches missing metadata, weak descriptions, unsafe paths, and secrets.
+- [x] Validation catches invalid credential requirements, unknown credential definitions, reversed `env_map`, and undeclared network usage.
+- [x] Validation catches portable compatibility issues for OpenAI/Codex, Claude Code, and Vercel Agent Skills targets.
+- [x] Missing required skill credentials block evaluation and guide the user to the `Credentials` tab.
+- [x] Skill credential binding upsert/delete continues to write existing skill audit events.
+- [x] Skill credential injection through `execute_in_skill` writes credential-use audit records without leaking credential values.
+- [x] Builder/evaluation audit events appear in `/settings/audit` with sanitized metadata and no prompt/output/file-body leakage.
 - [ ] Evaluation runner uses the same sandbox, timeout, path, env, and redaction policy as current skill execution.
 - [x] Generated package can be exported as `.skill` without `evals/` by default.
 - [x] Backend tests pass.
