@@ -30,7 +30,7 @@ def test_synthesized_tool_finished_preserves_tool_message_name() -> None:
         thread_id="thread-1",
     )
 
-    events = synthesize_tool_events_from_values(values)
+    events = synthesize_tool_events_from_values(values, first_seq=21)
 
     assert events[0]["data"] == {
         "event": "tool-finished",
@@ -39,6 +39,7 @@ def test_synthesized_tool_finished_preserves_tool_message_name() -> None:
         "content": "OUTPUT_FILES: moldy-langgraph-v3-report.md",
         "status": "success",
     }
+    assert events[0]["seq"] == 21
 
 
 def test_start_and_finish_for_same_tool_call_are_deduped_separately() -> None:
@@ -90,10 +91,20 @@ def test_start_and_finish_for_same_tool_call_are_deduped_separately() -> None:
     )
     seen: set[str] = set()
 
-    start_events = synthesize_tool_events_from_values(started, seen_tool_call_ids=seen)
-    finish_events = synthesize_tool_events_from_values(finished, seen_tool_call_ids=seen)
+    start_events = synthesize_tool_events_from_values(
+        started,
+        seen_tool_call_ids=seen,
+        first_seq=12,
+    )
+    finish_events = synthesize_tool_events_from_values(
+        finished,
+        seen_tool_call_ids=seen,
+        first_seq=13,
+    )
 
     assert start_events[0]["data"]["event"] == "tool-started"
     assert finish_events[0]["data"]["event"] == "tool-finished"
     assert finish_events[0]["data"]["name"] == "execute_in_skill"
+    assert start_events[0]["seq"] == 12
+    assert finish_events[0]["seq"] == 13
     assert seen == {"start:call-docx", "finish:call-docx"}

@@ -5,6 +5,7 @@ import {
   appendInterruptToolCallMessages,
   interruptPayloadResolvedByMessages,
   standardPayloadFromInterrupt,
+  standardPayloadsFromInterrupts,
 } from '../hitl-interrupts'
 import type { StandardInterruptPayload } from '@/lib/types'
 
@@ -44,6 +45,7 @@ describe('standardPayloadFromInterrupt', () => {
   it('normalizes live input.requested interrupts from LangGraph React', () => {
     const payload = standardPayloadFromInterrupt({
       interruptId: 'intr-live',
+      namespace: ['tools:call-1'],
       payload: {
         action_requests: [{ name: 'send_email', args: { to: 'team@example.com' } }],
         review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve'] }],
@@ -52,6 +54,7 @@ describe('standardPayloadFromInterrupt', () => {
 
     expect(payload).toEqual({
       interrupt_id: 'intr-live',
+      namespace: ['tools:call-1'],
       action_requests: [{ name: 'send_email', args: { to: 'team@example.com' } }],
       review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve'] }],
     })
@@ -73,6 +76,35 @@ describe('standardPayloadFromInterrupt', () => {
       ],
       review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
     })
+  })
+
+  it('keeps the thread namespace when root and thread interrupts share an id', () => {
+    const payloads = standardPayloadsFromInterrupts([
+      {
+        id: 'intr-1',
+        value: {
+          action_requests: [{ name: 'send_email', args: { to: 'team@example.com' } }],
+          review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve'] }],
+        },
+      },
+      {
+        interruptId: 'intr-1',
+        namespace: ['tools:call-1'],
+        payload: {
+          action_requests: [{ name: 'send_email', args: { to: 'team@example.com' } }],
+          review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve'] }],
+        },
+      },
+    ])
+
+    expect(payloads).toEqual([
+      {
+        interrupt_id: 'intr-1',
+        namespace: ['tools:call-1'],
+        action_requests: [{ name: 'send_email', args: { to: 'team@example.com' } }],
+        review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve'] }],
+      },
+    ])
   })
 })
 

@@ -10,6 +10,12 @@ interface MockInterrupt {
   value: unknown
 }
 
+interface MockThreadInterrupt {
+  interruptId: string
+  namespace: string[]
+  payload: unknown
+}
+
 interface MockStream {
   messages: unknown[]
   values: { messages: unknown[] }
@@ -52,7 +58,10 @@ const mocks = vi.hoisted(() => {
     [STREAM_CONTROLLER]: { messageMetadataStore: typeof metadataStore }
   }
   const lifecycleSubscription = { unsubscribe: vi.fn() }
-  const thread = { subscribe: vi.fn(async () => lifecycleSubscription) }
+  const thread = {
+    interrupts: [] as MockThreadInterrupt[],
+    subscribe: vi.fn(async () => lifecycleSubscription),
+  }
   stream.getThread.mockReturnValue(thread)
   return {
     STREAM_CONTROLLER,
@@ -130,6 +139,7 @@ describe('useMoldyLangGraphStream', () => {
     mocks.stream.disconnect.mockClear()
     mocks.stream.getThread.mockClear()
     mocks.stream.getThread.mockReturnValue(mocks.thread)
+    mocks.thread.interrupts = []
     mocks.thread.subscribe.mockClear()
     mocks.thread.subscribe.mockResolvedValue(mocks.lifecycleSubscription)
     mocks.lifecycleSubscription.unsubscribe.mockClear()
@@ -299,6 +309,48 @@ describe('useMoldyLangGraphStream', () => {
     expect(mocks.lifecycleSubscription.unsubscribe).toHaveBeenCalled()
   })
 
+  it('projects and resumes nested thread interrupts with their namespace', async () => {
+    mocks.thread.interrupts = [
+      {
+        interruptId: 'intr-subgraph',
+        namespace: ['tools:call-1'],
+        payload: {
+          action_requests: [{ name: 'send_email', args: { to: 'team@example.com' } }],
+          review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve'] }],
+        },
+      },
+    ]
+    const { result } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hitl',
+          conversationId: 'conversation-hitl',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    const calls = mocks.useExternalMessageConverter.mock.calls
+    const converterOptions = calls[calls.length - 1]?.[0]
+
+    expect(converterOptions.messages).toEqual([
+      expect.objectContaining({
+        tool_calls: [
+          expect.objectContaining({
+            id: 'intr-subgraph:0',
+            name: 'request_approval',
+          }),
+        ],
+      }),
+    ])
+
+    await result.current.onResumeDecisions([{ type: 'approve' }], '승인', 'intr-subgraph')
+
+    expect(mocks.stream.respond).toHaveBeenCalledWith(
+      { decisions: [{ type: 'approve' }] },
+      { interruptId: 'intr-subgraph', namespace: ['tools:call-1'] },
+    )
+  })
+
   it('keeps resolved HITL approval results visible after resume', async () => {
     mocks.stream.interrupts = [
       {
@@ -395,5 +447,47 @@ describe('useMoldyLangGraphStream', () => {
       },
       { interruptId: 'intr-multi' },
     )
+  })
+
+  it('resumes concurrent single-action interrupts with respondAll after every pending interrupt has a decision', async () => {
+    mocks.thread.interrupts = [
+      {
+        interruptId: 'intr-a',
+        namespace: ['tools:call-a'],
+        payload: {
+          action_requests: [{ name: 'send_email', args: { to: 'a@example.com' } }],
+          review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve', 'reject'] }],
+        },
+      },
+      {
+        interruptId: 'intr-b',
+        namespace: ['tools:call-b'],
+        payload: {
+          action_requests: [{ name: 'send_email', args: { to: 'b@example.com' } }],
+          review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve', 'reject'] }],
+        },
+      },
+    ]
+    const { result } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hitl',
+          conversationId: 'conversation-hitl',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    await result.current.registerDecision(0, { type: 'approve' }, '승인', 'intr-a')
+
+    expect(mocks.stream.respond).not.toHaveBeenCalled()
+    expect(mocks.stream.respondAll).not.toHaveBeenCalled()
+
+    await result.current.registerDecision(0, { type: 'reject', message: '거부' }, '거부', 'intr-b')
+
+    expect(mocks.stream.respond).not.toHaveBeenCalled()
+    expect(mocks.stream.respondAll).toHaveBeenCalledWith({
+      'intr-a': { decisions: [{ type: 'approve' }] },
+      'intr-b': { decisions: [{ type: 'reject', message: '거부' }] },
+    })
   })
 })

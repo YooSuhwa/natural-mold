@@ -6,6 +6,7 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.executor import _prepare_agent
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
@@ -16,7 +17,7 @@ from app.routers.conversation_agent_protocol_contracts import (
     UpdateStateRequest,
     state_response,
 )
-from app.routers.conversation_agent_protocol_runtime import (
+from app.routers.conversation_agent_protocol_state_snapshot import (
     serialize_langchain_message,
 )
 from app.services.conversation_stream_service import resolve_agent_context
@@ -30,10 +31,8 @@ async def load_thread_history_response(
     conversation: Conversation,
     request: HistoryRequest,
 ) -> list[dict[str, object]]:
-    from app.routers import conversation_agent_protocol_runtime as runtime
-
     try:
-        checkpointer = runtime.get_checkpointer()
+        checkpointer = get_checkpointer()
     except RuntimeError:
         return []
 

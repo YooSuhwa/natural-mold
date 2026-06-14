@@ -4,11 +4,14 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.protocol_events import stored_protocol_event
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from tests.conftest import TEST_USER_ID
@@ -102,8 +105,10 @@ async def test_input_respond_command_preserves_batched_interrupt_responses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation = await _seed_protocol_conversation(db)
+    parent_run_id = uuid.uuid4()
     db.add(
         ConversationRun(
+            id=parent_run_id,
             conversation_id=conversation.id,
             agent_id=conversation.agent_id,
             user_id=TEST_USER_ID,
@@ -111,6 +116,31 @@ async def test_input_respond_command_preserves_batched_interrupt_responses(
             status="interrupted",
             is_active=False,
             interrupt_id="intr-a",
+        )
+    )
+    db.add(
+        MessageEvent(
+            conversation_id=conversation.id,
+            assistant_msg_id=str(parent_run_id),
+            events=[
+                stored_protocol_event(
+                    run_id=str(parent_run_id),
+                    thread_id=str(conversation.id),
+                    seq=1,
+                    method="input.requested",
+                    namespace=["root"],
+                    data={"interrupt_id": "intr-a", "payload": {"question": "A"}},
+                ),
+                stored_protocol_event(
+                    run_id=str(parent_run_id),
+                    thread_id=str(conversation.id),
+                    seq=2,
+                    method="input.requested",
+                    namespace=["subgraph:worker"],
+                    data={"interrupt_id": "intr-b", "payload": {"question": "B"}},
+                ),
+            ],
+            status="completed",
         )
     )
     await db.commit()
@@ -132,14 +162,14 @@ async def test_input_respond_command_preserves_batched_interrupt_responses(
             "params": {
                 "responses": [
                     {
-                        "namespace": [],
-                        "interrupt_id": "intr-a",
-                        "response": {"decisions": [{"type": "approve"}]},
-                    },
-                    {
-                        "namespace": [],
+                        "namespace": ["subgraph:worker"],
                         "interrupt_id": "intr-b",
                         "response": {"decisions": [{"type": "reject", "message": "no"}]},
+                    },
+                    {
+                        "namespace": ["root"],
+                        "interrupt_id": "intr-a",
+                        "response": {"decisions": [{"type": "approve"}]},
                     },
                 ]
             },
@@ -151,4 +181,208 @@ async def test_input_respond_command_preserves_batched_interrupt_responses(
     assert started["input_payload"] == {
         "intr-a": {"decisions": [{"type": "approve"}]},
         "intr-b": {"decisions": [{"type": "reject", "message": "no"}]},
+    }
+
+
+@pytest.mark.asyncio
+async def test_input_respond_command_rejects_stale_namespace(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    parent_run_id = uuid.uuid4()
+    db.add(
+        ConversationRun(
+            id=parent_run_id,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            status="interrupted",
+            is_active=False,
+            interrupt_id="intr-1",
+        )
+    )
+    db.add(
+        MessageEvent(
+            conversation_id=conversation.id,
+            assistant_msg_id=str(parent_run_id),
+            events=[
+                stored_protocol_event(
+                    run_id=str(parent_run_id),
+                    thread_id=str(conversation.id),
+                    seq=1,
+                    method="input.requested",
+                    namespace=["subgraph:worker"],
+                    data={"interrupt_id": "intr-1", "payload": {"question": "approve?"}},
+                )
+            ],
+            status="completed",
+        )
+    )
+    await db.commit()
+
+    async def fail_start_conversation_run(**_kwargs):
+        raise AssertionError("stale namespace must reject before worker start")
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fail_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": "resume-stale-ns",
+            "method": "input.respond",
+            "params": {
+                "namespace": ["wrong"],
+                "interrupt_id": "intr-1",
+                "response": {"decisions": [{"type": "approve"}]},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "type": "error",
+        "id": "resume-stale-ns",
+        "error": {
+            "code": "STALE_INTERRUPT",
+            "message": "input.respond namespace does not match the pending interrupt",
+        },
+    }
+    resume_rows = await db.scalars(
+        select(ConversationRun).where(
+            ConversationRun.conversation_id == conversation.id,
+            ConversationRun.source == "resume",
+        )
+    )
+    assert list(resume_rows) == []
+
+
+@pytest.mark.asyncio
+async def test_input_respond_command_rejects_unknown_batched_interrupt(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    parent_run_id = uuid.uuid4()
+    db.add(
+        ConversationRun(
+            id=parent_run_id,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            status="interrupted",
+            is_active=False,
+            interrupt_id="intr-a",
+        )
+    )
+    db.add(
+        MessageEvent(
+            conversation_id=conversation.id,
+            assistant_msg_id=str(parent_run_id),
+            events=[
+                stored_protocol_event(
+                    run_id=str(parent_run_id),
+                    thread_id=str(conversation.id),
+                    seq=1,
+                    method="input.requested",
+                    namespace=["root"],
+                    data={"interrupt_id": "intr-a", "payload": {"question": "A"}},
+                )
+            ],
+            status="completed",
+        )
+    )
+    await db.commit()
+
+    async def fail_start_conversation_run(**_kwargs):
+        raise AssertionError("unknown interrupt must reject before worker start")
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fail_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": "resume-unknown",
+            "method": "input.respond",
+            "params": {
+                "responses": [
+                    {
+                        "namespace": ["root"],
+                        "interrupt_id": "intr-a",
+                        "response": {"decisions": [{"type": "approve"}]},
+                    },
+                    {
+                        "namespace": ["subgraph:worker"],
+                        "interrupt_id": "intr-b",
+                        "response": {"decisions": [{"type": "reject"}]},
+                    },
+                ]
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "type": "error",
+        "id": "resume-unknown",
+        "error": {
+            "code": "STALE_INTERRUPT",
+            "message": "input.respond interrupt_id is not pending",
+        },
+    }
+    resume_rows = await db.scalars(
+        select(ConversationRun).where(
+            ConversationRun.conversation_id == conversation.id,
+            ConversationRun.source == "resume",
+        )
+    )
+    assert list(resume_rows) == []
+
+
+@pytest.mark.asyncio
+async def test_run_start_command_rejects_sdk_camel_case_unsupported_multitask_strategy(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+
+    async def fail_start_conversation_run(**_kwargs):
+        raise AssertionError("unsupported multitaskStrategy must reject before worker start")
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fail_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": "run-enqueue",
+            "method": "run.start",
+            "params": {
+                "input": {"messages": [{"role": "user", "content": "hi"}]},
+                "multitaskStrategy": "enqueue",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "type": "error",
+        "id": "run-enqueue",
+        "error": {
+            "code": "UNSUPPORTED_MULTITASK_STRATEGY",
+            "message": "Unsupported multitask strategy: enqueue",
+        },
     }

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -14,13 +14,15 @@ from app.agent_runtime.protocol_events import (
     SubscribeParams,
     format_protocol_sse,
     matches_subscription,
+    protocol_event_cursor,
+    resequence_protocol_event,
 )
 from app.database import async_session
 from app.routers.conversation_agent_protocol_replay import (
     _events_after_cursor,
     load_protocol_events,
 )
-from app.routers.conversation_agent_protocol_runtime import protocol_event_from_broker
+from app.routers.conversation_agent_protocol_runtime import protocol_events_from_broker
 
 _THREAD_STREAM_POLL_SECONDS = 0.05
 _THREAD_STREAM_REPLAY_POLL_SECONDS = 1.0
@@ -35,7 +37,7 @@ def needs_thread_stream(params: SubscribeParams) -> bool:
 
 
 def _event_cursor(event: StoredProtocolEvent) -> str:
-    return event["upstream_event_id"] or str(event["seq"])
+    return protocol_event_cursor(event)
 
 
 def _latest_live_broker(conversation_id: uuid.UUID) -> EventBroker | None:
@@ -54,34 +56,39 @@ async def _load_replay_events(conversation_id: uuid.UUID) -> list[StoredProtocol
         return await load_protocol_events(session, conversation_id)
 
 
-async def _yield_replay_events(
-    *,
+def _numeric_since(params: SubscribeParams) -> int:
+    since = params.get("since")
+    if isinstance(since, int):
+        return since
+    if isinstance(since, str) and since.isdigit():
+        return int(since)
+    return 0
+
+
+def _max_event_seq(events: list[StoredProtocolEvent]) -> int:
+    return max((event["seq"] for event in events), default=0)
+
+
+async def _load_replay_events_or_empty(
     conversation_id: uuid.UUID,
+) -> list[StoredProtocolEvent]:
+    try:
+        return await _load_replay_events(conversation_id)
+    except SQLAlchemyError as exc:
+        logger.debug("Skipping protocol thread replay after database read failed: %s", exc)
+        return []
+
+
+def _iter_replay_events(
+    events: list[StoredProtocolEvent],
+    *,
     params: SubscribeParams,
     cursor: str | None,
-) -> AsyncGenerator[tuple[str, str], None]:
-    events = await _load_replay_events(conversation_id)
+) -> Iterator[StoredProtocolEvent]:
     for event in _events_after_cursor(events, cursor):
         if not matches_subscription(event, params):
             continue
-        yield format_protocol_sse(event), _event_cursor(event)
-
-
-async def _yield_replay_events_or_skip(
-    *,
-    conversation_id: uuid.UUID,
-    params: SubscribeParams,
-    cursor: str | None,
-) -> AsyncGenerator[tuple[str, str], None]:
-    try:
-        async for chunk, next_cursor in _yield_replay_events(
-            conversation_id=conversation_id,
-            params=params,
-            cursor=cursor,
-        ):
-            yield chunk, next_cursor
-    except SQLAlchemyError as exc:
-        logger.debug("Skipping protocol thread replay after database read failed: %s", exc)
+        yield event
 
 
 async def _yield_broker_events(
@@ -90,17 +97,21 @@ async def _yield_broker_events(
     thread_id: str,
     params: SubscribeParams,
     cursor: str | None,
-) -> AsyncGenerator[tuple[str, str], None]:
+    next_seq: int,
+) -> AsyncGenerator[tuple[str, str, int], None]:
     broker_cursor = cursor if broker.has_event_id(cursor) else None
     async for event in broker.subscribe(after_id=broker_cursor):
-        protocol_event = protocol_event_from_broker(
+        protocol_events = protocol_events_from_broker(
             event,
             run_id=broker.run_id,
             thread_id=thread_id,
         )
-        if protocol_event is None or not matches_subscription(protocol_event, params):
-            continue
-        yield format_protocol_sse(protocol_event), _event_cursor(protocol_event)
+        for protocol_event in protocol_events:
+            next_seq += 1
+            projected_event = resequence_protocol_event(protocol_event, seq=next_seq)
+            if not matches_subscription(projected_event, params):
+                continue
+            yield format_protocol_sse(projected_event), _event_cursor(projected_event), next_seq
 
 
 async def protocol_thread_stream_generator(
@@ -112,28 +123,29 @@ async def protocol_thread_stream_generator(
     is_disconnected: Callable[[], Awaitable[bool]],
 ) -> AsyncGenerator[str, None]:
     cursor = after_id
+    last_seq = _numeric_since(params)
     loop = asyncio.get_running_loop()
     next_replay_at = loop.time() + _THREAD_STREAM_REPLAY_POLL_SECONDS
     next_heartbeat_at = loop.time() + _THREAD_STREAM_HEARTBEAT_SECONDS
 
-    async for chunk, next_cursor in _yield_replay_events_or_skip(
-        conversation_id=conversation_id,
-        params=params,
-        cursor=cursor,
-    ):
-        cursor = next_cursor
-        yield chunk
+    replay_events = await _load_replay_events_or_empty(conversation_id)
+    last_seq = max(last_seq, _max_event_seq(replay_events))
+    for event in _iter_replay_events(replay_events, params=params, cursor=cursor):
+        cursor = _event_cursor(event)
+        yield format_protocol_sse(event)
 
     while not await is_disconnected():
         broker = _latest_live_broker(conversation_id)
         if broker is not None:
-            async for chunk, next_cursor in _yield_broker_events(
+            async for chunk, next_cursor, next_seq in _yield_broker_events(
                 broker=broker,
                 thread_id=thread_id,
                 params=params,
                 cursor=cursor,
+                next_seq=last_seq,
             ):
                 cursor = next_cursor
+                last_seq = next_seq
                 yield chunk
             next_replay_at = asyncio.get_running_loop().time()
             continue
@@ -141,14 +153,12 @@ async def protocol_thread_stream_generator(
         now = asyncio.get_running_loop().time()
         if now >= next_replay_at:
             replayed = False
-            async for chunk, next_cursor in _yield_replay_events_or_skip(
-                conversation_id=conversation_id,
-                params=params,
-                cursor=cursor,
-            ):
-                cursor = next_cursor
+            replay_events = await _load_replay_events_or_empty(conversation_id)
+            last_seq = max(last_seq, _max_event_seq(replay_events))
+            for event in _iter_replay_events(replay_events, params=params, cursor=cursor):
+                cursor = _event_cursor(event)
                 replayed = True
-                yield chunk
+                yield format_protocol_sse(event)
             next_replay_at = asyncio.get_running_loop().time() + _THREAD_STREAM_REPLAY_POLL_SECONDS
             if replayed:
                 continue

@@ -8,18 +8,18 @@ describe('getChatRuntimeMode', () => {
     process.env.NEXT_PUBLIC_CHAT_RUNTIME = original
   })
 
-  it('defaults to legacy', () => {
+  it('defaults to LangGraph v3', () => {
     delete process.env.NEXT_PUBLIC_CHAT_RUNTIME
-    expect(getChatRuntimeMode()).toBe('legacy')
-  })
-
-  it('enables the LangGraph v3 runtime explicitly', () => {
-    process.env.NEXT_PUBLIC_CHAT_RUNTIME = 'langgraph_v3'
     expect(getChatRuntimeMode()).toBe('langgraph_v3')
   })
 
-  it('falls back to legacy for unknown values', () => {
-    process.env.NEXT_PUBLIC_CHAT_RUNTIME = 'ag_ui'
+  it('enables the legacy runtime explicitly', () => {
+    process.env.NEXT_PUBLIC_CHAT_RUNTIME = 'legacy'
     expect(getChatRuntimeMode()).toBe('legacy')
+  })
+
+  it('falls back to LangGraph v3 for unknown values', () => {
+    process.env.NEXT_PUBLIC_CHAT_RUNTIME = 'ag_ui'
+    expect(getChatRuntimeMode()).toBe('langgraph_v3')
   })
 })

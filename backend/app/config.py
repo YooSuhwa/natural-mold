@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://moldy:moldy@localhost:5432/moldy"
     database_url_sync: str = "postgresql://moldy:moldy@localhost:5432/moldy"
+    checkpointer_pool_min_size: int = 4
+    checkpointer_pool_max_size: int = 20
 
     # LLM API Keys
     openai_api_key: str = ""

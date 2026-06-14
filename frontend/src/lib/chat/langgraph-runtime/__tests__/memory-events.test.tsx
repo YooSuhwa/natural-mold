@@ -50,13 +50,13 @@ function memoryPayload(overrides: Partial<MemoryEventPayload> = {}): MemoryEvent
 function protocolEvent(payload: MemoryEventPayload) {
   return {
     type: 'event',
-    method: 'custom:memory_saved',
+    method: 'custom',
     event_id: 'event-memory-1',
     seq: 9,
     run_id: 'run-1',
     params: {
       namespace: [],
-      data: payload,
+      data: { name: 'memory_saved', payload },
     },
   }
 }
@@ -71,7 +71,10 @@ describe('protocolMemoryEvent', () => {
         params: { data: { name: 'memory_saved', payload } },
       }),
     ).toEqual({ eventName: 'memory_saved', payload })
-    expect(protocolMemoryEvent(protocolEvent(payload))).toEqual({ eventName: 'memory_saved', payload })
+    expect(protocolMemoryEvent(protocolEvent(payload))).toEqual({
+      eventName: 'memory_saved',
+      payload,
+    })
   })
 })
 

@@ -16,10 +16,18 @@ from app.routers.conversation_agent_protocol_attachments import (
     input_without_protocol_attachments,
 )
 from app.routers.conversation_agent_protocol_contracts import (
-    AgentCommandParams,
     AgentCommandRequest,
     command_error,
     command_success,
+)
+from app.routers.conversation_agent_protocol_interrupts import (
+    interrupts_from_tasks,
+    load_pending_interrupt_tasks,
+)
+from app.routers.conversation_agent_protocol_resume import (
+    build_resume_payload,
+    resume_run_interrupt_id,
+    validate_resume_payload,
 )
 from app.routers.conversation_agent_protocol_runtime import (
     SUPPORTED_MULTITASK_STRATEGIES,
@@ -34,14 +42,6 @@ from app.services.conversation_stream_service import resolve_agent_context
 
 StartConversationRun = Callable[..., Awaitable[Any]]
 AgentStreamExecutor = Callable[..., Any]
-
-
-def _resume_payload(params: AgentCommandParams) -> tuple[Any, str | None]:
-    if params.responses is not None:
-        responses = {entry.interrupt_id: entry.response for entry in params.responses}
-        first = params.responses[0]
-        return responses, first.interrupt_id
-    return params.response, params.interrupt_id
 
 
 async def _handle_run_start_command(
@@ -147,8 +147,8 @@ async def _handle_input_respond_command(
     start_run: StartConversationRun,
     executor_fn: AgentStreamExecutor,
 ) -> JSONResponse:
-    resume_payload, interrupt_id = _resume_payload(command.params)
-    if not interrupt_id:
+    resume = build_resume_payload(command.params)
+    if not resume.interrupt_id:
         return command_error(
             command,
             code="INVALID_INPUT_RESPOND",
@@ -156,16 +156,6 @@ async def _handle_input_respond_command(
         )
 
     cfg = await resolve_agent_context(db, conversation.id, user)
-    await chat_service.touch_conversation(db, conversation.id)
-    await record_conversation_audit(
-        db,
-        user=user,
-        request=request,
-        action="conversation.message_resume",
-        conversation_id=conversation.id,
-        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
-        metadata={"source": "langgraph_protocol", "interrupt_id": interrupt_id},
-    )
     parent_run = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation.id,
@@ -178,6 +168,27 @@ async def _handle_input_respond_command(
             message="Resume run requires an interrupted parent run",
         )
 
+    tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
+    validation_error = validate_resume_payload(resume, interrupts_from_tasks(tasks))
+    if validation_error is not None:
+        return command_error(
+            command,
+            code=validation_error.code,
+            message=validation_error.message,
+        )
+    run_interrupt_id = resume_run_interrupt_id(resume, parent_run.interrupt_id)
+
+    await chat_service.touch_conversation(db, conversation.id)
+    await record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.message_resume",
+        conversation_id=conversation.id,
+        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        metadata={"source": "langgraph_protocol", "interrupt_id": run_interrupt_id},
+    )
+
     try:
         run = await conversation_run_service.create_run(
             db,
@@ -187,7 +198,7 @@ async def _handle_input_respond_command(
             source="resume",
             input_preview=None,
             parent_run_id=parent_run.id,
-            interrupt_id=interrupt_id,
+            interrupt_id=run_interrupt_id,
             metadata={
                 "protocol": "langgraph_v3",
                 "command_id": command.id,
@@ -206,7 +217,7 @@ async def _handle_input_respond_command(
         conversation_id=conversation.id,
         cfg=cfg,
         user=user,
-        input_payload=resume_payload,
+        input_payload=resume.input_payload,
         moldy_source="resume",
         executor_fn=executor_fn,
     )

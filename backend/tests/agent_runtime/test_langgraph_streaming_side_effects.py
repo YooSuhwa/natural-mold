@@ -50,13 +50,16 @@ async def test_langgraph_streaming_emits_file_event_after_artifact_tool_result()
     assert [payload["method"] for payload in payloads] == [
         "lifecycle",
         "tools",
-        "custom:file_event",
+        "custom",
         "lifecycle",
     ]
     assert payloads[2]["params"]["data"] == {
-        "op": "created",
-        "id": "artifact-1",
-        "path": "report.md",
+        "name": "file_event",
+        "payload": {
+            "op": "created",
+            "id": "artifact-1",
+            "path": "report.md",
+        },
     }
 
 
@@ -102,13 +105,16 @@ async def test_langgraph_streaming_emits_memory_event_after_memory_tool_result()
     assert [payload["method"] for payload in payloads] == [
         "lifecycle",
         "tools",
-        "custom:memory_saved",
+        "custom",
         "lifecycle",
     ]
     assert payloads[2]["params"]["data"] == {
-        "id": "memory-1",
-        "scope": "user",
-        "content": "User prefers concise answers.",
-        "reason": None,
-        "policy": "auto",
+        "name": "memory_saved",
+        "payload": {
+            "id": "memory-1",
+            "scope": "user",
+            "content": "User prefers concise answers.",
+            "reason": None,
+            "policy": "auto",
+        },
     }

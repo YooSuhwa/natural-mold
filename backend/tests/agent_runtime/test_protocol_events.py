@@ -25,12 +25,16 @@ def test_stored_event_yields_protocol_shape() -> None:
         namespace=["tools:tc-1"],
         data=[{"type": "AIMessageChunk", "content": "hi"}, {"langgraph_node": "model"}],
         timestamp=None,
+        checkpoint_id="ck-1",
+        checkpoint_ns="model",
     )
 
     wire = to_protocol_wire_event(event)
 
     assert wire["method"] == "messages"
     assert wire["params"]["namespace"] == ["tools:tc-1"]
+    assert wire["params"]["checkpoint_id"] == "ck-1"
+    assert wire["params"]["checkpoint_ns"] == "model"
     assert wire["params"]["data"] == [
         {"type": "AIMessageChunk", "content": "hi"},
         {"langgraph_node": "model"},
@@ -83,6 +87,21 @@ def test_format_protocol_sse_uses_protocol_message_event() -> None:
         "seq": 7,
         "event_id": "evt-7",
     }
+
+
+def test_format_protocol_sse_includes_auto_event_id_when_upstream_id_is_absent() -> None:
+    event = stored_protocol_event(
+        run_id="run-1",
+        thread_id="thread-1",
+        seq=3,
+        method="custom",
+        data={"payload": "fallback"},
+    )
+
+    rendered = format_protocol_sse(event)
+
+    payload = json.loads(rendered.split("data: ", 1)[1])
+    assert payload["event_id"] == "run-1:protocol:00000003"
 
 
 def test_matches_subscription_filters_channel_namespace_depth_and_since() -> None:
@@ -158,6 +177,7 @@ def test_canonicalizes_values_interrupt_to_input_requested() -> None:
 
     assert canonical["method"] == "input.requested"
     assert canonical["upstream_event_id"] == "run-1:input:00000006:0"
+    assert canonical["seq"] == 6
     assert canonical["namespace"] == ["tools:call-1"]
     assert canonical["data"] == {
         "interrupt_id": "intr-1",
@@ -186,10 +206,12 @@ def test_canonical_input_requested_event_ids_are_db_safe_and_unique() -> None:
 
     canonicals = canonical_input_requested_events(event)
 
+    sequences = [canonical["seq"] for canonical in canonicals]
     event_ids = [canonical["upstream_event_id"] for canonical in canonicals]
+    assert sequences == [10, 11]
     assert event_ids == [
         "123e4567-e89b-12d3-a456-426614174000:input:00000010:0",
-        "123e4567-e89b-12d3-a456-426614174000:input:00000010:1",
+        "123e4567-e89b-12d3-a456-426614174000:input:00000011:1",
     ]
     assert all(event_id is not None and len(event_id) <= 80 for event_id in event_ids)
 

@@ -19,6 +19,8 @@ class StoredProtocolEvent(TypedDict):
     run_id: str
     thread_id: str
     timestamp: str | None
+    checkpoint_id: str | None
+    checkpoint_ns: str | None
 
 
 class ProtocolWireEvent(TypedDict):
@@ -59,6 +61,10 @@ def _event_id(run_id: str, seq: int) -> str:
     return f"{run_id}:protocol:{seq:08d}"
 
 
+def protocol_event_cursor(event: StoredProtocolEvent) -> str:
+    return event["upstream_event_id"] or str(event["seq"])
+
+
 def _canonical_input_requested_event_id(run_id: str, seq: int, index: int) -> str:
     event_id = f"{run_id}:input:{seq:08d}:{index}"
     if len(event_id) <= MAX_MESSAGE_EVENT_ID_LENGTH:
@@ -79,6 +85,8 @@ def stored_protocol_event(
     event_id: str | None = None,
     timestamp: str | None = None,
     id: str | None = None,
+    checkpoint_id: str | None = None,
+    checkpoint_ns: str | None = None,
 ) -> StoredProtocolEvent:
     if seq < 0:
         raise ValueError("seq must be non-negative")
@@ -99,7 +107,77 @@ def stored_protocol_event(
         "run_id": run_id,
         "thread_id": thread_id,
         "timestamp": timestamp,
+        "checkpoint_id": checkpoint_id,
+        "checkpoint_ns": checkpoint_ns,
     }
+
+
+def stored_custom_protocol_event(
+    *,
+    run_id: str,
+    thread_id: str,
+    seq: int,
+    name: str,
+    payload: Any,
+    namespace: list[str] | None = None,
+    event_id: str | None = None,
+    timestamp: str | None = None,
+    id: str | None = None,
+    checkpoint_id: str | None = None,
+    checkpoint_ns: str | None = None,
+) -> StoredProtocolEvent:
+    custom_name = name.removeprefix("custom:")
+    if not custom_name:
+        raise ValueError("custom event name is required")
+    return stored_protocol_event(
+        run_id=run_id,
+        thread_id=thread_id,
+        seq=seq,
+        method="custom",
+        namespace=namespace,
+        event_id=event_id,
+        timestamp=timestamp,
+        id=id,
+        checkpoint_id=checkpoint_id,
+        checkpoint_ns=checkpoint_ns,
+        data={"name": custom_name, "payload": payload},
+    )
+
+
+def resequence_protocol_event(event: StoredProtocolEvent, *, seq: int) -> StoredProtocolEvent:
+    if seq == event["seq"]:
+        return event
+
+    previous_auto_id = _event_id(event["run_id"], event["seq"])
+    explicit_id = (
+        None
+        if event["upstream_event_id"] is None and event["id"] == previous_auto_id
+        else event["id"]
+    )
+    return stored_protocol_event(
+        run_id=event["run_id"],
+        thread_id=event["thread_id"],
+        seq=seq,
+        method=event["method"],
+        namespace=event["namespace"],
+        data=event["data"],
+        event_id=event["upstream_event_id"],
+        timestamp=event["timestamp"],
+        id=explicit_id,
+        checkpoint_id=event["checkpoint_id"],
+        checkpoint_ns=event["checkpoint_ns"],
+    )
+
+
+def resequence_protocol_events(
+    events: Sequence[StoredProtocolEvent],
+    *,
+    first_seq: int = 1,
+) -> list[StoredProtocolEvent]:
+    return [
+        resequence_protocol_event(event, seq=seq)
+        for seq, event in enumerate(events, start=first_seq)
+    ]
 
 
 def to_protocol_wire_event(event: StoredProtocolEvent) -> ProtocolWireEvent:
@@ -109,15 +187,18 @@ def to_protocol_wire_event(event: StoredProtocolEvent) -> ProtocolWireEvent:
     }
     if event["timestamp"] is not None:
         params["timestamp"] = event["timestamp"]
+    if event["checkpoint_id"] is not None:
+        params["checkpoint_id"] = event["checkpoint_id"]
+    if event["checkpoint_ns"] is not None:
+        params["checkpoint_ns"] = event["checkpoint_ns"]
 
     wire: ProtocolWireEvent = {
         "type": "event",
         "method": event["method"],
         "params": params,
         "seq": event["seq"],
+        "event_id": event["upstream_event_id"] or event["id"],
     }
-    if event["upstream_event_id"]:
-        wire["event_id"] = event["upstream_event_id"]
     return wire
 
 
@@ -131,7 +212,7 @@ def to_assistant_ui_projection(event: StoredProtocolEvent) -> AssistantUIProject
 
 
 def format_protocol_sse(event: StoredProtocolEvent) -> str:
-    cursor = event["upstream_event_id"] or str(event["seq"])
+    cursor = protocol_event_cursor(event)
     payload = json.dumps(to_protocol_wire_event(event), ensure_ascii=False, separators=(",", ":"))
     return f"id: {cursor}\nevent: message\ndata: {payload}\n\n"
 
@@ -147,18 +228,24 @@ def protocol_interrupts_from_event(event: StoredProtocolEvent) -> list[ProtocolI
     return _interrupts_from_raw(raw_interrupts, fallback_namespace=event["namespace"])
 
 
-def canonical_input_requested_events(event: StoredProtocolEvent) -> list[StoredProtocolEvent]:
+def canonical_input_requested_events(
+    event: StoredProtocolEvent,
+    *,
+    first_seq: int | None = None,
+) -> list[StoredProtocolEvent]:
     if event["method"] == "input.requested":
         return []
 
     events: list[StoredProtocolEvent] = []
+    base_seq = event["seq"] if first_seq is None else first_seq
     for index, interrupt in enumerate(protocol_interrupts_from_event(event)):
-        event_id = _canonical_input_requested_event_id(event["run_id"], event["seq"], index)
+        seq = base_seq + index
+        event_id = _canonical_input_requested_event_id(event["run_id"], seq, index)
         events.append(
             stored_protocol_event(
                 run_id=event["run_id"],
                 thread_id=event["thread_id"],
-                seq=event["seq"],
+                seq=seq,
                 event_id=event_id,
                 method="input.requested",
                 namespace=interrupt["ns"],
@@ -168,6 +255,8 @@ def canonical_input_requested_events(event: StoredProtocolEvent) -> list[StoredP
                     "namespace": interrupt["ns"],
                 },
                 timestamp=event["timestamp"],
+                checkpoint_id=event["checkpoint_id"],
+                checkpoint_ns=event["checkpoint_ns"],
             )
         )
     return events

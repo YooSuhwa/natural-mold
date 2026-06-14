@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Header, Query, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.event_broker import registry as broker_registry
@@ -29,10 +29,10 @@ from app.routers.conversation_agent_protocol_replay import (
 )
 from app.routers.conversation_agent_protocol_runtime import (
     get_owned_thread,
-    load_thread_state_snapshot,
     protocol_broker_generator,
 )
 from app.routers.conversation_agent_protocol_stale import maybe_mark_stale_active_run
+from app.routers.conversation_agent_protocol_state_snapshot import load_thread_state_snapshot
 from app.routers.conversation_agent_protocol_thread_stream import (
     needs_thread_stream,
     protocol_thread_stream_generator,
@@ -84,7 +84,7 @@ async def get_thread_state(
         user_id=user.id,
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
-    snapshot = await load_thread_state_snapshot(conversation)
+    snapshot = await load_thread_state_snapshot(conversation, db=db)
     return state_response(
         conversation,
         values=snapshot.values,
@@ -144,7 +144,7 @@ async def subscribe_thread_events(
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
-) -> StreamingResponse:
+) -> Response:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
@@ -249,7 +249,7 @@ async def get_compat_thread_state(
         user_id=user.id,
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
-    snapshot = await load_thread_state_snapshot(conversation)
+    snapshot = await load_thread_state_snapshot(conversation, db=db)
     state = state_response(
         conversation,
         values=snapshot.values,

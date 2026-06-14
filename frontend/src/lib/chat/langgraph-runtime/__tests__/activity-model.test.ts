@@ -105,8 +105,8 @@ describe('reduceActivity', () => {
       event('updates', {
         todos: [{ id: 'todo-1', content: 'Plan', status: 'in_progress' }],
       }),
-      event('custom:memory', { key: 'profile' }),
-      event('custom', { name: 'artifact', path: 'report.md' }),
+      event('custom', { name: 'memory_saved', payload: { key: 'profile' } }),
+      event('custom', { name: 'file_event', payload: { path: 'report.md' } }),
     ])
 
     expect(activities.map((item) => item.kind)).toEqual(['planning', 'memory', 'artifact'])

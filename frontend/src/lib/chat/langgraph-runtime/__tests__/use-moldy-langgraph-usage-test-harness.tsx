@@ -140,9 +140,7 @@ export function renderUsageHook(store: TestStore = createStore()) {
 }
 
 export function lastConverterOptions(): ConverterOptions | undefined {
-  return mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
-    | ConverterOptions
-    | undefined
+  return mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as ConverterOptions | undefined
 }
 
 export function lastRuntimeOptions(): RuntimeOptions | undefined {
@@ -152,20 +150,23 @@ export function lastRuntimeOptions(): RuntimeOptions | undefined {
 export function usageEvent(assistantMsgId = 'assistant-usage-1') {
   return {
     type: 'event',
-    method: 'custom:usage',
+    method: 'custom',
     event_id: 'usage-event-1',
     seq: 10,
     run_id: 'run-usage',
     params: {
       namespace: [],
       data: {
-        assistant_msg_id: assistantMsgId,
-        run_id: 'run-usage',
-        prompt_tokens: 12,
-        completion_tokens: 5,
-        cache_creation_tokens: 2,
-        cache_read_tokens: 3,
-        estimated_cost: 0.22,
+        name: 'usage',
+        payload: {
+          assistant_msg_id: assistantMsgId,
+          run_id: 'run-usage',
+          prompt_tokens: 12,
+          completion_tokens: 5,
+          cache_creation_tokens: 2,
+          cache_read_tokens: 3,
+          estimated_cost: 0.22,
+        },
       },
     },
   }

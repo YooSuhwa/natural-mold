@@ -8,6 +8,7 @@ const API_BASE = process.env.E2E_API_BASE_URL ?? `http://localhost:${BACKEND_POR
 const E2E_EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const E2E_PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
+const IS_LANGGRAPH_V3 = process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'langgraph_v3'
 
 async function loginApi(request: APIRequestContext): Promise<Record<string, string>> {
   const res = await request.post(`${API_BASE}/api/auth/login`, {
@@ -54,6 +55,7 @@ async function capture(page: Page, name: string): Promise<void> {
 
 test.describe('Draft conversation lifecycle', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
+  test.skip(IS_LANGGRAPH_V3, 'Legacy draft lifecycle is covered by LangGraph v3 draft spec')
 
   let agentId: string
   let conversationId: string

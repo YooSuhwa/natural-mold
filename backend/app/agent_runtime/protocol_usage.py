@@ -3,17 +3,20 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, NotRequired, TypedDict
 
-from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
+from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_custom_protocol_event
 
 
-class UsagePayload(TypedDict):
-    run_id: str
+class UsageMetricsPayload(TypedDict):
     prompt_tokens: int
     completion_tokens: int
     cache_creation_tokens: int
     cache_read_tokens: int
-    assistant_msg_id: NotRequired[str]
     estimated_cost: NotRequired[float]
+
+
+class UsagePayload(UsageMetricsPayload):
+    run_id: str
+    assistant_msg_id: NotRequired[str]
 
 
 class _UsageCandidate(TypedDict):
@@ -59,18 +62,26 @@ def collect_protocol_usage_event(
         usage_sink.update(sink_payload)
 
     seq = max(next_seq, event["seq"]) + 1
-    payload: UsagePayload = {"run_id": event["run_id"], **sink_payload}
+    payload: UsagePayload = {
+        "run_id": event["run_id"],
+        "prompt_tokens": sink_payload["prompt_tokens"],
+        "completion_tokens": sink_payload["completion_tokens"],
+        "cache_creation_tokens": sink_payload["cache_creation_tokens"],
+        "cache_read_tokens": sink_payload["cache_read_tokens"],
+    }
+    if "estimated_cost" in sink_payload:
+        payload["estimated_cost"] = sink_payload["estimated_cost"]
     if candidate["assistant_msg_id"] is not None:
         payload["assistant_msg_id"] = candidate["assistant_msg_id"]
 
     event_id = f"{event['id']}:usage"
     return (
-        stored_protocol_event(
+        stored_custom_protocol_event(
             run_id=event["run_id"],
             thread_id=event["thread_id"],
             seq=seq,
-            method="custom:usage",
-            data=payload,
+            name="usage",
+            payload=payload,
             namespace=event["namespace"],
             event_id=event_id,
             id=event_id,
@@ -229,8 +240,8 @@ def _message_like_children(value: Mapping[str, Any]) -> list[Any]:
     return list(reversed(children))
 
 
-def _sink_payload(candidate: _UsageCandidate) -> dict[str, Any]:
-    payload: dict[str, Any] = {
+def _sink_payload(candidate: _UsageCandidate) -> UsageMetricsPayload:
+    payload: UsageMetricsPayload = {
         "prompt_tokens": candidate["prompt_tokens"],
         "completion_tokens": candidate["completion_tokens"],
         "cache_creation_tokens": candidate["cache_creation_tokens"],

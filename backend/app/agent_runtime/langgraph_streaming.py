@@ -23,9 +23,12 @@ from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
     canonical_input_requested_events,
     format_protocol_sse,
+    protocol_event_cursor,
+    resequence_protocol_event,
     stored_protocol_event,
     to_protocol_wire_event,
 )
+from app.agent_runtime.protocol_persistence import persistable_protocol_event
 from app.agent_runtime.protocol_side_effects import (
     collect_protocol_side_effect_events,
     prepare_artifact_recorder,
@@ -90,11 +93,10 @@ async def _open_stream_mode_fallback(
 
 
 def _broker_event(event: StoredProtocolEvent) -> BrokeredEvent:
-    cursor = event["upstream_event_id"] or str(event["seq"])
     return {
-        "id": cursor,
+        "id": protocol_event_cursor(event),
         "event": "message",
-        "data": to_protocol_wire_event(event),
+        "data": dict(to_protocol_wire_event(event)),
     }
 
 
@@ -137,25 +139,39 @@ async def stream_agent_response_langgraph(
     max_emitted_seq = -1
     input_requested_emitted = False
     emitted: list[dict[str, Any]] = []
+    persistable_events: list[dict[str, Any]] = []
     seen_usage_keys: set[tuple[str | None, int, int, int, int, float | None]] = set()
     seen_synthesized_tool_call_ids: set[str] = set()
 
     def emit(event: StoredProtocolEvent) -> str:
         nonlocal input_requested_emitted, max_emitted_seq
 
-        max_emitted_seq = max(max_emitted_seq, event["seq"])
-        if event["method"] == "input.requested":
+        event_to_emit = (
+            resequence_protocol_event(event, seq=max_emitted_seq + 1)
+            if event["seq"] <= max_emitted_seq
+            else event
+        )
+        max_emitted_seq = event_to_emit["seq"]
+        if event_to_emit["method"] == "input.requested":
             input_requested_emitted = True
-        event_dict = dict(event)
+        event_dict = dict(event_to_emit)
         emitted.append(event_dict)
+        persistable_event = persistable_protocol_event(event_to_emit)
+        persistable_events.append(persistable_event)
         if trace_sink is not None:
-            trace_sink.append(event_dict)
+            trace_sink.append(persistable_event)
         if broker is not None:
-            broker.publish_nowait(_broker_event(event))
-        return format_protocol_sse(event)
+            broker.publish_nowait(_broker_event(event_to_emit))
+        return format_protocol_sse(event_to_emit)
 
     def emit_canonical_interrupts(event: StoredProtocolEvent) -> list[str]:
-        return [emit(input_event) for input_event in canonical_input_requested_events(event)]
+        return [
+            emit(input_event)
+            for input_event in canonical_input_requested_events(
+                event,
+                first_seq=max_emitted_seq + 1,
+            )
+        ]
 
     artifact_recorder = await prepare_artifact_recorder(artifact_recorder, run_id=msg_id)
 
@@ -211,6 +227,7 @@ async def stream_agent_response_langgraph(
                 for tool_event in synthesize_tool_events_from_values(
                     event,
                     seen_tool_call_ids=seen_synthesized_tool_call_ids,
+                    first_seq=max_emitted_seq + 1,
                 ):
                     yield emit(tool_event)
                     side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
@@ -290,9 +307,9 @@ async def stream_agent_response_langgraph(
             _error_event(run_id=msg_id, thread_id=thread_id, seq=max_emitted_seq + 1, exc=exc)
         )
     finally:
-        if persist_callback is not None and emitted:
+        if persist_callback is not None and persistable_events:
             try:
-                await persist_callback(emitted)
+                await persist_callback(persistable_events)
             except Exception:
                 logger.exception("protocol stream persist_callback failed (run_id=%s)", msg_id)
         if broker is not None:

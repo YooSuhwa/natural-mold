@@ -10,6 +10,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime import event_names
+from app.agent_runtime.event_broker import BrokeredEvent
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_events import stored_protocol_event
 from app.agent_runtime.runtime_config import AgentConfig
@@ -20,6 +22,8 @@ from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
+from app.routers.conversation_agent_protocol_runtime import protocol_events_from_broker
+from app.services import trace_storage
 from tests.conftest import TEST_USER_ID
 
 
@@ -355,8 +359,12 @@ async def test_thread_state_reads_checkpointer_messages(
             },
         )()
 
-    with patch("app.routers.conversation_agent_protocol_runtime.get_checkpointer") as get_cp:
+    with (
+        patch("app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer") as get_cp,
+        patch("app.routers.conversation_agent_protocol_state.get_checkpointer") as get_history_cp,
+    ):
         get_cp.return_value.alist = alist
+        get_history_cp.return_value.alist = alist
         state_response = await client.get(
             f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
         )
@@ -374,6 +382,67 @@ async def test_thread_state_reads_checkpointer_messages(
 
     assert history_response.status_code == 200
     assert history_response.json()[0]["values"] == values
+
+
+@pytest.mark.asyncio
+async def test_thread_state_falls_back_to_legacy_trace_when_checkpointer_is_empty(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    conversation = await _seed_conversation(db)
+    run_id = uuid.uuid4().hex
+    await trace_storage.append_events(
+        db,
+        conversation_id=conversation.id,
+        assistant_msg_id=run_id,
+        events_chunk=[
+            {
+                "id": f"{run_id}-1",
+                "event": event_names.MESSAGE_START,
+                "data": {
+                    "id": run_id,
+                    "role": "assistant",
+                    "input": {
+                        "messages": [
+                            {"role": "user", "content": "legacy hello", "id": "legacy-user-1"}
+                        ]
+                    },
+                },
+            },
+            {
+                "id": f"{run_id}-2",
+                "event": event_names.CONTENT_DELTA,
+                "data": {"delta": "legacy hi"},
+            },
+            {
+                "id": f"{run_id}-3",
+                "event": event_names.MESSAGE_END,
+                "data": {
+                    "content": "legacy hi",
+                    "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+                    "status": "completed",
+                },
+            },
+        ],
+        status="completed",
+    )
+    await db.commit()
+
+    with patch(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        side_effect=RuntimeError("checkpointer unavailable"),
+    ):
+        response = await client.get(
+            f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+        )
+
+    assert response.status_code == 200
+    messages = response.json()["values"]["messages"]
+    assert messages[0]["type"] == "human"
+    assert messages[0]["content"] == "legacy hello"
+    assert messages[1]["type"] == "ai"
+    assert messages[1]["content"] == "legacy hi"
+    assert messages[1]["usage_metadata"]["input_tokens"] == 3
 
 
 @pytest.mark.asyncio
@@ -500,13 +569,34 @@ async def test_protocol_stream_attaches_live_broker_with_filters(
     assert "tool-started" not in body
 
 
+def test_protocol_stream_projects_live_legacy_terminal_event() -> None:
+    run_id = uuid.uuid4().hex
+    thread_id = str(uuid.uuid4())
+    event: BrokeredEvent = {
+        "id": f"{run_id}-canceled",
+        "event": event_names.MESSAGE_END,
+        "data": {"usage": {}, "content": "", "status": "canceled"},
+    }
+
+    events = protocol_events_from_broker(
+        event,
+        run_id=run_id,
+        thread_id=thread_id,
+    )
+
+    assert len(events) == 1
+    assert events[0]["method"] == "lifecycle"
+    assert events[0]["data"]["status"] == "canceled"
+    assert events[0]["thread_id"] == thread_id
+
+
 def _protocol_broker_event(
     *,
     run_id: str,
     method: str,
     seq: int,
     data: dict[str, Any],
-) -> dict[str, Any]:
+) -> BrokeredEvent:
     event_id = f"{run_id}-{seq}"
     return {
         "id": event_id,
@@ -579,6 +669,49 @@ async def test_protocol_lifecycle_stream_survives_broker_rotation(
         assert "second-run" in await asyncio.wait_for(anext(stream), timeout=1.0)
         second_broker.close()
     finally:
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
+async def test_protocol_lifecycle_stream_projects_live_events_after_numeric_since(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import conversation_agent_protocol_thread_stream as thread_stream
+
+    conversation = await _seed_conversation(db)
+    run_id = uuid.uuid4().hex
+
+    async def is_disconnected() -> bool:
+        return False
+
+    async def no_replay_events(_conversation_id: uuid.UUID) -> list[dict[str, Any]]:
+        return []
+
+    monkeypatch.setattr(thread_stream, "_load_replay_events", no_replay_events)
+    broker = broker_registry.get_or_create(run_id, conversation_id=str(conversation.id))
+    broker.publish_nowait(
+        _protocol_broker_event(
+            run_id=run_id,
+            method="lifecycle",
+            seq=1,
+            data={"event": "completed", "marker": "live-after-since"},
+        )
+    )
+
+    stream = thread_stream.protocol_thread_stream_generator(
+        conversation_id=conversation.id,
+        thread_id=str(conversation.id),
+        params={"channels": ["lifecycle"], "since": 5},
+        after_id=None,
+        is_disconnected=is_disconnected,
+    )
+    try:
+        chunk = await asyncio.wait_for(anext(stream), timeout=1.0)
+        assert "live-after-since" in chunk
+        assert '"seq":6' in chunk
+    finally:
+        broker.close()
         await stream.aclose()
 
 

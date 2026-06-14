@@ -55,10 +55,7 @@ async function scriptedModelId(request: APIRequestContext): Promise<string> {
   return stringField(model, 'id', 'scripted model')
 }
 
-async function installDocxSkill(
-  request: APIRequestContext,
-  csrfHeaders: CsrfHeaders,
-): Promise<string> {
+async function docxMarketplaceItem(request: APIRequestContext): Promise<Record<string, unknown>> {
   const items = records(
     await apiGetJson(
       request,
@@ -68,16 +65,39 @@ async function installDocxSkill(
   )
   const item = items.find((row) => row.slug === DOCX_SKILL_SLUG)
   if (!item) throw new Error(`Missing marketplace item: ${DOCX_SKILL_SLUG}`)
-  const installed = await apiPostJson(
-    request,
-    `${API_BASE}/api/marketplace/items/${stringField(item, 'id', 'docx skill')}/install`,
-    csrfHeaders,
-    { install_mode: 'overwrite_existing' },
-  )
+  return item
+}
+
+function installedSkillId(item: Record<string, unknown>): string | null {
+  return optionalNestedString(item, 'installation', 'installed_resource_id')
+}
+
+async function installDocxSkill(
+  request: APIRequestContext,
+  csrfHeaders: CsrfHeaders,
+): Promise<string> {
+  const item = await docxMarketplaceItem(request)
+  const existingId = installedSkillId(item)
+  if (existingId) return existingId
+
+  let installed: unknown
+  try {
+    installed = await apiPostJson(
+      request,
+      `${API_BASE}/api/marketplace/items/${stringField(item, 'id', 'docx skill')}/install`,
+      csrfHeaders,
+      { install_mode: 'reuse_or_update' },
+    )
+  } catch (error) {
+    const racedId = installedSkillId(await docxMarketplaceItem(request))
+    if (racedId) return racedId
+    throw error
+  }
+
   if (!isRecord(installed)) throw new Error('skill install did not return an object')
   const id =
     (typeof installed.installed_skill_id === 'string' ? installed.installed_skill_id : null) ??
-    optionalNestedString(item, 'installation', 'installed_resource_id')
+    installedSkillId(item)
   if (!id) throw new Error('skill install did not return a skill id')
   return id
 }
@@ -92,9 +112,7 @@ async function createAgent(
   return agent
 }
 
-export async function setupLangGraphV3Agent(
-  request: APIRequestContext,
-): Promise<LangGraphV3Setup> {
+export async function setupLangGraphV3Agent(request: APIRequestContext): Promise<LangGraphV3Setup> {
   const csrfHeaders = await loginApi(request)
   const modelId = await scriptedModelId(request)
   const skillId = await installDocxSkill(request, csrfHeaders)
@@ -193,6 +211,14 @@ export async function waitForRunStatus(
       { timeout: 45_000, intervals: [500, 1000, 2000] },
     )
     .toBe(status)
+}
+
+export async function expectFinalTextVisible(page: Page, timeout = 60_000): Promise<void> {
+  const finalText = page.getByText(FINAL_TEXT).first()
+  if (!(await finalText.isVisible())) {
+    await page.reload()
+  }
+  await expect(finalText).toBeVisible({ timeout })
 }
 
 export async function waitForArtifact(

@@ -39,7 +39,12 @@ def test_v3_message_tuple_preserves_sdk_payload_metadata_pair() -> None:
                         "index": 0,
                         "delta": {"type": "text-delta", "text": "hello"},
                     },
-                    {"langgraph_node": "model", "run_id": "lc-run-1"},
+                    {
+                        "langgraph_node": "model",
+                        "run_id": "lc-run-1",
+                        "checkpoint_id": "ck-1",
+                        "checkpoint_ns": "model",
+                    },
                 ),
             },
             "seq": 4,
@@ -53,6 +58,8 @@ def test_v3_message_tuple_preserves_sdk_payload_metadata_pair() -> None:
     assert event["namespace"] == ["tools:tc-1"]
     assert event["seq"] == 4
     assert event["upstream_event_id"] == "evt-4"
+    assert event["checkpoint_id"] == "ck-1"
+    assert event["checkpoint_ns"] == "model"
     assert event["timestamp"] == "1781294167426"
     assert event["data"] == [
         {
@@ -60,9 +67,47 @@ def test_v3_message_tuple_preserves_sdk_payload_metadata_pair() -> None:
             "index": 0,
             "delta": {"type": "text-delta", "text": "hello"},
         },
-        {"langgraph_node": "model", "run_id": "lc-run-1"},
+        {
+            "langgraph_node": "model",
+            "run_id": "lc-run-1",
+            "checkpoint_id": "ck-1",
+            "checkpoint_ns": "model",
+        },
     ]
     assert to_assistant_ui_projection(event)["event"] == "messages|tools%3Atc-1"
+
+
+def test_v3_reasoning_content_is_redacted_before_storage() -> None:
+    event = adapt_v3_protocol_event(
+        {
+            "type": "event",
+            "method": "messages",
+            "params": {
+                "data": {
+                    "id": "assistant-reasoning-1",
+                    "type": "AIMessageChunk",
+                    "content": [
+                        {"type": "text", "text": "safe answer"},
+                        {
+                            "type": "reasoning",
+                            "text": "private hidden reasoning",
+                            "summary": "checked policy",
+                        },
+                    ],
+                    "additional_kwargs": {"reasoning": "private hidden kwargs"},
+                },
+            },
+            "seq": 5,
+        },
+        run_id="run-1",
+        thread_id="thread-1",
+    )
+
+    assert event["data"]["content"] == [
+        {"type": "text", "text": "safe answer"},
+        {"type": "reasoning", "summary": "checked policy", "redacted": True},
+    ]
+    assert event["data"]["additional_kwargs"] == {"reasoning": "[redacted]"}
 
 
 def test_stream_mode_tuple_keeps_namespace_and_mode() -> None:
@@ -93,6 +138,24 @@ def test_unknown_method_becomes_named_custom_payload() -> None:
 
     assert event["method"] == "custom"
     assert event["data"] == {"name": "a2a", "payload": {"peer": "agent-b"}}
+
+
+def test_custom_prefixed_method_becomes_standard_named_custom_payload() -> None:
+    event = adapt_v3_protocol_event(
+        {
+            "method": "custom:usage",
+            "params": {"data": {"prompt_tokens": 1, "completion_tokens": 2}},
+            "seq": 13,
+        },
+        run_id="run-1",
+        thread_id="thread-1",
+    )
+
+    assert event["method"] == "custom"
+    assert event["data"] == {
+        "name": "usage",
+        "payload": {"prompt_tokens": 1, "completion_tokens": 2},
+    }
 
 
 def test_v3_input_requested_preserves_protocol_interrupt_method() -> None:

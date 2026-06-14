@@ -61,18 +61,21 @@ async def test_langgraph_streaming_projects_usage_metadata_to_custom_event() -> 
     assert [payload["method"] for payload in payloads] == [
         "lifecycle",
         "messages",
-        "custom:usage",
+        "custom",
         "lifecycle",
     ]
     assert payloads[0]["params"]["data"] == {"event": "running"}
     assert payloads[2]["params"]["data"] == {
-        "assistant_msg_id": "assistant-usage-1",
-        "run_id": "run-usage",
-        "prompt_tokens": 12,
-        "completion_tokens": 5,
-        "cache_creation_tokens": 2,
-        "cache_read_tokens": 3,
-        "estimated_cost": 0.22,
+        "name": "usage",
+        "payload": {
+            "assistant_msg_id": "assistant-usage-1",
+            "run_id": "run-usage",
+            "prompt_tokens": 12,
+            "completion_tokens": 5,
+            "cache_creation_tokens": 2,
+            "cache_read_tokens": 3,
+            "estimated_cost": 0.22,
+        },
     }
     assert payloads[3]["params"]["data"] == {"event": "completed"}
     assert usage_sink == {
@@ -140,12 +143,68 @@ async def test_langgraph_streaming_emits_protocol_sse_and_dual_writes() -> None:
     assert persisted[0][4]["method"] == "lifecycle"
     assert trace_sink[3]["method"] == "input.requested"
 
+    sequences = [payload["seq"] for payload in payloads]
+    assert sequences == sorted(sequences)
+    assert len(sequences) == len(set(sequences))
+
     replayed = [event async for event in broker.subscribe()]
     assert replayed[1]["id"] == "upstream-1"
     assert replayed[0]["event"] == "message"
     assert replayed[1]["data"]["method"] == "messages"
     assert replayed[3]["data"]["method"] == "input.requested"
     assert replayed[4]["data"]["method"] == "lifecycle"
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_persists_compact_values_snapshots() -> None:
+    raw_event = {
+        "type": "event",
+        "method": "values",
+        "params": {
+            "namespace": [],
+            "data": {
+                "messages": [
+                    {
+                        "id": "msg-1",
+                        "type": "ai",
+                        "content": "large assistant text that belongs in the checkpoint",
+                        "additional_kwargs": {"reasoning": "private chain"},
+                    }
+                ],
+                "todos": [{"id": "todo-1", "content": "ship v3", "status": "in_progress"}],
+            },
+        },
+        "seq": 1,
+        "event_id": "values-1",
+    }
+    agent = ProtocolAgent([raw_event])
+    persisted: list[list[dict[str, Any]]] = []
+
+    async def persist(events: list[dict[str, Any]]) -> None:
+        persisted.append(events)
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-values"}},
+            persist_callback=persist,
+            run_id="run-values",
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    live_values = [payload for payload in payloads if payload["method"] == "values"][0]
+    assert live_values["params"]["data"]["messages"][0]["content"] == (
+        "large assistant text that belongs in the checkpoint"
+    )
+
+    persisted_values = [event for event in persisted[0] if event["method"] == "values"][0]
+    assert persisted_values["data"] == {
+        "messages": [{"id": "msg-1", "type": "ai"}],
+        "todos": [{"id": "todo-1", "content": "ship v3", "status": "in_progress"}],
+    }
 
 
 @pytest.mark.asyncio

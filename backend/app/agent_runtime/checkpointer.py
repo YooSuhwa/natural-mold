@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from app.config import settings
+
 if TYPE_CHECKING:
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from psycopg_pool import AsyncConnectionPool
@@ -11,6 +13,18 @@ logger = logging.getLogger(__name__)
 
 _pool: AsyncConnectionPool | None = None
 _checkpointer: AsyncPostgresSaver | None = None
+
+
+def _pool_size_kwargs() -> dict[str, int]:
+    min_size = settings.checkpointer_pool_min_size
+    max_size = settings.checkpointer_pool_max_size
+    if min_size < 0:
+        raise ValueError("checkpointer_pool_min_size must be non-negative")
+    if max_size < 1:
+        raise ValueError("checkpointer_pool_max_size must be positive")
+    if min_size > max_size:
+        raise ValueError("checkpointer_pool_min_size must be <= checkpointer_pool_max_size")
+    return {"min_size": min_size, "max_size": max_size}
 
 
 async def init_checkpointer(conn_string: str) -> None:
@@ -23,6 +37,7 @@ async def init_checkpointer(conn_string: str) -> None:
     _pool = AsyncConnectionPool(
         conninfo=conn_string,
         open=False,
+        **_pool_size_kwargs(),
         kwargs={"autocommit": True, "prepare_threshold": 0},
     )
     await _pool.open()

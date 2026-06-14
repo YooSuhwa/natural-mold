@@ -498,9 +498,10 @@ Add two frontend runtimes during migration:
 Feature flag:
 
 ```dotenv
-NEXT_PUBLIC_CHAT_RUNTIME=legacy
-# or
+# Default when unset
 NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3
+# Explicit rollback
+NEXT_PUBLIC_CHAT_RUNTIME=legacy
 ```
 
 Do not use `NEXT_PUBLIC_CHAT_STREAM_PROTOCOL=ag_ui` for the new primary path. That flag only controls current GET attach conversion and should be retired after migration.
@@ -1071,19 +1072,19 @@ describe('getChatRuntimeMode', () => {
     process.env.NEXT_PUBLIC_CHAT_RUNTIME = original
   })
 
-  it('defaults to legacy', () => {
+  it('defaults to LangGraph v3', () => {
     delete process.env.NEXT_PUBLIC_CHAT_RUNTIME
-    expect(getChatRuntimeMode()).toBe('legacy')
-  })
-
-  it('enables the LangGraph v3 runtime explicitly', () => {
-    process.env.NEXT_PUBLIC_CHAT_RUNTIME = 'langgraph_v3'
     expect(getChatRuntimeMode()).toBe('langgraph_v3')
   })
 
-  it('falls back to legacy for unknown values', () => {
-    process.env.NEXT_PUBLIC_CHAT_RUNTIME = 'ag_ui'
+  it('enables the legacy runtime explicitly', () => {
+    process.env.NEXT_PUBLIC_CHAT_RUNTIME = 'legacy'
     expect(getChatRuntimeMode()).toBe('legacy')
+  })
+
+  it('falls back to LangGraph v3 for unknown values', () => {
+    process.env.NEXT_PUBLIC_CHAT_RUNTIME = 'ag_ui'
+    expect(getChatRuntimeMode()).toBe('langgraph_v3')
   })
 })
 ```
@@ -2052,7 +2053,11 @@ Current implementation note:
 - `GET state` and compatibility state hydrate active-branch messages plus pending interrupts.
 - `POST state` now goes through the compiled DeepAgents/LangGraph graph and updates `conversations.active_branch_checkpoint_id` when LangGraph returns a new checkpoint.
 - `POST history` reads checkpoint-specific snapshots from the LangGraph checkpointer, supports `limit` and `before.checkpoint_id`, computes message checkpoint metadata from the same checkpoint collection, and no longer fabricates history by duplicating the current snapshot.
-- Cross-request state/history de-duping and checkpointer pool sizing are still open before load-style E2E.
+- `StoredProtocolEvent` now carries optional `checkpoint_id` and `checkpoint_ns`; the LangGraph adapter extracts them from v3 params or message tuple metadata, and wire events include them in `params` when present.
+- Live `values` snapshots are still streamed in full for LangGraph selectors, but `message_events` persistence stores a compact projection: selected DeepAgents state keys plus message/checkpoint refs rather than full message content.
+- Private reasoning/thinking payloads are redacted at the backend adapter boundary before they can enter persisted protocol events or frontend stream state.
+- Checkpointer pool sizing is configurable through `CHECKPOINTER_POOL_MIN_SIZE` and `CHECKPOINTER_POOL_MAX_SIZE` and is wired into the `AsyncConnectionPool`.
+- Cross-request state/history de-duping is still open before load-style E2E.
 
 - [ ] **Step 4: Tests**
 
@@ -3285,7 +3290,8 @@ git commit -m "docs(chat): document LangGraph protocol runtime"
 
 The migration is complete when all criteria are true:
 
-- `NEXT_PUBLIC_CHAT_RUNTIME=legacy` preserves current behavior.
+- Unset `NEXT_PUBLIC_CHAT_RUNTIME` defaults to `langgraph_v3`.
+- `NEXT_PUBLIC_CHAT_RUNTIME=legacy` remains an explicit rollback path that preserves current behavior.
 - `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3` uses one Moldy-owned `@langchain/react` stream per conversation/thread, bridged locally into assistant-ui, not legacy `useChatRuntime`.
 - The implementation includes a completed `docs/design-docs/assistant-ui-langgraph-runtime-spike.md` with installed package signatures and the chosen BFF adapter shape.
 - The new primary runtime uses official `@langchain/react` APIs for messages, tool calls, subagents, metadata, cancellation, interrupts, scoped selectors, and checkpoint-aware edit/regenerate wherever those APIs exist.
@@ -3364,10 +3370,10 @@ Guardrail:
 
 Guardrail:
 
-- Make the checkpointer `AsyncConnectionPool` min/max configurable before enabling the new state/history routes under load.
+- `AsyncConnectionPool` min/max is configurable through `CHECKPOINTER_POOL_MIN_SIZE` and `CHECKPOINTER_POOL_MAX_SIZE`.
 - Dedupe state/history fetches in the frontend transport and avoid firing them on every render.
 - Add a focused load or concurrency regression test that runs a few active streams while state/history hydration is requested.
-- Document the chosen pool sizing in `AGENTS.md` or the deployment env guide when the migration lands.
+- Keep the chosen pool sizing documented in `backend/.env.example`, `docker-compose.yml`, and the deployment env guide when the migration lands.
 
 ### Risk: Python v3 event payloads are not directly consumable by JS assemblers
 

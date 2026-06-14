@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.agent_runtime.protocol_events import SubscribeParams
 from app.models.conversation import Conversation
@@ -44,7 +45,10 @@ class AgentCommandParams(BaseModel):
     config: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     checkpoint: ThreadCheckpoint | None = None
-    multitask_strategy: str | None = None
+    multitask_strategy: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("multitask_strategy", "multitaskStrategy"),
+    )
     namespace: list[str] | None = None
     interrupt_id: str | None = None
     response: Any = None
@@ -112,7 +116,7 @@ def state_response(
     *,
     values: dict[str, Any] | None = None,
     next_nodes: list[str] | None = None,
-    tasks: list[dict[str, Any]] | None = None,
+    tasks: Sequence[Mapping[str, Any]] | None = None,
     checkpoint_id: str | None = None,
     checkpoint_ns: str = "",
     checkpoint_by_message_id: dict[str, str] | None = None,

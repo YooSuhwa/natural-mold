@@ -61,7 +61,7 @@ async def test_values_tool_message_drives_artifact_side_effects() -> None:
                         "tool_call_id": "call-docx",
                         "content": "OUTPUT_FILES: report.md",
                         "status": "success",
-                    }
+                    },
                 ]
             },
         },
@@ -82,4 +82,4 @@ async def test_values_tool_message_drives_artifact_side_effects() -> None:
     ]
 
     assert recorder.calls == [("execute_in_skill", "call-docx")]
-    assert any("custom:file_event" in chunk for chunk in chunks)
+    assert any('"method":"custom"' in chunk and '"name":"file_event"' in chunk for chunk in chunks)

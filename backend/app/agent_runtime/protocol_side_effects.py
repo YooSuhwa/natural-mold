@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from app.agent_runtime.memory_event_projection import memory_event_from_tool_result
-from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
+from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_custom_protocol_event
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +55,12 @@ def _artifact_protocol_event(
     index: int,
 ) -> StoredProtocolEvent:
     event_id = f"{source_event['id']}:artifact:{index}"
-    return stored_protocol_event(
+    return stored_custom_protocol_event(
         run_id=source_event["run_id"],
         thread_id=source_event["thread_id"],
         seq=seq,
-        method="custom:file_event",
-        data=payload,
+        name="file_event",
+        payload=payload,
         namespace=source_event["namespace"],
         event_id=event_id,
         id=event_id,
@@ -76,12 +76,12 @@ def _memory_protocol_event(
     seq: int,
 ) -> StoredProtocolEvent:
     event_id = f"{source_event['id']}:memory:{event_name}"
-    return stored_protocol_event(
+    return stored_custom_protocol_event(
         run_id=source_event["run_id"],
         thread_id=source_event["thread_id"],
         seq=seq,
-        method=f"custom:{event_name}",
-        data=payload,
+        name=event_name,
+        payload=payload,
         namespace=source_event["namespace"],
         event_id=event_id,
         id=event_id,

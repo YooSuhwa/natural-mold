@@ -9,10 +9,7 @@ import { artifactKeys } from '@/lib/api/artifacts'
 import { chatArtifactsAtom } from '@/lib/stores/chat-artifacts'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 import type { FileEventPayload } from '@/lib/types'
-import {
-  protocolArtifactPayload,
-  useLangGraphArtifactEffects,
-} from '../artifact-events'
+import { protocolArtifactPayload, useLangGraphArtifactEffects } from '../artifact-events'
 
 const mocks = vi.hoisted(() => ({
   useChannelEffect: vi.fn(),
@@ -65,13 +62,13 @@ function artifact(overrides: Partial<FileEventPayload> = {}): FileEventPayload {
 function protocolEvent(payload: FileEventPayload) {
   return {
     type: 'event',
-    method: 'custom:file_event',
+    method: 'custom',
     event_id: 'event-file-1',
     seq: 7,
     run_id: 'run-1',
     params: {
       namespace: [],
-      data: payload,
+      data: { name: 'file_event', payload },
     },
   }
 }

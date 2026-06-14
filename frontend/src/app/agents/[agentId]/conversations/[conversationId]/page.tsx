@@ -25,6 +25,7 @@ import {
 import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { getChatRuntimeMode } from '@/lib/chat/runtime-mode'
+import { useLangGraphDraftConversation } from '@/lib/chat/langgraph-runtime/use-langgraph-draft-conversation'
 import { ChatRuntimeSection } from '@/components/chat/chat-runtime-section'
 import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
@@ -67,7 +68,7 @@ export default function ChatPage({
   const resolvedConversationTitle = useConversationTitle(agentId, conversationId, agent?.name)
   const currentTitle = isDraftConversation ? t('newConversation') : resolvedConversationTitle
   const markedReadKeyRef = useRef<string | null>(null)
-  const activeConversationId = isDraftConversation ? null : conversationId
+  const runtimeMode = getChatRuntimeMode()
 
   useEffect(() => {
     setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
@@ -99,6 +100,24 @@ export default function ChatPage({
     },
     [setConversationRuntimeStatus],
   )
+  const handleLangGraphDraftConversationId = useCallback(
+    (id: string) => {
+      startedConversationIdRef.current = id
+      invalidateConversationNavigators(queryClient, agentId, id)
+    },
+    [agentId, queryClient],
+  )
+  const {
+    conversationId: langGraphDraftConversationId,
+    isBootstrapping: isLangGraphDraftBootstrapping,
+  } = useLangGraphDraftConversation({
+    agentId,
+    isDraftConversation,
+    runtimeMode,
+    onConversationId: handleLangGraphDraftConversationId,
+  })
+  const activeConversationId = isDraftConversation ? langGraphDraftConversationId : conversationId
+  const resolvedSideEffectConversationId = activeConversationId ?? conversationId
 
   const streamFn = useCallback(
     async function* (content: string, signal: AbortSignal, options?: StreamChatOptions) {
@@ -166,25 +185,31 @@ export default function ChatPage({
   }, [messages])
   const getActiveRating = useCallback((mid: string) => ratingByMessage.get(mid), [ratingByMessage])
 
-  const feedbackAdapter = useChatFeedbackAdapter(conversationId, getActiveRating, () => {
-    queryClient.invalidateQueries({ queryKey: conversationKeys.messages(conversationId) })
-  })
-
-  const runtimeMode = getChatRuntimeMode()
+  const feedbackAdapter = useChatFeedbackAdapter(
+    resolvedSideEffectConversationId,
+    getActiveRating,
+    () => {
+      queryClient.invalidateQueries({
+        queryKey: conversationKeys.messages(resolvedSideEffectConversationId),
+      })
+    },
+  )
   const useLangGraphRuntime = runtimeMode === 'langgraph_v3' && activeConversationId !== null
 
   function handleNewConversation() {
     router.push(`/agents/${agentId}/conversations/new`)
   }
   const handleOpenTrace = useCallback(() => {
-    router.push(`/agents/${agentId}/conversations/${conversationId}/traces`)
-  }, [agentId, conversationId, router])
+    router.push(`/agents/${agentId}/conversations/${resolvedSideEffectConversationId}/traces`)
+  }, [agentId, resolvedSideEffectConversationId, router])
   const handleOpenSettings = useCallback(() => {
     router.push(`/agents/${agentId}/settings`)
   }, [agentId, router])
   const handleToggleArtifacts = useCallback(() => {
-    setRightRail((current) => toggleArtifactListRailState(current, conversationId))
-  }, [conversationId, setRightRail])
+    setRightRail((current) =>
+      toggleArtifactListRailState(current, resolvedSideEffectConversationId),
+    )
+  }, [resolvedSideEffectConversationId, setRightRail])
   const handleRuntimeStatusChange = useCallback(
     (status: ConversationRuntimeStatus) => {
       if (activeConversationId) setRuntimeStatus(activeConversationId, status)
@@ -212,7 +237,7 @@ export default function ChatPage({
         <AgentSkillsRow skills={agent?.skills} />
 
         {/* Thread */}
-        {messagesLoading ? (
+        {messagesLoading || isLangGraphDraftBootstrapping ? (
           <div className="flex-1 px-4 py-4">
             <div className="mx-auto max-w-3xl space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (

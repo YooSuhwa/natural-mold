@@ -19,6 +19,7 @@ import {
   appendResolvedInterruptToolCallMessages,
   resolvedInterruptToolCallsFromDecisions,
   standardPayloadsFromInterrupts,
+  type LangGraphInterruptLike,
   type ResolvedInterruptToolCall,
 } from './hitl-interrupts'
 import { useLangGraphMemoryEffects } from './memory-events'
@@ -58,6 +59,12 @@ const ACTIVITY_CHANNELS = [
   'custom',
 ] as const satisfies readonly Channel[]
 
+function threadInterruptsFromStream(stream: {
+  getThread: () => { readonly interrupts?: readonly LangGraphInterruptLike[] } | undefined
+}): readonly LangGraphInterruptLike[] {
+  return stream.getThread()?.interrupts ?? []
+}
+
 export function useMoldyLangGraphStream({
   agentId,
   conversationId,
@@ -84,10 +91,10 @@ export function useMoldyLangGraphStream({
   )
   const deepAgentsState = useMemo(() => selectDeepAgentsState(stream.values ?? {}), [stream.values])
   const [resolvedInterrupts, setResolvedInterrupts] = useState<ResolvedInterruptToolCall[]>([])
-  const allInterruptPayloads = useMemo(
-    () => standardPayloadsFromInterrupts(stream.interrupts),
-    [stream.interrupts],
-  )
+  const allInterruptPayloads = standardPayloadsFromInterrupts([
+    ...stream.interrupts,
+    ...threadInterruptsFromStream(stream),
+  ])
   const interruptPayloads = useMemo(
     () => activeInterruptPayloads(allInterruptPayloads, stream.messages, resolvedInterrupts),
     [allInterruptPayloads, resolvedInterrupts, stream.messages],
@@ -134,10 +141,14 @@ export function useMoldyLangGraphStream({
     langChainMessages: messagesWithUsage,
   })
   const coordinatorsRef = useRef(new Map<string, HiTLDecisionCoordinator>())
+  const pendingInterruptDecisionsRef = useRef(new Map<string, Decision[]>())
   useEffect(() => {
     const active = new Set(interruptPayloads.map((payload) => payload.interrupt_id))
     for (const key of coordinatorsRef.current.keys()) {
       if (!active.has(key)) coordinatorsRef.current.delete(key)
+    }
+    for (const key of pendingInterruptDecisionsRef.current.keys()) {
+      if (!active.has(key)) pendingInterruptDecisionsRef.current.delete(key)
     }
   }, [interruptPayloads])
   const adapters = useMemo(() => {
@@ -195,8 +206,31 @@ export function useMoldyLangGraphStream({
     async (decisions: Decision[], _displayText?: string, interruptId?: string | null) => {
       const targetId = interruptId ?? firstInterruptId
       const response = { decisions }
+      const activeInterruptIds = interruptPayloads.map((payload) => payload.interrupt_id)
+      if (targetId && activeInterruptIds.length > 1 && activeInterruptIds.includes(targetId)) {
+        pendingInterruptDecisionsRef.current.set(targetId, [...decisions])
+        const responsesById: Record<string, { decisions: Decision[] }> = {}
+        const decisionsById = new Map<string, Decision[]>()
+        for (const activeId of activeInterruptIds) {
+          const pending = pendingInterruptDecisionsRef.current.get(activeId)
+          if (!pending) return
+          responsesById[activeId] = { decisions: pending }
+          decisionsById.set(activeId, pending)
+        }
+        await stream.respondAll(responsesById)
+        await refreshThreadLifecycleStream(stream)
+        for (const [activeId, pending] of decisionsById) {
+          pendingInterruptDecisionsRef.current.delete(activeId)
+          rememberResolvedInterrupt(activeId, pending)
+        }
+        return
+      }
       if (targetId) {
-        await stream.respond(response, { interruptId: targetId })
+        const payload = allInterruptPayloadsById.get(targetId)
+        const options = payload?.namespace
+          ? { interruptId: targetId, namespace: payload.namespace }
+          : { interruptId: targetId }
+        await stream.respond(response, options)
         await refreshThreadLifecycleStream(stream)
         rememberResolvedInterrupt(targetId, decisions)
         return
@@ -205,7 +239,13 @@ export function useMoldyLangGraphStream({
       await refreshThreadLifecycleStream(stream)
       rememberResolvedInterrupt(null, decisions)
     },
-    [firstInterruptId, rememberResolvedInterrupt, stream],
+    [
+      allInterruptPayloadsById,
+      firstInterruptId,
+      interruptPayloads,
+      rememberResolvedInterrupt,
+      stream,
+    ],
   )
   const registerDecision = useCallback(
     async (

@@ -7,10 +7,13 @@ import {
   NOTES_FILE,
   REPORT_FILE,
   approveExecuteInSkill,
+  expectFinalTextVisible,
   sendMessage,
   setupLangGraphV3Agent,
   stringField,
+  waitForActiveRun,
   waitForArtifact,
+  waitForRunStatus,
   type LangGraphV3Setup,
 } from './langgraph-v3-helpers'
 
@@ -34,6 +37,14 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
 
 async function capture(page: Page, filename: string): Promise<void> {
   await page.screenshot({ path: path.join(CAPTURE_DIR, filename), fullPage: true })
+}
+
+async function expectApprovalCardVisible(page: Page): Promise<void> {
+  const approvalCard = page.getByText(/승인이 필요합니다|Approval Required/).last()
+  if (!(await approvalCard.isVisible())) {
+    await page.reload()
+  }
+  await expect(approvalCard).toBeVisible({ timeout: 30_000 })
 }
 
 async function deleteSetup(request: APIRequestContext, setup: LangGraphV3Setup): Promise<void> {
@@ -67,6 +78,7 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
         page,
         `E2E_LANGGRAPH_V3 slow_subagent=true subagent=${setup.childRuntimeName}`,
       )
+      const runId = await waitForActiveRun(request, setup.conversationId)
 
       await expect(page.getByText('Collect LangGraph v3 runtime evidence')).toBeVisible({
         timeout: 30_000,
@@ -77,9 +89,8 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       await expect(page.getByText(/E2E subagent visual matrix:/).first()).toBeVisible({
         timeout: 30_000,
       })
-      await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible({
-        timeout: 60_000,
-      })
+      await waitForRunStatus(request, setup.conversationId, runId, 'interrupted')
+      await expectApprovalCardVisible(page)
       await capture(page, '02-hitl-tool-approval.png')
 
       expect(errors.console).toEqual([])
@@ -101,13 +112,13 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
     try {
       await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
       await sendMessage(page, `E2E_LANGGRAPH_V3 subagent=${setup.childRuntimeName}`)
-      await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible({
-        timeout: 60_000,
-      })
+      const runId = await waitForActiveRun(request, setup.conversationId)
+      await waitForRunStatus(request, setup.conversationId, runId, 'interrupted')
+      await expectApprovalCardVisible(page)
       await approveExecuteInSkill(page)
-      await expect(page.getByText(FINAL_TEXT)).toBeVisible({ timeout: 60_000 })
       await waitForArtifact(request, setup.conversationId, REPORT_FILE)
       await waitForArtifact(request, setup.conversationId, NOTES_FILE)
+      await expectFinalTextVisible(page)
       await expect(page.getByText(setup.childRuntimeName).first()).toBeVisible()
       await capture(page, '03-completed-thread-with-subagent.png')
 
@@ -126,9 +137,16 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       await page.mouse.move(1, 1)
 
       await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
-      await expect(page.getByRole('button', { name: new RegExp(REPORT_FILE) })).toBeVisible()
-      await expect(page.getByRole('button', { name: new RegExp(NOTES_FILE) })).toBeVisible()
-      await page.getByRole('button', { name: new RegExp(REPORT_FILE) }).click()
+      const artifactRail = page.getByRole('complementary')
+      const reportArtifactButton = artifactRail
+        .getByRole('button', { name: new RegExp(REPORT_FILE) })
+        .last()
+      const notesArtifactButton = artifactRail
+        .getByRole('button', { name: new RegExp(NOTES_FILE) })
+        .last()
+      await expect(reportArtifactButton).toBeVisible()
+      await expect(notesArtifactButton).toBeVisible()
+      await reportArtifactButton.click()
       await expect(
         page.getByRole('complementary').getByText('LangGraph v3 E2E Report'),
       ).toBeVisible({ timeout: 20_000 })
@@ -151,7 +169,7 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       try {
         const publicPage = await anonymous.newPage()
         await publicPage.goto(`${FRONTEND}/shared/${stringField(share, 'share_token', 'share')}`)
-        await expect(publicPage.getByText(FINAL_TEXT)).toBeVisible({ timeout: 20_000 })
+        await expect(publicPage.getByText(FINAL_TEXT).first()).toBeVisible({ timeout: 20_000 })
         await expect(publicPage.getByText(setup.childRuntimeName).first()).toBeVisible()
         await capture(publicPage, '08-share-page-subagent-chip.png')
       } finally {

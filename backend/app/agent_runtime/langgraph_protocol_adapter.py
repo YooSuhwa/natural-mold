@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
+from app.agent_runtime.langgraph_reasoning_redaction import redact_private_reasoning
 from app.agent_runtime.langgraph_tool_event_synthesis import synthesize_tool_events_from_values
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
 
@@ -45,14 +46,17 @@ def adapt_v3_protocol_event(
         params = {}
 
     namespace = _coerce_namespace(params.get("namespace"))
+    raw_data = _merge_params_interrupts(
+        data=params.get("data"),
+        interrupts=params.get("interrupts"),
+    )
+    checkpoint_id, checkpoint_ns = _checkpoint_metadata(params, raw_data)
     data = _normalize_protocol_data(
         method,
-        _merge_params_interrupts(
-            data=params.get("data"),
-            interrupts=params.get("interrupts"),
-        ),
+        raw_data,
     )
     method, data = _normalize_method(method, data)
+    data = redact_private_reasoning(data)
 
     return stored_protocol_event(
         run_id=run_id,
@@ -63,6 +67,8 @@ def adapt_v3_protocol_event(
         namespace=namespace,
         data=data,
         timestamp=_coerce_optional_str(params.get("timestamp")),
+        checkpoint_id=checkpoint_id,
+        checkpoint_ns=checkpoint_ns,
     )
 
 
@@ -94,7 +100,7 @@ def adapt_stream_mode_chunk(
         event_id=event_id,
         method=method_name,
         namespace=namespace,
-        data=normalized,
+        data=redact_private_reasoning(normalized),
     )
 
 
@@ -151,9 +157,31 @@ def _merge_params_interrupts(*, data: Any, interrupts: Any) -> Any:
 
 
 def _normalize_method(method: str, data: Any) -> tuple[str, Any]:
-    if method in RAW_PROTOCOL_METHODS or method.startswith("custom:"):
+    if method.startswith("custom:"):
+        return "custom", {"name": method.removeprefix("custom:"), "payload": data}
+    if method in RAW_PROTOCOL_METHODS:
         return method, data
     return "custom", {"name": method, "payload": data}
+
+
+def _checkpoint_metadata(
+    params: Mapping[str, Any],
+    data: Any,
+) -> tuple[str | None, str | None]:
+    checkpoint_id = _coerce_optional_str(params.get("checkpoint_id"))
+    checkpoint_ns = _coerce_optional_str(params.get("checkpoint_ns"))
+
+    checkpoint = params.get("checkpoint")
+    if isinstance(checkpoint, Mapping):
+        checkpoint_id = checkpoint_id or _coerce_optional_str(checkpoint.get("checkpoint_id"))
+        checkpoint_ns = checkpoint_ns or _coerce_optional_str(checkpoint.get("checkpoint_ns"))
+
+    if _is_payload_metadata_tuple(data):
+        metadata = data[1]
+        checkpoint_id = checkpoint_id or _coerce_optional_str(metadata.get("checkpoint_id"))
+        checkpoint_ns = checkpoint_ns or _coerce_optional_str(metadata.get("checkpoint_ns"))
+
+    return checkpoint_id, checkpoint_ns
 
 
 def _serialize_value(value: Any) -> Any:
@@ -165,10 +193,12 @@ def _serialize_value(value: Any) -> Any:
         return [_serialize_value(item) for item in value]
     if is_dataclass(value) and not isinstance(value, type):
         return _serialize_value(asdict(value))
-    if hasattr(value, "model_dump"):
-        return _serialize_value(value.model_dump())
-    if hasattr(value, "dict"):
-        return _serialize_value(value.dict())
+    dumped = _method_result(value, "model_dump")
+    if dumped is not None:
+        return _serialize_value(dumped)
+    dict_value = _method_result(value, "dict")
+    if dict_value is not None:
+        return _serialize_value(dict_value)
 
     interrupt = _serialize_interrupt_like(value)
     if interrupt is not None:
@@ -179,6 +209,11 @@ def _serialize_value(value: Any) -> Any:
         return message
 
     return repr(value)
+
+
+def _method_result(value: Any, method_name: str) -> Any | None:
+    method = getattr(value, method_name, None)
+    return method() if callable(method) else None
 
 
 def _serialize_interrupt_like(value: Any) -> dict[str, Any] | None:

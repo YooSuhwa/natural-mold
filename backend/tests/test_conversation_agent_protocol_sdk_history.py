@@ -83,7 +83,7 @@ async def test_sdk_thread_history_path_returns_checkpoint_snapshots(
         ],
     )
     monkeypatch.setattr(
-        "app.routers.conversation_agent_protocol_runtime.get_checkpointer",
+        "app.routers.conversation_agent_protocol_state.get_checkpointer",
         lambda: _FakeCheckpointer([leaf, parent]),
     )
 
@@ -122,7 +122,7 @@ async def test_sdk_thread_history_accepts_configurable_before_cursor(
         ],
     )
     monkeypatch.setattr(
-        "app.routers.conversation_agent_protocol_runtime.get_checkpointer",
+        "app.routers.conversation_agent_protocol_state.get_checkpointer",
         lambda: _FakeCheckpointer([leaf, parent]),
     )
 

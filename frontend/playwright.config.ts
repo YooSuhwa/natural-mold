@@ -12,6 +12,9 @@ const apiBaseURL = process.env.E2E_API_BASE_URL ?? `http://localhost:${backendPo
 const corsOrigins = `http://localhost:${frontendPort},http://127.0.0.1:${frontendPort}`
 const workers = Number(process.env.E2E_WORKERS ?? '4')
 const testTimeout = Number(process.env.E2E_TEST_TIMEOUT_MS ?? '60000')
+const chatRuntime =
+  process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy' ? 'legacy' : 'langgraph_v3'
+process.env.NEXT_PUBLIC_CHAT_RUNTIME = chatRuntime
 
 const webServer = [
   ...(skipBackend
@@ -24,7 +27,7 @@ const webServer = [
         },
       ]),
   {
-    command: `NEXT_PUBLIC_API_BASE_URL=${apiBaseURL} pnpm dev --port ${frontendPort}`,
+    command: `NEXT_PUBLIC_CHAT_RUNTIME=${chatRuntime} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL} pnpm dev --port ${frontendPort}`,
     port: frontendPort,
     reuseExistingServer: true,
   },

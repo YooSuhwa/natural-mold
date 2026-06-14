@@ -606,6 +606,59 @@ async def test_ag_ui_run_stream_endpoint_replays_terminal_run_with_split_event_r
 
 
 @pytest.mark.asyncio
+async def test_ag_ui_run_stream_endpoint_replays_append_only_chunks(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    agent, conversation = await _seed_agent_conversation(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="ag ui chunk replay",
+    )
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="test")
+    await conversation_run_service.transition_run(db, run, "completed")
+    await trace_storage.append_events(
+        db,
+        conversation_id=conversation.id,
+        assistant_msg_id=str(run.id),
+        events_chunk=[
+            {
+                "id": f"{run.id}-1",
+                "event": event_names.MESSAGE_START,
+                "data": {"id": str(run.id), "role": "assistant"},
+            },
+            {
+                "id": f"{run.id}-2",
+                "event": event_names.CONTENT_DELTA,
+                "data": {"delta": "chunk-only replay"},
+            },
+            {
+                "id": f"{run.id}-3",
+                "event": event_names.MESSAGE_END,
+                "data": {"content": "chunk-only replay", "usage": {}, "status": "completed"},
+            },
+        ],
+        status="completed",
+    )
+    await db.commit()
+
+    resp = await client.get(
+        f"/api/conversations/{conversation.id}/runs/{run.id}/ag-ui-stream",
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["x-resume-mode"] == "replay"
+    assert "TEXT_MESSAGE_START" in resp.text
+    assert "TEXT_MESSAGE_CONTENT" in resp.text
+    assert "chunk-only replay" in resp.text
+    assert "RUN_FINISHED" in resp.text
+
+
+@pytest.mark.asyncio
 async def test_run_stream_endpoint_returns_retry_for_fresh_active_run_without_broker(
     client: AsyncClient,
     db: AsyncSession,

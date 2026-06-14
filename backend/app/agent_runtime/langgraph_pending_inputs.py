@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, TypedDict
 
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
@@ -9,6 +10,12 @@ from app.agent_runtime.protocol_events import (
     stored_protocol_event,
 )
 from app.agent_runtime.streaming import _interrupt_to_standard_chunk
+
+
+class PendingInputPayload(TypedDict):
+    interrupt_id: str
+    payload: dict[str, Any]
+    namespace: list[str]
 
 
 def _next_protocol_seq(events: list[dict[str, Any]]) -> int:
@@ -24,21 +31,63 @@ def _seen_interrupt_ids(events: list[dict[str, Any]]) -> set[str]:
     return seen
 
 
-def _interrupt_payloads_from_state(state: Any) -> list[dict[str, Any]]:
-    payloads: list[dict[str, Any]] = []
+def _namespace_from_path_segment(segment: Any) -> list[str]:
+    if isinstance(segment, str):
+        return [segment] if ":" in segment and not segment.startswith("__") else []
+    if isinstance(segment, Sequence) and not isinstance(segment, str | bytes):
+        namespace: list[str] = []
+        for item in segment:
+            namespace.extend(_namespace_from_path_segment(item))
+        return namespace
+    return []
+
+
+def _namespace_from_task(task: Any) -> list[str]:
+    path = getattr(task, "path", ())
+    if not isinstance(path, Sequence) or isinstance(path, str | bytes):
+        return []
+    namespace: list[str] = []
+    for segment in path:
+        namespace.extend(_namespace_from_path_segment(segment))
+    return namespace
+
+
+def _payload_from_interrupt(
+    interrupt: Any,
+    *,
+    namespace: list[str],
+    index: int,
+) -> PendingInputPayload | None:
+    intr_id = str(getattr(interrupt, "id", "") or f"interrupt-{index + 1}")
+    intr_value = getattr(interrupt, "value", None)
+    standard = _interrupt_to_standard_chunk(
+        intr_id,
+        intr_value if isinstance(intr_value, dict) else None,
+    )
+    if standard is None:
+        return None
+    return {
+        "interrupt_id": intr_id,
+        "payload": standard,
+        "namespace": namespace,
+    }
+
+
+def _interrupt_payloads_from_state(state: Any) -> list[PendingInputPayload]:
+    payloads: list[PendingInputPayload] = []
     interrupts = list(getattr(state, "interrupts", ()) or ())
-    if not interrupts:
-        for task in getattr(state, "tasks", ()) or ():
-            interrupts.extend(getattr(task, "interrupts", ()) or ())
     for index, interrupt in enumerate(interrupts):
-        intr_id = str(getattr(interrupt, "id", "") or f"interrupt-{index + 1}")
-        intr_value = getattr(interrupt, "value", None)
-        standard = _interrupt_to_standard_chunk(
-            intr_id,
-            intr_value if isinstance(intr_value, dict) else None,
-        )
-        if standard is not None:
-            payloads.append(standard)
+        payload = _payload_from_interrupt(interrupt, namespace=[], index=index)
+        if payload is not None:
+            payloads.append(payload)
+    if payloads:
+        return payloads
+    for task in getattr(state, "tasks", ()) or ():
+        namespace = _namespace_from_task(task)
+        for index, interrupt in enumerate(getattr(task, "interrupts", ()) or ()):
+            payload = _payload_from_interrupt(interrupt, namespace=namespace, index=index)
+            if payload is not None:
+                payloads.append(payload)
     return payloads
 
 
@@ -58,10 +107,16 @@ async def pending_input_requested_events(
     seen_interrupt_ids = _seen_interrupt_ids(emitted)
     raw_interrupts: list[dict[str, Any]] = []
     for payload in _interrupt_payloads_from_state(state):
-        interrupt_id = str(payload.get("interrupt_id") or "")
+        interrupt_id = payload["interrupt_id"]
         if not interrupt_id or interrupt_id in seen_interrupt_ids:
             continue
-        raw_interrupts.append({"id": interrupt_id, "value": payload})
+        raw_interrupts.append(
+            {
+                "id": interrupt_id,
+                "value": payload["payload"],
+                "ns": payload["namespace"],
+            }
+        )
 
     if not raw_interrupts:
         return []

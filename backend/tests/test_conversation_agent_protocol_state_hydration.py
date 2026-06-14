@@ -21,11 +21,19 @@ from tests.conftest import TEST_USER_ID
 
 
 class _FakeCheckpointer:
-    def __init__(self, checkpoints: list[_CheckpointSlim]) -> None:
+    def __init__(
+        self,
+        checkpoints: list[_CheckpointSlim],
+        *,
+        values_by_checkpoint: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
         self._checkpoints = checkpoints
+        self._values_by_checkpoint = values_by_checkpoint or {}
 
     async def alist(self, _config: Any) -> AsyncIterator[Any]:
         for checkpoint in self._checkpoints:
+            channel_values = dict(self._values_by_checkpoint.get(checkpoint.checkpoint_id, {}))
+            channel_values.setdefault("messages", checkpoint.messages)
             yield type(
                 "CheckpointTuple",
                 (),
@@ -36,7 +44,7 @@ class _FakeCheckpointer:
                         if checkpoint.parent_checkpoint_id
                         else None
                     ),
-                    "checkpoint": {"channel_values": {"messages": checkpoint.messages}},
+                    "checkpoint": {"channel_values": channel_values},
                 },
             )()
 
@@ -270,7 +278,7 @@ async def test_thread_state_exposes_checkpoint_mapping_for_messages(
         ],
     )
     monkeypatch.setattr(
-        "app.routers.conversation_agent_protocol_runtime.get_checkpointer",
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
         lambda: _FakeCheckpointer([leaf, parent]),
     )
 
@@ -297,6 +305,44 @@ async def test_thread_state_exposes_checkpoint_mapping_for_messages(
 
 
 @pytest.mark.asyncio
+async def test_thread_state_preserves_deepagents_checkpoint_values(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck-state",
+        parent_checkpoint_id=None,
+        messages=[HumanMessage(id="user-state-1", content="hello")],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: _FakeCheckpointer(
+            [leaf],
+            values_by_checkpoint={
+                "ck-state": {
+                    "todos": [{"id": "todo-1", "content": "Plan", "status": "in_progress"}],
+                    "files": {"notes.md": {"content": "# Notes"}},
+                    "async_tasks": {"task-1": {"status": "running"}},
+                }
+            },
+        ),
+    )
+
+    response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert response.status_code == 200
+    values = response.json()["values"]
+    assert values["messages"][0]["id"] == "user-state-1"
+    assert values["todos"] == [{"id": "todo-1", "content": "Plan", "status": "in_progress"}]
+    assert values["files"] == {"notes.md": {"content": "# Notes"}}
+    assert values["async_tasks"] == {"task-1": {"status": "running"}}
+
+
+@pytest.mark.asyncio
 async def test_thread_history_returns_checkpoint_snapshots_instead_of_current_state_copies(
     client: AsyncClient,
     db: AsyncSession,
@@ -317,7 +363,7 @@ async def test_thread_history_returns_checkpoint_snapshots_instead_of_current_st
         ],
     )
     monkeypatch.setattr(
-        "app.routers.conversation_agent_protocol_runtime.get_checkpointer",
+        "app.routers.conversation_agent_protocol_state.get_checkpointer",
         lambda: _FakeCheckpointer([leaf, parent]),
     )
 

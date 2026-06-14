@@ -11,9 +11,15 @@ from app.agent_runtime.protocol_events import (
     SubscribeParams,
     format_protocol_sse,
     matches_subscription,
-    stored_protocol_event,
+    protocol_event_cursor,
+    resequence_protocol_events,
+    stored_custom_protocol_event,
 )
 from app.models.message_event import MessageEvent
+from app.routers.conversation_agent_protocol_event_normalization import (
+    stored_compatible_protocol_event,
+)
+from app.routers.conversation_agent_protocol_legacy import protocol_events_from_legacy_sse
 from app.services import trace_storage
 
 
@@ -33,49 +39,70 @@ def _namespace(value: Any) -> list[str]:
     return [segment for segment in value if isinstance(segment, str)]
 
 
-def _stored_event_from_raw(
+def _stored_events_from_raw(
     raw: Mapping[str, Any],
     *,
     record: MessageEvent,
-) -> StoredProtocolEvent | None:
+    fallback_seq: int,
+) -> list[StoredProtocolEvent]:
     method = _optional_str(raw.get("method"))
     seq = _int_value(raw.get("seq"))
     if method is not None and seq is not None and "data" in raw:
-        return stored_protocol_event(
-            run_id=_optional_str(raw.get("run_id")) or record.assistant_msg_id,
-            thread_id=_optional_str(raw.get("thread_id")) or str(record.conversation_id),
-            seq=seq,
-            method=method,
-            namespace=_namespace(raw.get("namespace")),
-            data=raw.get("data"),
-            event_id=_optional_str(raw.get("upstream_event_id")),
-            timestamp=_optional_str(raw.get("timestamp")),
-            id=_optional_str(raw.get("id")),
-        )
+        return [
+            stored_compatible_protocol_event(
+                run_id=_optional_str(raw.get("run_id")) or record.assistant_msg_id,
+                thread_id=_optional_str(raw.get("thread_id")) or str(record.conversation_id),
+                seq=seq,
+                method=method,
+                namespace=_namespace(raw.get("namespace")),
+                data=raw.get("data"),
+                event_id=_optional_str(raw.get("upstream_event_id")),
+                timestamp=_optional_str(raw.get("timestamp")),
+                id=_optional_str(raw.get("id")),
+                checkpoint_id=_optional_str(raw.get("checkpoint_id")),
+                checkpoint_ns=_optional_str(raw.get("checkpoint_ns")),
+            )
+        ]
 
     if raw.get("type") != "event":
-        return None
+        return protocol_events_from_legacy_sse(
+            raw,
+            record=record,
+            seq=_legacy_seq(raw, fallback=fallback_seq),
+        )
     params = raw.get("params")
     if not isinstance(params, Mapping):
-        return None
+        return []
     wire_method = _optional_str(raw.get("method"))
     wire_seq = _int_value(raw.get("seq"))
     if wire_method is None or wire_seq is None:
-        return None
-    return stored_protocol_event(
-        run_id=record.assistant_msg_id,
-        thread_id=str(record.conversation_id),
-        seq=wire_seq,
-        method=wire_method,
-        namespace=_namespace(params.get("namespace")),
-        data=params.get("data"),
-        event_id=_optional_str(raw.get("event_id")),
-        timestamp=_optional_str(params.get("timestamp")),
-    )
+        return []
+    return [
+        stored_compatible_protocol_event(
+            run_id=record.assistant_msg_id,
+            thread_id=str(record.conversation_id),
+            seq=wire_seq,
+            method=wire_method,
+            namespace=_namespace(params.get("namespace")),
+            data=params.get("data"),
+            event_id=_optional_str(raw.get("event_id")),
+            timestamp=_optional_str(params.get("timestamp")),
+            checkpoint_id=_optional_str(params.get("checkpoint_id")),
+            checkpoint_ns=_optional_str(params.get("checkpoint_ns")),
+        )
+    ]
+
+
+def _legacy_seq(raw: Mapping[str, Any], *, fallback: int) -> int:
+    event_id = _optional_str(raw.get("id"))
+    if event_id is None:
+        return fallback
+    tail = event_id.rsplit("-", 1)[-1]
+    return int(tail) if tail.isdigit() else fallback
 
 
 def _event_matches_cursor(event: StoredProtocolEvent, cursor: str) -> bool:
-    return cursor in {event["id"], event["upstream_event_id"], str(event["seq"])}
+    return cursor in {event["id"], protocol_event_cursor(event)}
 
 
 def _events_after_cursor(
@@ -97,13 +124,12 @@ def protocol_stale_event(
     seq: int,
     last_event_id: str | None,
 ) -> StoredProtocolEvent:
-    return stored_protocol_event(
+    return stored_custom_protocol_event(
         run_id=run_id,
         thread_id=thread_id,
         seq=seq,
-        method="custom:stale",
-        data={
-            "name": "stale",
+        name="stale",
+        payload={
             "reason": "run_worker_lost",
             "run_id": run_id,
             "last_event_id": last_event_id,
@@ -119,13 +145,11 @@ async def load_protocol_events(
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
     events: list[StoredProtocolEvent] = []
     for record in records:
-        for raw in await trace_storage.load_events(db, record):
+        for index, raw in enumerate(await trace_storage.load_events(db, record), start=1):
             if not isinstance(raw, Mapping):
                 continue
-            event = _stored_event_from_raw(raw, record=record)
-            if event is not None:
-                events.append(event)
-    return events
+            events.extend(_stored_events_from_raw(raw, record=record, fallback_seq=index))
+    return resequence_protocol_events(events)
 
 
 async def protocol_replay_generator(

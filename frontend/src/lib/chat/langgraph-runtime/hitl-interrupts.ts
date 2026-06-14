@@ -14,6 +14,8 @@ export interface LangGraphInterruptLike {
   readonly value?: unknown
   readonly interruptId?: string
   readonly payload?: unknown
+  readonly namespace?: readonly unknown[]
+  readonly ns?: readonly unknown[]
 }
 
 export interface ApprovalResult {
@@ -41,6 +43,12 @@ function arrayValue(value: unknown): readonly unknown[] | undefined {
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined
+}
+
+function namespaceValue(value: unknown): string[] | undefined {
+  const raw = arrayValue(value)
+  if (!raw) return undefined
+  return raw.filter((item): item is string => typeof item === 'string')
 }
 
 function isString(value: string | undefined): value is string {
@@ -101,6 +109,7 @@ function reviewConfigs(value: Record<string, unknown>): ReviewConfig[] | null {
 function nativeAskUserPayload(
   interruptId: string,
   value: Record<string, unknown>,
+  namespace: string[] | undefined,
 ): StandardInterruptPayload | null {
   if (value.type !== 'ask_user') return null
   const args = Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'type'))
@@ -111,11 +120,55 @@ function nativeAskUserPayload(
           question: textValue(args.question) ?? '',
           options: arrayValue(args.options) ?? [],
         }
-  return {
-    interrupt_id: interruptId,
-    action_requests: [{ name: 'ask_user', args: normalizedArgs }],
-    review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
-  }
+  return withNamespace(
+    {
+      interrupt_id: interruptId,
+      action_requests: [{ name: 'ask_user', args: normalizedArgs }],
+      review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+    },
+    namespace,
+  )
+}
+
+function interruptNamespace(
+  interrupt: LangGraphInterruptLike,
+  value: Record<string, unknown>,
+): string[] | undefined {
+  return (
+    namespaceValue(interrupt.namespace) ??
+    namespaceValue(interrupt.ns) ??
+    namespaceValue(value.namespace) ??
+    namespaceValue(value.ns)
+  )
+}
+
+function withNamespace(
+  payload: StandardInterruptPayload,
+  namespace: string[] | undefined,
+): StandardInterruptPayload {
+  if (!namespace) return payload
+  return { ...payload, namespace }
+}
+
+function upsertPayload(
+  byId: Map<string, StandardInterruptPayload>,
+  order: string[],
+  payload: StandardInterruptPayload,
+): void {
+  if (!byId.has(payload.interrupt_id)) order.push(payload.interrupt_id)
+  const existing = byId.get(payload.interrupt_id)
+  if (existing?.namespace && !payload.namespace) return
+  byId.set(payload.interrupt_id, payload)
+}
+
+function orderedPayloads(
+  byId: ReadonlyMap<string, StandardInterruptPayload>,
+  order: readonly string[],
+): StandardInterruptPayload[] {
+  return order.flatMap((interruptId) => {
+    const payload = byId.get(interruptId)
+    return payload ? [payload] : []
+  })
 }
 
 export function standardPayloadFromInterrupt(
@@ -130,24 +183,32 @@ export function standardPayloadFromInterrupt(
     textValue(value.interrupt_id) ??
     textValue(value.interruptId) ??
     `interrupt-${index + 1}`
-  const nativeAskUser = nativeAskUserPayload(interruptId, value)
+  const namespace = interruptNamespace(interrupt, value)
+  const nativeAskUser = nativeAskUserPayload(interruptId, value, namespace)
   if (nativeAskUser) return nativeAskUser
   const actions = actionRequests(value)
   const reviews = reviewConfigs(value)
   if (!actions || !reviews) return null
-  return {
-    interrupt_id: interruptId,
-    action_requests: actions,
-    review_configs: reviews,
-  }
+  return withNamespace(
+    {
+      interrupt_id: interruptId,
+      action_requests: actions,
+      review_configs: reviews,
+    },
+    namespace,
+  )
 }
 
 export function standardPayloadsFromInterrupts(
   interrupts: readonly LangGraphInterruptLike[],
 ): StandardInterruptPayload[] {
-  return interrupts
-    .map((interrupt, index) => standardPayloadFromInterrupt(interrupt, index))
-    .filter((payload): payload is StandardInterruptPayload => payload !== null)
+  const byId = new Map<string, StandardInterruptPayload>()
+  const order: string[] = []
+  for (const [index, interrupt] of interrupts.entries()) {
+    const payload = standardPayloadFromInterrupt(interrupt, index)
+    if (payload) upsertPayload(byId, order, payload)
+  }
+  return orderedPayloads(byId, order)
 }
 
 function hasToolCallId(message: BaseMessage, ids: ReadonlySet<string>): boolean {

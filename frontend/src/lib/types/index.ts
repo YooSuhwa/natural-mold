@@ -438,6 +438,7 @@ export interface ReviewConfig {
 /** SSE `interrupt` event payload — `HITLRequest` + correlation `interrupt_id`. */
 export interface StandardInterruptPayload {
   interrupt_id: string
+  namespace?: string[]
   action_requests: ActionRequest[]
   review_configs: ReviewConfig[]
 }

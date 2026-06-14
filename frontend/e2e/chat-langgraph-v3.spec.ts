@@ -1,20 +1,14 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { Page } from '@playwright/test'
-import {
-  API_BASE,
-  apiDeleteOk,
-  apiPostJson,
-  expect,
-  isRecord,
-  test,
-} from './fixtures'
+import { API_BASE, apiDeleteOk, apiPostJson, expect, isRecord, test } from './fixtures'
 import {
   FINAL_TEXT,
   NOTES_FILE,
   REPORT_FILE,
   approveExecuteInSkill,
   commandMethod,
+  expectFinalTextVisible,
   records,
   sendMessage,
   setupLangGraphV3Agent,
@@ -81,9 +75,9 @@ test.describe('LangGraph v3 chat runtime', () => {
       expect(runStartCommands).toHaveLength(1)
 
       await approveExecuteInSkill(page)
-      await expect(page.getByText(FINAL_TEXT)).toBeVisible({ timeout: 60_000 })
       await waitForArtifact(request, setup.conversationId, REPORT_FILE)
       await waitForArtifact(request, setup.conversationId, NOTES_FILE)
+      await expectFinalTextVisible(page)
       await expect(page.getByText(setup.childRuntimeName).first()).toBeVisible()
       await expect(page.getByText('E2E subagent scoped result ready.').first()).toBeVisible()
 
@@ -96,13 +90,23 @@ test.describe('LangGraph v3 chat runtime', () => {
       await page.setViewportSize(DESKTOP_VIEWPORT)
 
       await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
-      await expect(page.getByRole('button', { name: new RegExp(REPORT_FILE) })).toBeVisible()
-      await expect(page.getByRole('button', { name: new RegExp(NOTES_FILE) })).toBeVisible()
-      await page.getByRole('button', { name: new RegExp(REPORT_FILE) }).click()
+      const artifactRail = page.getByRole('complementary')
+      const reportArtifactButton = artifactRail
+        .getByRole('button', { name: new RegExp(REPORT_FILE) })
+        .last()
+      const notesArtifactButton = artifactRail
+        .getByRole('button', { name: new RegExp(NOTES_FILE) })
+        .last()
+      await expect(reportArtifactButton).toBeVisible()
+      await expect(notesArtifactButton).toBeVisible()
+      await reportArtifactButton.click()
       await expect(
         page.getByRole('complementary').getByText('LangGraph v3 E2E Report'),
       ).toBeVisible({ timeout: 20_000 })
-      await page.screenshot({ path: path.join(CAPTURE_DIR, '02-artifact-rail.png'), fullPage: true })
+      await page.screenshot({
+        path: path.join(CAPTURE_DIR, '02-artifact-rail.png'),
+        fullPage: true,
+      })
       await page.setViewportSize(MOBILE_VIEWPORT)
       await expectNoHorizontalOverflow(page)
       await page.screenshot({
@@ -121,8 +125,11 @@ test.describe('LangGraph v3 chat runtime', () => {
       await expect(tokenTooltip).toContainText('45')
 
       await page.reload()
-      await expect(page.getByText(FINAL_TEXT)).toBeVisible({ timeout: 30_000 })
-      const reloadedReportButton = page.getByRole('button', { name: new RegExp(REPORT_FILE) })
+      await expect(page.getByText(FINAL_TEXT).first()).toBeVisible({ timeout: 30_000 })
+      const reloadedReportButton = page
+        .getByRole('complementary')
+        .getByRole('button', { name: new RegExp(REPORT_FILE) })
+        .last()
       if (!(await reloadedReportButton.isVisible())) {
         await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
       }
@@ -147,7 +154,7 @@ test.describe('LangGraph v3 chat runtime', () => {
       try {
         const publicPage = await anonymous.newPage()
         await publicPage.goto(`${FRONTEND}/shared/${stringField(share, 'share_token', 'share')}`)
-        await expect(publicPage.getByText(FINAL_TEXT)).toBeVisible({ timeout: 20_000 })
+        await expect(publicPage.getByText(FINAL_TEXT).first()).toBeVisible({ timeout: 20_000 })
         await expect(publicPage.getByText(setup.childRuntimeName).first()).toBeVisible()
       } finally {
         await anonymous.close()
@@ -177,9 +184,7 @@ test.describe('LangGraph v3 chat runtime', () => {
       const cancelResponsePromise = page.waitForResponse(
         (response) =>
           response.request().method() === 'POST' &&
-          response
-            .url()
-            .includes(`/threads/${setup.conversationId}/runs/${runId}/cancel`),
+          response.url().includes(`/threads/${setup.conversationId}/runs/${runId}/cancel`),
       )
 
       await page.locator('[data-moldy-stop-button="true"]').click()

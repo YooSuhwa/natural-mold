@@ -162,20 +162,21 @@ function reduceCustom(current: readonly RunActivity[], event: ProtocolEvent): Ru
     : isRecord(data)
       ? textValue(data.name)
       : undefined
-  if (name === 'artifact' || name === 'file') {
+  const payload = isRecord(data) && isRecord(data.payload) ? data.payload : data
+  if (name === 'artifact' || name === 'file' || name === 'file_event') {
     return upsertActivity(current, {
       ...activityBase(event, 'artifact', name),
       status: 'running',
       title: 'Artifact',
-      data: isRecord(data) ? data : { payload: data },
+      data: dataRecord(payload),
     })
   }
-  if (name === 'memory') {
+  if (name === 'memory' || name?.startsWith('memory_')) {
     return upsertActivity(current, {
       ...activityBase(event, 'memory', name),
       status: 'running',
       title: 'Memory',
-      data: isRecord(data) ? data : { payload: data },
+      data: dataRecord(payload),
     })
   }
   if (name === 'stale' || name === 'reconnect') {
