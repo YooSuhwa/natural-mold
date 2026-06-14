@@ -20,13 +20,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.skill import Skill
-from app.skills.inspector import (
-    FileInfo,
-    _resolve_safely,
-    list_files,
-    parse_skill_md,
-    read_file_safe,
+from app.skills.file_service import (
+    delete_skill_file,
+    get_file_bytes,
+    get_skill_files,
+    set_skill_file,
 )
+from app.skills.inspector import parse_skill_md
+from app.skills.package_hash import compute_package_tree_hash
+from app.skills.package_metadata import sync_frontmatter
 from app.skills.packager import PackageError, extract_package
 from app.storage.paths import ensure_relative, resolve_data_path
 
@@ -161,7 +163,7 @@ async def create_package_skill(
         description=info.description,
         kind="package",
         storage_path=ensure_relative(f"skills/{skill_id}"),
-        content_hash=info.content_hash,
+        content_hash=await asyncio.to_thread(compute_package_tree_hash, root),
         size_bytes=info.total_bytes,
         version=info.version,
         package_metadata={
@@ -216,107 +218,9 @@ async def update_text_content(db: AsyncSession, *, skill: Skill, content: str) -
     skill.content_hash = hashlib.sha256(body_bytes).hexdigest()
     skill.size_bytes = len(body_bytes)
     skill.last_modified_at = _now()
-    _sync_frontmatter(skill, body_bytes)
+    sync_frontmatter(skill, body_bytes)
     await db.flush()
     return skill
-
-
-# -- file-level mutations (M-SKILL1) -----------------------------------------
-
-
-def _package_root(skill: Skill) -> Path:
-    """Resolve the package skill's storage root, raising if misconfigured."""
-
-    if skill.kind != "package" or not skill.storage_path:
-        raise ValueError("file-level mutations require a package skill")
-    return resolve_data_path(skill.storage_path)
-
-
-async def set_skill_file(
-    db: AsyncSession,
-    *,
-    skill: Skill,
-    rel_path: str,
-    content: bytes,
-) -> Skill:
-    """Create or overwrite a file inside a package skill's storage root.
-
-    Path is resolved through :func:`_resolve_safely` so traversal / absolute
-    paths are rejected. Parent directories are created on demand.
-    """
-
-    root = _package_root(skill)
-    target = _resolve_safely(root, rel_path)
-    if rel_path.lstrip("./").lower() in {"skill.md", "skill.markdown"}:
-        parse_skill_md(content, require_metadata=True)
-    await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
-    await asyncio.to_thread(target.write_bytes, content)
-    _refresh_package_metadata(skill)
-    skill.last_modified_at = _now()
-    # If the edit touched SKILL.md, propagate frontmatter into model fields.
-    if rel_path.lstrip("./").lower() in {"skill.md", "skill.markdown"}:
-        _sync_frontmatter(skill, content)
-    await db.flush()
-    return skill
-
-
-async def delete_skill_file(
-    db: AsyncSession,
-    *,
-    skill: Skill,
-    rel_path: str,
-) -> Skill:
-    """Delete a file inside a package skill's storage root.
-
-    SKILL.md is protected — refuse the request to keep the package valid.
-    """
-
-    cleaned = rel_path.lstrip("./").lower()
-    if cleaned in {"skill.md", "skill.markdown"}:
-        raise ValueError("SKILL.md cannot be deleted")
-    root = _package_root(skill)
-    target = _resolve_safely(root, rel_path)
-    if target.is_dir():
-        await asyncio.to_thread(shutil.rmtree, target, ignore_errors=True)
-    else:
-        await asyncio.to_thread(target.unlink, missing_ok=True)
-    _refresh_package_metadata(skill)
-    skill.last_modified_at = _now()
-    await db.flush()
-    return skill
-
-
-def _refresh_package_metadata(skill: Skill) -> None:
-    """Recompute size + cached file list after a file mutation."""
-
-    if skill.kind != "package" or not skill.storage_path:
-        return
-    files = list_files(resolve_data_path(skill.storage_path))
-    skill.size_bytes = sum(f.size for f in files if not f.is_dir)
-    meta = dict(skill.package_metadata or {})
-    meta["files"] = [f.path for f in files if not f.is_dir]
-    skill.package_metadata = meta
-
-
-def _sync_frontmatter(skill: Skill, body: bytes) -> None:
-    """Parse SKILL.md frontmatter into model fields (best-effort)."""
-
-    try:
-        parsed = parse_skill_md(body)
-    except Exception:  # noqa: BLE001 — malformed frontmatter is user data
-        return
-    metadata = parsed.get("metadata") or {}
-    if not isinstance(metadata, dict):
-        return
-    if isinstance(metadata.get("description"), str):
-        skill.description = metadata["description"]
-    if isinstance(metadata.get("version"), str):
-        skill.version = metadata["version"]
-    if isinstance(metadata.get("name"), str) and not skill.name.strip():
-        skill.name = metadata["name"]
-    pkg = dict(skill.package_metadata or {})
-    pkg["frontmatter"] = metadata
-    skill.package_metadata = pkg
 
 
 async def delete_skill(db: AsyncSession, skill: Skill) -> None:
@@ -351,32 +255,6 @@ async def read_text_content(skill: Skill) -> str:
     if not is_file:
         return ""
     return await asyncio.to_thread(path.read_text, "utf-8")
-
-
-def get_skill_files(skill: Skill) -> list[FileInfo]:
-    """Enumerate package skill files (text skills return a single entry)."""
-
-    if not skill.storage_path:
-        return []
-    if skill.kind == "text":
-        path = resolve_data_path(skill.storage_path)
-        if not path.is_file():
-            return []
-        return [FileInfo(path="SKILL.md", size=path.stat().st_size, is_dir=False)]
-    # Package skills: storage_path is the root directory.
-    return list_files(resolve_data_path(skill.storage_path))
-
-
-def get_file_bytes(skill: Skill, rel_path: str) -> bytes:
-    """Read a single file from the skill storage with traversal protection."""
-
-    if not skill.storage_path:
-        raise FileNotFoundError("skill has no storage")
-    if skill.kind == "text":
-        if rel_path not in {"SKILL.md", ""}:
-            raise FileNotFoundError(rel_path)
-        return resolve_data_path(skill.storage_path).read_bytes()
-    return read_file_safe(resolve_data_path(skill.storage_path), rel_path)
 
 
 __all__: list[str] = [
