@@ -42,23 +42,32 @@ function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): 
   const toolChunks = asRecords(data.tool_call_chunks)
   for (const chunk of toolChunks) {
     const name = textValue(chunk.name) ?? textValue(chunk.tool_name) ?? 'Tool'
+    const chunkIndex =
+      typeof chunk.index === 'number' && Number.isFinite(chunk.index) ? chunk.index : undefined
     const toolCallId =
       textValue(chunk.id) ??
       textValue(chunk.tool_call_id) ??
-      next.findLast(
-        (item) =>
-          item.kind === 'tool' &&
-          item.status === 'running' &&
-          item.title === name &&
-          namespaceKey(item.namespace) === namespaceKey(namespace),
-      )?.toolCallId
+      next.findLast((item) => {
+        if (
+          item.kind !== 'tool' ||
+          item.status !== 'running' ||
+          item.title !== name ||
+          namespaceKey(item.namespace) !== namespaceKey(namespace)
+        ) {
+          return false
+        }
+        return chunkIndex === undefined || (isRecord(item.data) && item.data.index === chunkIndex)
+      })?.toolCallId
     if (!toolCallId) continue
     next = upsertActivity(next, {
       ...activityBase(event, 'tool', toolCallId),
       status: 'running',
       title: name,
       toolCallId,
-      data: { args: chunk.args },
+      data: {
+        args: chunk.args,
+        ...(chunkIndex === undefined ? {} : { index: chunkIndex }),
+      },
     })
   }
 

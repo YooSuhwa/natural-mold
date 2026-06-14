@@ -61,6 +61,29 @@ describe('reduceActivity', () => {
     })
   })
 
+  it('matches id-less tool continuation chunks by index before falling back to recent name', () => {
+    const activities = reduce([
+      event('messages', {
+        tool_call_chunks: [
+          { id: 'tc-1', name: 'search', index: 0, args: '{"q":"first"}' },
+          { id: 'tc-2', name: 'search', index: 1, args: '{"q":"second"}' },
+        ],
+      }),
+      event('messages', {
+        tool_call_chunks: [{ name: 'search', index: 0, args: ' continuation' }],
+      }),
+    ])
+
+    expect(activities.find((item) => item.id === 'run-1:tool:tc-1')?.data).toMatchObject({
+      args: ' continuation',
+      index: 0,
+    })
+    expect(activities.find((item) => item.id === 'run-1:tool:tc-2')?.data).toMatchObject({
+      args: '{"q":"second"}',
+      index: 1,
+    })
+  })
+
   it('creates a nested subagent activity from a namespace', () => {
     const activities = reduce([
       event(

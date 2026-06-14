@@ -13,11 +13,16 @@ import {
 import type { ProtocolTraceEvent, TraceEvent } from '@/lib/types/share'
 
 interface ProtocolToolCall {
+  id: string
   order: number
   name: string
   args: Record<string, unknown>
   status: ChipStatus
   result?: unknown
+}
+
+type ProtocolOrderedChip = OrderedChip & {
+  dedupeKey?: string | undefined
 }
 
 type ProtocolToolPatch = {
@@ -86,6 +91,7 @@ function _upsertToolCall(
       ? patch.status
       : (current?.status ?? patch.status ?? 'success')
   calls.set(id, {
+    id,
     order: current?.order ?? order,
     name: patch.name ?? current?.name ?? 'Tool',
     args: patch.args ?? current?.args ?? {},
@@ -122,7 +128,19 @@ function _addToolsEvent(
   })
 }
 
-function _subagentFromProtocol(evt: ProtocolTraceEvent, order: number): OrderedChip | null {
+function _subagentDedupeKey(title: string, namespace: readonly string[]): string | undefined {
+  return namespace.length > 0 ? `${title}:${namespace.join('/')}` : undefined
+}
+
+function _toolNamespaceFromCallId(id: string): string {
+  return id.includes(':') ? id : `tools:${id}`
+}
+
+function _withDedupeKey(chipInfo: OrderedChip, dedupeKey: string | undefined): ProtocolOrderedChip {
+  return dedupeKey ? { ...chipInfo, dedupeKey } : chipInfo
+}
+
+function _subagentFromProtocol(evt: ProtocolTraceEvent, order: number): ProtocolOrderedChip | null {
   if (!['lifecycle', 'tasks', 'subagents', 'subgraphs'].includes(evt.method)) return null
   const data = asRecord(_protocolData(evt))
   const namespace = _protocolNamespace(evt)
@@ -133,7 +151,10 @@ function _subagentFromProtocol(evt: ProtocolTraceEvent, order: number): OrderedC
     text(data.subagent_type) ??
     namespace.at(-1)
   if (!title) return null
-  return chip('subagent', _protocolStatus(data), title, order)
+  return _withDedupeKey(
+    chip('subagent', _protocolStatus(data), title, order),
+    _subagentDedupeKey(title, namespace),
+  )
 }
 
 function _customEventName(evt: ProtocolTraceEvent): string | undefined {
@@ -162,9 +183,13 @@ function _customChip(evt: ProtocolTraceEvent, order: number): OrderedChip | null
   return null
 }
 
-function _protocolToolChip(call: ProtocolToolCall): OrderedChip {
+function _protocolToolChip(call: ProtocolToolCall): ProtocolOrderedChip {
   if (call.name === 'task') {
-    return chip('subagent', call.status, subagentTitle(call.args), call.order)
+    const title = subagentTitle(call.args)
+    return _withDedupeKey(
+      chip('subagent', call.status, title, call.order),
+      _subagentDedupeKey(title, [_toolNamespaceFromCallId(call.id)]),
+    )
   }
   if (call.name === 'write_todos') {
     return chip('tool', call.status, 'Plan', call.order, planMeta(call.args))
@@ -173,7 +198,7 @@ function _protocolToolChip(call: ProtocolToolCall): OrderedChip {
 }
 
 export function protocolChips(events: TraceEvent[]): ChipInfo[] {
-  const direct: OrderedChip[] = []
+  const direct: ProtocolOrderedChip[] = []
   const tools = new Map<string, ProtocolToolCall>()
   const seenSubagents = new Set<string>()
 
@@ -183,7 +208,7 @@ export function protocolChips(events: TraceEvent[]): ChipInfo[] {
     if (evt.method === 'tools') _addToolsEvent(tools, evt, order)
     const subagent = _subagentFromProtocol(evt, order)
     if (subagent) {
-      const key = `${subagent.title}:${_protocolNamespace(evt).join('/')}`
+      const key = subagent.dedupeKey ?? `${subagent.title}:${_protocolNamespace(evt).join('/')}`
       if (!seenSubagents.has(key)) {
         seenSubagents.add(key)
         direct.push(subagent)
@@ -198,7 +223,8 @@ export function protocolChips(events: TraceEvent[]): ChipInfo[] {
     .sort((a, b) => a.order - b.order)
     .filter((item) => {
       if (item.kind !== 'subagent') return true
-      const key = item.title
+      const key = item.dedupeKey
+      if (!key) return true
       if (seenOutputSubagents.has(key)) return false
       seenOutputSubagents.add(key)
       return true

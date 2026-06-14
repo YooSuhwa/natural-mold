@@ -96,6 +96,35 @@ describe('extractChips canonical protocol events', () => {
     ])
   })
 
+  it('keeps same-named subagents when they come from different namespaces', () => {
+    const events = [
+      protocolEvent('messages', {
+        tool_call_chunks: [
+          {
+            id: 'task-1',
+            name: 'task',
+            args: { subagent_type: 'researcher', description: 'find docs' },
+          },
+        ],
+      }),
+      protocolEvent(
+        'lifecycle',
+        { status: 'running', name: 'researcher' },
+        { params: { namespace: ['tools:task-1'] } },
+      ),
+      protocolEvent(
+        'lifecycle',
+        { status: 'running', name: 'researcher' },
+        { params: { namespace: ['tools:task-2'] } },
+      ),
+    ]
+
+    expect(extractChips(turn(events))).toEqual([
+      { kind: 'subagent', status: 'success', title: 'researcher' },
+      { kind: 'subagent', status: 'success', title: 'researcher' },
+    ])
+  })
+
   it('renders an artifact chip from custom file events', () => {
     const events = [
       protocolEvent('custom:file_event', {
