@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 
 import { Skeleton } from '@/components/ui/skeleton'
-import type { JsonValue } from '@/lib/types/json'
+import type { JsonObject, JsonValue } from '@/lib/types/json'
 import type { SkillEvaluationRun } from '@/lib/types/skill-evaluation'
 
 type SkillEvaluationRunDetailProps = {
@@ -40,9 +40,9 @@ function jsonPreview(value: JsonValue | undefined): string | null {
   return JSON.stringify(value)
 }
 
-function jsonRecord(value: JsonValue): Readonly<Record<string, JsonValue>> | null {
+function jsonRecord(value: JsonValue): JsonObject | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  return value
+  return value as JsonObject
 }
 
 function metricItems(run: SkillEvaluationRun, t: ReturnType<typeof useTranslations>) {

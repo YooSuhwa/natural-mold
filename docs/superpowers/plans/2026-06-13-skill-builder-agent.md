@@ -3468,7 +3468,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 
 - All backend files touched by Tasks 1-9.
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd backend
@@ -3477,7 +3477,7 @@ uv run ruff check .
 
 Expected: no new lint errors.
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd backend
@@ -3486,7 +3486,7 @@ uv run pytest tests/test_skills.py tests/test_skills_api_regression.py tests/tes
 
 Expected: existing skill behavior still passes.
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd backend
@@ -3501,7 +3501,7 @@ Expected: all new builder tests pass.
 
 - All frontend files touched by Tasks 10-12.
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd frontend
@@ -3529,7 +3529,7 @@ PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3113 E2E_BACKEND_PORT=8113 E2E_WORKERS=1 pnp
 
 Expected: all targeted frontend checks pass; screenshot evidence is saved under `output/e2e-captures/20260615-skill-eval-actions/` and `output/e2e-captures/20260615-skill-history/`.
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd frontend
