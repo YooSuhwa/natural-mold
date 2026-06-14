@@ -102,7 +102,12 @@ def _legacy_seq(raw: Mapping[str, Any], *, fallback: int) -> int:
 
 
 def _event_matches_cursor(event: StoredProtocolEvent, cursor: str) -> bool:
-    return cursor in {event["id"], protocol_event_cursor(event)}
+    return cursor in {
+        event["id"],
+        event["upstream_event_id"],
+        protocol_event_cursor(event),
+        str(event["seq"]),
+    }
 
 
 def _events_after_cursor(

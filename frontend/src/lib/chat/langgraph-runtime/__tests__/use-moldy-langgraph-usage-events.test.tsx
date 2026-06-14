@@ -92,6 +92,34 @@ describe('useMoldyLangGraphStream v3 usage events', () => {
     })
   })
 
+  it('resets streamed usage when the conversation changes', () => {
+    const assistantMessage = new AIMessage({ id: 'assistant-usage-1', content: 'done' })
+    mocks.stream.messages = [assistantMessage]
+    mocks.stream.values = { messages: [assistantMessage] }
+    mocks.useChannel.mockImplementation((_stream, channels: readonly string[]) =>
+      channels.includes('custom:usage') ? [usageEvent('assistant-usage-1')] : [],
+    )
+
+    const store = createStore()
+    const { rerender } = renderUsageHook(store, 'conversation-a')
+    expect(store.get(sessionTokenUsageAtom)).toEqual({
+      inputTokens: 12,
+      outputTokens: 5,
+      cost: 0.22,
+    })
+
+    mocks.stream.messages = []
+    mocks.stream.values = { messages: [] }
+    mocks.useChannel.mockReturnValue([])
+    rerender({ activeConversationId: 'conversation-b' })
+
+    expect(store.get(sessionTokenUsageAtom)).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      cost: 0,
+    })
+  })
+
   it('keeps converted message identity stable when equivalent stream state replays', () => {
     let conversionCount = 0
     mocks.useExternalMessageConverter.mockImplementation((options) => {

@@ -128,7 +128,10 @@ export function resetUsageMocks(): void {
   mocks.useExternalMessageConverter.mockClear()
 }
 
-export function renderUsageHook(store: TestStore = createStore()) {
+export function renderUsageHook(
+  store: TestStore = createStore(),
+  conversationId = 'conversation-usage',
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
@@ -136,12 +139,12 @@ export function renderUsageHook(store: TestStore = createStore()) {
     </QueryClientProvider>
   )
   const hook = renderHook(
-    () =>
+    (props: { readonly activeConversationId?: string } | undefined) =>
       useMoldyLangGraphStream({
         agentId: 'agent-usage',
-        conversationId: 'conversation-usage',
+        conversationId: props?.activeConversationId ?? conversationId,
       }),
-    { wrapper },
+    { initialProps: { activeConversationId: conversationId }, wrapper },
   )
   return { ...hook, store }
 }

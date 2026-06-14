@@ -26,6 +26,7 @@ from app.routers.conversation_agent_protocol_runtime import protocol_events_from
 
 _THREAD_STREAM_POLL_SECONDS = 0.05
 _THREAD_STREAM_REPLAY_POLL_SECONDS = 1.0
+_THREAD_STREAM_REPLAY_MAX_SECONDS = 30.0
 _THREAD_STREAM_HEARTBEAT_SECONDS = 10.0
 _THREAD_STREAM_CHANNELS = {"lifecycle", "input"}
 logger = logging.getLogger(__name__)
@@ -67,6 +68,10 @@ def _numeric_since(params: SubscribeParams) -> int:
 
 def _max_event_seq(events: list[StoredProtocolEvent]) -> int:
     return max((event["seq"] for event in events), default=0)
+
+
+def _next_replay_delay(current_delay: float) -> float:
+    return min(current_delay * 2, _THREAD_STREAM_REPLAY_MAX_SECONDS)
 
 
 async def _load_replay_events_or_empty(
@@ -134,7 +139,8 @@ async def protocol_thread_stream_generator(
     cursor = after_id
     last_seq = _numeric_since(params)
     loop = asyncio.get_running_loop()
-    next_replay_at = loop.time() + _THREAD_STREAM_REPLAY_POLL_SECONDS
+    replay_delay = _THREAD_STREAM_REPLAY_POLL_SECONDS
+    next_replay_at = loop.time() + replay_delay
     next_heartbeat_at = loop.time() + _THREAD_STREAM_HEARTBEAT_SECONDS
 
     replay_events = await _load_replay_events_or_empty(conversation_id)
@@ -156,6 +162,7 @@ async def protocol_thread_stream_generator(
                 cursor = next_cursor
                 last_seq = next_seq
                 yield chunk
+            replay_delay = _THREAD_STREAM_REPLAY_POLL_SECONDS
             next_replay_at = asyncio.get_running_loop().time()
             continue
 
@@ -168,7 +175,10 @@ async def protocol_thread_stream_generator(
                 cursor = _event_cursor(event)
                 replayed = True
                 yield format_protocol_sse(event)
-            next_replay_at = asyncio.get_running_loop().time() + _THREAD_STREAM_REPLAY_POLL_SECONDS
+            replay_delay = (
+                _THREAD_STREAM_REPLAY_POLL_SECONDS if replayed else _next_replay_delay(replay_delay)
+            )
+            next_replay_at = asyncio.get_running_loop().time() + replay_delay
             if replayed:
                 continue
 

@@ -60,9 +60,9 @@ const ACTIVITY_CHANNELS = [
 ] as const satisfies readonly Channel[]
 
 function threadInterruptsFromStream(stream: {
-  getThread: () => { readonly interrupts?: readonly LangGraphInterruptLike[] } | undefined
+  getThread?: () => { readonly interrupts?: readonly LangGraphInterruptLike[] } | undefined
 }): readonly LangGraphInterruptLike[] {
-  return stream.getThread()?.interrupts ?? []
+  return stream.getThread?.()?.interrupts ?? []
 }
 
 export function useMoldyLangGraphStream({
@@ -123,6 +123,7 @@ export function useMoldyLangGraphStream({
     messages: messagesWithInterrupts,
   })
   const messagesWithUsage = useLangGraphUsageEffects({
+    conversationId,
     stream,
     messages: messagesWithArtifacts,
     stateMessages: stream.values?.messages ?? [],

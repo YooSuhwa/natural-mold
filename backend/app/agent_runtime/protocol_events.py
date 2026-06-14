@@ -8,6 +8,8 @@ from typing import Any, Final, NotRequired, TypedDict
 import orjson
 
 MAX_MESSAGE_EVENT_ID_LENGTH: Final = 80
+MIN_ORJSON_INTEGER: Final = -(2**63)
+MAX_ORJSON_INTEGER: Final = 2**64 - 1
 
 
 class StoredProtocolEvent(TypedDict):
@@ -58,7 +60,7 @@ def _event_id(run_id: str, seq: int) -> str:
 
 
 def protocol_event_cursor(event: StoredProtocolEvent) -> str:
-    return event["upstream_event_id"] or str(event["seq"])
+    return event["upstream_event_id"] or event["id"]
 
 
 def _canonical_input_requested_event_id(run_id: str, seq: int, index: int) -> str:
@@ -143,13 +145,6 @@ def stored_custom_protocol_event(
 def resequence_protocol_event(event: StoredProtocolEvent, *, seq: int) -> StoredProtocolEvent:
     if seq == event["seq"]:
         return event
-
-    previous_auto_id = _event_id(event["run_id"], event["seq"])
-    explicit_id = (
-        None
-        if event["upstream_event_id"] is None and event["id"] == previous_auto_id
-        else event["id"]
-    )
     return stored_protocol_event(
         run_id=event["run_id"],
         thread_id=event["thread_id"],
@@ -159,7 +154,7 @@ def resequence_protocol_event(event: StoredProtocolEvent, *, seq: int) -> Stored
         data=event["data"],
         event_id=event["upstream_event_id"],
         timestamp=event["timestamp"],
-        id=explicit_id,
+        id=event["id"],
         checkpoint_id=event["checkpoint_id"],
         checkpoint_ns=event["checkpoint_ns"],
     )
@@ -200,8 +195,18 @@ def to_protocol_wire_event(event: StoredProtocolEvent) -> ProtocolWireEvent:
 
 def format_protocol_sse(event: StoredProtocolEvent, *, cursor: str | None = None) -> str:
     event_cursor = cursor or protocol_event_cursor(event)
-    payload = orjson.dumps(to_protocol_wire_event(event)).decode()
+    payload = orjson.dumps(_orjson_safe(to_protocol_wire_event(event))).decode()
     return f"id: {event_cursor}\nevent: message\ndata: {payload}\n\n"
+
+
+def _orjson_safe(value: Any) -> Any:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value if MIN_ORJSON_INTEGER <= value <= MAX_ORJSON_INTEGER else str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _orjson_safe(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return [_orjson_safe(item) for item in value]
+    return value
 
 
 def protocol_interrupts_from_event(event: StoredProtocolEvent) -> list[ProtocolInterrupt]:
@@ -266,7 +271,7 @@ def _matches_since(event: StoredProtocolEvent, since: int | str | None) -> bool:
         return event["seq"] > since
     if since.isdigit():
         return event["seq"] > int(since)
-    return since not in {event["id"], event["upstream_event_id"]}
+    return since not in {event["id"], event["upstream_event_id"], str(event["seq"])}
 
 
 def _custom_channel(event: StoredProtocolEvent) -> str | None:

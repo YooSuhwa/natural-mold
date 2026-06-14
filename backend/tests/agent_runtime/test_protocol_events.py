@@ -86,6 +86,21 @@ def test_format_protocol_sse_includes_auto_event_id_when_upstream_id_is_absent()
     assert payload["event_id"] == "run-1:protocol:00000003"
 
 
+def test_format_protocol_sse_stringifies_integers_outside_orjson_range() -> None:
+    event = stored_protocol_event(
+        run_id="run-1",
+        thread_id="thread-1",
+        seq=4,
+        method="custom",
+        data={"value": 2**80},
+    )
+
+    rendered = format_protocol_sse(event)
+
+    payload = json.loads(rendered.split("data: ", 1)[1])
+    assert payload["params"]["data"]["value"] == str(2**80)
+
+
 def test_matches_subscription_filters_channel_namespace_depth_and_since() -> None:
     event = stored_protocol_event(
         run_id="run-1",

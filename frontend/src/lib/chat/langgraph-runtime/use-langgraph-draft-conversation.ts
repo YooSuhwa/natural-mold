@@ -19,6 +19,7 @@ interface UseLangGraphDraftConversationOptions {
 
 interface UseLangGraphDraftConversationResult {
   readonly conversationId: string | null
+  readonly error: unknown
   readonly isBootstrapping: boolean
 }
 
@@ -73,11 +74,13 @@ export function useLangGraphDraftConversation({
       })
       .catch((caught: unknown) => {
         if (requestKeyRef.current !== requestKey) return
-        requestKeyRef.current = null
         setState({ key: requestKey, conversationId: null, error: caught })
       })
   }, [agentId, conversationId, key])
 
-  if (error !== null) throw error
-  return { conversationId, isBootstrapping: key !== null && conversationId === null }
+  return {
+    conversationId,
+    error,
+    isBootstrapping: key !== null && conversationId === null && error === null,
+  }
 }

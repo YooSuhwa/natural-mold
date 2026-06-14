@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
+from app.agent_runtime.protocol_events import stored_protocol_event
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
@@ -205,6 +206,52 @@ async def test_public_share_view_includes_persisted_traces(client: AsyncClient):
         "message_end",
     ]
     assert trace["events"][1]["data"]["tool_name"] == "web_search"
+
+
+@pytest.mark.asyncio
+async def test_public_share_view_includes_protocol_traces(client: AsyncClient):
+    from app.services import trace_storage
+
+    conv_id = await _seed_conversation()
+    token = (await client.post(f"/api/conversations/{conv_id}/share")).json()["share_token"]
+
+    visible_message_id = uuid.uuid4()
+    run_id = str(visible_message_id)
+    async with TestSession() as db:
+        await trace_storage.append_events(
+            db,
+            conversation_id=conv_id,
+            assistant_msg_id=run_id,
+            events_chunk=[
+                dict(
+                    stored_protocol_event(
+                        run_id=run_id,
+                        thread_id=str(conv_id),
+                        seq=1,
+                        method="tools",
+                        data={
+                            "event": "tool-started",
+                            "tool_call_id": "call-1",
+                            "name": "web_search",
+                            "args": {"query": "moldy"},
+                        },
+                    )
+                )
+            ],
+            status="completed",
+        )
+        await db.commit()
+
+    with patch(
+        "app.routers.shares.chat_service.list_messages_from_checkpointer",
+        new=AsyncMock(return_value=[_shared_assistant_message(conv_id, visible_message_id)]),
+    ):
+        resp = await client.get(f"/api/shares/{token}")
+
+    assert resp.status_code == 200
+    trace = resp.json()["traces"][0]
+    assert trace["events"][0]["method"] == "tools"
+    assert trace["events"][0]["data"]["args"] == {"query": "moldy"}
 
 
 @pytest.mark.asyncio

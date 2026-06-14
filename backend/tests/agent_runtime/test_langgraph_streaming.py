@@ -280,6 +280,88 @@ async def test_langgraph_streaming_emits_state_pending_interrupt_before_persist_
 
 
 @pytest.mark.asyncio
+async def test_langgraph_streaming_redacts_synthesized_tool_args_before_persist() -> None:
+    raw_event = {
+        "type": "event",
+        "method": "values",
+        "params": {
+            "namespace": [],
+            "data": {
+                "messages": [
+                    {
+                        "type": "ai",
+                        "tool_calls": [
+                            {
+                                "id": "call-secret",
+                                "name": "danger_tool",
+                                "args": {"api_key": "SECRET_VALUE", "query": "safe"},
+                            }
+                        ],
+                    }
+                ]
+            },
+        },
+        "seq": 1,
+        "event_id": "values-with-secret",
+    }
+    persisted: list[list[dict[str, Any]]] = []
+
+    async def persist(events: list[dict[str, Any]]) -> None:
+        persisted.append(events)
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            ProtocolAgent([raw_event]),
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-secret"}},
+            persist_callback=persist,
+            run_id="run-secret",
+        )
+    ]
+
+    assert chunks
+    stored = [event for batch in persisted for event in batch]
+    tool_event = next(event for event in stored if event.get("method") == "tools")
+    assert tool_event["data"]["args"] == {"api_key": "<redacted>", "query": "safe"}
+    assert "SECRET_VALUE" not in repr(stored)
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_flushes_protocol_events_before_finalization() -> None:
+    raw_events = [
+        {
+            "type": "event",
+            "method": "custom",
+            "params": {"namespace": [], "data": {"name": "progress", "payload": {"index": index}}},
+            "seq": index,
+            "event_id": f"progress-{index}",
+        }
+        for index in range(1, 40)
+    ]
+    persisted_batches: list[list[dict[str, Any]]] = []
+
+    async def persist(events: list[dict[str, Any]]) -> None:
+        persisted_batches.append(events)
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            ProtocolAgent(raw_events),
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-flush"}},
+            persist_callback=persist,
+            run_id="run-flush",
+        )
+    ]
+
+    assert chunks
+    assert len(persisted_batches) >= 2
+    assert len(persisted_batches[0]) >= 32
+    assert sum(len(batch) for batch in persisted_batches) == len(chunks)
+
+
+@pytest.mark.asyncio
 async def test_langgraph_streaming_falls_back_to_stream_modes() -> None:
     agent = FallbackAgent([("values", {"messages": [], "todos": []})])
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping
 from typing import Any, cast
@@ -41,6 +42,8 @@ from app.agent_runtime.streaming import (
 )
 
 logger = logging.getLogger(__name__)
+_FLUSH_BATCH_SIZE = 32
+_FLUSH_INTERVAL_SECONDS = 2.0
 
 
 def _thread_id_from_config(config: Mapping[str, Any], run_id: str) -> str:
@@ -139,11 +142,30 @@ async def stream_agent_response_langgraph(
     max_emitted_seq = -1
     input_requested_emitted = False
     emitted: list[dict[str, Any]] = []
-    persistable_events: list[dict[str, Any]] = []
+    persist_buffer: list[dict[str, Any]] = []
+    last_persist_flush_at = time.monotonic()
     seen_usage_keys: set[tuple[str | None, int, int, int, int, float | None]] = set()
     seen_synthesized_tool_call_ids: set[str] = set()
 
-    def emit(event: StoredProtocolEvent) -> str:
+    async def flush_persist_buffer(*, force: bool = False) -> None:
+        nonlocal last_persist_flush_at, persist_buffer
+        if persist_callback is None or not persist_buffer:
+            return
+        elapsed = time.monotonic() - last_persist_flush_at
+        should_wait_for_batch = len(persist_buffer) < _FLUSH_BATCH_SIZE
+        should_wait_for_interval = elapsed < _FLUSH_INTERVAL_SECONDS
+        if not force and should_wait_for_batch and should_wait_for_interval:
+            return
+        events = persist_buffer
+        persist_buffer = []
+        last_persist_flush_at = time.monotonic()
+        try:
+            await persist_callback(events)
+        except Exception:
+            persist_buffer = [*events, *persist_buffer]
+            logger.exception("protocol stream persist_callback failed (run_id=%s)", msg_id)
+
+    async def emit(event: StoredProtocolEvent) -> str:
         nonlocal input_requested_emitted, max_emitted_seq
 
         event_to_emit = (
@@ -157,26 +179,27 @@ async def stream_agent_response_langgraph(
         event_dict = dict(event_to_emit)
         emitted.append(event_dict)
         persistable_event = persistable_protocol_event(event_to_emit)
-        persistable_events.append(persistable_event)
+        persist_buffer.append(persistable_event)
         if trace_sink is not None:
             trace_sink.append(persistable_event)
         if broker is not None:
             broker.publish_nowait(_broker_event(event_to_emit))
+        await flush_persist_buffer()
         return format_protocol_sse(event_to_emit)
 
-    def emit_canonical_interrupts(event: StoredProtocolEvent) -> list[str]:
-        return [
-            emit(input_event)
-            for input_event in canonical_input_requested_events(
-                event,
-                first_seq=max_emitted_seq + 1,
-            )
-        ]
+    async def emit_canonical_interrupts(event: StoredProtocolEvent) -> list[str]:
+        chunks: list[str] = []
+        for input_event in canonical_input_requested_events(
+            event,
+            first_seq=max_emitted_seq + 1,
+        ):
+            chunks.append(await emit(input_event))
+        return chunks
 
     artifact_recorder = await prepare_artifact_recorder(artifact_recorder, run_id=msg_id)
 
     try:
-        yield emit(
+        yield await emit(
             lifecycle_protocol_event(
                 run_id=msg_id,
                 thread_id=thread_id,
@@ -199,8 +222,8 @@ async def stream_agent_response_langgraph(
                     thread_id=thread_id,
                     seq=fallback_seq,
                 )
-                yield emit(event)
-                for chunk in emit_canonical_interrupts(event):
+                yield await emit(event)
+                for chunk in await emit_canonical_interrupts(event):
                     yield chunk
                 usage_event, side_effect_seq = collect_protocol_usage_event(
                     event,
@@ -211,19 +234,19 @@ async def stream_agent_response_langgraph(
                     cost_per_output_token=cost_per_output_token,
                 )
                 if usage_event is not None:
-                    yield emit(usage_event)
+                    yield await emit(usage_event)
                 side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
                     event,
                     artifact_recorder=artifact_recorder,
                     next_seq=side_effect_seq,
                 )
                 for side_effect_event in side_effect_events:
-                    yield emit(side_effect_event)
+                    yield await emit(side_effect_event)
         else:
             async for raw_event in stream:
                 if not isinstance(raw_event, Mapping):
                     fallback_seq += 1
-                    yield emit(
+                    yield await emit(
                         stored_protocol_event(
                             run_id=msg_id,
                             thread_id=thread_id,
@@ -238,8 +261,8 @@ async def stream_agent_response_langgraph(
                     run_id=msg_id,
                     thread_id=thread_id,
                 )
-                yield emit(event)
-                for chunk in emit_canonical_interrupts(event):
+                yield await emit(event)
+                for chunk in await emit_canonical_interrupts(event):
                     yield chunk
                 usage_event, side_effect_seq = collect_protocol_usage_event(
                     event,
@@ -250,27 +273,27 @@ async def stream_agent_response_langgraph(
                     cost_per_output_token=cost_per_output_token,
                 )
                 if usage_event is not None:
-                    yield emit(usage_event)
+                    yield await emit(usage_event)
                 side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
                     event,
                     artifact_recorder=artifact_recorder,
                     next_seq=side_effect_seq,
                 )
                 for side_effect_event in side_effect_events:
-                    yield emit(side_effect_event)
+                    yield await emit(side_effect_event)
                 for tool_event in synthesize_tool_events_from_values(
                     event,
                     seen_tool_call_ids=seen_synthesized_tool_call_ids,
                     first_seq=max_emitted_seq + 1,
                 ):
-                    yield emit(tool_event)
+                    yield await emit(tool_event)
                     side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
                         tool_event,
                         artifact_recorder=artifact_recorder,
                         next_seq=side_effect_seq,
                     )
                     for side_effect_event in side_effect_events:
-                        yield emit(side_effect_event)
+                        yield await emit(side_effect_event)
 
         pending_input_events = await pending_input_requested_events(
             agent,
@@ -280,8 +303,8 @@ async def stream_agent_response_langgraph(
             emitted=emitted,
         )
         for pending_event in pending_input_events:
-            yield emit(pending_event)
-        yield emit(
+            yield await emit(pending_event)
+        yield await emit(
             lifecycle_protocol_event(
                 run_id=msg_id,
                 thread_id=thread_id,
@@ -295,7 +318,7 @@ async def stream_agent_response_langgraph(
         record = StreamErrorRecord(error=exc, message=str(exc))
         if error_sink is not None:
             error_sink.append(record)
-        yield emit(
+        yield await emit(
             lifecycle_protocol_event(
                 run_id=msg_id,
                 thread_id=thread_id,
@@ -304,14 +327,10 @@ async def stream_agent_response_langgraph(
                 error_message=str(exc),
             )
         )
-        yield emit(
+        yield await emit(
             _error_event(run_id=msg_id, thread_id=thread_id, seq=max_emitted_seq + 1, exc=exc)
         )
     finally:
-        if persist_callback is not None and persistable_events:
-            try:
-                await persist_callback(persistable_events)
-            except Exception:
-                logger.exception("protocol stream persist_callback failed (run_id=%s)", msg_id)
+        await flush_persist_buffer(force=True)
         if broker is not None:
             broker.close()

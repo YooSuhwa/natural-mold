@@ -19,7 +19,10 @@ type MessageWithUsage = BaseMessage & {
   readonly additional_kwargs?: Record<string, unknown>
 }
 
+const EMPTY_USAGE_MAP: Record<string, TokenUsageBreakdown> = {}
+
 interface UseLangGraphUsageEffectsOptions {
+  readonly conversationId: string
   readonly stream: AnyStream
   readonly messages: readonly BaseMessage[]
   readonly stateMessages?: readonly BaseMessage[]
@@ -342,41 +345,79 @@ function sumUsage(usagesByMessageId: Record<string, TokenUsageBreakdown>): Token
   )
 }
 
+function updateScopedUsageState(
+  current: {
+    readonly conversationId: string
+    readonly usagesByMessageId: Record<string, TokenUsageBreakdown>
+  },
+  conversationId: string,
+  updater: (
+    currentUsages: Record<string, TokenUsageBreakdown>,
+  ) => Record<string, TokenUsageBreakdown>,
+): {
+  readonly conversationId: string
+  readonly usagesByMessageId: Record<string, TokenUsageBreakdown>
+} {
+  const currentUsages = current.conversationId === conversationId ? current.usagesByMessageId : {}
+  const nextUsages = updater(currentUsages)
+  if (current.conversationId === conversationId && nextUsages === current.usagesByMessageId) {
+    return current
+  }
+  return { conversationId, usagesByMessageId: nextUsages }
+}
+
 export function useLangGraphUsageEffects({
+  conversationId,
   stream,
   messages,
   stateMessages = [],
 }: UseLangGraphUsageEffectsOptions): MessageWithUsage[] {
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
-  const seenEventKeysRef = useRef(new Set<string>())
-  const runMessageIdsRef = useRef(new Map<string, string>())
-  const [eventUsagesByMessageId, setEventUsagesByMessageId] = useState<
-    Record<string, TokenUsageBreakdown>
-  >({})
+  const usageScope = useMemo(
+    () => ({
+      conversationId,
+      runMessageIds: new Map<string, string>(),
+      seenEventKeys: new Set<string>(),
+    }),
+    [conversationId],
+  )
+  const [eventUsageState, setEventUsageState] = useState<{
+    readonly conversationId: string
+    readonly usagesByMessageId: Record<string, TokenUsageBreakdown>
+  }>({ conversationId, usagesByMessageId: {} })
 
-  const handleEvent = useCallback((event: unknown) => {
-    const mapping = messageStartMapping(event)
-    if (mapping) {
-      runMessageIdsRef.current.set(mapping.runId, mapping.messageId)
-      setEventUsagesByMessageId((current) =>
-        migrateUsageMapKey(current, mapping.runId, mapping.messageId),
+  const handleEvent = useCallback(
+    (event: unknown) => {
+      const mapping = messageStartMapping(event)
+      if (mapping) {
+        usageScope.runMessageIds.set(mapping.runId, mapping.messageId)
+        setEventUsageState((current) =>
+          updateScopedUsageState(current, conversationId, (currentUsages) =>
+            migrateUsageMapKey(currentUsages, mapping.runId, mapping.messageId),
+          ),
+        )
+      }
+
+      const payload =
+        usageFromMessageEvent(event, usageScope.runMessageIds) ?? protocolUsagePayload(event)
+      if (!payload) return
+
+      const eventKey = usageEventKey(event, payload)
+      if (usageScope.seenEventKeys.has(eventKey)) return
+      usageScope.seenEventKeys.add(eventKey)
+
+      const key = usageMapKey(event, payload, usageScope.runMessageIds)
+      const { assistant_msg_id: _assistantMsgId, run_id: _runId, ...usage } = payload
+      void _assistantMsgId
+      void _runId
+      setEventUsageState((current) =>
+        updateScopedUsageState(current, conversationId, (currentUsages) =>
+          updateUsageMap(currentUsages, key, usage, payload.run_id),
+        ),
       )
-    }
-
-    const payload =
-      usageFromMessageEvent(event, runMessageIdsRef.current) ?? protocolUsagePayload(event)
-    if (!payload) return
-
-    const eventKey = usageEventKey(event, payload)
-    if (seenEventKeysRef.current.has(eventKey)) return
-    seenEventKeysRef.current.add(eventKey)
-
-    const key = usageMapKey(event, payload, runMessageIdsRef.current)
-    const { assistant_msg_id: _assistantMsgId, run_id: _runId, ...usage } = payload
-    void _assistantMsgId
-    void _runId
-    setEventUsagesByMessageId((current) => updateUsageMap(current, key, usage, payload.run_id))
-  }, [])
+    },
+    [conversationId, usageScope],
+  )
 
   const usageEvents = useChannel(stream, USAGE_CHANNELS, undefined, {
     replay: true,
@@ -395,6 +436,13 @@ export function useLangGraphUsageEffects({
     [messages, stateMessages],
   )
   const stableMessageUsagesByMessageId = useStableUsageMap(messageUsagesByMessageId)
+  const eventUsagesByMessageId = useMemo(
+    () =>
+      eventUsageState.conversationId === conversationId
+        ? eventUsageState.usagesByMessageId
+        : EMPTY_USAGE_MAP,
+    [conversationId, eventUsageState],
+  )
   const mergedUsagesByMessageId = useMemo(
     () => ({
       ...stableMessageUsagesByMessageId,

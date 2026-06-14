@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent
+from app.agent_runtime.protocol_redaction import redact_protocol_data
 
 COMPACT_STATE_METHODS: Final = frozenset({"values", "updates"})
 PERSISTED_STATE_KEYS: Final = frozenset(
@@ -19,6 +20,7 @@ def persistable_protocol_event(event: StoredProtocolEvent) -> dict[str, Any]:
             checkpoint_id=event["checkpoint_id"],
             checkpoint_ns=event["checkpoint_ns"],
         )
+    payload["data"] = redact_protocol_data(event["method"], payload["data"])
     return payload
 
 

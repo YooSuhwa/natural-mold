@@ -18,6 +18,10 @@ class PendingInputPayload(TypedDict):
     namespace: list[str]
 
 
+class PendingInputStateUnavailable(RuntimeError):
+    pass
+
+
 def _next_protocol_seq(events: list[dict[str, Any]]) -> int:
     seq_values = [event.get("seq") for event in events if isinstance(event.get("seq"), int)]
     return max(seq_values, default=0) + 1
@@ -122,10 +126,13 @@ async def pending_input_requested_events(
     thread_id: str,
     emitted: list[dict[str, Any]],
 ) -> list[StoredProtocolEvent]:
-    try:
-        state = await agent.aget_state(config)
-    except Exception:
+    get_state = getattr(agent, "aget_state", None)
+    if not callable(get_state):
         return []
+    try:
+        state = await get_state(config)
+    except Exception as exc:
+        raise PendingInputStateUnavailable("pending input state unavailable") from exc
 
     seen_interrupt_ids = _seen_interrupt_ids(emitted)
     raw_interrupts: list[dict[str, Any]] = []

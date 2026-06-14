@@ -29,6 +29,11 @@ class StateBackedProtocolAgent(ProtocolAgent):
         return self.state
 
 
+class FailingStateProtocolAgent(ProtocolAgent):
+    async def aget_state(self, _config: dict[str, Any]) -> SimpleNamespace:
+        raise RuntimeError("state unavailable")
+
+
 class FallbackAgent:
     def __init__(self, chunks: list[tuple[str, Any]]) -> None:
         self.chunks = chunks

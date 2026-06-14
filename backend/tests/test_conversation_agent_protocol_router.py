@@ -816,6 +816,44 @@ async def test_protocol_lifecycle_stream_throttles_idle_replay_polling(
 
 
 @pytest.mark.asyncio
+async def test_protocol_lifecycle_stream_backs_off_idle_replay_polling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import conversation_agent_protocol_thread_stream as thread_stream
+
+    load_count = 0
+
+    async def fake_load_replay_events(_conversation_id: uuid.UUID) -> list[dict[str, Any]]:
+        nonlocal load_count
+        load_count += 1
+        return []
+
+    async def is_disconnected() -> bool:
+        return False
+
+    monkeypatch.setattr(thread_stream, "_THREAD_STREAM_REPLAY_POLL_SECONDS", 0.01)
+    monkeypatch.setattr(thread_stream, "_THREAD_STREAM_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(thread_stream, "_load_replay_events", fake_load_replay_events)
+
+    stream = thread_stream.protocol_thread_stream_generator(
+        conversation_id=uuid.uuid4(),
+        thread_id=str(uuid.uuid4()),
+        params={"channels": ["lifecycle"]},
+        after_id=None,
+        is_disconnected=is_disconnected,
+    )
+    task = asyncio.create_task(anext(stream))
+    try:
+        await asyncio.sleep(0.09)
+        assert load_count <= 4
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
 async def test_protocol_stream_replays_when_active_run_finishes_before_broker_attach(
     client: AsyncClient,
     db: AsyncSession,

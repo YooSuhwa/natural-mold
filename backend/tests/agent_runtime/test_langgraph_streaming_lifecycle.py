@@ -5,7 +5,11 @@ from typing import Any
 import pytest
 
 from app.agent_runtime.langgraph_streaming import stream_agent_response_langgraph
-from tests.agent_runtime.langgraph_streaming_fixtures import ProtocolAgent, sse_payload
+from tests.agent_runtime.langgraph_streaming_fixtures import (
+    FailingStateProtocolAgent,
+    ProtocolAgent,
+    sse_payload,
+)
 
 
 @pytest.mark.asyncio
@@ -75,6 +79,25 @@ async def test_langgraph_streaming_marks_run_interrupted_when_input_is_pending()
         "lifecycle",
     ]
     assert payloads[-1]["params"]["data"] == {"event": "interrupted"}
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_fails_when_pending_state_cannot_be_checked() -> None:
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            FailingStateProtocolAgent([]),
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-state-failure"}},
+            run_id="run-state-failure",
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    assert payloads[-2]["method"] == "lifecycle"
+    assert payloads[-2]["params"]["data"]["event"] == "failed"
+    assert payloads[-1]["method"] == "error"
+    assert "state unavailable" in payloads[-1]["params"]["data"]["message"]
 
 
 @pytest.mark.asyncio

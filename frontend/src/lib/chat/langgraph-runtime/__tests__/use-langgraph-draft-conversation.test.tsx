@@ -130,6 +130,28 @@ describe('useLangGraphDraftConversation', () => {
     expect(onConversationId).toHaveBeenCalledWith('conversation-v3')
   })
 
+  it('returns bootstrap errors instead of throwing during render', async () => {
+    const failure = new Error('network unavailable')
+    mocks.create.mockRejectedValueOnce(failure)
+    const onConversationId = vi.fn()
+
+    const { result } = renderHook(() =>
+      useLangGraphDraftConversation({
+        agentId: 'agent-1',
+        isDraftConversation: true,
+        runtimeMode: 'langgraph_v3',
+        onConversationId,
+      }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.error).toBe(failure)
+    })
+    expect(result.current.isBootstrapping).toBe(false)
+    expect(result.current.conversationId).toBeNull()
+    expect(onConversationId).not.toHaveBeenCalled()
+  })
+
   it('creates a fresh conversation when the same agent re-enters a v3 draft route', async () => {
     mocks.create
       .mockResolvedValueOnce({

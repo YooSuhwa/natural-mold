@@ -7,7 +7,12 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
-from app.agent_runtime.protocol_events import stored_custom_protocol_event, stored_protocol_event
+from app.agent_runtime.protocol_events import (
+    protocol_event_cursor,
+    resequence_protocol_events,
+    stored_custom_protocol_event,
+    stored_protocol_event,
+)
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun, utc_now_naive
@@ -15,6 +20,7 @@ from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from app.routers.conversation_agent_protocol_replay import (
+    _events_after_cursor,
     load_protocol_events,
     protocol_replay_generator,
 )
@@ -249,6 +255,27 @@ async def test_protocol_replay_projects_run_local_sequences_to_thread_sequence(
     assert "second-run-1" in body
     assert "first-run-1" not in body
     assert "first-run-2" not in body
+
+
+def test_protocol_replay_cursor_distinguishes_run_local_auto_ids() -> None:
+    first_run = stored_protocol_event(
+        run_id="run-a",
+        thread_id="thread-1",
+        seq=1,
+        method="messages",
+        data={"chunk": "first"},
+    )
+    second_run = stored_protocol_event(
+        run_id="run-b",
+        thread_id="thread-1",
+        seq=1,
+        method="messages",
+        data={"chunk": "second"},
+    )
+    live_cursor_after_second = protocol_event_cursor(second_run)
+    replay_events = resequence_protocol_events([first_run, second_run])
+
+    assert list(_events_after_cursor(replay_events, live_cursor_after_second)) == []
 
 
 @pytest.mark.asyncio
