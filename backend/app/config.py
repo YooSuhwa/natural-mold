@@ -93,6 +93,12 @@ class Settings(BaseSettings):
     skill_node_binary: str = "node"
     skill_node_modules_dir: str = "./skill-node/node_modules"
 
+    skill_evaluation_enabled: bool = True
+    skill_evaluation_max_concurrent: int = 1
+    skill_evaluation_queue_max_size: int = 20
+    skill_evaluation_run_timeout_seconds: int = 180
+    skill_evaluation_case_timeout_seconds: int = 60
+
     # ADR-017 Slice F — k-skill upstream import (super_user CLI only).
     # ``k_skill_sync_dir`` is the local git working tree the importer
     # ``git clone`` / ``git fetch`` mirrors into; ``k_skill_builtin_storage_dir``

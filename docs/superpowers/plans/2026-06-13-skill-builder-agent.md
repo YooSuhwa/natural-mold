@@ -2752,7 +2752,7 @@ Skill Builder SSE wire contract:
 - [ ] Add `cancellation_requested_at` and `cancellation_reason` to `SkillEvaluationRun`.
 - [ ] Include evaluation template/version fields, run estimate JSON, runner version, grader prompt version, and eval schema version in the migration.
 - [ ] Include `skill_revisions` table, indexes, unique constraint, and `skills.current_revision_id` in the migration.
-- [ ] Add backend settings for `SKILL_EVALUATION_ENABLED`, `SKILL_EVALUATION_MAX_CONCURRENT`, `SKILL_EVALUATION_QUEUE_MAX_SIZE`, `SKILL_EVALUATION_RUN_TIMEOUT_SECONDS`, and `SKILL_EVALUATION_CASE_TIMEOUT_SECONDS`.
+- [x] Add backend settings for `SKILL_EVALUATION_ENABLED`, `SKILL_EVALUATION_MAX_CONCURRENT`, `SKILL_EVALUATION_QUEUE_MAX_SIZE`, `SKILL_EVALUATION_RUN_TIMEOUT_SECONDS`, and `SKILL_EVALUATION_CASE_TIMEOUT_SECONDS`.
 - [ ] Add the Alembic migration with `down_revision` set to the current output of `uv run alembic heads`. Use `"m63_chat_navigator_indexes"` only if it is still the single head at execution time.
 - [ ] Export `SkillBuilderSession`, `SkillEvaluationSet`, `SkillEvaluationRun`, and `SkillRevision` from `backend/app/models/__init__.py`.
 - [ ] Run:
