@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.messages.ai import UsageMetadata
 
 from app.agent_runtime.message_utils import (
+    content_to_text,
     convert_to_langchain_messages,
     extract_json_from_markdown,
     langchain_messages_to_response,
@@ -134,6 +135,19 @@ class TestLangchainMessagesToResponse:
         )
         result = langchain_messages_to_response([msg], conv_id)
         assert result[0].content == "이상윤 님의 팀 정보:\n- 소속: 제품기술팀"
+
+    def test_private_reasoning_blocks_are_not_displayed(self):
+        private = "PRIVATE_CHAIN_OF_THOUGHT_DO_NOT_LEAK"
+        content = [
+            {"type": "reasoning", "text": private, "summary": private},
+            {"type": "thinking", "thinking": private},
+            {"type": "reasoning_content", "reasoning": private},
+            {"type": "text", "text": "사용자에게 보여줄 답변"},
+        ]
+
+        assert content_to_text(content) == "사용자에게 보여줄 답변"
+        assert private not in content_to_text(content)
+        assert content_to_text({"type": "reasoning", "text": private}) == ""
 
     def test_empty_list_content(self):
         conv_id = uuid.uuid4()

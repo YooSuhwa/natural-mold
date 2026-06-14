@@ -13,22 +13,35 @@ _pool: AsyncConnectionPool | None = None
 _checkpointer: AsyncPostgresSaver | None = None
 
 
-async def init_checkpointer(conn_string: str) -> None:
+async def init_checkpointer(
+    conn_string: str,
+    *,
+    min_size: int = 1,
+    max_size: int = 10,
+) -> None:
     """앱 시작 시 checkpointer 초기화. lifespan에서 호출."""
     global _pool, _checkpointer
 
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from psycopg_pool import AsyncConnectionPool
 
+    pool_min_size = max(1, min_size)
+    pool_max_size = max(pool_min_size, max_size)
     _pool = AsyncConnectionPool(
         conninfo=conn_string,
+        min_size=pool_min_size,
+        max_size=pool_max_size,
         open=False,
         kwargs={"autocommit": True, "prepare_threshold": 0},
     )
     await _pool.open()
     _checkpointer = AsyncPostgresSaver(conn=_pool)  # type: ignore[arg-type]  # Pool도 Conn 인터페이스 호환
     await _checkpointer.setup()
-    logger.info("Checkpointer initialized (PostgreSQL)")
+    logger.info(
+        "Checkpointer initialized (PostgreSQL, pool_min=%s, pool_max=%s)",
+        pool_min_size,
+        pool_max_size,
+    )
 
 
 async def shutdown_checkpointer() -> None:

@@ -11,6 +11,14 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from app.schemas.conversation import MessageResponse, TokenUsageBreakdown
 
 _TYPE_TO_ROLE = {"human": "user", "ai": "assistant", "tool": "tool"}
+_PRIVATE_REASONING_BLOCK_TYPES = frozenset(
+    {
+        "reasoning",
+        "reasoning_content",
+        "thinking",
+        "redacted_thinking",
+    }
+)
 
 
 def parse_msg_id(raw_id: str | None, conversation_id: uuid.UUID, idx: int) -> uuid.UUID:
@@ -22,25 +30,40 @@ def parse_msg_id(raw_id: str | None, conversation_id: uuid.UUID, idx: int) -> uu
         return uuid.uuid5(uuid.NAMESPACE_URL, raw_id)
 
 
+def _content_block_to_display_text(block: Any) -> str:
+    if isinstance(block, str):
+        return block
+    if not isinstance(block, dict):
+        return ""
+
+    block_type = block.get("type")
+    if isinstance(block_type, str) and block_type in _PRIVATE_REASONING_BLOCK_TYPES:
+        return ""
+
+    if block_type == "text":
+        text = block.get("text")
+        if isinstance(text, str):
+            return text
+    return ""
+
+
 def content_to_text(content: Any) -> str:
     """LangChain BaseMessage.content를 사용자 표시용 plain text로 변환.
 
     Anthropic은 multi-block content (text + tool_use 등)를 list[dict]로 반환.
     text 블록만 concat하고 tool_use 블록은 무시 (tool_calls 필드로 별도 노출).
-    그 외 비-list/dict 형태는 안전하게 str() fallback.
+    provider-private reasoning/thinking 블록은 SSE/DB 표시 상태로 들어가지 않게
+    여기서 제거한다. 그 외 비-list/dict 형태는 안전하게 str() fallback.
     """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
         parts: list[str] = []
         for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict) and block.get("type") == "text":
-                text = block.get("text")
-                if isinstance(text, str):
-                    parts.append(text)
+            parts.append(_content_block_to_display_text(block))
         return "".join(parts)
+    if isinstance(content, dict):
+        return _content_block_to_display_text(content)
     return str(content)
 
 

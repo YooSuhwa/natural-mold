@@ -181,7 +181,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Checkpointer 초기화 — psycopg v3 호환 URL 사용.
     from app.agent_runtime.checkpointer import init_checkpointer
 
-    await init_checkpointer(settings.database_url_sync)
+    await init_checkpointer(
+        settings.database_url_sync,
+        min_size=settings.checkpointer_pool_min_size,
+        max_size=settings.checkpointer_pool_max_size,
+    )
 
     # Hook framework — register built-in hooks before any runtime call.
     register_default_hooks()
