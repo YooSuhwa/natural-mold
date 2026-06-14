@@ -3097,6 +3097,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [x] Generate 2-3 realistic eval prompts from intent when the user asks to test.
 - [ ] Do not expose evaluation template selection as a default user-facing picker.
 - [ ] Allow optional eval-case review only for advanced or low-confidence flows.
+- [x] Add eval runner output directory contract for with-skill and without-skill runs.
 - [ ] Run with-skill and without-skill configurations into separate output folders.
 - [ ] Use the current selected-skill runtime mount pattern for with-skill evaluation runs.
 - [ ] Reuse or refactor the `execute_in_skill` command policy instead of adding another subprocess parser.
@@ -3108,7 +3109,8 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [x] Add best-effort credential-use audit writes in `execute_in_skill` for each unique injected user credential.
 - [x] The credential audit metadata must include only `kind`, skill id/slug, requirement key, agent id, thread id, run id, command executable, and timeout seconds.
 - [ ] Implement grader result format with `expectations`, `summary`, `execution_metrics`, `timing`, `claims`, and `eval_feedback`.
-- [ ] Implement benchmark aggregation with mean/stddev/min/max and delta.
+- [x] Implement initial benchmark aggregation with pass-rate, mean-score, and delta.
+- [ ] Extend benchmark aggregation with stddev/min/max.
 - [ ] Persist the aggregate to `session.eval_result`.
 - [ ] Add tests:
   - eval runner creates with-skill and without-skill output directories
@@ -3129,6 +3131,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [x] Add regression coverage for internal eval template selection: structured extraction, research, and general task fallback.
 - [x] Add regression coverage for `evals/evals.json` parser validation, top-level list shorthand, and malformed JSON.
 - [x] Add regression coverage for deterministic eval case generation from structured extraction, research, and general templates.
+- [x] Add regression coverage for eval runner output directories and initial benchmark aggregation.
 - [ ] Run:
 
 ```bash
