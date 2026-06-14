@@ -3130,7 +3130,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [x] Implement initial benchmark aggregation with pass-rate, mean-score, and delta.
 - [x] Extend benchmark aggregation with stddev/min/max.
 - [x] Persist the aggregate to `session.eval_result`.
-- [ ] Add tests:
+- [x] Add tests:
   - [x] eval runner creates with-skill and without-skill output directories
   - [x] template selection chooses `structured_extraction` for action-item/table skills
   - [x] template selection chooses `research` for citation/source skills
@@ -3140,7 +3140,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
   - [x] eval runner refuses missing system model before creating execution artifacts
   - [x] eval runner refuses undeclared network execution
   - [x] worker enforces max concurrency and queue-full behavior
-  - worker cancellation moves queued runs directly to cancelled and running runs through cooperative cancellation
+  - [x] worker cancellation moves queued runs directly to cancelled and running runs through cooperative cancellation
   - [x] startup reconciliation marks stale running/grading rows interrupted
   - [x] credential audit rows are written when `execute_in_skill` injects a bound credential
   - [x] credential audit metadata does not contain decrypted values, stdout, stderr, or raw command arguments

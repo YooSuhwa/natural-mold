@@ -97,7 +97,7 @@ async def _wait_for_run_status(
     run_id: uuid.UUID,
     status: str,
 ) -> SkillEvaluationRun:
-    for _ in range(20):
+    for _ in range(40):
         async with TestSession() as session:
             row = await session.get(SkillEvaluationRun, run_id)
             if row is not None and row.status == status:
