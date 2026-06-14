@@ -18,18 +18,25 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { SkillCard } from '@/components/skill/skill-card'
 import { coerceSkillDetailTab, type SkillDetailTab } from '@/components/skill/skill-detail-tabs'
 import { SkillPageDialogs } from '@/components/skill/skill-page-dialogs'
+import { SkillStateFilterChips } from '@/components/skill/skill-state-filter-chips'
 import { useSkills } from '@/lib/hooks/use-skills'
+import {
+  ALL_SKILL_FILTER,
+  filterSkillList,
+  SKILL_STATE_FILTERS,
+  type SkillKindFilter,
+  type SkillStateFilter,
+} from '@/lib/skill-state-filters'
 import type { Skill, SkillKind } from '@/lib/types/skill'
 
 type CreateTab = 'chat' | 'text' | 'package'
 type BuilderMode = 'create' | 'improve'
-type SkillTab = 'all' | Skill['kind']
+type SkillTab = SkillKindFilter
 
-const ALL_TAB = 'all'
-const SKILL_TABS: readonly SkillTab[] = [ALL_TAB, 'text', 'package']
+const SKILL_TABS: readonly SkillTab[] = [ALL_SKILL_FILTER, 'text', 'package']
 
 function isSkillTab(value: string): value is SkillTab {
-  return value === ALL_TAB || value === 'text' || value === 'package'
+  return value === ALL_SKILL_FILTER || value === 'text' || value === 'package'
 }
 
 function formatDate(value: string | null): string {
@@ -57,12 +64,13 @@ export default function SkillsPage() {
   const [builderMode, setBuilderMode] = useState<BuilderMode>('create')
   const [builderSourceSkillId, setBuilderSourceSkillId] = useState<string | null>(null)
   const [builderInitialRequest, setBuilderInitialRequest] = useState('')
-  const [activeTab, setActiveTab] = useState<SkillTab>(ALL_TAB)
+  const [activeTab, setActiveTab] = useState<SkillTab>(ALL_SKILL_FILTER)
+  const [stateFilter, setStateFilter] = useState<SkillStateFilter>(ALL_SKILL_FILTER)
   const [search, setSearch] = useState('')
   const normalizedSearch = search.trim().toLowerCase()
   const skillQueryParams = useMemo(() => {
     const params: { kind?: SkillKind; q?: string } = {}
-    if (activeTab !== ALL_TAB) params.kind = activeTab
+    if (activeTab !== ALL_SKILL_FILTER) params.kind = activeTab
     if (normalizedSearch) params.q = normalizedSearch
     return Object.keys(params).length > 0 ? params : undefined
   }, [activeTab, normalizedSearch])
@@ -109,29 +117,39 @@ export default function SkillsPage() {
   const data = useMemo(() => skills ?? [], [skills])
 
   const filteredSkills = useMemo(() => {
-    return data.filter((skill) => {
-      if (activeTab !== ALL_TAB && skill.kind !== activeTab) return false
-      if (!normalizedSearch) return true
-      return [skill.name, skill.slug, skill.description, skill.version, skill.kind]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalizedSearch))
+    return filterSkillList(data, {
+      kind: activeTab,
+      state: stateFilter,
+      query: normalizedSearch,
     })
-  }, [activeTab, data, normalizedSearch])
+  }, [activeTab, data, normalizedSearch, stateFilter])
 
   function countSkills(tab: SkillTab): number {
-    return data.filter((skill) => {
-      if (tab !== ALL_TAB && skill.kind !== tab) return false
-      if (!normalizedSearch) return true
-      return [skill.name, skill.slug, skill.description, skill.version, skill.kind]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalizedSearch))
+    return filterSkillList(data, {
+      kind: tab,
+      state: stateFilter,
+      query: normalizedSearch,
+    }).length
+  }
+
+  function countStateSkills(state: SkillStateFilter): number {
+    return filterSkillList(data, {
+      kind: activeTab,
+      state,
+      query: normalizedSearch,
     }).length
   }
 
   const tabs = SKILL_TABS.map((value) => ({
     value,
-    label: value === ALL_TAB ? t('typeFilter.all') : t(`typeFilter.${value}`),
+    label: value === ALL_SKILL_FILTER ? t('typeFilter.all') : t(`typeFilter.${value}`),
     countLabel: t('count', { count: countSkills(value) }),
+  }))
+
+  const stateFilters = SKILL_STATE_FILTERS.map((value) => ({
+    value,
+    label: t(`stateFilter.${value}`),
+    countLabel: t('count', { count: countStateSkills(value) }),
   }))
 
   const isInitialEmpty = !isLoading && data.length === 0
@@ -176,6 +194,13 @@ export default function SkillsPage() {
                 }}
               />
               <ResourceToolbar>
+                <SkillStateFilterChips
+                  ariaLabel={t('stateFilter.label')}
+                  value={stateFilter}
+                  filters={stateFilters}
+                  onValueChange={setStateFilter}
+                  className="flex-1"
+                />
                 <SearchInput
                   containerClassName="flex-1 sm:max-w-[360px]"
                   placeholder={t('searchPlaceholder')}

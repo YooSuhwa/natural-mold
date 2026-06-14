@@ -2307,6 +2307,15 @@
       "text": "Text",
       "package": "Package"
     },
+    "stateFilter": {
+      "label": "Skill state filter",
+      "all": "All states",
+      "needs_credentials": "Credentials needed",
+      "needs_rerun": "Rerun needed",
+      "evaluation_failed": "Evaluation failed",
+      "published": "Published",
+      "local_draft": "Local/draft"
+    },
     "deleteConfirm": "Delete Confirm",
     "addSkill": "Add skill",
     "dialogTitle": {

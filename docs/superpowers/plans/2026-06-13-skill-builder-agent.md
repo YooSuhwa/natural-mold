@@ -3383,7 +3383,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add `SkillEvaluationSummaryBadge` states: missing, running, failed, partial, passed, stale.
 - [x] Add `SkillHealthBadge` states: ready, needs_evaluation, needs_rerun, needs_credentials, evaluation_running, evaluation_failed, low_confidence.
 - [x] Add evaluation badge rendering to `/skills` cards without changing existing publish/manage actions.
-- [ ] Add `/skills` state filter chips for needs credentials, needs rerun, evaluation failed, published, and local/draft states without adding new app-level navigation entries.
+- [x] Add `/skills` state filter chips for needs credentials, needs rerun, evaluation failed, published, and local/draft states without adding new app-level navigation entries.
 - [x] Add compact evaluation subtitles to `ToolsSkillsDialog` skill rows.
 - [x] Add `SkillDetailTab = 'content' | 'credentials' | 'evaluation' | 'history' | 'metadata'`.
 - [x] Add `initialTab?: SkillDetailTab` to `SkillDetailDialog`.
@@ -3420,8 +3420,10 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add focused `SkillHistoryTab` tests for newest-first ordering, current marker, operation labels, and legacy empty state.
 - [x] Add focused `SkillCredentialBindingsPanel` tests for missing-required summary and connected/missing binding states.
 - [x] Add focused `getVisibleSkillDetailTabs` tests for hidden optional tabs, credential requirements, evaluation signal, history signal, and deep links.
+- [x] Add focused `skill-state-filters` tests for stale rerun, publication/local state, and combined filters.
 - [x] Add mock-only Playwright coverage for installed skill evaluation rerun/cancel controls in `frontend/e2e/skill-evaluation-actions.spec.ts`.
 - [x] Add mock-only Playwright coverage for installed skill history rendering in `frontend/e2e/skill-history.spec.ts`.
+- [x] Add mock-only Playwright coverage for `/skills` state filter chips in `frontend/e2e/skill-state-filters.spec.ts`.
 - [ ] Add detail-dialog regression tests for package file selection, file save/delete behavior, text skill save behavior, and footer actions after the single-shell refactor.
 - [ ] Add a regression test or routing assertion that no separate user-facing skill evaluation/history/credential route is introduced for this phase.
 - [x] Add i18n messages in both Korean and English for the installed skill detail tabs and evaluation actions.

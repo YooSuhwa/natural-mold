@@ -2286,6 +2286,15 @@
       "text": "텍스트",
       "package": "패키지"
     },
+    "stateFilter": {
+      "label": "스킬 상태 필터",
+      "all": "상태 전체",
+      "needs_credentials": "자격증명 필요",
+      "needs_rerun": "재평가 필요",
+      "evaluation_failed": "평가 실패",
+      "published": "공개됨",
+      "local_draft": "로컬/초안"
+    },
     "deleteConfirm": "이 스킬을 삭제하시겠습니까?",
     "addSkill": "스킬 추가",
     "dialogTitle": {
