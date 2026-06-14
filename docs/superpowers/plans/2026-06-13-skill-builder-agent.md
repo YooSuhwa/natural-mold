@@ -60,14 +60,20 @@ This plan is based on the current source tree.
 - LangGraph checkpointer setup now uses explicit pool sizing in `backend/app/agent_runtime/checkpointer.py:16`: defaults are `checkpointer_pool_min_size=1` and `checkpointer_pool_max_size=10` from `backend/app/config.py:17`. Evaluation concurrency must still be bounded because chat, builder, and evaluation share backend DB/checkpointer capacity.
 - Local E2E can now seed a System LLM for `text_primary` through `seed_e2e_llm(...)` in `backend/app/main.py`; empty `E2E_LLM_*` values keep the normal missing-System-LLM path testable.
 - `alembic heads` is the migration source of truth. On this implementation branch the current head is `m64_skill_builder_sessions`; if main advances again before the next migration, use the reported head instead of stale project guidance text.
-- Merged `main` at `1883845` includes the LangGraph v3 chat runtime. `frontend/src/lib/chat/runtime-mode.ts` defaults to `langgraph_v3`; `legacy` is only selected when `NEXT_PUBLIC_CHAT_RUNTIME=legacy`.
-- Normal chat now routes through `ChatRuntimeSection` and `useMoldyLangGraphStream(...)`, which subscribes to `messages`, `tools`, `values`, `updates`, `lifecycle`, `tasks`, `checkpoints`, and `custom` channels and publishes activities, DeepAgents state, and subagent runtime into `AssistantThread`.
-- Normal Agent Protocol endpoints live under `/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/...`; `thread_id` must equal `conversation_id` for current Moldy-owned threads.
-- Agent Protocol SSE frames use `event: message` with payload `{type, method, params, seq, event_id}` from `backend/app/agent_runtime/protocol_events.py`. Custom domain events on that path must use `method="custom"` and data `{name, payload}` via `stored_custom_protocol_event(...)`.
-- Actual shared chat activity kinds/statuses are defined in `frontend/src/lib/chat/langgraph-runtime/activity-types.ts`. Skill Builder can keep builder-domain phases, but if it reuses shared activity UI it must map into those kinds/statuses rather than inventing new global activity kinds.
-- The normal chat activity reducer in `frontend/src/lib/chat/langgraph-runtime/activity-model.ts:234` promotes only selected `custom` events (`artifact`, `file`, `file_event`, `memory*`, `stale`, `reconnect`) into shared activities. Skill Builder domain events will be ignored by that reducer unless a future Agent Protocol migration intentionally adds mappings and tests.
-- Normal chat interrupt rendering uses `standardInterruptToToolCalls(...)` and `mergeInterruptToolCalls(...)` in `frontend/src/lib/chat/standard-interrupt.ts:96`, with sensitive arguments redacted before display. Skill Builder approval UI should preserve that redaction behavior if it adopts standard interrupt payloads.
-- The legacy W3-out `EventBroker` in `backend/app/agent_runtime/event_broker.py:74` is process-local with a ring buffer and live listener queues. Skill Builder may mirror the existing builder SSE helper pattern, but evaluation/build jobs that need durability must persist status in DB, not rely on a live broker.
+- `git pull --ff-only origin main` on 2026-06-15 reported `Already up to date`; `origin/main` is `18838452` and is already an ancestor of this implementation branch.
+- Merged `main` at `18838452` includes the LangGraph v3 chat runtime. `frontend/src/lib/chat/runtime-mode.ts:3` defaults to `langgraph_v3`; `legacy` is only selected when `NEXT_PUBLIC_CHAT_RUNTIME=legacy`.
+- Normal chat now routes through `ChatRuntimeSection` and `useMoldyLangGraphStream(...)` in `frontend/src/components/chat/chat-runtime-section.tsx:88` and `:188`.
+- `useMoldyLangGraphStream(...)` subscribes to `messages`, `tools`, `values`, `updates`, `lifecycle`, `tasks`, `checkpoints`, and `custom` channels in `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts:104`, then publishes activities, DeepAgents state, and subagent runtime into `AssistantThread`.
+- Normal chat also hydrates `latest_run` / `active_run` state and appends stale or canceled terminal notices in `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts:121` and `:420`. Skill Builder must persist and display its own `skill_builder_sessions` / evaluation-run status instead of piggybacking on normal chat run notices.
+- Normal Agent Protocol endpoints live under `/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/...` in `backend/app/routers/conversation_agent_protocol.py:64`, `:90`, `:137`, `:160`, and `:178`; `thread_id` must equal `conversation_id` through `get_owned_thread(...)` in `backend/app/routers/conversation_agent_protocol_runtime.py:31`.
+- Agent Protocol SSE frames use `event: message` with payload `{type, method, params, seq, event_id}` through `format_protocol_sse(...)` in `backend/app/agent_runtime/protocol_events.py:196`. Custom domain events on that path must use `method="custom"` and data `{name, payload}` via `stored_custom_protocol_event(...)` in `backend/app/agent_runtime/protocol_events.py:113`.
+- Agent Protocol streams set `X-Stream-Protocol` plus `X-Resume-Mode` / `X-Run-Id` headers through `protocol_headers(...)` in `backend/app/routers/conversation_agent_protocol_contracts.py:105`; `/stream/events` can serve `thread`, `live`, `replay`, or `stale` modes in `backend/app/routers/conversation_agent_protocol.py:198`. Skill Builder v1 should not depend on those normal-chat resume modes.
+- Normal chat run lifecycle and recovery are backed by `ConversationRun` APIs: active run lookup at `backend/app/routers/conversation_runs.py:101`, run attach/replay/stale at `:121`, cancel at `:195`, and LangGraph SDK cancel compatibility at `:217`. Skill Builder sessions and skill evaluation runs need their own durable lifecycle rather than creating normal `ConversationRun` rows.
+- Assistant panel resume is now explicit through `POST /api/agents/{agent_id}/assistant/message/resume` in `backend/app/routers/assistant.py:57` and `streamAssistantResume(...)` in `frontend/src/lib/sse/stream-assistant.ts:23`. Skill Builder can mirror the endpoint shape for approvals, but must keep its own router/service/thread id contract.
+- Actual shared chat activity kinds/statuses are defined in `frontend/src/lib/chat/langgraph-runtime/activity-types.ts:1`. Skill Builder can keep builder-domain phases, but if it reuses shared activity UI it must map into those kinds/statuses rather than inventing new global activity kinds.
+- The normal chat activity reducer in `frontend/src/lib/chat/langgraph-runtime/activity-model.ts:219` promotes only selected `custom` events (`artifact`, `file`, `file_event`, `memory*`, `stale`, `reconnect`) into shared activities. Skill Builder domain events will be ignored by that reducer unless a future Agent Protocol migration intentionally adds mappings and tests.
+- Normal chat interrupt rendering uses `standardInterruptToToolCalls(...)` and `mergeInterruptToolCalls(...)` in `frontend/src/lib/chat/standard-interrupt.ts:126` and `:155`, with sensitive arguments redacted before display. Skill Builder approval UI should preserve that redaction behavior if it adopts standard interrupt payloads.
+- The legacy W3-out `EventBroker` in `backend/app/agent_runtime/event_broker.py:81` is process-local with a ring buffer and live listener queues. Skill Builder may mirror the existing builder SSE helper pattern, but evaluation/build jobs that need durability must persist status in DB, not rely on a live broker.
 - `docs/superpowers/plans/2026-06-13-assistant-ui-langgraph-v3-streaming.md` is now the committed source reference for the normal chat runtime. It intentionally keeps product builder surfaces on their own workflow streams until a dedicated Agent Protocol migration is planned.
 - Frontend skill creation currently has three tabs in `frontend/src/components/skill/skill-create-dialog.tsx:16`. The `scratch` tab creates a minimal `.skill` package in browser with JSZip at `frontend/src/components/skill/skill-create-dialog.tsx:255`.
 - `/skills` is a client page using `ResourcePage`, `ResourcePanel`, `CountedLineTabs`, `SearchInput`, `ResourceGrid`, and `ResourceListCard` in `frontend/src/app/skills/page.tsx:101`.
@@ -176,14 +182,14 @@ Before starting implementation from this document, run these checks and update t
 
 ```bash
 git status -sb
-git pull --ff-only
+git pull --ff-only origin main
 cd backend && uv run alembic heads
 cd ../frontend && pnpm lint:i18n
 ```
 
 Required state:
 
-- `main` is pulled to a commit that includes the LangGraph v3 chat runtime (`1883845` or newer in this review). If implementing from an older branch, rebase or pull before touching Tasks 10-12.
+- `main` is pulled to a commit that includes the LangGraph v3 chat runtime (`18838452` or newer in this review). This implementation branch currently has no upstream, so use `git pull --ff-only origin main` rather than plain `git pull` unless an upstream is configured.
 - `alembic heads` returns the current project head. On this branch Task 1 already added `m64_skill_builder_sessions`; any later migration must use that reported head, or whatever newer head exists after the next main pull.
 - `backend/.env` is linked or copied through `bash scripts/worktree-setup.sh` for this worktree, so credential encryption keys and System LLM seed behavior match local development.
 - Existing unrelated modified files are left alone. This plan currently expects new work to happen on a feature branch/worktree and not to revert user edits.
@@ -203,6 +209,7 @@ Implementation order:
 - Normal conversations use `ChatRuntimeSection`, `useMoldyLangGraphStream(...)`, and Agent Protocol thread/state/stream endpoints rather than the old message-only SSE path.
 - Normal chat transport calls `/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/commands`, `/state`, and `/stream/events`; the current backend requires `thread_id == conversation_id`.
 - Normal Agent Protocol stream events are sent as SSE `event: message` frames whose data contains `method`, `params`, `seq`, and `event_id`. Builder-specific SSE event names such as `builder_status` must not be sent through that normal chat endpoint.
+- Normal chat has a separate `ConversationRun` recovery surface for active run lookup, live attach, replay, stale marking, and cancellation. Skill Builder must not assume that opening the builder dialog will recover through `/api/conversations/{conversation_id}/runs/active`, `/runs/{run_id}/stream`, or `/threads/{thread_id}/runs/{run_id}/cancel`.
 - The shared activity UI recognizes `thinking`, `planning`, `tool`, `subagent`, `background_subagent`, `artifact`, `memory`, `interrupt`, `checkpoint`, `responding`, `reconnecting`, `done`, and `error`, with statuses `pending`, `running`, `requires_action`, `complete`, `error`, and `cancelled`.
 - The current activity reducer only converts `custom` protocol events into shared activities for artifact/file, memory, stale, and reconnect events. A future builder-on-Agent-Protocol migration must add explicit reducer mappings and tests before expecting `builder_status`, `builder_activity`, validation, compatibility, or evaluation events to appear in the normal chat activity rail.
 - Normal chat standard interrupts are converted into redacted synthetic tool calls. Skill Builder can keep a builder-specific approval surface in v1, but any reuse of the standard interrupt payload must keep sensitive argument redaction and multi-action decision coordination.
@@ -212,6 +219,7 @@ Skill Builder v1 should remain a separate authoring workflow:
 - `skill_builder_sessions` is the canonical session state, not `conversation_runs`.
 - The builder is not mounted through `conversation_agent_protocol` and does not create normal Agent Protocol runs.
 - `SkillBuilderDialog` should not import or wrap `ChatRuntimeSection`; it can share low-level SSE parse/resume utilities but owns its own UX, phases, preview, validation, and confirm/apply state.
+- If Skill Builder needs approval/resume semantics, implement builder-owned `/api/skill-builder/{session_id}/messages/resume` behavior and tests. Do not reuse Assistant panel `/assistant/message/resume` or normal chat HITL routes, because their thread IDs, ownership model, and run lifecycle are different.
 - Builder stream payloads should align with shared status names where possible. Builder-domain stages such as `validation`, `compatibility`, `evaluation`, and `revision` should live in `phase`, `label`, or `data.domain`, not in shared `RunActivityKind`, unless a dedicated shared-kind addition is implemented.
 - If a later product direction embeds Skill Builder inside normal chat, add a dedicated migration task to emit Agent Protocol `updates` or `custom` events. On the protocol path, use `method="custom"` with `{name, payload}` rather than standalone SSE event names.
 
@@ -2729,6 +2737,8 @@ Frontend SSE:
 - New helpers:
   - `frontend/src/lib/sse/stream-skill-builder-message.ts`
   - `frontend/src/lib/sse/stream-skill-builder-resume.ts`
+- Do not reuse `frontend/src/lib/sse/stream-assistant.ts`; that helper posts to `/api/agents/{agent_id}/assistant/message` and `/assistant/message/resume` with assistant-specific thread IDs.
+- Do not route these helpers through normal chat `useMoldyLangGraphStream(...)` or Agent Protocol `/stream/events`; Skill Builder v1 owns a product authoring stream and fetches persisted session state from `/api/skill-builder/{session_id}` after stream completion or reconnect.
 
 Skill Builder SSE wire contract:
 
@@ -3281,6 +3291,7 @@ Expected: trigger optimization tests pass.
   - `useRollbackSkillRevision`
 - [x] Add the builder-session eval run hook after `POST /api/skill-builder/{session_id}/evals/run` is implemented.
 - [x] Add builder-specific stream helpers using shared SSE parsing/resume behavior where practical.
+- [x] Keep `stream-skill-builder-message.ts` limited to `/api/skill-builder/{session_id}/messages` and `/messages/resume`; do not import `streamAssistant`, `useMoldyLangGraphStream`, `useChatRuntime`, or `ChatRuntimeSection`.
 - [x] Add typed handlers for `builder_status`, `builder_activity`, `draft_package`, `validation_result`, `compatibility_result`, `changelog_draft`, and `eval_result`.
 - [x] Do not depend on legacy normal chat `useChatRuntime`; current `main` defaults normal chat to `langgraph_v3`.
 - [x] Add tests with `NEXT_PUBLIC_CHAT_RUNTIME` unset so the default `langgraph_v3` app shell does not accidentally break Skill Builder.
