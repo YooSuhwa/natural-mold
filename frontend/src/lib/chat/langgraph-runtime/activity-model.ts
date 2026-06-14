@@ -27,14 +27,12 @@ function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): 
   const namespace = eventNamespace(event)
   let next: RunActivity[] = [...current]
   if (namespace.length > 0) {
+    const subagentKey = subagentKeyFromNamespace(namespace) ?? namespaceKey(namespace)
     next = upsertActivity(next, {
-      ...activityBase(event, 'subagent', namespaceKey(namespace)),
+      ...activityBase(event, 'subagent', subagentKey),
       status: 'running',
-      title: namespace.at(-1) ?? 'Subagent',
-      parentId:
-        namespace.length > 1
-          ? `${eventRunId(event)}:subagent:${namespaceKey(namespace.slice(0, -1))}`
-          : undefined,
+      title: subagentTitleFromNamespace(namespace),
+      parentId: parentSubagentId(event, namespace),
     })
   }
   if (!isRecord(data)) return next
@@ -47,17 +45,7 @@ function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): 
     const toolCallId =
       textValue(chunk.id) ??
       textValue(chunk.tool_call_id) ??
-      next.findLast((item) => {
-        if (
-          item.kind !== 'tool' ||
-          item.status !== 'running' ||
-          item.title !== name ||
-          namespaceKey(item.namespace) !== namespaceKey(namespace)
-        ) {
-          return false
-        }
-        return chunkIndex === undefined || (isRecord(item.data) && item.data.index === chunkIndex)
-      })?.toolCallId
+      continuationToolCallId(next, name, namespace, chunkIndex)
     if (!toolCallId) continue
     next = upsertActivity(next, {
       ...activityBase(event, 'tool', toolCallId),
@@ -152,7 +140,11 @@ function reduceLifecycle(current: readonly RunActivity[], event: ProtocolEvent):
   const data = eventData(event)
   if (!isRecord(data)) return [...current]
   const namespace = eventNamespace(event)
-  const id = textValue(data.trigger_call_id) ?? textValue(data.id) ?? namespaceKey(namespace)
+  const id =
+    textValue(data.trigger_call_id) ??
+    textValue(data.id) ??
+    subagentKeyFromNamespace(namespace) ??
+    namespaceKey(namespace)
   const status = statusFromValue(data.status ?? data.event)
   if (namespace.length === 0 && isTerminalStatus(status)) {
     const closed = markRunningAsStatus(current, event, status)
@@ -173,6 +165,57 @@ function reduceLifecycle(current: readonly RunActivity[], event: ProtocolEvent):
   })
 }
 
+function continuationToolCallId(
+  activities: readonly RunActivity[],
+  name: string,
+  namespace: readonly string[],
+  chunkIndex: number | undefined,
+): string | undefined {
+  const candidates = activities.filter((item) => {
+    if (
+      item.kind !== 'tool' ||
+      item.status !== 'running' ||
+      item.title !== name ||
+      namespaceKey(item.namespace) !== namespaceKey(namespace)
+    ) {
+      return false
+    }
+    return chunkIndex === undefined || (isRecord(item.data) && item.data.index === chunkIndex)
+  })
+  if (chunkIndex === undefined && candidates.length !== 1) return undefined
+  return candidates.at(-1)?.toolCallId
+}
+
+function subagentKeyFromNamespace(namespace: readonly string[]): string | undefined {
+  const tail = namespace.at(-1)
+  if (!tail) return undefined
+  const separator = tail.indexOf(':')
+  return separator > 0 ? tail.slice(separator + 1) : tail
+}
+
+function subagentTitleFromNamespace(namespace: readonly string[]): string {
+  return subagentKeyFromNamespace(namespace) ?? namespace.at(-1) ?? 'Subagent'
+}
+
+function parentSubagentId(event: ProtocolEvent, namespace: readonly string[]): string | undefined {
+  if (namespace.length <= 1) return undefined
+  const parentNamespace = namespace.slice(0, -1)
+  return `${eventRunId(event)}:subagent:${subagentKeyFromNamespace(parentNamespace) ?? namespaceKey(parentNamespace)}`
+}
+
+function terminalCustomStatus(name: string | undefined, payload: unknown): RunActivity['status'] {
+  const rawStatus = isRecord(payload)
+    ? (payload.status ?? payload.event ?? payload.op ?? payload.memory_event)
+    : undefined
+  const status = statusFromValue(rawStatus)
+  if (isTerminalStatus(status) || status === 'requires_action') return status
+  if (name === 'memory_proposed') return 'requires_action'
+  if (name?.startsWith('memory_')) return 'complete'
+  if (name === 'artifact' || name === 'file' || name === 'file_event') return 'complete'
+  if (name === 'reconnect') return 'complete'
+  return status
+}
+
 function reduceCustom(current: readonly RunActivity[], event: ProtocolEvent): RunActivity[] {
   const data = eventData(event)
   const name = event.method.startsWith('custom:')
@@ -184,7 +227,7 @@ function reduceCustom(current: readonly RunActivity[], event: ProtocolEvent): Ru
   if (name === 'artifact' || name === 'file' || name === 'file_event') {
     return upsertActivity(current, {
       ...activityBase(event, 'artifact', name),
-      status: 'running',
+      status: terminalCustomStatus(name, payload),
       title: 'Artifact',
       data: dataRecord(payload),
     })
@@ -192,7 +235,7 @@ function reduceCustom(current: readonly RunActivity[], event: ProtocolEvent): Ru
   if (name === 'memory' || name?.startsWith('memory_')) {
     return upsertActivity(current, {
       ...activityBase(event, 'memory', name),
-      status: 'running',
+      status: terminalCustomStatus(name, payload),
       title: 'Memory',
       data: dataRecord(payload),
     })
@@ -200,7 +243,7 @@ function reduceCustom(current: readonly RunActivity[], event: ProtocolEvent): Ru
   if (name === 'stale' || name === 'reconnect') {
     return upsertActivity(current, {
       ...activityBase(event, 'reconnecting', name),
-      status: name === 'stale' ? 'error' : 'running',
+      status: name === 'stale' ? 'error' : terminalCustomStatus(name, payload),
       title: 'Reconnecting',
       data: isRecord(data) ? data : { payload: data },
     })

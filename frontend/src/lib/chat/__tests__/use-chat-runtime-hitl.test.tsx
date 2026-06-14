@@ -79,6 +79,13 @@ const STANDARD_PAYLOAD: StandardInterruptPayload = {
   ],
 }
 
+type ResumeSpy = (
+  decisions: Decision[],
+  signal: AbortSignal,
+  displayText?: string,
+  interruptId?: string | null,
+) => AsyncGenerator<SSEEvent>
+
 // ── 공통 hook 옵션 빌더 ───────────────────────────────────────────────────
 
 interface HookSpyOptions {
@@ -390,5 +397,51 @@ describe('useChatRuntime — onResumeDecisions', () => {
     const decisions: Decision[] = [{ type: 'approve' }]
     // throw 없이 즉시 resolve.
     await expect(result.current.onResumeDecisions(decisions)).resolves.toBeUndefined()
+  })
+
+  it('multi-action coordinator resumes through the latest resumeFn after rerender', async () => {
+    const multi: StandardInterruptPayload = {
+      interrupt_id: 'ns-multi-latest',
+      action_requests: [
+        { name: 'ask_user', args: { question: '계속할까요?' } },
+        { name: 'send_email', args: { to: 'team@example.com' } },
+      ],
+      review_configs: [
+        { action_name: 'ask_user', allowed_decisions: ['respond'] },
+        { action_name: 'send_email', allowed_decisions: ['approve', 'reject'] },
+      ],
+    }
+    const resume1 = vi.fn<ResumeSpy>(async function* () {})
+    const resume2 = vi.fn<ResumeSpy>(async function* () {})
+    const { options } = buildHookOptions({ events: [{ event: 'interrupt', data: multi }] })
+    const { result, rerender } = renderHook(
+      ({ resumeFn }: { readonly resumeFn: ResumeSpy }) => useChatRuntime({ ...options, resumeFn }),
+      {
+        initialProps: { resumeFn: resume1 },
+        wrapper: createWrapper(),
+      },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+    await act(async () => {
+      await result.current.registerDecision(1, { type: 'reject', message: '아니요' }, '거부')
+    })
+    expect(resume1).not.toHaveBeenCalled()
+
+    rerender({ resumeFn: resume2 })
+    await act(async () => {
+      await result.current.registerDecision(0, { type: 'respond', message: '네' }, '네')
+    })
+
+    expect(resume1).not.toHaveBeenCalled()
+    expect(resume2).toHaveBeenCalledTimes(1)
+    expect(resume2.mock.calls[0]?.[0]).toEqual([
+      { type: 'respond', message: '네' },
+      { type: 'reject', message: '아니요' },
+    ])
+    expect(resume2.mock.calls[0]?.[2]).toBe('네 | 거부')
+    expect(resume2.mock.calls[0]?.[3]).toBe('ns-multi-latest')
   })
 })

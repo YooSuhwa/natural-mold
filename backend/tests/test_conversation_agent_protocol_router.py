@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
-from app.agent_runtime.event_broker import BrokeredEvent
+from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_events import stored_protocol_event
 from app.agent_runtime.runtime_config import AgentConfig
@@ -102,6 +102,11 @@ async def _seed_conversation(
     db.add(conversation)
     await db.commit()
     return conversation
+
+
+async def _close_broker_after_subscribe(broker: EventBroker) -> None:
+    await asyncio.wait_for(broker.wait_until_subscribed(), timeout=1)
+    broker.close()
 
 
 def test_agent_protocol_routes_registered_from_conversation_facade() -> None:
@@ -707,11 +712,7 @@ async def test_protocol_stream_attaches_live_broker_with_filters(
         }
     )
 
-    async def close_broker() -> None:
-        await asyncio.sleep(0.01)
-        broker.close()
-
-    closer = asyncio.create_task(close_broker())
+    closer = asyncio.create_task(_close_broker_after_subscribe(broker))
     try:
         async with client.stream(
             "POST",

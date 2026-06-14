@@ -65,10 +65,6 @@ function isAskUserRespondOnly(action: ActionRequest, reviewConfig: ReviewConfig)
   )
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function stripHitLMetadata(args: Record<string, unknown>): Record<string, unknown> {
   return redactSensitiveRecord(
     Object.fromEntries(Object.entries(args).filter(([key]) => !HITL_METADATA_KEYS.has(key))),

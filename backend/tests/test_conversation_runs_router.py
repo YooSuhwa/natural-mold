@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
+from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -47,6 +48,11 @@ async def _seed_agent_conversation(
     db.add(conversation)
     await db.flush()
     return agent, conversation
+
+
+async def _close_broker_after_subscribe(broker: EventBroker) -> None:
+    await asyncio.wait_for(broker.wait_until_subscribed(), timeout=1)
+    broker.close()
 
 
 @pytest.mark.asyncio
@@ -324,11 +330,7 @@ async def test_run_stream_endpoint_attaches_live_broker(
         }
     )
 
-    async def close_broker() -> None:
-        await asyncio.sleep(0.01)
-        broker.close()
-
-    close_task = asyncio.create_task(close_broker())
+    close_task = asyncio.create_task(_close_broker_after_subscribe(broker))
     resp = await client.get(f"/api/conversations/{conversation.id}/runs/{run.id}/stream")
     await close_task
 
@@ -403,11 +405,7 @@ async def test_ag_ui_run_stream_endpoint_attaches_live_broker_with_split_event_r
         }
     )
 
-    async def close_broker() -> None:
-        await asyncio.sleep(0.01)
-        broker.close()
-
-    close_task = asyncio.create_task(close_broker())
+    close_task = asyncio.create_task(_close_broker_after_subscribe(broker))
     resp = await client.get(
         f"/api/conversations/{conversation.id}/runs/{run.id}/ag-ui-stream",
         params={"last_event_id": f"{run.id}-1:ag:0"},
@@ -468,11 +466,7 @@ async def test_run_stream_emits_stale_gap_marker_when_last_event_evicted(
         }
     )
 
-    async def close_broker() -> None:
-        await asyncio.sleep(0.01)
-        broker.close()
-
-    close_task = asyncio.create_task(close_broker())
+    close_task = asyncio.create_task(_close_broker_after_subscribe(broker))
     resp = await client.get(
         f"/api/conversations/{conversation.id}/runs/{run.id}/stream",
         params={"last_event_id": f"{run.id}-1"},
@@ -531,11 +525,7 @@ async def test_ag_ui_run_stream_emits_stale_gap_marker_when_source_evicted(
         }
     )
 
-    async def close_broker() -> None:
-        await asyncio.sleep(0.01)
-        broker.close()
-
-    close_task = asyncio.create_task(close_broker())
+    close_task = asyncio.create_task(_close_broker_after_subscribe(broker))
     resp = await client.get(
         f"/api/conversations/{conversation.id}/runs/{run.id}/ag-ui-stream",
         params={"last_event_id": f"{run.id}-1:ag:0"},

@@ -84,6 +84,27 @@ describe('reduceActivity', () => {
     })
   })
 
+  it('does not attach ambiguous id-less continuation chunks to same-named running tools', () => {
+    const activities = reduce([
+      event('messages', {
+        tool_call_chunks: [
+          { id: 'tc-1', name: 'search', args: '{"q":"first"}' },
+          { id: 'tc-2', name: 'search', args: '{"q":"second"}' },
+        ],
+      }),
+      event('messages', {
+        tool_call_chunks: [{ name: 'search', args: ' ambiguous continuation' }],
+      }),
+    ])
+
+    expect(activities.find((item) => item.id === 'run-1:tool:tc-1')?.data).toMatchObject({
+      args: '{"q":"first"}',
+    })
+    expect(activities.find((item) => item.id === 'run-1:tool:tc-2')?.data).toMatchObject({
+      args: '{"q":"second"}',
+    })
+  })
+
   it('creates a nested subagent activity from a namespace', () => {
     const activities = reduce([
       event(
@@ -96,10 +117,10 @@ describe('reduceActivity', () => {
     expect(activities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: 'run-1:subagent:tools:tc-1',
+          id: 'run-1:subagent:tc-1',
           kind: 'subagent',
           status: 'running',
-          title: 'tools:tc-1',
+          title: 'tc-1',
         }),
       ]),
     )
@@ -124,6 +145,42 @@ describe('reduceActivity', () => {
       status: 'complete',
       title: 'Writer',
       toolCallId: 'tc-2',
+    })
+  })
+
+  it('deduplicates namespace and lifecycle subagent events for the same trigger call', () => {
+    const activities = reduce([
+      event(
+        'messages',
+        { chunk: 'draft' },
+        { params: { namespace: ['tools:tc-2'], data: { chunk: 'draft' } } },
+      ),
+      event(
+        'lifecycle',
+        {
+          trigger_call_id: 'tc-2',
+          name: 'Writer',
+          status: 'completed',
+        },
+        {
+          params: {
+            namespace: ['tools:tc-2'],
+            data: {
+              trigger_call_id: 'tc-2',
+              name: 'Writer',
+              status: 'completed',
+            },
+          },
+        },
+      ),
+    ])
+
+    const subagents = activities.filter((item) => item.kind === 'subagent')
+    expect(subagents).toHaveLength(1)
+    expect(subagents[0]).toMatchObject({
+      id: 'run-1:subagent:tc-2',
+      status: 'complete',
+      title: 'Writer',
     })
   })
 
@@ -157,6 +214,20 @@ describe('reduceActivity', () => {
 
     expect(activities.map((item) => item.kind)).toEqual(['planning', 'memory', 'artifact'])
     expect(activities[0]).toMatchObject({ status: 'running', title: 'Planning' })
+  })
+
+  it('marks terminal custom artifact memory and reconnect events without stuck spinners', () => {
+    const activities = reduce([
+      event('custom', { name: 'memory_saved', payload: { key: 'profile' } }),
+      event('custom', { name: 'file_event', payload: { path: 'report.md', op: 'created' } }),
+      event('custom', { name: 'reconnect', payload: { reason: 'resume' } }),
+    ])
+
+    expect(activities).toEqual([
+      expect.objectContaining({ kind: 'memory', status: 'complete' }),
+      expect.objectContaining({ kind: 'artifact', status: 'complete' }),
+      expect.objectContaining({ kind: 'reconnecting', status: 'complete' }),
+    ])
   })
 
   it('marks active activities as error when an error event arrives', () => {

@@ -107,6 +107,7 @@ class EventBroker:
         self._buffer: deque[BrokeredEvent] = deque(maxlen=buffer_size)
         # Sentinel `None` signals close to subscribers blocked on `queue.get()`.
         self._listeners: set[asyncio.Queue[BrokeredEvent | None]] = set()
+        self._listener_attached = asyncio.Event()
         self._closed = False
         self._error: Exception | None = None
         self._last_event_id: str | None = None
@@ -183,6 +184,11 @@ class EventBroker:
         """
         self.publish_nowait(evt)
 
+    async def wait_until_subscribed(self) -> None:
+        if self._listeners:
+            return
+        await self._listener_attached.wait()
+
     async def subscribe(self, after_id: str | None = None) -> AsyncGenerator[BrokeredEvent, None]:
         """Subscribe to events, optionally replaying buffered events past ``after_id``.
 
@@ -205,6 +211,7 @@ class EventBroker:
         )
         if not self._closed:
             self._listeners.add(queue)
+            self._listener_attached.set()
         else:
             # Defensive against future await insertions in this block:
             # if close() raced with our subscribe entry, ensure subscriber
