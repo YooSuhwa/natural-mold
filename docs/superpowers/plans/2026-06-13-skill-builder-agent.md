@@ -2936,7 +2936,7 @@ Expected: all validator tests pass.
 - [x] Implement `confirm_session` using the confirm flow in this plan.
 - [x] Return non-secret audit metadata from confirm/apply helpers: session id, mode, source skill id, file counts, changed counts, credential requirement count, old hash, and new hash.
 - [x] In improve mode, apply confirmed changes to the existing skill only when `base_content_hash` still matches the current skill hash.
-- [ ] During confirm, convert `evals/evals.json` and `session.eval_result` into `SkillEvaluationSet` and `SkillEvaluationRun` rows linked to the finalized skill.
+- [x] During confirm, convert `evals/evals.json` and `session.eval_result` into `SkillEvaluationSet` and `SkillEvaluationRun` rows linked to the finalized skill.
 - [ ] Add tests:
   - [x] session ownership is enforced by query helper
   - [x] confirm refuses sessions with validation errors
@@ -2947,14 +2947,14 @@ Expected: all validator tests pass.
   - [x] improve confirm updates an existing text skill
   - improve confirm updates changed package files and preserves unchanged files
   - [x] improve confirm returns 409 when the current skill hash differs from `base_content_hash`
-  - confirm creates an evaluation set when the draft contains evals
-  - confirm copies builder-time eval results into a skill evaluation run
+  - [x] confirm creates an evaluation set when the draft contains evals
+  - [x] confirm copies builder-time eval results into a skill evaluation run
   - [x] evaluation run snapshots `skill.version` and `skill.content_hash`
   - package file update changes `skill.content_hash`
   - package file delete changes `skill.content_hash`
   - identical package file write keeps the same `skill.content_hash`
   - [x] package content hash change makes the latest completed evaluation stale by comparison
-  - evaluation run snapshots runner/grader/schema versions
+  - [x] evaluation run snapshots runner/grader/schema versions
   - [x] `estimate_run` returns no DB row and includes case count, model call count, timeout, and approximate cost
   - [x] `cancel_run` transitions queued/running/grading to cancelled and rejects completed runs
   - [x] health state returns `needs_rerun` when content hash differs

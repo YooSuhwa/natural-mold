@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import asyncio
 import shutil
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, assert_never
 
+import anyio
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,10 @@ from app.services.skill_builder_errors import (
     SkillBuilderConflictError,
     SkillBuilderSourceSkillNotFound,
     SkillBuilderValidationError,
+)
+from app.services.skill_builder_evaluations import (
+    extract_builder_evaluation_payload,
+    persist_builder_evaluation_records,
 )
 from app.skills import service as skill_service
 from app.skills.package_builder import build_skill_zip_bytes
@@ -56,6 +61,14 @@ async def confirm_builder_session(
 
     session.validation_result = validation_result
     session.compatibility_result = validation_result.get("compatibility_result")
+    try:
+        evaluation_payload = extract_builder_evaluation_payload(draft, session.eval_result)
+    except SkillBuilderValidationError as exc:
+        session.validation_result = exc.result
+        session.status = SkillBuilderStatus.REVIEW.value
+        await db.flush()
+        raise
+
     mode = SkillBuilderMode(session.mode)
     match mode:
         case SkillBuilderMode.CREATE:
@@ -65,6 +78,12 @@ async def confirm_builder_session(
         case unreachable:
             assert_never(unreachable)
 
+    await persist_builder_evaluation_records(
+        db,
+        user_id=user_id,
+        skill=skill,
+        payload=evaluation_payload,
+    )
     session.status = SkillBuilderStatus.COMPLETED.value
     session.finalized_skill_id = skill.id
     session.updated_at = skill.last_modified_at
@@ -116,12 +135,14 @@ async def _confirm_improve(
 
     parent_revision_id = skill.current_revision_id
     zip_bytes = build_skill_zip_bytes(slug=draft.slug, files=draft.files)
-    replacement = await asyncio.to_thread(
-        _replace_skill_storage,
-        skill_id=skill.id,
-        current_kind=skill.kind,
-        current_storage_path=skill.storage_path,
-        zip_bytes=zip_bytes,
+    replacement = await anyio.to_thread.run_sync(
+        partial(
+            _replace_skill_storage,
+            skill_id=skill.id,
+            current_kind=skill.kind,
+            current_storage_path=skill.storage_path,
+            zip_bytes=zip_bytes,
+        )
     )
     skill.name = draft.name
     skill.slug = skill_service.slugify(draft.slug)
