@@ -14,6 +14,10 @@ from app.error_codes import (
     skill_builder_source_conflict,
     skill_not_found,
 )
+from app.routers.skill_builder_audit import (
+    confirm_audit_metadata,
+    record_current_revision_create_audit,
+)
 from app.routers.skill_builder_support import (
     completed_skill,
     get_session_or_404,
@@ -222,9 +226,13 @@ async def confirm_skill_builder_session(
         session_id=session.id,
         mode=session.mode,
         source_skill_id=session.source_skill_id,
-        file_count=len((skill.package_metadata or {}).get("files") or []),
-        credential_requirement_count=len(skill.credential_requirements or []),
-        new_hash=skill.content_hash,
+        **confirm_audit_metadata(session, skill),
+    )
+    await record_current_revision_create_audit(
+        db,
+        user=user,
+        request=request,
+        skill=skill,
     )
     await db.commit()
     await db.refresh(skill)

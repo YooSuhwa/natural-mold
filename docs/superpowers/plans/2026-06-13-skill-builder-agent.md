@@ -2934,7 +2934,7 @@ Expected: all validator tests pass.
 - [x] Implement `save_draft_package` and `save_validation_result`.
 - [x] Implement `claim_for_confirming` using the same atomic update pattern as `builder_service.claim_for_confirming`.
 - [x] Implement `confirm_session` using the confirm flow in this plan.
-- [ ] Return non-secret audit metadata from confirm/apply helpers: session id, mode, source skill id, file counts, changed counts, credential requirement count, old hash, and new hash.
+- [x] Return non-secret audit metadata from confirm/apply helpers: session id, mode, source skill id, file counts, changed counts, credential requirement count, old hash, and new hash.
 - [x] In improve mode, apply confirmed changes to the existing skill only when `base_content_hash` still matches the current skill hash.
 - [ ] During confirm, convert `evals/evals.json` and `session.eval_result` into `SkillEvaluationSet` and `SkillEvaluationRun` rows linked to the finalized skill.
 - [ ] Add tests:
@@ -2958,7 +2958,7 @@ Expected: all validator tests pass.
   - [x] `estimate_run` returns no DB row and includes case count, model call count, timeout, and approximate cost
   - [x] `cancel_run` transitions queued/running/grading to cancelled and rejects completed runs
   - [x] health state returns `needs_rerun` when content hash differs
-  - confirm audit metadata excludes prompt text, generated file content, stdout/stderr, and credential values
+  - [x] confirm audit metadata excludes prompt text, generated file content, stdout/stderr, and credential values
   - [x] `create_revision_for_skill` writes a zip snapshot and increments `revision_number`
   - [x] `rollback_to_revision` creates a new rollback revision and updates the skill row
   - [x] rollback does not mutate the restored-from revision
@@ -2997,7 +2997,7 @@ Expected: service tests pass.
 - [x] Record `skill_builder.confirm_create` when create-mode confirm creates a new skill.
 - [x] Record `skill_builder.apply_improvement` when improve-mode confirm updates the existing skill.
 - [x] Record `skill_builder.apply_conflict` with outcome `denied` when improve-mode hash conflict returns 409.
-- [ ] Record `skill_revision.create` whenever a revision snapshot is created by service calls in this feature.
+- [x] Record `skill_revision.create` whenever a revision snapshot is created by service calls in this feature.
 - [x] Record `skill_revision.rollback` when rollback succeeds.
 - [x] Use `audit_service.record_event(...)` and pass `request` so request id, IP, and user-agent match existing audit behavior.
 - [x] Add route include in `backend/app/main.py`.
@@ -3013,15 +3013,15 @@ Expected: service tests pass.
   - cross-user session access returns 404
   - session create writes `skill_builder.session_create`
   - System LLM readiness failure writes `skill_builder.system_model_missing` without creating a session
-  - confirm create writes `skill_builder.confirm_create`
-  - improve apply writes `skill_builder.apply_improvement`
+  - [x] confirm create writes `skill_builder.confirm_create`
+  - [x] improve apply writes `skill_builder.apply_improvement`
   - improve conflict writes `skill_builder.apply_conflict` with no file content in metadata
   - [x] `GET /api/skills/{skill_id}/revisions` lists only owned skill revisions
   - [x] `GET /api/skills/{skill_id}/revisions/{revision_id}` returns changelog and compatibility metadata
   - [x] `POST /api/skills/{skill_id}/revisions/{revision_id}/rollback` creates a new rollback revision
   - [x] rollback on another user's skill returns 404
   - rollback writes `skill_revision.rollback` without file bodies in metadata
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd backend

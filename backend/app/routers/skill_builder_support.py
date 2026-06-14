@@ -91,6 +91,7 @@ async def record_builder_audit(
         outcome=outcome,
         request=request,
         metadata={
+            "session_id": str(session_id) if session_id else None,
             "mode": mode,
             "source_skill_id": str(source_skill_id) if source_skill_id else None,
             **metadata,

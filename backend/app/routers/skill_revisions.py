@@ -14,7 +14,7 @@ from app.schemas.skill_revision import (
     SkillRevisionSummary,
     SkillRollbackResponse,
 )
-from app.services import audit_service, skill_revision_service
+from app.services import audit_service, skill_revision_audit, skill_revision_service
 from app.skills import service as skill_service
 
 router = APIRouter(prefix="/api/skills/{skill_id}/revisions", tags=["skill-revisions"])
@@ -74,6 +74,12 @@ async def rollback_skill_revision(
         user_id=user.id,
         revision=revision,
         changelog_summary=f"Rolled back to revision {revision.revision_number}.",
+    )
+    await skill_revision_audit.record_revision_create_audit(
+        db,
+        user=user,
+        request=request,
+        revision=restored,
     )
     await _record_revision_rollback_audit(
         db,
