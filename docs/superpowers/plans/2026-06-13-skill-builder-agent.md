@@ -2880,8 +2880,10 @@ Expected: all validator tests pass.
 - [x] Centralize package tree hashing in `compute_package_tree_hash`.
 - [x] Ensure package upload and package file create/update/delete refresh `skill.content_hash`.
 - [x] Ensure whole-package replacement and rollback refresh `skill.content_hash` before revision creation and evaluation staleness checks.
-- [ ] Ensure builder confirm refreshes `skill.content_hash` before revision creation and evaluation staleness checks.
-- [ ] Create initial revision after text skill create, package upload, and builder create.
+- [x] Ensure create-mode builder confirm refreshes `skill.content_hash` before revision creation and evaluation staleness checks.
+- [ ] Ensure improve-mode builder confirm refreshes `skill.content_hash` before revision creation and evaluation staleness checks.
+- [x] Create initial revision after builder create.
+- [ ] Create initial revision after text skill create and package upload.
 - [ ] Create new revisions after text content update, package file update/delete/upload, metadata update, builder improvement, and rollback.
 - [ ] Generate changelog summaries from builder diffs and store them on the resulting revision row.
 - [ ] Keep changelog summaries out of `SKILL.md`; use them as default marketplace release-note text later.

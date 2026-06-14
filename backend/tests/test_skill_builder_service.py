@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -128,3 +129,76 @@ async def test_append_message_and_save_draft(db: AsyncSession) -> None:
     assert session.messages[0]["role"] == "user"
     assert session.draft_package == {"name": "notes", "files": [{"path": "SKILL.md"}]}
     assert session.status == SkillBuilderStatus.REVIEW.value
+
+
+@pytest.mark.asyncio
+async def test_confirm_session_create_mode_creates_package_skill(
+    db: AsyncSession,
+    tmp_path,
+) -> None:
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        session = await skill_builder_service.create_session(
+            db,
+            user_id=TEST_USER_ID,
+            user_request="스킬 만들어줘",
+        )
+        await skill_builder_service.save_draft_package(
+            db,
+            session,
+            draft={
+                "name": "Notes",
+                "slug": "notes",
+                "description": "Use when summarizing notes into action items.",
+                "files": [
+                    {"path": "SKILL.md", "content": _skill_content(), "role": "skill"},
+                    {
+                        "path": "agents/openai.yaml",
+                        "content": "interface:\n  default_prompt: \"$notes summarize\"\n",
+                        "role": "metadata",
+                    },
+                ],
+                "credential_requirements": [
+                    {
+                        "key": "openai",
+                        "definition_key": "openai",
+                        "required": True,
+                        "label": "OpenAI",
+                        "fields": ["api_key"],
+                        "env_map": {"api_key": "OPENAI_API_KEY"},
+                    }
+                ],
+                "execution_profile": {"requires_network": False},
+            },
+        )
+
+        skill = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        await db.commit()
+
+    assert skill.kind == "package"
+    assert skill.credential_requirements is not None
+    assert skill.execution_profile == {"requires_network": False}
+    assert skill.current_revision_id is not None
+    assert session.status == SkillBuilderStatus.COMPLETED.value
+    assert session.finalized_skill_id == skill.id
+
+
+@pytest.mark.asyncio
+async def test_confirm_session_rejects_invalid_draft(db: AsyncSession) -> None:
+    session = await skill_builder_service.create_session(
+        db,
+        user_id=TEST_USER_ID,
+        user_request="스킬 만들어줘",
+    )
+    await skill_builder_service.save_draft_package(
+        db,
+        session,
+        draft={
+            "name": "Broken",
+            "slug": "broken",
+            "description": "Broken",
+            "files": [{"path": "README.md", "content": "missing skill"}],
+        },
+    )
+
+    with pytest.raises(skill_builder_service.SkillBuilderValidationError):
+        await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)

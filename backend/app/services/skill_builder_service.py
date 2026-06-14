@@ -4,17 +4,27 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
-from app.schemas.skill_builder import SkillBuilderMode, SkillBuilderStatus
+from app.schemas.skill_builder import SkillBuilderMode, SkillBuilderStatus, SkillDraftPackage
+from app.services import skill_revision_service
 from app.skills import service as skill_service
+from app.skills.package_builder import build_skill_zip_bytes
+from app.skills.validator import validate_draft_package
 
 
 class SkillBuilderSourceSkillNotFound(LookupError):
     pass
+
+
+class SkillBuilderValidationError(ValueError):
+    def __init__(self, result: dict[str, Any]) -> None:
+        super().__init__("skill builder draft validation failed")
+        self.result = result
 
 
 async def create_session(
@@ -116,6 +126,51 @@ async def save_validation_result(
     return session
 
 
+async def confirm_session(
+    db: AsyncSession,
+    session: SkillBuilderSession,
+    *,
+    user_id: uuid.UUID,
+) -> Skill:
+    if session.mode != SkillBuilderMode.CREATE.value:
+        raise NotImplementedError("improve confirm is not implemented")
+    draft = _parse_draft(session.draft_package)
+    validation_result = validate_draft_package(
+        files=draft.files,
+        credential_requirements=draft.credential_requirements,
+        execution_profile=draft.execution_profile,
+    )
+    if validation_result["error_count"] > 0:
+        session.validation_result = validation_result
+        session.status = SkillBuilderStatus.REVIEW.value
+        await db.flush()
+        raise SkillBuilderValidationError(validation_result)
+
+    zip_bytes = build_skill_zip_bytes(slug=draft.slug, files=draft.files)
+    skill = await skill_service.create_package_skill(db, user_id=user_id, zip_bytes=zip_bytes)
+    skill.credential_requirements = list(draft.credential_requirements) or None
+    skill.execution_profile = dict(draft.execution_profile) or None
+    skill.source_kind = "user"
+    skill.origin_kind = "created_by_me"
+    session.validation_result = validation_result
+    session.compatibility_result = validation_result.get("compatibility_result")
+    changelog_summary = _changelog_summary(session.changelog_draft)
+    await skill_revision_service.create_revision_for_skill(
+        db,
+        skill=skill,
+        user_id=user_id,
+        operation="builder_create",
+        source_session_id=session.id,
+        compatibility_result=session.compatibility_result,
+        changelog_summary=changelog_summary,
+    )
+    session.status = SkillBuilderStatus.COMPLETED.value
+    session.finalized_skill_id = skill.id
+    session.updated_at = _now()
+    await db.flush()
+    return skill
+
+
 async def load_skill_snapshot(skill: Skill) -> dict[str, Any]:
     files: list[dict[str, Any]]
     if skill.kind == "text":
@@ -180,3 +235,35 @@ def _role_for_path(path: str) -> str:
 
 def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _parse_draft(raw: dict[str, Any] | None) -> SkillDraftPackage:
+    if raw is None:
+        raise SkillBuilderValidationError(
+            _draft_error_result("DRAFT_PACKAGE_MISSING", "Draft package is required.")
+        )
+    try:
+        return SkillDraftPackage.model_validate(raw)
+    except ValidationError as exc:
+        raise SkillBuilderValidationError(
+            _draft_error_result("DRAFT_PACKAGE_INVALID", str(exc))
+        ) from exc
+
+
+def _draft_error_result(code: str, message: str) -> dict[str, Any]:
+    return {
+        "valid": False,
+        "error_count": 1,
+        "warning_count": 0,
+        "info_count": 0,
+        "issues": [{"code": code, "severity": "error", "path": None, "message": message}],
+    }
+
+
+def _changelog_summary(changelog: dict[str, Any] | None) -> str | None:
+    if not isinstance(changelog, dict):
+        return None
+    summary = changelog.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        return summary
+    return None
