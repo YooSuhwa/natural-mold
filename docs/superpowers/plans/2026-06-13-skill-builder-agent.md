@@ -3464,6 +3464,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add focused `skill-state-filters` tests for stale rerun, publication/local state, and combined filters.
 - [x] Add focused `ToolsSkillsDialog` skill picker tests for compact skill quality badges without rerun/cancel controls.
 - [x] Add package detail/API regression coverage for the `.skill` export action, default export URL, and optional eval artifact inclusion.
+- [x] Add mock-only Playwright coverage for package detail `.skill` export download in `frontend/e2e/skill-export.spec.ts`.
 - [x] Add mock-only Playwright coverage for installed skill evaluation rerun/cancel controls in `frontend/e2e/skill-evaluation-actions.spec.ts`.
 - [x] Add mock-only Playwright coverage for installed skill history rendering in `frontend/e2e/skill-history.spec.ts`.
 - [x] Add mock-only Playwright coverage for `/skills` state filter chips in `frontend/e2e/skill-state-filters.spec.ts`.
@@ -3550,11 +3551,13 @@ pnpm exec vitest run tests/components/agent/tools-skills-dialog-quality.test.tsx
 pnpm exec eslint tests/components/agent/tools-skills-dialog-quality.test.tsx
 pnpm exec vitest run src/components/skill/__tests__/skill-detail-dialog.test.tsx src/components/skill/__tests__/skill-detail-package-footer.test.tsx src/lib/api/__tests__/skills-api.test.ts
 pnpm exec eslint src/lib/api/skills.ts src/lib/api/__tests__/skills-api.test.ts src/components/skill/skill-detail-package-editor.tsx src/components/skill/skill-detail-package-footer.tsx src/components/skill/__tests__/skill-detail-dialog.test.tsx src/components/skill/__tests__/skill-detail-package-footer.test.tsx
+pnpm exec eslint --no-ignore e2e/skill-export.spec.ts
+PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3115 E2E_BACKEND_PORT=8115 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-export.spec.ts --workers=1
 pnpm exec eslint --no-ignore e2e/skill-builder-create.spec.ts
 PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3114 E2E_BACKEND_PORT=8114 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-builder-create.spec.ts --workers=1
 ```
 
-Expected: all targeted frontend checks pass; screenshot evidence is saved under `output/e2e-captures/20260615-skill-eval-actions/`, `output/e2e-captures/20260615-skill-history/`, and `output/e2e-captures/20260615-skill-builder/`.
+Expected: all targeted frontend checks pass; screenshot evidence is saved under `output/e2e-captures/20260615-skill-eval-actions/`, `output/e2e-captures/20260615-skill-history/`, `output/e2e-captures/20260615-skill-builder/`, and `output/e2e-captures/20260615-skill-export/`.
 
 - [x] Run:
 
