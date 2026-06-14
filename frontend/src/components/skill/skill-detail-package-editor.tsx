@@ -51,6 +51,7 @@ export function PackageSkillEditor({
   )
   const { remoteCache, setRemoteCache } = useSkillFileRemoteCache({
     skillId,
+    cacheKey: skill?.content_hash,
     selectedPath,
     onLoadError: handleLoadError,
   })
