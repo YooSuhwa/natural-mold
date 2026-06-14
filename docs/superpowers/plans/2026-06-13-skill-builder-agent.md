@@ -2902,8 +2902,8 @@ Expected: all validator tests pass.
 - [x] Implement skill revision snapshot zip writing in `skill_revision_storage.py`.
 - [x] Implement `create_revision_for_skill`, `list_revisions`, and `get_revision` in `skill_revision_service.py`.
 - [x] Implement `rollback_to_revision` in `skill_revision_service.py`.
-- [ ] Implement revision retention constants and pruning safeguards from the Skill Revision Retention And Backfill section.
-- [ ] Implement a rerunnable baseline backfill script for existing skills with no revisions.
+- [x] Implement revision retention constants and pruning safeguards from the Skill Revision Retention And Backfill section.
+- [x] Implement a rerunnable baseline backfill script for existing skills with no revisions.
 - [x] Centralize package tree hashing in `compute_package_tree_hash`.
 - [x] Ensure package upload and package file create/update/delete refresh `skill.content_hash`.
 - [x] Ensure whole-package replacement and rollback refresh `skill.content_hash` before revision creation and evaluation staleness checks.
@@ -2963,9 +2963,9 @@ Expected: all validator tests pass.
   - [x] `rollback_to_revision` creates a new rollback revision and updates the skill row
   - [x] rollback does not mutate the restored-from revision
   - revision changelog is stored on `SkillRevision`, not in `SKILL.md`
-  - backfill creates a baseline revision for a legacy skill and is idempotent
+  - [x] backfill creates a baseline revision for a legacy skill and is idempotent
   - first mutation of a legacy skill creates a baseline revision before the mutation revision
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd backend

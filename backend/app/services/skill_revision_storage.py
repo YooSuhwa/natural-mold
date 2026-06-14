@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+
+import anyio
 
 from app.config import settings
 from app.models.skill import Skill
@@ -26,8 +27,8 @@ async def write_skill_revision_snapshot(
 ) -> SkillRevisionSnapshot:
     files = await _snapshot_files(skill)
     object_key, path = _revision_path(skill, revision_number)
-    await asyncio.to_thread(_write_zip, path, files)
-    size_bytes = await asyncio.to_thread(lambda: path.stat().st_size)
+    await anyio.to_thread.run_sync(_write_zip, path, files)
+    size_bytes = await anyio.to_thread.run_sync(_file_size, path)
     return SkillRevisionSnapshot(
         storage_provider="local",
         object_key=object_key,
@@ -35,6 +36,11 @@ async def write_skill_revision_snapshot(
         size_bytes=size_bytes,
         file_count=len(files),
     )
+
+
+async def delete_skill_revision_snapshot(object_key: str) -> None:
+    path = _object_path(object_key)
+    await anyio.to_thread.run_sync(_unlink_missing_ok, path)
 
 
 async def _snapshot_files(skill: Skill) -> list[tuple[str, bytes]]:
@@ -56,10 +62,22 @@ def _write_zip(path: Path, files: list[tuple[str, bytes]]) -> None:
             archive.writestr(rel_path, content)
 
 
+def _file_size(path: Path) -> int:
+    return path.stat().st_size
+
+
+def _unlink_missing_ok(path: Path) -> None:
+    path.unlink(missing_ok=True)
+
+
 def _revision_path(skill: Skill, revision_number: int) -> tuple[str, Path]:
     object_key = f"skill-revisions/{skill.id}/r{revision_number}/skill.zip"
+    return object_key, _object_path(object_key)
+
+
+def _object_path(object_key: str) -> Path:
     path = (Path(settings.data_root) / object_key).resolve()
     root = Path(settings.data_root).resolve()
     if not path.is_relative_to(root):
         raise ValueError("skill revision path escapes data root")
-    return object_key, path
+    return path

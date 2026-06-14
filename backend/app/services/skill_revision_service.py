@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-import asyncio
 import shutil
 import uuid
 import zipfile
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
 
+import anyio
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.skill import Skill
+from app.models.skill_builder_session import JsonValue
 from app.models.skill_revision import SkillRevision
 from app.services.skill_revision_storage import write_skill_revision_snapshot
 from app.skills import service as skill_service
@@ -31,12 +31,12 @@ async def create_revision_for_skill(
     source_session_id: uuid.UUID | None = None,
     parent_revision_id: uuid.UUID | None = None,
     restored_from_revision_id: uuid.UUID | None = None,
-    changed_files: list[Any] | None = None,
+    changed_files: list[JsonValue] | None = None,
     changelog_summary: str | None = None,
-    changelog_items: list[Any] | None = None,
-    compatibility_result: dict[str, Any] | None = None,
-    evaluation_summary: dict[str, Any] | None = None,
-    metadata_json: dict[str, Any] | None = None,
+    changelog_items: list[JsonValue] | None = None,
+    compatibility_result: dict[str, JsonValue] | None = None,
+    evaluation_summary: dict[str, JsonValue] | None = None,
+    metadata_json: dict[str, JsonValue] | None = None,
 ) -> SkillRevision:
     revision_number = await _next_revision_number(db, skill.id)
     snapshot = await write_skill_revision_snapshot(skill, revision_number=revision_number)
@@ -113,15 +113,17 @@ async def rollback_to_revision(
 ) -> SkillRevision:
     if skill.user_id != user_id or revision.skill_id != skill.id:
         raise SkillRevisionNotFound("revision not found")
+    if _snapshot_pruned(revision):
+        raise SkillRevisionRollbackUnsupported("revision snapshot was pruned")
     parent_revision_id = skill.current_revision_id
-    zip_bytes = await asyncio.to_thread(_read_revision_bytes, revision.object_key)
+    zip_bytes = await anyio.to_thread.run_sync(_read_revision_bytes, revision.object_key)
     if skill.kind == "text":
-        content = await asyncio.to_thread(_read_skill_md, zip_bytes)
+        content = await anyio.to_thread.run_sync(_read_skill_md, zip_bytes)
         await skill_service.update_text_content(db, skill=skill, content=content)
     else:
         if not skill.storage_path:
             raise SkillRevisionRollbackUnsupported("package skill has no storage path")
-        await asyncio.to_thread(_replace_package_files, skill.storage_path, zip_bytes)
+        await anyio.to_thread.run_sync(_replace_package_files, skill.storage_path, zip_bytes)
         refresh_package_metadata(skill)
         sync_frontmatter(skill, skill_service.get_file_bytes(skill, "SKILL.md"))
         await db.flush()
@@ -144,6 +146,10 @@ async def _next_revision_number(db: AsyncSession, skill_id: uuid.UUID) -> int:
     if current is None:
         return 1
     return int(current) + 1
+
+
+def _snapshot_pruned(revision: SkillRevision) -> bool:
+    return bool((revision.metadata_json or {}).get("snapshot_pruned"))
 
 
 class SkillRevisionNotFound(LookupError):
