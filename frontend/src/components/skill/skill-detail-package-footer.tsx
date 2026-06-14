@@ -4,7 +4,6 @@ import { Loader2, Save, Trash2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
-import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 
 type SkillDetailPackageFooterProps = {
@@ -39,7 +38,7 @@ export function SkillDetailPackageFooter({
   const t = useTranslations('skill.detailDialog')
 
   return (
-    <DialogShell.Footer>
+    <>
       {confirmingDelete ? (
         <div className="flex-1">
           <DeleteConfirmInline
@@ -74,6 +73,6 @@ export function SkillDetailPackageFooter({
         {savePending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
         {t('saveFile')}
       </Button>
-    </DialogShell.Footer>
+    </>
   )
 }

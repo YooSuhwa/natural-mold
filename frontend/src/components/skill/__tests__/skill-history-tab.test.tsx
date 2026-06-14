@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, userEvent, within } from '../../../../tests/test-utils'
 import type { SkillRevisionDetail, SkillRevisionSummary } from '@/lib/types/skill-revision'
 
+import { renderSkillDetailTabShell } from '../skill-detail-tab-shell'
 import { SkillHistoryTab } from '../skill-history-tab'
 
 const mockUseSkillRevisions = vi.fn()
@@ -89,7 +90,11 @@ describe('SkillHistoryTab', () => {
       isLoading: false,
     })
 
-    render(<SkillHistoryTab skillId="skill-1" onClose={vi.fn()} />)
+    render(
+      <SkillHistoryTab skillId="skill-1" onClose={vi.fn()}>
+        {renderSkillDetailTabShell}
+      </SkillHistoryTab>,
+    )
 
     const revisions = screen.getAllByRole('article')
     expect(within(revisions[0]).getByText('리비전 3')).toBeInTheDocument()
@@ -138,7 +143,11 @@ describe('SkillHistoryTab', () => {
       }),
     )
 
-    render(<SkillHistoryTab skillId="skill-1" onClose={vi.fn()} />)
+    render(
+      <SkillHistoryTab skillId="skill-1" onClose={vi.fn()}>
+        {renderSkillDetailTabShell}
+      </SkillHistoryTab>,
+    )
 
     expect(screen.getByText('리비전 3 상세')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '리비전 3 되돌리기' })).toBeDisabled()
@@ -179,7 +188,11 @@ describe('SkillHistoryTab', () => {
       }),
     )
 
-    render(<SkillHistoryTab skillId="skill-1" onClose={vi.fn()} />)
+    render(
+      <SkillHistoryTab skillId="skill-1" onClose={vi.fn()}>
+        {renderSkillDetailTabShell}
+      </SkillHistoryTab>,
+    )
 
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: '리비전 1 보기' }))
@@ -200,7 +213,11 @@ describe('SkillHistoryTab', () => {
   it('keeps the legacy empty state for skills without revisions', () => {
     mockUseSkillRevisions.mockReturnValue({ data: [], isLoading: false })
 
-    render(<SkillHistoryTab skillId="skill-1" onClose={vi.fn()} />)
+    render(
+      <SkillHistoryTab skillId="skill-1" onClose={vi.fn()}>
+        {renderSkillDetailTabShell}
+      </SkillHistoryTab>,
+    )
 
     expect(screen.getByText('현재 버전부터 이력이 쌓입니다.')).toBeInTheDocument()
   })

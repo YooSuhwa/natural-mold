@@ -21,6 +21,7 @@ import {
   SkillDetailTabs,
   type SkillDetailTab,
 } from './skill-detail-tabs'
+import { renderSkillDetailTabShell } from './skill-detail-tab-shell'
 import { SkillEvaluationTab } from './skill-evaluation-tab'
 import { SkillHistoryTab } from './skill-history-tab'
 import { SkillMetadataTab } from './skill-metadata-tab'
@@ -164,47 +165,68 @@ function renderSkillDetailTab({
   readonly unsupported: string
   readonly closeLabel: string
 }) {
-  if (activeTab === 'credentials')
-    return <SkillCredentialsTab skillId={skillId} onClose={onClose} />
-  if (activeTab === 'evaluation') {
+  if (activeTab === 'credentials') {
     return (
-      <>
-        <DialogShell.Body>
-          <SkillEvaluationTab
-            skillId={skillId}
-            skillContentHash={skill.content_hash}
-            needsCredentialSetup={skill.health?.state === 'needs_credentials'}
-            onOpenCredentials={onOpenCredentials}
-          />
-        </DialogShell.Body>
-        <DialogShell.Footer>
-          <Button variant="outline" onClick={onClose}>
-            {closeLabel}
-          </Button>
-        </DialogShell.Footer>
-      </>
+      <SkillCredentialsTab skillId={skillId} onClose={onClose}>
+        {renderSkillDetailTabShell}
+      </SkillCredentialsTab>
     )
   }
-  if (activeTab === 'history') return <SkillHistoryTab skillId={skillId} onClose={onClose} />
-  if (activeTab === 'metadata') return <SkillMetadataTab skill={skill} onClose={onClose} />
-  if (skill.kind === 'text') {
-    return <TextSkillEditor skillId={skillId} onClose={onClose} showCredentials={false} />
-  }
-  if (skill.kind === 'package') {
-    return <PackageSkillEditor skillId={skillId} onClose={onClose} showCredentials={false} />
-  }
-  return (
-    <>
-      <DialogShell.Body>
-        <p className="text-sm text-muted-foreground">{unsupported}</p>
-      </DialogShell.Body>
-      <DialogShell.Footer>
+  if (activeTab === 'evaluation') {
+    return renderSkillDetailTabShell({
+      body: (
+        <SkillEvaluationTab
+          skillId={skillId}
+          skillContentHash={skill.content_hash}
+          needsCredentialSetup={skill.health?.state === 'needs_credentials'}
+          onOpenCredentials={onOpenCredentials}
+        />
+      ),
+      footer: (
         <Button variant="outline" onClick={onClose}>
           {closeLabel}
         </Button>
-      </DialogShell.Footer>
-    </>
-  )
+      ),
+    })
+  }
+  if (activeTab === 'history') {
+    return (
+      <SkillHistoryTab skillId={skillId} onClose={onClose}>
+        {renderSkillDetailTabShell}
+      </SkillHistoryTab>
+    )
+  }
+  if (activeTab === 'metadata') {
+    return (
+      <SkillMetadataTab skill={skill} onClose={onClose}>
+        {renderSkillDetailTabShell}
+      </SkillMetadataTab>
+    )
+  }
+  if (skill.kind === 'text') {
+    return (
+      <TextSkillEditor skillId={skillId} onClose={onClose} showCredentials={false}>
+        {renderSkillDetailTabShell}
+      </TextSkillEditor>
+    )
+  }
+  if (skill.kind === 'package') {
+    return (
+      <PackageSkillEditor skillId={skillId} onClose={onClose} showCredentials={false}>
+        {renderSkillDetailTabShell}
+      </PackageSkillEditor>
+    )
+  }
+  return renderSkillDetailTabShell({
+    body: <p className="text-sm text-muted-foreground">{unsupported}</p>,
+    footer: (
+      <>
+        <Button variant="outline" onClick={onClose}>
+          {closeLabel}
+        </Button>
+      </>
+    ),
+  })
 }
 
 function SkillDetailLoading({ onClose }: { readonly onClose: () => void }) {

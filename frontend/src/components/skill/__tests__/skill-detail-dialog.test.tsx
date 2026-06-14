@@ -6,11 +6,16 @@ import type { Skill } from '@/lib/types/skill'
 import { SkillDetailDialog } from '../skill-detail-dialog'
 
 const mockUseSkill = vi.fn()
+const mockUpdateSkillMetadata = vi.fn()
 const mockUseSkillEvaluationSets = vi.fn()
 const mockUseSkillEvaluationRuns = vi.fn()
 
 vi.mock('@/lib/hooks/use-skills', () => ({
   useSkill: (...args: readonly unknown[]) => mockUseSkill(...args),
+  useUpdateSkillMetadata: () => ({
+    mutateAsync: mockUpdateSkillMetadata,
+    isPending: false,
+  }),
 }))
 
 vi.mock('@/lib/hooks/use-skill-evaluations', () => ({
@@ -67,6 +72,13 @@ function buildSkill(overrides: Partial<Skill> = {}): Skill {
 }
 
 describe('SkillDetailDialog', () => {
+  beforeEach(() => {
+    mockUseSkill.mockReset()
+    mockUpdateSkillMetadata.mockReset()
+    mockUseSkillEvaluationSets.mockReset()
+    mockUseSkillEvaluationRuns.mockReset()
+  })
+
   it('renders one shell body and footer for the evaluation tab', () => {
     mockUseSkill.mockReturnValue({ data: buildSkill() })
     mockUseSkillEvaluationSets.mockReturnValue({
@@ -85,5 +97,17 @@ describe('SkillDetailDialog', () => {
     expect(document.body.querySelectorAll('.moldy-dialog-body')).toHaveLength(1)
     expect(document.body.querySelectorAll('.moldy-dialog-footer')).toHaveLength(1)
     expect(screen.getByText('아직 평가 세트가 없습니다')).toBeInTheDocument()
+  })
+
+  it('renders one shell body and footer for the metadata tab', () => {
+    mockUseSkill.mockReturnValue({ data: buildSkill() })
+
+    render(
+      <SkillDetailDialog skillId="skill-1" open onOpenChange={vi.fn()} initialTab="metadata" />,
+    )
+
+    expect(document.body.querySelectorAll('.moldy-dialog-body')).toHaveLength(1)
+    expect(document.body.querySelectorAll('.moldy-dialog-footer')).toHaveLength(1)
+    expect(screen.getByText('이름')).toBeInTheDocument()
   })
 })

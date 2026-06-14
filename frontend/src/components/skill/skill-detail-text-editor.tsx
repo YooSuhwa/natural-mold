@@ -6,18 +6,20 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
-import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useDeleteSkill, useSkillContent, useUpdateSkillContent } from '@/lib/hooks/use-skills'
 
 import { SkillCredentialBindingsPanel } from './skill-credential-bindings-panel'
+import type { SkillDetailTabRender } from './skill-detail-tab-shell'
 
 export function TextSkillEditor({
+  children,
   skillId,
   onClose,
   showCredentials = true,
 }: {
+  readonly children: SkillDetailTabRender
   readonly skillId: string
   readonly onClose: () => void
   readonly showCredentials?: boolean
@@ -54,9 +56,9 @@ export function TextSkillEditor({
     }
   }
 
-  return (
-    <>
-      <DialogShell.Body>
+  return children({
+    body: (
+      <>
         {showCredentials ? <SkillCredentialBindingsPanel skillId={skillId} /> : null}
         <Textarea
           value={editor}
@@ -64,8 +66,10 @@ export function TextSkillEditor({
           className="h-full min-h-[400px] font-mono text-xs"
           onChange={(event) => setEditor(event.target.value)}
         />
-      </DialogShell.Body>
-      <DialogShell.Footer>
+      </>
+    ),
+    footer: (
+      <>
         {confirming ? (
           <div className="flex-1">
             <DeleteConfirmInline
@@ -97,7 +101,7 @@ export function TextSkillEditor({
           )}
           {t('save')}
         </Button>
-      </DialogShell.Footer>
-    </>
-  )
+      </>
+    ),
+  })
 }

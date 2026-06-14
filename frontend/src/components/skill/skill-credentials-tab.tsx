@@ -2,23 +2,25 @@
 
 import { useTranslations } from 'next-intl'
 
-import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 
 import { SkillCredentialBindingsPanel } from './skill-credential-bindings-panel'
+import type { SkillDetailTabRender } from './skill-detail-tab-shell'
 
 export function SkillCredentialsTab({
+  children,
   skillId,
   onClose,
 }: {
+  readonly children: SkillDetailTabRender
   readonly skillId: string
   readonly onClose: () => void
 }) {
   const t = useTranslations('skill.detailDialog')
 
-  return (
-    <>
-      <DialogShell.Body>
+  return children({
+    body: (
+      <>
         <SkillCredentialBindingsPanel
           skillId={skillId}
           emptyFallback={
@@ -27,12 +29,14 @@ export function SkillCredentialsTab({
             </div>
           }
         />
-      </DialogShell.Body>
-      <DialogShell.Footer>
+      </>
+    ),
+    footer: (
+      <>
         <Button variant="outline" onClick={onClose}>
           {t('close')}
         </Button>
-      </DialogShell.Footer>
-    </>
-  )
+      </>
+    ),
+  })
 }

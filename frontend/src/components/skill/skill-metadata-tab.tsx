@@ -5,17 +5,19 @@ import { Loader2, Save } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
-import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useUpdateSkillMetadata } from '@/lib/hooks/use-skills'
 import type { Skill } from '@/lib/types/skill'
+import type { SkillDetailTabRender } from './skill-detail-tab-shell'
 
 export function SkillMetadataTab({
+  children,
   skill,
   onClose,
 }: {
+  readonly children: SkillDetailTabRender
   readonly skill: Skill
   readonly onClose: () => void
 }) {
@@ -47,9 +49,9 @@ export function SkillMetadataTab({
     }
   }
 
-  return (
-    <>
-      <DialogShell.Body>
+  return children({
+    body: (
+      <>
         <div className="grid gap-4">
           <label className="space-y-1.5">
             <span>{metadata('name')}</span>
@@ -68,8 +70,10 @@ export function SkillMetadataTab({
             <Input value={version} onChange={(event) => setVersion(event.target.value)} />
           </label>
         </div>
-      </DialogShell.Body>
-      <DialogShell.Footer>
+      </>
+    ),
+    footer: (
+      <>
         <Button variant="outline" onClick={onClose}>
           {t('close')}
         </Button>
@@ -81,7 +85,7 @@ export function SkillMetadataTab({
           )}
           {t('save')}
         </Button>
-      </DialogShell.Footer>
-    </>
-  )
+      </>
+    ),
+  })
 }

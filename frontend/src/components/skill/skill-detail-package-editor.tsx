@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
-import { DialogShell } from '@/components/shared/dialog-shell'
 import {
   useDeleteSkill,
   useDeleteSkillFile,
@@ -18,13 +17,16 @@ import { SkillCredentialBindingsPanel } from './skill-credential-bindings-panel'
 import { isTextFile } from './skill-detail-file-utils'
 import { SkillDetailPackageFooter } from './skill-detail-package-footer'
 import { SkillDetailPackageSidebar } from './skill-detail-package-sidebar'
+import type { SkillDetailTabRender } from './skill-detail-tab-shell'
 import { useSkillFileRemoteCache } from './use-skill-file-remote-cache'
 
 export function PackageSkillEditor({
+  children,
   skillId,
   onClose,
   showCredentials = true,
 }: {
+  readonly children: SkillDetailTabRender
   readonly skillId: string
   readonly onClose: () => void
   readonly showCredentials?: boolean
@@ -174,47 +176,47 @@ export function PackageSkillEditor({
     }
   }
 
-  return (
-    <>
-      <DialogShell.Split>
-        <DialogShell.Sidebar className="w-[260px]">
-          <SkillDetailPackageSidebar
-            files={files ?? []}
-            selectedPath={selectedPath}
-            dirtyCount={dirtyPaths.size}
-            adding={adding}
-            newPath={newPath}
-            addPending={setFile.isPending}
-            onSelect={selectFile}
-            onToggleAdding={() => setAdding((value) => !value)}
-            onNewPathChange={setNewPath}
-            onAddFile={handleAddFile}
-            onCancelAdd={() => {
-              setAdding(false)
-              setNewPath('')
-            }}
-          />
-        </DialogShell.Sidebar>
-
-        <DialogShell.Body className="flex flex-col gap-3 py-4">
-          {showCredentials ? <SkillCredentialBindingsPanel skillId={skillId} /> : null}
-          <FileEditorPane
-            skillId={skillId}
-            selectedPath={selectedPath}
-            currentContent={currentContent}
-            currentDirty={currentDirty}
-            isSkillMd={isSkillMd}
-            loadingFile={loadingFile}
-            confirmingFileDelete={confirmingFileDelete}
-            deletePending={deleteFile.isPending}
-            onEdit={handleEdit}
-            onAskDelete={() => setConfirmingFileDelete(true)}
-            onCancelDelete={() => setConfirmingFileDelete(false)}
-            onConfirmDelete={handleDeleteFile}
-          />
-        </DialogShell.Body>
-      </DialogShell.Split>
-
+  return children({
+    sidebar: (
+      <SkillDetailPackageSidebar
+        files={files ?? []}
+        selectedPath={selectedPath}
+        dirtyCount={dirtyPaths.size}
+        adding={adding}
+        newPath={newPath}
+        addPending={setFile.isPending}
+        onSelect={selectFile}
+        onToggleAdding={() => setAdding((value) => !value)}
+        onNewPathChange={setNewPath}
+        onAddFile={handleAddFile}
+        onCancelAdd={() => {
+          setAdding(false)
+          setNewPath('')
+        }}
+      />
+    ),
+    sidebarClassName: 'w-[260px]',
+    body: (
+      <>
+        {showCredentials ? <SkillCredentialBindingsPanel skillId={skillId} /> : null}
+        <FileEditorPane
+          skillId={skillId}
+          selectedPath={selectedPath}
+          currentContent={currentContent}
+          currentDirty={currentDirty}
+          isSkillMd={isSkillMd}
+          loadingFile={loadingFile}
+          confirmingFileDelete={confirmingFileDelete}
+          deletePending={deleteFile.isPending}
+          onEdit={handleEdit}
+          onAskDelete={() => setConfirmingFileDelete(true)}
+          onCancelDelete={() => setConfirmingFileDelete(false)}
+          onConfirmDelete={handleDeleteFile}
+        />
+      </>
+    ),
+    bodyClassName: 'flex flex-col gap-3 py-4',
+    footer: (
       <SkillDetailPackageFooter
         confirmingDelete={confirmingSkillDelete}
         deletePending={removeSkill.isPending}
@@ -229,6 +231,6 @@ export function PackageSkillEditor({
         onClose={onClose}
         onSave={handleSave}
       />
-    </>
-  )
+    ),
+  })
 }

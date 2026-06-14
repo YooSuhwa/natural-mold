@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
-import { DialogShell } from '@/components/shared/dialog-shell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -15,6 +14,7 @@ import {
   useSkillRevisions,
 } from '@/lib/hooks/use-skill-revisions'
 import type { SkillRevisionSummary } from '@/lib/types/skill-revision'
+import type { SkillDetailTabRender } from './skill-detail-tab-shell'
 
 function sortRevisionsNewestFirst(
   revisions: readonly SkillRevisionSummary[],
@@ -30,9 +30,11 @@ function formatRevisionDate(value: string, locale: string): string {
 }
 
 export function SkillHistoryTab({
+  children,
   skillId,
   onClose,
 }: {
+  readonly children: SkillDetailTabRender
   readonly skillId: string
   readonly onClose: () => void
 }) {
@@ -65,9 +67,9 @@ export function SkillHistoryTab({
     })
   }
 
-  return (
-    <>
-      <DialogShell.Body>
+  return children({
+    body: (
+      <>
         {isLoading ? (
           <Skeleton className="h-32 w-full rounded-lg" />
         ) : items.length === 0 ? (
@@ -141,12 +143,16 @@ export function SkillHistoryTab({
             />
           </div>
         )}
-      </DialogShell.Body>
-      <DialogShell.Footer>
+      </>
+    ),
+    footer: (
+      <>
         <Button variant="outline" onClick={onClose}>
           {common('close')}
         </Button>
-      </DialogShell.Footer>
+      </>
+    ),
+    overlay: (
       <DeleteConfirmDialog
         open={rollbackRevision !== null}
         onOpenChange={(open) => {
@@ -160,6 +166,6 @@ export function SkillHistoryTab({
         isPending={rollback.isPending}
         onConfirm={handleConfirmRollback}
       />
-    </>
-  )
+    ),
+  })
 }

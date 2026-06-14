@@ -3413,7 +3413,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add `대화로 개선` / `Improve by chat` action in `SkillDetailDialog`.
 - [x] Start a `mode="improve"` skill builder session from that action.
 - [x] Split the current text editor, package editor, file preview, package sidebar, package footer, and credential binding panel out of `skill-detail-dialog.tsx`.
-- [ ] Refactor `skill-detail-dialog.tsx` so it renders one `DialogShell.Body` and one `DialogShell.Footer`.
+- [x] Refactor `skill-detail-dialog.tsx` so it renders one `DialogShell.Body` and one `DialogShell.Footer`.
 - [x] Keep package file editing behavior intact in the `Files` content tab.
 - [x] Move credential bindings from the content editor surface into the `Credentials` tab.
 - [x] Do not render a blank Credentials tab when a skill has no credential requirements and no credential-related deep link.
