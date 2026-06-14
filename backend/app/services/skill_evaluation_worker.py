@@ -147,7 +147,7 @@ class SkillEvaluationWorker:
                 run,
                 "skill_evaluation.run_fail",
                 outcome="failure",
-                metadata={"error_message": str(exc)},
+                metadata={"reason_code": "SKILL_EVALUATION_EXECUTION_ERROR"},
             )
             await db.flush()
             return run
@@ -163,7 +163,12 @@ class SkillEvaluationWorker:
             db,
             run,
             "skill_evaluation.run_complete",
-            metadata={"case_count": result.summary.get("case_count")},
+            metadata={
+                "case_count": result.summary.get("case_count"),
+                "passed_count": result.summary.get("passed_count"),
+                "failed_count": result.summary.get("failed_count"),
+                "pass_rate": result.summary.get("pass_rate"),
+            },
         )
         await db.flush()
         return run

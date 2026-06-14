@@ -3199,7 +3199,7 @@ Expected: eval runner tests pass.
 - [x] Record `skill_evaluation.run_create`, `skill_evaluation.run_start`, `skill_evaluation.run_complete`, `skill_evaluation.run_fail`, and `skill_evaluation.run_cancel` with sanitized metadata.
 - [x] Record `skill_security.sandbox_denied` when the eval runner blocks undeclared network access before launch.
 - [x] Extend `skill_security.sandbox_denied` coverage to unsupported executables, path traversal, and timeout policy violations before launch.
-- [ ] Add API tests:
+- [x] Add API tests:
   - [x] list returns evaluation sets owned by the skill owner
   - [x] create set persists eval prompts and expectations
   - [x] estimate returns case count, model calls, approximate cost, and timeout
@@ -3213,7 +3213,7 @@ Expected: eval runner tests pass.
   - [x] skill detail response includes `health`
   - [x] cross-user access returns 404
   - [x] missing required skill credential binding returns `MARKETPLACE_CREDENTIAL_REQUIRED` and no run row is created
-  - run create/cancel/complete/failure audit events contain IDs and summary metrics but no prompts or outputs
+  - [x] run create/cancel/complete/failure audit events contain IDs and summary metrics but no prompts or outputs
   - [x] sandbox denial audit event contains reason code and executable only, not raw command arguments
 - [x] Add regression coverage for run enqueue, queue-full rollback, background queue consumption, worker complete/fail transitions, cancelled-run skip, and interrupted running/grading reconciliation.
 - [x] Run:
