@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.skill import Skill
@@ -118,6 +118,24 @@ async def save_validation_result(
     return session
 
 
+async def claim_for_confirming(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> bool:
+    result = await db.execute(
+        update(SkillBuilderSession)
+        .where(
+            SkillBuilderSession.id == session_id,
+            SkillBuilderSession.user_id == user_id,
+            SkillBuilderSession.status == SkillBuilderStatus.REVIEW.value,
+        )
+        .values(status=SkillBuilderStatus.CONFIRMING.value, updated_at=_now())
+    )
+    await db.commit()
+    return result.rowcount == 1
+
+
 async def confirm_session(
     db: AsyncSession,
     session: SkillBuilderSession,
@@ -198,6 +216,7 @@ __all__ = [
     "SkillBuilderSourceSkillNotFound",
     "SkillBuilderValidationError",
     "append_message",
+    "claim_for_confirming",
     "confirm_session",
     "create_session",
     "get_session",

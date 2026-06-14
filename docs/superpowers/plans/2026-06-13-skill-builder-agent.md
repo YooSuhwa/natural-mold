@@ -2900,7 +2900,7 @@ Expected: all validator tests pass.
 ```
 
 - [x] Implement `save_draft_package` and `save_validation_result`.
-- [ ] Implement `claim_for_confirming` using the same atomic update pattern as `builder_service.claim_for_confirming`.
+- [x] Implement `claim_for_confirming` using the same atomic update pattern as `builder_service.claim_for_confirming`.
 - [ ] Implement `confirm_session` using the confirm flow in this plan.
 - [ ] Return non-secret audit metadata from confirm/apply helpers: session id, mode, source skill id, file counts, changed counts, credential requirement count, old hash, and new hash.
 - [x] In improve mode, apply confirmed changes to the existing skill only when `base_content_hash` still matches the current skill hash.

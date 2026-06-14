@@ -186,8 +186,10 @@ async def confirm_skill_builder_session(
     if session.status != SkillBuilderStatus.REVIEW.value:
         raise skill_builder_session_not_ready()
 
-    session.status = SkillBuilderStatus.CONFIRMING.value
-    await db.flush()
+    claimed = await skill_builder_service.claim_for_confirming(db, session.id, user.id)
+    if not claimed:
+        raise session_confirming()
+    session = await get_session_or_404(db, session_id=session_id, user=user)
     try:
         skill = await skill_builder_service.confirm_session(db, session, user_id=user.id)
     except SkillBuilderConflictError as exc:

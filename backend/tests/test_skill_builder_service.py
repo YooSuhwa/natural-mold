@@ -128,3 +128,37 @@ async def test_append_message_and_save_draft(db: AsyncSession) -> None:
     assert session.messages[0]["role"] == "user"
     assert session.draft_package == {"name": "notes", "files": [{"path": "SKILL.md"}]}
     assert session.status == SkillBuilderStatus.REVIEW.value
+
+
+@pytest.mark.asyncio
+async def test_claim_for_confirming_transitions_review_session(db: AsyncSession) -> None:
+    session = await skill_builder_service.create_session(
+        db,
+        user_id=TEST_USER_ID,
+        user_request="스킬 만들어줘",
+    )
+    await skill_builder_service.save_draft_package(
+        db,
+        session,
+        draft={"name": "notes", "slug": "notes", "description": "d", "files": []},
+    )
+
+    claimed = await skill_builder_service.claim_for_confirming(db, session.id, TEST_USER_ID)
+    reloaded = await skill_builder_service.get_session(db, session.id, TEST_USER_ID)
+
+    assert claimed is True
+    assert reloaded is not None
+    assert reloaded.status == SkillBuilderStatus.CONFIRMING.value
+
+
+@pytest.mark.asyncio
+async def test_claim_for_confirming_rejects_non_review_session(db: AsyncSession) -> None:
+    session = await skill_builder_service.create_session(
+        db,
+        user_id=TEST_USER_ID,
+        user_request="스킬 만들어줘",
+    )
+
+    claimed = await skill_builder_service.claim_for_confirming(db, session.id, TEST_USER_ID)
+
+    assert claimed is False
