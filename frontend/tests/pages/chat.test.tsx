@@ -138,6 +138,10 @@ vi.mock('@/lib/hooks/use-conversation-title', () => ({
   useConversationTitle: (...args: unknown[]) => mockUseConversationTitle(...args),
 }))
 
+vi.mock('@/lib/chat/runtime-mode', () => ({
+  getChatRuntimeMode: () => 'legacy',
+}))
+
 vi.mock('@/components/shared/delete-confirm-dialog', () => ({
   DeleteConfirmDialog: () => null,
 }))

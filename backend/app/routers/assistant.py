@@ -10,10 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import agent_not_found
-from app.schemas.assistant import AssistantMessageRequest
+from app.schemas.assistant import AssistantMessageRequest, AssistantResumeRequest
 from app.services import agent_service, assistant_service
 
 router = APIRouter(prefix="/api/agents", tags=["assistant"])
+
+
+def _assistant_thread_id(agent_id: uuid.UUID, session_id: str | None) -> str:
+    if session_id:
+        return f"assistant_{agent_id}_{session_id}"
+    return f"assistant_{agent_id}"
 
 
 @router.post("/{agent_id}/assistant/message")
@@ -29,12 +35,7 @@ async def send_assistant_message(
     if not agent:
         raise agent_not_found()
 
-    # thread_id: 프론트엔드가 session_id를 제공하면 그것을 사용 (탭별 독립 대화)
-    # 미제공 시 agent_id 기반 기본값으로 폴백 (하위 호환)
-    if data.session_id:
-        thread_id = f"assistant_{agent_id}_{data.session_id}"
-    else:
-        thread_id = f"assistant_{agent_id}"
+    thread_id = _assistant_thread_id(agent_id, data.session_id)
 
     return StreamingResponse(
         assistant_service.stream_assistant_message(
@@ -43,6 +44,37 @@ async def send_assistant_message(
             user_id=user.id,
             thread_id=thread_id,
             user_message=data.content,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/{agent_id}/assistant/message/resume")
+async def resume_assistant_message(
+    agent_id: uuid.UUID,
+    data: AssistantResumeRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+):
+    agent = await agent_service.get_agent(db, agent_id, user.id)
+    if not agent:
+        raise agent_not_found()
+
+    thread_id = _assistant_thread_id(agent_id, data.session_id)
+
+    return StreamingResponse(
+        assistant_service.stream_assistant_resume(
+            db=db,
+            agent_id=agent_id,
+            user_id=user.id,
+            thread_id=thread_id,
+            decisions=data.decisions,
         ),
         media_type="text/event-stream",
         headers={

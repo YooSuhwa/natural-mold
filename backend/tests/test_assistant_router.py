@@ -142,3 +142,27 @@ async def test_assistant_message_without_session_id(client: AsyncClient):
 
     assert resp.status_code == 200
     assert captured_kwargs["thread_id"] == f"assistant_{agent_id}"
+
+
+@pytest.mark.asyncio
+async def test_assistant_resume_with_session_id(client: AsyncClient):
+    agent_id = await _seed_agent()
+    captured_kwargs: dict = {}
+
+    async def mock_stream(**kwargs):
+        captured_kwargs.update(kwargs)
+        yield 'event: message_end\ndata: {"content": "resumed", "usage": {}}\n\n'
+
+    with patch(
+        "app.services.assistant_service.stream_assistant_resume",
+        side_effect=mock_stream,
+    ):
+        resp = await client.post(
+            f"/api/agents/{agent_id}/assistant/message/resume",
+            json={"decisions": [{"type": "approve"}], "session_id": "session-1"},
+        )
+
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+    assert captured_kwargs["thread_id"] == f"assistant_{agent_id}_session-1"
+    assert captured_kwargs["decisions"][0].type == "approve"
