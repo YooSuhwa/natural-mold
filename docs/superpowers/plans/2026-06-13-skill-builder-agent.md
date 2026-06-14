@@ -1224,6 +1224,7 @@ Create:
 - `backend/app/skills/validator.py`
 - `backend/app/skills/compatibility.py`
 - `backend/app/agent_runtime/skill_builder/eval_runner.py`
+- `backend/app/agent_runtime/skill_builder/deterministic_eval_execution.py`
 - `backend/app/agent_runtime/skill_builder/eval_templates.py`
 - `backend/app/agent_runtime/skill_builder/trigger_eval.py`
 - `backend/alembic/versions/m64_skill_builder_sessions.py`
@@ -2456,6 +2457,7 @@ Frontend behavior:
 Claude Code's installed skill creator adds a strong eval loop. Moldy should implement this after the base builder flow is working.
 
 Create `backend/app/agent_runtime/skill_builder/eval_runner.py`.
+Keep script-backed deterministic cases in `backend/app/agent_runtime/skill_builder/deterministic_eval_execution.py` so `eval_runner.py` owns shared eval helpers and `deterministic_eval_runner.py` stays focused on aggregation/grader shaping.
 
 Data shapes:
 
@@ -3109,6 +3111,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 **Files:**
 
 - Create: `backend/app/agent_runtime/skill_builder/eval_runner.py`
+- Create: `backend/app/agent_runtime/skill_builder/deterministic_eval_execution.py`
 - Create: `backend/app/agent_runtime/skill_builder/eval_templates.py`
 - Create: `backend/app/services/skill_builder_eval_service.py`
 - Create: `backend/app/services/skill_evaluation_worker.py`
@@ -3177,6 +3180,16 @@ uv run pytest tests/test_skill_builder_eval_runner.py tests/test_skill_builder_e
 ```
 
 Expected: eval runner tests pass.
+
+- [x] Run targeted sandbox parity regression checks:
+
+```bash
+cd backend
+uv run ruff check app/agent_runtime/skill_builder/deterministic_eval_runner.py app/agent_runtime/skill_builder/deterministic_eval_execution.py app/agent_runtime/skill_builder/eval_runner.py tests/test_skill_evaluation_worker.py tests/test_skill_evaluation_runtime_context.py
+uv run pytest tests/test_skill_evaluation_worker.py tests/test_skill_builder_eval_runner.py tests/test_skill_evaluation_runtime_context.py tests/test_skill_evaluation_worker_audit.py tests/test_skill_evaluation_worker_cancellation.py tests/test_skill_executor_credential_audit.py tests/test_skill_executor_sandbox_denials.py -q
+```
+
+Expected: evaluation runner stays on the same selected-skill mount, command policy, output dir, credential redaction, and audit path as `execute_in_skill`.
 
 ### Task 8: Add Installed Skill Evaluation API
 
