@@ -180,7 +180,11 @@ async def stream_agent_response_langgraph(
             input_requested_emitted = True
         wire_event: StoredProtocolEvent = {
             **event_to_emit,
-            "data": redact_protocol_data(event_to_emit["method"], event_to_emit["data"]),
+            "data": redact_protocol_data(
+                event_to_emit["method"],
+                event_to_emit["data"],
+                redact_memory=False,
+            ),
         }
         event_dict = dict(wire_event)
         emitted.append(event_dict)

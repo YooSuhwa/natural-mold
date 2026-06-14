@@ -37,11 +37,11 @@ SENSITIVE_ASSIGNMENT_RE: Final = re.compile(
 ASSIGNMENT_KEY_RE: Final = re.compile(r"([A-Za-z0-9_-]+)")
 
 
-def redact_protocol_data(method: str, data: Any) -> Any:
+def redact_protocol_data(method: str, data: Any, *, redact_memory: bool = True) -> Any:
     redacted = _redact_sensitive_keys(data)
-    if method == "tools":
+    if redact_memory and method == "tools":
         return _redact_tool_event(redacted)
-    if method == "custom":
+    if redact_memory and method == "custom":
         return _redact_custom_event(redacted)
     if method in {"values", "updates"}:
         return _redact_state_snapshot(redacted)
