@@ -38,7 +38,8 @@ This plan is based on the current source tree.
 - Package extraction already rejects oversized archives, bad ZIPs, symlinks, absolute paths, null bytes, and zip-slip paths in `backend/app/skills/packager.py:81`.
 - `SKILL.md` parsing currently requires only non-empty `name` and `description` when `require_metadata=True` in `backend/app/skills/inspector.py:29`.
 - Existing file-level package editing lives in `backend/app/routers/skills.py:412`, `:454`, and `:488`.
-- Package skill creation snapshots a content hash from the uploaded package, but current package file mutations do not recalculate `skill.content_hash`: `set_skill_file(...)` and `delete_skill_file(...)` call `_refresh_package_metadata(skill)` without updating the hash in `backend/app/skills/service.py:235` and `backend/app/skills/service.py:266`.
+- Package skill creation now stores a full package tree hash through `compute_package_tree_hash(...)` in `backend/app/skills/service.py:166` and `backend/app/skills/package_hash.py:24`.
+- Package file mutation helpers now live in `backend/app/skills/file_service.py:31` and `backend/app/skills/file_service.py:53`; both call `refresh_package_metadata(...)`, which refreshes `size_bytes`, file metadata, and `skill.content_hash` in `backend/app/skills/package_metadata.py:9`.
 - Existing skill credential requirement reading and binding APIs live in `backend/app/routers/skills.py:537`.
 - Existing runtime descriptor creation includes `execution_profile` through `backend/app/skills/runtime.py:18`.
 - Existing `execute_in_skill` enforces selected-skill directories, subprocess allowlist, timeout, and credential env injection in `backend/app/agent_runtime/skill_executor.py:131`.
@@ -58,12 +59,15 @@ This plan is based on the current source tree.
 - `resolve_system_model(db, "text_primary")` raises `SystemModelNotConfiguredError` when the system LLM role, model, or credential is missing in `backend/app/services/system_credential_resolver.py:37`. Skill Builder must handle this as a product readiness state, not as a generic 500.
 - LangGraph checkpointer setup now uses explicit pool sizing in `backend/app/agent_runtime/checkpointer.py:16`: defaults are `checkpointer_pool_min_size=1` and `checkpointer_pool_max_size=10` from `backend/app/config.py:17`. Evaluation concurrency must still be bounded because chat, builder, and evaluation share backend DB/checkpointer capacity.
 - Local E2E can now seed a System LLM for `text_primary` through `seed_e2e_llm(...)` in `backend/app/main.py`; empty `E2E_LLM_*` values keep the normal missing-System-LLM path testable.
-- `alembic heads` is the migration source of truth. The current head is `m63_chat_navigator_indexes`; some project guidance text still mentions M59 and should not be used to choose the new down revision.
+- `alembic heads` is the migration source of truth. On this implementation branch the current head is `m64_skill_builder_sessions`; if main advances again before the next migration, use the reported head instead of stale project guidance text.
 - Merged `main` at `1883845` includes the LangGraph v3 chat runtime. `frontend/src/lib/chat/runtime-mode.ts` defaults to `langgraph_v3`; `legacy` is only selected when `NEXT_PUBLIC_CHAT_RUNTIME=legacy`.
 - Normal chat now routes through `ChatRuntimeSection` and `useMoldyLangGraphStream(...)`, which subscribes to `messages`, `tools`, `values`, `updates`, `lifecycle`, `tasks`, `checkpoints`, and `custom` channels and publishes activities, DeepAgents state, and subagent runtime into `AssistantThread`.
 - Normal Agent Protocol endpoints live under `/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/...`; `thread_id` must equal `conversation_id` for current Moldy-owned threads.
 - Agent Protocol SSE frames use `event: message` with payload `{type, method, params, seq, event_id}` from `backend/app/agent_runtime/protocol_events.py`. Custom domain events on that path must use `method="custom"` and data `{name, payload}` via `stored_custom_protocol_event(...)`.
 - Actual shared chat activity kinds/statuses are defined in `frontend/src/lib/chat/langgraph-runtime/activity-types.ts`. Skill Builder can keep builder-domain phases, but if it reuses shared activity UI it must map into those kinds/statuses rather than inventing new global activity kinds.
+- The normal chat activity reducer in `frontend/src/lib/chat/langgraph-runtime/activity-model.ts:234` promotes only selected `custom` events (`artifact`, `file`, `file_event`, `memory*`, `stale`, `reconnect`) into shared activities. Skill Builder domain events will be ignored by that reducer unless a future Agent Protocol migration intentionally adds mappings and tests.
+- Normal chat interrupt rendering uses `standardInterruptToToolCalls(...)` and `mergeInterruptToolCalls(...)` in `frontend/src/lib/chat/standard-interrupt.ts:96`, with sensitive arguments redacted before display. Skill Builder approval UI should preserve that redaction behavior if it adopts standard interrupt payloads.
+- The legacy W3-out `EventBroker` in `backend/app/agent_runtime/event_broker.py:74` is process-local with a ring buffer and live listener queues. Skill Builder may mirror the existing builder SSE helper pattern, but evaluation/build jobs that need durability must persist status in DB, not rely on a live broker.
 - `docs/superpowers/plans/2026-06-13-assistant-ui-langgraph-v3-streaming.md` is now the committed source reference for the normal chat runtime. It intentionally keeps product builder surfaces on their own workflow streams until a dedicated Agent Protocol migration is planned.
 - Frontend skill creation currently has three tabs in `frontend/src/components/skill/skill-create-dialog.tsx:16`. The `scratch` tab creates a minimal `.skill` package in browser with JSZip at `frontend/src/components/skill/skill-create-dialog.tsx:255`.
 - `/skills` is a client page using `ResourcePage`, `ResourcePanel`, `CountedLineTabs`, `SearchInput`, `ResourceGrid`, and `ResourceListCard` in `frontend/src/app/skills/page.tsx:101`.
@@ -180,7 +184,7 @@ cd ../frontend && pnpm lint:i18n
 Required state:
 
 - `main` is pulled to a commit that includes the LangGraph v3 chat runtime (`1883845` or newer in this review). If implementing from an older branch, rebase or pull before touching Tasks 10-12.
-- `alembic heads` returns the current project head. If it is no longer `m63_chat_navigator_indexes`, use the reported head as the new migration `down_revision` and update every `m64_skill_builder_sessions.py` reference before writing the migration.
+- `alembic heads` returns the current project head. On this branch Task 1 already added `m64_skill_builder_sessions`; any later migration must use that reported head, or whatever newer head exists after the next main pull.
 - `backend/.env` is linked or copied through `bash scripts/worktree-setup.sh` for this worktree, so credential encryption keys and System LLM seed behavior match local development.
 - Existing unrelated modified files are left alone. This plan currently expects new work to happen on a feature branch/worktree and not to revert user edits.
 
@@ -200,6 +204,8 @@ Implementation order:
 - Normal chat transport calls `/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/commands`, `/state`, and `/stream/events`; the current backend requires `thread_id == conversation_id`.
 - Normal Agent Protocol stream events are sent as SSE `event: message` frames whose data contains `method`, `params`, `seq`, and `event_id`. Builder-specific SSE event names such as `builder_status` must not be sent through that normal chat endpoint.
 - The shared activity UI recognizes `thinking`, `planning`, `tool`, `subagent`, `background_subagent`, `artifact`, `memory`, `interrupt`, `checkpoint`, `responding`, `reconnecting`, `done`, and `error`, with statuses `pending`, `running`, `requires_action`, `complete`, `error`, and `cancelled`.
+- The current activity reducer only converts `custom` protocol events into shared activities for artifact/file, memory, stale, and reconnect events. A future builder-on-Agent-Protocol migration must add explicit reducer mappings and tests before expecting `builder_status`, `builder_activity`, validation, compatibility, or evaluation events to appear in the normal chat activity rail.
+- Normal chat standard interrupts are converted into redacted synthetic tool calls. Skill Builder can keep a builder-specific approval surface in v1, but any reuse of the standard interrupt payload must keep sensitive argument redaction and multi-action decision coordination.
 
 Skill Builder v1 should remain a separate authoring workflow:
 
@@ -973,13 +979,13 @@ Rollback behavior:
 
 `skill.content_hash` is the conflict, stale-evaluation, health, and revision comparison key. It must change whenever the effective package changes.
 
-Current gap to fix:
+Implemented baseline:
 
 - `create_text_skill(...)` and `update_text_content(...)` already update `content_hash`.
-- `create_package_skill(...)` stores the package hash produced during extraction.
-- `set_skill_file(...)` and `delete_skill_file(...)` currently refresh package metadata but do not recalculate the content hash.
+- `create_package_skill(...)` now stores a deterministic package tree hash.
+- `set_skill_file(...)` and `delete_skill_file(...)` now refresh package metadata and recalculate `skill.content_hash`.
 
-Implement `backend/app/skills/package_hash.py`:
+Implemented `backend/app/skills/package_hash.py`:
 
 ```python
 from __future__ import annotations
@@ -999,19 +1005,19 @@ Hash rules:
 - Do not follow symlinks; package extraction already rejects them, and hash computation should fail closed if one is found.
 - Return the same bare 64-character hex digest used by existing `Skill.content_hash`, `MarketplaceVersion.content_hash`, and current skill tests. Do not prefix with `sha256:` because the current DB columns are `String(64)` and existing package/text hashes are unprefixed.
 
-Service changes:
+Remaining service integration rules:
 
-- Update `_refresh_package_metadata(skill)` in `backend/app/skills/service.py` so it recalculates `skill.content_hash` for package-kind skills.
-- Ensure package file create/update/delete, builder confirm, rollback, and package upload all pass through a path that refreshes metadata and content hash.
+- Package file create/update/delete and package upload already pass through a path that refreshes metadata and content hash.
+- Ensure builder confirm, whole-package replacement, and rollback pass through the same package write/refresh path.
 - Include the new content hash in `SkillRevision.content_hash`, evaluation run snapshots, Skill Health, and improve-mode conflict checks.
 - Do not update old evaluation rows when content changes. Staleness is always `run.skill_content_hash != skill.content_hash`.
 
 Required tests:
 
+- Updating `scripts/foo.py` through `set_skill_file(...)` changes `skill.content_hash`. Covered by `backend/tests/test_skill_package_hash_integration.py`.
+- Deleting a file through `delete_skill_file(...)` changes `skill.content_hash`. Covered by `backend/tests/test_skill_package_hash_integration.py`.
+- Rewriting a file to identical bytes keeps the same `content_hash`. Covered by `backend/tests/test_skill_package_hash_integration.py`.
 - Updating `SKILL.md` through `set_skill_file(...)` changes `skill.content_hash`.
-- Updating `scripts/foo.py` through `set_skill_file(...)` changes `skill.content_hash`.
-- Deleting a file through `delete_skill_file(...)` changes `skill.content_hash`.
-- Rewriting a file to identical bytes keeps the same `content_hash`.
 - Package file mutation creates a revision with the new hash.
 - A completed evaluation run becomes stale after a package file mutation by hash comparison only.
 
@@ -2717,7 +2723,7 @@ Skill Builder SSE wire contract:
   - `compatibility_result`: `{ "targets": {"openai_codex": {"status": "pass"}} }`
   - `changelog_draft`: `{ "summary": "...", "items": [...] }`
   - `eval_result`: `{ "pass_rate": 0.86, "benchmark": {...} }`
-- If a future migration moves Skill Builder onto the Agent Protocol endpoint, convert these domain events to protocol `custom` events shaped as `{ "name": "builder_status", "payload": {...} }` and keep shared activity kinds limited to the actual `RunActivityKind` union.
+- If a future migration moves Skill Builder onto the Agent Protocol endpoint, convert these domain events to protocol `custom` events shaped as `{ "name": "builder_status", "payload": {...} }`, keep shared activity kinds limited to the actual `RunActivityKind` union, and update `activity-model.ts` because the current reducer ignores builder-domain custom events.
 - Never stream full draft file bodies through status/activity events. File contents are already in the session/draft fetch path and preview state.
 - Frontend `stream-skill-builder-*` helpers should accept unknown events and surface them as non-fatal debug/activity entries during development, but known events above must have typed handlers and tests.
 
@@ -2870,8 +2876,9 @@ Expected: all validator tests pass.
 - [ ] Implement `create_revision_for_skill`, `list_revisions`, `get_revision`, and `rollback_to_revision` in `skill_revision_service.py`.
 - [ ] Implement revision retention constants and pruning safeguards from the Skill Revision Retention And Backfill section.
 - [ ] Implement a rerunnable baseline backfill script for existing skills with no revisions.
-- [ ] Update package skill `_refresh_package_metadata(skill)` to recalculate `skill.content_hash` using `compute_package_tree_hash`.
-- [ ] Ensure package file create/update/delete and whole-package replacement change `content_hash` before revision creation and evaluation staleness checks.
+- [x] Centralize package tree hashing in `compute_package_tree_hash`.
+- [x] Ensure package upload and package file create/update/delete refresh `skill.content_hash`.
+- [ ] Ensure builder confirm, whole-package replacement, and rollback refresh `skill.content_hash` before revision creation and evaluation staleness checks.
 - [ ] Create initial revision after text skill create, package upload, and builder create.
 - [ ] Create new revisions after text content update, package file update/delete/upload, metadata update, builder improvement, and rollback.
 - [ ] Generate changelog summaries from builder diffs and store them on the resulting revision row.
@@ -3506,8 +3513,8 @@ The MVP is useful without evals, but its data model and UI should already have f
   - Mitigation: keep evals optional and label them as quality checks.
 - **Risk:** Normal skill APIs and builder APIs drift.
   - Mitigation: finalize through `skill_service.create_package_skill` and existing skill serialization.
-- **Risk:** Package skill file edits do not update `content_hash`, causing improve conflict checks, stale evaluation badges, and Skill Health to lie.
-  - Mitigation: centralize package tree hashing in `compute_package_tree_hash`, call it from `_refresh_package_metadata`, and add regression tests for `set_skill_file` and `delete_skill_file`.
+- **Risk:** Future builder confirm, rollback, or package replacement paths bypass package metadata refresh and leave `content_hash` stale.
+  - Mitigation: keep package tree hashing centralized in `compute_package_tree_hash`, route package writes through `refresh_package_metadata` or equivalent service helpers, and retain regression tests for upload, `set_skill_file`, and `delete_skill_file`.
 - **Risk:** Improve mode overwrites user edits made after the session started.
   - Mitigation: store `base_content_hash` and return 409 conflict when the current hash differs.
 - **Risk:** Skill Builder first-run fails with a generic 500 when System LLM `text_primary` is not configured.
