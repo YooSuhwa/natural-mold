@@ -195,6 +195,9 @@
       "sidebar": "Sidebar",
       "mobileSidebarDescription": "Show mobile sidebar.",
       "toggleSidebar": "Toggle sidebar",
+      "resizeSidebar": "Resize sidebar",
+      "collapsedPanel": "Collapsed",
+      "resetPanelWidth": "Reset panel width",
       "breadcrumb": "Breadcrumb"
     }
   },
@@ -1499,6 +1502,8 @@
     },
     "rightRail": {
       "closePanel": "Close panel",
+      "resizePanel": "Resize files panel",
+      "collapsedPanel": "Files panel collapsed",
       "outline": "Outline",
       "messageOutline": "Message outline",
       "noHeadings": "No headings detected in this message.",

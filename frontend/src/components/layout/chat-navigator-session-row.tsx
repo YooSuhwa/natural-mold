@@ -41,6 +41,8 @@ interface ChatNavigatorSessionRowProps {
   active: boolean
   shortcutIndex?: number | null
   actions: ConversationRowActions
+  isSidebarCollapsed?: boolean
+  onExpandSidebar?: () => void
 }
 
 export function ChatNavigatorSessionRow({
@@ -49,6 +51,8 @@ export function ChatNavigatorSessionRow({
   active,
   shortcutIndex,
   actions,
+  isSidebarCollapsed = false,
+  onExpandSidebar,
 }: ChatNavigatorSessionRowProps) {
   const t = useTranslations('sidebar.agents')
   const tActions = useTranslations('sidebar.agents.conversationActions')
@@ -58,31 +62,39 @@ export function ChatNavigatorSessionRow({
   const shortcutPreviewActive = useAtomValue(shortcutPreviewActiveAtom)
   // 서버 진실(active_run, 1초 폴링) + 같은 탭 스트리밍의 즉시 오버레이(atom)
   const runStatus = conversation.active_run?.status
-  const isRunning =
-    isActiveRunStatus(runStatus) || runtimeStatuses[conversation.id] === 'running'
+  const isRunning = isActiveRunStatus(runStatus) || runtimeStatuses[conversation.id] === 'running'
   const needsAttention = !isRunning && isInterruptedRunStatus(runStatus)
   const href = `/agents/${conversation.agent_id}/conversations/${conversation.id}`
   const unreadCount = conversation.unread_count ?? 0
+
+  function handleSessionClick() {
+    if (isSidebarCollapsed) {
+      onExpandSidebar?.()
+    }
+  }
 
   return (
     <div
       data-chat-session-href={href}
       className={cn(
-        'group/session flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs transition-colors hover:bg-sidebar-accent focus-within:bg-sidebar-accent',
+        'group/session flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs transition-colors hover:bg-sidebar-accent focus-within:bg-sidebar-accent group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0',
         active && 'bg-primary text-primary-foreground hover:bg-primary',
         unreadCount > 0 && !active && 'moldy-status-soft moldy-status-warn',
       )}
     >
       <Link
         href={href}
-        className="flex min-w-0 flex-1 items-center gap-1.5 rounded outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={handleSessionClick}
+        className="flex min-w-0 flex-1 items-center gap-1.5 rounded outline-hidden focus-visible:ring-2 focus-visible:ring-ring group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:min-w-8 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0"
       >
         {conversation.is_pinned ? (
           <PinIcon className="size-3 shrink-0 text-muted-foreground" />
         ) : (
           <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
         )}
-        <span className="min-w-0 truncate">{conversation.title ?? t('session.fallbackTitle')}</span>
+        <span className="min-w-0 truncate group-data-[collapsible=icon]:sr-only">
+          {conversation.title ?? t('session.fallbackTitle')}
+        </span>
         {agent ? (
           <Tooltip>
             <TooltipTrigger
@@ -99,11 +111,11 @@ export function ChatNavigatorSessionRow({
         ) : null}
       </Link>
       {unreadCount > 0 ? (
-        <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-status-warn px-1 moldy-ui-caption font-semibold text-white">
+        <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-status-warn px-1 moldy-ui-caption font-semibold text-white group-data-[collapsible=icon]:hidden">
           {unreadCount > 99 ? '99+' : unreadCount}
         </span>
       ) : null}
-      <div className="flex h-7 w-14 shrink-0 items-center justify-end gap-1">
+      <div className="flex h-7 w-14 shrink-0 items-center justify-end gap-1 group-data-[collapsible=icon]:hidden">
         {isRunning ? (
           <LoaderCircleIcon
             className="size-3.5 shrink-0 animate-spin text-primary-strong"

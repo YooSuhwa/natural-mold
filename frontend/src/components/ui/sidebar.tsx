@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { mergeProps } from '@base-ui/react/merge-props'
 import { useRender } from '@base-ui/react/use-render'
@@ -21,13 +22,27 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { PanelLeftIcon } from 'lucide-react'
+import { HorizontalResizeHandle } from '@/components/shared/horizontal-resize-handle'
+import {
+  clampSidebarWidth,
+  sidebarWidthAtom,
+  SIDEBAR_COLLAPSE_THRESHOLD_PX,
+  SIDEBAR_WIDTH_COOKIE_MAX_AGE,
+  SIDEBAR_WIDTH_COOKIE_NAME,
+  SIDEBAR_WIDTH_DEFAULT_PX,
+  SIDEBAR_WIDTH_MAX_PX,
+  SIDEBAR_WIDTH_MIN_PX,
+} from '@/lib/stores/sidebar-store'
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state'
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = '16rem'
 const SIDEBAR_WIDTH_MOBILE = '18rem'
 const SIDEBAR_WIDTH_ICON = '3rem'
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b'
+
+type SidebarWidthOptions = {
+  persist?: boolean
+}
 
 type SidebarContextProps = {
   state: 'expanded' | 'collapsed'
@@ -36,6 +51,9 @@ type SidebarContextProps = {
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
+  sidebarWidth: number
+  setSidebarWidth: (width: number, options?: SidebarWidthOptions) => void
+  resetSidebarWidthPreview: () => void
   toggleSidebar: () => void
 }
 
@@ -57,14 +75,19 @@ function SidebarProvider({
   className,
   style,
   children,
+  initialSidebarWidth = null,
   ...props
 }: React.ComponentProps<'div'> & {
   defaultOpen?: boolean
+  initialSidebarWidth?: number | null
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
+  const [storedSidebarWidth, setStoredSidebarWidth] = useAtom(sidebarWidthAtom)
+  const [previewSidebarWidth, setPreviewSidebarWidth] = React.useState<number | null>(null)
+  const [hasClientSidebarWidth, setHasClientSidebarWidth] = React.useState(false)
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -78,12 +101,39 @@ function SidebarProvider({
       } else {
         _setOpen(openState)
       }
+      setPreviewSidebarWidth(null)
 
       // This sets the cookie to keep the sidebar state.
       document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
     },
     [setOpenProp, open],
   )
+
+  const stableSidebarWidth = clampSidebarWidth(
+    hasClientSidebarWidth ? storedSidebarWidth : (initialSidebarWidth ?? SIDEBAR_WIDTH_DEFAULT_PX),
+  )
+  const sidebarWidth = previewSidebarWidth ?? stableSidebarWidth
+  const setSidebarWidth = React.useCallback(
+    (width: number, options?: SidebarWidthOptions) => {
+      if (options?.persist === false) {
+        const previewWidth = Number.isFinite(width)
+          ? Math.min(Math.max(width, 0), SIDEBAR_WIDTH_MAX_PX)
+          : stableSidebarWidth
+        setPreviewSidebarWidth(previewWidth)
+        return
+      }
+
+      const nextWidth = clampSidebarWidth(width)
+      setPreviewSidebarWidth(null)
+      setHasClientSidebarWidth(true)
+      setStoredSidebarWidth(nextWidth)
+      document.cookie = `${SIDEBAR_WIDTH_COOKIE_NAME}=${nextWidth}; path=/; max-age=${SIDEBAR_WIDTH_COOKIE_MAX_AGE}`
+    },
+    [setStoredSidebarWidth, stableSidebarWidth],
+  )
+  const resetSidebarWidthPreview = React.useCallback(() => {
+    setPreviewSidebarWidth(null)
+  }, [])
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
@@ -113,11 +163,25 @@ function SidebarProvider({
       open,
       setOpen,
       isMobile,
+      sidebarWidth,
+      setSidebarWidth,
+      resetSidebarWidthPreview,
       openMobile,
       setOpenMobile,
       toggleSidebar,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+    [
+      state,
+      open,
+      setOpen,
+      isMobile,
+      sidebarWidth,
+      setSidebarWidth,
+      resetSidebarWidthPreview,
+      openMobile,
+      setOpenMobile,
+      toggleSidebar,
+    ],
   )
 
   return (
@@ -126,7 +190,7 @@ function SidebarProvider({
         data-slot="sidebar-wrapper"
         style={
           {
-            '--sidebar-width': SIDEBAR_WIDTH,
+            '--sidebar-width': `${sidebarWidth}px`,
             '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
             ...style,
           } as React.CSSProperties
@@ -269,25 +333,39 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
   )
 }
 
-function SidebarRail({ className, ...props }: React.ComponentProps<'button'>) {
+function SidebarRail({ className, ...props }: Omit<React.ComponentProps<'div'>, 'onReset'>) {
   const t = useTranslations('common.a11y')
-  const { toggleSidebar } = useSidebar()
+  const { isMobile, resetSidebarWidthPreview, setOpen, setSidebarWidth, sidebarWidth, state } =
+    useSidebar()
+
+  if (isMobile) return null
+
+  const handleWidth = state === 'collapsed' ? 0 : sidebarWidth
 
   return (
-    <button
+    <HorizontalResizeHandle
       data-sidebar="rail"
       data-slot="sidebar-rail"
-      aria-label={t('toggleSidebar')}
-      tabIndex={-1}
-      onClick={toggleSidebar}
-      title={t('toggleSidebar')}
+      ariaLabel={t('resizeSidebar')}
+      collapsedValueText={t('collapsedPanel')}
+      collapseThreshold={SIDEBAR_COLLAPSE_THRESHOLD_PX}
+      maxWidth={SIDEBAR_WIDTH_MAX_PX}
+      minWidth={SIDEBAR_WIDTH_MIN_PX}
+      onCancelPreview={resetSidebarWidthPreview}
+      onCollapse={() => setOpen(false)}
+      onCommitWidth={(width) => setSidebarWidth(width)}
+      onExpandFromCollapsed={(width) => {
+        setOpen(true)
+        setSidebarWidth(width)
+      }}
+      onPreviewExpandFromCollapsed={() => setOpen(true)}
+      onPreviewWidth={(width) => setSidebarWidth(width, { persist: false })}
+      onReset={() => setSidebarWidth(SIDEBAR_WIDTH_DEFAULT_PX)}
+      side="left"
+      variantClassName="moldy-sidebar-resize-handle"
+      width={handleWidth}
       className={cn(
-        'absolute inset-y-0 z-20 hidden w-4 transition-[background-color,transform] ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2',
-        'in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize',
-        '[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize',
-        'group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar',
-        '[[data-side=left][data-collapsible=offcanvas]_&]:-right-2',
-        '[[data-side=right][data-collapsible=offcanvas]_&]:-left-2',
+        'absolute inset-y-0 z-20 hidden md:flex group-data-[side=left]:-right-1.5 group-data-[side=right]:-left-1.5',
         className,
       )}
       {...props}

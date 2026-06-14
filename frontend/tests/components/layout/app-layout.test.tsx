@@ -61,8 +61,15 @@ vi.mock('@/components/ui/sidebar', () => ({
     <button>{children}</button>
   ),
   SidebarSeparator: () => <hr />,
+  SidebarRail: () => <div data-testid="sidebar-rail" />,
   SidebarTrigger: () => <button />,
-  useSidebar: () => ({ toggleSidebar: vi.fn(), isMobile: false, state: 'expanded', openMobile: false, setOpenMobile: vi.fn() }),
+  useSidebar: () => ({
+    toggleSidebar: vi.fn(),
+    isMobile: false,
+    state: 'expanded',
+    openMobile: false,
+    setOpenMobile: vi.fn(),
+  }),
 }))
 
 vi.mock('@/components/ui/separator', () => ({

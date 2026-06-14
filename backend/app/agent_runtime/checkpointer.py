@@ -15,35 +15,49 @@ _pool: AsyncConnectionPool | None = None
 _checkpointer: AsyncPostgresSaver | None = None
 
 
-def _pool_size_kwargs() -> dict[str, int]:
-    min_size = settings.checkpointer_pool_min_size
-    max_size = settings.checkpointer_pool_max_size
-    if min_size < 0:
-        raise ValueError("checkpointer_pool_min_size must be non-negative")
-    if max_size < 1:
-        raise ValueError("checkpointer_pool_max_size must be positive")
-    if min_size > max_size:
-        raise ValueError("checkpointer_pool_min_size must be <= checkpointer_pool_max_size")
-    return {"min_size": min_size, "max_size": max_size}
+def _pool_size_kwargs(
+    *,
+    min_size: int | None = None,
+    max_size: int | None = None,
+) -> dict[str, int]:
+    pool_min_size = max(
+        1,
+        settings.checkpointer_pool_min_size if min_size is None else min_size,
+    )
+    pool_max_size = max(
+        pool_min_size,
+        settings.checkpointer_pool_max_size if max_size is None else max_size,
+    )
+    return {"min_size": pool_min_size, "max_size": pool_max_size}
 
 
-async def init_checkpointer(conn_string: str) -> None:
+async def init_checkpointer(
+    conn_string: str,
+    *,
+    min_size: int | None = None,
+    max_size: int | None = None,
+) -> None:
     """앱 시작 시 checkpointer 초기화. lifespan에서 호출."""
     global _pool, _checkpointer
 
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from psycopg_pool import AsyncConnectionPool
 
+    pool_size_kwargs = _pool_size_kwargs(min_size=min_size, max_size=max_size)
     _pool = AsyncConnectionPool(
         conninfo=conn_string,
         open=False,
-        **_pool_size_kwargs(),
+        **pool_size_kwargs,
         kwargs={"autocommit": True, "prepare_threshold": 0},
     )
     await _pool.open()
     _checkpointer = AsyncPostgresSaver(conn=_pool)  # type: ignore[arg-type]  # Pool도 Conn 인터페이스 호환
     await _checkpointer.setup()
-    logger.info("Checkpointer initialized (PostgreSQL)")
+    logger.info(
+        "Checkpointer initialized (PostgreSQL, pool_min=%s, pool_max=%s)",
+        pool_size_kwargs["min_size"],
+        pool_size_kwargs["max_size"],
+    )
 
 
 async def shutdown_checkpointer() -> None:

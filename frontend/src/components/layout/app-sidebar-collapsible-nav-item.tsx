@@ -23,6 +23,8 @@ interface CollapsibleNavItemProps {
   tooltip: string
   isActive: boolean
   expanded: boolean
+  isSidebarCollapsed?: boolean
+  onExpandSidebar?: () => void
   onToggle: () => void
   items: readonly AppSidebarNavChild[]
   menuClass: string
@@ -34,23 +36,34 @@ export function AppSidebarCollapsibleNavItem({
   tooltip,
   isActive,
   expanded,
+  isSidebarCollapsed = false,
+  onExpandSidebar,
   onToggle,
   items,
   menuClass,
 }: CollapsibleNavItemProps) {
+  function handleToggle() {
+    if (isSidebarCollapsed) {
+      onExpandSidebar?.()
+      return
+    }
+
+    onToggle()
+  }
+
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={isActive}
         tooltip={tooltip}
-        onClick={onToggle}
+        onClick={handleToggle}
         aria-expanded={expanded}
         className={menuClass}
       >
         <Icon className="size-4" />
         <span>{label}</span>
         <ChevronRightIcon
-          className={`ml-auto size-4 transition-transform ${expanded ? 'rotate-90' : ''}`}
+          className={`ml-auto size-4 transition-transform group-data-[collapsible=icon]:hidden ${expanded ? 'rotate-90' : ''}`}
         />
       </SidebarMenuButton>
       {expanded ? (

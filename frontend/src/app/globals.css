@@ -1,6 +1,6 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -84,107 +84,73 @@
   --color-agentprism-border-inverse: oklch(var(--agentprism-border-inverse));
   --color-agentprism-success: oklch(var(--agentprism-success));
   --color-agentprism-success-muted: oklch(var(--agentprism-success-muted));
-  --color-agentprism-success-muted-foreground: oklch(
-    var(--agentprism-success-muted-foreground)
-  );
+  --color-agentprism-success-muted-foreground: oklch(var(--agentprism-success-muted-foreground));
   --color-agentprism-error: oklch(var(--agentprism-error));
   --color-agentprism-error-muted: oklch(var(--agentprism-error-muted));
-  --color-agentprism-error-muted-foreground: oklch(
-    var(--agentprism-error-muted-foreground)
-  );
+  --color-agentprism-error-muted-foreground: oklch(var(--agentprism-error-muted-foreground));
   --color-agentprism-warning: oklch(var(--agentprism-warning));
   --color-agentprism-warning-muted: oklch(var(--agentprism-warning-muted));
-  --color-agentprism-warning-muted-foreground: oklch(
-    var(--agentprism-warning-muted-foreground)
-  );
+  --color-agentprism-warning-muted-foreground: oklch(var(--agentprism-warning-muted-foreground));
   --color-agentprism-pending: oklch(var(--agentprism-pending));
   --color-agentprism-pending-muted: oklch(var(--agentprism-pending-muted));
-  --color-agentprism-pending-muted-foreground: oklch(
-    var(--agentprism-pending-muted-foreground)
-  );
+  --color-agentprism-pending-muted-foreground: oklch(var(--agentprism-pending-muted-foreground));
   --color-agentprism-code-string: oklch(var(--agentprism-code-string));
   --color-agentprism-code-number: oklch(var(--agentprism-code-number));
   --color-agentprism-code-key: oklch(var(--agentprism-code-key));
   --color-agentprism-code-base: oklch(var(--agentprism-code-base));
   --color-agentprism-badge-default: oklch(var(--agentprism-badge-default));
-  --color-agentprism-badge-default-foreground: oklch(
-    var(--agentprism-badge-default-foreground)
-  );
+  --color-agentprism-badge-default-foreground: oklch(var(--agentprism-badge-default-foreground));
   --color-agentprism-avatar-llm: oklch(var(--agentprism-avatar-llm));
   --color-agentprism-badge-llm: oklch(var(--agentprism-badge-llm));
-  --color-agentprism-badge-llm-foreground: oklch(
-    var(--agentprism-badge-llm-foreground)
-  );
+  --color-agentprism-badge-llm-foreground: oklch(var(--agentprism-badge-llm-foreground));
   --color-agentprism-timeline-llm: oklch(var(--agentprism-timeline-llm));
   --color-agentprism-avatar-agent: oklch(var(--agentprism-avatar-agent));
   --color-agentprism-badge-agent: oklch(var(--agentprism-badge-agent));
-  --color-agentprism-badge-agent-foreground: oklch(
-    var(--agentprism-badge-agent-foreground)
-  );
+  --color-agentprism-badge-agent-foreground: oklch(var(--agentprism-badge-agent-foreground));
   --color-agentprism-timeline-agent: oklch(var(--agentprism-timeline-agent));
   --color-agentprism-avatar-tool: oklch(var(--agentprism-avatar-tool));
   --color-agentprism-badge-tool: oklch(var(--agentprism-badge-tool));
-  --color-agentprism-badge-tool-foreground: oklch(
-    var(--agentprism-badge-tool-foreground)
-  );
+  --color-agentprism-badge-tool-foreground: oklch(var(--agentprism-badge-tool-foreground));
   --color-agentprism-timeline-tool: oklch(var(--agentprism-timeline-tool));
   --color-agentprism-avatar-chain: oklch(var(--agentprism-avatar-chain));
   --color-agentprism-badge-chain: oklch(var(--agentprism-badge-chain));
-  --color-agentprism-badge-chain-foreground: oklch(
-    var(--agentprism-badge-chain-foreground)
-  );
+  --color-agentprism-badge-chain-foreground: oklch(var(--agentprism-badge-chain-foreground));
   --color-agentprism-timeline-chain: oklch(var(--agentprism-timeline-chain));
   --color-agentprism-avatar-retrieval: oklch(var(--agentprism-avatar-retrieval));
   --color-agentprism-badge-retrieval: oklch(var(--agentprism-badge-retrieval));
   --color-agentprism-badge-retrieval-foreground: oklch(
     var(--agentprism-badge-retrieval-foreground)
   );
-  --color-agentprism-timeline-retrieval: oklch(
-    var(--agentprism-timeline-retrieval)
-  );
+  --color-agentprism-timeline-retrieval: oklch(var(--agentprism-timeline-retrieval));
   --color-agentprism-avatar-embedding: oklch(var(--agentprism-avatar-embedding));
   --color-agentprism-badge-embedding: oklch(var(--agentprism-badge-embedding));
   --color-agentprism-badge-embedding-foreground: oklch(
     var(--agentprism-badge-embedding-foreground)
   );
-  --color-agentprism-timeline-embedding: oklch(
-    var(--agentprism-timeline-embedding)
-  );
+  --color-agentprism-timeline-embedding: oklch(var(--agentprism-timeline-embedding));
   --color-agentprism-avatar-guardrail: oklch(var(--agentprism-avatar-guardrail));
   --color-agentprism-badge-guardrail: oklch(var(--agentprism-badge-guardrail));
   --color-agentprism-badge-guardrail-foreground: oklch(
     var(--agentprism-badge-guardrail-foreground)
   );
-  --color-agentprism-timeline-guardrail: oklch(
-    var(--agentprism-timeline-guardrail)
-  );
-  --color-agentprism-avatar-create-agent: oklch(
-    var(--agentprism-avatar-create-agent)
-  );
+  --color-agentprism-timeline-guardrail: oklch(var(--agentprism-timeline-guardrail));
+  --color-agentprism-avatar-create-agent: oklch(var(--agentprism-avatar-create-agent));
   --color-agentprism-badge-create-agent: oklch(var(--agentprism-badge-create-agent));
   --color-agentprism-badge-create-agent-foreground: oklch(
     var(--agentprism-badge-create-agent-foreground)
   );
-  --color-agentprism-timeline-create-agent: oklch(
-    var(--agentprism-timeline-create-agent)
-  );
+  --color-agentprism-timeline-create-agent: oklch(var(--agentprism-timeline-create-agent));
   --color-agentprism-avatar-span: oklch(var(--agentprism-avatar-span));
   --color-agentprism-badge-span: oklch(var(--agentprism-badge-span));
-  --color-agentprism-badge-span-foreground: oklch(
-    var(--agentprism-badge-span-foreground)
-  );
+  --color-agentprism-badge-span-foreground: oklch(var(--agentprism-badge-span-foreground));
   --color-agentprism-timeline-span: oklch(var(--agentprism-timeline-span));
   --color-agentprism-avatar-event: oklch(var(--agentprism-avatar-event));
   --color-agentprism-badge-event: oklch(var(--agentprism-badge-event));
-  --color-agentprism-badge-event-foreground: oklch(
-    var(--agentprism-badge-event-foreground)
-  );
+  --color-agentprism-badge-event-foreground: oklch(var(--agentprism-badge-event-foreground));
   --color-agentprism-timeline-event: oklch(var(--agentprism-timeline-event));
   --color-agentprism-avatar-unknown: oklch(var(--agentprism-avatar-unknown));
   --color-agentprism-badge-unknown: oklch(var(--agentprism-badge-unknown));
-  --color-agentprism-badge-unknown-foreground: oklch(
-    var(--agentprism-badge-unknown-foreground)
-  );
+  --color-agentprism-badge-unknown-foreground: oklch(var(--agentprism-badge-unknown-foreground));
   --color-agentprism-timeline-unknown: oklch(var(--agentprism-timeline-unknown));
 }
 
@@ -247,11 +213,7 @@
   --moldy-toolbar-pad: 1rem;
   --moldy-sidebar-active-shadow: 0 8px 20px -22px oklch(0.25 0.08 164 / 0.22);
   --moldy-sidebar-rail-shadow: 14px 0 38px -40px oklch(0.24 0.06 164 / 0.18);
-  --moldy-agent-create-glow: radial-gradient(
-    circle,
-    oklch(0.85 0.13 163 / 0.4),
-    transparent 65%
-  );
+  --moldy-agent-create-glow: radial-gradient(circle, oklch(0.85 0.13 163 / 0.4), transparent 65%);
   --moldy-agent-create-shadow: drop-shadow(0 10px 18px oklch(0.4 0.1 163 / 0.22));
   --auth-shell-bg: linear-gradient(
     135deg,
@@ -259,11 +221,8 @@
     var(--background) 58%,
     var(--moldy-sky) 100%
   );
-  --auth-shell-pattern: linear-gradient(
-      90deg,
-      oklch(0.596 0.145 163.225 / 0.055) 1px,
-      transparent 1px
-    ),
+  --auth-shell-pattern:
+    linear-gradient(90deg, oklch(0.596 0.145 163.225 / 0.055) 1px, transparent 1px),
     linear-gradient(0deg, oklch(0.596 0.145 163.225 / 0.045) 1px, transparent 1px);
   --auth-card-bg: oklch(1 0 0);
   --auth-heading: var(--foreground);
@@ -370,11 +329,7 @@
   --moldy-code-line: oklch(0.5 0.018 170);
   --moldy-sidebar-active-shadow: 0 12px 28px -24px oklch(0 0 0 / 0.82);
   --moldy-sidebar-rail-shadow: 18px 0 52px -44px oklch(0 0 0 / 0.76);
-  --moldy-agent-create-glow: radial-gradient(
-    circle,
-    oklch(0.62 0.12 163 / 0.34),
-    transparent 65%
-  );
+  --moldy-agent-create-glow: radial-gradient(circle, oklch(0.62 0.12 163 / 0.34), transparent 65%);
   --moldy-agent-create-shadow: drop-shadow(0 10px 18px oklch(0 0 0 / 0.38));
   --auth-shell-bg: linear-gradient(
     135deg,
@@ -382,11 +337,8 @@
     oklch(0.2 0.04 163) 60%,
     oklch(0.16 0.02 200) 100%
   );
-  --auth-shell-pattern: linear-gradient(
-      90deg,
-      oklch(0.765 0.177 163.223 / 0.07) 1px,
-      transparent 1px
-    ),
+  --auth-shell-pattern:
+    linear-gradient(90deg, oklch(0.765 0.177 163.223 / 0.07) 1px, transparent 1px),
     linear-gradient(0deg, oklch(0.765 0.177 163.223 / 0.06) 1px, transparent 1px);
   --auth-card-bg: oklch(0.22 0.01 163);
   --auth-heading: oklch(0.97 0.01 163);
@@ -444,46 +396,102 @@
 }
 
 @keyframes progress {
-  0% { width: 0%; }
-  30% { width: 40%; }
-  60% { width: 65%; }
-  80% { width: 80%; }
-  100% { width: 90%; }
+  0% {
+    width: 0%;
+  }
+  30% {
+    width: 40%;
+  }
+  60% {
+    width: 65%;
+  }
+  80% {
+    width: 80%;
+  }
+  100% {
+    width: 90%;
+  }
 }
 
 @keyframes cb-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.45; transform: scale(0.85); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
 }
 
 @keyframes cb-bounce {
-  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-  40%           { transform: translateY(-3px); opacity: 1; }
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
 }
 
 @keyframes auth-float-mascot {
-  0%, 100% { transform: rotate(6deg) translateY(0); }
-  50% { transform: rotate(6deg) translateY(-5px); }
+  0%,
+  100% {
+    transform: rotate(6deg) translateY(0);
+  }
+  50% {
+    transform: rotate(6deg) translateY(-5px);
+  }
 }
 
 @keyframes moldy-mascot-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
 }
 
 @keyframes auth-twinkle-1 {
-  0%, 100% { opacity: 0.4; transform: scale(0.9); }
-  50% { opacity: 1; transform: scale(1.05); }
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
 }
 
 @keyframes auth-twinkle-2 {
-  0%, 100% { opacity: 0.55; transform: scale(1); }
-  50% { opacity: 0.95; transform: scale(1.1); }
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.1);
+  }
 }
 
 @keyframes auth-twinkle-3 {
-  0%, 100% { opacity: 0.45; transform: scale(0.95); }
-  50% { opacity: 1; transform: scale(1); }
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @layer components {
@@ -497,7 +505,7 @@
   }
 
   .auth-shell::before {
-    content: "";
+    content: '';
     position: fixed;
     inset: 0;
     z-index: 0;
@@ -726,7 +734,7 @@
     transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
 
-  [data-tab="register"] .auth-tab-indicator {
+  [data-tab='register'] .auth-tab-indicator {
     transform: translateX(100%);
   }
 
@@ -746,7 +754,7 @@
     transition: color 0.15s ease;
   }
 
-  .auth-tab[data-active="true"] {
+  .auth-tab[data-active='true'] {
     color: var(--auth-heading);
   }
 
@@ -821,15 +829,15 @@
     background: var(--moldy-usage-bar-color);
   }
 
-  .moldy-usage-bar[data-usage-metric="cost"] {
+  .moldy-usage-bar[data-usage-metric='cost'] {
     --moldy-usage-bar-color: var(--usage-chart-cost);
   }
 
-  .moldy-usage-bar[data-usage-metric="tokens"] {
+  .moldy-usage-bar[data-usage-metric='tokens'] {
     --moldy-usage-bar-color: var(--usage-chart-tokens);
   }
 
-  .moldy-usage-bar[data-usage-metric="requests"] {
+  .moldy-usage-bar[data-usage-metric='requests'] {
     --moldy-usage-bar-color: var(--usage-chart-requests);
   }
 
@@ -841,8 +849,7 @@
   .moldy-visual-flow {
     background:
       linear-gradient(var(--background), var(--background)) padding-box,
-      linear-gradient(135deg, var(--moldy-mint), var(--moldy-sky), var(--moldy-violet))
-        border-box;
+      linear-gradient(135deg, var(--moldy-mint), var(--moldy-sky), var(--moldy-violet)) border-box;
   }
 
   .moldy-app-surface {
@@ -867,8 +874,51 @@
     backdrop-filter: blur(16px);
   }
 
-  .moldy-right-rail {
-    width: 24rem;
+  .moldy-resize-handle {
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .moldy-resize-handle::after {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 50%;
+    width: 2px;
+    content: '';
+    background: transparent;
+    opacity: 0;
+    transform: translateX(-50%);
+    transition:
+      background-color 0.12s ease,
+      opacity 0.12s ease;
+  }
+
+  .moldy-resize-handle:hover::after,
+  .moldy-resize-handle:focus-visible::after,
+  .moldy-resize-handle[data-resizing='true']::after,
+  .moldy-resize-handle[data-collapse-preview='true']::after {
+    background: var(--primary-strong);
+    opacity: 1;
+  }
+
+  .moldy-sidebar-resize-handle {
+    width: 0.75rem;
+  }
+
+  .moldy-right-rail-resize-handle {
+    width: 0.75rem;
+  }
+
+  html[data-panel-resizing='true'] * {
+    cursor: col-resize;
+    user-select: none;
+  }
+
+  html[data-panel-resizing='true'] [data-slot='sidebar-gap'],
+  html[data-panel-resizing='true'] [data-slot='sidebar-container'],
+  html[data-panel-resizing='true'] [data-slot='chat-right-rail'] {
+    transition-duration: 0ms !important;
   }
 
   .moldy-right-rail-mobile {
@@ -979,7 +1029,7 @@
     color: var(--foreground);
   }
 
-  .moldy-segmented-tab[data-active="true"] {
+  .moldy-segmented-tab[data-active='true'] {
     background: var(--background);
     color: var(--foreground);
     font-weight: 600;
@@ -1082,13 +1132,13 @@
   }
 
   .moldy-sidebar-control:hover,
-  .moldy-sidebar-control[data-open="true"] {
+  .moldy-sidebar-control[data-open='true'] {
     background: color-mix(in oklch, var(--sidebar-accent) 58%, var(--background) 42%);
     color: var(--sidebar-accent-foreground);
   }
 
   .dark .moldy-sidebar-control:hover,
-  .dark .moldy-sidebar-control[data-open="true"] {
+  .dark .moldy-sidebar-control[data-open='true'] {
     background: color-mix(in oklch, var(--sidebar-accent) 75%, white 8%);
   }
 
@@ -1280,23 +1330,23 @@
     box-shadow: 0 0 0 2px var(--ring);
   }
 
-  .moldy-action-pill[data-variant="solid"] {
+  .moldy-action-pill[data-variant='solid'] {
     border: 1px solid color-mix(in oklch, var(--moldy-status-color) 72%, transparent);
     background: var(--moldy-status-color);
     color: white;
   }
 
-  .moldy-action-pill[data-variant="solid"]:hover {
+  .moldy-action-pill[data-variant='solid']:hover {
     background: color-mix(in oklch, var(--moldy-status-color) 86%, black 14%);
   }
 
-  .moldy-action-pill[data-variant="outline"] {
+  .moldy-action-pill[data-variant='outline'] {
     border: 1px solid color-mix(in oklch, var(--moldy-status-color) 42%, var(--border));
     background: color-mix(in oklch, var(--moldy-status-color) 5%, transparent);
     color: color-mix(in oklch, var(--moldy-status-color) 74%, var(--foreground));
   }
 
-  .moldy-action-pill[data-variant="outline"]:hover {
+  .moldy-action-pill[data-variant='outline']:hover {
     background: color-mix(in oklch, var(--moldy-status-color) 12%, transparent);
   }
 
@@ -1419,11 +1469,11 @@
     --moldy-user-avatar-color: var(--muted-foreground);
   }
 
-  .moldy-agentprism-tab-trigger[data-state="active"] {
+  .moldy-agentprism-tab-trigger[data-state='active'] {
     box-shadow: var(--moldy-shadow-soft);
   }
 
-  .dark .moldy-agentprism-tab-trigger[data-state="active"] {
+  .dark .moldy-agentprism-tab-trigger[data-state='active'] {
     box-shadow: none;
   }
 
@@ -1630,7 +1680,11 @@
   .moldy-resource-card-interactive:hover,
   .moldy-resource-card:focus-within,
   .moldy-resource-card:focus-visible {
-    border-color: color-mix(in oklch, var(--moldy-tone-color, var(--primary-strong)) 28%, var(--border));
+    border-color: color-mix(
+      in oklch,
+      var(--moldy-tone-color, var(--primary-strong)) 28%,
+      var(--border)
+    );
     transform: translateY(-1px);
     box-shadow: var(--moldy-shadow-card);
   }
@@ -1645,7 +1699,9 @@
     border-color: var(--primary-strong);
     outline: 2px solid transparent;
     outline-offset: 2px;
-    box-shadow: var(--moldy-shadow-hover), 0 0 0 2px var(--ring);
+    box-shadow:
+      var(--moldy-shadow-hover),
+      0 0 0 2px var(--ring);
   }
 
   .moldy-resource-card-header {
@@ -1715,7 +1771,8 @@
     border-radius: var(--moldy-radius-control);
     background: var(--moldy-tone-bg, color-mix(in oklch, white 70%, transparent));
     color: var(--moldy-tone-text, var(--foreground));
-    box-shadow: 0 0 0 1px var(--moldy-tone-ring, color-mix(in oklch, var(--border) 70%, transparent));
+    box-shadow: 0 0 0 1px
+      var(--moldy-tone-ring, color-mix(in oklch, var(--border) 70%, transparent));
   }
 
   .moldy-tone-card-mint,
@@ -1971,7 +2028,7 @@
     white-space: nowrap;
   }
 
-  .moldy-resource-subtext[data-mono="true"] {
+  .moldy-resource-subtext[data-mono='true'] {
     font-family: var(--font-mono);
   }
 
@@ -2118,7 +2175,7 @@
     padding: 12px 16px;
   }
 
-  .moldy-phase-card-header[data-variant="gradient"] {
+  .moldy-phase-card-header[data-variant='gradient'] {
     background: linear-gradient(
       90deg,
       var(--builder-primary-bg) 0%,
@@ -2195,7 +2252,7 @@
     border: 1px solid var(--builder-border);
   }
 
-  .moldy-builder-pill[data-tone="primary"] {
+  .moldy-builder-pill[data-tone='primary'] {
     color: var(--builder-primary-ink);
     background: var(--builder-primary-bg);
     border-color: transparent;
@@ -2646,11 +2703,11 @@
     font-weight: 500;
   }
 
-  .moldy-phase-label[data-status="in_progress"] {
+  .moldy-phase-label[data-status='in_progress'] {
     font-weight: 700;
   }
 
-  .moldy-phase-label[data-status="pending"] {
+  .moldy-phase-label[data-status='pending'] {
     color: var(--builder-muted-soft);
   }
 
@@ -2666,16 +2723,16 @@
     box-shadow: 0 0 0 4px var(--builder-surface);
   }
 
-  .moldy-phase-dot[data-status="completed"] {
+  .moldy-phase-dot[data-status='completed'] {
     background: var(--builder-primary);
     color: white;
   }
 
-  .moldy-phase-dot[data-status="in_progress"] {
+  .moldy-phase-dot[data-status='in_progress'] {
     border: 2px solid var(--builder-primary);
   }
 
-  .moldy-phase-dot[data-status="pending"] {
+  .moldy-phase-dot[data-status='pending'] {
     border: 1.5px dashed var(--builder-pending-dot);
   }
 
@@ -2684,13 +2741,13 @@
     animation: cb-pulse 1.6s ease-in-out infinite;
   }
 
-  .moldy-phase-dot-core[data-status="in_progress"] {
+  .moldy-phase-dot-core[data-status='in_progress'] {
     width: 8px;
     height: 8px;
     background: var(--builder-primary);
   }
 
-  .moldy-phase-dot-core[data-status="pending"] {
+  .moldy-phase-dot-core[data-status='pending'] {
     width: 4px;
     height: 4px;
     background: var(--builder-pending-dot);
@@ -2709,17 +2766,17 @@
     font-weight: 700;
   }
 
-  .moldy-phase-status[data-status="completed"] {
+  .moldy-phase-status[data-status='completed'] {
     background: var(--builder-primary-bg);
     color: var(--builder-primary);
   }
 
-  .moldy-phase-status[data-status="in_progress"] {
+  .moldy-phase-status[data-status='in_progress'] {
     background: var(--builder-primary-bg-strong);
     color: var(--builder-primary-ink);
   }
 
-  .moldy-phase-status[data-status="pending"] {
+  .moldy-phase-status[data-status='pending'] {
     border-color: var(--builder-border);
     color: var(--builder-muted-soft);
   }
@@ -2763,13 +2820,12 @@
 }
 
 .moldy-dialog-shell {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--card) 92%, var(--moldy-mint)) 0%,
-      var(--popover) 42%,
-      color-mix(in oklch, var(--popover) 94%, var(--moldy-sky)) 100%
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--card) 92%, var(--moldy-mint)) 0%,
+    var(--popover) 42%,
+    color-mix(in oklch, var(--popover) 94%, var(--moldy-sky)) 100%
+  );
   box-shadow:
     0 34px 90px -56px color-mix(in oklch, var(--foreground) 42%, transparent),
     var(--moldy-inset-highlight);
@@ -2785,11 +2841,11 @@
     var(--status-info),
     var(--status-accent)
   );
-  content: "";
+  content: '';
   opacity: 0.82;
 }
 
-.moldy-dialog-shell [data-slot="dialog-close"] {
+.moldy-dialog-shell [data-slot='dialog-close'] {
   top: 0.875rem;
   right: 0.875rem;
   border: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
@@ -2803,8 +2859,8 @@
     box-shadow 0.15s ease;
 }
 
-.moldy-dialog-shell [data-slot="dialog-close"]:hover,
-.moldy-dialog-shell [data-slot="dialog-close"]:focus-visible {
+.moldy-dialog-shell [data-slot='dialog-close']:hover,
+.moldy-dialog-shell [data-slot='dialog-close']:focus-visible {
   border-color: color-mix(in oklch, var(--primary-strong) 26%, var(--border));
   background: color-mix(in oklch, var(--primary) 32%, var(--popover));
   color: var(--foreground);
@@ -2822,12 +2878,11 @@
 
 .moldy-dialog-icon {
   border: 1px solid color-mix(in oklch, var(--primary-strong) 20%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--primary) 72%, var(--card)),
-      color-mix(in oklch, var(--primary) 30%, var(--card))
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--primary) 72%, var(--card)),
+    color-mix(in oklch, var(--primary) 30%, var(--card))
+  );
   box-shadow: var(--moldy-shadow-soft);
 }
 
@@ -2840,7 +2895,8 @@
   );
 }
 
-.moldy-dialog-body :where([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]) {
+.moldy-dialog-body
+  :where([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']) {
   border-color: color-mix(in oklch, var(--border) 82%, var(--primary));
   background: color-mix(in oklch, var(--card) 86%, var(--moldy-surface));
   transition:
@@ -2850,59 +2906,53 @@
 }
 
 .moldy-dialog-body
-  :where(
-    [data-slot="input"],
-    [data-slot="textarea"],
-    [data-slot="select-trigger"]
-  ):not([class*="min-h-"]) {
+  :where([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']):not(
+    [class*='min-h-']
+  ) {
   min-height: 2.25rem;
 }
 
 .moldy-dialog-body
-  :where(
-    [data-slot="input"],
-    [data-slot="textarea"],
-    [data-slot="select-trigger"]
-  ):not(.shadow-none) {
+  :where([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']):not(
+    .shadow-none
+  ) {
   box-shadow:
     var(--moldy-shadow-soft),
     0 1px 0 color-mix(in oklch, var(--background) 72%, transparent) inset;
 }
 
-.moldy-dialog-body :where([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]):hover {
+.moldy-dialog-body
+  :where([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']):hover {
   border-color: color-mix(in oklch, var(--primary-strong) 24%, var(--border));
   background: color-mix(in oklch, var(--card) 94%, var(--moldy-mint));
 }
 
-.moldy-dialog-body :where([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]):focus-visible {
+.moldy-dialog-body
+  :where([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']):focus-visible {
   background: var(--card);
 }
 
 .moldy-dialog-body
-  :where(
-    [data-slot="input"],
-    [data-slot="textarea"],
-    [data-slot="select-trigger"]
-  ):not(.focus-visible\:border-input):focus-visible {
+  :where([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']):not(
+    .focus-visible\:border-input
+  ):focus-visible {
   border-color: color-mix(in oklch, var(--primary-strong) 46%, var(--border));
 }
 
 .moldy-dialog-body
-  :where(
-    [data-slot="input"],
-    [data-slot="textarea"],
-    [data-slot="select-trigger"]
-  ):not(.focus-visible\:ring-0):focus-visible {
+  :where([data-slot='input'], [data-slot='textarea'], [data-slot='select-trigger']):not(
+    .focus-visible\:ring-0
+  ):focus-visible {
   box-shadow:
     0 0 0 3px color-mix(in oklch, var(--primary-strong) 18%, transparent),
     var(--moldy-shadow-soft);
 }
 
-.moldy-dialog-body :where([data-slot="textarea"]):not([class*="min-h-"]) {
+.moldy-dialog-body :where([data-slot='textarea']):not([class*='min-h-']) {
   min-height: 5rem;
 }
 
-.moldy-dialog-body :where([data-slot="textarea"]) {
+.moldy-dialog-body :where([data-slot='textarea']) {
   line-height: 1.55;
 }
 
@@ -2918,23 +2968,22 @@
   border-color: color-mix(in oklch, var(--border) 76%, transparent);
 }
 
-.moldy-dialog-body :where([aria-invalid="true"]) {
+.moldy-dialog-body :where([aria-invalid='true']) {
   border-color: color-mix(in oklch, var(--destructive) 62%, var(--border));
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--destructive) 14%, transparent);
 }
 
-.moldy-dialog-body :where([data-slot="card"], button[role="listitem"]) {
+.moldy-dialog-body :where([data-slot='card'], button[role='listitem']) {
   border: 1px solid color-mix(in oklch, var(--border) 76%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--card) 92%, var(--moldy-mint)),
-      color-mix(in oklch, var(--card) 88%, transparent)
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--card) 92%, var(--moldy-mint)),
+    color-mix(in oklch, var(--card) 88%, transparent)
+  );
   box-shadow: var(--moldy-shadow-soft);
 }
 
-.moldy-dialog-body :where(button[role="listitem"]) {
+.moldy-dialog-body :where(button[role='listitem']) {
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease,
@@ -2942,27 +2991,25 @@
     transform 0.15s ease;
 }
 
-.moldy-dialog-body :where(button[role="listitem"]):hover,
-.moldy-dialog-body :where(button[role="listitem"]):focus-visible {
+.moldy-dialog-body :where(button[role='listitem']):hover,
+.moldy-dialog-body :where(button[role='listitem']):focus-visible {
   border-color: color-mix(in oklch, var(--primary-strong) 28%, var(--border));
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--primary) 22%, var(--card)),
-      color-mix(in oklch, var(--card) 92%, var(--moldy-sky))
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--primary) 22%, var(--card)),
+    color-mix(in oklch, var(--card) 92%, var(--moldy-sky))
+  );
   box-shadow: var(--moldy-shadow-hover);
   transform: translateY(-1px);
 }
 
 .moldy-dialog-footer,
 .moldy-dialog-sidebar {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--muted) 26%, transparent),
-      color-mix(in oklch, var(--card) 58%, transparent)
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--muted) 26%, transparent),
+    color-mix(in oklch, var(--card) 58%, transparent)
+  );
   backdrop-filter: blur(14px);
 }
 

@@ -23,6 +23,8 @@ interface ChatNavigatorAgentGroupProps {
   expanded: boolean
   listExpanded: boolean
   shortcutHintsEnabled: boolean
+  isSidebarCollapsed?: boolean
+  onExpandSidebar?: () => void
   onToggleExpanded: (agentId: string) => void
   onToggleListExpanded: (scope: string) => void
   actions: ConversationRowActions
@@ -41,15 +43,18 @@ export function ChatNavigatorAgentGroup({
   expanded,
   listExpanded,
   shortcutHintsEnabled,
+  isSidebarCollapsed: isSidebarCollapsedProp,
+  onExpandSidebar,
   onToggleExpanded,
   onToggleListExpanded,
   actions,
 }: ChatNavigatorAgentGroupProps) {
   const t = useTranslations('sidebar.agents')
+  const isSidebarCollapsed = isSidebarCollapsedProp ?? false
   const isActiveAgent = activeAgentId === agent.id
   // 펼침 판정은 부모의 isAgentExpanded 단일 출처가 내려준 expanded만 따른다
   // (활성 에이전트 기본 펼침 + collapse override도 부모에서 계산됨)
-  const shouldExpand = expanded
+  const shouldExpand = !isSidebarCollapsed && expanded
   const search = searchQuery.trim()
   const {
     data: conversationPages,
@@ -88,18 +93,24 @@ export function ChatNavigatorAgentGroup({
     onToggleListExpanded(scope)
   }
 
+  function handleAgentLinkClick() {
+    if (isSidebarCollapsed) {
+      onExpandSidebar?.()
+    }
+  }
+
   return (
     <div className="space-y-0.5">
       <div
         className={cn(
-          'group/agent flex min-h-9 items-center gap-1 rounded-lg px-1.5 py-1 text-sm transition-colors hover:bg-sidebar-accent focus-within:bg-sidebar-accent',
+          'group/agent flex min-h-9 items-center gap-1 rounded-lg px-1.5 py-1 text-sm transition-colors hover:bg-sidebar-accent focus-within:bg-sidebar-accent group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0',
           isActiveAgent && 'bg-sidebar-accent text-sidebar-accent-foreground',
         )}
       >
         <button
           type="button"
           onClick={() => onToggleExpanded(agent.id)}
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted group-data-[collapsible=icon]:hidden"
           aria-label={shouldExpand ? t('collapseAgent') : t('expandAgent')}
           aria-expanded={shouldExpand}
         >
@@ -107,18 +118,24 @@ export function ChatNavigatorAgentGroup({
             className={cn('size-3.5 transition-transform', shouldExpand && 'rotate-90')}
           />
         </button>
-        <Link href={`/agents/${agent.id}`} className="flex min-w-0 flex-1 items-center gap-2">
+        <Link
+          href={`/agents/${agent.id}`}
+          onClick={handleAgentLinkClick}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg outline-hidden focus-visible:ring-2 focus-visible:ring-ring group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:min-w-8 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:hover:bg-sidebar-accent"
+        >
           <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="xs" />
-          <span className="truncate font-medium">{agent.name}</span>
+          <span className="truncate font-medium group-data-[collapsible=icon]:sr-only">
+            {agent.name}
+          </span>
         </Link>
         {agent.unread_count > 0 ? (
-          <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-status-warn px-1 moldy-ui-caption font-semibold text-white">
+          <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-status-warn px-1 moldy-ui-caption font-semibold text-white group-data-[collapsible=icon]:hidden">
             {agent.unread_count > 99 ? '99+' : agent.unread_count}
           </span>
         ) : null}
         <div
           className={cn(
-            'flex shrink-0 items-center gap-0.5 opacity-0 group-hover/agent:opacity-100 group-focus-within/agent:opacity-100',
+            'flex shrink-0 items-center gap-0.5 opacity-0 group-hover/agent:opacity-100 group-focus-within/agent:opacity-100 group-data-[collapsible=icon]:hidden',
             isActiveAgent && 'opacity-100',
           )}
         >
@@ -163,6 +180,8 @@ export function ChatNavigatorAgentGroup({
                   active={activeConversationId === conversation.id}
                   shortcutIndex={shortcutHintsEnabled ? index + 1 : null}
                   actions={actions}
+                  isSidebarCollapsed={isSidebarCollapsed}
+                  onExpandSidebar={onExpandSidebar}
                 />
               ))}
               {conversations.length === 0 && !showDraft ? (

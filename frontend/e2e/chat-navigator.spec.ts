@@ -199,6 +199,23 @@ async function capturePage(page: Page, name: string) {
   await page.screenshot({ path: join(captureDir, name), fullPage: true })
 }
 
+async function locatorWidth(locator: ReturnType<Page['locator']>): Promise<number> {
+  const box = await locator.boundingBox()
+  if (!box) throw new Error('Expected locator to have a bounding box')
+  return box.width
+}
+
+async function dragHorizontally(page: Page, locator: ReturnType<Page['locator']>, deltaX: number) {
+  const box = await locator.boundingBox()
+  if (!box) throw new Error('Expected drag handle to have a bounding box')
+  const startX = box.x + box.width / 2
+  const startY = box.y + Math.min(40, box.height / 2)
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX + deltaX, startY)
+  await page.mouse.up()
+}
+
 test.describe('Chat navigator consolidation', () => {
   test('shows one consolidated navigator with search, menus, and shortcuts', async ({
     page,
@@ -251,6 +268,29 @@ test.describe('Chat navigator consolidation', () => {
     expect(errors.network).toEqual([])
   })
 
+  test('resizes, collapses, and re-expands the app sidebar rail', async ({ page, errors }) => {
+    await setupNavigatorPage(page)
+
+    const sidebar = page.locator('[data-slot="sidebar-container"]')
+    const handle = page.getByRole('separator', { name: '사이드바 크기 조절' })
+    await expect(handle).toBeVisible()
+    await handle.hover()
+    await expect(handle).toHaveCSS('cursor', 'col-resize')
+
+    const initialWidth = await locatorWidth(sidebar)
+    await dragHorizontally(page, handle, 80)
+    await expect.poll(() => locatorWidth(sidebar)).toBeGreaterThan(initialWidth + 60)
+
+    await dragHorizontally(page, handle, -260)
+    await expect.poll(() => locatorWidth(sidebar)).toBeLessThan(80)
+
+    await dragHorizontally(page, handle, 260)
+    await expect.poll(() => locatorWidth(sidebar)).toBeGreaterThanOrEqual(224)
+
+    expect(errors.console).toEqual([])
+    expect(errors.network).toEqual([])
+  })
+
   test('drives view mode and agent sort from the navigator options menu', async ({
     page,
     errors,
@@ -268,9 +308,7 @@ test.describe('Chat navigator consolidation', () => {
     // 기본 상태: 에이전트별 보기 + 최근 사용 정렬(Alpha가 위), 비활성 에이전트 세션은 접혀 있다
     await expect(page.getByText('Alpha kickoff').first()).toBeVisible()
     await expect(page.getByText('Beta recent session')).toHaveCount(0)
-    await expect
-      .poll(agentHeaderOrder)
-      .toEqual(['/agents/agent-1', '/agents/agent-2'])
+    await expect.poll(agentHeaderOrder).toEqual(['/agents/agent-1', '/agents/agent-2'])
 
     // 트리거는 opacity-0이라 헤딩 hover로 노출시킨 뒤 연다 (Playwright는 opacity-0도 클릭 가능하지만 캡처를 위해)
     // Base UI 라디오 항목은 closeOnClick=false라 메뉴가 유지되므로, 한 번 열어 연속으로 조작한다
@@ -292,9 +330,7 @@ test.describe('Chat navigator consolidation', () => {
       'true',
     )
     await page.getByRole('menuitemradio', { name: '생성순' }).click()
-    await expect
-      .poll(agentHeaderOrder)
-      .toEqual(['/agents/agent-2', '/agents/agent-1'])
+    await expect.poll(agentHeaderOrder).toEqual(['/agents/agent-2', '/agents/agent-1'])
     await capturePage(page, 'chat-navigator-agent-sort-created.png')
 
     // 보기 방식 서브메뉴: 세 가지 모드 라디오와 현재 선택(에이전트별)을 확인한다
@@ -313,9 +349,7 @@ test.describe('Chat navigator consolidation', () => {
     await page.keyboard.press('Escape')
     await page.keyboard.press('Escape')
     await expect(page.getByRole('menuitem', { name: '보기 방식' })).toHaveCount(0)
-    const betaRow = page.locator(
-      '[data-chat-session-href="/agents/agent-2/conversations/conv-3"]',
-    )
+    const betaRow = page.locator('[data-chat-session-href="/agents/agent-2/conversations/conv-3"]')
     await expect(betaRow).toBeVisible()
     // 에이전트 이름은 아바타 hover 툴팁으로 노출된다
     await betaRow.locator('[data-slot="tooltip-trigger"]').hover()

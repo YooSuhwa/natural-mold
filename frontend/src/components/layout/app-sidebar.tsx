@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback } from 'react'
 import { useAtom } from 'jotai'
 import {
   BookOpenIcon,
@@ -32,6 +33,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
@@ -39,7 +41,7 @@ import { featuresExpandedAtom } from '@/lib/stores/sidebar-store'
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { toggleSidebar } = useSidebar()
+  const { setOpen, state, toggleSidebar } = useSidebar()
   const t = useTranslations('sidebar')
 
   const [featuresExpanded, setFeaturesExpanded] = useAtom(featuresExpandedAtom)
@@ -60,6 +62,12 @@ export function AppSidebar() {
   const activeMenuClass = 'moldy-sidebar-nav-item'
 
   const newAgentButtonClass = 'moldy-sidebar-new-agent'
+
+  const expandSidebarFromIcon = useCallback(() => {
+    if (state === 'collapsed') {
+      setOpen(true)
+    }
+  }, [setOpen, state])
 
   return (
     <Sidebar collapsible="icon" className="moldy-sidebar-rail">
@@ -113,7 +121,7 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   tooltip={t('newAgent')}
-                  render={<Link href="/agents/new" />}
+                  render={<Link href="/agents/new" onClick={expandSidebarFromIcon} />}
                   className={newAgentButtonClass}
                 >
                   <PlusIcon className="size-4" />
@@ -141,7 +149,7 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       isActive={isActive}
                       tooltip={item.label}
-                      render={<Link href={item.href} />}
+                      render={<Link href={item.href} onClick={expandSidebarFromIcon} />}
                       className={activeMenuClass}
                     >
                       <item.icon className="size-4" />
@@ -166,6 +174,8 @@ export function AppSidebar() {
                 tooltip={t('tooltip.capabilities')}
                 isActive={isFeatureActive}
                 expanded={featuresExpanded}
+                isSidebarCollapsed={state === 'collapsed'}
+                onExpandSidebar={expandSidebarFromIcon}
                 onToggle={() => setFeaturesExpanded(!featuresExpanded)}
                 items={featureChildren}
                 menuClass={activeMenuClass}
@@ -176,6 +186,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       <AppSidebarFooter />
+      <SidebarRail />
     </Sidebar>
   )
 }

@@ -37,29 +37,36 @@ class IntersectionObserverPolyfill {
     return []
   }
 }
+class MemoryStorage implements Storage {
+  private readonly items = new Map<string, string>()
+
+  get length(): number {
+    return this.items.size
+  }
+
+  clear(): void {
+    this.items.clear()
+  }
+
+  getItem(key: string): string | null {
+    return this.items.get(key) ?? null
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.items.keys())[index] ?? null
+  }
+
+  removeItem(key: string): void {
+    this.items.delete(key)
+  }
+
+  setItem(key: string, value: string): void {
+    this.items.set(key, value)
+  }
+}
 globalThis.ResizeObserver ??= ResizeObserverPolyfill as unknown as typeof ResizeObserver
 globalThis.IntersectionObserver ??=
   IntersectionObserverPolyfill as unknown as typeof IntersectionObserver
-
-function createMemoryStorage(): Storage {
-  const store = new Map<string, string>()
-  return {
-    get length() {
-      return store.size
-    },
-    clear: () => {
-      store.clear()
-    },
-    getItem: (key: string) => store.get(key) ?? null,
-    key: (index: number) => Array.from(store.keys())[index] ?? null,
-    removeItem: (key: string) => {
-      store.delete(key)
-    },
-    setItem: (key: string, value: string) => {
-      store.set(key, value)
-    },
-  }
-}
 
 function hasStorageApi(value: unknown): value is Storage {
   return (
@@ -76,7 +83,7 @@ function ensureWindowStorage(key: 'localStorage' | 'sessionStorage'): void {
   if (hasStorageApi(window[key])) return
   Object.defineProperty(window, key, {
     configurable: true,
-    value: createMemoryStorage(),
+    value: new MemoryStorage(),
   })
 }
 
@@ -104,6 +111,9 @@ if (typeof window !== 'undefined') {
   }
   if (!HTMLElement.prototype.hasPointerCapture) {
     HTMLElement.prototype.hasPointerCapture = () => false
+  }
+  if (!HTMLElement.prototype.setPointerCapture) {
+    HTMLElement.prototype.setPointerCapture = () => {}
   }
   if (!HTMLElement.prototype.releasePointerCapture) {
     HTMLElement.prototype.releasePointerCapture = () => {}

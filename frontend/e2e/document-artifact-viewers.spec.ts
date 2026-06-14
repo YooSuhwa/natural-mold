@@ -1,6 +1,11 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { request as playwrightRequest, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import {
+  request as playwrightRequest,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from '@playwright/test'
 import { test, expect } from './fixtures'
 
 const BACKEND_PORT = process.env.E2E_BACKEND_PORT ?? '8001'
@@ -69,7 +74,10 @@ interface ViewerCase {
   verify: (page: Page) => Promise<void>
 }
 
-async function failWithBody(label: string, response: { status: () => number; text: () => Promise<string> }) {
+async function failWithBody(
+  label: string,
+  response: { status: () => number; text: () => Promise<string> },
+) {
   const body = await response.text().catch(() => '')
   throw new Error(`${label} failed (${response.status()}): ${body.slice(0, 800)}`)
 }
@@ -148,7 +156,8 @@ async function setupDocumentAgent(request: APIRequestContext): Promise<E2ESetup>
       csrfHeaders,
       { install_mode: 'overwrite_existing' },
     )
-    const installedSkillId = installation.installed_skill_id ?? item.installation.installed_resource_id
+    const installedSkillId =
+      installation.installed_skill_id ?? item.installation.installed_resource_id
     if (!installedSkillId) throw new Error(`Marketplace install did not return a skill id: ${slug}`)
     installedSkillIds.push(installedSkillId)
   }
@@ -272,7 +281,9 @@ async function openArtifactViewer(page: Page, filename: string): Promise<void> {
   const artifactButton = page.getByRole('button', { name: new RegExp(filename) }).last()
   await expect(artifactButton).toBeVisible({ timeout: 20_000 })
   await artifactButton.click()
-  await expect(artifactViewerPanel(page, filename).getByRole('heading', { name: filename })).toBeVisible()
+  await expect(
+    artifactViewerPanel(page, filename).getByRole('heading', { name: filename }),
+  ).toBeVisible()
 }
 
 function artifactViewerPanel(page: Page, filename: string): Locator {
@@ -310,6 +321,46 @@ async function screenshot(page: Page, captureDir: string, filename: string): Pro
   })
 }
 
+async function locatorWidth(locator: Locator): Promise<number> {
+  const box = await locator.boundingBox()
+  if (!box) throw new Error('Expected locator to have a bounding box')
+  return box.width
+}
+
+async function dragHorizontally(page: Page, locator: Locator, deltaX: number): Promise<void> {
+  const box = await locator.boundingBox()
+  if (!box) throw new Error('Expected drag handle to have a bounding box')
+  const startX = box.x + box.width / 2
+  const startY = box.y + Math.min(40, box.height / 2)
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX + deltaX, startY)
+  await page.mouse.up()
+}
+
+async function verifyRightRailResize(page: Page, filename: string): Promise<void> {
+  const rail = page.locator('[data-slot="chat-right-rail"]').first()
+  const chatPanel = page.locator('section.moldy-panel').first()
+  const handle = page.getByRole('separator', {
+    name: /파일 패널 크기 조절|Resize files panel/,
+  })
+
+  await expect(artifactViewerPanel(page, filename)).toBeVisible()
+  const initialRailWidth = await locatorWidth(rail)
+  const initialChatWidth = await locatorWidth(chatPanel)
+
+  await dragHorizontally(page, handle, -160)
+  await expect.poll(() => locatorWidth(rail)).toBeGreaterThan(initialRailWidth + 120)
+  await expect.poll(() => locatorWidth(chatPanel)).toBeLessThan(initialChatWidth - 120)
+  const stableExpandedWidth = await locatorWidth(rail)
+
+  await dragHorizontally(page, handle, 420)
+  await expect.poll(() => locatorWidth(rail)).toBeLessThan(20)
+
+  await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
+  await expect.poll(() => locatorWidth(rail)).toBeGreaterThan(stableExpandedWidth - 8)
+}
+
 test.describe('Document artifact viewers', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
 
@@ -340,10 +391,7 @@ test.describe('Document artifact viewers', () => {
     await api?.dispose()
   })
 
-  test('generates and previews DOCX, XLSX, PPTX, and HWPX artifacts', async ({
-    page,
-    errors,
-  }) => {
+  test('generates and previews DOCX, XLSX, PPTX, and HWPX artifacts', async ({ page, errors }) => {
     const cases: ViewerCase[] = [
       {
         marker: 'E2E_DOCX',
@@ -391,10 +439,9 @@ test.describe('Document artifact viewers', () => {
         filename: 'moldy-patent-demo.hwpx',
         extension: 'hwpx',
         verify: async (viewerPage) => {
-          const image = artifactViewerPanel(viewerPage, 'moldy-patent-demo.hwpx').getByRole(
-            'img',
-            { name: 'moldy-patent-demo.hwpx' },
-          )
+          const image = artifactViewerPanel(viewerPage, 'moldy-patent-demo.hwpx').getByRole('img', {
+            name: 'moldy-patent-demo.hwpx',
+          })
           await expect(image).toBeVisible({ timeout: 30_000 })
           await expect
             .poll(
@@ -417,7 +464,9 @@ test.describe('Document artifact viewers', () => {
 
     await page.goto(`/agents/${setup.agentId}/conversations/${setup.conversationId}`)
     await page.waitForLoadState('domcontentloaded')
-    await expect(page.getByRole('heading', { name: /E2E Document Artifact Agent/ }).first()).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /E2E Document Artifact Agent/ }).first(),
+    ).toBeVisible()
     await expect(page.getByText('Document Artifact Viewer E2E').first()).toBeVisible()
 
     for (const item of cases) {
@@ -429,6 +478,8 @@ test.describe('Document artifact viewers', () => {
       await item.verify(page)
       await screenshot(page, captureDir, `${item.extension}-viewer.png`)
     }
+
+    await verifyRightRailResize(page, cases[cases.length - 1].filename)
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
@@ -453,11 +504,7 @@ test.describe('Document artifact viewers', () => {
     )
     await approveExecuteInSkill(page)
 
-    const artifact = await waitForArtifactByName(
-      api,
-      conversation.id,
-      'moldy-docx-demo.docx',
-    )
+    const artifact = await waitForArtifactByName(api, conversation.id, 'moldy-docx-demo.docx')
     expect(artifact.status).toBe('ready')
 
     const activeRun = await waitForActiveRun(api, conversation.id)
