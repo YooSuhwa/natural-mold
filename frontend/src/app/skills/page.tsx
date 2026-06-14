@@ -16,14 +16,13 @@ import {
 } from '@/components/shared/resource-layout'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SkillCard } from '@/components/skill/skill-card'
-import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
-import { SkillDetailDialog } from '@/components/skill/skill-detail-dialog'
-import { SkillBuilderDialog } from '@/components/skill/skill-builder-dialog'
-import { PublishWizard } from '@/components/marketplace/publish-wizard'
+import { coerceSkillDetailTab, type SkillDetailTab } from '@/components/skill/skill-detail-tabs'
+import { SkillPageDialogs } from '@/components/skill/skill-page-dialogs'
 import { useSkills } from '@/lib/hooks/use-skills'
 import type { Skill, SkillKind } from '@/lib/types/skill'
 
 type CreateTab = 'chat' | 'text' | 'package'
+type BuilderMode = 'create' | 'improve'
 type SkillTab = 'all' | Skill['kind']
 
 const ALL_TAB = 'all'
@@ -38,11 +37,25 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleDateString()
 }
 
+function replaceDetailUrl(skillId: string | null, tab: SkillDetailTab) {
+  if (typeof window === 'undefined') return
+  if (!skillId) {
+    window.history.replaceState(null, '', '/skills')
+    return
+  }
+  const params = new URLSearchParams()
+  params.set('detailId', skillId)
+  if (tab !== 'content') params.set('tab', tab)
+  window.history.replaceState(null, '', `/skills?${params.toString()}`)
+}
+
 export default function SkillsPage() {
   const t = useTranslations('skill')
   const [createOpen, setCreateOpen] = useState(false)
   const [createTab, setCreateTab] = useState<CreateTab>('chat')
   const [builderOpen, setBuilderOpen] = useState(false)
+  const [builderMode, setBuilderMode] = useState<BuilderMode>('create')
+  const [builderSourceSkillId, setBuilderSourceSkillId] = useState<string | null>(null)
   const [builderInitialRequest, setBuilderInitialRequest] = useState('')
   const [activeTab, setActiveTab] = useState<SkillTab>(ALL_TAB)
   const [search, setSearch] = useState('')
@@ -62,11 +75,35 @@ export default function SkillsPage() {
     if (typeof window === 'undefined') return null
     return new URLSearchParams(window.location.search).get('detailId')
   })
+  const [detailTab, setDetailTab] = useState<SkillDetailTab>(() => {
+    if (typeof window === 'undefined') return 'content'
+    return coerceSkillDetailTab(new URLSearchParams(window.location.search).get('tab'))
+  })
   const [publishSkill, setPublishSkill] = useState<Skill | null>(null)
 
   function openCreate(tab: CreateTab) {
     setCreateTab(tab)
     setCreateOpen(true)
+  }
+
+  function openDetail(id: string, tab: SkillDetailTab = 'content') {
+    setDetailId(id)
+    setDetailTab(tab)
+    replaceDetailUrl(id, tab)
+  }
+
+  function openBuilderCreate(request: string) {
+    setBuilderMode('create')
+    setBuilderSourceSkillId(null)
+    setBuilderInitialRequest(request)
+    setBuilderOpen(true)
+  }
+
+  function openBuilderImprove(skillId: string) {
+    setBuilderMode('improve')
+    setBuilderSourceSkillId(skillId)
+    setBuilderInitialRequest('')
+    setBuilderOpen(true)
   }
 
   const data = useMemo(() => skills ?? [], [skills])
@@ -168,7 +205,7 @@ export default function SkillsPage() {
                       updatedLabel={formatDate(skill.updated_at)}
                       actionLabel={t('actions.manage')}
                       publishLabel={t('actions.publish')}
-                      onOpen={setDetailId}
+                      onOpen={openDetail}
                       onPublish={setPublishSkill}
                     />
                   ))}
@@ -179,43 +216,32 @@ export default function SkillsPage() {
         )}
       </ResourcePanel>
 
-      <SkillCreateDialog
-        key={`create-${createTab}`}
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        initialTab={createTab}
-        onCreated={(id) => setDetailId(id)}
-        onStartChat={(request) => {
-          setBuilderInitialRequest(request)
-          setBuilderOpen(true)
+      <SkillPageDialogs
+        createOpen={createOpen}
+        createTab={createTab}
+        builderOpen={builderOpen}
+        builderMode={builderMode}
+        builderSourceSkillId={builderSourceSkillId}
+        builderInitialRequest={builderInitialRequest}
+        detailId={detailId}
+        detailTab={detailTab}
+        publishSkill={publishSkill}
+        onCreateOpenChange={setCreateOpen}
+        onBuilderOpenChange={setBuilderOpen}
+        onCreated={(id, tab = 'content') => openDetail(id, tab)}
+        onStartChat={openBuilderCreate}
+        onDetailTabChange={(tab) => {
+          setDetailTab(tab)
+          replaceDetailUrl(detailId, tab)
         }}
-      />
-      <SkillBuilderDialog
-        open={builderOpen}
-        mode="create"
-        initialRequest={builderInitialRequest}
-        onOpenChange={setBuilderOpen}
-        onCreated={(id) => setDetailId(id)}
-      />
-      <SkillDetailDialog
-        skillId={detailId}
-        open={!!detailId}
-        onOpenChange={(open) => {
+        onImprove={openBuilderImprove}
+        onDetailOpenChange={(open) => {
           if (open) return
           setDetailId(null)
-          // /marketplace에서 ``?detailId=...`` deep-link로 진입한 경우, dialog
-          // 닫을 때 URL의 query string도 함께 정리한다. history.replaceState로
-          // route 자체는 다시 그리지 않아 list scroll/state 보존.
-          if (typeof window !== 'undefined' && window.location.search) {
-            window.history.replaceState(null, '', '/skills')
-          }
+          setDetailTab('content')
+          replaceDetailUrl(null, 'content')
         }}
-      />
-
-      <PublishWizard
-        skill={publishSkill}
-        open={!!publishSkill}
-        onOpenChange={(open) => !open && setPublishSkill(null)}
+        onPublishOpenChange={(open) => !open && setPublishSkill(null)}
       />
     </ResourcePage>
   )

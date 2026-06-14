@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { DialogShell } from '@/components/shared/dialog-shell'
-import { skillsApi } from '@/lib/api/skills'
 import {
   useDeleteSkill,
   useDeleteSkillFile,
@@ -19,13 +18,16 @@ import { SkillCredentialBindingsPanel } from './skill-credential-bindings-panel'
 import { isTextFile } from './skill-detail-file-utils'
 import { SkillDetailPackageFooter } from './skill-detail-package-footer'
 import { SkillDetailPackageSidebar } from './skill-detail-package-sidebar'
+import { useSkillFileRemoteCache } from './use-skill-file-remote-cache'
 
 export function PackageSkillEditor({
   skillId,
   onClose,
+  showCredentials = true,
 }: {
   readonly skillId: string
   readonly onClose: () => void
+  readonly showCredentials?: boolean
 }) {
   const t = useTranslations('skill.detailDialog')
   const { data: skill } = useSkill(skillId)
@@ -36,45 +38,24 @@ export function PackageSkillEditor({
   const fileEntries = useMemo(() => (files ?? []).filter((file) => !file.is_dir), [files])
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Map<string, string>>(new Map())
-  const [remoteCache, setRemoteCache] = useState<Map<string, string>>(new Map())
   const [confirmingSkillDelete, setConfirmingSkillDelete] = useState(false)
   const [confirmingFileDelete, setConfirmingFileDelete] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newPath, setNewPath] = useState('')
+  const handleLoadError = useCallback(
+    (message: string) => toast.error(t('loadFailed', { message })),
+    [t],
+  )
+  const { remoteCache, setRemoteCache } = useSkillFileRemoteCache({
+    skillId,
+    selectedPath,
+    onLoadError: handleLoadError,
+  })
 
   if (selectedPath === null && fileEntries.length > 0) {
     const skillMd = fileEntries.find((file) => file.path.endsWith('SKILL.md'))
     setSelectedPath(skillMd?.path ?? fileEntries[0].path)
   }
-
-  useEffect(() => {
-    if (!selectedPath) return
-    if (!isTextFile(selectedPath)) return
-    if (remoteCache.has(selectedPath)) return
-    let cancelled = false
-    fetch(skillsApi.fileUrl(skillId, selectedPath), { credentials: 'include' })
-      .then((response) =>
-        response.ok ? response.text() : Promise.reject(new Error(`HTTP ${response.status}`)),
-      )
-      .then((body) => {
-        if (cancelled) return
-        setRemoteCache((prev) => {
-          const next = new Map(prev)
-          next.set(selectedPath, body)
-          return next
-        })
-      })
-      .catch((error) => {
-        if (cancelled) return
-        toast.error(
-          t('loadFailed', { message: error instanceof Error ? error.message : 'unknown' }),
-        )
-      })
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skillId, selectedPath])
 
   const loadingFile = !!selectedPath && isTextFile(selectedPath) && !remoteCache.has(selectedPath)
   const dirtyPaths = useMemo(() => new Set(drafts.keys()), [drafts])
@@ -216,7 +197,7 @@ export function PackageSkillEditor({
         </DialogShell.Sidebar>
 
         <DialogShell.Body className="flex flex-col gap-3 py-4">
-          <SkillCredentialBindingsPanel skillId={skillId} />
+          {showCredentials ? <SkillCredentialBindingsPanel skillId={skillId} /> : null}
           <FileEditorPane
             skillId={skillId}
             selectedPath={selectedPath}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -14,7 +15,13 @@ import {
   useSkillCredentialRequirements,
 } from '@/lib/hooks/use-marketplace'
 
-export function SkillCredentialBindingsPanel({ skillId }: { readonly skillId: string }) {
+export function SkillCredentialBindingsPanel({
+  skillId,
+  emptyFallback = null,
+}: {
+  readonly skillId: string
+  readonly emptyFallback?: ReactNode
+}) {
   const t = useTranslations('skill.detailDialog')
   const { data: requirements, isLoading: requirementsLoading } =
     useSkillCredentialRequirements(skillId)
@@ -51,9 +58,7 @@ export function SkillCredentialBindingsPanel({ skillId }: { readonly skillId: st
     return <Skeleton className="h-20 w-full rounded-lg" />
   }
 
-  if (!requirements?.length) {
-    return null
-  }
+  if (!requirements?.length) return emptyFallback
 
   return (
     <section className="rounded-lg border border-border/70 bg-muted/20 p-3">

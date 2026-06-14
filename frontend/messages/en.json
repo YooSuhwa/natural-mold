@@ -2174,6 +2174,30 @@
       "binaryFile": "Binary File",
       "binaryUnavailable": "Binary Unavailable",
       "download": "Download",
+      "improveByChat": "Improve by chat",
+      "credentialsEmpty": "This skill does not require credentials.",
+      "tabs": {
+        "content": "Content",
+        "credentials": "Credentials",
+        "evaluation": "Evaluation",
+        "history": "History",
+        "metadata": "Metadata"
+      },
+      "evaluation": {
+        "emptyTitle": "No evaluation set yet",
+        "emptyDescription": "When the builder or Evaluation tab creates criteria, you can rerun them here.",
+        "caseCount": "{count} cases"
+      },
+      "history": {
+        "empty": "History starts from the current version.",
+        "revision": "Revision {number}",
+        "files": "{count} files"
+      },
+      "metadata": {
+        "name": "Name",
+        "description": "Description",
+        "version": "Version"
+      },
       "credentialBindingsTitle": "Credential bindings",
       "credentialBindingsDescription": "Choose the credential this skill should use when it runs. Changes apply from the next run.",
       "credentialPlaceholder": "Select a credential",

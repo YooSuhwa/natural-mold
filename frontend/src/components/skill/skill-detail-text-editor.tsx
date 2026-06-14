@@ -16,9 +16,11 @@ import { SkillCredentialBindingsPanel } from './skill-credential-bindings-panel'
 export function TextSkillEditor({
   skillId,
   onClose,
+  showCredentials = true,
 }: {
   readonly skillId: string
   readonly onClose: () => void
+  readonly showCredentials?: boolean
 }) {
   const t = useTranslations('skill.detailDialog')
   const { data: textContent } = useSkillContent(skillId, true)
@@ -55,7 +57,7 @@ export function TextSkillEditor({
   return (
     <>
       <DialogShell.Body>
-        <SkillCredentialBindingsPanel skillId={skillId} />
+        {showCredentials ? <SkillCredentialBindingsPanel skillId={skillId} /> : null}
         <Textarea
           value={editor}
           rows={20}

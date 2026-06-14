@@ -3327,7 +3327,9 @@ Expected: both pass. Fix any new copy or design-system violations.
 - Modify: `frontend/src/components/agent/visual-settings/dialogs/tools-skills-dialog.tsx`
 - Modify: `frontend/src/lib/types/skill.ts`
 - Create: `frontend/src/components/skill/skill-card.tsx`
+- Create: `frontend/src/components/skill/skill-page-dialogs.tsx`
 - Create: `frontend/src/components/skill/skill-quality-inline.tsx`
+- Create: `frontend/src/components/skill/use-skill-file-remote-cache.ts`
 - Create: `frontend/src/components/skill/skill-detail-file-utils.ts`
 - Create: `frontend/src/components/skill/skill-detail-text-editor.tsx`
 - Create: `frontend/src/components/skill/skill-detail-package-editor.tsx`
@@ -3340,6 +3342,8 @@ Expected: both pass. Fix any new copy or design-system violations.
 - Create: `frontend/src/components/skill/skill-evaluation-summary-badge.tsx`
 - Create: `frontend/src/components/skill/skill-health-badge.tsx`
 - Create: `frontend/src/components/skill/skill-evaluation-tab.tsx`
+- Create: `frontend/src/components/skill/skill-credentials-tab.tsx`
+- Create: `frontend/src/components/skill/skill-metadata-tab.tsx`
 - Create: `frontend/src/components/skill/skill-evaluation-run-detail.tsx`
 - Create: `frontend/src/components/skill/skill-history-tab.tsx`
 - Create: `frontend/src/components/skill/skill-revision-detail.tsx`
@@ -3366,25 +3370,25 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add evaluation badge rendering to `/skills` cards without changing existing publish/manage actions.
 - [ ] Add `/skills` state filter chips for needs credentials, needs rerun, evaluation failed, published, and local/draft states without adding new app-level navigation entries.
 - [x] Add compact evaluation subtitles to `ToolsSkillsDialog` skill rows.
-- [ ] Add `SkillDetailTab = 'content' | 'credentials' | 'evaluation' | 'history' | 'metadata'`.
-- [ ] Add `initialTab?: SkillDetailTab` to `SkillDetailDialog`.
-- [ ] Support `/skills?detailId=<id>&tab=<tab>` deep links for detail tabs while keeping the route inside `/skills`.
+- [x] Add `SkillDetailTab = 'content' | 'credentials' | 'evaluation' | 'history' | 'metadata'`.
+- [x] Add `initialTab?: SkillDetailTab` to `SkillDetailDialog`.
+- [x] Support `/skills?detailId=<id>&tab=<tab>` deep links for detail tabs while keeping the route inside `/skills`.
 - [ ] Add `getVisibleSkillDetailTabs(skill, state, initialTab)` and cover the conditional tab rules from the Frontend UX section.
-- [ ] Add `대화로 개선` / `Improve by chat` action in `SkillDetailDialog`.
-- [ ] Start a `mode="improve"` skill builder session from that action.
+- [x] Add `대화로 개선` / `Improve by chat` action in `SkillDetailDialog`.
+- [x] Start a `mode="improve"` skill builder session from that action.
 - [x] Split the current text editor, package editor, file preview, package sidebar, package footer, and credential binding panel out of `skill-detail-dialog.tsx`.
 - [ ] Refactor `skill-detail-dialog.tsx` so it renders one `DialogShell.Body` and one `DialogShell.Footer`.
-- [ ] Keep package file editing behavior intact in the `Files` content tab.
-- [ ] Move credential bindings from the content editor surface into the `Credentials` tab.
+- [x] Keep package file editing behavior intact in the `Files` content tab.
+- [x] Move credential bindings from the content editor surface into the `Credentials` tab.
 - [ ] Do not render a blank Credentials tab when a skill has no credential requirements and no credential-related deep link.
 - [ ] In the `Credentials` tab, show required/optional badges, definition key, current binding state, and a missing-required summary at the top.
-- [ ] When `health.state === "needs_credentials"`, render the skill card/detail status as `자격증명 필요` / `Needs credentials`.
+- [x] When `health.state === "needs_credentials"`, render the skill card/detail status as `자격증명 필요` / `Needs credentials`.
 - [ ] In the `Evaluation` tab, if required credentials are missing, replace `평가 실행` with `자격증명 연결` and switch to the `Credentials` tab on click.
 - [ ] After binding or deleting a credential, invalidate skill detail, skill list, marketplace item, and evaluation queries so Skill Health updates immediately.
-- [ ] Add `Metadata` tab using existing `useUpdateSkillMetadata`.
-- [ ] Add an `Evaluation` tab/surface to the existing skill detail dialog when visible tab rules require it.
-- [ ] Add a `History` tab/surface to the existing skill detail dialog when visible tab rules require it.
-- [ ] Show the legacy empty-state copy when History is opened for a skill with no revisions.
+- [x] Add `Metadata` tab using existing `useUpdateSkillMetadata`.
+- [x] Add an `Evaluation` tab/surface to the existing skill detail dialog when visible tab rules require it.
+- [x] Add a `History` tab/surface to the existing skill detail dialog when visible tab rules require it.
+- [x] Show the legacy empty-state copy when History is opened for a skill with no revisions.
 - [ ] In `History`, list revisions newest first with operation, revision number, changelog summary, current marker, content hash, and file count.
 - [ ] In `History`, show selected revision detail with changelog items, changed files, compatibility result, and evaluation snapshot.
 - [ ] Disable rollback for the current revision.
