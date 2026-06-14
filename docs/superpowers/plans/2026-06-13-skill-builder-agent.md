@@ -3104,9 +3104,9 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [ ] Refuse eval execution that needs required user credentials when bindings are missing.
 - [ ] Return `SYSTEM_LLM_NOT_CONFIGURED` before creating execution artifacts when grader/model-based evaluation lacks the system model.
 - [ ] Refuse eval network execution when the skill uses `curl` or external URLs but lacks `execution_profile.requires_network: true`.
-- [ ] Extend `SkillToolContext` with non-secret audit correlation fields needed by `execute_in_skill`: user id, agent id, thread id, and optional run id.
-- [ ] Add best-effort credential-use audit writes in `execute_in_skill` for each unique injected user credential.
-- [ ] The credential audit metadata must include only `kind`, skill id/slug, requirement key, agent id, thread id, run id, command executable, and timeout seconds.
+- [x] Extend `SkillToolContext` with non-secret audit correlation fields needed by `execute_in_skill`: user id, agent id, thread id, and optional run id.
+- [x] Add best-effort credential-use audit writes in `execute_in_skill` for each unique injected user credential.
+- [x] The credential audit metadata must include only `kind`, skill id/slug, requirement key, agent id, thread id, run id, command executable, and timeout seconds.
 - [ ] Implement grader result format with `expectations`, `summary`, `execution_metrics`, `timing`, `claims`, and `eval_feedback`.
 - [ ] Implement benchmark aggregation with mean/stddev/min/max and delta.
 - [ ] Persist the aggregate to `session.eval_result`.
@@ -3124,6 +3124,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
   - startup reconciliation marks stale running/grading rows interrupted
   - credential audit rows are written when `execute_in_skill` injects a bound credential
   - credential audit metadata does not contain decrypted values, stdout, stderr, or raw command arguments
+- [x] Add regression coverage for `execute_in_skill` credential audit rows and sanitized metadata.
 - [ ] Run:
 
 ```bash

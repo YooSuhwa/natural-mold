@@ -10,8 +10,13 @@ from pathlib import Path
 
 from langchain_core.tools import BaseTool, StructuredTool
 
+from app.agent_runtime.skill_executor_audit import record_credential_audits
 from app.config import settings
-from app.marketplace.skill_runtime import SkillRuntimeDescriptor, SkillToolContext
+from app.marketplace.skill_runtime import (
+    ResolvedCredential,
+    SkillRuntimeDescriptor,
+    SkillToolContext,
+)
 from app.tools.risk import attach_tool_risk, execute_in_skill_risk
 
 _SHELL_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
@@ -193,17 +198,31 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
         # hot path here only does an in-memory copy; no decrypt, no DB.
         # ``env_map`` shape: ``{credential_field_name: env_var_name}``.
         injected_env: dict[str, str] = {}
-        for rc in descriptor.credential_bindings.values():
+        injected_credentials: list[tuple[str, ResolvedCredential]] = []
+        for requirement_key, rc in descriptor.credential_bindings.items():
+            injected = False
             for field, env_name in rc.env_map.items():
                 value = rc.decrypted.get(field)
                 if value is None:
                     continue
                 env[env_name] = value
                 injected_env[env_name] = value
+                injected = True
+            if injected:
+                injected_credentials.append((requirement_key, rc))
 
         args, error = _prepare_skill_subprocess_args(command, resolved=resolved, env=env)
         if error is not None or args is None:
             return error or "Error: invalid command."
+        timeout_seconds = _skill_timeout_seconds(descriptor)
+        executable = Path(args[0]).name
+        await record_credential_audits(
+            ctx,
+            descriptor,
+            injected_credentials=injected_credentials,
+            executable=executable,
+            timeout_seconds=timeout_seconds,
+        )
 
         proc = await asyncio.create_subprocess_exec(
             *args,
@@ -212,7 +231,6 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             stderr=asyncio.subprocess.PIPE,
             env=env,
         )
-        timeout_seconds = _skill_timeout_seconds(descriptor)
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
         except TimeoutError:

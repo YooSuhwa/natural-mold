@@ -125,6 +125,9 @@ class SkillToolContext:
     output_dir: Path
     runtime_root: Path
     descriptors: dict[str, SkillRuntimeDescriptor] = field(default_factory=dict)
+    user_id: uuid.UUID | None = None
+    agent_id: uuid.UUID | None = None
+    run_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +165,15 @@ def _per_thread_runtime_root(
             data_dir / "runtime" / thread_id / "agents" / agent_runtime_name / "skills"
         ).resolve()
     return (data_dir / "runtime" / thread_id / "skills").resolve()
+
+
+def _uuid_or_none(raw: str | None) -> uuid.UUID | None:
+    if not raw:
+        return None
+    try:
+        return uuid.UUID(str(raw))
+    except ValueError:
+        return None
 
 
 def _materialize_skill(descriptor: SkillRuntimeDescriptor, runtime_root: Path) -> None:
@@ -278,6 +290,8 @@ def build_skill_runtime_context(
         output_dir=output_dir,
         runtime_root=runtime_root,
         descriptors=descriptors,
+        user_id=_uuid_or_none(cfg.credential_subject_user_id or cfg.user_id),
+        agent_id=_uuid_or_none(cfg.agent_id),
     )
 
 
