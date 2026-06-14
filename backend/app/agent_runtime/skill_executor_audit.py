@@ -80,7 +80,7 @@ async def _write_credential_audits(
                 continue
             seen.add(credential_key)
             metadata: dict[str, object] = {
-                "kind": "execute_in_skill",
+                "kind": ctx.audit_kind,
                 "skill_id": str(descriptor.id),
                 "skill_slug": descriptor.slug,
                 "requirement_key": requirement_key,
@@ -113,7 +113,7 @@ async def _write_sandbox_denial(
     from app.services import audit_service
 
     metadata: dict[str, object] = {
-        "kind": "execute_in_skill",
+        "kind": ctx.audit_kind,
         "skill_id": str(descriptor.id),
         "skill_slug": descriptor.slug,
         "thread_id": ctx.thread_id,

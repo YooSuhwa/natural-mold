@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
 from math import sqrt
 from pathlib import Path
 from typing import Final
 
+from app.agent_runtime.skill_executor import _create_skill_execute_tool
+from app.marketplace.skill_runtime import SkillToolContext
 from app.schemas.skill_builder import JsonValue
 
 REQUIRED_GRADER_RESULT_KEYS: Final = (
@@ -15,9 +18,30 @@ REQUIRED_GRADER_RESULT_KEYS: Final = (
     "claims",
     "eval_feedback",
 )
+_POLICY_PROBE_MARKER: Final = "MOLDY_EVAL_POLICY_OK"
+_POLICY_PROBE_OUTPUT_FILE: Final = "eval-policy-probe.txt"
+_POLICY_PROBE_CODE: Final = "\n".join(
+    (
+        "import os",
+        "import pathlib",
+        "cwd = pathlib.Path.cwd().resolve()",
+        "home = pathlib.Path(os.environ['HOME']).resolve()",
+        "pythonpath = pathlib.Path(os.environ['PYTHONPATH']).resolve()",
+        "output_dir = pathlib.Path(os.environ['SKILL_OUTPUT_DIR']).resolve()",
+        "outputs_dir = pathlib.Path(os.environ['OUTPUTS_DIR']).resolve()",
+        "if home != cwd or pythonpath != cwd or output_dir != outputs_dir:",
+        "    raise SystemExit('scoped env mismatch')",
+        f"(output_dir / '{_POLICY_PROBE_OUTPUT_FILE}').write_text('ok')",
+        f"print('{_POLICY_PROBE_MARKER}')",
+    )
+)
 
 
 class GraderResultError(ValueError):
+    pass
+
+
+class EvalRuntimePolicyError(RuntimeError):
     pass
 
 
@@ -42,6 +66,39 @@ def prepare_eval_output_dirs(root: Path, *, run_id: str) -> EvalOutputDirs:
     with_skill.mkdir(parents=True, exist_ok=True)
     without_skill.mkdir(parents=True, exist_ok=True)
     return EvalOutputDirs(root=run_root, with_skill=with_skill, without_skill=without_skill)
+
+
+async def run_eval_skill_command(
+    ctx: SkillToolContext,
+    *,
+    skill_slug: str | None = None,
+    skill_directory: str | None = None,
+    command: str,
+) -> str:
+    if (skill_slug is None) == (skill_directory is None):
+        raise EvalRuntimePolicyError("provide exactly one skill slug or skill directory")
+    tool = _create_skill_execute_tool(ctx)
+    coroutine = tool.coroutine
+    if not callable(coroutine):
+        raise EvalRuntimePolicyError("execute_in_skill coroutine is unavailable")
+    directory = skill_directory or f"/runtime/{ctx.thread_id}/skills/{skill_slug}/"
+    result = await coroutine(
+        skill_directory=directory,
+        command=command,
+    )
+    return str(result)
+
+
+async def run_eval_runtime_policy_probe(ctx: SkillToolContext) -> None:
+    if not ctx.descriptors:
+        return
+    skill_slug = next(iter(ctx.descriptors))
+    command = f"python -c {shlex.quote(_POLICY_PROBE_CODE)}"
+    result = await run_eval_skill_command(ctx, skill_slug=skill_slug, command=command)
+    if result.startswith("Error:"):
+        raise EvalRuntimePolicyError(result.strip())
+    if _POLICY_PROBE_MARKER not in {line.strip() for line in result.splitlines()}:
+        raise EvalRuntimePolicyError("evaluation runtime policy probe did not complete")
 
 
 def aggregate_benchmark(

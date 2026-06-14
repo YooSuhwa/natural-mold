@@ -101,6 +101,8 @@ async def _build_runtime_context(
         data_dir=data_dir,
         output_root=data_dir / "skill-evaluation-runs",
     )
+    context.run_id = str(run.id)
+    context.audit_kind = "skill_evaluation"
     try:
         await resolve_runtime_credentials(context, db=db, cfg=cfg)
     except AppError as exc:

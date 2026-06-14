@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import uuid
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,8 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.credentials import service as credential_service
 from app.models.audit_event import AuditEvent
+from app.models.credential_audit_log import CredentialAuditLog
+from app.models.marketplace import SkillCredentialBinding
 from app.models.skill_evaluation import SkillEvaluationRun
+from app.models.user import User
 from app.schemas.skill_builder import JsonValue
 from app.services import skill_evaluation_service
 from app.services.skill_evaluation_worker import SkillEvaluationWorker
@@ -68,6 +74,14 @@ def _skill_content() -> str:
     )
 
 
+def _package_zip(files: dict[str, str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for path, content in files.items():
+            archive.writestr(path, content)
+    return buffer.getvalue()
+
+
 async def _create_run(
     db: AsyncSession,
     tmp_path: Path,
@@ -90,6 +104,84 @@ async def _create_run(
         skill=skill,
         name="Smoke",
         evals=evals or [{"input": "a"}],
+    )
+    return await skill_evaluation_service.create_run(
+        db,
+        user_id=TEST_USER_ID,
+        skill=skill,
+        evaluation_set=evaluation_set,
+    )
+
+
+async def _create_script_run(
+    db: AsyncSession,
+    tmp_path: Path,
+    *,
+    script: str,
+    command: str,
+    credential_secret: str | None = None,
+) -> SkillEvaluationRun:
+    db.add(
+        User(
+            id=TEST_USER_ID,
+            email="skill-eval-worker@test.com",
+            name="Skill Eval Worker",
+            hashed_password="h",
+            is_active=True,
+            is_super_user=False,
+        )
+    )
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        skill = await skill_service.create_package_skill(
+            db,
+            user_id=TEST_USER_ID,
+            zip_bytes=_package_zip(
+                {
+                    "SKILL.md": _skill_content(),
+                    "scripts/probe.py": script,
+                }
+            ),
+            name_override="Evaluator Package",
+        )
+    if credential_secret is not None:
+        skill.credential_requirements = [
+            {
+                "key": "openai",
+                "definition_key": "openai",
+                "required": True,
+                "label": "OpenAI",
+                "fields": ["api_key"],
+                "env_map": {"api_key": "OPENAI_API_KEY"},
+            }
+        ]
+        credential = await credential_service.create(
+            db,
+            user_id=TEST_USER_ID,
+            definition_key="openai",
+            name="eval key",
+            data={"api_key": credential_secret},
+        )
+        db.add(
+            SkillCredentialBinding(
+                skill_id=skill.id,
+                user_id=TEST_USER_ID,
+                requirement_key="openai",
+                credential_id=credential.id,
+                scope="skill",
+            )
+        )
+    evaluation_set = await skill_evaluation_service.create_evaluation_set(
+        db,
+        user_id=TEST_USER_ID,
+        skill=skill,
+        name="Script smoke",
+        evals=[
+            {
+                "input": "run the script-backed evaluation case",
+                "expected": "script completes",
+                "metadata": {"execute_in_skill": {"command": command}},
+            }
+        ],
     )
     return await skill_evaluation_service.create_run(
         db,
@@ -129,7 +221,8 @@ async def test_worker_completes_queued_run_and_records_audit(
     run = await _create_run(db, tmp_path, evals=[{"input": "a"}, {"input": "b"}])
     worker = SkillEvaluationWorker()
 
-    completed = await worker.run_once(db, run.id)
+    with patch.object(settings, "data_root", str(tmp_path)):
+        completed = await worker.run_once(db, run.id)
     await db.commit()
 
     assert completed is not None
@@ -155,10 +248,113 @@ async def test_worker_completes_queued_run_and_records_audit(
     assert completed.benchmark["without_skill_max_score"] == 0
     assert completed.case_results is not None
     assert len(completed.case_results) == 2
+    assert (tmp_path / "skill-evaluation-runs" / str(run.id) / "eval-policy-probe.txt").read_text(
+        encoding="utf-8"
+    ) == "ok"
     assert await _audit_actions(db) == [
         "skill_evaluation.run_start",
         "skill_evaluation.run_complete",
     ]
+
+
+async def test_worker_script_eval_uses_execute_in_skill_env_and_redaction(
+    db: AsyncSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
+    run = await _create_script_run(
+        db,
+        tmp_path,
+        script=(
+            "import os\n"
+            "from pathlib import Path\n"
+            "print('HOME=' + os.environ['HOME'])\n"
+            "print('PYTHONPATH=' + os.environ['PYTHONPATH'])\n"
+            "print('SKILL_OUTPUT_DIR=' + os.environ['SKILL_OUTPUT_DIR'])\n"
+            "print('OUTPUTS_DIR=' + os.environ['OUTPUTS_DIR'])\n"
+            "print('SECRET=' + os.environ['OPENAI_API_KEY'])\n"
+            "Path(os.environ['SKILL_OUTPUT_DIR'], 'marker.txt').write_text('ok')\n"
+        ),
+        command="python scripts/probe.py",
+        credential_secret="sk-eval-runtime-secret",
+    )
+    await db.commit()
+    worker = SkillEvaluationWorker()
+
+    with patch.object(settings, "data_root", str(tmp_path)):
+        completed = await worker.run_once(db, run.id)
+    await db.commit()
+
+    assert completed is not None
+    assert completed.status == "completed"
+    assert completed.summary is not None
+    assert completed.summary["passed_count"] == 1
+    assert completed.summary["pass_rate"] == 1
+    assert completed.case_results is not None
+    execution = completed.case_results[0]["execution"]
+    assert execution["status"] == "passed"
+    preview = execution["output_preview"]
+    assert "HOME=" in preview
+    assert "PYTHONPATH=" in preview
+    assert "SKILL_OUTPUT_DIR=" in preview
+    assert "OUTPUTS_DIR=" in preview
+    assert "OUTPUT_FILES: marker.txt" in preview
+    assert "sk-eval-runtime-secret" not in preview
+    assert "<redacted:OPENAI_API_KEY>" in preview
+
+    marker = tmp_path / "skill-evaluation-runs" / str(run.id) / "marker.txt"
+    assert marker.read_text() == "ok"
+
+    result = await db.execute(
+        select(CredentialAuditLog).where(CredentialAuditLog.action == "invoke")
+    )
+    audit = result.scalar_one()
+    assert audit.log_metadata is not None
+    assert audit.log_metadata["kind"] == "skill_evaluation"
+    assert audit.log_metadata["run_id"] == str(run.id)
+    assert "sk-eval-runtime-secret" not in str(audit.log_metadata)
+
+
+async def test_worker_script_eval_uses_execute_in_skill_sandbox_denial(
+    db: AsyncSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
+    run = await _create_script_run(
+        db,
+        tmp_path,
+        script="print('should not run')\n",
+        command="bash scripts/probe.py --token raw-secret",
+    )
+    await db.commit()
+    worker = SkillEvaluationWorker()
+
+    with patch.object(settings, "data_root", str(tmp_path)):
+        completed = await worker.run_once(db, run.id)
+    await db.commit()
+
+    assert completed is not None
+    assert completed.status == "completed"
+    assert completed.summary is not None
+    assert completed.summary["passed_count"] == 0
+    assert completed.summary["failed_count"] == 1
+    assert completed.case_results is not None
+    execution = completed.case_results[0]["execution"]
+    assert execution["status"] == "failed"
+    assert execution["output_preview"] == "Error: only python, node, or curl commands are allowed."
+
+    result = await db.execute(
+        select(AuditEvent).where(AuditEvent.action == "skill_security.sandbox_denied")
+    )
+    event = result.scalar_one()
+    assert event.reason_code == "unsupported_executable"
+    assert event.run_id == str(run.id)
+    assert event.event_metadata is not None
+    assert event.event_metadata["kind"] == "skill_evaluation"
+    assert event.event_metadata["command_executable"] == "bash"
+    assert "raw-secret" not in str(event.event_metadata)
 
 
 async def test_worker_loop_consumes_enqueued_run(
@@ -169,11 +365,12 @@ async def test_worker_loop_consumes_enqueued_run(
     await db.commit()
     worker = SkillEvaluationWorker()
 
-    await worker.start(TestSession)
-    worker.reserve_slot()
-    worker.enqueue(run.id, reserved=True)
-    completed = await _wait_for_run_status(run.id, "completed")
-    await worker.stop()
+    with patch.object(settings, "data_root", str(tmp_path)):
+        await worker.start(TestSession)
+        worker.reserve_slot()
+        worker.enqueue(run.id, reserved=True)
+        completed = await _wait_for_run_status(run.id, "completed")
+        await worker.stop()
 
     assert completed.summary is not None
     assert completed.summary["case_count"] == 1

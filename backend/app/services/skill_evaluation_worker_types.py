@@ -12,6 +12,7 @@ from app.agent_runtime.skill_builder.eval_cancellation import (
     EvalCancellationProbe,
     NoopEvalCancellationProbe,
 )
+from app.agent_runtime.skill_builder.eval_runner import EvalRuntimePolicyError
 from app.marketplace.skill_runtime import SkillToolContext
 from app.schemas.skill_builder import JsonValue
 
@@ -55,11 +56,15 @@ class DeterministicSkillEvaluationEvaluator:
     runner_version: str = DEFAULT_RUNNER_VERSION
 
     async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
-        payload = await run_deterministic_evaluation(
-            evals=context.evals,
-            runner_version=self.runner_version,
-            cancellation=context.cancellation,
-        )
+        try:
+            payload = await run_deterministic_evaluation(
+                evals=context.evals,
+                runner_version=self.runner_version,
+                cancellation=context.cancellation,
+                runtime_context=context.runtime_context,
+            )
+        except EvalRuntimePolicyError as exc:
+            raise SkillEvaluationExecutionError(str(exc)) from exc
         return SkillEvaluationResult(
             summary=payload.summary,
             benchmark=payload.benchmark,

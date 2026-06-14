@@ -3732,7 +3732,7 @@ The MVP is useful without evals, but its data model and UI should already have f
 - [x] Skill credential binding upsert/delete continues to write existing skill audit events.
 - [x] Skill credential injection through `execute_in_skill` writes credential-use audit records without leaking credential values.
 - [x] Builder/evaluation audit events appear in `/settings/audit` with sanitized metadata and no prompt/output/file-body leakage.
-- [ ] Evaluation runner uses the same sandbox, timeout, path, env, and redaction policy as current skill execution.
+- [x] Evaluation runner uses the same sandbox, timeout, path, env, and redaction policy as current skill execution.
 - [x] Generated package can be exported as `.skill` without `evals/` by default.
 - [x] Backend tests pass.
 - [x] Frontend lint/build/design/i18n checks pass.

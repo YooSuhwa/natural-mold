@@ -43,11 +43,12 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from app.storage.paths import resolve_data_path
 
 logger = logging.getLogger(__name__)
+type SkillExecutionAuditKind = Literal["execute_in_skill", "skill_evaluation"]
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -128,6 +129,7 @@ class SkillToolContext:
     user_id: uuid.UUID | None = None
     agent_id: uuid.UUID | None = None
     run_id: str | None = None
+    audit_kind: SkillExecutionAuditKind = "execute_in_skill"
 
 
 # ---------------------------------------------------------------------------
@@ -418,6 +420,7 @@ def cleanup_stale_runtime_roots(data_dir: Path, *, retention_seconds: int = 3600
 
 __all__ = [
     "ResolvedCredential",
+    "SkillExecutionAuditKind",
     "SkillRuntimeDescriptor",
     "SkillToolContext",
     "build_skill_runtime_context",
