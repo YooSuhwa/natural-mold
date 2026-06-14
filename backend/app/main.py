@@ -88,6 +88,7 @@ from app.seed.default_templates import DEFAULT_TEMPLATES
 from app.seed.e2e_llm import seed_e2e_llm
 from app.seed.e2e_scripted_model import seed_e2e_scripted_model
 from app.seed.e2e_user import seed_e2e_user
+from app.services.skill_evaluation_worker import skill_evaluation_worker
 from app.services.spend_writer import spend_queue
 
 
@@ -188,6 +189,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await sweep_stale_conversation_runs()
 
+    if settings.skill_evaluation_enabled:
+        await skill_evaluation_worker.reconcile_stale_runs(async_session)
+        await skill_evaluation_worker.start(async_session)
+
     # Spend writer — drain queue in the background so spend rows accumulate
     # without blocking agent runs. Must start before any hook is invoked.
     await spend_queue.start()
@@ -239,6 +244,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.agent_runtime.event_broker import registry as broker_registry
     from app.services.conversation_run_worker import get_run_task_registry
 
+    await skill_evaluation_worker.stop(timeout_seconds=10.0)
     await get_run_task_registry().shutdown(timeout_seconds=10.0)
 
     # 1. SSE listener 들에 sentinel 먼저. 이 순서가 뒤집히면 scheduler GC가

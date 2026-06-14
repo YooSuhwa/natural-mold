@@ -162,29 +162,35 @@ async def create_skill_evaluation_run(
         raise marketplace_credential_required(
             f"missing required skill credential bindings: {', '.join(missing)}"
         )
+    try:
+        skill_evaluation_worker.reserve_slot()
+    except SkillEvaluationQueueFull as exc:
+        raise skill_evaluation_queue_full() from exc
+    reserved_slot = True
     run = await skill_evaluation_service.create_run(
         db,
         user_id=user.id,
         skill=skill,
         evaluation_set=evaluation_set,
     )
-    await record_evaluation_audit(
-        db,
-        user=user,
-        request=request,
-        action="skill_evaluation.run_create",
-        skill_id=skill.id,
-        evaluation_set_id=evaluation_set.id,
-        run_id=run.id,
-    )
     try:
-        skill_evaluation_worker.enqueue(run.id)
-    except SkillEvaluationQueueFull as exc:
-        await db.rollback()
-        raise skill_evaluation_queue_full() from exc
-    await db.commit()
-    await db.refresh(run)
-    return SkillEvaluationRunResponse.model_validate(run)
+        await record_evaluation_audit(
+            db,
+            user=user,
+            request=request,
+            action="skill_evaluation.run_create",
+            skill_id=skill.id,
+            evaluation_set_id=evaluation_set.id,
+            run_id=run.id,
+        )
+        await db.commit()
+        await db.refresh(run)
+        skill_evaluation_worker.enqueue(run.id, reserved=True)
+        reserved_slot = False
+        return SkillEvaluationRunResponse.model_validate(run)
+    finally:
+        if reserved_slot:
+            skill_evaluation_worker.release_slot()
 
 
 @router.post(

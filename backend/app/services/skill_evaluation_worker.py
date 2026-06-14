@@ -1,78 +1,35 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
 import uuid
 from collections import deque
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Protocol
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
+from app.database import async_session
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.schemas.skill_builder import JsonValue
 from app.services import audit_service
+from app.services.skill_evaluation_worker_types import (
+    DeterministicSkillEvaluationEvaluator,
+    SkillEvaluationContext,
+    SkillEvaluationEvaluator,
+    SkillEvaluationExecutionError,
+    SkillEvaluationResult,
+)
+
+logger = logging.getLogger(__name__)
+type SkillEvaluationSessionFactory = async_sessionmaker[AsyncSession]
 
 
 class SkillEvaluationQueueFull(RuntimeError):
     pass
-
-
-class SkillEvaluationExecutionError(RuntimeError):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class SkillEvaluationContext:
-    run_id: uuid.UUID
-    skill_id: uuid.UUID
-    evaluation_set_id: uuid.UUID
-    skill_version: str | None
-    skill_content_hash: str | None
-    evals: Sequence[JsonValue]
-
-
-@dataclass(frozen=True, slots=True)
-class SkillEvaluationResult:
-    summary: dict[str, JsonValue]
-    benchmark: dict[str, JsonValue] | None = None
-    case_results: list[JsonValue] | None = None
-
-
-class SkillEvaluationEvaluator(Protocol):
-    async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult: ...
-
-
-@dataclass(slots=True)
-class DeterministicSkillEvaluationEvaluator:
-    runner_version: str = "deterministic-1"
-
-    async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
-        case_results: list[JsonValue] = [
-            {
-                "case_index": index,
-                "status": "passed",
-                "input": case,
-                "score": 1,
-                "notes": "Deterministic placeholder result.",
-            }
-            for index, case in enumerate(context.evals)
-        ]
-        case_count = len(case_results)
-        pass_rate = 1 if case_count else 0
-        return SkillEvaluationResult(
-            summary={
-                "runner_version": self.runner_version,
-                "case_count": case_count,
-                "passed_count": case_count,
-                "failed_count": 0,
-                "pass_rate": pass_rate,
-            },
-            benchmark={"baseline": "none", "score_delta": 0},
-            case_results=case_results,
-        )
 
 
 @dataclass(slots=True)
@@ -83,14 +40,33 @@ class SkillEvaluationWorker:
     queue_max_size: int = field(default_factory=lambda: settings.skill_evaluation_queue_max_size)
     _queue: deque[uuid.UUID] = field(default_factory=deque, init=False)
     _queued_ids: set[uuid.UUID] = field(default_factory=set, init=False)
+    _reserved_slots: int = field(default=0, init=False)
+    _session_factory: SkillEvaluationSessionFactory = field(default=async_session, init=False)
+    _task: asyncio.Task[None] | None = field(default=None, init=False)
+    _stopping: asyncio.Event | None = field(default=None, init=False)
+    _wake: asyncio.Event | None = field(default=None, init=False)
 
-    def enqueue(self, run_id: uuid.UUID) -> None:
-        if run_id in self._queued_ids:
-            return
-        if len(self._queue) >= self.queue_max_size:
+    def reserve_slot(self) -> None:
+        if len(self._queue) + self._reserved_slots >= self.queue_max_size:
             raise SkillEvaluationQueueFull("skill evaluation queue is full")
+        self._reserved_slots += 1
+
+    def release_slot(self) -> None:
+        self._reserved_slots = max(self._reserved_slots - 1, 0)
+
+    def enqueue(self, run_id: uuid.UUID, *, reserved: bool = False) -> None:
+        if run_id in self._queued_ids:
+            if reserved:
+                self.release_slot()
+            return
+        if not reserved and len(self._queue) + self._reserved_slots >= self.queue_max_size:
+            raise SkillEvaluationQueueFull("skill evaluation queue is full")
+        if reserved:
+            self.release_slot()
         self._queue.append(run_id)
         self._queued_ids.add(run_id)
+        if self._wake is not None:
+            self._wake.set()
 
     def pop_next(self) -> uuid.UUID | None:
         if not self._queue:
@@ -98,6 +74,46 @@ class SkillEvaluationWorker:
         run_id = self._queue.popleft()
         self._queued_ids.discard(run_id)
         return run_id
+
+    async def start(
+        self,
+        session_factory: SkillEvaluationSessionFactory | None = None,
+    ) -> None:
+        if session_factory is not None:
+            self._session_factory = session_factory
+        if self._task is not None and not self._task.done():
+            return
+        self._stopping = asyncio.Event()
+        self._wake = asyncio.Event()
+        self._task = asyncio.create_task(self._loop(), name="skill-evaluation-worker")
+
+    async def stop(self, *, timeout_seconds: float = 10.0) -> None:
+        if self._stopping is not None:
+            self._stopping.set()
+        if self._wake is not None:
+            self._wake.set()
+        task = self._task
+        if task is None:
+            return
+        try:
+            await asyncio.wait_for(task, timeout=timeout_seconds)
+        except TimeoutError:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._task = None
+        self._stopping = None
+        self._wake = None
+
+    async def reconcile_stale_runs(
+        self,
+        session_factory: SkillEvaluationSessionFactory | None = None,
+    ) -> int:
+        factory = session_factory or self._session_factory
+        async with factory() as db:
+            count = await self.mark_interrupted_runs(db)
+            await db.commit()
+            return count
 
     async def run_once(self, db: AsyncSession, run_id: uuid.UUID) -> SkillEvaluationRun | None:
         run = await _load_run(db, run_id)
@@ -157,6 +173,28 @@ class SkillEvaluationWorker:
             )
         await db.flush()
         return len(rows)
+
+    async def _loop(self) -> None:
+        while self._stopping is None or not self._stopping.is_set():
+            run_id = self.pop_next()
+            if run_id is None:
+                wake = self._wake
+                if wake is None:
+                    return
+                await wake.wait()
+                wake.clear()
+                continue
+            await self._execute_run(run_id)
+
+    async def _execute_run(self, run_id: uuid.UUID) -> None:
+        async with self._session_factory() as db:
+            try:
+                await self.run_once(db, run_id)
+            except SkillEvaluationExecutionError as exc:
+                await db.rollback()
+                logger.warning("skill evaluation run skipped run_id=%s error=%s", run_id, exc)
+                return
+            await db.commit()
 
 
 async def _load_run(db: AsyncSession, run_id: uuid.UUID) -> SkillEvaluationRun | None:

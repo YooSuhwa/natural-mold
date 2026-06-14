@@ -3156,6 +3156,7 @@ Expected: eval runner tests pass.
 - [ ] Add `/api/skills/{skill_id}/evaluations` endpoints from the API Contract section.
 - [x] Add `/estimate` and `/runs/{run_id}/cancel` endpoints.
 - [x] Make `POST /runs` commit a queued run and enqueue it through `SkillEvaluationWorker`; do not execute the full evaluation inside the request handler.
+- [x] Register `SkillEvaluationWorker` in app lifespan with startup interrupted-run reconciliation and shutdown stop.
 - [x] Persist installed-skill eval runs in `skill_evaluation_runs`, not normal `conversation_runs`.
 - [x] Enforce ownership by loading the parent skill through `skill_service.get_skill`.
 - [ ] Add CSRF dependency to create/update/delete/run endpoints.
@@ -3185,7 +3186,7 @@ Expected: eval runner tests pass.
   - missing required skill credential binding returns `MARKETPLACE_CREDENTIAL_REQUIRED` and no run row is created
   - run create/cancel/complete/failure audit events contain IDs and summary metrics but no prompts or outputs
   - sandbox denial audit event contains reason code and executable only, not raw command arguments
-- [x] Add regression coverage for run enqueue, queue-full rollback, worker complete/fail transitions, cancelled-run skip, and interrupted running/grading reconciliation.
+- [x] Add regression coverage for run enqueue, queue-full rollback, background queue consumption, worker complete/fail transitions, cancelled-run skip, and interrupted running/grading reconciliation.
 - [ ] Run:
 
 ```bash

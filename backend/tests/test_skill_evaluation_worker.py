@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 from unittest.mock import patch
@@ -12,14 +13,14 @@ from app.models.audit_event import AuditEvent
 from app.models.skill_evaluation import SkillEvaluationRun
 from app.schemas.skill_builder import JsonValue
 from app.services import skill_evaluation_service
-from app.services.skill_evaluation_worker import (
+from app.services.skill_evaluation_worker import SkillEvaluationWorker
+from app.services.skill_evaluation_worker_types import (
     SkillEvaluationContext,
     SkillEvaluationExecutionError,
     SkillEvaluationResult,
-    SkillEvaluationWorker,
 )
 from app.skills import service as skill_service
-from tests.conftest import TEST_USER_ID
+from tests.conftest import TEST_USER_ID, TestSession
 
 pytestmark = pytest.mark.asyncio
 
@@ -75,6 +76,19 @@ async def _audit_actions(db: AsyncSession) -> list[str]:
     return [row.action for row in result.scalars().all()]
 
 
+async def _wait_for_run_status(
+    run_id: uuid.UUID,
+    status: str,
+) -> SkillEvaluationRun:
+    for _ in range(20):
+        async with TestSession() as session:
+            row = await session.get(SkillEvaluationRun, run_id)
+            if row is not None and row.status == status:
+                return row
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"run did not reach status {status}")
+
+
 async def test_worker_completes_queued_run_and_records_audit(
     db: AsyncSession,
     tmp_path: Path,
@@ -98,6 +112,24 @@ async def test_worker_completes_queued_run_and_records_audit(
         "skill_evaluation.run_start",
         "skill_evaluation.run_complete",
     ]
+
+
+async def test_worker_loop_consumes_enqueued_run(
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    run = await _create_run(db, tmp_path, evals=[{"input": "queued"}])
+    await db.commit()
+    worker = SkillEvaluationWorker()
+
+    await worker.start(TestSession)
+    worker.reserve_slot()
+    worker.enqueue(run.id, reserved=True)
+    completed = await _wait_for_run_status(run.id, "completed")
+    await worker.stop()
+
+    assert completed.summary is not None
+    assert completed.summary["case_count"] == 1
 
 
 async def test_worker_marks_failed_run_and_records_audit(
