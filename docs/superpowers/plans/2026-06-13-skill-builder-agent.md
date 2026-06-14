@@ -3542,26 +3542,27 @@ Expected: Next.js build completes.
 
 Use worktree port rules from `AGENTS.md`.
 
-- [ ] Start backend:
+- [x] Start backend:
 
 ```bash
 cd backend
 uv run uvicorn app.main:app --reload --port 8001 --reload-dir app
 ```
 
-- [ ] Start frontend:
+- [x] Start frontend:
 
 ```bash
 cd frontend
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev -- --port 3000
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev --port 3000
 ```
 
-- [ ] Leave `NEXT_PUBLIC_CHAT_RUNTIME` unset for the primary pass so the app shell uses the current default `langgraph_v3` chat runtime.
-- [ ] In browser, log in as a dev user.
-- [ ] Verify the app-level navigation still has one `Skills` entry and no separate skill evaluation, skill history, skill credentials, rollback, or compatibility menu item.
-- [ ] Open `/skills`.
-- [ ] Verify the primary page CTA is "대화로 만들기".
-- [ ] Verify `/skills` uses kind tabs plus state filter chips for credential/evaluation/publish states instead of sending the user to separate skill management pages.
+- [x] Leave `NEXT_PUBLIC_CHAT_RUNTIME` unset for the primary pass so the app shell uses the current default `langgraph_v3` chat runtime.
+- [x] In browser, log in as a dev user.
+- [x] Verify the app-level navigation still has one `Skills` entry and no separate skill evaluation, skill history, skill credentials, rollback, or compatibility menu item.
+- [x] Open `/skills`.
+- [x] Verify the primary page CTA is "대화로 만들기".
+- [x] Verify `/skills` uses kind tabs plus state filter chips for credential/evaluation/publish states instead of sending the user to separate skill management pages.
+- [x] Browser smoke evidence saved to `output/e2e-captures/20260615-skill-builder-manual/skills-page.png` after login with the seeded E2E user. The smoke verified one app-level `Skills` nav entry, the `/skills` URL, the "대화로 만들기" CTA, kind tabs, and state filter chips. Full LLM-backed create/improve/eval flow remains covered by the unchecked steps below.
 - [x] Temporarily test a missing `text_primary` System LLM configuration in a safe local DB or mocked API response and verify the conversational builder shows the readiness state instead of a generic 500/toast, while Text and Package Upload still work.
 - [ ] Click "대화로 만들기".
 - [ ] Verify opening the Skill Builder does not navigate into a normal conversation thread, create a normal conversation run, or require the normal chat `ChatRuntimeSection`.
@@ -3700,6 +3701,6 @@ The MVP is useful without evals, but its data model and UI should already have f
 - [ ] Builder/evaluation audit events appear in `/settings/audit` with sanitized metadata and no prompt/output/file-body leakage.
 - [ ] Evaluation runner uses the same sandbox, timeout, path, env, and redaction policy as current skill execution.
 - [ ] Generated package can be exported as `.skill` without `evals/` by default.
-- [ ] Backend tests pass.
-- [ ] Frontend lint/build/design/i18n checks pass.
+- [x] Backend tests pass.
+- [x] Frontend lint/build/design/i18n checks pass.
 - [ ] Manual `/skills` flow succeeds end to end.
