@@ -6,6 +6,7 @@ import type { SkillEvaluationRunEstimate, SkillEvaluationSet } from '@/lib/types
 import { SkillEvaluationTab } from '../skill-evaluation-tab'
 
 const mockUseSkillEvaluationSets = vi.fn()
+const mockUseSkillEvaluationRuns = vi.fn()
 const mockEstimateRun = vi.fn(
   (
     _variables: undefined,
@@ -28,6 +29,7 @@ const evaluationEstimate: SkillEvaluationRunEstimate = {
 
 vi.mock('@/lib/hooks/use-skill-evaluations', () => ({
   useSkillEvaluationSets: (...args: readonly unknown[]) => mockUseSkillEvaluationSets(...args),
+  useSkillEvaluationRuns: (...args: readonly unknown[]) => mockUseSkillEvaluationRuns(...args),
   useEstimateSkillEvaluationRun: () => ({
     mutate: mockEstimateRun,
     isPending: false,
@@ -61,9 +63,26 @@ function buildEvaluationSet(overrides: Partial<SkillEvaluationSet>): SkillEvalua
 describe('SkillEvaluationTab', () => {
   beforeEach(() => {
     mockUseSkillEvaluationSets.mockReset()
+    mockUseSkillEvaluationRuns.mockReset()
+    mockUseSkillEvaluationRuns.mockReturnValue({
+      data: [],
+      isLoading: false,
+    })
     mockEstimateRun.mockClear()
     mockCreateRun.mockReset()
     mockCancelRun.mockReset()
+  })
+
+  it('renders without owning the dialog body or footer', () => {
+    mockUseSkillEvaluationSets.mockReturnValue({
+      data: [],
+      isLoading: false,
+    })
+
+    const result = render(<SkillEvaluationTab skillId="skill-1" onClose={vi.fn()} />)
+
+    expect(result.container.querySelector('.moldy-dialog-body')).not.toBeInTheDocument()
+    expect(result.container.querySelector('.moldy-dialog-footer')).not.toBeInTheDocument()
   })
 
   it('cancels the latest active evaluation run', async () => {
@@ -165,5 +184,76 @@ describe('SkillEvaluationTab', () => {
     expect(openCredentials).toHaveBeenCalledOnce()
     expect(mockEstimateRun).not.toHaveBeenCalled()
     expect(mockCreateRun).not.toHaveBeenCalled()
+  })
+
+  it('shows stale latest summary, run history, and selected run details', async () => {
+    const user = userEvent.setup()
+    const latestRun = {
+      id: 'run-stale',
+      skill_id: 'skill-1',
+      evaluation_set_id: 'set-1',
+      status: 'completed' as const,
+      skill_content_hash: 'hash-before-edit',
+      summary: {
+        pass_rate: 0.74,
+        trigger_accuracy: 0.5,
+        average_duration_ms: 1250,
+        token_delta: -18,
+      },
+      benchmark: {
+        duration_delta_ms: -220,
+      },
+      case_results: [
+        {
+          name: '회의록 케이스',
+          status: 'passed',
+          grader_feedback: '담당자와 마감일을 찾았습니다.',
+          evidence: '액션 아이템 표',
+        },
+      ],
+      created_at: '2026-06-01T00:00:00Z',
+      updated_at: '2026-06-01T00:01:00Z',
+      completed_at: '2026-06-01T00:01:00Z',
+    }
+    const olderRun = {
+      ...latestRun,
+      id: 'run-older',
+      skill_content_hash: 'hash-current',
+      summary: { pass_rate: 0.91 },
+      created_at: '2026-05-31T00:00:00Z',
+      updated_at: '2026-05-31T00:01:00Z',
+      completed_at: '2026-05-31T00:01:00Z',
+    }
+    mockUseSkillEvaluationSets.mockReturnValue({
+      data: [
+        buildEvaluationSet({
+          latest_run: latestRun,
+        }),
+      ],
+      isLoading: false,
+    })
+    mockUseSkillEvaluationRuns.mockReturnValue({
+      data: [olderRun, latestRun],
+      isLoading: false,
+    })
+
+    render(
+      <SkillEvaluationTab skillId="skill-1" skillContentHash="hash-current" onClose={vi.fn()} />,
+    )
+
+    expect(screen.getByText('재평가 필요')).toBeInTheDocument()
+    expect(screen.getByText('실행 이력')).toBeInTheDocument()
+    expect(screen.getByText('선택한 실행 상세')).toBeInTheDocument()
+    expect(screen.getByText('통과율 74%')).toBeInTheDocument()
+    expect(screen.getByText('트리거 정확도 50%')).toBeInTheDocument()
+    expect(screen.getByText('평균 1.3초')).toBeInTheDocument()
+    expect(screen.getByText('토큰 -18')).toBeInTheDocument()
+    expect(screen.getByText('소요 시간 -220ms')).toBeInTheDocument()
+    expect(screen.getByText('담당자와 마감일을 찾았습니다.')).toBeInTheDocument()
+    expect(screen.getByText('액션 아이템 표')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'run-older 실행 보기' }))
+
+    expect(screen.getByText('통과율 91%')).toBeInTheDocument()
   })
 })

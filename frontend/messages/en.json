@@ -2590,7 +2590,37 @@
         "cancelPending": "Cancelling…",
         "cancelRunFor": "Cancel {name} evaluation",
         "connectCredentials": "Connect credentials",
-        "connectCredentialsFor": "Connect credentials for {name}"
+        "connectCredentialsFor": "Connect credentials for {name}",
+        "selectSet": "Select {name} evaluation set",
+        "runHistoryTitle": "Run history",
+        "noRunHistory": "No run history yet.",
+        "viewRun": "View run {id}",
+        "detailTitle": "Selected run detail",
+        "noRunDetail": "Select a run to see detailed results.",
+        "staleRun": "Rerun needed",
+        "metric": {
+          "passRate": "Pass rate {rate}%",
+          "triggerAccuracy": "Trigger accuracy {rate}%",
+          "averageDuration": "Average {seconds}s",
+          "tokenDelta": "Tokens {count}"
+        },
+        "benchmarkTitle": "Benchmark deltas",
+        "benchmark": {
+          "durationDelta": "Duration {value}ms",
+          "tokenDelta": "Tokens {count}",
+          "qualityDelta": "Quality {rate}%"
+        },
+        "caseResultsTitle": "Case results",
+        "noCaseResults": "No case results recorded.",
+        "caseTitle": "Case {number}",
+        "status": {
+          "queued": "Evaluation queued",
+          "running": "Evaluation running",
+          "grading": "Grading",
+          "completed": "Evaluation complete",
+          "failed": "Evaluation failed",
+          "cancelled": "Evaluation cancelled"
+        }
       },
       "history": {
         "empty": "History starts from the current version.",

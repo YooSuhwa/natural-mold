@@ -168,12 +168,21 @@ function renderSkillDetailTab({
     return <SkillCredentialsTab skillId={skillId} onClose={onClose} />
   if (activeTab === 'evaluation') {
     return (
-      <SkillEvaluationTab
-        skillId={skillId}
-        onClose={onClose}
-        needsCredentialSetup={skill.health?.state === 'needs_credentials'}
-        onOpenCredentials={onOpenCredentials}
-      />
+      <>
+        <DialogShell.Body>
+          <SkillEvaluationTab
+            skillId={skillId}
+            skillContentHash={skill.content_hash}
+            needsCredentialSetup={skill.health?.state === 'needs_credentials'}
+            onOpenCredentials={onOpenCredentials}
+          />
+        </DialogShell.Body>
+        <DialogShell.Footer>
+          <Button variant="outline" onClick={onClose}>
+            {closeLabel}
+          </Button>
+        </DialogShell.Footer>
+      </>
     )
   }
   if (activeTab === 'history') return <SkillHistoryTab skillId={skillId} onClose={onClose} />

@@ -1,205 +1,123 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CircleStop, KeyRound, RefreshCw } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
-import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  useCancelSkillEvaluationRun,
-  useCreateSkillEvaluationRun,
-  useEstimateSkillEvaluationRun,
-  useSkillEvaluationSets,
-} from '@/lib/hooks/use-skill-evaluations'
-import type {
-  SkillEvaluationRunEstimate,
-  SkillEvaluationRunStatus,
-  SkillEvaluationSet,
-} from '@/lib/types/skill-evaluation'
+import { useSkillEvaluationRuns, useSkillEvaluationSets } from '@/lib/hooks/use-skill-evaluations'
+import type { SkillEvaluationRun, SkillEvaluationSet } from '@/lib/types/skill-evaluation'
 
-import { SkillEvaluationEstimateDialog } from './skill-evaluation-estimate-dialog'
-import { SkillEvaluationSummaryBadge } from './skill-evaluation-summary-badge'
+import { SkillEvaluationRunDetail } from './skill-evaluation-run-detail'
+import { SkillEvaluationSetCard } from './skill-evaluation-set-card'
 
-const CANCELLABLE_RUN_STATUS: Record<SkillEvaluationRunStatus, boolean> = {
-  queued: true,
-  running: true,
-  grading: true,
-  completed: false,
-  failed: false,
-  cancelled: false,
-}
-
-export function SkillEvaluationTab({
-  skillId,
-  onClose,
-  needsCredentialSetup = false,
-  onOpenCredentials = noop,
-}: {
-  readonly skillId: string
-  readonly onClose: () => void
+type SkillEvaluationTabProps = {
+  readonly currentSkillContentHash?: string | null
   readonly needsCredentialSetup?: boolean
+  readonly onClose?: () => void
   readonly onOpenCredentials?: () => void
-}) {
-  const t = useTranslations('skill.detailDialog.evaluation')
-  const common = useTranslations('skill.detailDialog')
-  const { data: sets, isLoading } = useSkillEvaluationSets(skillId)
-  const evaluationSets = useMemo(() => sets ?? [], [sets])
-
-  return (
-    <>
-      <DialogShell.Body>
-        {isLoading ? (
-          <Skeleton className="h-32 w-full rounded-lg" />
-        ) : evaluationSets.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-6 text-center">
-            <p className="text-sm font-medium">{t('emptyTitle')}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{t('emptyDescription')}</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {evaluationSets.map((set) => (
-              <SkillEvaluationSetCard
-                key={set.id}
-                skillId={skillId}
-                set={set}
-                needsCredentialSetup={needsCredentialSetup}
-                onOpenCredentials={onOpenCredentials}
-              />
-            ))}
-          </div>
-        )}
-      </DialogShell.Body>
-      <DialogShell.Footer>
-        <Button variant="outline" onClick={onClose}>
-          {common('close')}
-        </Button>
-      </DialogShell.Footer>
-    </>
-  )
+  readonly skillContentHash?: string | null
+  readonly skillId: string
 }
 
-function SkillEvaluationSetCard({
-  skillId,
-  set,
-  needsCredentialSetup,
-  onOpenCredentials,
-}: {
-  readonly skillId: string
-  readonly set: SkillEvaluationSet
-  readonly needsCredentialSetup: boolean
-  readonly onOpenCredentials: () => void
-}) {
-  const t = useTranslations('skill.detailDialog.evaluation')
-  const runAgain = useCreateSkillEvaluationRun(skillId, set.id)
-  const estimateRun = useEstimateSkillEvaluationRun(skillId, set.id)
-  const cancelRun = useCancelSkillEvaluationRun(skillId, set.id)
-  const [estimate, setEstimate] = useState<SkillEvaluationRunEstimate | null>(null)
-  const [estimateOpen, setEstimateOpen] = useState(false)
-  const latestRun = set.latest_run
-  const canCancel = latestRun ? CANCELLABLE_RUN_STATUS[latestRun.status] : false
-  const isMutating = runAgain.isPending || estimateRun.isPending || cancelRun.isPending
+function sortRunsNewestFirst(runs: readonly SkillEvaluationRun[]): readonly SkillEvaluationRun[] {
+  return [...runs].sort((a, b) => b.created_at.localeCompare(a.created_at))
+}
 
-  function requestRunAgain(): void {
-    estimateRun.mutate(undefined, {
-      onSuccess: (nextEstimate) => {
-        setEstimate(nextEstimate)
-        setEstimateOpen(true)
-      },
-    })
-  }
-
-  function confirmRunAgain(): void {
-    runAgain.mutate(undefined, {
-      onSuccess: () => setEstimateOpen(false),
-    })
-  }
-
-  return (
-    <article className="rounded-lg border border-border/70 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold">{set.name}</h3>
-          {set.description ? (
-            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{set.description}</p>
-          ) : null}
-        </div>
-        <SkillEvaluationSummaryBadge
-          summary={
-            latestRun
-              ? {
-                  status: latestRun.status,
-                  latest_run_id: latestRun.id,
-                  evaluation_set_id: set.id,
-                  pass_rate:
-                    typeof latestRun.summary?.pass_rate === 'number'
-                      ? latestRun.summary.pass_rate
-                      : null,
-                  skill_content_hash: latestRun.skill_content_hash ?? null,
-                  created_at: latestRun.created_at,
-                  completed_at: latestRun.completed_at ?? null,
-                }
-              : { status: 'missing' }
-          }
-        />
-      </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          {t('caseCount', { count: set.evals.length })}
-        </p>
-        {canCancel && latestRun ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={isMutating}
-            aria-label={t('cancelRunFor', { name: set.name })}
-            onClick={() =>
-              cancelRun.mutate({
-                runId: latestRun.id,
-                data: { reason: 'user_requested' },
-              })
-            }
-          >
-            <CircleStop aria-hidden="true" />
-            {cancelRun.isPending ? t('cancelPending') : t('cancelRun')}
-          </Button>
-        ) : needsCredentialSetup ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label={t('connectCredentialsFor', { name: set.name })}
-            onClick={onOpenCredentials}
-          >
-            <KeyRound aria-hidden="true" />
-            {t('connectCredentials')}
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={isMutating}
-            aria-label={t('runAgainFor', { name: set.name })}
-            onClick={requestRunAgain}
-          >
-            <RefreshCw aria-hidden="true" />
-            {estimateRun.isPending ? t('estimatePending') : t('runAgain')}
-          </Button>
-        )}
-      </div>
-      <SkillEvaluationEstimateDialog
-        open={estimateOpen}
-        setName={set.name}
-        estimate={estimate}
-        isPending={runAgain.isPending}
-        onOpenChange={setEstimateOpen}
-        onConfirm={confirmRunAgain}
-      />
-    </article>
-  )
+function firstRunForSet(set: SkillEvaluationSet | null): SkillEvaluationRun | null {
+  return set?.latest_run ?? null
 }
 
 function noop(): void {}
+
+export function SkillEvaluationTab({
+  currentSkillContentHash,
+  needsCredentialSetup = false,
+  onOpenCredentials = noop,
+  skillContentHash,
+  skillId,
+}: SkillEvaluationTabProps) {
+  const t = useTranslations('skill.detailDialog.evaluation')
+  const { data: sets, isLoading } = useSkillEvaluationSets(skillId)
+  const evaluationSets = useMemo(() => sets ?? [], [sets])
+  const [selectedSetId, setSelectedSetId] = useState<string | null>(null)
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const selectedSet =
+    evaluationSets.find((set) => set.id === selectedSetId) ?? evaluationSets[0] ?? null
+  const runsQuery = useSkillEvaluationRuns(skillId, selectedSet?.id ?? null)
+  const runFallback = firstRunForSet(selectedSet)
+  const runs = useMemo(
+    () => sortRunsNewestFirst(runsQuery.data ?? (runFallback ? [runFallback] : [])),
+    [runFallback, runsQuery.data],
+  )
+  const selectedRun = runs.find((run) => run.id === selectedRunId) ?? runs[0] ?? runFallback
+  const resolvedContentHash = currentSkillContentHash ?? skillContentHash ?? null
+
+  function selectSet(setId: string): void {
+    setSelectedSetId(setId)
+    setSelectedRunId(null)
+  }
+
+  if (isLoading) {
+    return <Skeleton className="h-32 w-full rounded-lg" />
+  }
+
+  if (evaluationSets.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed p-6 text-center">
+        <p className="text-sm font-medium">{t('emptyTitle')}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t('emptyDescription')}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(20rem,1fr)]">
+      <div className="space-y-4">
+        <div className="space-y-3">
+          {evaluationSets.map((set) => (
+            <SkillEvaluationSetCard
+              key={set.id}
+              currentSkillContentHash={resolvedContentHash}
+              needsCredentialSetup={needsCredentialSetup}
+              onOpenCredentials={onOpenCredentials}
+              onSelect={() => selectSet(set.id)}
+              selected={selectedSet?.id === set.id}
+              set={set}
+              skillId={skillId}
+            />
+          ))}
+        </div>
+        <section className="rounded-lg border border-border/70 p-3">
+          <h3 className="text-sm font-semibold">{t('runHistoryTitle')}</h3>
+          {runsQuery.isLoading ? (
+            <Skeleton className="mt-3 h-20 w-full rounded-lg" />
+          ) : runs.length === 0 ? (
+            <p className="mt-2 text-xs text-muted-foreground">{t('noRunHistory')}</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {runs.map((run) => (
+                <Button
+                  key={run.id}
+                  type="button"
+                  variant={selectedRun?.id === run.id ? 'secondary' : 'outline'}
+                  size="sm"
+                  className="w-full justify-start font-mono"
+                  aria-label={t('viewRun', { id: run.id })}
+                  onClick={() => setSelectedRunId(run.id)}
+                >
+                  {run.id}
+                </Button>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+      <SkillEvaluationRunDetail
+        currentSkillContentHash={resolvedContentHash}
+        isLoading={runsQuery.isLoading}
+        run={selectedRun}
+      />
+    </div>
+  )
+}

@@ -2569,7 +2569,37 @@
         "cancelPending": "취소 중…",
         "cancelRunFor": "{name} 평가 취소",
         "connectCredentials": "자격증명 연결",
-        "connectCredentialsFor": "{name} 자격증명 연결"
+        "connectCredentialsFor": "{name} 자격증명 연결",
+        "selectSet": "{name} 평가 세트 선택",
+        "runHistoryTitle": "실행 이력",
+        "noRunHistory": "아직 실행 이력이 없습니다.",
+        "viewRun": "{id} 실행 보기",
+        "detailTitle": "선택한 실행 상세",
+        "noRunDetail": "실행을 선택하면 상세 결과가 표시됩니다.",
+        "staleRun": "재평가 필요",
+        "metric": {
+          "passRate": "통과율 {rate}%",
+          "triggerAccuracy": "트리거 정확도 {rate}%",
+          "averageDuration": "평균 {seconds}초",
+          "tokenDelta": "토큰 {count}"
+        },
+        "benchmarkTitle": "벤치마크 변화",
+        "benchmark": {
+          "durationDelta": "소요 시간 {value}ms",
+          "tokenDelta": "토큰 {count}",
+          "qualityDelta": "품질 {rate}%"
+        },
+        "caseResultsTitle": "케이스 결과",
+        "noCaseResults": "기록된 케이스 결과가 없습니다.",
+        "caseTitle": "케이스 {number}",
+        "status": {
+          "queued": "평가 대기",
+          "running": "평가 중",
+          "grading": "채점 중",
+          "completed": "평가 완료",
+          "failed": "평가 실패",
+          "cancelled": "평가 취소"
+        }
       },
       "history": {
         "empty": "현재 버전부터 이력이 쌓입니다.",

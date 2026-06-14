@@ -3431,7 +3431,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add rollback confirmation copy: `이전 버전으로 되돌리면 현재 내용은 새 이력으로 보존됩니다.`
 - [x] On rollback success, refresh skill data, files/content, evaluation summaries, and revision list.
 - [x] Render `PortableCompatibilityPanel` in builder preview and revision detail.
-- [ ] Show latest evaluation summary, stale badge, reusable evaluation sets, run history, and selected run details.
+- [x] Show latest evaluation summary, stale badge, reusable evaluation sets, run history, and selected run details.
 - [x] Show estimate confirmation before creating an evaluation run.
 - [x] Add a rerun action that creates a new `SkillEvaluationRun` for the selected evaluation set.
 - [x] Add a cancel action for queued/running/grading runs.
@@ -3439,7 +3439,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
 - [x] Add focused `SkillBuilderPreview` tests for improve file diffs, grouped validation, changelog, and benchmark rendering.
 - [x] Add focused `PortableCompatibilityPanel` tests for target labels, status badges, issue details, and empty state.
-- [x] Add focused `SkillEvaluationTab` tests for rerun, active-run cancel, and missing-credential connect callbacks.
+- [x] Add focused `SkillEvaluationTab` tests for rerun, active-run cancel, missing-credential connect callbacks, stale badges, run history, and selected run detail.
 - [x] Add focused `SkillHistoryTab` tests for newest-first ordering, current marker, operation labels, legacy empty state, selected revision details, current rollback disablement, and rollback confirmation.
 - [x] Add focused `SkillCredentialBindingsPanel` tests for missing-required summary and connected/missing binding states.
 - [x] Add focused `getVisibleSkillDetailTabs` tests for hidden optional tabs, credential requirements, evaluation signal, history signal, and deep links.
