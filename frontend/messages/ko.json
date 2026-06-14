@@ -195,6 +195,9 @@
       "sidebar": "사이드바",
       "mobileSidebarDescription": "모바일 사이드바를 표시합니다.",
       "toggleSidebar": "사이드바 전환",
+      "resizeSidebar": "사이드바 크기 조절",
+      "collapsedPanel": "접힘",
+      "resetPanelWidth": "패널 폭 초기화",
       "breadcrumb": "탐색 경로"
     }
   },
@@ -1474,6 +1477,8 @@
     },
     "rightRail": {
       "closePanel": "Close panel",
+      "resizePanel": "파일 패널 크기 조절",
+      "collapsedPanel": "파일 패널 접힘",
       "outline": "Outline",
       "messageOutline": "Message outline",
       "noHeadings": "No headings detected in this message.",

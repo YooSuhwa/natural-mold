@@ -41,7 +41,8 @@ const ZERO_TOLERANCE_RULES = [
   {
     id: 'resource-tone-background',
     pattern: /\bbg-\[var\(--moldy-(?:mint|sky|violet|amber|rose)\)\]/g,
-    message: 'use neutral resource cards; keep tone colors to icons, dots, status signals, and interaction states',
+    message:
+      'use neutral resource cards; keep tone colors to icons, dots, status signals, and interaction states',
   },
   {
     id: 'arbitrary-text-class',
@@ -100,6 +101,11 @@ const STYLE_ATTRIBUTE_ALLOWLIST = [
     filePath: 'src/components/chat/tool-ui/phase-timeline-ui.tsx',
     reason: 'data-driven phase progress ratio',
     context: /style=\{phaseStyle\}/,
+  },
+  {
+    filePath: 'src/components/chat/right-rail/chat-right-rail.tsx',
+    reason: 'dynamic chat right rail width CSS variables',
+    context: /style=\{rightRailStyle\}/,
   },
 ]
 

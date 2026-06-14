@@ -1,14 +1,33 @@
 import { Provider, createStore } from 'jotai'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '../../../../../tests/test-utils'
 import { chatArtifactsAtom } from '@/lib/stores/chat-artifacts'
-import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import { chatRightRailAtom, chatRightRailWidthAtom } from '@/lib/stores/chat-right-rail'
 import type { ArtifactSummary } from '@/lib/types'
 import { ChatRightRail } from '../chat-right-rail'
 
 vi.mock('../artifact-panel-content', () => ({
   ArtifactPanelContent: () => <div data-testid="artifact-panel-content" />,
 }))
+
+function installAnimationFrameStub(): void {
+  Object.defineProperty(window, 'requestAnimationFrame', {
+    configurable: true,
+    value: (callback: FrameRequestCallback) => {
+      callback(0)
+      return 1
+    },
+  })
+  Object.defineProperty(window, 'cancelAnimationFrame', {
+    configurable: true,
+    value: () => {},
+  })
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: 1366,
+  })
+}
 
 function artifact(overrides: Partial<ArtifactSummary>): ArtifactSummary {
   return {
@@ -45,6 +64,11 @@ function artifact(overrides: Partial<ArtifactSummary>): ArtifactSummary {
 }
 
 describe('ChatRightRail', () => {
+  beforeEach(() => {
+    installAnimationFrameStub()
+    window.localStorage.clear()
+  })
+
   it('uses the selected file name as the artifact preview title', () => {
     const store = createStore()
     store.set(chatArtifactsAtom, {
@@ -135,13 +159,113 @@ describe('ChatRightRail', () => {
       </Provider>,
     )
 
-    expect(container.querySelector('aside')).toHaveClass('moldy-right-rail')
+    const aside = container.querySelector('aside')
+    expect(aside).toHaveClass('relative')
+    expect(aside).toHaveStyle({
+      '--chat-right-rail-width': '384px',
+      width: 'var(--chat-right-rail-width)',
+    })
+    expect(container.querySelector('[data-slot="chat-right-rail-frame"]')).toHaveClass('w-full')
     expect(container.querySelector('[role="dialog"] > div')).toHaveClass(
       'moldy-artifact-mobile-layer',
     )
     expect(container.querySelector('[role="dialog"] > div')).not.toHaveClass(
       'moldy-right-rail-mobile',
     )
+  })
+
+  it('resizes the desktop rail and persists the last stable width', () => {
+    const store = createStore()
+    store.set(chatRightRailAtom, {
+      mode: 'artifacts',
+      artifacts: {
+        conversationId: 'conversation-1',
+        view: 'list',
+      },
+    })
+
+    const { container } = render(
+      <Provider store={store}>
+        <ChatRightRail conversationId="conversation-1" />
+      </Provider>,
+    )
+
+    const aside = container.querySelector('aside')
+    const handle = screen.getByRole('separator', { name: '파일 패널 크기 조절' })
+
+    fireEvent.pointerDown(handle, { clientX: 400, pointerId: 1 })
+    fireEvent.pointerMove(handle, { clientX: 240, pointerId: 1 })
+    expect(aside).toHaveStyle({ '--chat-right-rail-width': '544px' })
+
+    fireEvent.pointerUp(handle, { clientX: 240, pointerId: 1 })
+
+    expect(store.get(chatRightRailWidthAtom)).toBe(544)
+    expect(window.localStorage.getItem('moldy.chatRightRail.widthPx')).toBe('544')
+  })
+
+  it('reclamps the desktop rail when the viewport narrows', () => {
+    const store = createStore()
+    store.set(chatRightRailWidthAtom, 720)
+    store.set(chatRightRailAtom, {
+      mode: 'artifacts',
+      artifacts: {
+        conversationId: 'conversation-1',
+        view: 'list',
+      },
+    })
+
+    const { container } = render(
+      <Provider store={store}>
+        <ChatRightRail conversationId="conversation-1" />
+      </Provider>,
+    )
+
+    const aside = container.querySelector('aside')
+    expect(aside).toHaveStyle({ '--chat-right-rail-width': '720px' })
+
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1000,
+    })
+    fireEvent(window, new Event('resize'))
+
+    expect(aside).toHaveStyle({ '--chat-right-rail-width': '480px' })
+    expect(screen.getByRole('separator', { name: '파일 패널 크기 조절' })).toHaveAttribute(
+      'aria-valuemax',
+      '480',
+    )
+  })
+
+  it('closes below the collapse threshold without overwriting the last stable width', () => {
+    const store = createStore()
+    store.set(chatRightRailWidthAtom, 420)
+    store.set(chatRightRailAtom, {
+      mode: 'artifacts',
+      artifacts: {
+        conversationId: 'conversation-1',
+        view: 'list',
+      },
+    })
+
+    const { container } = render(
+      <Provider store={store}>
+        <ChatRightRail conversationId="conversation-1" />
+      </Provider>,
+    )
+
+    const aside = container.querySelector('aside')
+    const handle = screen.getByRole('separator', { name: '파일 패널 크기 조절' })
+
+    fireEvent.pointerDown(handle, { clientX: 400, pointerId: 1 })
+    fireEvent.pointerMove(handle, { clientX: 700, pointerId: 1 })
+
+    expect(aside).toHaveStyle({ '--chat-right-rail-width': '120px' })
+    expect(handle).toHaveAttribute('data-collapse-preview', 'true')
+
+    fireEvent.pointerUp(handle, { clientX: 700, pointerId: 1 })
+
+    expect(store.get(chatRightRailAtom)).toEqual({ mode: 'none' })
+    expect(store.get(chatRightRailWidthAtom)).toBe(420)
   })
 
   it('keeps artifact close controls on the left for mobile list and preview headers', () => {

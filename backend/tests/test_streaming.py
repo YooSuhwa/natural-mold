@@ -65,7 +65,7 @@ def test_format_sse_without_event_id_omits_id_line():
 # ---------------------------------------------------------------------------
 
 
-def _make_ai_chunk(content: str, usage_metadata: dict | None = None) -> MagicMock:
+def _make_ai_chunk(content: Any, usage_metadata: dict | None = None) -> MagicMock:
     msg = MagicMock()
     msg.content = content
     msg.type = "ai"
@@ -729,6 +729,52 @@ async def test_stream_persist_callback_final_flush_in_finally():
     # 모든 캡처된 이벤트 id 는 ``run-y-`` 프리픽스.
     flat_ids = [evt["id"] for chunk in captured_chunks for evt in chunk]
     assert all(eid.startswith("run-y-") for eid in flat_ids)
+
+
+@pytest.mark.asyncio
+async def test_stream_filters_private_reasoning_from_sse_and_persistence():
+    private = "PRIVATE_CHAIN_OF_THOUGHT_DO_NOT_LEAK"
+    agent = MockAgent(
+        [
+            (
+                _make_ai_chunk(
+                    [
+                        {"type": "reasoning", "text": private, "summary": private},
+                        {"type": "thinking", "thinking": private},
+                        {"type": "text", "text": "보여줄 답변"},
+                    ]
+                ),
+                {},
+            )
+        ]
+    )
+    captured_chunks: list[list[dict[str, Any]]] = []
+
+    async def callback(chunk: list[dict[str, Any]]) -> None:
+        captured_chunks.append(list(chunk))
+
+    events = [
+        e
+        async for e in stream_agent_response(
+            agent,
+            [],
+            {},
+            persist_callback=callback,
+            run_id="run-reasoning",
+        )
+    ]
+    wire_payload = "\n".join(events)
+    persisted_payload = json.dumps(captured_chunks, ensure_ascii=False)
+
+    assert "보여줄 답변" in wire_payload
+    assert "보여줄 답변" in persisted_payload
+    assert private not in wire_payload
+    assert private not in persisted_payload
+    assert all(
+        "values" not in evt.get("data", {})
+        for chunk in captured_chunks
+        for evt in chunk
+    )
 
 
 @pytest.mark.asyncio

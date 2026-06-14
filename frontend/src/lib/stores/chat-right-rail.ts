@@ -1,4 +1,12 @@
 import { atom } from 'jotai'
+import { clampPanelWidth, createStoredPanelWidthAtom } from './panel-width'
+
+export const RIGHT_RAIL_WIDTH_DEFAULT_PX = 384
+export const RIGHT_RAIL_WIDTH_MIN_PX = 320
+export const RIGHT_RAIL_WIDTH_MAX_PX = 720
+export const RIGHT_RAIL_COLLAPSE_THRESHOLD_PX = 280
+
+const CHAT_MIN_WIDTH_PX = 520
 
 export type RightRailMode = 'none' | 'subagent' | 'tool-result' | 'outline' | 'artifacts'
 
@@ -96,4 +104,22 @@ export function toggleArtifactListRailState(
   }
 }
 
+export function clampRightRailWidth(width: number, viewportWidth?: number): number {
+  const resolvedViewportWidth =
+    viewportWidth ?? (typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerWidth)
+  const viewportMax = Math.min(RIGHT_RAIL_WIDTH_MAX_PX, resolvedViewportWidth - CHAT_MIN_WIDTH_PX)
+  const max = Math.max(RIGHT_RAIL_WIDTH_MIN_PX, viewportMax)
+
+  return clampPanelWidth(width, {
+    min: RIGHT_RAIL_WIDTH_MIN_PX,
+    max,
+  })
+}
+
 export const chatRightRailAtom = atom<RightRailState>({ mode: 'none' })
+
+export const chatRightRailWidthAtom = createStoredPanelWidthAtom('moldy.chatRightRail.widthPx', {
+  defaultWidth: RIGHT_RAIL_WIDTH_DEFAULT_PX,
+  minWidth: RIGHT_RAIL_WIDTH_MIN_PX,
+  maxWidth: RIGHT_RAIL_WIDTH_MAX_PX,
+})

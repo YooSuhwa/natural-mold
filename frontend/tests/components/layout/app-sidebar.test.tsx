@@ -1,4 +1,4 @@
-import { render, screen } from '../../test-utils'
+import { render, screen, userEvent } from '../../test-utils'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { mockAgentSummaryList } from '../../mocks/fixtures'
 
@@ -21,6 +21,23 @@ vi.mock('next/link', () => ({
 const mockUseAgentSummaries = vi.fn()
 const mockUseTriggerSummary = vi.fn()
 const mockUseSession = vi.fn()
+const sidebarMocks = vi.hoisted(() => {
+  const setOpen = vi.fn()
+  const toggleSidebar = vi.fn()
+  const useSidebar = vi.fn(() => ({
+    isMobile: false,
+    open: true,
+    openMobile: false,
+    setOpen,
+    setOpenMobile: vi.fn(),
+    setSidebarWidth: vi.fn(),
+    sidebarWidth: 256,
+    state: 'expanded',
+    toggleSidebar,
+  }))
+
+  return { setOpen, toggleSidebar, useSidebar }
+})
 
 vi.mock('@/lib/hooks/use-agents', () => ({
   useAgentSummaries: () => mockUseAgentSummaries(),
@@ -72,9 +89,9 @@ vi.mock('@/components/ui/sidebar', () => ({
     [key: string]: unknown
   }) => {
     if (renderProp && typeof renderProp === 'object' && 'props' in renderProp) {
-      const linkProps = renderProp.props as Record<string, unknown>
+      const linkProps = renderProp.props as React.AnchorHTMLAttributes<HTMLAnchorElement>
       return (
-        <a href={linkProps.href as string} {...props}>
+        <a {...linkProps} {...props}>
           {children}
         </a>
       )
@@ -83,6 +100,7 @@ vi.mock('@/components/ui/sidebar', () => ({
   },
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
   SidebarMenuBadge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+  SidebarRail: () => <div data-testid="sidebar-rail" />,
   SidebarMenuSub: ({ children }: { children: React.ReactNode }) => <ul>{children}</ul>,
   SidebarMenuSubItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
   SidebarMenuSubButton: ({
@@ -95,9 +113,9 @@ vi.mock('@/components/ui/sidebar', () => ({
     [key: string]: unknown
   }) => {
     if (renderProp && typeof renderProp === 'object' && 'props' in renderProp) {
-      const linkProps = renderProp.props as Record<string, unknown>
+      const linkProps = renderProp.props as React.AnchorHTMLAttributes<HTMLAnchorElement>
       return (
-        <a href={linkProps.href as string} {...props}>
+        <a {...linkProps} {...props}>
           {children}
         </a>
       )
@@ -105,13 +123,7 @@ vi.mock('@/components/ui/sidebar', () => ({
     return <button {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}>{children}</button>
   },
   SidebarSeparator: () => <hr />,
-  useSidebar: () => ({
-    toggleSidebar: vi.fn(),
-    isMobile: false,
-    state: 'expanded',
-    openMobile: false,
-    setOpenMobile: vi.fn(),
-  }),
+  useSidebar: () => sidebarMocks.useSidebar(),
 }))
 
 vi.mock('@/components/ui/skeleton', () => ({
@@ -150,6 +162,20 @@ describe('AppSidebar', () => {
         is_super_user: false,
       },
     })
+    sidebarMocks.setOpen.mockClear()
+    sidebarMocks.toggleSidebar.mockClear()
+    sidebarMocks.useSidebar.mockReset()
+    sidebarMocks.useSidebar.mockReturnValue({
+      isMobile: false,
+      open: true,
+      openMobile: false,
+      setOpen: sidebarMocks.setOpen,
+      setOpenMobile: vi.fn(),
+      setSidebarWidth: vi.fn(),
+      sidebarWidth: 256,
+      state: 'expanded',
+      toggleSidebar: sidebarMocks.toggleSidebar,
+    })
   })
 
   it('renders sidebar with brand', () => {
@@ -176,6 +202,48 @@ describe('AppSidebar', () => {
   it('renders new agent button', () => {
     render(<AppSidebar />)
     expect(screen.getByText('새 에이전트')).toBeInTheDocument()
+  })
+
+  it('expands the collapsed sidebar when a rail menu icon is clicked', async () => {
+    const user = userEvent.setup()
+    sidebarMocks.useSidebar.mockReturnValue({
+      isMobile: false,
+      open: false,
+      openMobile: false,
+      setOpen: sidebarMocks.setOpen,
+      setOpenMobile: vi.fn(),
+      setSidebarWidth: vi.fn(),
+      sidebarWidth: 48,
+      state: 'collapsed',
+      toggleSidebar: sidebarMocks.toggleSidebar,
+    })
+
+    render(<AppSidebar />)
+
+    await user.click(screen.getByRole('link', { name: '새 에이전트' }))
+
+    expect(sidebarMocks.setOpen).toHaveBeenCalledWith(true)
+  })
+
+  it('expands the collapsed sidebar when a collapsible feature icon is clicked', async () => {
+    const user = userEvent.setup()
+    sidebarMocks.useSidebar.mockReturnValue({
+      isMobile: false,
+      open: false,
+      openMobile: false,
+      setOpen: sidebarMocks.setOpen,
+      setOpenMobile: vi.fn(),
+      setSidebarWidth: vi.fn(),
+      sidebarWidth: 48,
+      state: 'collapsed',
+      toggleSidebar: sidebarMocks.toggleSidebar,
+    })
+
+    render(<AppSidebar />)
+
+    await user.click(screen.getByRole('button', { name: '기능' }))
+
+    expect(sidebarMocks.setOpen).toHaveBeenCalledWith(true)
   })
 
   it('renders marketplace as a single sidebar link for regular users', () => {

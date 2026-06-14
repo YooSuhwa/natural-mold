@@ -14,6 +14,8 @@ import { RECENT_AGENT_CAP, RECENT_SESSION_CAP } from './chat-navigator-utils'
 interface RecentAgentsSectionProps {
   agents: readonly AgentSummary[]
   expanded: boolean
+  isSidebarCollapsed?: boolean
+  onExpandSidebar?: () => void
   onToggleExpanded: () => void
 }
 
@@ -26,6 +28,8 @@ interface RecentSessionsSectionProps {
   isLoading: boolean
   isFetchingNextPage: boolean
   search: string
+  isSidebarCollapsed?: boolean
+  onExpandSidebar?: () => void
   onMore: () => void | Promise<void>
 }
 
@@ -39,6 +43,8 @@ interface AgentGroupedSectionProps {
   expandedListScopes: readonly string[]
   searchResultSessions: readonly ConversationWithAgent[]
   actions: ConversationRowActions
+  isSidebarCollapsed?: boolean
+  onExpandSidebar?: () => void
   onToggleAgentExpanded: (agentId: string) => void
   onToggleListExpanded: (scope: string) => void
 }
@@ -56,10 +62,18 @@ export function ChatNavigatorLoadingRows() {
 export function RecentAgentsSection({
   agents,
   expanded,
+  isSidebarCollapsed = false,
+  onExpandSidebar,
   onToggleExpanded,
 }: RecentAgentsSectionProps) {
   const t = useTranslations('sidebar.agents')
   const visibleAgents = expanded ? agents : agents.slice(0, RECENT_AGENT_CAP)
+
+  function handleAgentClick() {
+    if (isSidebarCollapsed) {
+      onExpandSidebar?.()
+    }
+  }
 
   return (
     <div className="space-y-0.5">
@@ -67,12 +81,15 @@ export function RecentAgentsSection({
         <Link
           key={agent.id}
           href={`/agents/${agent.id}`}
-          className="flex h-9 items-center gap-2 rounded-lg px-2 text-sm transition-colors hover:bg-sidebar-accent"
+          onClick={handleAgentClick}
+          className="flex h-9 items-center gap-2 rounded-lg px-2 text-sm transition-colors hover:bg-sidebar-accent group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0"
         >
           <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="xs" />
-          <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+          <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:sr-only">
+            {agent.name}
+          </span>
           {agent.unread_count > 0 ? (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-status-warn px-1 moldy-ui-caption font-semibold text-white">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-status-warn px-1 moldy-ui-caption font-semibold text-white group-data-[collapsible=icon]:hidden">
               {agent.unread_count > 99 ? '99+' : agent.unread_count}
             </span>
           ) : null}
@@ -84,7 +101,12 @@ export function RecentAgentsSection({
         </p>
       ) : null}
       {agents.length > RECENT_AGENT_CAP ? (
-        <Button variant="ghost" size="xs" className="w-full" onClick={onToggleExpanded}>
+        <Button
+          variant="ghost"
+          size="xs"
+          className="w-full group-data-[collapsible=icon]:hidden"
+          onClick={onToggleExpanded}
+        >
           {expanded ? t('collapse') : t('loadMore')}
         </Button>
       ) : null}
@@ -101,6 +123,8 @@ export function RecentSessionsSection({
   isLoading,
   isFetchingNextPage,
   search,
+  isSidebarCollapsed = false,
+  onExpandSidebar,
   onMore,
 }: RecentSessionsSectionProps) {
   const t = useTranslations('sidebar.agents')
@@ -119,6 +143,8 @@ export function RecentSessionsSection({
           active={activeConversationId === conversation.id}
           shortcutIndex={index + 1}
           actions={actions}
+          isSidebarCollapsed={isSidebarCollapsed}
+          onExpandSidebar={onExpandSidebar}
         />
       ))}
       {visibleConversations.length === 0 ? (
@@ -130,7 +156,7 @@ export function RecentSessionsSection({
         <Button
           variant="ghost"
           size="xs"
-          className="w-full"
+          className="w-full group-data-[collapsible=icon]:hidden"
           onClick={onMore}
           disabled={isFetchingNextPage}
         >
@@ -151,6 +177,8 @@ export function AgentGroupedSection({
   expandedListScopes,
   searchResultSessions,
   actions,
+  isSidebarCollapsed = false,
+  onExpandSidebar,
   onToggleAgentExpanded,
   onToggleListExpanded,
 }: AgentGroupedSectionProps) {
@@ -180,6 +208,8 @@ export function AgentGroupedSection({
               active={activeConversationId === conversation.id}
               shortcutIndex={index + 1}
               actions={actions}
+              isSidebarCollapsed={isSidebarCollapsed}
+              onExpandSidebar={onExpandSidebar}
             />
           ))}
         </div>
@@ -200,6 +230,8 @@ export function AgentGroupedSection({
             onToggleExpanded={onToggleAgentExpanded}
             onToggleListExpanded={onToggleListExpanded}
             actions={actions}
+            isSidebarCollapsed={isSidebarCollapsed}
+            onExpandSidebar={onExpandSidebar}
           />
         )
       })}

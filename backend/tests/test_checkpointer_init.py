@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,6 +13,15 @@ import app.agent_runtime.checkpointer as mod
 # ---------------------------------------------------------------------------
 # init_checkpointer
 # ---------------------------------------------------------------------------
+
+
+def _install_fake_checkpointer_modules(monkeypatch, pool_cls: type, saver_cls: type) -> None:
+    psycopg_pool_module = ModuleType("psycopg_pool")
+    psycopg_pool_module.AsyncConnectionPool = pool_cls
+    aio_module = ModuleType("langgraph.checkpoint.postgres.aio")
+    aio_module.AsyncPostgresSaver = saver_cls
+    monkeypatch.setitem(sys.modules, "psycopg_pool", psycopg_pool_module)
+    monkeypatch.setitem(sys.modules, "langgraph.checkpoint.postgres.aio", aio_module)
 
 
 @pytest.mark.asyncio
@@ -43,6 +54,86 @@ async def test_checkpointer_module_globals_wiring():
         mock_saver.setup.assert_awaited_once()
         assert mod._pool is mock_pool
         assert mod._checkpointer is mock_saver
+    finally:
+        mod._pool = orig_pool
+        mod._checkpointer = orig_cp
+
+
+@pytest.mark.asyncio
+async def test_init_checkpointer_passes_configured_pool_bounds(monkeypatch):
+    orig_pool = mod._pool
+    orig_cp = mod._checkpointer
+    pool_kwargs: dict[str, object] = {}
+
+    class FakePool:
+        def __init__(self, **kwargs: object) -> None:
+            pool_kwargs.update(kwargs)
+            self.opened = False
+
+        async def open(self) -> None:
+            self.opened = True
+
+    class FakeSaver:
+        def __init__(self, conn: object) -> None:
+            self.conn = conn
+            self.setup_called = False
+
+        async def setup(self) -> None:
+            self.setup_called = True
+
+    _install_fake_checkpointer_modules(monkeypatch, FakePool, FakeSaver)
+
+    try:
+        mod._pool = None
+        mod._checkpointer = None
+
+        await mod.init_checkpointer("postgresql://example", min_size=2, max_size=12)
+
+        assert pool_kwargs["conninfo"] == "postgresql://example"
+        assert pool_kwargs["min_size"] == 2
+        assert pool_kwargs["max_size"] == 12
+        assert pool_kwargs["open"] is False
+        assert pool_kwargs["kwargs"] == {"autocommit": True, "prepare_threshold": 0}
+        assert isinstance(mod._pool, FakePool)
+        assert mod._pool.opened is True
+        assert isinstance(mod._checkpointer, FakeSaver)
+        assert mod._checkpointer.conn is mod._pool
+        assert mod._checkpointer.setup_called is True
+    finally:
+        mod._pool = orig_pool
+        mod._checkpointer = orig_cp
+
+
+@pytest.mark.asyncio
+async def test_init_checkpointer_clamps_invalid_pool_bounds(monkeypatch):
+    orig_pool = mod._pool
+    orig_cp = mod._checkpointer
+    pool_kwargs: dict[str, object] = {}
+
+    class FakePool:
+        def __init__(self, **kwargs: object) -> None:
+            pool_kwargs.update(kwargs)
+
+        async def open(self) -> None:
+            return None
+
+    class FakeSaver:
+        def __init__(self, conn: object) -> None:
+            self.conn = conn
+
+        async def setup(self) -> None:
+            return None
+
+    _install_fake_checkpointer_modules(monkeypatch, FakePool, FakeSaver)
+
+    try:
+        mod._pool = None
+        mod._checkpointer = None
+
+        await mod.init_checkpointer("postgresql://example", min_size=0, max_size=-1)
+
+        assert pool_kwargs["min_size"] == 1
+        assert pool_kwargs["max_size"] == 1
     finally:
         mod._pool = orig_pool
         mod._checkpointer = orig_cp

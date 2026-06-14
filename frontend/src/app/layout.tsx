@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
 import localFont from 'next/font/local'
 import { ThemeProvider } from 'next-themes'
 import { NextIntlClientProvider } from 'next-intl'
@@ -8,6 +9,7 @@ import './globals.css'
 import '@/components/agent-prism/theme/theme.css'
 import { AppLayout } from '@/components/layout/app-layout'
 import { ROOT_MESSAGE_NAMESPACES, getScopedMessages } from '@/i18n/scoped-messages'
+import { readSidebarWidthCookie, SIDEBAR_WIDTH_COOKIE_NAME } from '@/lib/stores/sidebar-store'
 
 const pretendard = localFont({
   src: 'fonts/PretendardVariable.woff2',
@@ -29,11 +31,15 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const [locale, messages, timeZone] = await Promise.all([
+  const [locale, messages, timeZone, cookieStore] = await Promise.all([
     getLocale(),
     getScopedMessages(ROOT_MESSAGE_NAMESPACES),
     getTimeZone(),
+    cookies(),
   ])
+  const initialSidebarWidth = readSidebarWidthCookie(
+    cookieStore.get(SIDEBAR_WIDTH_COOKIE_NAME)?.value,
+  )
 
   return (
     <html
@@ -49,7 +55,7 @@ export default async function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <AppLayout>{children}</AppLayout>
+            <AppLayout initialSidebarWidth={initialSidebarWidth}>{children}</AppLayout>
             <Toaster
               position="top-center"
               richColors
