@@ -3449,7 +3449,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add mock-only Playwright coverage for `/skills` state filter chips in `frontend/e2e/skill-state-filters.spec.ts`.
 - [x] Add mock-only Playwright coverage for Skill Builder improve preview rendering in `frontend/e2e/skill-builder-preview.spec.ts`.
 - [x] Add mock-only Playwright coverage for Skill Builder improve conflict recovery in `frontend/e2e/skill-builder-conflict.spec.ts`.
-- [ ] Add detail-dialog regression tests for package file selection, file save/delete behavior, text skill save behavior, and footer actions after the single-shell refactor.
+- [x] Add detail-dialog regression tests for package file selection, file save/delete behavior, text skill save behavior, and footer actions after the single-shell refactor.
 - [x] Add a regression test or routing assertion that no separate user-facing skill evaluation/history/credential route is introduced for this phase.
 - [x] Add i18n messages in both Korean and English for the installed skill detail tabs and evaluation actions.
 - [x] Run:
