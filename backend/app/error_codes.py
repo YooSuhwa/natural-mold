@@ -84,15 +84,11 @@ def marketplace_item_not_found() -> NotFoundError:
     """Spec §10.7 — emitted for both "doesn't exist" and "forbidden" so
     catalog enumeration via 404 vs 403 is blocked (rules/security.md).
     The branch is recorded server-side only."""
-    return NotFoundError(
-        "MARKETPLACE_ITEM_NOT_FOUND", "마켓플레이스 아이템을 찾을 수 없습니다"
-    )
+    return NotFoundError("MARKETPLACE_ITEM_NOT_FOUND", "마켓플레이스 아이템을 찾을 수 없습니다")
 
 
 def marketplace_version_not_found() -> NotFoundError:
-    return NotFoundError(
-        "MARKETPLACE_VERSION_NOT_FOUND", "마켓플레이스 버전을 찾을 수 없습니다"
-    )
+    return NotFoundError("MARKETPLACE_VERSION_NOT_FOUND", "마켓플레이스 버전을 찾을 수 없습니다")
 
 
 def credential_not_found() -> NotFoundError:
@@ -115,9 +111,7 @@ def memory_proposal_not_found() -> NotFoundError:
 
 
 def resume_not_found() -> NotFoundError:
-    return NotFoundError(
-        "RESUME_NOT_FOUND", "재개할 스트림을 찾을 수 없습니다"
-    )
+    return NotFoundError("RESUME_NOT_FOUND", "재개할 스트림을 찾을 수 없습니다")
 
 
 # ---------------------------------------------------------------------------
@@ -202,9 +196,7 @@ def marketplace_manage_forbidden() -> ForbiddenError:
     """Spec §10.7 — user is authenticated and *can see* the item, but
     is not its owner / super_user. 403 rather than 404 because the
     existence is already visible (item appeared in the catalog)."""
-    return ForbiddenError(
-        "MARKETPLACE_MANAGE_FORBIDDEN", "관리 권한이 없습니다"
-    )
+    return ForbiddenError("MARKETPLACE_MANAGE_FORBIDDEN", "관리 권한이 없습니다")
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +260,13 @@ def skill_evaluation_run_not_cancellable() -> ConflictError:
     )
 
 
+def skill_evaluation_queue_full() -> ConflictError:
+    return ConflictError(
+        "SKILL_EVALUATION_QUEUE_FULL",
+        "스킬 평가 실행 대기열이 가득 찼습니다",
+    )
+
+
 def marketplace_dirty_installation() -> ConflictError:
     """Spec §10.3 — update requires an explicit ``strategy`` when the
     installation is dirty (the user has edited the installed copy).
@@ -292,11 +291,7 @@ def resume_forbidden() -> ForbiddenError:
     "리소스가 공개적으로 알려졌고 권한만 부족하다" 분기가 생기면 이 helper 가
     재사용 후보. 그때까지는 declared-but-unused.
     """
-    return ForbiddenError(
-        "RESUME_FORBIDDEN", "이 대화의 스트림에 접근할 수 없습니다"
-    )
-
-
+    return ForbiddenError("RESUME_FORBIDDEN", "이 대화의 스트림에 접근할 수 없습니다")
 
 
 # ---------------------------------------------------------------------------

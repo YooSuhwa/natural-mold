@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import (
     marketplace_credential_required,
+    skill_evaluation_queue_full,
     skill_evaluation_run_not_cancellable,
     skill_evaluation_run_not_found,
 )
@@ -25,6 +26,10 @@ from app.schemas.skill_evaluation import (
     SkillEvaluationSetResponse,
 )
 from app.services import skill_evaluation_service
+from app.services.skill_evaluation_worker import (
+    SkillEvaluationQueueFull,
+    skill_evaluation_worker,
+)
 
 router = APIRouter(prefix="/api/skills/{skill_id}/evaluations", tags=["skill-evaluations"])
 
@@ -172,6 +177,11 @@ async def create_skill_evaluation_run(
         evaluation_set_id=evaluation_set.id,
         run_id=run.id,
     )
+    try:
+        skill_evaluation_worker.enqueue(run.id)
+    except SkillEvaluationQueueFull as exc:
+        await db.rollback()
+        raise skill_evaluation_queue_full() from exc
     await db.commit()
     await db.refresh(run)
     return SkillEvaluationRunResponse.model_validate(run)

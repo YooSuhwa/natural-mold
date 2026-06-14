@@ -2152,7 +2152,7 @@ Concurrency defaults:
   - `SKILL_EVALUATION_CASE_TIMEOUT_SECONDS=60`
 - Use an `asyncio.Semaphore` in the worker. Default `1` is intentional even though the LangGraph checkpointer pool is now configurable with default max `10`; normal chat and builder sessions must remain responsive under E2E and local dev load.
 - Document that `SKILL_EVALUATION_MAX_CONCURRENT` should stay below `CHECKPOINTER_POOL_MAX_SIZE` and reserve capacity for normal chat traffic.
-- Reject run creation with `429` and code `SKILL_EVALUATION_QUEUE_FULL` when the in-process queue is full.
+- Reject run creation with `409` and code `SKILL_EVALUATION_QUEUE_FULL` when the in-process queue is full.
 - Never hold a DB transaction open while waiting on model calls, subprocess execution, or file IO.
 
 Model and cost owner:
@@ -3155,18 +3155,19 @@ Expected: eval runner tests pass.
 - [ ] Add response/request schemas for evaluation sets, run summaries, run detail, and latest evaluation summary.
 - [ ] Add `/api/skills/{skill_id}/evaluations` endpoints from the API Contract section.
 - [x] Add `/estimate` and `/runs/{run_id}/cancel` endpoints.
-- [ ] Make `POST /runs` commit a queued run and enqueue it through `SkillEvaluationWorker`; do not execute the full evaluation inside the request handler.
+- [x] Make `POST /runs` commit a queued run and enqueue it through `SkillEvaluationWorker`; do not execute the full evaluation inside the request handler.
 - [x] Persist installed-skill eval runs in `skill_evaluation_runs`, not normal `conversation_runs`.
 - [x] Enforce ownership by loading the parent skill through `skill_service.get_skill`.
 - [ ] Add CSRF dependency to create/update/delete/run endpoints.
 - [x] Populate `latest_evaluation_summary` in skill list and detail responses without N+1 queries.
 - [x] Populate `health` in skill list and detail responses.
 - [x] Implement run creation so it snapshots the current `skill.version` and `skill.content_hash`.
-- [ ] Implement queued/running/grading/completed/failed/cancelled transitions through the worker, including cooperative cancellation fields.
+- [x] Implement initial queued/running/grading/completed/failed/cancelled transitions through the worker, including cancellation field checks before completion.
+- [ ] Complete cooperative cancellation checkpoints inside the full eval runner cases, baseline runs, grading, subprocess timeout, and aggregation phases.
 - [ ] Mark previous runs stale in UI by hash comparison; do not mutate old rows just to represent stale status.
 - [x] Before run creation, call `missing_required_keys(...)` or the same resolution path used by runtime; return `MARKETPLACE_CREDENTIAL_REQUIRED` if required user bindings are missing.
 - [x] Record `skill_evaluation.credential_missing` with outcome `denied` when run creation is blocked by missing credentials.
-- [ ] Record `skill_evaluation.run_create`, `skill_evaluation.run_start`, `skill_evaluation.run_complete`, `skill_evaluation.run_fail`, and `skill_evaluation.run_cancel` with sanitized metadata.
+- [x] Record `skill_evaluation.run_create`, `skill_evaluation.run_start`, `skill_evaluation.run_complete`, `skill_evaluation.run_fail`, and `skill_evaluation.run_cancel` with sanitized metadata.
 - [ ] Record `skill_security.sandbox_denied` when the eval runner blocks unsupported executables, path traversal, undeclared network access, or timeout policy violations before launch.
 - [ ] Add API tests:
   - list returns evaluation sets owned by the skill owner
@@ -3184,6 +3185,7 @@ Expected: eval runner tests pass.
   - missing required skill credential binding returns `MARKETPLACE_CREDENTIAL_REQUIRED` and no run row is created
   - run create/cancel/complete/failure audit events contain IDs and summary metrics but no prompts or outputs
   - sandbox denial audit event contains reason code and executable only, not raw command arguments
+- [x] Add regression coverage for run enqueue, queue-full rollback, worker complete/fail transitions, cancelled-run skip, and interrupted running/grading reconciliation.
 - [ ] Run:
 
 ```bash

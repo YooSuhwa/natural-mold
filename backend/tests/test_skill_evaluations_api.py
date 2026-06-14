@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -7,10 +8,26 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.routers import skill_evaluations as skill_evaluations_router
 from app.skills import service as skill_service
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
+
+
+class RecordingEvaluationWorker:
+    def __init__(self) -> None:
+        self.enqueued_run_ids: list[uuid.UUID] = []
+
+    def enqueue(self, run_id: uuid.UUID) -> None:
+        self.enqueued_run_ids.append(run_id)
+
+
+@pytest.fixture(autouse=True)
+def evaluation_worker(monkeypatch) -> RecordingEvaluationWorker:
+    worker = RecordingEvaluationWorker()
+    monkeypatch.setattr(skill_evaluations_router, "skill_evaluation_worker", worker)
+    return worker
 
 
 def _skill_content() -> str:
@@ -65,6 +82,7 @@ async def test_estimate_and_create_run(
     client: AsyncClient,
     db: AsyncSession,
     tmp_path: Path,
+    evaluation_worker: RecordingEvaluationWorker,
 ) -> None:
     skill = await _create_skill(db, tmp_path)
     created = await client.post(
@@ -82,6 +100,38 @@ async def test_estimate_and_create_run(
     assert run.json()["status"] == "queued"
     assert run.json()["skill_version"] == "1.0.0"
     assert run.json()["skill_content_hash"] == skill.content_hash
+    assert evaluation_worker.enqueued_run_ids == [uuid.UUID(run.json()["id"])]
+
+
+async def test_create_run_returns_queue_full_when_worker_rejects(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    class FullEvaluationWorker:
+        def enqueue(self, run_id: uuid.UUID) -> None:
+            raise skill_evaluations_router.SkillEvaluationQueueFull("full")
+
+    monkeypatch.setattr(
+        skill_evaluations_router,
+        "skill_evaluation_worker",
+        FullEvaluationWorker(),
+    )
+    skill = await _create_skill(db, tmp_path)
+    created = await client.post(
+        f"/api/skills/{skill.id}/evaluations",
+        json={"name": "Smoke", "evals": [{"input": "a"}]},
+    )
+    set_id = created.json()["id"]
+
+    response = await client.post(f"/api/skills/{skill.id}/evaluations/{set_id}/runs")
+    runs = await client.get(f"/api/skills/{skill.id}/evaluations/{set_id}/runs")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "SKILL_EVALUATION_QUEUE_FULL"
+    assert runs.status_code == 200
+    assert runs.json() == []
 
 
 async def test_cancel_queued_run(
@@ -137,8 +187,6 @@ async def test_create_run_requires_required_credential_binding(
 
 
 async def test_list_evaluations_for_unowned_skill_returns_404(client: AsyncClient) -> None:
-    response = await client.get(
-        "/api/skills/00000000-0000-0000-0000-000000000099/evaluations"
-    )
+    response = await client.get("/api/skills/00000000-0000-0000-0000-000000000099/evaluations")
 
     assert response.status_code == 404
