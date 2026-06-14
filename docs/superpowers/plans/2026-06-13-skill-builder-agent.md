@@ -3256,20 +3256,20 @@ Expected: trigger optimization tests pass.
 - [x] Mirror installed skill evaluation set/run/latest summary shapes in TypeScript.
 - [x] Mirror `SkillRevisionSummary`, `SkillRevisionDetail`, and `SkillRollbackResponse` in `skill-revision.ts`.
 - [x] Add `SkillHealthSummary` and `SkillEvaluationRunEstimate` TypeScript types.
-- [ ] Add TanStack Query hooks:
+- [x] Add TanStack Query hooks currently backed by implemented APIs:
   - `useSkillBuilderSession`
   - `useStartSkillBuilder`
-  - `useValidateSkillBuilder`
-  - `useConfirmSkillBuilder`
-  - `useRunSkillBuilderEvals`
+  - `useValidateSkillBuilderSession`
+  - `useConfirmSkillBuilderSession`
   - `useSkillEvaluationSets`
   - `useSkillEvaluationRuns`
-  - `useEstimateSkillEvaluation`
-  - `useRunSkillEvaluation`
-  - `useCancelSkillEvaluation`
+  - `useEstimateSkillEvaluationRun`
+  - `useCreateSkillEvaluationRun`
+  - `useCancelSkillEvaluationRun`
   - `useSkillRevisions`
   - `useSkillRevision`
   - `useRollbackSkillRevision`
+- [ ] Add the builder-session eval run hook after `POST /api/skill-builder/{session_id}/evals/run` is implemented; current `frontend/src/lib/api/skill-builder.ts` exposes only `start`, `get`, `validate`, and `confirm`.
 - [x] Add builder-specific stream helpers using shared SSE parsing/resume behavior where practical.
 - [ ] Add typed handlers for `builder_status`, `builder_activity`, `draft_package`, `validation_result`, `compatibility_result`, `changelog_draft`, and `eval_result`.
 - [x] Do not depend on legacy normal chat `useChatRuntime`; current `main` defaults normal chat to `langgraph_v3`.
@@ -3405,10 +3405,10 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add a `History` tab/surface to the existing skill detail dialog when visible tab rules require it.
 - [x] Show the legacy empty-state copy when History is opened for a skill with no revisions.
 - [x] In `History`, list revisions newest first with operation, revision number, changelog summary, current marker, content hash, and file count.
-- [ ] In `History`, show selected revision detail with changelog items, changed files, compatibility result, and evaluation snapshot.
-- [ ] Disable rollback for the current revision.
-- [ ] Add rollback confirmation copy: `이전 버전으로 되돌리면 현재 내용은 새 이력으로 보존됩니다.`
-- [ ] On rollback success, refresh skill data, files/content, evaluation summaries, and revision list.
+- [x] In `History`, show selected revision detail with changelog items, changed files, compatibility result, and evaluation snapshot.
+- [x] Disable rollback for the current revision.
+- [x] Add rollback confirmation copy: `이전 버전으로 되돌리면 현재 내용은 새 이력으로 보존됩니다.`
+- [x] On rollback success, refresh skill data, files/content, evaluation summaries, and revision list.
 - [ ] Render `PortableCompatibilityPanel` in builder preview and revision detail.
 - [ ] Show latest evaluation summary, stale badge, reusable evaluation sets, run history, and selected run details.
 - [x] Show estimate confirmation before creating an evaluation run.
@@ -3417,7 +3417,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [ ] Show improvement conflict state when the backend returns 409 for a changed base hash.
 - [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
 - [x] Add focused `SkillEvaluationTab` tests for rerun, active-run cancel, and missing-credential connect callbacks.
-- [x] Add focused `SkillHistoryTab` tests for newest-first ordering, current marker, operation labels, and legacy empty state.
+- [x] Add focused `SkillHistoryTab` tests for newest-first ordering, current marker, operation labels, legacy empty state, selected revision details, current rollback disablement, and rollback confirmation.
 - [x] Add focused `SkillCredentialBindingsPanel` tests for missing-required summary and connected/missing binding states.
 - [x] Add focused `getVisibleSkillDetailTabs` tests for hidden optional tabs, credential requirements, evaluation signal, history signal, and deep links.
 - [x] Add focused `skill-state-filters` tests for stale rerun, publication/local state, and combined filters.
