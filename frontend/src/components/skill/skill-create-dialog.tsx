@@ -24,6 +24,17 @@ interface SkillCreateDialogProps {
   onStartChat?: (request: string) => void
 }
 
+function coerceTabKey(value: string): TabKey {
+  switch (value) {
+    case 'chat':
+    case 'text':
+    case 'package':
+      return value
+    default:
+      return 'chat'
+  }
+}
+
 export function SkillCreateDialog({
   open,
   onOpenChange,
@@ -68,7 +79,7 @@ function SkillCreateBody({
         description={t('description')}
       />
       <DialogShell.Body>
-        <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
+        <Tabs value={tab} onValueChange={(value) => setTab(coerceTabKey(value))}>
           <TabsList variant="line">
             <TabsTrigger value="chat">
               <Sparkles className="size-3.5" /> {t('tabs.chat')}

@@ -40,6 +40,21 @@ const skill: Skill = {
   size_bytes: 1200,
   used_by_count: 2,
   package_metadata: null,
+  health: {
+    state: 'ready',
+    label: '검증됨',
+    reason: 'Latest evaluation passed for the current skill.',
+    severity: 'success',
+  },
+  latest_evaluation_summary: {
+    status: 'completed',
+    latest_run_id: 'run-1',
+    evaluation_set_id: 'set-1',
+    pass_rate: 0.92,
+    skill_content_hash: 'hash-1',
+    created_at: '2026-06-01T00:00:00Z',
+    completed_at: '2026-06-01T00:01:00Z',
+  },
   last_modified_at: '2026-05-01T00:00:00Z',
   created_at: '2026-05-01T00:00:00Z',
   updated_at: '2026-05-02T00:00:00Z',
@@ -63,6 +78,13 @@ describe('SkillsPage', () => {
     expect(screen.queryByRole('columnheader', { name: '자격증명' })).not.toBeInTheDocument()
     expect(screen.getByText('한국 날씨를 조회합니다.')).toBeInTheDocument()
     expect(screen.getByText('korea-weather')).toBeInTheDocument()
+  })
+
+  it('shows skill health and latest evaluation summary on cards', () => {
+    render(<SkillsPage />)
+
+    expect(screen.getByText('검증됨')).toBeInTheDocument()
+    expect(screen.getByText('평가 92%')).toBeInTheDocument()
   })
 
   it('renders skills as catalog-style cards by default', () => {

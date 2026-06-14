@@ -3326,6 +3326,8 @@ Expected: both pass. Fix any new copy or design-system violations.
 - Modify: `frontend/src/components/skill/skill-detail-dialog.tsx`
 - Modify: `frontend/src/components/agent/visual-settings/dialogs/tools-skills-dialog.tsx`
 - Modify: `frontend/src/lib/types/skill.ts`
+- Create: `frontend/src/components/skill/skill-card.tsx`
+- Create: `frontend/src/components/skill/skill-quality-inline.tsx`
 - Create: `frontend/src/components/skill/skill-detail-tabs.tsx`
 - Create: `frontend/src/components/skill/skill-summary-strip.tsx`
 - Create: `frontend/src/components/skill/skill-evaluation-summary-badge.tsx`
@@ -3335,21 +3337,28 @@ Expected: both pass. Fix any new copy or design-system violations.
 - Create: `frontend/src/components/skill/skill-history-tab.tsx`
 - Create: `frontend/src/components/skill/skill-revision-detail.tsx`
 - Create: `frontend/src/components/skill/portable-compatibility-panel.tsx`
+- Create: `frontend/src/components/agent/visual-settings/dialogs/tools-skills-dialog-types.ts`
+- Create: `frontend/src/components/agent/visual-settings/dialogs/tools-skills-kind-icon.tsx`
+- Create: `frontend/src/components/agent/visual-settings/dialogs/tools-skills-list.tsx`
+- Create: `frontend/src/components/agent/visual-settings/dialogs/tools-skills-current-column.tsx`
+- Create: `frontend/src/components/agent/visual-settings/dialogs/tools-skills-catalog-panel.tsx`
+- Create: `frontend/src/components/agent/visual-settings/dialogs/tools-skills-resource-panels.tsx`
 - Create: `frontend/src/components/skill/__tests__/skill-detail-tabs.test.tsx`
 - Create: `frontend/src/components/skill/__tests__/skill-detail-dialog.test.tsx`
 - Create: `frontend/src/components/skill/__tests__/skill-evaluation-tab.test.tsx`
 - Create: `frontend/src/components/skill/__tests__/skill-evaluation-summary-badge.test.tsx`
+- Create: `frontend/src/components/skill/__tests__/skill-quality-badges.test.tsx`
 - Create: `frontend/src/components/skill/__tests__/skill-history-tab.test.tsx`
 - Modify: `frontend/messages/ko.json`
 - Modify: `frontend/messages/en.json`
 
 - [x] Extend `Skill` with `latest_evaluation_summary`.
 - [x] Extend `Skill` with `health`.
-- [ ] Add `SkillEvaluationSummaryBadge` states: missing, running, failed, partial, passed, stale.
-- [ ] Add `SkillHealthBadge` states: ready, needs_evaluation, needs_rerun, needs_credentials, evaluation_running, evaluation_failed, low_confidence.
-- [ ] Add evaluation badge rendering to `/skills` cards without changing existing publish/manage actions.
+- [x] Add `SkillEvaluationSummaryBadge` states: missing, running, failed, partial, passed, stale.
+- [x] Add `SkillHealthBadge` states: ready, needs_evaluation, needs_rerun, needs_credentials, evaluation_running, evaluation_failed, low_confidence.
+- [x] Add evaluation badge rendering to `/skills` cards without changing existing publish/manage actions.
 - [ ] Add `/skills` state filter chips for needs credentials, needs rerun, evaluation failed, published, and local/draft states without adding new app-level navigation entries.
-- [ ] Add compact evaluation subtitles to `ToolsSkillsDialog` skill rows.
+- [x] Add compact evaluation subtitles to `ToolsSkillsDialog` skill rows.
 - [ ] Add `SkillDetailTab = 'content' | 'credentials' | 'evaluation' | 'history' | 'metadata'`.
 - [ ] Add `initialTab?: SkillDetailTab` to `SkillDetailDialog`.
 - [ ] Support `/skills?detailId=<id>&tab=<tab>` deep links for detail tabs while keeping the route inside `/skills`.

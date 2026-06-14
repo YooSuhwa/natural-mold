@@ -2363,6 +2363,30 @@
         "submit": "Submit"
       }
     },
+    "health": {
+      "ready": "Verified",
+      "needs_evaluation": "Not evaluated",
+      "needs_rerun": "Rerun needed",
+      "needs_credentials": "Credentials needed",
+      "evaluation_running": "Evaluation running",
+      "evaluation_failed": "Evaluation failed",
+      "low_confidence": "Low pass rate"
+    },
+    "evaluationSummary": {
+      "passRate": "Eval {rate}%",
+      "status": {
+        "queued": "Evaluation queued",
+        "running": "Evaluation running",
+        "grading": "Grading",
+        "completed": "Evaluation complete",
+        "failed": "Evaluation failed",
+        "cancelled": "Evaluation cancelled",
+        "missing": "Not evaluated",
+        "stale": "Rerun needed",
+        "partial": "Partial evaluation",
+        "passed": "Evaluation passed"
+      }
+    },
     "builderDialog": {
       "titleCreate": "Build Skill by Chat",
       "titleImprove": "Improve Skill by Chat",

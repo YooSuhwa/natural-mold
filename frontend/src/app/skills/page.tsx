@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { BookOpen, ChevronRightIcon, FileText, Package, Plus } from 'lucide-react'
+import { BookOpen, Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
@@ -9,30 +9,29 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { SearchInput } from '@/components/shared/search-input'
 import {
   CountedLineTabs,
-  ResourceBadge,
-  ResourceCardMeta,
   ResourceGrid,
-  ResourceListCard,
   ResourcePage,
   ResourcePanel,
   ResourceToolbar,
 } from '@/components/shared/resource-layout'
 import { Skeleton } from '@/components/ui/skeleton'
+import { SkillCard } from '@/components/skill/skill-card'
 import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
 import { SkillDetailDialog } from '@/components/skill/skill-detail-dialog'
 import { SkillBuilderDialog } from '@/components/skill/skill-builder-dialog'
-import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
-import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { PublishWizard } from '@/components/marketplace/publish-wizard'
 import { useSkills } from '@/lib/hooks/use-skills'
-import { getResourceTone } from '@/lib/resource-tones'
 import type { Skill, SkillKind } from '@/lib/types/skill'
-import { cn } from '@/lib/utils'
 
 type CreateTab = 'chat' | 'text' | 'package'
 type SkillTab = 'all' | Skill['kind']
 
 const ALL_TAB = 'all'
+const SKILL_TABS: readonly SkillTab[] = [ALL_TAB, 'text', 'package']
+
+function isSkillTab(value: string): value is SkillTab {
+  return value === ALL_TAB || value === 'text' || value === 'package'
+}
 
 function formatDate(value: string | null): string {
   if (!value) return ''
@@ -92,7 +91,7 @@ export default function SkillsPage() {
     }).length
   }
 
-  const tabs = ([ALL_TAB, 'text', 'package'] as SkillTab[]).map((value) => ({
+  const tabs = SKILL_TABS.map((value) => ({
     value,
     label: value === ALL_TAB ? t('typeFilter.all') : t(`typeFilter.${value}`),
     countLabel: t('count', { count: countSkills(value) }),
@@ -135,7 +134,9 @@ export default function SkillsPage() {
                 ariaLabel={t('viewMode.label')}
                 value={activeTab}
                 tabs={tabs}
-                onValueChange={(value) => setActiveTab(value as SkillTab)}
+                onValueChange={(value) => {
+                  if (isSkillTab(value)) setActiveTab(value)
+                }}
               />
               <ResourceToolbar>
                 <SearchInput
@@ -217,86 +218,5 @@ export default function SkillsPage() {
         onOpenChange={(open) => !open && setPublishSkill(null)}
       />
     </ResourcePage>
-  )
-}
-
-function SkillCard({
-  skill,
-  kindLabel,
-  agentsLabel,
-  updatedLabel,
-  actionLabel,
-  publishLabel,
-  onOpen,
-  onPublish,
-}: {
-  skill: Skill
-  kindLabel: string
-  agentsLabel: string
-  updatedLabel: string
-  actionLabel: string
-  publishLabel: string
-  onOpen: (id: string) => void
-  onPublish: (skill: Skill) => void
-}) {
-  const tone = getResourceTone(skill.kind)
-  const Icon = skill.kind === 'package' ? Package : FileText
-  const canPublish =
-    !skill.publication_summary?.state || skill.publication_summary.state === 'not_published'
-  const metaLabels = [
-    skill.version ? `v${skill.version}` : null,
-    agentsLabel,
-    skill.version ? null : updatedLabel,
-  ]
-    .filter((label): label is string => Boolean(label))
-    .slice(0, 2)
-  const hasMarketplaceSignals = Boolean(skill.origin_summary || skill.publication_summary)
-
-  return (
-    <ResourceListCard as="article" tone={tone} density="rich">
-      <ResourceListCard.Header>
-        <span className={cn('moldy-resource-icon', tone.icon)}>
-          <Icon className="size-4.5" />
-        </span>
-        <ResourceBadge tone={tone}>{kindLabel}</ResourceBadge>
-      </ResourceListCard.Header>
-
-      <ResourceListCard.Title>{skill.name}</ResourceListCard.Title>
-      <ResourceListCard.Subhead tone="mono">{skill.slug}</ResourceListCard.Subhead>
-      <ResourceListCard.Description>{skill.description ?? skill.slug}</ResourceListCard.Description>
-
-      {hasMarketplaceSignals ? (
-        <ResourceListCard.StatusRow>
-          <OriginBadge summary={skill.origin_summary} />
-          <PublicationBadge summary={skill.publication_summary} />
-        </ResourceListCard.StatusRow>
-      ) : null}
-
-      <ResourceListCard.MetaRow>
-        {metaLabels.map((label) => (
-          <ResourceCardMeta key={label}>{label}</ResourceCardMeta>
-        ))}
-      </ResourceListCard.MetaRow>
-
-      <ResourceListCard.Footer className="justify-between">
-        {canPublish ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() => onPublish(skill)}
-          >
-            {publishLabel}
-          </Button>
-        ) : (
-          <span />
-        )}
-        <Button type="button" variant="outline" size="sm" onClick={() => onOpen(skill.id)}>
-          {actionLabel}
-          <ChevronRightIcon aria-hidden className="size-3" />
-        </Button>
-      </ResourceListCard.Footer>
-    </ResourceListCard>
   )
 }

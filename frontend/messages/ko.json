@@ -2342,6 +2342,30 @@
         "submit": "틀 만들고 편집"
       }
     },
+    "health": {
+      "ready": "검증됨",
+      "needs_evaluation": "평가 없음",
+      "needs_rerun": "재평가 필요",
+      "needs_credentials": "자격증명 필요",
+      "evaluation_running": "평가 중",
+      "evaluation_failed": "평가 실패",
+      "low_confidence": "낮은 통과율"
+    },
+    "evaluationSummary": {
+      "passRate": "평가 {rate}%",
+      "status": {
+        "queued": "평가 대기",
+        "running": "평가 중",
+        "grading": "채점 중",
+        "completed": "평가 완료",
+        "failed": "평가 실패",
+        "cancelled": "평가 취소",
+        "missing": "평가 없음",
+        "stale": "재평가 필요",
+        "partial": "부분 평가",
+        "passed": "평가 통과"
+      }
+    },
     "builderDialog": {
       "titleCreate": "대화로 스킬 만들기",
       "titleImprove": "대화로 스킬 개선",
