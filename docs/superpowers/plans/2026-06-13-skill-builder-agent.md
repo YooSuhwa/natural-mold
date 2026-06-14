@@ -2173,8 +2173,8 @@ Model and cost owner:
 Cancellation:
 
 - `cancel_run(...)` for `queued` runs moves directly to `cancelled`.
-- `cancel_run(...)` for `running` or `grading` sets `cancellation_requested_at` and `cancellation_reason="user_requested"`.
-- The worker checks cancellation before each case, before each baseline run, before grading, and before final aggregation.
+- `cancel_run(...)` for `running` or `grading` records status `cancelled` plus `cancellation_requested_at` and `cancellation_reason`; the worker's DB-backed cancellation probe treats that terminal row as the cooperative stop signal.
+- The worker checks cancellation before each case, before each baseline run, before subprocess-timeout-sensitive work, before grading, and before final aggregation.
 - Subprocess execution uses timeout and cooperative cancellation where available; if a subprocess cannot be interrupted cleanly, kill it at the case timeout and mark the run `cancelled` if cancellation was requested, otherwise `failed`.
 
 Startup and shutdown:
@@ -3192,7 +3192,7 @@ Expected: eval runner tests pass.
 - [x] Populate `health` in skill list and detail responses.
 - [x] Implement run creation so it snapshots the current `skill.version` and `skill.content_hash`.
 - [x] Implement initial queued/running/grading/completed/failed/cancelled transitions through the worker, including cancellation field checks before completion.
-- [ ] Complete cooperative cancellation checkpoints inside the full eval runner cases, baseline runs, grading, subprocess timeout, and aggregation phases.
+- [x] Complete cooperative cancellation checkpoints inside the full eval runner cases, baseline runs, grading, subprocess timeout, and aggregation phases.
 - [x] Mark previous runs stale in UI by hash comparison; do not mutate old rows just to represent stale status.
 - [x] Before run creation, call `missing_required_keys(...)` or the same resolution path used by runtime; return `MARKETPLACE_CREDENTIAL_REQUIRED` if required user bindings are missing.
 - [x] Record `skill_evaluation.credential_missing` with outcome `denied` when run creation is blocked by missing credentials.

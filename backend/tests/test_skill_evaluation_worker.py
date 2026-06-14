@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.audit_event import AuditEvent
 from app.models.skill_evaluation import SkillEvaluationRun
 from app.schemas.skill_builder import JsonValue
@@ -40,6 +41,16 @@ class BlockingEvaluator:
         self.releases[context.run_id] = release
         await self.started.put(context.run_id)
         await release.wait()
+        return SkillEvaluationResult(
+            summary={"case_count": len(context.evals), "pass_rate": 1},
+            benchmark={"with_skill_pass_rate": 1, "without_skill_pass_rate": 0},
+            case_results=[],
+        )
+
+
+class HangingEvaluator:
+    async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
+        await asyncio.sleep(10)
         return SkillEvaluationResult(
             summary={"case_count": len(context.evals), "pass_rate": 1},
             benchmark={"with_skill_pass_rate": 1, "without_skill_pass_rate": 0},
@@ -97,13 +108,18 @@ async def _wait_for_run_status(
     run_id: uuid.UUID,
     status: str,
 ) -> SkillEvaluationRun:
+    last_seen: str | None = None
+    last_error: str | None = None
     for _ in range(40):
         async with TestSession() as session:
             row = await session.get(SkillEvaluationRun, run_id)
+            if row is not None:
+                last_seen = row.status
+                last_error = row.error_message
             if row is not None and row.status == status:
                 return row
         await asyncio.sleep(0.05)
-    raise AssertionError(f"run did not reach status {status}")
+    raise AssertionError(f"run did not reach status {status}; last={last_seen}; error={last_error}")
 
 
 async def test_worker_completes_queued_run_and_records_audit(
@@ -173,26 +189,29 @@ async def test_worker_loop_respects_max_concurrent(
     evaluator = BlockingEvaluator()
     worker = SkillEvaluationWorker(evaluator=evaluator, max_concurrent=1)
 
-    await worker.start(TestSession)
-    worker.reserve_slot()
-    worker.enqueue(first.id, reserved=True)
-    worker.reserve_slot()
-    worker.enqueue(second.id, reserved=True)
-    first_started = await asyncio.wait_for(evaluator.started.get(), timeout=1)
-    await asyncio.sleep(0.1)
-    async with TestSession() as session:
-        second_row = await session.get(SkillEvaluationRun, second.id)
-    assert first_started == first.id
-    assert second_row is not None
-    assert second_row.status == "queued"
+    try:
+        await worker.start(TestSession)
+        worker.reserve_slot()
+        worker.enqueue(first.id, reserved=True)
+        worker.reserve_slot()
+        worker.enqueue(second.id, reserved=True)
+        first_started = await asyncio.wait_for(evaluator.started.get(), timeout=1)
+        await asyncio.sleep(0.1)
+        async with TestSession() as session:
+            second_row = await session.get(SkillEvaluationRun, second.id)
+        assert first_started == first.id
+        assert second_row is not None
+        assert second_row.status == "queued"
 
-    evaluator.releases[first.id].set()
-    second_started = await asyncio.wait_for(evaluator.started.get(), timeout=1)
-    evaluator.releases[second.id].set()
-    completed = await _wait_for_run_status(second.id, "completed")
-    await worker.stop()
+        evaluator.releases[first.id].set()
+        second_started = await asyncio.wait_for(evaluator.started.get(), timeout=1)
+        assert second_started == second.id
+        evaluator.releases[second.id].set()
+        await worker.stop()
+        completed = await _wait_for_run_status(second.id, "completed")
+    finally:
+        await worker.stop()
 
-    assert second_started == second.id
     assert completed.status == "completed"
 
 
@@ -215,6 +234,33 @@ async def test_worker_marks_failed_run_and_records_audit(
         "skill_evaluation.run_start",
         "skill_evaluation.run_fail",
     ]
+
+
+async def test_worker_marks_timed_out_run_failed_and_records_sanitized_audit(
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    run = await _create_run(db, tmp_path)
+    worker = SkillEvaluationWorker(evaluator=HangingEvaluator())
+
+    with patch.object(settings, "skill_evaluation_run_timeout_seconds", 0.01):
+        failed = await worker.run_once(db, run.id)
+    await db.commit()
+
+    assert failed is not None
+    assert failed.status == "failed"
+    assert failed.error_message == "timeout: evaluation run exceeded 0.01s"
+    assert await _audit_actions(db) == [
+        "skill_evaluation.run_start",
+        "skill_evaluation.run_fail",
+    ]
+    result = await db.execute(
+        select(AuditEvent).where(AuditEvent.action == "skill_evaluation.run_fail")
+    )
+    event = result.scalar_one()
+    assert event.event_metadata is not None
+    assert event.event_metadata["reason_code"] == "SKILL_EVALUATION_TIMEOUT"
+    assert "timeout:" not in str(event.event_metadata)
 
 
 async def test_worker_skips_cancelled_run(

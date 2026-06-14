@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -8,6 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.skill_builder.eval_cancellation import (
+    EvalCancellationCheckpoint,
+    EvalRunCancelled,
+)
 from app.config import settings
 from app.exceptions import AppError
 from app.marketplace.skill_runtime import (
@@ -32,6 +37,19 @@ async def load_run(db: AsyncSession, run_id: uuid.UUID) -> SkillEvaluationRun | 
     return result.scalar_one_or_none()
 
 
+@dataclass(frozen=True, slots=True)
+class DbSkillEvaluationCancellationProbe:
+    db: AsyncSession
+    run_id: uuid.UUID
+
+    async def raise_if_cancelled(self, checkpoint: EvalCancellationCheckpoint) -> None:
+        run = await self.db.get(SkillEvaluationRun, self.run_id, populate_existing=True)
+        if run is None:
+            raise SkillEvaluationExecutionError(f"run not found during evaluation: {self.run_id}")
+        if run.status == "cancelled" or run.cancellation_requested_at is not None:
+            raise EvalRunCancelled(checkpoint)
+
+
 async def build_context(
     db: AsyncSession,
     run: SkillEvaluationRun,
@@ -49,6 +67,7 @@ async def build_context(
         skill_content_hash=run.skill_content_hash,
         evals=evaluation_set.evals or [],
         runtime_context=runtime_context,
+        cancellation=DbSkillEvaluationCancellationProbe(db=db, run_id=run.id),
     )
 
 

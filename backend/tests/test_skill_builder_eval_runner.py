@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from app.agent_runtime.skill_builder.deterministic_eval_runner import (
+    run_deterministic_evaluation,
+)
+from app.agent_runtime.skill_builder.eval_cancellation import (
+    EvalCancellationCheckpoint,
+    EvalCancellationPhase,
+    EvalRunCancelled,
+)
 from app.agent_runtime.skill_builder.eval_runner import (
     EvalCaseResult,
     GraderResultError,
@@ -75,3 +83,61 @@ def test_validate_grader_result_rejects_missing_evidence_claims() -> None:
         assert "evidence claim" in str(exc)
     else:
         raise AssertionError("weak grader result should fail")
+
+
+class RecordingCancellationProbe:
+    def __init__(self, *, cancel_at: EvalCancellationPhase | None = None) -> None:
+        self.cancel_at = cancel_at
+        self.checkpoints: list[EvalCancellationCheckpoint] = []
+
+    async def raise_if_cancelled(self, checkpoint: EvalCancellationCheckpoint) -> None:
+        self.checkpoints.append(checkpoint)
+        if checkpoint.phase == self.cancel_at:
+            raise EvalRunCancelled(checkpoint)
+
+
+async def test_deterministic_evaluation_checks_cancellation_before_baseline() -> None:
+    probe = RecordingCancellationProbe(cancel_at=EvalCancellationPhase.BASELINE_CASE)
+
+    try:
+        await run_deterministic_evaluation(
+            evals=[{"input": "a"}, {"input": "b"}],
+            runner_version="test-runner",
+            cancellation=probe,
+        )
+    except EvalRunCancelled as exc:
+        assert exc.checkpoint.phase == EvalCancellationPhase.BASELINE_CASE
+        assert exc.checkpoint.case_index == 0
+    else:
+        raise AssertionError("evaluation should stop at the baseline cancellation checkpoint")
+
+    phases = [checkpoint.phase for checkpoint in probe.checkpoints]
+    assert phases == [
+        EvalCancellationPhase.START,
+        EvalCancellationPhase.WITH_SKILL_CASE,
+        EvalCancellationPhase.WITH_SKILL_CASE,
+        EvalCancellationPhase.SUBPROCESS_TIMEOUT,
+        EvalCancellationPhase.BASELINE_CASE,
+    ]
+
+
+async def test_deterministic_evaluation_checks_cancellation_before_aggregation() -> None:
+    probe = RecordingCancellationProbe()
+
+    result = await run_deterministic_evaluation(
+        evals=[{"input": "a"}],
+        runner_version="test-runner",
+        cancellation=probe,
+    )
+
+    phases = [checkpoint.phase for checkpoint in probe.checkpoints]
+    assert phases == [
+        EvalCancellationPhase.START,
+        EvalCancellationPhase.WITH_SKILL_CASE,
+        EvalCancellationPhase.SUBPROCESS_TIMEOUT,
+        EvalCancellationPhase.BASELINE_CASE,
+        EvalCancellationPhase.GRADING,
+        EvalCancellationPhase.AGGREGATION,
+    ]
+    assert result.summary["runner_version"] == "test-runner"
+    assert result.summary["case_count"] == 1

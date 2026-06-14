@@ -8,6 +8,10 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.skill_builder.eval_cancellation import (
+    EvalCancellationCheckpoint,
+    EvalCancellationPhase,
+)
 from app.config import settings
 from app.models.skill_evaluation import SkillEvaluationRun
 from app.services import skill_evaluation_service
@@ -30,6 +34,24 @@ class BlockingEvaluator:
     async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
         await self.started.put(context.run_id)
         await self.release.wait()
+        return SkillEvaluationResult(
+            summary={"case_count": len(context.evals), "pass_rate": 1},
+            benchmark={"with_skill_pass_rate": 1, "without_skill_pass_rate": 0},
+            case_results=[],
+        )
+
+
+class CheckpointBlockingEvaluator:
+    def __init__(self) -> None:
+        self.started: asyncio.Queue[uuid.UUID] = asyncio.Queue()
+        self.release = asyncio.Event()
+
+    async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
+        await self.started.put(context.run_id)
+        await self.release.wait()
+        await context.cancellation.raise_if_cancelled(
+            EvalCancellationCheckpoint(EvalCancellationPhase.GRADING)
+        )
         return SkillEvaluationResult(
             summary={"case_count": len(context.evals), "pass_rate": 1},
             benchmark={"with_skill_pass_rate": 1, "without_skill_pass_rate": 0},
@@ -113,3 +135,37 @@ async def test_worker_preserves_running_cancellation_after_evaluator_returns(
 
     assert cancelled.cancellation_reason == "user"
     assert cancelled.completed_at is not None
+
+
+async def test_worker_stops_when_evaluator_checkpoint_sees_cancelled_run(
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    with patch.object(settings, "data_root", str(tmp_path)):
+        run = await _create_run(db)
+        await db.commit()
+        evaluator = CheckpointBlockingEvaluator()
+        worker = SkillEvaluationWorker(evaluator=evaluator)
+
+        await worker.start(TestSession)
+        try:
+            worker.reserve_slot()
+            worker.enqueue(run.id, reserved=True)
+            started = await asyncio.wait_for(evaluator.started.get(), timeout=1)
+            assert started == run.id
+
+            async with TestSession() as session:
+                row = await session.get(SkillEvaluationRun, run.id)
+                assert row is not None
+                assert row.status == "grading"
+                await skill_evaluation_service.cancel_run(session, row, reason="user")
+                await session.commit()
+
+            evaluator.release.set()
+            cancelled = await _wait_for_status(run.id, "cancelled")
+        finally:
+            await worker.stop()
+
+    assert cancelled.summary is None
+    assert cancelled.error_message is None
+    assert cancelled.cancellation_reason == "user"

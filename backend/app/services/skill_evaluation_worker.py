@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.agent_runtime.skill_builder.eval_cancellation import EvalRunCancelled
 from app.config import settings
 from app.database import async_session
 from app.models.skill_evaluation import SkillEvaluationRun
@@ -139,7 +140,32 @@ class SkillEvaluationWorker:
         await record_run_audit(db, run, "skill_evaluation.run_start")
         await mark_grading(db, run)
         try:
-            result = await self.evaluator.evaluate(await build_context(db, run))
+            result = await asyncio.wait_for(
+                self.evaluator.evaluate(await build_context(db, run)),
+                timeout=settings.skill_evaluation_run_timeout_seconds,
+            )
+        except EvalRunCancelled:
+            await mark_cancelled(db, run)
+            await db.flush()
+            return run
+        except TimeoutError:
+            timeout_message = (
+                f"timeout: evaluation run exceeded {settings.skill_evaluation_run_timeout_seconds}s"
+            )
+            await mark_failed(
+                db,
+                run,
+                timeout_message,
+            )
+            await record_run_audit(
+                db,
+                run,
+                "skill_evaluation.run_fail",
+                outcome="failure",
+                metadata={"reason_code": "SKILL_EVALUATION_TIMEOUT"},
+            )
+            await db.flush()
+            return run
         except SkillEvaluationExecutionError as exc:
             await mark_failed(db, run, str(exc))
             await record_run_audit(

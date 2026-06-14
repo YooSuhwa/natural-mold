@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final, Protocol
 
-from app.agent_runtime.skill_builder.eval_runner import (
-    EvalCaseResult,
-    aggregate_benchmark,
-    validate_grader_result,
+from app.agent_runtime.skill_builder.deterministic_eval_runner import (
+    run_deterministic_evaluation,
+)
+from app.agent_runtime.skill_builder.eval_cancellation import (
+    EvalCancellationProbe,
+    NoopEvalCancellationProbe,
 )
 from app.marketplace.skill_runtime import SkillToolContext
 from app.schemas.skill_builder import JsonValue
@@ -30,6 +32,7 @@ class SkillEvaluationContext:
     skill_content_hash: str | None
     evals: Sequence[JsonValue]
     runtime_context: SkillToolContext
+    cancellation: EvalCancellationProbe = field(default_factory=NoopEvalCancellationProbe)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,77 +55,14 @@ class DeterministicSkillEvaluationEvaluator:
     runner_version: str = DEFAULT_RUNNER_VERSION
 
     async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
-        with_skill_results = [
-            EvalCaseResult(case_index=index, passed=True, score=1)
-            for index, _case in enumerate(context.evals)
-        ]
-        without_skill_results = [
-            EvalCaseResult(case_index=index, passed=False, score=0)
-            for index, _case in enumerate(context.evals)
-        ]
-        case_results: list[JsonValue] = [
-            {
-                "case_index": index,
-                "status": "passed",
-                "input": case,
-                "score": 1,
-                "notes": "Deterministic placeholder result.",
-            }
-            for index, case in enumerate(context.evals)
-        ]
-        case_count = len(case_results)
-        pass_rate = 1 if case_count else 0
-        grader_result = validate_grader_result(
-            {
-                "expectations": [
-                    case.get("expected") for case in context.evals if isinstance(case, dict)
-                ],
-                "summary": {
-                    "runner_version": self.runner_version,
-                    "case_count": case_count,
-                    "passed_count": case_count,
-                    "failed_count": 0,
-                    "pass_rate": pass_rate,
-                },
-                "execution_metrics": {
-                    "with_skill_runs": case_count,
-                    "without_skill_runs": case_count,
-                    "model_call_count": case_count * 3,
-                },
-                "timing": {
-                    "case_timeout_seconds": 0,
-                    "total_seconds": 0,
-                },
-                "claims": [
-                    {
-                        "case_index": index,
-                        "supported": True,
-                        "evidence": "Deterministic evaluator accepted the case.",
-                    }
-                    for index, _case in enumerate(context.evals)
-                ],
-                "eval_feedback": [
-                    {
-                        "case_index": index,
-                        "severity": "info",
-                        "message": "Deterministic placeholder result.",
-                    }
-                    for index, _case in enumerate(context.evals)
-                ],
-            }
+        payload = await run_deterministic_evaluation(
+            evals=context.evals,
+            runner_version=self.runner_version,
+            cancellation=context.cancellation,
         )
-        summary = dict(grader_result)
-        summary["runner_version"] = self.runner_version
-        summary["case_count"] = case_count
-        summary["passed_count"] = case_count
-        summary["failed_count"] = 0
-        summary["pass_rate"] = pass_rate
         return SkillEvaluationResult(
-            summary=summary,
-            benchmark=aggregate_benchmark(
-                with_skill=with_skill_results,
-                without_skill=without_skill_results,
-            ),
-            case_results=case_results,
+            summary=payload.summary,
+            benchmark=payload.benchmark,
+            case_results=payload.case_results,
             runner_version=self.runner_version,
         )
