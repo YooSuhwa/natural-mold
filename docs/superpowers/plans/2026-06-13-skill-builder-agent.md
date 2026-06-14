@@ -2815,8 +2815,8 @@ Expected: all new package builder tests pass.
 - [x] Use `parse_skill_md` for metadata parsing.
 - [x] Use a temporary directory and `scan_package()` for secret scanning.
 - [ ] Validate `agents/moldy.yaml.credential_requirements` against the Credential-Aware Sandbox And Audit Policy section.
-- [ ] Validate each `definition_key` by importing `app.credentials.definitions` and checking `app.credentials.registry.registry`.
-- [ ] Validate `env_map` direction as `{credential_field_name: env_var_name}` and reject entries that map env vars to field names.
+- [x] Validate each `definition_key` by importing `app.credentials.definitions` and checking `app.credentials.registry.registry`.
+- [x] Validate `env_map` direction as `{credential_field_name: env_var_name}` and reject entries that map env vars to field names.
 - [ ] Warn when scripts or `SKILL.md` instructions use `curl` or obvious network URLs without `execution_profile.requires_network: true`.
 - [x] Implement `check_portable_compatibility(draft_package)` in `backend/app/skills/compatibility.py`.
 - [x] Include compatibility result in validation output with per-target `status`, `issues`, and aggregate counts.
@@ -2828,10 +2828,10 @@ Expected: all new package builder tests pass.
   - [x] body copied from the current scratch HTML comment is a warning
   - [x] `references/` without a mention from `SKILL.md` is a warning
   - [x] secret-looking content is an error
-  - unknown credential `definition_key` is an error
-  - reversed `env_map` shape is an error
-  - `env_map` field not listed in `fields` is an error
-  - invalid env var name in `env_map` is an error
+  - [x] unknown credential `definition_key` is an error
+  - [x] reversed `env_map` shape is an error
+  - [x] `env_map` field not listed in `fields` is an error
+  - [x] invalid env var name in `env_map` is an error
   - [x] network command without `execution_profile.requires_network` is a warning
   - [x] Moldy-only frontmatter in `SKILL.md` is a compatibility error
   - [x] missing `agents/openai.yaml` is a compatibility warning for generated skills

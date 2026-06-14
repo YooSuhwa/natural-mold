@@ -99,6 +99,79 @@ def test_network_command_without_network_profile_is_warning() -> None:
     assert "NETWORK_PROFILE_MISSING" in _codes(result)
 
 
+def test_unknown_credential_definition_key_is_error() -> None:
+    result = validate_draft_package(
+        files=[_file("SKILL.md", _skill_md())],
+        credential_requirements=[
+            {
+                "key": "llm",
+                "definition_key": "missing_provider",
+                "required": True,
+                "label": "LLM key",
+                "fields": ["api_key"],
+                "env_map": {"api_key": "OPENAI_API_KEY"},
+            }
+        ],
+    )
+
+    assert result["valid"] is False
+    assert "UNKNOWN_CREDENTIAL_DEFINITION" in _codes(result)
+
+
+def test_reversed_env_map_shape_is_error() -> None:
+    result = validate_draft_package(
+        files=[_file("SKILL.md", _skill_md())],
+        credential_requirements=[
+            {
+                "key": "openai",
+                "definition_key": "openai",
+                "required": True,
+                "label": "OpenAI key",
+                "fields": ["api_key"],
+                "env_map": {"OPENAI_API_KEY": "api_key"},
+            }
+        ],
+    )
+
+    assert "CREDENTIAL_ENV_MAP_REVERSED" in _codes(result)
+
+
+def test_env_map_field_must_be_declared() -> None:
+    result = validate_draft_package(
+        files=[_file("SKILL.md", _skill_md())],
+        credential_requirements=[
+            {
+                "key": "openai",
+                "definition_key": "openai",
+                "required": True,
+                "label": "OpenAI key",
+                "fields": ["organization"],
+                "env_map": {"api_key": "OPENAI_API_KEY"},
+            }
+        ],
+    )
+
+    assert "CREDENTIAL_ENV_FIELD_UNDECLARED" in _codes(result)
+
+
+def test_env_map_value_must_be_valid_env_var_name() -> None:
+    result = validate_draft_package(
+        files=[_file("SKILL.md", _skill_md())],
+        credential_requirements=[
+            {
+                "key": "openai",
+                "definition_key": "openai",
+                "required": True,
+                "label": "OpenAI key",
+                "fields": ["api_key"],
+                "env_map": {"api_key": "openai api key"},
+            }
+        ],
+    )
+
+    assert "CREDENTIAL_ENV_VAR_INVALID" in _codes(result)
+
+
 def test_compatibility_result_is_included() -> None:
     result = validate_draft_package(files=[_file("SKILL.md", _skill_md())])
 
