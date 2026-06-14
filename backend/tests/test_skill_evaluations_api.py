@@ -200,6 +200,34 @@ async def test_cancel_queued_run(
     assert response.json()["cancellation_reason"] == "user"
 
 
+async def test_cancel_running_run_sets_cancellation_timestamp(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    await _configure_system_llm(db)
+    skill = await _create_skill(db, tmp_path)
+    created = await client.post(
+        f"/api/skills/{skill.id}/evaluations",
+        json={"name": "Smoke", "evals": [{"input": "a"}]},
+    )
+    set_id = created.json()["id"]
+    run = await client.post(f"/api/skills/{skill.id}/evaluations/{set_id}/runs")
+    row = await db.get(SkillEvaluationRun, uuid.UUID(run.json()["id"]))
+    assert row is not None
+    row.status = "running"
+    await db.commit()
+
+    response = await client.post(
+        f"/api/skills/{skill.id}/evaluations/{set_id}/runs/{run.json()['id']}/cancel",
+        json={"reason": "user"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "cancelled"
+    assert response.json()["cancellation_requested_at"] is not None
+
+
 async def test_create_run_requires_required_credential_binding(
     client: AsyncClient,
     db: AsyncSession,

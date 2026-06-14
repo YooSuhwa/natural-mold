@@ -3167,6 +3167,7 @@ Expected: eval runner tests pass.
 - Create: `backend/tests/test_skill_health_service.py`
 - Create: `backend/tests/test_skill_evaluation_audit.py`
 - Create: `backend/tests/test_skill_evaluation_worker.py`
+- Create: `backend/tests/test_skill_evaluation_quality_api.py`
 - Extend: `backend/tests/test_skills_api_regression.py`
 
 - [x] Add response/request schemas for evaluation sets, run summaries, run detail, and latest evaluation summary.
@@ -3197,19 +3198,19 @@ Expected: eval runner tests pass.
   - [x] queue-full returns `SKILL_EVALUATION_QUEUE_FULL`
   - [x] missing System LLM returns `SYSTEM_LLM_NOT_CONFIGURED` before a run row is created
   - [x] cancel transitions an active run to `cancelled`
-  - cancel sets `cancellation_requested_at` for running/grading runs
-  - stale detection works when skill content hash changes after a run
+  - [x] cancel sets `cancellation_requested_at` for running/grading runs
+  - [x] stale detection works when skill content hash changes after a run
   - [x] skill detail response includes `health`
   - [x] cross-user access returns 404
   - [x] missing required skill credential binding returns `MARKETPLACE_CREDENTIAL_REQUIRED` and no run row is created
   - run create/cancel/complete/failure audit events contain IDs and summary metrics but no prompts or outputs
   - [x] sandbox denial audit event contains reason code and executable only, not raw command arguments
 - [x] Add regression coverage for run enqueue, queue-full rollback, background queue consumption, worker complete/fail transitions, cancelled-run skip, and interrupted running/grading reconciliation.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd backend
-uv run pytest tests/test_skill_evaluations_api.py tests/test_skill_evaluation_service.py tests/test_skill_evaluation_worker.py tests/test_skill_health_service.py tests/test_skill_evaluation_audit.py -q
+uv run pytest tests/test_skill_evaluations_api.py tests/test_skill_evaluation_service.py tests/test_skill_evaluation_worker.py tests/test_skill_health_service.py tests/test_skill_evaluation_quality_api.py tests/test_skill_evaluation_audit.py -q
 ```
 
 Expected: installed skill evaluation APIs pass and existing skill serialization still works.
