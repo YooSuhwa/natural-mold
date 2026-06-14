@@ -24,7 +24,6 @@ from app.routers.skill_builder_support import (
     record_builder_audit,
     record_secret_scan_blocked_if_needed,
     require_system_llm,
-    single_event_stream,
 )
 from app.schemas.skill import SkillResponse
 from app.schemas.skill_builder import (
@@ -35,7 +34,7 @@ from app.schemas.skill_builder import (
     SkillBuilderStatus,
     SkillDraftPackage,
 )
-from app.services import skill_builder_service
+from app.services import skill_builder_service, skill_builder_workflow
 from app.services.skill_builder_errors import (
     SkillBuilderConflictError,
     SkillBuilderSourceSkillNotFound,
@@ -106,10 +105,14 @@ async def post_skill_builder_message(
 ) -> StreamingResponse:
     await require_system_llm(db, user=user, request=request)
     session = await get_session_or_404(db, session_id=session_id, user=user)
-    await skill_builder_service.append_message(db, session, role="user", content=payload.content)
-    await db.commit()
+    events = await skill_builder_workflow.run_skill_builder_message_workflow(
+        db,
+        session=session,
+        user_id=user.id,
+        content=payload.content,
+    )
     return StreamingResponse(
-        single_event_stream("builder_status", {"status": "queued", "session_id": str(session.id)}),
+        skill_builder_workflow.stream_skill_builder_events(events),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )
@@ -126,13 +129,14 @@ async def resume_skill_builder_message(
 ) -> StreamingResponse:
     await require_system_llm(db, user=user, request=request)
     session = await get_session_or_404(db, session_id=session_id, user=user)
-    await skill_builder_service.append_message(db, session, role="user", content=payload.content)
-    await db.commit()
+    events = await skill_builder_workflow.run_skill_builder_message_workflow(
+        db,
+        session=session,
+        user_id=user.id,
+        content=payload.content,
+    )
     return StreamingResponse(
-        single_event_stream(
-            "builder_status",
-            {"status": "resumed", "session_id": str(session.id)},
-        ),
+        skill_builder_workflow.stream_skill_builder_events(events),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )

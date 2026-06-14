@@ -3040,36 +3040,38 @@ Expected: API tests pass.
 - Create: `backend/app/agent_runtime/skill_builder/agent.py`
 - Create: `backend/app/agent_runtime/skill_builder/deep_agent_worker.py`
 - Create: `backend/app/agent_runtime/skill_builder/prompt.md`
+- Create: `backend/app/services/skill_builder_workflow.py`
+- Modify: `backend/app/routers/skill_builder.py`
 - Modify: `backend/app/services/skill_builder_service.py`
 
-- [ ] Implement graph state from the LangGraph section.
-- [ ] Implement model construction from the Hidden Agent Build Function section.
-- [ ] Let `SystemModelNotConfiguredError` bubble as a typed readiness error for routers/services to convert to `SYSTEM_LLM_NOT_CONFIGURED`, not as an unhandled exception.
+- [x] Implement graph state from the LangGraph section.
+- [x] Implement model construction from the Hidden Agent Build Function section.
+- [x] Let `SystemModelNotConfiguredError` bubble as a typed readiness error for routers/services to convert to `SYSTEM_LLM_NOT_CONFIGURED`, not as an unhandled exception.
 - [ ] Implement the optional Deep Agent draft worker from the Deep Agents Alignment section, using sandboxed draft storage rather than unrestricted `FilesystemBackend`.
-- [ ] Implement graph nodes:
-  - load existing skill snapshot when `mode="improve"`
-  - collect intent
-  - draft package
-  - validate package
-  - check compatibility
-  - generate changelog for improve mode
-  - apply user feedback
-  - review response
-- [ ] Persist draft package, validation result, compatibility result, and changelog draft after each draft or revision.
-- [ ] Ensure generated changelog is shown in the builder review but not written into `SKILL.md`.
-- [ ] Emit builder-specific SSE events with `format_sse` and shared parse/resume utilities where practical.
-- [ ] Emit the exact Skill Builder SSE wire events from the Frontend SSE section and add backend tests for event names and redacted payload shapes.
-- [ ] Align builder stream status/activity payloads with the LangGraph v3 compatibility section: use shared statuses `pending`, `running`, `requires_action`, `complete`, `error`, `cancelled`; keep builder-domain phases such as `validation`, `compatibility`, `evaluation`, and `revision` in `phase` or `data.domain` unless a shared activity-kind addition is intentionally implemented.
-- [ ] Do not route Skill Builder v1 through `conversation_agent_protocol` or create normal `ConversationRun` rows; `skill_builder_sessions` remains the source of truth.
-- [ ] Use `thread_id = f"skill_builder_{session_id}"`.
+- [x] Implement graph nodes:
+  - [x] load existing skill snapshot when `mode="improve"`
+  - [x] collect intent
+  - [x] draft package
+  - [x] validate package
+  - [x] check compatibility
+  - [x] generate changelog for improve mode
+  - [x] apply user feedback
+  - [x] review response
+- [x] Persist draft package, validation result, compatibility result, and changelog draft after each draft or revision.
+- [x] Ensure generated changelog is shown in the builder review but not written into `SKILL.md`.
+- [x] Emit builder-specific SSE events with `format_sse` and shared parse/resume utilities where practical.
+- [x] Emit the exact Skill Builder SSE wire events from the Frontend SSE section and add backend tests for event names and redacted payload shapes.
+- [x] Align builder stream status/activity payloads with the LangGraph v3 compatibility section: use shared statuses `pending`, `running`, `requires_action`, `complete`, `error`, `cancelled`; keep builder-domain phases such as `validation`, `compatibility`, `evaluation`, and `revision` in `phase` or `data.domain` unless a shared activity-kind addition is intentionally implemented.
+- [x] Do not route Skill Builder v1 through `conversation_agent_protocol` or create normal `ConversationRun` rows; `skill_builder_sessions` remains the source of truth.
+- [x] Use `thread_id = f"skill_builder_{session_id}"`.
 - [ ] Ensure Deep Agent subagents used for grading/analyzing receive explicit skills and complete instructions.
-- [ ] Ensure builder telemetry and audit calls store phase/status/ids only, not prompt text, generated answer text, or draft file bodies.
-- [ ] Add a backend integration test with a fake chat model that produces a deterministic draft package.
-- [ ] Run:
+- [x] Ensure builder telemetry and audit calls store phase/status/ids only, not prompt text, generated answer text, or draft file bodies.
+- [x] Add a backend integration test with a fake chat model that produces a deterministic draft package.
+- [x] Run:
 
 ```bash
 cd backend
-uv run pytest tests/test_skill_builder_api.py tests/test_skill_builder_service.py -q
+uv run pytest tests/test_skill_builder_hidden_graph.py tests/test_skill_builder_api.py tests/test_skill_builder_service.py -q
 ```
 
 Expected: session, message, validation, and confirm paths pass with deterministic model stubs.
