@@ -3328,6 +3328,13 @@ Expected: both pass. Fix any new copy or design-system violations.
 - Modify: `frontend/src/lib/types/skill.ts`
 - Create: `frontend/src/components/skill/skill-card.tsx`
 - Create: `frontend/src/components/skill/skill-quality-inline.tsx`
+- Create: `frontend/src/components/skill/skill-detail-file-utils.ts`
+- Create: `frontend/src/components/skill/skill-detail-text-editor.tsx`
+- Create: `frontend/src/components/skill/skill-detail-package-editor.tsx`
+- Create: `frontend/src/components/skill/skill-detail-package-sidebar.tsx`
+- Create: `frontend/src/components/skill/skill-detail-package-footer.tsx`
+- Create: `frontend/src/components/skill/skill-file-editor-pane.tsx`
+- Create: `frontend/src/components/skill/skill-credential-bindings-panel.tsx`
 - Create: `frontend/src/components/skill/skill-detail-tabs.tsx`
 - Create: `frontend/src/components/skill/skill-summary-strip.tsx`
 - Create: `frontend/src/components/skill/skill-evaluation-summary-badge.tsx`
@@ -3365,6 +3372,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [ ] Add `getVisibleSkillDetailTabs(skill, state, initialTab)` and cover the conditional tab rules from the Frontend UX section.
 - [ ] Add `대화로 개선` / `Improve by chat` action in `SkillDetailDialog`.
 - [ ] Start a `mode="improve"` skill builder session from that action.
+- [x] Split the current text editor, package editor, file preview, package sidebar, package footer, and credential binding panel out of `skill-detail-dialog.tsx`.
 - [ ] Refactor `skill-detail-dialog.tsx` so it renders one `DialogShell.Body` and one `DialogShell.Footer`.
 - [ ] Keep package file editing behavior intact in the `Files` content tab.
 - [ ] Move credential bindings from the content editor surface into the `Credentials` tab.
