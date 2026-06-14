@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import Sequence
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.skill_builder.deep_agent_worker import SandboxedDeepAgentDraftWorker
 from app.agent_runtime.skill_builder.graph import JsonChatDraftWorker, run_skill_builder_graph
 from app.credentials import service as credential_service
 from app.models.system_llm_setting import SystemLlmSetting
@@ -101,6 +104,30 @@ async def test_hidden_graph_with_fake_chat_model_produces_draft_validation_and_c
     assert result["compatibility_result"]["targets"]
     assert result["changelog_draft"]["summary"] == "Created skill package with 1 file."
     assert result["next_action"] == "review"
+
+
+async def test_sandboxed_deep_agent_draft_worker_uses_session_scoped_storage(
+    tmp_path: Path,
+) -> None:
+    session_id = uuid.uuid4()
+    worker = SandboxedDeepAgentDraftWorker(draft_root=tmp_path / "drafts")
+
+    draft = await worker.draft(
+        {
+            "user_id": str(uuid.uuid4()),
+            "session_id": str(session_id),
+            "mode": "create",
+            "source_skill_id": None,
+            "base_snapshot": None,
+            "user_request": "회의록 액션 아이템 스킬",
+            "current_phase": 0,
+        }
+    )
+
+    assert worker.session_root(session_id) == (tmp_path / "drafts" / str(session_id)).resolve()
+    assert worker.session_root(session_id).is_dir()
+    assert draft.slug
+    assert not (tmp_path / "skills").exists()
 
 
 async def test_message_stream_emits_builder_events_and_persists_session(

@@ -3057,7 +3057,7 @@ Expected: API tests pass.
 - [x] Implement graph state from the LangGraph section.
 - [x] Implement model construction from the Hidden Agent Build Function section.
 - [x] Let `SystemModelNotConfiguredError` bubble as a typed readiness error for routers/services to convert to `SYSTEM_LLM_NOT_CONFIGURED`, not as an unhandled exception.
-- [ ] Implement the optional Deep Agent draft worker from the Deep Agents Alignment section, using sandboxed draft storage rather than unrestricted `FilesystemBackend`.
+- [x] Implement the optional Deep Agent draft worker from the Deep Agents Alignment section, using sandboxed draft storage rather than unrestricted `FilesystemBackend`.
 - [x] Implement graph nodes:
   - [x] load existing skill snapshot when `mode="improve"`
   - [x] collect intent
@@ -3074,7 +3074,7 @@ Expected: API tests pass.
 - [x] Align builder stream status/activity payloads with the LangGraph v3 compatibility section: use shared statuses `pending`, `running`, `requires_action`, `complete`, `error`, `cancelled`; keep builder-domain phases such as `validation`, `compatibility`, `evaluation`, and `revision` in `phase` or `data.domain` unless a shared activity-kind addition is intentionally implemented.
 - [x] Do not route Skill Builder v1 through `conversation_agent_protocol` or create normal `ConversationRun` rows; `skill_builder_sessions` remains the source of truth.
 - [x] Use `thread_id = f"skill_builder_{session_id}"`.
-- [ ] Ensure Deep Agent subagents used for grading/analyzing receive explicit skills and complete instructions.
+- [x] Ensure Deep Agent subagents used for grading/analyzing receive explicit skills and complete instructions. V1 does not wire custom Deep Agent subagents; if added later, they must be passed explicit skills and complete one-shot instructions.
 - [x] Ensure builder telemetry and audit calls store phase/status/ids only, not prompt text, generated answer text, or draft file bodies.
 - [x] Add a backend integration test with a fake chat model that produces a deterministic draft package.
 - [x] Run:
