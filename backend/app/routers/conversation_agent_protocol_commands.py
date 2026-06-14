@@ -30,6 +30,10 @@ from app.routers.conversation_agent_protocol_resume import (
     resume_run_interrupt_id,
     validate_resume_payload,
 )
+from app.routers.conversation_agent_protocol_resume_redaction import (
+    RedactedResumeArgsUnavailable,
+    restore_redacted_resume_payload,
+)
 from app.routers.conversation_agent_protocol_runtime import (
     SUPPORTED_MULTITASK_STRATEGIES,
     cfg_agent_uuid,
@@ -138,7 +142,7 @@ async def _handle_run_start_command(
         cfg=cfg,
         user=user,
         input_payload=runtime_input_payload,
-        moldy_source="chat",
+        moldy_source=run_source,
         executor_fn=executor_fn,
     )
     return command_success(
@@ -238,6 +242,18 @@ async def _handle_input_respond_command(
             code=validation_error.code,
             message=validation_error.message,
         )
+    try:
+        input_payload = await restore_redacted_resume_payload(
+            conversation=conversation,
+            resume=resume,
+            pending_interrupts=interrupts_from_tasks(tasks),
+        )
+    except RedactedResumeArgsUnavailable:
+        return command_error(
+            command,
+            code="REDACTED_EDIT_REQUIRES_REPLACEMENT",
+            message="Edited tool args still contain redacted placeholders that cannot be restored",
+        )
     run_interrupt_id = resume_run_interrupt_id(resume, parent_run.interrupt_id)
 
     await chat_service.touch_conversation(db, conversation.id)
@@ -279,7 +295,7 @@ async def _handle_input_respond_command(
         conversation_id=conversation.id,
         cfg=cfg,
         user=user,
-        input_payload=resume.input_payload,
+        input_payload=input_payload,
         moldy_source="resume",
         executor_fn=executor_fn,
     )

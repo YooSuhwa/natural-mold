@@ -440,6 +440,57 @@ async def test_thread_state_exposes_branch_metadata_for_langchain_messages(
 
 
 @pytest.mark.asyncio
+async def test_thread_state_uses_unique_branch_ids_for_synthetic_langchain_messages(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    root = _CheckpointSlim(
+        checkpoint_id="ck-root",
+        parent_checkpoint_id=None,
+        messages=[],
+    )
+    parent = _CheckpointSlim(
+        checkpoint_id="ck-user",
+        parent_checkpoint_id="ck-root",
+        messages=[HumanMessage(content="hello")],
+    )
+    old_leaf = _CheckpointSlim(
+        checkpoint_id="ck-assistant-1-old",
+        parent_checkpoint_id="ck-user",
+        messages=[HumanMessage(content="hello"), AIMessage(content="old")],
+    )
+    active_leaf = _CheckpointSlim(
+        checkpoint_id="ck-assistant-2-new",
+        parent_checkpoint_id="ck-user",
+        messages=[HumanMessage(content="hello"), AIMessage(content="new")],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: _FakeCheckpointer([active_leaf, old_leaf, parent, root]),
+    )
+
+    response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert response.status_code == 200
+    messages = response.json()["values"]["messages"]
+    assistant_metadata = messages[1]["additional_kwargs"]["metadata"]
+    assert assistant_metadata["branches"] == [
+        str(parse_msg_id("synthetic-1:ck-assistant-1-old", conversation.id, 1)),
+        str(parse_msg_id("synthetic-1:ck-assistant-2-new", conversation.id, 1)),
+    ]
+    assert len(set(assistant_metadata["branches"])) == 2
+    assert assistant_metadata["activeBranchId"] == str(
+        parse_msg_id("synthetic-1:ck-assistant-2-new", conversation.id, 1)
+    )
+    assert assistant_metadata["branchIndex"] == 1
+    assert assistant_metadata["branchTotal"] == 2
+
+
+@pytest.mark.asyncio
 async def test_thread_state_redacts_sensitive_tool_args_without_losing_usage_metrics(
     client: AsyncClient,
     db: AsyncSession,

@@ -47,13 +47,26 @@ export function checkpointContextFromThreadState(
 
 function orderedMessageIds(value: unknown): readonly (readonly string[])[] {
   if (!Array.isArray(value)) return []
-  return value.map((message) => {
-    if (!isRecord(message)) return []
-    const ids: string[] = []
+  const groups: string[][] = []
+  for (const message of value) {
+    if (!isRecord(message)) {
+      groups.push([])
+      continue
+    }
     const id = message.id
-    if (typeof id === 'string' && id.length > 0) ids.push(id)
-    return ids
-  })
+    const ids = typeof id === 'string' && id.length > 0 ? [id] : []
+    if (isToolMessageRecord(message) && groups.length > 0) {
+      groups[groups.length - 1]?.push(...ids)
+      continue
+    }
+    groups.push(ids)
+  }
+  return groups
+}
+
+function isToolMessageRecord(message: Record<string, unknown>): boolean {
+  const role = message.role ?? message.type
+  return role === 'tool' || role === 'tool_message' || role === 'ToolMessage'
 }
 
 function stringMapFromRecord(value: unknown): ReadonlyMap<string, string> {

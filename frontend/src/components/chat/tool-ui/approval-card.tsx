@@ -41,6 +41,7 @@ interface ApprovalArgs {
 }
 
 type Decision = 'approved' | 'modified' | 'rejected'
+const REDACTED_PLACEHOLDER = '<redacted>'
 
 interface ApprovalResult {
   decision: Decision
@@ -50,6 +51,32 @@ interface ApprovalResult {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function restoreRedactedPlaceholders(value: unknown, original: unknown): unknown {
+  if (value === REDACTED_PLACEHOLDER) return original
+  if (Array.isArray(value)) {
+    const originalItems = Array.isArray(original) ? original : []
+    return value.map((item, index) => restoreRedactedPlaceholders(item, originalItems[index]))
+  }
+  if (isRecord(value)) {
+    const originalRecord = isRecord(original) ? original : {}
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        restoreRedactedPlaceholders(item, originalRecord[key]),
+      ]),
+    )
+  }
+  return value
+}
+
+function restoreRedactedRecordPlaceholders(
+  value: Record<string, unknown>,
+  original: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const restored = restoreRedactedPlaceholders(value, original ?? {})
+  return isRecord(restored) ? restored : value
 }
 
 function parseApprovalResult(result: unknown): ApprovalResult | null {
@@ -234,14 +261,22 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
 
         const reason = opts?.reasonOverride ?? (d === 'rejected' ? rejectReason : undefined)
         const response: ApprovalResult = { decision: d }
+        const resumeResponse: ApprovalResult = { decision: d }
 
         if (reason) {
           response.reason = reason
+          resumeResponse.reason = reason
         }
 
         if (d === 'modified' && editedArgs) {
           try {
-            response.modified_args = JSON.parse(editedArgs) as Record<string, unknown>
+            const parsed: unknown = JSON.parse(editedArgs)
+            if (!isRecord(parsed)) throw new Error('edited args must be an object')
+            response.modified_args = parsed
+            resumeResponse.modified_args = restoreRedactedRecordPlaceholders(
+              parsed,
+              args?.tool_args,
+            )
             setJsonError(null)
           } catch {
             setJsonError(t('invalidJson'))
@@ -255,7 +290,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
         // 주입을 지원하지 않으므로 실패해도 backend resume wire는 계속 보낸다.
         addApprovalResultIfSupported(addResult, response)
 
-        const standardDecision = toDecision(d, response, args?.tool_name)
+        const standardDecision = toDecision(d, resumeResponse, args?.tool_name)
         if (!standardDecision) {
           // edit인데 tool_name 미상 — backend가 무효 edited_action으로 거절할 것이므로 abort.
           setJsonError(t('invalidJson'))

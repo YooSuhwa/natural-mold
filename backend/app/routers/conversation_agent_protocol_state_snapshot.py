@@ -187,8 +187,18 @@ def _message_id_aliases(message: Any, conversation: Conversation, idx: int) -> t
     return (raw,) if raw == ui_id else (raw, ui_id)
 
 
-def _ui_message_id(raw_id: str, conversation: Conversation, idx: int) -> str:
-    normalized = None if raw_id.startswith("synthetic-") else raw_id
+def _ui_message_id(
+    raw_id: str,
+    conversation: Conversation,
+    idx: int,
+    *,
+    checkpoint_id: str | None = None,
+) -> str:
+    normalized = (
+        f"{raw_id}:{checkpoint_id}" if raw_id.startswith("synthetic-") and checkpoint_id else raw_id
+    )
+    if raw_id.startswith("synthetic-") and checkpoint_id is None:
+        normalized = None
     return str(parse_msg_id(normalized, conversation.id, idx))
 
 
@@ -203,9 +213,22 @@ def _branch_metadata(
     if not siblings or node.branch_index is None or node.branch_total is None:
         return {}
     return {
-        "branches": [_ui_message_id(sibling.message_id, conversation, idx) for sibling in siblings],
+        "branches": [
+            _ui_message_id(
+                sibling.message_id,
+                conversation,
+                idx,
+                checkpoint_id=sibling.checkpoint_id,
+            )
+            for sibling in siblings
+        ],
         "siblingCheckpointIds": [sibling.checkpoint_id for sibling in siblings],
-        "activeBranchId": _ui_message_id(raw_id, conversation, idx),
+        "activeBranchId": _ui_message_id(
+            raw_id,
+            conversation,
+            idx,
+            checkpoint_id=node.introduced_by_checkpoint_id,
+        ),
         "branchCheckpointId": node.introduced_by_checkpoint_id,
         "branchIndex": node.branch_index,
         "branchTotal": node.branch_total,

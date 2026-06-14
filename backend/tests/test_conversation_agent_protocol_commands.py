@@ -185,6 +185,133 @@ async def test_input_respond_command_preserves_batched_interrupt_responses(
 
 
 @pytest.mark.asyncio
+async def test_input_respond_command_restores_redacted_edit_placeholders(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    parent_run_id = uuid.uuid4()
+    db.add(
+        ConversationRun(
+            id=parent_run_id,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            status="interrupted",
+            is_active=False,
+            interrupt_id="intr-secret",
+        )
+    )
+    db.add(
+        MessageEvent(
+            conversation_id=conversation.id,
+            assistant_msg_id=str(parent_run_id),
+            events=[
+                stored_protocol_event(
+                    run_id=str(parent_run_id),
+                    thread_id=str(conversation.id),
+                    seq=1,
+                    method="input.requested",
+                    namespace=["root"],
+                    data={
+                        "interrupt_id": "intr-secret",
+                        "payload": {
+                            "action_requests": [
+                                {
+                                    "name": "execute_in_skill",
+                                    "args": {
+                                        "command": "node scripts/create_docx.cjs",
+                                        "api_key": "<redacted>",
+                                    },
+                                }
+                            ],
+                            "review_configs": [
+                                {
+                                    "action_name": "execute_in_skill",
+                                    "allowed_decisions": ["approve", "edit", "reject"],
+                                }
+                            ],
+                        },
+                    },
+                )
+            ],
+            status="completed",
+        )
+    )
+    await db.commit()
+    started = {}
+
+    async def fake_raw_pending_actions_by_interrupt(_conversation, _pending_interrupts):
+        return {
+            "intr-secret": [
+                {
+                    "name": "execute_in_skill",
+                    "args": {
+                        "command": "node scripts/create_docx.cjs",
+                        "api_key": "raw-secret-value",
+                    },
+                }
+            ]
+        }
+
+    async def fake_start_conversation_run(**kwargs):
+        started.update(kwargs)
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_resume_redaction._raw_pending_actions_by_interrupt",
+        fake_raw_pending_actions_by_interrupt,
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fake_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": "resume-edit-secret",
+            "method": "input.respond",
+            "params": {
+                "namespace": ["root"],
+                "interrupt_id": "intr-secret",
+                "response": {
+                    "decisions": [
+                        {
+                            "type": "edit",
+                            "edited_action": {
+                                "name": "execute_in_skill",
+                                "args": {
+                                    "command": "node scripts/updated_docx.cjs",
+                                    "api_key": "<redacted>",
+                                },
+                            },
+                        }
+                    ]
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert started["input_payload"] == {
+        "decisions": [
+            {
+                "type": "edit",
+                "edited_action": {
+                    "name": "execute_in_skill",
+                    "args": {
+                        "command": "node scripts/updated_docx.cjs",
+                        "api_key": "raw-secret-value",
+                    },
+                },
+            }
+        ]
+    }
+
+
+@pytest.mark.asyncio
 async def test_input_respond_command_rejects_stale_namespace(
     client: AsyncClient,
     db: AsyncSession,
@@ -386,3 +513,49 @@ async def test_run_start_command_rejects_sdk_camel_case_unsupported_multitask_st
             "message": "Unsupported multitask strategy: enqueue",
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_run_start_command_forwards_edit_source_to_worker(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    started = {}
+
+    async def fake_fork_overwrite_input(**kwargs):
+        assert kwargs["checkpoint_id"] == "ck-before-user"
+        assert [message.content for message in kwargs["append_messages"]] == ["edited prompt"]
+        return {"messages": [{"role": "user", "content": "edited prompt"}]}
+
+    async def fake_start_conversation_run(**kwargs):
+        started.update(kwargs)
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_commands._fork_overwrite_input",
+        fake_fork_overwrite_input,
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fake_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": "run-edit",
+            "method": "run.start",
+            "params": {
+                "checkpoint": {"checkpoint_id": "ck-before-user"},
+                "input": {"messages": [{"role": "user", "content": "edited prompt"}]},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["type"] == "success"
+    assert started["moldy_source"] == "edit"
+    run = await db.get(ConversationRun, uuid.UUID(response.json()["result"]["run_id"]))
+    assert run is not None
+    assert run.source == "edit"

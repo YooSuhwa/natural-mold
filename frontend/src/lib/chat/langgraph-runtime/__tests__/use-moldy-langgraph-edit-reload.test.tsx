@@ -344,6 +344,38 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
     expect(mocks.stream.submit).toHaveBeenCalledWith(null, { forkFrom: 'ck-after-user-1' })
   })
 
+  it('aligns server fallback indexes when tool result messages are grouped into assistant UI messages', async () => {
+    mocks.convertedMessages = [
+      { id: 'local-user-1' },
+      { id: 'local-assistant-tool-call' },
+      { id: 'local-assistant-final' },
+    ]
+    mocks.apiFetch.mockResolvedValue({
+      values: {
+        messages: [
+          { type: 'human', id: 'server-user-1' },
+          { type: 'ai', id: 'server-assistant-tool-call' },
+          { type: 'tool', id: 'server-tool-result' },
+          { type: 'ai', id: 'server-assistant-final' },
+        ],
+      },
+      metadata: {
+        parent_checkpoint_by_message_id: {
+          'server-assistant-final': 'ck-after-tool-result',
+        },
+        checkpoint_by_message_id: {
+          'server-tool-result': 'ck-after-tool-result',
+          'server-assistant-final': 'ck-after-final',
+        },
+      },
+    })
+
+    const runtimeOptions = renderRuntimeOptions()
+    await runtimeOptions.onReload('local-assistant-tool-call')
+
+    expect(mocks.stream.submit).toHaveBeenCalledWith(null, { forkFrom: 'ck-after-tool-result' })
+  })
+
   it('does not submit edit or reload when no safe checkpoint is available', async () => {
     mocks.convertedMessages = [{ id: 'user-1' }, { id: 'assistant-1' }]
 

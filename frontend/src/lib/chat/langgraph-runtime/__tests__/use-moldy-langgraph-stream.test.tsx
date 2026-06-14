@@ -538,6 +538,56 @@ describe('useMoldyLangGraphStream', () => {
     })
   })
 
+  it('does not render branch-selected server messages after the conversation changes', async () => {
+    mocks.stream.messages = [new AIMessage({ id: 'assistant-a', content: 'live answer A' })]
+    mocks.apiFetch.mockResolvedValueOnce({
+      values: {
+        messages: [{ type: 'ai', id: 'assistant-old-branch', content: 'old branch answer' }],
+      },
+    })
+    const { rerender } = renderHook(
+      ({ conversationId }: { conversationId: string }) =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-branch-reset',
+          conversationId,
+        }),
+      {
+        initialProps: { conversationId: 'conversation-a' },
+        wrapper: createQueryWrapper(),
+      },
+    )
+
+    await act(async () => {
+      dispatchMoldyBranchSwitched({
+        conversationId: 'conversation-a',
+        checkpointId: 'ck-old',
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { messages: readonly { id?: string; content?: unknown }[] }
+        | undefined
+      expect(converterOptions?.messages).toEqual([
+        expect.objectContaining({ id: 'assistant-old-branch', content: 'old branch answer' }),
+      ])
+    })
+
+    mocks.stream.messages = [new AIMessage({ id: 'assistant-b', content: 'live answer B' })]
+    rerender({ conversationId: 'conversation-b' })
+
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { messages: readonly { id?: string; content?: unknown }[] }
+        | undefined
+      expect(converterOptions?.messages).toEqual([
+        expect.objectContaining({ id: 'assistant-b', content: 'live answer B' }),
+      ])
+      expect(JSON.stringify(converterOptions?.messages)).not.toContain('old branch answer')
+    })
+  })
+
   it('projects LangGraph HITL interrupts into assistant-ui tool call messages', () => {
     mocks.stream.interrupts = [
       {
@@ -735,6 +785,57 @@ describe('useMoldyLangGraphStream', () => {
         ],
       },
       { interruptId: 'intr-multi' },
+    )
+  })
+
+  it('uses the latest interrupt namespace when a multi-action coordinator resumes', async () => {
+    const payload = {
+      action_requests: [
+        { name: 'ask_user', args: { question: '계속할까요?' } },
+        { name: 'send_email', args: { to: 'team@example.com' } },
+      ],
+      review_configs: [
+        { action_name: 'ask_user', allowed_decisions: ['respond'] },
+        { action_name: 'send_email', allowed_decisions: ['approve', 'reject'] },
+      ],
+    }
+    mocks.stream.interrupts = [{ id: 'intr-multi', value: payload }]
+    const { result, rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hitl',
+          conversationId: 'conversation-hitl',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    await result.current.registerDecision(
+      1,
+      { type: 'reject', message: '아니요' },
+      '거부',
+      'intr-multi',
+    )
+    expect(mocks.stream.respond).not.toHaveBeenCalled()
+
+    mocks.stream.interrupts = []
+    mocks.thread.interrupts = [
+      {
+        interruptId: 'intr-multi',
+        namespace: ['tools:latest'],
+        payload,
+      },
+    ]
+    rerender()
+    await result.current.registerDecision(0, { type: 'respond', message: '네' }, '네', 'intr-multi')
+
+    expect(mocks.stream.respond).toHaveBeenCalledWith(
+      {
+        decisions: [
+          { type: 'respond', message: '네' },
+          { type: 'reject', message: '아니요' },
+        ],
+      },
+      { interruptId: 'intr-multi', namespace: ['tools:latest'] },
     )
   })
 

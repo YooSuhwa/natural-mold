@@ -20,6 +20,7 @@ const SENSITIVE_ASSIGNMENT_PATTERN = new RegExp(
   `((?:${SENSITIVE_KEY_SOURCE})["']?\\s*[:=]\\s*["']?)([^"',}\\]\\s]+)(["']?)`,
   'gi',
 )
+const BEARER_TOKEN_PATTERN = /\b(Bearer\s+)([A-Za-z0-9._~+/=-]+)/gi
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -30,7 +31,9 @@ function isSensitiveDisplayKey(key: string): boolean {
 }
 
 export function redactSensitiveText(text: string): string {
-  return text.replace(SENSITIVE_ASSIGNMENT_PATTERN, '$1<redacted>$3')
+  return text
+    .replace(SENSITIVE_ASSIGNMENT_PATTERN, '$1<redacted>$3')
+    .replace(BEARER_TOKEN_PATTERN, '$1<redacted>')
 }
 
 function redactSensitiveValue(value: unknown): unknown {

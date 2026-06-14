@@ -410,7 +410,14 @@ test.describe('LangGraph v3 regression coverage', () => {
       await expectTokenUsageTotal(page, '42')
       await waitRunIdle(request, conversationA)
 
-      await page.goto(`/agents/${setup.agentId}/conversations/${conversationB}`)
+      await page
+        .locator(
+          `[data-chat-session-href="/agents/${setup.agentId}/conversations/${conversationB}"] a`,
+        )
+        .click()
+      await expect(page).toHaveURL(
+        new RegExp(`/agents/${setup.agentId}/conversations/${conversationB}$`),
+      )
       await expect(tokenUsageButtons(page)).toHaveCount(0)
 
       await sendMessage(page, `${TOKEN_USAGE_MARKER} B`)

@@ -175,4 +175,62 @@ describe('ApprovalCard', () => {
     fireEvent.click(screen.getByText('edit'))
     expect(document.body.textContent).not.toContain('raw-secret-value')
   })
+
+  it('restores redacted placeholders from raw args before sending edited approvals', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'interrupt-approval:0',
+          tool_name: 'execute_in_skill',
+          tool_args: {
+            command: 'node scripts/create_docx.cjs',
+            api_key: 'raw-secret-value',
+          },
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+          hitl_interrupt_id: 'interrupt-approval',
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('edit'))
+    expect(document.body.textContent).not.toContain('raw-secret-value')
+
+    fireEvent.change(screen.getByPlaceholderText('editArgsPlaceholder'), {
+      target: {
+        value: JSON.stringify({
+          command: 'node scripts/updated_docx.cjs',
+          api_key: '<redacted>',
+        }),
+      },
+    })
+    fireEvent.click(screen.getByText('editAndApprove'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        {
+          type: 'edit',
+          edited_action: {
+            name: 'execute_in_skill',
+            args: {
+              command: 'node scripts/updated_docx.cjs',
+              api_key: 'raw-secret-value',
+            },
+          },
+        },
+        'editApproved',
+        'interrupt-approval',
+      )
+    })
+  })
 })

@@ -64,10 +64,30 @@ interface ThreadRunNotice {
   readonly status: 'canceled' | 'canceling' | 'stale'
 }
 
+interface ThreadRunNoticeSnapshot {
+  readonly conversationId: string
+  readonly notice: ThreadRunNotice | null
+}
+
 interface ServerMessageMetadataSnapshot {
   readonly byId: ReadonlyMap<string, Record<string, unknown>>
   readonly byIndex: readonly (Record<string, unknown> | null)[]
   readonly idByIndex: readonly (string | null)[]
+}
+
+interface ServerMessageMetadataState {
+  readonly conversationId: string
+  readonly snapshot: ServerMessageMetadataSnapshot
+}
+
+interface ServerStateMessagesSnapshot {
+  readonly conversationId: string
+  readonly messages: readonly BaseMessage[]
+}
+
+interface ResolvedInterruptsSnapshot {
+  readonly conversationId: string
+  readonly items: readonly ResolvedInterruptToolCall[]
 }
 
 interface ThreadStateHydrationOptions {
@@ -79,6 +99,7 @@ const EMPTY_SERVER_MESSAGE_METADATA: ServerMessageMetadataSnapshot = {
   byIndex: [],
   idByIndex: [],
 }
+const EMPTY_RESOLVED_INTERRUPTS: readonly ResolvedInterruptToolCall[] = []
 
 const ACTIVITY_CHANNELS = [
   'messages',
@@ -242,18 +263,42 @@ export function useMoldyLangGraphStream({
   const setChatCancelInFlight = useSetAtom(chatCancelInFlightAtom)
   const tPage = useTranslations('chat.page')
   const tReconnect = useTranslations('chat.reconnect')
-  const [threadRunNotice, setThreadRunNotice] = useState<ThreadRunNotice | null>(null)
-  const [serverMessageMetadata, setServerMessageMetadata] = useState<ServerMessageMetadataSnapshot>(
-    EMPTY_SERVER_MESSAGE_METADATA,
-  )
-  const [serverStateMessages, setServerStateMessages] = useState<readonly BaseMessage[] | null>(
+  const [threadRunNoticeState, setThreadRunNoticeState] = useState<ThreadRunNoticeSnapshot | null>(
     null,
   )
-  const handleThreadState = useCallback((state: unknown, options?: ThreadStateHydrationOptions) => {
-    setThreadRunNotice(terminalRunNoticeFromThreadState(state))
-    setServerMessageMetadata(messageMetadataFromThreadState(state))
-    if (options?.replaceMessages) setServerStateMessages(messagesFromThreadState(state))
-  }, [])
+  const threadRunNotice =
+    threadRunNoticeState?.conversationId === conversationId ? threadRunNoticeState.notice : null
+  const setThreadRunNotice = useCallback(
+    (notice: ThreadRunNotice | null) => {
+      setThreadRunNoticeState({ conversationId, notice })
+    },
+    [conversationId],
+  )
+  const [serverMessageMetadataState, setServerMessageMetadataState] =
+    useState<ServerMessageMetadataState | null>(null)
+  const serverMessageMetadata =
+    serverMessageMetadataState?.conversationId === conversationId
+      ? serverMessageMetadataState.snapshot
+      : EMPTY_SERVER_MESSAGE_METADATA
+  const setServerMessageMetadata = useCallback(
+    (snapshot: ServerMessageMetadataSnapshot) => {
+      setServerMessageMetadataState({ conversationId, snapshot })
+    },
+    [conversationId],
+  )
+  const [serverStateMessages, setServerStateMessages] =
+    useState<ServerStateMessagesSnapshot | null>(null)
+  const handleThreadState = useCallback(
+    (state: unknown, options?: ThreadStateHydrationOptions) => {
+      setThreadRunNotice(terminalRunNoticeFromThreadState(state))
+      setServerMessageMetadata(messageMetadataFromThreadState(state))
+      if (options?.replaceMessages) {
+        const messages = messagesFromThreadState(state)
+        setServerStateMessages(messages ? { conversationId, messages } : null)
+      }
+    },
+    [conversationId, setServerMessageMetadata, setThreadRunNotice],
+  )
   const transport = useMemo(
     () => createMoldyAgentTransport(conversationId, agentId, { onState: handleThreadState }),
     [agentId, conversationId, handleThreadState],
@@ -272,7 +317,25 @@ export function useMoldyLangGraphStream({
     [activityEvents],
   )
   const deepAgentsState = useMemo(() => selectDeepAgentsState(stream.values ?? {}), [stream.values])
-  const [resolvedInterrupts, setResolvedInterrupts] = useState<ResolvedInterruptToolCall[]>([])
+  const [resolvedInterruptsState, setResolvedInterruptsState] =
+    useState<ResolvedInterruptsSnapshot | null>(null)
+  const resolvedInterrupts =
+    resolvedInterruptsState?.conversationId === conversationId
+      ? resolvedInterruptsState.items
+      : EMPTY_RESOLVED_INTERRUPTS
+  const setResolvedInterrupts = useCallback(
+    (
+      updater: (
+        current: readonly ResolvedInterruptToolCall[],
+      ) => readonly ResolvedInterruptToolCall[],
+    ) => {
+      setResolvedInterruptsState((current) => ({
+        conversationId,
+        items: updater(current?.conversationId === conversationId ? current.items : []),
+      }))
+    },
+    [conversationId],
+  )
   const wasLoadingRef = useRef(false)
   useEffect(() => {
     if (stream.isLoading) {
@@ -304,7 +367,10 @@ export function useMoldyLangGraphStream({
     window.addEventListener(MOLDY_BRANCH_SWITCHED_EVENT, onBranchSwitched)
     return () => window.removeEventListener(MOLDY_BRANCH_SWITCHED_EVENT, onBranchSwitched)
   }, [conversationId, handleThreadState])
-  const visibleStreamMessages = serverStateMessages ?? stream.messages
+  const visibleStreamMessages =
+    serverStateMessages?.conversationId === conversationId
+      ? serverStateMessages.messages
+      : stream.messages
   const streamMessagesWithServerMetadata = useMemo(
     () => mergeServerMessageMetadata(visibleStreamMessages, serverMessageMetadata),
     [serverMessageMetadata, visibleStreamMessages],
@@ -383,6 +449,11 @@ export function useMoldyLangGraphStream({
   const coordinatorsRef = useRef(new Map<string, HiTLDecisionCoordinator>())
   const pendingInterruptDecisionsRef = useRef(new Map<string, Decision[]>())
   const pendingInterruptFlushRef = useRef(false)
+  useEffect(() => {
+    coordinatorsRef.current.clear()
+    pendingInterruptDecisionsRef.current.clear()
+    pendingInterruptFlushRef.current = false
+  }, [conversationId])
   const adapters = useMemo(() => {
     if (!feedbackAdapter && !attachmentAdapter) return undefined
     return {
@@ -402,7 +473,7 @@ export function useMoldyLangGraphStream({
     } finally {
       setChatCancelInFlight(false)
     }
-  }, [conversationId, setChatCancelInFlight, stream])
+  }, [conversationId, setChatCancelInFlight, setThreadRunNotice, stream])
 
   const onNew = useCallback(
     async (...args: Parameters<typeof submitNew>) => {
@@ -410,7 +481,7 @@ export function useMoldyLangGraphStream({
       setServerStateMessages(null)
       await submitNew(...args)
     },
-    [submitNew],
+    [setThreadRunNotice, submitNew],
   )
   const onEdit = useCallback(
     async (...args: Parameters<typeof submitEdit>) => {
@@ -418,7 +489,7 @@ export function useMoldyLangGraphStream({
       setServerStateMessages(null)
       await submitEdit(...args)
     },
-    [submitEdit],
+    [setThreadRunNotice, submitEdit],
   )
   const onReload = useCallback(
     async (...args: Parameters<typeof submitReload>) => {
@@ -426,7 +497,7 @@ export function useMoldyLangGraphStream({
       setServerStateMessages(null)
       await submitReload(...args)
     },
-    [submitReload],
+    [setThreadRunNotice, submitReload],
   )
 
   const rememberResolvedInterrupt = useCallback(
@@ -442,7 +513,7 @@ export function useMoldyLangGraphStream({
         ...resolved,
       ])
     },
-    [allInterruptPayloadsById],
+    [allInterruptPayloadsById, setResolvedInterrupts],
   )
 
   const flushPendingInterruptDecisions = useCallback(
@@ -520,7 +591,7 @@ export function useMoldyLangGraphStream({
       setServerStateMessages(null)
       await stream.submit({ messages: [new HumanMessage(trimmed)] })
     },
-    [stream],
+    [setThreadRunNotice, stream],
   )
   const firstInterruptId = interruptPayloads[0]?.interrupt_id ?? null
   const onResumeDecisions = useCallback(
@@ -556,6 +627,10 @@ export function useMoldyLangGraphStream({
       stream,
     ],
   )
+  const onResumeDecisionsRef = useRef(onResumeDecisions)
+  useEffect(() => {
+    onResumeDecisionsRef.current = onResumeDecisions
+  }, [onResumeDecisions])
   const registerDecision = useCallback(
     async (
       actionIndex: number,
@@ -575,7 +650,8 @@ export function useMoldyLangGraphStream({
         createHiTLDecisionCoordinator({
           totalActions: payload.action_requests.length,
           interruptId: targetId,
-          resume: onResumeDecisions,
+          resume: (decisions, coordinatorDisplayText, coordinatorInterruptId) =>
+            onResumeDecisionsRef.current(decisions, coordinatorDisplayText, coordinatorInterruptId),
         })
       coordinatorsRef.current.set(targetId, coordinator)
       await coordinator.registerDecision(actionIndex, decision, displayText)
