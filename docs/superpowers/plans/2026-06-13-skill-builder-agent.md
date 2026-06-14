@@ -2812,32 +2812,32 @@ Expected: all new package builder tests pass.
 - Create: `backend/tests/test_skill_compatibility.py`
 
 - [ ] Implement validation rules from the Skill Validator section.
-- [ ] Use `parse_skill_md` for metadata parsing.
-- [ ] Use a temporary directory and `scan_package()` for secret scanning.
+- [x] Use `parse_skill_md` for metadata parsing.
+- [x] Use a temporary directory and `scan_package()` for secret scanning.
 - [ ] Validate `agents/moldy.yaml.credential_requirements` against the Credential-Aware Sandbox And Audit Policy section.
 - [ ] Validate each `definition_key` by importing `app.credentials.definitions` and checking `app.credentials.registry.registry`.
 - [ ] Validate `env_map` direction as `{credential_field_name: env_var_name}` and reject entries that map env vars to field names.
 - [ ] Warn when scripts or `SKILL.md` instructions use `curl` or obvious network URLs without `execution_profile.requires_network: true`.
 - [x] Implement `check_portable_compatibility(draft_package)` in `backend/app/skills/compatibility.py`.
-- [ ] Include compatibility result in validation output with per-target `status`, `issues`, and aggregate counts.
-- [ ] Return structured issues with `code`, `severity`, `path`, and `message`.
+- [x] Include compatibility result in validation output with per-target `status`, `issues`, and aggregate counts.
+- [x] Return structured issues with `code`, `severity`, `path`, and `message`.
 - [ ] Add tests:
-  - missing `SKILL.md` is an error
-  - missing frontmatter description is an error
-  - weak trigger description is a warning
-  - body copied from the current scratch HTML comment is a warning
-  - `references/` without a mention from `SKILL.md` is a warning
-  - secret-looking content is an error
+  - [x] missing `SKILL.md` is an error
+  - [x] missing frontmatter description is an error
+  - [x] weak trigger description is a warning
+  - [x] body copied from the current scratch HTML comment is a warning
+  - [x] `references/` without a mention from `SKILL.md` is a warning
+  - [x] secret-looking content is an error
   - unknown credential `definition_key` is an error
   - reversed `env_map` shape is an error
   - `env_map` field not listed in `fields` is an error
   - invalid env var name in `env_map` is an error
-  - network command without `execution_profile.requires_network` is a warning
+  - [x] network command without `execution_profile.requires_network` is a warning
   - [x] Moldy-only frontmatter in `SKILL.md` is a compatibility error
   - [x] missing `agents/openai.yaml` is a compatibility warning for generated skills
   - [x] absolute local paths in `SKILL.md` are compatibility warnings
   - [x] generated changelog text inside `SKILL.md` is a compatibility warning
-  - valid portable package returns `valid=True`
+  - [x] valid portable package returns `valid=True`
 - [ ] Run:
 
 ```bash
