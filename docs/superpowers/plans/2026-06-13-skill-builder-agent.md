@@ -3201,15 +3201,14 @@ Expected: trigger optimization tests pass.
 - Create: `frontend/src/lib/hooks/use-skill-builder.ts`
 - Create: `frontend/src/lib/hooks/use-skill-evaluations.ts`
 - Create: `frontend/src/lib/hooks/use-skill-revisions.ts`
-- Create: `frontend/src/lib/sse/stream-skill-builder-message.ts`
-- Create: `frontend/src/lib/sse/stream-skill-builder-resume.ts`
+- Create: `frontend/src/lib/sse/stream-skill-builder-message.ts` with message and resume helpers.
 
-- [ ] Mirror backend session, draft package, file, validation issue, eval, and benchmark shapes in TypeScript.
-- [ ] Include `compatibility_result` and `changelog_draft` in `skill-builder.ts`.
-- [ ] Include `SkillBuilderMode`, `source_skill_id`, base version/hash, and base snapshot fields in `skill-builder.ts`.
-- [ ] Mirror installed skill evaluation set/run/latest summary shapes in TypeScript.
-- [ ] Mirror `SkillRevisionSummary`, `SkillRevisionDetail`, and `SkillRollbackResponse` in `skill-revision.ts`.
-- [ ] Add `SkillHealthSummary` and `SkillEvaluationRunEstimate` TypeScript types.
+- [x] Mirror backend session, draft package, file, validation issue, eval, and benchmark shapes in TypeScript.
+- [x] Include `compatibility_result` and `changelog_draft` in `skill-builder.ts`.
+- [x] Include `SkillBuilderMode`, `source_skill_id`, base version/hash, and base snapshot fields in `skill-builder.ts`.
+- [x] Mirror installed skill evaluation set/run/latest summary shapes in TypeScript.
+- [x] Mirror `SkillRevisionSummary`, `SkillRevisionDetail`, and `SkillRollbackResponse` in `skill-revision.ts`.
+- [x] Add `SkillHealthSummary` and `SkillEvaluationRunEstimate` TypeScript types.
 - [ ] Add TanStack Query hooks:
   - `useSkillBuilderSession`
   - `useStartSkillBuilder`
@@ -3224,15 +3223,15 @@ Expected: trigger optimization tests pass.
   - `useSkillRevisions`
   - `useSkillRevision`
   - `useRollbackSkillRevision`
-- [ ] Add builder-specific stream helpers using shared SSE parsing/resume behavior where practical.
+- [x] Add builder-specific stream helpers using shared SSE parsing/resume behavior where practical.
 - [ ] Add typed handlers for `builder_status`, `builder_activity`, `draft_package`, `validation_result`, `compatibility_result`, `changelog_draft`, and `eval_result`.
-- [ ] Do not depend on legacy normal chat `useChatRuntime`; current `main` defaults normal chat to `langgraph_v3`.
+- [x] Do not depend on legacy normal chat `useChatRuntime`; current `main` defaults normal chat to `langgraph_v3`.
 - [ ] Add tests with `NEXT_PUBLIC_CHAT_RUNTIME` unset so the default `langgraph_v3` app shell does not accidentally break Skill Builder.
-- [ ] Invalidate `['skills']` after confirm succeeds.
-- [ ] In improve mode, invalidate `['skills']`, `['skills', id]`, `['skills', id, 'files']`, and `['skills', id, 'content']` after confirm succeeds.
-- [ ] Invalidate skill evaluation and skill detail queries after a rerun succeeds.
-- [ ] Invalidate `['skills']`, `['skills', id]`, `['skills', id, 'files']`, `['skills', id, 'content']`, evaluation queries, and revision queries after rollback succeeds.
-- [ ] Run:
+- [x] Invalidate `['skills']` after confirm succeeds.
+- [x] In improve mode, invalidate `['skills']`, `['skills', id]`, `['skills', id, 'files']`, and `['skills', id, 'content']` after confirm succeeds.
+- [x] Invalidate skill evaluation and skill detail queries after a rerun succeeds.
+- [x] Invalidate `['skills']`, `['skills', id]`, `['skills', id, 'files']`, `['skills', id, 'content']`, evaluation queries, and revision queries after rollback succeeds.
+- [x] Run:
 
 ```bash
 cd frontend

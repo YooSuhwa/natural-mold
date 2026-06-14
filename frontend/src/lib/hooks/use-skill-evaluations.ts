@@ -1,0 +1,111 @@
+'use client'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { skillEvaluationsApi } from '@/lib/api/skill-evaluations'
+import { requireQueryId } from './query-id'
+import type {
+  SkillEvaluationRunCancelRequest,
+  SkillEvaluationSetCreate,
+} from '@/lib/types/skill-evaluation'
+
+export const skillEvaluationKeys = {
+  sets: (skillId: string | null | undefined) => ['skills', skillId, 'evaluations'] as const,
+  set: (skillId: string | null | undefined, evaluationSetId: string | null | undefined) =>
+    ['skills', skillId, 'evaluations', evaluationSetId] as const,
+  runs: (skillId: string | null | undefined, evaluationSetId: string | null | undefined) =>
+    ['skills', skillId, 'evaluations', evaluationSetId, 'runs'] as const,
+}
+
+export function useSkillEvaluationSets(skillId: string | null | undefined) {
+  return useQuery({
+    queryKey: skillEvaluationKeys.sets(skillId),
+    queryFn: () => skillEvaluationsApi.listSets(requireQueryId(skillId, 'skillId')),
+    enabled: !!skillId,
+  })
+}
+
+export function useSkillEvaluationSet(
+  skillId: string | null | undefined,
+  evaluationSetId: string | null | undefined,
+) {
+  return useQuery({
+    queryKey: skillEvaluationKeys.set(skillId, evaluationSetId),
+    queryFn: () =>
+      skillEvaluationsApi.getSet(
+        requireQueryId(skillId, 'skillId'),
+        requireQueryId(evaluationSetId, 'evaluationSetId'),
+      ),
+    enabled: !!skillId && !!evaluationSetId,
+  })
+}
+
+export function useSkillEvaluationRuns(
+  skillId: string | null | undefined,
+  evaluationSetId: string | null | undefined,
+) {
+  return useQuery({
+    queryKey: skillEvaluationKeys.runs(skillId, evaluationSetId),
+    queryFn: () =>
+      skillEvaluationsApi.listRuns(
+        requireQueryId(skillId, 'skillId'),
+        requireQueryId(evaluationSetId, 'evaluationSetId'),
+      ),
+    enabled: !!skillId && !!evaluationSetId,
+  })
+}
+
+export function useCreateSkillEvaluationSet(skillId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: SkillEvaluationSetCreate) => skillEvaluationsApi.createSet(skillId, data),
+    onSuccess: () => {
+      invalidateSkillEvaluationCaches(qc, skillId)
+    },
+  })
+}
+
+export function useEstimateSkillEvaluationRun(skillId: string, evaluationSetId: string) {
+  return useMutation({
+    mutationFn: () => skillEvaluationsApi.estimateRun(skillId, evaluationSetId),
+  })
+}
+
+export function useCreateSkillEvaluationRun(skillId: string, evaluationSetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => skillEvaluationsApi.createRun(skillId, evaluationSetId),
+    onSuccess: () => {
+      invalidateSkillEvaluationCaches(qc, skillId, evaluationSetId)
+    },
+  })
+}
+
+export function useCancelSkillEvaluationRun(skillId: string, evaluationSetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      runId,
+      data,
+    }: {
+      readonly runId: string
+      readonly data: SkillEvaluationRunCancelRequest
+    }) => skillEvaluationsApi.cancelRun(skillId, evaluationSetId, runId, data),
+    onSuccess: () => {
+      invalidateSkillEvaluationCaches(qc, skillId, evaluationSetId)
+    },
+  })
+}
+
+function invalidateSkillEvaluationCaches(
+  qc: ReturnType<typeof useQueryClient>,
+  skillId: string,
+  evaluationSetId?: string,
+): void {
+  qc.invalidateQueries({ queryKey: ['skills'] })
+  qc.invalidateQueries({ queryKey: ['skills', skillId] })
+  qc.invalidateQueries({ queryKey: skillEvaluationKeys.sets(skillId) })
+  if (evaluationSetId) {
+    qc.invalidateQueries({ queryKey: skillEvaluationKeys.set(skillId, evaluationSetId) })
+    qc.invalidateQueries({ queryKey: skillEvaluationKeys.runs(skillId, evaluationSetId) })
+  }
+}

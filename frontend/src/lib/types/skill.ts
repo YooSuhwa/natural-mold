@@ -6,6 +6,7 @@ import type {
   ResourceOriginSummary,
   ResourcePublicationSummary,
 } from './marketplace'
+import type { SkillHealthSummary, SkillLatestEvaluationSummary } from './skill-evaluation'
 
 export type SkillKind = 'text' | 'package'
 
@@ -22,6 +23,8 @@ export interface Skill {
   used_by_count: number
   package_metadata: Record<string, unknown> | null
   execution_profile: ExecutionProfile | null
+  latest_evaluation_summary?: SkillLatestEvaluationSummary | null
+  health?: SkillHealthSummary | null
   last_modified_at: string
   created_at: string
   updated_at: string
