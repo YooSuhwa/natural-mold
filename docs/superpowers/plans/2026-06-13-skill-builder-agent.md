@@ -2814,7 +2814,7 @@ Expected: all new package builder tests pass.
 - [ ] Implement validation rules from the Skill Validator section.
 - [x] Use `parse_skill_md` for metadata parsing.
 - [x] Use a temporary directory and `scan_package()` for secret scanning.
-- [ ] Validate `agents/moldy.yaml.credential_requirements` against the Credential-Aware Sandbox And Audit Policy section.
+- [x] Validate `agents/moldy.yaml.credential_requirements` against the Credential-Aware Sandbox And Audit Policy section.
 - [x] Validate each `definition_key` by importing `app.credentials.definitions` and checking `app.credentials.registry.registry`.
 - [x] Validate `env_map` direction as `{credential_field_name: env_var_name}` and reject entries that map env vars to field names.
 - [ ] Warn when scripts or `SKILL.md` instructions use `curl` or obvious network URLs without `execution_profile.requires_network: true`.

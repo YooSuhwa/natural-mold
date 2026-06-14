@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 import tempfile
 from collections.abc import Mapping, Sequence
-from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +10,12 @@ from app.marketplace.secret_scan import scan_package
 from app.schemas.skill_builder import SkillDraftFile
 from app.skills.compatibility import check_portable_compatibility
 from app.skills.inspector import SkillMetadataError, parse_skill_md
+from app.skills.moldy_metadata import (
+    credential_requirements_from_metadata,
+    execution_profile_from_metadata,
+    load_moldy_metadata,
+    validate_credential_requirements,
+)
 from app.skills.package_builder import normalize_draft_path
 
 TRIGGER_WORDS = ("use when", "사용", "when", "whenever")
@@ -18,7 +23,6 @@ SCAFFOLDING_RE = re.compile(
     r"(?i)(<!--|complete and informative|replace with|todo:|\[describe|\[replace)"
 )
 NETWORK_RE = re.compile(r"(?i)(\bcurl\b|https?://)")
-ENV_VAR_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 SCRIPT_EXTENSIONS = frozenset({".py", ".js", ".cjs", ".mjs", ".sh"})
 
 
@@ -31,6 +35,14 @@ def validate_draft_package(
     issues: list[dict[str, Any]] = []
     normalized_files = _normalize_files(files, issues)
     by_path = {file.path: file for file in normalized_files}
+    moldy_metadata, metadata_issues = load_moldy_metadata(by_path)
+    issues.extend(metadata_issues)
+    effective_execution_profile = execution_profile
+    if effective_execution_profile is None:
+        effective_execution_profile = execution_profile_from_metadata(moldy_metadata)
+    effective_credential_requirements = credential_requirements
+    if effective_credential_requirements is None:
+        effective_credential_requirements = credential_requirements_from_metadata(moldy_metadata)
     skill_file = by_path.get("SKILL.md")
     parsed: dict[str, Any] | None = None
     if skill_file is None:
@@ -48,9 +60,9 @@ def validate_draft_package(
         _validate_body(body, issues)
         _validate_references(body, by_path, issues)
         _validate_scripts(body, by_path, issues)
-        _validate_network(body, by_path, execution_profile or {}, issues)
+        _validate_network(body, by_path, effective_execution_profile or {}, issues)
 
-    _validate_credential_requirements(credential_requirements or (), issues)
+    issues.extend(validate_credential_requirements(effective_credential_requirements or ()))
     _scan_secrets(normalized_files, issues)
     compatibility_result = check_portable_compatibility(normalized_files)
     error_count = _count(issues, "error") + compatibility_result["error_count"]
@@ -172,110 +184,6 @@ def _validate_network(
             "Network usage should set execution_profile.requires_network=true.",
             "agents/moldy.yaml",
         )
-
-
-def _validate_credential_requirements(
-    requirements: Sequence[Mapping[str, Any]],
-    issues: list[dict[str, Any]],
-) -> None:
-    if not requirements:
-        return
-    import_module("app.credentials.definitions")
-    from app.credentials.registry import registry
-
-    for index, requirement in enumerate(requirements):
-        path = f"credential_requirements[{index}]"
-        missing = [
-            field
-            for field in ("key", "definition_key", "required", "label")
-            if field not in requirement
-        ]
-        if missing:
-            _add_issue(
-                issues,
-                "CREDENTIAL_REQUIREMENT_MALFORMED",
-                "error",
-                f"Credential requirement is missing: {', '.join(missing)}.",
-                path,
-            )
-            continue
-        definition_key = str(requirement["definition_key"])
-        definition = registry.get(definition_key)
-        if definition is None:
-            _add_issue(
-                issues,
-                "UNKNOWN_CREDENTIAL_DEFINITION",
-                "error",
-                f"Unknown credential definition_key: {definition_key}.",
-                path,
-            )
-            continue
-        definition_fields = {field.name for field in definition.properties}
-        declared_fields = _string_set(requirement.get("fields"))
-        unknown_fields = declared_fields - definition_fields
-        if unknown_fields:
-            _add_issue(
-                issues,
-                "UNKNOWN_CREDENTIAL_FIELD",
-                "error",
-                f"Unknown credential fields: {', '.join(sorted(unknown_fields))}.",
-                path,
-            )
-        env_map = requirement.get("env_map")
-        if env_map is not None:
-            _validate_env_map(env_map, declared_fields, issues, path)
-
-
-def _validate_env_map(
-    env_map: object,
-    declared_fields: set[str],
-    issues: list[dict[str, Any]],
-    path: str,
-) -> None:
-    if not isinstance(env_map, Mapping):
-        _add_issue(
-            issues,
-            "CREDENTIAL_ENV_MAP_INVALID",
-            "error",
-            "env_map must be an object.",
-            path,
-        )
-        return
-    for raw_field, raw_env_var in env_map.items():
-        field = str(raw_field)
-        env_var = str(raw_env_var)
-        if field not in declared_fields and env_var in declared_fields and ENV_VAR_RE.match(field):
-            _add_issue(
-                issues,
-                "CREDENTIAL_ENV_MAP_REVERSED",
-                "error",
-                "env_map must be {credential_field_name: ENV_VAR_NAME}.",
-                f"{path}.env_map",
-            )
-            continue
-        if field not in declared_fields:
-            _add_issue(
-                issues,
-                "CREDENTIAL_ENV_FIELD_UNDECLARED",
-                "error",
-                f"env_map field is not listed in fields: {field}.",
-                f"{path}.env_map",
-            )
-            continue
-        if not ENV_VAR_RE.match(env_var):
-            _add_issue(
-                issues,
-                "CREDENTIAL_ENV_VAR_INVALID",
-                "error",
-                f"Invalid environment variable name: {env_var}.",
-                f"{path}.env_map",
-            )
-
-
-def _string_set(value: object) -> set[str]:
-    if not isinstance(value, Sequence) or isinstance(value, str):
-        return set()
-    return {str(item) for item in value}
 
 
 def _scan_secrets(files: Sequence[SkillDraftFile], issues: list[dict[str, Any]]) -> None:
