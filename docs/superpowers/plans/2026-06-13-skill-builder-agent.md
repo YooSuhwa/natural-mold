@@ -3449,6 +3449,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add mock-only Playwright coverage for `/skills` state filter chips in `frontend/e2e/skill-state-filters.spec.ts`.
 - [x] Add mock-only Playwright coverage for Skill Builder improve preview rendering in `frontend/e2e/skill-builder-preview.spec.ts`.
 - [x] Add mock-only Playwright coverage for Skill Builder improve conflict recovery in `frontend/e2e/skill-builder-conflict.spec.ts`.
+- [x] Add mock-only Playwright coverage for `/skills` create CTA -> `SkillCreateDialog` -> Skill Builder chat -> confirm handoff in `frontend/e2e/skill-builder-create.spec.ts`.
 - [x] Add detail-dialog regression tests for package file selection, file save/delete behavior, text skill save behavior, and footer actions after the single-shell refactor.
 - [x] Add a regression test or routing assertion that no separate user-facing skill evaluation/history/credential route is introduced for this phase.
 - [x] Add i18n messages in both Korean and English for the installed skill detail tabs and evaluation actions.
@@ -3525,9 +3526,11 @@ pnpm exec vitest run src/components/skill/__tests__/skill-history-tab.test.tsx s
 pnpm exec eslint src/components/skill/skill-history-tab.tsx src/components/skill/__tests__/skill-history-tab.test.tsx
 pnpm exec eslint --no-ignore e2e/skill-history.spec.ts
 PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3113 E2E_BACKEND_PORT=8113 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-history.spec.ts --workers=1
+pnpm exec eslint --no-ignore e2e/skill-builder-create.spec.ts
+PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3114 E2E_BACKEND_PORT=8114 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-builder-create.spec.ts --workers=1
 ```
 
-Expected: all targeted frontend checks pass; screenshot evidence is saved under `output/e2e-captures/20260615-skill-eval-actions/` and `output/e2e-captures/20260615-skill-history/`.
+Expected: all targeted frontend checks pass; screenshot evidence is saved under `output/e2e-captures/20260615-skill-eval-actions/`, `output/e2e-captures/20260615-skill-history/`, and `output/e2e-captures/20260615-skill-builder/`.
 
 - [x] Run:
 
@@ -3564,6 +3567,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev --port 3000
 - [x] Verify `/skills` uses kind tabs plus state filter chips for credential/evaluation/publish states instead of sending the user to separate skill management pages.
 - [x] Browser smoke evidence saved to `output/e2e-captures/20260615-skill-builder-manual/skills-page.png` after login with the seeded E2E user. The smoke verified one app-level `Skills` nav entry, the `/skills` URL, the "대화로 만들기" CTA, kind tabs, and state filter chips. Full LLM-backed create/improve/eval flow remains covered by the unchecked steps below.
 - [x] Temporarily test a missing `text_primary` System LLM configuration in a safe local DB or mocked API response and verify the conversational builder shows the readiness state instead of a generic 500/toast, while Text and Package Upload still work.
+- [x] Mock-only Playwright coverage verifies the empty `/skills` CTA opens Skill Builder creation, keeps the URL on `/skills`, sends requests only to `/api/skill-builder`, shows `SKILL.md`, `agents/openai.yaml`, OpenAI/Codex, Claude Code, and Vercel Agent Skills compatibility status, confirms the draft, refreshes the list, opens the created skill detail dialog, and captures `output/e2e-captures/20260615-skill-builder/builder-create-flow.png`.
 - [ ] Click "대화로 만들기".
 - [ ] Verify opening the Skill Builder does not navigate into a normal conversation thread, create a normal conversation run, or require the normal chat `ChatRuntimeSection`.
 - [ ] Ask for a concrete skill, for example:
@@ -3674,8 +3678,8 @@ The MVP is useful without evals, but its data model and UI should already have f
 - [ ] Existing package file editor still works on builder-created skills.
 - [ ] Package skill file update/delete/upload recalculates `content_hash` and marks old evaluations stale by comparison.
 - [ ] Credential requirement panel shows generated requirements.
-- [ ] `/skills` primary CTA starts conversational skill creation.
-- [ ] Skill Builder works in the default app shell, where normal chat uses `langgraph_v3` unless `NEXT_PUBLIC_CHAT_RUNTIME=legacy`.
+- [x] `/skills` primary CTA starts conversational skill creation.
+- [x] Skill Builder works in the default app shell, where normal chat uses `langgraph_v3` unless `NEXT_PUBLIC_CHAT_RUNTIME=legacy`.
 - [ ] Missing System LLM configuration shows a readiness state and does not break text creation or package upload.
 - [ ] Skill cards show compact evaluation status without losing marketplace publish/manage actions.
 - [ ] Skill detail dialog has stable `Content` or `Files` editing plus conditionally visible `Credentials`, `Evaluation`, `History`, and `Metadata` surfaces.
