@@ -118,6 +118,20 @@ async def save_validation_result(
     return session
 
 
+async def save_trigger_eval_result(
+    db: AsyncSession,
+    session: SkillBuilderSession,
+    *,
+    result: dict[str, Any],
+    draft: dict[str, Any],
+) -> SkillBuilderSession:
+    session.trigger_eval_result = result
+    session.draft_package = draft
+    session.updated_at = _now()
+    await db.flush()
+    return session
+
+
 async def claim_for_confirming(
     db: AsyncSession,
     session_id: uuid.UUID,
@@ -222,5 +236,6 @@ __all__ = [
     "get_session",
     "load_skill_snapshot",
     "save_draft_package",
+    "save_trigger_eval_result",
     "save_validation_result",
 ]

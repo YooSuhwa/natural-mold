@@ -3218,21 +3218,22 @@ Expected: installed skill evaluation APIs pass and existing skill serialization 
 
 - Create: `backend/app/agent_runtime/skill_builder/trigger_eval.py`
 - Extend: `backend/app/services/skill_builder_service.py`
-- Extend: `backend/app/routers/skill_builder.py`
+- Create: `backend/app/routers/skill_builder_trigger.py`
+- Modify: `backend/app/router_registry.py`
 - Create: `backend/tests/test_skill_builder_trigger_eval.py`
 
-- [ ] Generate should-trigger and should-not-trigger query sets.
-- [ ] Use a deterministic train/test split with seed `42`.
-- [ ] Implement trigger classifier over skill name, description, and query.
-- [ ] Run each query three times and calculate `trigger_rate`.
-- [ ] Rewrite description with the system model, keeping it under 1024 characters.
-- [ ] Pick the best description by held-out test score.
-- [ ] Persist before/after and scores to `session.trigger_eval_result`.
-- [ ] Add tests:
-  - train/test split preserves at least one positive and one negative in test set
-  - rewritten description under 1024 chars is accepted
-  - best description is selected by test score, not train score
-- [ ] Run:
+- [x] Generate should-trigger and should-not-trigger query sets.
+- [x] Use a deterministic train/test split with seed `42`.
+- [x] Implement trigger classifier over skill name, description, and query.
+- [x] Run each query three times and calculate `trigger_rate`.
+- [x] Rewrite description with the system model, keeping it under 1024 characters.
+- [x] Pick the best description by held-out test score.
+- [x] Persist before/after and scores to `session.trigger_eval_result`.
+- [x] Add tests:
+  - [x] train/test split preserves at least one positive and one negative in test set
+  - [x] rewritten description under 1024 chars is accepted
+  - [x] best description is selected by test score, not train score
+- [x] Run:
 
 ```bash
 cd backend
