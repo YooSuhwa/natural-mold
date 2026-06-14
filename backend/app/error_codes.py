@@ -68,6 +68,10 @@ def skill_file_not_found() -> NotFoundError:
     return NotFoundError("SKILL_FILE_NOT_FOUND", "스킬 파일을 찾을 수 없습니다")
 
 
+def skill_revision_not_found() -> NotFoundError:
+    return NotFoundError("SKILL_REVISION_NOT_FOUND", "스킬 이력을 찾을 수 없습니다")
+
+
 def marketplace_item_not_found() -> NotFoundError:
     """Spec §10.7 — emitted for both "doesn't exist" and "forbidden" so
     catalog enumeration via 404 vs 403 is blocked (rules/security.md).

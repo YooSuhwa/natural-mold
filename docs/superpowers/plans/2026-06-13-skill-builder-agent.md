@@ -2954,7 +2954,7 @@ Expected: service tests pass.
 - Create: `backend/tests/test_skill_revisions_api.py`
 
 - [ ] Add REST endpoints from the API Contract section.
-- [ ] Add revision endpoints from the API Contract section.
+- [x] Add revision endpoints from the API Contract section.
 - [x] Add SSE endpoints using the same `StreamingResponse` headers as `backend/app/routers/builder.py:153`.
 - [ ] Include CSRF dependency on mutating endpoints.
 - [ ] Convert missing `text_primary` System LLM setup into `409 SYSTEM_LLM_NOT_CONFIGURED` for builder start/message/eval paths that need the hidden model.
@@ -2966,9 +2966,9 @@ Expected: service tests pass.
 - [x] Record `skill_builder.apply_improvement` when improve-mode confirm updates the existing skill.
 - [x] Record `skill_builder.apply_conflict` with outcome `denied` when improve-mode hash conflict returns 409.
 - [ ] Record `skill_revision.create` whenever a revision snapshot is created by service calls in this feature.
-- [ ] Record `skill_revision.rollback` when rollback succeeds.
+- [x] Record `skill_revision.rollback` when rollback succeeds.
 - [ ] Use `audit_service.record_event(...)` and pass `request` so request id, IP, and user-agent match existing audit behavior.
-- [ ] Add route include in `backend/app/main.py`.
+- [x] Add route include in `backend/app/main.py`.
 - [ ] Add API tests:
   - `POST /api/skill-builder` creates a create-mode session
   - `POST /api/skill-builder` returns `409 SYSTEM_LLM_NOT_CONFIGURED` when `text_primary` is not configured
