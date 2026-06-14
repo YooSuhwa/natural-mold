@@ -72,6 +72,14 @@ def skill_revision_not_found() -> NotFoundError:
     return NotFoundError("SKILL_REVISION_NOT_FOUND", "스킬 이력을 찾을 수 없습니다")
 
 
+def skill_evaluation_set_not_found() -> NotFoundError:
+    return NotFoundError("SKILL_EVALUATION_SET_NOT_FOUND", "스킬 평가 세트를 찾을 수 없습니다")
+
+
+def skill_evaluation_run_not_found() -> NotFoundError:
+    return NotFoundError("SKILL_EVALUATION_RUN_NOT_FOUND", "스킬 평가 실행을 찾을 수 없습니다")
+
+
 def marketplace_item_not_found() -> NotFoundError:
     """Spec §10.7 — emitted for both "doesn't exist" and "forbidden" so
     catalog enumeration via 404 vs 403 is blocked (rules/security.md).
@@ -250,6 +258,13 @@ def skill_builder_session_not_ready() -> ConflictError:
     return ConflictError(
         "SKILL_BUILDER_SESSION_NOT_READY",
         "검토 가능한 스킬 초안이 필요합니다",
+    )
+
+
+def skill_evaluation_run_not_cancellable() -> ConflictError:
+    return ConflictError(
+        "SKILL_EVALUATION_RUN_NOT_CANCELLABLE",
+        "취소할 수 없는 평가 실행 상태입니다",
     )
 
 

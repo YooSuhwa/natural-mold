@@ -3120,14 +3120,14 @@ Expected: eval runner tests pass.
 
 - [ ] Add response/request schemas for evaluation sets, run summaries, run detail, and latest evaluation summary.
 - [ ] Add `/api/skills/{skill_id}/evaluations` endpoints from the API Contract section.
-- [ ] Add `/estimate` and `/runs/{run_id}/cancel` endpoints.
+- [x] Add `/estimate` and `/runs/{run_id}/cancel` endpoints.
 - [ ] Make `POST /runs` commit a queued run and enqueue it through `SkillEvaluationWorker`; do not execute the full evaluation inside the request handler.
-- [ ] Persist installed-skill eval runs in `skill_evaluation_runs`, not normal `conversation_runs`.
-- [ ] Enforce ownership by loading the parent skill through `skill_service.get_skill`.
+- [x] Persist installed-skill eval runs in `skill_evaluation_runs`, not normal `conversation_runs`.
+- [x] Enforce ownership by loading the parent skill through `skill_service.get_skill`.
 - [ ] Add CSRF dependency to create/update/delete/run endpoints.
 - [ ] Populate `latest_evaluation_summary` in skill list and detail responses without N+1 queries.
 - [ ] Populate `health` in skill list and detail responses.
-- [ ] Implement run creation so it snapshots the current `skill.version` and `skill.content_hash`.
+- [x] Implement run creation so it snapshots the current `skill.version` and `skill.content_hash`.
 - [ ] Implement queued/running/grading/completed/failed/cancelled transitions through the worker, including cooperative cancellation fields.
 - [ ] Mark previous runs stale in UI by hash comparison; do not mutate old rows just to represent stale status.
 - [ ] Before run creation, call `missing_required_keys(...)` or the same resolution path used by runtime; return `MARKETPLACE_CREDENTIAL_REQUIRED` if required user bindings are missing.

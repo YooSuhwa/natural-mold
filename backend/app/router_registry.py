@@ -26,6 +26,7 @@ def include_app_routers(app: FastAPI) -> None:
         models,
         shares,
         skill_builder,
+        skill_evaluations,
         skill_revisions,
         skills,
         system_llm_settings,
@@ -57,6 +58,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(shares.router)
     app.include_router(templates.router)
     app.include_router(skill_builder.router)
+    app.include_router(skill_evaluations.router)
     app.include_router(skills.router)
     app.include_router(skill_revisions.router)
     app.include_router(system_llm_settings.router)

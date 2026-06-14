@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -45,6 +46,75 @@ async def create_evaluation_set(
     db.add(evaluation_set)
     await db.flush()
     return evaluation_set
+
+
+async def list_evaluation_sets(
+    db: AsyncSession,
+    *,
+    skill: Skill,
+    user_id: uuid.UUID,
+) -> list[SkillEvaluationSet]:
+    result = await db.execute(
+        select(SkillEvaluationSet)
+        .where(SkillEvaluationSet.skill_id == skill.id, SkillEvaluationSet.user_id == user_id)
+        .order_by(desc(SkillEvaluationSet.updated_at), desc(SkillEvaluationSet.created_at))
+    )
+    return list(result.scalars().all())
+
+
+async def get_evaluation_set(
+    db: AsyncSession,
+    *,
+    skill: Skill,
+    user_id: uuid.UUID,
+    evaluation_set_id: uuid.UUID,
+) -> SkillEvaluationSet | None:
+    result = await db.execute(
+        select(SkillEvaluationSet).where(
+            SkillEvaluationSet.id == evaluation_set_id,
+            SkillEvaluationSet.skill_id == skill.id,
+            SkillEvaluationSet.user_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_runs(
+    db: AsyncSession,
+    *,
+    skill: Skill,
+    user_id: uuid.UUID,
+    evaluation_set: SkillEvaluationSet,
+) -> list[SkillEvaluationRun]:
+    result = await db.execute(
+        select(SkillEvaluationRun)
+        .where(
+            SkillEvaluationRun.skill_id == skill.id,
+            SkillEvaluationRun.user_id == user_id,
+            SkillEvaluationRun.evaluation_set_id == evaluation_set.id,
+        )
+        .order_by(desc(SkillEvaluationRun.created_at))
+    )
+    return list(result.scalars().all())
+
+
+async def get_run(
+    db: AsyncSession,
+    *,
+    skill: Skill,
+    user_id: uuid.UUID,
+    evaluation_set: SkillEvaluationSet,
+    run_id: uuid.UUID,
+) -> SkillEvaluationRun | None:
+    result = await db.execute(
+        select(SkillEvaluationRun).where(
+            SkillEvaluationRun.id == run_id,
+            SkillEvaluationRun.skill_id == skill.id,
+            SkillEvaluationRun.user_id == user_id,
+            SkillEvaluationRun.evaluation_set_id == evaluation_set.id,
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 def estimate_run(

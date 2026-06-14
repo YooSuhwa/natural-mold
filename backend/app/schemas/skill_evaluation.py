@@ -45,6 +45,12 @@ class SkillEvaluationRunEstimate(BaseModel):
     uses_baseline_comparison: bool
 
 
+class SkillEvaluationRunCancelRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    reason: str = Field(default="user", max_length=120)
+
+
 class SkillEvaluationRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 
