@@ -44,6 +44,7 @@ from app.schemas.skill import (
     SkillTextContentResponse,
 )
 from app.services import audit_service
+from app.services.skill_response_enrichment import build_skill_quality_map
 from app.skills import service as skill_service
 from app.skills.inspector import SkillMetadataError
 from app.skills.packager import PackageError
@@ -115,6 +116,10 @@ async def _serialize_skill(db: AsyncSession, skill: Skill, user: CurrentUser) ->
                 dirty=bool(row.is_dirty or skill.is_dirty),
             )
     response = SkillResponse.model_validate(skill)
+    quality = (await build_skill_quality_map(db, user=user, skills=[skill])).get(skill.id)
+    if quality is not None:
+        response.latest_evaluation_summary = quality.latest_evaluation_summary
+        response.health = quality.health
     response.origin_summary = origin
     response.publication_summary = publication
     response.installation = installation
@@ -126,9 +131,14 @@ async def _serialize_skills(
 ) -> list[SkillResponse]:
     publications = await origin_service.bulk_derive_publication_summaries_for_skills(db, skills)
     installations = await origin_service.bulk_derive_skill_installation_summaries(db, skills)
+    quality_by_skill = await build_skill_quality_map(db, user=user, skills=skills)
     responses: list[SkillResponse] = []
     for skill in skills:
         response = SkillResponse.model_validate(skill)
+        quality = quality_by_skill.get(skill.id)
+        if quality is not None:
+            response.latest_evaluation_summary = quality.latest_evaluation_summary
+            response.health = quality.health
         response.origin_summary = origin_service.derive_origin_summary_for_skill(skill, user)
         response.publication_summary = publications.get(
             skill.id,

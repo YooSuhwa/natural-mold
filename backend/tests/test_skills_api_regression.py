@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
 from app.models.skill import AgentSkillLink, Skill
+from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.skills import service as skill_service
 from tests.conftest import TEST_USER_ID
 
@@ -298,6 +299,54 @@ class TestLegacyRoutersStillWork:
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["execution_profile"] == {"tool_dependencies": ["tavily_search"]}
+
+    @pytest.mark.asyncio
+    async def test_skill_response_includes_quality_summaries(
+        self, client: AsyncClient, db: AsyncSession
+    ) -> None:
+        row = _make_skill_row(name="quality-probe", kind="text")
+        row.content_hash = "a" * 64
+        evaluation_set_id = uuid.uuid4()
+        evaluation_set = SkillEvaluationSet(
+            id=evaluation_set_id,
+            user_id=TEST_USER_ID,
+            skill_id=row.id,
+            name="Smoke",
+            evals=[{"input": "a"}],
+        )
+        run = SkillEvaluationRun(
+            user_id=TEST_USER_ID,
+            skill_id=row.id,
+            evaluation_set_id=evaluation_set_id,
+            status="completed",
+            skill_content_hash=row.content_hash,
+            summary={"pass_rate": 0.9},
+        )
+        db.add_all([row, evaluation_set, run])
+        await db.commit()
+
+        resp = await client.get(f"/api/skills/{row.id}")
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["latest_evaluation_summary"]["status"] == "passed"
+        assert body["latest_evaluation_summary"]["pass_rate"] == 0.9
+        assert body["health"]["state"] == "ready"
+
+    @pytest.mark.asyncio
+    async def test_skill_list_marks_missing_evaluation(
+        self, client: AsyncClient, db: AsyncSession
+    ) -> None:
+        row = _make_skill_row(name="quality-list-probe", kind="text")
+        db.add(row)
+        await db.commit()
+
+        resp = await client.get("/api/skills")
+
+        assert resp.status_code == 200, resp.text
+        probe = next(r for r in resp.json() if r["slug"] == "quality-list-probe")
+        assert probe["latest_evaluation_summary"]["status"] == "missing"
+        assert probe["health"]["state"] == "needs_evaluation"
 
 
 # ===========================================================================
