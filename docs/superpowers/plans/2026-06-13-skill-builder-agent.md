@@ -3094,7 +3094,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [x] Implement eval schema support for `evals/evals.json`.
 - [x] Implement internal template selection from the Internal Evaluation Templates section.
 - [ ] Implement the bounded worker/queue behavior from the Evaluation Execution Infrastructure section.
-- [ ] Generate 2-3 realistic eval prompts from intent when the user asks to test.
+- [x] Generate 2-3 realistic eval prompts from intent when the user asks to test.
 - [ ] Do not expose evaluation template selection as a default user-facing picker.
 - [ ] Allow optional eval-case review only for advanced or low-confidence flows.
 - [ ] Run with-skill and without-skill configurations into separate output folders.
@@ -3128,6 +3128,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [x] Add regression coverage for undeclared `curl` execution denial and sanitized `skill_security.sandbox_denied` metadata.
 - [x] Add regression coverage for internal eval template selection: structured extraction, research, and general task fallback.
 - [x] Add regression coverage for `evals/evals.json` parser validation, top-level list shorthand, and malformed JSON.
+- [x] Add regression coverage for deterministic eval case generation from structured extraction, research, and general templates.
 - [ ] Run:
 
 ```bash
