@@ -2866,9 +2866,9 @@ Expected: all validator tests pass.
 - Create: `backend/tests/test_skill_revision_backfill.py`
 - Create: `backend/tests/test_skill_builder_audit.py`
 
-- [ ] Implement session CRUD.
-- [ ] Implement create-mode and improve-mode session creation.
-- [ ] Implement `load_skill_snapshot` for both text and package skills.
+- [x] Implement session CRUD.
+- [x] Implement create-mode and improve-mode session creation.
+- [x] Implement `load_skill_snapshot` for both text and package skills.
 - [ ] Implement reusable evaluation set/run CRUD in `skill_evaluation_service.py`.
 - [ ] Implement `estimate_run` and `cancel_run` in `skill_evaluation_service.py`.
 - [ ] Implement Skill Health calculation in `skill_health_service.py` with states from the Skill Health Summary section.
@@ -2883,7 +2883,7 @@ Expected: all validator tests pass.
 - [ ] Create new revisions after text content update, package file update/delete/upload, metadata update, builder improvement, and rollback.
 - [ ] Generate changelog summaries from builder diffs and store them on the resulting revision row.
 - [ ] Keep changelog summaries out of `SKILL.md`; use them as default marketplace release-note text later.
-- [ ] Implement `append_message` with a JSON array shape:
+- [x] Implement `append_message` with a JSON array shape:
 
 ```json
 [
