@@ -3091,11 +3091,13 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - Modify: `backend/app/router_registry.py`
 - Modify: `backend/app/marketplace/skill_runtime.py`
 - Modify: `backend/app/agent_runtime/skill_executor.py`
+- Create: `backend/app/agent_runtime/skill_execution_policy.py`
 - Create: `backend/tests/test_skill_builder_eval_runner.py`
 - Create: `backend/tests/test_skill_builder_eval_api.py`
 - Create: `backend/tests/test_skill_builder_eval_templates.py`
 - Create: `backend/tests/test_skill_evaluation_worker.py`
 - Create: `backend/tests/test_skill_executor_credential_audit.py`
+- Create: `backend/tests/test_skill_executor_sandbox_denials.py`
 
 - [x] Implement eval schema support for `evals/evals.json`.
 - [x] Implement internal template selection from the Internal Evaluation Templates section.
@@ -3106,8 +3108,8 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [x] Add eval runner output directory contract for with-skill and without-skill runs.
 - [x] Run with-skill and without-skill configurations into separate output folders.
 - [ ] Use the current selected-skill runtime mount pattern for with-skill evaluation runs.
-- [ ] Reuse or refactor the `execute_in_skill` command policy instead of adding another subprocess parser.
-- [ ] Enforce timeout, selected-skill path validation, credential redaction, and output directory scoping for eval scripts.
+- [x] Reuse or refactor the `execute_in_skill` command policy instead of adding another subprocess parser.
+- [x] Enforce timeout, selected-skill path validation, credential redaction, and output directory scoping for eval scripts.
 - [x] Refuse eval execution that needs required user credentials when bindings are missing.
 - [x] Return `SYSTEM_LLM_NOT_CONFIGURED` before creating execution artifacts when grader/model-based evaluation lacks the system model.
 - [x] Refuse eval network execution when the skill uses `curl` or external URLs but lacks `execution_profile.requires_network: true`.
@@ -3143,7 +3145,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 
 ```bash
 cd backend
-uv run pytest tests/test_skill_builder_eval_runner.py tests/test_skill_builder_eval_api.py tests/test_skill_builder_eval_templates.py tests/test_skill_evaluation_worker.py tests/test_skill_executor_credential_audit.py -q
+uv run pytest tests/test_skill_builder_eval_runner.py tests/test_skill_builder_eval_api.py tests/test_skill_builder_eval_templates.py tests/test_skill_evaluation_worker.py tests/test_skill_executor_credential_audit.py tests/test_skill_executor_sandbox_denials.py -q
 ```
 
 Expected: eval runner tests pass.
@@ -3185,7 +3187,7 @@ Expected: eval runner tests pass.
 - [x] Record `skill_evaluation.credential_missing` with outcome `denied` when run creation is blocked by missing credentials.
 - [x] Record `skill_evaluation.run_create`, `skill_evaluation.run_start`, `skill_evaluation.run_complete`, `skill_evaluation.run_fail`, and `skill_evaluation.run_cancel` with sanitized metadata.
 - [x] Record `skill_security.sandbox_denied` when the eval runner blocks undeclared network access before launch.
-- [ ] Extend `skill_security.sandbox_denied` coverage to unsupported executables, path traversal, and timeout policy violations before launch.
+- [x] Extend `skill_security.sandbox_denied` coverage to unsupported executables, path traversal, and timeout policy violations before launch.
 - [ ] Add API tests:
   - [x] list returns evaluation sets owned by the skill owner
   - [x] create set persists eval prompts and expectations
@@ -3201,7 +3203,7 @@ Expected: eval runner tests pass.
   - [x] cross-user access returns 404
   - [x] missing required skill credential binding returns `MARKETPLACE_CREDENTIAL_REQUIRED` and no run row is created
   - run create/cancel/complete/failure audit events contain IDs and summary metrics but no prompts or outputs
-  - sandbox denial audit event contains reason code and executable only, not raw command arguments
+  - [x] sandbox denial audit event contains reason code and executable only, not raw command arguments
 - [x] Add regression coverage for run enqueue, queue-full rollback, background queue consumption, worker complete/fail transitions, cancelled-run skip, and interrupted running/grading reconciliation.
 - [ ] Run:
 
