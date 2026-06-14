@@ -2993,7 +2993,7 @@ Expected: service tests pass.
 - [x] Record `skill_builder.session_create` when `POST /api/skill-builder` succeeds.
 - [x] Record `skill_builder.system_model_missing` with outcome `denied` when System LLM readiness blocks the builder.
 - [x] Record `skill_builder.validation_failed` when `POST /validate` persists error-level issues.
-- [ ] Record `skill_builder.secret_scan_blocked` when validation or confirm blocks a draft because `scan_package()` found secrets.
+- [x] Record `skill_builder.secret_scan_blocked` when validation or confirm blocks a draft because `scan_package()` found secrets.
 - [x] Record `skill_builder.confirm_create` when create-mode confirm creates a new skill.
 - [x] Record `skill_builder.apply_improvement` when improve-mode confirm updates the existing skill.
 - [x] Record `skill_builder.apply_conflict` with outcome `denied` when improve-mode hash conflict returns 409.

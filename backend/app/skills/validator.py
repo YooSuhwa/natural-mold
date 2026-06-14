@@ -200,6 +200,7 @@ def _scan_secrets(files: Sequence[SkillDraftFile], issues: list[dict[str, Any]])
                 "error",
                 f"Potential secret detected by {finding.kind} scanner.",
                 finding.path,
+                finding_kind=finding.kind,
             )
 
 
@@ -209,8 +210,17 @@ def _add_issue(
     severity: str,
     message: str,
     path: str | None = None,
+    **metadata: Any,
 ) -> None:
-    issues.append({"code": code, "severity": severity, "path": path, "message": message})
+    issues.append(
+        {
+            "code": code,
+            "severity": severity,
+            "path": path,
+            "message": message,
+            **metadata,
+        }
+    )
 
 
 def _count(issues: Sequence[Mapping[str, Any]], severity: str) -> int:

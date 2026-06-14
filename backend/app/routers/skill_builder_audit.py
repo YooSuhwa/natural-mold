@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +43,26 @@ def confirm_audit_metadata(
     return metadata
 
 
+def secret_scan_audit_metadata(
+    validation_result: Mapping[str, object],
+) -> dict[str, object] | None:
+    issues = validation_result.get("issues")
+    if not isinstance(issues, list):
+        return None
+    secret_issues = [
+        issue
+        for issue in issues
+        if isinstance(issue, dict) and issue.get("code") == "SECRET_DETECTED"
+    ]
+    if not secret_issues:
+        return None
+    return {
+        "finding_count": len(secret_issues),
+        "finding_kinds": sorted(_text_values(secret_issues, "finding_kind")),
+        "paths": sorted(_text_values(secret_issues, "path")),
+    }
+
+
 async def record_current_revision_create_audit(
     db: AsyncSession,
     *,
@@ -59,6 +81,15 @@ async def record_current_revision_create_audit(
         request=request,
         revision=revision,
     )
+
+
+def _text_values(items: list[dict[object, object]], key: str) -> set[str]:
+    values: set[str] = set()
+    for item in items:
+        value = item.get(key)
+        if isinstance(value, str) and value:
+            values.add(value)
+    return values
 
 
 def _path_content_map(raw: dict[str, JsonValue] | None) -> dict[str, str]:

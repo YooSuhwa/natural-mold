@@ -179,3 +179,37 @@ async def test_improve_confirm_audit_includes_counts_and_hashes_without_content(
     assert revision_event.event_metadata is not None
     assert revision_event.event_metadata["operation"] == "builder_improvement"
     assert revision_event.event_metadata["content_hash"] == confirm.json()["content_hash"]
+
+
+async def test_secret_scan_blocked_audit_uses_sanitized_metadata(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    await _configure_system_llm(db)
+    secret_value = "sk-123456789012345678901234"
+    start = await client.post(
+        BASE,
+        json={"mode": "create", "user_request": "PROMPT_SECRET_MARKER: 스킬 만들어줘"},
+    )
+    session_id = start.json()["id"]
+    draft = _draft_payload(body=f"SECRET_BODY_MARKER {secret_value}")
+
+    validate = await client.post(f"{BASE}/{session_id}/validate", json=draft)
+    confirm = await client.post(f"{BASE}/{session_id}/confirm")
+
+    assert validate.status_code == 200, validate.text
+    assert confirm.status_code == 422, confirm.text
+    events = await _audit_events(db, "skill_builder.secret_scan_blocked")
+    assert len(events) == 2
+    for event in events:
+        assert event.outcome == "denied"
+        assert event.event_metadata is not None
+        assert event.event_metadata["session_id"] == session_id
+        assert event.event_metadata["finding_count"] == 1
+        assert event.event_metadata["finding_kinds"] == ["content"]
+        assert event.event_metadata["paths"] == ["SKILL.md"]
+
+    metadata_text = str([event.event_metadata for event in events])
+    assert "PROMPT_SECRET_MARKER" not in metadata_text
+    assert "SECRET_BODY_MARKER" not in metadata_text
+    assert secret_value not in metadata_text

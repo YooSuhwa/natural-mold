@@ -11,6 +11,7 @@ from app.dependencies import CurrentUser
 from app.error_codes import session_not_found, system_llm_not_configured
 from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
+from app.routers.skill_builder_audit import secret_scan_audit_metadata
 from app.schemas.skill_builder import SkillBuilderStatus
 from app.services import audit_service, skill_builder_service
 from app.services.system_credential_resolver import (
@@ -96,6 +97,30 @@ async def record_builder_audit(
             "source_skill_id": str(source_skill_id) if source_skill_id else None,
             **metadata,
         },
+    )
+
+
+async def record_secret_scan_blocked_if_needed(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    request: Request,
+    session: SkillBuilderSession,
+    validation_result: dict[str, object],
+) -> None:
+    secret_metadata = secret_scan_audit_metadata(validation_result)
+    if secret_metadata is None:
+        return
+    await record_builder_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill_builder.secret_scan_blocked",
+        session_id=session.id,
+        mode=session.mode,
+        source_skill_id=session.source_skill_id,
+        outcome="denied",
+        **secret_metadata,
     )
 
 

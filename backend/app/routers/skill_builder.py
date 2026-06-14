@@ -22,6 +22,7 @@ from app.routers.skill_builder_support import (
     completed_skill,
     get_session_or_404,
     record_builder_audit,
+    record_secret_scan_blocked_if_needed,
     require_system_llm,
     single_event_stream,
 )
@@ -168,6 +169,13 @@ async def validate_skill_builder_draft(
             mode=session.mode,
             error_count=result["error_count"],
         )
+        await record_secret_scan_blocked_if_needed(
+            db,
+            user=user,
+            request=request,
+            session=session,
+            validation_result=result,
+        )
     await db.commit()
     await db.refresh(session)
     return SkillBuilderSessionResponse.model_validate(session)
@@ -215,6 +223,13 @@ async def confirm_skill_builder_session(
         await db.rollback()
         raise skill_not_found() from exc
     except SkillBuilderValidationError as exc:
+        await record_secret_scan_blocked_if_needed(
+            db,
+            user=user,
+            request=request,
+            session=session,
+            validation_result=exc.result,
+        )
         await db.commit()
         raise invalid_skill_package("skill builder draft validation failed") from exc
 
