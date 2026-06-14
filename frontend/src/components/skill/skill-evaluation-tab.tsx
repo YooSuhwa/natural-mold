@@ -1,14 +1,29 @@
 'use client'
 
 import { useMemo } from 'react'
+import { CircleStop, RefreshCw } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useSkillEvaluationSets } from '@/lib/hooks/use-skill-evaluations'
+import {
+  useCancelSkillEvaluationRun,
+  useCreateSkillEvaluationRun,
+  useSkillEvaluationSets,
+} from '@/lib/hooks/use-skill-evaluations'
+import type { SkillEvaluationRunStatus, SkillEvaluationSet } from '@/lib/types/skill-evaluation'
 
 import { SkillEvaluationSummaryBadge } from './skill-evaluation-summary-badge'
+
+const CANCELLABLE_RUN_STATUS: Record<SkillEvaluationRunStatus, boolean> = {
+  queued: true,
+  running: true,
+  grading: true,
+  completed: false,
+  failed: false,
+  cancelled: false,
+}
 
 export function SkillEvaluationTab({
   skillId,
@@ -35,39 +50,7 @@ export function SkillEvaluationTab({
         ) : (
           <div className="space-y-3">
             {evaluationSets.map((set) => (
-              <article key={set.id} className="rounded-lg border border-border/70 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold">{set.name}</h3>
-                    {set.description ? (
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {set.description}
-                      </p>
-                    ) : null}
-                  </div>
-                  <SkillEvaluationSummaryBadge
-                    summary={
-                      set.latest_run
-                        ? {
-                            status: set.latest_run.status,
-                            latest_run_id: set.latest_run.id,
-                            evaluation_set_id: set.id,
-                            pass_rate:
-                              typeof set.latest_run.summary?.pass_rate === 'number'
-                                ? set.latest_run.summary.pass_rate
-                                : null,
-                            skill_content_hash: set.latest_run.skill_content_hash ?? null,
-                            created_at: set.latest_run.created_at,
-                            completed_at: set.latest_run.completed_at ?? null,
-                          }
-                        : { status: 'missing' }
-                    }
-                  />
-                </div>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {t('caseCount', { count: set.evals.length })}
-                </p>
-              </article>
+              <SkillEvaluationSetCard key={set.id} skillId={skillId} set={set} />
             ))}
           </div>
         )}
@@ -78,5 +61,86 @@ export function SkillEvaluationTab({
         </Button>
       </DialogShell.Footer>
     </>
+  )
+}
+
+function SkillEvaluationSetCard({
+  skillId,
+  set,
+}: {
+  readonly skillId: string
+  readonly set: SkillEvaluationSet
+}) {
+  const t = useTranslations('skill.detailDialog.evaluation')
+  const runAgain = useCreateSkillEvaluationRun(skillId, set.id)
+  const cancelRun = useCancelSkillEvaluationRun(skillId, set.id)
+  const latestRun = set.latest_run
+  const canCancel = latestRun ? CANCELLABLE_RUN_STATUS[latestRun.status] : false
+  const isMutating = runAgain.isPending || cancelRun.isPending
+
+  return (
+    <article className="rounded-lg border border-border/70 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-semibold">{set.name}</h3>
+          {set.description ? (
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{set.description}</p>
+          ) : null}
+        </div>
+        <SkillEvaluationSummaryBadge
+          summary={
+            latestRun
+              ? {
+                  status: latestRun.status,
+                  latest_run_id: latestRun.id,
+                  evaluation_set_id: set.id,
+                  pass_rate:
+                    typeof latestRun.summary?.pass_rate === 'number'
+                      ? latestRun.summary.pass_rate
+                      : null,
+                  skill_content_hash: latestRun.skill_content_hash ?? null,
+                  created_at: latestRun.created_at,
+                  completed_at: latestRun.completed_at ?? null,
+                }
+              : { status: 'missing' }
+          }
+        />
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {t('caseCount', { count: set.evals.length })}
+        </p>
+        {canCancel && latestRun ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isMutating}
+            aria-label={t('cancelRunFor', { name: set.name })}
+            onClick={() =>
+              cancelRun.mutate({
+                runId: latestRun.id,
+                data: { reason: 'user_requested' },
+              })
+            }
+          >
+            <CircleStop aria-hidden="true" />
+            {cancelRun.isPending ? t('cancelPending') : t('cancelRun')}
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isMutating}
+            aria-label={t('runAgainFor', { name: set.name })}
+            onClick={() => runAgain.mutate()}
+          >
+            <RefreshCw aria-hidden="true" />
+            {runAgain.isPending ? t('runAgainPending') : t('runAgain')}
+          </Button>
+        )}
+      </div>
+    </article>
   )
 }

@@ -3412,14 +3412,16 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [ ] Render `PortableCompatibilityPanel` in builder preview and revision detail.
 - [ ] Show latest evaluation summary, stale badge, reusable evaluation sets, run history, and selected run details.
 - [ ] Show estimate confirmation before creating an evaluation run.
-- [ ] Add a rerun action that creates a new `SkillEvaluationRun` for the selected evaluation set.
-- [ ] Add a cancel action for queued/running/grading runs.
+- [x] Add a rerun action that creates a new `SkillEvaluationRun` for the selected evaluation set.
+- [x] Add a cancel action for queued/running/grading runs.
 - [ ] Show improvement conflict state when the backend returns 409 for a changed base hash.
 - [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
+  - [x] Add focused `SkillEvaluationTab` tests for rerun and active-run cancel callbacks.
+- [x] Add mock-only Playwright coverage for installed skill evaluation rerun/cancel controls in `frontend/e2e/skill-evaluation-actions.spec.ts`.
 - [ ] Add detail-dialog regression tests for package file selection, file save/delete behavior, text skill save behavior, and footer actions after the single-shell refactor.
 - [ ] Add a regression test or routing assertion that no separate user-facing skill evaluation/history/credential route is introduced for this phase.
-- [ ] Add i18n messages in both Korean and English.
-- [ ] Run:
+- [x] Add i18n messages in both Korean and English for the installed skill detail tabs and evaluation actions.
+- [x] Run:
 
 ```bash
 cd frontend
@@ -3478,6 +3480,19 @@ pnpm lint:design-system
 ```
 
 Expected: no new lint/design/i18n errors.
+
+- [x] Run targeted frontend checks for the installed skill evaluation action slice:
+
+```bash
+cd frontend
+pnpm exec vitest run src/components/skill/__tests__/skill-evaluation-tab.test.tsx src/components/skill/__tests__/skill-quality-badges.test.tsx tests/pages/skills.test.tsx
+pnpm exec eslint src/components/skill/skill-evaluation-tab.tsx src/components/skill/__tests__/skill-evaluation-tab.test.tsx
+pnpm exec eslint --no-ignore e2e/skill-evaluation-actions.spec.ts
+pnpm exec tsc --noEmit --pretty false
+PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3112 E2E_BACKEND_PORT=8112 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-evaluation-actions.spec.ts --workers=1
+```
+
+Expected: all targeted frontend checks pass; screenshot evidence is saved under `output/e2e-captures/20260615-skill-eval-actions/`.
 
 - [ ] Run:
 
