@@ -110,6 +110,22 @@ def test_agent_protocol_routes_registered_from_conversation_facade() -> None:
     assert expected <= actual
 
 
+def test_agent_protocol_stream_events_route_requires_csrf() -> None:
+    from fastapi.routing import APIRoute
+
+    from app.dependencies import verify_csrf
+
+    route = next(
+        route
+        for route in create_app().routes
+        if isinstance(route, APIRoute)
+        and route.path
+        == "/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/stream/events"
+    )
+
+    assert any(dependency.call is verify_csrf for dependency in route.dependant.dependencies)
+
+
 @pytest.mark.asyncio
 async def test_thread_state_requires_authentication(raw_client: AsyncClient) -> None:
     conversation_id = uuid.uuid4()
@@ -710,6 +726,54 @@ async def test_protocol_lifecycle_stream_projects_live_events_after_numeric_sinc
         chunk = await asyncio.wait_for(anext(stream), timeout=1.0)
         assert "live-after-since" in chunk
         assert '"seq":6' in chunk
+    finally:
+        broker.close()
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
+async def test_protocol_lifecycle_stream_uses_broker_cursor_for_live_resume(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import conversation_agent_protocol_thread_stream as thread_stream
+
+    conversation = await _seed_conversation(db)
+    run_id = uuid.uuid4().hex
+
+    async def is_disconnected() -> bool:
+        return False
+
+    async def no_replay_events(_conversation_id: uuid.UUID) -> list[dict[str, Any]]:
+        return []
+
+    monkeypatch.setattr(thread_stream, "_load_replay_events", no_replay_events)
+    broker = broker_registry.get_or_create(run_id, conversation_id=str(conversation.id))
+    broker.publish_nowait(
+        {
+            "id": "broker-live-1",
+            "event": "message",
+            "data": {
+                "type": "event",
+                "method": "lifecycle",
+                "params": {"namespace": [], "data": {"event": "running"}},
+                "seq": 1,
+                "event_id": "protocol-wire-1",
+            },
+        }
+    )
+
+    stream = thread_stream.protocol_thread_stream_generator(
+        conversation_id=conversation.id,
+        thread_id=str(conversation.id),
+        params={"channels": ["lifecycle"]},
+        after_id=None,
+        is_disconnected=is_disconnected,
+    )
+    try:
+        chunk = await asyncio.wait_for(anext(stream), timeout=1.0)
+        assert chunk.startswith("id: broker-live-1\n")
+        assert '"event_id":"protocol-wire-1"' in chunk
     finally:
         broker.close()
         await stream.aclose()

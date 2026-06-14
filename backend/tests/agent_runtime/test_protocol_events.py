@@ -10,7 +10,6 @@ from app.agent_runtime.protocol_events import (
     matches_subscription,
     protocol_interrupts_from_event,
     stored_protocol_event,
-    to_assistant_ui_projection,
     to_protocol_wire_event,
 )
 
@@ -42,23 +41,6 @@ def test_stored_event_yields_protocol_shape() -> None:
     assert "timestamp" not in wire["params"]
     assert wire["seq"] == 1
     assert wire["event_id"] == "evt-1"
-
-
-def test_optional_assistant_ui_projection_uses_pipe_suffix() -> None:
-    event = stored_protocol_event(
-        run_id="run-1",
-        thread_id="thread-1",
-        seq=1,
-        event_id="evt-1",
-        method="messages",
-        namespace=["tools:tc-1", "child/1"],
-        data={"content": "hi"},
-    )
-
-    assert to_assistant_ui_projection(event) == {
-        "event": "messages|tools%3Atc-1|child%2F1",
-        "data": {"content": "hi"},
-    }
 
 
 def test_format_protocol_sse_uses_protocol_message_event() -> None:

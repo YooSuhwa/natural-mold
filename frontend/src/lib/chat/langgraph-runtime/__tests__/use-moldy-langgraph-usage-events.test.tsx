@@ -10,6 +10,7 @@ import {
   mocks,
   renderUsageHook,
   resetUsageMocks,
+  usageEvent,
 } from './use-moldy-langgraph-usage-test-harness'
 
 describe('useMoldyLangGraphStream v3 usage events', () => {
@@ -36,6 +37,58 @@ describe('useMoldyLangGraphStream v3 usage events', () => {
       inputTokens: 18,
       outputTokens: 7,
       cost: 0,
+    })
+  })
+
+  it('moves run-scoped usage events to the assistant message after message-start mapping arrives', () => {
+    const assistantMessage = new AIMessage({ id: 'assistant-usage-4', content: 'done' })
+    mocks.stream.messages = [assistantMessage]
+    mocks.stream.values = {
+      messages: [
+        new AIMessage({
+          id: 'assistant-usage-4',
+          content: 'done',
+          usage_metadata: { input_tokens: 18, output_tokens: 7, total_tokens: 25 },
+        }),
+      ],
+    }
+    const runScopedUsage = {
+      ...usageEvent(''),
+      run_id: 'run-message-usage',
+      params: {
+        namespace: [],
+        data: {
+          name: 'usage',
+          payload: {
+            run_id: 'run-message-usage',
+            prompt_tokens: 12,
+            completion_tokens: 5,
+            cache_creation_tokens: 2,
+            cache_read_tokens: 3,
+            estimated_cost: 0.22,
+          },
+        },
+      },
+    }
+    mocks.useChannel.mockImplementation((_stream, channels: readonly string[]) => {
+      if (channels.includes('custom:usage')) return [runScopedUsage, messageStartEvent()]
+      return []
+    })
+
+    const store = createStore()
+    renderUsageHook(store)
+
+    expect(lastConverterOptions()?.messages[0]?.additional_kwargs?.metadata?.usage).toEqual({
+      prompt_tokens: 12,
+      completion_tokens: 5,
+      cache_creation_tokens: 2,
+      cache_read_tokens: 3,
+      estimated_cost: 0.22,
+    })
+    expect(store.get(sessionTokenUsageAtom)).toEqual({
+      inputTokens: 12,
+      outputTokens: 5,
+      cost: 0.22,
     })
   })
 

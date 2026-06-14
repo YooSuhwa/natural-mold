@@ -41,9 +41,18 @@ function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): 
 
   const toolChunks = asRecords(data.tool_call_chunks)
   for (const chunk of toolChunks) {
-    const toolCallId =
-      textValue(chunk.id) ?? textValue(chunk.tool_call_id) ?? `seq-${event.seq ?? 0}`
     const name = textValue(chunk.name) ?? textValue(chunk.tool_name) ?? 'Tool'
+    const toolCallId =
+      textValue(chunk.id) ??
+      textValue(chunk.tool_call_id) ??
+      next.findLast(
+        (item) =>
+          item.kind === 'tool' &&
+          item.status === 'running' &&
+          item.title === name &&
+          namespaceKey(item.namespace) === namespaceKey(namespace),
+      )?.toolCallId
+    if (!toolCallId) continue
     next = upsertActivity(next, {
       ...activityBase(event, 'tool', toolCallId),
       status: 'running',

@@ -52,6 +52,16 @@ def _namespace_from_task(task: Any) -> list[str]:
     return namespace
 
 
+def _namespace_from_interrupt(interrupt: Any) -> list[str]:
+    for attr in ("ns", "namespace"):
+        value = getattr(interrupt, attr, None)
+        if isinstance(value, Sequence) and not isinstance(value, str | bytes):
+            namespace = [segment for segment in value if isinstance(segment, str)]
+            if namespace:
+                return namespace
+    return []
+
+
 def _payload_from_interrupt(
     interrupt: Any,
     *,
@@ -74,21 +84,34 @@ def _payload_from_interrupt(
 
 
 def _interrupt_payloads_from_state(state: Any) -> list[PendingInputPayload]:
-    payloads: list[PendingInputPayload] = []
-    interrupts = list(getattr(state, "interrupts", ()) or ())
-    for index, interrupt in enumerate(interrupts):
-        payload = _payload_from_interrupt(interrupt, namespace=[], index=index)
-        if payload is not None:
-            payloads.append(payload)
-    if payloads:
-        return payloads
+    task_payloads: list[PendingInputPayload] = []
+    task_interrupt_ids: set[str] = set()
     for task in getattr(state, "tasks", ()) or ():
         namespace = _namespace_from_task(task)
         for index, interrupt in enumerate(getattr(task, "interrupts", ()) or ()):
             payload = _payload_from_interrupt(interrupt, namespace=namespace, index=index)
             if payload is not None:
-                payloads.append(payload)
-    return payloads
+                task_payloads.append(payload)
+                task_interrupt_ids.add(payload["interrupt_id"])
+
+    top_level_payloads: list[PendingInputPayload] = []
+    interrupts = list(getattr(state, "interrupts", ()) or ())
+    for index, interrupt in enumerate(interrupts):
+        payload = _payload_from_interrupt(
+            interrupt,
+            namespace=_namespace_from_interrupt(interrupt),
+            index=index,
+        )
+        if payload is not None:
+            top_level_payloads.append(payload)
+
+    if task_payloads:
+        return task_payloads + [
+            payload
+            for payload in top_level_payloads
+            if payload["interrupt_id"] not in task_interrupt_ids
+        ]
+    return top_level_payloads
 
 
 async def pending_input_requested_events(

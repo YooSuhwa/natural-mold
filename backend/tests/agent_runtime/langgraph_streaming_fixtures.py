@@ -41,6 +41,28 @@ class FallbackAgent:
             yield chunk
 
 
+class MidStreamAttributeErrorAgent:
+    def __init__(self) -> None:
+        self.fallback_calls = 0
+
+    async def astream_events(self, *_args: Any, **_kwargs: Any) -> Any:
+        async def _stream() -> Any:
+            yield {
+                "type": "event",
+                "method": "messages",
+                "params": {"namespace": [], "data": {"chunk": "started"}},
+                "seq": 1,
+                "event_id": "midstream-1",
+            }
+            raise AttributeError("adapter bug after stream opened")
+
+        return _stream()
+
+    async def astream(self, *_args: Any, **_kwargs: Any) -> Any:
+        self.fallback_calls += 1
+        yield ("values", {"messages": [], "todos": []})
+
+
 class ErrorAgent:
     async def astream_events(self, *_args: Any, **_kwargs: Any) -> Any:
         async def _stream() -> Any:

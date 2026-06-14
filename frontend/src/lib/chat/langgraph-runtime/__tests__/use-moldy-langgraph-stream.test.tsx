@@ -490,4 +490,48 @@ describe('useMoldyLangGraphStream', () => {
       'intr-b': { decisions: [{ type: 'reject', message: '거부' }] },
     })
   })
+
+  it('flushes a pending concurrent interrupt decision when the other active interrupt disappears', async () => {
+    mocks.thread.interrupts = [
+      {
+        interruptId: 'intr-a',
+        namespace: ['tools:call-a'],
+        payload: {
+          action_requests: [{ name: 'send_email', args: { to: 'a@example.com' } }],
+          review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve', 'reject'] }],
+        },
+      },
+      {
+        interruptId: 'intr-b',
+        namespace: ['tools:call-b'],
+        payload: {
+          action_requests: [{ name: 'send_email', args: { to: 'b@example.com' } }],
+          review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve', 'reject'] }],
+        },
+      },
+    ]
+    const { result, rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hitl',
+          conversationId: 'conversation-hitl',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    await result.current.registerDecision(0, { type: 'approve' }, '승인', 'intr-a')
+    expect(mocks.stream.respond).not.toHaveBeenCalled()
+    expect(mocks.stream.respondAll).not.toHaveBeenCalled()
+
+    mocks.thread.interrupts = [mocks.thread.interrupts[0]]
+    rerender()
+
+    await waitFor(() => {
+      expect(mocks.stream.respond).toHaveBeenCalledWith(
+        { decisions: [{ type: 'approve' }] },
+        { interruptId: 'intr-a', namespace: ['tools:call-a'] },
+      )
+    })
+    expect(mocks.stream.respondAll).not.toHaveBeenCalled()
+  })
 })

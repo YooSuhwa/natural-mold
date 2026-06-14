@@ -38,6 +38,29 @@ describe('reduceActivity', () => {
     })
   })
 
+  it('does not create a ghost tool activity for id-less continuation chunks', () => {
+    const activities = reduce([
+      event('messages', {
+        tool_call_chunks: [{ id: 'tc-1', name: 'search', args: '{"q":"moldy"}' }],
+      }),
+      event('messages', { tool_call_chunks: [{ name: 'search', args: '" more"' }] }),
+      event('tools', {
+        tool_call_id: 'tc-1',
+        tool_name: 'search',
+        status: 'completed',
+        output: 'done',
+      }),
+    ])
+
+    const tools = activities.filter((item) => item.kind === 'tool')
+    expect(tools).toHaveLength(1)
+    expect(tools[0]).toMatchObject({
+      id: 'run-1:tool:tc-1',
+      status: 'complete',
+      title: 'search',
+    })
+  })
+
   it('creates a nested subagent activity from a namespace', () => {
     const activities = reduce([
       event(

@@ -186,6 +186,40 @@ async def stream_agent_response_langgraph(
         )
         try:
             stream = await _open_v3_stream(agent, actual_input, config)
+        except (AttributeError, NotImplementedError):
+            fallback_seq = 0
+            stream = await _open_stream_mode_fallback(agent, actual_input, config)
+            async for raw_chunk in stream:
+                fallback_seq += 1
+                if not isinstance(raw_chunk, tuple | list):
+                    raw_chunk = ("custom", raw_chunk)
+                event = adapt_stream_mode_chunk(
+                    raw_chunk,
+                    run_id=msg_id,
+                    thread_id=thread_id,
+                    seq=fallback_seq,
+                )
+                yield emit(event)
+                for chunk in emit_canonical_interrupts(event):
+                    yield chunk
+                usage_event, side_effect_seq = collect_protocol_usage_event(
+                    event,
+                    next_seq=side_effect_seq,
+                    seen_keys=seen_usage_keys,
+                    usage_sink=usage_sink,
+                    cost_per_input_token=cost_per_input_token,
+                    cost_per_output_token=cost_per_output_token,
+                )
+                if usage_event is not None:
+                    yield emit(usage_event)
+                side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
+                    event,
+                    artifact_recorder=artifact_recorder,
+                    next_seq=side_effect_seq,
+                )
+                for side_effect_event in side_effect_events:
+                    yield emit(side_effect_event)
+        else:
             async for raw_event in stream:
                 if not isinstance(raw_event, Mapping):
                     fallback_seq += 1
@@ -237,39 +271,6 @@ async def stream_agent_response_langgraph(
                     )
                     for side_effect_event in side_effect_events:
                         yield emit(side_effect_event)
-        except (AttributeError, NotImplementedError):
-            fallback_seq = 0
-            stream = await _open_stream_mode_fallback(agent, actual_input, config)
-            async for raw_chunk in stream:
-                fallback_seq += 1
-                if not isinstance(raw_chunk, tuple | list):
-                    raw_chunk = ("custom", raw_chunk)
-                event = adapt_stream_mode_chunk(
-                    raw_chunk,
-                    run_id=msg_id,
-                    thread_id=thread_id,
-                    seq=fallback_seq,
-                )
-                yield emit(event)
-                for chunk in emit_canonical_interrupts(event):
-                    yield chunk
-                usage_event, side_effect_seq = collect_protocol_usage_event(
-                    event,
-                    next_seq=side_effect_seq,
-                    seen_keys=seen_usage_keys,
-                    usage_sink=usage_sink,
-                    cost_per_input_token=cost_per_input_token,
-                    cost_per_output_token=cost_per_output_token,
-                )
-                if usage_event is not None:
-                    yield emit(usage_event)
-                side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
-                    event,
-                    artifact_recorder=artifact_recorder,
-                    next_seq=side_effect_seq,
-                )
-                for side_effect_event in side_effect_events:
-                    yield emit(side_effect_event)
 
         pending_input_events = await pending_input_requested_events(
             agent,

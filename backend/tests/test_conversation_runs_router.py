@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -14,7 +15,7 @@ from app.agent_runtime.event_broker import registry as broker_registry
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ConversationArtifact
-from app.models.conversation_run import utc_now_naive
+from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
@@ -712,6 +713,43 @@ async def test_run_stream_endpoint_marks_old_active_run_stale_without_broker(
     await db.refresh(run)
     assert run.status == "stale"
     assert run.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_run_stream_endpoint_locks_run_before_stale_transition(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import conversation_runs
+
+    monkeypatch.setattr(conversation_runs.settings, "chat_run_stale_after_seconds", 1)
+    agent, conversation = await _seed_agent_conversation(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="stale lock",
+    )
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="test")
+    run.heartbeat_at = run.created_at = utc_now_naive().replace(year=2000)
+    await db.commit()
+
+    original = conversation_run_service.get_run_for_user
+    seen_for_update: list[bool] = []
+
+    async def spy_get_run_for_user(*args: Any, **kwargs: Any) -> ConversationRun | None:
+        seen_for_update.append(bool(kwargs.get("for_update")))
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(conversation_run_service, "get_run_for_user", spy_get_run_for_user)
+
+    resp = await client.get(f"/api/conversations/{conversation.id}/runs/{run.id}/stream")
+
+    assert resp.status_code == 200
+    assert seen_for_update == [True]
 
 
 @pytest.mark.asyncio

@@ -17,7 +17,9 @@ interface MockStream {
   isLoading: boolean
   submit: ReturnType<typeof vi.fn>
   respond: ReturnType<typeof vi.fn>
+  respondAll: ReturnType<typeof vi.fn>
   stop: ReturnType<typeof vi.fn>
+  getThread: ReturnType<typeof vi.fn>
 }
 
 export type ConverterOptions = {
@@ -51,7 +53,9 @@ const hoistedMocks = vi.hoisted(() => {
     isLoading: false,
     submit: vi.fn(),
     respond: vi.fn(),
+    respondAll: vi.fn(),
     stop: vi.fn(),
+    getThread: vi.fn(() => ({ interrupts: [], subscribe: vi.fn() })),
     [STREAM_CONTROLLER]: { messageMetadataStore: metadataStore },
   } as MockStream & {
     [STREAM_CONTROLLER]: { messageMetadataStore: typeof metadataStore }
@@ -113,7 +117,10 @@ export function resetUsageMocks(): void {
   mocks.stream.interrupts = []
   mocks.stream.submit.mockClear()
   mocks.stream.respond.mockClear()
+  mocks.stream.respondAll.mockClear()
   mocks.stream.stop.mockClear()
+  mocks.stream.getThread.mockClear()
+  mocks.stream.getThread.mockReturnValue({ interrupts: [], subscribe: vi.fn() })
   mocks.metadataStore.getSnapshot.mockReturnValue(new Map())
   mocks.useChannel.mockReset()
   mocks.useChannel.mockReturnValue([])

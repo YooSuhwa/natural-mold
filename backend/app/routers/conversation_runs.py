@@ -138,6 +138,7 @@ async def stream_conversation_run(
         conversation_id=conversation_id,
         run_id=run_id,
         user_id=user.id,
+        for_update=True,
     )
     if run is None:
         raise resume_not_found()

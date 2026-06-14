@@ -11,6 +11,7 @@ from app.agent_runtime.streaming import StreamErrorRecord
 from tests.agent_runtime.langgraph_streaming_fixtures import (
     ErrorAgent,
     FallbackAgent,
+    MidStreamAttributeErrorAgent,
     ProtocolAgent,
     StateBackedProtocolAgent,
     sse_payload,
@@ -297,6 +298,35 @@ async def test_langgraph_streaming_falls_back_to_stream_modes() -> None:
     payload = payloads[1]
     assert payload["method"] == "values"
     assert payload["params"]["data"] == {"messages": [], "todos": []}
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_does_not_fallback_after_v3_events_started() -> None:
+    agent = MidStreamAttributeErrorAgent()
+    errors: list[StreamErrorRecord] = []
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-midstream"}},
+            error_sink=errors,
+            run_id="run-midstream",
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    assert [payload["method"] for payload in payloads] == [
+        "lifecycle",
+        "messages",
+        "lifecycle",
+        "error",
+    ]
+    assert payloads[1]["params"]["data"] == {"chunk": "started"}
+    assert payloads[2]["params"]["data"]["event"] == "failed"
+    assert agent.fallback_calls == 0
+    assert errors[0].message == "adapter bug after stream opened"
 
 
 @pytest.mark.asyncio

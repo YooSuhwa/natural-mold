@@ -30,14 +30,17 @@ const USAGE_CHANNELS = ['messages', 'custom', 'custom:usage'] as const
 function usageEventKey(event: unknown, payload: UsagePayload): string {
   const eventId = isRecord(event) ? textValue(event.event_id) : undefined
   const sequence = isRecord(event) && typeof event.seq === 'number' ? event.seq : 'no-seq'
-  return (
-    eventId ?? `${payload.assistant_msg_id ?? payload.run_id ?? 'latest'}:${sequence}`
-  )
+  return eventId ?? `${payload.assistant_msg_id ?? payload.run_id ?? 'latest'}:${sequence}`
 }
 
-function usageMapKey(event: unknown, payload: UsagePayload): string {
+function usageMapKey(
+  event: unknown,
+  payload: UsagePayload,
+  runMessageIds: ReadonlyMap<string, string>,
+): string {
   const eventId = isRecord(event) ? textValue(event.event_id) : undefined
-  return payload.assistant_msg_id ?? payload.run_id ?? eventId ?? 'latest'
+  const mappedMessageId = payload.run_id ? runMessageIds.get(payload.run_id) : undefined
+  return payload.assistant_msg_id ?? mappedMessageId ?? payload.run_id ?? eventId ?? 'latest'
 }
 
 function updateUsageMap(
@@ -60,6 +63,21 @@ function updateUsageMap(
     ...next,
     [key]: usage,
   }
+}
+
+function migrateUsageMapKey(
+  current: Record<string, TokenUsageBreakdown>,
+  fromKey: string,
+  toKey: string,
+): Record<string, TokenUsageBreakdown> {
+  if (fromKey === toKey || !(fromKey in current)) return current
+  const next = { ...current }
+  const usage = next[fromKey]
+  delete next[fromKey]
+  if (usage && !(toKey in next)) {
+    next[toKey] = usage
+  }
+  return next
 }
 
 function sameUsage(
@@ -134,10 +152,7 @@ function usageMapFingerprint(usagesByMessageId: Record<string, TokenUsageBreakdo
 function useStableUsageMap(
   usagesByMessageId: Record<string, TokenUsageBreakdown>,
 ): Record<string, TokenUsageBreakdown> {
-  const fingerprint = useMemo(
-    () => usageMapFingerprint(usagesByMessageId),
-    [usagesByMessageId],
-  )
+  const fingerprint = useMemo(() => usageMapFingerprint(usagesByMessageId), [usagesByMessageId])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => usagesByMessageId, [fingerprint])
 }
@@ -194,6 +209,18 @@ function usageFromMessageEvent(
     ...(runId ? { run_id: runId } : {}),
     ...(assistantMsgId ? { assistant_msg_id: assistantMsgId } : {}),
   }
+}
+
+function messageStartMapping(event: unknown): { runId: string; messageId: string } | null {
+  if (!isRecord(event) || event.method !== 'messages') return null
+  const params = isRecord(event.params) ? event.params : null
+  const messageEvent = messagePayloadAndMetadata(params?.data)
+  if (!messageEvent) return null
+  const { payload: data, metadata } = messageEvent
+  if (data.event !== 'message-start') return null
+  const runId = textValue(metadata.run_id)
+  const messageId = textValue(data.id)
+  return runId && messageId ? { runId, messageId } : null
 }
 
 function messageId(message: BaseMessage): string | undefined {
@@ -328,6 +355,14 @@ export function useLangGraphUsageEffects({
   >({})
 
   const handleEvent = useCallback((event: unknown) => {
+    const mapping = messageStartMapping(event)
+    if (mapping) {
+      runMessageIdsRef.current.set(mapping.runId, mapping.messageId)
+      setEventUsagesByMessageId((current) =>
+        migrateUsageMapKey(current, mapping.runId, mapping.messageId),
+      )
+    }
+
     const payload =
       usageFromMessageEvent(event, runMessageIdsRef.current) ?? protocolUsagePayload(event)
     if (!payload) return
@@ -336,7 +371,7 @@ export function useLangGraphUsageEffects({
     if (seenEventKeysRef.current.has(eventKey)) return
     seenEventKeysRef.current.add(eventKey)
 
-    const key = usageMapKey(event, payload)
+    const key = usageMapKey(event, payload, runMessageIdsRef.current)
     const { assistant_msg_id: _assistantMsgId, run_id: _runId, ...usage } = payload
     void _assistantMsgId
     void _runId
@@ -347,11 +382,13 @@ export function useLangGraphUsageEffects({
     replay: true,
     bufferSize: 300,
   })
+  /* eslint-disable react-hooks/set-state-in-effect -- usage channel replay is an external stream snapshot; handleEvent dedupes by event id before updating local projection state. */
   useEffect(() => {
     for (const event of usageEvents) {
       handleEvent(event)
     }
   }, [handleEvent, usageEvents])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const messageUsagesByMessageId = useMemo(
     () => usageFromMessages([...messages, ...stateMessages]),

@@ -4,7 +4,8 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from typing import Any, Final, NotRequired, TypedDict
-from urllib.parse import quote
+
+import orjson
 
 MAX_MESSAGE_EVENT_ID_LENGTH: Final = 80
 
@@ -29,11 +30,6 @@ class ProtocolWireEvent(TypedDict):
     params: dict[str, Any]
     seq: int
     event_id: NotRequired[str]
-
-
-class AssistantUIProjection(TypedDict):
-    event: str
-    data: Any
 
 
 class SubscribeParams(TypedDict, total=False):
@@ -202,19 +198,10 @@ def to_protocol_wire_event(event: StoredProtocolEvent) -> ProtocolWireEvent:
     return wire
 
 
-def to_assistant_ui_projection(event: StoredProtocolEvent) -> AssistantUIProjection:
-    namespace = event["namespace"]
-    name = event["method"]
-    if namespace:
-        encoded = "|".join(quote(segment, safe="") for segment in namespace)
-        name = f"{name}|{encoded}"
-    return {"event": name, "data": event["data"]}
-
-
-def format_protocol_sse(event: StoredProtocolEvent) -> str:
-    cursor = protocol_event_cursor(event)
-    payload = json.dumps(to_protocol_wire_event(event), ensure_ascii=False, separators=(",", ":"))
-    return f"id: {cursor}\nevent: message\ndata: {payload}\n\n"
+def format_protocol_sse(event: StoredProtocolEvent, *, cursor: str | None = None) -> str:
+    event_cursor = cursor or protocol_event_cursor(event)
+    payload = orjson.dumps(to_protocol_wire_event(event)).decode()
+    return f"id: {event_cursor}\nevent: message\ndata: {payload}\n\n"
 
 
 def protocol_interrupts_from_event(event: StoredProtocolEvent) -> list[ProtocolInterrupt]:

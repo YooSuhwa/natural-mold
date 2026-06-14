@@ -165,10 +165,12 @@ async def protocol_broker_generator(
     after_id: str | None,
 ) -> AsyncGenerator[str, None]:
     async for event in broker.subscribe(after_id=after_id):
+        broker_event_id = event.get("id")
+        cursor = broker_event_id if isinstance(broker_event_id, str) and broker_event_id else None
         for protocol_event in protocol_events_from_broker(
             event,
             run_id=broker.run_id,
             thread_id=thread_id,
         ):
             if matches_subscription(protocol_event, params):
-                yield format_protocol_sse(protocol_event)
+                yield format_protocol_sse(protocol_event, cursor=cursor)

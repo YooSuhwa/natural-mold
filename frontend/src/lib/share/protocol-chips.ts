@@ -193,8 +193,16 @@ export function protocolChips(events: TraceEvent[]): ChipInfo[] {
     if (custom) direct.push(custom)
   })
 
+  const seenOutputSubagents = new Set<string>()
   return [...direct, ...Array.from(tools.values()).map(_protocolToolChip)]
     .sort((a, b) => a.order - b.order)
+    .filter((item) => {
+      if (item.kind !== 'subagent') return true
+      const key = item.title
+      if (seenOutputSubagents.has(key)) return false
+      seenOutputSubagents.add(key)
+      return true
+    })
     .map(({ kind, status, title, meta }) =>
       meta ? { kind, status, title, meta } : { kind, status, title },
     )

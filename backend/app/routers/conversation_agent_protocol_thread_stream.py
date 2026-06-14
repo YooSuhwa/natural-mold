@@ -101,6 +101,10 @@ async def _yield_broker_events(
 ) -> AsyncGenerator[tuple[str, str, int], None]:
     broker_cursor = cursor if broker.has_event_id(cursor) else None
     async for event in broker.subscribe(after_id=broker_cursor):
+        broker_event_id = event.get("id")
+        event_cursor = (
+            broker_event_id if isinstance(broker_event_id, str) and broker_event_id else None
+        )
         protocol_events = protocol_events_from_broker(
             event,
             run_id=broker.run_id,
@@ -111,7 +115,12 @@ async def _yield_broker_events(
             projected_event = resequence_protocol_event(protocol_event, seq=next_seq)
             if not matches_subscription(projected_event, params):
                 continue
-            yield format_protocol_sse(projected_event), _event_cursor(projected_event), next_seq
+            next_cursor = event_cursor or _event_cursor(projected_event)
+            yield (
+                format_protocol_sse(projected_event, cursor=next_cursor),
+                next_cursor,
+                next_seq,
+            )
 
 
 async def protocol_thread_stream_generator(

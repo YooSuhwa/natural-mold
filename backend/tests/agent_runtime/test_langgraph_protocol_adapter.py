@@ -13,7 +13,6 @@ from app.agent_runtime.langgraph_protocol_adapter import (
 from app.agent_runtime.protocol_events import (
     canonical_input_requested_events,
     protocol_interrupts_from_event,
-    to_assistant_ui_projection,
 )
 
 
@@ -74,7 +73,6 @@ def test_v3_message_tuple_preserves_sdk_payload_metadata_pair() -> None:
             "checkpoint_ns": "model",
         },
     ]
-    assert to_assistant_ui_projection(event)["event"] == "messages|tools%3Atc-1"
 
 
 def test_v3_reasoning_content_is_redacted_before_storage() -> None:
@@ -108,6 +106,68 @@ def test_v3_reasoning_content_is_redacted_before_storage() -> None:
         {"type": "reasoning", "summary": "checked policy", "redacted": True},
     ]
     assert event["data"]["additional_kwargs"] == {"reasoning": "[redacted]"}
+
+
+def test_v3_thinking_block_keeps_signature_but_redacts_private_text() -> None:
+    event = adapt_v3_protocol_event(
+        {
+            "type": "event",
+            "method": "messages",
+            "params": {
+                "data": {
+                    "content": [
+                        {
+                            "type": "thinking",
+                            "text": "hidden chain",
+                            "summary": "checking",
+                            "signature": "provider-signature",
+                        }
+                    ],
+                },
+            },
+            "seq": 5,
+        },
+        run_id="run-1",
+        thread_id="thread-1",
+    )
+
+    assert event["data"]["content"] == [
+        {
+            "type": "thinking",
+            "summary": "checking",
+            "signature": "provider-signature",
+            "redacted": True,
+        }
+    ]
+
+
+def test_v3_redaction_does_not_match_reasoning_substrings_in_block_type() -> None:
+    event = adapt_v3_protocol_event(
+        {
+            "type": "event",
+            "method": "messages",
+            "params": {
+                "data": {
+                    "content": [
+                        {
+                            "type": "my_reasoning_summary",
+                            "text": "displayable summary text",
+                        }
+                    ],
+                },
+            },
+            "seq": 5,
+        },
+        run_id="run-1",
+        thread_id="thread-1",
+    )
+
+    assert event["data"]["content"] == [
+        {
+            "type": "my_reasoning_summary",
+            "text": "displayable summary text",
+        }
+    ]
 
 
 def test_stream_mode_tuple_keeps_namespace_and_mode() -> None:

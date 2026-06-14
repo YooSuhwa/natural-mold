@@ -142,15 +142,7 @@ export function useMoldyLangGraphStream({
   })
   const coordinatorsRef = useRef(new Map<string, HiTLDecisionCoordinator>())
   const pendingInterruptDecisionsRef = useRef(new Map<string, Decision[]>())
-  useEffect(() => {
-    const active = new Set(interruptPayloads.map((payload) => payload.interrupt_id))
-    for (const key of coordinatorsRef.current.keys()) {
-      if (!active.has(key)) coordinatorsRef.current.delete(key)
-    }
-    for (const key of pendingInterruptDecisionsRef.current.keys()) {
-      if (!active.has(key)) pendingInterruptDecisionsRef.current.delete(key)
-    }
-  }, [interruptPayloads])
+  const pendingInterruptFlushRef = useRef(false)
   const adapters = useMemo(() => {
     if (!feedbackAdapter && !attachmentAdapter) return undefined
     return {
@@ -183,6 +175,63 @@ export function useMoldyLangGraphStream({
     [allInterruptPayloadsById],
   )
 
+  const flushPendingInterruptDecisions = useCallback(
+    async (activeInterruptIds: readonly string[]): Promise<boolean> => {
+      if (pendingInterruptFlushRef.current || activeInterruptIds.length === 0) return false
+      const decisionsById = new Map<string, Decision[]>()
+      for (const activeId of activeInterruptIds) {
+        const pending = pendingInterruptDecisionsRef.current.get(activeId)
+        if (!pending) return false
+        decisionsById.set(activeId, pending)
+      }
+
+      pendingInterruptFlushRef.current = true
+      try {
+        if (activeInterruptIds.length === 1) {
+          const activeId = activeInterruptIds[0]
+          const decisions = decisionsById.get(activeId)
+          if (!activeId || !decisions) return false
+          const payload = allInterruptPayloadsById.get(activeId)
+          const options = payload?.namespace
+            ? { interruptId: activeId, namespace: payload.namespace }
+            : { interruptId: activeId }
+          await stream.respond({ decisions }, options)
+          await refreshThreadLifecycleStream(stream)
+          pendingInterruptDecisionsRef.current.delete(activeId)
+          rememberResolvedInterrupt(activeId, decisions)
+          return true
+        }
+
+        const responsesById: Record<string, { decisions: Decision[] }> = {}
+        for (const [activeId, decisions] of decisionsById) {
+          responsesById[activeId] = { decisions }
+        }
+        await stream.respondAll(responsesById)
+        await refreshThreadLifecycleStream(stream)
+        for (const [activeId, decisions] of decisionsById) {
+          pendingInterruptDecisionsRef.current.delete(activeId)
+          rememberResolvedInterrupt(activeId, decisions)
+        }
+        return true
+      } finally {
+        pendingInterruptFlushRef.current = false
+      }
+    },
+    [allInterruptPayloadsById, rememberResolvedInterrupt, stream],
+  )
+
+  useEffect(() => {
+    const activeInterruptIds = interruptPayloads.map((payload) => payload.interrupt_id)
+    const active = new Set(activeInterruptIds)
+    for (const key of coordinatorsRef.current.keys()) {
+      if (!active.has(key)) coordinatorsRef.current.delete(key)
+    }
+    for (const key of pendingInterruptDecisionsRef.current.keys()) {
+      if (!active.has(key)) pendingInterruptDecisionsRef.current.delete(key)
+    }
+    void flushPendingInterruptDecisions(activeInterruptIds).catch(() => undefined)
+  }, [flushPendingInterruptDecisions, interruptPayloads])
+
   const assistantRuntime = useExternalStoreRuntime({
     messages,
     isRunning,
@@ -209,20 +258,7 @@ export function useMoldyLangGraphStream({
       const activeInterruptIds = interruptPayloads.map((payload) => payload.interrupt_id)
       if (targetId && activeInterruptIds.length > 1 && activeInterruptIds.includes(targetId)) {
         pendingInterruptDecisionsRef.current.set(targetId, [...decisions])
-        const responsesById: Record<string, { decisions: Decision[] }> = {}
-        const decisionsById = new Map<string, Decision[]>()
-        for (const activeId of activeInterruptIds) {
-          const pending = pendingInterruptDecisionsRef.current.get(activeId)
-          if (!pending) return
-          responsesById[activeId] = { decisions: pending }
-          decisionsById.set(activeId, pending)
-        }
-        await stream.respondAll(responsesById)
-        await refreshThreadLifecycleStream(stream)
-        for (const [activeId, pending] of decisionsById) {
-          pendingInterruptDecisionsRef.current.delete(activeId)
-          rememberResolvedInterrupt(activeId, pending)
-        }
+        await flushPendingInterruptDecisions(activeInterruptIds)
         return
       }
       if (targetId) {
@@ -242,6 +278,7 @@ export function useMoldyLangGraphStream({
     [
       allInterruptPayloadsById,
       firstInterruptId,
+      flushPendingInterruptDecisions,
       interruptPayloads,
       rememberResolvedInterrupt,
       stream,

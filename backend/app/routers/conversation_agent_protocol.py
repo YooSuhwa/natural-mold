@@ -144,6 +144,7 @@ async def subscribe_thread_events(
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> Response:
     conversation = await get_owned_thread(
         db,

@@ -4,7 +4,7 @@ from app.agent_runtime.langgraph_protocol_adapter import (
     adapt_v3_protocol_event,
     extract_subagent_discovery,
 )
-from app.agent_runtime.protocol_events import matches_subscription, to_assistant_ui_projection
+from app.agent_runtime.protocol_events import matches_subscription
 
 
 def test_subgraphs_alias_preserves_namespace_and_normalizes_subagent_discovery() -> None:
@@ -32,7 +32,6 @@ def test_subgraphs_alias_preserves_namespace_and_normalizes_subagent_discovery()
     assert event["namespace"] == ["supervisor", "researcher"]
     assert event["upstream_event_id"] == "evt-subgraphs-1"
     assert matches_subscription(event, {"channels": ["subgraphs"]})
-    assert to_assistant_ui_projection(event)["event"] == "subgraphs|supervisor|researcher"
     assert extract_subagent_discovery(event) == {
         "id": "subgraph-1",
         "name": "researcher",

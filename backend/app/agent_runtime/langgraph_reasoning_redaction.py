@@ -14,8 +14,19 @@ PRIVATE_REASONING_KEYS: Final = frozenset(
         "private_reasoning",
     }
 )
+REASONING_BLOCK_TYPES: Final = frozenset(
+    {
+        "chain_of_thought",
+        "cot",
+        "reasoning",
+        "reasoning_content",
+        "redacted_thinking",
+        "thinking",
+        "thinking_content",
+    }
+)
 DISPLAYABLE_REASONING_KEYS: Final = frozenset(
-    {"type", "id", "index", "summary", "message", "status"}
+    {"type", "id", "index", "summary", "message", "status", "signature"}
 )
 
 
@@ -58,7 +69,7 @@ def _is_private_reasoning_key(key: str) -> bool:
 
 
 def _is_reasoning_block_type(value: str) -> bool:
-    return value in PRIVATE_REASONING_KEYS or "reasoning" in value or "thinking" in value
+    return value in REASONING_BLOCK_TYPES
 
 
 def _normalized_key(value: Any) -> str:

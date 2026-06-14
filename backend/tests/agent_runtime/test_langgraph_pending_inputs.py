@@ -52,3 +52,29 @@ async def test_pending_input_events_preserve_task_namespace_from_state_task_path
     assert events[0]["method"] == "input.requested"
     assert events[0]["namespace"] == ["tools:call-1"]
     assert events[0]["data"]["namespace"] == ["tools:call-1"]
+
+
+@pytest.mark.asyncio
+async def test_pending_input_events_prefer_task_namespace_for_flattened_interrupts() -> None:
+    interrupt = _approval_interrupt("intr-subgraph")
+    state = SimpleNamespace(
+        interrupts=[interrupt],
+        tasks=[
+            SimpleNamespace(
+                path=("tools:call-1", "__pregel_pull", "worker"),
+                interrupts=[interrupt],
+            )
+        ],
+    )
+
+    events = await pending_input_requested_events(
+        _StateBackedAgent(state),
+        {"configurable": {"thread_id": "thread-1"}},
+        run_id="run-1",
+        thread_id="thread-1",
+        emitted=[],
+    )
+
+    assert len(events) == 1
+    assert events[0]["namespace"] == ["tools:call-1"]
+    assert events[0]["data"]["namespace"] == ["tools:call-1"]
