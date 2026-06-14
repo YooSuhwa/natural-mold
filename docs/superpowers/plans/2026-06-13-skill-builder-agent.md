@@ -3630,37 +3630,39 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev --port 3000
 - [x] Open the skill detail dialog.
 - [x] Verify the detail dialog has `Files` or `Content` plus only the relevant advanced tabs for that skill state.
 - [ ] For a simple skill with no credentials/evals/revisions, verify blank Credentials/Evaluation/History tabs are not forced into the default tab list.
-- [ ] Verify file tree editing still works in the package `Files` tab.
-- [ ] Verify credential binding panel renders in the `Credentials` tab.
-- [ ] Click `대화로 개선`.
-- [ ] Ask the builder to improve one concrete behavior of the existing skill.
-- [ ] Verify the builder opens in improve mode and shows original vs proposed file changes.
-- [ ] Verify the improve preview shows a generated changelog and compatibility result before apply.
-- [ ] Apply the improvement.
-- [ ] Verify the existing skill row is updated, not duplicated.
-- [ ] Open the `History` tab and verify a new `builder_improvement` revision appears with the changelog summary.
-- [ ] Select the previous revision, click `이전 버전으로 되돌리기`, confirm, and verify a new `rollback` revision is created.
-- [ ] Verify rollback restores the previous `SKILL.md`/files while preserving the improvement revision in history.
+- [x] Verify file tree editing still works in the package `Files` tab.
+- [x] Verify credential binding panel renders in the `Credentials` tab.
+- [x] Click `대화로 개선`.
+- [x] Ask the builder to improve one concrete behavior of the existing skill.
+- [x] Verify the builder opens in improve mode and shows original vs proposed file changes.
+- [x] Verify the improve preview shows a generated changelog and compatibility result before apply.
+- [x] Apply the improvement.
+- [x] Verify the existing skill row is updated, not duplicated.
+- [x] Open the `History` tab and verify a new `builder_improvement` revision appears with the changelog summary.
+- [x] Select the previous revision, click `이전 버전으로 되돌리기`, confirm, and verify a new `rollback` revision is created.
+- [x] Verify rollback restores the previous `SKILL.md`/files while preserving the improvement revision in history.
 - [ ] Start another improve session, edit the same skill manually before applying, and verify apply returns a conflict state instead of overwriting.
-- [ ] Open the `Evaluation` tab.
+- [x] Open the `Evaluation` tab.
 - [ ] Verify the builder-created evaluation set appears when the builder generated evals.
-- [ ] Click `평가 다시 실행` and verify the estimate confirmation appears before the run starts.
-- [ ] Start the run and verify a new run appears in history.
+- [x] Click `평가 다시 실행` and verify the estimate confirmation appears before the run starts.
+- [x] Start the run and verify a new run appears in history.
 - [ ] If the run stays queued/running long enough, click `평가 취소` and verify the run becomes `cancelled`.
 - [ ] Edit the skill content and verify previous runs show a stale indicator when their content hash differs.
 - [ ] Edit a package skill file under `scripts/` or `references/` and verify `content_hash` changes, previous runs become stale, and a new revision is created.
 - [ ] Verify the skill card changes to `재평가 필요` or the matching Skill Health state after content changes.
-- [ ] Create or import a skill draft that declares a required `credential_requirements` entry.
-- [ ] Verify the skill card and detail header show `자격증명 필요`.
-- [ ] Open the `Evaluation` tab for that skill and verify the primary action is `자격증명 연결`, not `평가 실행`.
-- [ ] Click `자격증명 연결` and verify the dialog switches to the `Credentials` tab.
+- [x] Create or seed a skill that declares a required `credential_requirements` entry.
+- [x] Verify the skill card and detail header show `자격증명 필요`.
+- [x] Open the `Evaluation` tab for that skill and verify the primary action is `자격증명 연결`, not `평가 실행`.
+- [x] Click `자격증명 연결` and verify the dialog switches to the `Credentials` tab.
 - [ ] Bind a matching user credential and verify the health state no longer says `자격증명 필요`.
 - [ ] Run the evaluation and verify it records a new run without exposing credential values in evidence, stdout/stderr summaries, or UI metadata.
-- [ ] Open `/settings/audit` and verify builder/evaluation lifecycle events are visible with sanitized metadata.
+- [x] Open `/settings/audit` and verify builder/evaluation lifecycle events are visible with sanitized metadata.
 - [ ] Open the bound credential detail dialog and verify a runtime credential audit entry appears when `execute_in_skill` injected the credential.
-- [ ] Open an agent settings screen and add skills through `ToolsSkillsDialog`.
-- [ ] Verify skill rows in that dialog show compact evaluation status but no rerun controls.
+- [x] Open an agent settings screen and add skills through `ToolsSkillsDialog`.
+- [x] Verify skill rows in that dialog show compact evaluation status but no rerun controls.
 - [ ] Optional rollback smoke: restart the frontend with `NEXT_PUBLIC_CHAT_RUNTIME=legacy` and verify the Skill Builder still opens, because its stream path is builder-specific rather than tied to either normal chat runtime.
+
+- [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-real/skill-evaluation-tab.png` and `output/e2e-captures/20260615-skill-builder-real/skill-picker-quality-badges.png`. This pass verified live create, package file edit, improve apply, rollback, manual evaluation rerun, missing-credential evaluation blocking, audit visibility, and agent skill picker quality badges. It also caught and fixed two live regressions: package file content stayed stale after builder apply until `content_hash` was used as the file-cache scope, and `/agents` scoped i18n omitted the `skill` namespace so picker quality badges rendered raw translation keys.
 
 ## Rollout Strategy
 
@@ -3716,7 +3718,7 @@ The MVP is useful without evals, but its data model and UI should already have f
 ## Completion Checklist
 
 - [x] New Skill Builder can create a package skill from chat.
-- [ ] Existing skills can be improved through chat and applied back to the same skill row.
+- [x] Existing skills can be improved through chat and applied back to the same skill row.
 - [x] Improve mode shows file diffs and blocks stale-base overwrites with a conflict state.
 - [x] Existing text skill creation still works.
 - [x] Existing package upload still works.
@@ -3752,4 +3754,4 @@ The MVP is useful without evals, but its data model and UI should already have f
 - [x] Generated package can be exported as `.skill` without `evals/` by default.
 - [x] Backend tests pass.
 - [x] Frontend lint/build/design/i18n checks pass.
-- [ ] Manual `/skills` flow succeeds end to end.
+- [ ] Manual `/skills` flow succeeds end to end. Remaining live-only checks: stale-run UI after content edits, long-running run cancellation, binding a matching credential and verifying post-binding evaluation, credential-use audit from actual `execute_in_skill` injection, and optional legacy chat-runtime smoke.
