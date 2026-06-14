@@ -2538,7 +2538,19 @@
       "history": {
         "empty": "History starts from the current version.",
         "revision": "Revision {number}",
-        "files": "{count} files"
+        "current": "Current",
+        "contentHash": "Content hash",
+        "fileCount": "Files",
+        "files": "{count} files",
+        "operation": {
+          "create": "Created",
+          "manual_metadata_update": "Metadata edited",
+          "manual_content_update": "Content edited",
+          "manual_file_update": "File edited",
+          "builder_create": "Builder created",
+          "builder_improvement": "Builder improvement",
+          "rollback": "Rollback"
+        }
       },
       "metadata": {
         "name": "Name",

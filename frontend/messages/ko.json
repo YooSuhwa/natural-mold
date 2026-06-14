@@ -2517,7 +2517,19 @@
       "history": {
         "empty": "현재 버전부터 이력이 쌓입니다.",
         "revision": "리비전 {number}",
-        "files": "{count}개 파일"
+        "current": "현재 버전",
+        "contentHash": "콘텐츠 해시",
+        "fileCount": "파일",
+        "files": "{count}개 파일",
+        "operation": {
+          "create": "생성",
+          "manual_metadata_update": "메타데이터 수정",
+          "manual_content_update": "내용 수정",
+          "manual_file_update": "파일 수정",
+          "builder_create": "빌더 생성",
+          "builder_improvement": "빌더 개선",
+          "rollback": "롤백"
+        }
       },
       "metadata": {
         "name": "이름",

@@ -3404,7 +3404,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add an `Evaluation` tab/surface to the existing skill detail dialog when visible tab rules require it.
 - [x] Add a `History` tab/surface to the existing skill detail dialog when visible tab rules require it.
 - [x] Show the legacy empty-state copy when History is opened for a skill with no revisions.
-- [ ] In `History`, list revisions newest first with operation, revision number, changelog summary, current marker, content hash, and file count.
+- [x] In `History`, list revisions newest first with operation, revision number, changelog summary, current marker, content hash, and file count.
 - [ ] In `History`, show selected revision detail with changelog items, changed files, compatibility result, and evaluation snapshot.
 - [ ] Disable rollback for the current revision.
 - [ ] Add rollback confirmation copy: `이전 버전으로 되돌리면 현재 내용은 새 이력으로 보존됩니다.`
@@ -3417,7 +3417,9 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [ ] Show improvement conflict state when the backend returns 409 for a changed base hash.
 - [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
   - [x] Add focused `SkillEvaluationTab` tests for rerun and active-run cancel callbacks.
+- [x] Add focused `SkillHistoryTab` tests for newest-first ordering, current marker, operation labels, and legacy empty state.
 - [x] Add mock-only Playwright coverage for installed skill evaluation rerun/cancel controls in `frontend/e2e/skill-evaluation-actions.spec.ts`.
+- [x] Add mock-only Playwright coverage for installed skill history rendering in `frontend/e2e/skill-history.spec.ts`.
 - [ ] Add detail-dialog regression tests for package file selection, file save/delete behavior, text skill save behavior, and footer actions after the single-shell refactor.
 - [ ] Add a regression test or routing assertion that no separate user-facing skill evaluation/history/credential route is introduced for this phase.
 - [x] Add i18n messages in both Korean and English for the installed skill detail tabs and evaluation actions.
@@ -3490,9 +3492,13 @@ pnpm exec eslint src/components/skill/skill-evaluation-tab.tsx src/components/sk
 pnpm exec eslint --no-ignore e2e/skill-evaluation-actions.spec.ts
 pnpm exec tsc --noEmit --pretty false
 PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3112 E2E_BACKEND_PORT=8112 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-evaluation-actions.spec.ts --workers=1
+pnpm exec vitest run src/components/skill/__tests__/skill-history-tab.test.tsx src/components/skill/__tests__/skill-evaluation-tab.test.tsx src/components/skill/__tests__/skill-quality-badges.test.tsx tests/pages/skills.test.tsx
+pnpm exec eslint src/components/skill/skill-history-tab.tsx src/components/skill/__tests__/skill-history-tab.test.tsx
+pnpm exec eslint --no-ignore e2e/skill-history.spec.ts
+PW_SKIP_BACKEND=1 E2E_FRONTEND_PORT=3113 E2E_BACKEND_PORT=8113 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-history.spec.ts --workers=1
 ```
 
-Expected: all targeted frontend checks pass; screenshot evidence is saved under `output/e2e-captures/20260615-skill-eval-actions/`.
+Expected: all targeted frontend checks pass; screenshot evidence is saved under `output/e2e-captures/20260615-skill-eval-actions/` and `output/e2e-captures/20260615-skill-history/`.
 
 - [ ] Run:
 
