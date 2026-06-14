@@ -2782,17 +2782,17 @@ Expected: existing storage-path tests still pass.
 - Create: `backend/tests/test_skill_builder_package_builder.py`
 - Create: `backend/tests/test_skill_package_hash.py`
 
-- [ ] Implement `normalize_draft_path` and `build_skill_zip_bytes` from the Draft Package Builder section.
-- [ ] Implement `compute_package_tree_hash` from the Package Skill Content Hash Invariant section.
+- [x] Implement `normalize_draft_path` and `build_skill_zip_bytes` from the Draft Package Builder section.
+- [x] Implement `compute_package_tree_hash` from the Package Skill Content Hash Invariant section.
 - [ ] Add tests:
-  - valid draft package imports through `extract_package`
-  - missing `SKILL.md` raises `ValueError`
-  - `../secret.txt` raises `ValueError`
-  - `evals/evals.json` is excluded by default
-  - `evals/evals.json` is included when `include_evals=True`
-  - deterministic package tree hash is stable for identical bytes
-  - changing `SKILL.md`, `scripts/`, `references/`, or `agents/*.yaml` changes the package tree hash
-  - symlink or non-regular package entries fail closed
+  - [x] valid draft package imports through `extract_package`
+  - [x] missing `SKILL.md` raises `ValueError`
+  - [x] `../secret.txt` raises `ValueError`
+  - [x] `evals/evals.json` is excluded by default
+  - [x] `evals/evals.json` is included when `include_evals=True`
+  - [x] deterministic package tree hash is stable for identical bytes
+  - [x] changing `SKILL.md`, `scripts/`, `references/`, or `agents/*.yaml` changes the package tree hash
+  - [x] symlink or non-regular package entries fail closed
 - [ ] Run:
 
 ```bash

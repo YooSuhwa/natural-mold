@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
@@ -48,6 +48,31 @@ class SkillBuilderMessageRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     content: str = Field(..., min_length=1, max_length=8000)
+
+
+class SkillDraftFile(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    path: str = Field(..., min_length=1, max_length=500)
+    content: str
+    media_type: str = "text/plain"
+    role: Literal["skill", "script", "reference", "asset", "metadata", "eval"] = "skill"
+
+
+class SkillDraftPackage(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(..., min_length=1, max_length=160)
+    slug: str = Field(..., min_length=1, max_length=160)
+    description: str = Field(..., min_length=1, max_length=1000)
+    files: list[SkillDraftFile] = Field(default_factory=list)
+    credential_requirements: list[dict[str, JsonValue]] = Field(default_factory=list)
+    execution_profile: dict[str, JsonValue] = Field(default_factory=dict)
+    validation_issues: list[dict[str, JsonValue]] = Field(default_factory=list)
+    compatibility_result: dict[str, JsonValue] | None = None
+    changelog_draft: dict[str, JsonValue] | None = None
+    evals: dict[str, JsonValue] | None = None
+    benchmark: dict[str, JsonValue] | None = None
 
 
 class SkillBuilderSessionResponse(BaseModel):

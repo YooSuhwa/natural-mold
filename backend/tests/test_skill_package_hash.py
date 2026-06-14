@@ -55,6 +55,35 @@ def test_package_tree_hash_changes_when_path_or_bytes_change(tmp_path: Path) -> 
     assert digest != compute_package_tree_hash(changed_path)
 
 
+def test_package_tree_hash_tracks_portable_skill_surfaces(tmp_path: Path) -> None:
+    base_files = {
+        "SKILL.md": "name: demo\n",
+        "scripts/run.py": "print(1)\n",
+        "references/guide.md": "follow this\n",
+        "agents/openai.yaml": "version: 1\n",
+    }
+    base = tmp_path / "base"
+    changed_skill = tmp_path / "changed-skill"
+    changed_reference = tmp_path / "changed-reference"
+    changed_agent_metadata = tmp_path / "changed-agent-metadata"
+    _write_package(base, base_files)
+    _write_package(changed_skill, {**base_files, "SKILL.md": "name: better\n"})
+    _write_package(
+        changed_reference,
+        {**base_files, "references/guide.md": "follow this carefully\n"},
+    )
+    _write_package(
+        changed_agent_metadata,
+        {**base_files, "agents/openai.yaml": "version: 2\n"},
+    )
+
+    digest = compute_package_tree_hash(base)
+
+    assert digest != compute_package_tree_hash(changed_skill)
+    assert digest != compute_package_tree_hash(changed_reference)
+    assert digest != compute_package_tree_hash(changed_agent_metadata)
+
+
 def test_package_tree_hash_ignores_transient_files(tmp_path: Path) -> None:
     clean = tmp_path / "clean"
     noisy = tmp_path / "noisy"
