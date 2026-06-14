@@ -3396,7 +3396,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Keep package file editing behavior intact in the `Files` content tab.
 - [x] Move credential bindings from the content editor surface into the `Credentials` tab.
 - [x] Do not render a blank Credentials tab when a skill has no credential requirements and no credential-related deep link.
-- [ ] In the `Credentials` tab, show required/optional badges, definition key, current binding state, and a missing-required summary at the top.
+- [x] In the `Credentials` tab, show required/optional badges, definition key, current binding state, and a missing-required summary at the top.
 - [x] When `health.state === "needs_credentials"`, render the skill card/detail status as `자격증명 필요` / `Needs credentials`.
 - [ ] In the `Evaluation` tab, if required credentials are missing, replace `평가 실행` with `자격증명 연결` and switch to the `Credentials` tab on click.
 - [ ] After binding or deleting a credential, invalidate skill detail, skill list, marketplace item, and evaluation queries so Skill Health updates immediately.
@@ -3418,6 +3418,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
 - [x] Add focused `SkillEvaluationTab` tests for rerun and active-run cancel callbacks.
 - [x] Add focused `SkillHistoryTab` tests for newest-first ordering, current marker, operation labels, and legacy empty state.
+- [x] Add focused `SkillCredentialBindingsPanel` tests for missing-required summary and connected/missing binding states.
 - [x] Add focused `getVisibleSkillDetailTabs` tests for hidden optional tabs, credential requirements, evaluation signal, history signal, and deep links.
 - [x] Add mock-only Playwright coverage for installed skill evaluation rerun/cancel controls in `frontend/e2e/skill-evaluation-actions.spec.ts`.
 - [x] Add mock-only Playwright coverage for installed skill history rendering in `frontend/e2e/skill-history.spec.ts`.

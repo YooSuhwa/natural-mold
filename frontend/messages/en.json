@@ -2562,6 +2562,10 @@
       "credentialPlaceholder": "Select a credential",
       "requiredCredential": "Required",
       "optionalCredential": "Optional",
+      "missingRequiredCredentials": "{count} required credentials missing",
+      "allRequiredCredentialsBound": "All required credentials are connected",
+      "credentialConnected": "Connected",
+      "credentialMissing": "Not connected",
       "credentialUpdated": "Skill credential updated.",
       "credentialCleared": "Skill credential disconnected.",
       "credentialUpdateFailed": "Failed to update credential."

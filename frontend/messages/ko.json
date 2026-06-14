@@ -2541,6 +2541,10 @@
       "credentialPlaceholder": "자격증명 선택",
       "requiredCredential": "필수",
       "optionalCredential": "선택",
+      "missingRequiredCredentials": "필수 자격증명 {count}개 미연결",
+      "allRequiredCredentialsBound": "필수 자격증명이 모두 연결되었습니다",
+      "credentialConnected": "연결됨",
+      "credentialMissing": "미연결",
       "credentialUpdated": "스킬 자격증명이 업데이트되었습니다",
       "credentialCleared": "스킬 자격증명 연결을 해제했습니다",
       "credentialUpdateFailed": "자격증명 업데이트에 실패했습니다"

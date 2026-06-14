@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { CredentialPicker } from '@/components/credential/credential-picker'
+import { StatusChip } from '@/components/shared/status-chip'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -39,6 +40,11 @@ export function SkillCredentialBindingsPanel({
 
   const loading = requirementsLoading || bindingsLoading
   const pending = setBinding.isPending || deleteBinding.isPending
+  const requirementItems = requirements ?? []
+  const requiredItems = requirementItems.filter((requirement) => requirement.required)
+  const missingRequiredItems = requiredItems.filter(
+    (requirement) => !bindingByKey.has(requirement.key),
+  )
 
   async function handleCredentialChange(requirementKey: string, credentialId: string | null) {
     try {
@@ -58,7 +64,7 @@ export function SkillCredentialBindingsPanel({
     return <Skeleton className="h-20 w-full rounded-lg" />
   }
 
-  if (!requirements?.length) return emptyFallback
+  if (!requirementItems.length) return emptyFallback
 
   return (
     <section className="rounded-lg border border-border/70 bg-muted/20 p-3">
@@ -66,8 +72,20 @@ export function SkillCredentialBindingsPanel({
         <h3 className="text-sm font-semibold text-foreground">{t('credentialBindingsTitle')}</h3>
         <p className="text-xs text-muted-foreground">{t('credentialBindingsDescription')}</p>
       </div>
+      {requiredItems.length > 0 ? (
+        <div className="mb-3">
+          <StatusChip
+            variant={missingRequiredItems.length > 0 ? 'degraded' : 'healthy'}
+            label={
+              missingRequiredItems.length > 0
+                ? t('missingRequiredCredentials', { count: missingRequiredItems.length })
+                : t('allRequiredCredentialsBound')
+            }
+          />
+        </div>
+      ) : null}
       <div className="grid gap-3 md:grid-cols-2">
-        {requirements.map((requirement) => {
+        {requirementItems.map((requirement) => {
           const current = bindingByKey.get(requirement.key) ?? null
           return (
             <div key={requirement.key} className="space-y-1.5">
@@ -77,6 +95,9 @@ export function SkillCredentialBindingsPanel({
                 </label>
                 <Badge variant={requirement.required ? 'default' : 'secondary'} className="h-5">
                   {requirement.required ? t('requiredCredential') : t('optionalCredential')}
+                </Badge>
+                <Badge variant={current ? 'secondary' : 'outline'} className="h-5">
+                  {current ? t('credentialConnected') : t('credentialMissing')}
                 </Badge>
               </div>
               {requirement.description ? (
