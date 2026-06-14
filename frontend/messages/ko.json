@@ -2421,9 +2421,29 @@
       "compatibilityTitle": "호환성",
       "changelogTitle": "변경 요약",
       "evalTitle": "평가",
+      "fileDiffTitle": "파일 변경 요약",
+      "originalFileCount": "원본 {count}개",
+      "proposedFileCount": "개선안 {count}개",
+      "addedCount": "추가 {count}",
+      "changedCount": "수정 {count}",
+      "deletedCount": "삭제 {count}",
+      "validationEmpty": "검증 이슈가 없습니다.",
+      "passRateMetric": "통과율 {value}%",
+      "meanScoreMetric": "평균 점수 {value}",
+      "deltaMetric": "변화 {value}",
       "cancel": "닫기",
       "confirmCreate": "스킬로 저장",
       "confirmImprove": "개선 적용",
+      "fileChange": {
+        "added": "추가",
+        "changed": "수정",
+        "deleted": "삭제"
+      },
+      "validationSeverity": {
+        "error": "오류",
+        "warning": "주의",
+        "info": "정보"
+      },
       "status": {
         "collecting": "정보 수집",
         "drafting": "초안 작성",

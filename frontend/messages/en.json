@@ -2442,9 +2442,29 @@
       "compatibilityTitle": "Compatibility",
       "changelogTitle": "Change summary",
       "evalTitle": "Evaluation",
+      "fileDiffTitle": "File change summary",
+      "originalFileCount": "{count} original",
+      "proposedFileCount": "{count} proposed",
+      "addedCount": "{count} added",
+      "changedCount": "{count} changed",
+      "deletedCount": "{count} deleted",
+      "validationEmpty": "No validation issues.",
+      "passRateMetric": "Pass rate {value}%",
+      "meanScoreMetric": "Mean score {value}",
+      "deltaMetric": "Delta {value}",
       "cancel": "Close",
       "confirmCreate": "Save as skill",
       "confirmImprove": "Apply improvement",
+      "fileChange": {
+        "added": "Added",
+        "changed": "Changed",
+        "deleted": "Deleted"
+      },
+      "validationSeverity": {
+        "error": "Error",
+        "warning": "Warning",
+        "info": "Info"
+      },
       "status": {
         "collecting": "Collecting",
         "drafting": "Drafting",

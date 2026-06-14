@@ -2,9 +2,8 @@
 
 import { useTranslations } from 'next-intl'
 
-import { cn } from '@/lib/utils'
 import type { SkillBuilderSession, SkillDraftPackage } from '@/lib/types'
-import { PortableCompatibilityPanel } from './portable-compatibility-panel'
+import { BuilderResultPanel, ImproveFileSummary } from './skill-builder-preview-insights'
 
 interface SkillBuilderPreviewProps {
   readonly session: SkillBuilderSession | null
@@ -27,6 +26,7 @@ export function SkillBuilderPreview({ session, draft }: SkillBuilderPreviewProps
         <p className="mt-1 text-sm text-muted-foreground">{draft.description}</p>
       </div>
       <FilePreview files={draft.files} />
+      <ImproveFileSummary session={session} draft={draft} />
       <BuilderResultPanel session={session} draft={draft} />
     </>
   )
@@ -53,46 +53,6 @@ function FilePreview({ files }: { readonly files: SkillDraftPackage['files'] }) 
           </li>
         ))}
       </ul>
-    </div>
-  )
-}
-
-function BuilderResultPanel({
-  session,
-  draft,
-}: {
-  readonly session: SkillBuilderSession | null
-  readonly draft: SkillDraftPackage
-}) {
-  const t = useTranslations('skill.builderDialog')
-  const compatibilityTargets = Object.keys(draft.compatibility_result?.targets ?? {})
-  const hasValidation = Boolean(session?.validation_result)
-  return (
-    <div className="grid gap-2">
-      <StatusLine active={hasValidation} label={t('validationTitle')} />
-      <StatusLine active={compatibilityTargets.length > 0} label={t('compatibilityTitle')} />
-      {compatibilityTargets.length > 0 ? (
-        <PortableCompatibilityPanel result={draft.compatibility_result} dense />
-      ) : null}
-      <StatusLine active={Boolean(draft.changelog_draft)} label={t('changelogTitle')} />
-      <StatusLine
-        active={Boolean(draft.benchmark ?? session?.eval_result)}
-        label={t('evalTitle')}
-      />
-    </div>
-  )
-}
-
-function StatusLine({ active, label }: { readonly active: boolean; readonly label: string }) {
-  return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span
-        className={cn(
-          'inline-block size-2 rounded-sm',
-          active ? 'bg-status-success' : 'bg-muted-foreground/30',
-        )}
-      />
-      {label}
     </div>
   )
 }

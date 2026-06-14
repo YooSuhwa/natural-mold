@@ -3315,11 +3315,11 @@ Expected: lint passes or reports only existing unrelated issues. Fix new issues 
 - [x] In improve mode, pass `source_skill_id` and use `applyImprovement` button copy.
 - [x] Show a two-column chat + preview layout.
 - [x] Render file tree preview from `draft_package.files`.
-- [ ] In improve mode, render original vs proposed file summary and changed/added/deleted counts.
-- [ ] Render generated changelog summary and items before the apply button in improve mode.
-- [ ] Render validation issues grouped by severity.
+- [x] In improve mode, render original vs proposed file summary and changed/added/deleted counts.
+- [x] Render generated changelog summary and items before the apply button in improve mode.
+- [x] Render validation issues grouped by severity.
 - [x] Render portable compatibility result with target chips for OpenAI/Codex, Claude Code, and Vercel Agent Skills.
-- [ ] Render eval benchmark when `draft_package.benchmark` or `session.eval_result` exists.
+- [x] Render eval benchmark when `draft_package.benchmark` or `session.eval_result` exists.
 - [x] Confirm creates a skill and calls `onCreated(created.id, { openTab })` so the existing detail dialog can open on `evaluation` when evals exist.
 - [ ] Add component tests for the System LLM readiness state, including normal-user and super-user copy variants.
 - [x] Add i18n messages in both Korean and English.
@@ -3416,6 +3416,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add a cancel action for queued/running/grading runs.
 - [ ] Show improvement conflict state when the backend returns 409 for a changed base hash.
 - [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
+- [x] Add focused `SkillBuilderPreview` tests for improve file diffs, grouped validation, changelog, and benchmark rendering.
 - [x] Add focused `PortableCompatibilityPanel` tests for target labels, status badges, issue details, and empty state.
 - [x] Add focused `SkillEvaluationTab` tests for rerun, active-run cancel, and missing-credential connect callbacks.
 - [x] Add focused `SkillHistoryTab` tests for newest-first ordering, current marker, operation labels, legacy empty state, selected revision details, current rollback disablement, and rollback confirmation.
@@ -3425,6 +3426,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add mock-only Playwright coverage for installed skill evaluation rerun/cancel controls in `frontend/e2e/skill-evaluation-actions.spec.ts`.
 - [x] Add mock-only Playwright coverage for installed skill history rendering in `frontend/e2e/skill-history.spec.ts`.
 - [x] Add mock-only Playwright coverage for `/skills` state filter chips in `frontend/e2e/skill-state-filters.spec.ts`.
+- [x] Add mock-only Playwright coverage for Skill Builder improve preview rendering in `frontend/e2e/skill-builder-preview.spec.ts`.
 - [ ] Add detail-dialog regression tests for package file selection, file save/delete behavior, text skill save behavior, and footer actions after the single-shell refactor.
 - [x] Add a regression test or routing assertion that no separate user-facing skill evaluation/history/credential route is introduced for this phase.
 - [x] Add i18n messages in both Korean and English for the installed skill detail tabs and evaluation actions.
