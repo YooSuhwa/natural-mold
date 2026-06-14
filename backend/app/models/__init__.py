@@ -49,6 +49,9 @@ from app.models.model import Model
 from app.models.refresh_token import RefreshToken
 from app.models.share_link import ShareLink
 from app.models.skill import AgentSkillLink, Skill
+from app.models.skill_builder_session import SkillBuilderSession
+from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
+from app.models.skill_revision import SkillRevision
 from app.models.system_llm_setting import SystemLlmSetting
 from app.models.template import Template
 from app.models.token_usage import TokenUsage
@@ -101,7 +104,11 @@ __all__ = [
     "RefreshToken",
     "ShareLink",
     "Skill",
+    "SkillBuilderSession",
     "SkillCredentialBinding",
+    "SkillEvaluationRun",
+    "SkillEvaluationSet",
+    "SkillRevision",
     "SystemLlmSetting",
     "Template",
     "TokenUsage",
