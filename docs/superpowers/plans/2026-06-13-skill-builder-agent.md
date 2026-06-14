@@ -3193,7 +3193,7 @@ Expected: eval runner tests pass.
 - [x] Implement run creation so it snapshots the current `skill.version` and `skill.content_hash`.
 - [x] Implement initial queued/running/grading/completed/failed/cancelled transitions through the worker, including cancellation field checks before completion.
 - [ ] Complete cooperative cancellation checkpoints inside the full eval runner cases, baseline runs, grading, subprocess timeout, and aggregation phases.
-- [ ] Mark previous runs stale in UI by hash comparison; do not mutate old rows just to represent stale status.
+- [x] Mark previous runs stale in UI by hash comparison; do not mutate old rows just to represent stale status.
 - [x] Before run creation, call `missing_required_keys(...)` or the same resolution path used by runtime; return `MARKETPLACE_CREDENTIAL_REQUIRED` if required user bindings are missing.
 - [x] Record `skill_evaluation.credential_missing` with outcome `denied` when run creation is blocked by missing credentials.
 - [x] Record `skill_evaluation.run_create`, `skill_evaluation.run_start`, `skill_evaluation.run_complete`, `skill_evaluation.run_fail`, and `skill_evaluation.run_cancel` with sanitized metadata.
@@ -3436,7 +3436,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add a rerun action that creates a new `SkillEvaluationRun` for the selected evaluation set.
 - [x] Add a cancel action for queued/running/grading runs.
 - [x] Show improvement conflict state when the backend returns 409 for a changed base hash.
-- [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
+- [x] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
 - [x] Add focused `SkillBuilderPreview` tests for improve file diffs, grouped validation, changelog, and benchmark rendering.
 - [x] Add focused `PortableCompatibilityPanel` tests for target labels, status badges, issue details, and empty state.
 - [x] Add focused `SkillEvaluationTab` tests for rerun, active-run cancel, missing-credential connect callbacks, stale badges, run history, and selected run detail.
