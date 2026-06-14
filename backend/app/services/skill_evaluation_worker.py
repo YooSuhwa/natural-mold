@@ -6,22 +6,27 @@ import logging
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
 from app.database import async_session
-from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
-from app.schemas.skill_builder import JsonValue
-from app.services import audit_service
+from app.models.skill_evaluation import SkillEvaluationRun
+from app.services.skill_evaluation_worker_state import (
+    build_context,
+    load_run,
+    mark_cancelled,
+    mark_completed,
+    mark_failed,
+    mark_grading,
+    mark_running,
+    record_run_audit,
+)
 from app.services.skill_evaluation_worker_types import (
     DeterministicSkillEvaluationEvaluator,
-    SkillEvaluationContext,
     SkillEvaluationEvaluator,
     SkillEvaluationExecutionError,
-    SkillEvaluationResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,11 +43,14 @@ class SkillEvaluationWorker:
         default_factory=DeterministicSkillEvaluationEvaluator
     )
     queue_max_size: int = field(default_factory=lambda: settings.skill_evaluation_queue_max_size)
+    max_concurrent: int = field(default_factory=lambda: settings.skill_evaluation_max_concurrent)
     _queue: deque[uuid.UUID] = field(default_factory=deque, init=False)
     _queued_ids: set[uuid.UUID] = field(default_factory=set, init=False)
     _reserved_slots: int = field(default=0, init=False)
     _session_factory: SkillEvaluationSessionFactory = field(default=async_session, init=False)
     _task: asyncio.Task[None] | None = field(default=None, init=False)
+    _active_tasks: set[asyncio.Task[None]] = field(default_factory=set, init=False)
+    _semaphore: asyncio.Semaphore | None = field(default=None, init=False)
     _stopping: asyncio.Event | None = field(default=None, init=False)
     _wake: asyncio.Event | None = field(default=None, init=False)
 
@@ -85,6 +93,7 @@ class SkillEvaluationWorker:
             return
         self._stopping = asyncio.Event()
         self._wake = asyncio.Event()
+        self._semaphore = asyncio.Semaphore(max(1, self.max_concurrent))
         self._task = asyncio.create_task(self._loop(), name="skill-evaluation-worker")
 
     async def stop(self, *, timeout_seconds: float = 10.0) -> None:
@@ -102,6 +111,8 @@ class SkillEvaluationWorker:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
         self._task = None
+        self._active_tasks.clear()
+        self._semaphore = None
         self._stopping = None
         self._wake = None
 
@@ -116,7 +127,7 @@ class SkillEvaluationWorker:
             return count
 
     async def run_once(self, db: AsyncSession, run_id: uuid.UUID) -> SkillEvaluationRun | None:
-        run = await _load_run(db, run_id)
+        run = await load_run(db, run_id)
         if run is None:
             return None
         if run.status == "cancelled":
@@ -124,14 +135,14 @@ class SkillEvaluationWorker:
         if run.status != "queued":
             raise SkillEvaluationExecutionError(f"run is not queued: {run.status}")
 
-        await _mark_running(db, run)
-        await _record_run_audit(db, run, "skill_evaluation.run_start")
-        await _mark_grading(db, run)
+        await mark_running(db, run)
+        await record_run_audit(db, run, "skill_evaluation.run_start")
+        await mark_grading(db, run)
         try:
-            result = await self.evaluator.evaluate(await _build_context(db, run))
+            result = await self.evaluator.evaluate(await build_context(db, run))
         except SkillEvaluationExecutionError as exc:
-            await _mark_failed(db, run, str(exc))
-            await _record_run_audit(
+            await mark_failed(db, run, str(exc))
+            await record_run_audit(
                 db,
                 run,
                 "skill_evaluation.run_fail",
@@ -143,12 +154,12 @@ class SkillEvaluationWorker:
 
         await db.refresh(run)
         if run.status == "cancelled" or run.cancellation_requested_at is not None:
-            await _mark_cancelled(db, run)
+            await mark_cancelled(db, run)
             await db.flush()
             return run
 
-        await _mark_completed(db, run, result)
-        await _record_run_audit(
+        await mark_completed(db, run, result)
+        await record_run_audit(
             db,
             run,
             "skill_evaluation.run_complete",
@@ -163,8 +174,8 @@ class SkillEvaluationWorker:
         )
         rows = list(result.scalars().all())
         for run in rows:
-            await _mark_failed(db, run, "interrupted: process restarted")
-            await _record_run_audit(
+            await mark_failed(db, run, "interrupted: process restarted")
+            await record_run_audit(
                 db,
                 run,
                 "skill_evaluation.run_fail",
@@ -176,6 +187,10 @@ class SkillEvaluationWorker:
 
     async def _loop(self) -> None:
         while self._stopping is None or not self._stopping.is_set():
+            self._active_tasks = {task for task in self._active_tasks if not task.done()}
+            if len(self._active_tasks) >= max(1, self.max_concurrent):
+                await asyncio.wait(self._active_tasks, return_when=asyncio.FIRST_COMPLETED)
+                continue
             run_id = self.pop_next()
             if run_id is None:
                 wake = self._wake
@@ -184,9 +199,20 @@ class SkillEvaluationWorker:
                 await wake.wait()
                 wake.clear()
                 continue
-            await self._execute_run(run_id)
+            task = asyncio.create_task(self._execute_run(run_id))
+            self._active_tasks.add(task)
+        if self._active_tasks:
+            await asyncio.gather(*self._active_tasks, return_exceptions=True)
 
     async def _execute_run(self, run_id: uuid.UUID) -> None:
+        semaphore = self._semaphore
+        if semaphore is not None:
+            async with semaphore:
+                await self._execute_run_with_session(run_id)
+            return
+        await self._execute_run_with_session(run_id)
+
+    async def _execute_run_with_session(self, run_id: uuid.UUID) -> None:
         async with self._session_factory() as db:
             try:
                 await self.run_once(db, run_id)
@@ -195,98 +221,6 @@ class SkillEvaluationWorker:
                 logger.warning("skill evaluation run skipped run_id=%s error=%s", run_id, exc)
                 return
             await db.commit()
-
-
-async def _load_run(db: AsyncSession, run_id: uuid.UUID) -> SkillEvaluationRun | None:
-    result = await db.execute(select(SkillEvaluationRun).where(SkillEvaluationRun.id == run_id))
-    return result.scalar_one_or_none()
-
-
-async def _build_context(
-    db: AsyncSession,
-    run: SkillEvaluationRun,
-) -> SkillEvaluationContext:
-    result = await db.execute(
-        select(SkillEvaluationSet).where(SkillEvaluationSet.id == run.evaluation_set_id)
-    )
-    evaluation_set = result.scalar_one()
-    return SkillEvaluationContext(
-        run_id=run.id,
-        skill_id=run.skill_id,
-        evaluation_set_id=run.evaluation_set_id,
-        skill_version=run.skill_version,
-        skill_content_hash=run.skill_content_hash,
-        evals=evaluation_set.evals or [],
-    )
-
-
-async def _mark_running(db: AsyncSession, run: SkillEvaluationRun) -> None:
-    run.status = "running"
-    run.started_at = _now()
-    await db.flush()
-
-
-async def _mark_grading(db: AsyncSession, run: SkillEvaluationRun) -> None:
-    run.status = "grading"
-    await db.flush()
-
-
-async def _mark_completed(
-    db: AsyncSession,
-    run: SkillEvaluationRun,
-    result: SkillEvaluationResult,
-) -> None:
-    run.status = "completed"
-    run.summary = result.summary
-    run.benchmark = result.benchmark
-    run.case_results = result.case_results
-    run.error_message = None
-    run.completed_at = _now()
-    await db.flush()
-
-
-async def _mark_failed(db: AsyncSession, run: SkillEvaluationRun, message: str) -> None:
-    run.status = "failed"
-    run.error_message = message[:500]
-    run.completed_at = _now()
-    await db.flush()
-
-
-async def _mark_cancelled(db: AsyncSession, run: SkillEvaluationRun) -> None:
-    run.status = "cancelled"
-    run.completed_at = run.completed_at or _now()
-    await db.flush()
-
-
-async def _record_run_audit(
-    db: AsyncSession,
-    run: SkillEvaluationRun,
-    action: str,
-    *,
-    outcome: str = "success",
-    metadata: dict[str, JsonValue] | None = None,
-) -> None:
-    await audit_service.record_event(
-        db,
-        actor_type="system",
-        actor_label="skill-evaluation-worker",
-        owner_user_id=run.user_id,
-        action=action,
-        target_type="skill_evaluation_run",
-        target_id=run.id,
-        target_owner_user_id=run.user_id,
-        outcome=outcome,
-        run_id=run.id,
-        metadata={
-            "skill_id": str(run.skill_id),
-            "evaluation_set_id": str(run.evaluation_set_id),
-            **(metadata or {}),
-        },
-    )
-
-
-def _now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
 
 
 skill_evaluation_worker = SkillEvaluationWorker()

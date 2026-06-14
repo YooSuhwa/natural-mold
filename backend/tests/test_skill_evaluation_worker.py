@@ -30,6 +30,23 @@ class FailingEvaluator:
         raise SkillEvaluationExecutionError(f"runner unavailable for {context.run_id}")
 
 
+class BlockingEvaluator:
+    def __init__(self) -> None:
+        self.started: asyncio.Queue[uuid.UUID] = asyncio.Queue()
+        self.releases: dict[uuid.UUID, asyncio.Event] = {}
+
+    async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
+        release = asyncio.Event()
+        self.releases[context.run_id] = release
+        await self.started.put(context.run_id)
+        await release.wait()
+        return SkillEvaluationResult(
+            summary={"case_count": len(context.evals), "pass_rate": 1},
+            benchmark={"with_skill_pass_rate": 1, "without_skill_pass_rate": 0},
+            case_results=[],
+        )
+
+
 def _skill_content() -> str:
     return (
         "---\n"
@@ -134,6 +151,39 @@ async def test_worker_loop_consumes_enqueued_run(
 
     assert completed.summary is not None
     assert completed.summary["case_count"] == 1
+
+
+async def test_worker_loop_respects_max_concurrent(
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    first = await _create_run(db, tmp_path, evals=[{"input": "first"}])
+    second = await _create_run(db, tmp_path, evals=[{"input": "second"}])
+    await db.commit()
+    evaluator = BlockingEvaluator()
+    worker = SkillEvaluationWorker(evaluator=evaluator, max_concurrent=1)
+
+    await worker.start(TestSession)
+    worker.reserve_slot()
+    worker.enqueue(first.id, reserved=True)
+    worker.reserve_slot()
+    worker.enqueue(second.id, reserved=True)
+    first_started = await asyncio.wait_for(evaluator.started.get(), timeout=1)
+    await asyncio.sleep(0.1)
+    async with TestSession() as session:
+        second_row = await session.get(SkillEvaluationRun, second.id)
+    assert first_started == first.id
+    assert second_row is not None
+    assert second_row.status == "queued"
+
+    evaluator.releases[first.id].set()
+    second_started = await asyncio.wait_for(evaluator.started.get(), timeout=1)
+    evaluator.releases[second.id].set()
+    completed = await _wait_for_run_status(second.id, "completed")
+    await worker.stop()
+
+    assert second_started == second.id
+    assert completed.status == "completed"
 
 
 async def test_worker_marks_failed_run_and_records_audit(
