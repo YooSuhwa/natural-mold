@@ -20,6 +20,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
 import { SkillDetailDialog } from '@/components/skill/skill-detail-dialog'
+import { SkillBuilderDialog } from '@/components/skill/skill-builder-dialog'
 import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
 import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { PublishWizard } from '@/components/marketplace/publish-wizard'
@@ -28,7 +29,7 @@ import { getResourceTone } from '@/lib/resource-tones'
 import type { Skill, SkillKind } from '@/lib/types/skill'
 import { cn } from '@/lib/utils'
 
-type CreateTab = 'text' | 'package' | 'scratch'
+type CreateTab = 'chat' | 'text' | 'package'
 type SkillTab = 'all' | Skill['kind']
 
 const ALL_TAB = 'all'
@@ -41,7 +42,9 @@ function formatDate(value: string | null): string {
 export default function SkillsPage() {
   const t = useTranslations('skill')
   const [createOpen, setCreateOpen] = useState(false)
-  const [createTab, setCreateTab] = useState<CreateTab>('text')
+  const [createTab, setCreateTab] = useState<CreateTab>('chat')
+  const [builderOpen, setBuilderOpen] = useState(false)
+  const [builderInitialRequest, setBuilderInitialRequest] = useState('')
   const [activeTab, setActiveTab] = useState<SkillTab>(ALL_TAB)
   const [search, setSearch] = useState('')
   const normalizedSearch = search.trim().toLowerCase()
@@ -103,7 +106,7 @@ export default function SkillsPage() {
       title={t('title')}
       description={t('description')}
       action={
-        <Button onClick={() => openCreate('text')}>
+        <Button onClick={() => openCreate('chat')}>
           <Plus className="size-4" />
           {t('new')}
         </Button>
@@ -118,7 +121,7 @@ export default function SkillsPage() {
               description={t('empty.description')}
               className="bg-card/50"
               action={
-                <Button onClick={() => openCreate('text')}>
+                <Button onClick={() => openCreate('chat')}>
                   <Plus className="size-4" />
                   {t('firstSkill')}
                 </Button>
@@ -180,6 +183,17 @@ export default function SkillsPage() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         initialTab={createTab}
+        onCreated={(id) => setDetailId(id)}
+        onStartChat={(request) => {
+          setBuilderInitialRequest(request)
+          setBuilderOpen(true)
+        }}
+      />
+      <SkillBuilderDialog
+        open={builderOpen}
+        mode="create"
+        initialRequest={builderInitialRequest}
+        onOpenChange={setBuilderOpen}
         onCreated={(id) => setDetailId(id)}
       />
       <SkillDetailDialog

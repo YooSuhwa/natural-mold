@@ -2233,7 +2233,7 @@
     "pageTitle": "스킬 관리",
     "title": "스킬",
     "description": "에이전트에 붙여 쓰는 마크다운 스니펫과 패키지를 관리하세요.",
-    "new": "새 스킬",
+    "new": "대화로 만들기",
     "count": "{count}개",
     "agentsCount": "{count}개 에이전트",
     "searchPlaceholder": "스킬 검색",
@@ -2277,7 +2277,7 @@
       "content": "내용 * (마크다운 지원)",
       "contentPlaceholder": "# 스킬명\n\n## 목표\n이 스킬의 목표를 설명합니다.\n\n## 단계\n1. 첫 번째 단계\n2. 두 번째 단계\n\n## 예시\n입력: ...\n출력: ..."
     },
-    "firstSkill": "첫 스킬 만들기",
+    "firstSkill": "대화로 첫 스킬 만들기",
     "modified": "{date} 수정",
     "empty": {
       "title": "아직 스킬이 없어요",
@@ -2300,11 +2300,19 @@
     },
     "createDialog": {
       "title": "새 스킬",
-      "description": "텍스트 스니펫을 만들거나, 패키지를 업로드하거나, 바로 편집할 수 있는 폴더를 생성하세요.",
+      "description": "대화로 고품질 패키지 스킬을 만들거나, 기존 방식으로 텍스트와 패키지를 직접 추가하세요.",
       "tabs": {
+        "chat": "대화로 만들기",
         "text": "텍스트",
         "package": "패키지",
         "scratch": "처음부터"
+      },
+      "chat": {
+        "description": "만들고 싶은 스킬의 목적, 입력 예시, 원하는 결과를 자연어로 적어주세요. 다음 단계에서 전용 빌더가 초안과 검증 결과를 보여줍니다.",
+        "request": "요청",
+        "placeholder": "예: 회의록에서 담당자, 할 일, 마감일을 표로 정리하는 스킬을 만들어줘",
+        "required": "요청 내용을 입력하세요",
+        "submit": "대화 시작"
       },
       "text": {
         "name": "이름",
@@ -2332,6 +2340,57 @@
         "created": "스킬 틀이 생성되었습니다. 편집기를 여는 중...",
         "failed": "스킬 틀 생성에 실패했습니다",
         "submit": "틀 만들고 편집"
+      }
+    },
+    "builderDialog": {
+      "titleCreate": "대화로 스킬 만들기",
+      "titleImprove": "대화로 스킬 개선",
+      "descriptionCreate": "필요한 목적을 말하면 패키지 스킬 초안을 만들고 검증 결과를 함께 보여줍니다.",
+      "descriptionImprove": "기존 스킬을 바탕으로 개선안을 만들고, 적용 전 변경 내용을 확인합니다.",
+      "chatTitle": "빌더 대화",
+      "requestLabel": "요청",
+      "requestPlaceholder": "예: 회의록에서 담당자, 할 일, 마감일을 뽑는 스킬을 만들어줘",
+      "requestImprovePlaceholder": "예: 마감일 추출 규칙을 더 엄격하게 개선해줘",
+      "requestRequired": "요청 내용을 입력하세요",
+      "startCreate": "대화 시작",
+      "startImprove": "개선안 만들기",
+      "startFailed": "스킬 빌더를 시작하지 못했습니다",
+      "confirmFailed": "스킬 적용에 실패했습니다",
+      "previewTitle": "스킬 미리보기",
+      "previewEmpty": "요청을 보내면 초안 파일과 검증 상태가 여기에 표시됩니다.",
+      "filesTitle": "파일",
+      "filesEmpty": "아직 생성된 파일이 없습니다.",
+      "validationTitle": "검증 결과",
+      "compatibilityTitle": "호환성",
+      "changelogTitle": "변경 요약",
+      "evalTitle": "평가",
+      "cancel": "닫기",
+      "confirmCreate": "스킬로 저장",
+      "confirmImprove": "개선 적용",
+      "status": {
+        "collecting": "정보 수집",
+        "drafting": "초안 작성",
+        "review": "검토 가능",
+        "confirming": "적용 중",
+        "completed": "완료",
+        "failed": "실패",
+        "cancelled": "취소됨"
+      },
+      "fileRole": {
+        "skill": "스킬",
+        "script": "스크립트",
+        "reference": "참고자료",
+        "asset": "에셋",
+        "metadata": "메타데이터",
+        "eval": "평가"
+      },
+      "systemLlm": {
+        "title": "시스템 LLM 설정이 필요합니다",
+        "description": "텍스트 또는 패키지 업로드는 계속 사용할 수 있습니다."
+      },
+      "toast": {
+        "created": "스킬이 생성되었습니다",
+        "improved": "스킬 개선이 적용되었습니다"
       }
     },
     "detailDialog": {

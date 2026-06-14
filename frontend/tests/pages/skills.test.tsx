@@ -3,17 +3,25 @@ import SkillsPage from '@/app/skills/page'
 import type { Skill } from '@/lib/types/skill'
 
 const mockUseSkills = vi.fn()
+const mockCreateDialog = vi.fn()
 
 vi.mock('@/lib/hooks/use-skills', () => ({
   useSkills: (...args: unknown[]) => mockUseSkills(...args),
 }))
 
 vi.mock('@/components/skill/skill-create-dialog', () => ({
-  SkillCreateDialog: () => null,
+  SkillCreateDialog: (props: { readonly open: boolean; readonly initialTab?: string }) => {
+    mockCreateDialog(props)
+    return props.open ? <div data-testid="skill-create-dialog">{props.initialTab}</div> : null
+  },
 }))
 
 vi.mock('@/components/skill/skill-detail-dialog', () => ({
   SkillDetailDialog: () => null,
+}))
+
+vi.mock('@/components/skill/skill-builder-dialog', () => ({
+  SkillBuilderDialog: () => null,
 }))
 
 vi.mock('@/components/marketplace/publish-wizard', () => ({
@@ -42,6 +50,7 @@ const skill: Skill = {
 
 describe('SkillsPage', () => {
   beforeEach(() => {
+    mockCreateDialog.mockClear()
     mockUseSkills.mockReturnValue({ data: [skill], isLoading: false })
   })
 
@@ -73,5 +82,17 @@ describe('SkillsPage', () => {
 
     expect(mockUseSkills).toHaveBeenLastCalledWith({ kind: 'package' })
     expect(screen.getByRole('tab', { name: '패키지 1개' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('opens the create dialog on the conversational tab from the primary CTA', async () => {
+    const user = userEvent.setup()
+    render(<SkillsPage />)
+
+    await user.click(screen.getByRole('button', { name: '대화로 만들기' }))
+
+    expect(screen.getByTestId('skill-create-dialog')).toHaveTextContent('chat')
+    expect(mockCreateDialog).toHaveBeenLastCalledWith(
+      expect.objectContaining({ open: true, initialTab: 'chat' }),
+    )
   })
 })

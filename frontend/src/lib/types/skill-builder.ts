@@ -95,7 +95,7 @@ export type SkillBuilderSession = {
   readonly base_snapshot?: Readonly<Record<string, JsonValue>> | null
   readonly messages?: readonly JsonValue[] | null
   readonly intent?: Readonly<Record<string, JsonValue>> | null
-  readonly draft_package?: SkillDraftPackage | Readonly<Record<string, JsonValue>> | null
+  readonly draft_package?: SkillDraftPackage | null
   readonly validation_result?: Readonly<Record<string, JsonValue>> | null
   readonly compatibility_result?:
     | SkillCompatibilityResult

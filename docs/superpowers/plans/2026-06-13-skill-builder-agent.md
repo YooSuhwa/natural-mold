@@ -326,25 +326,25 @@ Use `audit_service.record_event(...)` for builder/evaluation lifecycle events an
 
 Audit action matrix:
 
-| Event | Target type | Outcome | Metadata allowed |
-|-------|-------------|---------|------------------|
-| `skill_builder.session_create` | `skill_builder_session` | `success` | `mode`, `source_skill_id`, `source_skill_hash`, `session_id` |
-| `skill_builder.validation_failed` | `skill_builder_session` | `failure` | issue codes, severities, paths, counts |
-| `skill_builder.secret_scan_blocked` | `skill_builder_session` | `denied` | finding count, finding kinds, paths only |
-| `skill_builder.compatibility_checked` | `skill_builder_session` | `success` | target names, error/warning/info counts |
-| `skill_builder.changelog_generated` | `skill_builder_session` | `success` | changed file count, item count, risk note count |
-| `skill_builder.confirm_create` | `skill` | `success` | session id, skill id, file count, content hash, credential requirement count |
-| `skill_builder.apply_improvement` | `skill` | `success` | session id, changed file count, added/deleted counts, old hash, new hash |
-| `skill_builder.apply_conflict` | `skill` | `denied` | session id, base hash, current hash |
-| `skill_revision.create` | `skill_revision` | `success` | skill id, revision number, operation, content hash, file count |
-| `skill_revision.rollback` | `skill` | `success` | skill id, restored revision id, new revision id, old hash, new hash |
-| `skill_evaluation.run_create` | `skill_evaluation_run` | `success` | skill id, set id, case count, estimate summary, skill content hash |
-| `skill_evaluation.run_start` | `skill_evaluation_run` | `success` | runner version, evaluator versions |
-| `skill_evaluation.run_complete` | `skill_evaluation_run` | `success` | pass rate, passed, failed, total, duration, token counts |
-| `skill_evaluation.run_fail` | `skill_evaluation_run` | `failure` | error code, phase, duration |
-| `skill_evaluation.run_cancel` | `skill_evaluation_run` | `success` | previous status, cancelled phase |
-| `skill_evaluation.credential_missing` | `skill` | `denied` | missing requirement keys, set id if applicable |
-| `skill_security.sandbox_denied` | `skill` or `skill_builder_session` | `denied` | reason code, command executable, skill id, session/run id |
+| Event                                 | Target type                        | Outcome   | Metadata allowed                                                             |
+| ------------------------------------- | ---------------------------------- | --------- | ---------------------------------------------------------------------------- |
+| `skill_builder.session_create`        | `skill_builder_session`            | `success` | `mode`, `source_skill_id`, `source_skill_hash`, `session_id`                 |
+| `skill_builder.validation_failed`     | `skill_builder_session`            | `failure` | issue codes, severities, paths, counts                                       |
+| `skill_builder.secret_scan_blocked`   | `skill_builder_session`            | `denied`  | finding count, finding kinds, paths only                                     |
+| `skill_builder.compatibility_checked` | `skill_builder_session`            | `success` | target names, error/warning/info counts                                      |
+| `skill_builder.changelog_generated`   | `skill_builder_session`            | `success` | changed file count, item count, risk note count                              |
+| `skill_builder.confirm_create`        | `skill`                            | `success` | session id, skill id, file count, content hash, credential requirement count |
+| `skill_builder.apply_improvement`     | `skill`                            | `success` | session id, changed file count, added/deleted counts, old hash, new hash     |
+| `skill_builder.apply_conflict`        | `skill`                            | `denied`  | session id, base hash, current hash                                          |
+| `skill_revision.create`               | `skill_revision`                   | `success` | skill id, revision number, operation, content hash, file count               |
+| `skill_revision.rollback`             | `skill`                            | `success` | skill id, restored revision id, new revision id, old hash, new hash          |
+| `skill_evaluation.run_create`         | `skill_evaluation_run`             | `success` | skill id, set id, case count, estimate summary, skill content hash           |
+| `skill_evaluation.run_start`          | `skill_evaluation_run`             | `success` | runner version, evaluator versions                                           |
+| `skill_evaluation.run_complete`       | `skill_evaluation_run`             | `success` | pass rate, passed, failed, total, duration, token counts                     |
+| `skill_evaluation.run_fail`           | `skill_evaluation_run`             | `failure` | error code, phase, duration                                                  |
+| `skill_evaluation.run_cancel`         | `skill_evaluation_run`             | `success` | previous status, cancelled phase                                             |
+| `skill_evaluation.credential_missing` | `skill`                            | `denied`  | missing requirement keys, set id if applicable                               |
+| `skill_security.sandbox_denied`       | `skill` or `skill_builder_session` | `denied`  | reason code, command executable, skill id, session/run id                    |
 
 Audit metadata must not include:
 
@@ -1324,9 +1324,9 @@ Planned changes:
 - Make the page primary CTA open the chat builder by default:
 
 ```tsx
-<Button onClick={() => openCreate('chat')}>
+<Button onClick={() => openCreate("chat")}>
   <Sparkles className="size-4" />
-  {t('buildWithChat')}
+  {t("buildWithChat")}
 </Button>
 ```
 
@@ -1351,8 +1351,11 @@ Planned changes:
 Card data mapping:
 
 ```tsx
-const latest = skill.latest_evaluation_summary
-const isStale = Boolean(latest?.skill_content_hash && latest.skill_content_hash !== skill.content_hash)
+const latest = skill.latest_evaluation_summary;
+const isStale = Boolean(
+  latest?.skill_content_hash &&
+  latest.skill_content_hash !== skill.content_hash,
+);
 ```
 
 ### Create Skill Dialog
@@ -1594,13 +1597,13 @@ Badge variants:
 
 ```ts
 type SkillEvaluationBadgeState =
-  | 'passed'
-  | 'partial'
-  | 'failed'
-  | 'stale'
-  | 'missing'
-  | 'running'
-  | 'cancelled'
+  | "passed"
+  | "partial"
+  | "failed"
+  | "stale"
+  | "missing"
+  | "running"
+  | "cancelled";
 ```
 
 Mapping:
@@ -2610,19 +2613,25 @@ Frontend API:
 ```typescript
 export const skillBuilderApi = {
   start: (request: SkillBuilderStartRequest) =>
-    apiFetch<SkillBuilderSession>('/api/skill-builder', {
-      method: 'POST',
+    apiFetch<SkillBuilderSession>("/api/skill-builder", {
+      method: "POST",
       body: JSON.stringify(request),
     }),
   getSession: (sessionId: string) =>
     apiFetch<SkillBuilderSession>(`/api/skill-builder/${sessionId}`),
   validate: (sessionId: string) =>
-    apiFetch<SkillBuilderSession>(`/api/skill-builder/${sessionId}/validate`, { method: 'POST' }),
+    apiFetch<SkillBuilderSession>(`/api/skill-builder/${sessionId}/validate`, {
+      method: "POST",
+    }),
   confirm: (sessionId: string) =>
-    apiFetch<Skill>(`/api/skill-builder/${sessionId}/confirm`, { method: 'POST' }),
+    apiFetch<Skill>(`/api/skill-builder/${sessionId}/confirm`, {
+      method: "POST",
+    }),
   runEvals: (sessionId: string) =>
-    apiFetch<SkillBuilderSession>(`/api/skill-builder/${sessionId}/evals/run`, { method: 'POST' }),
-}
+    apiFetch<SkillBuilderSession>(`/api/skill-builder/${sessionId}/evals/run`, {
+      method: "POST",
+    }),
+};
 ```
 
 Installed skill evaluation API:
@@ -2633,19 +2642,28 @@ export const skillEvaluationsApi = {
     apiFetch<SkillEvaluationSetSummary[]>(`/api/skills/${skillId}/evaluations`),
   createSet: (skillId: string, request: SkillEvaluationSetCreateRequest) =>
     apiFetch<SkillEvaluationSet>(`/api/skills/${skillId}/evaluations`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(request),
     }),
   getSet: (skillId: string, evaluationSetId: string) =>
-    apiFetch<SkillEvaluationSet>(`/api/skills/${skillId}/evaluations/${evaluationSetId}`),
-  updateSet: (skillId: string, evaluationSetId: string, request: SkillEvaluationSetUpdateRequest) =>
-    apiFetch<SkillEvaluationSet>(`/api/skills/${skillId}/evaluations/${evaluationSetId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(request),
-    }),
+    apiFetch<SkillEvaluationSet>(
+      `/api/skills/${skillId}/evaluations/${evaluationSetId}`,
+    ),
+  updateSet: (
+    skillId: string,
+    evaluationSetId: string,
+    request: SkillEvaluationSetUpdateRequest,
+  ) =>
+    apiFetch<SkillEvaluationSet>(
+      `/api/skills/${skillId}/evaluations/${evaluationSetId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      },
+    ),
   deleteSet: (skillId: string, evaluationSetId: string) =>
     apiFetch<void>(`/api/skills/${skillId}/evaluations/${evaluationSetId}`, {
-      method: 'DELETE',
+      method: "DELETE",
     }),
   listRuns: (skillId: string, evaluationSetId: string) =>
     apiFetch<SkillEvaluationRunSummary[]>(
@@ -2659,15 +2677,19 @@ export const skillEvaluationsApi = {
     apiFetch<SkillEvaluationRunEstimate>(
       `/api/skills/${skillId}/evaluations/${evaluationSetId}/estimate`,
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify(request ?? {}),
       },
     ),
-  run: (skillId: string, evaluationSetId: string, request?: SkillEvaluationRunRequest) =>
+  run: (
+    skillId: string,
+    evaluationSetId: string,
+    request?: SkillEvaluationRunRequest,
+  ) =>
     apiFetch<SkillEvaluationRun>(
       `/api/skills/${skillId}/evaluations/${evaluationSetId}/runs`,
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify(request ?? {}),
       },
     ),
@@ -2678,9 +2700,9 @@ export const skillEvaluationsApi = {
   cancelRun: (skillId: string, evaluationSetId: string, runId: string) =>
     apiFetch<SkillEvaluationRun>(
       `/api/skills/${skillId}/evaluations/${evaluationSetId}/runs/${runId}/cancel`,
-      { method: 'POST' },
+      { method: "POST" },
     ),
-}
+};
 ```
 
 Installed skill revision API:
@@ -2690,13 +2712,15 @@ export const skillRevisionsApi = {
   list: (skillId: string) =>
     apiFetch<SkillRevisionSummary[]>(`/api/skills/${skillId}/revisions`),
   get: (skillId: string, revisionId: string) =>
-    apiFetch<SkillRevisionDetail>(`/api/skills/${skillId}/revisions/${revisionId}`),
+    apiFetch<SkillRevisionDetail>(
+      `/api/skills/${skillId}/revisions/${revisionId}`,
+    ),
   rollback: (skillId: string, revisionId: string) =>
     apiFetch<SkillRollbackResponse>(
       `/api/skills/${skillId}/revisions/${revisionId}/rollback`,
-      { method: 'POST' },
+      { method: "POST" },
     ),
-}
+};
 ```
 
 Frontend SSE:
@@ -2894,8 +2918,16 @@ Expected: all validator tests pass.
 
 ```json
 [
-  {"role": "user", "content": "만들고 싶은 스킬 설명", "created_at": "2026-06-13T00:00:00Z"},
-  {"role": "assistant", "content": "질문 또는 요약", "created_at": "2026-06-13T00:00:01Z"}
+  {
+    "role": "user",
+    "content": "만들고 싶은 스킬 설명",
+    "created_at": "2026-06-13T00:00:00Z"
+  },
+  {
+    "role": "assistant",
+    "content": "질문 또는 요약",
+    "created_at": "2026-06-13T00:00:01Z"
+  }
 ]
 ```
 
@@ -3256,27 +3288,27 @@ Expected: lint passes or reports only existing unrelated issues. Fix new issues 
 - Modify: `frontend/messages/ko.json`
 - Modify: `frontend/messages/en.json`
 
-- [ ] Change `CreateTab` to `'chat' | 'text' | 'package'`.
-- [ ] Change `/skills` primary CTA and empty state action to open `openCreate('chat')`.
-- [ ] Rename the visible scratch tab copy to "대화로 만들기" / "Build by chat".
-- [ ] Remove browser-side JSZip package creation from `ScratchTab`.
-- [ ] Start a skill builder session from the user's initial request.
-- [ ] Render `SYSTEM_LLM_NOT_CONFIGURED` as the System LLM readiness state described in the System LLM Readiness section, not as a generic error toast.
-- [ ] Keep Text and Package Upload tabs usable when conversational builder is unavailable.
-- [ ] Support `mode="create"` and `mode="improve"` props in `SkillBuilderDialog`.
-- [ ] Keep `SkillBuilderDialog` outside normal `ChatRuntimeSection`; it is a skill authoring workflow, not a normal Agent conversation surface in v1.
-- [ ] In improve mode, pass `source_skill_id` and use `applyImprovement` button copy.
-- [ ] Show a two-column chat + preview layout.
-- [ ] Render file tree preview from `draft_package.files`.
+- [x] Change `CreateTab` to `'chat' | 'text' | 'package'`.
+- [x] Change `/skills` primary CTA and empty state action to open `openCreate('chat')`.
+- [x] Rename the visible scratch tab copy to "대화로 만들기" / "Build by chat".
+- [x] Remove browser-side JSZip package creation from `ScratchTab`.
+- [x] Start a skill builder session from the user's initial request.
+- [x] Render `SYSTEM_LLM_NOT_CONFIGURED` as the System LLM readiness state described in the System LLM Readiness section, not as a generic error toast.
+- [x] Keep Text and Package Upload tabs usable when conversational builder is unavailable.
+- [x] Support `mode="create"` and `mode="improve"` props in `SkillBuilderDialog`.
+- [x] Keep `SkillBuilderDialog` outside normal `ChatRuntimeSection`; it is a skill authoring workflow, not a normal Agent conversation surface in v1.
+- [x] In improve mode, pass `source_skill_id` and use `applyImprovement` button copy.
+- [x] Show a two-column chat + preview layout.
+- [x] Render file tree preview from `draft_package.files`.
 - [ ] In improve mode, render original vs proposed file summary and changed/added/deleted counts.
 - [ ] Render generated changelog summary and items before the apply button in improve mode.
 - [ ] Render validation issues grouped by severity.
 - [ ] Render portable compatibility result with target chips for OpenAI/Codex, Claude Code, and Vercel Agent Skills.
 - [ ] Render eval benchmark when `draft_package.benchmark` or `session.eval_result` exists.
-- [ ] Confirm creates a skill and calls `onCreated(created.id, { openTab })` so the existing detail dialog can open on `evaluation` when evals exist.
+- [x] Confirm creates a skill and calls `onCreated(created.id, { openTab })` so the existing detail dialog can open on `evaluation` when evals exist.
 - [ ] Add component tests for the System LLM readiness state, including normal-user and super-user copy variants.
-- [ ] Add i18n messages in both Korean and English.
-- [ ] Run:
+- [x] Add i18n messages in both Korean and English.
+- [x] Run:
 
 ```bash
 cd frontend
@@ -3311,8 +3343,8 @@ Expected: both pass. Fix any new copy or design-system violations.
 - Modify: `frontend/messages/ko.json`
 - Modify: `frontend/messages/en.json`
 
-- [ ] Extend `Skill` with `latest_evaluation_summary`.
-- [ ] Extend `Skill` with `health`.
+- [x] Extend `Skill` with `latest_evaluation_summary`.
+- [x] Extend `Skill` with `health`.
 - [ ] Add `SkillEvaluationSummaryBadge` states: missing, running, failed, partial, passed, stale.
 - [ ] Add `SkillHealthBadge` states: ready, needs_evaluation, needs_rerun, needs_credentials, evaluation_running, evaluation_failed, low_confidence.
 - [ ] Add evaluation badge rendering to `/skills` cards without changing existing publish/manage actions.

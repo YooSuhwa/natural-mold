@@ -2254,7 +2254,7 @@
     "pageTitle": "Skill Management",
     "title": "Skills",
     "description": "Create and manage reusable instructions and executable skill packages.",
-    "new": "New",
+    "new": "Build by chat",
     "count": "{count}",
     "agentsCount": "{count} agents",
     "searchPlaceholder": "Search skills",
@@ -2298,7 +2298,7 @@
       "content": "Content",
       "contentPlaceholder": "Content Placeholder"
     },
-    "firstSkill": "First Skill",
+    "firstSkill": "Build first skill by chat",
     "modified": "Modified {date}",
     "empty": {
       "title": "Empty",
@@ -2320,12 +2320,20 @@
       "uploadFailed": "Operation failed."
     },
     "createDialog": {
-      "title": "Create Dialog",
-      "description": "Create a text skill or upload a skill package.",
+      "title": "New Skill",
+      "description": "Build a high-quality package skill by chat, or add a text skill or package directly.",
       "tabs": {
+        "chat": "Build by chat",
         "text": "Text",
         "package": "Package",
         "scratch": "Start over"
+      },
+      "chat": {
+        "description": "Describe the skill goal, example inputs, and expected output in natural language. The dedicated builder will draft files and show validation in the next step.",
+        "request": "Request",
+        "placeholder": "Example: Create a skill that turns meeting notes into a table of owners, tasks, and due dates.",
+        "required": "Enter a request first.",
+        "submit": "Start chat"
       },
       "text": {
         "name": "Name",
@@ -2353,6 +2361,57 @@
         "created": "Created",
         "failed": "Failed",
         "submit": "Submit"
+      }
+    },
+    "builderDialog": {
+      "titleCreate": "Build Skill by Chat",
+      "titleImprove": "Improve Skill by Chat",
+      "descriptionCreate": "Describe the job you need and Moldy will draft a package skill with validation results.",
+      "descriptionImprove": "Start from the existing skill, review the proposed changes, and apply only after confirmation.",
+      "chatTitle": "Builder chat",
+      "requestLabel": "Request",
+      "requestPlaceholder": "Example: Create a skill that extracts owners, tasks, and due dates from meeting notes.",
+      "requestImprovePlaceholder": "Example: Make due-date extraction stricter and more reliable.",
+      "requestRequired": "Enter a request first.",
+      "startCreate": "Start chat",
+      "startImprove": "Draft improvement",
+      "startFailed": "Failed to start Skill Builder.",
+      "confirmFailed": "Failed to apply the skill.",
+      "previewTitle": "Skill preview",
+      "previewEmpty": "Draft files and validation status will appear here after you send a request.",
+      "filesTitle": "Files",
+      "filesEmpty": "No files have been generated yet.",
+      "validationTitle": "Validation",
+      "compatibilityTitle": "Compatibility",
+      "changelogTitle": "Change summary",
+      "evalTitle": "Evaluation",
+      "cancel": "Close",
+      "confirmCreate": "Save as skill",
+      "confirmImprove": "Apply improvement",
+      "status": {
+        "collecting": "Collecting",
+        "drafting": "Drafting",
+        "review": "Ready for review",
+        "confirming": "Applying",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "fileRole": {
+        "skill": "Skill",
+        "script": "Script",
+        "reference": "Reference",
+        "asset": "Asset",
+        "metadata": "Metadata",
+        "eval": "Evaluation"
+      },
+      "systemLlm": {
+        "title": "System LLM setup is required",
+        "description": "Text creation and package upload are still available."
+      },
+      "toast": {
+        "created": "Skill created.",
+        "improved": "Skill improvement applied."
       }
     },
     "detailDialog": {
