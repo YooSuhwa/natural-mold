@@ -10,7 +10,10 @@ from pathlib import Path
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from app.agent_runtime.skill_executor_audit import record_credential_audits
+from app.agent_runtime.skill_executor_audit import (
+    record_credential_audits,
+    record_sandbox_denial,
+)
 from app.config import settings
 from app.marketplace.skill_runtime import (
     ResolvedCredential,
@@ -133,6 +136,11 @@ def _skill_timeout_seconds(descriptor: SkillRuntimeDescriptor) -> float:
     return min(seconds, _MAX_SKILL_TIMEOUT_SECONDS)
 
 
+def _requires_network(descriptor: SkillRuntimeDescriptor) -> bool:
+    profile = descriptor.execution_profile or {}
+    return profile.get("requires_network") is True
+
+
 def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
     """스킬 디렉토리에서 Python 스크립트를 실행하는 도구를 생성.
 
@@ -216,6 +224,14 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             return error or "Error: invalid command."
         timeout_seconds = _skill_timeout_seconds(descriptor)
         executable = Path(args[0]).name
+        if executable == "curl" and not _requires_network(descriptor):
+            await record_sandbox_denial(
+                ctx,
+                descriptor,
+                reason_code="undeclared_network",
+                executable=executable,
+            )
+            return "Error: network access requires execution_profile.requires_network=true."
         await record_credential_audits(
             ctx,
             descriptor,

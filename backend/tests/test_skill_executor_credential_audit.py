@@ -14,6 +14,7 @@ from app.marketplace.skill_runtime import (
     SkillRuntimeDescriptor,
     SkillToolContext,
 )
+from app.models.audit_event import AuditEvent
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.user import User
 from tests.conftest import TEST_USER_ID, TestSession
@@ -110,3 +111,61 @@ async def test_execute_in_skill_records_credential_audit_without_secret_payload(
     metadata_text = str(row.log_metadata)
     assert "sk-runtime-secret" not in metadata_text
     assert "scripts/echo.py" not in metadata_text
+
+
+async def test_execute_in_skill_blocks_undeclared_network_and_audits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
+    async with TestSession() as db:
+        db.add(User(id=TEST_USER_ID, email="skill-network@test", name="Skill Network"))
+        await db.commit()
+
+    runtime_root = tmp_path / "runtime"
+    skill_dir = runtime_root / "networked"
+    skill_dir.mkdir(parents=True)
+    descriptor = SkillRuntimeDescriptor(
+        id=uuid.uuid4(),
+        slug="networked",
+        name="Networked",
+        description="tries curl",
+        original_storage_path=skill_dir,
+        runtime_storage_path=skill_dir,
+    )
+    ctx = SkillToolContext(
+        thread_id="thread-network",
+        output_dir=tmp_path / "outputs",
+        runtime_root=runtime_root,
+        descriptors={"networked": descriptor},
+        user_id=TEST_USER_ID,
+        run_id="eval-run-1",
+    )
+    tool = _create_skill_execute_tool(ctx)
+    assert tool.coroutine is not None
+
+    result = await tool.coroutine(
+        skill_directory="/runtime/thread-network/skills/networked/",
+        command="curl https://example.com/private?token=raw",
+    )
+
+    async with TestSession() as db:
+        event = (
+            await db.execute(
+                select(AuditEvent).where(AuditEvent.action == "skill_security.sandbox_denied")
+            )
+        ).scalar_one()
+
+    assert "requires execution_profile.requires_network=true" in result
+    assert event.outcome == "denied"
+    assert event.reason_code == "undeclared_network"
+    assert event.run_id == "eval-run-1"
+    assert event.event_metadata == {
+        "kind": "execute_in_skill",
+        "skill_id": str(descriptor.id),
+        "skill_slug": "networked",
+        "thread_id": "thread-network",
+        "command_executable": "curl",
+    }
+    assert "example.com" not in str(event.event_metadata)
+    assert "raw" not in str(event.event_metadata)

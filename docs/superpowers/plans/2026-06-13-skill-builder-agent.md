@@ -3103,7 +3103,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [ ] Enforce timeout, selected-skill path validation, credential redaction, and output directory scoping for eval scripts.
 - [ ] Refuse eval execution that needs required user credentials when bindings are missing.
 - [ ] Return `SYSTEM_LLM_NOT_CONFIGURED` before creating execution artifacts when grader/model-based evaluation lacks the system model.
-- [ ] Refuse eval network execution when the skill uses `curl` or external URLs but lacks `execution_profile.requires_network: true`.
+- [x] Refuse eval network execution when the skill uses `curl` or external URLs but lacks `execution_profile.requires_network: true`.
 - [x] Extend `SkillToolContext` with non-secret audit correlation fields needed by `execute_in_skill`: user id, agent id, thread id, and optional run id.
 - [x] Add best-effort credential-use audit writes in `execute_in_skill` for each unique injected user credential.
 - [x] The credential audit metadata must include only `kind`, skill id/slug, requirement key, agent id, thread id, run id, command executable, and timeout seconds.
@@ -3125,6 +3125,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
   - credential audit rows are written when `execute_in_skill` injects a bound credential
   - credential audit metadata does not contain decrypted values, stdout, stderr, or raw command arguments
 - [x] Add regression coverage for `execute_in_skill` credential audit rows and sanitized metadata.
+- [x] Add regression coverage for undeclared `curl` execution denial and sanitized `skill_security.sandbox_denied` metadata.
 - [ ] Run:
 
 ```bash
@@ -3170,7 +3171,8 @@ Expected: eval runner tests pass.
 - [x] Before run creation, call `missing_required_keys(...)` or the same resolution path used by runtime; return `MARKETPLACE_CREDENTIAL_REQUIRED` if required user bindings are missing.
 - [x] Record `skill_evaluation.credential_missing` with outcome `denied` when run creation is blocked by missing credentials.
 - [x] Record `skill_evaluation.run_create`, `skill_evaluation.run_start`, `skill_evaluation.run_complete`, `skill_evaluation.run_fail`, and `skill_evaluation.run_cancel` with sanitized metadata.
-- [ ] Record `skill_security.sandbox_denied` when the eval runner blocks unsupported executables, path traversal, undeclared network access, or timeout policy violations before launch.
+- [x] Record `skill_security.sandbox_denied` when the eval runner blocks undeclared network access before launch.
+- [ ] Extend `skill_security.sandbox_denied` coverage to unsupported executables, path traversal, and timeout policy violations before launch.
 - [ ] Add API tests:
   - list returns evaluation sets owned by the skill owner
   - create set persists eval prompts and expectations

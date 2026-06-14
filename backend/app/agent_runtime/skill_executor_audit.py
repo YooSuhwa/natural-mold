@@ -39,6 +39,29 @@ async def record_credential_audits(
         )
 
 
+async def record_sandbox_denial(
+    ctx: SkillToolContext,
+    descriptor: SkillRuntimeDescriptor,
+    *,
+    reason_code: str,
+    executable: str,
+) -> None:
+    try:
+        await _write_sandbox_denial(
+            ctx,
+            descriptor,
+            reason_code=reason_code,
+            executable=executable,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "skill sandbox audit write failed skill=%s thread=%s",
+            descriptor.slug,
+            ctx.thread_id,
+            exc_info=True,
+        )
+
+
 async def _write_credential_audits(
     ctx: SkillToolContext,
     descriptor: SkillRuntimeDescriptor,
@@ -77,4 +100,38 @@ async def _write_credential_audits(
                 source="runtime",
                 metadata=metadata,
             )
+        await db.commit()
+
+
+async def _write_sandbox_denial(
+    ctx: SkillToolContext,
+    descriptor: SkillRuntimeDescriptor,
+    *,
+    reason_code: str,
+    executable: str,
+) -> None:
+    from app.services import audit_service
+
+    metadata: dict[str, object] = {
+        "kind": "execute_in_skill",
+        "skill_id": str(descriptor.id),
+        "skill_slug": descriptor.slug,
+        "thread_id": ctx.thread_id,
+        "command_executable": executable,
+    }
+    async with async_session() as db:
+        await audit_service.record_event(
+            db,
+            actor_type="user" if ctx.user_id is not None else "system",
+            actor_user_id=ctx.user_id,
+            owner_user_id=ctx.user_id,
+            action="skill_security.sandbox_denied",
+            target_type="skill",
+            target_id=descriptor.id,
+            target_owner_user_id=ctx.user_id,
+            outcome="denied",
+            reason_code=reason_code,
+            run_id=ctx.run_id,
+            metadata=metadata,
+        )
         await db.commit()

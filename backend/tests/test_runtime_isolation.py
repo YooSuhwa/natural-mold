@@ -341,6 +341,7 @@ class TestExecuteInSkillPathValidation:
             skills=[_skill_descriptor_dict(uuid.uuid4(), "curl", src)],
         )
         ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
+        ctx.descriptors["curl"].execution_profile = {"requires_network": True}
         payload_url = (ctx.descriptors["curl"].runtime_storage_path / "payload.txt").as_uri()
         tool = _create_skill_execute_tool(ctx)
         execute = tool_coroutine(tool)
