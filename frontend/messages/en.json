@@ -2533,7 +2533,9 @@
         "estimateConfirm": "Run evaluation",
         "cancelRun": "Cancel evaluation",
         "cancelPending": "Cancelling…",
-        "cancelRunFor": "Cancel {name} evaluation"
+        "cancelRunFor": "Cancel {name} evaluation",
+        "connectCredentials": "Connect credentials",
+        "connectCredentialsFor": "Connect credentials for {name}"
       },
       "history": {
         "empty": "History starts from the current version.",

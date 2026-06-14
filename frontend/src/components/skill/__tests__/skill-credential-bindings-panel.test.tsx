@@ -16,7 +16,7 @@ vi.mock('@/components/credential/credential-picker', () => ({
   ),
 }))
 
-vi.mock('@/lib/hooks/use-marketplace', () => ({
+vi.mock('@/lib/hooks/use-skill-credential-bindings', () => ({
   useSkillCredentialRequirements: (...args: readonly unknown[]) =>
     mockUseSkillCredentialRequirements(...args),
   useSkillCredentialBindings: (...args: readonly unknown[]) =>

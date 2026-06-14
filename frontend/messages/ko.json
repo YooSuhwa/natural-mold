@@ -2512,7 +2512,9 @@
         "estimateConfirm": "평가 실행",
         "cancelRun": "평가 취소",
         "cancelPending": "취소 중…",
-        "cancelRunFor": "{name} 평가 취소"
+        "cancelRunFor": "{name} 평가 취소",
+        "connectCredentials": "자격증명 연결",
+        "connectCredentialsFor": "{name} 자격증명 연결"
       },
       "history": {
         "empty": "현재 버전부터 이력이 쌓입니다.",

@@ -14,7 +14,7 @@ import {
   useSetSkillCredentialBinding,
   useSkillCredentialBindings,
   useSkillCredentialRequirements,
-} from '@/lib/hooks/use-marketplace'
+} from '@/lib/hooks/use-skill-credential-bindings'
 
 export function SkillCredentialBindingsPanel({
   skillId,

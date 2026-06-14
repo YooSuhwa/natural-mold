@@ -2,9 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { agentBlueprintApi, marketplaceApi, skillCredentialApi } from '@/lib/api/marketplace'
+import { marketplaceApi } from '@/lib/api/marketplace'
 import type {
-  CreateAgentFromBlueprintBody,
   InstallMarketplaceItemBody,
   MarketplaceItemACLBody,
   MarketplaceItemPatchBody,
@@ -21,6 +20,19 @@ const KSKILL_KEY = ['marketplace', 'admin', 'k-skill'] as const
 const MODERATION_KEY = ['marketplace', 'admin', 'moderation'] as const
 const AGENT_BLUEPRINTS_KEY = ['agent-blueprints'] as const
 const MCP_SERVERS_KEY = ['mcp-servers'] as const
+
+export {
+  useAgentBlueprint,
+  useAgentBlueprints,
+  useCreateAgentFromBlueprint,
+} from './use-agent-blueprints'
+
+export {
+  useDeleteSkillCredentialBinding,
+  useSetSkillCredentialBinding,
+  useSkillCredentialBindings,
+  useSkillCredentialRequirements,
+} from './use-skill-credential-bindings'
 
 export function useMarketplaceItems(filters?: MarketplaceListFilters) {
   return useQuery({
@@ -78,40 +90,6 @@ export function useKSkillSyncStatus(enabled = true) {
     queryFn: () => marketplaceApi.kSkillSyncStatus(),
     enabled,
     staleTime: 30_000,
-  })
-}
-
-export function useAgentBlueprints(enabled = true) {
-  return useQuery({
-    queryKey: AGENT_BLUEPRINTS_KEY,
-    queryFn: () => agentBlueprintApi.list(),
-    enabled,
-    staleTime: 30_000,
-  })
-}
-
-export function useAgentBlueprint(blueprintId: string | null | undefined) {
-  return useQuery({
-    queryKey: ['agent-blueprints', blueprintId],
-    queryFn: () => agentBlueprintApi.get(blueprintId!),
-    enabled: !!blueprintId,
-  })
-}
-
-export function useCreateAgentFromBlueprint() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      blueprintId,
-      body,
-    }: {
-      blueprintId: string
-      body: CreateAgentFromBlueprintBody
-    }) => agentBlueprintApi.createAgent(blueprintId, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: AGENT_BLUEPRINTS_KEY })
-      qc.invalidateQueries({ queryKey: ['agents'] })
-    },
   })
 }
 
@@ -298,60 +276,6 @@ export function useAdminSetListed() {
     onSuccess: () => {
       invalidateAllItems(qc)
       qc.invalidateQueries({ queryKey: MODERATION_KEY })
-    },
-  })
-}
-
-// ---------- Skill credential bindings ----------
-
-export function useSkillCredentialRequirements(skillId: string | null | undefined) {
-  return useQuery({
-    queryKey: ['skills', skillId, 'credential-requirements'],
-    queryFn: () => skillCredentialApi.listRequirements(skillId!),
-    enabled: !!skillId,
-  })
-}
-
-export function useSkillCredentialBindings(skillId: string | null | undefined) {
-  return useQuery({
-    queryKey: ['skills', skillId, 'credential-bindings'],
-    queryFn: () => skillCredentialApi.listBindings(skillId!),
-    enabled: !!skillId,
-  })
-}
-
-export function useSetSkillCredentialBinding(skillId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      requirementKey,
-      credentialId,
-    }: {
-      requirementKey: string
-      credentialId: string
-    }) => skillCredentialApi.setBinding(skillId, requirementKey, credentialId),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: ['skills', skillId, 'credential-bindings'],
-      })
-      qc.invalidateQueries({ queryKey: ['skills'] })
-      qc.invalidateQueries({ queryKey: ['skills', skillId] })
-      qc.invalidateQueries({ queryKey: ITEMS_KEY })
-    },
-  })
-}
-
-export function useDeleteSkillCredentialBinding(skillId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (requirementKey: string) =>
-      skillCredentialApi.deleteBinding(skillId, requirementKey),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: ['skills', skillId, 'credential-bindings'],
-      })
-      qc.invalidateQueries({ queryKey: ['skills'] })
-      qc.invalidateQueries({ queryKey: ['skills', skillId] })
     },
   })
 }

@@ -129,4 +129,41 @@ describe('SkillEvaluationTab', () => {
     expect(mockCreateRun).toHaveBeenCalledOnce()
     expect(mockCancelRun).not.toHaveBeenCalled()
   })
+
+  it('opens credentials instead of estimating a run when required credentials are missing', async () => {
+    const user = userEvent.setup()
+    const openCredentials = vi.fn()
+    mockUseSkillEvaluationSets.mockReturnValue({
+      data: [
+        buildEvaluationSet({
+          latest_run: {
+            id: 'run-3',
+            skill_id: 'skill-1',
+            evaluation_set_id: 'set-1',
+            status: 'failed',
+            summary: { pass_rate: 0.2 },
+            created_at: '2026-06-01T00:00:00Z',
+            updated_at: '2026-06-01T00:01:00Z',
+            completed_at: '2026-06-01T00:01:00Z',
+          },
+        }),
+      ],
+      isLoading: false,
+    })
+
+    render(
+      <SkillEvaluationTab
+        skillId="skill-1"
+        onClose={vi.fn()}
+        needsCredentialSetup
+        onOpenCredentials={openCredentials}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '품질 평가 자격증명 연결' }))
+
+    expect(openCredentials).toHaveBeenCalledOnce()
+    expect(mockEstimateRun).not.toHaveBeenCalled()
+    expect(mockCreateRun).not.toHaveBeenCalled()
+  })
 })

@@ -89,6 +89,11 @@ function SkillDetailBody({
     onTabChange?.(next)
   }
 
+  function handleOpenCredentials() {
+    setActiveTab('credentials')
+    onTabChange?.('credentials')
+  }
+
   const visibleTabs = getVisibleSkillDetailTabs(skill, activeTab)
 
   const header = (
@@ -133,6 +138,7 @@ function SkillDetailBody({
           skillId,
           skill,
           onClose,
+          onOpenCredentials: handleOpenCredentials,
           unsupported: t('unsupported'),
           closeLabel: t('close'),
         })}
@@ -146,6 +152,7 @@ function renderSkillDetailTab({
   skillId,
   skill,
   onClose,
+  onOpenCredentials,
   unsupported,
   closeLabel,
 }: {
@@ -153,12 +160,22 @@ function renderSkillDetailTab({
   readonly skillId: string
   readonly skill: Skill
   readonly onClose: () => void
+  readonly onOpenCredentials: () => void
   readonly unsupported: string
   readonly closeLabel: string
 }) {
   if (activeTab === 'credentials')
     return <SkillCredentialsTab skillId={skillId} onClose={onClose} />
-  if (activeTab === 'evaluation') return <SkillEvaluationTab skillId={skillId} onClose={onClose} />
+  if (activeTab === 'evaluation') {
+    return (
+      <SkillEvaluationTab
+        skillId={skillId}
+        onClose={onClose}
+        needsCredentialSetup={skill.health?.state === 'needs_credentials'}
+        onOpenCredentials={onOpenCredentials}
+      />
+    )
+  }
   if (activeTab === 'history') return <SkillHistoryTab skillId={skillId} onClose={onClose} />
   if (activeTab === 'metadata') return <SkillMetadataTab skill={skill} onClose={onClose} />
   if (skill.kind === 'text') {

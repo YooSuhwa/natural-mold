@@ -3398,8 +3398,8 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Do not render a blank Credentials tab when a skill has no credential requirements and no credential-related deep link.
 - [x] In the `Credentials` tab, show required/optional badges, definition key, current binding state, and a missing-required summary at the top.
 - [x] When `health.state === "needs_credentials"`, render the skill card/detail status as `자격증명 필요` / `Needs credentials`.
-- [ ] In the `Evaluation` tab, if required credentials are missing, replace `평가 실행` with `자격증명 연결` and switch to the `Credentials` tab on click.
-- [ ] After binding or deleting a credential, invalidate skill detail, skill list, marketplace item, and evaluation queries so Skill Health updates immediately.
+- [x] In the `Evaluation` tab, if required credentials are missing, replace `평가 실행` with `자격증명 연결` and switch to the `Credentials` tab on click.
+- [x] After binding or deleting a credential, invalidate skill detail, skill list, marketplace item, and evaluation queries so Skill Health updates immediately.
 - [x] Add `Metadata` tab using existing `useUpdateSkillMetadata`.
 - [x] Add an `Evaluation` tab/surface to the existing skill detail dialog when visible tab rules require it.
 - [x] Add a `History` tab/surface to the existing skill detail dialog when visible tab rules require it.
@@ -3416,7 +3416,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add a cancel action for queued/running/grading runs.
 - [ ] Show improvement conflict state when the backend returns 409 for a changed base hash.
 - [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
-- [x] Add focused `SkillEvaluationTab` tests for rerun and active-run cancel callbacks.
+- [x] Add focused `SkillEvaluationTab` tests for rerun, active-run cancel, and missing-credential connect callbacks.
 - [x] Add focused `SkillHistoryTab` tests for newest-first ordering, current marker, operation labels, and legacy empty state.
 - [x] Add focused `SkillCredentialBindingsPanel` tests for missing-required summary and connected/missing binding states.
 - [x] Add focused `getVisibleSkillDetailTabs` tests for hidden optional tabs, credential requirements, evaluation signal, history signal, and deep links.

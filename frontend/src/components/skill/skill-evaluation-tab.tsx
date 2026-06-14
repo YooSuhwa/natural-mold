@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CircleStop, RefreshCw } from 'lucide-react'
+import { CircleStop, KeyRound, RefreshCw } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { DialogShell } from '@/components/shared/dialog-shell'
@@ -34,9 +34,13 @@ const CANCELLABLE_RUN_STATUS: Record<SkillEvaluationRunStatus, boolean> = {
 export function SkillEvaluationTab({
   skillId,
   onClose,
+  needsCredentialSetup = false,
+  onOpenCredentials = noop,
 }: {
   readonly skillId: string
   readonly onClose: () => void
+  readonly needsCredentialSetup?: boolean
+  readonly onOpenCredentials?: () => void
 }) {
   const t = useTranslations('skill.detailDialog.evaluation')
   const common = useTranslations('skill.detailDialog')
@@ -56,7 +60,13 @@ export function SkillEvaluationTab({
         ) : (
           <div className="space-y-3">
             {evaluationSets.map((set) => (
-              <SkillEvaluationSetCard key={set.id} skillId={skillId} set={set} />
+              <SkillEvaluationSetCard
+                key={set.id}
+                skillId={skillId}
+                set={set}
+                needsCredentialSetup={needsCredentialSetup}
+                onOpenCredentials={onOpenCredentials}
+              />
             ))}
           </div>
         )}
@@ -73,9 +83,13 @@ export function SkillEvaluationTab({
 function SkillEvaluationSetCard({
   skillId,
   set,
+  needsCredentialSetup,
+  onOpenCredentials,
 }: {
   readonly skillId: string
   readonly set: SkillEvaluationSet
+  readonly needsCredentialSetup: boolean
+  readonly onOpenCredentials: () => void
 }) {
   const t = useTranslations('skill.detailDialog.evaluation')
   const runAgain = useCreateSkillEvaluationRun(skillId, set.id)
@@ -151,6 +165,17 @@ function SkillEvaluationSetCard({
             <CircleStop aria-hidden="true" />
             {cancelRun.isPending ? t('cancelPending') : t('cancelRun')}
           </Button>
+        ) : needsCredentialSetup ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label={t('connectCredentialsFor', { name: set.name })}
+            onClick={onOpenCredentials}
+          >
+            <KeyRound aria-hidden="true" />
+            {t('connectCredentials')}
+          </Button>
         ) : (
           <Button
             type="button"
@@ -176,3 +201,5 @@ function SkillEvaluationSetCard({
     </article>
   )
 }
+
+function noop(): void {}

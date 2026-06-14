@@ -98,6 +98,38 @@ const completedEvaluationSet = {
   },
 }
 
+const credentialRequiredSkill = {
+  ...skill,
+  id: 'skill-needs-credentials',
+  health: {
+    state: 'needs_credentials',
+    label: '자격증명 필요',
+    reason: '필수 자격증명이 연결되지 않았습니다.',
+    severity: 'warning',
+  },
+  latest_evaluation_summary: {
+    status: 'failed',
+    latest_run_id: 'run-missing-credentials',
+    evaluation_set_id: 'set-complete',
+    pass_rate: 0.2,
+    skill_content_hash: 'hash-current',
+    created_at: now,
+    completed_at: '2026-06-01T00:01:00.000Z',
+  },
+  credential_requirements: [
+    {
+      key: 'weather_key',
+      definition_key: 'weather_api',
+      required: true,
+      label: 'Weather API',
+      description: '날씨 API 키입니다.',
+      fields: ['api_key'],
+      injection: 'env',
+      scope: 'user',
+    },
+  ],
+}
+
 test.describe('Skill evaluation actions', () => {
   test('shows rerun and cancel controls in the installed skill evaluation tab', async ({
     page,
@@ -195,5 +227,72 @@ test.describe('Skill evaluation actions', () => {
     await page.getByRole('button', { name: '핵심 평가 평가 취소' }).click()
 
     await expect.poll(() => cancelRequested).toBe(true)
+  })
+
+  test('opens the credentials tab instead of rerunning when required credentials are missing', async ({
+    page,
+  }) => {
+    let estimateRequested = false
+
+    await page.route('**/api/skills**', (route) => {
+      const url = new URL(route.request().url())
+      const method = route.request().method()
+      const pathName = url.pathname
+
+      if (method === 'GET' && pathName === '/api/skills') {
+        return route.fulfill({ json: [credentialRequiredSkill] })
+      }
+      if (method === 'GET' && pathName === '/api/skills/skill-needs-credentials') {
+        return route.fulfill({ json: credentialRequiredSkill })
+      }
+      if (method === 'GET' && pathName === '/api/skills/skill-needs-credentials/evaluations') {
+        return route.fulfill({ json: [completedEvaluationSet] })
+      }
+      if (
+        method === 'POST' &&
+        pathName === '/api/skills/skill-needs-credentials/evaluations/set-complete/estimate'
+      ) {
+        estimateRequested = true
+        return route.fulfill({ status: 409, json: { detail: 'credentials required' } })
+      }
+      if (
+        method === 'GET' &&
+        pathName === '/api/skills/skill-needs-credentials/credential-requirements'
+      ) {
+        return route.fulfill({ json: credentialRequiredSkill.credential_requirements })
+      }
+      if (
+        method === 'GET' &&
+        pathName === '/api/skills/skill-needs-credentials/credential-bindings'
+      ) {
+        return route.fulfill({ json: [] })
+      }
+
+      return route.fulfill({ status: 404, json: { detail: pathName } })
+    })
+
+    await page.goto('/skills?detailId=skill-needs-credentials&tab=evaluation')
+    await expect(page.getByRole('dialog', { name: /Korea Weather/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: '회귀 평가 자격증명 연결' })).toBeVisible()
+
+    await page.getByRole('button', { name: '회귀 평가 자격증명 연결' }).click()
+
+    await expect(page.getByRole('tab', { name: /자격증명/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(page.getByText('필수 자격증명 1개 미연결')).toBeVisible()
+    await expect(page.getByText('weather_api')).toBeVisible()
+    await expect.poll(() => estimateRequested).toBe(false)
+
+    const captureDir = path.resolve(
+      process.cwd(),
+      '../output/e2e-captures/20260615-skill-eval-actions',
+    )
+    await mkdir(captureDir, { recursive: true })
+    await page.screenshot({
+      path: path.join(captureDir, 'evaluation-missing-credentials.png'),
+      fullPage: false,
+    })
   })
 })
