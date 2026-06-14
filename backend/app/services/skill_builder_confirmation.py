@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillBuilderMode, SkillBuilderStatus, SkillDraftPackage
-from app.services import skill_revision_service
+from app.services import skill_revision_mutations, skill_revision_service
 from app.services.skill_builder_errors import (
     SkillBuilderConflictError,
     SkillBuilderSourceSkillNotFound,
@@ -133,7 +133,11 @@ async def _confirm_improve(
             current_content_hash=skill.content_hash,
         )
 
-    parent_revision_id = skill.current_revision_id
+    revision_parent = await skill_revision_mutations.prepare_mutation_parent(
+        db,
+        skill=skill,
+        user_id=user_id,
+    )
     zip_bytes = build_skill_zip_bytes(slug=draft.slug, files=draft.files)
     replacement = await anyio.to_thread.run_sync(
         partial(
@@ -164,7 +168,7 @@ async def _confirm_improve(
         user_id=user_id,
         operation="builder_improvement",
         source_session_id=session.id,
-        parent_revision_id=parent_revision_id,
+        parent_revision_id=revision_parent.parent_revision_id,
         compatibility_result=session.compatibility_result,
         changelog_summary=_changelog_summary(session.changelog_draft),
     )

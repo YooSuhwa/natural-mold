@@ -2910,8 +2910,8 @@ Expected: all validator tests pass.
 - [x] Ensure create-mode builder confirm refreshes `skill.content_hash` before revision creation and evaluation staleness checks.
 - [x] Ensure improve-mode builder confirm refreshes `skill.content_hash` before revision creation and evaluation staleness checks.
 - [x] Create initial revision after builder create.
-- [ ] Create initial revision after text skill create and package upload.
-- [ ] Create new revisions after text content update, package file update/delete/upload, metadata update, builder improvement, and rollback.
+- [x] Create initial revision after text skill create and package upload.
+- [x] Create new revisions after text content update, package file update/delete/upload, metadata update, builder improvement, and rollback.
 - [ ] Generate changelog summaries from builder diffs and store them on the resulting revision row.
 - [ ] Keep changelog summaries out of `SKILL.md`; use them as default marketplace release-note text later.
 - [x] Implement `append_message` with a JSON array shape:
@@ -2950,9 +2950,9 @@ Expected: all validator tests pass.
   - [x] confirm creates an evaluation set when the draft contains evals
   - [x] confirm copies builder-time eval results into a skill evaluation run
   - [x] evaluation run snapshots `skill.version` and `skill.content_hash`
-  - package file update changes `skill.content_hash`
-  - package file delete changes `skill.content_hash`
-  - identical package file write keeps the same `skill.content_hash`
+  - [x] package file update changes `skill.content_hash`
+  - [x] package file delete changes `skill.content_hash`
+  - [x] identical package file write keeps the same `skill.content_hash`
   - [x] package content hash change makes the latest completed evaluation stale by comparison
   - [x] evaluation run snapshots runner/grader/schema versions
   - [x] `estimate_run` returns no DB row and includes case count, model call count, timeout, and approximate cost
@@ -2964,7 +2964,7 @@ Expected: all validator tests pass.
   - [x] rollback does not mutate the restored-from revision
   - revision changelog is stored on `SkillRevision`, not in `SKILL.md`
   - [x] backfill creates a baseline revision for a legacy skill and is idempotent
-  - first mutation of a legacy skill creates a baseline revision before the mutation revision
+  - [x] first mutation of a legacy skill creates a baseline revision before the mutation revision
 - [x] Run:
 
 ```bash
