@@ -2947,6 +2947,7 @@ Expected: service tests pass.
 **Files:**
 
 - Create: `backend/app/routers/skill_builder.py`
+- Create: `backend/app/routers/skill_builder_support.py`
 - Create: `backend/app/routers/skill_revisions.py`
 - Modify: `backend/app/main.py`
 - Create: `backend/tests/test_skill_builder_api.py`
@@ -2954,16 +2955,16 @@ Expected: service tests pass.
 
 - [ ] Add REST endpoints from the API Contract section.
 - [ ] Add revision endpoints from the API Contract section.
-- [ ] Add SSE endpoints using the same `StreamingResponse` headers as `backend/app/routers/builder.py:153`.
+- [x] Add SSE endpoints using the same `StreamingResponse` headers as `backend/app/routers/builder.py:153`.
 - [ ] Include CSRF dependency on mutating endpoints.
 - [ ] Convert missing `text_primary` System LLM setup into `409 SYSTEM_LLM_NOT_CONFIGURED` for builder start/message/eval paths that need the hidden model.
-- [ ] Record `skill_builder.session_create` when `POST /api/skill-builder` succeeds.
-- [ ] Record `skill_builder.system_model_missing` with outcome `denied` when System LLM readiness blocks the builder.
-- [ ] Record `skill_builder.validation_failed` when `POST /validate` persists error-level issues.
+- [x] Record `skill_builder.session_create` when `POST /api/skill-builder` succeeds.
+- [x] Record `skill_builder.system_model_missing` with outcome `denied` when System LLM readiness blocks the builder.
+- [x] Record `skill_builder.validation_failed` when `POST /validate` persists error-level issues.
 - [ ] Record `skill_builder.secret_scan_blocked` when validation or confirm blocks a draft because `scan_package()` found secrets.
-- [ ] Record `skill_builder.confirm_create` when create-mode confirm creates a new skill.
-- [ ] Record `skill_builder.apply_improvement` when improve-mode confirm updates the existing skill.
-- [ ] Record `skill_builder.apply_conflict` with outcome `denied` when improve-mode hash conflict returns 409.
+- [x] Record `skill_builder.confirm_create` when create-mode confirm creates a new skill.
+- [x] Record `skill_builder.apply_improvement` when improve-mode confirm updates the existing skill.
+- [x] Record `skill_builder.apply_conflict` with outcome `denied` when improve-mode hash conflict returns 409.
 - [ ] Record `skill_revision.create` whenever a revision snapshot is created by service calls in this feature.
 - [ ] Record `skill_revision.rollback` when rollback succeeds.
 - [ ] Use `audit_service.record_event(...)` and pass `request` so request id, IP, and user-agent match existing audit behavior.

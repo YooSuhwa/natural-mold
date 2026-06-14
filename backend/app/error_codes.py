@@ -228,6 +228,27 @@ def marketplace_credential_required(detail: str) -> ConflictError:
     return ConflictError("MARKETPLACE_CREDENTIAL_REQUIRED", detail)
 
 
+def system_llm_not_configured() -> ConflictError:
+    return ConflictError(
+        "SYSTEM_LLM_NOT_CONFIGURED",
+        "시스템 LLM 설정이 필요합니다",
+    )
+
+
+def skill_builder_source_conflict() -> ConflictError:
+    return ConflictError(
+        "SKILL_BUILDER_SOURCE_CONFLICT",
+        "개선 세션 시작 이후 스킬이 변경되었습니다",
+    )
+
+
+def skill_builder_session_not_ready() -> ConflictError:
+    return ConflictError(
+        "SKILL_BUILDER_SESSION_NOT_READY",
+        "검토 가능한 스킬 초안이 필요합니다",
+    )
+
+
 def marketplace_dirty_installation() -> ConflictError:
     """Spec §10.3 — update requires an explicit ``strategy`` when the
     installation is dirty (the user has edited the installed copy).
