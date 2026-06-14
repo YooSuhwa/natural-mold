@@ -2921,6 +2921,7 @@ Expected: all validator tests pass.
 - Create: `backend/tests/test_skill_health_service.py`
 - Create: `backend/tests/test_skill_revision_service.py`
 - Create: `backend/tests/test_skill_revision_backfill.py`
+- Extend: `backend/tests/test_skill_revision_mutations_api.py`
 - Create: `backend/tests/test_skill_builder_audit.py`
 
 - [x] Implement session CRUD.
@@ -2995,11 +2996,12 @@ Expected: all validator tests pass.
   - [x] revision changelog is stored on `SkillRevision`, not in `SKILL.md`
   - [x] backfill creates a baseline revision for a legacy skill and is idempotent
   - [x] first mutation of a legacy skill creates a baseline revision before the mutation revision
+  - [x] builder-created package skills still accept existing package file update/upload/delete APIs and create file-update revisions
 - [x] Run:
 
 ```bash
 cd backend
-uv run pytest tests/test_skill_builder_service.py tests/test_skill_evaluation_service.py tests/test_skill_health_service.py tests/test_skill_revision_service.py tests/test_skill_revision_backfill.py tests/test_skill_builder_audit.py tests/test_skill_package_hash.py -q
+uv run pytest tests/test_skill_builder_service.py tests/test_skill_evaluation_service.py tests/test_skill_health_service.py tests/test_skill_revision_service.py tests/test_skill_revision_backfill.py tests/test_skill_revision_mutations_api.py tests/test_skill_builder_audit.py tests/test_skill_package_hash.py -q
 ```
 
 Expected: service tests pass.
@@ -3717,7 +3719,7 @@ The MVP is useful without evals, but its data model and UI should already have f
 - [x] Improve mode shows file diffs and blocks stale-base overwrites with a conflict state.
 - [x] Existing text skill creation still works.
 - [x] Existing package upload still works.
-- [ ] Existing package file editor still works on builder-created skills.
+- [x] Existing package file editor still works on builder-created skills.
 - [x] Package skill file update/delete/upload recalculates `content_hash` and marks old evaluations stale by comparison.
 - [x] Credential requirement panel shows generated requirements.
 - [x] `/skills` primary CTA starts conversational skill creation.

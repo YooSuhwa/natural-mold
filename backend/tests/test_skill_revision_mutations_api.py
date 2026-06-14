@@ -152,6 +152,65 @@ async def test_metadata_and_package_file_mutations_create_revisions(
     ]
 
 
+async def test_builder_created_package_file_mutations_use_existing_editor_api(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    from app.services import skill_builder_service
+
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        session = await skill_builder_service.create_session(
+            db,
+            user_id=TEST_USER_ID,
+            user_request="Create a package skill",
+        )
+        await skill_builder_service.save_draft_package(
+            db,
+            session,
+            draft={
+                "name": "Builder Editable",
+                "slug": "builder-editable",
+                "description": "Use when testing builder-created file editing.",
+                "files": [
+                    {"path": "SKILL.md", "content": _skill_md("builder-editable")},
+                    {"path": "agents/openai.yaml", "content": "interface: {}\n"},
+                    {"path": "scripts/run.py", "content": "print('v1')\n"},
+                ],
+                "credential_requirements": [],
+                "execution_profile": {},
+            },
+        )
+        skill = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        await db.commit()
+
+        put_response = await client.put(
+            f"/api/skills/{skill.id}/files/scripts/run.py",
+            json={"content": "print('v2')\n"},
+        )
+        upload_response = await client.post(
+            f"/api/skills/{skill.id}/files",
+            data={"rel_path": "references/guide.md"},
+            files={"file": ("guide.md", b"reference\n", "text/markdown")},
+        )
+        delete_response = await client.delete(f"/api/skills/{skill.id}/files/agents/openai.yaml")
+        files_response = await client.get(f"/api/skills/{skill.id}/files")
+        revisions_response = await client.get(f"/api/skills/{skill.id}/revisions")
+
+    assert put_response.status_code == 200, put_response.text
+    assert upload_response.status_code == 201, upload_response.text
+    assert delete_response.status_code == 200, delete_response.text
+    paths = {item["path"] for item in files_response.json()}
+    assert {"SKILL.md", "references/guide.md", "scripts/run.py"} <= paths
+    assert "agents/openai.yaml" not in paths
+    assert [item["operation"] for item in revisions_response.json()] == [
+        "manual_file_update",
+        "manual_file_update",
+        "manual_file_update",
+        "builder_create",
+    ]
+
+
 async def test_builder_improve_on_legacy_skill_creates_pre_mutation_baseline(
     db: AsyncSession,
     tmp_path: Path,
