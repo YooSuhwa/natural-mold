@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -9,10 +10,11 @@ from httpx import AsyncClient
 from langchain_core.messages import AIMessage, HumanMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.message_utils import parse_msg_id
 from app.agent_runtime.protocol_events import stored_protocol_event
 from app.models.agent import Agent
 from app.models.conversation import Conversation
-from app.models.conversation_run import ConversationRun
+from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
@@ -264,9 +266,14 @@ async def test_thread_state_exposes_checkpoint_mapping_for_messages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation = await _seed_protocol_conversation(db)
+    root = _CheckpointSlim(
+        checkpoint_id="ck-root",
+        parent_checkpoint_id=None,
+        messages=[],
+    )
     parent = _CheckpointSlim(
         checkpoint_id="ck-user",
-        parent_checkpoint_id=None,
+        parent_checkpoint_id="ck-root",
         messages=[HumanMessage(id="user-raw-1", content="hello")],
     )
     leaf = _CheckpointSlim(
@@ -277,9 +284,17 @@ async def test_thread_state_exposes_checkpoint_mapping_for_messages(
             AIMessage(id="assistant-raw-1", content="hi"),
         ],
     )
+    late_streaming_checkpoint = _CheckpointSlim(
+        checkpoint_id="ck-assistant-late",
+        parent_checkpoint_id="ck-assistant",
+        messages=[
+            HumanMessage(id="user-raw-1", content="hello"),
+            AIMessage(id="assistant-raw-1", content="hi"),
+        ],
+    )
     monkeypatch.setattr(
         "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
-        lambda: _FakeCheckpointer([leaf, parent]),
+        lambda: _FakeCheckpointer([late_streaming_checkpoint, leaf, parent, root]),
     )
 
     state_response = await client.get(
@@ -289,9 +304,19 @@ async def test_thread_state_exposes_checkpoint_mapping_for_messages(
 
     assert state_response.status_code == 200
     state = state_response.json()
+    user_ui_id = str(parse_msg_id("user-raw-1", conversation.id, 0))
+    assistant_ui_id = str(parse_msg_id("assistant-raw-1", conversation.id, 1))
     assert state["metadata"]["checkpoint_by_message_id"] == {
         "user-raw-1": "ck-user",
+        user_ui_id: "ck-user",
         "assistant-raw-1": "ck-assistant",
+        assistant_ui_id: "ck-assistant",
+    }
+    assert state["metadata"]["parent_checkpoint_by_message_id"] == {
+        "user-raw-1": "ck-root",
+        user_ui_id: "ck-root",
+        "assistant-raw-1": "ck-user",
+        assistant_ui_id: "ck-user",
     }
     messages = state["values"]["messages"]
     assert messages[0]["additional_kwargs"]["metadata"]["checkpoint_id"] == "ck-user"
@@ -300,8 +325,253 @@ async def test_thread_state_exposes_checkpoint_mapping_for_messages(
     assert compat_response.status_code == 200
     assert compat_response.json()["checkpoint_by_message_id"] == {
         "user-raw-1": "ck-user",
+        user_ui_id: "ck-user",
         "assistant-raw-1": "ck-assistant",
+        assistant_ui_id: "ck-assistant",
     }
+    assert compat_response.json()["parent_checkpoint_by_message_id"] == {
+        "user-raw-1": "ck-root",
+        user_ui_id: "ck-root",
+        "assistant-raw-1": "ck-user",
+        assistant_ui_id: "ck-user",
+    }
+
+
+@pytest.mark.asyncio
+async def test_thread_state_assigns_stable_ids_to_idless_langchain_messages(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    root = _CheckpointSlim(
+        checkpoint_id="ck-root",
+        parent_checkpoint_id=None,
+        messages=[],
+    )
+    parent = _CheckpointSlim(
+        checkpoint_id="ck-user",
+        parent_checkpoint_id="ck-root",
+        messages=[HumanMessage(content="hello")],
+    )
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck-assistant",
+        parent_checkpoint_id="ck-user",
+        messages=[HumanMessage(content="hello"), AIMessage(content="hi")],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: _FakeCheckpointer([leaf, parent, root]),
+    )
+
+    response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert response.status_code == 200
+    state = response.json()
+    user_ui_id = str(parse_msg_id(None, conversation.id, 0))
+    assistant_ui_id = str(parse_msg_id(None, conversation.id, 1))
+    assert state["values"]["messages"][0]["id"] == user_ui_id
+    assert state["values"]["messages"][1]["id"] == assistant_ui_id
+    assert state["metadata"]["checkpoint_by_message_id"][user_ui_id] == "ck-user"
+    assert state["metadata"]["parent_checkpoint_by_message_id"][user_ui_id] == "ck-root"
+
+
+@pytest.mark.asyncio
+async def test_thread_state_exposes_branch_metadata_for_langchain_messages(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    root = _CheckpointSlim(
+        checkpoint_id="ck-root",
+        parent_checkpoint_id=None,
+        messages=[],
+    )
+    parent = _CheckpointSlim(
+        checkpoint_id="ck-user",
+        parent_checkpoint_id="ck-root",
+        messages=[HumanMessage(id="user-branch-1", content="hello")],
+    )
+    old_leaf = _CheckpointSlim(
+        checkpoint_id="ck-assistant-1-old",
+        parent_checkpoint_id="ck-user",
+        messages=[
+            HumanMessage(id="user-branch-1", content="hello"),
+            AIMessage(id="assistant-old", content="old"),
+        ],
+    )
+    active_leaf = _CheckpointSlim(
+        checkpoint_id="ck-assistant-2-new",
+        parent_checkpoint_id="ck-user",
+        messages=[
+            HumanMessage(id="user-branch-1", content="hello"),
+            AIMessage(id="assistant-new", content="new"),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: _FakeCheckpointer([active_leaf, old_leaf, parent, root]),
+    )
+
+    response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert response.status_code == 200
+    messages = response.json()["values"]["messages"]
+    assistant_metadata = messages[1]["additional_kwargs"]["metadata"]
+    assert assistant_metadata["branches"] == [
+        str(parse_msg_id("assistant-old", conversation.id, 1)),
+        str(parse_msg_id("assistant-new", conversation.id, 1)),
+    ]
+    assert assistant_metadata["siblingCheckpointIds"] == [
+        "ck-assistant-1-old",
+        "ck-assistant-2-new",
+    ]
+    assert assistant_metadata["activeBranchId"] == str(
+        parse_msg_id("assistant-new", conversation.id, 1)
+    )
+    assert assistant_metadata["branchCheckpointId"] == "ck-assistant-2-new"
+    assert assistant_metadata["branchIndex"] == 1
+    assert assistant_metadata["branchTotal"] == 2
+
+
+@pytest.mark.asyncio
+async def test_thread_state_redacts_sensitive_tool_args_without_losing_usage_metrics(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck-secret",
+        parent_checkpoint_id=None,
+        messages=[
+            HumanMessage(id="user-secret-1", content="hello"),
+            AIMessage(
+                id="assistant-secret-1",
+                content="done",
+                tool_calls=[
+                    {
+                        "id": "call-secret",
+                        "name": "execute_in_skill",
+                        "args": {"api_key": "SECRET_VALUE", "query": "safe"},
+                    }
+                ],
+                usage_metadata={"input_tokens": 30, "output_tokens": 12, "total_tokens": 42},
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: _FakeCheckpointer([leaf]),
+    )
+
+    response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "SECRET_VALUE" not in repr(body)
+    assistant = body["values"]["messages"][1]
+    assert assistant["tool_calls"][0]["args"] == {"api_key": "<redacted>", "query": "safe"}
+    assert assistant["usage_metadata"] == {
+        "input_tokens": 30,
+        "output_tokens": 12,
+        "total_tokens": 42,
+    }
+
+
+@pytest.mark.asyncio
+async def test_thread_state_marks_running_run_as_active_for_protocol_hydration(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    run_id = uuid.uuid4()
+    db.add(
+        ConversationRun(
+            id=run_id,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            status="running",
+            is_active=True,
+        )
+    )
+    await db.commit()
+
+    response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert response.status_code == 200
+    state = response.json()
+    assert state["next"] == ["__moldy_active_run__"]
+    assert state["metadata"]["active_run"] == {"id": str(run_id), "status": "running"}
+    assert state["metadata"]["latest_run"] == {"id": str(run_id), "status": "running"}
+    assert state["values"]["__moldy_runtime"]["active_run"] == {
+        "id": str(run_id),
+        "status": "running",
+    }
+    assert state["values"]["__moldy_runtime"]["latest_run"] == {
+        "id": str(run_id),
+        "status": "running",
+    }
+
+
+@pytest.mark.asyncio
+async def test_thread_state_marks_old_active_run_stale_for_protocol_hydration(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_stale.settings.chat_run_stale_after_seconds",
+        1,
+    )
+    conversation = await _seed_protocol_conversation(db)
+    run_id = uuid.uuid4()
+    old = utc_now_naive() - timedelta(minutes=10)
+    db.add(
+        ConversationRun(
+            id=run_id,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            status="running",
+            is_active=True,
+            heartbeat_at=old,
+            started_at=old,
+            created_at=old,
+        )
+    )
+    await db.commit()
+
+    response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert response.status_code == 200
+    state = response.json()
+    assert state["next"] == []
+    assert "active_run" not in state["metadata"]
+    assert state["metadata"]["latest_run"] == {"id": str(run_id), "status": "stale"}
+    assert state["values"]["__moldy_runtime"]["latest_run"] == {
+        "id": str(run_id),
+        "status": "stale",
+    }
+
+    refreshed = await db.get(ConversationRun, run_id)
+    assert refreshed is not None
+    assert refreshed.status == "stale"
+    assert refreshed.is_active is False
 
 
 @pytest.mark.asyncio

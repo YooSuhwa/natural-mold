@@ -19,6 +19,8 @@ type ToolUiRender = {
       approval_id?: string
       tool_name?: string
       tool_args?: Record<string, unknown>
+      description?: string
+      message?: string
       hitl_action_index?: number
       hitl_total_actions?: number
       hitl_interrupt_id?: string | null
@@ -136,5 +138,41 @@ describe('ApprovalCard', () => {
       )
     })
     expect(await screen.findByText('rejected')).toBeVisible()
+  })
+
+  it('redacts sensitive approval descriptions and args before rendering', () => {
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'interrupt-approval:0',
+          tool_name: 'execute_in_skill',
+          description:
+            "Args: {'command': 'node scripts/create_docx.cjs', 'api_key': 'raw-secret-value'}",
+          tool_args: {
+            command: 'node scripts/create_docx.cjs',
+            api_key: 'raw-secret-value',
+            usage_metadata: { prompt_tokens: 12 },
+          },
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn() }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    expect(document.body.textContent).not.toContain('raw-secret-value')
+    expect(document.body.textContent).toContain('<redacted>')
+
+    fireEvent.click(screen.getByText('args'))
+    expect(document.body.textContent).not.toContain('raw-secret-value')
+    expect(document.body.textContent).toContain('prompt_tokens')
+
+    fireEvent.click(screen.getByText('edit'))
+    expect(document.body.textContent).not.toContain('raw-secret-value')
   })
 })

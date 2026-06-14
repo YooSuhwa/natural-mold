@@ -188,6 +188,7 @@ async function mockApi(route: Route) {
 }
 
 async function setupNavigatorPage(page: Page) {
+  await page.route('**/threads/**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/**', mockApi)
   await page.goto('/agents/agent-1/conversations/conv-1')
   await page.waitForLoadState('domcontentloaded')

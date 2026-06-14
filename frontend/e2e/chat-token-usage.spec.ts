@@ -92,6 +92,42 @@ const FAKE_MESSAGES = {
   total_estimated_cost: 0.0123,
 }
 
+const FAKE_THREAD_STATE = {
+  values: {
+    messages: [
+      {
+        type: 'human',
+        id: 'message-user-token-usage',
+        content: '토큰 사용량 hover를 확인해줘.',
+      },
+      {
+        type: 'ai',
+        id: 'message-assistant-token-usage',
+        content: '토큰 사용량 상세 팝오버가 정상적으로 표시되는 응답입니다.',
+        usage_metadata: {
+          input_tokens: 1200,
+          output_tokens: 900,
+          input_token_details: {
+            cache_creation: 400,
+            cache_read: 250,
+          },
+          estimated_cost: 0.0123,
+        },
+      },
+    ],
+  },
+  metadata: {
+    checkpoint_by_message_id: {
+      'message-user-token-usage': 'checkpoint-after-user-token-usage',
+      'message-assistant-token-usage': 'checkpoint-token-usage',
+    },
+    parent_checkpoint_by_message_id: {
+      'message-user-token-usage': 'checkpoint-root',
+      'message-assistant-token-usage': 'checkpoint-after-user-token-usage',
+    },
+  },
+}
+
 test.describe('Chat token usage hover', () => {
   test('shows the assistant message token breakdown and cost on hover', async ({ page, errors }) => {
     await page.route('**/api/agents/summary', (route) =>
@@ -129,6 +165,17 @@ test.describe('Chat token usage hover', () => {
     )
     await page.route(`**/api/conversations/${CONVERSATION_ID}/messages`, (route) =>
       route.fulfill({ json: FAKE_MESSAGES }),
+    )
+    await page.route(
+      `**/api/conversations/${CONVERSATION_ID}/langgraph/threads/${CONVERSATION_ID}/state`,
+      (route) => route.fulfill({ json: FAKE_THREAD_STATE }),
+    )
+    await page.route(
+      `**/api/conversations/${CONVERSATION_ID}/langgraph/threads/${CONVERSATION_ID}/stream/events`,
+      (route) => route.fulfill({ json: FAKE_THREAD_STATE }),
+    )
+    await page.route(`**/threads/${CONVERSATION_ID}/history`, (route) =>
+      route.fulfill({ json: [] }),
     )
 
     await page.goto(`/agents/${AGENT_ID}/conversations/${CONVERSATION_ID}`)

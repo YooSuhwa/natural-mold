@@ -54,6 +54,7 @@ describe('createMoldyAgentTransport', () => {
 
   it('uses the state path for SDK hydration without adding CSRF to GET requests', async () => {
     csrfStore.set('csrf-2')
+    const onState = vi.fn()
     const fetchMock = vi.fn<typeof fetch>(async () =>
       jsonResponse({
         values: { messages: [] },
@@ -64,6 +65,7 @@ describe('createMoldyAgentTransport', () => {
     const transport = createMoldyAgentTransport('conversation-2', 'agent-2', {
       apiBase: 'http://api.test',
       fetch: fetchMock,
+      onState,
     })
 
     await transport.getState?.()
@@ -76,5 +78,10 @@ describe('createMoldyAgentTransport', () => {
     expect(init?.method).toBe('GET')
     expect(init?.credentials).toBe('include')
     expect(new Headers(init?.headers).has('X-CSRF-Token')).toBe(false)
+    expect(onState).toHaveBeenCalledWith({
+      values: { messages: [] },
+      next: [],
+      tasks: [],
+    })
   })
 })

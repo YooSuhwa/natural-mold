@@ -9,6 +9,8 @@ from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 LANGGRAPH_V3_MARKER: Final = "E2E_LANGGRAPH_V3"
 LANGGRAPH_V3_SUBAGENT_MARKER: Final = "E2E_SUBAGENT"
 LANGGRAPH_V3_SLOW_SUBAGENT_REQUEST: Final = "slow_subagent=true"
+LANGGRAPH_V3_SECRET_TOOL_ARGS_REQUEST: Final = "secret_tool_arg=true"
+LANGGRAPH_V3_SECRET_TOOL_ARG_VALUE: Final = "moldy-e2e-secret-token-should-not-persist"
 LANGGRAPH_V3_SLOW_SUBAGENT_MARKER: Final = "E2E_SUBAGENT_SLOW"
 LANGGRAPH_V3_TODOS_TOOL_CALL_ID: Final = "call_e2e_langgraph_v3_todos"
 LANGGRAPH_V3_SUBAGENT_TOOL_CALL_ID: Final = "call_e2e_langgraph_v3_subagent"
@@ -106,13 +108,16 @@ def langgraph_v3_message(
         bound_tool_names,
         "execute_in_skill",
     ):
+        tool_args = dict(docx_tool_args)
+        if LANGGRAPH_V3_SECRET_TOOL_ARGS_REQUEST in human_text:
+            tool_args["api_key"] = LANGGRAPH_V3_SECRET_TOOL_ARG_VALUE
         return AIMessage(
             content="",
             tool_calls=[
                 {
                     "id": LANGGRAPH_V3_DOCX_TOOL_CALL_ID,
                     "name": "execute_in_skill",
-                    "args": dict(docx_tool_args),
+                    "args": tool_args,
                 }
             ],
         )
@@ -142,6 +147,8 @@ def _tool_message_ids(messages: Sequence[BaseMessage]) -> set[str]:
 
 __all__ = [
     "LANGGRAPH_V3_MARKER",
+    "LANGGRAPH_V3_SECRET_TOOL_ARG_VALUE",
+    "LANGGRAPH_V3_SECRET_TOOL_ARGS_REQUEST",
     "LANGGRAPH_V3_SUBAGENT_PARTS",
     "LANGGRAPH_V3_SLOW_SUBAGENT_MARKER",
     "LANGGRAPH_V3_SLOW_SUBAGENT_PARTS",

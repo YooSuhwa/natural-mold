@@ -93,6 +93,7 @@ import {
 import type { ArtifactSummary } from '@/lib/types'
 import type { DeepAgentsStateSnapshot } from '@/lib/chat/langgraph-runtime/deepagents-state'
 import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
+import { dispatchMoldyBranchSwitched } from '@/lib/chat/langgraph-runtime/branch-switch-events'
 
 export { GenericToolFallback }
 
@@ -464,6 +465,7 @@ function BranchPicker() {
           queryKey: conversationKeys.messages(conversationId),
           type: 'active',
         })
+        dispatchMoldyBranchSwitched({ conversationId, checkpointId })
       } catch (err) {
         console.error('[BranchPicker] switch failed', err)
       } finally {
@@ -623,8 +625,7 @@ interface AssistantThreadDynamicContextValue {
   readonly user?: User | null
 }
 
-const AssistantThreadDynamicContext =
-  createContext<AssistantThreadDynamicContextValue | null>(null)
+const AssistantThreadDynamicContext = createContext<AssistantThreadDynamicContextValue | null>(null)
 
 function useAssistantThreadDynamicContext(): AssistantThreadDynamicContextValue {
   const value = useContext(AssistantThreadDynamicContext)
@@ -806,66 +807,66 @@ export function AssistantThread({
     <AssistantThreadDynamicContext.Provider value={dynamicContextValue}>
       <ChatConversationContext.Provider value={conversationId ?? null}>
         <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
-        <ThreadPrimitive.Viewport
-          className="min-h-0 flex-1 overflow-y-auto"
-          onScroll={handleViewportScroll}
-        >
-          <AuiIf condition={(s) => s.thread.isEmpty}>
-            {emptyContent ?? (
-              <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
-                <p className="text-sm">{tPage('emptyState')}</p>
-              </div>
-            )}
-          </AuiIf>
-
-          <div
-            className={cn(
-              'mx-auto w-full px-4 py-4',
-              isBuilder ? 'max-w-[880px] space-y-6' : 'max-w-3xl space-y-4',
-            )}
+          <ThreadPrimitive.Viewport
+            className="min-h-0 flex-1 overflow-y-auto"
+            onScroll={handleViewportScroll}
           >
-            <ThreadPrimitive.Messages>
-              {({ message }) => {
-                const Component = message.composer.isEditing
-                  ? messageComponents.UserEditComposer
-                  : message.role === 'user'
-                    ? messageComponents.UserMessage
-                    : messageComponents.AssistantMessage
-                return <Component />
-              }}
-            </ThreadPrimitive.Messages>
-          </div>
+            <AuiIf condition={(s) => s.thread.isEmpty}>
+              {emptyContent ?? (
+                <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
+                  <p className="text-sm">{tPage('emptyState')}</p>
+                </div>
+              )}
+            </AuiIf>
 
-          <ThreadPrimitive.ViewportFooter className="pointer-events-none sticky bottom-0 z-10 flex justify-center pb-2">
-            <ScrollToBottomButton isAtBottom={isViewportAtBottom} />
-          </ThreadPrimitive.ViewportFooter>
-        </ThreadPrimitive.Viewport>
+            <div
+              className={cn(
+                'mx-auto w-full px-4 py-4',
+                isBuilder ? 'max-w-[880px] space-y-6' : 'max-w-3xl space-y-4',
+              )}
+            >
+              <ThreadPrimitive.Messages>
+                {({ message }) => {
+                  const Component = message.composer.isEditing
+                    ? messageComponents.UserEditComposer
+                    : message.role === 'user'
+                      ? messageComponents.UserMessage
+                      : messageComponents.AssistantMessage
+                  return <Component />
+                }}
+              </ThreadPrimitive.Messages>
+            </div>
 
-        {toolUI?.map((ToolComponent, i) => (
-          <ToolComponent key={`tool-${i}`} />
-        ))}
-        {dataUI?.map((DataComponent, i) => (
-          <DataComponent key={`data-${i}`} />
-        ))}
+            <ThreadPrimitive.ViewportFooter className="pointer-events-none sticky bottom-0 z-10 flex justify-center pb-2">
+              <ScrollToBottomButton isAtBottom={isViewportAtBottom} />
+            </ThreadPrimitive.ViewportFooter>
+          </ThreadPrimitive.Viewport>
 
-        <ReconnectIndicator />
+          {toolUI?.map((ToolComponent, i) => (
+            <ToolComponent key={`tool-${i}`} />
+          ))}
+          {dataUI?.map((DataComponent, i) => (
+            <DataComponent key={`data-${i}`} />
+          ))}
 
-        {/* Composer */}
-        {isBuilder ? (
-          <Suspense fallback={<BuilderComposerFallback />}>
-            <BuilderComposer modelLabel={builderModelLabel} />
-          </Suspense>
-        ) : (
-          <div className="mx-auto w-full max-w-3xl px-4 pb-4">
-            <ThreadComposer
-              modelName={modelName}
-              showTokenBar={showTokenBar}
-              compact={compact}
-              enableAttachments={enableAttachments}
-              focusKey={conversationId}
-            />
-          </div>
-        )}
+          <ReconnectIndicator />
+
+          {/* Composer */}
+          {isBuilder ? (
+            <Suspense fallback={<BuilderComposerFallback />}>
+              <BuilderComposer modelLabel={builderModelLabel} />
+            </Suspense>
+          ) : (
+            <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+              <ThreadComposer
+                modelName={modelName}
+                showTokenBar={showTokenBar}
+                compact={compact}
+                enableAttachments={enableAttachments}
+                focusKey={conversationId}
+              />
+            </div>
+          )}
         </ThreadPrimitive.Root>
       </ChatConversationContext.Provider>
     </AssistantThreadDynamicContext.Provider>

@@ -7,7 +7,17 @@ const MUTATION_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 export interface MoldyAgentTransportOptions {
   apiBase?: string
   fetch?: typeof fetch
+  onState?: (state: AgentServerState<unknown>) => void
 }
+
+type AgentServerState<StateType = unknown> = {
+  values: StateType
+  next?: unknown
+  tasks?: unknown
+  metadata?: unknown
+  checkpoint?: { checkpoint_id?: string } | null
+  parent_checkpoint?: { checkpoint_id?: string } | null
+} | null
 
 function encodePathSegment(value: string): string {
   return encodeURIComponent(value)
@@ -71,14 +81,18 @@ function registerLangGraphClientDefaults(apiUrl: string, fetchImpl: typeof fetch
 class MoldyHttpAgentServerAdapter implements AgentServerAdapter {
   readonly #agentId: string
   readonly #delegate: HttpAgentServerAdapter
+  readonly #onState: MoldyAgentTransportOptions['onState']
   threadId: string
-  getState?: AgentServerAdapter['getState']
 
-  constructor(agentId: string, options: ConstructorParameters<typeof HttpAgentServerAdapter>[0]) {
+  constructor(
+    agentId: string,
+    options: ConstructorParameters<typeof HttpAgentServerAdapter>[0],
+    onState?: MoldyAgentTransportOptions['onState'],
+  ) {
     this.#agentId = agentId
     this.#delegate = new HttpAgentServerAdapter(options)
+    this.#onState = onState
     this.threadId = this.#delegate.threadId
-    if (this.#delegate.getState) this.getState = this.#delegate.getState.bind(this.#delegate)
   }
 
   setThreadId(threadId: string): void {
@@ -98,6 +112,12 @@ class MoldyHttpAgentServerAdapter implements AgentServerAdapter {
     return this.#delegate.events()
   }
 
+  async getState<StateType = unknown>(): Promise<AgentServerState<StateType>> {
+    const state = (await this.#delegate.getState?.<StateType>()) ?? null
+    this.#onState?.(state as AgentServerState<unknown>)
+    return state ?? null
+  }
+
   openEventStream(params: EventStreamParams): EventStreamHandle {
     return this.#delegate.openEventStream(params)
   }
@@ -114,14 +134,18 @@ export function createMoldyAgentTransport(
 ): AgentServerAdapter {
   const authedFetch = withMoldyAuth(options.fetch ?? fetch)
   registerLangGraphClientDefaults(options.apiBase ?? API_BASE, authedFetch)
-  return new MoldyHttpAgentServerAdapter(agentId, {
-    apiUrl: options.apiBase ?? API_BASE,
-    threadId: conversationId,
-    fetch: authedFetch,
-    paths: {
-      commands: (threadId) => langGraphThreadPath(conversationId, threadId, '/commands'),
-      stream: (threadId) => langGraphThreadPath(conversationId, threadId, '/stream/events'),
-      state: (threadId) => langGraphThreadPath(conversationId, threadId, '/state'),
+  return new MoldyHttpAgentServerAdapter(
+    agentId,
+    {
+      apiUrl: options.apiBase ?? API_BASE,
+      threadId: conversationId,
+      fetch: authedFetch,
+      paths: {
+        commands: (threadId) => langGraphThreadPath(conversationId, threadId, '/commands'),
+        stream: (threadId) => langGraphThreadPath(conversationId, threadId, '/stream/events'),
+        state: (threadId) => langGraphThreadPath(conversationId, threadId, '/state'),
+      },
     },
-  })
+    options.onState,
+  )
 }

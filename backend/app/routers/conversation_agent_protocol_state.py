@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.executor import _prepare_agent
+from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_contracts import (
@@ -213,7 +214,7 @@ def _snapshot_state_response(
 
 
 def _snapshot_values(snapshot: Any) -> dict[str, Any]:
-    values = _serialize_value(getattr(snapshot, "values", {}) or {})
+    values = redact_protocol_data("values", _serialize_value(getattr(snapshot, "values", {}) or {}))
     return values if isinstance(values, dict) else {}
 
 

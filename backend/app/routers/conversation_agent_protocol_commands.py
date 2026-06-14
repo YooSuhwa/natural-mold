@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.executor import execute_agent_stream_langgraph, resume_agent_stream_langgraph
@@ -64,13 +65,23 @@ async def _handle_run_start_command(
 
     input_payload = command.params.input or {}
     attachment_ids = attachment_ids_from_protocol_input(input_payload)
+    resolved_checkpoint_id = checkpoint_id(command)
     runtime_input_payload = input_without_protocol_attachments(input_payload)
+    run_source = "chat"
+    if resolved_checkpoint_id:
+        append_messages = _messages_from_protocol_input(runtime_input_payload)
+        runtime_input_payload = await _fork_overwrite_input(
+            conversation_id=conversation.id,
+            checkpoint_id=resolved_checkpoint_id,
+            append_messages=append_messages,
+        )
+        run_source = "edit" if append_messages or attachment_ids else "regenerate"
     preview = input_preview(input_payload)
     cfg = await resolve_agent_context(
         db,
         conversation.id,
         user,
-        checkpoint_id=checkpoint_id(command),
+        checkpoint_id=resolved_checkpoint_id,
     )
     if preview:
         await chat_service.maybe_set_auto_title(db, conversation.id, preview)
@@ -94,12 +105,13 @@ async def _handle_run_start_command(
             conversation_id=conversation.id,
             agent_id=cfg_agent_uuid(conversation),
             user_id=user.id,
-            source="chat",
+            source=run_source,
             input_preview=preview,
             metadata={
                 "protocol": "langgraph_v3",
                 "command_id": command.id,
                 "assistant_id": command.params.assistant_id,
+                "checkpoint_id": resolved_checkpoint_id,
             },
         )
     except HTTPException as exc:
@@ -135,6 +147,56 @@ async def _handle_run_start_command(
         thread_id=str(conversation.id),
         run_id=str(run_id),
     )
+
+
+async def _fork_overwrite_input(
+    *,
+    conversation_id: uuid.UUID,
+    checkpoint_id: str,
+    append_messages: list[BaseMessage],
+) -> dict[str, Any]:
+    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.services.thread_branch_service import build_fork_overwrite_input
+
+    return await build_fork_overwrite_input(
+        get_checkpointer(),
+        str(conversation_id),
+        checkpoint_id,
+        append=append_messages,
+    )
+
+
+def _messages_from_protocol_input(input_payload: dict[str, Any]) -> list[BaseMessage]:
+    messages = input_payload.get("messages")
+    if not isinstance(messages, list):
+        return []
+
+    converted: list[BaseMessage] = []
+    for raw in messages:
+        if not isinstance(raw, dict):
+            continue
+        msg = _message_from_protocol_mapping(raw)
+        if msg is not None:
+            converted.append(msg)
+    return converted
+
+
+def _message_from_protocol_mapping(raw: dict[str, Any]) -> BaseMessage | None:
+    role = raw.get("role") or raw.get("type")
+    content = raw.get("content", "")
+    if not isinstance(content, str | list):
+        content = str(content)
+
+    message_id = raw.get("id")
+    kwargs = {"id": message_id} if isinstance(message_id, str) and message_id else {}
+
+    if role in {"human", "user"}:
+        return HumanMessage(content=content, **kwargs)
+    if role in {"ai", "assistant"}:
+        return AIMessage(content=content, **kwargs)
+    if role == "system":
+        return SystemMessage(content=content, **kwargs)
+    return None
 
 
 async def _handle_input_respond_command(

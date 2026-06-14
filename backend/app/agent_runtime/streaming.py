@@ -20,6 +20,7 @@ from app.agent_runtime.memory_event_projection import (
     memory_event_from_tool_result,
 )
 from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
+from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.marketplace.redaction import redact_keys
 
 logger = logging.getLogger(__name__)
@@ -541,7 +542,7 @@ async def stream_agent_response(
             was_interrupted = True
         except Exception as e:
             stream_failed = True
-            error_record = StreamErrorRecord(error=e, message=str(e))
+            error_record = StreamErrorRecord(error=e, message=public_stream_error_message(e))
             if error_sink is not None:
                 error_sink.append(error_record)
             yield emit(event_names.ERROR, {"message": error_record.message})

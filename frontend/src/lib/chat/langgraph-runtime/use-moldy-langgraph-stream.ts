@@ -8,10 +8,19 @@ import {
   type FeedbackAdapter,
 } from '@assistant-ui/react'
 import { useChannel, useStream, type Channel } from '@langchain/react'
-import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
+import {
+  AIMessage,
+  HumanMessage,
+  coerceMessageLikeToMessage,
+  isBaseMessage,
+  type BaseMessage,
+  type BaseMessageLike,
+} from '@langchain/core/messages'
 import { useSetAtom } from 'jotai'
+import { useTranslations } from 'next-intl'
 import { reduceProtocolActivity } from './activity-protocol'
 import { useLangGraphArtifactEffects } from './artifact-events'
+import { MOLDY_BRANCH_SWITCHED_EVENT, isMoldyBranchSwitchedEvent } from './branch-switch-events'
 import { selectDeepAgentsState } from './deepagents-state'
 import {
   activeInterruptPayloads,
@@ -26,11 +35,13 @@ import { useLangGraphMemoryEffects } from './memory-events'
 import { dedupeLangChainMessagesById, useStableConvertedMessages } from './message-list'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import { refreshThreadLifecycleStream } from './lifecycle-subscription'
+import { loadServerThreadState, type ThreadStateResponse } from './thread-state-checkpoints'
 import { useCheckpointForkHandlers } from './use-checkpoint-fork-handlers'
 import { useLangGraphUsageEffects } from './usage-events'
 import { convertMoldyLangChainMessage } from './langchain-message-conversion'
 import type { RunActivity } from './activity-model'
 import { createHiTLDecisionCoordinator, type HiTLDecisionCoordinator } from '../standard-interrupt'
+import { conversationRunsApi } from '@/lib/api/conversation-runs'
 import { chatCancelInFlightAtom } from '@/lib/stores/chat-store'
 import type { Decision } from '@/lib/types'
 
@@ -46,6 +57,27 @@ interface UseMoldyLangGraphStreamOptions {
   conversationId: string
   feedbackAdapter?: FeedbackAdapter
   attachmentAdapter?: AttachmentAdapter
+}
+
+interface ThreadRunNotice {
+  readonly id: string
+  readonly status: 'canceled' | 'canceling' | 'stale'
+}
+
+interface ServerMessageMetadataSnapshot {
+  readonly byId: ReadonlyMap<string, Record<string, unknown>>
+  readonly byIndex: readonly (Record<string, unknown> | null)[]
+  readonly idByIndex: readonly (string | null)[]
+}
+
+interface ThreadStateHydrationOptions {
+  readonly replaceMessages?: boolean
+}
+
+const EMPTY_SERVER_MESSAGE_METADATA: ServerMessageMetadataSnapshot = {
+  byId: new Map(),
+  byIndex: [],
+  idByIndex: [],
 }
 
 const ACTIVITY_CHANNELS = [
@@ -65,6 +97,142 @@ function threadInterruptsFromStream(stream: {
   return stream.getThread?.()?.interrupts ?? []
 }
 
+function terminalRunNoticeFromThreadState(state: unknown): ThreadRunNotice | null {
+  if (!isRecord(state)) return null
+  const metadata = isRecord(state.metadata) ? state.metadata : {}
+  const run = isRecord(metadata.latest_run) ? metadata.latest_run : null
+  const id = run?.id
+  const status = run?.status
+  if (typeof id !== 'string') return null
+  if (status !== 'canceled' && status !== 'canceling' && status !== 'stale') return null
+  return { id, status }
+}
+
+function messageMetadataFromThreadState(state: unknown): ServerMessageMetadataSnapshot {
+  if (!isRecord(state)) return EMPTY_SERVER_MESSAGE_METADATA
+  const values = isRecord(state.values) ? state.values : {}
+  const messages = Array.isArray(values.messages) ? values.messages : []
+  const metadataById = new Map<string, Record<string, unknown>>()
+  const metadataByIndex: (Record<string, unknown> | null)[] = []
+  const idByIndex: (string | null)[] = []
+  for (const message of messages) {
+    if (!isRecord(message)) {
+      metadataByIndex.push(null)
+      idByIndex.push(null)
+      continue
+    }
+    const messageId = typeof message.id === 'string' && message.id.length > 0 ? message.id : null
+    idByIndex.push(messageId)
+    const additionalKwargs = isRecord(message.additional_kwargs) ? message.additional_kwargs : {}
+    const metadata = isRecord(additionalKwargs.metadata) ? additionalKwargs.metadata : null
+    metadataByIndex.push(metadata)
+    if (metadata && messageId) metadataById.set(messageId, metadata)
+  }
+  return { byId: metadataById, byIndex: metadataByIndex, idByIndex }
+}
+
+function messagesFromThreadState(state: unknown): readonly BaseMessage[] | null {
+  if (!isRecord(state)) return null
+  const values = isRecord(state.values) ? state.values : {}
+  const messages = Array.isArray(values.messages) ? values.messages : null
+  if (!messages) return null
+
+  const converted: BaseMessage[] = []
+  for (const message of messages) {
+    if (!isCoercibleMessage(message)) continue
+    converted.push(coerceMessageLikeToMessage(message))
+  }
+  return converted
+}
+
+function isCoercibleMessage(value: unknown): value is BaseMessageLike {
+  if (isBaseMessage(value)) return true
+  if (!isRecord(value)) return false
+  const type = value.type
+  const role = value.role
+  return (typeof type === 'string' || typeof role === 'string') && 'content' in value
+}
+
+function mergeServerMessageMetadata(
+  messages: readonly BaseMessage[],
+  metadataSnapshot: ServerMessageMetadataSnapshot,
+): BaseMessage[] {
+  if (
+    metadataSnapshot.byId.size === 0 &&
+    metadataSnapshot.byIndex.length === 0 &&
+    metadataSnapshot.idByIndex.length === 0
+  ) {
+    return [...messages]
+  }
+  return messages.map((message, index) => {
+    const messageId = message.id
+    const metadata =
+      (messageId ? metadataSnapshot.byId.get(messageId) : undefined) ??
+      metadataSnapshot.byIndex[index]
+    const replacementId = replacementMessageId(message, metadataSnapshot.idByIndex[index])
+    if (!metadata && !replacementId) return message
+    return withAdditionalMessageMetadata(message, metadata ?? {}, replacementId)
+  })
+}
+
+function replacementMessageId(
+  message: BaseMessage,
+  candidate: string | null | undefined,
+): string | null {
+  if (!candidate) return null
+  const current = message.id
+  if (typeof current !== 'string' || current.length === 0) return candidate
+  if (current.startsWith('opt-') || current.startsWith('stream-')) return candidate
+  return null
+}
+
+function withAdditionalMessageMetadata(
+  message: BaseMessage,
+  metadata: Record<string, unknown>,
+  replacementId: string | null = null,
+): BaseMessage {
+  const additionalKwargs = isRecord(message.additional_kwargs) ? message.additional_kwargs : {}
+  const existingMetadata = isRecord(additionalKwargs.metadata) ? additionalKwargs.metadata : {}
+  const clone = Object.create(Object.getPrototypeOf(message)) as BaseMessage
+  Object.assign(clone, message, {
+    ...(replacementId ? { id: replacementId } : {}),
+    additional_kwargs: {
+      ...additionalKwargs,
+      metadata: {
+        ...existingMetadata,
+        ...metadata,
+      },
+    },
+  })
+  return clone
+}
+
+function appendTerminalRunNotice(
+  messages: readonly BaseMessage[],
+  notice: ThreadRunNotice | null,
+  text: string,
+): BaseMessage[] {
+  if (!notice) return [...messages]
+  const id = `moldy-${notice.status}-${notice.id}`
+  if (messages.some((message) => message.id === id)) return [...messages]
+  return [
+    ...messages,
+    new AIMessage({
+      id,
+      content: text,
+      additional_kwargs: {
+        metadata: {
+          moldy_terminal_notice: notice.status,
+        },
+      },
+    }),
+  ]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
 export function useMoldyLangGraphStream({
   agentId,
   conversationId,
@@ -72,9 +240,23 @@ export function useMoldyLangGraphStream({
   attachmentAdapter,
 }: UseMoldyLangGraphStreamOptions) {
   const setChatCancelInFlight = useSetAtom(chatCancelInFlightAtom)
+  const tPage = useTranslations('chat.page')
+  const tReconnect = useTranslations('chat.reconnect')
+  const [threadRunNotice, setThreadRunNotice] = useState<ThreadRunNotice | null>(null)
+  const [serverMessageMetadata, setServerMessageMetadata] = useState<ServerMessageMetadataSnapshot>(
+    EMPTY_SERVER_MESSAGE_METADATA,
+  )
+  const [serverStateMessages, setServerStateMessages] = useState<readonly BaseMessage[] | null>(
+    null,
+  )
+  const handleThreadState = useCallback((state: unknown, options?: ThreadStateHydrationOptions) => {
+    setThreadRunNotice(terminalRunNoticeFromThreadState(state))
+    setServerMessageMetadata(messageMetadataFromThreadState(state))
+    if (options?.replaceMessages) setServerStateMessages(messagesFromThreadState(state))
+  }, [])
   const transport = useMemo(
-    () => createMoldyAgentTransport(conversationId, agentId),
-    [agentId, conversationId],
+    () => createMoldyAgentTransport(conversationId, agentId, { onState: handleThreadState }),
+    [agentId, conversationId, handleThreadState],
   )
   const stream = useStream<MoldyGraphState>({
     transport,
@@ -91,13 +273,54 @@ export function useMoldyLangGraphStream({
   )
   const deepAgentsState = useMemo(() => selectDeepAgentsState(stream.values ?? {}), [stream.values])
   const [resolvedInterrupts, setResolvedInterrupts] = useState<ResolvedInterruptToolCall[]>([])
+  const wasLoadingRef = useRef(false)
+  useEffect(() => {
+    if (stream.isLoading) {
+      wasLoadingRef.current = true
+      return undefined
+    }
+    if (!wasLoadingRef.current) return undefined
+    wasLoadingRef.current = false
+    let cancelled = false
+    void loadServerThreadState(conversationId)
+      .then((state: ThreadStateResponse) => {
+        if (!cancelled) handleThreadState(state)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [conversationId, handleThreadState, stream.isLoading])
+  useEffect(() => {
+    const onBranchSwitched = (event: Event) => {
+      if (!isMoldyBranchSwitchedEvent(event)) return
+      if (event.detail.conversationId !== conversationId) return
+      void loadServerThreadState(conversationId)
+        .then((state: ThreadStateResponse) => {
+          handleThreadState(state, { replaceMessages: true })
+        })
+        .catch(() => undefined)
+    }
+    window.addEventListener(MOLDY_BRANCH_SWITCHED_EVENT, onBranchSwitched)
+    return () => window.removeEventListener(MOLDY_BRANCH_SWITCHED_EVENT, onBranchSwitched)
+  }, [conversationId, handleThreadState])
+  const visibleStreamMessages = serverStateMessages ?? stream.messages
+  const streamMessagesWithServerMetadata = useMemo(
+    () => mergeServerMessageMetadata(visibleStreamMessages, serverMessageMetadata),
+    [serverMessageMetadata, visibleStreamMessages],
+  )
   const allInterruptPayloads = standardPayloadsFromInterrupts([
     ...stream.interrupts,
     ...threadInterruptsFromStream(stream),
   ])
   const interruptPayloads = useMemo(
-    () => activeInterruptPayloads(allInterruptPayloads, stream.messages, resolvedInterrupts),
-    [allInterruptPayloads, resolvedInterrupts, stream.messages],
+    () =>
+      activeInterruptPayloads(
+        allInterruptPayloads,
+        streamMessagesWithServerMetadata,
+        resolvedInterrupts,
+      ),
+    [allInterruptPayloads, resolvedInterrupts, streamMessagesWithServerMetadata],
   )
   const interruptPayloadsById = useMemo(
     () => new Map(interruptPayloads.map((payload) => [payload.interrupt_id, payload])),
@@ -111,11 +334,11 @@ export function useMoldyLangGraphStream({
     () =>
       dedupeLangChainMessagesById(
         appendResolvedInterruptToolCallMessages(
-          appendInterruptToolCallMessages(stream.messages, interruptPayloads),
+          appendInterruptToolCallMessages(streamMessagesWithServerMetadata, interruptPayloads),
           resolvedInterrupts,
         ),
       ),
-    [stream.messages, interruptPayloads, resolvedInterrupts],
+    [streamMessagesWithServerMetadata, interruptPayloads, resolvedInterrupts],
   )
   const messagesWithArtifacts = useLangGraphArtifactEffects({
     stream,
@@ -128,18 +351,34 @@ export function useMoldyLangGraphStream({
     messages: messagesWithArtifacts,
     stateMessages: stream.values?.messages ?? [],
   })
+  const terminalNoticeText =
+    threadRunNotice?.status === 'stale' ? tReconnect('stale') : tPage('canceled')
+  const messagesWithTerminalNotice = useMemo(
+    () => appendTerminalRunNotice(messagesWithUsage, threadRunNotice, terminalNoticeText),
+    [messagesWithUsage, terminalNoticeText, threadRunNotice],
+  )
   useLangGraphMemoryEffects({ stream })
-  const isRunning = stream.isLoading && interruptPayloads.length === 0
+  const isRunning =
+    stream.isLoading && interruptPayloads.length === 0 && threadRunNotice?.status !== 'stale'
   const convertedMessages = useExternalMessageConverter({
     callback: convertMoldyLangChainMessage,
-    messages: messagesWithUsage,
+    messages: messagesWithTerminalNotice,
     isRunning,
   })
-  const messages = useStableConvertedMessages(convertedMessages, messagesWithUsage, isRunning)
-  const { onNew, onEdit, onReload } = useCheckpointForkHandlers({
+  const messages = useStableConvertedMessages(
+    convertedMessages,
+    messagesWithTerminalNotice,
+    isRunning,
+  )
+  const {
+    onNew: submitNew,
+    onEdit: submitEdit,
+    onReload: submitReload,
+  } = useCheckpointForkHandlers({
+    conversationId,
     stream,
     visibleMessages: messages,
-    langChainMessages: messagesWithUsage,
+    langChainMessages: messagesWithTerminalNotice,
   })
   const coordinatorsRef = useRef(new Map<string, HiTLDecisionCoordinator>())
   const pendingInterruptDecisionsRef = useRef(new Map<string, Decision[]>())
@@ -155,10 +394,40 @@ export function useMoldyLangGraphStream({
     setChatCancelInFlight(true)
     try {
       await stream.stop()
+      const activeRun = await conversationRunsApi.active(conversationId).catch(() => null)
+      if (activeRun?.status === 'queued' || activeRun?.status === 'running') {
+        await conversationRunsApi.cancel(conversationId, activeRun.id)
+      }
+      setThreadRunNotice({ id: `local-${conversationId}`, status: 'canceled' })
     } finally {
       setChatCancelInFlight(false)
     }
-  }, [setChatCancelInFlight, stream])
+  }, [conversationId, setChatCancelInFlight, stream])
+
+  const onNew = useCallback(
+    async (...args: Parameters<typeof submitNew>) => {
+      setThreadRunNotice(null)
+      setServerStateMessages(null)
+      await submitNew(...args)
+    },
+    [submitNew],
+  )
+  const onEdit = useCallback(
+    async (...args: Parameters<typeof submitEdit>) => {
+      setThreadRunNotice(null)
+      setServerStateMessages(null)
+      await submitEdit(...args)
+    },
+    [submitEdit],
+  )
+  const onReload = useCallback(
+    async (...args: Parameters<typeof submitReload>) => {
+      setThreadRunNotice(null)
+      setServerStateMessages(null)
+      await submitReload(...args)
+    },
+    [submitReload],
+  )
 
   const rememberResolvedInterrupt = useCallback(
     (interruptId: string | null, decisions: readonly Decision[]) => {
@@ -247,6 +516,8 @@ export function useMoldyLangGraphStream({
     async (content: string) => {
       const trimmed = content.trim()
       if (!trimmed) return
+      setThreadRunNotice(null)
+      setServerStateMessages(null)
       await stream.submit({ messages: [new HumanMessage(trimmed)] })
     },
     [stream],

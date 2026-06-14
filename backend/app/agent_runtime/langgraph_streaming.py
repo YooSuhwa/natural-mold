@@ -30,11 +30,13 @@ from app.agent_runtime.protocol_events import (
     to_protocol_wire_event,
 )
 from app.agent_runtime.protocol_persistence import persistable_protocol_event
+from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.protocol_side_effects import (
     collect_protocol_side_effect_events,
     prepare_artifact_recorder,
 )
 from app.agent_runtime.protocol_usage import collect_protocol_usage_event
+from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.agent_runtime.streaming import (
     ArtifactEventRecorder,
     PersistCallback,
@@ -115,7 +117,7 @@ def _error_event(
         thread_id=thread_id,
         seq=seq,
         method="error",
-        data={"message": str(exc)},
+        data={"message": public_stream_error_message(exc)},
     )
 
 
@@ -176,16 +178,20 @@ async def stream_agent_response_langgraph(
         max_emitted_seq = event_to_emit["seq"]
         if event_to_emit["method"] == "input.requested":
             input_requested_emitted = True
-        event_dict = dict(event_to_emit)
+        wire_event: StoredProtocolEvent = {
+            **event_to_emit,
+            "data": redact_protocol_data(event_to_emit["method"], event_to_emit["data"]),
+        }
+        event_dict = dict(wire_event)
         emitted.append(event_dict)
         persistable_event = persistable_protocol_event(event_to_emit)
         persist_buffer.append(persistable_event)
         if trace_sink is not None:
             trace_sink.append(persistable_event)
         if broker is not None:
-            broker.publish_nowait(_broker_event(event_to_emit))
+            broker.publish_nowait(_broker_event(wire_event))
         await flush_persist_buffer()
-        return format_protocol_sse(event_to_emit)
+        return format_protocol_sse(wire_event)
 
     async def emit_canonical_interrupts(event: StoredProtocolEvent) -> list[str]:
         chunks: list[str] = []
@@ -315,7 +321,7 @@ async def stream_agent_response_langgraph(
             )
         )
     except Exception as exc:
-        record = StreamErrorRecord(error=exc, message=str(exc))
+        record = StreamErrorRecord(error=exc, message=public_stream_error_message(exc))
         if error_sink is not None:
             error_sink.append(record)
         yield await emit(
@@ -324,7 +330,7 @@ async def stream_agent_response_langgraph(
                 thread_id=thread_id,
                 seq=max_emitted_seq + 1,
                 event="failed",
-                error_message=str(exc),
+                error_message=record.message,
             )
         )
         yield await emit(

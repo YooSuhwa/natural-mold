@@ -120,6 +120,7 @@ function stableString(value: unknown): string {
 function messageFingerprint(message: BaseMessage): string {
   const source = message as {
     readonly content?: unknown
+    readonly additional_kwargs?: unknown
     readonly name?: unknown
     readonly tool_calls?: unknown
     readonly tool_call_id?: unknown
@@ -128,6 +129,7 @@ function messageFingerprint(message: BaseMessage): string {
     id: messageId(message),
     kind: messageKind(message),
     content: source.content,
+    additional_kwargs: source.additional_kwargs,
     name: source.name,
     tool_calls: source.tool_calls,
     tool_call_id: source.tool_call_id,

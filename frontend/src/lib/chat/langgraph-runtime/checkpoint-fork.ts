@@ -4,6 +4,12 @@ import type { BaseMessage } from '@langchain/core/messages'
 import type { AppendMessage, ThreadMessage } from '@assistant-ui/react'
 
 type VisibleMessage = Pick<ThreadMessage, 'id'>
+type CheckpointContext = {
+  visibleMessages: readonly VisibleMessage[]
+  metadataByMessageId: MessageMetadataMap
+  checkpointByMessageId: ReadonlyMap<string, string>
+  messageIdsByIndex?: readonly (readonly string[])[]
+}
 
 export function useMessageMetadataSnapshot<StateType extends object>(
   stream: UseStreamReturn<StateType>,
@@ -25,30 +31,37 @@ export function checkpointByMessageIdFromMessages(
 
 export function checkpointForEdit(
   message: Pick<AppendMessage, 'sourceId' | 'parentId'>,
-  context: {
-    visibleMessages: readonly VisibleMessage[]
-    metadataByMessageId: MessageMetadataMap
-    checkpointByMessageId: ReadonlyMap<string, string>
-  },
+  context: CheckpointContext,
 ): string | null {
-  const sourceId = stableMessageId(message.sourceId) ?? stableMessageId(message.parentId)
-  if (!sourceId) return null
+  const visibleCandidateIds = uniquePresentIds([message.sourceId, message.parentId])
+  const stableMessageIds = visibleCandidateIds.filter(isStableMessageId)
+  if (visibleCandidateIds.length === 0) return null
 
-  const liveCheckpoint = context.metadataByMessageId.get(sourceId)?.parentCheckpointId
-  if (liveCheckpoint) return liveCheckpoint
+  for (const messageId of stableMessageIds) {
+    const liveCheckpoint = context.metadataByMessageId.get(messageId)?.parentCheckpointId
+    if (liveCheckpoint) return liveCheckpoint
+  }
 
-  const previousId = previousVisibleMessageId(context.visibleMessages, sourceId)
-  if (!previousId) return null
-  return context.checkpointByMessageId.get(previousId) ?? null
+  for (const messageId of visibleCandidateIds) {
+    const previousId = previousVisibleMessageId(context.visibleMessages, messageId)
+    if (!previousId) continue
+    const checkpointId = context.checkpointByMessageId.get(previousId)
+    if (checkpointId) return checkpointId
+  }
+
+  for (const messageId of visibleCandidateIds) {
+    const index = visibleMessageIndex(context.visibleMessages, messageId)
+    if (index < 0) continue
+    const checkpointId = parentCheckpointForServerIndex(context, index)
+    if (checkpointId) return checkpointId
+  }
+
+  return null
 }
 
 export function checkpointForReload(
   parentId: string | null,
-  context: {
-    visibleMessages: readonly VisibleMessage[]
-    metadataByMessageId: MessageMetadataMap
-    checkpointByMessageId: ReadonlyMap<string, string>
-  },
+  context: CheckpointContext,
 ): string | null {
   const targetId = nextVisibleMessageId(context.visibleMessages, parentId)
   const liveCheckpoint = targetId
@@ -56,8 +69,18 @@ export function checkpointForReload(
     : undefined
   if (liveCheckpoint) return liveCheckpoint
 
+  if (targetId) {
+    const targetIndex = visibleMessageIndex(context.visibleMessages, targetId)
+    const serverCheckpoint = parentCheckpointForServerIndex(context, targetIndex)
+    if (serverCheckpoint) return serverCheckpoint
+  }
+
   if (!parentId) return null
-  return context.checkpointByMessageId.get(parentId) ?? null
+  const checkpointId = context.checkpointByMessageId.get(parentId)
+  if (checkpointId) return checkpointId
+
+  const parentIndex = visibleMessageIndex(context.visibleMessages, parentId)
+  return checkpointForServerIndex(context, parentIndex)
 }
 
 function checkpointIdFromMessage(message: BaseMessage): string | null {
@@ -86,8 +109,40 @@ function nextVisibleMessageId(
   return messages[index + 1]?.id ?? null
 }
 
-function stableMessageId(value: string | null | undefined): string | null {
-  return value && !value.startsWith('opt-') && !value.startsWith('stream-') ? value : null
+function visibleMessageIndex(messages: readonly VisibleMessage[], messageId: string): number {
+  return messages.findIndex((message) => message.id === messageId)
+}
+
+function parentCheckpointForServerIndex(context: CheckpointContext, index: number): string | null {
+  if (index < 0) return null
+  const serverIds = context.messageIdsByIndex?.[index] ?? []
+  for (const serverId of serverIds) {
+    const checkpointId = context.metadataByMessageId.get(serverId)?.parentCheckpointId
+    if (checkpointId) return checkpointId
+  }
+  return null
+}
+
+function checkpointForServerIndex(context: CheckpointContext, index: number): string | null {
+  if (index < 0) return null
+  const serverIds = context.messageIdsByIndex?.[index] ?? []
+  for (const serverId of serverIds) {
+    const checkpointId = context.checkpointByMessageId.get(serverId)
+    if (checkpointId) return checkpointId
+  }
+  return null
+}
+
+function isStableMessageId(value: string): boolean {
+  return !value.startsWith('opt-') && !value.startsWith('stream-')
+}
+
+function uniquePresentIds(values: readonly (string | null | undefined)[]): string[] {
+  const ids: string[] = []
+  for (const value of values) {
+    if (value && !ids.includes(value)) ids.push(value)
+  }
+  return ids
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

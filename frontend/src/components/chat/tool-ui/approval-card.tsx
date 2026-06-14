@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { toApprove, toEdit, toReject } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
+import { redactSensitiveRecord, redactSensitiveText } from '@/lib/chat/sensitive-display'
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
 import type { Decision as StandardDecision } from '@/lib/types'
 import { CountdownBadge } from './countdown-badge'
@@ -303,8 +304,9 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
 
     // ── requires-action: 승인 카드 ──
     const toolName = args?.tool_name ?? t('toolCall')
-    const description = args?.description ?? args?.message
-    const toolArgs = args?.tool_args
+    const rawDescription = args?.description ?? args?.message
+    const description = rawDescription ? redactSensitiveText(rawDescription) : undefined
+    const toolArgs = args?.tool_args ? redactSensitiveRecord(args.tool_args) : undefined
 
     return (
       <div className="moldy-chat-card moldy-status-surface moldy-status-warn w-full">

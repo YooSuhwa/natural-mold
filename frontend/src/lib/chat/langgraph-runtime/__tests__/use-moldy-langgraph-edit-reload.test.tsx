@@ -56,11 +56,16 @@ const mocks = vi.hoisted(() => {
     useExternalMessageConverter: vi.fn(() => mocks.convertedMessages),
     useExternalStoreRuntime: vi.fn((options: unknown) => ({ kind: 'runtime', options })),
     convertLangChainBaseMessage: vi.fn(),
+    apiFetch: vi.fn(),
   }
 })
 
 vi.mock('../moldy-agent-transport', () => ({
   createMoldyAgentTransport: mocks.createMoldyAgentTransport,
+}))
+
+vi.mock('@/lib/api/client', () => ({
+  apiFetch: mocks.apiFetch,
 }))
 
 vi.mock('@langchain/react', () => ({
@@ -122,6 +127,8 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
     mocks.stream.messages = []
     mocks.stream.values = { messages: [] }
     mocks.stream.submit.mockClear()
+    mocks.apiFetch.mockReset()
+    mocks.apiFetch.mockResolvedValue({ metadata: {} })
     mocks.metadataStore.getSnapshot.mockReturnValue(new Map())
     mocks.useExternalStoreRuntime.mockClear()
     mocks.convertedMessages = []
@@ -173,6 +180,168 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
       { messages: [expect.objectContaining({ content: 'edited first follow-up' })] },
       { forkFrom: 'ck-after-user-0' },
     )
+  })
+
+  it('falls back to server parent checkpoint metadata for first-message edits', async () => {
+    mocks.convertedMessages = [{ id: 'user-1' }, { id: 'assistant-1' }]
+    mocks.apiFetch.mockResolvedValue({
+      metadata: {
+        parent_checkpoint_by_message_id: { 'user-1': 'ck-root' },
+        checkpoint_by_message_id: { 'user-1': 'ck-after-user-1' },
+      },
+    })
+
+    const runtimeOptions = renderRuntimeOptions()
+    await runtimeOptions.onEdit({
+      content: [{ type: 'text', text: 'edited first prompt' }],
+      parentId: 'user-1',
+      sourceId: 'user-1',
+    })
+
+    expect(mocks.apiFetch).toHaveBeenCalledWith(
+      '/api/conversations/conversation-1/langgraph/threads/conversation-1/state',
+    )
+    expect(mocks.stream.submit).toHaveBeenCalledWith(
+      { messages: [expect.objectContaining({ content: 'edited first prompt' })] },
+      { forkFrom: 'ck-root' },
+    )
+  })
+
+  it('merges server parent checkpoint metadata with same-id local metadata for edits', async () => {
+    mocks.convertedMessages = [{ id: 'user-1' }, { id: 'assistant-1' }]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['user-1', { parentCheckpointId: undefined }]]),
+    )
+    mocks.apiFetch.mockResolvedValue({
+      metadata: {
+        parent_checkpoint_by_message_id: { 'user-1': 'ck-root' },
+        checkpoint_by_message_id: { 'user-1': 'ck-after-user-1' },
+      },
+    })
+
+    const runtimeOptions = renderRuntimeOptions()
+    await runtimeOptions.onEdit({
+      content: [{ type: 'text', text: 'edited first prompt' }],
+      parentId: 'user-1',
+      sourceId: 'user-1',
+    })
+
+    expect(mocks.stream.submit).toHaveBeenCalledWith(
+      { messages: [expect.objectContaining({ content: 'edited first prompt' })] },
+      { forkFrom: 'ck-root' },
+    )
+  })
+
+  it('keeps server parent checkpoint when local metadata has the same id without one', async () => {
+    mocks.convertedMessages = [{ id: 'user-1' }, { id: 'assistant-1' }]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['user-1', { parentCheckpointId: undefined }]]),
+    )
+    mocks.apiFetch.mockResolvedValue({
+      metadata: {
+        parent_checkpoint_by_message_id: { 'user-1': 'ck-root' },
+        checkpoint_by_message_id: { 'user-1': 'ck-after-user-1' },
+      },
+    })
+
+    const runtimeOptions = renderRuntimeOptions()
+    await runtimeOptions.onEdit({
+      content: [{ type: 'text', text: 'edited first prompt' }],
+      parentId: null,
+      sourceId: 'user-1',
+    })
+
+    expect(mocks.stream.submit).toHaveBeenCalledWith(
+      { messages: [expect.objectContaining({ content: 'edited first prompt' })] },
+      { forkFrom: 'ck-root' },
+    )
+  })
+
+  it('falls back to parentId when sourceId is stale for edits', async () => {
+    mocks.convertedMessages = [{ id: 'user-1' }, { id: 'assistant-1' }]
+    mocks.apiFetch.mockResolvedValue({
+      metadata: {
+        parent_checkpoint_by_message_id: { 'user-1': 'ck-root' },
+        checkpoint_by_message_id: { 'user-1': 'ck-after-user-1' },
+      },
+    })
+
+    const runtimeOptions = renderRuntimeOptions()
+    await runtimeOptions.onEdit({
+      content: [{ type: 'text', text: 'edited first prompt' }],
+      parentId: 'user-1',
+      sourceId: 'stale-source-id',
+    })
+
+    expect(mocks.stream.submit).toHaveBeenCalledWith(
+      { messages: [expect.objectContaining({ content: 'edited first prompt' })] },
+      { forkFrom: 'ck-root' },
+    )
+  })
+
+  it('falls back by message index when local edit ids differ from server state ids', async () => {
+    mocks.convertedMessages = [{ id: 'local-user-1' }, { id: 'local-assistant-1' }]
+    mocks.apiFetch.mockResolvedValue({
+      values: {
+        messages: [{ id: 'server-user-1' }, { id: 'server-assistant-1' }],
+      },
+      metadata: {
+        parent_checkpoint_by_message_id: { 'server-user-1': 'ck-root' },
+        checkpoint_by_message_id: { 'server-user-1': 'ck-after-user-1' },
+      },
+    })
+
+    const runtimeOptions = renderRuntimeOptions()
+    await runtimeOptions.onEdit({
+      content: [{ type: 'text', text: 'edited first prompt' }],
+      parentId: 'local-user-1',
+      sourceId: 'local-user-1',
+    })
+
+    expect(mocks.stream.submit).toHaveBeenCalledWith(
+      { messages: [expect.objectContaining({ content: 'edited first prompt' })] },
+      { forkFrom: 'ck-root' },
+    )
+  })
+
+  it('falls back by visible index when assistant-ui edit ids are temporary', async () => {
+    mocks.convertedMessages = [{ id: 'stream-user-1' }, { id: 'stream-assistant-1' }]
+    mocks.apiFetch.mockResolvedValue({
+      values: {
+        messages: [{ id: 'server-user-1' }, { id: 'server-assistant-1' }],
+      },
+      metadata: {
+        parent_checkpoint_by_message_id: { 'server-user-1': 'ck-root' },
+        checkpoint_by_message_id: { 'server-user-1': 'ck-after-user-1' },
+      },
+    })
+
+    const runtimeOptions = renderRuntimeOptions()
+    await runtimeOptions.onEdit({
+      content: [{ type: 'text', text: 'edited first prompt' }],
+      parentId: 'stream-user-1',
+      sourceId: 'stream-user-1',
+    })
+
+    expect(mocks.stream.submit).toHaveBeenCalledWith(
+      { messages: [expect.objectContaining({ content: 'edited first prompt' })] },
+      { forkFrom: 'ck-root' },
+    )
+  })
+
+  it('falls back to server parent checkpoint metadata for regenerate', async () => {
+    mocks.convertedMessages = [{ id: 'user-1' }, { id: 'assistant-1' }]
+    mocks.apiFetch.mockResolvedValue({
+      metadata: {
+        parent_checkpoint_by_message_id: { 'assistant-1': 'ck-after-user-1' },
+        checkpoint_by_message_id: { 'user-1': 'ck-after-user-1' },
+      },
+    })
+
+    const runtimeOptions = renderRuntimeOptions()
+    await runtimeOptions.onReload('user-1')
+
+    expect(mocks.stream.submit).toHaveBeenCalledWith(null, { forkFrom: 'ck-after-user-1' })
   })
 
   it('does not submit edit or reload when no safe checkpoint is available', async () => {

@@ -67,4 +67,32 @@ describe('convertMoldyLangChainMessage', () => {
       },
     })
   })
+
+  it('preserves branch picker metadata from LangGraph state messages', () => {
+    const message = new AIMessage({
+      id: 'assistant-branch-1',
+      content: 'new answer',
+      additional_kwargs: {
+        metadata: {
+          branches: ['assistant-old', 'assistant-branch-1'],
+          siblingCheckpointIds: ['ck-old', 'ck-new'],
+          activeBranchId: 'assistant-branch-1',
+          branchCheckpointId: 'ck-new',
+          branchIndex: 1,
+          branchTotal: 2,
+        },
+      },
+    })
+
+    const converted = convertMoldyLangChainMessage(message, converterMetadata())
+
+    expect(customMetadata(converted)).toMatchObject({
+      branches: ['assistant-old', 'assistant-branch-1'],
+      siblingCheckpointIds: ['ck-old', 'ck-new'],
+      activeBranchId: 'assistant-branch-1',
+      branchCheckpointId: 'ck-new',
+      branchIndex: 1,
+      branchTotal: 2,
+    })
+  })
 })

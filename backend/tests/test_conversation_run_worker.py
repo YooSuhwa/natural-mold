@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -152,3 +153,54 @@ async def test_worker_skips_finalization_when_run_already_terminal() -> None:
         assert refreshed is not None
         assert refreshed.status == "stale"
         assert refreshed.error_code == "stale_heartbeat"
+
+
+@pytest.mark.asyncio
+async def test_completed_regenerate_run_persists_latest_branch_leaf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = await seed_conversation_with_agent()
+    monkeypatch.setattr(conversation_run_worker, "get_checkpointer", lambda: object())
+
+    async def fake_build_message_tree(*_args: Any, **_kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(active_checkpoint_id="ck-new-leaf")
+
+    monkeypatch.setattr(
+        conversation_run_worker.thread_branch_service,
+        "build_message_tree",
+        fake_build_message_tree,
+    )
+
+    await conversation_run_worker._activate_latest_branch_leaf_if_needed(
+        conversation_id=conversation_id,
+        moldy_source="regenerate",
+        final_status="completed",
+    )
+
+    async with TestSession() as db:
+        conversation = await db.get(Conversation, conversation_id)
+        assert conversation is not None
+        assert conversation.active_branch_checkpoint_id == "ck-new-leaf"
+
+
+@pytest.mark.asyncio
+async def test_chat_run_does_not_persist_latest_branch_leaf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = await seed_conversation_with_agent()
+
+    def fail_get_checkpointer() -> object:
+        raise AssertionError("chat run must not inspect branch checkpoints")
+
+    monkeypatch.setattr(conversation_run_worker, "get_checkpointer", fail_get_checkpointer)
+
+    await conversation_run_worker._activate_latest_branch_leaf_if_needed(
+        conversation_id=conversation_id,
+        moldy_source="chat",
+        final_status="completed",
+    )
+
+    async with TestSession() as db:
+        conversation = await db.get(Conversation, conversation_id)
+        assert conversation is not None
+        assert conversation.active_branch_checkpoint_id is None

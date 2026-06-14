@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
@@ -55,6 +56,23 @@ class _FakeStateGraph:
     ) -> None:
         self.updates.append((config, values, as_node, task_id))
         self.snapshot = _FakeSnapshot(values=values, checkpoint_id="ck-updated")
+
+
+class _FakeDeltaCheckpointer:
+    def __init__(self, messages_by_checkpoint: dict[str, list[Any]]) -> None:
+        self.messages_by_checkpoint = messages_by_checkpoint
+
+    async def aget_delta_channel_history(
+        self, *, config: dict[str, Any], channels: list[str]
+    ) -> dict[str, Any]:
+        assert channels == ["messages"]
+        checkpoint_id = config["configurable"]["checkpoint_id"]
+        return {
+            "messages": {
+                "seed": self.messages_by_checkpoint.get(checkpoint_id, []),
+                "writes": [],
+            }
+        }
 
 
 async def _seed_conversation(
@@ -191,6 +209,136 @@ async def test_run_start_command_defaults_multitask_strategy_to_reject(
     assert started["conversation_id"] == conversation.id
     assert started["input_payload"] == {"messages": [{"role": "user", "content": "hi"}]}
     assert started["executor_fn"].__name__ == "execute_agent_stream_langgraph"
+
+
+@pytest.mark.asyncio
+async def test_run_start_command_regenerate_checkpoint_uses_overwrite_input(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.messages import HumanMessage
+    from langgraph.types import Overwrite
+
+    conversation = await _seed_conversation(db)
+    fake_checkpointer = _FakeDeltaCheckpointer(
+        {"ck-after-user": [HumanMessage(content="First question", id="user-1")]}
+    )
+    started: dict[str, Any] = {}
+
+    async def fake_start_conversation_run(**kwargs: Any) -> None:
+        started.update(kwargs)
+
+    monkeypatch.setattr(
+        "app.agent_runtime.checkpointer.get_checkpointer",
+        lambda: fake_checkpointer,
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fake_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": 10,
+            "method": "run.start",
+            "params": {
+                "input": None,
+                "config": {
+                    "configurable": {
+                        "thread_id": str(conversation.id),
+                        "checkpoint_id": "ck-after-user",
+                    }
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert started["cfg"].checkpoint_id == "ck-after-user"
+    overwrite = started["input_payload"]["messages"]
+    assert isinstance(overwrite, Overwrite)
+    assert [msg.content for msg in overwrite.value] == ["First question"]
+
+    run = (
+        await db.execute(
+            select(ConversationRun).where(
+                ConversationRun.id == uuid.UUID(response.json()["result"]["run_id"])
+            )
+        )
+    ).scalar_one()
+    assert run.source == "regenerate"
+
+
+@pytest.mark.asyncio
+async def test_run_start_command_edit_checkpoint_appends_input_to_overwrite(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.messages import HumanMessage
+    from langgraph.types import Overwrite
+
+    conversation = await _seed_conversation(db)
+    fake_checkpointer = _FakeDeltaCheckpointer(
+        {"ck-before-edit": [HumanMessage(content="Earlier turn", id="user-0")]}
+    )
+    started: dict[str, Any] = {}
+
+    async def fake_start_conversation_run(**kwargs: Any) -> None:
+        started.update(kwargs)
+
+    monkeypatch.setattr(
+        "app.agent_runtime.checkpointer.get_checkpointer",
+        lambda: fake_checkpointer,
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fake_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": 11,
+            "method": "run.start",
+            "params": {
+                "input": {
+                    "messages": [
+                        {
+                            "type": "human",
+                            "content": "Edited prompt",
+                            "id": "user-edited",
+                        }
+                    ]
+                },
+                "config": {
+                    "configurable": {
+                        "thread_id": str(conversation.id),
+                        "checkpoint_id": "ck-before-edit",
+                    }
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert started["cfg"].checkpoint_id == "ck-before-edit"
+    overwrite = started["input_payload"]["messages"]
+    assert isinstance(overwrite, Overwrite)
+    assert [msg.content for msg in overwrite.value] == ["Earlier turn", "Edited prompt"]
+    assert overwrite.value[-1].id == "user-edited"
+
+    run = (
+        await db.execute(
+            select(ConversationRun).where(
+                ConversationRun.id == uuid.UUID(response.json()["result"]["run_id"])
+            )
+        )
+    ).scalar_one()
+    assert run.source == "edit"
+    assert run.input_preview == "Edited prompt"
 
 
 @pytest.mark.asyncio

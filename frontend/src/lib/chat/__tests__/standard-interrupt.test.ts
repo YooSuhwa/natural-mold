@@ -101,6 +101,31 @@ describe('standardInterruptToToolCalls', () => {
     ])
   })
 
+  it('redacts sensitive approval args without redacting token usage metrics', () => {
+    const payload: StandardInterruptPayload = {
+      interrupt_id: 'intr-secret',
+      action_requests: [
+        {
+          name: 'execute_in_skill',
+          args: {
+            api_key: 'SECRET_VALUE',
+            nested: { refresh_token: 'REFRESH_SECRET', query: 'safe' },
+            usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 },
+          },
+        },
+      ],
+      review_configs: [
+        { action_name: 'execute_in_skill', allowed_decisions: ['approve', 'edit', 'reject'] },
+      ],
+    }
+
+    expect(standardInterruptToToolCalls(payload)[0]?.args.tool_args).toEqual({
+      api_key: '<redacted>',
+      nested: { refresh_token: '<redacted>', query: 'safe' },
+      usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 },
+    })
+  })
+
   it('preserves action order and indexes for multi-action interrupts', () => {
     const payload: StandardInterruptPayload = {
       interrupt_id: 'intr-multi',
@@ -180,6 +205,50 @@ describe('standardInterruptToToolCalls', () => {
       file_path: '/runtime/today_diary.md',
       content: '# Today',
     })
+  })
+
+  it('matches raw pending tool args against redacted approval args', () => {
+    const payload: StandardInterruptPayload = {
+      interrupt_id: 'intr-tool-secret',
+      action_requests: [
+        {
+          name: 'execute_in_skill',
+          args: { skill_directory: '/skills/docx-document', api_key: 'SECRET_VALUE' },
+          description: 'Tool execution requires approval',
+        },
+      ],
+      review_configs: [
+        { action_name: 'execute_in_skill', allowed_decisions: ['approve', 'reject'] },
+      ],
+    }
+
+    const calls = mergeInterruptToolCalls(
+      [
+        {
+          id: 'call-secret',
+          name: 'execute_in_skill',
+          args: { skill_directory: '/skills/docx-document', api_key: 'SECRET_VALUE' },
+        },
+      ],
+      payload,
+    )
+
+    expect(calls).toEqual([
+      {
+        id: 'call-secret',
+        name: 'request_approval',
+        args: {
+          tool_name: 'execute_in_skill',
+          tool_args: { skill_directory: '/skills/docx-document', api_key: '<redacted>' },
+          description: 'Tool execution requires approval',
+          approval_id: 'call-secret',
+          allowed_decisions: ['approve', 'reject'],
+          hitl_interrupt_id: 'intr-tool-secret',
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+        },
+      },
+    ])
   })
 })
 

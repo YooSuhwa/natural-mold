@@ -321,6 +321,10 @@ async def test_langgraph_streaming_redacts_synthesized_tool_args_before_persist(
     ]
 
     assert chunks
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    wire_tool_event = next(payload for payload in payloads if payload.get("method") == "tools")
+    assert wire_tool_event["params"]["data"]["args"] == {"api_key": "<redacted>", "query": "safe"}
+    assert "SECRET_VALUE" not in repr(payloads)
     stored = [event for batch in persisted for event in batch]
     tool_event = next(event for event in stored if event.get("method") == "tools")
     assert tool_event["data"]["args"] == {"api_key": "<redacted>", "query": "safe"}

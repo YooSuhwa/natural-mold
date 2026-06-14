@@ -120,12 +120,22 @@ def state_response(
     checkpoint_id: str | None = None,
     checkpoint_ns: str = "",
     checkpoint_by_message_id: dict[str, str] | None = None,
+    parent_checkpoint_by_message_id: dict[str, str] | None = None,
+    active_run: Mapping[str, Any] | None = None,
+    latest_run: Mapping[str, Any] | None = None,
     metadata_source: str = "moldy_bff_fallback",
     created_at: str | None = None,
     parent_checkpoint: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     state_values = dict(values or {})
     state_values.setdefault("messages", [])
+    runtime_state: dict[str, Any] = {}
+    if active_run is not None:
+        runtime_state["active_run"] = dict(active_run)
+    if latest_run is not None:
+        runtime_state["latest_run"] = dict(latest_run)
+    if runtime_state:
+        state_values["__moldy_runtime"] = runtime_state
     resolved_checkpoint_id = checkpoint_id or conversation.active_branch_checkpoint_id
     checkpoint = (
         {
@@ -141,7 +151,12 @@ def state_response(
         "agent_id": str(conversation.agent_id),
         "source": metadata_source,
         "checkpoint_by_message_id": dict(checkpoint_by_message_id or {}),
+        "parent_checkpoint_by_message_id": dict(parent_checkpoint_by_message_id or {}),
     }
+    if active_run is not None:
+        metadata["active_run"] = dict(active_run)
+    if latest_run is not None:
+        metadata["latest_run"] = dict(latest_run)
     return {
         "values": state_values,
         "next": next_nodes or [],

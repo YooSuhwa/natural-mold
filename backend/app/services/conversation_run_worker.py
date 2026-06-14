@@ -9,12 +9,14 @@ from collections.abc import AsyncGenerator, Callable
 from typing import Any, Literal
 
 from app.agent_runtime import event_names
+from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.event_broker import BrokeredEvent
 from app.agent_runtime.runtime_config import AgentConfig
 from app.config import settings
 from app.dependencies import CurrentUser
+from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
-from app.services import conversation_run_service
+from app.services import conversation_run_service, thread_branch_service
 from app.services import conversation_stream_service as stream_service
 from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_run_interrupts import (
@@ -351,6 +353,39 @@ async def _record_run_audit(
         await session.commit()
 
 
+async def _activate_latest_branch_leaf_if_needed(
+    *,
+    conversation_id: uuid.UUID,
+    moldy_source: str,
+    final_status: conversation_run_service.RunStatus,
+) -> None:
+    if final_status != "completed" or moldy_source not in {"edit", "regenerate"}:
+        return
+    try:
+        tree = await thread_branch_service.build_message_tree(
+            get_checkpointer(),
+            str(conversation_id),
+            active_checkpoint_id=None,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "failed to resolve latest branch leaf after %s run conversation_id=%s",
+            moldy_source,
+            conversation_id,
+            exc_info=True,
+        )
+        return
+    if not tree.active_checkpoint_id:
+        return
+
+    async with _session_factory()() as session:
+        conversation = await session.get(Conversation, conversation_id, with_for_update=True)
+        if conversation is None:
+            return
+        conversation.active_branch_checkpoint_id = tree.active_checkpoint_id
+        await session.commit()
+
+
 def _trace_status_for_run(status: conversation_run_service.RunStatus) -> str:
     if status in {"completed", "interrupted", "canceled"}:
         return "completed"
@@ -488,6 +523,11 @@ async def _run_conversation(
                         user=user,
                         status=final_status,
                     )
+                await _activate_latest_branch_leaf_if_needed(
+                    conversation_id=conversation_id,
+                    moldy_source=moldy_source,
+                    final_status=final_status,
+                )
             except Exception:
                 logger.exception("conversation run status finalization failed run_id=%s", run_id)
 

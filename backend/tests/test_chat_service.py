@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -564,6 +565,51 @@ async def test_hydrates_interrupt_only_on_matching_tool_call_response(db: AsyncS
                 "hitl_interrupt_id": "agent:file-write",
                 "hitl_action_index": 0,
                 "hitl_total_actions": 1,
+            },
+        }
+    ]
+
+
+def test_redacts_response_tool_calls_before_exposure():
+    response = MessageResponse(
+        id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        role="assistant",
+        content="",
+        tool_calls=[
+            {
+                "id": "toolu-secret",
+                "name": "execute_in_skill",
+                "args": {
+                    "command": "node scripts/create_docx.cjs",
+                    "api_key": "SECRET_VALUE",
+                    "usage_metadata": {"prompt_tokens": 12},
+                },
+                "function": {
+                    "name": "execute_in_skill",
+                    "arguments": '{"api_key":"SECRET_VALUE","prompt_tokens":12}',
+                },
+            }
+        ],
+        tool_call_id=None,
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+
+    chat_service._redact_response_tool_calls([response])  # noqa: SLF001
+
+    assert "SECRET_VALUE" not in repr(response.tool_calls)
+    assert response.tool_calls == [
+        {
+            "id": "toolu-secret",
+            "name": "execute_in_skill",
+            "args": {
+                "command": "node scripts/create_docx.cjs",
+                "api_key": "<redacted>",
+                "usage_metadata": {"prompt_tokens": 12},
+            },
+            "function": {
+                "name": "execute_in_skill",
+                "arguments": '{"api_key":"<redacted>","prompt_tokens":12}',
             },
         }
     ]

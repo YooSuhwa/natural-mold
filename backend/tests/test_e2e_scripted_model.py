@@ -5,6 +5,10 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.e2e_langgraph_v3_script import (
+    LANGGRAPH_V3_SECRET_TOOL_ARG_VALUE,
+    LANGGRAPH_V3_SECRET_TOOL_ARGS_REQUEST,
+)
 from app.agent_runtime.e2e_scripted_model import E2EScriptedChatModel
 from app.models.model import Model
 from app.seed.e2e_scripted_model import (
@@ -257,6 +261,31 @@ def test_e2e_scripted_model_langgraph_v3_generates_artifact_after_subagent() -> 
     ]
 
 
+def test_e2e_scripted_model_langgraph_v3_can_emit_sensitive_tool_arg_fixture() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "write_todos"}, {"name": "task"}, {"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(
+                content=(
+                    "E2E_LANGGRAPH_V3 "
+                    f"{LANGGRAPH_V3_SECRET_TOOL_ARGS_REQUEST} "
+                    "subagent=agent_1234abcd"
+                )
+            ),
+            ToolMessage(content="todos saved", tool_call_id="call_e2e_langgraph_v3_todos"),
+            ToolMessage(
+                content="E2E subagent scoped result ready.",
+                tool_call_id="call_e2e_langgraph_v3_subagent",
+            ),
+        ]
+    )
+
+    assert result.tool_calls[0]["args"]["api_key"] == LANGGRAPH_V3_SECRET_TOOL_ARG_VALUE
+
+
 def test_e2e_scripted_model_langgraph_v3_returns_usage_after_artifact() -> None:
     model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
         [{"name": "write_todos"}, {"name": "task"}, {"name": "execute_in_skill"}]
@@ -284,6 +313,22 @@ def test_e2e_scripted_model_langgraph_v3_returns_usage_after_artifact() -> None:
         "total_tokens": 165,
     }
     assert any(chunk.usage_metadata == result.usage_metadata for chunk in chunks)
+
+
+def test_e2e_scripted_model_emits_usage_stream_marker() -> None:
+    model = E2EScriptedChatModel(
+        model="document-artifact-scripted",
+        slow_stream_delay_seconds=0,
+    )
+
+    chunks = list(model.stream([HumanMessage(content="E2E_TOKEN_USAGE_STREAM")]))
+    content = "".join(str(chunk.content) for chunk in chunks)
+
+    assert content == "E2E token usage isolated conversation response."
+    assert any(
+        chunk.usage_metadata == {"input_tokens": 30, "output_tokens": 12, "total_tokens": 42}
+        for chunk in chunks
+    )
 
 
 def test_e2e_scripted_model_langgraph_v3_subagent_marker_returns_scoped_result() -> None:

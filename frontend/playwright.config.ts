@@ -27,7 +27,7 @@ const webServer = [
         },
       ]),
   {
-    command: `NEXT_PUBLIC_CHAT_RUNTIME=${chatRuntime} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL} pnpm dev --port ${frontendPort}`,
+    command: `pnpm prepare:assets && NEXT_PUBLIC_CHAT_RUNTIME=${chatRuntime} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL} pnpm exec next dev --port ${frontendPort}`,
     port: frontendPort,
     reuseExistingServer: true,
   },

@@ -120,6 +120,13 @@ ARTIFACT_SLOW_FINAL_PARTS = (
     "completed ",
     "after generated file.",
 )
+TOKEN_USAGE_MARKER = "E2E_TOKEN_USAGE_STREAM"
+TOKEN_USAGE_CONTENT = "E2E token usage isolated conversation response."
+TOKEN_USAGE_METADATA = {
+    "input_tokens": 30,
+    "output_tokens": 12,
+    "total_tokens": 42,
+}
 
 
 def _message_text(message: BaseMessage) -> str:
@@ -203,6 +210,12 @@ class E2EScriptedChatModel(BaseChatModel):
         if VISUAL_SLOW_STREAM_MARKER in human_text:
             message = AIMessage(content="".join(VISUAL_SLOW_STREAM_PARTS))
             return ChatResult(generations=[ChatGeneration(message=message)])
+        if TOKEN_USAGE_MARKER in human_text:
+            message = AIMessage(
+                content=TOKEN_USAGE_CONTENT,
+                usage_metadata=dict(TOKEN_USAGE_METADATA),
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
 
         for marker, tool_args in SCRIPTED_DOCUMENT_COMMANDS.items():
             if marker in human_text:
@@ -284,5 +297,8 @@ __all__ = [
     "LANGGRAPH_V3_MARKER",
     "SCRIPTED_DOCUMENT_COMMANDS",
     "SLOW_STREAM_MARKER",
+    "TOKEN_USAGE_CONTENT",
+    "TOKEN_USAGE_MARKER",
+    "TOKEN_USAGE_METADATA",
     "VISUAL_SLOW_STREAM_MARKER",
 ]

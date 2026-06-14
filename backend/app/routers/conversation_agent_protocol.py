@@ -43,6 +43,23 @@ from app.services.conversation_stream_service import sse_response
 
 router = APIRouter(tags=["conversations"])
 
+ACTIVE_THREAD_NEXT = "__moldy_active_run__"
+
+
+def _run_metadata(run: object | None) -> dict[str, object] | None:
+    if run is None:
+        return None
+    run_id = getattr(run, "id", None)
+    status = getattr(run, "status", None)
+    if run_id is None or not isinstance(status, str):
+        return None
+    return {"id": str(run_id), "status": status}
+
+
+def _active_thread_next_nodes(run: object | None) -> list[str]:
+    status = getattr(run, "status", None)
+    return [ACTIVE_THREAD_NEXT] if status in {"queued", "running", "canceling"} else []
+
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/commands")
 async def post_thread_command(
@@ -74,6 +91,7 @@ async def post_thread_command(
 async def get_thread_state(
     conversation_id: uuid.UUID,
     thread_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> dict[str, object]:
@@ -85,11 +103,34 @@ async def get_thread_state(
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
     snapshot = await load_thread_state_snapshot(conversation, db=db)
+    current_run = await conversation_run_service.current_run_for_conversation(
+        db,
+        conversation_id=conversation.id,
+    )
+    latest_run = await conversation_run_service.latest_run_for_conversation(
+        db,
+        conversation_id=conversation.id,
+    )
+    if current_run is not None and current_run.is_active:
+        stale = await maybe_mark_stale_active_run(
+            db,
+            run_id=current_run.id,
+            conversation=conversation,
+            user=user,
+            request=request,
+        )
+        if stale is not None:
+            current_run = None
+            latest_run = stale.run
     return state_response(
         conversation,
         values=snapshot.values,
         tasks=tasks,
+        next_nodes=_active_thread_next_nodes(current_run),
         checkpoint_by_message_id=snapshot.checkpoint_by_message_id,
+        parent_checkpoint_by_message_id=snapshot.parent_checkpoint_by_message_id,
+        active_run=_run_metadata(current_run),
+        latest_run=_run_metadata(latest_run),
     )
 
 
@@ -240,6 +281,7 @@ async def subscribe_thread_events(
 @router.get("/api/conversations/{conversation_id}/langgraph/state")
 async def get_compat_thread_state(
     conversation_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> dict[str, object]:
@@ -251,11 +293,34 @@ async def get_compat_thread_state(
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
     snapshot = await load_thread_state_snapshot(conversation, db=db)
+    current_run = await conversation_run_service.current_run_for_conversation(
+        db,
+        conversation_id=conversation.id,
+    )
+    latest_run = await conversation_run_service.latest_run_for_conversation(
+        db,
+        conversation_id=conversation.id,
+    )
+    if current_run is not None and current_run.is_active:
+        stale = await maybe_mark_stale_active_run(
+            db,
+            run_id=current_run.id,
+            conversation=conversation,
+            user=user,
+            request=request,
+        )
+        if stale is not None:
+            current_run = None
+            latest_run = stale.run
     state = state_response(
         conversation,
         values=snapshot.values,
         tasks=tasks,
+        next_nodes=_active_thread_next_nodes(current_run),
         checkpoint_by_message_id=snapshot.checkpoint_by_message_id,
+        parent_checkpoint_by_message_id=snapshot.parent_checkpoint_by_message_id,
+        active_run=_run_metadata(current_run),
+        latest_run=_run_metadata(latest_run),
     )
     return {
         "thread_id": str(conversation.id),
@@ -263,6 +328,7 @@ async def get_compat_thread_state(
         "messages": state["values"]["messages"],
         "interrupts": interrupts_from_tasks(tasks),
         "checkpoint_by_message_id": snapshot.checkpoint_by_message_id,
-        "active_run": None,
-        "latest_run": None,
+        "parent_checkpoint_by_message_id": snapshot.parent_checkpoint_by_message_id,
+        "active_run": _run_metadata(current_run),
+        "latest_run": _run_metadata(latest_run),
     }

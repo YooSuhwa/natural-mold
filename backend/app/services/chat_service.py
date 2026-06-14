@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute, contains_eager, selectinload
 
 from app.agent_runtime.identity import AgentRunIdentity
+from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.credentials import service as credential_service
 from app.exceptions import ValidationError
 from app.mcp.auth import resolve_mcp_auth
@@ -480,6 +481,15 @@ async def _hydrate_pending_interrupt_tool_calls(
             response.tool_calls = _merge_interrupt_tool_calls(response.tool_calls or [], payload)
 
 
+def _redact_response_tool_calls(responses: list[MessageResponse]) -> None:
+    for response in responses:
+        if not response.tool_calls:
+            continue
+        redacted = redact_protocol_data("messages", response.tool_calls)
+        if isinstance(redacted, list) and all(isinstance(item, dict) for item in redacted):
+            response.tool_calls = redacted
+
+
 # ---------------------------------------------------------------------------
 # Conversations CRUD
 # ---------------------------------------------------------------------------
@@ -887,6 +897,7 @@ async def list_messages_from_checkpointer(
             conversation_id=conversation.id,
             responses=responses,
         )
+    _redact_response_tool_calls(responses)
 
     # Hydrate per-message feedback (current user) + attachments/artifacts. Wrapped in
     # broad try/except so a missing migration (m27/m28 not yet applied) or
