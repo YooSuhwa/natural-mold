@@ -2912,8 +2912,8 @@ Expected: all validator tests pass.
 - [x] Create initial revision after builder create.
 - [x] Create initial revision after text skill create and package upload.
 - [x] Create new revisions after text content update, package file update/delete/upload, metadata update, builder improvement, and rollback.
-- [ ] Generate changelog summaries from builder diffs and store them on the resulting revision row.
-- [ ] Keep changelog summaries out of `SKILL.md`; use them as default marketplace release-note text later.
+- [x] Generate changelog summaries from builder diffs and store them on the resulting revision row.
+- [x] Keep changelog summaries out of `SKILL.md`; use them as default marketplace release-note text later.
 - [x] Implement `append_message` with a JSON array shape:
 
 ```json
@@ -2962,7 +2962,7 @@ Expected: all validator tests pass.
   - [x] `create_revision_for_skill` writes a zip snapshot and increments `revision_number`
   - [x] `rollback_to_revision` creates a new rollback revision and updates the skill row
   - [x] rollback does not mutate the restored-from revision
-  - revision changelog is stored on `SkillRevision`, not in `SKILL.md`
+  - [x] revision changelog is stored on `SkillRevision`, not in `SKILL.md`
   - [x] backfill creates a baseline revision for a legacy skill and is idempotent
   - [x] first mutation of a legacy skill creates a baseline revision before the mutation revision
 - [x] Run:

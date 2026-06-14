@@ -17,6 +17,7 @@ from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillBuilderMode, SkillBuilderStatus, SkillDraftPackage
 from app.services import skill_revision_mutations, skill_revision_service
+from app.services.skill_builder_changelog import build_revision_changelog
 from app.services.skill_builder_errors import (
     SkillBuilderConflictError,
     SkillBuilderSourceSkillNotFound,
@@ -98,6 +99,12 @@ async def _confirm_create(
     draft: SkillDraftPackage,
     user_id: uuid.UUID,
 ) -> Skill:
+    changelog = build_revision_changelog(
+        mode=SkillBuilderMode.CREATE,
+        base_snapshot=session.base_snapshot,
+        draft=draft,
+        provided=session.changelog_draft,
+    )
     zip_bytes = build_skill_zip_bytes(slug=draft.slug, files=draft.files)
     skill = await skill_service.create_package_skill(db, user_id=user_id, zip_bytes=zip_bytes)
     skill.credential_requirements = list(draft.credential_requirements) or None
@@ -111,7 +118,8 @@ async def _confirm_create(
         operation="builder_create",
         source_session_id=session.id,
         compatibility_result=session.compatibility_result,
-        changelog_summary=_changelog_summary(session.changelog_draft),
+        changelog_summary=changelog.summary,
+        changelog_items=changelog.items,
     )
     return skill
 
@@ -137,6 +145,12 @@ async def _confirm_improve(
         db,
         skill=skill,
         user_id=user_id,
+    )
+    changelog = build_revision_changelog(
+        mode=SkillBuilderMode.IMPROVE,
+        base_snapshot=session.base_snapshot,
+        draft=draft,
+        provided=session.changelog_draft,
     )
     zip_bytes = build_skill_zip_bytes(slug=draft.slug, files=draft.files)
     replacement = await anyio.to_thread.run_sync(
@@ -170,7 +184,8 @@ async def _confirm_improve(
         source_session_id=session.id,
         parent_revision_id=revision_parent.parent_revision_id,
         compatibility_result=session.compatibility_result,
-        changelog_summary=_changelog_summary(session.changelog_draft),
+        changelog_summary=changelog.summary,
+        changelog_items=changelog.items,
     )
     return skill
 
@@ -210,15 +225,6 @@ def _draft_error_result(code: str, message: str) -> dict[str, Any]:
         "info_count": 0,
         "issues": [{"code": code, "severity": "error", "path": None, "message": message}],
     }
-
-
-def _changelog_summary(changelog: dict[str, Any] | None) -> str | None:
-    if not isinstance(changelog, dict):
-        return None
-    summary = changelog.get("summary")
-    if isinstance(summary, str) and summary.strip():
-        return summary
-    return None
 
 
 def _replace_skill_storage(
