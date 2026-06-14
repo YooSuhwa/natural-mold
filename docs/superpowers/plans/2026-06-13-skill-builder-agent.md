@@ -3414,7 +3414,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Show estimate confirmation before creating an evaluation run.
 - [x] Add a rerun action that creates a new `SkillEvaluationRun` for the selected evaluation set.
 - [x] Add a cancel action for queued/running/grading runs.
-- [ ] Show improvement conflict state when the backend returns 409 for a changed base hash.
+- [x] Show improvement conflict state when the backend returns 409 for a changed base hash.
 - [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
 - [x] Add focused `SkillBuilderPreview` tests for improve file diffs, grouped validation, changelog, and benchmark rendering.
 - [x] Add focused `PortableCompatibilityPanel` tests for target labels, status badges, issue details, and empty state.
@@ -3427,6 +3427,7 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add mock-only Playwright coverage for installed skill history rendering in `frontend/e2e/skill-history.spec.ts`.
 - [x] Add mock-only Playwright coverage for `/skills` state filter chips in `frontend/e2e/skill-state-filters.spec.ts`.
 - [x] Add mock-only Playwright coverage for Skill Builder improve preview rendering in `frontend/e2e/skill-builder-preview.spec.ts`.
+- [x] Add mock-only Playwright coverage for Skill Builder improve conflict recovery in `frontend/e2e/skill-builder-conflict.spec.ts`.
 - [ ] Add detail-dialog regression tests for package file selection, file save/delete behavior, text skill save behavior, and footer actions after the single-shell refactor.
 - [x] Add a regression test or routing assertion that no separate user-facing skill evaluation/history/credential route is introduced for this phase.
 - [x] Add i18n messages in both Korean and English for the installed skill detail tabs and evaluation actions.

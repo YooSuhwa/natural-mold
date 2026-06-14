@@ -142,4 +142,39 @@ describe('SkillBuilderDialog', () => {
     })
     expect(onCreated).toHaveBeenCalledWith('skill-1', { openTab: 'content' })
   })
+
+  it('shows a recoverable conflict state when the source skill changed before apply', async () => {
+    const onCreated = vi.fn()
+    vi.mocked(skillBuilderApi.start).mockResolvedValue({ ...session, mode: 'improve' })
+    vi.mocked(skillBuilderApi.confirm).mockRejectedValue(
+      new ApiError(
+        409,
+        'SKILL_BUILDER_SOURCE_CONFLICT',
+        '개선 세션 시작 이후 스킬이 변경되었습니다',
+      ),
+    )
+
+    render(
+      <SkillBuilderDialog
+        open
+        mode="improve"
+        sourceSkillId="skill-1"
+        onOpenChange={vi.fn()}
+        onCreated={onCreated}
+      />,
+    )
+
+    await userEvent.type(screen.getByLabelText('요청'), '마감일 추출을 더 정확하게 해줘')
+    await userEvent.click(screen.getByRole('button', { name: '개선안 만들기' }))
+    await screen.findByText('SKILL.md')
+    await userEvent.click(screen.getByRole('button', { name: '개선 적용' }))
+
+    expect(await screen.findByText('스킬이 변경되었습니다')).toBeInTheDocument()
+    expect(
+      screen.getByText('이 개선 세션을 시작한 뒤 원본 스킬이 변경되었습니다.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '최신 기준으로 다시 만들기' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '세션 버리기' })).toBeEnabled()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
 })

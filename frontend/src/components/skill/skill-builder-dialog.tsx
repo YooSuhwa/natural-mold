@@ -75,18 +75,15 @@ function SkillBuilderDialogInner({
   const [request, setRequest] = useState(initialRequest)
   const [session, setSession] = useState<SkillBuilderSession | null>(null)
   const [systemLlmMissing, setSystemLlmMissing] = useState(false)
+  const [sourceConflict, setSourceConflict] = useState(false)
 
   const draft = session?.draft_package ?? null
   const canStart = request.trim().length > 0 && !start.isPending
-  const canConfirm = session?.status === 'review' && !confirm.isPending
+  const canConfirm = session?.status === 'review' && !confirm.isPending && !sourceConflict
 
-  async function handleStart() {
-    const trimmed = request.trim()
-    if (!trimmed) {
-      toast.error(t('requestRequired'))
-      return
-    }
+  async function startBuilderSession(trimmed: string) {
     setSystemLlmMissing(false)
+    setSourceConflict(false)
     try {
       const nextSession = await start.mutateAsync(
         mode === 'improve'
@@ -103,6 +100,24 @@ function SkillBuilderDialogInner({
     }
   }
 
+  async function handleStart() {
+    const trimmed = request.trim()
+    if (!trimmed) {
+      toast.error(t('requestRequired'))
+      return
+    }
+    await startBuilderSession(trimmed)
+  }
+
+  async function handleReloadLatest() {
+    const trimmed = request.trim()
+    if (!trimmed) {
+      toast.error(t('requestRequired'))
+      return
+    }
+    await startBuilderSession(trimmed)
+  }
+
   async function handleConfirm() {
     if (!session) return
     try {
@@ -111,6 +126,10 @@ function SkillBuilderDialogInner({
       onCreated?.(created.id, { openTab: session.eval_result ? 'evaluation' : 'content' })
       onClose()
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'SKILL_BUILDER_SOURCE_CONFLICT') {
+        setSourceConflict(true)
+        return
+      }
       toast.error(err instanceof Error ? err.message : t('confirmFailed'))
     }
   }
@@ -140,6 +159,13 @@ function SkillBuilderDialogInner({
               onChange={(event) => setRequest(event.target.value)}
             />
             {systemLlmMissing ? <SystemLlmReadiness /> : null}
+            {sourceConflict ? (
+              <ImprovementConflict
+                reloadPending={start.isPending}
+                onReloadLatest={handleReloadLatest}
+                onDiscard={onClose}
+              />
+            ) : null}
             <div className="mt-auto flex justify-end">
               <Button type="button" onClick={handleStart} disabled={!canStart}>
                 {start.isPending ? (
@@ -184,6 +210,42 @@ function SkillBuilderDialogInner({
         </Button>
       </DialogShell.Footer>
     </>
+  )
+}
+
+function ImprovementConflict({
+  reloadPending,
+  onReloadLatest,
+  onDiscard,
+}: {
+  readonly reloadPending: boolean
+  readonly onReloadLatest: () => void
+  readonly onDiscard: () => void
+}) {
+  const t = useTranslations('skill.builderDialog.conflict')
+  return (
+    <div className="moldy-status-surface moldy-status-warn flex flex-col gap-3 rounded-md p-3">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="moldy-status-icon mt-0.5 size-4 shrink-0" />
+        <div>
+          <p className="moldy-status-text text-sm font-semibold">{t('title')}</p>
+          <p className="moldy-status-muted-text mt-1 text-xs">{t('description')}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" onClick={onReloadLatest} disabled={reloadPending}>
+          {reloadPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Sparkles className="size-4" />
+          )}
+          {t('reloadLatest')}
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={onDiscard}>
+          {t('discard')}
+        </Button>
+      </div>
+    </div>
   )
 }
 

@@ -2486,6 +2486,12 @@
         "title": "System LLM setup is required",
         "description": "Text creation and package upload are still available."
       },
+      "conflict": {
+        "title": "Skill changed",
+        "description": "The source skill changed after this improvement session started.",
+        "reloadLatest": "Reload latest and reapply",
+        "discard": "Discard session"
+      },
       "toast": {
         "created": "Skill created.",
         "improved": "Skill improvement applied."
