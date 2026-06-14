@@ -2818,7 +2818,7 @@ Expected: all new package builder tests pass.
 - [ ] Validate each `definition_key` by importing `app.credentials.definitions` and checking `app.credentials.registry.registry`.
 - [ ] Validate `env_map` direction as `{credential_field_name: env_var_name}` and reject entries that map env vars to field names.
 - [ ] Warn when scripts or `SKILL.md` instructions use `curl` or obvious network URLs without `execution_profile.requires_network: true`.
-- [ ] Implement `check_portable_compatibility(draft_package)` in `backend/app/skills/compatibility.py`.
+- [x] Implement `check_portable_compatibility(draft_package)` in `backend/app/skills/compatibility.py`.
 - [ ] Include compatibility result in validation output with per-target `status`, `issues`, and aggregate counts.
 - [ ] Return structured issues with `code`, `severity`, `path`, and `message`.
 - [ ] Add tests:
@@ -2833,10 +2833,10 @@ Expected: all new package builder tests pass.
   - `env_map` field not listed in `fields` is an error
   - invalid env var name in `env_map` is an error
   - network command without `execution_profile.requires_network` is a warning
-  - Moldy-only frontmatter in `SKILL.md` is a compatibility error
-  - missing `agents/openai.yaml` is a compatibility warning for generated skills
-  - absolute local paths in `SKILL.md` are compatibility warnings
-  - generated changelog text inside `SKILL.md` is a compatibility warning
+  - [x] Moldy-only frontmatter in `SKILL.md` is a compatibility error
+  - [x] missing `agents/openai.yaml` is a compatibility warning for generated skills
+  - [x] absolute local paths in `SKILL.md` are compatibility warnings
+  - [x] generated changelog text inside `SKILL.md` is a compatibility warning
   - valid portable package returns `valid=True`
 - [ ] Run:
 
