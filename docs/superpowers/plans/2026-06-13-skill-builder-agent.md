@@ -2871,7 +2871,7 @@ Expected: all validator tests pass.
 - [x] Implement `load_skill_snapshot` for both text and package skills.
 - [x] Implement reusable evaluation set/run CRUD in `skill_evaluation_service.py`.
 - [x] Implement `estimate_run` and `cancel_run` in `skill_evaluation_service.py`.
-- [ ] Implement Skill Health calculation in `skill_health_service.py` with states from the Skill Health Summary section.
+- [x] Implement Skill Health calculation in `skill_health_service.py` with states from the Skill Health Summary section.
 - [ ] Implement skill revision snapshot zip writing in `skill_revision_storage.py`.
 - [ ] Implement `create_revision_for_skill`, `list_revisions`, `get_revision`, and `rollback_to_revision` in `skill_revision_service.py`.
 - [ ] Implement revision retention constants and pruning safeguards from the Skill Revision Retention And Backfill section.
