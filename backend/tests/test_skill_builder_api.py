@@ -6,9 +6,11 @@ from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.models.skill import Skill
 from app.models.system_llm_setting import SystemLlmSetting
 from app.skills import service as skill_service
 from tests.conftest import TEST_USER_ID
@@ -56,7 +58,7 @@ def _draft_payload() -> dict[str, object]:
             {"path": "SKILL.md", "content": _skill_content(), "role": "skill"},
             {
                 "path": "agents/openai.yaml",
-                "content": "interface:\n  default_prompt: \"$notes summarize\"\n",
+                "content": 'interface:\n  default_prompt: "$notes summarize"\n',
                 "role": "metadata",
             },
         ],
@@ -190,6 +192,33 @@ async def test_confirm_returns_skill_response(
     body = response.json()
     assert body["kind"] == "package"
     assert body["slug"] == "notes"
+
+
+async def test_confirm_completed_session_is_idempotent(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    await _configure_system_llm(db)
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        start = await client.post(
+            BASE,
+            json={"mode": "create", "user_request": "회의록 스킬 만들어줘"},
+        )
+        session_id = start.json()["id"]
+        await client.post(f"{BASE}/{session_id}/validate", json=_draft_payload())
+
+        first = await client.post(f"{BASE}/{session_id}/confirm")
+        second = await client.post(f"{BASE}/{session_id}/confirm")
+
+    result = await db.execute(
+        select(Skill).where(Skill.user_id == TEST_USER_ID, Skill.slug == "notes")
+    )
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] == first.json()["id"]
+    assert len(result.scalars().all()) == 1
 
 
 async def test_confirm_improve_conflict_returns_409(

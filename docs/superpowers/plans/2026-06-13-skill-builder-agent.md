@@ -2947,15 +2947,15 @@ Expected: all validator tests pass.
 - [x] Return non-secret audit metadata from confirm/apply helpers: session id, mode, source skill id, file counts, changed counts, credential requirement count, old hash, and new hash.
 - [x] In improve mode, apply confirmed changes to the existing skill only when `base_content_hash` still matches the current skill hash.
 - [x] During confirm, convert `evals/evals.json` and `session.eval_result` into `SkillEvaluationSet` and `SkillEvaluationRun` rows linked to the finalized skill.
-- [ ] Add tests:
+- [x] Add tests:
   - [x] session ownership is enforced by query helper
   - [x] confirm refuses sessions with validation errors
-  - confirm is idempotent after completion
+  - [x] confirm is idempotent after completion
   - [x] confirm stores `credential_requirements` and `execution_profile` on `Skill`
-  - confirm creates package-kind skill with `origin_kind="created_by_me"` and `source_kind="user"`
+  - [x] confirm creates package-kind skill with `origin_kind="created_by_me"` and `source_kind="user"`
   - [x] improve session stores `source_skill_id`, base version, base content hash, and base snapshot
   - [x] improve confirm updates an existing text skill
-  - improve confirm updates changed package files and preserves unchanged files
+  - [x] improve confirm updates changed package files and preserves unchanged files
   - [x] improve confirm returns 409 when the current skill hash differs from `base_content_hash`
   - [x] confirm creates an evaluation set when the draft contains evals
   - [x] confirm copies builder-time eval results into a skill evaluation run
