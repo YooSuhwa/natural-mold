@@ -2873,7 +2873,8 @@ Expected: all validator tests pass.
 - [x] Implement `estimate_run` and `cancel_run` in `skill_evaluation_service.py`.
 - [x] Implement Skill Health calculation in `skill_health_service.py` with states from the Skill Health Summary section.
 - [x] Implement skill revision snapshot zip writing in `skill_revision_storage.py`.
-- [ ] Implement `create_revision_for_skill`, `list_revisions`, `get_revision`, and `rollback_to_revision` in `skill_revision_service.py`.
+- [x] Implement `create_revision_for_skill`, `list_revisions`, and `get_revision` in `skill_revision_service.py`.
+- [ ] Implement `rollback_to_revision` in `skill_revision_service.py`.
 - [ ] Implement revision retention constants and pruning safeguards from the Skill Revision Retention And Backfill section.
 - [ ] Implement a rerunnable baseline backfill script for existing skills with no revisions.
 - [x] Centralize package tree hashing in `compute_package_tree_hash`.
