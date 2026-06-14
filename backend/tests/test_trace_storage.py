@@ -8,6 +8,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.protocol_events import stored_protocol_event
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
@@ -180,6 +181,38 @@ async def test_get_traces_endpoint_returns_persisted_turns(client: AsyncClient) 
     # event shape
     assert body[0]["events"][0]["event"] == "message_start"
     assert body[0]["last_event_id"].startswith("msg-1-")
+
+
+@pytest.mark.asyncio
+async def test_get_traces_endpoint_returns_protocol_events(client: AsyncClient) -> None:
+    conv_id = await _seed_conversation()
+    run_id = "run-protocol-trace"
+    async with TestSession() as db:
+        await trace_storage.append_events(
+            db,
+            conversation_id=conv_id,
+            assistant_msg_id=run_id,
+            events_chunk=[
+                dict(
+                    stored_protocol_event(
+                        run_id=run_id,
+                        thread_id=str(conv_id),
+                        seq=1,
+                        method="lifecycle",
+                        data={"event": "completed"},
+                    )
+                )
+            ],
+            status="completed",
+        )
+        await db.commit()
+
+    response = await client.get(f"/api/conversations/{conv_id}/traces")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body[0]["events"][0]["method"] == "lifecycle"
+    assert body[0]["events"][0]["data"] == {"event": "completed"}
 
 
 @pytest.mark.asyncio

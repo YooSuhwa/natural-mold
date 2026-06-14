@@ -1,11 +1,13 @@
 'use client'
 
-import { makeAssistantToolUI } from '@assistant-ui/react'
-import { useSetAtom } from 'jotai'
+import { makeAssistantToolUI, useMessage } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
-import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
-import { useChatConversationId } from '@/components/chat/conversation-context'
-import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import { useMemo } from 'react'
+import { SubagentCard } from '@/components/chat/subagent-card'
+import { pillStatusFromAssistantUi } from './collapsible-pill'
+
+const TASK_TOOL_CALL_ID_SEPARATOR = '\n'
+const EMPTY_TASK_TOOL_CALL_IDS: readonly string[] = []
 
 interface SubagentArgs {
   agent_name?: string
@@ -25,31 +27,62 @@ function resolveInput(args: SubagentArgs | undefined): string {
   return args.input || args.prompt || args.description || ''
 }
 
-interface SubAgentCardProps {
+interface ToolCallPartLike {
+  readonly type: 'tool-call'
+  readonly toolName: string
+  readonly toolCallId: string
+}
+
+function isToolCallPartLike(part: { readonly type: string }): part is ToolCallPartLike {
+  return (
+    part.type === 'tool-call' &&
+    'toolName' in part &&
+    typeof part.toolName === 'string' &&
+    'toolCallId' in part &&
+    typeof part.toolCallId === 'string'
+  )
+}
+
+function currentTurnTaskToolCallIdKey(
+  content: readonly { readonly type: string }[],
+): string {
+  const ids: string[] = []
+  for (const part of content) {
+    if (isToolCallPartLike(part) && part.toolName === 'task') ids.push(part.toolCallId)
+  }
+  return ids.join(TASK_TOOL_CALL_ID_SEPARATOR)
+}
+
+function taskToolCallIdsFromKey(key: string): readonly string[] {
+  if (!key) return EMPTY_TASK_TOOL_CALL_IDS
+  return key.split(TASK_TOOL_CALL_ID_SEPARATOR)
+}
+
+interface SubAgentToolCardProps {
   toolCallId: string
   args: SubagentArgs | undefined
   statusType: string | undefined
 }
 
-function SubAgentCard({ toolCallId, args, statusType }: SubAgentCardProps) {
+export function SubAgentToolCard({ toolCallId, args, statusType }: SubAgentToolCardProps) {
   const t = useTranslations('chat.toolUi.subAgent')
-  const setRail = useSetAtom(chatRightRailAtom)
-  const conversationId = useChatConversationId()
+  const turnToolCallIdKey = useMessage((message) => currentTurnTaskToolCallIdKey(message.content))
+  const turnToolCallIds = useMemo(
+    () => taskToolCallIdsFromKey(turnToolCallIdKey),
+    [turnToolCallIdKey],
+  )
   const agentName = resolveAgentName(args, t('fallbackName'))
   const input = resolveInput(args)
 
   return (
-    <CollapsiblePill
-      kind="subagent"
-      status={pillStatusFromAssistantUi(statusType)}
-      title={agentName}
-      meta={input || t('invocation')}
-      onClick={() =>
-        setRail({
-          mode: 'subagent',
-          subagent: { conversationId, toolCallId, agentName, input },
-        })
-      }
+    <SubagentCard
+      fallback={{
+        agentName,
+        input,
+        status: pillStatusFromAssistantUi(statusType),
+      }}
+      toolCallId={toolCallId}
+      turnToolCallIds={turnToolCallIds}
     />
   )
 }
@@ -61,6 +94,6 @@ function SubAgentCard({ toolCallId, args, statusType }: SubAgentCardProps) {
 export const SubAgentToolUI = makeAssistantToolUI<SubagentArgs, unknown>({
   toolName: 'task',
   render: ({ args, status, toolCallId }) => (
-    <SubAgentCard toolCallId={toolCallId} args={args} statusType={status?.type} />
+    <SubAgentToolCard toolCallId={toolCallId} args={args} statusType={status?.type} />
   ),
 })

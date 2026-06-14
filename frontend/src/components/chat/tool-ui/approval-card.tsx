@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { toApprove, toEdit, toReject } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
+import { redactSensitiveRecord, redactSensitiveText } from '@/lib/chat/sensitive-display'
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
 import type { Decision as StandardDecision } from '@/lib/types'
 import { CountdownBadge } from './countdown-badge'
@@ -40,11 +41,66 @@ interface ApprovalArgs {
 }
 
 type Decision = 'approved' | 'modified' | 'rejected'
+const REDACTED_PLACEHOLDER = '<redacted>'
 
 interface ApprovalResult {
   decision: Decision
   modified_args?: Record<string, unknown>
   reason?: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function restoreRedactedPlaceholders(value: unknown, original: unknown): unknown {
+  if (value === REDACTED_PLACEHOLDER) return original
+  if (Array.isArray(value)) {
+    const originalItems = Array.isArray(original) ? original : []
+    return value.map((item, index) => restoreRedactedPlaceholders(item, originalItems[index]))
+  }
+  if (isRecord(value)) {
+    const originalRecord = isRecord(original) ? original : {}
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        restoreRedactedPlaceholders(item, originalRecord[key]),
+      ]),
+    )
+  }
+  return value
+}
+
+function restoreRedactedRecordPlaceholders(
+  value: Record<string, unknown>,
+  original: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const restored = restoreRedactedPlaceholders(value, original ?? {})
+  return isRecord(restored) ? restored : value
+}
+
+function parseApprovalResult(result: unknown): ApprovalResult | null {
+  const value =
+    typeof result === 'string'
+      ? (() => {
+          try {
+            const parsed: unknown = JSON.parse(result)
+            return parsed
+          } catch {
+            return null
+          }
+        })()
+      : result
+  if (!isRecord(value)) return null
+  const decision = value.decision
+  if (decision !== 'approved' && decision !== 'modified' && decision !== 'rejected') return null
+  const modifiedArgs = isRecord(value.modified_args) ? value.modified_args : undefined
+  const reason = typeof value.reason === 'string' ? value.reason : undefined
+  return {
+    decision,
+    ...(modifiedArgs ? { modified_args: modifiedArgs } : {}),
+    ...(reason ? { reason } : {}),
+  }
 }
 
 function addApprovalResultIfSupported(
@@ -105,7 +161,7 @@ function useDecisionStyles() {
 
 function ApprovalBadge({ result }: { result: unknown }) {
   const styles = useDecisionStyles()
-  const parsed = result as ApprovalResult | null
+  const parsed = parseApprovalResult(result)
   const decision = parsed?.decision ?? 'approved'
   const style = styles[decision] ?? styles.approved
   const Icon = style.icon
@@ -172,6 +228,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const [showEdit, setShowEdit] = useState(false)
     const [submitting, setSubmitting] = useState(false)
     const [jsonError, setJsonError] = useState<string | null>(null)
+    const [localResult, setLocalResult] = useState<ApprovalResult | null>(null)
 
     // 카드 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
     const fallbackIdRef = useRef<string>(`approval-${Math.random().toString(36).slice(2)}`)
@@ -184,12 +241,17 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const resumeDecision = useCallback(
       async (standardDecision: StandardDecision, displayText?: string) => {
         if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
-          await hitl.registerDecision(args.hitl_action_index, standardDecision, displayText)
+          await hitl.registerDecision(
+            args.hitl_action_index,
+            standardDecision,
+            displayText,
+            args.hitl_interrupt_id,
+          )
           return
         }
         await hitl?.onResumeDecisions([standardDecision], displayText)
       },
-      [args?.hitl_action_index, hitl],
+      [args?.hitl_action_index, args?.hitl_interrupt_id, hitl],
     )
 
     const handleDecision = useCallback(
@@ -199,14 +261,22 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
 
         const reason = opts?.reasonOverride ?? (d === 'rejected' ? rejectReason : undefined)
         const response: ApprovalResult = { decision: d }
+        const resumeResponse: ApprovalResult = { decision: d }
 
         if (reason) {
           response.reason = reason
+          resumeResponse.reason = reason
         }
 
         if (d === 'modified' && editedArgs) {
           try {
-            response.modified_args = JSON.parse(editedArgs) as Record<string, unknown>
+            const parsed: unknown = JSON.parse(editedArgs)
+            if (!isRecord(parsed)) throw new Error('edited args must be an object')
+            response.modified_args = parsed
+            resumeResponse.modified_args = restoreRedactedRecordPlaceholders(
+              parsed,
+              args?.tool_args,
+            )
             setJsonError(null)
           } catch {
             setJsonError(t('invalidJson'))
@@ -220,7 +290,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
         // 주입을 지원하지 않으므로 실패해도 backend resume wire는 계속 보낸다.
         addApprovalResultIfSupported(addResult, response)
 
-        const standardDecision = toDecision(d, response, args?.tool_name)
+        const standardDecision = toDecision(d, resumeResponse, args?.tool_name)
         if (!standardDecision) {
           // edit인데 tool_name 미상 — backend가 무효 edited_action으로 거절할 것이므로 abort.
           setJsonError(t('invalidJson'))
@@ -229,6 +299,8 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
           return
         }
         await resumeDecision(standardDecision, styles[d].label)
+        setLocalResult(response)
+        setSubmitting(false)
       },
       [addResult, rejectReason, editedArgs, t, styles, args, resumeDecision],
     )
@@ -250,8 +322,9 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const onInteract = useMemo(() => extend, [extend])
 
     // ── 완료 상태 ──
-    if (status.type === 'complete' || result !== undefined) {
-      return <ApprovalBadge result={result} />
+    const visibleResult = result ?? localResult
+    if (status.type === 'complete' || visibleResult !== null) {
+      return <ApprovalBadge result={visibleResult} />
     }
 
     // ── 로딩 상태 ──
@@ -266,8 +339,9 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
 
     // ── requires-action: 승인 카드 ──
     const toolName = args?.tool_name ?? t('toolCall')
-    const description = args?.description ?? args?.message
-    const toolArgs = args?.tool_args
+    const rawDescription = args?.description ?? args?.message
+    const description = rawDescription ? redactSensitiveText(rawDescription) : undefined
+    const toolArgs = args?.tool_args ? redactSensitiveRecord(args.tool_args) : undefined
 
     return (
       <div className="moldy-chat-card moldy-status-surface moldy-status-warn w-full">
@@ -339,6 +413,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
               <button
                 type="button"
                 onClick={() => handleDecision('approved')}
+                data-testid="approval-approve-button"
                 data-variant="solid"
                 className="moldy-action-pill moldy-status-success"
               >

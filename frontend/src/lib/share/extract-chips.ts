@@ -16,63 +16,53 @@
  * - 기타 이벤트는 무시 (content_delta 등은 본문 텍스트로 이미 노출).
  */
 
-import type { TraceEvent, TurnTrace } from '@/lib/types/share'
+import { asRecord, isRecord, planMeta, resultMeta, subagentTitle, text } from './chip-values'
+import { protocolChips } from './protocol-chips'
+import type { ChipInfo } from './chip-values'
+import type { LegacyTraceEvent, TraceEvent, TurnTrace } from '@/lib/types/share'
 
-export type ChipKind = 'tool' | 'subagent' | 'thinking'
-export type ChipStatus = 'loading' | 'success' | 'error' | 'cancelled'
+export type { ChipInfo, ChipKind, ChipStatus } from './chip-values'
 
-export interface ChipInfo {
-  kind: ChipKind
-  status: ChipStatus
-  title: string
-  /** 보조 라벨 — 도구는 결과 길이/개수, plan은 todos 카운트 등. */
-  meta?: string
-}
+const _isLegacyEvent = (evt: TraceEvent): evt is LegacyTraceEvent =>
+  'event' in evt && typeof evt.event === 'string' && isRecord(evt.data)
 
-interface ToolCallStartData {
-  tool_name?: string
-  parameters?: Record<string, unknown>
-}
+function _legacyChips(events: TraceEvent[]): ChipInfo[] {
+  const chips: ChipInfo[] = []
+  const pendingResults: Map<string, LegacyTraceEvent[]> = new Map()
+  for (const evt of events) {
+    if (!_isLegacyEvent(evt) || evt.event !== 'tool_call_result') continue
+    const name = text(evt.data.tool_name) ?? ''
+    if (!name) continue
+    const queue = pendingResults.get(name) ?? []
+    queue.push(evt)
+    pendingResults.set(name, queue)
+  }
 
-interface SubagentArgs {
-  agent_name?: string
-  subagent_type?: string
-}
+  for (const evt of events) {
+    if (!_isLegacyEvent(evt) || evt.event !== 'tool_call_start') continue
+    const toolName = text(evt.data.tool_name) ?? ''
+    if (!toolName) continue
+    const params = asRecord(evt.data.parameters)
+    const queue = pendingResults.get(toolName) ?? []
+    const matched = queue.shift()
+    pendingResults.set(toolName, queue)
 
-interface TodoItem {
-  status?: 'completed' | 'in_progress' | 'pending'
-}
-
-interface WriteTodosArgs {
-  todos?: TodoItem[]
-  items?: TodoItem[]
-}
-
-function _asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
-}
-
-function _toolCallStartName(data: Record<string, unknown>): string {
-  const v = (data as ToolCallStartData).tool_name
-  return typeof v === 'string' && v.length > 0 ? v : ''
-}
-
-function _toolCallResultName(data: Record<string, unknown>): string {
-  const v = data.tool_name
-  return typeof v === 'string' && v.length > 0 ? v : ''
-}
-
-function _subagentTitle(parameters: Record<string, unknown>): string {
-  const args = parameters as SubagentArgs
-  return args.agent_name || args.subagent_type || 'Sub-agent'
-}
-
-function _planMeta(parameters: Record<string, unknown>): string | undefined {
-  const args = parameters as WriteTodosArgs
-  const items = args.todos ?? args.items ?? []
-  if (items.length === 0) return undefined
-  const completed = items.filter((it) => it?.status === 'completed').length
-  return `${completed}/${items.length}`
+    if (toolName === 'task') {
+      chips.push({ kind: 'subagent', status: 'success', title: subagentTitle(params) })
+      continue
+    }
+    if (toolName === 'write_todos') {
+      chips.push({ kind: 'tool', status: 'success', title: 'Plan', meta: planMeta(params) })
+      continue
+    }
+    chips.push({
+      kind: 'tool',
+      status: 'success',
+      title: toolName,
+      meta: resultMeta(matched?.data.result),
+    })
+  }
+  return chips
 }
 
 /**
@@ -80,65 +70,7 @@ function _planMeta(parameters: Record<string, unknown>): string | undefined {
  * 텍스트 응답) 빈 결과를 반환.
  */
 export function extractChips(turn: TurnTrace): ChipInfo[] {
-  const chips: ChipInfo[] = []
-  // ``tool_call_result``는 매칭 시점에 소비. 같은 도구 이름이 여러 번 호출
-  // 되면 시간순으로 1:1 매칭되도록 큐 형태로 관리.
-  const pendingResults: Map<string, TraceEvent[]> = new Map()
-  for (const evt of turn.events) {
-    if (evt.event === 'tool_call_result') {
-      const name = _toolCallResultName(evt.data)
-      if (!name) continue
-      const queue = pendingResults.get(name) ?? []
-      queue.push(evt)
-      pendingResults.set(name, queue)
-    }
-  }
-
-  for (const evt of turn.events) {
-    if (evt.event !== 'tool_call_start') continue
-    const data = _asRecord(evt.data)
-    const toolName = _toolCallStartName(data)
-    if (!toolName) continue
-    const params = _asRecord(data.parameters)
-
-    // 결과 매칭 (FIFO)
-    const queue = pendingResults.get(toolName) ?? []
-    const matched = queue.shift()
-    pendingResults.set(toolName, queue)
-
-    if (toolName === 'task') {
-      chips.push({
-        kind: 'subagent',
-        status: 'success',
-        title: _subagentTitle(params),
-      })
-      continue
-    }
-
-    if (toolName === 'write_todos') {
-      chips.push({
-        kind: 'tool',
-        status: 'success',
-        title: 'Plan',
-        meta: _planMeta(params),
-      })
-      continue
-    }
-
-    // 일반 도구: 결과 길이를 meta로 (참고용 — null이면 표시 X)
-    const result = matched?.data?.result
-    const resultStr = typeof result === 'string' ? result : ''
-    const meta = resultStr ? `${resultStr.length} chars` : undefined
-
-    chips.push({
-      kind: 'tool',
-      status: 'success',
-      title: toolName,
-      meta,
-    })
-  }
-
-  return chips
+  return [..._legacyChips(turn.events), ...protocolChips(turn.events)]
 }
 
 /**

@@ -509,11 +509,14 @@ test.describe('Document artifact viewers', () => {
 
     const activeRun = await waitForActiveRun(api, conversation.id)
     const cancelResponse = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        response
-          .url()
-          .includes(`/api/conversations/${conversation.id}/runs/${activeRun.id}/cancel`),
+      (response) => {
+        if (response.request().method() !== 'POST') return false
+        const url = response.url()
+        return (
+          url.includes(`/api/conversations/${conversation.id}/runs/${activeRun.id}/cancel`) ||
+          url.includes(`/threads/${conversation.id}/runs/${activeRun.id}/cancel`)
+        )
+      },
     )
     await page.locator('[data-moldy-stop-button="true"]').click()
     const cancelResult = await cancelResponse

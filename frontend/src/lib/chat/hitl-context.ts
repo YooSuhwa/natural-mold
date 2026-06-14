@@ -13,6 +13,7 @@ export interface HiTLContextValue {
     actionIndex: number,
     decision: Decision,
     displayText?: string,
+    interruptId?: string | null,
   ) => Promise<void>
 }
 

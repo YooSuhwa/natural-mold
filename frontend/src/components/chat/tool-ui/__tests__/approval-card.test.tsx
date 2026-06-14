@@ -19,6 +19,8 @@ type ToolUiRender = {
       approval_id?: string
       tool_name?: string
       tool_args?: Record<string, unknown>
+      description?: string
+      message?: string
       hitl_action_index?: number
       hitl_total_actions?: number
       hitl_interrupt_id?: string | null
@@ -64,5 +66,171 @@ describe('ApprovalCard', () => {
       expect(onResumeDecisions).toHaveBeenCalledWith([{ type: 'approve' }], 'approved')
     })
     expect(unsupportedAddResult).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes the LangGraph interrupt id when registering an approval decision', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'interrupt-approval:0',
+          tool_name: 'write_file',
+          tool_args: { path: 'report.md' },
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+          hitl_interrupt_id: 'interrupt-approval',
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('approve'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        { type: 'approve' },
+        'approved',
+        'interrupt-approval',
+      )
+    })
+  })
+
+  it('keeps a rejected result visible after LangGraph resume accepts the decision', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'interrupt-approval:0',
+          tool_name: 'execute_in_skill',
+          tool_args: { command: 'node scripts/create_docx.cjs' },
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+          hitl_interrupt_id: 'interrupt-approval',
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('reject'))
+    fireEvent.click(screen.getByText('rejectConfirm'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        { type: 'reject', message: undefined },
+        'rejected',
+        'interrupt-approval',
+      )
+    })
+    expect(await screen.findByText('rejected')).toBeVisible()
+  })
+
+  it('redacts sensitive approval descriptions and args before rendering', () => {
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'interrupt-approval:0',
+          tool_name: 'execute_in_skill',
+          description:
+            "Args: {'command': 'node scripts/create_docx.cjs', 'api_key': 'raw-secret-value'}",
+          tool_args: {
+            command: 'node scripts/create_docx.cjs',
+            api_key: 'raw-secret-value',
+            usage_metadata: { prompt_tokens: 12 },
+          },
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn() }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    expect(document.body.textContent).not.toContain('raw-secret-value')
+    expect(document.body.textContent).toContain('<redacted>')
+
+    fireEvent.click(screen.getByText('args'))
+    expect(document.body.textContent).not.toContain('raw-secret-value')
+    expect(document.body.textContent).toContain('prompt_tokens')
+
+    fireEvent.click(screen.getByText('edit'))
+    expect(document.body.textContent).not.toContain('raw-secret-value')
+  })
+
+  it('restores redacted placeholders from raw args before sending edited approvals', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'interrupt-approval:0',
+          tool_name: 'execute_in_skill',
+          tool_args: {
+            command: 'node scripts/create_docx.cjs',
+            api_key: 'raw-secret-value',
+          },
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+          hitl_interrupt_id: 'interrupt-approval',
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('edit'))
+    expect(document.body.textContent).not.toContain('raw-secret-value')
+
+    fireEvent.change(screen.getByPlaceholderText('editArgsPlaceholder'), {
+      target: {
+        value: JSON.stringify({
+          command: 'node scripts/updated_docx.cjs',
+          api_key: '<redacted>',
+        }),
+      },
+    })
+    fireEvent.click(screen.getByText('editAndApprove'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        {
+          type: 'edit',
+          edited_action: {
+            name: 'execute_in_skill',
+            args: {
+              command: 'node scripts/updated_docx.cjs',
+              api_key: 'raw-secret-value',
+            },
+          },
+        },
+        'editApproved',
+        'interrupt-approval',
+      )
+    })
   })
 })

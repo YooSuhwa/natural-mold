@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.schemas.conversation import Decision
+
 # ---------------------------------------------------------------------------
 # Assistant 요청/응답
 # ---------------------------------------------------------------------------
@@ -21,6 +23,13 @@ class AssistantMessageRequest(BaseModel):
         description="클라이언트가 생성한 세션 ID (crypto.randomUUID). "
         "같은 session_id는 같은 대화를 유지, 없으면 agent_id 기반 기본값 사용.",
     )
+
+
+class AssistantResumeRequest(BaseModel):
+    decisions: list[Decision] = Field(..., min_length=1)
+    session_id: str | None = None
+    display_text: str | None = None
+    interrupt_id: str | None = None
 
 
 class AssistantMessageResponse(BaseModel):

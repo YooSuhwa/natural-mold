@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -41,6 +41,9 @@ from app.services.conversation_stream_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["conversations"])
+_PROTOCOL_NON_PENDING_TERMINAL_EVENTS = frozenset(
+    {"completed", "complete", "canceled", "cancelled", "failed", "error", "stale"}
+)
 
 
 def _cfg_agent_uuid(cfg: Any):
@@ -204,10 +207,24 @@ async def list_messages(
 def _is_pending_interrupt(events: list[dict[str, Any]] | None) -> bool:
     if not events:
         return False
-    has_message_end = any(evt.get("event") == event_names.MESSAGE_END for evt in events)
-    if has_message_end:
+    pending = False
+    for event in events:
+        if event.get("event") == event_names.MESSAGE_END or _is_protocol_terminal_event(event):
+            pending = False
+            continue
+        if event.get("event") == event_names.INTERRUPT or event.get("method") == "input.requested":
+            pending = True
+    return pending
+
+
+def _is_protocol_terminal_event(event: dict[str, Any]) -> bool:
+    if event.get("method") != "lifecycle":
         return False
-    return events[-1].get("event") == event_names.INTERRUPT
+    data = event.get("data")
+    if not isinstance(data, Mapping):
+        return False
+    status = data.get("event") or data.get("status")
+    return status in _PROTOCOL_NON_PENDING_TERMINAL_EVENTS
 
 
 async def _latest_pending_interrupt_trace(

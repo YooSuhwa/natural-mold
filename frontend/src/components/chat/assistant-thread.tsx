@@ -1,6 +1,15 @@
 'use client'
 
-import { lazy, Suspense, useCallback, useMemo, useState, type UIEvent } from 'react'
+import {
+  createContext,
+  lazy,
+  Suspense,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type UIEvent,
+} from 'react'
 import {
   AuiIf,
   ThreadPrimitive,
@@ -11,6 +20,7 @@ import {
   useThreadViewport,
   useAuiState,
   useAui,
+  type AssistantDataUI,
   type AssistantToolUI,
 } from '@assistant-ui/react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -53,7 +63,10 @@ import {
   type TokenUsage,
 } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
-import { WittyLoadingMessage } from '@/components/chat/witty-loading'
+import {
+  isStreamingMessageMetadata,
+  StreamingMessageLoadingIndicator,
+} from '@/components/chat/assistant-message-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
@@ -78,6 +91,9 @@ import {
   toggleArtifactPreviewRailState,
 } from '@/lib/stores/chat-right-rail'
 import type { ArtifactSummary } from '@/lib/types'
+import type { DeepAgentsStateSnapshot } from '@/lib/chat/langgraph-runtime/deepagents-state'
+import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
+import { dispatchMoldyBranchSwitched } from '@/lib/chat/langgraph-runtime/branch-switch-events'
 
 export { GenericToolFallback }
 
@@ -118,9 +134,7 @@ function BuilderComposerFallback() {
 /** 메시지 메타에서 createdAt을 읽어 한국어 상대 시간을 표시 */
 function MessageTimestamp() {
   const tCommon = useTranslations('common')
-  const createdAt = useAuiState(
-    (s) => (s.message as { createdAt?: Date } | undefined)?.createdAt,
-  )
+  const createdAt = useAuiState((s) => (s.message as { createdAt?: Date } | undefined)?.createdAt)
   if (!createdAt) return null
   return (
     <span className="moldy-ui-micro text-muted-foreground">
@@ -227,23 +241,8 @@ function AssistantMessageParts() {
   )
 }
 
-function StreamingMessageLoadingIndicator({ className }: { className?: string }) {
-  const isStreamingMessage = useIsStreamingMessage()
-  if (!isStreamingMessage) return null
-  return (
-    <AuiIf condition={(s) => s.thread.isRunning}>
-      <WittyLoadingMessage className={cn('pointer-events-none mb-1 px-1', className)} />
-    </AuiIf>
-  )
-}
-
 function useIsStreamingMessage(): boolean {
-  return useAuiState((s) =>
-    Boolean(
-      (s.message?.metadata as { custom?: { isStreamingMessage?: boolean } } | undefined)?.custom
-        ?.isStreamingMessage,
-    ),
-  )
+  return useAuiState((s) => isStreamingMessageMetadata(s.message?.metadata))
 }
 
 function useMessageArtifacts(): ArtifactSummary[] {
@@ -466,6 +465,7 @@ function BranchPicker() {
           queryKey: conversationKeys.messages(conversationId),
           type: 'active',
         })
+        dispatchMoldyBranchSwitched({ conversationId, checkpointId })
       } catch (err) {
         console.error('[BranchPicker] switch failed', err)
       } finally {
@@ -593,6 +593,9 @@ export interface AssistantThreadProps {
   emptyContent?: React.ReactNode
   /** 추가 도구 UI */
   toolUI?: readonly AssistantToolUI[]
+  dataUI?: readonly AssistantDataUI[]
+  activities?: readonly RunActivity[]
+  deepAgentsState?: DeepAgentsStateSnapshot
   /** P1-7 — true이면 composer에 첨부 파일 버튼/미리보기 표시.
    * AttachmentAdapter는 useChatRuntime에 별도로 전달되어야 한다. */
   enableAttachments?: boolean
@@ -610,6 +613,28 @@ export interface AssistantThreadProps {
   builderAgentSubtitle?: string
 }
 
+interface AssistantThreadDynamicContextValue {
+  readonly activities: readonly RunActivity[]
+  readonly agentImagePublicAsset: boolean
+  readonly agentImageUrl?: string | null
+  readonly agentName?: string
+  readonly builderAgentSubtitle?: string
+  readonly deepAgentsState?: DeepAgentsStateSnapshot
+  readonly isBuilder: boolean
+  readonly showMessageTimestamp: boolean
+  readonly user?: User | null
+}
+
+const AssistantThreadDynamicContext = createContext<AssistantThreadDynamicContextValue | null>(null)
+
+function useAssistantThreadDynamicContext(): AssistantThreadDynamicContextValue {
+  const value = useContext(AssistantThreadDynamicContext)
+  if (!value) {
+    throw new Error('AssistantThreadDynamicContext is missing')
+  }
+  return value
+}
+
 export function AssistantThread({
   agentImageUrl,
   agentImagePublicAsset = false,
@@ -621,13 +646,15 @@ export function AssistantThread({
   showMessageTimestamp = false,
   emptyContent,
   toolUI,
+  dataUI,
+  activities = [],
+  deepAgentsState,
   enableAttachments = false,
   conversationId,
   variant = 'default',
   builderModelLabel,
   builderAgentSubtitle,
 }: AssistantThreadProps) {
-  const tChat = useTranslations('chat')
   const tPage = useTranslations('chat.page')
   const isBuilder = variant === 'builder'
   const [isViewportAtBottom, setIsViewportAtBottom] = useState(true)
@@ -636,9 +663,35 @@ export function AssistantThread({
     setIsViewportAtBottom((current) => (current === nextIsAtBottom ? current : nextIsAtBottom))
   }, [])
 
+  const dynamicContextValue = useMemo(
+    () => ({
+      activities,
+      agentImagePublicAsset,
+      agentImageUrl,
+      agentName,
+      builderAgentSubtitle,
+      deepAgentsState,
+      isBuilder,
+      showMessageTimestamp,
+      user,
+    }),
+    [
+      activities,
+      agentImagePublicAsset,
+      agentImageUrl,
+      agentName,
+      builderAgentSubtitle,
+      deepAgentsState,
+      isBuilder,
+      showMessageTimestamp,
+      user,
+    ],
+  )
+
   const messageComponents = useMemo(
     () => ({
       UserMessage: function UserMsg() {
+        const { isBuilder, showMessageTimestamp, user } = useAssistantThreadDynamicContext()
         const metaRow = (
           <MessageMetaRow>
             <BranchPicker />
@@ -667,6 +720,7 @@ export function AssistantThread({
         )
       },
       UserEditComposer: function UserEdit() {
+        const { isBuilder, user } = useAssistantThreadDynamicContext()
         if (isBuilder) {
           return (
             <Suspense fallback={<BuilderMessageFallback />}>
@@ -684,6 +738,17 @@ export function AssistantThread({
         )
       },
       AssistantMessage: function AssistantMsg() {
+        const {
+          activities,
+          agentImagePublicAsset,
+          agentImageUrl,
+          agentName,
+          builderAgentSubtitle,
+          deepAgentsState,
+          isBuilder,
+          showMessageTimestamp,
+        } = useAssistantThreadDynamicContext()
+        const tChat = useTranslations('chat')
         const isStreamingMessage = useIsStreamingMessage()
         const metaRow = (
           <MessageMetaRow>
@@ -699,7 +764,10 @@ export function AssistantThread({
           return (
             <Suspense fallback={<BuilderMessageFallback />}>
               <BuilderAssistantMessage metaRow={metaRow} agentSubtitle={builderAgentSubtitle}>
-                <StreamingMessageLoadingIndicator />
+                <StreamingMessageLoadingIndicator
+                  activities={activities}
+                  deepAgentsState={deepAgentsState}
+                />
                 <BuilderAssistantMessageParts />
               </BuilderAssistantMessage>
             </Suspense>
@@ -712,7 +780,11 @@ export function AssistantThread({
               !isStreamingMessage && '[contain-intrinsic-size:0_180px] [content-visibility:auto]',
             )}
           >
-            <StreamingMessageLoadingIndicator className="absolute -top-5 left-11 mb-0" />
+            <StreamingMessageLoadingIndicator
+              activities={activities}
+              deepAgentsState={deepAgentsState}
+              className="absolute -top-5 left-11 mb-0"
+            />
             <AgentAvatar
               imageUrl={agentImageUrl ?? null}
               name={agentName ?? tChat('defaultAgentName')}
@@ -728,81 +800,76 @@ export function AssistantThread({
         )
       },
     }),
-    [
-      agentImagePublicAsset,
-      agentImageUrl,
-      agentName,
-      builderAgentSubtitle,
-      isBuilder,
-      showMessageTimestamp,
-      tChat,
-      user,
-    ],
+    [],
   )
 
   return (
-    <ChatConversationContext.Provider value={conversationId ?? null}>
-      <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
-        <ThreadPrimitive.Viewport
-          className="min-h-0 flex-1 overflow-y-auto"
-          onScroll={handleViewportScroll}
-        >
-          <AuiIf condition={(s) => s.thread.isEmpty}>
-            {emptyContent ?? (
-              <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
-                <p className="text-sm">{tPage('emptyState')}</p>
-              </div>
-            )}
-          </AuiIf>
-
-          <div
-            className={cn(
-              'mx-auto w-full px-4 py-4',
-              isBuilder ? 'max-w-[880px] space-y-6' : 'max-w-3xl space-y-4',
-            )}
+    <AssistantThreadDynamicContext.Provider value={dynamicContextValue}>
+      <ChatConversationContext.Provider value={conversationId ?? null}>
+        <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
+          <ThreadPrimitive.Viewport
+            className="min-h-0 flex-1 overflow-y-auto"
+            onScroll={handleViewportScroll}
           >
-            <ThreadPrimitive.Messages>
-              {({ message }) => {
-                const Component = message.composer.isEditing
-                  ? messageComponents.UserEditComposer
-                  : message.role === 'user'
-                    ? messageComponents.UserMessage
-                    : messageComponents.AssistantMessage
-                return <Component />
-              }}
-            </ThreadPrimitive.Messages>
-          </div>
+            <AuiIf condition={(s) => s.thread.isEmpty}>
+              {emptyContent ?? (
+                <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
+                  <p className="text-sm">{tPage('emptyState')}</p>
+                </div>
+              )}
+            </AuiIf>
 
-          <ThreadPrimitive.ViewportFooter className="pointer-events-none sticky bottom-0 z-10 flex justify-center pb-2">
-            <ScrollToBottomButton isAtBottom={isViewportAtBottom} />
-          </ThreadPrimitive.ViewportFooter>
-        </ThreadPrimitive.Viewport>
+            <div
+              className={cn(
+                'mx-auto w-full px-4 py-4',
+                isBuilder ? 'max-w-[880px] space-y-6' : 'max-w-3xl space-y-4',
+              )}
+            >
+              <ThreadPrimitive.Messages>
+                {({ message }) => {
+                  const Component = message.composer.isEditing
+                    ? messageComponents.UserEditComposer
+                    : message.role === 'user'
+                      ? messageComponents.UserMessage
+                      : messageComponents.AssistantMessage
+                  return <Component />
+                }}
+              </ThreadPrimitive.Messages>
+            </div>
 
-        {/* 도구 UI 등록 */}
-        {toolUI?.map((ToolComponent, i) => (
-          <ToolComponent key={i} />
-        ))}
+            <ThreadPrimitive.ViewportFooter className="pointer-events-none sticky bottom-0 z-10 flex justify-center pb-2">
+              <ScrollToBottomButton isAtBottom={isViewportAtBottom} />
+            </ThreadPrimitive.ViewportFooter>
+          </ThreadPrimitive.Viewport>
 
-        <ReconnectIndicator />
+          {toolUI?.map((ToolComponent, i) => (
+            <ToolComponent key={`tool-${i}`} />
+          ))}
+          {dataUI?.map((DataComponent, i) => (
+            <DataComponent key={`data-${i}`} />
+          ))}
 
-        {/* Composer */}
-        {isBuilder ? (
-          <Suspense fallback={<BuilderComposerFallback />}>
-            <BuilderComposer modelLabel={builderModelLabel} />
-          </Suspense>
-        ) : (
-          <div className="mx-auto w-full max-w-3xl px-4 pb-4">
-            <ThreadComposer
-              modelName={modelName}
-              showTokenBar={showTokenBar}
-              compact={compact}
-              enableAttachments={enableAttachments}
-              focusKey={conversationId}
-            />
-          </div>
-        )}
-      </ThreadPrimitive.Root>
-    </ChatConversationContext.Provider>
+          <ReconnectIndicator />
+
+          {/* Composer */}
+          {isBuilder ? (
+            <Suspense fallback={<BuilderComposerFallback />}>
+              <BuilderComposer modelLabel={builderModelLabel} />
+            </Suspense>
+          ) : (
+            <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+              <ThreadComposer
+                modelName={modelName}
+                showTokenBar={showTokenBar}
+                compact={compact}
+                enableAttachments={enableAttachments}
+                focusKey={conversationId}
+              />
+            </div>
+          )}
+        </ThreadPrimitive.Root>
+      </ChatConversationContext.Provider>
+    </AssistantThreadDynamicContext.Provider>
   )
 }
 
@@ -861,9 +928,7 @@ function ThreadComposer({
       {/* Attachment preview row (P1-7) — only renders when at least one
           attachment is staged; hidden otherwise so the composer stays compact. */}
       {enableAttachments && (
-        <ComposerPrimitive.Attachments>
-          {() => <AttachmentChip />}
-        </ComposerPrimitive.Attachments>
+        <ComposerPrimitive.Attachments>{() => <AttachmentChip />}</ComposerPrimitive.Attachments>
       )}
 
       {/* Textarea */}

@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from app.config import settings
+
 if TYPE_CHECKING:
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from psycopg_pool import AsyncConnectionPool
@@ -13,11 +15,27 @@ _pool: AsyncConnectionPool | None = None
 _checkpointer: AsyncPostgresSaver | None = None
 
 
+def _pool_size_kwargs(
+    *,
+    min_size: int | None = None,
+    max_size: int | None = None,
+) -> dict[str, int]:
+    pool_min_size = max(
+        1,
+        settings.checkpointer_pool_min_size if min_size is None else min_size,
+    )
+    pool_max_size = max(
+        pool_min_size,
+        settings.checkpointer_pool_max_size if max_size is None else max_size,
+    )
+    return {"min_size": pool_min_size, "max_size": pool_max_size}
+
+
 async def init_checkpointer(
     conn_string: str,
     *,
-    min_size: int = 1,
-    max_size: int = 10,
+    min_size: int | None = None,
+    max_size: int | None = None,
 ) -> None:
     """앱 시작 시 checkpointer 초기화. lifespan에서 호출."""
     global _pool, _checkpointer
@@ -25,13 +43,11 @@ async def init_checkpointer(
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from psycopg_pool import AsyncConnectionPool
 
-    pool_min_size = max(1, min_size)
-    pool_max_size = max(pool_min_size, max_size)
+    pool_size_kwargs = _pool_size_kwargs(min_size=min_size, max_size=max_size)
     _pool = AsyncConnectionPool(
         conninfo=conn_string,
-        min_size=pool_min_size,
-        max_size=pool_max_size,
         open=False,
+        **pool_size_kwargs,
         kwargs={"autocommit": True, "prepare_threshold": 0},
     )
     await _pool.open()
@@ -39,8 +55,8 @@ async def init_checkpointer(
     await _checkpointer.setup()
     logger.info(
         "Checkpointer initialized (PostgreSQL, pool_min=%s, pool_max=%s)",
-        pool_min_size,
-        pool_max_size,
+        pool_size_kwargs["min_size"],
+        pool_size_kwargs["max_size"],
     )
 
 

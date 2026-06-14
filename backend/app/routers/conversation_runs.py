@@ -3,9 +3,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
@@ -17,10 +18,13 @@ from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import conversation_not_found, resume_not_found
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun, utc_now_naive
 from app.models.message_event import MessageEvent
+from app.routers.conversation_run_cancel import (
+    cancel_owned_conversation_run,
+    wait_for_run_terminal,
+)
 from app.schemas.conversation_run import ConversationRunResponse
 from app.services import chat_service, conversation_run_service, trace_storage
 from app.services.conversation_audit_service import record_conversation_run_audit
-from app.services.conversation_run_worker import get_run_task_registry
 from app.services.conversation_stream_service import sse_response
 
 router = APIRouter(tags=["conversations"])
@@ -134,6 +138,7 @@ async def stream_conversation_run(
         conversation_id=conversation_id,
         run_id=run_id,
         user_id=user.id,
+        for_update=True,
     )
     if run is None:
         raise resume_not_found()
@@ -174,6 +179,11 @@ async def stream_conversation_run(
         )
 
     record = await trace_storage.get_trace_by_msg_id(db, run_id_str)
+    if record is None and run.status == "stale":
+        return sse_response(
+            _stale_only_generator(run),
+            extra_headers={"X-Run-Id": run_id_str, "X-Resume-Mode": "stale"},
+        )
     if record is None or record.conversation_id != conversation_id:
         raise resume_not_found()
     return sse_response(
@@ -194,59 +204,39 @@ async def cancel_conversation_run(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
-    # for_update — worker 의 queued->running 전이와 직렬화해 stale read 기반
-    # lost update 를 방지한다 (서비스 docstring 의 동시성 계약).
-    run = await conversation_run_service.get_run_for_user(
-        db,
+    result = await cancel_owned_conversation_run(
+        db=db,
         conversation_id=conversation_id,
         run_id=run_id,
-        user_id=user.id,
-        for_update=True,
+        user=user,
+        request=request,
     )
-    if run is None:
-        raise resume_not_found()
+    return ConversationRunResponse.model_validate(result.run)
 
-    previous_status = run.status
-    run = await conversation_run_service.request_cancel_run(db, run)
-    if previous_status in {"queued", "running"} and run.status == "canceling":
-        await record_conversation_run_audit(
-            db,
-            action="conversation.run_cancel_request",
-            run=run,
-            user=user,
-            request=request,
-            status="canceling",
-        )
-    await db.commit()
 
-    if previous_status in {"queued", "running"} and run.status == "canceling":
-        registry = get_run_task_registry()
-        local_cancel_sent = registry.request_cancel(run_id, reason="user")
-        if not local_cancel_sent:
-            await db.refresh(run, with_for_update=True)
-            if run.status == "canceling":
-                await conversation_run_service.transition_run(db, run, "canceled")
-                await conversation_run_service.finalize_run_outputs_for_status(
-                    db,
-                    run,
-                    "canceled",
-                    append_terminal_event=True,
-                )
-                await record_conversation_run_audit(
-                    db,
-                    action="conversation.run_canceled",
-                    run=run,
-                    user=user,
-                    request=request,
-                    status="canceled",
-                )
-                await db.commit()
-
-    await db.refresh(run)
-    return ConversationRunResponse.model_validate(run)
+@router.post("/threads/{thread_id}/runs/{run_id}/cancel")
+async def cancel_langgraph_sdk_run(
+    thread_id: uuid.UUID,
+    run_id: uuid.UUID,
+    request: Request,
+    wait: bool = Query(False),
+    action: Literal["interrupt", "rollback"] = Query("interrupt"),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> Response:
+    result = await cancel_owned_conversation_run(
+        db=db,
+        conversation_id=thread_id,
+        run_id=run_id,
+        user=user,
+        request=request,
+    )
+    headers = {"X-LangGraph-Cancel-Action": action}
+    if wait:
+        await wait_for_run_terminal(db, result.run.id)
+        return Response(status_code=204, headers=headers)
+    return Response(status_code=202, headers=headers)
 
 
 @router.get(

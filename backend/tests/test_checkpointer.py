@@ -48,6 +48,15 @@ def test_get_checkpointer_after_set():
         mod._checkpointer = orig_cp
 
 
+def test_checkpointer_pool_size_kwargs_are_configurable(monkeypatch: pytest.MonkeyPatch):
+    import app.agent_runtime.checkpointer as mod
+
+    monkeypatch.setattr(mod.settings, "checkpointer_pool_min_size", 2)
+    monkeypatch.setattr(mod.settings, "checkpointer_pool_max_size", 9)
+
+    assert mod._pool_size_kwargs() == {"min_size": 2, "max_size": 9}
+
+
 # ---------------------------------------------------------------------------
 # init_checkpointer + shutdown_checkpointer
 # ---------------------------------------------------------------------------

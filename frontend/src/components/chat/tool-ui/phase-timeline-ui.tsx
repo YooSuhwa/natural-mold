@@ -143,7 +143,13 @@ type ThreadMessageLite = {
   content?: readonly { type?: string; toolName?: string; toolCallId?: string }[]
 }
 
-function PhaseTimelineRender({ toolCallId, args }: { toolCallId: string; args: TimelineArgs }) {
+export function PhaseTimelineRender({
+  toolCallId,
+  args,
+}: {
+  toolCallId: string
+  args: TimelineArgs
+}) {
   // thread 안 마지막 phase_timeline tool_call이 아니면 hide.
   // 이전 봇 메시지에 박힌 동일 tool은 더 이상 렌더하지 않아 진행 카드가 최신 메시지에만 보이게.
   // assistant-ui 0.12+ 의 `useAuiState((s) => s.thread.messages)` 패턴 — ThreadContext.d.ts 의

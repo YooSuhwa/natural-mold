@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute, contains_eager, selectinload
 
 from app.agent_runtime.identity import AgentRunIdentity
+from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.credentials import service as credential_service
 from app.exceptions import ValidationError
 from app.mcp.auth import resolve_mcp_auth
@@ -323,15 +324,51 @@ def _merge_interrupt_tool_calls(
 
 def _latest_interrupt_payload(events: list[dict[str, Any]]) -> dict[str, Any] | None:
     for event in reversed(events):
-        if event.get("event") != "interrupt":
-            continue
-        data = event.get("data")
-        if not isinstance(data, dict):
+        data = _interrupt_payload_data(event)
+        if data is None:
             continue
         action_requests = data.get("action_requests")
         if isinstance(action_requests, list) and action_requests:
             return data
     return None
+
+
+def _interrupt_payload_data(event: dict[str, Any]) -> dict[str, Any] | None:
+    if event.get("event") == "interrupt":
+        data = event.get("data")
+        return data if isinstance(data, dict) else None
+
+    if event.get("method") != "input.requested":
+        return None
+
+    data = event.get("data")
+    if not isinstance(data, dict):
+        params = event.get("params")
+        if not isinstance(params, dict):
+            return None
+        params_data = params.get("data")
+        data = params_data if isinstance(params_data, dict) else {}
+
+    if _has_action_requests(data):
+        return data
+
+    payload = data.get("payload")
+    if not isinstance(payload, dict) or not _has_action_requests(payload):
+        return None
+
+    merged = dict(payload)
+    interrupt_id = data.get("interrupt_id") or data.get("id")
+    namespace = data.get("namespace") or data.get("ns")
+    if interrupt_id is not None and "interrupt_id" not in merged:
+        merged["interrupt_id"] = interrupt_id
+    if namespace is not None and "namespace" not in merged:
+        merged["namespace"] = namespace
+    return merged
+
+
+def _has_action_requests(data: dict[str, Any]) -> bool:
+    action_requests = data.get("action_requests")
+    return isinstance(action_requests, list) and bool(action_requests)
 
 
 def _completed_tool_call_ids(responses: list[MessageResponse]) -> set[str]:
@@ -442,6 +479,15 @@ async def _hydrate_pending_interrupt_tool_calls(
             ):
                 continue
             response.tool_calls = _merge_interrupt_tool_calls(response.tool_calls or [], payload)
+
+
+def _redact_response_tool_calls(responses: list[MessageResponse]) -> None:
+    for response in responses:
+        if not response.tool_calls:
+            continue
+        redacted = redact_protocol_data("messages", response.tool_calls)
+        if isinstance(redacted, list) and all(isinstance(item, dict) for item in redacted):
+            response.tool_calls = redacted
 
 
 # ---------------------------------------------------------------------------
@@ -851,6 +897,7 @@ async def list_messages_from_checkpointer(
             conversation_id=conversation.id,
             responses=responses,
         )
+    _redact_response_tool_calls(responses)
 
     # Hydrate per-message feedback (current user) + attachments/artifacts. Wrapped in
     # broad try/except so a missing migration (m27/m28 not yet applied) or

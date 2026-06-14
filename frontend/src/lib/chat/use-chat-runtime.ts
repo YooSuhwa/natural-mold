@@ -465,6 +465,7 @@ export function useChatRuntime({
       mergeMessagesForRender({
         messages,
         streamingMessages,
+        // eslint-disable-next-line react-hooks/refs -- merge needs the last committed snapshot without triggering renders.
         previousMessages: prevMessagesRef.current,
         isRunning,
       }),
@@ -558,6 +559,7 @@ export function useChatRuntime({
       // W7 — message_end 시점에 채워지는 4종 토큰 사용량. assistant 메시지에
       // 박혀 푸터 hover 팝오버가 직접 참조한다.
       let messageUsage: TokenUsageBreakdown | null = null
+      let hadLifecycleNotice = false
 
       // tool_calls 배열은 토큰 단위로 재생성하지 않고 dirty 시점에만 스냅샷.
       // content_delta가 빈번해도 cachedToolCalls 참조가 유지되어 React.memo 자식이
@@ -829,8 +831,12 @@ export function useChatRuntime({
               // 정리 + toast 알림으로 사용자가 "왜 응답이 멈췄는지" 인지하게.
               setReconnectState('idle')
               setStreamError('broker_lost')
+              const staleNotice = tReconnect('stale')
+              accumulated = accumulated ? `${accumulated}\n\n${staleNotice}` : staleNotice
+              hadLifecycleNotice = true
+              setStreamingMessages(buildStreamState())
               if (!streamGuardRef.current.isStale(token)) {
-                toast.warning(tReconnect('stale'), { id: TOAST_ID_STREAM_STALE })
+                toast.warning(staleNotice, { id: TOAST_ID_STREAM_STALE })
               }
               break
             }
@@ -869,7 +875,7 @@ export function useChatRuntime({
           // MessageRepository.link 가 "duplicate id in parent tree" 로 throw.
           setStreamingMessages([])
           onMessagesCommit(finalMsgs)
-        } else if (hadPendingFlush || hadCancelNotice) {
+        } else if (hadPendingFlush || hadCancelNotice || hadLifecycleNotice) {
           // refetch-driven 경로(일반 채팅): streamingMessages 는 비우지 않고
           // backend messages refetch 까지 유지 — 답변이 화면에서 잠깐 사라
           // 졌다 다시 나타나는 깜박임을 막는다. rAF-batched 마지막 flush 만
@@ -899,6 +905,21 @@ export function useChatRuntime({
       appendCanceledNotice,
     ],
   )
+  const consumeStreamRef = useRef(consumeStream)
+  useEffect(() => {
+    consumeStreamRef.current = consumeStream
+  }, [consumeStream])
+  const activeAttachStaleFallbackRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    activeAttachStaleFallbackRef.current = () => {
+      const staleNotice = tReconnect('stale')
+      setReconnectState('idle')
+      setStreamError('broker_lost')
+      setStreamingMessages([createOptimisticMessage('assistant', staleNotice)])
+      toast.warning(staleNotice, { id: TOAST_ID_STREAM_STALE })
+      onStreamEnd?.(false)
+    }
+  }, [onStreamEnd, setReconnectState, tReconnect])
 
   const activeRunId = activeRun?.id ?? null
   const activeRunStatus = activeRun?.status ?? null
@@ -952,9 +973,17 @@ export function useChatRuntime({
       },
     )
 
-    void consumeStream(wrapped, null, token)
+    void consumeStreamRef
+      .current(wrapped, null, token)
       .catch((err: unknown) => {
         if (controller.signal.aborted) return
+        if (err instanceof StreamApiError && err.code === 'RESUME_NOT_FOUND') {
+          failedActiveRunAttachIdRef.current = activeRunId
+          streamInFlightRef.current = false
+          setIsRunning(false)
+          activeAttachStaleFallbackRef.current()
+          return
+        }
         failedActiveRunAttachIdRef.current = activeRunId
         setReconnectState('idle')
         setIsRunning(false)
@@ -970,6 +999,9 @@ export function useChatRuntime({
       // unmount/deps 변경 시 이 attach 의 토큰을 먼저 무효화 — abort 이후
       // consumeStream finally 가 unmount 된 컴포넌트에 setState/onStreamEnd 를
       // 실행하는 것을 막는다. 새 stream 이 이미 토큰을 교체했다면 건너뛴다.
+      if (attachedActiveRunIdRef.current === activeRunId) {
+        attachedActiveRunIdRef.current = null
+      }
       if (!streamGuard.isStale(token)) {
         streamGuard.begin()
         streamInFlightRef.current = false
@@ -978,7 +1010,7 @@ export function useChatRuntime({
       }
       controller.abort()
     }
-  }, [activeRunId, activeRunStatus, consumeStream, conversationId, setReconnectState])
+  }, [activeRunId, activeRunStatus, conversationId, setReconnectState])
 
   // messages가 새로 fetch되면(refetch 완료) streaming messages를 clear.
   // streaming 직후 messages → effective 전환에서 깜박임 방지.

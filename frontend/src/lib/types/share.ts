@@ -4,11 +4,30 @@ import type { Message } from './index'
  * One SSE event captured during an assistant turn. Mirrors backend
  * ``TraceEvent`` (``backend/app/schemas/conversation.py``).
  */
-export interface TraceEvent {
+export interface LegacyTraceEvent {
   id: string | null
   event: string
   data: Record<string, unknown>
 }
+
+export interface ProtocolTraceEvent {
+  id: string | null
+  method: string
+  data?: unknown
+  namespace?: string[]
+  params?: {
+    namespace?: string[]
+    timestamp?: string | number
+    data?: unknown
+  }
+  seq?: number | null
+  event_id?: string | null
+  upstream_event_id?: string | null
+  run_id?: string | null
+  type?: string | null
+}
+
+export type TraceEvent = LegacyTraceEvent | ProtocolTraceEvent
 
 /**
  * One assistant turn's full event sequence. Used by W6 (shared page chips)

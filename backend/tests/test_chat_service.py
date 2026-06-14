@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.protocol_events import stored_protocol_event
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
@@ -314,6 +316,94 @@ async def test_hydrates_pending_write_file_interrupt_from_trace_chunks(db: Async
 
 
 @pytest.mark.asyncio
+async def test_hydrates_pending_write_file_interrupt_from_protocol_trace(db: AsyncSession):
+    agent_id = await _seed(db)
+    conv = await create_conversation(db, agent_id, title="v3 HITL file")
+    msg_id = uuid.uuid4()
+    raw_msg_id = str(msg_id)
+    run_id = str(uuid.uuid4())
+    interrupt_id = "agent:file-write:v3"
+    file_args = {
+        "file_path": "/runtime/today_diary.md",
+        "content": "# 오늘 하루\n\n좋은 하루였다.",
+    }
+    response = MessageResponse(
+        id=msg_id,
+        conversation_id=conv.id,
+        role="assistant",
+        content="파일을 만들게요.",
+        tool_calls=[{"id": "toolu-1", "name": "write_file", "args": file_args}],
+        tool_call_id=None,
+        created_at=conv.created_at,
+    )
+
+    await trace_storage.append_events(
+        db,
+        conversation_id=conv.id,
+        assistant_msg_id=run_id,
+        events_chunk=[
+            dict(
+                stored_protocol_event(
+                    run_id=run_id,
+                    thread_id=str(conv.id),
+                    seq=1,
+                    method="input.requested",
+                    data={
+                        "interrupt_id": interrupt_id,
+                        "namespace": [],
+                        "payload": {
+                            "action_requests": [
+                                {
+                                    "name": "write_file",
+                                    "args": file_args,
+                                    "description": "Tool execution requires approval",
+                                }
+                            ],
+                            "review_configs": [
+                                {
+                                    "action_name": "write_file",
+                                    "allowed_decisions": ["approve", "reject"],
+                                }
+                            ],
+                        },
+                    },
+                )
+            )
+        ],
+    )
+    await trace_storage.finalize_turn(
+        db,
+        assistant_msg_id=run_id,
+        raw_msg_ids=[raw_msg_id],
+        conversation_id=conv.id,
+    )
+    await db.commit()
+
+    await chat_service._hydrate_pending_interrupt_tool_calls(  # noqa: SLF001
+        db,
+        conversation_id=conv.id,
+        responses=[response],
+    )
+
+    assert response.tool_calls == [
+        {
+            "id": "toolu-1",
+            "name": "request_approval",
+            "args": {
+                "tool_name": "write_file",
+                "tool_args": file_args,
+                "description": "Tool execution requires approval",
+                "approval_id": "toolu-1",
+                "allowed_decisions": ["approve", "reject"],
+                "hitl_interrupt_id": interrupt_id,
+                "hitl_action_index": 0,
+                "hitl_total_actions": 1,
+            },
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_does_not_hydrate_completed_write_file_interrupt(db: AsyncSession):
     """Once write_file has a tool result, reload should not show a pending approval."""
     agent_id = await _seed(db)
@@ -475,6 +565,51 @@ async def test_hydrates_interrupt_only_on_matching_tool_call_response(db: AsyncS
                 "hitl_interrupt_id": "agent:file-write",
                 "hitl_action_index": 0,
                 "hitl_total_actions": 1,
+            },
+        }
+    ]
+
+
+def test_redacts_response_tool_calls_before_exposure():
+    response = MessageResponse(
+        id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        role="assistant",
+        content="",
+        tool_calls=[
+            {
+                "id": "toolu-secret",
+                "name": "execute_in_skill",
+                "args": {
+                    "command": "node scripts/create_docx.cjs",
+                    "api_key": "SECRET_VALUE",
+                    "usage_metadata": {"prompt_tokens": 12},
+                },
+                "function": {
+                    "name": "execute_in_skill",
+                    "arguments": '{"api_key":"SECRET_VALUE","prompt_tokens":12}',
+                },
+            }
+        ],
+        tool_call_id=None,
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+
+    chat_service._redact_response_tool_calls([response])  # noqa: SLF001
+
+    assert "SECRET_VALUE" not in repr(response.tool_calls)
+    assert response.tool_calls == [
+        {
+            "id": "toolu-secret",
+            "name": "execute_in_skill",
+            "args": {
+                "command": "node scripts/create_docx.cjs",
+                "api_key": "<redacted>",
+                "usage_metadata": {"prompt_tokens": 12},
+            },
+            "function": {
+                "name": "execute_in_skill",
+                "arguments": '{"api_key":"<redacted>","prompt_tokens":12}',
             },
         }
     ]

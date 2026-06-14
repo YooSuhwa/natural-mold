@@ -220,6 +220,7 @@ export function VisualSettingsFlow({
   useEffect(() => {
     if (isControlled) return
     if (mode !== 'edit' || !agent) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- uncontrolled edit form mirrors loaded agent props.
     setInternalName(agent.name)
     setInternalDescription(agent.description ?? '')
     setInternalSystemPrompt(agent.system_prompt)
@@ -241,6 +242,7 @@ export function VisualSettingsFlow({
   useEffect(() => {
     if (isControlled) return
     if (mode === 'create' && !internalModelId && models.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial default model is selected when async models arrive.
       setInternalModelId(models[0].id)
     }
   }, [mode, internalModelId, models, isControlled])

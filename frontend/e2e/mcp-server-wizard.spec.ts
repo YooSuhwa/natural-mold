@@ -80,7 +80,7 @@ test.describe('MCP server wizard', () => {
 
     // Step 1: basics
     await page.getByLabel('이름').fill('Local MCP')
-    await page.getByLabel('URL').fill('https://example.com/mcp')
+    await page.getByRole('textbox', { name: 'URL *' }).fill('https://example.com/mcp')
     await page.getByRole('button', { name: '인증으로 계속 →' }).click()
 
     // Step 2: auth — skip

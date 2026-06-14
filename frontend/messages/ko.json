@@ -1356,7 +1356,11 @@
     "toolUi": {
       "subAgent": {
         "fallbackName": "서브 에이전트",
-        "invocation": "서브 에이전트 호출"
+        "invocation": "서브 에이전트 호출",
+        "openDetails": "서브 에이전트 세부 정보 열기",
+        "messageCount": "메시지 {count}개",
+        "toolCount": "도구 {count}개",
+        "waiting": "서브 에이전트 출력이 도착하면 여기에 표시됩니다."
       }
     },
     "builderApproval": {
@@ -1566,6 +1570,61 @@
       "failed": "연결을 다시 맺지 못했어요. 메시지를 다시 전송하거나 새로고침해주세요.",
       "stale": "응답이 끊어져 일부가 누락되었을 수 있어요. 메시지를 다시 시도해주세요.",
       "credentialRequiredAction": "{message}\n\n[키 등록하러 가기](/settings/credentials)"
+    },
+    "activity": {
+      "thinking": "생각을 정리하는 중",
+      "planning": "계획을 세우는 중",
+      "tool": "{name} 실행 중",
+      "subagent": "{name} 작업 중",
+      "artifact": "파일을 준비하는 중",
+      "memory": "기억을 업데이트하는 중",
+      "interrupt": "승인을 기다리는 중",
+      "checkpoint": "작업 지점을 저장하는 중",
+      "responding": "응답을 작성하는 중",
+      "reconnecting": "스트림을 다시 연결하는 중",
+      "done": "완료됨",
+      "error": "문제가 발생했습니다"
+    },
+    "subagents": {
+      "progress": "서브 에이전트 {completed}/{total} 완료",
+      "progressLabel": "서브 에이전트 진행률",
+      "running": "{count}개 진행 중",
+      "failed": "{count}개 실패"
+    },
+    "deepAgentsState": {
+      "tasks": {
+        "title": "작업 목록",
+        "progress": "{done}/{total} 완료"
+      },
+      "files": {
+        "title": "파일",
+        "count": "{count}개",
+        "editDisabledRunning": "실행 중에는 편집할 수 없습니다",
+        "editDisabledUnsupported": "이 파일은 아직 패널에서 직접 편집할 수 없습니다",
+        "kinds": {
+          "markdown": "마크다운",
+          "code": "코드",
+          "plainText": "텍스트",
+          "file": "파일"
+        },
+        "actions": {
+          "openPreview": "{name} 미리보기 열기",
+          "copy": "{name} 복사",
+          "download": "{name} 다운로드",
+          "edit": "{name} 편집",
+          "save": "{name} 저장"
+        }
+      },
+      "status": {
+        "completed": "완료",
+        "in_progress": "진행 중",
+        "pending": "대기"
+      }
+    },
+    "reasoning": {
+      "title": "추론 요약",
+      "running": "정리 중",
+      "ready": "준비됨"
     },
     "loading": {
       "witty": {

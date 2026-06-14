@@ -136,12 +136,33 @@ export function CollapsiblePill({
         <HeaderIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
       ) : null}
       <span className="truncate font-medium">{title}</span>
-      {meta ? <span className="shrink-0 text-muted-foreground">{meta}</span> : null}
+      {meta ? <span className="min-w-0 truncate text-muted-foreground">{meta}</span> : null}
     </>
   )
 
   // pill 전체를 버튼으로: children 없고 onClick만 주어진 케이스
   if (!expandable && onClick) {
+    if (trailing) {
+      return (
+        <div
+          className={cn(
+            'moldy-tool-pill group flex w-full items-center gap-2 px-3 py-2 text-left text-xs',
+            containerClass,
+            className,
+          )}
+        >
+          <button
+            type="button"
+            onClick={onClick}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          >
+            {headerInner}
+          </button>
+          {trailing}
+        </div>
+      )
+    }
+
     return (
       <button
         type="button"

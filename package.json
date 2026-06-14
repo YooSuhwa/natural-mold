@@ -1,5 +1,6 @@
 {
   "private": true,
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "prepare": "husky",
     "check": "pnpm run check:be && pnpm run check:fe",

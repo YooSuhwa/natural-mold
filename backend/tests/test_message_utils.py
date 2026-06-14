@@ -218,9 +218,7 @@ class TestUsageExtraction:
         """``input_token_details`` 없으면 cache_*는 0으로 채워진다."""
         conv_id = uuid.uuid4()
         msg = AIMessage(content="hi")
-        msg.usage_metadata = cast(
-            UsageMetadata, {"input_tokens": 100, "output_tokens": 50}
-        )
+        msg.usage_metadata = cast(UsageMetadata, {"input_tokens": 100, "output_tokens": 50})
         [resp] = langchain_messages_to_response([msg], conv_id)
         assert resp.usage is not None
         assert resp.usage.prompt_tokens == 100
@@ -238,9 +236,7 @@ class TestUsageExtraction:
         """모든 필드 0이면 ``None`` — 클라이언트가 hover 팝오버 자체를 렌더 안 함."""
         conv_id = uuid.uuid4()
         msg = AIMessage(content="")
-        msg.usage_metadata = cast(
-            UsageMetadata, {"input_tokens": 0, "output_tokens": 0}
-        )
+        msg.usage_metadata = cast(UsageMetadata, {"input_tokens": 0, "output_tokens": 0})
         [resp] = langchain_messages_to_response([msg], conv_id)
         assert resp.usage is None
 
@@ -248,9 +244,7 @@ class TestUsageExtraction:
         """W7-4 — agent.model 단가가 주어지면 cost를 계산해 응답에 박는다."""
         conv_id = uuid.uuid4()
         msg = AIMessage(content="hi")
-        msg.usage_metadata = cast(
-            UsageMetadata, {"input_tokens": 1000, "output_tokens": 500}
-        )
+        msg.usage_metadata = cast(UsageMetadata, {"input_tokens": 1000, "output_tokens": 500})
         [resp] = langchain_messages_to_response(
             [msg],
             conv_id,
@@ -265,9 +259,7 @@ class TestUsageExtraction:
         """단가가 None이면 cost는 채우지 않음 (envelope 합산이 0)."""
         conv_id = uuid.uuid4()
         msg = AIMessage(content="hi")
-        msg.usage_metadata = cast(
-            UsageMetadata, {"input_tokens": 100, "output_tokens": 50}
-        )
+        msg.usage_metadata = cast(UsageMetadata, {"input_tokens": 100, "output_tokens": 50})
         [resp] = langchain_messages_to_response([msg], conv_id)
         assert resp.usage is not None
         assert resp.usage.estimated_cost is None

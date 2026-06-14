@@ -5,6 +5,7 @@ import type {
   StandardInterruptPayload,
   ToolCallInfo,
 } from '@/lib/types'
+import { redactSensitiveRecord } from './sensitive-display'
 
 interface ToolUiMetadata {
   approval_id: string
@@ -27,7 +28,6 @@ const HITL_METADATA_KEYS = new Set([
   'hitl_action_index',
   'hitl_total_actions',
 ])
-
 function reviewForAction(
   action: ActionRequest,
   reviewConfigs: ReviewConfig[],
@@ -66,7 +66,9 @@ function isAskUserRespondOnly(action: ActionRequest, reviewConfig: ReviewConfig)
 }
 
 function stripHitLMetadata(args: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(args).filter(([key]) => !HITL_METADATA_KEYS.has(key)))
+  return redactSensitiveRecord(
+    Object.fromEntries(Object.entries(args).filter(([key]) => !HITL_METADATA_KEYS.has(key))),
+  )
 }
 
 function equivalentToolArgs(
@@ -125,12 +127,13 @@ export function standardInterruptToToolCalls(payload: StandardInterruptPayload):
   return payload.action_requests.map((action, index) => {
     const reviewConfig = reviewForAction(action, payload.review_configs, index)
     const metadata = metadataForAction(payload, reviewConfig, index)
+    const safeArgs = redactSensitiveRecord(action.args)
     if (isAskUserRespondOnly(action, reviewConfig)) {
       return {
         id: metadata.approval_id,
         name: 'ask_user',
         args: {
-          ...action.args,
+          ...safeArgs,
           ...metadata,
         },
       }
@@ -141,7 +144,7 @@ export function standardInterruptToToolCalls(payload: StandardInterruptPayload):
       name: 'request_approval',
       args: {
         tool_name: action.name,
-        tool_args: action.args,
+        tool_args: safeArgs,
         ...(action.description ? { description: action.description } : {}),
         ...metadata,
       },

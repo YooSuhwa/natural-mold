@@ -30,6 +30,7 @@ from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
+from app.routers.conversation_messages import _is_pending_interrupt
 from app.schemas.conversation import Decision, ResumeRequest
 from tests.conftest import TEST_USER_ID, TestSession
 
@@ -148,6 +149,26 @@ async def _seed_legacy_pending_interrupt(conv_id: uuid.UUID) -> None:
             )
         )
         await db.commit()
+
+
+def test_pending_interrupt_detector_accepts_protocol_input_requested() -> None:
+    events = [
+        {
+            "id": "run-v3:protocol:00000001",
+            "method": "input.requested",
+            "data": {
+                "interrupt_id": "interrupt-v3",
+                "payload": {"action_requests": [{"name": "write_file", "args": {}}]},
+            },
+        },
+        {
+            "id": "run-v3:protocol:00000002",
+            "method": "lifecycle",
+            "data": {"event": "interrupted"},
+        },
+    ]
+
+    assert _is_pending_interrupt(events)
 
 
 def _capture_resume_payload() -> tuple[list[Any], Any]:

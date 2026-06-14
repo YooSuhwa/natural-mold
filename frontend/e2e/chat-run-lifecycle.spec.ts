@@ -361,9 +361,14 @@ test.describe('Chat run lifecycle API contract', () => {
       const activeRun = await waitForActiveRun(request, conversationId)
 
       const cancelResponsePromise = page.waitForResponse(
-        (response) =>
-          response.request().method() === 'POST' &&
-          response.url().includes(`/api/conversations/${conversationId}/runs/${activeRun.id}/cancel`),
+        (response) => {
+          if (response.request().method() !== 'POST') return false
+          const url = response.url()
+          return (
+            url.includes(`/api/conversations/${conversationId}/runs/${activeRun.id}/cancel`) ||
+            url.includes(`/threads/${conversationId}/runs/${activeRun.id}/cancel`)
+          )
+        },
       )
       await page.locator('[data-moldy-stop-button="true"]').click()
       const cancelResponse = await cancelResponsePromise
@@ -435,7 +440,7 @@ test.describe('Chat run lifecycle API contract', () => {
       expect(heartbeatRes.ok()).toBeTruthy()
 
       await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
-      await expect(page.getByText(/응답이 끊어져 일부가 누락/)).toBeVisible({
+      await expect(page.locator('p').filter({ hasText: /응답이 끊어져 일부가 누락/ })).toBeVisible({
         timeout: 15_000,
       })
       await waitForRunStatus(request, conversationId, seededRun.id, 'stale')

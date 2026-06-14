@@ -1,50 +1,39 @@
 from __future__ import annotations
 
 import json
-import re
-from collections.abc import Iterable, Iterator, Mapping
-from typing import Any, Final, Literal, TypedDict
+from collections.abc import Mapping
+from typing import Any
 
 from app.agent_runtime import event_names
-from app.agent_runtime.event_broker import BrokeredEvent, slice_events_after
+from app.agent_runtime.ag_ui_protocol_adapter import protocol_event_to_ag_ui_events
+from app.agent_runtime.ag_ui_streaming import (
+    AG_UI_ID_SUFFIX,
+    AG_UI_PROTOCOL_HEADER,
+    AgUiBrokeredEvent,
+    AgUiEventType,
+    brokered_moldy_event_to_ag_ui_events,
+    flatten_moldy_events_to_ag_ui,
+    format_ag_ui_sse,
+    is_ag_ui_event_id,
+    slice_ag_ui_events_after,
+    source_event_id_from_ag_ui,
+    stale_run_event,
+)
 
-AgUiEventType = Literal[
-    "RUN_STARTED",
-    "RUN_FINISHED",
-    "RUN_ERROR",
-    "TEXT_MESSAGE_START",
-    "TEXT_MESSAGE_CONTENT",
-    "TEXT_MESSAGE_END",
-    "TOOL_CALL_START",
-    "TOOL_CALL_ARGS",
-    "TOOL_CALL_END",
-    "TOOL_CALL_RESULT",
-    "CUSTOM",
+__all__ = [
+    "AG_UI_ID_SUFFIX",
+    "AG_UI_PROTOCOL_HEADER",
+    "AgUiBrokeredEvent",
+    "AgUiEventType",
+    "brokered_moldy_event_to_ag_ui_events",
+    "flatten_moldy_events_to_ag_ui",
+    "format_ag_ui_sse",
+    "is_ag_ui_event_id",
+    "moldy_event_to_ag_ui_events",
+    "slice_ag_ui_events_after",
+    "source_event_id_from_ag_ui",
+    "stale_run_event",
 ]
-
-
-class AgUiBrokeredEvent(TypedDict):
-    id: str
-    event: AgUiEventType
-    data: dict[str, Any]
-
-
-AG_UI_ID_SUFFIX: Final = ":ag:"
-AG_UI_PROTOCOL_HEADER: Final = "ag_ui"
-_AG_UI_ID_RE: Final = re.compile(r"^(?P<source>.+):ag:(?P<index>\d+)$")
-
-
-def is_ag_ui_event_id(event_id: str | None) -> bool:
-    return bool(event_id and _AG_UI_ID_RE.match(event_id))
-
-
-def source_event_id_from_ag_ui(event_id: str | None) -> str | None:
-    if not event_id:
-        return None
-    match = _AG_UI_ID_RE.match(event_id)
-    if match:
-        return match.group("source")
-    return event_id
 
 
 def _as_dict(value: object) -> dict[str, Any]:
@@ -81,19 +70,21 @@ def _custom_event(
     }
 
 
+# AG-UI is external compatibility; Moldy's primary chat runtime uses canonical LangGraph protocol.
 def moldy_event_to_ag_ui_events(
     evt: Mapping[str, Any],
     *,
     thread_id: str,
     run_id: str,
 ) -> list[dict[str, Any]]:
-    """Convert one Moldy SSE event into one or more AG-UI core events.
-
-    The adapter intentionally keeps Moldy's richer payload in ``rawEvent`` for
-    lossy protocol edges such as token usage and already-complete tool args.
-    Native AG-UI clients can use the standard fields, while Moldy's current UI
-    can reconstruct the original event stream without another backend fork.
-    """
+    protocol_events = protocol_event_to_ag_ui_events(
+        evt,
+        thread_id=thread_id,
+        run_id=run_id,
+        legacy_converter=moldy_event_to_ag_ui_events,
+    )
+    if protocol_events is not None:
+        return protocol_events
 
     source_id = _str_or_none(evt.get("id")) or f"{run_id}:event"
     event_name = _str_or_none(evt.get("event"))
@@ -229,67 +220,3 @@ def moldy_event_to_ag_ui_events(
         return [_custom_event(custom_names[event_name], data, thread_id=thread_id, run_id=run_id)]
 
     return [_custom_event("moldy.raw_event", data, thread_id=thread_id, run_id=run_id)]
-
-
-def brokered_moldy_event_to_ag_ui_events(
-    evt: Mapping[str, Any],
-    *,
-    thread_id: str,
-    run_id: str,
-) -> list[AgUiBrokeredEvent]:
-    source_id = _str_or_none(evt.get("id")) or f"{run_id}:event"
-    converted = moldy_event_to_ag_ui_events(evt, thread_id=thread_id, run_id=run_id)
-    results: list[AgUiBrokeredEvent] = []
-    for index, data in enumerate(converted):
-        event_type = data.get("type")
-        if not isinstance(event_type, str):
-            continue
-        results.append(
-            {
-                "id": f"{source_id}{AG_UI_ID_SUFFIX}{index}",
-                "event": event_type,  # type: ignore[typeddict-item]
-                "data": data,
-            }
-        )
-    return results
-
-
-def flatten_moldy_events_to_ag_ui(
-    events: Iterable[Mapping[str, Any]],
-    *,
-    thread_id: str,
-    run_id: str,
-) -> Iterator[AgUiBrokeredEvent]:
-    for evt in events:
-        yield from brokered_moldy_event_to_ag_ui_events(evt, thread_id=thread_id, run_id=run_id)
-
-
-def slice_ag_ui_events_after(
-    events: Iterable[Mapping[str, Any]],
-    after_id: str | None,
-    *,
-    thread_id: str,
-    run_id: str,
-) -> Iterator[AgUiBrokeredEvent]:
-    yield from slice_events_after(
-        flatten_moldy_events_to_ag_ui(events, thread_id=thread_id, run_id=run_id),
-        after_id,
-    )
-
-
-def format_ag_ui_sse(evt: AgUiBrokeredEvent) -> str:
-    from app.agent_runtime.streaming import format_sse
-
-    return format_sse(evt["event"], evt["data"], event_id=evt["id"])
-
-
-def stale_run_event(run_id: str, *, reason: str, last_event_id: str | None) -> BrokeredEvent:
-    return {
-        "id": f"{run_id}-stale",
-        "event": event_names.STALE,
-        "data": {
-            "reason": reason,
-            "run_id": run_id,
-            "last_event_id": last_event_id,
-        },
-    }

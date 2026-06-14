@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -10,11 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
+from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ConversationArtifact
-from app.models.conversation_run import utc_now_naive
+from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
@@ -46,6 +48,11 @@ async def _seed_agent_conversation(
     db.add(conversation)
     await db.flush()
     return agent, conversation
+
+
+async def _close_broker_after_subscribe(broker: EventBroker) -> None:
+    await asyncio.wait_for(broker.wait_until_subscribed(), timeout=1)
+    broker.close()
 
 
 @pytest.mark.asyncio
@@ -323,11 +330,7 @@ async def test_run_stream_endpoint_attaches_live_broker(
         }
     )
 
-    async def close_broker() -> None:
-        await asyncio.sleep(0.01)
-        broker.close()
-
-    close_task = asyncio.create_task(close_broker())
+    close_task = asyncio.create_task(_close_broker_after_subscribe(broker))
     resp = await client.get(f"/api/conversations/{conversation.id}/runs/{run.id}/stream")
     await close_task
 
@@ -402,11 +405,7 @@ async def test_ag_ui_run_stream_endpoint_attaches_live_broker_with_split_event_r
         }
     )
 
-    async def close_broker() -> None:
-        await asyncio.sleep(0.01)
-        broker.close()
-
-    close_task = asyncio.create_task(close_broker())
+    close_task = asyncio.create_task(_close_broker_after_subscribe(broker))
     resp = await client.get(
         f"/api/conversations/{conversation.id}/runs/{run.id}/ag-ui-stream",
         params={"last_event_id": f"{run.id}-1:ag:0"},
@@ -467,11 +466,7 @@ async def test_run_stream_emits_stale_gap_marker_when_last_event_evicted(
         }
     )
 
-    async def close_broker() -> None:
-        await asyncio.sleep(0.01)
-        broker.close()
-
-    close_task = asyncio.create_task(close_broker())
+    close_task = asyncio.create_task(_close_broker_after_subscribe(broker))
     resp = await client.get(
         f"/api/conversations/{conversation.id}/runs/{run.id}/stream",
         params={"last_event_id": f"{run.id}-1"},
@@ -530,11 +525,7 @@ async def test_ag_ui_run_stream_emits_stale_gap_marker_when_source_evicted(
         }
     )
 
-    async def close_broker() -> None:
-        await asyncio.sleep(0.01)
-        broker.close()
-
-    close_task = asyncio.create_task(close_broker())
+    close_task = asyncio.create_task(_close_broker_after_subscribe(broker))
     resp = await client.get(
         f"/api/conversations/{conversation.id}/runs/{run.id}/ag-ui-stream",
         params={"last_event_id": f"{run.id}-1:ag:0"},
@@ -606,6 +597,59 @@ async def test_ag_ui_run_stream_endpoint_replays_terminal_run_with_split_event_r
 
 
 @pytest.mark.asyncio
+async def test_ag_ui_run_stream_endpoint_replays_append_only_chunks(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    agent, conversation = await _seed_agent_conversation(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="ag ui chunk replay",
+    )
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="test")
+    await conversation_run_service.transition_run(db, run, "completed")
+    await trace_storage.append_events(
+        db,
+        conversation_id=conversation.id,
+        assistant_msg_id=str(run.id),
+        events_chunk=[
+            {
+                "id": f"{run.id}-1",
+                "event": event_names.MESSAGE_START,
+                "data": {"id": str(run.id), "role": "assistant"},
+            },
+            {
+                "id": f"{run.id}-2",
+                "event": event_names.CONTENT_DELTA,
+                "data": {"delta": "chunk-only replay"},
+            },
+            {
+                "id": f"{run.id}-3",
+                "event": event_names.MESSAGE_END,
+                "data": {"content": "chunk-only replay", "usage": {}, "status": "completed"},
+            },
+        ],
+        status="completed",
+    )
+    await db.commit()
+
+    resp = await client.get(
+        f"/api/conversations/{conversation.id}/runs/{run.id}/ag-ui-stream",
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["x-resume-mode"] == "replay"
+    assert "TEXT_MESSAGE_START" in resp.text
+    assert "TEXT_MESSAGE_CONTENT" in resp.text
+    assert "chunk-only replay" in resp.text
+    assert "RUN_FINISHED" in resp.text
+
+
+@pytest.mark.asyncio
 async def test_run_stream_endpoint_returns_retry_for_fresh_active_run_without_broker(
     client: AsyncClient,
     db: AsyncSession,
@@ -659,6 +703,74 @@ async def test_run_stream_endpoint_marks_old_active_run_stale_without_broker(
     await db.refresh(run)
     assert run.status == "stale"
     assert run.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_run_stream_endpoint_locks_run_before_stale_transition(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import conversation_runs
+
+    monkeypatch.setattr(conversation_runs.settings, "chat_run_stale_after_seconds", 1)
+    agent, conversation = await _seed_agent_conversation(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="stale lock",
+    )
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="test")
+    run.heartbeat_at = run.created_at = utc_now_naive().replace(year=2000)
+    await db.commit()
+
+    original = conversation_run_service.get_run_for_user
+    seen_for_update: list[bool] = []
+
+    async def spy_get_run_for_user(*args: Any, **kwargs: Any) -> ConversationRun | None:
+        seen_for_update.append(bool(kwargs.get("for_update")))
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(conversation_run_service, "get_run_for_user", spy_get_run_for_user)
+
+    resp = await client.get(f"/api/conversations/{conversation.id}/runs/{run.id}/stream")
+
+    assert resp.status_code == 200
+    assert seen_for_update == [True]
+
+
+@pytest.mark.asyncio
+async def test_run_stream_endpoint_replays_terminal_stale_run_without_trace(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import conversation_runs
+
+    monkeypatch.setattr(conversation_runs.settings, "chat_run_stale_after_seconds", 1)
+    agent, conversation = await _seed_agent_conversation(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="stale",
+    )
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="test")
+    run.heartbeat_at = run.created_at = utc_now_naive().replace(year=2000)
+    await db.commit()
+
+    first = await client.get(f"/api/conversations/{conversation.id}/runs/{run.id}/stream")
+    second = await client.get(f"/api/conversations/{conversation.id}/runs/{run.id}/stream")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.headers["x-resume-mode"] == "stale"
+    assert "run_worker_lost" in second.text
 
 
 @pytest.mark.asyncio

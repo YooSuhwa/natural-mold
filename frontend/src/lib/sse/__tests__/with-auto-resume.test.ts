@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { withAutoResume } from '../with-auto-resume'
-import { StreamHttpError } from '../parse-sse'
+import { StreamApiError, StreamHttpError } from '../parse-sse'
 
 interface TestEvent {
   id?: string
@@ -115,6 +115,39 @@ describe('withAutoResume', () => {
         ),
       ),
     ).rejects.toBeInstanceOf(StreamHttpError)
+    expect(resume).not.toHaveBeenCalled()
+    expect(onFailed).toHaveBeenCalledOnce()
+  })
+
+  it('RUN_ATTACH_RETRY StreamApiError 409 는 retry 한다', async () => {
+    const resume = vi.fn(() => fromArray([{ id: 'a-2', payload: 2 }]))
+    const result = await collect(
+      withAutoResume<TestEvent>(
+        () =>
+          throwAfter(
+            [{ id: 'a-1', payload: 1 }],
+            new StreamApiError(409, 'RUN_ATTACH_RETRY', 'retry'),
+          ),
+        resume,
+        { backoffMs: [0] },
+      ),
+    )
+    expect(result.map((event) => event.payload)).toEqual([1, 2])
+    expect(resume).toHaveBeenCalledOnce()
+  })
+
+  it('RESUME_NOT_FOUND StreamApiError 404 는 retry 하지 않는다', async () => {
+    const resume = vi.fn(() => fromArray([{ id: 'a-2', payload: 2 }]))
+    const onFailed = vi.fn()
+    await expect(
+      collect(
+        withAutoResume<TestEvent>(
+          () => throwAfter([], new StreamApiError(404, 'RESUME_NOT_FOUND', 'missing')),
+          resume,
+          { backoffMs: [0], onFailed },
+        ),
+      ),
+    ).rejects.toBeInstanceOf(StreamApiError)
     expect(resume).not.toHaveBeenCalled()
     expect(onFailed).toHaveBeenCalledOnce()
   })

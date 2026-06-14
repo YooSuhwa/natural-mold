@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
-import { StreamHttpError } from '@/lib/sse/parse-sse'
+import { StreamApiError, StreamHttpError } from '@/lib/sse/parse-sse'
 import { streamResumeAttach } from '@/lib/sse/stream-resume-attach'
 import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
 import { useChatRuntime } from '../use-chat-runtime'
@@ -106,12 +106,24 @@ async function* failedAttachStream(): AsyncGenerator<SSEEvent> {
   throw new StreamHttpError(404, 'Not Found')
 }
 
+async function* resumeNotFoundAttachStream(): AsyncGenerator<SSEEvent> {
+  throw new StreamApiError(404, 'RESUME_NOT_FOUND', 'missing')
+}
+
 function deferred() {
   let resolve!: () => void
   const promise = new Promise<void>((res) => {
     resolve = res
   })
   return { promise, resolve }
+}
+
+function threadTexts(runtime: ReturnType<typeof useChatRuntime>['runtime']): string[] {
+  return runtime.thread
+    .getState()
+    .messages.map((message) =>
+      message.content.map((part) => (part.type === 'text' ? part.text : '')).join(''),
+    )
 }
 
 describe('useChatRuntime active run attach', () => {
@@ -183,10 +195,10 @@ describe('useChatRuntime active run attach', () => {
     expect(conversationRunsApi.cancel).not.toHaveBeenCalled()
   })
 
-  it('shows a stale warning when active run attach receives a stale lifecycle event', async () => {
+  it('shows a stale warning message when active run attach receives a stale lifecycle event', async () => {
     vi.mocked(streamResumeAttach).mockReturnValue(staleAttachStream())
 
-    renderHook(
+    const { result } = renderHook(
       () =>
         useChatRuntime({
           messages: [],
@@ -200,6 +212,46 @@ describe('useChatRuntime active run attach', () => {
     await waitFor(() => {
       expect(toast.warning).toHaveBeenCalledWith('stale', { id: 'chat-stream-stale' })
     })
+    await waitFor(() => {
+      expect(threadTexts(result.current.runtime)).toContain('stale')
+    })
+  })
+
+  it('keeps the same active run attach alive when callback dependencies change', async () => {
+    const captured: { signal: AbortSignal | null } = { signal: null }
+    vi.mocked(streamResumeAttach).mockImplementation(
+      async function* (_conversationId, _runId, _lastEventId, signal) {
+        captured.signal = signal ?? null
+        await new Promise<void>((resolve) => {
+          if (signal?.aborted) {
+            resolve()
+            return
+          }
+          signal?.addEventListener('abort', () => resolve(), { once: true })
+        })
+      },
+    )
+
+    const { rerender } = renderHook(
+      (props: { onStreamEnd: () => void }) =>
+        useChatRuntime({
+          messages: [],
+          streamFn: emptyStream,
+          conversationId: 'conversation-1',
+          activeRun: activeRun(),
+          onStreamEnd: props.onStreamEnd,
+        }),
+      { wrapper: createWrapper(), initialProps: { onStreamEnd: vi.fn() } },
+    )
+
+    await waitFor(() => {
+      expect(streamResumeAttach).toHaveBeenCalledTimes(1)
+    })
+
+    rerender({ onStreamEnd: vi.fn() })
+
+    expect(streamResumeAttach).toHaveBeenCalledTimes(1)
+    expect(captured.signal?.aborted).toBe(false)
   })
 
   it('진행 중인 로컬 stream이 있으면 active run attach가 stream을 빼앗지 않는다', async () => {
@@ -386,6 +438,30 @@ describe('useChatRuntime active run attach', () => {
       )
     })
     expect(streamResumeAttach).toHaveBeenCalledTimes(1)
+
+    consoleError.mockRestore()
+  })
+
+  it('shows stale notice when active run attach finds no replay trace', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(streamResumeAttach).mockReturnValue(resumeNotFoundAttachStream())
+
+    const { result } = renderHook(
+      () =>
+        useChatRuntime({
+          messages: [],
+          streamFn: emptyStream,
+          conversationId: 'conversation-1',
+          activeRun: activeRun(),
+        }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith('stale', { id: 'chat-stream-stale' })
+    })
+    expect(threadTexts(result.current.runtime)).toContain('stale')
+    expect(consoleError).not.toHaveBeenCalled()
 
     consoleError.mockRestore()
   })

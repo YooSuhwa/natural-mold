@@ -152,9 +152,7 @@ def extract_usage_breakdown(
 
     estimated_cost: float | None = None
     if cost_per_input_token is not None or cost_per_output_token is not None:
-        cost = (prompt * (cost_per_input_token or 0)) + (
-            completion * (cost_per_output_token or 0)
-        )
+        cost = (prompt * (cost_per_input_token or 0)) + (completion * (cost_per_output_token or 0))
         estimated_cost = round(cost, 8) if cost > 0 else 0.0
 
     return TokenUsageBreakdown(

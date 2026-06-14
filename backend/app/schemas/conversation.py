@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, PlainSerializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, model_validator
 
 from app.schemas.artifact import ArtifactSummary
 from app.schemas.conversation_run import ConversationRunResponse
@@ -263,17 +263,29 @@ class SwitchBranchRequest(BaseModel):
 
 
 class TraceEvent(BaseModel):
-    """Single SSE event captured during one assistant turn.
+    """Single persisted event captured during one assistant turn.
 
-    Mirrors the shape ``stream_agent_response`` accumulates in ``trace_sink``:
-    ``id`` is the SSE id ``"<msg_id>-<seq>"``, ``event`` is the event name
-    (``message_start`` / ``content_delta`` / ``tool_call_start`` / ...), and
-    ``data`` is the original JSON payload.
+    Legacy rows store ``{"id", "event", "data"}``; LangGraph v3 rows store
+    protocol events such as ``{"id", "method", "namespace", "data", "seq"}``.
+    Public share and trace readers must be dual-read while both shapes exist.
     """
 
     id: str | None = None
-    event: str
-    data: dict[str, Any]
+    event: str | None = None
+    method: str | None = None
+    data: Any | None = None
+    namespace: list[str] | None = None
+    params: dict[str, Any] | None = None
+    seq: int | None = None
+    event_id: str | None = None
+    upstream_event_id: str | None = None
+    run_id: str | None = None
+    thread_id: str | None = None
+    timestamp: str | None = None
+    checkpoint_id: str | None = None
+    checkpoint_ns: str | None = None
+
+    model_config = ConfigDict(extra="allow")
 
 
 class TurnTraceResponse(BaseModel):

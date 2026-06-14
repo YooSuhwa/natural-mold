@@ -6,9 +6,10 @@ import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
 import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
-import type { Message, SSEEvent } from '@/lib/types'
-import { TOOL_UI_WITHOUT_HITL } from '@/lib/chat/tool-ui-registry'
-import { streamAssistant } from '@/lib/sse/stream-assistant'
+import type { Decision, Message, SSEEvent } from '@/lib/types'
+import { HiTLContext } from '@/lib/chat/hitl-context'
+import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
+import { streamAssistant, streamAssistantResume } from '@/lib/sse/stream-assistant'
 import { AssistantThread } from '@/components/chat/assistant-thread'
 import { FixHero } from '@/components/agent/fix-hero'
 
@@ -42,6 +43,7 @@ export function AssistantPanel({
   const sessionId = useMemo(() => crypto.randomUUID(), [])
   const [localMessages, setLocalMessages] = useState<Message[]>([])
   const initialSentRef = useRef(false)
+  const resumeMayMutateRef = useRef(false)
 
   const onMessagesCommit = useCallback((msgs: Message[]) => {
     setLocalMessages((prev) => [...prev, ...msgs])
@@ -67,10 +69,37 @@ export function AssistantPanel({
     [agentId, sessionId, createMode, onCreateModeFirstMessage],
   )
 
+  const resumeFn = useCallback(
+    (
+      decisions: Decision[],
+      signal: AbortSignal,
+      displayText?: string,
+      interruptId?: string | null,
+    ): AsyncGenerator<SSEEvent> => {
+      async function* run() {
+        if (createMode && !agentId) return
+        resumeMayMutateRef.current = decisions.some(
+          (decision) => decision.type === 'approve' || decision.type === 'edit',
+        )
+        yield* streamAssistantResume(
+          agentId,
+          decisions,
+          signal,
+          displayText,
+          interruptId,
+          sessionId,
+        )
+      }
+      return run()
+    },
+    [agentId, sessionId, createMode],
+  )
+
   const onStreamEnd = useCallback(
     (didMutate: boolean) => {
-      // 단순 텍스트/조회 응답에는 invalidate 불필요 — write 도구가 호출됐을 때만.
-      if (!didMutate) return
+      const shouldInvalidate = didMutate || resumeMayMutateRef.current
+      resumeMayMutateRef.current = false
+      if (!shouldInvalidate) return
       qc.invalidateQueries({ queryKey: ['agents'] })
       if (agentId) {
         qc.invalidateQueries({ queryKey: ['agents', agentId] })
@@ -79,12 +108,17 @@ export function AssistantPanel({
     [qc, agentId],
   )
 
-  const { runtime, sendMessage } = useChatRuntime({
+  const { runtime, onResumeDecisions, registerDecision, sendMessage } = useChatRuntime({
     messages: localMessages,
     streamFn,
+    resumeFn,
     onStreamEnd,
     onMessagesCommit,
   })
+  const hitlValue = useMemo(
+    () => ({ onResumeDecisions, registerDecision }),
+    [onResumeDecisions, registerDecision],
+  )
 
   // 마운트 후 initialMessage 자동 전송 (sessionStorage carry-over)
   useEffect(() => {
@@ -114,21 +148,23 @@ export function AssistantPanel({
 
       <div className="flex min-h-0 flex-1 flex-col">
         <AssistantRuntimeProvider runtime={runtime}>
-          <AssistantThread
-            agentImageUrl={heroImage}
-            agentImagePublicAsset
-            agentName={agentName}
-            compact
-            emptyContent={
-              <EmptyContent
-                imageSrc={createMode ? CREATE_HERO_IMAGE : FIX_AGENT_IMAGE}
-                title={heroTitle}
-                subtitle={t('fixHeroSubtitle')}
-                suggestions={suggestions}
-              />
-            }
-            toolUI={TOOL_UI_WITHOUT_HITL}
-          />
+          <HiTLContext.Provider value={hitlValue}>
+            <AssistantThread
+              agentImageUrl={heroImage}
+              agentImagePublicAsset
+              agentName={agentName}
+              compact
+              emptyContent={
+                <EmptyContent
+                  imageSrc={createMode ? CREATE_HERO_IMAGE : FIX_AGENT_IMAGE}
+                  title={heroTitle}
+                  subtitle={t('fixHeroSubtitle')}
+                  suggestions={suggestions}
+                />
+              }
+              toolUI={ALL_TOOL_UI}
+            />
+          </HiTLContext.Provider>
         </AssistantRuntimeProvider>
       </div>
     </div>

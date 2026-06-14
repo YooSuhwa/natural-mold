@@ -770,11 +770,7 @@ async def test_stream_filters_private_reasoning_from_sse_and_persistence():
     assert "보여줄 답변" in persisted_payload
     assert private not in wire_payload
     assert private not in persisted_payload
-    assert all(
-        "values" not in evt.get("data", {})
-        for chunk in captured_chunks
-        for evt in chunk
-    )
+    assert all("values" not in evt.get("data", {}) for chunk in captured_chunks for evt in chunk)
 
 
 @pytest.mark.asyncio
