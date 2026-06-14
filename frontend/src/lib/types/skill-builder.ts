@@ -67,6 +67,7 @@ export type SkillBuilderMessageRequest = {
 }
 
 export type SkillBuilderStreamEventType =
+  | 'message_start'
   | 'builder_status'
   | 'builder_activity'
   | 'draft_package'
@@ -74,13 +75,71 @@ export type SkillBuilderStreamEventType =
   | 'compatibility_result'
   | 'changelog_draft'
   | 'eval_result'
+  | 'content_delta'
+  | 'message_end'
   | 'error'
 
-export type SkillBuilderStreamEvent = {
-  readonly event: SkillBuilderStreamEventType
-  readonly data: unknown
-  readonly id?: string
-}
+export type SkillBuilderStatusPayload = Readonly<Record<string, JsonValue>>
+export type SkillBuilderActivityPayload = Readonly<Record<string, JsonValue>>
+export type SkillBuilderDraftEventPayload = Readonly<Record<string, JsonValue>>
+export type SkillBuilderMessagePayload = Readonly<Record<string, JsonValue>>
+
+export type SkillBuilderStreamEvent =
+  | {
+      readonly event: 'message_start'
+      readonly data: SkillBuilderMessagePayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'builder_status'
+      readonly data: SkillBuilderStatusPayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'builder_activity'
+      readonly data: SkillBuilderActivityPayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'draft_package'
+      readonly data: SkillBuilderDraftEventPayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'validation_result'
+      readonly data: Readonly<Record<string, JsonValue>>
+      readonly id?: string
+    }
+  | {
+      readonly event: 'compatibility_result'
+      readonly data: Readonly<Record<string, JsonValue>>
+      readonly id?: string
+    }
+  | {
+      readonly event: 'changelog_draft'
+      readonly data: Readonly<Record<string, JsonValue>>
+      readonly id?: string
+    }
+  | {
+      readonly event: 'eval_result'
+      readonly data: Readonly<Record<string, JsonValue>>
+      readonly id?: string
+    }
+  | {
+      readonly event: 'content_delta'
+      readonly data: SkillBuilderMessagePayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'message_end'
+      readonly data: SkillBuilderMessagePayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'error'
+      readonly data: SkillBuilderMessagePayload
+      readonly id?: string
+    }
 
 export type SkillBuilderSession = {
   readonly id: string

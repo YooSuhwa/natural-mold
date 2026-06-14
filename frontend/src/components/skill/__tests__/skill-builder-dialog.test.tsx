@@ -1,5 +1,6 @@
 import { ApiError } from '@/lib/api/client'
 import { skillBuilderApi } from '@/lib/api/skill-builder'
+import { streamSkillBuilderMessage } from '@/lib/sse/stream-skill-builder-message'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { SkillBuilderDialog } from '../skill-builder-dialog'
 import { render, screen, userEvent, waitFor } from '../../../../tests/test-utils'
@@ -16,8 +17,14 @@ const mockUseSession = vi.hoisted(() => vi.fn<() => MockSession>())
 vi.mock('@/lib/api/skill-builder', () => ({
   skillBuilderApi: {
     start: vi.fn(),
+    get: vi.fn(),
     confirm: vi.fn(),
+    runEvaluation: vi.fn(),
   },
+}))
+
+vi.mock('@/lib/sse/stream-skill-builder-message', () => ({
+  streamSkillBuilderMessage: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/session', () => ({
@@ -101,7 +108,11 @@ describe('SkillBuilderDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUseSession.mockReturnValue({ data: { is_super_user: false }, isPending: false })
+    vi.mocked(skillBuilderApi.get).mockResolvedValue(session)
     vi.mocked(skillBuilderApi.confirm).mockResolvedValue(skill)
+    vi.mocked(streamSkillBuilderMessage).mockImplementation(async function* stream() {
+      yield { event: 'message_end', data: {} }
+    })
   })
 
   it('shows normal users that an administrator needs to configure the builder model', async () => {
@@ -148,7 +159,9 @@ describe('SkillBuilderDialog', () => {
 
   it('starts improve sessions with the source skill id and confirms the created skill', async () => {
     const onCreated = vi.fn()
-    vi.mocked(skillBuilderApi.start).mockResolvedValue({ ...session, mode: 'improve' })
+    const improveSession = { ...session, mode: 'improve' as const }
+    vi.mocked(skillBuilderApi.start).mockResolvedValue(improveSession)
+    vi.mocked(skillBuilderApi.get).mockResolvedValue(improveSession)
 
     render(
       <SkillBuilderDialog
@@ -168,6 +181,9 @@ describe('SkillBuilderDialog', () => {
       source_skill_id: 'skill-1',
       user_request: '마감일 추출을 더 정확하게 해줘',
     })
+    expect(streamSkillBuilderMessage).toHaveBeenCalledWith('session-1', {
+      content: '마감일 추출을 더 정확하게 해줘',
+    })
     expect(await screen.findByText('SKILL.md')).toBeInTheDocument()
     expect(screen.getByText('공용 호환성')).toBeInTheDocument()
     expect(screen.getByText('OpenAI/Codex')).toBeInTheDocument()
@@ -183,7 +199,9 @@ describe('SkillBuilderDialog', () => {
 
   it('shows a recoverable conflict state when the source skill changed before apply', async () => {
     const onCreated = vi.fn()
-    vi.mocked(skillBuilderApi.start).mockResolvedValue({ ...session, mode: 'improve' })
+    const improveSession = { ...session, mode: 'improve' as const }
+    vi.mocked(skillBuilderApi.start).mockResolvedValue(improveSession)
+    vi.mocked(skillBuilderApi.get).mockResolvedValue(improveSession)
     vi.mocked(skillBuilderApi.confirm).mockRejectedValue(
       new ApiError(
         409,
@@ -214,5 +232,22 @@ describe('SkillBuilderDialog', () => {
     expect(screen.getByRole('button', { name: '최신 기준으로 다시 만들기' })).toBeEnabled()
     expect(screen.getByRole('button', { name: '세션 버리기' })).toBeEnabled()
     expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  it('opens without depending on the normal chat runtime env', () => {
+    const previous = process.env.NEXT_PUBLIC_CHAT_RUNTIME
+    delete process.env.NEXT_PUBLIC_CHAT_RUNTIME
+
+    try {
+      render(<SkillBuilderDialog open mode="create" onOpenChange={vi.fn()} />)
+    } finally {
+      if (previous === undefined) {
+        delete process.env.NEXT_PUBLIC_CHAT_RUNTIME
+      } else {
+        process.env.NEXT_PUBLIC_CHAT_RUNTIME = previous
+      }
+    }
+
+    expect(screen.getByRole('heading', { name: '대화로 스킬 만들기' })).toBeInTheDocument()
   })
 })

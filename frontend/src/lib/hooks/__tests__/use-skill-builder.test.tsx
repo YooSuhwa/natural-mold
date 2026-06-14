@@ -5,12 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { skillBuilderApi } from '@/lib/api/skill-builder'
 import { skillEvaluationsApi } from '@/lib/api/skill-evaluations'
 import { skillRevisionsApi } from '@/lib/api/skill-revisions'
-import { useConfirmSkillBuilderSession } from '../use-skill-builder'
+import { useConfirmSkillBuilderSession, useRunSkillBuilderEvaluation } from '../use-skill-builder'
 import { useCreateSkillEvaluationRun } from '../use-skill-evaluations'
 import { useRollbackSkillRevision } from '../use-skill-revisions'
 
 vi.mock('@/lib/api/skill-builder', () => ({
-  skillBuilderApi: { confirm: vi.fn() },
+  skillBuilderApi: { confirm: vi.fn(), runEvaluation: vi.fn() },
 }))
 
 vi.mock('@/lib/api/skill-evaluations', () => ({
@@ -155,5 +155,40 @@ describe('skill builder hooks', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['skills', 'skill-1', 'files'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['skills', 'skill-1', 'content'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['skills', 'skill-1', 'evaluations'] })
+  })
+
+  it('builder evaluation run stores the refreshed session in cache', async () => {
+    const queryClient = createTestQueryClient()
+    vi.mocked(skillBuilderApi.runEvaluation).mockResolvedValue({
+      id: 'session-1',
+      user_id: 'user-1',
+      user_request: '회의록 액션 아이템 스킬',
+      mode: 'create',
+      status: 'review',
+      current_phase: 3,
+      draft_package: null,
+      validation_result: null,
+      compatibility_result: null,
+      changelog_draft: null,
+      eval_result: { summary: { case_count: 3 } },
+      trigger_eval_result: null,
+      finalized_skill_id: null,
+      error_message: null,
+      created_at: '2026-06-15T00:00:00.000Z',
+      updated_at: '2026-06-15T00:00:00.000Z',
+    })
+
+    const { result } = renderHook(() => useRunSkillBuilderEvaluation('session-1'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync()
+    })
+
+    expect(skillBuilderApi.runEvaluation).toHaveBeenCalledWith('session-1')
+    expect(queryClient.getQueryData(['skill-builder', 'session-1'])).toMatchObject({
+      eval_result: { summary: { case_count: 3 } },
+    })
   })
 })

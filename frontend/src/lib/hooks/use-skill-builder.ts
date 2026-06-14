@@ -48,6 +48,16 @@ export function useConfirmSkillBuilderSession() {
   })
 }
 
+export function useRunSkillBuilderEvaluation(sessionId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => skillBuilderApi.runEvaluation(sessionId),
+    onSuccess: (session) => {
+      qc.setQueryData(skillBuilderKeys.detail(session.id), session)
+    },
+  })
+}
+
 function invalidateInstalledSkillCaches(
   qc: ReturnType<typeof useQueryClient>,
   skillId: string,

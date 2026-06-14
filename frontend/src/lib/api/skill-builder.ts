@@ -25,4 +25,9 @@ export const skillBuilderApi = {
     apiFetch<Skill>(`/api/skill-builder/${sessionId}/confirm`, {
       method: 'POST',
     }),
+
+  runEvaluation: (sessionId: string) =>
+    apiFetch<SkillBuilderSession>(`/api/skill-builder/${sessionId}/evals/run`, {
+      method: 'POST',
+    }),
 }

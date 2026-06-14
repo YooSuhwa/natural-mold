@@ -3279,11 +3279,11 @@ Expected: trigger optimization tests pass.
   - `useSkillRevisions`
   - `useSkillRevision`
   - `useRollbackSkillRevision`
-- [ ] Add the builder-session eval run hook after `POST /api/skill-builder/{session_id}/evals/run` is implemented; current `frontend/src/lib/api/skill-builder.ts` exposes only `start`, `get`, `validate`, and `confirm`.
+- [x] Add the builder-session eval run hook after `POST /api/skill-builder/{session_id}/evals/run` is implemented.
 - [x] Add builder-specific stream helpers using shared SSE parsing/resume behavior where practical.
-- [ ] Add typed handlers for `builder_status`, `builder_activity`, `draft_package`, `validation_result`, `compatibility_result`, `changelog_draft`, and `eval_result`.
+- [x] Add typed handlers for `builder_status`, `builder_activity`, `draft_package`, `validation_result`, `compatibility_result`, `changelog_draft`, and `eval_result`.
 - [x] Do not depend on legacy normal chat `useChatRuntime`; current `main` defaults normal chat to `langgraph_v3`.
-- [ ] Add tests with `NEXT_PUBLIC_CHAT_RUNTIME` unset so the default `langgraph_v3` app shell does not accidentally break Skill Builder.
+- [x] Add tests with `NEXT_PUBLIC_CHAT_RUNTIME` unset so the default `langgraph_v3` app shell does not accidentally break Skill Builder.
 - [x] Invalidate `['skills']` after confirm succeeds.
 - [x] In improve mode, invalidate `['skills']`, `['skills', id]`, `['skills', id, 'files']`, and `['skills', id, 'content']` after confirm succeeds.
 - [x] Invalidate skill evaluation and skill detail queries after a rerun succeeds.

@@ -9,12 +9,14 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { DomainIconTile } from '@/components/shared/icon'
+import { skillBuilderApi } from '@/lib/api/skill-builder'
 import { ApiError } from '@/lib/api/client'
 import { useSession } from '@/lib/auth/session'
 import { useConfirmSkillBuilderSession, useStartSkillBuilder } from '@/lib/hooks/use-skill-builder'
+import { streamSkillBuilderMessage } from '@/lib/sse/stream-skill-builder-message'
 import { SkillBuilderPreview } from './skill-builder-preview'
 import { ImprovementConflict, SystemLlmReadiness } from './skill-builder-status-panels'
-import type { SkillBuilderMode, SkillBuilderSession } from '@/lib/types'
+import type { SkillBuilderMode, SkillBuilderSession, SkillBuilderStreamEvent } from '@/lib/types'
 
 type SkillBuilderOpenTab = 'content' | 'evaluation'
 
@@ -72,14 +74,18 @@ function SkillBuilderDialogInner({
   const [session, setSession] = useState<SkillBuilderSession | null>(null)
   const [systemLlmMissing, setSystemLlmMissing] = useState(false)
   const [sourceConflict, setSourceConflict] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
 
   const draft = session?.draft_package ?? null
-  const canStart = request.trim().length > 0 && !start.isPending
-  const canConfirm = session?.status === 'review' && !confirm.isPending && !sourceConflict
+  const pending = start.isPending || isStreaming
+  const canStart = request.trim().length > 0 && !pending
+  const canConfirm =
+    session?.status === 'review' && !confirm.isPending && !sourceConflict && !isStreaming
 
   async function startBuilderSession(trimmed: string) {
     setSystemLlmMissing(false)
     setSourceConflict(false)
+    setIsStreaming(false)
     try {
       const nextSession = await start.mutateAsync(
         mode === 'improve'
@@ -87,12 +93,23 @@ function SkillBuilderDialogInner({
           : { mode, user_request: trimmed },
       )
       setSession(nextSession)
+      setIsStreaming(true)
+      for await (const event of streamSkillBuilderMessage(nextSession.id, { content: trimmed })) {
+        handleSkillBuilderStreamEvent(event)
+      }
+      setSession(await skillBuilderApi.get(nextSession.id))
     } catch (err) {
       if (err instanceof ApiError && err.code === 'SYSTEM_LLM_NOT_CONFIGURED') {
         setSystemLlmMissing(true)
         return
       }
+      if (err instanceof SkillBuilderStreamEventError) {
+        toast.error(err.streamMessage ?? t('startFailed'))
+        return
+      }
       toast.error(err instanceof Error ? err.message : t('startFailed'))
+    } finally {
+      setIsStreaming(false)
     }
   }
 
@@ -166,7 +183,7 @@ function SkillBuilderDialogInner({
             ) : null}
             <div className="mt-auto flex justify-end">
               <Button type="button" onClick={handleStart} disabled={!canStart}>
-                {start.isPending ? (
+                {pending ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <Sparkles className="size-4" />
@@ -209,4 +226,38 @@ function SkillBuilderDialogInner({
       </DialogShell.Footer>
     </>
   )
+}
+
+function handleSkillBuilderStreamEvent(event: SkillBuilderStreamEvent): void {
+  switch (event.event) {
+    case 'message_start':
+    case 'builder_status':
+    case 'builder_activity':
+    case 'draft_package':
+    case 'validation_result':
+    case 'compatibility_result':
+    case 'changelog_draft':
+    case 'eval_result':
+    case 'content_delta':
+    case 'message_end':
+      return
+    case 'error':
+      throw new SkillBuilderStreamEventError(streamMessage(event.data.message))
+    default:
+      assertNever(event)
+  }
+}
+
+class SkillBuilderStreamEventError extends Error {
+  constructor(readonly streamMessage: string | null) {
+    super('skill_builder_stream_error')
+  }
+}
+
+function streamMessage(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unexpected Skill Builder event: ${JSON.stringify(value)}`)
 }
