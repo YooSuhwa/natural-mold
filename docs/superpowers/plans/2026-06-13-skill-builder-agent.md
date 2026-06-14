@@ -2874,12 +2874,13 @@ Expected: all validator tests pass.
 - [x] Implement Skill Health calculation in `skill_health_service.py` with states from the Skill Health Summary section.
 - [x] Implement skill revision snapshot zip writing in `skill_revision_storage.py`.
 - [x] Implement `create_revision_for_skill`, `list_revisions`, and `get_revision` in `skill_revision_service.py`.
-- [ ] Implement `rollback_to_revision` in `skill_revision_service.py`.
+- [x] Implement `rollback_to_revision` in `skill_revision_service.py`.
 - [ ] Implement revision retention constants and pruning safeguards from the Skill Revision Retention And Backfill section.
 - [ ] Implement a rerunnable baseline backfill script for existing skills with no revisions.
 - [x] Centralize package tree hashing in `compute_package_tree_hash`.
 - [x] Ensure package upload and package file create/update/delete refresh `skill.content_hash`.
-- [ ] Ensure builder confirm, whole-package replacement, and rollback refresh `skill.content_hash` before revision creation and evaluation staleness checks.
+- [x] Ensure whole-package replacement and rollback refresh `skill.content_hash` before revision creation and evaluation staleness checks.
+- [ ] Ensure builder confirm refreshes `skill.content_hash` before revision creation and evaluation staleness checks.
 - [ ] Create initial revision after text skill create, package upload, and builder create.
 - [ ] Create new revisions after text content update, package file update/delete/upload, metadata update, builder improvement, and rollback.
 - [ ] Generate changelog summaries from builder diffs and store them on the resulting revision row.
