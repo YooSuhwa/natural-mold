@@ -2852,6 +2852,8 @@ Expected: all validator tests pass.
 **Files:**
 
 - Create: `backend/app/services/skill_builder_service.py`
+- Create: `backend/app/services/skill_builder_confirmation.py`
+- Create: `backend/app/services/skill_builder_errors.py`
 - Create: `backend/app/services/skill_evaluation_service.py`
 - Create: `backend/app/services/skill_health_service.py`
 - Create: `backend/app/services/skill_revision_service.py`
@@ -2860,6 +2862,7 @@ Expected: all validator tests pass.
 - Extend: `backend/app/routers/skills.py`
 - Extend: `backend/app/skills/service.py`
 - Create: `backend/tests/test_skill_builder_service.py`
+- Create: `backend/tests/test_skill_builder_confirmation.py`
 - Create: `backend/tests/test_skill_evaluation_service.py`
 - Create: `backend/tests/test_skill_health_service.py`
 - Create: `backend/tests/test_skill_revision_service.py`
@@ -2881,7 +2884,7 @@ Expected: all validator tests pass.
 - [x] Ensure package upload and package file create/update/delete refresh `skill.content_hash`.
 - [x] Ensure whole-package replacement and rollback refresh `skill.content_hash` before revision creation and evaluation staleness checks.
 - [x] Ensure create-mode builder confirm refreshes `skill.content_hash` before revision creation and evaluation staleness checks.
-- [ ] Ensure improve-mode builder confirm refreshes `skill.content_hash` before revision creation and evaluation staleness checks.
+- [x] Ensure improve-mode builder confirm refreshes `skill.content_hash` before revision creation and evaluation staleness checks.
 - [x] Create initial revision after builder create.
 - [ ] Create initial revision after text skill create and package upload.
 - [ ] Create new revisions after text content update, package file update/delete/upload, metadata update, builder improvement, and rollback.
@@ -2896,11 +2899,11 @@ Expected: all validator tests pass.
 ]
 ```
 
-- [ ] Implement `save_draft_package` and `save_validation_result`.
+- [x] Implement `save_draft_package` and `save_validation_result`.
 - [ ] Implement `claim_for_confirming` using the same atomic update pattern as `builder_service.claim_for_confirming`.
 - [ ] Implement `confirm_session` using the confirm flow in this plan.
 - [ ] Return non-secret audit metadata from confirm/apply helpers: session id, mode, source skill id, file counts, changed counts, credential requirement count, old hash, and new hash.
-- [ ] In improve mode, apply confirmed changes to the existing skill only when `base_content_hash` still matches the current skill hash.
+- [x] In improve mode, apply confirmed changes to the existing skill only when `base_content_hash` still matches the current skill hash.
 - [ ] During confirm, convert `evals/evals.json` and `session.eval_result` into `SkillEvaluationSet` and `SkillEvaluationRun` rows linked to the finalized skill.
 - [ ] Add tests:
   - session ownership is enforced by query helper
