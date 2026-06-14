@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from app.agent_runtime.skill_builder.eval_runner import EvalCaseResult, aggregate_benchmark
 from app.schemas.skill_builder import JsonValue
 
 
@@ -38,6 +39,14 @@ class DeterministicSkillEvaluationEvaluator:
     runner_version: str = "deterministic-1"
 
     async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
+        with_skill_results = [
+            EvalCaseResult(case_index=index, passed=True, score=1)
+            for index, _case in enumerate(context.evals)
+        ]
+        without_skill_results = [
+            EvalCaseResult(case_index=index, passed=False, score=0)
+            for index, _case in enumerate(context.evals)
+        ]
         case_results: list[JsonValue] = [
             {
                 "case_index": index,
@@ -58,6 +67,9 @@ class DeterministicSkillEvaluationEvaluator:
                 "failed_count": 0,
                 "pass_rate": pass_rate,
             },
-            benchmark={"baseline": "none", "score_delta": 0},
+            benchmark=aggregate_benchmark(
+                with_skill=with_skill_results,
+                without_skill=without_skill_results,
+            ),
             case_results=case_results,
         )

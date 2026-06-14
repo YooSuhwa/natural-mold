@@ -106,6 +106,10 @@ async def test_worker_completes_queued_run_and_records_audit(
     assert completed.summary is not None
     assert completed.summary["case_count"] == 2
     assert completed.summary["pass_rate"] == 1
+    assert completed.benchmark is not None
+    assert completed.benchmark["with_skill_pass_rate"] == 1.0
+    assert completed.benchmark["without_skill_pass_rate"] == 0.0
+    assert completed.benchmark["pass_rate_delta"] == 1.0
     assert completed.case_results is not None
     assert len(completed.case_results) == 2
     assert await _audit_actions(db) == [
