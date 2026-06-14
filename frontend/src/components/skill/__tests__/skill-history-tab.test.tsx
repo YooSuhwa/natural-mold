@@ -149,7 +149,9 @@ describe('SkillHistoryTab', () => {
     expect(screen.getByText('리비전 2 상세')).toBeInTheDocument()
     expect(screen.getByText('지침을 더 구체화 · SKILL.md')).toBeInTheDocument()
     expect(screen.getByText('SKILL.md · modified')).toBeInTheDocument()
-    expect(screen.getByText('openai_codex: ok')).toBeInTheDocument()
+    expect(screen.getByText('공용 호환성')).toBeInTheDocument()
+    expect(screen.getByText('OpenAI/Codex')).toBeInTheDocument()
+    expect(screen.getByText('통과')).toBeInTheDocument()
     expect(screen.getByText('mean_score: 0.82')).toBeInTheDocument()
   })
 

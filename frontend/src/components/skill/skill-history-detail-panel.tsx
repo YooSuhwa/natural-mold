@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { JsonValue } from '@/lib/types/json'
 import type { SkillRevisionDetail, SkillRevisionSummary } from '@/lib/types/skill-revision'
+import { PortableCompatibilityPanel } from './portable-compatibility-panel'
 
 type JsonRecord = Readonly<Record<string, JsonValue>>
 
@@ -61,28 +62,6 @@ function describeChangedFile(value: JsonValue): string {
   const path = stringField(value, ['path', 'file', 'name'])
   const status = stringField(value, ['status', 'change', 'operation', 'kind'])
   return [path, status].filter(Boolean).join(' · ') || compactJson(value)
-}
-
-function describeTarget(name: string, value: JsonValue): string {
-  if (!isJsonRecord(value)) {
-    return `${name}: ${compactJson(value)}`
-  }
-  const status = stringField(value, ['status', 'state', 'result'])
-  const issueCount = value.issue_count
-  const suffix = typeof issueCount === 'number' && issueCount > 0 ? `, ${issueCount} issues` : ''
-  return `${name}: ${status ?? compactJson(value)}${suffix}`
-}
-
-function compatibilityLines(result: JsonRecord | null | undefined): readonly string[] {
-  if (!result) {
-    return []
-  }
-  const targets = result.targets
-  if (isJsonRecord(targets)) {
-    return Object.entries(targets).map(([name, value]) => describeTarget(name, value))
-  }
-  const status = stringField(result, ['status', 'state', 'result', 'summary'])
-  return [status ?? compactJson(result)]
 }
 
 function metricValue(value: JsonValue | undefined): string | null {
@@ -162,7 +141,6 @@ export function SkillHistoryDetailPanel({
   const isCurrent = revision.id === currentRevisionId
   const changelogItems = detail?.changelog_items?.map(describeChangelogItem) ?? []
   const changedFiles = detail?.changed_files?.map(describeChangedFile) ?? []
-  const compatibility = compatibilityLines(detail?.compatibility_result)
   const evaluation = evaluationLines(detail?.evaluation_summary)
 
   return (
@@ -216,9 +194,7 @@ export function SkillHistoryDetailPanel({
           <DetailSection title={t('changedFiles')}>
             <TextList items={changedFiles} empty={t('notRecorded')} />
           </DetailSection>
-          <DetailSection title={t('compatibility')}>
-            <TextList items={compatibility} empty={t('notRecorded')} />
-          </DetailSection>
+          <PortableCompatibilityPanel result={detail?.compatibility_result} />
           <DetailSection title={t('evaluationSnapshot')}>
             <TextList items={evaluation} empty={t('notRecorded')} />
           </DetailSection>

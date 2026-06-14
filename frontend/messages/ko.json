@@ -2450,6 +2450,23 @@
         "improved": "스킬 개선이 적용되었습니다"
       }
     },
+    "compatibility": {
+      "title": "공용 호환성",
+      "empty": "호환성 결과가 아직 없습니다.",
+      "targetCount": "{count}개 대상",
+      "noIssues": "기록된 호환성 이슈가 없습니다.",
+      "target": {
+        "openaiCodex": "OpenAI/Codex",
+        "claudeCode": "Claude Code",
+        "vercelAgentSkills": "Vercel Agent Skills"
+      },
+      "status": {
+        "pass": "통과",
+        "warning": "주의",
+        "error": "오류",
+        "unknown": "미확인"
+      }
+    },
     "detailDialog": {
       "loading": "스킬 불러오는 중…",
       "unsupported": "지원하지 않는 스킬 종류입니다.",

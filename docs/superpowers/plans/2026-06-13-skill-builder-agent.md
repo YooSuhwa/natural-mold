@@ -3318,7 +3318,7 @@ Expected: lint passes or reports only existing unrelated issues. Fix new issues 
 - [ ] In improve mode, render original vs proposed file summary and changed/added/deleted counts.
 - [ ] Render generated changelog summary and items before the apply button in improve mode.
 - [ ] Render validation issues grouped by severity.
-- [ ] Render portable compatibility result with target chips for OpenAI/Codex, Claude Code, and Vercel Agent Skills.
+- [x] Render portable compatibility result with target chips for OpenAI/Codex, Claude Code, and Vercel Agent Skills.
 - [ ] Render eval benchmark when `draft_package.benchmark` or `session.eval_result` exists.
 - [x] Confirm creates a skill and calls `onCreated(created.id, { openTab })` so the existing detail dialog can open on `evaluation` when evals exist.
 - [ ] Add component tests for the System LLM readiness state, including normal-user and super-user copy variants.
@@ -3409,13 +3409,14 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Disable rollback for the current revision.
 - [x] Add rollback confirmation copy: `이전 버전으로 되돌리면 현재 내용은 새 이력으로 보존됩니다.`
 - [x] On rollback success, refresh skill data, files/content, evaluation summaries, and revision list.
-- [ ] Render `PortableCompatibilityPanel` in builder preview and revision detail.
+- [x] Render `PortableCompatibilityPanel` in builder preview and revision detail.
 - [ ] Show latest evaluation summary, stale badge, reusable evaluation sets, run history, and selected run details.
 - [x] Show estimate confirmation before creating an evaluation run.
 - [x] Add a rerun action that creates a new `SkillEvaluationRun` for the selected evaluation set.
 - [x] Add a cancel action for queued/running/grading runs.
 - [ ] Show improvement conflict state when the backend returns 409 for a changed base hash.
 - [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
+- [x] Add focused `PortableCompatibilityPanel` tests for target labels, status badges, issue details, and empty state.
 - [x] Add focused `SkillEvaluationTab` tests for rerun, active-run cancel, and missing-credential connect callbacks.
 - [x] Add focused `SkillHistoryTab` tests for newest-first ordering, current marker, operation labels, legacy empty state, selected revision details, current rollback disablement, and rollback confirmation.
 - [x] Add focused `SkillCredentialBindingsPanel` tests for missing-required summary and connected/missing binding states.

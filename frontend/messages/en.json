@@ -2471,6 +2471,23 @@
         "improved": "Skill improvement applied."
       }
     },
+    "compatibility": {
+      "title": "Portable compatibility",
+      "empty": "No compatibility result yet.",
+      "targetCount": "{count} targets",
+      "noIssues": "No compatibility issues recorded.",
+      "target": {
+        "openaiCodex": "OpenAI/Codex",
+        "claudeCode": "Claude Code",
+        "vercelAgentSkills": "Vercel Agent Skills"
+      },
+      "status": {
+        "pass": "Pass",
+        "warning": "Warning",
+        "error": "Error",
+        "unknown": "Unknown"
+      }
+    },
     "detailDialog": {
       "loading": "Loading",
       "unsupported": "Unsupported",

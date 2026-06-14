@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import type { SkillBuilderSession, SkillDraftPackage } from '@/lib/types'
+import { PortableCompatibilityPanel } from './portable-compatibility-panel'
 
 interface SkillBuilderPreviewProps {
   readonly session: SkillBuilderSession | null
@@ -71,16 +72,7 @@ function BuilderResultPanel({
       <StatusLine active={hasValidation} label={t('validationTitle')} />
       <StatusLine active={compatibilityTargets.length > 0} label={t('compatibilityTitle')} />
       {compatibilityTargets.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
-          {compatibilityTargets.map((target) => (
-            <span
-              key={target}
-              className="moldy-status-surface moldy-status-success rounded-md px-2 py-0.5 text-xs"
-            >
-              {target}
-            </span>
-          ))}
-        </div>
+        <PortableCompatibilityPanel result={draft.compatibility_result} dense />
       ) : null}
       <StatusLine active={Boolean(draft.changelog_draft)} label={t('changelogTitle')} />
       <StatusLine

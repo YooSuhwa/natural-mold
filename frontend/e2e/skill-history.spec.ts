@@ -161,7 +161,9 @@ test.describe('Skill history tab', () => {
     await page.getByRole('button', { name: '리비전 2 보기' }).click()
     await expect(page.getByText('리비전 2 상세')).toBeVisible()
     await expect(page.getByText('날씨 응답 톤 수정 · SKILL.md')).toBeVisible()
-    await expect(page.getByText('openai_codex: ok')).toBeVisible()
+    await expect(page.getByText('공용 호환성')).toBeVisible()
+    await expect(page.getByText('OpenAI/Codex')).toBeVisible()
+    await expect(page.getByText('통과')).toBeVisible()
 
     const captureDir = path.resolve(process.cwd(), '../output/e2e-captures/20260615-skill-history')
     await mkdir(captureDir, { recursive: true })
