@@ -3117,7 +3117,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - [x] Allow optional eval-case review only for advanced or low-confidence flows.
 - [x] Add eval runner output directory contract for with-skill and without-skill runs.
 - [x] Run with-skill and without-skill configurations into separate output folders.
-- [ ] Use the current selected-skill runtime mount pattern for with-skill evaluation runs.
+- [x] Use the current selected-skill runtime mount pattern for with-skill evaluation runs.
 - [x] Reuse or refactor the `execute_in_skill` command policy instead of adding another subprocess parser.
 - [x] Enforce timeout, selected-skill path validation, credential redaction, and output directory scoping for eval scripts.
 - [x] Refuse eval execution that needs required user credentials when bindings are missing.

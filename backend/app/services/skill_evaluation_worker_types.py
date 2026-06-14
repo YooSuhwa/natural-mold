@@ -10,6 +10,7 @@ from app.agent_runtime.skill_builder.eval_runner import (
     aggregate_benchmark,
     validate_grader_result,
 )
+from app.marketplace.skill_runtime import SkillToolContext
 from app.schemas.skill_builder import JsonValue
 
 DEFAULT_RUNNER_VERSION: Final = "deterministic-1"
@@ -28,6 +29,7 @@ class SkillEvaluationContext:
     skill_version: str | None
     skill_content_hash: str | None
     evals: Sequence[JsonValue]
+    runtime_context: SkillToolContext
 
 
 @dataclass(frozen=True, slots=True)

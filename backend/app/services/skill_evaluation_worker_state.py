@@ -2,14 +2,29 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.runtime_config import AgentConfig
+from app.config import settings
+from app.exceptions import AppError
+from app.marketplace.skill_runtime import (
+    SkillToolContext,
+    build_skill_runtime_context,
+    resolve_runtime_credentials,
+)
+from app.models.skill import Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.schemas.skill_builder import JsonValue
 from app.services import audit_service
-from app.services.skill_evaluation_worker_types import SkillEvaluationContext, SkillEvaluationResult
+from app.services.skill_evaluation_worker_types import (
+    SkillEvaluationContext,
+    SkillEvaluationExecutionError,
+    SkillEvaluationResult,
+)
+from app.skills import service as skill_service
 
 
 async def load_run(db: AsyncSession, run_id: uuid.UUID) -> SkillEvaluationRun | None:
@@ -25,6 +40,7 @@ async def build_context(
         select(SkillEvaluationSet).where(SkillEvaluationSet.id == run.evaluation_set_id)
     )
     evaluation_set = result.scalar_one()
+    runtime_context = await _build_runtime_context(db, run)
     return SkillEvaluationContext(
         run_id=run.id,
         skill_id=run.skill_id,
@@ -32,7 +48,45 @@ async def build_context(
         skill_version=run.skill_version,
         skill_content_hash=run.skill_content_hash,
         evals=evaluation_set.evals or [],
+        runtime_context=runtime_context,
     )
+
+
+async def _build_runtime_context(
+    db: AsyncSession,
+    run: SkillEvaluationRun,
+) -> SkillToolContext:
+    skill = await db.get(Skill, run.skill_id)
+    if skill is None:
+        raise SkillEvaluationExecutionError(f"skill not found for evaluation: {run.skill_id}")
+
+    descriptor = skill_service.to_runtime_dict(skill)
+    if skill.execution_profile:
+        descriptor["execution_profile"] = skill.execution_profile
+
+    cfg = AgentConfig(
+        provider="evaluation",
+        model_name="evaluation",
+        api_key=None,
+        base_url=None,
+        system_prompt="",
+        tools_config=[],
+        thread_id=str(run.id),
+        agent_skills=[descriptor],
+        user_id=str(run.user_id),
+        credential_subject_user_id=str(run.user_id),
+    )
+    data_dir = Path(settings.data_root)
+    context = build_skill_runtime_context(
+        cfg,
+        data_dir=data_dir,
+        output_root=data_dir / "skill-evaluation-runs",
+    )
+    try:
+        await resolve_runtime_credentials(context, db=db, cfg=cfg)
+    except AppError as exc:
+        raise SkillEvaluationExecutionError(exc.message) from exc
+    return context
 
 
 async def mark_running(db: AsyncSession, run: SkillEvaluationRun) -> None:
