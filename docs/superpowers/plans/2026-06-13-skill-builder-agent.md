@@ -3610,24 +3610,25 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev --port 3000
 - [x] Browser smoke evidence saved to `output/e2e-captures/20260615-skill-builder-manual/skills-page.png` after login with the seeded E2E user. The smoke verified one app-level `Skills` nav entry, the `/skills` URL, the "대화로 만들기" CTA, kind tabs, and state filter chips. Full LLM-backed create/improve/eval flow remains covered by the unchecked steps below.
 - [x] Temporarily test a missing `text_primary` System LLM configuration in a safe local DB or mocked API response and verify the conversational builder shows the readiness state instead of a generic 500/toast, while Text and Package Upload still work.
 - [x] Mock-only Playwright coverage verifies the empty `/skills` CTA opens Skill Builder creation, keeps the URL on `/skills`, sends requests only to `/api/skill-builder`, shows `SKILL.md`, `agents/openai.yaml`, OpenAI/Codex, Claude Code, and Vercel Agent Skills compatibility status, confirms the draft, refreshes the list, opens the created skill detail dialog, and captures `output/e2e-captures/20260615-skill-builder/builder-create-flow.png`.
-- [ ] Click "대화로 만들기".
-- [ ] Verify opening the Skill Builder does not navigate into a normal conversation thread, create a normal conversation run, or require the normal chat `ChatRuntimeSection`.
-- [ ] Ask for a concrete skill, for example:
+- [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-manual/builder-created-detail-after-fix.actual.png` after creating a Korean meeting-notes package skill through live `/api/skill-builder`. This pass also caught and fixed two live-only regressions: session-level compatibility results were not rendered in the builder preview, and Korean drafts collided on the fallback `skill` slug, leaving confirm sessions stuck in `confirming`.
+- [x] Click "대화로 만들기".
+- [x] Verify opening the Skill Builder does not navigate into a normal conversation thread, create a normal conversation run, or require the normal chat `ChatRuntimeSection`.
+- [x] Ask for a concrete skill, for example:
 
 ```text
 회의록을 넣으면 액션 아이템, 담당자, 마감일을 표로 정리하는 스킬을 만들어줘.
 가능하면 한국어 회의록 기준으로 동작하게 해줘.
 ```
 
-- [ ] Verify the builder asks at most two clarifying questions.
-- [ ] Verify preview includes `SKILL.md` and `agents/openai.yaml`.
-- [ ] Run validation.
-- [ ] Verify validation shows portable compatibility status for OpenAI/Codex, Claude Code, and Vercel Agent Skills.
-- [ ] Confirm.
-- [ ] Verify the new skill appears in `/skills`.
-- [ ] Verify the skill card shows an evaluation badge when an eval was generated, or "평가 없음" when no eval exists.
-- [ ] Open the skill detail dialog.
-- [ ] Verify the detail dialog has `Files` or `Content` plus only the relevant advanced tabs for that skill state.
+- [x] Verify the builder asks at most two clarifying questions.
+- [x] Verify preview includes `SKILL.md` and `agents/openai.yaml`.
+- [x] Run validation.
+- [x] Verify validation shows portable compatibility status for OpenAI/Codex, Claude Code, and Vercel Agent Skills.
+- [x] Confirm.
+- [x] Verify the new skill appears in `/skills`.
+- [x] Verify the skill card shows an evaluation badge when an eval was generated, or "평가 없음" when no eval exists.
+- [x] Open the skill detail dialog.
+- [x] Verify the detail dialog has `Files` or `Content` plus only the relevant advanced tabs for that skill state.
 - [ ] For a simple skill with no credentials/evals/revisions, verify blank Credentials/Evaluation/History tabs are not forced into the default tab list.
 - [ ] Verify file tree editing still works in the package `Files` tab.
 - [ ] Verify credential binding panel renders in the `Credentials` tab.
@@ -3714,7 +3715,7 @@ The MVP is useful without evals, but its data model and UI should already have f
 
 ## Completion Checklist
 
-- [ ] New Skill Builder can create a package skill from chat.
+- [x] New Skill Builder can create a package skill from chat.
 - [ ] Existing skills can be improved through chat and applied back to the same skill row.
 - [x] Improve mode shows file diffs and blocks stale-base overwrites with a conflict state.
 - [x] Existing text skill creation still works.

@@ -1,4 +1,9 @@
-import type { SkillBuilderSession, SkillDraftFile, SkillDraftPackage } from '@/lib/types'
+import type {
+  SkillBuilderSession,
+  SkillCompatibilityResult,
+  SkillDraftFile,
+  SkillDraftPackage,
+} from '@/lib/types'
 
 export type FileChangeKind = 'added' | 'changed' | 'deleted'
 
@@ -33,6 +38,11 @@ export type BenchmarkView = {
   readonly meanScore: number | null
   readonly delta: number | null
 }
+
+export type CompatibilityResultSource =
+  | SkillCompatibilityResult
+  | Readonly<Record<string, unknown>>
+  | null
 
 type SnapshotFile = {
   readonly path: string
@@ -180,6 +190,21 @@ export function changelogView(
       })
     : []
   return summary || items.length > 0 ? { summary, items } : null
+}
+
+export function compatibilityResult(
+  session: SkillBuilderSession | null,
+  draft: SkillDraftPackage,
+): CompatibilityResultSource {
+  return session?.compatibility_result ?? draft.compatibility_result ?? null
+}
+
+export function compatibilityTargetKeys(result: CompatibilityResultSource): readonly string[] {
+  if (!isRecord(result)) {
+    return []
+  }
+  const targets = result['targets']
+  return isRecord(targets) ? Object.keys(targets) : []
 }
 
 function changelogItemLabel(value: unknown): string | null {

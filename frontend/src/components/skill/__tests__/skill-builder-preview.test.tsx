@@ -83,6 +83,29 @@ const improveSession: SkillBuilderSession = {
 }
 
 describe('SkillBuilderPreview', () => {
+  it('renders compatibility targets from the builder session result', () => {
+    render(
+      <SkillBuilderPreview
+        session={{
+          ...improveSession,
+          compatibility_result: {
+            targets: {
+              openai_codex: { status: 'pass', issues: [] },
+              claude_code: { status: 'warning', issues: [] },
+              vercel_agent_skills: { status: 'pass', issues: [] },
+            },
+          },
+        }}
+        draft={{ ...improveDraft, compatibility_result: null }}
+      />,
+    )
+
+    expect(screen.getByText('공용 호환성')).toBeInTheDocument()
+    expect(screen.getByText('OpenAI/Codex')).toBeInTheDocument()
+    expect(screen.getByText('Claude Code')).toBeInTheDocument()
+    expect(screen.getByText('Vercel Agent Skills')).toBeInTheDocument()
+  })
+
   it('renders review details for an improve draft', () => {
     render(<SkillBuilderPreview session={improveSession} draft={improveDraft} />)
 

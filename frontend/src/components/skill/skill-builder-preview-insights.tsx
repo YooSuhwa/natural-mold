@@ -9,6 +9,8 @@ import { PortableCompatibilityPanel } from './portable-compatibility-panel'
 import {
   benchmarkView,
   changelogView,
+  compatibilityResult,
+  compatibilityTargetKeys,
   fileDiffSummary,
   validationIssueViews,
   type BenchmarkView,
@@ -67,7 +69,8 @@ export function BuilderResultPanel({
   readonly draft: SkillDraftPackage
 }) {
   const t = useTranslations('skill.builderDialog')
-  const compatibilityTargets = Object.keys(draft.compatibility_result?.targets ?? {})
+  const compatibility = compatibilityResult(session, draft)
+  const compatibilityTargets = compatibilityTargetKeys(compatibility)
   const validationIssues = validationIssueViews(session, draft)
   const hasValidation = Boolean(session?.validation_result) || validationIssues.length > 0
   const changelog = changelogView(session, draft)
@@ -78,7 +81,7 @@ export function BuilderResultPanel({
       {hasValidation ? <ValidationPanel issues={validationIssues} /> : null}
       <StatusLine active={compatibilityTargets.length > 0} label={t('compatibilityTitle')} />
       {compatibilityTargets.length > 0 ? (
-        <PortableCompatibilityPanel result={draft.compatibility_result} dense />
+        <PortableCompatibilityPanel result={compatibility} dense />
       ) : null}
       <StatusLine active={Boolean(changelog)} label={t('changelogTitle')} />
       {changelog ? <ChangelogPanel changelog={changelog} /> : null}
