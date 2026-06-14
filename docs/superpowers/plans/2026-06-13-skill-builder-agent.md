@@ -3092,7 +3092,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
 - Create: `backend/tests/test_skill_executor_credential_audit.py`
 
 - [ ] Implement eval schema support for `evals/evals.json`.
-- [ ] Implement internal template selection from the Internal Evaluation Templates section.
+- [x] Implement internal template selection from the Internal Evaluation Templates section.
 - [ ] Implement the bounded worker/queue behavior from the Evaluation Execution Infrastructure section.
 - [ ] Generate 2-3 realistic eval prompts from intent when the user asks to test.
 - [ ] Do not expose evaluation template selection as a default user-facing picker.
@@ -3126,6 +3126,7 @@ Expected: session, message, validation, and confirm paths pass with deterministi
   - credential audit metadata does not contain decrypted values, stdout, stderr, or raw command arguments
 - [x] Add regression coverage for `execute_in_skill` credential audit rows and sanitized metadata.
 - [x] Add regression coverage for undeclared `curl` execution denial and sanitized `skill_security.sandbox_denied` metadata.
+- [x] Add regression coverage for internal eval template selection: structured extraction, research, and general task fallback.
 - [ ] Run:
 
 ```bash
