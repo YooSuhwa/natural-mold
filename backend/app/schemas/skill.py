@@ -106,7 +106,9 @@ class SkillResponse(BaseModel):
     size_bytes: int
     used_by_count: int
     package_metadata: dict[str, Any] | None
+    credential_requirements: list[dict[str, Any]] | None = None
     execution_profile: dict[str, Any] | None = None
+    current_revision_id: uuid.UUID | None = None
     latest_evaluation_summary: SkillLatestEvaluationSummary | None = None
     health: SkillHealthSummary | None = None
     last_modified_at: datetime

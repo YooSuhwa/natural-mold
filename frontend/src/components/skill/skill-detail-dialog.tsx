@@ -15,7 +15,12 @@ import type { Skill } from '@/lib/types/skill'
 
 import { SkillCredentialsTab } from './skill-credentials-tab'
 import { PackageSkillEditor } from './skill-detail-package-editor'
-import { coerceSkillDetailTab, SkillDetailTabs, type SkillDetailTab } from './skill-detail-tabs'
+import {
+  coerceSkillDetailTab,
+  getVisibleSkillDetailTabs,
+  SkillDetailTabs,
+  type SkillDetailTab,
+} from './skill-detail-tabs'
 import { SkillEvaluationTab } from './skill-evaluation-tab'
 import { SkillHistoryTab } from './skill-history-tab'
 import { SkillMetadataTab } from './skill-metadata-tab'
@@ -84,6 +89,8 @@ function SkillDetailBody({
     onTabChange?.(next)
   }
 
+  const visibleTabs = getVisibleSkillDetailTabs(skill, activeTab)
+
   const header = (
     <DialogShell.Header
       icon={
@@ -120,7 +127,7 @@ function SkillDetailBody({
     <>
       {header}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="min-h-0 flex-1 gap-0">
-        <SkillDetailTabs />
+        <SkillDetailTabs visibleTabs={visibleTabs} />
         {renderSkillDetailTab({
           activeTab,
           skillId,

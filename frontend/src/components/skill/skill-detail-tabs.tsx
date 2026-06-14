@@ -4,6 +4,7 @@ import { FileText, History, KeyRound, ListChecks, Settings2 } from 'lucide-react
 import { useTranslations } from 'next-intl'
 
 import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
+import type { Skill } from '@/lib/types/skill'
 
 export type SkillDetailTab = 'content' | 'credentials' | 'evaluation' | 'history' | 'metadata'
 
@@ -14,6 +15,14 @@ const TABS: readonly SkillDetailTab[] = [
   'history',
   'metadata',
 ]
+
+const EVALUATION_HEALTH_STATES = new Set([
+  'needs_evaluation',
+  'needs_rerun',
+  'evaluation_running',
+  'evaluation_failed',
+  'low_confidence',
+])
 
 function iconForTab(tab: SkillDetailTab) {
   switch (tab) {
@@ -42,6 +51,37 @@ export function coerceSkillDetailTab(value: string | null | undefined): SkillDet
     default:
       return 'content'
   }
+}
+
+export function getVisibleSkillDetailTabs(
+  skill: Skill,
+  initialTab: SkillDetailTab = 'content',
+): readonly SkillDetailTab[] {
+  const tabs: SkillDetailTab[] = ['content']
+
+  if (
+    initialTab === 'credentials' ||
+    skill.health?.state === 'needs_credentials' ||
+    (skill.credential_requirements?.length ?? 0) > 0
+  ) {
+    tabs.push('credentials')
+  }
+
+  if (
+    initialTab === 'evaluation' ||
+    !!skill.latest_evaluation_summary ||
+    (skill.health ? EVALUATION_HEALTH_STATES.has(skill.health.state) : false)
+  ) {
+    tabs.push('evaluation')
+  }
+
+  if (initialTab === 'history' || !!skill.current_revision_id) {
+    tabs.push('history')
+  }
+
+  tabs.push('metadata')
+
+  return tabs
 }
 
 export function SkillDetailTabs({

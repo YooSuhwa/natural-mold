@@ -3388,14 +3388,14 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add `SkillDetailTab = 'content' | 'credentials' | 'evaluation' | 'history' | 'metadata'`.
 - [x] Add `initialTab?: SkillDetailTab` to `SkillDetailDialog`.
 - [x] Support `/skills?detailId=<id>&tab=<tab>` deep links for detail tabs while keeping the route inside `/skills`.
-- [ ] Add `getVisibleSkillDetailTabs(skill, state, initialTab)` and cover the conditional tab rules from the Frontend UX section.
+- [x] Add `getVisibleSkillDetailTabs(skill, state, initialTab)` and cover the conditional tab rules from the Frontend UX section.
 - [x] Add `대화로 개선` / `Improve by chat` action in `SkillDetailDialog`.
 - [x] Start a `mode="improve"` skill builder session from that action.
 - [x] Split the current text editor, package editor, file preview, package sidebar, package footer, and credential binding panel out of `skill-detail-dialog.tsx`.
 - [ ] Refactor `skill-detail-dialog.tsx` so it renders one `DialogShell.Body` and one `DialogShell.Footer`.
 - [x] Keep package file editing behavior intact in the `Files` content tab.
 - [x] Move credential bindings from the content editor surface into the `Credentials` tab.
-- [ ] Do not render a blank Credentials tab when a skill has no credential requirements and no credential-related deep link.
+- [x] Do not render a blank Credentials tab when a skill has no credential requirements and no credential-related deep link.
 - [ ] In the `Credentials` tab, show required/optional badges, definition key, current binding state, and a missing-required summary at the top.
 - [x] When `health.state === "needs_credentials"`, render the skill card/detail status as `자격증명 필요` / `Needs credentials`.
 - [ ] In the `Evaluation` tab, if required credentials are missing, replace `평가 실행` with `자격증명 연결` and switch to the `Credentials` tab on click.
@@ -3416,8 +3416,9 @@ Expected: both pass. Fix any new copy or design-system violations.
 - [x] Add a cancel action for queued/running/grading runs.
 - [ ] Show improvement conflict state when the backend returns 409 for a changed base hash.
 - [ ] Add component tests for health badge states, visible tab rules, credential-missing evaluation block, credentials tab focus, evaluation badge states, empty evaluation tab state, latest summary, estimate confirmation, stale badge, rerun callback, cancel callback, history empty state, history list, rollback confirmation, and compatibility panel states.
-  - [x] Add focused `SkillEvaluationTab` tests for rerun and active-run cancel callbacks.
+- [x] Add focused `SkillEvaluationTab` tests for rerun and active-run cancel callbacks.
 - [x] Add focused `SkillHistoryTab` tests for newest-first ordering, current marker, operation labels, and legacy empty state.
+- [x] Add focused `getVisibleSkillDetailTabs` tests for hidden optional tabs, credential requirements, evaluation signal, history signal, and deep links.
 - [x] Add mock-only Playwright coverage for installed skill evaluation rerun/cancel controls in `frontend/e2e/skill-evaluation-actions.spec.ts`.
 - [x] Add mock-only Playwright coverage for installed skill history rendering in `frontend/e2e/skill-history.spec.ts`.
 - [ ] Add detail-dialog regression tests for package file selection, file save/delete behavior, text skill save behavior, and footer actions after the single-shell refactor.
