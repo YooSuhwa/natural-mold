@@ -15,7 +15,13 @@ const BARE_ROUTE_PREFIXES = ['/shared/'] as const
 /** Auth pages render their own centered layout — no sidebar/header. */
 const BARE_ROUTES = new Set<string>(['/login', '/register'])
 
-export function AppLayout({ children }: { children: ReactNode }) {
+export function AppLayout({
+  children,
+  initialSidebarWidth,
+}: {
+  children: ReactNode
+  initialSidebarWidth?: number | null
+}) {
   const pathname = usePathname()
   const isBare =
     (pathname ? BARE_ROUTES.has(pathname) : false) ||
@@ -32,7 +38,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         {isBare ? (
           children
         ) : (
-          <SidebarProvider>
+          <SidebarProvider initialSidebarWidth={initialSidebarWidth}>
             {isSettingsRoute ? <SettingsSidebar /> : <AppSidebar />}
             <SidebarInset>
               <AppHeader />

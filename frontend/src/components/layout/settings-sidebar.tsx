@@ -49,6 +49,7 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
@@ -81,7 +82,7 @@ export function SettingsSidebar() {
   const router = useRouter()
   const { resolvedTheme, setTheme } = useTheme()
   const locale = useLocale()
-  const { toggleSidebar } = useSidebar()
+  const { setOpen, state, toggleSidebar } = useSidebar()
   const tSidebar = useTranslations('sidebar')
   const tSettings = useTranslations('appSettings')
   const { data: user } = useSession()
@@ -159,6 +160,13 @@ export function SettingsSidebar() {
   const themeToggleLabel = isDarkTheme ? tSidebar('theme.light') : tSidebar('theme.dark')
   const currentLocale = isSupportedLocale(locale) ? locale : SUPPORTED_LOCALES[0]
   const languageLabel = tSidebar('language.label')
+  const isSidebarCollapsed = state === 'collapsed'
+
+  function expandSidebarFromIcon() {
+    if (isSidebarCollapsed) {
+      setOpen(true)
+    }
+  }
 
   function changeLocale(nextLocale: string) {
     setLanguageOpen(false)
@@ -216,7 +224,7 @@ export function SettingsSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   tooltip={tSettings('nav.backToApp')}
-                  render={<Link href="/" />}
+                  render={<Link href="/" onClick={expandSidebarFromIcon} />}
                   className={activeMenuClass}
                 >
                   <ArrowLeftIcon className="size-4" />
@@ -243,7 +251,11 @@ export function SettingsSidebar() {
                           isActive={active}
                           tooltip={item.label}
                           render={
-                            <Link href={item.href} aria-current={active ? 'page' : undefined} />
+                            <Link
+                              href={item.href}
+                              aria-current={active ? 'page' : undefined}
+                              onClick={expandSidebarFromIcon}
+                            />
                           }
                           className={activeMenuClass}
                         >
@@ -323,6 +335,7 @@ export function SettingsSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+      <SidebarRail />
     </Sidebar>
   )
 }

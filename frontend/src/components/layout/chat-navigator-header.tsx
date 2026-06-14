@@ -45,7 +45,7 @@ export function ChatNavigatorHeader({
   const t = useTranslations('sidebar.agents')
 
   return (
-    <SidebarGroupLabel className="group/nav-heading flex items-center justify-between">
+    <SidebarGroupLabel className="group/nav-heading flex items-center justify-between group-data-[collapsible=icon]:hidden">
       <span>{t('title')}</span>
       <span className="flex items-center gap-0.5">
         {activeAgentId ? (

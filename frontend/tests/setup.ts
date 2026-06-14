@@ -37,11 +37,49 @@ class IntersectionObserverPolyfill {
     return []
   }
 }
+class MemoryStorage implements Storage {
+  private readonly items = new Map<string, string>()
+
+  get length(): number {
+    return this.items.size
+  }
+
+  clear(): void {
+    this.items.clear()
+  }
+
+  getItem(key: string): string | null {
+    return this.items.get(key) ?? null
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.items.keys())[index] ?? null
+  }
+
+  removeItem(key: string): void {
+    this.items.delete(key)
+  }
+
+  setItem(key: string, value: string): void {
+    this.items.set(key, value)
+  }
+}
 globalThis.ResizeObserver ??= ResizeObserverPolyfill as unknown as typeof ResizeObserver
 globalThis.IntersectionObserver ??=
   IntersectionObserverPolyfill as unknown as typeof IntersectionObserver
 
 if (typeof window !== 'undefined') {
+  const storage = window.localStorage
+  if (
+    typeof storage?.getItem !== 'function' ||
+    typeof storage.setItem !== 'function' ||
+    typeof storage.clear !== 'function'
+  ) {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: new MemoryStorage(),
+    })
+  }
   if (!window.matchMedia) {
     window.matchMedia = (query: string) =>
       ({
@@ -63,6 +101,9 @@ if (typeof window !== 'undefined') {
   }
   if (!HTMLElement.prototype.hasPointerCapture) {
     HTMLElement.prototype.hasPointerCapture = () => false
+  }
+  if (!HTMLElement.prototype.setPointerCapture) {
+    HTMLElement.prototype.setPointerCapture = () => {}
   }
   if (!HTMLElement.prototype.releasePointerCapture) {
     HTMLElement.prototype.releasePointerCapture = () => {}

@@ -27,6 +27,24 @@ const routerMocks = vi.hoisted(() => ({
   push: vi.fn(),
 }))
 
+const sidebarMocks = vi.hoisted(() => {
+  const setOpen = vi.fn()
+  const toggleSidebar = vi.fn()
+  const useSidebar = vi.fn(() => ({
+    isMobile: false,
+    open: true,
+    openMobile: false,
+    setOpen,
+    setOpenMobile: vi.fn(),
+    setSidebarWidth: vi.fn(),
+    sidebarWidth: 256,
+    state: 'expanded',
+    toggleSidebar,
+  }))
+
+  return { setOpen, toggleSidebar, useSidebar }
+})
+
 vi.mock('next/link', () => ({
   default: ({
     children,
@@ -69,6 +87,14 @@ vi.mock('@/components/chat/use-conversation-row-actions', () => ({
   }),
 }))
 
+vi.mock('@/components/ui/sidebar', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/ui/sidebar')>()
+  return {
+    ...actual,
+    useSidebar: () => sidebarMocks.useSidebar(),
+  }
+})
+
 function createRowActions(): ConversationRowActions {
   return {
     isDeleting: false,
@@ -83,6 +109,20 @@ function createRowActions(): ConversationRowActions {
 describe('ChatNavigator', () => {
   beforeEach(() => {
     routerMocks.push.mockClear()
+    sidebarMocks.setOpen.mockClear()
+    sidebarMocks.toggleSidebar.mockClear()
+    sidebarMocks.useSidebar.mockReset()
+    sidebarMocks.useSidebar.mockReturnValue({
+      isMobile: false,
+      open: true,
+      openMobile: false,
+      setOpen: sidebarMocks.setOpen,
+      setOpenMobile: vi.fn(),
+      setSidebarWidth: vi.fn(),
+      sidebarWidth: 256,
+      state: 'expanded',
+      toggleSidebar: sidebarMocks.toggleSidebar,
+    })
     // atomWithStorage(collapsedAgentIdsAtom)가 테스트 간 상태를 누수하지 않게 한다
     window.localStorage.clear()
     conversationHookMocks.useConversationPages.mockReturnValue({
@@ -105,10 +145,15 @@ describe('ChatNavigator', () => {
     render(<ChatNavigator />)
 
     expect(screen.getByText('에이전트')).toBeInTheDocument()
+    expect(screen.getByText('에이전트').closest('[data-sidebar="group-label"]')).toHaveClass(
+      'group-data-[collapsible=icon]:hidden',
+    )
     expect(screen.getByText('Test Agent')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('link', { name: /새 대화/ })).toBeInTheDocument())
     expect(screen.getByText('Test Conversation')).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: '에이전트 또는 대화 검색' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: '에이전트 또는 대화 검색' }),
+    ).not.toBeInTheDocument()
 
     const activeAgentNewChat = screen.getByRole('button', { name: 'Test Agent 새 채팅' })
     const activeAgentControls = activeAgentNewChat.closest('div')
@@ -172,6 +217,56 @@ describe('ChatNavigator', () => {
 
     expect(onToggleListExpanded).toHaveBeenCalledWith(agentSessionScope('agent-1'))
     expect(fetchNextPage).not.toHaveBeenCalled()
+  })
+
+  it('uses the agent avatar as the collapsed rail target and expands the sidebar from it', async () => {
+    const user = userEvent.setup()
+    const onExpandSidebar = vi.fn()
+    const agent = mockAgentSummaryList[0]
+    if (!agent) {
+      throw new TypeError('agent fixture was missing')
+    }
+    sidebarMocks.useSidebar.mockReturnValue({
+      isMobile: false,
+      open: false,
+      openMobile: false,
+      setOpen: sidebarMocks.setOpen,
+      setOpenMobile: vi.fn(),
+      setSidebarWidth: vi.fn(),
+      sidebarWidth: 48,
+      state: 'collapsed',
+      toggleSidebar: sidebarMocks.toggleSidebar,
+    })
+
+    render(
+      <ChatNavigatorAgentGroup
+        agent={agent}
+        activeAgentId="agent-1"
+        activeConversationId="conv-1"
+        searchQuery=""
+        sessionSort="updated"
+        expanded
+        listExpanded={false}
+        shortcutHintsEnabled
+        isSidebarCollapsed
+        onExpandSidebar={onExpandSidebar}
+        onToggleExpanded={vi.fn()}
+        onToggleListExpanded={vi.fn()}
+        actions={createRowActions()}
+      />,
+    )
+
+    const collapseToggle = screen.getByRole('button', { name: '에이전트 펼치기' })
+    expect(collapseToggle).toHaveClass('group-data-[collapsible=icon]:hidden')
+
+    const agentLink = screen.getByRole('link', { name: 'Test Agent' })
+    expect(agentLink).toHaveClass('group-data-[collapsible=icon]:size-8')
+    expect(screen.queryByText('Test Conversation')).not.toBeInTheDocument()
+
+    await user.click(agentLink)
+
+    expect(onExpandSidebar).toHaveBeenCalledTimes(1)
+    expect(sidebarMocks.setOpen).not.toHaveBeenCalled()
   })
 
   it('navigates with Cmd+Shift+digit even when event.key is a layout character', () => {
@@ -268,5 +363,24 @@ describe('ChatNavigator', () => {
     expect(screen.getByText(formatShortcutLabel(2))).toBeInTheDocument()
     // 단축키는 Digit1~9까지만 매핑되므로 10번째 이후 행에는 힌트를 그리지 않는다
     expect(screen.queryByText(formatShortcutLabel(10))).not.toBeInTheDocument()
+  })
+
+  it('requests sidebar expansion from a collapsed standalone session row', async () => {
+    const user = userEvent.setup()
+    const onExpandSidebar = vi.fn()
+
+    render(
+      <ChatNavigatorSessionRow
+        conversation={{ ...mockConversation, title: 'Collapsed session' }}
+        active={false}
+        actions={createRowActions()}
+        isSidebarCollapsed
+        onExpandSidebar={onExpandSidebar}
+      />,
+    )
+
+    await user.click(screen.getByRole('link', { name: 'Collapsed session' }))
+
+    expect(onExpandSidebar).toHaveBeenCalledTimes(1)
   })
 })

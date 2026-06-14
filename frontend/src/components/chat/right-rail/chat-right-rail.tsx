@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
+import { useViewportWidth } from '@/hooks/use-viewport-width'
 import {
   CheckIcon,
   CodeIcon,
@@ -16,6 +17,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { HorizontalResizeHandle } from '@/components/shared/horizontal-resize-handle'
 import { canShowArtifactSource } from '@/components/chat/artifacts/source-capabilities'
 import {
   DropdownMenu,
@@ -30,6 +32,12 @@ import { cn, resolveImageUrl } from '@/lib/utils'
 import { chatArtifactsAtom, type ChatArtifactsState } from '@/lib/stores/chat-artifacts'
 import {
   chatRightRailAtom,
+  chatRightRailWidthAtom,
+  clampRightRailWidth,
+  RIGHT_RAIL_COLLAPSE_THRESHOLD_PX,
+  RIGHT_RAIL_WIDTH_DEFAULT_PX,
+  RIGHT_RAIL_WIDTH_MAX_PX,
+  RIGHT_RAIL_WIDTH_MIN_PX,
   type ArtifactsPayload,
   type RightRailState,
 } from '@/lib/stores/chat-right-rail'
@@ -55,7 +63,10 @@ function conversationIdForState(state: RightRailState): string | null | undefine
 export function ChatRightRail({ className, conversationId }: Props) {
   const t = useTranslations('chat.rightRail')
   const [state, setState] = useAtom(chatRightRailAtom)
+  const [storedWidth, setStoredWidth] = useAtom(chatRightRailWidthAtom)
+  const [previewWidth, setPreviewWidth] = useState<number | null>(null)
   const stateConversationId = conversationIdForState(state)
+  const viewportWidth = useViewportWidth()
   const isStaleConversation =
     state.mode !== 'none' &&
     conversationId !== undefined &&
@@ -64,6 +75,42 @@ export function ChatRightRail({ className, conversationId }: Props) {
     stateConversationId !== null &&
     stateConversationId !== conversationId
   const isOpen = state.mode !== 'none' && !isStaleConversation
+  const maxWidth = clampRightRailWidth(RIGHT_RAIL_WIDTH_MAX_PX, viewportWidth)
+  const stableWidth = clampRightRailWidth(storedWidth, viewportWidth)
+  const effectiveWidth = isOpen ? Math.min(previewWidth ?? stableWidth, maxWidth) : 0
+  const isCollapsePreview = previewWidth !== null && previewWidth < RIGHT_RAIL_COLLAPSE_THRESHOLD_PX
+  const rightRailStyle = useMemo<CSSProperties & { '--chat-right-rail-width': string }>(
+    () => ({
+      '--chat-right-rail-width': `${effectiveWidth}px`,
+      width: isOpen ? 'var(--chat-right-rail-width)' : 0,
+    }),
+    [effectiveWidth, isOpen],
+  )
+
+  const previewRightRailWidth = useCallback(
+    (width: number) => {
+      const nextWidth = Number.isFinite(width) ? Math.min(Math.max(width, 0), maxWidth) : 0
+      setPreviewWidth(nextWidth)
+    },
+    [maxWidth],
+  )
+
+  const commitRightRailWidth = useCallback(
+    (width: number) => {
+      const nextWidth = clampRightRailWidth(width, viewportWidth)
+      setPreviewWidth(null)
+      setStoredWidth(nextWidth)
+    },
+    [setStoredWidth, viewportWidth],
+  )
+
+  const closeRightRail = useCallback(() => {
+    setPreviewWidth(null)
+    setState({ mode: 'none' })
+  }, [setState])
+  const cancelRightRailPreview = useCallback(() => {
+    setPreviewWidth(null)
+  }, [])
 
   useEffect(() => {
     if (isStaleConversation) {
@@ -75,19 +122,35 @@ export function ChatRightRail({ className, conversationId }: Props) {
     <>
       {/* 데스크톱: inline split */}
       <aside
+        data-slot="chat-right-rail"
+        data-collapse-preview={isCollapsePreview ? 'true' : undefined}
         className={cn(
-          'hidden shrink-0 overflow-hidden bg-muted/30 transition-[width] duration-200 md:block',
-          isOpen ? 'moldy-right-rail' : 'w-0',
+          'relative hidden shrink-0 overflow-hidden bg-muted/30 transition-[width] duration-200 md:block',
           className,
         )}
+        style={rightRailStyle}
         aria-hidden={!isOpen}
       >
         {isOpen ? (
-          <RailFrame
-            state={state}
-            className="moldy-right-rail"
-            onClose={() => setState({ mode: 'none' })}
-          />
+          <>
+            <HorizontalResizeHandle
+              ariaLabel={t('resizePanel')}
+              className="absolute inset-y-0 left-0 z-20 hidden md:flex"
+              collapsedValueText={t('collapsedPanel')}
+              collapseThreshold={RIGHT_RAIL_COLLAPSE_THRESHOLD_PX}
+              maxWidth={maxWidth}
+              minWidth={RIGHT_RAIL_WIDTH_MIN_PX}
+              onCancelPreview={cancelRightRailPreview}
+              onCollapse={closeRightRail}
+              onCommitWidth={commitRightRailWidth}
+              onPreviewWidth={previewRightRailWidth}
+              onReset={() => commitRightRailWidth(RIGHT_RAIL_WIDTH_DEFAULT_PX)}
+              side="right"
+              variantClassName="moldy-right-rail-resize-handle"
+              width={effectiveWidth}
+            />
+            <RailFrame state={state} className="w-full" onClose={closeRightRail} />
+          </>
         ) : null}
       </aside>
 
@@ -96,11 +159,7 @@ export function ChatRightRail({ className, conversationId }: Props) {
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
           {state.mode === 'artifacts' ? (
             <div className="moldy-artifact-mobile-layer absolute inset-0">
-              <RailFrame
-                state={state}
-                className="h-full w-full"
-                onClose={() => setState({ mode: 'none' })}
-              />
+              <RailFrame state={state} className="h-full w-full" onClose={closeRightRail} />
             </div>
           ) : (
             <>
@@ -108,14 +167,10 @@ export function ChatRightRail({ className, conversationId }: Props) {
                 type="button"
                 aria-label={t('closePanel')}
                 className="absolute inset-0 bg-background/60 backdrop-blur-sm"
-                onClick={() => setState({ mode: 'none' })}
+                onClick={closeRightRail}
               />
               <div className="moldy-side-panel moldy-right-rail-mobile absolute inset-y-0 right-0">
-                <RailFrame
-                  state={state}
-                  className="h-full w-full"
-                  onClose={() => setState({ mode: 'none' })}
-                />
+                <RailFrame state={state} className="h-full w-full" onClose={closeRightRail} />
               </div>
             </>
           )}
@@ -148,7 +203,7 @@ function RailFrame({ state, className, onClose }: RailFrameProps) {
       : titleFor(state)
 
   return (
-    <div className={cn('flex h-full flex-col', className)}>
+    <div data-slot="chat-right-rail-frame" className={cn('flex h-full flex-col', className)}>
       {state.mode === 'artifacts' && selectedArtifact && artifactView === 'preview' ? (
         <ArtifactViewerHeader
           artifact={selectedArtifact}

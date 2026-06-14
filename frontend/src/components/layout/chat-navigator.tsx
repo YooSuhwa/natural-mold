@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { useConversationRowActions } from '@/components/chat/use-conversation-row-actions'
-import { SidebarGroup, SidebarGroupContent } from '@/components/ui/sidebar'
+import { SidebarGroup, SidebarGroupContent, useSidebar } from '@/components/ui/sidebar'
 import { SearchInput } from '@/components/shared/search-input'
 import { useAgentSummaries } from '@/lib/hooks/use-agents'
 import { useGlobalConversationPages } from '@/lib/hooks/use-conversations'
@@ -37,6 +37,7 @@ import { useChatNavigatorShortcuts } from './use-chat-navigator-shortcuts'
 export function ChatNavigator() {
   const pathname = usePathname()
   const t = useTranslations('sidebar.agents')
+  const { setOpen, state } = useSidebar()
   const route = useMemo(() => parseChatRoute(pathname), [pathname])
   const { data: agents, isLoading } = useAgentSummaries()
   const [mode, setMode] = useAtom(navigatorModeAtom)
@@ -60,8 +61,7 @@ export function ChatNavigator() {
     [agents, agentSort],
   )
   const filteredAgents = useMemo(
-    () =>
-      sortedAgents.filter((agent) => (search ? matchesAgent(agent, search) : true)),
+    () => sortedAgents.filter((agent) => (search ? matchesAgent(agent, search) : true)),
     [search, sortedAgents],
   )
   const actions = useConversationRowActions({
@@ -87,6 +87,7 @@ export function ChatNavigator() {
   const globalConversations = globalPages?.pages.flatMap((page) => page.items) ?? []
   const recentSessionsExpanded = expandedListScopes.includes('recent_sessions')
   const recentAgentsExpanded = expandedListScopes.includes('recent_agents')
+  const isSidebarCollapsed = state === 'collapsed'
 
   const closeTransientUi = useCallback(() => {
     setQuickSwitcherOpen(false)
@@ -95,6 +96,11 @@ export function ChatNavigator() {
   }, [])
 
   const openQuickSwitcher = useCallback(() => setQuickSwitcherOpen(true), [])
+  const expandSidebarFromIcon = useCallback(() => {
+    if (isSidebarCollapsed) {
+      setOpen(true)
+    }
+  }, [isSidebarCollapsed, setOpen])
 
   useChatNavigatorShortcuts({
     onOpenQuickSwitcher: openQuickSwitcher,
@@ -129,7 +135,13 @@ export function ChatNavigator() {
         return current.includes(agentId) ? current : [...current, agentId]
       })
     },
-    [activeAgentId, isAgentExpanded, setCollapsedAgentIds, setExpandedAgentIds, singleExpandedAgent],
+    [
+      activeAgentId,
+      isAgentExpanded,
+      setCollapsedAgentIds,
+      setExpandedAgentIds,
+      singleExpandedAgent,
+    ],
   )
 
   function toggleListScope(scope: string) {
@@ -189,6 +201,8 @@ export function ChatNavigator() {
           <RecentAgentsSection
             agents={filteredAgents}
             expanded={recentAgentsExpanded}
+            isSidebarCollapsed={isSidebarCollapsed}
+            onExpandSidebar={expandSidebarFromIcon}
             onToggleExpanded={() => toggleListScope('recent_agents')}
           />
         ) : mode === 'recent_sessions' ? (
@@ -201,6 +215,8 @@ export function ChatNavigator() {
             isLoading={globalLoading}
             isFetchingNextPage={isFetchingNextGlobalPage}
             search={search}
+            isSidebarCollapsed={isSidebarCollapsed}
+            onExpandSidebar={expandSidebarFromIcon}
             onMore={handleRecentSessionsMore}
           />
         ) : (
@@ -214,6 +230,8 @@ export function ChatNavigator() {
             expandedListScopes={expandedListScopes}
             searchResultSessions={searchResultSessions}
             actions={actions}
+            isSidebarCollapsed={isSidebarCollapsed}
+            onExpandSidebar={expandSidebarFromIcon}
             onToggleAgentExpanded={toggleAgentExpanded}
             onToggleListExpanded={toggleListScope}
           />
