@@ -3130,8 +3130,8 @@ Expected: eval runner tests pass.
 - [x] Implement run creation so it snapshots the current `skill.version` and `skill.content_hash`.
 - [ ] Implement queued/running/grading/completed/failed/cancelled transitions through the worker, including cooperative cancellation fields.
 - [ ] Mark previous runs stale in UI by hash comparison; do not mutate old rows just to represent stale status.
-- [ ] Before run creation, call `missing_required_keys(...)` or the same resolution path used by runtime; return `MARKETPLACE_CREDENTIAL_REQUIRED` if required user bindings are missing.
-- [ ] Record `skill_evaluation.credential_missing` with outcome `denied` when run creation is blocked by missing credentials.
+- [x] Before run creation, call `missing_required_keys(...)` or the same resolution path used by runtime; return `MARKETPLACE_CREDENTIAL_REQUIRED` if required user bindings are missing.
+- [x] Record `skill_evaluation.credential_missing` with outcome `denied` when run creation is blocked by missing credentials.
 - [ ] Record `skill_evaluation.run_create`, `skill_evaluation.run_start`, `skill_evaluation.run_complete`, `skill_evaluation.run_fail`, and `skill_evaluation.run_cancel` with sanitized metadata.
 - [ ] Record `skill_security.sandbox_denied` when the eval runner blocks unsupported executables, path traversal, undeclared network access, or timeout policy violations before launch.
 - [ ] Add API tests:

@@ -107,6 +107,35 @@ async def test_cancel_queued_run(
     assert response.json()["cancellation_reason"] == "user"
 
 
+async def test_create_run_requires_required_credential_binding(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    skill = await _create_skill(db, tmp_path)
+    skill.credential_requirements = [
+        {
+            "key": "openai",
+            "definition_key": "openai",
+            "required": True,
+            "label": "OpenAI",
+            "fields": ["api_key"],
+            "env_map": {"api_key": "OPENAI_API_KEY"},
+        }
+    ]
+    await db.commit()
+    created = await client.post(
+        f"/api/skills/{skill.id}/evaluations",
+        json={"name": "Smoke", "evals": [{"input": "a"}]},
+    )
+    set_id = created.json()["id"]
+
+    response = await client.post(f"/api/skills/{skill.id}/evaluations/{set_id}/runs")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "MARKETPLACE_CREDENTIAL_REQUIRED"
+
+
 async def test_list_evaluations_for_unowned_skill_returns_404(client: AsyncClient) -> None:
     response = await client.get(
         "/api/skills/00000000-0000-0000-0000-000000000099/evaluations"

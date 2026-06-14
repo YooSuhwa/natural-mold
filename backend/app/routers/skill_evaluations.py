@@ -7,13 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import (
+    marketplace_credential_required,
     skill_evaluation_run_not_cancellable,
     skill_evaluation_run_not_found,
-    skill_evaluation_set_not_found,
-    skill_not_found,
 )
-from app.models.skill import Skill
-from app.models.skill_evaluation import SkillEvaluationSet
+from app.marketplace import credential_requirements
+from app.routers.skill_evaluations_support import (
+    load_evaluation_set_or_404,
+    load_skill_or_404,
+    record_evaluation_audit,
+)
 from app.schemas.skill_evaluation import (
     SkillEvaluationRunCancelRequest,
     SkillEvaluationRunEstimate,
@@ -21,8 +24,7 @@ from app.schemas.skill_evaluation import (
     SkillEvaluationSetCreate,
     SkillEvaluationSetResponse,
 )
-from app.services import audit_service, skill_evaluation_service
-from app.skills import service as skill_service
+from app.services import skill_evaluation_service
 
 router = APIRouter(prefix="/api/skills/{skill_id}/evaluations", tags=["skill-evaluations"])
 
@@ -33,7 +35,7 @@ async def list_skill_evaluations(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[SkillEvaluationSetResponse]:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
     rows = await skill_evaluation_service.list_evaluation_sets(db, skill=skill, user_id=user.id)
     return [SkillEvaluationSetResponse.model_validate(row) for row in rows]
 
@@ -46,7 +48,7 @@ async def create_skill_evaluation(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillEvaluationSetResponse:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
     row = await skill_evaluation_service.create_evaluation_set(
         db,
         user_id=user.id,
@@ -68,8 +70,8 @@ async def get_skill_evaluation(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> SkillEvaluationSetResponse:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
-    row = await _load_evaluation_set_or_404(
+    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    row = await load_evaluation_set_or_404(
         db,
         skill=skill,
         user=user,
@@ -86,8 +88,8 @@ async def estimate_skill_evaluation_run(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillEvaluationRunEstimate:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
-    evaluation_set = await _load_evaluation_set_or_404(
+    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    evaluation_set = await load_evaluation_set_or_404(
         db,
         skill=skill,
         user=user,
@@ -103,8 +105,8 @@ async def list_skill_evaluation_runs(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[SkillEvaluationRunResponse]:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
-    evaluation_set = await _load_evaluation_set_or_404(
+    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    evaluation_set = await load_evaluation_set_or_404(
         db,
         skill=skill,
         user=user,
@@ -132,20 +134,36 @@ async def create_skill_evaluation_run(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillEvaluationRunResponse:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
-    evaluation_set = await _load_evaluation_set_or_404(
+    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    evaluation_set = await load_evaluation_set_or_404(
         db,
         skill=skill,
         user=user,
         evaluation_set_id=evaluation_set_id,
     )
+    missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
+    if missing:
+        await record_evaluation_audit(
+            db,
+            user=user,
+            request=request,
+            action="skill_evaluation.credential_missing",
+            skill_id=skill.id,
+            evaluation_set_id=evaluation_set.id,
+            outcome="denied",
+            metadata={"missing_requirement_keys": missing},
+        )
+        await db.commit()
+        raise marketplace_credential_required(
+            f"missing required skill credential bindings: {', '.join(missing)}"
+        )
     run = await skill_evaluation_service.create_run(
         db,
         user_id=user.id,
         skill=skill,
         evaluation_set=evaluation_set,
     )
-    await _record_evaluation_audit(
+    await record_evaluation_audit(
         db,
         user=user,
         request=request,
@@ -173,8 +191,8 @@ async def cancel_skill_evaluation_run(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillEvaluationRunResponse:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
-    evaluation_set = await _load_evaluation_set_or_404(
+    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    evaluation_set = await load_evaluation_set_or_404(
         db,
         skill=skill,
         user=user,
@@ -193,7 +211,7 @@ async def cancel_skill_evaluation_run(
         cancelled = await skill_evaluation_service.cancel_run(db, run, reason=data.reason)
     except skill_evaluation_service.SkillEvaluationRunNotCancellable as exc:
         raise skill_evaluation_run_not_cancellable() from exc
-    await _record_evaluation_audit(
+    await record_evaluation_audit(
         db,
         user=user,
         request=request,
@@ -205,63 +223,3 @@ async def cancel_skill_evaluation_run(
     await db.commit()
     await db.refresh(cancelled)
     return SkillEvaluationRunResponse.model_validate(cancelled)
-
-
-async def _load_skill_or_404(
-    db: AsyncSession,
-    *,
-    skill_id: uuid.UUID,
-    user: CurrentUser,
-) -> Skill:
-    skill = await skill_service.get_skill(db, skill_id, user.id)
-    if skill is None:
-        raise skill_not_found()
-    return skill
-
-
-async def _load_evaluation_set_or_404(
-    db: AsyncSession,
-    *,
-    skill: Skill,
-    user: CurrentUser,
-    evaluation_set_id: uuid.UUID,
-) -> SkillEvaluationSet:
-    row = await skill_evaluation_service.get_evaluation_set(
-        db,
-        skill=skill,
-        user_id=user.id,
-        evaluation_set_id=evaluation_set_id,
-    )
-    if row is None:
-        raise skill_evaluation_set_not_found()
-    return row
-
-
-async def _record_evaluation_audit(
-    db: AsyncSession,
-    *,
-    user: CurrentUser,
-    request: Request,
-    action: str,
-    skill_id: uuid.UUID,
-    evaluation_set_id: uuid.UUID,
-    run_id: uuid.UUID,
-) -> None:
-    await audit_service.record_event(
-        db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
-        action=action,
-        target_type="skill_evaluation_run",
-        target_id=run_id,
-        target_owner_user_id=user.id,
-        outcome="success",
-        request=request,
-        metadata={
-            "skill_id": str(skill_id),
-            "evaluation_set_id": str(evaluation_set_id),
-        },
-    )
