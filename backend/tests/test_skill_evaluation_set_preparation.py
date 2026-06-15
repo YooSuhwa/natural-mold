@@ -258,6 +258,33 @@ async def test_prepare_does_not_create_run(
     assert run_count == 0
 
 
+async def test_prepare_rejects_oversized_embedded_evals(
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    # Given: a package skill with an oversized evals/evals.json file.
+    skill = await _package_skill(db, tmp_path, eval_payload=None)
+    eval_path = tmp_path / "skills" / str(skill.id) / "evals" / "evals.json"
+    eval_path.parent.mkdir()
+    eval_path.write_text(" " * 1_048_577, encoding="utf-8")
+
+    # When: preparation reads the embedded file.
+    with patch(_DATA_ROOT_PATCH, str(tmp_path)):
+        result = await prepare_skill_evaluation_set(
+            db=db,
+            skill=skill,
+            user_id=TEST_USER_ID,
+            source_kind="package_import",
+            allow_llm_generation=False,
+        )
+
+    # Then: preparation fails safely without creating an evaluation set.
+    assert result.status is SkillEvaluationPreparationStatus.FAILED
+    assert result.reason is not None
+    assert "exceeds" in result.reason
+    assert await _evaluation_set_count(db, skill) == 0
+
+
 async def _package_skill(
     db: AsyncSession,
     tmp_path: Path,

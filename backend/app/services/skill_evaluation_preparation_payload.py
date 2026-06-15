@@ -4,6 +4,7 @@ import hashlib
 import json
 import uuid
 from pathlib import Path
+from typing import Final
 
 from app.models.skill import Skill
 from app.schemas.skill_builder import JsonValue
@@ -15,11 +16,17 @@ from app.storage.paths import resolve_data_path
 
 type JsonObject = dict[str, JsonValue]
 
+MAX_EMBEDDED_EVALS_JSON_BYTES: Final = 1_048_576
+
 
 def load_embedded_payload(skill: Skill) -> JsonObject | None:
     path = _embedded_evals_path(skill)
     if path is None or not path.is_file():
         return None
+    if path.stat().st_size > MAX_EMBEDDED_EVALS_JSON_BYTES:
+        raise SkillEvaluationFileAdapterError(
+            f"evals/evals.json exceeds {MAX_EMBEDDED_EVALS_JSON_BYTES} bytes"
+        )
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:

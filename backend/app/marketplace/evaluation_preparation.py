@@ -5,9 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import CurrentUser
 from app.models.marketplace import MarketplaceInstallation
 from app.models.skill import Skill
+from app.services.skill_evaluation_auto_preparation import (
+    prepare_skill_evaluation_set_best_effort,
+)
 from app.services.skill_evaluation_set_preparation import (
     SkillEvaluationPreparationResult,
-    prepare_skill_evaluation_set,
 )
 
 
@@ -22,7 +24,7 @@ async def prepare_installed_skill_evaluation_set(
     skill = await db.get(Skill, installation.installed_skill_id)
     if skill is None:
         return None
-    return await prepare_skill_evaluation_set(
+    return await prepare_skill_evaluation_set_best_effort(
         db=db,
         skill=skill,
         user_id=user.id,

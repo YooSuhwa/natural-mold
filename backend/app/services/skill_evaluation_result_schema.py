@@ -105,6 +105,22 @@ def _benchmark(
         number_or_none(benchmark.get("pass_rate_delta")),
         delta(benchmark["with_skill_pass_rate"], benchmark["without_skill_pass_rate"]),
     )
+    duration = mean_metric(case_results, "duration_ms")
+    baseline_duration = mean_metric(case_results, "baseline_duration_ms")
+    tokens = mean_metric(case_results, "tokens")
+    baseline_tokens = mean_metric(case_results, "baseline_tokens")
+    benchmark["duration_delta_ms"] = first_present(
+        number_or_none(benchmark.get("duration_delta_ms")),
+        delta(duration, baseline_duration),
+    )
+    benchmark["token_delta"] = first_present(
+        number_or_none(benchmark.get("token_delta")),
+        delta(tokens, baseline_tokens),
+    )
+    benchmark["quality_delta"] = first_present(
+        number_or_none(benchmark.get("quality_delta")),
+        number_or_none(benchmark.get("pass_rate_delta")),
+    )
     benchmark["comparison"] = _comparison(benchmark=benchmark, case_results=case_results)
     return benchmark
 
@@ -189,9 +205,9 @@ def _comparison(*, benchmark: JsonObject, case_results: list[JsonObject]) -> Jso
 def _trigger_kpi(case_results: list[JsonObject]) -> JsonObject:
     triggered = [row["triggered"] for row in case_results if row["triggered"] is not None]
     passed = sum(1 for value in triggered if value is True)
-    total = len(triggered) or len(case_results)
+    total = len(case_results)
     return {
-        "value": rate(passed, len(triggered)) if triggered else None,
+        "value": rate(passed, total) if triggered else None,
         "passed": passed if triggered else None,
         "total": total,
         "delta": None,

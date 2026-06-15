@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Final
 
 from app.schemas.skill_builder import JsonValue
@@ -17,7 +18,9 @@ LOWER_IS_BETTER: Final = "lower_is_better"
 def number_or_none(value: JsonValue | None) -> int | float | None:
     if isinstance(value, bool):
         return None
-    if isinstance(value, int | float):
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and math.isfinite(value):
         return value
     return None
 

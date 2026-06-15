@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from app.services.skill_evaluation_result_schema import normalize_skill_evaluation_result
 
 
@@ -101,6 +103,9 @@ def test_benchmark_v2_keeps_legacy_fields_and_adds_comparison() -> None:
     assert benchmark["with_skill_pass_rate"] == 1.0
     assert benchmark["without_skill_pass_rate"] == 0.0
     assert benchmark["pass_rate_delta"] == 1.0
+    assert benchmark["duration_delta_ms"] == -1000
+    assert benchmark["token_delta"] == -200
+    assert benchmark["quality_delta"] == 1.0
     assert benchmark["comparison"] == {
         "pass_rate": {
             "with_skill": 1.0,
@@ -246,3 +251,66 @@ def test_result_schema_clamps_scores_and_normalizes_statuses() -> None:
     assert case_results[0]["baseline_score"] == 0.0
     assert case_results[0]["status"] == "error"
     assert case_results[0]["baseline_status"] == "error"
+
+
+def test_result_schema_drops_non_finite_numbers() -> None:
+    # Given: a grader result containing Python-parsed NaN and infinity values.
+    evals = [{"input": "Parse.", "expected": "JSON."}]
+    raw_case_results = [
+        {
+            "case_index": 0,
+            "score": float("nan"),
+            "baseline_score": float("inf"),
+            "duration_ms": float("inf"),
+            "baseline_duration_ms": float("-inf"),
+            "tokens": float("nan"),
+        }
+    ]
+    raw_benchmark = {"without_skill_pass_rate": float("nan")}
+
+    # When: the result is normalized.
+    summary, benchmark, case_results = normalize_skill_evaluation_result(
+        evals=evals,
+        raw_case_results=raw_case_results,
+        raw_benchmark=raw_benchmark,
+    )
+
+    # Then: non-finite values cannot leak into stored JSON or pass the case.
+    assert case_results[0]["score"] == 0.0
+    assert case_results[0]["baseline_score"] is None
+    assert case_results[0]["status"] == "failed"
+    assert case_results[0]["duration_ms"] is None
+    assert summary["average_duration_ms"] is None
+    assert benchmark["without_skill_pass_rate"] is None
+    json.dumps(summary, allow_nan=False)
+    json.dumps(benchmark, allow_nan=False)
+    json.dumps(case_results, allow_nan=False)
+
+
+def test_trigger_accuracy_kpi_uses_case_count_as_total() -> None:
+    # Given: only one of two cases reports trigger data.
+    evals = [
+        {"input": "A", "expected": "A"},
+        {"input": "B", "expected": "B"},
+    ]
+    raw_case_results = [
+        {"case_index": 0, "status": "passed", "score": 1, "triggered": True},
+        {"case_index": 1, "status": "passed", "score": 1},
+    ]
+
+    # When: KPI summary is normalized.
+    summary, _benchmark, _case_results = normalize_skill_evaluation_result(
+        evals=evals,
+        raw_case_results=raw_case_results,
+    )
+
+    # Then: the KPI denominator remains the full case count.
+    kpis = summary["kpis"]
+    assert isinstance(kpis, dict)
+    assert kpis["trigger_accuracy"] == {
+        "value": 0.5,
+        "passed": 1,
+        "total": 2,
+        "delta": None,
+        "direction": "higher_is_better",
+    }

@@ -77,6 +77,40 @@ async def test_marketplace_install_without_evals_succeeds_without_run(
     assert await _run_count(db) == 0
 
 
+async def test_marketplace_install_succeeds_when_auto_prepare_fails(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    # Given: a marketplace skill without evals and an LLM preparation failure.
+    await _ensure_test_user(db)
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        item = await _published_skill_item(db, tmp_path, include_evals=False)
+        await db.commit()
+
+        # When: the user installs the marketplace skill.
+        with patch(
+            "app.services.skill_evaluation_set_preparation.generate_skill_smoke_eval_payload",
+            side_effect=RuntimeError("provider timeout"),
+        ):
+            response = await client.post(
+                f"/api/marketplace/items/{item.id}/install",
+                json={"install_mode": "reuse_or_update"},
+            )
+
+    # Then: install succeeds and the failed preparation is audited.
+    assert response.status_code == 201, response.text
+    installed_skill_id = uuid.UUID(response.json()["installed_skill_id"])
+    assert await _latest_evaluation_set(db, installed_skill_id) is None
+    audit_event = await _latest_audit_event(db, "skill_evaluation_set.prepare_failed")
+    assert audit_event is not None
+    assert audit_event.target_id == str(installed_skill_id)
+    assert audit_event.event_metadata is not None
+    assert audit_event.event_metadata["status"] == "failed"
+    assert audit_event.event_metadata["source_kind"] == "marketplace_import"
+    assert await _run_count(db) == 0
+
+
 async def _ensure_test_user(db: AsyncSession) -> None:
     user = await db.get(User, TEST_USER_ID)
     if user is None:

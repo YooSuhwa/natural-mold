@@ -88,6 +88,40 @@ async def test_upload_package_without_evals_succeeds_without_run(
     assert await _run_count(db) == 0
 
 
+async def test_upload_package_succeeds_when_auto_prepare_fails(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    # Given: a package without evals and an LLM preparation failure.
+    package = _zip_with({"SKILL.md": _skill_md("upload-prepare-fails")})
+
+    # When: the package is uploaded.
+    with (
+        patch.object(skill_service.settings, "data_root", str(tmp_path)),
+        patch(
+            "app.services.skill_evaluation_set_preparation.generate_skill_smoke_eval_payload",
+            side_effect=RuntimeError("provider 429"),
+        ),
+    ):
+        response = await client.post(
+            "/api/skills/upload",
+            files={"file": ("upload.skill", package, "application/zip")},
+        )
+
+    # Then: upload succeeds, no run starts, and a failed preparation audit remains.
+    assert response.status_code == 201, response.text
+    skill_id = uuid.UUID(response.json()["id"])
+    assert await _latest_evaluation_set(db, skill_id) is None
+    audit_event = await _latest_audit_event(db, "skill_evaluation_set.prepare_failed")
+    assert audit_event is not None
+    assert audit_event.target_id == str(skill_id)
+    assert audit_event.event_metadata is not None
+    assert audit_event.event_metadata["status"] == "failed"
+    assert audit_event.event_metadata["source_kind"] == "package_import"
+    assert await _run_count(db) == 0
+
+
 def _zip_with(files: dict[str, str | bytes]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:

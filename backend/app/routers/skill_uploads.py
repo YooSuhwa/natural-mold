@@ -17,7 +17,9 @@ from app.routers.skill_router_support import (
 )
 from app.schemas.skill import SkillResponse
 from app.services import skill_revision_mutations
-from app.services.skill_evaluation_set_preparation import prepare_skill_evaluation_set
+from app.services.skill_evaluation_auto_preparation import (
+    prepare_skill_evaluation_set_best_effort,
+)
 from app.skills import service as skill_service
 from app.skills.packager import PackageError
 from app.storage.paths import resolve_data_path
@@ -64,7 +66,7 @@ async def upload_package_skill(
         user_id=user.id,
         metadata_json={"upload": True},
     )
-    preparation_result = await prepare_skill_evaluation_set(
+    preparation_result = await prepare_skill_evaluation_set_best_effort(
         db=db,
         skill=skill,
         user_id=user.id,
