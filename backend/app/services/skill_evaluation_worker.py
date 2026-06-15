@@ -14,6 +14,16 @@ from app.agent_runtime.skill_builder.eval_cancellation import EvalRunCancelled
 from app.config import settings
 from app.database import async_session
 from app.models.skill_evaluation import SkillEvaluationRun
+from app.services.skill_evaluation_worker_leader import (
+    release_skill_evaluation_worker_leader,
+    try_acquire_skill_evaluation_worker_leader,
+)
+from app.services.skill_evaluation_worker_outcomes import (
+    cancel_if_requested,
+    mark_execution_error_failed,
+    mark_timeout_failed,
+    record_completed_audit,
+)
 from app.services.skill_evaluation_worker_state import (
     build_context,
     load_run,
@@ -54,6 +64,7 @@ class SkillEvaluationWorker:
     _semaphore: asyncio.Semaphore | None = field(default=None, init=False)
     _stopping: asyncio.Event | None = field(default=None, init=False)
     _wake: asyncio.Event | None = field(default=None, init=False)
+    _holds_leader_lock: bool = field(default=False, init=False)
 
     def reserve_slot(self) -> None:
         if len(self._queue) + self._reserved_slots >= self.queue_max_size:
@@ -92,6 +103,11 @@ class SkillEvaluationWorker:
             self._session_factory = session_factory
         if self._task is not None and not self._task.done():
             return
+        if self._session_factory is async_session and not (
+            await try_acquire_skill_evaluation_worker_leader()
+        ):
+            return
+        self._holds_leader_lock = self._session_factory is async_session
         self._stopping = asyncio.Event()
         self._wake = asyncio.Event()
         self._semaphore = asyncio.Semaphore(max(1, self.max_concurrent))
@@ -109,13 +125,20 @@ class SkillEvaluationWorker:
             await asyncio.wait_for(task, timeout=timeout_seconds)
         except TimeoutError:
             task.cancel()
+            for active_task in self._active_tasks:
+                active_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+            if self._active_tasks:
+                await asyncio.gather(*self._active_tasks, return_exceptions=True)
         self._task = None
         self._active_tasks.clear()
         self._semaphore = None
         self._stopping = None
         self._wake = None
+        if self._holds_leader_lock:
+            self._holds_leader_lock = False
+            await release_skill_evaluation_worker_leader()
 
     async def reconcile_stale_runs(
         self,
@@ -149,53 +172,20 @@ class SkillEvaluationWorker:
             await db.flush()
             return run
         except TimeoutError:
-            timeout_message = (
-                f"timeout: evaluation run exceeded {settings.skill_evaluation_run_timeout_seconds}s"
-            )
-            await mark_failed(
-                db,
-                run,
-                timeout_message,
-            )
-            await record_run_audit(
-                db,
-                run,
-                "skill_evaluation.run_fail",
-                outcome="failure",
-                metadata={"reason_code": "SKILL_EVALUATION_TIMEOUT"},
-            )
-            await db.flush()
+            await mark_timeout_failed(db, run)
             return run
         except SkillEvaluationExecutionError as exc:
-            await mark_failed(db, run, str(exc))
-            await record_run_audit(
-                db,
-                run,
-                "skill_evaluation.run_fail",
-                outcome="failure",
-                metadata={"reason_code": "SKILL_EVALUATION_EXECUTION_ERROR"},
-            )
-            await db.flush()
+            await mark_execution_error_failed(db, run, exc)
             return run
 
-        await db.refresh(run)
-        if run.status == "cancelled" or run.cancellation_requested_at is not None:
-            await mark_cancelled(db, run)
-            await db.flush()
+        if await cancel_if_requested(db, run):
             return run
 
-        await mark_completed(db, run, result)
-        await record_run_audit(
-            db,
-            run,
-            "skill_evaluation.run_complete",
-            metadata={
-                "case_count": result.summary.get("case_count"),
-                "passed_count": result.summary.get("passed_count"),
-                "failed_count": result.summary.get("failed_count"),
-                "pass_rate": result.summary.get("pass_rate"),
-            },
-        )
+        if not await mark_completed(db, run, result):
+            if await cancel_if_requested(db, run):
+                return run
+            raise SkillEvaluationExecutionError(f"run completion conflicted: {run.status}")
+        await record_completed_audit(db, run, result)
         await db.flush()
         return run
 

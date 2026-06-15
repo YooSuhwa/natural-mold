@@ -61,3 +61,7 @@ def _is_excluded(rel: Path) -> bool:
         or name.endswith(EXCLUDED_FILE_SUFFIXES)
         or any(part in EXCLUDED_DIR_NAMES for part in rel.parts)
     )
+
+
+def is_excluded_package_path(rel: str | Path) -> bool:
+    return _is_excluded(Path(rel))

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { CheckCircle2, FileCode2, Loader2, MessageSquareText, Sparkles } from 'lucide-react'
@@ -15,8 +15,12 @@ import { useSession } from '@/lib/auth/session'
 import { useConfirmSkillBuilderSession, useStartSkillBuilder } from '@/lib/hooks/use-skill-builder'
 import { streamSkillBuilderMessage } from '@/lib/sse/stream-skill-builder-message'
 import { SkillBuilderPreview } from './skill-builder-preview'
+import {
+  handleSkillBuilderStreamEvent,
+  SkillBuilderStreamEventError,
+} from './skill-builder-stream-events'
 import { ImprovementConflict, SystemLlmReadiness } from './skill-builder-status-panels'
-import type { SkillBuilderMode, SkillBuilderSession, SkillBuilderStreamEvent } from '@/lib/types'
+import type { SkillBuilderMode, SkillBuilderSession } from '@/lib/types'
 
 type SkillBuilderOpenTab = 'content' | 'evaluation'
 
@@ -75,14 +79,26 @@ function SkillBuilderDialogInner({
   const [systemLlmMissing, setSystemLlmMissing] = useState(false)
   const [sourceConflict, setSourceConflict] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
+  const mountedRef = useRef(true)
+  const streamAbortRef = useRef<AbortController | null>(null)
 
-  const draft = session?.draft_package ?? null
+  useEffect(
+    () => () => {
+      mountedRef.current = false
+      streamAbortRef.current?.abort()
+    },
+    [],
+  )
+
   const pending = start.isPending || isStreaming
   const canStart = request.trim().length > 0 && !pending
   const canConfirm =
     session?.status === 'review' && !confirm.isPending && !sourceConflict && !isStreaming
 
   async function startBuilderSession(trimmed: string) {
+    streamAbortRef.current?.abort()
+    const controller = new AbortController()
+    streamAbortRef.current = controller
     setSystemLlmMissing(false)
     setSourceConflict(false)
     setIsStreaming(false)
@@ -94,11 +110,18 @@ function SkillBuilderDialogInner({
       )
       setSession(nextSession)
       setIsStreaming(true)
-      for await (const event of streamSkillBuilderMessage(nextSession.id, { content: trimmed })) {
+      for await (const event of streamSkillBuilderMessage(
+        nextSession.id,
+        { content: trimmed },
+        controller.signal,
+      )) {
+        if (controller.signal.aborted) return
         handleSkillBuilderStreamEvent(event)
       }
+      if (controller.signal.aborted) return
       setSession(await skillBuilderApi.get(nextSession.id))
     } catch (err) {
+      if (controller.signal.aborted) return
       if (err instanceof ApiError && err.code === 'SYSTEM_LLM_NOT_CONFIGURED') {
         setSystemLlmMissing(true)
         return
@@ -109,20 +132,17 @@ function SkillBuilderDialogInner({
       }
       toast.error(err instanceof Error ? err.message : t('startFailed'))
     } finally {
-      setIsStreaming(false)
+      if (streamAbortRef.current === controller) streamAbortRef.current = null
+      if (mountedRef.current) setIsStreaming(false)
     }
+  }
+
+  function closeDialog() {
+    streamAbortRef.current?.abort()
+    onClose()
   }
 
   async function handleStart() {
-    const trimmed = request.trim()
-    if (!trimmed) {
-      toast.error(t('requestRequired'))
-      return
-    }
-    await startBuilderSession(trimmed)
-  }
-
-  async function handleReloadLatest() {
     const trimmed = request.trim()
     if (!trimmed) {
       toast.error(t('requestRequired'))
@@ -137,7 +157,7 @@ function SkillBuilderDialogInner({
       const created = await confirm.mutateAsync(session.id)
       toast.success(mode === 'improve' ? t('toast.improved') : t('toast.created'))
       onCreated?.(created.id, { openTab: session.eval_result ? 'evaluation' : 'content' })
-      onClose()
+      closeDialog()
     } catch (err) {
       if (err instanceof ApiError && err.code === 'SKILL_BUILDER_SOURCE_CONFLICT') {
         setSourceConflict(true)
@@ -176,9 +196,9 @@ function SkillBuilderDialogInner({
             ) : null}
             {sourceConflict ? (
               <ImprovementConflict
-                reloadPending={start.isPending}
-                onReloadLatest={handleReloadLatest}
-                onDiscard={onClose}
+                reloadPending={pending}
+                onReloadLatest={handleStart}
+                onDiscard={closeDialog}
               />
             ) : null}
             <div className="mt-auto flex justify-end">
@@ -207,12 +227,12 @@ function SkillBuilderDialogInner({
             ) : null}
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-            <SkillBuilderPreview session={session} draft={draft} />
+            <SkillBuilderPreview session={session} draft={session?.draft_package ?? null} />
           </div>
         </section>
       </DialogShell.Body>
       <DialogShell.Footer>
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" onClick={closeDialog}>
           {t('cancel')}
         </Button>
         <Button type="button" onClick={handleConfirm} disabled={!canConfirm}>
@@ -226,38 +246,4 @@ function SkillBuilderDialogInner({
       </DialogShell.Footer>
     </>
   )
-}
-
-function handleSkillBuilderStreamEvent(event: SkillBuilderStreamEvent): void {
-  switch (event.event) {
-    case 'message_start':
-    case 'builder_status':
-    case 'builder_activity':
-    case 'draft_package':
-    case 'validation_result':
-    case 'compatibility_result':
-    case 'changelog_draft':
-    case 'eval_result':
-    case 'content_delta':
-    case 'message_end':
-      return
-    case 'error':
-      throw new SkillBuilderStreamEventError(streamMessage(event.data.message))
-    default:
-      assertNever(event)
-  }
-}
-
-class SkillBuilderStreamEventError extends Error {
-  constructor(readonly streamMessage: string | null) {
-    super('skill_builder_stream_error')
-  }
-}
-
-function streamMessage(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value : null
-}
-
-function assertNever(value: never): never {
-  throw new Error(`Unexpected Skill Builder event: ${JSON.stringify(value)}`)
 }

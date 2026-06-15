@@ -4,9 +4,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.skill_builder.eval_limits import MAX_SKILL_EVAL_CASES
 from app.config import settings
 from app.models.skill import Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
@@ -16,6 +17,10 @@ CANCELLABLE_STATUSES = frozenset({"queued", "running", "grading"})
 
 
 class SkillEvaluationRunNotCancellable(RuntimeError):
+    pass
+
+
+class SkillEvaluationSetTooLarge(ValueError):
     pass
 
 
@@ -32,6 +37,10 @@ async def create_evaluation_set(
     template_version: str | None = None,
     generation_strategy: dict[str, Any] | None = None,
 ) -> SkillEvaluationSet:
+    if len(evals) > MAX_SKILL_EVAL_CASES:
+        raise SkillEvaluationSetTooLarge(
+            f"evaluation sets can contain at most {MAX_SKILL_EVAL_CASES} cases"
+        )
     evaluation_set = SkillEvaluationSet(
         user_id=user_id,
         skill_id=skill.id,
@@ -195,11 +204,24 @@ async def cancel_run(
     if run.status not in CANCELLABLE_STATUSES:
         raise SkillEvaluationRunNotCancellable(f"run status is not cancellable: {run.status}")
     now = _now()
-    run.status = "cancelled"
-    run.cancellation_requested_at = now
-    run.cancellation_reason = reason[:120]
-    run.completed_at = now
+    result = await db.execute(
+        update(SkillEvaluationRun)
+        .where(
+            SkillEvaluationRun.id == run.id,
+            SkillEvaluationRun.status.in_(CANCELLABLE_STATUSES),
+        )
+        .values(
+            status="cancelled",
+            cancellation_requested_at=now,
+            cancellation_reason=reason[:120],
+            completed_at=now,
+        )
+    )
     await db.flush()
+    if result.rowcount != 1:
+        await db.refresh(run)
+        raise SkillEvaluationRunNotCancellable(f"run status is not cancellable: {run.status}")
+    await db.refresh(run)
     return run
 
 

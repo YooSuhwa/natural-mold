@@ -4,6 +4,7 @@ import json
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.agent_runtime.skill_builder.eval_limits import MAX_SKILL_EVAL_CASES
 from app.schemas.skill_builder import JsonValue
 
 
@@ -25,7 +26,7 @@ class SkillEvalFile(BaseModel):
 
     schema_version: int = Field(default=1, ge=1)
     name: str | None = Field(default=None, max_length=160)
-    evals: list[SkillEvalCase] = Field(..., min_length=1)
+    evals: list[SkillEvalCase] = Field(..., min_length=1, max_length=MAX_SKILL_EVAL_CASES)
 
 
 def parse_evals_json(content: str) -> SkillEvalFile:

@@ -19,8 +19,12 @@ def load_moldy_metadata(
     moldy_file = by_path.get("agents/moldy.yaml")
     if moldy_file is None:
         return {}, []
+    return parse_moldy_metadata_content(moldy_file.content)
+
+
+def parse_moldy_metadata_content(content: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     try:
-        loaded = frontmatter.YAMLHandler().load(moldy_file.content)
+        loaded = frontmatter.YAMLHandler().load(content)
     except yaml.YAMLError as exc:
         return {}, [
             _issue(

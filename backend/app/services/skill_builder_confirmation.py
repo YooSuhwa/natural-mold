@@ -25,6 +25,7 @@ from app.services.skill_builder_evaluations import (
 )
 from app.services.skill_builder_package_storage import package_metadata, replace_skill_storage
 from app.services.skill_builder_slug import unique_skill_slug
+from app.services.skill_locks import lock_skill_for_mutation
 from app.skills import service as skill_service
 from app.skills.package_builder import build_skill_zip_bytes
 from app.skills.validator import validate_draft_package
@@ -127,6 +128,7 @@ async def _confirm_improve(
     user_id: uuid.UUID,
 ) -> Skill:
     skill = await _load_source_skill(db, session=session, user_id=user_id)
+    skill = await lock_skill_for_mutation(db, skill=skill)
     if skill.content_hash != session.base_content_hash:
         session.status = SkillBuilderStatus.REVIEW.value
         session.error_message = "SOURCE_SKILL_CHANGED"

@@ -96,15 +96,21 @@ async def test_evaluation_context_mounts_only_the_target_skill(
         .read_text()
         .endswith("Runtime marker: target\n")
     )
+    scripts_dir = descriptor.runtime_storage_path / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "read_skill.py").write_text(
+        'from pathlib import Path\nprint(Path("SKILL.md").read_text())\n',
+        encoding="utf-8",
+    )
 
     execute = tool_coroutine(_create_skill_execute_tool(runtime_context))
     selected = await execute(
         skill_directory=f"/runtime/{run.id}/skills/{target.slug}/",
-        command="python -c 'from pathlib import Path; print(Path(\"SKILL.md\").read_text())'",
+        command="python scripts/read_skill.py",
     )
     unselected = await execute(
         skill_directory=f"/runtime/{run.id}/skills/{other.slug}/",
-        command="python -c 'print(\"should-not-run\")'",
+        command="python scripts/read_skill.py",
     )
 
     assert "Runtime marker: target" in selected

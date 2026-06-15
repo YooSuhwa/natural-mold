@@ -15,8 +15,14 @@ from app.config import settings
 from app.models.skill import Skill
 from app.models.skill_builder_session import JsonValue
 from app.models.skill_revision import SkillRevision
+from app.services.skill_locks import lock_skill_for_mutation
 from app.services.skill_revision_storage import write_skill_revision_snapshot
 from app.skills import service as skill_service
+from app.skills.moldy_metadata import (
+    credential_requirements_from_metadata,
+    execution_profile_from_metadata,
+    parse_moldy_metadata_content,
+)
 from app.skills.package_metadata import refresh_package_metadata, sync_frontmatter
 from app.skills.packager import extract_package
 from app.storage.paths import resolve_data_path
@@ -115,6 +121,7 @@ async def rollback_to_revision(
         raise SkillRevisionNotFound("revision not found")
     if _snapshot_pruned(revision):
         raise SkillRevisionRollbackUnsupported("revision snapshot was pruned")
+    skill = await lock_skill_for_mutation(db, skill=skill)
     parent_revision_id = skill.current_revision_id
     zip_bytes = await anyio.to_thread.run_sync(_read_revision_bytes, revision.object_key)
     if skill.kind == "text":
@@ -126,6 +133,7 @@ async def rollback_to_revision(
         await anyio.to_thread.run_sync(_replace_package_files, skill.storage_path, zip_bytes)
         refresh_package_metadata(skill)
         sync_frontmatter(skill, skill_service.get_file_bytes(skill, "SKILL.md"))
+        _sync_moldy_runtime_columns(skill)
         await db.flush()
     return await create_revision_for_skill(
         db,
@@ -150,6 +158,20 @@ async def _next_revision_number(db: AsyncSession, skill_id: uuid.UUID) -> int:
 
 def _snapshot_pruned(revision: SkillRevision) -> bool:
     return bool((revision.metadata_json or {}).get("snapshot_pruned"))
+
+
+def _sync_moldy_runtime_columns(skill: Skill) -> None:
+    try:
+        raw = skill_service.get_file_bytes(skill, "agents/moldy.yaml").decode("utf-8")
+    except FileNotFoundError:
+        metadata: dict[str, JsonValue] = {}
+    else:
+        parsed, _issues = parse_moldy_metadata_content(raw)
+        metadata = parsed
+    requirements = credential_requirements_from_metadata(metadata)
+    profile = execution_profile_from_metadata(metadata)
+    skill.credential_requirements = [dict(item) for item in requirements] or None
+    skill.execution_profile = dict(profile) or None
 
 
 class SkillRevisionNotFound(LookupError):

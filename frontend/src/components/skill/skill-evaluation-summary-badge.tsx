@@ -43,6 +43,8 @@ function evaluationVariant(status: EvaluationStatus, passRate?: number | null): 
       return 'degraded'
     case 'missing':
       return 'unknown'
+    default:
+      return 'unknown'
   }
 }
 

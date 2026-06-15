@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import shlex
@@ -7,6 +8,7 @@ import shutil
 import sys
 from pathlib import Path
 from typing import Final
+from urllib.parse import unquote, urlparse
 
 from app.config import settings
 from app.marketplace.skill_runtime import SkillRuntimeDescriptor
@@ -16,6 +18,14 @@ _SHELL_DEFAULT_RE: Final = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*):-(.*?)\}")
 _SHELL_VAR_RE: Final = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 _DEFAULT_SKILL_TIMEOUT_SECONDS: Final = 30.0
 _MAX_SKILL_TIMEOUT_SECONDS: Final = 420.0
+_SAFE_CURL_FLAGS: Final[frozenset[str]] = frozenset(
+    {"-f", "--fail", "-L", "--location", "-s", "-S", "-sS"}
+)
+_SAFE_CURL_SHORT_FLAGS: Final[frozenset[str]] = frozenset({"f", "L", "s", "S"})
+_SAFE_CURL_FLAGS_WITH_VALUE: Final[frozenset[str]] = frozenset({"--connect-timeout", "--max-time"})
+_BLOCKED_CURL_HOSTS: Final[frozenset[str]] = frozenset(
+    {"localhost", "metadata.google.internal", "metadata"}
+)
 
 
 def _expand_shell_vars(value: str, *, env: dict[str, str], local_vars: dict[str, str]) -> str:
@@ -57,10 +67,13 @@ def _prepare_skill_subprocess_args(
 
     executable = Path(args[0]).name
     if executable == "python":
-        if len(args) > 1 and not args[1].startswith("-"):
-            script_path = (resolved / args[1]).resolve()
-            if not script_path.is_relative_to(resolved):
-                return None, "Error: script must be within the skill directory."
+        if len(args) < 2 or args[1].startswith("-"):
+            return None, "Error: python command must be `python scripts/<file>.py ...`."
+        script_path = (resolved / args[1]).resolve()
+        if not script_path.is_relative_to(resolved):
+            return None, "Error: script must be within the skill directory."
+        if script_path.suffix.lower() != ".py":
+            return None, "Error: python script must use .py."
         args[0] = sys.executable
         return args, None
 
@@ -79,6 +92,9 @@ def _prepare_skill_subprocess_args(
         return args, None
 
     if executable == "curl":
+        curl_error = _curl_policy_error(args, resolved=resolved)
+        if curl_error is not None:
+            return None, curl_error
         args[0] = "curl"
         return args, None
 
@@ -89,8 +105,12 @@ def sandbox_denial_for_prepare_error(command: str, error: str) -> tuple[str, str
     executable = _command_executable(command)
     if "only python, node, or curl commands are allowed" in error:
         return ("unsupported_executable", executable)
+    if "python command must be" in error:
+        return ("inline_python", executable)
     if "must be within the skill directory" in error:
         return ("path_traversal", executable)
+    if "curl" in error:
+        return ("curl_url_policy", executable)
     return None
 
 
@@ -154,3 +174,71 @@ def _command_executable(command: str) -> str:
     if index >= len(raw_args):
         return "unknown"
     return Path(raw_args[index]).name
+
+
+def _curl_policy_error(args: list[str], *, resolved: Path) -> str | None:
+    urls: list[str] = []
+    index = 1
+    while index < len(args):
+        arg = args[index]
+        if arg in _SAFE_CURL_FLAGS or _is_safe_curl_short_flag_group(arg):
+            index += 1
+            continue
+        if arg in _SAFE_CURL_FLAGS_WITH_VALUE:
+            if index + 1 >= len(args) or args[index + 1].startswith("-"):
+                return "Error: curl option requires a value."
+            index += 2
+            continue
+        if arg.startswith("-"):
+            return "Error: curl option is not allowed."
+        urls.append(arg)
+        index += 1
+    if len(urls) != 1:
+        return "Error: curl command must contain exactly one URL."
+    return _curl_url_policy_error(urls[0], resolved=resolved)
+
+
+def _is_safe_curl_short_flag_group(arg: str) -> bool:
+    return (
+        arg.startswith("-")
+        and not arg.startswith("--")
+        and len(arg) > 2
+        and all(flag in _SAFE_CURL_SHORT_FLAGS for flag in arg[1:])
+    )
+
+
+def _curl_url_policy_error(raw_url: str, *, resolved: Path) -> str | None:
+    parsed = urlparse(raw_url)
+    if parsed.scheme == "file":
+        if parsed.hostname not in {None, "", "localhost"}:
+            return "Error: curl URL host is not allowed."
+        file_path = Path(unquote(parsed.path)).resolve()
+        if not file_path.is_relative_to(resolved):
+            return "Error: curl URL host is not allowed."
+        return None
+    if parsed.scheme not in {"http", "https"}:
+        return "Error: curl URL must use http or https."
+    host = parsed.hostname
+    if host is None or not host.strip():
+        return "Error: curl URL host is required."
+    if _blocked_curl_host(host):
+        return "Error: curl URL host is not allowed."
+    return None
+
+
+def _blocked_curl_host(host: str) -> bool:
+    normalized = host.strip("[]").lower()
+    if normalized in _BLOCKED_CURL_HOSTS or normalized.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        return False
+    return (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+    )

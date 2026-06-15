@@ -9,6 +9,7 @@ import anyio
 from app.config import settings
 from app.models.skill import Skill
 from app.skills import service as skill_service
+from app.skills.package_hash import is_excluded_package_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +50,7 @@ async def _snapshot_files(skill: Skill) -> list[tuple[str, bytes]]:
         return [("SKILL.md", content.encode("utf-8"))]
     files: list[tuple[str, bytes]] = []
     for file_info in skill_service.get_skill_files(skill):
-        if file_info.is_dir:
+        if file_info.is_dir or is_excluded_package_path(file_info.path):
             continue
         files.append((file_info.path, skill_service.get_file_bytes(skill, file_info.path)))
     return files

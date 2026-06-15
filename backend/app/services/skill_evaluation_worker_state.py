@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_config import AgentConfig
@@ -125,18 +125,31 @@ async def mark_completed(
     db: AsyncSession,
     run: SkillEvaluationRun,
     result: SkillEvaluationResult,
-) -> None:
-    run.status = "completed"
-    run.summary = result.summary
-    run.benchmark = result.benchmark
-    run.case_results = result.case_results
-    run.runner_model = result.runner_model
-    run.runner_version = result.runner_version
-    run.grader_prompt_version = result.grader_prompt_version
-    run.eval_schema_version = result.eval_schema_version
-    run.error_message = None
-    run.completed_at = _now()
+) -> bool:
+    completed_at = _now()
+    result_row = await db.execute(
+        update(SkillEvaluationRun)
+        .where(
+            SkillEvaluationRun.id == run.id,
+            SkillEvaluationRun.status != "cancelled",
+            SkillEvaluationRun.cancellation_requested_at.is_(None),
+        )
+        .values(
+            status="completed",
+            summary=result.summary,
+            benchmark=result.benchmark,
+            case_results=result.case_results,
+            runner_model=result.runner_model,
+            runner_version=result.runner_version,
+            grader_prompt_version=result.grader_prompt_version,
+            eval_schema_version=result.eval_schema_version,
+            error_message=None,
+            completed_at=completed_at,
+        )
+    )
     await db.flush()
+    await db.refresh(run)
+    return result_row.rowcount == 1
 
 
 async def mark_failed(db: AsyncSession, run: SkillEvaluationRun, message: str) -> None:

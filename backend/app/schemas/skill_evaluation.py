@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agent_runtime.skill_builder.eval_limits import MAX_SKILL_EVAL_CASES
 from app.schemas.skill_builder import JsonValue
 
 
@@ -23,7 +24,7 @@ class SkillEvaluationSetCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=160)
     description: str | None = None
-    evals: list[JsonValue] = Field(..., min_length=1)
+    evals: list[JsonValue] = Field(..., min_length=1, max_length=MAX_SKILL_EVAL_CASES)
 
 
 class SkillEvaluationSetUpdate(BaseModel):
@@ -31,7 +32,11 @@ class SkillEvaluationSetUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=160)
     description: str | None = None
-    evals: list[JsonValue] | None = Field(default=None, min_length=1)
+    evals: list[JsonValue] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_SKILL_EVAL_CASES,
+    )
 
 
 class SkillEvaluationRunEstimate(BaseModel):

@@ -21,6 +21,8 @@ function healthVariant(state: SkillHealthState): StatusChipVariant {
       return 'degraded'
     case 'needs_evaluation':
       return 'unknown'
+    default:
+      return 'unknown'
   }
 }
 

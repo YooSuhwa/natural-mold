@@ -6,6 +6,9 @@ from math import sqrt
 from pathlib import Path
 from typing import Final
 
+import anyio
+
+from app.agent_runtime.skill_builder.eval_limits import MAX_EVAL_COMMAND_CHARS
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.marketplace.skill_runtime import SkillToolContext
 from app.schemas.skill_builder import JsonValue
@@ -20,6 +23,7 @@ REQUIRED_GRADER_RESULT_KEYS: Final = (
 )
 _POLICY_PROBE_MARKER: Final = "MOLDY_EVAL_POLICY_OK"
 _POLICY_PROBE_OUTPUT_FILE: Final = "eval-policy-probe.txt"
+_POLICY_PROBE_SCRIPT: Final = "scripts/moldy_eval_policy_probe.py"
 _POLICY_PROBE_CODE: Final = "\n".join(
     (
         "import os",
@@ -75,6 +79,8 @@ async def run_eval_skill_command(
     skill_directory: str | None = None,
     command: str,
 ) -> str:
+    if len(command) > MAX_EVAL_COMMAND_CHARS:
+        return f"Error: evaluation command exceeds {MAX_EVAL_COMMAND_CHARS} characters."
     if (skill_slug is None) == (skill_directory is None):
         raise EvalRuntimePolicyError("provide exactly one skill slug or skill directory")
     tool = _create_skill_execute_tool(ctx)
@@ -92,8 +98,12 @@ async def run_eval_skill_command(
 async def run_eval_runtime_policy_probe(ctx: SkillToolContext) -> None:
     if not ctx.descriptors:
         return
-    skill_slug = next(iter(ctx.descriptors))
-    command = f"python -c {shlex.quote(_POLICY_PROBE_CODE)}"
+    skill_slug, descriptor = next(iter(ctx.descriptors.items()))
+    await anyio.to_thread.run_sync(
+        _write_policy_probe_script,
+        descriptor.runtime_storage_path / _POLICY_PROBE_SCRIPT,
+    )
+    command = f"python {shlex.quote(_POLICY_PROBE_SCRIPT)}"
     result = await run_eval_skill_command(ctx, skill_slug=skill_slug, command=command)
     if result.startswith("Error:"):
         raise EvalRuntimePolicyError(result.strip())
@@ -125,6 +135,11 @@ def aggregate_benchmark(
         "with_skill_stddev_score": with_stats["stddev"],
         "without_skill_stddev_score": without_stats["stddev"],
     }
+
+
+def _write_policy_probe_script(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_POLICY_PROBE_CODE, encoding="utf-8")
 
 
 def validate_grader_result(result: dict[str, JsonValue]) -> dict[str, JsonValue]:

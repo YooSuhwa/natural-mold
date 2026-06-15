@@ -181,9 +181,13 @@ describe('SkillBuilderDialog', () => {
       source_skill_id: 'skill-1',
       user_request: '마감일 추출을 더 정확하게 해줘',
     })
-    expect(streamSkillBuilderMessage).toHaveBeenCalledWith('session-1', {
-      content: '마감일 추출을 더 정확하게 해줘',
-    })
+    expect(streamSkillBuilderMessage).toHaveBeenCalledWith(
+      'session-1',
+      {
+        content: '마감일 추출을 더 정확하게 해줘',
+      },
+      expect.any(AbortSignal),
+    )
     expect(await screen.findByText('SKILL.md')).toBeInTheDocument()
     expect(screen.getByText('공용 호환성')).toBeInTheDocument()
     expect(screen.getByText('OpenAI/Codex')).toBeInTheDocument()

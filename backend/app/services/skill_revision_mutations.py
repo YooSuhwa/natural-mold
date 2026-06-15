@@ -9,6 +9,7 @@ from app.models.skill import Skill
 from app.models.skill_builder_session import JsonValue
 from app.models.skill_revision import SkillRevision
 from app.services import skill_revision_retention, skill_revision_service
+from app.services.skill_locks import lock_skill_for_mutation
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,7 @@ async def prepare_mutation_parent(
     skill: Skill,
     user_id: uuid.UUID,
 ) -> MutationRevisionParent:
+    skill = await lock_skill_for_mutation(db, skill=skill)
     if skill.current_revision_id is not None:
         return MutationRevisionParent(parent_revision_id=skill.current_revision_id)
     baseline = await skill_revision_retention.ensure_baseline_revision(

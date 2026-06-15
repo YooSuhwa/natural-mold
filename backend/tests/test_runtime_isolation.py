@@ -421,6 +421,11 @@ class TestExecuteInSkillPathValidation:
         )
         ctx_a = build_skill_runtime_context(cfg_a, data_dir=tmp_path)
         build_skill_runtime_context(cfg_b, data_dir=tmp_path)
+        scripts_dir = ctx_a.descriptors["s1"].runtime_storage_path / "scripts"
+        scripts_dir.mkdir(exist_ok=True)
+        (scripts_dir / "read_skill.py").write_text(
+            'from pathlib import Path\nprint(Path("SKILL.md").read_text())\n'
+        )
         # Mark thread B's copy so we can detect leak.
         (
             (tmp_path / "runtime" / "thread-b" / "skills" / "s1" / "SKILL.md").write_text(
@@ -432,7 +437,7 @@ class TestExecuteInSkillPathValidation:
         result = await tool_coroutine(tool_a)(
             # Spoofed prefix points at thread B but slug is still s1.
             skill_directory="/runtime/thread-b/skills/s1/",
-            command="python -c 'import pathlib; print(pathlib.Path(\"SKILL.md\").read_text())'",
+            command="python scripts/read_skill.py",
         )
         assert "THREAD B PRIVATE MARKER" not in result, (
             "Prefix spoof reached thread B's runtime root — isolation broken"
