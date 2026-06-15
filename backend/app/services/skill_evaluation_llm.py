@@ -35,6 +35,7 @@ from app.services.skill_evaluation_llm_results import (
     scores_from_case_results,
     summary_payload,
 )
+from app.services.skill_evaluation_result_schema import normalize_skill_evaluation_result
 from app.services.skill_evaluation_worker_types import (
     SkillEvaluationContext,
     SkillEvaluationResult,
@@ -102,17 +103,25 @@ class LlmSkillEvaluationEvaluator:
         await context.cancellation.raise_if_cancelled(
             EvalCancellationCheckpoint(EvalCancellationPhase.AGGREGATION)
         )
+        summary = summary_payload(
+            evals=context.evals,
+            case_results=case_results,
+            payload=payload,
+            runner_version=self.runner_version,
+        )
+        benchmark = aggregate_benchmark(
+            with_skill=scores_from_case_results(case_results, baseline=False),
+            without_skill=scores_from_case_results(case_results, baseline=True),
+        )
+        summary, benchmark, case_results = normalize_skill_evaluation_result(
+            evals=context.evals,
+            raw_case_results=case_results,
+            raw_summary=summary,
+            raw_benchmark=benchmark,
+        )
         return SkillEvaluationResult(
-            summary=summary_payload(
-                evals=context.evals,
-                case_results=case_results,
-                payload=payload,
-                runner_version=self.runner_version,
-            ),
-            benchmark=aggregate_benchmark(
-                with_skill=scores_from_case_results(case_results, baseline=False),
-                without_skill=scores_from_case_results(case_results, baseline=True),
-            ),
+            summary=summary,
+            benchmark=benchmark,
             case_results=case_results,
             runner_model=built_model.model_name,
             runner_version=self.runner_version,

@@ -87,13 +87,17 @@ async def test_run_builder_eval_persists_session_eval_result(
     eval_result = body["eval_result"]
     assert eval_result["template_key"] == "structured_extraction"
     assert eval_result["summary"]["case_count"] == 3
+    assert eval_result["summary"]["schema_version"] == 2
+    assert eval_result["summary"]["kpis"]["pass_rate"]["value"] == 1
     assert eval_result["benchmark"]["with_skill_min_score"] == 1
     assert eval_result["benchmark"]["without_skill_max_score"] == 0
+    assert eval_result["benchmark"]["comparison"]["pass_rate"]["delta"] == 1
     assert "expectations" in eval_result
     assert "execution_metrics" in eval_result
     assert "timing" in eval_result
     assert "claims" in eval_result
     assert "eval_feedback" in eval_result
+    assert eval_result["case_results"][0]["review_status"] == "unreviewed"
     assert body["draft_package"]["benchmark"] == eval_result["benchmark"]
     assert (tmp_path / "skill-builder-evals" / str(session.id) / "with-skill").is_dir()
     assert (tmp_path / "skill-builder-evals" / str(session.id) / "without-skill").is_dir()

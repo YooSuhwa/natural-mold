@@ -141,3 +141,7 @@ async def test_deterministic_evaluation_checks_cancellation_before_aggregation()
     ]
     assert result.summary["runner_version"] == "test-runner"
     assert result.summary["case_count"] == 1
+    assert result.summary["schema_version"] == 2
+    assert result.summary["kpis"]["pass_rate"]["value"] == 1
+    assert result.benchmark["comparison"]["pass_rate"]["delta"] == 1
+    assert result.case_results[0]["review_status"] == "unreviewed"

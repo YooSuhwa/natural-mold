@@ -18,6 +18,7 @@ from app.config import settings
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import JsonValue, SkillBuilderStatus, SkillDraftPackage
 from app.services.skill_builder_errors import SkillBuilderValidationError
+from app.services.skill_evaluation_result_schema import normalize_skill_evaluation_result
 
 type JsonObject = dict[str, JsonValue]
 
@@ -65,7 +66,7 @@ async def run_builder_session_evaluation(
         artifact_path=artifact_path,
     )
     session.eval_result = result
-    session.draft_package = _draft_with_benchmark(draft, benchmark)
+    session.draft_package = _draft_with_benchmark(draft, result["benchmark"])
     session.status = SkillBuilderStatus.REVIEW.value
     session.current_phase = max(session.current_phase, 3)
     await db.flush()
@@ -141,8 +142,21 @@ def _evaluation_result(
             ],
         }
     )
+    case_results = _case_results(case_json, artifact_path)
+    summary_seed = _summary_seed(grader_result)
+    summary, benchmark, case_results = normalize_skill_evaluation_result(
+        evals=case_json,
+        raw_case_results=case_results,
+        raw_summary=summary_seed,
+        raw_benchmark=benchmark,
+    )
     return {
         **grader_result,
+        "summary": summary,
+        "execution_metrics": summary["execution_metrics"],
+        "timing": summary["timing"],
+        "claims": summary["claims"],
+        "eval_feedback": summary["eval_feedback"],
         "template_key": template_key,
         "template_version": "1",
         "generation_strategy": {
@@ -155,7 +169,7 @@ def _evaluation_result(
         "eval_schema_version": 1,
         "evals": {"schema_version": 1, "name": "Builder generated evals", "evals": case_json},
         "benchmark": benchmark,
-        "case_results": _case_results(case_json, artifact_path),
+        "case_results": case_results,
         "artifact_path": artifact_path,
     }
 
@@ -173,6 +187,16 @@ def _case_results(case_json: list[JsonObject], artifact_path: str) -> list[JsonO
         }
         for index, case in enumerate(case_json)
     ]
+
+
+def _summary_seed(grader_result: JsonObject) -> JsonObject:
+    summary = grader_result.get("summary")
+    seed = dict(summary) if isinstance(summary, dict) else {}
+    seed["claims"] = grader_result.get("claims", [])
+    seed["eval_feedback"] = grader_result.get("eval_feedback", [])
+    seed["execution_metrics"] = grader_result.get("execution_metrics", {})
+    seed["timing"] = grader_result.get("timing", {})
+    return seed
 
 
 def _draft_with_benchmark(draft: SkillDraftPackage, benchmark: JsonObject) -> JsonObject:

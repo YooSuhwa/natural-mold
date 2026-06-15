@@ -52,9 +52,13 @@ async def test_llm_evaluator_grades_cases_with_system_model(
     assert result.summary["case_count"] == 1
     assert result.summary["passed_count"] == 1
     assert result.summary["pass_rate"] == 1
+    assert result.summary["schema_version"] == 2
+    assert result.summary["kpis"]["pass_rate"]["value"] == 1
     assert result.benchmark is not None
     assert result.benchmark["pass_rate_delta"] == 1
+    assert result.benchmark["comparison"]["pass_rate"]["delta"] == 1
     assert result.case_results is not None
+    assert result.case_results[0]["review_status"] == "unreviewed"
     assert (
         result.case_results[0]["grader_feedback"]
         == "SKILL.md gives the needed extraction behavior."
@@ -79,6 +83,7 @@ async def test_worker_persists_llm_evaluation_result(
     assert completed.runner_version == "llm-1"
     assert completed.summary is not None
     assert completed.summary["pass_rate"] == 1
+    assert completed.summary["schema_version"] == 2
     assert completed.case_results is not None
     assert completed.case_results[0]["baseline_status"] == "failed"
 

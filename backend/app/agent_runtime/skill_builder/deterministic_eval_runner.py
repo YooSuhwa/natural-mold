@@ -20,6 +20,7 @@ from app.agent_runtime.skill_builder.eval_runner import (
 )
 from app.marketplace.skill_runtime import SkillToolContext
 from app.schemas.skill_builder import JsonValue
+from app.services.skill_evaluation_result_schema import normalize_skill_evaluation_result
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,15 +66,22 @@ async def run_deterministic_evaluation(
     summary["passed_count"] = passed_count
     summary["failed_count"] = case_count - passed_count
     summary["pass_rate"] = _pass_rate(case_results)
+    benchmark = aggregate_benchmark(
+        with_skill=with_skill_results,
+        without_skill=without_skill_results,
+    )
+    summary, benchmark, case_results = normalize_skill_evaluation_result(
+        evals=evals,
+        raw_case_results=case_results,
+        raw_summary=summary,
+        raw_benchmark=benchmark,
+    )
     await cancellation.raise_if_cancelled(
         EvalCancellationCheckpoint(EvalCancellationPhase.AGGREGATION)
     )
     return DeterministicEvaluationPayload(
         summary=summary,
-        benchmark=aggregate_benchmark(
-            with_skill=with_skill_results,
-            without_skill=without_skill_results,
-        ),
+        benchmark=benchmark,
         case_results=case_results,
     )
 
