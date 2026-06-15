@@ -3643,7 +3643,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev --port 3000
 - [x] Verify rollback restores the previous `SKILL.md`/files while preserving the improvement revision in history.
 - [ ] Start another improve session, edit the same skill manually before applying, and verify apply returns a conflict state instead of overwriting.
 - [x] Open the `Evaluation` tab.
-- [ ] Verify the builder-created evaluation set appears when the builder generated evals.
+- [x] Verify the builder-created evaluation set appears when the builder generated evals.
 - [x] Click `평가 다시 실행` and verify the estimate confirmation appears before the run starts.
 - [x] Start the run and verify a new run appears in history.
 - [ ] If the run stays queued/running long enough, click `평가 취소` and verify the run becomes `cancelled`.
@@ -3664,6 +3664,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev --port 3000
 
 - [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-real/skill-evaluation-tab.png` and `output/e2e-captures/20260615-skill-builder-real/skill-picker-quality-badges.png`. This pass verified live create, package file edit, improve apply, rollback, manual evaluation rerun, missing-credential evaluation blocking, audit visibility, and agent skill picker quality badges. It also caught and fixed two live regressions: package file content stayed stale after builder apply until `content_hash` was used as the file-cache scope, and `/agents` scoped i18n omitted the `skill` namespace so picker quality badges rendered raw translation keys.
 - [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-real/simple-skill-tabs-latest.actual.png` after opening a simple package skill with no evaluation run. The detail dialog now keeps `내용`, `이력`, and `메타데이터` visible while suppressing the blank `평가` tab for the default `missing`/`needs_evaluation` state.
+- [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-real/generated-eval-set-visible-latest.actual.png` after seeding a generated evaluation set with no prior run. The detail dialog shows the `평가` tab, the generated set card, `평가 없음`, `1개 케이스`, `다시 실행`, and the empty run-history state.
 
 ## Rollout Strategy
 

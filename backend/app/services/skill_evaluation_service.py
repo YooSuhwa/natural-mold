@@ -98,6 +98,30 @@ async def list_runs(
     return list(result.scalars().all())
 
 
+async def latest_runs_by_evaluation_set(
+    db: AsyncSession,
+    *,
+    skill: Skill,
+    user_id: uuid.UUID,
+    evaluation_set_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, SkillEvaluationRun]:
+    if not evaluation_set_ids:
+        return {}
+    result = await db.execute(
+        select(SkillEvaluationRun)
+        .where(
+            SkillEvaluationRun.skill_id == skill.id,
+            SkillEvaluationRun.user_id == user_id,
+            SkillEvaluationRun.evaluation_set_id.in_(evaluation_set_ids),
+        )
+        .order_by(SkillEvaluationRun.evaluation_set_id, desc(SkillEvaluationRun.created_at))
+    )
+    latest: dict[uuid.UUID, SkillEvaluationRun] = {}
+    for run in result.scalars():
+        latest.setdefault(run.evaluation_set_id, run)
+    return latest
+
+
 async def get_run(
     db: AsyncSession,
     *,

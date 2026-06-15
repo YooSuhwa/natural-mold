@@ -115,6 +115,34 @@ describe('SkillEvaluationTab', () => {
     expect(mockCreateRun).not.toHaveBeenCalled()
   })
 
+  it('renders a generated evaluation set before its first run', async () => {
+    const user = userEvent.setup()
+    mockUseSkillEvaluationSets.mockReturnValue({
+      data: [
+        buildEvaluationSet({
+          id: 'set-generated',
+          name: '생성된 품질 평가',
+          description: 'Builder가 만든 평가 세트입니다.',
+          latest_run: null,
+        }),
+      ],
+      isLoading: false,
+    })
+
+    render(<SkillEvaluationTab skillId="skill-1" onClose={vi.fn()} />)
+
+    expect(screen.getByText('생성된 품질 평가')).toBeInTheDocument()
+    expect(screen.getByText('Builder가 만든 평가 세트입니다.')).toBeInTheDocument()
+    expect(screen.getByText('평가 없음')).toBeInTheDocument()
+    expect(screen.getByText('1개 케이스')).toBeInTheDocument()
+    expect(screen.getByText('아직 실행 이력이 없습니다.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '생성된 품질 평가 평가 다시 실행' }))
+
+    expect(mockEstimateRun).toHaveBeenCalledOnce()
+    expect(mockCreateRun).not.toHaveBeenCalled()
+  })
+
   it('reruns completed evaluation sets', async () => {
     const user = userEvent.setup()
     mockUseSkillEvaluationSets.mockReturnValue({

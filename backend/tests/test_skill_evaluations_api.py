@@ -126,6 +126,8 @@ async def test_estimate_and_create_run(
 
     estimate = await client.post(f"/api/skills/{skill.id}/evaluations/{set_id}/estimate")
     run = await client.post(f"/api/skills/{skill.id}/evaluations/{set_id}/runs")
+    listing = await client.get(f"/api/skills/{skill.id}/evaluations")
+    detail = await client.get(f"/api/skills/{skill.id}/evaluations/{set_id}")
 
     assert estimate.status_code == 200, estimate.text
     assert estimate.json()["case_count"] == 2
@@ -133,6 +135,11 @@ async def test_estimate_and_create_run(
     assert run.json()["status"] == "queued"
     assert run.json()["skill_version"] == "1.0.0"
     assert run.json()["skill_content_hash"] == skill.content_hash
+    assert listing.status_code == 200, listing.text
+    assert listing.json()[0]["latest_run"]["id"] == run.json()["id"]
+    assert listing.json()[0]["latest_run"]["status"] == "queued"
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["latest_run"]["id"] == run.json()["id"]
     assert evaluation_worker.enqueued_run_ids == [uuid.UUID(run.json()["id"])]
     assert evaluation_worker.reserved_slots == 0
 

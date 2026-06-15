@@ -13,6 +13,7 @@ from app.error_codes import (
     skill_evaluation_run_not_found,
 )
 from app.marketplace import credential_requirements
+from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.routers.skill_evaluations_support import (
     load_evaluation_set_or_404,
     load_skill_or_404,
@@ -43,7 +44,13 @@ async def list_skill_evaluations(
 ) -> list[SkillEvaluationSetResponse]:
     skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
     rows = await skill_evaluation_service.list_evaluation_sets(db, skill=skill, user_id=user.id)
-    return [SkillEvaluationSetResponse.model_validate(row) for row in rows]
+    latest_runs = await skill_evaluation_service.latest_runs_by_evaluation_set(
+        db,
+        skill=skill,
+        user_id=user.id,
+        evaluation_set_ids=[row.id for row in rows],
+    )
+    return [_evaluation_set_response(row, latest_runs.get(row.id)) for row in rows]
 
 
 @router.post("", response_model=SkillEvaluationSetResponse, status_code=201)
@@ -83,7 +90,13 @@ async def get_skill_evaluation(
         user=user,
         evaluation_set_id=evaluation_set_id,
     )
-    return SkillEvaluationSetResponse.model_validate(row)
+    latest_runs = await skill_evaluation_service.latest_runs_by_evaluation_set(
+        db,
+        skill=skill,
+        user_id=user.id,
+        evaluation_set_ids=[row.id],
+    )
+    return _evaluation_set_response(row, latest_runs.get(row.id))
 
 
 @router.post("/{evaluation_set_id}/estimate", response_model=SkillEvaluationRunEstimate)
@@ -247,3 +260,15 @@ async def cancel_skill_evaluation_run(
     await db.commit()
     await db.refresh(cancelled)
     return SkillEvaluationRunResponse.model_validate(cancelled)
+
+
+def _evaluation_set_response(
+    row: SkillEvaluationSet,
+    latest_run: SkillEvaluationRun | None,
+) -> SkillEvaluationSetResponse:
+    response = SkillEvaluationSetResponse.model_validate(row)
+    if latest_run is None:
+        return response
+    return response.model_copy(
+        update={"latest_run": SkillEvaluationRunResponse.model_validate(latest_run)}
+    )
