@@ -55,4 +55,23 @@ describe('skill quality badges', () => {
 
     expect(screen.getByText('평가 없음')).toBeInTheDocument()
   })
+
+  it('prioritizes cancelled state over stale pass-rate data', () => {
+    render(
+      <SkillEvaluationSummaryBadge
+        summary={{
+          status: 'cancelled',
+          latest_run_id: 'run-1',
+          evaluation_set_id: 'set-1',
+          pass_rate: 1,
+          skill_content_hash: 'hash-1',
+          created_at: '2026-06-01T00:00:00Z',
+          completed_at: '2026-06-01T00:01:00Z',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('평가 취소')).toBeInTheDocument()
+    expect(screen.queryByText('평가 100%')).not.toBeInTheDocument()
+  })
 })

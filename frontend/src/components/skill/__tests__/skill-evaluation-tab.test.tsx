@@ -64,20 +64,14 @@ describe('SkillEvaluationTab', () => {
   beforeEach(() => {
     mockUseSkillEvaluationSets.mockReset()
     mockUseSkillEvaluationRuns.mockReset()
-    mockUseSkillEvaluationRuns.mockReturnValue({
-      data: [],
-      isLoading: false,
-    })
+    mockUseSkillEvaluationRuns.mockReturnValue({ data: [], isLoading: false })
     mockEstimateRun.mockClear()
     mockCreateRun.mockReset()
     mockCancelRun.mockReset()
   })
 
   it('renders without owning the dialog body or footer', () => {
-    mockUseSkillEvaluationSets.mockReturnValue({
-      data: [],
-      isLoading: false,
-    })
+    mockUseSkillEvaluationSets.mockReturnValue({ data: [], isLoading: false })
 
     const result = render(<SkillEvaluationTab skillId="skill-1" onClose={vi.fn()} />)
 
@@ -269,7 +263,7 @@ describe('SkillEvaluationTab', () => {
       <SkillEvaluationTab skillId="skill-1" skillContentHash="hash-current" onClose={vi.fn()} />,
     )
 
-    expect(screen.getByText('재평가 필요')).toBeInTheDocument()
+    expect(screen.getAllByText('재평가 필요')).toHaveLength(2)
     expect(screen.getByText('실행 이력')).toBeInTheDocument()
     expect(screen.getByText('선택한 실행 상세')).toBeInTheDocument()
     expect(screen.getByText('통과율 74%')).toBeInTheDocument()

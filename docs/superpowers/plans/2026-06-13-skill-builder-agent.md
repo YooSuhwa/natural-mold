@@ -3646,26 +3646,29 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev --port 3000
 - [x] Verify the builder-created evaluation set appears when the builder generated evals.
 - [x] Click `평가 다시 실행` and verify the estimate confirmation appears before the run starts.
 - [x] Start the run and verify a new run appears in history.
-- [ ] If the run stays queued/running long enough, click `평가 취소` and verify the run becomes `cancelled`.
-- [ ] Edit the skill content and verify previous runs show a stale indicator when their content hash differs.
-- [ ] Edit a package skill file under `scripts/` or `references/` and verify `content_hash` changes, previous runs become stale, and a new revision is created.
-- [ ] Verify the skill card changes to `재평가 필요` or the matching Skill Health state after content changes.
+- [x] If the run stays queued/running long enough, click `평가 취소` and verify the run becomes `cancelled`.
+- [x] Edit the skill content and verify previous runs show a stale indicator when their content hash differs.
+- [x] Edit a package skill file under `scripts/` or `references/` and verify `content_hash` changes, previous runs become stale, and a new revision is created.
+- [x] Verify the skill card changes to `재평가 필요` or the matching Skill Health state after content changes.
 - [x] Create or seed a skill that declares a required `credential_requirements` entry.
 - [x] Verify the skill card and detail header show `자격증명 필요`.
 - [x] Open the `Evaluation` tab for that skill and verify the primary action is `자격증명 연결`, not `평가 실행`.
 - [x] Click `자격증명 연결` and verify the dialog switches to the `Credentials` tab.
-- [ ] Bind a matching user credential and verify the health state no longer says `자격증명 필요`.
-- [ ] Run the evaluation and verify it records a new run without exposing credential values in evidence, stdout/stderr summaries, or UI metadata.
+- [x] Bind a matching user credential and verify the health state no longer says `자격증명 필요`.
+- [x] Run the evaluation and verify it records a new run without exposing credential values in evidence, stdout/stderr summaries, or UI metadata.
 - [x] Open `/settings/audit` and verify builder/evaluation lifecycle events are visible with sanitized metadata.
-- [ ] Open the bound credential detail dialog and verify a runtime credential audit entry appears when `execute_in_skill` injected the credential.
+- [x] Open the bound credential detail dialog and verify a runtime credential audit entry appears when `execute_in_skill` injected the credential.
 - [x] Open an agent settings screen and add skills through `ToolsSkillsDialog`.
 - [x] Verify skill rows in that dialog show compact evaluation status but no rerun controls.
-- [ ] Optional rollback smoke: restart the frontend with `NEXT_PUBLIC_CHAT_RUNTIME=legacy` and verify the Skill Builder still opens, because its stream path is builder-specific rather than tied to either normal chat runtime.
+- [x] Optional rollback smoke: restart the frontend with `NEXT_PUBLIC_CHAT_RUNTIME=legacy` and verify the Skill Builder still opens, because its stream path is builder-specific rather than tied to either normal chat runtime.
 
 - [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-real/skill-evaluation-tab.png` and `output/e2e-captures/20260615-skill-builder-real/skill-picker-quality-badges.png`. This pass verified live create, package file edit, improve apply, rollback, manual evaluation rerun, missing-credential evaluation blocking, audit visibility, and agent skill picker quality badges. It also caught and fixed two live regressions: package file content stayed stale after builder apply until `content_hash` was used as the file-cache scope, and `/agents` scoped i18n omitted the `skill` namespace so picker quality badges rendered raw translation keys.
 - [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-real/simple-skill-tabs-latest.actual.png` after opening a simple package skill with no evaluation run. The detail dialog now keeps `내용`, `이력`, and `메타데이터` visible while suppressing the blank `평가` tab for the default `missing`/`needs_evaluation` state.
 - [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-real/generated-eval-set-visible-latest.actual.png` after seeding a generated evaluation set with no prior run. The detail dialog shows the `평가` tab, the generated set card, `평가 없음`, `1개 케이스`, `다시 실행`, and the empty run-history state.
 - [x] Live API pass against `http://localhost:8001` created an improve session, edited the source text skill through `PUT /api/skills/{skill_id}/content`, validated a builder draft, then confirmed the builder session. Confirm returned `409` with `SKILL_BUILDER_SOURCE_CONFLICT`; the source skill retained `Manual edit before builder apply.` and was deleted after the check.
+- [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-real/skill-card-needs-rerun.png`, `output/e2e-captures/20260615-skill-builder-real/stale-evaluation-detail.png`, and `output/e2e-captures/20260615-skill-builder-real/long-running-evaluation-cancelled.png`. This pass verified package file edits under `references/` update `content_hash`, create a revision, mark prior evaluation runs stale, update Skill Health to `재평가 필요`, and let a long-running evaluation run move to API status `cancelled` from the Evaluation tab.
+- [x] Real API/browser pass saved `output/e2e-captures/20260615-skill-builder-real/credential-bound-evaluation.png`. This pass verified a matching user credential binding clears `자격증명 필요`, post-binding evaluation creates a run, known dummy secrets do not appear in run responses or UI metadata, and a script-backed `execute_in_skill` evaluation writes sanitized runtime credential audit metadata.
+- [x] Legacy chat-runtime smoke passed with `PW_SKIP_BACKEND=1 NEXT_PUBLIC_CHAT_RUNTIME=legacy E2E_FRONTEND_PORT=3010 E2E_WORKERS=1 pnpm exec playwright test e2e/skill-builder-create.spec.ts --project=chromium`, confirming Skill Builder opens through its own stream path instead of normal chat runtime internals.
 
 ## Rollout Strategy
 
@@ -3757,4 +3760,4 @@ The MVP is useful without evals, but its data model and UI should already have f
 - [x] Generated package can be exported as `.skill` without `evals/` by default.
 - [x] Backend tests pass.
 - [x] Frontend lint/build/design/i18n checks pass.
-- [ ] Manual `/skills` flow succeeds end to end. Remaining live-only checks: stale-run UI after content edits, long-running run cancellation, binding a matching credential and verifying post-binding evaluation, credential-use audit from actual `execute_in_skill` injection, and optional legacy chat-runtime smoke.
+- [x] Manual `/skills` flow succeeds end to end. Live checks covered simple skills without blank advanced tabs, builder-generated evaluation sets, stale-run UI after package content edits, long-running run cancellation, binding a matching credential, post-binding evaluation without credential leakage, and credential-use audit from actual `execute_in_skill` injection. Conflict recovery and legacy chat-runtime independence are covered by targeted backend, component, and Playwright E2E tests.

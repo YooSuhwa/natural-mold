@@ -19,8 +19,12 @@ function normalizedRate(value: number): number {
   return Math.max(0, Math.min(100, Math.round(percent)))
 }
 
+function statusSupportsPassRate(status: EvaluationStatus): boolean {
+  return status === 'completed' || status === 'passed'
+}
+
 function evaluationVariant(status: EvaluationStatus, passRate?: number | null): StatusChipVariant {
-  if (typeof passRate === 'number' && status !== 'stale') {
+  if (typeof passRate === 'number' && statusSupportsPassRate(status)) {
     return passRate >= 0.8 ? 'healthy' : 'degraded'
   }
 
@@ -47,7 +51,7 @@ export function SkillEvaluationSummaryBadge({ summary }: SkillEvaluationSummaryB
   if (!summary) return null
 
   const label =
-    typeof summary.pass_rate === 'number'
+    typeof summary.pass_rate === 'number' && statusSupportsPassRate(summary.status)
       ? t('passRate', { rate: normalizedRate(summary.pass_rate) })
       : t(`status.${summary.status}`)
 
