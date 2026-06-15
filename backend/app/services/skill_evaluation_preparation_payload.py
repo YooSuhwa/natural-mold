@@ -48,10 +48,20 @@ def payload_hash(
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
+def evals_hash(*, evals: list[JsonObject]) -> str:
+    encoded = json.dumps(
+        {"evals": evals},
+        ensure_ascii=False,
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
 def generation_strategy(
     *,
     source_kind: str,
     payload_hash_value: str,
+    evals_hash_value: str,
     marketplace_item_id: uuid.UUID | None,
     marketplace_version_id: uuid.UUID | None,
     model_name: str | None,
@@ -60,6 +70,7 @@ def generation_strategy(
         "kind": "prepared_evaluation_set",
         "source_kind": source_kind,
         "payload_hash": payload_hash_value,
+        "evals_hash": evals_hash_value,
     }
     if marketplace_item_id is not None:
         strategy["marketplace_item_id"] = str(marketplace_item_id)

@@ -20,6 +20,7 @@ from app.services.skill_evaluation_file_adapter import SkillEvaluationFileAdapte
 from app.services.skill_evaluation_preparation_payload import (
     JsonObject,
     evals_from_payload,
+    evals_hash,
     evals_with_preparation_metadata,
     generation_strategy,
     load_embedded_payload,
@@ -141,6 +142,7 @@ async def _persist_payload(
     force: bool,
 ) -> SkillEvaluationPreparationResult:
     evals = evals_from_payload(payload)
+    evals_hash_value = evals_hash(evals=evals)
     payload_hash_value = payload_hash(
         source_kind=source_kind,
         evals=evals,
@@ -152,6 +154,7 @@ async def _persist_payload(
             db,
             skill=skill,
             user_id=user_id,
+            evals_hash_value=evals_hash_value,
             payload_hash_value=payload_hash_value,
         )
         if duplicate:
@@ -173,6 +176,7 @@ async def _persist_payload(
         generation_strategy=generation_strategy(
             source_kind=source_kind,
             payload_hash_value=payload_hash_value,
+            evals_hash_value=evals_hash_value,
             marketplace_item_id=marketplace_item_id,
             marketplace_version_id=marketplace_version_id,
             model_name=model_name,
@@ -197,6 +201,7 @@ async def _has_duplicate(
     *,
     skill: Skill,
     user_id: uuid.UUID,
+    evals_hash_value: str,
     payload_hash_value: str,
 ) -> bool:
     result = await db.execute(
@@ -207,6 +212,8 @@ async def _has_duplicate(
     )
     for evaluation_set in result.scalars():
         strategy = _json_strategy(evaluation_set.generation_strategy)
+        if strategy.get("evals_hash") == evals_hash_value:
+            return True
         if strategy.get("payload_hash") == payload_hash_value:
             return True
     return False

@@ -137,6 +137,40 @@ async def test_prepare_skips_duplicate_payload(
     assert await _evaluation_set_count(db, skill) == 1
 
 
+async def test_prepare_skips_duplicate_payload_across_prepare_sources(
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    # Given: package import already prepared the embedded eval payload.
+    skill = await _package_skill(
+        db,
+        tmp_path,
+        eval_payload={"evals": [{"input": "Classify.", "expected": "Label."}]},
+    )
+
+    # When: manual preparation reads the same embedded payload again.
+    with patch(_DATA_ROOT_PATCH, str(tmp_path)):
+        first = await prepare_skill_evaluation_set(
+            db=db,
+            skill=skill,
+            user_id=TEST_USER_ID,
+            source_kind="package_import",
+            allow_llm_generation=False,
+        )
+        second = await prepare_skill_evaluation_set(
+            db=db,
+            skill=skill,
+            user_id=TEST_USER_ID,
+            source_kind="manual_prepare",
+            allow_llm_generation=False,
+        )
+
+    # Then: force=false treats the same eval content as a duplicate.
+    assert first.status is SkillEvaluationPreparationStatus.CREATED
+    assert second.status is SkillEvaluationPreparationStatus.SKIPPED_DUPLICATE
+    assert await _evaluation_set_count(db, skill) == 1
+
+
 async def test_prepare_skips_missing_evals_when_llm_generation_disabled(
     db: AsyncSession,
     tmp_path: Path,
