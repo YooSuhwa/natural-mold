@@ -159,6 +159,36 @@ def test_case_results_v2_adds_review_and_metric_defaults() -> None:
     ]
 
 
+def test_case_results_v2_preserves_execution_compatibility_fields() -> None:
+    # Given: a deterministic script-backed case result with legacy execution data.
+    evals = [{"input": "Run the probe.", "expected": "A redacted preview."}]
+    raw_case_results = [
+        {
+            "case_index": 0,
+            "status": "passed",
+            "score": 1,
+            "notes": "Executed through execute_in_skill.",
+            "execution": {
+                "status": "passed",
+                "output_preview": "SECRET=<redacted:OPENAI_API_KEY>",
+            },
+        }
+    ]
+
+    # When: the case result is normalized.
+    _summary, _benchmark, case_results = normalize_skill_evaluation_result(
+        evals=evals,
+        raw_case_results=raw_case_results,
+    )
+
+    # Then: legacy worker/UI fields remain available next to the v2 fields.
+    assert case_results[0]["notes"] == "Executed through execute_in_skill."
+    assert case_results[0]["execution"] == {
+        "status": "passed",
+        "output_preview": "SECRET=<redacted:OPENAI_API_KEY>",
+    }
+
+
 def test_result_schema_accepts_missing_duration_and_token_metrics() -> None:
     # Given: a passed result without runtime metrics.
     evals = [{"input": "Classify.", "expected": "A label."}]

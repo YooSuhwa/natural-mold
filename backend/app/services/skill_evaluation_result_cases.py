@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Final
 
 from app.schemas.skill_builder import JsonValue
 from app.services.skill_evaluation_result_values import (
@@ -14,6 +15,8 @@ from app.services.skill_evaluation_result_values import (
     status,
     string_or_none,
 )
+
+LEGACY_CASE_RESULT_FIELDS: Final = ("execution", "notes")
 
 
 def normalize_case_results(
@@ -53,7 +56,7 @@ def mean_metric(case_results: list[JsonObject], key: str) -> int | float | None:
 def _case_result_row(*, index: int, eval_case: JsonValue, raw: JsonObject) -> JsonObject:
     score_value = score(raw.get("score"), default=0.0)
     baseline_score = score(raw.get("baseline_score"), default=None)
-    return {
+    row: JsonObject = {
         "case_index": index,
         "name": first_present(raw.get("name"), _case_field(eval_case, "name")),
         "input": first_present(raw.get("input"), _case_field(eval_case, "input")),
@@ -73,6 +76,11 @@ def _case_result_row(*, index: int, eval_case: JsonValue, raw: JsonObject) -> Js
         "grader_feedback": string_or_none(raw.get("grader_feedback")),
         "review_status": review_status(raw.get("review_status")),
     }
+    for field in LEGACY_CASE_RESULT_FIELDS:
+        value = raw.get(field)
+        if value is not None:
+            row[field] = value
+    return row
 
 
 def _case_index(row: JsonObject, *, fallback_index: int) -> int:
