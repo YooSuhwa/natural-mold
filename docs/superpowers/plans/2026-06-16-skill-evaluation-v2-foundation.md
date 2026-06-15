@@ -6,6 +6,8 @@
 
 **Architecture:** Keep the existing `SkillEvaluationSet` and `SkillEvaluationRun` tables, add shared backend services for result normalization and eval-set preparation, wire preparation into upload/install transactions, and preserve the current quick LLM evaluator as the only execution mode in this phase.
 
+> Implementation note: this plan shipped with migration `m64_skill_builder_sessions`, which creates the skill-builder and skill-evaluation tables. The table field list below reflects the post-M64 model.
+
 **Tech Stack:** FastAPI, SQLAlchemy async, Pydantic, existing Moldy skill package storage, current skill evaluation worker, current system LLM settings, Next.js/TanStack Query UI compatibility.
 
 ---
@@ -51,12 +53,12 @@ Current model file:
 Relevant tables:
 
 - `SkillEvaluationSet`
+  - `user_id`
   - `skill_id`
   - `name`
   - `description`
   - `source_kind`
   - `evals`
-  - `created_by`
 
 - `SkillEvaluationRun`
   - `evaluation_set_id`
@@ -68,7 +70,7 @@ Relevant tables:
   - `case_results`
   - `artifact_path`
 
-No migration is needed for this phase because the fields being standardized are already JSON columns.
+The result-standardization work uses existing JSON columns, but the foundation phase itself includes migration `m64_skill_builder_sessions` for the skill evaluation tables.
 
 ### 2.2 Evaluation API
 
@@ -998,4 +1000,3 @@ pnpm lint
 - [ ] Backend focused tests pass.
 - [ ] Backend `ruff check` passes.
 - [ ] Manual QA confirms prepared sets and manual run behavior.
-

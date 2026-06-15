@@ -65,6 +65,21 @@ async def test_create_evaluation_set_rejects_empty_cases(db: AsyncSession) -> No
 
 
 @pytest.mark.asyncio
+async def test_create_evaluation_set_rejects_oversized_case_text(db: AsyncSession) -> None:
+    skill = await _create_skill(db)
+    oversized_text = "x" * 100_000
+
+    with pytest.raises(skill_evaluation_service.SkillEvaluationSetTooLarge, match="case 0 input"):
+        await skill_evaluation_service.create_evaluation_set(
+            db,
+            user_id=TEST_USER_ID,
+            skill=skill,
+            name="Oversized",
+            evals=[{"input": oversized_text, "expected": "ok"}],
+        )
+
+
+@pytest.mark.asyncio
 async def test_estimate_run_uses_case_count_and_settings(db: AsyncSession) -> None:
     skill = await _create_skill(db)
     evaluation_set = await skill_evaluation_service.create_evaluation_set(

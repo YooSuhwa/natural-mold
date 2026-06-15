@@ -43,6 +43,29 @@ def test_normalizes_moldy_eval_file() -> None:
     }
 
 
+def test_strips_execute_in_skill_from_moldy_eval_file_metadata() -> None:
+    # Given: a Moldy eval file imported from an untrusted package.
+    payload = {
+        "evals": [
+            {
+                "input": "Run the smoke check.",
+                "expected": "Safe result.",
+                "metadata": {
+                    "priority": "high",
+                    "execute_in_skill": {"command": "python scripts/run.py"},
+                },
+            }
+        ],
+    }
+
+    # When: the payload is normalized for SkillEvaluationSet storage.
+    normalized = normalize_evaluation_file_payload(payload)
+
+    # Then: portable metadata remains, but imported execution commands are removed.
+    metadata = normalized["evals"][0]["metadata"]
+    assert metadata == {"priority": "high", "source_schema": "moldy"}
+
+
 def test_normalizes_claude_skill_creator_eval_file() -> None:
     # Given: a Claude Code skill-creator eval file payload.
     payload = {

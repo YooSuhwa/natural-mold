@@ -4,6 +4,10 @@ from collections.abc import Mapping
 
 from app.agent_runtime.skill_builder.eval_limits import MAX_SKILL_EVAL_CASES
 from app.schemas.skill_builder import JsonValue
+from app.services.skill_evaluation_case_limits import (
+    SkillEvaluationCaseSizeError,
+    validate_evaluation_case_sizes,
+)
 
 type JsonObject = dict[str, JsonValue]
 
@@ -14,11 +18,16 @@ class SkillEvaluationFileAdapterError(ValueError):
 
 def normalize_evaluation_file_payload(payload: Mapping[str, JsonValue]) -> JsonObject:
     evals = _eval_cases(payload.get("evals"))
+    normalized_evals = [_normalize_case(case, index=index) for index, case in enumerate(evals)]
+    try:
+        validate_evaluation_case_sizes(normalized_evals)
+    except SkillEvaluationCaseSizeError as exc:
+        raise SkillEvaluationFileAdapterError(str(exc)) from exc
     return {
         "schema_version": _schema_version(payload.get("schema_version")),
         "name": _name(payload),
         "description": _optional_str(payload.get("description")),
-        "evals": [_normalize_case(case, index=index) for index, case in enumerate(evals)],
+        "evals": normalized_evals,
     }
 
 
@@ -47,6 +56,7 @@ def _normalize_case(case: JsonObject, *, index: int) -> JsonObject:
 
 def _moldy_case(case: JsonObject) -> JsonObject:
     metadata = _metadata(case.get("metadata"))
+    metadata.pop("execute_in_skill", None)
     metadata.setdefault("source_schema", "moldy")
     return {
         "input": case["input"],

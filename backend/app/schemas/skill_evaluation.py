@@ -4,10 +4,15 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic_core import PydanticCustomError
 
 from app.agent_runtime.skill_builder.eval_limits import MAX_SKILL_EVAL_CASES
 from app.schemas.skill_builder import JsonValue
+from app.services.skill_evaluation_case_limits import (
+    SkillEvaluationCaseSizeError,
+    validate_evaluation_case_sizes,
+)
 
 
 class SkillEvaluationRunStatus(StrEnum):
@@ -26,6 +31,11 @@ class SkillEvaluationSetCreate(BaseModel):
     description: str | None = None
     evals: list[JsonValue] = Field(..., min_length=1, max_length=MAX_SKILL_EVAL_CASES)
 
+    @field_validator("evals")
+    @classmethod
+    def validate_eval_case_sizes(cls, value: list[JsonValue]) -> list[JsonValue]:
+        return _bounded_eval_cases(value)
+
 
 class SkillEvaluationSetUpdate(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -37,6 +47,21 @@ class SkillEvaluationSetUpdate(BaseModel):
         min_length=1,
         max_length=MAX_SKILL_EVAL_CASES,
     )
+
+    @field_validator("evals")
+    @classmethod
+    def validate_eval_case_sizes(cls, value: list[JsonValue] | None) -> list[JsonValue] | None:
+        if value is None:
+            return None
+        return _bounded_eval_cases(value)
+
+
+def _bounded_eval_cases(value: list[JsonValue]) -> list[JsonValue]:
+    try:
+        validate_evaluation_case_sizes(value)
+    except SkillEvaluationCaseSizeError as exc:
+        raise PydanticCustomError("skill_eval_case_too_large", str(exc)) from exc
+    return value
 
 
 class SkillEvaluationRunEstimate(BaseModel):

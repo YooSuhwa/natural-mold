@@ -12,6 +12,10 @@ from app.config import settings
 from app.models.skill import Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.schemas.skill_evaluation import SkillEvaluationRunEstimate
+from app.services.skill_evaluation_case_limits import (
+    SkillEvaluationCaseSizeError,
+    validate_evaluation_case_sizes,
+)
 
 CANCELLABLE_STATUSES = frozenset({"queued", "running", "grading"})
 
@@ -47,6 +51,10 @@ async def create_evaluation_set(
         raise SkillEvaluationSetTooLarge(
             f"evaluation sets can contain at most {MAX_SKILL_EVAL_CASES} cases"
         )
+    try:
+        validate_evaluation_case_sizes(evals)
+    except SkillEvaluationCaseSizeError as exc:
+        raise SkillEvaluationSetTooLarge(str(exc)) from exc
     evaluation_set = SkillEvaluationSet(
         user_id=user_id,
         skill_id=skill.id,
