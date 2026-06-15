@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import CurrentUser
 from app.marketplace import credential_requirements
 from app.models.skill import Skill
-from app.models.skill_evaluation import SkillEvaluationRun
+from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.schemas.skill import SkillHealthSummary, SkillLatestEvaluationSummary
 from app.services.skill_health_service import calculate_skill_health
 
@@ -27,12 +27,14 @@ async def build_skill_quality_map(
     skills: list[Skill],
 ) -> dict[uuid.UUID, SkillQualitySummary]:
     latest_runs = await _latest_runs_by_skill(db, user_id=user.id, skill_ids=[s.id for s in skills])
+    latest_sets = await _latest_sets_by_skill(db, user_id=user.id, skill_ids=[s.id for s in skills])
     summaries: dict[uuid.UUID, SkillQualitySummary] = {}
     for skill in skills:
         latest_run = latest_runs.get(skill.id)
+        latest_set = latest_sets.get(skill.id)
         missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
         summaries[skill.id] = SkillQualitySummary(
-            latest_evaluation_summary=_summarize_latest_evaluation(skill, latest_run),
+            latest_evaluation_summary=_summarize_latest_evaluation(skill, latest_run, latest_set),
             health=SkillHealthSummary.model_validate(
                 calculate_skill_health(
                     skill,
@@ -63,12 +65,35 @@ async def _latest_runs_by_skill(
     return latest
 
 
+async def _latest_sets_by_skill(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    skill_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, SkillEvaluationSet]:
+    if not skill_ids:
+        return {}
+    result = await db.execute(
+        select(SkillEvaluationSet)
+        .where(SkillEvaluationSet.user_id == user_id, SkillEvaluationSet.skill_id.in_(skill_ids))
+        .order_by(SkillEvaluationSet.skill_id, desc(SkillEvaluationSet.updated_at))
+    )
+    latest: dict[uuid.UUID, SkillEvaluationSet] = {}
+    for evaluation_set in result.scalars():
+        latest.setdefault(evaluation_set.skill_id, evaluation_set)
+    return latest
+
+
 def _summarize_latest_evaluation(
     skill: Skill,
     run: SkillEvaluationRun | None,
+    latest_set: SkillEvaluationSet | None,
 ) -> SkillLatestEvaluationSummary:
     if run is None:
-        return SkillLatestEvaluationSummary(status="missing")
+        return SkillLatestEvaluationSummary(
+            status="missing",
+            evaluation_set_id=latest_set.id if latest_set is not None else None,
+        )
 
     pass_rate = _pass_rate(run)
     status = _summary_status(skill, run, pass_rate)

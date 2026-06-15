@@ -16,8 +16,7 @@ const TABS: readonly SkillDetailTab[] = [
   'metadata',
 ]
 
-const EVALUATION_HEALTH_STATES = new Set([
-  'needs_evaluation',
+const ACTIONABLE_EVALUATION_HEALTH_STATES = new Set([
   'needs_rerun',
   'evaluation_running',
   'evaluation_failed',
@@ -69,8 +68,8 @@ export function getVisibleSkillDetailTabs(
 
   if (
     initialTab === 'evaluation' ||
-    !!skill.latest_evaluation_summary ||
-    (skill.health ? EVALUATION_HEALTH_STATES.has(skill.health.state) : false)
+    hasEvaluationEvidence(skill) ||
+    (skill.health ? ACTIONABLE_EVALUATION_HEALTH_STATES.has(skill.health.state) : false)
   ) {
     tabs.push('evaluation')
   }
@@ -82,6 +81,16 @@ export function getVisibleSkillDetailTabs(
   tabs.push('metadata')
 
   return tabs
+}
+
+function hasEvaluationEvidence(skill: Skill): boolean {
+  const summary = skill.latest_evaluation_summary
+  if (!summary) return false
+  return (
+    summary.status !== 'missing' ||
+    Boolean(summary.latest_run_id) ||
+    Boolean(summary.evaluation_set_id)
+  )
 }
 
 export function SkillDetailTabs({

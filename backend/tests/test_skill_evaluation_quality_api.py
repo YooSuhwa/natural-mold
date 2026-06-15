@@ -67,3 +67,46 @@ async def test_skill_detail_marks_latest_evaluation_stale_by_hash(
     assert body["latest_evaluation_summary"]["status"] == "stale"
     assert body["latest_evaluation_summary"]["skill_content_hash"] == original_hash
     assert body["health"]["state"] == "needs_rerun"
+
+
+async def test_skill_detail_preserves_evaluation_set_without_run(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        skill = await skill_service.create_text_skill(
+            db,
+            user_id=TEST_USER_ID,
+            name="Generated Eval Probe",
+            slug="generated-eval-probe",
+            description="Use when testing evaluation set visibility.",
+            content=(
+                "---\n"
+                "name: generated-eval-probe\n"
+                'description: "Use when testing evaluation set visibility."\n'
+                "---\n\n"
+                "Test evaluation set visibility.\n"
+            ),
+            version="1.0.0",
+        )
+    evaluation_set_id = uuid.uuid4()
+    db.add(
+        SkillEvaluationSet(
+            id=evaluation_set_id,
+            user_id=TEST_USER_ID,
+            skill_id=skill.id,
+            name="Generated smoke",
+            evals=[{"input": "a"}],
+            source_kind="generated",
+        )
+    )
+    await db.commit()
+
+    response = await client.get(f"/api/skills/{skill.id}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["latest_evaluation_summary"]["status"] == "missing"
+    assert body["latest_evaluation_summary"]["evaluation_set_id"] == str(evaluation_set_id)
+    assert body["health"]["state"] == "needs_evaluation"

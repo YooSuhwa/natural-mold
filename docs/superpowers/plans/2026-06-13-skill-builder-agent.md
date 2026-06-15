@@ -3629,7 +3629,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev --port 3000
 - [x] Verify the skill card shows an evaluation badge when an eval was generated, or "평가 없음" when no eval exists.
 - [x] Open the skill detail dialog.
 - [x] Verify the detail dialog has `Files` or `Content` plus only the relevant advanced tabs for that skill state.
-- [ ] For a simple skill with no credentials/evals/revisions, verify blank Credentials/Evaluation/History tabs are not forced into the default tab list.
+- [x] For a simple skill with no credentials/evals/revisions, verify blank Credentials/Evaluation/History tabs are not forced into the default tab list.
 - [x] Verify file tree editing still works in the package `Files` tab.
 - [x] Verify credential binding panel renders in the `Credentials` tab.
 - [x] Click `대화로 개선`.
@@ -3663,6 +3663,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev --port 3000
 - [ ] Optional rollback smoke: restart the frontend with `NEXT_PUBLIC_CHAT_RUNTIME=legacy` and verify the Skill Builder still opens, because its stream path is builder-specific rather than tied to either normal chat runtime.
 
 - [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-real/skill-evaluation-tab.png` and `output/e2e-captures/20260615-skill-builder-real/skill-picker-quality-badges.png`. This pass verified live create, package file edit, improve apply, rollback, manual evaluation rerun, missing-credential evaluation blocking, audit visibility, and agent skill picker quality badges. It also caught and fixed two live regressions: package file content stayed stale after builder apply until `content_hash` was used as the file-cache scope, and `/agents` scoped i18n omitted the `skill` namespace so picker quality badges rendered raw translation keys.
+- [x] Real browser pass saved `output/e2e-captures/20260615-skill-builder-real/simple-skill-tabs-latest.actual.png` after opening a simple package skill with no evaluation run. The detail dialog now keeps `내용`, `이력`, and `메타데이터` visible while suppressing the blank `평가` tab for the default `missing`/`needs_evaluation` state.
 
 ## Rollout Strategy
 

@@ -37,6 +37,54 @@ describe('getVisibleSkillDetailTabs', () => {
     expect(getVisibleSkillDetailTabs(buildSkill())).toEqual(['content', 'metadata'])
   })
 
+  it('does not treat missing evaluation summaries as evaluation evidence', () => {
+    expect(
+      getVisibleSkillDetailTabs(
+        buildSkill({
+          latest_evaluation_summary: {
+            status: 'missing',
+            latest_run_id: null,
+            evaluation_set_id: null,
+            pass_rate: null,
+            skill_content_hash: null,
+            created_at: null,
+            completed_at: null,
+          },
+          health: {
+            state: 'needs_evaluation',
+            label: '평가 없음',
+            reason: 'No evaluation run exists.',
+            severity: 'neutral',
+          },
+        }),
+      ),
+    ).toEqual(['content', 'metadata'])
+  })
+
+  it('shows evaluation when a generated evaluation set exists before the first run', () => {
+    expect(
+      getVisibleSkillDetailTabs(
+        buildSkill({
+          latest_evaluation_summary: {
+            status: 'missing',
+            latest_run_id: null,
+            evaluation_set_id: 'set-1',
+            pass_rate: null,
+            skill_content_hash: null,
+            created_at: null,
+            completed_at: null,
+          },
+          health: {
+            state: 'needs_evaluation',
+            label: '평가 없음',
+            reason: 'No evaluation run exists.',
+            severity: 'neutral',
+          },
+        }),
+      ),
+    ).toContain('evaluation')
+  })
+
   it('shows credentials when requirements exist or a credentials deep link is active', () => {
     expect(
       getVisibleSkillDetailTabs(
@@ -80,5 +128,17 @@ describe('getVisibleSkillDetailTabs', () => {
 
     expect(getVisibleSkillDetailTabs(buildSkill(), 'evaluation')).toContain('evaluation')
     expect(getVisibleSkillDetailTabs(buildSkill(), 'history')).toContain('history')
+    expect(
+      getVisibleSkillDetailTabs(
+        buildSkill({
+          health: {
+            state: 'needs_rerun',
+            label: '재평가 필요',
+            reason: 'Skill content changed after the latest completed evaluation.',
+            severity: 'warning',
+          },
+        }),
+      ),
+    ).toContain('evaluation')
   })
 })
