@@ -13,6 +13,7 @@ from app.error_codes import (
 )
 from app.models.skill import Skill
 from app.models.skill_evaluation import SkillEvaluationSet
+from app.schemas.skill_builder import JsonValue
 from app.services import audit_service, skill_evaluation_service
 from app.services.system_credential_resolver import (
     SystemModelNotConfiguredError,
@@ -61,7 +62,7 @@ async def record_evaluation_audit(
     evaluation_set_id: uuid.UUID | None = None,
     run_id: uuid.UUID | None = None,
     outcome: str = "success",
-    metadata: dict[str, object] | None = None,
+    metadata: dict[str, JsonValue] | None = None,
 ) -> None:
     await audit_service.record_event(
         db,

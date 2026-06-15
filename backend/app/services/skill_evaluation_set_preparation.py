@@ -56,6 +56,7 @@ async def prepare_skill_evaluation_set(
     user_id: uuid.UUID,
     source_kind: str,
     allow_llm_generation: bool,
+    force: bool = False,
     model_builder: ModelBuilder | None = None,
     marketplace_item_id: uuid.UUID | None = None,
     marketplace_version_id: uuid.UUID | None = None,
@@ -74,6 +75,7 @@ async def prepare_skill_evaluation_set(
             marketplace_item_id=marketplace_item_id,
             marketplace_version_id=marketplace_version_id,
             model_name=None,
+            force=force,
         )
     if not allow_llm_generation:
         return _skipped(source_kind, SkillEvaluationPreparationStatus.SKIPPED_NO_EVALS)
@@ -85,6 +87,7 @@ async def prepare_skill_evaluation_set(
         model_builder=model_builder,
         marketplace_item_id=marketplace_item_id,
         marketplace_version_id=marketplace_version_id,
+        force=force,
     )
 
 
@@ -97,6 +100,7 @@ async def _prepare_generated_payload(
     model_builder: ModelBuilder | None,
     marketplace_item_id: uuid.UUID | None,
     marketplace_version_id: uuid.UUID | None,
+    force: bool,
 ) -> SkillEvaluationPreparationResult:
     try:
         generated = await generate_skill_smoke_eval_payload(
@@ -120,6 +124,7 @@ async def _prepare_generated_payload(
         marketplace_item_id=marketplace_item_id,
         marketplace_version_id=marketplace_version_id,
         model_name=generated.model_name,
+        force=force,
     )
 
 
@@ -133,6 +138,7 @@ async def _persist_payload(
     marketplace_item_id: uuid.UUID | None,
     marketplace_version_id: uuid.UUID | None,
     model_name: str | None,
+    force: bool,
 ) -> SkillEvaluationPreparationResult:
     evals = evals_from_payload(payload)
     payload_hash_value = payload_hash(
@@ -141,21 +147,22 @@ async def _persist_payload(
         marketplace_item_id=marketplace_item_id,
         marketplace_version_id=marketplace_version_id,
     )
-    duplicate = await _has_duplicate(
-        db,
-        skill=skill,
-        user_id=user_id,
-        payload_hash_value=payload_hash_value,
-    )
-    if duplicate:
-        return SkillEvaluationPreparationResult(
-            status=SkillEvaluationPreparationStatus.SKIPPED_DUPLICATE,
-            evaluation_set_id=None,
-            source_kind=source_kind,
-            case_count=len(evals),
-            payload_hash=payload_hash_value,
-            reason="duplicate_payload",
+    if not force:
+        duplicate = await _has_duplicate(
+            db,
+            skill=skill,
+            user_id=user_id,
+            payload_hash_value=payload_hash_value,
         )
+        if duplicate:
+            return SkillEvaluationPreparationResult(
+                status=SkillEvaluationPreparationStatus.SKIPPED_DUPLICATE,
+                evaluation_set_id=None,
+                source_kind=source_kind,
+                case_count=len(evals),
+                payload_hash=payload_hash_value,
+                reason="duplicate_payload",
+            )
     evaluation_set = await create_evaluation_set(
         db,
         user_id=user_id,

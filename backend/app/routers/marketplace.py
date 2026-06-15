@@ -37,7 +37,7 @@ from app.error_codes import (
     marketplace_version_not_found,
 )
 from app.marketplace import agent_spec as agent_marketplace
-from app.marketplace import install_service, publish_service
+from app.marketplace import evaluation_preparation, install_service, publish_service
 from app.marketplace import mcp_server as mcp_marketplace
 from app.marketplace import service as catalog_service
 from app.marketplace.schemas import (
@@ -60,6 +60,7 @@ from app.marketplace.schemas import (
     UpdateMarketplaceInstallationIn,
 )
 from app.models.marketplace import MarketplaceInstallation, MarketplaceItem
+from app.routers.skill_evaluation_prepare_support import record_preparation_audit
 from app.services import audit_service
 
 logger = logging.getLogger(__name__)
@@ -135,14 +136,10 @@ async def _record_marketplace_installation_audit(
             "resource_type": installation.resource_type,
             "install_status": installation.install_status,
             "installed_skill_id": (
-                str(installation.installed_skill_id)
-                if installation.installed_skill_id
-                else None
+                str(installation.installed_skill_id) if installation.installed_skill_id else None
             ),
             "installed_agent_id": (
-                str(installation.installed_agent_id)
-                if installation.installed_agent_id
-                else None
+                str(installation.installed_agent_id) if installation.installed_agent_id else None
             ),
             "installed_agent_blueprint_id": (
                 str(installation.installed_agent_blueprint_id)
@@ -195,9 +192,7 @@ async def list_items(
         is_listed=is_listed,
     )
     return list(
-        await catalog_service.list_items(
-            db, user=user, filters=filters, limit=limit, offset=offset
-        )
+        await catalog_service.list_items(db, user=user, filters=filters, limit=limit, offset=offset)
     )
 
 
@@ -253,9 +248,7 @@ async def get_item(
     return await catalog_service.project_item(db, item=item, user=user)
 
 
-@router.get(
-    "/items/{item_id}/versions", response_model=list[MarketplaceVersionSummary]
-)
+@router.get("/items/{item_id}/versions", response_model=list[MarketplaceVersionSummary])
 async def list_versions(
     item_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -314,8 +307,11 @@ async def install_item(
     ``installation_id`` regardless of whether it was just created.
     """
 
-    installation = await install_service.install_item(
-        db, item_id=item_id, user=user, body=body
+    installation = await install_service.install_item(db, item_id=item_id, user=user, body=body)
+    preparation_result = await evaluation_preparation.prepare_installed_skill_evaluation_set(
+        db,
+        installation=installation,
+        user=user,
     )
     await db.commit()
     await db.refresh(installation)
@@ -330,6 +326,15 @@ async def install_item(
             "credential_binding_count": len(body.credential_bindings or {}),
         },
     )
+    installed_skill_id = installation.installed_skill_id
+    if preparation_result is not None and installed_skill_id is not None:
+        await record_preparation_audit(
+            db,
+            user=user,
+            request=request,
+            skill_id=installed_skill_id,
+            result=preparation_result,
+        )
     await db.commit()
     return MarketplaceInstallationOut.model_validate(installation)
 
@@ -428,9 +433,7 @@ async def publish_item_from_skill(
     """
 
     body_copy = body.model_copy(update={"item_id": None})
-    item = await publish_service.publish_skill(
-        db, skill_id=skill_id, user=user, body=body_copy
-    )
+    item = await publish_service.publish_skill(db, skill_id=skill_id, user=user, body=body_copy)
     # Audit joins the publish in a single transaction — a failure here
     # rolls back the publish instead of silently dropping the audit row.
     await _record_marketplace_item_audit(
@@ -507,9 +510,7 @@ async def publish_item_from_agent(
     _csrf: None = Depends(verify_csrf),
 ) -> MarketplaceItemOut:
     body_copy = body.model_copy(update={"item_id": None})
-    item = await agent_marketplace.publish_agent(
-        db, agent_id=agent_id, user=user, body=body_copy
-    )
+    item = await agent_marketplace.publish_agent(db, agent_id=agent_id, user=user, body=body_copy)
     # Audit + publish commit together (single transaction).
     await _record_marketplace_item_audit(
         db,
@@ -698,9 +699,7 @@ async def patch_item(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> MarketplaceItemOut:
-    item = await publish_service.patch_item(
-        db, item_id=item_id, user=user, body=body
-    )
+    item = await publish_service.patch_item(db, item_id=item_id, user=user, body=body)
     await db.flush()
     # Audit + state change commit together (single transaction) — a failure
     # here rolls back the change instead of silently dropping the audit row.
@@ -722,9 +721,7 @@ async def patch_item(
     return await catalog_service.project_item(db, item=loaded, user=user)
 
 
-@router.post(
-    "/items/{item_id}/acl", response_model=MarketplaceItemOut
-)
+@router.post("/items/{item_id}/acl", response_model=MarketplaceItemOut)
 async def replace_item_acl(
     item_id: uuid.UUID,
     body: MarketplaceItemACLIn,
@@ -733,9 +730,7 @@ async def replace_item_acl(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> MarketplaceItemOut:
-    item = await publish_service.replace_acl(
-        db, item_id=item_id, user=user, body=body
-    )
+    item = await publish_service.replace_acl(db, item_id=item_id, user=user, body=body)
     await db.flush()
     # Audit + state change commit together (single transaction).
     await _record_marketplace_item_audit(
@@ -756,9 +751,7 @@ async def replace_item_acl(
     return await catalog_service.project_item(db, item=loaded, user=user)
 
 
-@router.delete(
-    "/items/{item_id}/acl/{user_id_to_remove}", status_code=204
-)
+@router.delete("/items/{item_id}/acl/{user_id_to_remove}", status_code=204)
 async def delete_item_acl_entry(
     item_id: uuid.UUID,
     user_id_to_remove: uuid.UUID,
@@ -787,9 +780,7 @@ async def delete_item_acl_entry(
     return Response(status_code=204)
 
 
-@router.post(
-    "/items/{item_id}/disable", response_model=MarketplaceItemOut
-)
+@router.post("/items/{item_id}/disable", response_model=MarketplaceItemOut)
 async def disable_item(
     item_id: uuid.UUID,
     request: Request,
@@ -797,9 +788,7 @@ async def disable_item(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> MarketplaceItemOut:
-    item = await publish_service.disable_item(
-        db, item_id=item_id, user=user
-    )
+    item = await publish_service.disable_item(db, item_id=item_id, user=user)
     await db.flush()
     # Audit + state change commit together (single transaction).
     await _record_marketplace_item_audit(
@@ -819,9 +808,7 @@ async def disable_item(
     return await catalog_service.project_item(db, item=loaded, user=user)
 
 
-@router.post(
-    "/items/{item_id}/enable", response_model=MarketplaceItemOut
-)
+@router.post("/items/{item_id}/enable", response_model=MarketplaceItemOut)
 async def enable_item(
     item_id: uuid.UUID,
     request: Request,
@@ -920,12 +907,16 @@ async def admin_k_skill_sync_status(
     """
 
     rows = (
-        await db.execute(
-            select(MarketplaceItem)
-            .where(MarketplaceItem.source_kind == "k-skill")
-            .order_by(MarketplaceItem.updated_at.desc())
+        (
+            await db.execute(
+                select(MarketplaceItem)
+                .where(MarketplaceItem.source_kind == "k-skill")
+                .order_by(MarketplaceItem.updated_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     return {
         "count": len(rows),

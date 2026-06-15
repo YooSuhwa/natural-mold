@@ -56,6 +56,24 @@ class SkillEvaluationRunCancelRequest(BaseModel):
     reason: str = Field(default="user", max_length=120)
 
 
+class SkillEvaluationPrepareRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    allow_llm_generation: bool = True
+    force: bool = False
+
+
+class SkillEvaluationPrepareResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: str
+    evaluation_set_id: uuid.UUID | None = None
+    source_kind: str
+    case_count: int = Field(..., ge=0)
+    payload_hash: str | None = None
+    reason: str | None = None
+
+
 class SkillEvaluationRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 

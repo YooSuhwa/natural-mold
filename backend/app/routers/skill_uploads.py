@@ -9,6 +9,7 @@ from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import invalid_skill_package, marketplace_secret_detected
 from app.marketplace.secret_scan import scan_package
+from app.routers.skill_evaluation_prepare_support import record_preparation_audit
 from app.routers.skill_router_support import (
     record_revision_create_audits,
     record_skill_audit,
@@ -16,6 +17,7 @@ from app.routers.skill_router_support import (
 )
 from app.schemas.skill import SkillResponse
 from app.services import skill_revision_mutations
+from app.services.skill_evaluation_set_preparation import prepare_skill_evaluation_set
 from app.skills import service as skill_service
 from app.skills.packager import PackageError
 from app.storage.paths import resolve_data_path
@@ -62,6 +64,13 @@ async def upload_package_skill(
         user_id=user.id,
         metadata_json={"upload": True},
     )
+    preparation_result = await prepare_skill_evaluation_set(
+        db=db,
+        skill=skill,
+        user_id=user.id,
+        source_kind="package_import",
+        allow_llm_generation=True,
+    )
     await db.commit()
     await db.refresh(skill)
     await db.refresh(revision)
@@ -83,6 +92,13 @@ async def upload_package_skill(
         request=request,
         baseline=None,
         revision=revision,
+    )
+    await record_preparation_audit(
+        db,
+        user=user,
+        request=request,
+        skill_id=skill.id,
+        result=preparation_result,
     )
     await db.commit()
     return await serialize_skill(db, skill, user)
