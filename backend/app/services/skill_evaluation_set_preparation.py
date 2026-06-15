@@ -29,6 +29,7 @@ from app.services.skill_evaluation_preparation_payload import (
     payload_name,
 )
 from app.services.skill_evaluation_service import create_evaluation_set
+from app.services.skill_locks import lock_skill_for_mutation
 from app.services.system_credential_resolver import SystemModelNotConfiguredError
 
 
@@ -149,10 +150,11 @@ async def _persist_payload(
         marketplace_item_id=marketplace_item_id,
         marketplace_version_id=marketplace_version_id,
     )
+    locked_skill = await lock_skill_for_mutation(db, skill=skill)
     if not force:
         duplicate = await _has_duplicate(
             db,
-            skill=skill,
+            skill=locked_skill,
             user_id=user_id,
             evals_hash_value=evals_hash_value,
             payload_hash_value=payload_hash_value,
@@ -169,7 +171,7 @@ async def _persist_payload(
     evaluation_set = await create_evaluation_set(
         db,
         user_id=user_id,
-        skill=skill,
+        skill=locked_skill,
         name=payload_name(payload, source_kind),
         description=payload_description(payload),
         source_kind=source_kind,
