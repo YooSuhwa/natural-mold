@@ -190,8 +190,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await sweep_stale_conversation_runs()
 
     if settings.skill_evaluation_enabled:
-        await skill_evaluation_worker.reconcile_stale_runs(async_session)
-        await skill_evaluation_worker.start(async_session)
+        await skill_evaluation_worker.start(async_session, reconcile_stale=True)
 
     # Spend writer — drain queue in the background so spend rows accumulate
     # without blocking agent runs. Must start before any hook is invoked.

@@ -2593,6 +2593,7 @@
         },
         "caseResultsTitle": "케이스 결과",
         "noCaseResults": "기록된 케이스 결과가 없습니다.",
+        "errorTitle": "실패 원인",
         "caseTitle": "케이스 {number}",
         "status": {
           "queued": "평가 대기",

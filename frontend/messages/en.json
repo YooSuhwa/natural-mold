@@ -2614,6 +2614,7 @@
         },
         "caseResultsTitle": "Case results",
         "noCaseResults": "No case results recorded.",
+        "errorTitle": "Failure reason",
         "caseTitle": "Case {number}",
         "status": {
           "queued": "Evaluation queued",

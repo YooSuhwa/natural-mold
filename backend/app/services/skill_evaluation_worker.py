@@ -14,6 +14,7 @@ from app.agent_runtime.skill_builder.eval_cancellation import EvalRunCancelled
 from app.config import settings
 from app.database import async_session
 from app.models.skill_evaluation import SkillEvaluationRun
+from app.services.skill_evaluation_llm import LlmSkillEvaluationEvaluator
 from app.services.skill_evaluation_worker_leader import (
     release_skill_evaluation_worker_leader,
     try_acquire_skill_evaluation_worker_leader,
@@ -35,7 +36,6 @@ from app.services.skill_evaluation_worker_state import (
     record_run_audit,
 )
 from app.services.skill_evaluation_worker_types import (
-    DeterministicSkillEvaluationEvaluator,
     SkillEvaluationEvaluator,
     SkillEvaluationExecutionError,
 )
@@ -50,9 +50,7 @@ class SkillEvaluationQueueFull(RuntimeError):
 
 @dataclass(slots=True)
 class SkillEvaluationWorker:
-    evaluator: SkillEvaluationEvaluator = field(
-        default_factory=DeterministicSkillEvaluationEvaluator
-    )
+    evaluator: SkillEvaluationEvaluator = field(default_factory=LlmSkillEvaluationEvaluator)
     queue_max_size: int = field(default_factory=lambda: settings.skill_evaluation_queue_max_size)
     max_concurrent: int = field(default_factory=lambda: settings.skill_evaluation_max_concurrent)
     _queue: deque[uuid.UUID] = field(default_factory=deque, init=False)
@@ -98,20 +96,25 @@ class SkillEvaluationWorker:
     async def start(
         self,
         session_factory: SkillEvaluationSessionFactory | None = None,
-    ) -> None:
+        *,
+        reconcile_stale: bool = False,
+    ) -> bool:
         if session_factory is not None:
             self._session_factory = session_factory
         if self._task is not None and not self._task.done():
-            return
+            return True
         if self._session_factory is async_session and not (
             await try_acquire_skill_evaluation_worker_leader()
         ):
-            return
+            return False
         self._holds_leader_lock = self._session_factory is async_session
+        if reconcile_stale:
+            await self.reconcile_stale_runs(self._session_factory)
         self._stopping = asyncio.Event()
         self._wake = asyncio.Event()
         self._semaphore = asyncio.Semaphore(max(1, self.max_concurrent))
         self._task = asyncio.create_task(self._loop(), name="skill-evaluation-worker")
+        return True
 
     async def stop(self, *, timeout_seconds: float = 10.0) -> None:
         if self._stopping is not None:
@@ -162,9 +165,11 @@ class SkillEvaluationWorker:
         await mark_running(db, run)
         await record_run_audit(db, run, "skill_evaluation.run_start")
         await mark_grading(db, run)
+        await db.commit()
+        await db.refresh(run)
         try:
             result = await asyncio.wait_for(
-                self.evaluator.evaluate(await build_context(db, run)),
+                self.evaluator.evaluate(db, await build_context(db, run)),
                 timeout=settings.skill_evaluation_run_timeout_seconds,
             )
         except EvalRunCancelled:
@@ -176,6 +181,9 @@ class SkillEvaluationWorker:
             return run
         except SkillEvaluationExecutionError as exc:
             await mark_execution_error_failed(db, run, exc)
+            return run
+        except ValueError as exc:
+            await mark_execution_error_failed(db, run, SkillEvaluationExecutionError(str(exc)))
             return run
 
         if await cancel_if_requested(db, run):

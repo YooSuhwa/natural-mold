@@ -51,6 +51,20 @@ async def test_create_evaluation_set_persists_cases(db: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_evaluation_set_rejects_empty_cases(db: AsyncSession) -> None:
+    skill = await _create_skill(db)
+
+    with pytest.raises(skill_evaluation_service.SkillEvaluationSetEmpty):
+        await skill_evaluation_service.create_evaluation_set(
+            db,
+            user_id=TEST_USER_ID,
+            skill=skill,
+            name="Empty",
+            evals=[],
+        )
+
+
+@pytest.mark.asyncio
 async def test_estimate_run_uses_case_count_and_settings(db: AsyncSession) -> None:
     skill = await _create_skill(db)
     evaluation_set = await skill_evaluation_service.create_evaluation_set(

@@ -77,6 +77,15 @@ def test_health_detects_low_confidence() -> None:
     assert health["state"] == "low_confidence"
 
 
+def test_health_treats_boolean_pass_rate_as_missing() -> None:
+    run = _run(pass_rate=None)
+    run.summary = {"pass_rate": True}
+
+    health = calculate_skill_health(_skill(), latest_run=run)
+
+    assert health["state"] == "low_confidence"
+
+
 def test_health_ready_when_current_passing_run_exists() -> None:
     health = calculate_skill_health(_skill(), latest_run=_run(pass_rate=0.8))
 

@@ -143,6 +143,13 @@ export function SkillEvaluationRunDetail({
         </div>
       ) : null}
 
+      {run.error_message ? (
+        <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+          <h4 className="moldy-ui-micro text-destructive">{t('errorTitle')}</h4>
+          <p className="mt-2 text-xs text-destructive">{run.error_message}</p>
+        </div>
+      ) : null}
+
       <div className="mt-4">
         <h4 className="moldy-ui-micro text-muted-foreground">{t('caseResultsTitle')}</h4>
         {caseResults.length === 0 ? (

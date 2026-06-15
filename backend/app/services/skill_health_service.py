@@ -65,6 +65,8 @@ def calculate_skill_health(
 def _pass_rate(run: SkillEvaluationRun) -> float:
     summary = run.summary or {}
     value = summary.get("pass_rate")
+    if isinstance(value, bool):
+        return 0.0
     if isinstance(value, int | float):
         return float(value)
     return 0.0

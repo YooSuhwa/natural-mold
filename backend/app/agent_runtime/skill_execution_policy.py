@@ -5,10 +5,11 @@ import os
 import re
 import shlex
 import shutil
+import socket
 import sys
 from pathlib import Path
 from typing import Final
-from urllib.parse import unquote, urlparse
+from urllib.parse import ParseResult, unquote, urlparse
 
 from app.config import settings
 from app.marketplace.skill_runtime import SkillRuntimeDescriptor
@@ -18,14 +19,10 @@ _SHELL_DEFAULT_RE: Final = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*):-(.*?)\}")
 _SHELL_VAR_RE: Final = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 _DEFAULT_SKILL_TIMEOUT_SECONDS: Final = 30.0
 _MAX_SKILL_TIMEOUT_SECONDS: Final = 420.0
-_SAFE_CURL_FLAGS: Final[frozenset[str]] = frozenset(
-    {"-f", "--fail", "-L", "--location", "-s", "-S", "-sS"}
-)
-_SAFE_CURL_SHORT_FLAGS: Final[frozenset[str]] = frozenset({"f", "L", "s", "S"})
+_SAFE_CURL_FLAGS: Final[frozenset[str]] = frozenset({"-f", "--fail", "-s", "-S", "-sS"})
+_SAFE_CURL_SHORT_FLAGS: Final[frozenset[str]] = frozenset({"f", "s", "S"})
 _SAFE_CURL_FLAGS_WITH_VALUE: Final[frozenset[str]] = frozenset({"--connect-timeout", "--max-time"})
-_BLOCKED_CURL_HOSTS: Final[frozenset[str]] = frozenset(
-    {"localhost", "metadata.google.internal", "metadata"}
-)
+_BLOCKED_CURL_HOSTS: Final = frozenset({"localhost", "metadata.google.internal", "metadata"})
 
 
 def _expand_shell_vars(value: str, *, env: dict[str, str], local_vars: dict[str, str]) -> str:
@@ -195,7 +192,12 @@ def _curl_policy_error(args: list[str], *, resolved: Path) -> str | None:
         index += 1
     if len(urls) != 1:
         return "Error: curl command must contain exactly one URL."
-    return _curl_url_policy_error(urls[0], resolved=resolved)
+    url_error, resolve_args = _curl_url_policy_result(urls[0], resolved=resolved)
+    if url_error is not None:
+        return url_error
+    if resolve_args:
+        args[1:1] = resolve_args
+    return None
 
 
 def _is_safe_curl_short_flag_group(arg: str) -> bool:
@@ -207,33 +209,87 @@ def _is_safe_curl_short_flag_group(arg: str) -> bool:
     )
 
 
-def _curl_url_policy_error(raw_url: str, *, resolved: Path) -> str | None:
+def _curl_url_policy_result(raw_url: str, *, resolved: Path) -> tuple[str | None, list[str]]:
     parsed = urlparse(raw_url)
     if parsed.scheme == "file":
         if parsed.hostname not in {None, "", "localhost"}:
-            return "Error: curl URL host is not allowed."
+            return "Error: curl URL host is not allowed.", []
         file_path = Path(unquote(parsed.path)).resolve()
         if not file_path.is_relative_to(resolved):
-            return "Error: curl URL host is not allowed."
-        return None
+            return "Error: curl URL host is not allowed.", []
+        return None, []
     if parsed.scheme not in {"http", "https"}:
-        return "Error: curl URL must use http or https."
+        return "Error: curl URL must use http or https.", []
     host = parsed.hostname
     if host is None or not host.strip():
-        return "Error: curl URL host is required."
+        return "Error: curl URL host is required.", []
     if _blocked_curl_host(host):
-        return "Error: curl URL host is not allowed."
-    return None
+        return "Error: curl URL host is not allowed.", []
+    port = _curl_url_port(parsed)
+    if port is None:
+        return "Error: curl URL port is invalid.", []
+    if _literal_ip_address(host) is not None:
+        return None, []
+    resolved_ip = _resolve_public_curl_host(_normalized_curl_host(host), port)
+    if resolved_ip is None:
+        return "Error: curl URL host is not allowed.", []
+    return None, ["--resolve", f"{_normalized_curl_host(host)}:{port}:{resolved_ip}"]
+
+
+def _curl_url_port(parsed: ParseResult) -> int | None:
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    if port is not None:
+        return port
+    if parsed.scheme == "https":
+        return 443
+    return 80
 
 
 def _blocked_curl_host(host: str) -> bool:
-    normalized = host.strip("[]").lower()
+    normalized = _normalized_curl_host(host)
     if normalized in _BLOCKED_CURL_HOSTS or normalized.endswith(".localhost"):
         return True
-    try:
-        address = ipaddress.ip_address(normalized)
-    except ValueError:
+    address = _literal_ip_address(normalized)
+    if address is None:
         return False
+    return _blocked_ip_address(address)
+
+
+def _normalized_curl_host(host: str) -> str:
+    return host.strip("[]").lower().rstrip(".")
+
+
+def _literal_ip_address(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    try:
+        return ipaddress.ip_address(_normalized_curl_host(host))
+    except ValueError:
+        pass
+    try:
+        return ipaddress.ip_address(socket.inet_aton(_normalized_curl_host(host)))
+    except OSError:
+        return None
+
+
+def _resolve_public_curl_host(host: str, port: int) -> str | None:
+    try:
+        results = socket.getaddrinfo(host, port, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return None
+    for item in results:
+        sockaddr = item[4]
+        if not sockaddr:
+            continue
+        address = ipaddress.ip_address(str(sockaddr[0]))
+        if _blocked_ip_address(address):
+            return None
+        return f"[{address}]" if address.version == 6 else str(address)
+    return None
+
+
+def _blocked_ip_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return (
         address.is_private
         or address.is_loopback

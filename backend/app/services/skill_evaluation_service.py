@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.skill_builder.eval_limits import MAX_SKILL_EVAL_CASES
+from app.agent_runtime.skill_builder.eval_limits import MAX_SKILL_EVAL_CASES, MIN_SKILL_EVAL_CASES
 from app.config import settings
 from app.models.skill import Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
@@ -24,6 +24,10 @@ class SkillEvaluationSetTooLarge(ValueError):
     pass
 
 
+class SkillEvaluationSetEmpty(ValueError):
+    pass
+
+
 async def create_evaluation_set(
     db: AsyncSession,
     *,
@@ -37,6 +41,8 @@ async def create_evaluation_set(
     template_version: str | None = None,
     generation_strategy: dict[str, Any] | None = None,
 ) -> SkillEvaluationSet:
+    if len(evals) < MIN_SKILL_EVAL_CASES:
+        raise SkillEvaluationSetEmpty("evaluation sets require at least one case")
     if len(evals) > MAX_SKILL_EVAL_CASES:
         raise SkillEvaluationSetTooLarge(
             f"evaluation sets can contain at most {MAX_SKILL_EVAL_CASES} cases"

@@ -14,6 +14,7 @@ from app.models.skill_evaluation import SkillEvaluationRun
 from app.services import skill_evaluation_service
 from app.services.skill_evaluation_worker import SkillEvaluationWorker
 from app.services.skill_evaluation_worker_types import (
+    DeterministicSkillEvaluationEvaluator,
     SkillEvaluationContext,
     SkillEvaluationExecutionError,
     SkillEvaluationResult,
@@ -25,7 +26,11 @@ pytestmark = pytest.mark.asyncio
 
 
 class LeakyFailingEvaluator:
-    async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
+    async def evaluate(
+        self,
+        _db: AsyncSession,
+        context: SkillEvaluationContext,
+    ) -> SkillEvaluationResult:
         raise SkillEvaluationExecutionError("runner failed for prompt-secret and output-secret")
 
 
@@ -77,7 +82,9 @@ async def test_worker_complete_audit_has_summary_metrics_without_prompts(
 ) -> None:
     with patch.object(settings, "data_root", str(tmp_path)):
         run = await _create_run(db)
-        completed = await SkillEvaluationWorker().run_once(db, run.id)
+        completed = await SkillEvaluationWorker(
+            evaluator=DeterministicSkillEvaluationEvaluator()
+        ).run_once(db, run.id)
         await db.commit()
 
     events = await _audit_events(db)

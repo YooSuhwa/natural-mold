@@ -7,6 +7,7 @@ from typing import Protocol, cast
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
+from pydantic import ValidationError
 
 from app.agent_runtime.skill_builder.state import SkillBuilderState
 from app.schemas.skill_builder import JsonValue, SkillBuilderMode, SkillDraftPackage
@@ -43,8 +44,14 @@ class HeuristicDraftWorker:
 
 
 class JsonChatDraftWorker:
-    def __init__(self, model: BaseChatModel) -> None:
+    def __init__(
+        self,
+        model: BaseChatModel,
+        *,
+        fallback: SkillBuilderDraftWorker | None = None,
+    ) -> None:
         self.model = model
+        self.fallback = fallback
 
     async def draft(self, state: SkillBuilderState) -> SkillDraftPackage:
         response = await self.model.ainvoke(
@@ -53,7 +60,12 @@ class JsonChatDraftWorker:
                 HumanMessage(content=json.dumps(_json_worker_input(state), ensure_ascii=False)),
             ]
         )
-        return SkillDraftPackage.model_validate_json(_message_text(response))
+        try:
+            return SkillDraftPackage.model_validate_json(_json_payload(_message_text(response)))
+        except ValidationError:
+            if self.fallback is None:
+                raise
+            return await self.fallback.draft(state)
 
 
 def compile_skill_builder_graph(
@@ -208,3 +220,13 @@ def _message_text(message: BaseMessage) -> str:
     if isinstance(content, str):
         return content
     return json.dumps(content)
+
+
+def _json_payload(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    lines = stripped.splitlines()
+    if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return stripped

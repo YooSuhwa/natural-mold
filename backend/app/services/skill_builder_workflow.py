@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.skill_builder.agent import build_skill_builder_model
 from app.agent_runtime.skill_builder.graph import (
+    HeuristicDraftWorker,
+    JsonChatDraftWorker,
     SkillBuilderDraftWorker,
     run_skill_builder_graph,
 )
@@ -34,7 +36,12 @@ async def run_skill_builder_message_workflow(
     content: str,
     draft_worker: SkillBuilderDraftWorker | None = None,
 ) -> list[SkillBuilderSseEvent]:
-    await build_skill_builder_model(db)
+    worker = draft_worker
+    if worker is None:
+        worker = JsonChatDraftWorker(
+            await build_skill_builder_model(db),
+            fallback=HeuristicDraftWorker(),
+        )
     await skill_builder_service.append_message(db, session, role="user", content=content)
     result = await run_skill_builder_graph(
         state={
@@ -47,7 +54,7 @@ async def run_skill_builder_message_workflow(
             "user_request": _current_user_request(session, content),
             "current_phase": session.current_phase,
         },
-        draft_worker=draft_worker,
+        draft_worker=worker,
     )
     await _persist_result(db, session=session, result=result)
     await skill_builder_service.append_message(

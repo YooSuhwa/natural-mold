@@ -4,9 +4,23 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { skillEvaluationsApi } from '@/lib/api/skill-evaluations'
 import { requireQueryId } from './query-id'
 import type {
+  SkillEvaluationRun,
   SkillEvaluationRunCancelRequest,
   SkillEvaluationSetCreate,
 } from '@/lib/types/skill-evaluation'
+
+const ACTIVE_EVALUATION_RUN_STATUSES: ReadonlySet<SkillEvaluationRun['status']> = new Set([
+  'queued',
+  'running',
+  'grading',
+])
+
+export function skillEvaluationRunsRefetchInterval(
+  runs: readonly SkillEvaluationRun[] | undefined,
+): 1000 | false {
+  if (!runs?.some((run) => ACTIVE_EVALUATION_RUN_STATUSES.has(run.status))) return false
+  return 1000
+}
 
 export const skillEvaluationKeys = {
   sets: (skillId: string | null | undefined) => ['skills', skillId, 'evaluations'] as const,
@@ -51,6 +65,8 @@ export function useSkillEvaluationRuns(
         requireQueryId(evaluationSetId, 'evaluationSetId'),
       ),
     enabled: !!skillId && !!evaluationSetId,
+    refetchInterval: (query) => skillEvaluationRunsRefetchInterval(query.state.data),
+    refetchOnWindowFocus: false,
   })
 }
 

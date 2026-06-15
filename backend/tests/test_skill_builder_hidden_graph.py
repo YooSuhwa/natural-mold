@@ -4,6 +4,7 @@ import json
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
@@ -18,6 +19,31 @@ from app.models.system_llm_setting import SystemLlmSetting
 pytestmark = pytest.mark.asyncio
 
 BASE = "/api/skill-builder"
+
+
+def _draft_json(*, slug: str = "fake-notes") -> str:
+    return json.dumps(
+        {
+            "name": "Fake Notes",
+            "slug": slug,
+            "description": "Use when testing the hidden graph.",
+            "files": [
+                {
+                    "path": "SKILL.md",
+                    "content": (
+                        "---\n"
+                        f"name: {slug}\n"
+                        'description: "Use when testing the hidden graph."\n'
+                        "---\n\n"
+                        "Intent: fake model draft\n"
+                    ),
+                    "role": "skill",
+                }
+            ],
+            "credential_requirements": [],
+            "execution_profile": {"requires_network": False},
+        }
+    )
 
 
 async def _configure_system_llm(db: AsyncSession) -> None:
@@ -59,32 +85,7 @@ def _event_names(events: Sequence[tuple[str, dict[str, object]]]) -> list[str]:
 
 
 async def test_hidden_graph_with_fake_chat_model_produces_draft_validation_and_changelog() -> None:
-    fake_model = FakeListChatModel(
-        responses=[
-            json.dumps(
-                {
-                    "name": "Fake Notes",
-                    "slug": "fake-notes",
-                    "description": "Use when testing the hidden graph.",
-                    "files": [
-                        {
-                            "path": "SKILL.md",
-                            "content": (
-                                "---\n"
-                                "name: fake-notes\n"
-                                'description: "Use when testing the hidden graph."\n'
-                                "---\n\n"
-                                "Intent: fake model draft\n"
-                            ),
-                            "role": "skill",
-                        }
-                    ],
-                    "credential_requirements": [],
-                    "execution_profile": {"requires_network": False},
-                }
-            )
-        ]
-    )
+    fake_model = FakeListChatModel(responses=[f"```json\n{_draft_json()}\n```"])
     result = await run_skill_builder_graph(
         state={
             "user_id": "00000000-0000-0000-0000-000000000001",
@@ -135,16 +136,21 @@ async def test_message_stream_emits_builder_events_and_persists_session(
     db: AsyncSession,
 ) -> None:
     await _configure_system_llm(db)
+    fake_model = FakeListChatModel(responses=[_draft_json(slug="llm-notes")])
     start = await client.post(
         BASE,
         json={"mode": "create", "user_request": "회의록 액션 아이템 스킬 만들어줘"},
     )
     session_id = start.json()["id"]
 
-    response = await client.post(
-        f"{BASE}/{session_id}/messages",
-        json={"content": "담당자와 마감일을 표로 뽑는 스킬로 만들어줘"},
-    )
+    with patch(
+        "app.services.skill_builder_workflow.build_skill_builder_model",
+        return_value=fake_model,
+    ):
+        response = await client.post(
+            f"{BASE}/{session_id}/messages",
+            json={"content": "담당자와 마감일을 표로 뽑는 스킬로 만들어줘"},
+        )
     events = _events(response.text)
     session = await client.get(f"{BASE}/{session_id}")
 
@@ -165,16 +171,13 @@ async def test_message_stream_emits_builder_events_and_persists_session(
         "message_end",
     ]
     draft_event = dict(events)["draft_package"]
-    assert draft_event["file_count"] == 2
-    assert draft_event["files"] == [
-        {"path": "SKILL.md", "role": "skill"},
-        {"path": "agents/openai.yaml", "role": "metadata"},
-    ]
+    assert draft_event["file_count"] == 1
+    assert draft_event["files"] == [{"path": "SKILL.md", "role": "skill"}]
     assert "content" not in json.dumps(draft_event)
 
     body = session.json()
     assert body["status"] == "review"
-    assert body["draft_package"]["slug"]
+    assert body["draft_package"]["slug"] == "llm-notes"
     assert body["validation_result"]["error_count"] == 0
     assert body["compatibility_result"]["targets"]
     assert body["changelog_draft"]["summary"]

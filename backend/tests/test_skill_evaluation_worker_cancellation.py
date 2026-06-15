@@ -31,7 +31,11 @@ class BlockingEvaluator:
         self.started: asyncio.Queue[uuid.UUID] = asyncio.Queue()
         self.release = asyncio.Event()
 
-    async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
+    async def evaluate(
+        self,
+        _db: AsyncSession,
+        context: SkillEvaluationContext,
+    ) -> SkillEvaluationResult:
         await self.started.put(context.run_id)
         await self.release.wait()
         return SkillEvaluationResult(
@@ -46,7 +50,11 @@ class CheckpointBlockingEvaluator:
         self.started: asyncio.Queue[uuid.UUID] = asyncio.Queue()
         self.release = asyncio.Event()
 
-    async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
+    async def evaluate(
+        self,
+        _db: AsyncSession,
+        context: SkillEvaluationContext,
+    ) -> SkillEvaluationResult:
         await self.started.put(context.run_id)
         await self.release.wait()
         await context.cancellation.raise_if_cancelled(
@@ -135,6 +143,48 @@ async def test_worker_preserves_running_cancellation_after_evaluator_returns(
 
     assert cancelled.cancellation_reason == "user"
     assert cancelled.completed_at is not None
+
+
+async def test_worker_commits_grading_state_before_evaluator_starts(
+    db: AsyncSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with patch.object(settings, "data_root", str(tmp_path)):
+        run = await _create_run(db)
+        await db.commit()
+        commit_count = 0
+        real_commit = db.commit
+        evaluator_started_after_commit = asyncio.Event()
+
+        async def counting_commit() -> None:
+            nonlocal commit_count
+            commit_count += 1
+            await real_commit()
+
+        class CommitAwareEvaluator:
+            async def evaluate(
+                self,
+                _db: AsyncSession,
+                context: SkillEvaluationContext,
+            ) -> SkillEvaluationResult:
+                assert context.run_id == run.id
+                if commit_count > 0:
+                    evaluator_started_after_commit.set()
+                return SkillEvaluationResult(
+                    summary={"case_count": len(context.evals), "pass_rate": 1},
+                    benchmark={"with_skill_pass_rate": 1, "without_skill_pass_rate": 0},
+                    case_results=[],
+                )
+
+        monkeypatch.setattr(db, "commit", counting_commit)
+        worker = SkillEvaluationWorker(evaluator=CommitAwareEvaluator())
+
+        completed = await worker.run_once(db, run.id)
+
+    assert completed is not None
+    assert completed.status == "completed"
+    assert evaluator_started_after_commit.is_set()
 
 
 async def test_worker_stops_when_evaluator_checkpoint_sees_cancelled_run(

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser
 from app.marketplace import credential_requirements
+from app.models.marketplace import SkillCredentialBinding
 from app.models.skill import Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.schemas.skill import SkillHealthSummary, SkillLatestEvaluationSummary
@@ -28,11 +29,12 @@ async def build_skill_quality_map(
 ) -> dict[uuid.UUID, SkillQualitySummary]:
     latest_runs = await _latest_runs_by_skill(db, user_id=user.id, skill_ids=[s.id for s in skills])
     latest_sets = await _latest_sets_by_skill(db, user_id=user.id, skill_ids=[s.id for s in skills])
+    missing_keys = await _missing_required_keys_by_skill(db, user=user, skills=skills)
     summaries: dict[uuid.UUID, SkillQualitySummary] = {}
     for skill in skills:
         latest_run = latest_runs.get(skill.id)
         latest_set = latest_sets.get(skill.id)
-        missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
+        missing = missing_keys.get(skill.id, [])
         summaries[skill.id] = SkillQualitySummary(
             latest_evaluation_summary=_summarize_latest_evaluation(skill, latest_run, latest_set),
             health=SkillHealthSummary.model_validate(
@@ -44,6 +46,40 @@ async def build_skill_quality_map(
             ),
         )
     return summaries
+
+
+async def _missing_required_keys_by_skill(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    skills: list[Skill],
+) -> dict[uuid.UUID, list[str]]:
+    skill_ids = [skill.id for skill in skills]
+    required_by_skill = {
+        skill.id: [
+            requirement.key
+            for requirement in credential_requirements.parse_requirements(skill)
+            if requirement.required and requirement.scope == "user"
+        ]
+        for skill in skills
+    }
+    lookup_ids = [skill_id for skill_id, keys in required_by_skill.items() if keys]
+    if not lookup_ids:
+        return {skill_id: [] for skill_id in skill_ids}
+    result = await db.execute(
+        select(SkillCredentialBinding).where(
+            SkillCredentialBinding.skill_id.in_(lookup_ids),
+            SkillCredentialBinding.user_id == user.id,
+            SkillCredentialBinding.scope == "skill",
+        )
+    )
+    bound_by_skill: dict[uuid.UUID, set[str]] = {}
+    for binding in result.scalars():
+        bound_by_skill.setdefault(binding.skill_id, set()).add(binding.requirement_key)
+    return {
+        skill_id: [key for key in keys if key not in bound_by_skill.get(skill_id, set())]
+        for skill_id, keys in required_by_skill.items()
+    }
 
 
 async def _latest_runs_by_skill(

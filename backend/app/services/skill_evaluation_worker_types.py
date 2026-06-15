@@ -5,6 +5,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Final, Protocol
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.agent_runtime.skill_builder.deterministic_eval_runner import (
     run_deterministic_evaluation,
 )
@@ -48,14 +50,22 @@ class SkillEvaluationResult:
 
 
 class SkillEvaluationEvaluator(Protocol):
-    async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult: ...
+    async def evaluate(
+        self,
+        db: AsyncSession,
+        context: SkillEvaluationContext,
+    ) -> SkillEvaluationResult: ...
 
 
 @dataclass(slots=True)
 class DeterministicSkillEvaluationEvaluator:
     runner_version: str = DEFAULT_RUNNER_VERSION
 
-    async def evaluate(self, context: SkillEvaluationContext) -> SkillEvaluationResult:
+    async def evaluate(
+        self,
+        db: AsyncSession,
+        context: SkillEvaluationContext,
+    ) -> SkillEvaluationResult:
         try:
             payload = await run_deterministic_evaluation(
                 evals=context.evals,

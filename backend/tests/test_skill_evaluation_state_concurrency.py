@@ -102,3 +102,31 @@ async def test_worker_start_skips_when_leader_lock_is_not_acquired(
     await worker.start()
 
     assert worker._task is None
+
+
+async def test_worker_start_does_not_reconcile_when_leader_lock_is_not_acquired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def deny_leadership() -> bool:
+        return False
+
+    monkeypatch.setattr(
+        "app.services.skill_evaluation_worker.try_acquire_skill_evaluation_worker_leader",
+        deny_leadership,
+    )
+
+    reconcile_calls = 0
+
+    class RecordingWorker(SkillEvaluationWorker):
+        async def reconcile_stale_runs(self, *_args: object, **_kwargs: object) -> int:
+            nonlocal reconcile_calls
+            reconcile_calls += 1
+            return 0
+
+    worker = RecordingWorker()
+
+    started = await worker.start(reconcile_stale=True)
+
+    assert started is False
+    assert worker._task is None
+    assert reconcile_calls == 0
