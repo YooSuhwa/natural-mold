@@ -75,6 +75,7 @@ async def test_revision_snapshot_excludes_non_hashable_package_files(
                 {
                     "SKILL.md": _skill_content(),
                     "scripts/run.py": "print('ok')\n",
+                    "references/a/b/c/d/e/f/g/guide.md": "deep reference",
                     ".DS_Store": "desktop metadata",
                     ".moldy-output/result.txt": "generated output",
                 }
@@ -83,8 +84,12 @@ async def test_revision_snapshot_excludes_non_hashable_package_files(
 
         snapshot = await write_skill_revision_snapshot(skill, revision_number=1)
 
-    assert _zip_names(snapshot.path) == {"SKILL.md", "scripts/run.py"}
-    assert snapshot.file_count == 2
+    assert _zip_names(snapshot.path) == {
+        "SKILL.md",
+        "references/a/b/c/d/e/f/g/guide.md",
+        "scripts/run.py",
+    }
+    assert snapshot.file_count == 3
 
 
 @pytest.mark.asyncio

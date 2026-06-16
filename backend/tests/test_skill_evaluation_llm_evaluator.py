@@ -9,6 +9,7 @@ import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.skill_builder import JsonValue
 from app.services import skill_evaluation_service
 from app.services.skill_evaluation_llm import LlmSkillEvaluationEvaluator
 from app.services.skill_evaluation_worker import SkillEvaluationWorker
@@ -88,6 +89,43 @@ async def test_worker_persists_llm_evaluation_result(
     assert completed.case_results[0]["baseline_status"] == "failed"
 
 
+async def test_llm_evaluator_sanitizes_non_finite_scores(
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    run = await _create_llm_run(db, tmp_path)
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        context = await build_context(db, run)
+
+    evaluator = LlmSkillEvaluationEvaluator.for_model(
+        _fake_model_with_payload(
+            {
+                "case_results": [
+                    {
+                        "case_index": 0,
+                        "score": float("nan"),
+                        "baseline_score": float("inf"),
+                        "grader_feedback": "Bad numeric output.",
+                        "evidence": "The grader returned non-finite numbers.",
+                    }
+                ]
+            }
+        ),
+        model_name="fake-eval-model",
+    )
+
+    result = await evaluator.evaluate(db, context)
+
+    assert result.case_results is not None
+    assert result.case_results[0]["score"] == 0.0
+    assert result.case_results[0]["baseline_score"] == 0.0
+    assert result.case_results[0]["status"] == "failed"
+    assert result.benchmark is not None
+    json.dumps(result.summary, allow_nan=False)
+    json.dumps(result.benchmark, allow_nan=False)
+    json.dumps(result.case_results, allow_nan=False)
+
+
 async def _create_llm_run(
     db: AsyncSession,
     tmp_path: Path,
@@ -118,29 +156,29 @@ async def _create_llm_run(
 
 
 def _fake_model() -> FakeListChatModel:
-    return FakeListChatModel(
-        responses=[
-            json.dumps(
+    return _fake_model_with_payload(
+        {
+            "case_results": [
                 {
-                    "case_results": [
-                        {
-                            "case_index": 0,
-                            "status": "passed",
-                            "score": 0.92,
-                            "baseline_status": "failed",
-                            "baseline_score": 0.15,
-                            "grader_feedback": "SKILL.md gives the needed extraction behavior.",
-                            "evidence": "The skill explicitly targets meeting action items.",
-                        }
-                    ],
-                    "eval_feedback": [
-                        {
-                            "case_index": 0,
-                            "severity": "info",
-                            "message": "Strong match.",
-                        }
-                    ],
+                    "case_index": 0,
+                    "status": "passed",
+                    "score": 0.92,
+                    "baseline_status": "failed",
+                    "baseline_score": 0.15,
+                    "grader_feedback": "SKILL.md gives the needed extraction behavior.",
+                    "evidence": "The skill explicitly targets meeting action items.",
                 }
-            )
-        ]
+            ],
+            "eval_feedback": [
+                {
+                    "case_index": 0,
+                    "severity": "info",
+                    "message": "Strong match.",
+                }
+            ],
+        }
     )
+
+
+def _fake_model_with_payload(payload: dict[str, JsonValue]) -> FakeListChatModel:
+    return FakeListChatModel(responses=[json.dumps(payload)])

@@ -8,6 +8,7 @@ from app.agent_runtime.skill_builder.eval_runner import (
 )
 from app.config import settings
 from app.schemas.skill_builder import JsonValue
+from app.services.skill_evaluation_result_values import score as normalize_score
 from app.services.skill_evaluation_worker_types import SkillEvaluationExecutionError
 
 type JsonObject = dict[str, JsonValue]
@@ -90,7 +91,7 @@ def scores_from_case_results(
         EvalCaseResult(
             case_index=int(row["case_index"]),
             passed=row[status_key] == "passed",
-            score=float(row[score_key]),
+            score=_score(row.get(score_key)),
         )
         for row in case_results
     ]
@@ -146,9 +147,8 @@ def _case_index(row: JsonObject) -> int:
 
 
 def _score(value: JsonValue | None) -> float:
-    if isinstance(value, int | float) and not isinstance(value, bool):
-        return max(0.0, min(1.0, float(value)))
-    return 0.0
+    score_value = normalize_score(value, default=0.0)
+    return 0.0 if score_value is None else score_value
 
 
 def _status(value: JsonValue | None, score: float) -> str:

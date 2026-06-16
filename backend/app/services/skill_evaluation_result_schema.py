@@ -86,7 +86,9 @@ def _benchmark(
     raw_benchmark: Mapping[str, JsonValue] | None,
     case_results: list[JsonObject],
 ) -> JsonObject:
-    benchmark: JsonObject = dict(raw_benchmark or {})
+    benchmark: JsonObject = {
+        key: _json_value_without_nonfinite(value) for key, value in (raw_benchmark or {}).items()
+    }
     with_pass_rate = rate(status_count(case_results, "status", STATUS_PASSED), len(case_results))
     baseline_total = baseline_count(case_results)
     baseline_pass_rate = (
@@ -220,3 +222,17 @@ def _trigger_accuracy(case_results: list[JsonObject]) -> float | None:
     if not triggered:
         return None
     return rate(sum(1 for value in triggered if value is True), len(triggered))
+
+
+def _json_value_without_nonfinite(value: JsonValue) -> JsonValue:
+    match value:
+        case bool():
+            return value
+        case int() | float():
+            return number_or_none(value)
+        case list():
+            return [_json_value_without_nonfinite(item) for item in value]
+        case dict():
+            return {key: _json_value_without_nonfinite(item) for key, item in value.items()}
+        case _:
+            return value

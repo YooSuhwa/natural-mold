@@ -14,6 +14,8 @@ from typing import Any
 
 import frontmatter
 
+from app.skills.package_hash import is_excluded_package_path
+
 
 class SkillMetadataError(ValueError):
     """Raised when a SKILL.md document lacks required skill metadata."""
@@ -75,21 +77,22 @@ def _resolve_safely(root: Path, rel: str) -> Path:
     return target
 
 
-def list_files(root: Path | str, max_depth: int = 6) -> list[FileInfo]:
-    """List files under ``root`` (POSIX paths, sorted, depth-limited)."""
-
+def list_files(root: Path | str, max_depth: int | None = None) -> list[FileInfo]:
     root_path = Path(root).resolve()
     if not root_path.is_dir():
         return []
     items: list[FileInfo] = []
-    base_depth = len(root_path.parts)
-    for entry in sorted(root_path.rglob("*")):
+    for entry in sorted(
+        root_path.rglob("*"),
+        key=lambda path: path.relative_to(root_path).as_posix(),
+    ):
         try:
             rel = entry.relative_to(root_path)
         except ValueError:
             continue
-        depth = len(entry.parts) - base_depth
-        if depth > max_depth:
+        if is_excluded_package_path(rel) or entry.is_symlink():
+            continue
+        if max_depth is not None and len(rel.parts) > max_depth:
             continue
         try:
             size = entry.stat().st_size if entry.is_file() else 0
