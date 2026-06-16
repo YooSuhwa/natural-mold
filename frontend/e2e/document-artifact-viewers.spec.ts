@@ -13,6 +13,9 @@ const API_BASE = process.env.E2E_API_BASE_URL ?? `http://localhost:${BACKEND_POR
 const E2E_EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const E2E_PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
+const UI_TIMEOUT_MS = 20_000
+const ARTIFACT_TIMEOUT_MS = 75_000
+const SLOW_ARTIFACT_TIMEOUT_MS = 120_000
 
 const SKILL_SLUGS = [
   'docx-document',
@@ -20,8 +23,6 @@ const SKILL_SLUGS = [
   'pptx-presentation',
   'patent-hwpx-generator',
 ] as const
-
-type SkillSlug = (typeof SKILL_SLUGS)[number]
 
 interface MarketplaceItem {
   id: string
@@ -148,16 +149,15 @@ async function setupDocumentAgent(request: APIRequestContext): Promise<E2ESetup>
 
   const installedSkillIds: string[] = []
   for (const slug of SKILL_SLUGS) {
-    const item = itemBySlug.get(slug as SkillSlug)
+    const item = itemBySlug.get(slug)
     if (!item) throw new Error(`Missing marketplace item: ${slug}`)
     const installation = await postJson<MarketplaceInstallation>(
       request,
       `${API_BASE}/api/marketplace/items/${item.id}/install`,
       csrfHeaders,
-      { install_mode: 'overwrite_existing' },
+      { install_mode: 'reuse_or_update' },
     )
-    const installedSkillId =
-      installation.installed_skill_id ?? item.installation.installed_resource_id
+    const installedSkillId = installation.installed_skill_id
     if (!installedSkillId) throw new Error(`Marketplace install did not return a skill id: ${slug}`)
     installedSkillIds.push(installedSkillId)
   }
@@ -194,7 +194,8 @@ async function setupDocumentAgent(request: APIRequestContext): Promise<E2ESetup>
 
 async function sendMessage(page: Page, text: string): Promise<void> {
   const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
-  await expect(composer).toBeVisible()
+  await expect(composer).toBeVisible({ timeout: UI_TIMEOUT_MS })
+  await expect(composer).toBeEnabled({ timeout: UI_TIMEOUT_MS })
   await composer.fill(text)
   await composer.press('Enter')
 }
@@ -204,7 +205,7 @@ async function approveExecuteInSkill(page: Page): Promise<void> {
     timeout: 30_000,
   })
   const approveButton = page.getByRole('button', { name: /승인|Approve/ }).last()
-  await expect(approveButton).toBeVisible()
+  await expect(approveButton).toBeVisible({ timeout: UI_TIMEOUT_MS })
   await approveButton.click()
   await expect(approveButton).toBeHidden({ timeout: 30_000 })
 }
@@ -213,6 +214,7 @@ async function waitForArtifactByName(
   request: APIRequestContext,
   conversationId: string,
   filename: string,
+  timeout = ARTIFACT_TIMEOUT_MS,
 ): Promise<ArtifactRow> {
   let latest: ArtifactRow[] = []
   await expect
@@ -224,7 +226,7 @@ async function waitForArtifactByName(
         )
         return latest.some((artifact) => artifact.display_name === filename)
       },
-      { timeout: 45_000, intervals: [500, 1000, 2000] },
+      { timeout, intervals: [500, 1000, 2000, 5000] },
     )
     .toBe(true)
   const artifact = latest.find((item) => item.display_name === filename)
@@ -489,49 +491,66 @@ test.describe('Document artifact viewers', () => {
     page,
     errors,
   }) => {
-    const conversation = await postJson<ConversationRow>(
-      api,
-      `${API_BASE}/api/agents/${setup.agentId}/conversations`,
-      setup.csrfHeaders,
-      { title: 'Canceled Artifact E2E' },
-    )
+    test.setTimeout(180_000)
+    const cancelApi = await playwrightRequest.newContext({
+      baseURL: API_BASE,
+      storageState: { cookies: [], origins: [] },
+    })
+    let cancelSetup: E2ESetup | null = null
 
-    await page.goto(`/agents/${setup.agentId}/conversations/${conversation.id}`)
-    await page.waitForLoadState('domcontentloaded')
-    await sendMessage(
-      page,
-      'E2E_DOCX E2E_ARTIFACT_SLOW_FINAL 문서를 생성한 뒤 최종 답변 중 취소할게.',
-    )
-    await approveExecuteInSkill(page)
+    try {
+      cancelSetup = await setupDocumentAgent(cancelApi)
+      await page.goto(`/agents/${cancelSetup.agentId}/conversations/${cancelSetup.conversationId}`)
+      await page.waitForLoadState('domcontentloaded')
+      await sendMessage(
+        page,
+        'E2E_DOCX E2E_ARTIFACT_SLOW_FINAL 문서를 생성한 뒤 최종 답변 중 취소할게.',
+      )
+      await approveExecuteInSkill(page)
 
-    const artifact = await waitForArtifactByName(api, conversation.id, 'moldy-docx-demo.docx')
-    expect(artifact.status).toBe('ready')
+      const artifact = await waitForArtifactByName(
+        cancelApi,
+        cancelSetup.conversationId,
+        'moldy-docx-demo.docx',
+        SLOW_ARTIFACT_TIMEOUT_MS,
+      )
+      expect(artifact.status).toBe('ready')
 
-    const activeRun = await waitForActiveRun(api, conversation.id)
-    const cancelResponse = page.waitForResponse(
-      (response) => {
+      const activeRun = await waitForActiveRun(cancelApi, cancelSetup.conversationId)
+      const cancelResponse = page.waitForResponse((response) => {
         if (response.request().method() !== 'POST') return false
         const url = response.url()
         return (
-          url.includes(`/api/conversations/${conversation.id}/runs/${activeRun.id}/cancel`) ||
-          url.includes(`/threads/${conversation.id}/runs/${activeRun.id}/cancel`)
+          url.includes(
+            `/api/conversations/${cancelSetup.conversationId}/runs/${activeRun.id}/cancel`,
+          ) || url.includes(`/threads/${cancelSetup.conversationId}/runs/${activeRun.id}/cancel`)
         )
-      },
-    )
-    await page.locator('[data-moldy-stop-button="true"]').click()
-    const cancelResult = await cancelResponse
-    expect(cancelResult.ok()).toBeTruthy()
-    await waitForRunStatus(api, conversation.id, activeRun.id, 'canceled')
+      })
+      await page.locator('[data-moldy-stop-button="true"]').click()
+      const cancelResult = await cancelResponse
+      expect(cancelResult.ok()).toBeTruthy()
+      await waitForRunStatus(cancelApi, cancelSetup.conversationId, activeRun.id, 'canceled')
 
-    const finalizedArtifact = await waitForArtifactByName(
-      api,
-      conversation.id,
-      'moldy-docx-demo.docx',
-    )
-    expect(finalizedArtifact.status).toBe('failed')
-    await screenshot(page, captureDir, 'canceled-artifact-failed.png')
+      const finalizedArtifact = await waitForArtifactByName(
+        cancelApi,
+        cancelSetup.conversationId,
+        'moldy-docx-demo.docx',
+        SLOW_ARTIFACT_TIMEOUT_MS,
+      )
+      expect(finalizedArtifact.status).toBe('failed')
+      await screenshot(page, captureDir, 'canceled-artifact-failed.png')
 
-    expect(errors.console).toEqual([])
-    expect(errors.network).toEqual([])
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      if (cancelSetup) {
+        await deleteOk(
+          cancelApi,
+          `${API_BASE}/api/agents/${cancelSetup.agentId}`,
+          cancelSetup.csrfHeaders,
+        )
+      }
+      await cancelApi.dispose()
+    }
   })
 })

@@ -1,5 +1,6 @@
 import { skillBuilderApi } from '@/lib/api/skill-builder'
 import { streamSkillBuilderMessage } from '@/lib/sse/stream-skill-builder-message'
+import { StrictMode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SkillBuilderDialog } from '../skill-builder-dialog'
 import { render, screen, userEvent, waitFor } from '../../../../tests/test-utils'
@@ -76,5 +77,24 @@ describe('SkillBuilderDialog stream lifecycle', () => {
 
     expect(captured.signal?.aborted).toBe(true)
     expect(skillBuilderApi.get).not.toHaveBeenCalled()
+  })
+
+  it('enables confirmation after a completed stream under StrictMode', async () => {
+    vi.mocked(streamSkillBuilderMessage).mockImplementation(async function* stream() {
+      yield { event: 'message_end', data: { session_id: 'session-1' } }
+    })
+
+    render(
+      <StrictMode>
+        <SkillBuilderDialog open mode="create" onOpenChange={vi.fn()} />
+      </StrictMode>,
+    )
+
+    await userEvent.type(screen.getByLabelText('요청'), '회의록 스킬을 만들어줘')
+    await userEvent.click(screen.getByRole('button', { name: '대화 시작' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '스킬로 저장' })).toBeEnabled()
+    })
   })
 })

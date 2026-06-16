@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from langchain_core.messages import BaseMessage
+from langgraph.types import Send
 
 
 async def load_checkpoint_channel_values(
@@ -68,6 +69,12 @@ def _channel_values_from_tuple(checkpoint_tuple: Any) -> dict[str, Any]:
 def _serialize_checkpoint_value(value: Any) -> Any:
     if isinstance(value, BaseMessage):
         return value.model_dump(mode="json")
+    if isinstance(value, Send):
+        return {
+            "node": value.node,
+            "arg": _serialize_checkpoint_value(value.arg),
+            "timeout": value.timeout,
+        }
     if isinstance(value, list):
         return [_serialize_checkpoint_value(item) for item in value]
     if isinstance(value, Mapping):

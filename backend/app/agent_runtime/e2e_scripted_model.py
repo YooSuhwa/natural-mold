@@ -147,7 +147,7 @@ def _message_text(message: BaseMessage) -> str:
 class E2EScriptedChatModel(BaseChatModel):
     """Deterministic dev-only model for document artifact E2E tests."""
 
-    slow_stream_delay_seconds: float = 0.2
+    slow_stream_delay_seconds: float = 0.75
     _bound_tool_names: tuple[str, ...] = PrivateAttr(default_factory=tuple)
 
     @property

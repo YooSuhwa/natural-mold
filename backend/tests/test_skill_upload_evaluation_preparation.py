@@ -5,7 +5,8 @@ import json
 import uuid
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from typing import Final
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -17,6 +18,9 @@ from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.skills import service as skill_service
 
 pytestmark = pytest.mark.asyncio
+
+MIN_EXPECTED_PACKAGE_UPLOAD_BYTES: Final = 15 * 1024 * 1024
+LARGE_BINARY_ASSET_BYTES: Final = 2 * 1024 * 1024
 
 
 async def test_upload_package_with_claude_evals_creates_evaluation_set(
@@ -85,6 +89,60 @@ async def test_upload_package_without_evals_succeeds_without_run(
 
     # Then: upload still succeeds and no run is created.
     assert response.status_code == 201, response.text
+    assert await _run_count(db) == 0
+
+
+async def test_upload_package_without_evals_skips_llm_when_evaluation_disabled(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    package = _zip_with({"SKILL.md": _skill_md("upload-eval-disabled")})
+    generator = AsyncMock()
+
+    with (
+        patch.object(skill_service.settings, "data_root", str(tmp_path)),
+        patch.object(skill_service.settings, "skill_evaluation_enabled", False),
+        patch(
+            "app.services.skill_evaluation_set_preparation.generate_skill_smoke_eval_payload",
+            generator,
+        ),
+    ):
+        response = await client.post(
+            "/api/skills/upload",
+            files={"file": ("upload.skill", package, "application/zip")},
+        )
+
+    assert response.status_code == 201, response.text
+    generator.assert_not_awaited()
+    assert await _latest_evaluation_set(db, uuid.UUID(response.json()["id"])) is None
+    assert await _run_count(db) == 0
+
+
+async def test_upload_package_accepts_large_binary_assets_beyond_evals_json_limit(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    assert skill_service.settings.skill_max_package_bytes >= MIN_EXPECTED_PACKAGE_UPLOAD_BYTES
+    package = _zip_with(
+        {
+            "SKILL.md": _skill_md("upload-large-asset"),
+            "assets/reference.png": b"\x89PNG\r\n\x1a\n" + (b"\x00" * LARGE_BINARY_ASSET_BYTES),
+        }
+    )
+
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        response = await client.post(
+            "/api/skills/upload",
+            files={"file": ("upload.skill", package, "application/zip")},
+        )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["kind"] == "package"
+    assert body["size_bytes"] > 1_048_576
+    assert await _latest_evaluation_set(db, uuid.UUID(body["id"])) is None
     assert await _run_count(db) == 0
 
 

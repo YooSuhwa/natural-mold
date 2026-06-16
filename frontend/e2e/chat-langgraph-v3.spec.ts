@@ -17,6 +17,7 @@ import {
   waitForArtifact,
   waitForRunStatus,
 } from './langgraph-v3-helpers'
+import { waitForThreadStateText } from './langgraph-v3-state-helpers'
 
 const FRONTEND =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`
@@ -68,8 +69,16 @@ test.describe('LangGraph v3 chat runtime', () => {
       await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible()
       await page.screenshot({ path: path.join(CAPTURE_DIR, '01-live-state.png'), fullPage: true })
 
+      await waitForThreadStateText(
+        request,
+        setup.conversationId,
+        'Render delegated subagent progress',
+      )
       await page.reload()
-      await expect(page.getByText('Render delegated subagent progress')).toBeVisible({
+      await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible({
+        timeout: 30_000,
+      })
+      await expect(page.getByText('execute_in_skill').last()).toBeVisible({
         timeout: 30_000,
       })
       expect(runStartCommands).toHaveLength(1)
@@ -126,14 +135,21 @@ test.describe('LangGraph v3 chat runtime', () => {
 
       await page.reload()
       await expect(page.getByText(FINAL_TEXT).first()).toBeVisible({ timeout: 30_000 })
-      const reloadedReportButton = page
-        .getByRole('complementary')
+      const reloadedArtifactRail = page.getByRole('complementary')
+      const reloadedReportButton = reloadedArtifactRail
         .getByRole('button', { name: new RegExp(REPORT_FILE) })
         .last()
-      if (!(await reloadedReportButton.isVisible())) {
+      const reloadedReportHeading = reloadedArtifactRail.getByRole('heading', {
+        name: REPORT_FILE,
+      })
+      const reportArtifactIsOpenOrListed = async (): Promise<boolean> =>
+        (await reloadedReportButton.isVisible()) || (await reloadedReportHeading.isVisible())
+      if (!(await reportArtifactIsOpenOrListed())) {
         await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
       }
-      await expect(reloadedReportButton).toBeVisible({ timeout: 20_000 })
+      await expect
+        .poll(reportArtifactIsOpenOrListed, { timeout: 20_000, intervals: [500, 1000] })
+        .toBe(true)
       expect(runStartCommands).toHaveLength(1)
 
       const history = await apiPostJson(

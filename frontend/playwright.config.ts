@@ -10,10 +10,9 @@ const backendPort = Number(process.env.E2E_BACKEND_PORT ?? '8001')
 const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${frontendPort}`
 const apiBaseURL = process.env.E2E_API_BASE_URL ?? `http://localhost:${backendPort}`
 const corsOrigins = `http://localhost:${frontendPort},http://127.0.0.1:${frontendPort}`
-const workers = Number(process.env.E2E_WORKERS ?? '4')
+const workers = Number(process.env.E2E_WORKERS ?? '1')
 const testTimeout = Number(process.env.E2E_TEST_TIMEOUT_MS ?? '60000')
-const chatRuntime =
-  process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy' ? 'legacy' : 'langgraph_v3'
+const chatRuntime = process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy' ? 'legacy' : 'langgraph_v3'
 process.env.NEXT_PUBLIC_CHAT_RUNTIME = chatRuntime
 
 const webServer = [
@@ -21,7 +20,7 @@ const webServer = [
     ? []
     : [
         {
-          command: `cd ../backend && E2E_SCRIPTED_MODEL_ENABLED=true CORS_ALLOWED_ORIGINS=${corsOrigins} uv run uvicorn app.main:app --port ${backendPort}`,
+          command: `cd ../backend && E2E_SCRIPTED_MODEL_ENABLED=true SKILL_EVALUATION_ENABLED=false CORS_ALLOWED_ORIGINS=${corsOrigins} uv run uvicorn app.main:app --port ${backendPort}`,
           port: backendPort,
           reuseExistingServer: true,
         },

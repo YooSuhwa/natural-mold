@@ -3,7 +3,7 @@
 A package is a ZIP archive containing a ``SKILL.md`` at the root or one
 directory level deep. The packager:
 
-1. Validates archive size against ``settings.skill_max_package_bytes``.
+1. Validates archive and extracted size against ``settings.skill_max_package_bytes``.
 2. Iterates every entry, rejecting symlinks, absolute paths, or any name
    that resolves outside the destination directory.
 3. Strips the optional top-level prefix so files always land directly under
@@ -134,6 +134,7 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
             if not rel:
                 continue
 
+            _raise_if_package_too_large(total_bytes + member.file_size, "after extraction")
             target = (target_dir / rel).resolve()
             try:
                 target.relative_to(target_dir)
@@ -142,6 +143,7 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
 
             target.parent.mkdir(parents=True, exist_ok=True)
             data = zf.read(member.filename)
+            _raise_if_package_too_large(total_bytes + len(data), "after extraction")
             target.write_bytes(data)
             files.append(rel.replace("\\", "/"))
             total_bytes += len(data)
@@ -170,6 +172,14 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
         has_scripts=has_scripts,
         content_hash=content_hash,
     )
+
+
+def _raise_if_package_too_large(size_bytes: int, stage: str) -> None:
+    if size_bytes > settings.skill_max_package_bytes:
+        raise PackageError(
+            f"package too large {stage}: {size_bytes} bytes "
+            f"(max {settings.skill_max_package_bytes})"
+        )
 
 
 __all__ = ["PackageError", "PackageInfo", "extract_package"]

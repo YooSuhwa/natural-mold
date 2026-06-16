@@ -71,7 +71,7 @@ async def upload_package_skill(
         skill=skill,
         user_id=user.id,
         source_kind="package_import",
-        allow_llm_generation=True,
+        allow_llm_generation=settings.skill_evaluation_enabled,
     )
     await db.commit()
     await db.refresh(skill)

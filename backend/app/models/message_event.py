@@ -13,6 +13,7 @@ from app.database import Base
 # W3-out M2: SSE turn lifecycle status. CHECK 제약으로 Postgres ENUM 대신
 # 문자열 + 제약 조합 (alembic-friendly + dialect-agnostic).
 STREAMING_STATUS_VALUES = ("streaming", "completed", "failed")
+STREAM_EVENT_ID_MAX_LENGTH = 255
 
 
 class MessageEvent(Base):
@@ -39,7 +40,9 @@ class MessageEvent(Base):
     #   {"id": "<msg_id>-<seq>", "event": "<name>", "data": {...}}
     events: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     # 마지막으로 발행된 SSE event id — W3-out resume 시 ``> last_event_id`` 필터의 기준.
-    last_event_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    last_event_id: Mapped[str | None] = mapped_column(
+        String(STREAM_EVENT_ID_MAX_LENGTH), nullable=True
+    )
     # W6 정확도 — 이 turn에서 생성된 assistant 메시지의 parsed UUID 목록.
     # ``MessageResponse.id``와 동일 형식이라 frontend가 직접 매칭 가능.
     # NULL은 m33 이전 row 또는 streaming이 메시지 id를 노출 안 한 경우.
@@ -105,8 +108,12 @@ class MessageEventChunk(Base):
     assistant_msg_id: Mapped[str] = mapped_column(String(64), nullable=False)
     seq_start: Mapped[int] = mapped_column(Integer, nullable=False)
     seq_end: Mapped[int] = mapped_column(Integer, nullable=False)
-    first_event_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    last_event_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    first_event_id: Mapped[str | None] = mapped_column(
+        String(STREAM_EVENT_ID_MAX_LENGTH), nullable=True
+    )
+    last_event_id: Mapped[str | None] = mapped_column(
+        String(STREAM_EVENT_ID_MAX_LENGTH), nullable=True
+    )
     event_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     events: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(

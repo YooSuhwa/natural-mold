@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from app.config import settings
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.conversation_artifact import ConversationArtifact
 from app.models.model import Model
 from app.models.user import User
 from app.services.artifact_service import ArtifactDeltaRecorder, ArtifactRuntimeContext
@@ -60,9 +61,7 @@ async def test_conversation_artifact_content_and_download(
     assert content.json()["text"].startswith("# Artifact")
     assert content.json()["truncated"] is False
 
-    downloaded = await client.get(
-        f"/api/conversations/{conv_id}/artifacts/{artifact_id}/download"
-    )
+    downloaded = await client.get(f"/api/conversations/{conv_id}/artifacts/{artifact_id}/download")
     assert downloaded.status_code == 200
     assert downloaded.text.startswith("# Artifact")
     assert "report.md" in downloaded.headers["content-disposition"]
@@ -126,6 +125,38 @@ async def test_conversation_artifact_list_hides_other_user_conversation(
     response = await client.get(f"/api/conversations/{conv.id}/artifacts")
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_conversation_artifact_list_skips_versionless_artifacts(
+    client: AsyncClient,
+    db,
+) -> None:
+    conv_id, agent_id = await seed_artifact_conversation()
+    db.add(
+        ConversationArtifact(
+            id=uuid.uuid4(),
+            user_id=TEST_USER_ID,
+            agent_id=agent_id,
+            conversation_id=conv_id,
+            assistant_msg_id="run-versionless",
+            logical_path="missing-version.md",
+            display_name="missing-version.md",
+            extension="md",
+            mime_type="text/markdown",
+            artifact_kind="markdown",
+            size_bytes=12,
+            sha256="f" * 64,
+            status="ready",
+            metadata_json={},
+        )
+    )
+    await db.commit()
+
+    response = await client.get(f"/api/conversations/{conv_id}/artifacts")
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 @pytest.mark.asyncio

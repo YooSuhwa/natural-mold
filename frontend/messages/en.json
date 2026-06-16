@@ -1253,6 +1253,7 @@
       "preparing": "Preparing",
       "approvalRequired": "Approval Required",
       "invalidJson": "Invalid Json",
+      "resumeFailed": "Could not send the approval response. Try again.",
       "rejectConfirm": "Reject Confirm",
       "args": "Args",
       "argsCount": "{count} arguments",

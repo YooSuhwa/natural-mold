@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.dependencies import CurrentUser
 from app.models.marketplace import MarketplaceInstallation
 from app.models.skill import Skill
@@ -29,7 +30,7 @@ async def prepare_installed_skill_evaluation_set(
         skill=skill,
         user_id=user.id,
         source_kind="marketplace_import",
-        allow_llm_generation=True,
+        allow_llm_generation=settings.skill_evaluation_enabled,
         marketplace_item_id=installation.item_id,
         marketplace_version_id=installation.version_id,
     )

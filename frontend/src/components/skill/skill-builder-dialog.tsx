@@ -82,13 +82,13 @@ function SkillBuilderDialogInner({
   const mountedRef = useRef(true)
   const streamAbortRef = useRef<AbortController | null>(null)
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
       mountedRef.current = false
       streamAbortRef.current?.abort()
-    },
-    [],
-  )
+    }
+  }, [])
 
   const pending = start.isPending || isStreaming
   const canStart = request.trim().length > 0 && !pending

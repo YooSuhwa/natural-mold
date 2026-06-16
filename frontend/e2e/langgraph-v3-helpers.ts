@@ -15,6 +15,8 @@ export const SCRIPTED_MODEL = 'document-artifact-scripted'
 export const FINAL_TEXT = 'E2E LangGraph v3 validation complete'
 export const REPORT_FILE = 'moldy-langgraph-v3-report.md'
 export const NOTES_FILE = 'moldy-langgraph-v3-notes.txt'
+const CHAT_COMPOSER_TIMEOUT_MS = 20_000
+const ARTIFACT_INDEX_TIMEOUT_MS = 75_000
 
 export interface LangGraphV3Setup {
   readonly parentAgentId: string
@@ -33,17 +35,6 @@ export function stringField(record: Record<string, unknown>, key: string, label:
   const value = record[key]
   if (typeof value === 'string' && value) return value
   throw new Error(`${label} did not include ${key}`)
-}
-
-function optionalNestedString(
-  record: Record<string, unknown>,
-  parentKey: string,
-  key: string,
-): string | null {
-  const parent = record[parentKey]
-  if (!isRecord(parent)) return null
-  const value = parent[key]
-  return typeof value === 'string' && value ? value : null
 }
 
 async function scriptedModelId(request: APIRequestContext): Promise<string> {
@@ -68,36 +59,20 @@ async function docxMarketplaceItem(request: APIRequestContext): Promise<Record<s
   return item
 }
 
-function installedSkillId(item: Record<string, unknown>): string | null {
-  return optionalNestedString(item, 'installation', 'installed_resource_id')
-}
-
 async function installDocxSkill(
   request: APIRequestContext,
   csrfHeaders: CsrfHeaders,
 ): Promise<string> {
   const item = await docxMarketplaceItem(request)
-  const existingId = installedSkillId(item)
-  if (existingId) return existingId
-
-  let installed: unknown
-  try {
-    installed = await apiPostJson(
-      request,
-      `${API_BASE}/api/marketplace/items/${stringField(item, 'id', 'docx skill')}/install`,
-      csrfHeaders,
-      { install_mode: 'reuse_or_update' },
-    )
-  } catch (error) {
-    const racedId = installedSkillId(await docxMarketplaceItem(request))
-    if (racedId) return racedId
-    throw error
-  }
+  const installed = await apiPostJson(
+    request,
+    `${API_BASE}/api/marketplace/items/${stringField(item, 'id', 'docx skill')}/install`,
+    csrfHeaders,
+    { install_mode: 'reuse_or_update' },
+  )
 
   if (!isRecord(installed)) throw new Error('skill install did not return an object')
-  const id =
-    (typeof installed.installed_skill_id === 'string' ? installed.installed_skill_id : null) ??
-    installedSkillId(item)
+  const id = typeof installed.installed_skill_id === 'string' ? installed.installed_skill_id : null
   if (!id) throw new Error('skill install did not return a skill id')
   return id
 }
@@ -157,7 +132,8 @@ export async function setupLangGraphV3Agent(request: APIRequestContext): Promise
 
 export async function sendMessage(page: Page, text: string): Promise<void> {
   const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
-  await expect(composer).toBeVisible()
+  await expect(composer).toBeVisible({ timeout: CHAT_COMPOSER_TIMEOUT_MS })
+  await expect(composer).toBeEnabled({ timeout: CHAT_COMPOSER_TIMEOUT_MS })
   await composer.fill(text)
   await composer.press('Enter')
 }
@@ -233,7 +209,7 @@ export async function waitForArtifact(
           await apiGetJson(request, `${API_BASE}/api/conversations/${conversationId}/artifacts`),
           'artifacts',
         ).some((artifact) => artifact.display_name === name),
-      { timeout: 45_000, intervals: [500, 1000, 2000] },
+      { timeout: ARTIFACT_INDEX_TIMEOUT_MS, intervals: [500, 1000, 2000, 5000] },
     )
     .toBe(true)
 }

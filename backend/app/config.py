@@ -84,7 +84,8 @@ class Settings(BaseSettings):
     # ``*_dir`` settings default to subdirectories under this root.
     data_root: str = "./data"
 
-    # Skills (package)
+    # Skill package uploads. Keep this above the embedded evals/evals.json cap
+    # so image/reference assets can travel with portable .skill archives.
     skill_storage_dir: str = "./data/skills"
     skill_max_package_bytes: int = 52428800
     # Skills (JavaScript package runner). Skill scripts run without a shell;

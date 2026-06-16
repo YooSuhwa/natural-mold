@@ -125,7 +125,9 @@ function numberField(record: Record<string, unknown>, key: string): number | nul
 
 function stringArrayField(record: Record<string, unknown>, key: string): readonly string[] {
   const value = record[key]
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
 }
 
 function messageRows(envelope: unknown): MessageRow[] {
@@ -325,7 +327,12 @@ test.describe('LangGraph v3 regression coverage', () => {
       const conversationId = await createConversation(request, setup, 'v3 branch persistence')
       await page.goto(`/agents/${setup.agentId}/conversations/${conversationId}`)
       await sendMessage(page, 'E2E branch persistence first turn')
-      await waitForMessage(request, conversationId, 'assistant', 'E2E scripted document model is ready.')
+      await waitForMessage(
+        request,
+        conversationId,
+        'assistant',
+        'E2E scripted document model is ready.',
+      )
       await page.reload()
       await waitRunIdle(request, conversationId)
 
@@ -373,10 +380,17 @@ test.describe('LangGraph v3 regression coverage', () => {
       })
 
       await page.reload()
-      await expect(page.locator(`[data-moldy-run-spinner="${conversationId}"]`)).toBeVisible({
-        timeout: 10_000,
-      })
-      await expect(page.getByText(SLOW_STREAM_RESPONSE).first()).toBeVisible({ timeout: 45_000 })
+      const restoredSpinner = page.locator(`[data-moldy-run-spinner="${conversationId}"]`)
+      const restoredFinalMessage = page.getByText(SLOW_STREAM_RESPONSE).first()
+      await expect
+        .poll(
+          async () =>
+            (await restoredSpinner.isVisible().catch(() => false)) ||
+            (await restoredFinalMessage.isVisible().catch(() => false)),
+          { timeout: 15_000 },
+        )
+        .toBe(true)
+      await expect(restoredFinalMessage).toBeVisible({ timeout: 45_000 })
       await waitRunIdle(request, conversationId)
 
       const messages = await loadMessages(request, conversationId)

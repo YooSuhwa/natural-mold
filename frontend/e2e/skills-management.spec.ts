@@ -36,6 +36,7 @@ test.describe('Skills page', () => {
       .first()
       .click()
 
+    await page.getByRole('tab', { name: '텍스트' }).click()
     await page.getByLabel(/이름/).fill('Greeting snippet')
     await page.getByLabel(/내용 \(마크다운\)/).fill('# Hello\nThis is a snippet.')
 
