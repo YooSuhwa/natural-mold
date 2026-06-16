@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     # so image/reference assets can travel with portable .skill archives.
     skill_storage_dir: str = "./data/skills"
     skill_max_package_bytes: int = 52428800
+    skill_max_package_files: int = 1000
     # Skills (JavaScript package runner). Skill scripts run without a shell;
     # this only points the subprocess runner at a Node binary and shared
     # dependency directory for built-in document-generation skills.

@@ -32,6 +32,65 @@ def test_extract_package_rejects_uncompressed_total_beyond_package_limit(
         extract_package(zip_bytes, tmp_path)
 
 
+def test_extract_package_streams_large_members_before_size_rejection(
+    tmp_path: Path,
+) -> None:
+    zip_bytes = _compressed_zip_with(
+        {
+            "SKILL.md": _skill_md("streamed-expanded"),
+            "assets/reference.bin": b"0" * 2048,
+        }
+    )
+    original_read = zipfile.ZipFile.read
+    original_infolist = zipfile.ZipFile.infolist
+
+    def fail_on_asset_read(
+        archive: zipfile.ZipFile,
+        name: str,
+        pwd: bytes | None = None,
+    ) -> bytes:
+        if name == "assets/reference.bin":
+            raise AssertionError("asset members must be streamed, not read into memory")
+        return original_read(archive, name, pwd)
+
+    def forged_infolist(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+        forged_infos: list[zipfile.ZipInfo] = []
+        for info in original_infolist(archive):
+            if info.filename == "assets/reference.bin":
+                forged_info = zipfile.ZipInfo(info.filename, info.date_time)
+                forged_info.compress_type = info.compress_type
+                forged_info.external_attr = info.external_attr
+                forged_info.file_size = 1
+                forged_infos.append(forged_info)
+                continue
+            forged_infos.append(info)
+        return forged_infos
+
+    with (
+        patch.object(settings, "skill_max_package_bytes", 1024),
+        patch.object(zipfile.ZipFile, "infolist", forged_infolist),
+        patch.object(zipfile.ZipFile, "read", fail_on_asset_read),
+        pytest.raises(PackageError, match="package too large after extraction"),
+    ):
+        extract_package(zip_bytes, tmp_path)
+
+
+def test_extract_package_rejects_too_many_files(tmp_path: Path) -> None:
+    zip_bytes = _compressed_zip_with(
+        {
+            "SKILL.md": _skill_md("too-many-files"),
+            "assets/a.txt": "a",
+            "assets/b.txt": "b",
+        }
+    )
+
+    with (
+        patch.object(settings, "skill_max_package_files", 2),
+        pytest.raises(PackageError, match="too many files"),
+    ):
+        extract_package(zip_bytes, tmp_path)
+
+
 def _compressed_zip_with(files: dict[str, str | bytes]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:

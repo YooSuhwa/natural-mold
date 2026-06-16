@@ -308,12 +308,12 @@ async def install_item(
     """
 
     installation = await install_service.install_item(db, item_id=item_id, user=user, body=body)
+    await db.commit()
     preparation_result = await evaluation_preparation.prepare_installed_skill_evaluation_set(
         db,
         installation=installation,
         user=user,
     )
-    await db.commit()
     await db.refresh(installation)
     await _record_marketplace_installation_audit(
         db,
