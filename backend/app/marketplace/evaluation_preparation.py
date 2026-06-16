@@ -32,8 +32,8 @@ async def prepare_installed_skill_evaluation_set(
     skill = await db.get(Skill, installation.installed_skill_id)
     if skill is None:
         return None
-    model_builder = await _model_builder_for_marketplace_prepare(db, skill)
     try:
+        model_builder = await _model_builder_for_marketplace_prepare(db, skill)
         return await prepare_skill_evaluation_set(
             db=db,
             skill=skill,

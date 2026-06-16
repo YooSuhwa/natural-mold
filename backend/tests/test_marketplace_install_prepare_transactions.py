@@ -14,6 +14,7 @@ from app.services.skill_evaluation_case_generator_llm import GeneratedSkillEvalu
 from app.skills import service as skill_service
 from tests.test_marketplace_install_evaluation_preparation import (
     _ensure_test_user,
+    _latest_audit_event,
     _latest_evaluation_set,
     _published_skill_item,
 )
@@ -99,3 +100,34 @@ async def test_marketplace_install_generates_evals_without_open_transaction(
     assert response.status_code == 201, response.text
     installed_skill_id = uuid.UUID(response.json()["installed_skill_id"])
     assert await _latest_evaluation_set(db, installed_skill_id) is not None
+
+
+async def test_marketplace_install_succeeds_when_model_resolution_fails(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    await _ensure_test_user(db)
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        item = await _published_skill_item(db, tmp_path, include_evals=False)
+        await db.commit()
+
+        with patch(
+            "app.marketplace.evaluation_preparation.build_skill_builder_chat_model",
+            side_effect=RuntimeError("provider package missing"),
+        ):
+            response = await client.post(
+                f"/api/marketplace/items/{item.id}/install",
+                json={"install_mode": "reuse_or_update"},
+            )
+
+    assert response.status_code == 201, response.text
+    installed_skill_id = uuid.UUID(response.json()["installed_skill_id"])
+    assert await _latest_evaluation_set(db, installed_skill_id) is None
+    audit_event = await _latest_audit_event(db, "skill_evaluation_set.prepare_failed")
+    assert audit_event is not None
+    assert audit_event.target_id == str(installed_skill_id)
+    assert audit_event.event_metadata is not None
+    assert audit_event.event_metadata["status"] == "failed"
+    assert audit_event.event_metadata["source_kind"] == "marketplace_import"
+    assert audit_event.event_metadata["reason"] == "unexpected_RuntimeError"
