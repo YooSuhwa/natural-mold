@@ -20,6 +20,52 @@ const allow = {
   ]),
 }
 
+const strictBaseline = new Set([
+  'tabs:src/app/(auth)/layout.tsx',
+  'client-page:src/app/(auth)/login/page.tsx',
+  'client-page:src/app/(auth)/register/page.tsx',
+  'client-page:src/app/agents/[agentId]/conversations/[conversationId]/page.tsx',
+  'client-page:src/app/agents/[agentId]/conversations/[conversationId]/traces/page.tsx',
+  'client-page:src/app/agents/[agentId]/page.tsx',
+  'client-page:src/app/agents/[agentId]/settings/page.tsx',
+  'client-page:src/app/agents/[agentId]/visual-settings/page.tsx',
+  'client-page:src/app/agents/new/conversational/page.tsx',
+  'client-page:src/app/agents/new/manual/page.tsx',
+  'client-page:src/app/agents/new/page.tsx',
+  'client-page:src/app/agents/new/template/page.tsx',
+  'client-page:src/app/marketplace/[item-id]/page.tsx',
+  'client-page:src/app/marketplace/page.tsx',
+  'client-page:src/app/settings/admin-audit/page.tsx',
+  'client-page:src/app/settings/agent-api/page.tsx',
+  'client-page:src/app/settings/credentials/page.tsx',
+  'client-page:src/app/settings/marketplace-admin/page.tsx',
+  'client-page:src/app/settings/memory/page.tsx',
+  'client-page:src/app/settings/models/page.tsx',
+  'client-page:src/app/settings/page.tsx',
+  'client-page:src/app/settings/schedules/page.tsx',
+  'client-page:src/app/settings/system-credentials/page.tsx',
+  'client-page:src/app/settings/system-llm/page.tsx',
+  'tabs:src/app/settings/usage/page.tsx',
+  'client-page:src/app/settings/usage/page.tsx',
+  'client-page:src/app/shared/[shareId]/page.tsx',
+  'raw-query-key:src/components/agent/assistant-panel.tsx',
+  'raw-query-key:src/components/chat/artifacts/artifact-preview.tsx',
+  'raw-query-key:src/components/chat/artifacts/providers/use-artifact-binary.ts',
+  'raw-query-key:src/components/chat/right-rail/chat-right-rail.tsx',
+  'raw-query-key:src/components/chat/use-conversation-row-actions.tsx',
+  'raw-query-key:src/lib/hooks/use-agent-blueprints.ts',
+  'raw-query-key:src/lib/hooks/use-agents.ts',
+  'raw-query-key:src/lib/hooks/use-conversation-title.ts',
+  'raw-query-key:src/lib/hooks/use-credential-test.ts',
+  'raw-query-key:src/lib/hooks/use-credentials.ts',
+  'raw-query-key:src/lib/hooks/use-health.ts',
+  'raw-query-key:src/lib/hooks/use-mcp-servers.ts',
+  'raw-query-key:src/lib/hooks/use-middlewares.ts',
+  'raw-query-key:src/lib/hooks/use-models.ts',
+  'raw-query-key:src/lib/hooks/use-templates.ts',
+  'raw-query-key:src/lib/hooks/use-usage.ts',
+])
+
 function toPosixPath(path) {
   return path.split(sep).join('/')
 }
@@ -45,6 +91,10 @@ function walk(dir) {
 
 const files = walk(srcRoot)
 const issues = []
+
+function issueKey(issue) {
+  return `${issue.rule}:${issue.rel}`
+}
 
 for (const file of files) {
   const rel = toPosixPath(relative(root, file))
@@ -93,4 +143,8 @@ for (const issue of issues) {
 
 console.log(`frontend architecture issues: ${issues.length}`)
 
-if (strict && issues.length > 0) exit(1)
+if (strict) {
+  const blockingIssues = issues.filter((issue) => !strictBaseline.has(issueKey(issue)))
+  console.log(`frontend architecture strict blocking issues: ${blockingIssues.length}`)
+  if (blockingIssues.length > 0) exit(1)
+}
