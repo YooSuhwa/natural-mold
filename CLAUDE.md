@@ -171,6 +171,15 @@ uv run pytest tests/test_agents.py  # 개별 파일
 uv run ruff check .         # 린트
 ```
 
+빠른 전체 테스트가 필요하면 기본 설정을 바꾸지 않고 pytest-xdist를 임시로
+사용한다. 저사양/CI에서는 `-n 4`부터 시작하고, 고사양 로컬에서는 `-n 8`까지
+올려도 된다. `-n auto`는 worker가 과하게 늘어 오히려 느릴 수 있다.
+
+```bash
+cd backend
+uv run --with pytest-xdist pytest -q -n 4
+```
+
 ```bash
 cd frontend
 pnpm build                  # 타입 체크 + 빌드
