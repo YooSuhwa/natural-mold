@@ -19,6 +19,7 @@ import {
   useUpdateCredential,
 } from '@/lib/hooks/use-credentials'
 import { useStartOAuth2 } from '@/lib/hooks/use-credential-test'
+import { openExternalUrl } from '@/lib/browser/window-open'
 
 interface Props {
   credentialId: string | null
@@ -67,7 +68,9 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
     if (!credential) return
     try {
       const { authorization_url } = await oauth.mutateAsync(credential.id)
-      window.open(authorization_url, '_blank', 'noopener,noreferrer')
+      if (!openExternalUrl(authorization_url)) {
+        toast.error(t('toast.oauthStartFailed'))
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('toast.oauthStartFailed'))
     }

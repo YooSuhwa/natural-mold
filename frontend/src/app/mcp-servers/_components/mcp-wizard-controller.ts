@@ -13,6 +13,7 @@ import {
   useMcpRegistry,
 } from '@/lib/hooks/use-mcp-servers'
 import { API_BASE } from '@/lib/api/client'
+import { navigateOpenedWindow, openNamedPopupWindow } from '@/lib/browser/window-open'
 import { credentialQueryKeys } from '@/lib/query-keys/credentials'
 import type { McpProbeTool, McpRegistryEntry, McpTransport } from '@/lib/types/mcp'
 
@@ -164,7 +165,7 @@ export function useMcpWizardController({
       toast.error(t('auth.oauthSelectFirst'))
       return
     }
-    const popup = window.open('', 'moldy-mcp-oauth', 'popup,width=560,height=760')
+    const popup = openNamedPopupWindow('moldy-mcp-oauth', 'popup,width=560,height=760')
     if (!popup) {
       toast.error(t('auth.oauthPopupBlocked'))
       return
@@ -173,7 +174,11 @@ export function useMcpWizardController({
       const { authorization_url: authorizationUrl } = await startOAuth.mutateAsync(
         form.credentialId,
       )
-      popup.location.href = authorizationUrl
+      if (!navigateOpenedWindow(popup, authorizationUrl)) {
+        popup.close()
+        toast.error(t('auth.oauthStartFailed'))
+        return
+      }
       setOauthPendingCredentialId(form.credentialId)
       setOauthConnectedCredentialId(null)
       popup.focus()

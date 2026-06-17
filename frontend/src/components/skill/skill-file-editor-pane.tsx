@@ -124,7 +124,7 @@ function FileContentArea({
         <a
           href={skillsApi.fileUrl(skillId, path)}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           className="inline-flex items-center gap-1 text-xs text-primary-strong hover:underline"
         >
           <Download className="size-3" /> {t('openOriginal')}
@@ -140,7 +140,7 @@ function FileContentArea({
         <a
           href={skillsApi.fileUrl(skillId, path)}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs hover:bg-muted"
         >
           <Download className="size-3.5" /> {t('openPdf')}
@@ -157,7 +157,7 @@ function FileContentArea({
         <a
           href={skillsApi.fileUrl(skillId, path)}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs hover:bg-muted"
         >
           <Download className="size-3.5" /> {t('download')}

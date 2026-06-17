@@ -19,8 +19,8 @@ export function DocxPreview({ artifact }: ArtifactPreviewProps) {
         setRenderError(null)
         const docx = await import('docx-preview')
         if (cancelled || !bodyRef.current || !styleRef.current) return
-        bodyRef.current.innerHTML = ''
-        styleRef.current.innerHTML = ''
+        bodyRef.current.replaceChildren()
+        styleRef.current.replaceChildren()
         await docx.renderAsync(binary.data, bodyRef.current, styleRef.current, {
           className: 'moldy-docx',
           inWrapper: true,

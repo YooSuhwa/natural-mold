@@ -11,6 +11,7 @@ import { useConversationArtifacts } from '@/lib/hooks/use-conversation-artifacts
 import { useRecordArtifactOpened } from '@/lib/hooks/use-artifact-library'
 import { chatArtifactsAtom, selectChatArtifactAtom } from '@/lib/stores/chat-artifacts'
 import { chatRightRailAtom, type ArtifactsPayload } from '@/lib/stores/chat-right-rail'
+import { openExternalUrl } from '@/lib/browser/window-open'
 import type { ArtifactSummary } from '@/lib/types'
 import { cn, resolveImageUrl } from '@/lib/utils'
 
@@ -74,11 +75,7 @@ export function ArtifactPanelContent({ payload }: Props) {
 
   const handleDownloadAll = () => {
     for (const artifact of items) {
-      window.open(
-        resolveImageUrl(artifact.download_url) ?? artifact.download_url,
-        '_blank',
-        'noopener',
-      )
+      openExternalUrl(resolveImageUrl(artifact.download_url) ?? artifact.download_url)
     }
   }
 

@@ -18,6 +18,8 @@ const allow = {
     'src/components/ui/tabs.tsx',
     'src/components/ui/line-tabs.tsx',
   ]),
+  htmlSink: new Set(['src/components/chat/mermaid-diagram.tsx']),
+  windowOpen: new Set(['src/lib/browser/window-open.ts']),
 }
 
 const strictBaseline = new Set([
@@ -163,6 +165,40 @@ for (const file of files) {
       rel,
       rule: 'direct-console',
       message: 'Use client logging helpers instead of direct console calls in src.',
+    })
+  }
+
+  if (
+    !allow.htmlSink.has(rel) &&
+    /\bdangerouslySetInnerHTML\b|\b(?:innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment)\b|\bDOMParser\b|\bparseFromString\b/.test(
+      text,
+    )
+  ) {
+    issues.push({
+      rel,
+      rule: 'unsafe-html-sink',
+      message: 'Route HTML/SVG sinks through audited renderers or explicit allowlisted helpers.',
+    })
+  }
+
+  if (!allow.windowOpen.has(rel) && /\bwindow\.open\s*\(/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'direct-window-open',
+      message: 'Use browser window helpers for URL validation and opener policy.',
+    })
+  }
+
+  if (
+    /target=["']_blank["']/.test(text) &&
+    !/rel=["'][^"']*noopener[^"']*noreferrer[^"']*["']|rel=["'][^"']*noreferrer[^"']*noopener[^"']*["']/.test(
+      text,
+    )
+  ) {
+    issues.push({
+      rel,
+      rule: 'target-blank-rel',
+      message: 'External blank-target links must include rel="noopener noreferrer".',
     })
   }
 

@@ -1818,13 +1818,19 @@ for new findings.
     blocked by `check-frontend-architecture.mjs`; existing warning/error call
     sites were migrated to `src/lib/logging/client-logger.ts`.
 
-- [ ] **Guard 6: Unsafe HTML / injection sinks**
+- [x] **Guard 6: Unsafe HTML / injection sinks**
   - Target: `dangerouslySetInnerHTML`, `innerHTML`, `DOMParser`, and URL-opening
     helpers that accept untrusted content.
   - Why: chat, artifacts, markdown, document preview, and marketplace content can
     all carry user-generated data.
   - Expected exceptions: audited markdown/artifact renderers with sanitization or
     library-owned rendering contracts.
+  - Implemented: unsafe HTML/SVG sinks, direct `window.open`, and `_blank`
+    links without `noopener noreferrer` are blocked by
+    `check-frontend-architecture.mjs`. Docx clearing now uses
+    `replaceChildren()`, URL opening is centralized in
+    `src/lib/browser/window-open.ts`, and Mermaid SVG rendering is the sole
+    audited `dangerouslySetInnerHTML` allowlist entry.
 
 - [x] **Guard 7: E2E lint and test hygiene**
   - Target: include `e2e/**` in a separate lint command or test-hygiene script.

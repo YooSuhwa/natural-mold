@@ -99,7 +99,7 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
                 <Button
                   variant="outline"
                   size="sm"
-                  render={<a href={firstLangfuseUrl} target="_blank" rel="noreferrer" />}
+                  render={<a href={firstLangfuseUrl} target="_blank" rel="noopener noreferrer" />}
                 >
                   <ExternalLinkIcon className="size-3.5" />
                   {t('openLogs')}
