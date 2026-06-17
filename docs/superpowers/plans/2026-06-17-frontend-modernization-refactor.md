@@ -1711,12 +1711,17 @@ chat/artifact page.
   - Notes: the only current typography exception is Agent Prism
     `leading-[14px]`, which is tied to compact trace-card geometry.
 
-- [ ] **Guard 5: Manual SVG icon drift**
+- [x] **Guard 5: Manual SVG icon drift**
   - Target: inline `<svg>` in product buttons, menus, tabs, and toolbars.
   - Goal: prefer `lucide-react` or Moldy-owned icon primitives for consistent
     stroke, size, and accessibility.
   - Expected exceptions: generated/user artifacts, third-party viewers, charts,
     logos, and icons that do not exist in the installed icon set.
+  - Implemented: `frontend/scripts/check-design-system.mjs` now blocks inline
+    `<svg>` in product TSX. Existing findings were all expected exceptions:
+    `health-history-chart`, `spend-line-chart`, and Agent Prism `BrandLogo`.
+  - Notes: new product controls should import icons from `lucide-react` or a
+    shared Moldy icon primitive before considering inline SVG.
 
 - [ ] **Guard 6: Nested cards and section-as-card warning**
   - Target: `Card` inside `Card`, `moldy-card` inside `moldy-card`, and page
@@ -1801,6 +1806,17 @@ allows only one renderer/layout-bound typography case:
 | Area | Runtime need | Why it stays exceptional |
 | --- | --- | --- |
 | Agent Prism span card title | `leading-[14px]` | Compact trace rows have fixed avatar/title geometry from the Agent Prism renderer. |
+
+### Current Narrow Inline SVG Exceptions
+
+`frontend/scripts/check-design-system.mjs` is the source of truth. It currently
+allows only chart/logo cases:
+
+| File | Runtime need | Why it stays exceptional |
+| --- | --- | --- |
+| `frontend/src/components/shared/health-history-chart.tsx` | Health sparkline chart | SVG path/circle geometry is generated from health data. |
+| `frontend/src/components/usage/spend-line-chart.tsx` | Usage spend line chart | SVG line/area geometry is generated from usage data. |
+| `frontend/src/components/agent-prism/BrandLogo.tsx` | Vendor/brand logos | These logos do not have lucide equivalents and are part of Agent Prism rendering. |
 
 ## 13. Non-Visual Lint Guard Rollout Ledger
 

@@ -128,6 +128,7 @@ pnpm lint:design-system
 - `gap-[...]`, `p-[...]`, `m-[...]`, `size-[...]`, `w-[...]`, `h-[...]`, `grid-cols-[...]` 같은 임의 spacing/sizing utility — Tailwind scale token, `lib/design-tokens.ts`, 공용 layout API, 또는 `scripts/check-design-system.mjs`의 좁은 예외로 이동
 - `z-[...]`, `z-40+`, `fixed inset-*`, `absolute inset-0`, `absolute ... z-*` overlay/stacking utility — shared overlay/positioning primitive 또는 `scripts/check-design-system.mjs`의 파일별 예외로 이동
 - `text-[...]`, `leading-[...]`, `tracking-[...]`, `tracking-tight/tighter`, `outline-none`, `transition-all` — Moldy typography/focus/explicit transition 규칙 사용
+- 제품 버튼/메뉴/탭/툴바의 inline `<svg>` — `lucide-react` 또는 Moldy-owned icon primitive로 이동
 - 임의 `style={...}` — 동적 layout/library API만 `scripts/check-design-system.mjs` allowlist에 이유와 함께 명시
 
 현재 허용된 inline style 및 arbitrary layout 예외는
@@ -139,7 +140,9 @@ palette 색이 필요해 보여도 먼저 의미 class를 추가한다. overlay/
 chat right rail mobile layer, sticky transcript header, popover, resize handle,
 Agent Prism marker처럼 실제 stacking 계약이 있는 경우만 허용한다. Typography
 예외는 Agent Prism trace geometry처럼 렌더러/레이아웃 계약이 있는 경우만 허용한다.
-예외를 늘릴 때는 먼저 공용 class/토큰으로 표현 가능한지 확인한다.
+inline SVG 예외는 data-driven chart와 브랜드/벤더 로고처럼 icon library 대체가
+부적절한 경우만 허용한다. 예외를 늘릴 때는 먼저 공용 class/토큰으로 표현 가능한지
+확인한다.
 
 ## i18n 정적 텍스트 규칙
 

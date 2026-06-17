@@ -319,6 +319,21 @@ const TYPOGRAPHY_UTILITY_ALLOWLIST = [
   },
 ]
 
+const INLINE_SVG_ALLOWLIST = [
+  {
+    filePath: 'src/components/shared/health-history-chart.tsx',
+    reason: 'data-driven health history chart',
+  },
+  {
+    filePath: 'src/components/usage/spend-line-chart.tsx',
+    reason: 'data-driven usage spend line chart',
+  },
+  {
+    filePath: 'src/components/agent-prism/BrandLogo.tsx',
+    reason: 'vendor/brand logos without lucide equivalents',
+  },
+]
+
 const STYLE_ATTRIBUTE_ALLOWLIST = [
   {
     filePath: 'src/components/skill/skill-package-tree.tsx',
@@ -577,6 +592,31 @@ function findTypographyIssues(source, filePath) {
   return issues
 }
 
+function isAllowedInlineSvg(filePath) {
+  return INLINE_SVG_ALLOWLIST.some((entry) => entry.filePath === filePath)
+}
+
+function findInlineSvgIssues(source, filePath) {
+  if (!filePath.endsWith('.tsx')) return []
+  if (isAllowedInlineSvg(filePath)) return []
+
+  const issues = []
+  const inlineSvgRe = /<svg\b/g
+
+  for (const match of source.matchAll(inlineSvgRe)) {
+    const index = match.index ?? 0
+    issues.push({
+      filePath,
+      line: lineNumberAt(source, index),
+      rule: 'inline-svg',
+      message: 'use lucide-react or a Moldy-owned icon primitive instead of inline SVG',
+      snippet: compactSnippet(source, index),
+    })
+  }
+
+  return issues
+}
+
 async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src')) {
   const files = await collectFiles(rootDir)
   const issues = []
@@ -588,6 +628,7 @@ async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src'))
     issues.push(...findArbitraryLayoutIssues(source, filePath))
     issues.push(...findPositioningIssues(source, filePath))
     issues.push(...findTypographyIssues(source, filePath))
+    issues.push(...findInlineSvgIssues(source, filePath))
     issues.push(...findInlineStyleIssues(source, filePath))
   }
 
@@ -614,6 +655,9 @@ async function main() {
     )
     console.log(
       `Allowed typography exceptions: ${TYPOGRAPHY_UTILITY_ALLOWLIST.length} documented renderer/layout cases.`,
+    )
+    console.log(
+      `Allowed inline SVG exceptions: ${INLINE_SVG_ALLOWLIST.length} documented chart/logo cases.`,
     )
     return
   }
