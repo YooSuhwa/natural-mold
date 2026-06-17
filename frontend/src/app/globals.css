@@ -1901,6 +1901,11 @@
     line-height: 1rem;
   }
 
+  .moldy-ui-eyebrow {
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
   .moldy-ui-meta {
     font-size: 0.65625rem;
     line-height: 1;

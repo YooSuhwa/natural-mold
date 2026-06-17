@@ -310,6 +310,15 @@ const POSITIONING_UTILITY_ALLOWLIST = [
   },
 ]
 
+const TYPOGRAPHY_UTILITY_ALLOWLIST = [
+  {
+    filePath: 'src/components/agent-prism/SpanCard/SpanCard.tsx',
+    rulePattern: /^arbitrary-typography-utility$/,
+    context: /text-agentprism-foreground max-w-32 truncate text-sm leading-\[14px\]/,
+    reason: 'Agent Prism trace title line-height is tied to compact span-card geometry',
+  },
+]
+
 const STYLE_ATTRIBUTE_ALLOWLIST = [
   {
     filePath: 'src/components/skill/skill-package-tree.tsx',
@@ -527,6 +536,47 @@ function findPositioningIssues(source, filePath) {
   return issues
 }
 
+function isAllowedTypographyUtility(filePath, rule, source, index) {
+  const context = source.slice(Math.max(0, index - 160), index + 220)
+
+  return TYPOGRAPHY_UTILITY_ALLOWLIST.some(
+    (entry) =>
+      entry.filePath === filePath && entry.rulePattern.test(rule) && entry.context.test(context),
+  )
+}
+
+function findTypographyIssues(source, filePath) {
+  const issues = []
+  const rules = [
+    {
+      id: 'arbitrary-typography-utility',
+      pattern: /\b(?:leading|tracking|font)-\[[^\]]+\]/g,
+      message: 'use Moldy typography classes or a documented renderer/layout exception',
+    },
+    {
+      id: 'negative-tracking-utility',
+      pattern: /\btracking-(?:tight|tighter)\b/g,
+      message: 'keep letter spacing at zero unless a semantic typography class owns it',
+    },
+  ]
+
+  for (const rule of rules) {
+    for (const match of source.matchAll(rule.pattern)) {
+      const index = match.index ?? 0
+      if (isAllowedTypographyUtility(filePath, rule.id, source, index)) continue
+      issues.push({
+        filePath,
+        line: lineNumberAt(source, index),
+        rule: rule.id,
+        message: rule.message,
+        snippet: compactSnippet(source, index),
+      })
+    }
+  }
+
+  return issues
+}
+
 async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src')) {
   const files = await collectFiles(rootDir)
   const issues = []
@@ -537,6 +587,7 @@ async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src'))
     issues.push(...findZeroToleranceIssues(source, filePath))
     issues.push(...findArbitraryLayoutIssues(source, filePath))
     issues.push(...findPositioningIssues(source, filePath))
+    issues.push(...findTypographyIssues(source, filePath))
     issues.push(...findInlineStyleIssues(source, filePath))
   }
 
@@ -560,6 +611,9 @@ async function main() {
     )
     console.log(
       `Allowed positioning exceptions: ${POSITIONING_UTILITY_ALLOWLIST.length} documented overlay/stacking cases.`,
+    )
+    console.log(
+      `Allowed typography exceptions: ${TYPOGRAPHY_UTILITY_ALLOWLIST.length} documented renderer/layout cases.`,
     )
     return
   }

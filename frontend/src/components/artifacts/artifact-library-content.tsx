@@ -67,7 +67,7 @@ export function ArtifactLibraryContent() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 p-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+        <h1 className="text-2xl font-semibold text-foreground">{t('title')}</h1>
         <p className="text-sm text-muted-foreground">{t('description')}</p>
       </header>
 

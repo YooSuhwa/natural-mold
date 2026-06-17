@@ -1697,13 +1697,19 @@ chat/artifact page.
     intentionally outside this rule; it does not create an overlay stacking
     context.
 
-- [ ] **Guard 4: Typography drift**
+- [x] **Guard 4: Typography drift**
   - Target: `leading-[...]`, `tracking-[...]`, negative tracking, and page-local
     one-off typographic tweaks.
   - Goal: reduce clipping and inconsistent Korean/English text rhythm across
     compact panels, tabs, buttons, and cards.
   - Expected exceptions: code blocks, data tables, monospace trace views, and
     third-party document/artifact renderers.
+  - Implemented: `frontend/scripts/check-design-system.mjs` now blocks arbitrary
+    leading/tracking/font utilities and negative `tracking-tight/tighter`.
+    Existing `tracking-tight` utilities were removed, and shared conversation
+    eyebrow labels now use `moldy-ui-eyebrow`.
+  - Notes: the only current typography exception is Agent Prism
+    `leading-[14px]`, which is tied to compact trace-card geometry.
 
 - [ ] **Guard 5: Manual SVG icon drift**
   - Target: inline `<svg>` in product buttons, menus, tabs, and toolbars.
@@ -1786,6 +1792,15 @@ allows only documented overlay/stacking cases:
 | Chat right rail | `fixed inset-0 z-40`, resize handle, mobile side panel | The rail owns a user-resizable split pane and mobile modal layer. |
 | Agent Prism | absolute trace connectors, copy action, timeline markers | Trace/timeline rendering depends on absolute marker geometry. |
 | Chat image preview | unloaded image absolute overlay | Image loading state must not shift layout. |
+
+### Current Narrow Typography Exceptions
+
+`frontend/scripts/check-design-system.mjs` is the source of truth. It currently
+allows only one renderer/layout-bound typography case:
+
+| Area | Runtime need | Why it stays exceptional |
+| --- | --- | --- |
+| Agent Prism span card title | `leading-[14px]` | Compact trace rows have fixed avatar/title geometry from the Agent Prism renderer. |
 
 ## 13. Non-Visual Lint Guard Rollout Ledger
 

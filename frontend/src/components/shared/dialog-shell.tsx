@@ -78,9 +78,7 @@ function Header({ icon, title, description, actions, className, srOnly }: Header
         </div>
       ) : null}
       <div className="min-w-0 flex-1">
-        <DialogTitle className="text-base font-semibold tracking-tight text-foreground">
-          {title}
-        </DialogTitle>
+        <DialogTitle className="text-base font-semibold text-foreground">{title}</DialogTitle>
         {description ? (
           <DialogDescription className="mt-1 text-sm text-muted-foreground">
             {description}

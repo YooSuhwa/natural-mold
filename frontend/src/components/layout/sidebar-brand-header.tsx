@@ -26,7 +26,7 @@ export function SidebarBrandHeader({ brandLabel, homeHref, toggleLabel }: Sideba
             height={32}
             className="size-8 shrink-0 object-contain"
           />
-          <span className="text-lg font-bold tracking-tight">{brandLabel}</span>
+          <span className="text-lg font-bold">{brandLabel}</span>
         </Link>
         <button
           type="button"
