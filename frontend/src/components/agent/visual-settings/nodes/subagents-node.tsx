@@ -5,8 +5,8 @@ import { Handle, Position } from '@xyflow/react'
 import { PlusIcon, TrashIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
+import { SubAgentsDialog } from '@/components/agent/sub-agents-dialog'
 import { useAgents } from '@/lib/hooks/use-agents'
-import { SubAgentsDialog } from '@/app/agents/[agentId]/settings/_components/dialogs/sub-agents-dialog'
 
 export interface SubagentsNodeData {
   selectedSubAgentIds: Set<string>

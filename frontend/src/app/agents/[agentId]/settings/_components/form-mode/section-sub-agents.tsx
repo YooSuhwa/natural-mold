@@ -5,8 +5,8 @@ import { useTranslations } from 'next-intl'
 import { SettingsIcon, UsersIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { SubAgentsDialog } from '@/components/agent/sub-agents-dialog'
 import { useAgents } from '@/lib/hooks/use-agents'
-import { SubAgentsDialog } from '../dialogs/sub-agents-dialog'
 
 interface SectionSubAgentsProps {
   selectedSubAgentIds: Set<string>

@@ -1846,13 +1846,20 @@ for new findings.
     reason. Existing visual capture waits now use a paint-based helper, and the
     remaining seeded-card skip has a reason string.
 
-- [ ] **Guard 8: Import boundaries and private folders**
+- [x] **Guard 8: Import boundaries and private folders**
   - Target: imports from another route's `_components`, `_hooks`, or `_lib`;
     domain hooks imported into `src/components/ui`; and new barrel `index.ts`
     files.
   - Why: this keeps the folder architecture from drifting back after the refactor.
   - Tooling: extend `check-frontend-architecture.mjs`; consider
     `eslint-plugin-boundaries` only after the custom rules stabilize.
+  - Implemented: `check-frontend-architecture.mjs` now resolves relative and
+    `@/` imports and blocks cross-route private folder imports, domain hook
+    imports inside `components/ui`, and new barrel `index.ts(x)` files.
+    `SubAgentsDialog` and audit event content were moved out of sibling route
+    private folders. The two `agents/new/manual` imports from the agent settings
+    route are intentionally baselined until the larger agent settings feature
+    module extraction in the refactor plan.
 
 - [ ] **Guard 9: Heavy dependency and client-boundary imports**
   - Target: Mermaid, document viewers, spreadsheet/PPT/HWP libraries, syntax

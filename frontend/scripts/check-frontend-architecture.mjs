@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative, sep } from 'node:path'
+import { dirname, join, normalize, relative, sep } from 'node:path'
 import { exit } from 'node:process'
 
 const root = process.cwd()
@@ -63,10 +63,19 @@ const strictBaseline = new Set([
   'direct-api-import:src/components/skill/skill-detail-package-editor.tsx',
   'direct-api-import:src/components/skill/skill-file-editor-pane.tsx',
   'direct-api-import:src/components/skill/use-skill-file-remote-cache.ts',
+  'private-route-import:src/app/agents/new/manual/page.tsx->src/app/agents/[agentId]/settings/_components/form-mode/form-mode',
+  'private-route-import:src/app/agents/new/manual/page.tsx->src/app/agents/[agentId]/settings/_components/right-panel/right-panel',
+  'barrel-index:src/components/agent-prism/theme/index.ts',
+  'barrel-index:src/components/marketplace/badges/index.ts',
+  'barrel-index:src/lib/types/index.ts',
 ])
 
 function toPosixPath(path) {
   return path.split(sep).join('/')
+}
+
+function normalizePosixPath(path) {
+  return toPosixPath(normalize(path))
 }
 
 function walk(dir) {
@@ -92,7 +101,7 @@ const files = walk(srcRoot)
 const issues = []
 
 function issueKey(issue) {
-  return `${issue.rule}:${issue.rel}`
+  return `${issue.rule}:${issue.id ?? issue.rel}`
 }
 
 function isProductSurface(rel) {
@@ -101,6 +110,27 @@ function isProductSurface(rel) {
 
 function isClientLogger(rel) {
   return rel === 'src/lib/logging/client-logger.ts'
+}
+
+function resolveImportPath(rel, importPath) {
+  if (importPath.startsWith('@/')) return `src/${importPath.slice(2)}`
+  if (importPath.startsWith('.')) return normalizePosixPath(join(dirname(rel), importPath))
+  return null
+}
+
+function privateRouteRoot(resolvedPath) {
+  const match = resolvedPath.match(/^(.*)\/_(?:components|hooks|lib)(?:\/|$)/)
+  return match?.[1] ?? null
+}
+
+function importSpecifiers(text) {
+  const imports = []
+  const pattern =
+    /\bimport\s+(?:type\s+)?(?:[^'"]+?\s+from\s+)?['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g
+  for (const match of text.matchAll(pattern)) {
+    imports.push(match[1] ?? match[2])
+  }
+  return imports
 }
 
 for (const file of files) {
@@ -199,6 +229,38 @@ for (const file of files) {
       rel,
       rule: 'target-blank-rel',
       message: 'External blank-target links must include rel="noopener noreferrer".',
+    })
+  }
+
+  for (const importPath of importSpecifiers(text)) {
+    const resolvedPath = resolveImportPath(rel, importPath)
+    if (!resolvedPath) continue
+
+    const targetPrivateRoot = privateRouteRoot(resolvedPath)
+    if (targetPrivateRoot && !rel.startsWith(`${targetPrivateRoot}/`)) {
+      issues.push({
+        id: `${rel}->${resolvedPath}`,
+        rel,
+        rule: 'private-route-import',
+        message: 'Do not import another route segment private folder.',
+      })
+    }
+
+    if (/^src\/components\/ui\//.test(rel) && resolvedPath.startsWith('src/lib/hooks/')) {
+      issues.push({
+        id: `${rel}->${resolvedPath}`,
+        rel,
+        rule: 'ui-domain-hook-import',
+        message: 'UI primitives must not import domain hooks.',
+      })
+    }
+  }
+
+  if (/\/index\.(?:ts|tsx)$/.test(rel)) {
+    issues.push({
+      rel,
+      rule: 'barrel-index',
+      message: 'Avoid new barrel index files; import concrete modules directly.',
     })
   }
 
