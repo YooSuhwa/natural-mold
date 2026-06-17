@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { makeAssistantToolUI, useAui } from '@assistant-ui/react'
 import { MessageCircleQuestionIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { reportClientWarning } from '@/lib/logging/client-logger'
 import { cn } from '@/lib/utils'
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
 import { CountdownBadge } from './countdown-badge'
@@ -103,7 +104,7 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
           content: [{ type: 'text', text: opt }],
         })
       } catch (err) {
-        console.warn('[clarifying] thread append error:', err)
+        reportClientWarning('clarifying', 'thread append error:', err)
         setPicked(null) // 실패 시 다시 클릭 가능하게
       }
     }

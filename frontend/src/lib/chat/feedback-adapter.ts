@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import type { FeedbackAdapter } from '@assistant-ui/react'
 import { feedbackApi } from '@/lib/api/feedback'
+import { reportClientError } from '@/lib/logging/client-logger'
 
 /**
  * Wire the assistant-ui FeedbackAdapter to ``POST/DELETE /api/messages/{id}/feedback``.
@@ -31,7 +32,7 @@ export function useChatFeedbackAdapter(
         promise
           .then(() => onMutate?.())
           .catch((err) => {
-            console.error('[feedback] submit failed:', err)
+            reportClientError('feedback', 'submit failed:', err)
           })
       },
     }

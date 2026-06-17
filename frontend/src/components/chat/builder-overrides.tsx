@@ -34,6 +34,7 @@ import {
   useMessageEditComposerControls,
 } from './message-edit-composer'
 import { chatCancelInFlightAtom } from '@/lib/stores/chat-store'
+import { reportClientWarning } from '@/lib/logging/client-logger'
 
 /**
  * Builder-variant 메시지/컴포저 오버라이드.
@@ -231,7 +232,7 @@ function BuilderStopButton() {
     try {
       aui.thread().cancelRun()
     } catch (err) {
-      console.warn('[BuilderStopButton] cancelRun error:', err)
+      reportClientWarning('BuilderStopButton', 'cancelRun error:', err)
     }
   }
   return (

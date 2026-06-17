@@ -12,6 +12,7 @@ import {
 } from 'react'
 import { useAui, useAuiState } from '@assistant-ui/react'
 
+import { reportClientError } from '@/lib/logging/client-logger'
 import { cn } from '@/lib/utils'
 import { autoFocusComposerInput, focusTextareaAtEnd } from './composer-focus'
 
@@ -163,7 +164,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
         event.preventDefault()
         await Promise.all(files.map((file) => aui.composer().addAttachment(file)))
       } catch (error) {
-        console.error('[ImeSafeComposerInput] add attachment error:', error)
+        reportClientError('ImeSafeComposerInput', 'add attachment error:', error)
       }
     }
 

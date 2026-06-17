@@ -13,6 +13,7 @@ import { builderApi } from '@/lib/api/builder'
 import { HiTLContext } from '@/lib/chat/hitl-context'
 import { BUILDER_TOOL_UI } from '@/lib/chat/tool-ui-registry'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
+import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
 import { streamBuilderMessage } from '@/lib/sse/stream-builder-message'
 import { streamBuilderResume } from '@/lib/sse/stream-builder-resume'
 import type { Decision, Message, SSEEvent } from '@/lib/types'
@@ -103,10 +104,10 @@ export default function ConversationalCreationPage({
           router.push(`/agents/${session.agent_id}`)
         } else if (session.status === 'failed') {
           completedRef.current = true
-          console.warn('[builder] session failed:', session.error_message)
+          reportClientWarning('builder', 'session failed:', session.error_message)
         }
       } catch (err) {
-        console.error('[builder] getSession failed:', err)
+        reportClientError('builder', 'getSession failed:', err)
       }
     })()
   }, [router])

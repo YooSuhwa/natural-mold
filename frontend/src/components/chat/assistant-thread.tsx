@@ -70,6 +70,7 @@ import {
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
+import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
 import { ImeSafeComposerInput } from '@/components/chat/ime-safe-composer-input'
 import {
   MessageEditComposerInput,
@@ -338,7 +339,7 @@ function CopyButton() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.warn('[CopyButton] failed to copy message text', err)
+      reportClientWarning('CopyButton', 'failed to copy message text', err)
     } finally {
       setIsCopying(false)
     }
@@ -455,7 +456,7 @@ function BranchPicker() {
       if (!conversationId || pendingCheckpointId) return
       const checkpointId = siblingCheckpoints[targetIdx]
       if (!checkpointId) {
-        console.warn('[BranchPicker] missing checkpoint id for sibling idx', targetIdx)
+        reportClientWarning('BranchPicker', 'missing checkpoint id for sibling idx', targetIdx)
         return
       }
       setPendingCheckpointId(checkpointId)
@@ -467,7 +468,7 @@ function BranchPicker() {
         })
         dispatchMoldyBranchSwitched({ conversationId, checkpointId })
       } catch (err) {
-        console.error('[BranchPicker] switch failed', err)
+        reportClientError('BranchPicker', 'switch failed', err)
       } finally {
         setPendingCheckpointId(null)
       }
@@ -994,7 +995,7 @@ function StopButton() {
     try {
       aui.thread().cancelRun()
     } catch (err) {
-      console.warn('[StopButton] cancelRun error:', err)
+      reportClientWarning('StopButton', 'cancelRun error:', err)
     }
   }
   return (

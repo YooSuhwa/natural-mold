@@ -12,6 +12,7 @@ import {
   loadServerCheckpointContext,
   type ServerCheckpointContext,
 } from './thread-state-checkpoints'
+import { reportClientWarning } from '@/lib/logging/client-logger'
 
 interface UseCheckpointForkHandlersOptions<StateType extends object> {
   conversationId: string
@@ -62,7 +63,7 @@ export function useCheckpointForkHandlers<StateType extends object>({
         checkpointForEdit(message, checkpointContext) ??
         (await checkpointForEditFromServer(message, conversationId, checkpointContext))
       if (!checkpointId) {
-        console.warn('[useMoldyLangGraphStream] Edit skipped: checkpoint is unavailable.')
+        reportClientWarning('useMoldyLangGraphStream', 'Edit skipped: checkpoint is unavailable.')
         return
       }
       await stream.submit(humanInput<StateType>(content, attachments), { forkFrom: checkpointId })
@@ -76,7 +77,7 @@ export function useCheckpointForkHandlers<StateType extends object>({
         checkpointForReload(parentId, checkpointContext) ??
         (await checkpointForReloadFromServer(parentId, conversationId, checkpointContext))
       if (!checkpointId) {
-        console.warn('[useMoldyLangGraphStream] Reload skipped: checkpoint is unavailable.')
+        reportClientWarning('useMoldyLangGraphStream', 'Reload skipped: checkpoint is unavailable.')
         return
       }
       await stream.submit(null, { forkFrom: checkpointId })

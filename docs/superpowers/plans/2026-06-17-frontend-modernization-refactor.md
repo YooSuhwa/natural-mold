@@ -1807,13 +1807,16 @@ for new findings.
     `check-frontend-architecture.mjs`. Existing route handoff, onboarding flags,
     and sidebar cookie writes were moved behind explicit `src/lib` helpers.
 
-- [ ] **Guard 5: Console/logging policy**
+- [x] **Guard 5: Console/logging policy**
   - Target: `console.log`, `console.debug`, `console.info` in `src`, and
     uncontrolled `console.warn/error` scattered across product code.
   - Why: console noise hides real runtime regressions, and error reporting should
     be intentional.
   - Rollout mode: create or adopt a small logger/reporting helper; allow
     `console.warn/error` only in approved low-level catch blocks until migrated.
+  - Implemented: direct `console.log/debug/info/warn/error` in `src` is now
+    blocked by `check-frontend-architecture.mjs`; existing warning/error call
+    sites were migrated to `src/lib/logging/client-logger.ts`.
 
 - [ ] **Guard 6: Unsafe HTML / injection sinks**
   - Target: `dangerouslySetInnerHTML`, `innerHTML`, `DOMParser`, and URL-opening

@@ -13,6 +13,7 @@ import {
 } from 'react'
 import { useAui, useAuiState } from '@assistant-ui/react'
 
+import { reportClientError } from '@/lib/logging/client-logger'
 import { cn } from '@/lib/utils'
 import { requestThreadComposerFocus } from './composer-focus'
 
@@ -183,7 +184,7 @@ export const MessageEditComposerInput = forwardRef<
         const composer = aui.message().composer()
         await Promise.all(files.map((file) => composer.addAttachment(file)))
       } catch (error) {
-        console.error('[MessageEditComposerInput] add attachment error:', error)
+        reportClientError('MessageEditComposerInput', 'add attachment error:', error)
       }
     }
 

@@ -97,6 +97,10 @@ function isProductSurface(rel) {
   return /^src\/(?:app|components)\//.test(rel)
 }
 
+function isClientLogger(rel) {
+  return rel === 'src/lib/logging/client-logger.ts'
+}
+
 for (const file of files) {
   const rel = toPosixPath(relative(root, file))
   const text = readFileSync(file, 'utf8')
@@ -151,6 +155,14 @@ for (const file of files) {
       rule: 'browser-storage',
       message:
         'Move browser storage and cookie access into explicit lib helpers so auth-sensitive state stays centralized.',
+    })
+  }
+
+  if (!isClientLogger(rel) && /\bconsole\.(?:log|debug|info|warn|error)\b/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'direct-console',
+      message: 'Use client logging helpers instead of direct console calls in src.',
     })
   }
 
