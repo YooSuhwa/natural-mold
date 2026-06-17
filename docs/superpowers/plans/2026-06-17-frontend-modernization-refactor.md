@@ -1861,13 +1861,17 @@ for new findings.
     route are intentionally baselined until the larger agent settings feature
     module extraction in the refactor plan.
 
-- [ ] **Guard 9: Heavy dependency and client-boundary imports**
+- [x] **Guard 9: Heavy dependency and client-boundary imports**
   - Target: Mermaid, document viewers, spreadsheet/PPT/HWP libraries, syntax
     highlighters, and trace/debug viewers imported into route/page shells instead
     of lazy Client islands.
   - Why: page-level Client Components and direct heavy imports are the most likely
     bundle/performance regressions during commonization.
   - Tooling: custom import scan first; later pair with bundle analyzer budgets.
+  - Implemented: `check-frontend-architecture.mjs` now blocks heavy client
+    dependency imports outside approved lazy islands/providers and blocks route
+    shells from statically importing heavy viewer/island components. The trace
+    debugger page now lazy-loads `TraceDebuggerView`.
 
 - [ ] **Guard 10: Date/number formatting and timezone drift**
   - Target: ad hoc `new Date(...).toLocaleString()`, `toLocaleDateString()`, and

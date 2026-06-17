@@ -22,6 +22,54 @@ const allow = {
   windowOpen: new Set(['src/lib/browser/window-open.ts']),
 }
 
+const heavyClientImports = [
+  {
+    module: 'mermaid',
+    files: new Set(['src/components/chat/mermaid-diagram.tsx']),
+    prefixes: [],
+  },
+  {
+    module: 'react-syntax-highlighter',
+    files: new Set(['src/components/chat/markdown-code-highlighter.tsx']),
+    prefixes: [],
+  },
+  {
+    module: '@xyflow/react',
+    files: new Set(),
+    prefixes: ['src/components/agent/visual-settings/'],
+  },
+  {
+    module: '@assistant-ui/react-streamdown',
+    files: new Set(['src/components/chat/assistant-thread.tsx']),
+    prefixes: [],
+  },
+  {
+    module: '@streamdown/math',
+    files: new Set(['src/components/chat/assistant-thread.tsx']),
+    prefixes: [],
+  },
+  {
+    module: 'docx-preview',
+    files: new Set(['src/components/chat/artifacts/providers/docx-preview.tsx']),
+    prefixes: [],
+  },
+  {
+    module: 'xlsx',
+    files: new Set(['src/components/chat/artifacts/providers/xlsx-preview.tsx']),
+    prefixes: [],
+  },
+  {
+    module: '@rhwp/core',
+    files: new Set(['src/components/chat/artifacts/providers/hwp-preview.tsx']),
+    prefixes: [],
+  },
+]
+
+const heavyRouteComponents = new Set([
+  '@/components/chat/trace-debugger-view',
+  '@/components/agent/visual-settings/visual-settings-island',
+])
+
 const strictBaseline = new Set([
   'tabs:src/app/(auth)/layout.tsx',
   'client-page:src/app/(auth)/login/page.tsx',
@@ -123,14 +171,22 @@ function privateRouteRoot(resolvedPath) {
   return match?.[1] ?? null
 }
 
-function importSpecifiers(text) {
+function importRecords(text) {
   const imports = []
   const pattern =
     /\bimport\s+(?:type\s+)?(?:[^'"]+?\s+from\s+)?['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g
   for (const match of text.matchAll(pattern)) {
-    imports.push(match[1] ?? match[2])
+    imports.push({ path: match[1] ?? match[2], kind: match[1] ? 'static' : 'dynamic' })
   }
   return imports
+}
+
+function matchesModule(importPath, moduleName) {
+  return importPath === moduleName || importPath.startsWith(`${moduleName}/`)
+}
+
+function isHeavyImportAllowed(rel, config) {
+  return config.files.has(rel) || config.prefixes.some((prefix) => rel.startsWith(prefix))
 }
 
 for (const file of files) {
@@ -232,7 +288,7 @@ for (const file of files) {
     })
   }
 
-  for (const importPath of importSpecifiers(text)) {
+  for (const { path: importPath, kind } of importRecords(text)) {
     const resolvedPath = resolveImportPath(rel, importPath)
     if (!resolvedPath) continue
 
@@ -252,6 +308,29 @@ for (const file of files) {
         rel,
         rule: 'ui-domain-hook-import',
         message: 'UI primitives must not import domain hooks.',
+      })
+    }
+
+    if (kind === 'static' && /^src\/app\//.test(rel) && heavyRouteComponents.has(importPath)) {
+      issues.push({
+        id: `${rel}->${importPath}`,
+        rel,
+        rule: 'heavy-route-component-import',
+        message: 'Route shells must lazy-load heavy viewer/island components.',
+      })
+    }
+  }
+
+  for (const { path: importPath } of importRecords(text)) {
+    const heavyConfig = heavyClientImports.find((config) =>
+      matchesModule(importPath, config.module),
+    )
+    if (heavyConfig && !isHeavyImportAllowed(rel, heavyConfig)) {
+      issues.push({
+        id: `${rel}->${importPath}`,
+        rel,
+        rule: 'heavy-client-import',
+        message: 'Heavy client dependencies must stay inside approved lazy islands/providers.',
       })
     }
   }
