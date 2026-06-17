@@ -1754,7 +1754,7 @@ chat/artifact page.
     warnings, 1 label association warning, and 4 noninteractive interaction
     warnings. New or stale baseline entries fail `pnpm lint:a11y`.
 
-- [ ] **Guard 8: Common component usage**
+- [x] **Guard 8: Common component usage**
   - Target: route-local reimplementation of dialogs, tabs, resource panels,
     empty/loading/error states, and page headers.
   - Goal: make the refactor stick by pointing new work to `DialogShell`,
@@ -1762,6 +1762,16 @@ chat/artifact page.
     list states, and settings form primitives.
   - Rollout mode: extend `check-frontend-architecture.mjs` with narrow import or
     role-based checks and an intentional allowlist.
+  - Implemented: `frontend/scripts/check-frontend-architecture.mjs` now reports
+    direct use of shared primitive implementation classes: `moldy-empty-state`,
+    `moldy-page-title`/`moldy-page-kicker`, and root `moldy-resource-panel` /
+    `moldy-resource-card` surface classes outside their owning primitives or
+    documented loading skeletons.
+  - Source cleanup: dashboard search-empty UI now uses `EmptyState` instead of
+    hand-rolled `moldy-empty-state` markup.
+  - Baseline: the only new strict baseline is the existing agent-create hero
+    title (`src/app/agents/new/page.tsx`), which uses `moldy-page-title` as a
+    deliberate custom hero treatment until that route is split.
 
 ### Current Narrow Inline Style Exceptions
 

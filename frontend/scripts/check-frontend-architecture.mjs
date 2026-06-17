@@ -20,6 +20,16 @@ const allow = {
   ]),
   htmlSink: new Set(['src/components/chat/mermaid-diagram.tsx']),
   windowOpen: new Set(['src/lib/browser/window-open.ts']),
+  emptyStatePrimitive: new Set(['src/components/shared/empty-state.tsx']),
+  pageHeaderPrimitive: new Set(['src/components/shared/page-header.tsx']),
+  resourceSurfacePrimitive: new Set([
+    'src/components/shared/resource-layout.tsx',
+    'src/lib/resource-tones.ts',
+    'src/app/marketplace/loading.tsx',
+    'src/app/mcp-servers/loading.tsx',
+    'src/app/skills/loading.tsx',
+    'src/app/tools/loading.tsx',
+  ]),
 }
 
 const heavyClientImports = [
@@ -98,6 +108,7 @@ const strictBaseline = new Set([
   'tabs:src/app/settings/usage/page.tsx',
   'client-page:src/app/settings/usage/page.tsx',
   'client-page:src/app/shared/[shareId]/page.tsx',
+  'common-page-header:src/app/agents/new/page.tsx',
   'direct-api-import:src/app/agents/[agentId]/page.tsx',
   'direct-api-import:src/app/agents/new/conversational/page.tsx',
   'direct-api-import:src/app/settings/page.tsx',
@@ -298,6 +309,34 @@ for (const file of files) {
       rel,
       rule: 'display-formatting',
       message: 'Use display formatting helpers instead of ad hoc locale/date/number formatting.',
+    })
+  }
+
+  if (!allow.emptyStatePrimitive.has(rel) && /\bmoldy-empty-state(?:-icon)?\b/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'common-empty-state',
+      message: 'Use the shared EmptyState primitive instead of direct moldy-empty-state classes.',
+    })
+  }
+
+  if (!allow.pageHeaderPrimitive.has(rel) && /\bmoldy-page-(?:title|kicker)\b/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'common-page-header',
+      message: 'Use PageHeader, PageShell, or ResourcePage instead of direct page title classes.',
+    })
+  }
+
+  if (
+    !allow.resourceSurfacePrimitive.has(rel) &&
+    /\bmoldy-resource-(?:panel|panel-toolbar|panel-body|card)(?!-)\b/.test(text)
+  ) {
+    issues.push({
+      rel,
+      rule: 'common-resource-surface',
+      message:
+        'Use ResourcePage, ResourcePanel, ResourceGrid, or ResourceListCard instead of direct resource surface classes.',
     })
   }
 

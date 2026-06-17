@@ -251,10 +251,11 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="moldy-empty-state p-8">
-                <SearchIcon className="mb-2 size-6 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">{t('noSearchResults')}</p>
-              </div>
+              <EmptyState
+                className="p-8"
+                icon={<SearchIcon className="size-6 text-muted-foreground" />}
+                title={t('noSearchResults')}
+              />
             )}
           </div>
         ) : (

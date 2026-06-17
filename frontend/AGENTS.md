@@ -191,13 +191,20 @@ inline SVG 예외는 data-driven chart와 브랜드/벤더 로고처럼 icon lib
 - Settings pages use `SettingsShell`, `SettingsSectionCard`, and `FormFieldShell` before creating local card/field wrappers.
 - New counted tabs use `CountedTabs` or existing `LineTabs`; do not hand-roll `role="tablist"` buttons.
 - New dialogs use `DialogShell`; direct `DialogContent` is limited to `components/ui/dialog.tsx`, `components/shared/dialog-shell.tsx`, and shared confirmation primitives.
+- Do not use shared primitive implementation classes directly in product code:
+  `moldy-empty-state`, `moldy-page-title`/`moldy-page-kicker`, and root
+  `moldy-resource-panel`/`moldy-resource-card` classes belong to `EmptyState`,
+  `PageHeader`/`PageShell`, and `ResourcePanel`/`ResourceListCard`.
 - CRUD tables may use `DataTable`; domain-specific expandable tables can stay local. Do not force metric/read-only tables into `DataTable` unless behavior is reused.
 
 ## Frontend preflight and performance rules
 
 - Run `pnpm preflight` before build/dev diagnostics. The project expects Node 22 and installed frontend dependencies.
 - After frontend refactors run `pnpm lint`, `pnpm lint:a11y`, `pnpm lint:i18n`, `pnpm lint:design-system`, and `pnpm lint:frontend-architecture`.
-- JSX accessibility coverage lives in `eslint.a11y.config.mjs` and `scripts/check-jsx-a11y.mjs`. Existing warnings are baselined in `scripts/jsx-a11y-baseline.json`; do not update that baseline unless the new/removed warnings were reviewed in the actual source.
+- JSX accessibility coverage lives in `eslint.a11y.config.mjs` and
+  `scripts/check-jsx-a11y.mjs`. Existing warnings are baselined in
+  `scripts/jsx-a11y-baseline.json`; do not update that baseline unless the
+  new/removed warnings were reviewed in the actual source.
 - Do not add a new page-level `'use client'` without explaining why a Server Component wrapper plus Client island is insufficient.
 - Keep heavy artifact viewers, markdown highlighters, document parsers, Mermaid, HWP/DOCX/XLSX/PPTX viewers, and similar libraries behind lazy/dynamic imports.
 - New TanStack Query keys should be created through feature key factories, not ad hoc raw arrays inside components.
