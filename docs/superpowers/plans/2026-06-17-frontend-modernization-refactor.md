@@ -1667,13 +1667,21 @@ chat/artifact page.
   - Notes: exact allowlist entries live in `ARBITRARY_LAYOUT_ALLOWLIST` so future
     exceptions must include a file-specific reason before the guard passes.
 
-- [ ] **Guard 2: Semantic color utility usage**
+- [x] **Guard 2: Semantic color utility usage**
   - Target: product-surface uses of direct palette families such as `bg-blue-*`,
     `text-purple-*`, `border-emerald-*`, and similar one-off colors.
   - Goal: use semantic tokens and Moldy classes for surfaces; keep color families
     mostly to status badges, icon dots, charts, and vendor/runtime visualizations.
   - Expected exceptions: Agent Prism category colors, usage metric bars, and
     explicitly named status/tone tokens.
+  - Implemented: direct numeric Tailwind palette utilities are now blocked by
+    `frontend/scripts/check-design-system.mjs`. The existing 5 findings were
+    migrated to semantic classes: `moldy-favorite-icon` for favorite stars and
+    `moldy-data-type-string` / `moldy-data-type-number` /
+    `moldy-data-type-boolean` for structured artifact previews.
+  - Notes: product code should add or reuse semantic classes/tokens before
+    reaching for `bg-blue-*`, `text-emerald-*`, `border-rose-*`, and similar
+    direct palette classes.
 
 - [ ] **Guard 3: z-index, fixed, and absolute positioning**
   - Target: new arbitrary z-indexes, high `z-*` utilities, and page-local

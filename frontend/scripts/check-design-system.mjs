@@ -39,6 +39,12 @@ const ZERO_TOLERANCE_RULES = [
     message: 'map raw hex color utilities into Moldy semantic tokens',
   },
   {
+    id: 'direct-palette-utility',
+    pattern:
+      /\b(?:bg|text|border|ring|fill|stroke|from|via|to)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}(?:\/[0-9]{1,3})?\b/g,
+    message: 'use Moldy semantic color tokens/status classes instead of direct palette utilities',
+  },
+  {
     id: 'resource-tone-background',
     pattern: /\bbg-\[var\(--moldy-(?:mint|sky|violet|amber|rose)\)\]/g,
     message:

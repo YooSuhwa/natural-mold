@@ -13,9 +13,9 @@ function formatScalarValue(value: StructuredPreviewValue): string {
 }
 
 function valueTone(value: StructuredPreviewValue): string {
-  if (typeof value === 'string') return 'text-emerald-700 dark:text-emerald-300'
-  if (typeof value === 'number') return 'text-sky-700 dark:text-sky-300'
-  if (typeof value === 'boolean') return 'text-violet-700 dark:text-violet-300'
+  if (typeof value === 'string') return 'moldy-data-type-string'
+  if (typeof value === 'number') return 'moldy-data-type-number'
+  if (typeof value === 'boolean') return 'moldy-data-type-boolean'
   if (value === null) return 'text-muted-foreground'
   return 'text-foreground'
 }

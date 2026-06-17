@@ -181,7 +181,7 @@ export function ArtifactLibraryContent() {
                   }
                 >
                   <StarIcon
-                    className={cn('size-4', selected.is_favorite && 'fill-current text-amber-500')}
+                    className={cn('size-4', selected.is_favorite && 'moldy-favorite-icon')}
                   />
                 </Button>
                 <Button

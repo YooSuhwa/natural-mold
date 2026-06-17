@@ -410,7 +410,7 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
               {tArtifacts('downloadOriginal')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleFavorite}>
-              <StarIcon className={cn(artifact.is_favorite && 'fill-current text-amber-500')} />
+              <StarIcon className={cn(artifact.is_favorite && 'moldy-favorite-icon')} />
               {tArtifacts(artifact.is_favorite ? 'unfavorite' : 'favorite')}
             </DropdownMenuItem>
           </DropdownMenuContent>
