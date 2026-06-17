@@ -9,17 +9,18 @@ import {
   PencilIcon,
   PlusIcon,
   SaveIcon,
-  SearchIcon,
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { EmptyState } from '@/components/shared/empty-state'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
+import { FormFieldShell } from '@/components/shared/form-field-shell'
+import { ResourceListState } from '@/components/shared/resource-list-state'
+import { SearchFilterBar } from '@/components/shared/search-filter-bar'
+import { SettingsSectionCard } from '@/components/shared/settings-section-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
@@ -65,11 +66,9 @@ export default function MemorySettingsPage() {
         </section>
 
         {settingsLoading || !settings ? (
-          <Card>
-            <CardContent className="py-6">
-              <p className="text-sm text-muted-foreground">{t('loading')}</p>
-            </CardContent>
-          </Card>
+          <SettingsSectionCard title={t('title')} description={t('description')}>
+            <p className="text-sm text-muted-foreground">{t('loading')}</p>
+          </SettingsSectionCard>
         ) : (
           <MemorySettingsInner key={JSON.stringify(settings)} settings={settings} />
         )}
@@ -93,53 +92,58 @@ function MemorySettingsInner({ settings }: { settings: UserMemorySettings }) {
     scope: scopeFilter,
     q: search.trim() || null,
   })
+  const hasMemoryFilters = scopeFilter !== 'all' || search.trim().length > 0
 
   return (
     <div className="space-y-4">
       <PolicyCard settings={settings} />
       <CreateMemoryCard agents={agents} agentsLoading={agentsLoading} />
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <SettingsSectionCard
+        title={
+          <span className="flex items-center gap-2">
             <BrainIcon className="size-4" aria-hidden />
             {t('list.title')}
-          </CardTitle>
-          <CardDescription>{t('list.description')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-2 md:grid-cols-[150px_minmax(0,1fr)]">
-            <Select
-              value={scopeFilter}
-              onValueChange={(value) => value && setScopeFilter(value as MemoryScopeFilter)}
-            >
-              <SelectTrigger className="w-full" aria-label={t('list.scopeFilter')}>
-                <span>{t(`scopeFilter.${scopeFilter}`)}</span>
-              </SelectTrigger>
-              <SelectContent>
-                {(['all', 'user', 'agent'] as const).map((scope) => (
-                  <SelectItem key={scope} value={scope}>
-                    {t(`scopeFilter.${scope}`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="relative">
-              <SearchIcon
-                className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden
-              />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t('list.searchPlaceholder')}
-                className="pl-8"
-                aria-label={t('list.searchLabel')}
-              />
-            </div>
-          </div>
+          </span>
+        }
+        description={t('list.description')}
+      >
+        <div className="space-y-4">
+          <SearchFilterBar
+            value={search}
+            onValueChange={setSearch}
+            searchLabel={t('list.searchLabel')}
+            placeholder={t('list.searchPlaceholder')}
+            filters={
+              <Select
+                value={scopeFilter}
+                onValueChange={(value) => value && setScopeFilter(value as MemoryScopeFilter)}
+              >
+                <SelectTrigger
+                  className="w-full bg-background sm:w-[150px]"
+                  aria-label={t('list.scopeFilter')}
+                >
+                  <span>{t(`scopeFilter.${scopeFilter}`)}</span>
+                </SelectTrigger>
+                <SelectContent>
+                  {(['all', 'user', 'agent'] as const).map((scope) => (
+                    <SelectItem key={scope} value={scope}>
+                      {t(`scopeFilter.${scope}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            }
+          />
 
           {memoriesLoading ? (
-            <p className="text-sm text-muted-foreground">{t('list.loading')}</p>
+            <ResourceListState
+              loading
+              skeleton={<p className="text-sm text-muted-foreground">{t('list.loading')}</p>}
+              emptyTitle={t('list.emptyTitle')}
+              emptyDescription={t('list.emptyDescription')}
+              filteredEmptyTitle={t('list.emptyTitle')}
+              filteredEmptyDescription={t('list.emptyDescription')}
+            />
           ) : memories && memories.length > 0 ? (
             <div className="space-y-3" data-testid="memory-list">
               {memories.map((memory) => (
@@ -151,14 +155,17 @@ function MemorySettingsInner({ settings }: { settings: UserMemorySettings }) {
               ))}
             </div>
           ) : (
-            <EmptyState
-              icon={<BrainIcon className="size-5" aria-hidden />}
-              title={t('list.emptyTitle')}
-              description={t('list.emptyDescription')}
+            <ResourceListState
+              isFiltered={hasMemoryFilters}
+              skeleton={<p className="text-sm text-muted-foreground">{t('list.loading')}</p>}
+              emptyTitle={t('list.emptyTitle')}
+              emptyDescription={t('list.emptyDescription')}
+              filteredEmptyTitle={t('list.emptyTitle')}
+              filteredEmptyDescription={t('list.emptyDescription')}
             />
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </SettingsSectionCard>
     </div>
   )
 }
@@ -180,22 +187,21 @@ function PolicyCard({ settings }: { settings: UserMemorySettings }) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2">
-              <BrainIcon className="size-4" aria-hidden />
-              {t('policy.title')}
-            </CardTitle>
-            <CardDescription>{t('policy.description')}</CardDescription>
-          </div>
-          <Badge variant={draft.memory_enabled ? 'default' : 'outline'}>
-            {draft.memory_enabled ? t('policy.enabledBadge') : t('policy.disabledBadge')}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <SettingsSectionCard
+      title={
+        <span className="flex items-center gap-2">
+          <BrainIcon className="size-4" aria-hidden />
+          {t('policy.title')}
+        </span>
+      }
+      description={t('policy.description')}
+      actions={
+        <Badge variant={draft.memory_enabled ? 'default' : 'outline'}>
+          {draft.memory_enabled ? t('policy.enabledBadge') : t('policy.disabledBadge')}
+        </Badge>
+      }
+    >
+      <div className="space-y-5">
         <div className="grid gap-3 md:grid-cols-2">
           <ToggleField
             id="memory-enabled"
@@ -283,8 +289,8 @@ function PolicyCard({ settings }: { settings: UserMemorySettings }) {
             {t('policy.save')}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSectionCard>
   )
 }
 
@@ -324,100 +330,91 @@ function CreateMemoryCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <SettingsSectionCard
+      title={
+        <span className="flex items-center gap-2">
           <PlusIcon className="size-4" aria-hidden />
           {t('create.title')}
-        </CardTitle>
-        <CardDescription>{t('create.description')}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <SelectField
-              id="memory-create-scope"
-              label={t('create.scope')}
-              value={scope}
-              options={(['user', 'agent'] as const).map((value) => ({
-                value,
-                label: t(`scope.${value}`),
-              }))}
-              onChange={(value) => setScope(value as MemoryScope)}
-            />
-            <div className="space-y-1.5">
-              <label htmlFor="memory-create-agent" className="text-sm font-medium">
-                {t('create.agent')}
-              </label>
-              <Select
-                value={agentId}
-                onValueChange={(value) => value && setAgentId(value)}
-                disabled={scope !== 'agent' || agentsLoading || agents.length === 0}
-              >
-                <SelectTrigger id="memory-create-agent" className="w-full">
-                  <span className="truncate">
-                    {scope !== 'agent'
-                      ? t('create.agentDisabled')
-                      : (agents.find((agent) => agent.id === agentId)?.name ?? t('create.agent'))}
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  {agents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs leading-5 text-muted-foreground">
-                {scope === 'agent' ? t('create.agentHelp') : t('create.userHelp')}
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label htmlFor="memory-content" className="text-sm font-medium">
-              {t('create.content')}
-            </label>
-            <Textarea
-              id="memory-content"
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              placeholder={t('create.contentPlaceholder')}
-              className="min-h-24"
-              data-testid="memory-content-input"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label htmlFor="memory-reason" className="text-sm font-medium">
-              {t('create.reason')}
-            </label>
-            <Input
-              id="memory-reason"
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              placeholder={t('create.reasonPlaceholder')}
-            />
-          </div>
-
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              disabled={!canSubmit || create.isPending}
-              data-testid="memory-create-submit"
+        </span>
+      }
+      description={t('create.description')}
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <SelectField
+            id="memory-create-scope"
+            label={t('create.scope')}
+            value={scope}
+            options={(['user', 'agent'] as const).map((value) => ({
+              value,
+              label: t(`scope.${value}`),
+            }))}
+            onChange={(value) => setScope(value as MemoryScope)}
+          />
+          <FormFieldShell
+            id="memory-create-agent"
+            label={t('create.agent')}
+            description={scope === 'agent' ? t('create.agentHelp') : t('create.userHelp')}
+          >
+            <Select
+              value={agentId}
+              onValueChange={(value) => value && setAgentId(value)}
+              disabled={scope !== 'agent' || agentsLoading || agents.length === 0}
             >
-              {create.isPending ? (
-                <Loader2Icon className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <PlusIcon className="size-4" aria-hidden />
-              )}
-              {t('create.submit')}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+              <SelectTrigger id="memory-create-agent" className="w-full">
+                <span className="truncate">
+                  {scope !== 'agent'
+                    ? t('create.agentDisabled')
+                    : (agents.find((agent) => agent.id === agentId)?.name ?? t('create.agent'))}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormFieldShell>
+        </div>
+
+        <FormFieldShell id="memory-content" label={t('create.content')}>
+          <Textarea
+            id="memory-content"
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder={t('create.contentPlaceholder')}
+            className="min-h-24"
+            data-testid="memory-content-input"
+          />
+        </FormFieldShell>
+
+        <FormFieldShell id="memory-reason" label={t('create.reason')}>
+          <Input
+            id="memory-reason"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder={t('create.reasonPlaceholder')}
+          />
+        </FormFieldShell>
+
+        <div className="flex justify-end">
+          <Button
+            type="submit"
+            disabled={!canSubmit || create.isPending}
+            data-testid="memory-create-submit"
+          >
+            {create.isPending ? (
+              <Loader2Icon className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <PlusIcon className="size-4" aria-hidden />
+            )}
+            {t('create.submit')}
+          </Button>
+        </div>
+      </form>
+    </SettingsSectionCard>
   )
 }
 
@@ -594,7 +591,12 @@ function ToggleField({
   onChange: (checked: boolean) => void
 }) {
   return (
-    <label htmlFor={id} className="flex gap-3 rounded-lg border border-border/70 bg-background p-3">
+    <FormFieldShell
+      label={label}
+      description={description}
+      layout="inline"
+      className="rounded-lg border border-border/70 bg-background p-3"
+    >
       <Checkbox
         id={id}
         aria-label={label}
@@ -602,11 +604,7 @@ function ToggleField({
         disabled={disabled}
         onCheckedChange={(value) => onChange(Boolean(value))}
       />
-      <span className="min-w-0 space-y-1">
-        <span className="block text-sm font-medium text-foreground">{label}</span>
-        <span className="block text-xs leading-5 text-muted-foreground">{description}</span>
-      </span>
-    </label>
+    </FormFieldShell>
   )
 }
 
@@ -629,10 +627,7 @@ function SelectField({
 }) {
   const selected = options.find((option) => option.value === value)
   return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
+    <FormFieldShell id={id} label={label} description={description}>
       <Select value={value} onValueChange={(next) => next && onChange(next)} disabled={disabled}>
         <SelectTrigger id={id} className="w-full" data-testid={`${id}-trigger`}>
           <span className="truncate">{selected?.label ?? value}</span>
@@ -649,9 +644,6 @@ function SelectField({
           ))}
         </SelectContent>
       </Select>
-      {description ? (
-        <p className="text-xs leading-5 text-muted-foreground">{description}</p>
-      ) : null}
-    </div>
+    </FormFieldShell>
   )
 }

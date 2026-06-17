@@ -340,12 +340,12 @@ export default function ModelsPage() {
   )
 
   return (
-    <SettingsShell wide>
+    <SettingsShell wide className="max-w-[1180px]">
       <ResourcePage
         title={t('catalog.title')}
         description={t('catalog.description')}
         variant="embedded"
-        contentClassName="max-w-[1180px] pb-20"
+        contentClassName="pb-20"
         action={
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="size-4" />

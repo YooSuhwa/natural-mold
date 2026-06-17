@@ -11,18 +11,18 @@ import {
   PencilIcon,
   PlayIcon,
   RefreshCwIcon,
-  SearchIcon,
   Trash2Icon,
 } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { DialogShell } from '@/components/shared/dialog-shell'
+import { ResourceListState } from '@/components/shared/resource-list-state'
+import { SearchFilterBar } from '@/components/shared/search-filter-bar'
+import { SettingsSectionCard } from '@/components/shared/settings-section-card'
 import { ScheduleDialog } from '@/components/agent/visual-settings/dialogs/schedule-dialog'
 import {
   Select,
@@ -122,6 +122,8 @@ export default function SchedulesPage() {
   }, [agentFilter, deferredSearchQuery, statusFilter, t, triggers])
   const hasActiveFilters =
     searchQuery.trim().length > 0 || statusFilter !== ALL_STATUSES || agentFilter !== ALL_AGENTS
+  const triggerCount = triggers?.length ?? 0
+  const showScheduleState = isLoading || triggerCount === 0 || filteredTriggers.length === 0
   const selectedAgentNameById = useMemo(
     () => new Map(agentOptions.map((agent) => [agent.id, agent.name])),
     [agentOptions],
@@ -172,97 +174,101 @@ export default function SchedulesPage() {
           </div>
         </div>
 
-        <Card>
-          <CardHeader className="gap-3 pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="text-base">{t('listTitle')}</CardTitle>
-              <div className="text-xs text-muted-foreground">
-                {filteredTriggers.length} / {(triggers ?? []).length}
-              </div>
+        <SettingsSectionCard
+          title={t('listTitle')}
+          actions={
+            <div className="text-xs text-muted-foreground">
+              {filteredTriggers.length} / {triggerCount}
             </div>
-            <div className="flex flex-col gap-2 md:flex-row">
-              <div className="relative min-w-0 flex-1">
-                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder={t('searchPlaceholder')}
-                  className="pl-8"
-                />
-              </div>
-              <Select
-                value={statusFilter}
-                onValueChange={(value) => setStatusFilter(value ?? ALL_STATUSES)}
-              >
-                <SelectTrigger
-                  className="w-full bg-background md:w-[150px]"
-                  aria-label={t('filters.status')}
-                >
-                  <SelectValue>
-                    {(selected) =>
-                      selected === ALL_STATUSES
-                        ? t('filters.allStatus')
-                        : t(`status.${selected as AgentTrigger['status']}`)
+          }
+        >
+          <div className="space-y-4">
+            <SearchFilterBar
+              value={searchQuery}
+              onValueChange={setSearchQuery}
+              searchLabel={t('searchPlaceholder')}
+              placeholder={t('searchPlaceholder')}
+              filters={
+                <>
+                  <Select
+                    value={statusFilter}
+                    onValueChange={(value) => setStatusFilter(value ?? ALL_STATUSES)}
+                  >
+                    <SelectTrigger
+                      className="w-full bg-background sm:w-[150px]"
+                      aria-label={t('filters.status')}
+                    >
+                      <SelectValue>
+                        {(selected) =>
+                          selected === ALL_STATUSES
+                            ? t('filters.allStatus')
+                            : t(`status.${selected as AgentTrigger['status']}`)
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_STATUSES}>{t('filters.allStatus')}</SelectItem>
+                      <SelectItem value="active">{t('status.active')}</SelectItem>
+                      <SelectItem value="paused">{t('status.paused')}</SelectItem>
+                      <SelectItem value="completed">{t('status.completed')}</SelectItem>
+                      <SelectItem value="error">{t('status.error')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={agentFilter}
+                    onValueChange={(value) => setAgentFilter(value ?? ALL_AGENTS)}
+                  >
+                    <SelectTrigger
+                      className="w-full bg-background sm:w-[190px]"
+                      aria-label={t('filters.agent')}
+                    >
+                      <SelectValue>
+                        {(selected) =>
+                          !selected || selected === ALL_AGENTS
+                            ? t('filters.allAgents')
+                            : (selectedAgentNameById.get(selected) ?? t('agentFallback'))
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_AGENTS}>{t('filters.allAgents')}</SelectItem>
+                      {agentOptions.map((agent) => (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          {agent.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              }
+              resetLabel={hasActiveFilters ? t('reset') : undefined}
+              onReset={
+                hasActiveFilters
+                  ? () => {
+                      setSearchQuery('')
+                      setStatusFilter(ALL_STATUSES)
+                      setAgentFilter(ALL_AGENTS)
                     }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_STATUSES}>{t('filters.allStatus')}</SelectItem>
-                  <SelectItem value="active">{t('status.active')}</SelectItem>
-                  <SelectItem value="paused">{t('status.paused')}</SelectItem>
-                  <SelectItem value="completed">{t('status.completed')}</SelectItem>
-                  <SelectItem value="error">{t('status.error')}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={agentFilter}
-                onValueChange={(value) => setAgentFilter(value ?? ALL_AGENTS)}
-              >
-                <SelectTrigger
-                  className="w-full bg-background md:w-[190px]"
-                  aria-label={t('filters.agent')}
-                >
-                  <SelectValue>
-                    {(selected) =>
-                      !selected || selected === ALL_AGENTS
-                        ? t('filters.allAgents')
-                        : (selectedAgentNameById.get(selected) ?? t('agentFallback'))
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_AGENTS}>{t('filters.allAgents')}</SelectItem>
-                  {agentOptions.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {hasActiveFilters ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSearchQuery('')
-                    setStatusFilter(ALL_STATUSES)
-                    setAgentFilter(ALL_AGENTS)
-                  }}
-                >
-                  {t('reset')}
-                </Button>
-              ) : null}
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="space-y-2 p-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-16 w-full" />
-                ))}
-              </div>
-            ) : triggers && triggers.length > 0 ? (
-              <div className="overflow-x-auto">
+                  : undefined
+              }
+            />
+
+            {showScheduleState ? (
+              <ResourceListState
+                loading={isLoading}
+                isFiltered={triggerCount > 0 && filteredTriggers.length === 0}
+                skeleton={
+                  <div className="space-y-2">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <Skeleton key={i} className="h-16 w-full" />
+                    ))}
+                  </div>
+                }
+                emptyTitle={t('empty.description')}
+                filteredEmptyTitle={t('empty.filtered')}
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-border/70">
                 <table className="w-full text-sm">
                   <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
                     <tr>
@@ -401,19 +407,10 @@ export default function SchedulesPage() {
                     ))}
                   </tbody>
                 </table>
-                {filteredTriggers.length === 0 ? (
-                  <div className="border-t p-10 text-center text-sm text-muted-foreground">
-                    {t('empty.filtered')}
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <div className="p-10 text-center text-sm text-muted-foreground">
-                {t('empty.description')}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </SettingsSectionCard>
 
         <ScheduleDialog
           open={!!editingTrigger}

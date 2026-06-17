@@ -8,9 +8,10 @@ import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
+import { FormFieldShell } from '@/components/shared/form-field-shell'
 import { PageHeader } from '@/components/shared/page-header'
+import { SettingsSectionCard } from '@/components/shared/settings-section-card'
 import { useSession } from '@/lib/auth/session'
 import { useSystemCredentials } from '@/lib/hooks/use-credentials'
 import { useDiscoverModels } from '@/lib/hooks/use-models'
@@ -164,20 +165,18 @@ function SlotCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-base">{t(`roles.${setting.role}.label`)}</CardTitle>
-          {setting.configured ? (
-            <Badge variant="default">{t('configured')}</Badge>
-          ) : (
-            <Badge variant="outline">{t('notConfigured')}</Badge>
-          )}
-        </div>
-        <CardDescription>{t(`roles.${setting.role}.description`)}</CardDescription>
-      </CardHeader>
-
-      <CardContent className="space-y-4">
+    <SettingsSectionCard
+      title={t(`roles.${setting.role}.label`)}
+      description={t(`roles.${setting.role}.description`)}
+      actions={
+        setting.configured ? (
+          <Badge variant="default">{t('configured')}</Badge>
+        ) : (
+          <Badge variant="outline">{t('notConfigured')}</Badge>
+        )
+      }
+    >
+      <div className="space-y-4">
         <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-medium text-muted-foreground">{t('credential')}</span>
@@ -193,12 +192,9 @@ function SlotCard({
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">
-            {t('systemCredential')}
-          </label>
+        <FormFieldShell id={`${setting.role}-credential`} label={t('systemCredential')}>
           <Select value={credentialId ?? NONE_VALUE} onValueChange={handleCredentialChange}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${setting.role}-credential`} className="w-full">
               <span className="truncate">{selectedCredentialName ?? t('selectCredential')}</span>
             </SelectTrigger>
             <SelectContent>
@@ -213,12 +209,13 @@ function SlotCard({
           {credentials.length === 0 && (
             <p className="text-xs text-muted-foreground">{t('emptyCredentials')}</p>
           )}
-        </div>
+        </FormFieldShell>
 
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <label className="text-xs font-medium text-muted-foreground">{t('model')}</label>
-            {credentialId && (
+        <FormFieldShell
+          id={`${setting.role}-model`}
+          label={t('model')}
+          actions={
+            credentialId ? (
               <Button
                 type="button"
                 variant="ghost"
@@ -228,14 +225,15 @@ function SlotCard({
               >
                 {discover.isPending ? t('loading') : t('loadModels')}
               </Button>
-            )}
-          </div>
+            ) : null
+          }
+        >
           <Select
             value={modelName ?? ''}
             onValueChange={(value) => setModelName(value)}
             disabled={!credentialId || modelOptions.length === 0}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${setting.role}-model`} className="w-full">
               <span className="truncate">{selectedModelLabel ?? t('selectModel')}</span>
             </SelectTrigger>
             <SelectContent>
@@ -253,7 +251,7 @@ function SlotCard({
           ) : !discover.isPending && modelOptions.length === 0 ? (
             <p className="text-xs text-muted-foreground">{t('noModels')}</p>
           ) : null}
-        </div>
+        </FormFieldShell>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {provider && (
@@ -267,13 +265,13 @@ function SlotCard({
             </span>
           )}
         </div>
-      </CardContent>
+      </div>
 
-      <CardContent className="flex justify-end pt-0">
+      <div className="mt-5 flex justify-end">
         <Button onClick={handleSave} disabled={!canSave || update.isPending}>
           {update.isPending ? t('saving') : t('save')}
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSectionCard>
   )
 }

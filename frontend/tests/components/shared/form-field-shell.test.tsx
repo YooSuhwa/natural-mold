@@ -33,4 +33,25 @@ describe('FormFieldShell', () => {
     )
     expect(screen.getByText('모델을 선택해 주세요.')).toHaveAttribute('id', 'model-error')
   })
+
+  it('supports inline control layout and field actions', () => {
+    render(
+      <>
+        <FormFieldShell
+          id="memory-enabled"
+          label="메모리 활성화"
+          description="끄면 에이전트가 메모리를 읽지 않습니다."
+          layout="inline"
+        >
+          <Input id="memory-enabled" type="checkbox" />
+        </FormFieldShell>
+        <FormFieldShell id="model" label="모델" actions={<button type="button">불러오기</button>}>
+          <Input id="model" />
+        </FormFieldShell>
+      </>,
+    )
+
+    expect(screen.getByLabelText('메모리 활성화')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '불러오기' })).toBeInTheDocument()
+  })
 })
