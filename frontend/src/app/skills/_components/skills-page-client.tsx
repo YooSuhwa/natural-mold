@@ -203,7 +203,7 @@ export function SkillsPageClient() {
                   className="flex-1"
                 />
                 <SearchInput
-                  containerClassName="flex-1 sm:max-w-[360px]"
+                  containerClassName="flex-1 sm:max-w-sm"
                   placeholder={t('searchPlaceholder')}
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -215,7 +215,7 @@ export function SkillsPageClient() {
               {isLoading ? (
                 <ResourceGrid minColumnWidth={300}>
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="moldy-skeleton-card h-[196px]" />
+                    <Skeleton key={index} className="moldy-skeleton-card h-48" />
                   ))}
                 </ResourceGrid>
               ) : isFilteredEmpty ? (

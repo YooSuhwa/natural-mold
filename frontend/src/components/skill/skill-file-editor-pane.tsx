@@ -167,14 +167,14 @@ function FileContentArea({
   }
 
   if (loading) {
-    return <Skeleton className="h-full min-h-[280px] flex-1 rounded-md" />
+    return <Skeleton className="h-full min-h-72 flex-1 rounded-md" />
   }
 
   return (
     <Textarea
       value={content}
       onChange={(event) => onEdit(event.target.value)}
-      className="h-full min-h-[280px] flex-1 resize-none font-mono text-xs"
+      className="h-full min-h-72 flex-1 resize-none font-mono text-xs"
     />
   )
 }

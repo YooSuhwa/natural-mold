@@ -86,7 +86,7 @@ export function AgentCard({ agent, onPublish }: AgentCardProps) {
               />
             </button>
           </div>
-          <CardDescription className="line-clamp-2 min-h-[2.5rem] moldy-ui-body-sm leading-relaxed">
+          <CardDescription className="line-clamp-2 min-h-10 moldy-ui-body-sm leading-relaxed">
             {agent.description || t('noDescription')}
           </CardDescription>
         </CardHeader>

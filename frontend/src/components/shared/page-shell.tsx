@@ -28,7 +28,7 @@ export function PageShell({
 }: Props) {
   return (
     <div className="moldy-app-surface flex flex-1 flex-col overflow-auto">
-      <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <PageHeader title={title} description={description} action={action} />
         {isError ? (
           <ErrorState title={errorTitle} description={errorDescription} onRetry={onRetry} />

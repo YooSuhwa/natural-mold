@@ -217,7 +217,7 @@ export default function CredentialsPage() {
                 />
                 <ResourceToolbar>
                   <SearchInput
-                    containerClassName="flex-1 sm:max-w-[360px]"
+                    containerClassName="flex-1 sm:max-w-sm"
                     placeholder={t('searchPlaceholder')}
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
@@ -229,7 +229,7 @@ export default function CredentialsPage() {
                 {isLoading ? (
                   <ResourceGrid minColumnWidth={252}>
                     {Array.from({ length: 6 }).map((_, index) => (
-                      <Skeleton key={index} className="moldy-skeleton-card h-[176px]" />
+                      <Skeleton key={index} className="moldy-skeleton-card h-44" />
                     ))}
                   </ResourceGrid>
                 ) : isFilteredEmpty ? (

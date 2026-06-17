@@ -7,14 +7,14 @@ export default function Loading() {
         <div className="space-y-4">
           <div className="space-y-2">
             <Skeleton className="h-7 w-52" />
-            <Skeleton className="h-5 w-full max-w-[560px]" />
+            <Skeleton className="h-5 w-full max-w-xl" />
           </div>
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-4">
-              <Skeleton className="h-[260px] w-full" />
-              <Skeleton className="h-[180px] w-full" />
+              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-44 w-full" />
             </div>
-            <Skeleton className="h-[220px] w-full" />
+            <Skeleton className="h-56 w-full" />
           </div>
         </div>
       </main>

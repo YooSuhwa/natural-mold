@@ -119,7 +119,7 @@ function MemorySettingsInner({ settings }: { settings: UserMemorySettings }) {
                 onValueChange={(value) => value && setScopeFilter(value as MemoryScopeFilter)}
               >
                 <SelectTrigger
-                  className="w-full bg-background sm:w-[150px]"
+                  className="w-full bg-background sm:w-40"
                   aria-label={t('list.scopeFilter')}
                 >
                   <span>{t(`scopeFilter.${scopeFilter}`)}</span>

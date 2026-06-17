@@ -190,7 +190,7 @@ export default function SchedulesPage() {
                     onValueChange={(value) => setStatusFilter(value ?? ALL_STATUSES)}
                   >
                     <SelectTrigger
-                      className="w-full bg-background sm:w-[150px]"
+                      className="w-full bg-background sm:w-40"
                       aria-label={t('filters.status')}
                     >
                       <SelectValue>
@@ -214,7 +214,7 @@ export default function SchedulesPage() {
                     onValueChange={(value) => setAgentFilter(value ?? ALL_AGENTS)}
                   >
                     <SelectTrigger
-                      className="w-full bg-background sm:w-[190px]"
+                      className="w-full bg-background sm:w-48"
                       aria-label={t('filters.agent')}
                     >
                       <SelectValue>

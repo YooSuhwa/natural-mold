@@ -140,7 +140,7 @@ export default function ConversationalCreationPage({
           <Button
             variant="outline"
             size="icon-sm"
-            className="size-[30px] rounded-lg border-[var(--builder-border)] moldy-builder-color-ink-2"
+            className="size-8 rounded-lg border-[var(--builder-border)] moldy-builder-color-ink-2"
             aria-label={t('back')}
           >
             <ChevronLeftIcon className="size-3.5" strokeWidth={2} />

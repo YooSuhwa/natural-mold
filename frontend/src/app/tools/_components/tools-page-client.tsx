@@ -122,7 +122,7 @@ export function ToolsPageClient() {
           />
           <ResourceToolbar>
             <SearchInput
-              containerClassName="flex-1 sm:max-w-[360px]"
+              containerClassName="flex-1 sm:max-w-sm"
               placeholder={t('searchPlaceholder')}
               value={search}
               onChange={(event) => setSearch(event.target.value)}

@@ -452,7 +452,7 @@ function ModelHealthPanel({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Select value={credentialId} onValueChange={(v) => setOverride(v ?? '')}>
-            <SelectTrigger size="sm" className="w-[180px]">
+            <SelectTrigger size="sm" className="w-48">
               <SelectValue placeholder={t('selectCredential')}>
                 {(selected) =>
                   llmCredentials.find((c) => c.id === selected)?.name ?? t('selectCredential')

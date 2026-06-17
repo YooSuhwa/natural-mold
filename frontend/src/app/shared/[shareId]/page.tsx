@@ -136,11 +136,7 @@ function Hero({ data, messageCount }: { data: SharedConversationView; messageCou
           {t('footer.messageCount', { count: messageCount })}
         </Badge>
         {data.agent.description ? (
-          <Badge
-            variant="secondary"
-            className="max-w-[260px] truncate"
-            title={data.agent.description}
-          >
+          <Badge variant="secondary" className="max-w-64 truncate" title={data.agent.description}>
             {data.agent.description}
           </Badge>
         ) : null}

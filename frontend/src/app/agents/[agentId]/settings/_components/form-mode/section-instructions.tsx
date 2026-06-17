@@ -52,7 +52,7 @@ export function SectionInstructions({
           <Textarea
             value={systemPrompt}
             onChange={(e) => onSystemPromptChange(e.target.value)}
-            className="min-h-[200px] flex-1 resize-none font-mono text-xs shadow-none [field-sizing:fixed] focus-visible:border-input focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="min-h-52 flex-1 resize-none font-mono text-xs shadow-none [field-sizing:fixed] focus-visible:border-input focus-visible:ring-0 focus-visible:ring-offset-0"
             placeholder={t('instructionPlaceholder')}
           />
           <div className="text-right text-xs text-muted-foreground">

@@ -1652,7 +1652,7 @@ chat/artifact page.
 
 ### Rollout Checklist
 
-- [ ] **Guard 1: Arbitrary spacing and size utilities**
+- [x] **Guard 1: Arbitrary spacing and size utilities**
   - Target: `w-[...]`, `h-[...]`, `min-w-[...]`, `max-w-[...]`,
     `gap-[...]`, `p-[...]`, `m-[...]`, `grid-cols-[...]`, and similar page-local
     sizing utilities.
@@ -1660,6 +1660,12 @@ chat/artifact page.
     data-driven exceptions.
   - Expected exceptions: dynamic grids, resizable panels, trace/timeline bars,
     and file-tree indentation.
+  - Implemented: `frontend/scripts/check-design-system.mjs` now blocks arbitrary
+    spacing utilities, arbitrary `size-[...]` icon sizing, and arbitrary layout
+    utilities unless the exact file/token pair is documented with a runtime
+    reason. Safe px-based classes were mapped to Tailwind scale tokens.
+  - Notes: exact allowlist entries live in `ARBITRARY_LAYOUT_ALLOWLIST` so future
+    exceptions must include a file-specific reason before the guard passes.
 
 - [ ] **Guard 2: Semantic color utility usage**
   - Target: product-surface uses of direct palette families such as `bg-blue-*`,
@@ -1736,6 +1742,21 @@ Exception rule of thumb: allow runtime numbers, data percentages, third-party
 component style APIs, and CSS variables that drive reusable components. Do not
 allow one-off visual decisions such as color, spacing, radius, shadow,
 typography, or stacking unless the rule above proves the value is runtime-driven.
+
+### Current Narrow Arbitrary Layout Exceptions
+
+`frontend/scripts/check-design-system.mjs` is the source of truth. It currently
+allows only documented runtime/layout sizing cases:
+
+| Area | Runtime need | Why it stays exceptional |
+| --- | --- | --- |
+| `frontend/src/lib/design-tokens.ts` | DialogShell width/height tokens | Dialog sizes are centralized instead of repeated across pages. |
+| Dashboard/settings/audit/schedule/marketplace route grids | Split-pane or table-like column ratios | These values express information architecture, not local decoration. |
+| Agent visual builder dialogs/nodes | Viewport-bound pickers and fixed inspection panes | React Flow and multi-column pickers need stable scroll regions. |
+| Agent Prism / trace debugger | Trace connector and inspection grid geometry | Trace rendering depends on timeline/tree alignment. |
+| Chat transcript and image viewer | Bubble width ratios and fullscreen viewport clamps | Message layout and image preview sizing are viewport/runtime dependent. |
+| Artifact library and artifact providers | Preview pane caps, zoom widths, master/detail grids | Generated files need bounded inspection panes across formats. |
+| Shared dialog/user-menu/model/credential/skill panes | CSS-variable anchors and viewport-clamped lists | Values are tied to popover/dialog mechanics or editor usability. |
 
 ## 13. Non-Visual Lint Guard Rollout Ledger
 

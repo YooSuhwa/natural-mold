@@ -131,13 +131,11 @@ export default function DashboardPage() {
       <div className="grid shrink-0 grid-cols-1 gap-4 md:grid-cols-[1.4fr_1fr]">
         {/* Primary: 대화로 만들기 */}
         <Link href="/agents/new" className="moldy-card-link group">
-          <Card
-            className={cn('moldy-dashboard-action-primary h-full min-h-[152px] gap-3 p-1.5 ring-0')}
-          >
+          <Card className={cn('moldy-dashboard-action-primary h-full min-h-40 gap-3 p-1.5 ring-0')}>
             <CardContent className="flex h-full flex-col gap-3 p-5">
               <div className="flex items-center gap-3">
                 <div className="moldy-dashboard-action-icon moldy-status-success flex size-11 shrink-0 items-center justify-center">
-                  <MessageSquareIcon className="size-[22px]" />
+                  <MessageSquareIcon className="size-5" />
                 </div>
                 <div className="flex items-center gap-2">
                   <p className="text-base font-semibold tracking-tight">
@@ -148,7 +146,7 @@ export default function DashboardPage() {
                   </Badge>
                 </div>
               </div>
-              <p className="max-w-[36ch] text-sm leading-relaxed text-muted-foreground">
+              <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
                 {t('quickAction.conversational.description')}
               </p>
               <div className="moldy-status-success moldy-status-text mt-auto flex items-center gap-1 text-sm font-semibold transition-transform group-hover:translate-x-0.5">
@@ -163,14 +161,14 @@ export default function DashboardPage() {
         <div className="grid grid-rows-2 gap-4">
           <SecondaryActionCard
             href="/agents/new/manual"
-            icon={<PenLineIcon className="size-[18px]" />}
+            icon={<PenLineIcon className="size-5" />}
             label={t('quickAction.manual.label')}
             description={t('quickAction.manual.description')}
             tone="violet"
           />
           <SecondaryActionCard
             href="/agents/new/template"
-            icon={<LayoutTemplateIcon className="size-[18px]" />}
+            icon={<LayoutTemplateIcon className="size-5" />}
             label={t('quickAction.template.label')}
             description={t('quickAction.template.description')}
             tone="sky"
@@ -318,7 +316,7 @@ function SecondaryActionCard({ href, icon, label, description, tone }: Secondary
         <CardContent className="flex h-full items-center gap-3 p-4">
           <div
             className={cn(
-              'moldy-dashboard-action-icon flex size-[38px] shrink-0 items-center justify-center',
+              'moldy-dashboard-action-icon flex size-10 shrink-0 items-center justify-center',
               iconBg,
             )}
           >

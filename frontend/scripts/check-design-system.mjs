@@ -45,6 +45,16 @@ const ZERO_TOLERANCE_RULES = [
       'use neutral resource cards; keep tone colors to icons, dots, status signals, and interaction states',
   },
   {
+    id: 'arbitrary-spacing-utility',
+    pattern: /!?\b-?(?:gap|p|px|py|pt|pr|pb|pl|m|mx|my|mt|mr|mb|ml)-\[[^\]]+\]/g,
+    message: 'use Tailwind spacing scale tokens or a Moldy component spacing API',
+  },
+  {
+    id: 'arbitrary-icon-size',
+    pattern: /!?\bsize-\[[^\]]+\]/g,
+    message: 'use Tailwind size scale tokens or a shared icon/button size primitive',
+  },
+  {
     id: 'arbitrary-text-class',
     pattern: /\btext-\[[^\]]+\]/g,
     message: 'use Moldy typography classes or Tailwind text scale tokens',
@@ -58,6 +68,193 @@ const ZERO_TOLERANCE_RULES = [
     id: 'transition-all',
     pattern: /\btransition-all\b/g,
     message: 'list transition properties explicitly',
+  },
+]
+
+const ARBITRARY_LAYOUT_ALLOWLIST = [
+  {
+    filePath: 'src/app/dashboard-page-client.tsx',
+    tokenPattern: /^grid-cols-\[1\.4fr_1fr\]$/,
+    reason: 'dashboard primary/secondary metric balance',
+  },
+  {
+    filePath: 'src/app/agents/[agentId]/conversations/[conversationId]/traces/page.tsx',
+    tokenPattern: /^h-\[calc\(100vh-12rem\)\]$/,
+    reason: 'trace route loading skeleton fills remaining viewport height',
+  },
+  {
+    filePath: 'src/app/agents/[agentId]/settings/page.tsx',
+    tokenPattern: /^min-h-\[420px\]$/,
+    reason: 'settings form route keeps a stable editor shell floor',
+  },
+  {
+    filePath: 'src/app/agents/[agentId]/visual-settings/page.tsx',
+    tokenPattern: /^h-\[calc\(100vh-10rem\)\]$/,
+    reason: 'visual builder loading skeleton fills remaining viewport height',
+  },
+  {
+    filePath: 'src/app/agents/new/manual/page.tsx',
+    tokenPattern: /^(?:h-\[calc\(100vh-10rem\)\]|min-h-\[420px\])$/,
+    reason: 'manual builder route keeps a stable editor shell floor',
+  },
+  {
+    filePath: 'src/app/marketplace/[item-id]/page.tsx',
+    tokenPattern: /^grid-cols-\[120px_1fr\]$/,
+    reason: 'marketplace metadata label/value grid',
+  },
+  {
+    filePath: 'src/app/settings/_components/audit-events-content.tsx',
+    tokenPattern:
+      /^grid-cols-\[(?:minmax\(0,1fr\)_180px_150px|minmax\(0,1fr\)_340px|170px_minmax\(0,1fr\)_160px|96px_minmax\(0,1fr\))\]$/,
+    reason: 'audit event rows use table-like responsive columns',
+  },
+  {
+    filePath: 'src/app/settings/loading.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(0,1fr\)_280px\]$/,
+    reason: 'settings skeleton mirrors the settings navigation rail layout',
+  },
+  {
+    filePath: 'src/app/settings/page.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(0,1fr\)_280px\]$/,
+    reason: 'settings layout keeps a fixed secondary navigation rail',
+  },
+  {
+    filePath: 'src/app/settings/usage/page.tsx',
+    tokenPattern: /^max-h-\[420px\]$/,
+    reason: 'usage table scroll viewport',
+  },
+  {
+    filePath: 'src/app/shared/[shareId]/page.tsx',
+    tokenPattern: /^max-w-\[85%\]$/,
+    reason: 'shared transcript bubble width ratio',
+  },
+  {
+    filePath: 'src/components/agent-prism/SpanCard/SpanCardConnector.tsx',
+    tokenPattern: /^h-\[7px\]$/,
+    reason: 'trace connector pixel alignment',
+  },
+  {
+    filePath: 'src/components/agent-prism/TraceViewer/TraceViewer.tsx',
+    tokenPattern: /^h-\[calc\(100vh-50px\)\]$/,
+    reason: 'trace viewer fills viewport below its toolbar',
+  },
+  {
+    filePath: 'src/components/agent/sub-agents-dialog.tsx',
+    tokenPattern: /^(?:h|max-h)-\[60vh\]$/,
+    reason: 'dual-column picker uses viewport-bound scroll regions',
+  },
+  {
+    filePath: 'src/components/agent/visual-settings/dialogs/middlewares-dialog.tsx',
+    tokenPattern: /^(?:h|max-h)-\[60vh\]$/,
+    reason: 'visual builder picker uses viewport-bound scroll regions',
+  },
+  {
+    filePath: 'src/components/agent/visual-settings/dialogs/tools-skills-current-column.tsx',
+    tokenPattern: /^(?:h|max-h)-\[60vh\]$/,
+    reason: 'visual builder current-item column uses viewport-bound scroll regions',
+  },
+  {
+    filePath: 'src/components/agent/visual-settings/nodes/agent-node.tsx',
+    tokenPattern: /^h-\[600px\]$/,
+    reason: 'React Flow agent detail pane needs a stable inspection height',
+  },
+  {
+    filePath: 'src/components/artifacts/artifact-library-content.tsx',
+    tokenPattern:
+      /^(?:grid-cols-\[minmax\(360px,0\.95fr\)_minmax\(420px,1\.05fr\)\]|min-h-\[420px\]|max-h-\[(?:640|680)px\])$/,
+    reason: 'artifact library master/detail panes need bounded inspection areas',
+  },
+  {
+    filePath: 'src/components/artifacts/artifact-library-filters.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(220px,1fr\)_160px_180px_150px_150px\]$/,
+    reason: 'artifact filter controls keep scan-friendly column widths',
+  },
+  {
+    filePath: 'src/components/auth/UserMenu.tsx',
+    tokenPattern: /^w-\[--anchor-width\]$/,
+    reason: 'dropdown content follows the trigger width CSS variable',
+  },
+  {
+    filePath: 'src/components/chat/assistant-thread.tsx',
+    tokenPattern: /^max-w-\[80%\]$/,
+    reason: 'chat message bubbles use a transcript column ratio',
+  },
+  {
+    filePath: 'src/components/chat/builder-overrides.tsx',
+    tokenPattern: /^max-w-\[72%\]$/,
+    reason: 'builder override bubbles use a narrower transcript ratio',
+  },
+  {
+    filePath: 'src/components/chat/chat-image.tsx',
+    tokenPattern:
+      /^(?:(?:h|max-h)-\[calc\(100vh-2rem\)\]|(?:w|max-w)-\[calc\(100vw-2rem\)\]|w-\[min\(calc\(100vw-2rem\),1200px\)\])$/,
+    reason: 'fullscreen image preview is viewport-clamped',
+  },
+  {
+    filePattern: /^src\/components\/chat\/artifacts\/providers\/.+\.tsx$/,
+    tokenPattern: /^(?:(?:h|max-h)-\[(?:520|620)px\]|w-\[(?:125|150)%\])$/,
+    reason: 'artifact previews use bounded inspection panes and zoom widths',
+  },
+  {
+    filePath: 'src/components/chat/right-rail/tool-result-panel-content.tsx',
+    tokenPattern: /^max-h-\[60vh\]$/,
+    reason: 'tool output preview is viewport-clamped',
+  },
+  {
+    filePath: 'src/components/chat/tool-ui/memory-tool-ui.tsx',
+    tokenPattern: /^max-w-\[min\(34rem,54vw\)\]$/,
+    reason: 'memory item content truncates at a responsive formula',
+  },
+  {
+    filePath: 'src/components/chat/trace-debugger-view.tsx',
+    tokenPattern: /^grid-cols-\[280px_minmax\(420px,1fr\)_minmax\(360px,42%\)\]$/,
+    reason: 'trace debugger uses a fixed three-pane inspection grid',
+  },
+  {
+    filePath: 'src/components/credential/credential-create-modal.tsx',
+    tokenPattern: /^max-h-\[40vh\]$/,
+    reason: 'credential field list is viewport-clamped inside a modal',
+  },
+  {
+    filePath: 'src/features/schedules/components/schedule-form.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(0,0\.9fr\)_minmax\(0,1\.1fr\)\]$/,
+    reason: 'schedule form keeps primary settings and review panels balanced',
+  },
+  {
+    filePath: 'src/lib/design-tokens.ts',
+    tokenPattern:
+      /^(?:w-\[(?:400|560|720|920|1080)px\]|h-\[(?:480|640|760)px\]|max-h-\[calc\(100vh-4rem\)\])$/,
+    reason: 'dialog dimensions are centralized design tokens consumed by DialogShell',
+  },
+  {
+    filePath: 'src/components/model/model-discover-panel.tsx',
+    tokenPattern: /^max-h-\[44vh\]$/,
+    reason: 'model discovery list is viewport-clamped',
+  },
+  {
+    filePath: 'src/components/shared/dialog-shell.tsx',
+    tokenPattern: /^max-w-\[calc\(100%-2rem\)\]$/,
+    reason: 'mobile dialogs keep a calculated viewport gutter',
+  },
+  {
+    filePath: 'src/components/skill/skill-detail-text-editor.tsx',
+    tokenPattern: /^min-h-\[400px\]$/,
+    reason: 'text skill editor keeps a minimum writing area',
+  },
+  {
+    filePath: 'src/components/skill/skill-evaluation-tab.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(0,0\.9fr\)_minmax\(20rem,1fr\)\]$/,
+    reason: 'skill evaluation keeps form/result split panes',
+  },
+  {
+    filePath: 'src/components/skill/skill-file-editor-pane.tsx',
+    tokenPattern: /^max-h-\[420px\]$/,
+    reason: 'package image preview is capped inside the editor pane',
+  },
+  {
+    filePath: 'src/components/skill/skill-history-tab.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(0,1fr\)_minmax\(18rem,0\.85fr\)\]$/,
+    reason: 'skill history keeps version/detail split panes',
   },
 ]
 
@@ -198,6 +395,36 @@ function findInlineStyleIssues(source, filePath) {
   return issues
 }
 
+function isAllowedArbitraryLayoutUtility(filePath, token) {
+  const normalizedToken = token.replace(/^!/, '')
+
+  return ARBITRARY_LAYOUT_ALLOWLIST.some((entry) => {
+    const pathMatches =
+      'filePath' in entry ? entry.filePath === filePath : entry.filePattern.test(filePath)
+    return pathMatches && entry.tokenPattern.test(normalizedToken)
+  })
+}
+
+function findArbitraryLayoutIssues(source, filePath) {
+  const issues = []
+  const layoutUtilityRe = /!?\b(?:w|h|min-w|min-h|max-w|max-h|grid-cols|grid-rows)-\[[^\]]+\]/g
+
+  for (const match of source.matchAll(layoutUtilityRe)) {
+    const index = match.index ?? 0
+    const token = match[0]
+    if (isAllowedArbitraryLayoutUtility(filePath, token)) continue
+    issues.push({
+      filePath,
+      line: lineNumberAt(source, index),
+      rule: 'arbitrary-layout-utility',
+      message: 'use Tailwind scale tokens, a Moldy layout API, or a documented narrow exception',
+      snippet: compactSnippet(source, index),
+    })
+  }
+
+  return issues
+}
+
 async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src')) {
   const files = await collectFiles(rootDir)
   const issues = []
@@ -206,6 +433,7 @@ async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src'))
     const source = await readFile(file, 'utf8')
     const filePath = normalizePath(path.relative(process.cwd(), file))
     issues.push(...findZeroToleranceIssues(source, filePath))
+    issues.push(...findArbitraryLayoutIssues(source, filePath))
     issues.push(...findInlineStyleIssues(source, filePath))
   }
 
@@ -223,6 +451,9 @@ async function main() {
     console.log('Design system guard passed.')
     console.log(
       `Allowed inline style exceptions: ${STYLE_ATTRIBUTE_ALLOWLIST.length} documented dynamic/layout cases.`,
+    )
+    console.log(
+      `Allowed arbitrary layout exceptions: ${ARBITRARY_LAYOUT_ALLOWLIST.length} documented runtime/layout cases.`,
     )
     return
   }

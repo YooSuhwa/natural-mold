@@ -163,7 +163,7 @@ export default function UsagePage() {
   ]
 
   return (
-    <SettingsShell wide className="max-w-[1180px]">
+    <SettingsShell wide className="max-w-7xl">
       <ResourcePage
         title={t('pageTitle')}
         description={t('subtitle')}
@@ -190,7 +190,7 @@ export default function UsagePage() {
                   {t('filters.range')}
                 </span>
                 <Select value={preset} onValueChange={(v) => v && setPreset(v as RangePreset)}>
-                  <SelectTrigger className="w-[160px]" data-testid="range-preset-select">
+                  <SelectTrigger className="w-40" data-testid="range-preset-select">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -212,7 +212,7 @@ export default function UsagePage() {
                       type="date"
                       value={customFrom}
                       onChange={(e) => setCustomFrom(e.target.value)}
-                      className="w-[160px]"
+                      className="w-40"
                       data-testid="custom-from"
                     />
                   </div>
@@ -224,7 +224,7 @@ export default function UsagePage() {
                       type="date"
                       value={customTo}
                       onChange={(e) => setCustomTo(e.target.value)}
-                      className="w-[160px]"
+                      className="w-40"
                       data-testid="custom-to"
                     />
                   </div>

@@ -85,7 +85,7 @@ export function ScheduleNode({ data }: NodeProps) {
 
   return (
     <>
-      <div className="moldy-flow-node w-[220px] nowheel">
+      <div className="moldy-flow-node w-56 nowheel">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
@@ -104,7 +104,7 @@ export function ScheduleNode({ data }: NodeProps) {
               {t('noSchedules')}
             </div>
           ) : (
-            <div className="max-h-[200px] space-y-1 overflow-y-auto p-1.5">
+            <div className="max-h-52 space-y-1 overflow-y-auto p-1.5">
               {triggers.map((trigger) => (
                 <ScheduleListCard
                   key={trigger.id}

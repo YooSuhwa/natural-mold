@@ -137,7 +137,7 @@ function Sidebar({ className, children }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'moldy-dialog-sidebar w-[260px] shrink-0 overflow-y-auto border-r border-border/60 bg-muted/30 px-4 py-5',
+        'moldy-dialog-sidebar w-64 shrink-0 overflow-y-auto border-r border-border/60 bg-muted/30 px-4 py-5',
         className,
       )}
     >

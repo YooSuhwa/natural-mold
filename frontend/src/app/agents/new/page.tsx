@@ -33,7 +33,7 @@ export default function AgentNewPage() {
 
   return (
     <div className="moldy-agent-create-shell flex flex-1 flex-col items-center justify-center overflow-auto">
-      <div className="flex w-full max-w-[720px] flex-col gap-7 px-8 py-10">
+      <div className="flex w-full max-w-3xl flex-col gap-7 px-8 py-10">
         <Hero title={t('hero.title')} subtitle={t('hero.subtitle')} />
 
         <ChatInput
@@ -85,9 +85,7 @@ function Hero({ title, subtitle }: { title: string; subtitle: string }) {
       </div>
       <div className="flex flex-col gap-2">
         <h1 className="moldy-page-title leading-snug">{title}</h1>
-        <p className="mx-auto max-w-[480px] text-sm leading-relaxed text-muted-foreground">
-          {subtitle}
-        </p>
+        <p className="mx-auto max-w-lg text-sm leading-relaxed text-muted-foreground">{subtitle}</p>
       </div>
     </div>
   )
@@ -133,7 +131,7 @@ function ChatInput({
         onCompositionEnd={onCompositionEnd}
         placeholder={placeholder}
         rows={4}
-        className="moldy-composer-input min-h-[110px] w-full resize-none bg-transparent px-5 pb-2 pt-4 text-sm leading-relaxed text-foreground outline-hidden placeholder:text-muted-foreground"
+        className="moldy-composer-input min-h-28 w-full resize-none bg-transparent px-5 pb-2 pt-4 text-sm leading-relaxed text-foreground outline-hidden placeholder:text-muted-foreground"
       />
       <div className="flex justify-end px-3 pb-3">
         <Button

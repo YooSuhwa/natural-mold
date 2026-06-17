@@ -314,7 +314,7 @@ function FiltersBar({
       />
 
       <ResourceToolbar>
-        <div className="relative flex-1 sm:max-w-[360px]">
+        <div className="relative flex-1 sm:max-w-sm">
           <SearchIcon
             aria-hidden
             className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
@@ -424,7 +424,7 @@ function TemplateCard({
       {tools.length > 0 && (
         <ResourceListCard.MetaRow>
           {visibleTools.map((tool) => (
-            <ResourceCardMeta key={tool} className="max-w-[96px] gap-1">
+            <ResourceCardMeta key={tool} className="max-w-24 gap-1">
               <WrenchIcon aria-hidden className="size-2.5 text-muted-foreground" />
               <span className="truncate leading-none">{tool}</span>
             </ResourceCardMeta>
@@ -550,7 +550,7 @@ function TemplateGridSkeleton() {
   return (
     <ResourceGrid minColumnWidth={252}>
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="moldy-card flex min-h-[152px] flex-col p-4">
+        <div key={i} className="moldy-card flex min-h-40 flex-col p-4">
           <div className="flex items-center justify-between">
             <Skeleton className="size-9 rounded-lg" />
             <Skeleton className="h-5 w-20 rounded-md" />

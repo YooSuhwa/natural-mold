@@ -59,7 +59,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             alt="Moldy"
             width={30}
             height={30}
-            className="auth-brand-logo size-[30px] shrink-0 object-contain"
+            className="auth-brand-logo size-8 shrink-0 object-contain"
             priority
           />
           <span className="auth-brand-text">{t('auth.hero.brand')}</span>

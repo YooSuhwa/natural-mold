@@ -124,12 +124,16 @@ pnpm lint:design-system
 - `rounded-xl/2xl/3xl` 직접 사용 — `moldy-card`, `moldy-panel`, `moldy-skeleton-card`, `moldy-muted-panel` 등 공용 surface class로 이동
 - `shadow-sm/md/lg/xl/2xl` 및 `shadow-[...]` 직접 사용 — `moldy-popover`, `moldy-floating-icon-button`, `moldy-side-panel` 등 elevation class로 이동
 - `bg-[#...]`, `text-[#...]`, `border-[#...]` raw hex utility — `--primary`, `--status-*`, `--moldy-*` semantic token으로 이동
+- `gap-[...]`, `p-[...]`, `m-[...]`, `size-[...]`, `w-[...]`, `h-[...]`, `grid-cols-[...]` 같은 임의 spacing/sizing utility — Tailwind scale token, `lib/design-tokens.ts`, 공용 layout API, 또는 `scripts/check-design-system.mjs`의 좁은 예외로 이동
 - `text-[...]`, `outline-none`, `transition-all` — Moldy typography/focus/explicit transition 규칙 사용
 - 임의 `style={...}` — 동적 layout/library API만 `scripts/check-design-system.mjs` allowlist에 이유와 함께 명시
 
-현재 허용된 inline style 예외는 tree depth indentation, syntax highlighter theme,
-usage bar width, resource grid columns, Agent Prism trace/timeline layout, phase
-progress ratio뿐이다. 예외를 늘릴 때는 먼저 공용 class/토큰으로 표현 가능한지 확인한다.
+현재 허용된 inline style 및 arbitrary layout 예외는
+`scripts/check-design-system.mjs`에 파일별 이유와 함께 명시되어 있다. 대표 예외는
+tree depth indentation, syntax highlighter theme, usage bar width, resource
+grid columns, DialogShell size tokens, artifact preview panes, Agent Prism
+trace/timeline layout, chat viewport clamps, phase progress ratio뿐이다. 예외를
+늘릴 때는 먼저 공용 class/토큰으로 표현 가능한지 확인한다.
 
 ## i18n 정적 텍스트 규칙
 

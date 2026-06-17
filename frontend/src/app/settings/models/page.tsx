@@ -130,7 +130,7 @@ export default function ModelsPage() {
         header: t('catalog.columns.model'),
         cell: ({ row }) => (
           <div
-            className={`flex min-w-[220px] items-center gap-2 ${
+            className={`flex min-w-56 items-center gap-2 ${
               row.original.is_visible ? '' : 'opacity-60'
             }`}
           >
@@ -164,7 +164,7 @@ export default function ModelsPage() {
         accessorFn: (row) => row.cost_per_input_token ?? 0,
         header: t('catalog.columns.price'),
         cell: ({ row }) => (
-          <div className="flex min-w-[118px] flex-col gap-0.5 font-mono moldy-ui-caption tabular-nums">
+          <div className="flex min-w-32 flex-col gap-0.5 font-mono moldy-ui-caption tabular-nums">
             <span>
               <span className="mr-1 font-sans text-muted-foreground">{t('inputModalities')}</span>
               {formatTokenPrice(row.original.cost_per_input_token)}
@@ -199,7 +199,7 @@ export default function ModelsPage() {
             return <span className="text-xs text-muted-foreground">—</span>
           }
           return (
-            <div className="flex min-w-[132px] flex-wrap gap-1">
+            <div className="flex min-w-32 flex-wrap gap-1">
               <RankingBadge rankingKey="lmarena" value={rankings?.lmarena} />
               <RankingBadge rankingKey="livebench" value={rankings?.livebench} />
               <RankingBadge rankingKey="aa_index" value={rankings?.aa_index} />
@@ -351,7 +351,7 @@ export default function ModelsPage() {
   )
 
   return (
-    <SettingsShell wide className="max-w-[1180px]">
+    <SettingsShell wide className="max-w-7xl">
       <ResourcePage
         title={t('catalog.title')}
         description={t('catalog.description')}

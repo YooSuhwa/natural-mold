@@ -164,7 +164,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
               </span>
             </label>
             {agreedError ? (
-              <p className="mt-1.5 pl-[26px] text-xs text-destructive">
+              <p className="mt-1.5 pl-7 text-xs text-destructive">
                 {t('auth.register.termsRequired')}
               </p>
             ) : null}

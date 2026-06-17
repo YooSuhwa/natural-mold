@@ -1,105 +1,102 @@
-import type { ComponentPropsWithRef } from "react";
+import type { ComponentPropsWithRef } from 'react'
 
-import * as RadixTabs from "@radix-ui/react-tabs";
-import cn from "classnames";
-import * as React from "react";
+import * as RadixTabs from '@radix-ui/react-tabs'
+import cn from 'classnames'
+import * as React from 'react'
 
 export interface TabItem<T extends string = string> {
-  value: T;
-  label: string;
-  icon?: React.ReactNode;
-  disabled?: boolean;
+  value: T
+  label: string
+  icon?: React.ReactNode
+  disabled?: boolean
 }
 
-export type TabTheme = "underline" | "pill";
+export type TabTheme = 'underline' | 'pill'
 
 const BASE_TRIGGER =
-  "text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed";
+  'text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed'
 
 const THEMES = {
   underline: {
-    list: "h-9 flex border-b border-agentprism-border",
+    list: 'h-9 flex border-b border-agentprism-border',
     trigger: `w-full justify-center px-3 ${BASE_TRIGGER}
       text-agentprism-secondary-foreground data-[state=active]:text-agentprism-foreground
       border-b-2 border-transparent data-[state=active]:border-agentprism-border-inverse
-      -mb-[2px]
+      -mb-0.5
       data-[state=inactive]:[&:not(:disabled)]:hover:border-agentprism-border-inverse/20
       data-[state=inactive]:[&:not(:disabled)]:hover:text-agentprism-muted-foreground`,
   },
   pill: {
-    list: "h-9 inline-flex gap-1 p-1 bg-agentprism-secondary rounded-lg",
+    list: 'h-9 inline-flex gap-1 p-1 bg-agentprism-secondary rounded-lg',
     trigger: `moldy-agentprism-tab-trigger px-3 ${BASE_TRIGGER} rounded-md
       text-agentprism-muted-foreground data-[state=active]:text-agentprism-foreground
       data-[state=inactive]:[&:not(:disabled)]:hover:bg-agentprism-background/50 data-[state=active]:bg-agentprism-background`,
   },
-} as const;
+} as const
 
-export type TabsProps<T extends string = string> = Omit<
-  ComponentPropsWithRef<"div">,
-  "dir"
-> & {
+export type TabsProps<T extends string = string> = Omit<ComponentPropsWithRef<'div'>, 'dir'> & {
   /**
    * Array of tab items to display
    */
-  items: TabItem<T>[];
+  items: TabItem<T>[]
 
   /**
    * The initially selected tab value (uncontrolled)
    */
-  defaultValue?: T;
+  defaultValue?: T
 
   /**
    * The currently selected tab value (controlled)
    */
-  value?: T;
+  value?: T
 
   /**
    * Callback fired when the selected tab changes
    */
-  onValueChange?: (value: T) => void;
+  onValueChange?: (value: T) => void
 
   /**
    * Visual theme variant for the tabs
    * @default "underline"
    */
-  theme?: TabTheme;
+  theme?: TabTheme
 
   /**
    * Optional className for the root container
    */
-  className?: string;
+  className?: string
 
   /**
    * Optional className for the tabs list container
    */
-  tabsListClassName?: string;
+  tabsListClassName?: string
 
   /**
    * Optional className for individual tab triggers
    */
-  triggerClassName?: string;
+  triggerClassName?: string
 
   /**
    * The direction of the content of the tabs
    */
-  dir?: "ltr" | "rtl";
-};
+  dir?: 'ltr' | 'rtl'
+}
 
 export const Tabs = <T extends string = string>({
   items,
   defaultValue,
   value,
   onValueChange,
-  theme = "underline",
-  className = "",
-  tabsListClassName = "",
-  triggerClassName = "",
+  theme = 'underline',
+  className = '',
+  tabsListClassName = '',
+  triggerClassName = '',
   dir,
   ...rest
 }: TabsProps<T>) => {
-  const defaultTab = defaultValue || items[0]?.value;
+  const defaultTab = defaultValue || items[0]?.value
 
-  const currentTheme = THEMES[theme];
+  const currentTheme = THEMES[theme]
 
   return (
     <RadixTabs.Root
@@ -120,7 +117,7 @@ export const Tabs = <T extends string = string>({
             value={item.value}
             disabled={item.disabled}
             className={cn(
-              "group flex items-center overflow-hidden",
+              'group flex items-center overflow-hidden',
               currentTheme.trigger,
               triggerClassName,
             )}
@@ -135,5 +132,5 @@ export const Tabs = <T extends string = string>({
         ))}
       </RadixTabs.List>
     </RadixTabs.Root>
-  );
-};
+  )
+}

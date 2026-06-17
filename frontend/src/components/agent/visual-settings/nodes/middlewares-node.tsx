@@ -31,7 +31,7 @@ export function MiddlewaresNode({ data }: { data: MiddlewaresNodeData }) {
         position={Position.Left}
         className="moldy-flow-handle moldy-flow-handle-middlewares"
       />
-      <div className="moldy-flow-node nowheel w-[220px]">
+      <div className="moldy-flow-node nowheel w-56">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
@@ -49,7 +49,7 @@ export function MiddlewaresNode({ data }: { data: MiddlewaresNodeData }) {
           {selectedMiddlewares.length === 0 ? (
             <p className="px-2 py-2 text-xs text-muted-foreground">{t('middlewares.empty')}</p>
           ) : (
-            <div className="max-h-[160px] overflow-y-auto">
+            <div className="max-h-40 overflow-y-auto">
               {selectedMiddlewares.map((mw) => (
                 <div
                   key={mw.type}

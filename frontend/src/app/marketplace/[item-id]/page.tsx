@@ -90,7 +90,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
   if (isLoading) {
     return (
       <div className="moldy-app-surface flex flex-1 flex-col overflow-auto">
-        <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
+        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
           <Skeleton className="h-8 w-48" />
           <Skeleton className="moldy-skeleton-card h-32 w-full" />
           <Skeleton className="moldy-skeleton-card h-48 w-full" />
@@ -105,7 +105,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
       (error.code === 'marketplace_item_not_found' || error.status === 404)
     return (
       <div className="moldy-app-surface flex flex-1 flex-col overflow-auto">
-        <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
+        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
           <Link
             href="/marketplace"
             className="inline-flex items-center gap-1 text-sm text-primary-strong"
@@ -216,7 +216,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
 
   return (
     <div className="moldy-app-surface flex flex-1 flex-col overflow-auto">
-      <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <Link
           href="/marketplace"
           className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -341,7 +341,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                     value={item.visibility}
                     onValueChange={(v) => v && handleVisibilityChange(v as MarketplaceVisibility)}
                   >
-                    <SelectTrigger className="w-[220px]">
+                    <SelectTrigger className="w-56">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
