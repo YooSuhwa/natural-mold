@@ -1809,7 +1809,7 @@ for new findings.
   - Expected exceptions: audited markdown/artifact renderers with sanitization or
     library-owned rendering contracts.
 
-- [ ] **Guard 7: E2E lint and test hygiene**
+- [x] **Guard 7: E2E lint and test hygiene**
   - Target: include `e2e/**` in a separate lint command or test-hygiene script.
     Block `test.only`, unreviewed `test.skip`, `page.waitForTimeout`, and
     `force: true` interactions.
@@ -1817,6 +1817,11 @@ for new findings.
     for chat/runtime regressions.
   - Rollout mode: allow documented backend/runtime skips, but require a reason
     string and preferably a linked condition.
+  - Implemented: `pnpm lint:e2e-hygiene` scans `e2e` and `tests` with the
+    TypeScript AST, blocks `test.only` / `describe.only`, fixed
+    `waitForTimeout`, `force: true`, and skips without an explicit condition
+    reason. Existing visual capture waits now use a paint-based helper, and the
+    remaining seeded-card skip has a reason string.
 
 - [ ] **Guard 8: Import boundaries and private folders**
   - Target: imports from another route's `_components`, `_hooks`, or `_lib`;
@@ -1901,6 +1906,16 @@ These are intentionally not part of the first modernization pass:
 
 11. **Accessibility audit**
     - Run keyboard/focus checks on sidebar, tabs, resource cards, dialogs, and wizard flows.
+
+12. **LangGraph v3 visual matrix stability**
+    - Target `frontend/e2e/chat-langgraph-v3-visual-matrix.spec.ts` separately from
+      lint-guard rollout.
+    - A focused `active streaming` run timed out waiting for `fixture complete.`
+      after the stream started; smoke passes with explicit legacy runtime and
+      rate-limit-disabled E2E env.
+    - Investigate scripted runtime completion, stale E2E data cleanup, and
+      LangGraph v3 stream visibility before treating the visual matrix as a
+      mandatory per-guard gate.
     - Replace remaining raw tablist/radiogroup/button-card patterns with shared accessible primitives.
 
 12. **Strict no-restricted-imports ESLint rules**

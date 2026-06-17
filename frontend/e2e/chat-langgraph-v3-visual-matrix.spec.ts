@@ -48,6 +48,17 @@ async function capture(page: Page, filename: string): Promise<void> {
   await page.screenshot({ path: path.join(CAPTURE_DIR, filename), fullPage: true })
 }
 
+async function waitForCapturePaint(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(resolve)
+        })
+      }),
+  )
+}
+
 async function expectApprovalCardVisible(page: Page): Promise<void> {
   const approvalCard = page.getByText(/승인이 필요합니다|Approval Required/).last()
   if (!(await approvalCard.isVisible())) {
@@ -74,14 +85,17 @@ async function settleActiveRun(request: APIRequestContext, setup: LangGraphV3Set
   if (cancelResponse.status() === 404) return
 
   await expect
-    .poll(
-      async () => runStatus(request, setup.conversationId, activeRun),
-      { timeout: 45_000, intervals: [500, 1000, 2000] },
-    )
+    .poll(async () => runStatus(request, setup.conversationId, activeRun), {
+      timeout: 45_000,
+      intervals: [500, 1000, 2000],
+    })
     .toMatch(TERMINAL_RUN_STATUS_PATTERN)
 }
 
-async function activeCancelableRunId(request: APIRequestContext, conversationId: string): Promise<string | null> {
+async function activeCancelableRunId(
+  request: APIRequestContext,
+  conversationId: string,
+): Promise<string | null> {
   const activeUrl = `${API_BASE}/api/conversations/${conversationId}/runs/active`
   const response = await request.get(activeUrl)
   if (response.status() === 404) return null
@@ -108,7 +122,9 @@ async function runStatus(
   conversationId: string,
   runId: string,
 ): Promise<string> {
-  const response = await request.get(`${API_BASE}/api/conversations/${conversationId}/runs/${runId}`)
+  const response = await request.get(
+    `${API_BASE}/api/conversations/${conversationId}/runs/${runId}`,
+  )
   if (response.status() === 404) return 'gone'
   if (!response.ok()) return `http-${response.status()}`
   const body: unknown = await response.json()
@@ -146,7 +162,7 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       await expect(page.getByText('Collect LangGraph v3 runtime evidence')).toBeVisible({
         timeout: 30_000,
       })
-      await page.waitForTimeout(700)
+      await waitForCapturePaint(page)
       await capture(page, '01-running-subagent-and-planning.png')
 
       await expect(page.getByText(/E2E subagent visual matrix:/).first()).toBeVisible({
@@ -258,7 +274,7 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
       await sendMessage(page, 'E2E_VISUAL_SLOW_STREAM')
       await expect(page.getByText('E2E_VISUAL_SLOW_STREAM')).toBeVisible({ timeout: 20_000 })
-      await page.waitForTimeout(700)
+      await waitForCapturePaint(page)
       await capture(page, '09-active-streaming-response.png')
 
       await expect(page.getByText(/fixture complete\./).first()).toBeVisible({
