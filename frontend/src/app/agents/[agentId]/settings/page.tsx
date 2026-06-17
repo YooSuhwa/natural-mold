@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
+import { consumeFixInitialMessage } from '@/lib/agents/fix-message-handoff'
 import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -116,12 +117,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     [draftActions],
   )
 
-  // 만들기 페이지에서 carry된 첫 메시지 검사 → Fix 탭 활성 + 자동 전송 + create-hero 유지
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    const msg = sessionStorage.getItem('fix-initial-message')
+    const msg = consumeFixInitialMessage()
     if (msg) {
-      sessionStorage.removeItem('fix-initial-message')
       setInitialFixMessage(msg)
       setRightTab('fix')
       setJustCreated(true)

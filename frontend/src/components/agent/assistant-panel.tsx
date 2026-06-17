@@ -21,11 +21,8 @@ interface AssistantPanelProps {
   agentId: string
   agentName: string
   showHeader?: boolean
-  /** 만들기 모드 — agentId 비어있고 첫 메시지 시 부모가 createAgent + redirect 처리 */
   createMode?: boolean
-  /** createMode일 때 첫 메시지 콜백 (부모가 createAgent + sessionStorage 보존 + redirect) */
   onCreateModeFirstMessage?: (msg: string) => Promise<void>
-  /** 마운트 직후 자동 전송할 메시지 (settings 페이지 진입 시 sessionStorage carry용) */
   initialMessage?: string
 }
 
@@ -121,7 +118,6 @@ export function AssistantPanel({
     [onResumeDecisions, registerDecision],
   )
 
-  // 마운트 후 initialMessage 자동 전송 (sessionStorage carry-over)
   useEffect(() => {
     if (initialMessage && !initialSentRef.current && agentId) {
       initialSentRef.current = true

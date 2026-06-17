@@ -1796,12 +1796,16 @@ for new findings.
     in the strict baseline so new imports fail while existing feature-specific
     migrations continue incrementally.
 
-- [ ] **Guard 4: Browser storage and auth-sensitive state**
+- [x] **Guard 4: Browser storage and auth-sensitive state**
   - Target: `localStorage`/`sessionStorage` in product components.
   - Why: Moldy auth uses HttpOnly cookies and CSRF; storage should not become a
     place for tokens, secrets, credentials, or long-lived sensitive state.
   - Expected exceptions: UI preferences, temporary route handoff state, and
     explicitly named Jotai persistence helpers.
+  - Implemented: product-surface `localStorage`, `sessionStorage`, and
+    `document.cookie` access in `src/app` and `src/components` is now blocked by
+    `check-frontend-architecture.mjs`. Existing route handoff, onboarding flags,
+    and sidebar cookie writes were moved behind explicit `src/lib` helpers.
 
 - [ ] **Guard 5: Console/logging policy**
   - Target: `console.log`, `console.debug`, `console.info` in `src`, and

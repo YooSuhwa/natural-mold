@@ -7,7 +7,7 @@ import { authApi, type LoginPayload, type RegisterPayload } from '@/lib/api/auth
 import { resetRefreshBackoff, resetSessionExpiredFlag } from '@/lib/api/client'
 import { csrfStore } from '@/lib/auth/csrf'
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
-import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '@/lib/auth/session-flags'
+import { resetAuthOneShotFlags } from '@/lib/auth/session-flags'
 import type { AuthResponse } from '@/lib/types/user'
 
 function isSafeCallback(url: string | null | undefined): url is string {
@@ -51,15 +51,7 @@ export function useRegister() {
     mutationFn: (payload: RegisterPayload) => authApi.register(payload),
     onSuccess: (res) => {
       persistAuth(res, queryClient)
-      // Reset onboarding so the dashboard dialog fires once.
-      if (typeof window !== 'undefined') {
-        try {
-          sessionStorage.removeItem(ONBOARDING_DISMISSED_FLAG)
-          sessionStorage.removeItem(SUPER_USER_WELCOMED_FLAG)
-        } catch {
-          // sessionStorage unavailable (private mode) — silently degrade.
-        }
-      }
+      resetAuthOneShotFlags()
       router.push('/')
     },
   })

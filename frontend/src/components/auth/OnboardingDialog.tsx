@@ -8,19 +8,13 @@ import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { useSession } from '@/lib/auth/session'
-import { ONBOARDING_DISMISSED_FLAG } from '@/lib/auth/session-flags'
+import { dismissOnboarding, isOnboardingDismissed } from '@/lib/auth/session-flags'
 import { useSuperUserWelcomeToast } from './use-super-user-welcome-toast'
 import type { User } from '@/lib/types/user'
 
 function shouldShow(user: User): boolean {
   if (typeof window === 'undefined') return false
-  let dismissed: string | null = null
-  try {
-    dismissed = sessionStorage.getItem(ONBOARDING_DISMISSED_FLAG)
-  } catch {
-    return false
-  }
-  if (dismissed === '1') return false
+  if (isOnboardingDismissed()) return false
   const createdAt = user.created_at ? new Date(user.created_at).getTime() : 0
   return Date.now() - createdAt < 5 * 60 * 1000
 }
@@ -44,16 +38,10 @@ function OnboardingDialogInner({ user }: { user: User }) {
   const initialOpen = useMemo(() => shouldShow(user), [user])
   const [open, setOpen] = useState(initialOpen)
 
-  // Fire the super-user welcome toast as a side-effect of mount, gated on
-  // sessionStorage so it only happens once per session.
   useSuperUserWelcomeToast(user)
 
   function dismiss() {
-    try {
-      sessionStorage.setItem(ONBOARDING_DISMISSED_FLAG, '1')
-    } catch {
-      // ignore
-    }
+    dismissOnboarding()
     setOpen(false)
   }
 

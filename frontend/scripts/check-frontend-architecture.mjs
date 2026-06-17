@@ -145,6 +145,15 @@ for (const file of files) {
     })
   }
 
+  if (isProductSurface(rel) && /\b(?:localStorage|sessionStorage)\b|document\.cookie/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'browser-storage',
+      message:
+        'Move browser storage and cookie access into explicit lib helpers so auth-sensitive state stays centralized.',
+    })
+  }
+
   if (isProductSurface(rel) && /from\s+['"]@\/lib\/api\/(?!client['"])[^'"]+['"]/.test(text)) {
     issues.push({
       rel,
