@@ -5,14 +5,7 @@ import { KeyRoundIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import { Input } from '@/components/ui/input'
 import type {
   AgentApiKeyCreateRequest,
@@ -87,16 +80,13 @@ export function ApiKeyCreateDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <KeyRoundIcon className="size-4" />
-            {t('title')}
-          </DialogTitle>
-          <DialogDescription>{t('description')}</DialogDescription>
-        </DialogHeader>
-
+    <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
+      <DialogShell.Header
+        icon={<KeyRoundIcon className="size-4" />}
+        title={t('title')}
+        description={t('description')}
+      />
+      <DialogShell.Body>
         <div className="space-y-4">
           <label className="block space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">{t('name')}</span>
@@ -169,16 +159,16 @@ export function ApiKeyCreateDialog({
             )}
           </div>
         </div>
+      </DialogShell.Body>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t('cancel')}
-          </Button>
-          <Button onClick={submit} disabled={!canSubmit || submitting}>
-            {t('create')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <DialogShell.Footer>
+        <Button variant="outline" onClick={() => onOpenChange(false)}>
+          {t('cancel')}
+        </Button>
+        <Button onClick={submit} disabled={!canSubmit || submitting}>
+          {t('create')}
+        </Button>
+      </DialogShell.Footer>
+    </DialogShell>
   )
 }

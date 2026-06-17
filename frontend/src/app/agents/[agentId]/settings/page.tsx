@@ -16,17 +16,6 @@ import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
@@ -77,17 +66,13 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const updateAgent = useUpdateAgent(agentId)
   const deleteAgent = useDeleteAgent()
   const deleteTrigger = useDeleteTrigger(agentId)
-  const {
-    draft,
-    actions: draftActions,
-    isDirty,
-    updateRequest,
-  } = useAgentSettingsDraft(agent)
+  const { draft, actions: draftActions, isDirty, updateRequest } = useAgentSettingsDraft(agent)
 
   const [leftTab, setLeftTab] = useState<LeftTab>('form')
   const [rightTab, setRightTab] = useState<RightTab>('fix')
   const [initialFixMessage, setInitialFixMessage] = useState<string | undefined>()
   const [justCreated, setJustCreated] = useState(false)
+  const [deleteAgentConfirmOpen, setDeleteAgentConfirmOpen] = useState(false)
   const [deletingTriggerTarget, setDeletingTriggerTarget] = useState<{
     id: string
     description: string
@@ -219,33 +204,14 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
           />
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <AlertDialog>
-            <AlertDialogTrigger
-              render={
-                <Button variant="ghost" size="icon-sm" aria-label={t('deleteAgent')}>
-                  <Trash2Icon className="size-4 text-destructive" />
-                </Button>
-              }
-            />
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t('deleteDialog.title')}</AlertDialogTitle>
-                <AlertDialogDescription>{t('deleteDialog.description')}</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDelete}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/80"
-                >
-                  {deleteAgent.isPending ? (
-                    <Loader2Icon className="mr-1 size-4 animate-spin" />
-                  ) : null}
-                  {tc('delete')}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t('deleteAgent')}
+            onClick={() => setDeleteAgentConfirmOpen(true)}
+          >
+            <Trash2Icon className="size-4 text-destructive" />
+          </Button>
           <Button onClick={handleSave} disabled={updateAgent.isPending || !isDirty}>
             {updateAgent.isPending ? <Loader2Icon className="mr-1 size-4 animate-spin" /> : null}
             {t('save')}
@@ -345,6 +311,17 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
           />
         </section>
       </main>
+
+      <DeleteConfirmDialog
+        open={deleteAgentConfirmOpen}
+        onOpenChange={setDeleteAgentConfirmOpen}
+        title={t('deleteDialog.title')}
+        description={t('deleteDialog.description')}
+        cancelLabel={tc('cancel')}
+        confirmLabel={tc('delete')}
+        isPending={deleteAgent.isPending}
+        onConfirm={handleDelete}
+      />
 
       {/* Trigger Delete Confirm */}
       <DeleteConfirmDialog

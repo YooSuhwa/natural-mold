@@ -4,14 +4,7 @@ import { CopyIcon, KeyRoundIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import type { AgentApiKeyCreated } from '@/lib/types'
 
 interface ApiKeyCreatedDialogProps {
@@ -30,16 +23,13 @@ export function ApiKeyCreatedDialog({ createdKey, open, onOpenChange }: ApiKeyCr
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <KeyRoundIcon className="size-4" />
-            {t('title')}
-          </DialogTitle>
-          <DialogDescription>{t('description')}</DialogDescription>
-        </DialogHeader>
-
+    <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
+      <DialogShell.Header
+        icon={<KeyRoundIcon className="size-4" />}
+        title={t('title')}
+        description={t('description')}
+      />
+      <DialogShell.Body>
         <div className="moldy-muted-panel space-y-2 p-3">
           <p className="text-xs font-medium text-muted-foreground">{t('secretKey')}</p>
           <div className="flex items-center gap-2">
@@ -51,11 +41,11 @@ export function ApiKeyCreatedDialog({ createdKey, open, onOpenChange }: ApiKeyCr
             </Button>
           </div>
         </div>
+      </DialogShell.Body>
 
-        <DialogFooter>
-          <Button onClick={() => onOpenChange(false)}>{t('done')}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <DialogShell.Footer>
+        <Button onClick={() => onOpenChange(false)}>{t('done')}</Button>
+      </DialogShell.Footer>
+    </DialogShell>
   )
 }
