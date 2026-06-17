@@ -1,0 +1,282 @@
+[
+  {
+    "filePath": "src/components/artifacts/artifact-library-content.tsx",
+    "line": 192,
+    "column": 21,
+    "ruleId": "jsx-a11y/anchor-has-content",
+    "message": "Anchors must have content and the content must be accessible by a screen reader."
+  },
+  {
+    "filePath": "src/components/chat/artifacts/providers/document-preview-shell.tsx",
+    "line": 43,
+    "column": 35,
+    "ruleId": "jsx-a11y/anchor-has-content",
+    "message": "Anchors must have content and the content must be accessible by a screen reader."
+  },
+  {
+    "filePath": "src/components/chat/artifacts/providers/fallback-preview.tsx",
+    "line": 18,
+    "column": 17,
+    "ruleId": "jsx-a11y/anchor-has-content",
+    "message": "Anchors must have content and the content must be accessible by a screen reader."
+  },
+  {
+    "filePath": "src/components/chat/right-rail/chat-right-rail.tsx",
+    "line": 383,
+    "column": 13,
+    "ruleId": "jsx-a11y/anchor-has-content",
+    "message": "Anchors must have content and the content must be accessible by a screen reader."
+  },
+  {
+    "filePath": "src/components/chat/trace-debugger-view.tsx",
+    "line": 103,
+    "column": 27,
+    "ruleId": "jsx-a11y/anchor-has-content",
+    "message": "Anchors must have content and the content must be accessible by a screen reader."
+  },
+  {
+    "filePath": "src/components/chat/trace-debugger-view.tsx",
+    "line": 110,
+    "column": 61,
+    "ruleId": "jsx-a11y/anchor-has-content",
+    "message": "Anchors must have content and the content must be accessible by a screen reader."
+  },
+  {
+    "filePath": "src/components/skill/skill-detail-package-footer.tsx",
+    "line": 71,
+    "column": 41,
+    "ruleId": "jsx-a11y/anchor-has-content",
+    "message": "Anchors must have content and the content must be accessible by a screen reader."
+  },
+  {
+    "filePath": "src/components/chat/chat-image.tsx",
+    "line": 49,
+    "column": 9,
+    "ruleId": "jsx-a11y/click-events-have-key-events",
+    "message": "Visible, non-interactive elements with click handlers must have at least one keyboard listener."
+  },
+  {
+    "filePath": "src/components/model/model-rankings.tsx",
+    "line": 89,
+    "column": 13,
+    "ruleId": "jsx-a11y/click-events-have-key-events",
+    "message": "Visible, non-interactive elements with click handlers must have at least one keyboard listener."
+  },
+  {
+    "filePath": "src/app/agents/new/page.tsx",
+    "line": 121,
+    "column": 7,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/app/mcp-servers/_components/mcp-import-dialog.tsx",
+    "line": 157,
+    "column": 13,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/app/settings/page.tsx",
+    "line": 213,
+    "column": 17,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/agent/visual-settings/nodes/agent-node.tsx",
+    "line": 121,
+    "column": 19,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/agent/visual-settings/nodes/agent-node.tsx",
+    "line": 172,
+    "column": 23,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/agent/visual-settings/nodes/agent-node.tsx",
+    "line": 189,
+    "column": 23,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/artifacts/artifact-library-content.tsx",
+    "line": 192,
+    "column": 21,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/artifacts/providers/document-preview-shell.tsx",
+    "line": 43,
+    "column": 35,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/artifacts/providers/fallback-preview.tsx",
+    "line": 18,
+    "column": 17,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/artifacts/providers/media-preview.tsx",
+    "line": 7,
+    "column": 12,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/artifacts/providers/media-preview.tsx",
+    "line": 9,
+    "column": 10,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/artifacts/providers/pptx-preview.tsx",
+    "line": 109,
+    "column": 11,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/right-rail/chat-right-rail.tsx",
+    "line": 383,
+    "column": 13,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/tool-ui/approval-card.tsx",
+    "line": 381,
+    "column": 13,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/tool-ui/approval-card.tsx",
+    "line": 397,
+    "column": 15,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/tool-ui/approval-footer.tsx",
+    "line": 57,
+    "column": 7,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/tool-ui/question-flow-card.tsx",
+    "line": 147,
+    "column": 11,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/tool-ui/user-input-ui.tsx",
+    "line": 128,
+    "column": 7,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/tool-ui/user-input-ui.tsx",
+    "line": 96,
+    "column": 15,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/trace-debugger-view.tsx",
+    "line": 103,
+    "column": 27,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/chat/trace-debugger-view.tsx",
+    "line": 110,
+    "column": 61,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/layout/sidebar-utility-footer.tsx",
+    "line": 67,
+    "column": 21,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/marketplace/update-strategy-dialog.tsx",
+    "line": 130,
+    "column": 17,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/skill/skill-create-tabs.tsx",
+    "line": 179,
+    "column": 9,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/components/skill/skill-detail-package-footer.tsx",
+    "line": 71,
+    "column": 41,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/features/schedules/components/schedule-form.tsx",
+    "line": 134,
+    "column": 13,
+    "ruleId": "jsx-a11y/control-has-associated-label",
+    "message": "A control must be associated with a text label."
+  },
+  {
+    "filePath": "src/app/settings/agent-api/_components/api-key-create-dialog.tsx",
+    "line": 135,
+    "column": 19,
+    "ruleId": "jsx-a11y/label-has-associated-control",
+    "message": "A form label must be associated with a control."
+  },
+  {
+    "filePath": "src/components/agent-prism/Avatar.tsx",
+    "line": 126,
+    "column": 13,
+    "ruleId": "jsx-a11y/no-noninteractive-element-interactions",
+    "message": "Non-interactive elements should not be assigned mouse or keyboard event listeners."
+  },
+  {
+    "filePath": "src/components/chat/chat-image.tsx",
+    "line": 49,
+    "column": 9,
+    "ruleId": "jsx-a11y/no-noninteractive-element-interactions",
+    "message": "Non-interactive elements should not be assigned mouse or keyboard event listeners."
+  },
+  {
+    "filePath": "src/components/model/model-rankings.tsx",
+    "line": 89,
+    "column": 13,
+    "ruleId": "jsx-a11y/no-noninteractive-element-interactions",
+    "message": "Non-interactive elements should not be assigned mouse or keyboard event listeners."
+  },
+  {
+    "filePath": "src/components/shared/horizontal-resize-handle.tsx",
+    "line": 80,
+    "column": 5,
+    "ruleId": "jsx-a11y/no-noninteractive-element-interactions",
+    "message": "Non-interactive elements should not be assigned mouse or keyboard event listeners."
+  }
+]

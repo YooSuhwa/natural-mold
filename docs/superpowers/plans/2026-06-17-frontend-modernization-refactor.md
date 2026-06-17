@@ -1739,12 +1739,20 @@ chat/artifact page.
     are intentionally warnings so each surface can be refactored with visual QA
     instead of being flattened mechanically.
 
-- [ ] **Guard 7: Accessibility lint**
+- [x] **Guard 7: Accessibility lint**
   - Target: add JSX accessibility coverage for alt text, interactive handlers,
     invalid anchors, and keyboard access.
   - Goal: catch focus and keyboard regressions before visual QA.
   - Rollout mode: install/configure the plugin, baseline existing findings, then
     make new findings blocking.
+  - Implemented: `frontend/eslint.a11y.config.mjs` enables the targeted
+    `jsx-a11y` rules on `src/**/*.{tsx,jsx}` through Next's existing flat ESLint
+    stack, and `frontend/scripts/check-jsx-a11y.mjs` compares current warnings
+    against `frontend/scripts/jsx-a11y-baseline.json`.
+  - Baseline: 40 current source warnings are recorded: 7 empty/polymorphic anchor
+    content warnings, 2 click-without-keyboard warnings, 26 associated-label
+    warnings, 1 label association warning, and 4 noninteractive interaction
+    warnings. New or stale baseline entries fail `pnpm lint:a11y`.
 
 - [ ] **Guard 8: Common component usage**
   - Target: route-local reimplementation of dialogs, tabs, resource panels,

@@ -196,7 +196,8 @@ inline SVG 예외는 data-driven chart와 브랜드/벤더 로고처럼 icon lib
 ## Frontend preflight and performance rules
 
 - Run `pnpm preflight` before build/dev diagnostics. The project expects Node 22 and installed frontend dependencies.
-- After frontend refactors run `pnpm lint`, `pnpm lint:i18n`, `pnpm lint:design-system`, and `pnpm lint:frontend-architecture`.
+- After frontend refactors run `pnpm lint`, `pnpm lint:a11y`, `pnpm lint:i18n`, `pnpm lint:design-system`, and `pnpm lint:frontend-architecture`.
+- JSX accessibility coverage lives in `eslint.a11y.config.mjs` and `scripts/check-jsx-a11y.mjs`. Existing warnings are baselined in `scripts/jsx-a11y-baseline.json`; do not update that baseline unless the new/removed warnings were reviewed in the actual source.
 - Do not add a new page-level `'use client'` without explaining why a Server Component wrapper plus Client island is insufficient.
 - Keep heavy artifact viewers, markdown highlighters, document parsers, Mermaid, HWP/DOCX/XLSX/PPTX viewers, and similar libraries behind lazy/dynamic imports.
 - New TanStack Query keys should be created through feature key factories, not ad hoc raw arrays inside components.
