@@ -264,6 +264,52 @@ const ARBITRARY_LAYOUT_ALLOWLIST = [
   },
 ]
 
+const POSITIONING_UTILITY_ALLOWLIST = [
+  {
+    filePath: 'src/app/shared/[shareId]/page.tsx',
+    rulePattern: /^high-z-index-utility$/,
+    context: /sticky top-0 z-40/,
+    reason: 'shared transcript header must stay above the scrollable conversation',
+  },
+  {
+    filePath: 'src/features/schedules/components/schedule-form.tsx',
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /moldy-popover absolute left-0 right-0 top-full z-20/,
+    reason: 'schedule form timezone picker is an anchored popover',
+  },
+  {
+    filePath: 'src/app/agents/[agentId]/settings/_components/right-panel/settings-panel.tsx',
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /absolute inset-0 flex items-center justify-center/,
+    reason: 'right-panel save overlay is scoped to its rounded button',
+  },
+  {
+    filePath: 'src/components/agent-prism/DetailsView/DetailsViewContentViewer.tsx',
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /absolute right-1\.5 top-1\.5 z-10/,
+    reason: 'Agent Prism raw data copy action floats inside the code viewer',
+  },
+  {
+    filePattern: /^src\/components\/agent-prism\/SpanCard\/.+\.tsx$/,
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /absolute/,
+    reason: 'Agent Prism trace connectors and timeline markers require absolute positioning',
+  },
+  {
+    filePath: 'src/components/chat/chat-image.tsx',
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /!loaded && 'absolute inset-0 opacity-0'/,
+    reason: 'image preview keeps unloaded image out of layout flow',
+  },
+  {
+    filePath: 'src/components/chat/right-rail/chat-right-rail.tsx',
+    rulePattern: /^(?:absolute-overlay-utility|fixed-overlay-utility|high-z-index-utility)$/,
+    context:
+      /(?:fixed inset-0 z-40|absolute inset-0|absolute inset-y-0 left-0 z-20|moldy-side-panel moldy-right-rail-mobile absolute inset-y-0 right-0)/,
+    reason: 'chat right rail owns its resize handle and mobile modal layer',
+  },
+]
+
 const STYLE_ATTRIBUTE_ALLOWLIST = [
   {
     filePath: 'src/components/skill/skill-package-tree.tsx',
@@ -431,6 +477,56 @@ function findArbitraryLayoutIssues(source, filePath) {
   return issues
 }
 
+function isAllowedPositioningUtility(filePath, rule, source, index) {
+  const context = source.slice(Math.max(0, index - 180), index + 260)
+
+  return POSITIONING_UTILITY_ALLOWLIST.some((entry) => {
+    const pathMatches =
+      'filePath' in entry ? entry.filePath === filePath : entry.filePattern.test(filePath)
+    return pathMatches && entry.rulePattern.test(rule) && entry.context.test(context)
+  })
+}
+
+function findPositioningIssues(source, filePath) {
+  if (path.extname(filePath) === '.css') return []
+
+  const issues = []
+  const rules = [
+    {
+      id: 'high-z-index-utility',
+      pattern: /\bz-\[[^\]]+\]|\bz-(?:40|50|[6-9][0-9]|[1-9][0-9]{2,})\b/g,
+      message: 'use a documented overlay/stacking primitive instead of high or arbitrary z-index',
+    },
+    {
+      id: 'fixed-overlay-utility',
+      pattern: /\bfixed\b(?=[^'"`<>]{0,120}\binset-)/g,
+      message: 'keep fixed viewport layers in shared overlay primitives or documented exceptions',
+    },
+    {
+      id: 'absolute-overlay-utility',
+      pattern: /\babsolute\b(?=[^'"`<>]{0,140}\b(?:inset-0|z-\d+|z-\[[^\]]+\]))/g,
+      message:
+        'keep absolute overlays/stacking contexts in shared primitives or documented exceptions',
+    },
+  ]
+
+  for (const rule of rules) {
+    for (const match of source.matchAll(rule.pattern)) {
+      const index = match.index ?? 0
+      if (isAllowedPositioningUtility(filePath, rule.id, source, index)) continue
+      issues.push({
+        filePath,
+        line: lineNumberAt(source, index),
+        rule: rule.id,
+        message: rule.message,
+        snippet: compactSnippet(source, index),
+      })
+    }
+  }
+
+  return issues
+}
+
 async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src')) {
   const files = await collectFiles(rootDir)
   const issues = []
@@ -440,6 +536,7 @@ async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src'))
     const filePath = normalizePath(path.relative(process.cwd(), file))
     issues.push(...findZeroToleranceIssues(source, filePath))
     issues.push(...findArbitraryLayoutIssues(source, filePath))
+    issues.push(...findPositioningIssues(source, filePath))
     issues.push(...findInlineStyleIssues(source, filePath))
   }
 
@@ -460,6 +557,9 @@ async function main() {
     )
     console.log(
       `Allowed arbitrary layout exceptions: ${ARBITRARY_LAYOUT_ALLOWLIST.length} documented runtime/layout cases.`,
+    )
+    console.log(
+      `Allowed positioning exceptions: ${POSITIONING_UTILITY_ALLOWLIST.length} documented overlay/stacking cases.`,
     )
     return
   }

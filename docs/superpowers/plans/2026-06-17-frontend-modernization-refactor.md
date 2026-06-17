@@ -1683,12 +1683,19 @@ chat/artifact page.
     reaching for `bg-blue-*`, `text-emerald-*`, `border-rose-*`, and similar
     direct palette classes.
 
-- [ ] **Guard 3: z-index, fixed, and absolute positioning**
+- [x] **Guard 3: z-index, fixed, and absolute positioning**
   - Target: new arbitrary z-indexes, high `z-*` utilities, and page-local
     `fixed`/`absolute` overlays.
   - Goal: prevent overlap regressions and keep stacking contexts centralized.
   - Expected exceptions: dialogs, popovers, dropdowns, chat right rail mobile
     layer, resize handles, and timeline markers.
+  - Implemented: `frontend/scripts/check-design-system.mjs` now blocks arbitrary
+    z-index utilities, `z-40+`, `fixed inset-*` viewport layers, and
+    `absolute inset-0` / `absolute ... z-*` overlay contexts unless the file and
+    context are documented in `POSITIONING_UTILITY_ALLOWLIST`.
+  - Notes: icon-in-input positioning such as password visibility controls is
+    intentionally outside this rule; it does not create an overlay stacking
+    context.
 
 - [ ] **Guard 4: Typography drift**
   - Target: `leading-[...]`, `tracking-[...]`, negative tracking, and page-local
@@ -1765,6 +1772,20 @@ allows only documented runtime/layout sizing cases:
 | Chat transcript and image viewer | Bubble width ratios and fullscreen viewport clamps | Message layout and image preview sizing are viewport/runtime dependent. |
 | Artifact library and artifact providers | Preview pane caps, zoom widths, master/detail grids | Generated files need bounded inspection panes across formats. |
 | Shared dialog/user-menu/model/credential/skill panes | CSS-variable anchors and viewport-clamped lists | Values are tied to popover/dialog mechanics or editor usability. |
+
+### Current Narrow Positioning Exceptions
+
+`frontend/scripts/check-design-system.mjs` is the source of truth. It currently
+allows only documented overlay/stacking cases:
+
+| Area | Runtime need | Why it stays exceptional |
+| --- | --- | --- |
+| Shared transcript header | `sticky top-0 z-40` | The shared conversation header must stay above the transcript scroll region. |
+| Schedule form popover | `absolute ... z-20` | The timezone picker is anchored to an input. |
+| Agent settings right panel save overlay | `absolute inset-0` | The spinner overlay is scoped to a single rounded button. |
+| Chat right rail | `fixed inset-0 z-40`, resize handle, mobile side panel | The rail owns a user-resizable split pane and mobile modal layer. |
+| Agent Prism | absolute trace connectors, copy action, timeline markers | Trace/timeline rendering depends on absolute marker geometry. |
+| Chat image preview | unloaded image absolute overlay | Image loading state must not shift layout. |
 
 ## 13. Non-Visual Lint Guard Rollout Ledger
 

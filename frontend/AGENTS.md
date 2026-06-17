@@ -126,6 +126,7 @@ pnpm lint:design-system
 - `bg-[#...]`, `text-[#...]`, `border-[#...]` raw hex utility — `--primary`, `--status-*`, `--moldy-*` semantic token으로 이동
 - `bg-blue-500`, `text-emerald-700`, `border-rose-300` 같은 직접 Tailwind palette utility — `moldy-status-*`, `moldy-favorite-icon`, `moldy-data-type-*`, Agent Prism token 등 의미 class/token으로 이동
 - `gap-[...]`, `p-[...]`, `m-[...]`, `size-[...]`, `w-[...]`, `h-[...]`, `grid-cols-[...]` 같은 임의 spacing/sizing utility — Tailwind scale token, `lib/design-tokens.ts`, 공용 layout API, 또는 `scripts/check-design-system.mjs`의 좁은 예외로 이동
+- `z-[...]`, `z-40+`, `fixed inset-*`, `absolute inset-0`, `absolute ... z-*` overlay/stacking utility — shared overlay/positioning primitive 또는 `scripts/check-design-system.mjs`의 파일별 예외로 이동
 - `text-[...]`, `outline-none`, `transition-all` — Moldy typography/focus/explicit transition 규칙 사용
 - 임의 `style={...}` — 동적 layout/library API만 `scripts/check-design-system.mjs` allowlist에 이유와 함께 명시
 
@@ -134,8 +135,10 @@ pnpm lint:design-system
 tree depth indentation, syntax highlighter theme, usage bar width, resource
 grid columns, DialogShell size tokens, artifact preview panes, Agent Prism
 trace/timeline layout, chat viewport clamps, phase progress ratio뿐이다. 직접
-palette 색이 필요해 보여도 먼저 의미 class를 추가한다. 예외를 늘릴 때는 먼저 공용
-class/토큰으로 표현 가능한지 확인한다.
+palette 색이 필요해 보여도 먼저 의미 class를 추가한다. overlay/stacking 예외도
+chat right rail mobile layer, sticky transcript header, popover, resize handle,
+Agent Prism marker처럼 실제 stacking 계약이 있는 경우만 허용한다. 예외를 늘릴 때는
+먼저 공용 class/토큰으로 표현 가능한지 확인한다.
 
 ## i18n 정적 텍스트 규칙
 
