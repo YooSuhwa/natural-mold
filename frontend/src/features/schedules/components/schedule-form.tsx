@@ -11,7 +11,6 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
-import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -24,29 +23,17 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select'
-import type {
-  AgentTrigger,
-  Conversation,
-  TriggerCreateRequest,
-  TriggerUpdateRequest,
-} from '@/lib/types'
-
-type ScheduleType = 'minutes' | 'one_time' | 'daily' | 'weekly' | 'monthly' | 'advanced'
-type ConversationPolicy = 'schedule_thread' | 'new_per_run' | 'selected_conversation'
-
-const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
-const WEEKDAY_CRON = [1, 2, 3, 4, 5, 6, 0] as const
-
-const INTERVAL_OPTIONS = [5, 10, 20, 30, 60] as const
-
-interface ScheduleDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onSubmit: (data: TriggerCreateRequest | { triggerId: string; data: TriggerUpdateRequest }) => void
-  trigger?: AgentTrigger | null
-  agentId?: string
-  isPending?: boolean
-}
+import type { AgentTrigger, Conversation, TriggerCreateRequest } from '@/lib/types'
+import {
+  INTERVAL_OPTIONS,
+  WEEKDAY_CRON,
+  WEEKDAY_KEYS,
+  buildScheduleRequest,
+  getDefaultScheduleFormState,
+  parseTriggerToForm,
+  type ConversationPolicy,
+  type ScheduleType,
+} from '@/features/schedules/lib/schedule-form-state'
 
 interface ScheduleFormProps {
   agentId?: string
@@ -57,107 +44,6 @@ interface ScheduleFormProps {
   isEdit?: boolean
 }
 
-function parseTriggerToForm(trigger: AgentTrigger) {
-  const config = trigger.schedule_config ?? {}
-
-  if (trigger.trigger_type === 'one_time') {
-    return {
-      type: 'one_time' as ScheduleType,
-      intervalMinutes: 10,
-      hour: '09',
-      minute: '00',
-      weekdays: new Set<number>(),
-      monthDay: '1',
-      cronExpression: '',
-      scheduledAt: toDateTimeLocal(config.scheduled_at),
-    }
-  }
-
-  if (trigger.trigger_type === 'interval') {
-    return {
-      type: 'minutes' as ScheduleType,
-      intervalMinutes: config.interval_minutes ?? 10,
-      hour: '09',
-      minute: '00',
-      weekdays: new Set<number>(),
-      monthDay: '1',
-      cronExpression: '',
-      scheduledAt: defaultScheduledAt(),
-    }
-  }
-
-  const cron = config.cron_expression ?? ''
-  const parts = cron.split(' ')
-
-  if (parts.length === 5) {
-    const [cronMin, cronHour, cronDom, , cronDow] = parts
-    const hour = cronHour.padStart(2, '0')
-    const minute = cronMin.padStart(2, '0')
-
-    if (cronDow !== '*') {
-      const days = cronDow.split(',').map(Number)
-      return {
-        type: 'weekly' as ScheduleType,
-        intervalMinutes: 10,
-        hour,
-        minute,
-        weekdays: new Set(days),
-        monthDay: '1',
-        cronExpression: cron,
-        scheduledAt: defaultScheduledAt(),
-      }
-    }
-
-    if (cronDom !== '*') {
-      return {
-        type: 'monthly' as ScheduleType,
-        intervalMinutes: 10,
-        hour,
-        minute,
-        weekdays: new Set<number>(),
-        monthDay: cronDom,
-        cronExpression: cron,
-        scheduledAt: defaultScheduledAt(),
-      }
-    }
-
-    return {
-      type: 'daily' as ScheduleType,
-      intervalMinutes: 10,
-      hour,
-      minute,
-      weekdays: new Set<number>(),
-      monthDay: '1',
-      cronExpression: cron,
-      scheduledAt: defaultScheduledAt(),
-    }
-  }
-
-  return {
-    type: 'advanced' as ScheduleType,
-    intervalMinutes: 10,
-    hour: '09',
-    minute: '00',
-    weekdays: new Set<number>(),
-    monthDay: '1',
-    cronExpression: cron,
-    scheduledAt: defaultScheduledAt(),
-  }
-}
-
-function getDefaultForm() {
-  return {
-    type: 'minutes' as ScheduleType,
-    intervalMinutes: 10,
-    hour: '09',
-    minute: '00',
-    weekdays: new Set<number>(),
-    monthDay: '1',
-    cronExpression: '',
-    scheduledAt: defaultScheduledAt(),
-  }
-}
-
 const TYPE_ICONS: Record<ScheduleType, typeof ClockIcon> = {
   minutes: ClockIcon,
   one_time: CalendarIcon,
@@ -165,20 +51,6 @@ const TYPE_ICONS: Record<ScheduleType, typeof ClockIcon> = {
   weekly: CalendarIcon,
   monthly: CalendarIcon,
   advanced: SettingsIcon,
-}
-
-function defaultScheduledAt() {
-  const date = new Date()
-  date.setHours(date.getHours() + 1, 0, 0, 0)
-  return toDateTimeLocal(date.toISOString())
-}
-
-function toDateTimeLocal(value: string | undefined) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const offsetMs = date.getTimezoneOffset() * 60 * 1000
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
 }
 
 function conversationPolicyLabel(
@@ -323,7 +195,7 @@ export function ScheduleForm({
   const conversationsAgentId = agentId ?? trigger?.agent_id ?? ''
   const { data: conversations = [] } = useConversations(conversationsAgentId)
 
-  const [form, setForm] = useState(getDefaultForm)
+  const [form, setForm] = useState(getDefaultScheduleFormState)
   const [scheduleName, setScheduleName] = useState('')
   const [inputMessage, setInputMessage] = useState('')
   const [conversationPolicy, setConversationPolicy] =
@@ -366,7 +238,7 @@ export function ScheduleForm({
       setMaxRunsLimited(!!trigger.max_runs)
       setAutoPauseEnabled(!!trigger.auto_pause_after_failures)
     } else {
-      setForm(getDefaultForm())
+      setForm(getDefaultScheduleFormState())
       setScheduleName('')
       setInputMessage('')
       setConversationPolicy('schedule_thread')
@@ -389,78 +261,18 @@ export function ScheduleForm({
     })
   }, [])
 
-  function withCommonOptions(req: TriggerCreateRequest): TriggerCreateRequest {
-    const trimmedTarget = targetConversationId.trim()
-    const parsedMaxRuns = maxRunsLimited && maxRuns.trim() ? Number(maxRuns) : null
-    const parsedFailures =
-      autoPauseEnabled && autoPauseAfterFailures.trim() ? Number(autoPauseAfterFailures) : null
-
-    return {
-      ...req,
-      conversation_policy: conversationPolicy,
-      target_conversation_id:
-        conversationPolicy === 'selected_conversation' && trimmedTarget ? trimmedTarget : null,
-      max_runs: parsedMaxRuns && parsedMaxRuns > 0 ? parsedMaxRuns : null,
-      end_at: endAt ? new Date(endAt).toISOString() : null,
-      auto_pause_after_failures: parsedFailures && parsedFailures > 0 ? parsedFailures : null,
-    }
-  }
-
   function buildRequest(): TriggerCreateRequest {
-    switch (form.type) {
-      case 'minutes':
-        return withCommonOptions({
-          name: scheduleName.trim() || undefined,
-          trigger_type: 'interval',
-          schedule_config: { interval_minutes: form.intervalMinutes },
-          input_message: inputMessage.trim() || 'Cron trigger fired.',
-          timezone: 'Asia/Seoul',
-        })
-      case 'one_time':
-        return withCommonOptions({
-          name: scheduleName.trim() || undefined,
-          trigger_type: 'one_time',
-          schedule_config: { scheduled_at: new Date(form.scheduledAt).toISOString() },
-          input_message: inputMessage.trim() || 'Cron trigger fired.',
-          timezone: 'Asia/Seoul',
-        })
-      case 'daily':
-        return withCommonOptions({
-          name: scheduleName.trim() || undefined,
-          trigger_type: 'cron',
-          schedule_config: { cron_expression: `${form.minute} ${form.hour} * * *` },
-          input_message: inputMessage.trim() || 'Cron trigger fired.',
-          timezone: 'Asia/Seoul',
-        })
-      case 'weekly': {
-        const days = Array.from(form.weekdays).sort().join(',') || '*'
-        return withCommonOptions({
-          name: scheduleName.trim() || undefined,
-          trigger_type: 'cron',
-          schedule_config: { cron_expression: `${form.minute} ${form.hour} * * ${days}` },
-          input_message: inputMessage.trim() || 'Cron trigger fired.',
-          timezone: 'Asia/Seoul',
-        })
-      }
-      case 'monthly':
-        return withCommonOptions({
-          name: scheduleName.trim() || undefined,
-          trigger_type: 'cron',
-          schedule_config: {
-            cron_expression: `${form.minute} ${form.hour} ${form.monthDay} * *`,
-          },
-          input_message: inputMessage.trim() || 'Cron trigger fired.',
-          timezone: 'Asia/Seoul',
-        })
-      case 'advanced':
-        return withCommonOptions({
-          name: scheduleName.trim() || undefined,
-          trigger_type: 'cron',
-          schedule_config: { cron_expression: form.cronExpression.trim() },
-          input_message: inputMessage.trim() || 'Cron trigger fired.',
-          timezone: 'Asia/Seoul',
-        })
-    }
+    return buildScheduleRequest(form, {
+      name: scheduleName,
+      inputMessage,
+      conversationPolicy,
+      targetConversationId,
+      maxRuns,
+      endAt,
+      autoPauseAfterFailures,
+      maxRunsLimited,
+      autoPauseEnabled,
+    })
   }
 
   function handleSubmit() {
@@ -769,34 +581,5 @@ export function ScheduleForm({
         </Button>
       </div>
     </div>
-  )
-}
-
-export function ScheduleDialog({
-  open,
-  onOpenChange,
-  onSubmit,
-  trigger,
-  agentId,
-  isPending,
-}: ScheduleDialogProps) {
-  const t = useTranslations('agent.schedule')
-  return (
-    <DialogShell open={open} onOpenChange={onOpenChange} size="xl" height="fixed">
-      <DialogShell.Header title={t('title')} description={t('description')} />
-      <DialogShell.Body className="flex min-h-0 flex-1 space-y-0 overflow-hidden p-0">
-        <ScheduleForm
-          agentId={agentId}
-          trigger={trigger}
-          isEdit={!!trigger}
-          isPending={isPending}
-          onCancel={() => onOpenChange(false)}
-          onSubmit={(req) => {
-            if (trigger) onSubmit({ triggerId: trigger.id, data: req })
-            else onSubmit(req)
-          }}
-        />
-      </DialogShell.Body>
-    </DialogShell>
   )
 }

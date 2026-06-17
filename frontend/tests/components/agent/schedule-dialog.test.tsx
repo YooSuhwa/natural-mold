@@ -1,6 +1,6 @@
 import { fireEvent } from '@testing-library/react'
 import { render, screen, userEvent, waitFor } from '../../test-utils'
-import { ScheduleForm } from '@/components/agent/visual-settings/dialogs/schedule-dialog'
+import { ScheduleForm } from '@/features/schedules/components/schedule-form'
 
 vi.mock('@/lib/hooks/use-conversations', () => ({
   useConversations: () => ({

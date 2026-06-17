@@ -23,7 +23,8 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import { ResourceListState } from '@/components/shared/resource-list-state'
 import { SearchFilterBar } from '@/components/shared/search-filter-bar'
 import { SettingsSectionCard } from '@/components/shared/settings-section-card'
-import { ScheduleDialog } from '@/components/agent/visual-settings/dialogs/schedule-dialog'
+import { ScheduleDialog } from '@/features/schedules/components/schedule-dialog'
+import { ScheduleRunList } from '@/features/schedules/components/schedule-run-list'
 import {
   Select,
   SelectContent,
@@ -38,26 +39,12 @@ import {
   useTriggerRuns,
   useUpdateTriggerGlobal,
 } from '@/lib/hooks/use-triggers'
+import {
+  formatScheduleCenterLabel,
+  getScheduleStatusVariant,
+} from '@/features/schedules/lib/cron-labels'
 import type { AgentTrigger, TriggerCreateRequest, TriggerUpdateRequest } from '@/lib/types'
 import { SettingsShell } from '../_components/settings-shell'
-
-type ScheduleTranslator = ReturnType<typeof useTranslations>
-
-function formatSchedule(trigger: AgentTrigger, t: ScheduleTranslator) {
-  if (trigger.trigger_type === 'interval') {
-    return t('format.interval', { minutes: trigger.schedule_config.interval_minutes ?? 10 })
-  }
-  if (trigger.trigger_type === 'one_time') {
-    return t('format.oneTime')
-  }
-  return trigger.schedule_config.cron_expression ?? t('format.cron')
-}
-
-function statusVariant(status: AgentTrigger['status']): 'default' | 'secondary' | 'destructive' {
-  if (status === 'active') return 'default'
-  if (status === 'error') return 'destructive'
-  return 'secondary'
-}
 
 const ALL_STATUSES = 'all'
 const ALL_AGENTS = 'all'
@@ -78,6 +65,14 @@ export default function SchedulesPage() {
   const [historyTrigger, setHistoryTrigger] = useState<AgentTrigger | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AgentTrigger | null>(null)
   const { data: runs, isLoading: runsLoading } = useTriggerRuns(historyTrigger?.id ?? null)
+  const scheduleLabels = useMemo(
+    () => ({
+      interval: (minutes: number) => t('format.interval', { minutes }),
+      oneTime: t('format.oneTime'),
+      cron: t('format.cron'),
+    }),
+    [t],
+  )
 
   const totalUnread = useMemo(
     () =>
@@ -111,7 +106,7 @@ export default function SchedulesPage() {
         trigger.input_message,
         trigger.agent_name,
         trigger.schedule_conversation_title,
-        formatSchedule(trigger, t),
+        formatScheduleCenterLabel(trigger, scheduleLabels),
         t(`status.${trigger.status}`),
       ]
         .filter(Boolean)
@@ -119,7 +114,7 @@ export default function SchedulesPage() {
         .toLocaleLowerCase()
       return haystack.includes(normalizedQuery)
     })
-  }, [agentFilter, deferredSearchQuery, statusFilter, t, triggers])
+  }, [agentFilter, deferredSearchQuery, scheduleLabels, statusFilter, t, triggers])
   const hasActiveFilters =
     searchQuery.trim().length > 0 || statusFilter !== ALL_STATUSES || agentFilter !== ALL_AGENTS
   const triggerCount = triggers?.length ?? 0
@@ -311,7 +306,7 @@ export default function SchedulesPage() {
                               trigger.trigger_type === 'one_time' ? undefined : 'font-mono'
                             }
                           >
-                            {formatSchedule(trigger, t)}
+                            {formatScheduleCenterLabel(trigger, scheduleLabels)}
                           </span>
                           {trigger.trigger_type === 'one_time' ? (
                             <div className="mt-1 text-muted-foreground">
@@ -320,7 +315,7 @@ export default function SchedulesPage() {
                           ) : null}
                         </td>
                         <td className="px-4 py-3 align-top">
-                          <Badge variant={statusVariant(trigger.status)}>
+                          <Badge variant={getScheduleStatusVariant(trigger.status)}>
                             {t(`status.${trigger.status}`)}
                           </Badge>
                         </td>
@@ -429,55 +424,17 @@ export default function SchedulesPage() {
         >
           <DialogShell.Header title={t('history.title')} description={historyTrigger?.name} />
           <DialogShell.Body>
-            {runsLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : runs && runs.length > 0 ? (
-              <div className="space-y-2">
-                {runs.map((run) => (
-                  <div key={run.id} className="rounded-lg border p-3 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <Badge variant={run.status === 'success' ? 'default' : 'secondary'}>
-                          {run.status}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {run.source === 'run_now' ? t('history.runNow') : t('history.scheduled')}
-                        </span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate(run.started_at)}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      {run.duration_ms !== null ? <span>{run.duration_ms}ms</span> : null}
-                      {run.conversation_id ? (
-                        <Link
-                          href={`/agents/${run.agent_id}/conversations/${run.conversation_id}`}
-                          className="text-primary-strong hover:underline"
-                        >
-                          {t('history.openConversation')}
-                        </Link>
-                      ) : null}
-                      {run.thread_id ? <span>thread {run.thread_id.slice(0, 8)}</span> : null}
-                    </div>
-                    {run.output_preview ? (
-                      <p className="mt-2 line-clamp-3 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
-                        {run.output_preview}
-                      </p>
-                    ) : null}
-                    {run.error_message ? (
-                      <p className="mt-2 text-xs text-destructive">{run.error_message}</p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">{t('history.empty')}</p>
-            )}
+            <ScheduleRunList
+              runs={runs}
+              loading={runsLoading}
+              formatDate={formatDate}
+              labels={{
+                runNow: t('history.runNow'),
+                scheduled: t('history.scheduled'),
+                openConversation: t('history.openConversation'),
+                empty: t('history.empty'),
+              }}
+            />
           </DialogShell.Body>
         </DialogShell>
 

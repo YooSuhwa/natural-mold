@@ -13,7 +13,8 @@ import { useTriggers, useCreateTrigger, useUpdateTrigger } from '@/lib/hooks/use
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ScheduleDialog } from '@/components/agent/visual-settings/dialogs/schedule-dialog'
+import { ScheduleDialog } from '@/features/schedules/components/schedule-dialog'
+import { getScheduleStatusVariant } from '@/features/schedules/lib/cron-labels'
 import type { AgentTrigger } from '@/lib/types'
 
 interface TriggersTabProps {
@@ -64,15 +65,7 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
               <CardContent className="flex items-center justify-between py-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <Badge
-                      variant={
-                        trigger.status === 'active'
-                          ? 'default'
-                          : trigger.status === 'error'
-                            ? 'destructive'
-                            : 'secondary'
-                      }
-                    >
+                    <Badge variant={getScheduleStatusVariant(trigger.status)}>
                       {statusLabel(trigger.status)}
                     </Badge>
                     <span className="font-medium text-sm">{trigger.name}</span>
