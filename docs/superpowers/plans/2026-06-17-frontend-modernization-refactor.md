@@ -1723,13 +1723,21 @@ chat/artifact page.
   - Notes: new product controls should import icons from `lucide-react` or a
     shared Moldy icon primitive before considering inline SVG.
 
-- [ ] **Guard 6: Nested cards and section-as-card warning**
+- [x] **Guard 6: Nested cards and section-as-card warning**
   - Target: `Card` inside `Card`, `moldy-card` inside `moldy-card`, and page
     sections styled as large floating cards.
   - Goal: keep cards for repeated items, dialogs, and framed tools rather than
     nested page structure.
   - Rollout mode: start as report/warning with a baseline because this rule can
     have false positives.
+  - Implemented: `frontend/scripts/check-design-system.mjs` now reports
+    non-blocking `section-as-card`, `nested-card`, and `nested-moldy-card`
+    warning candidates after the blocking design-system checks pass.
+  - Baseline: the first rollout reports the current candidates from chat,
+    settings, audit events, Agent API, usage summary, artifact library, trace
+    debugger, settings-section shell, and skill-builder dialog surfaces. These
+    are intentionally warnings so each surface can be refactored with visual QA
+    instead of being flattened mechanically.
 
 - [ ] **Guard 7: Accessibility lint**
   - Target: add JSX accessibility coverage for alt text, interactive handlers,

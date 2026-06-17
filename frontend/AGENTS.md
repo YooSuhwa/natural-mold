@@ -129,6 +129,7 @@ pnpm lint:design-system
 - `z-[...]`, `z-40+`, `fixed inset-*`, `absolute inset-0`, `absolute ... z-*` overlay/stacking utility — shared overlay/positioning primitive 또는 `scripts/check-design-system.mjs`의 파일별 예외로 이동
 - `text-[...]`, `leading-[...]`, `tracking-[...]`, `tracking-tight/tighter`, `outline-none`, `transition-all` — Moldy typography/focus/explicit transition 규칙 사용
 - 제품 버튼/메뉴/탭/툴바의 inline `<svg>` — `lucide-react` 또는 Moldy-owned icon primitive로 이동
+- `<Card>` 안의 `<Card>`, `moldy-card` 안의 `moldy-card`, 그리고 `<section>/<aside>`에 `moldy-card`/`moldy-panel`을 붙인 큰 surface — 현재는 `pnpm lint:design-system`의 warning baseline으로 보고된다. 새 화면을 추가할 때는 이 경고를 늘리기 전에 단일 surface + 내부 layout 또는 shared panel/tool primitive로 표현 가능한지 검토한다
 - 임의 `style={...}` — 동적 layout/library API만 `scripts/check-design-system.mjs` allowlist에 이유와 함께 명시
 
 현재 허용된 inline style 및 arbitrary layout 예외는
@@ -142,7 +143,9 @@ Agent Prism marker처럼 실제 stacking 계약이 있는 경우만 허용한다
 예외는 Agent Prism trace geometry처럼 렌더러/레이아웃 계약이 있는 경우만 허용한다.
 inline SVG 예외는 data-driven chart와 브랜드/벤더 로고처럼 icon library 대체가
 부적절한 경우만 허용한다. 예외를 늘릴 때는 먼저 공용 class/토큰으로 표현 가능한지
-확인한다.
+확인한다. 카드 구조 경고는 아직 실패 조건이 아니지만, 화면 구조 리팩토링 시
+`pnpm lint:design-system` 출력의 `section-as-card`, `nested-card`,
+`nested-moldy-card` 후보를 우선 정리 대상으로 본다.
 
 ## i18n 정적 텍스트 규칙
 

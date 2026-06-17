@@ -22,6 +22,9 @@ const SKIP_FILE_PATTERNS = [
   /(^|\/)src\/components\/ui\//,
 ]
 
+const SURFACE_CLASS_TOKEN_RE = /(?<![A-Za-z0-9_-])(?:moldy-card|moldy-panel)(?![A-Za-z0-9_-])/
+const MOLDY_CARD_CLASS_TOKEN_RE = /(?<![A-Za-z0-9_-])moldy-card(?![A-Za-z0-9_-])/
+
 const ZERO_TOLERANCE_RULES = [
   {
     id: 'large-radius-utility',
@@ -617,6 +620,82 @@ function findInlineSvgIssues(source, filePath) {
   return issues
 }
 
+function findCardStructureWarnings(source, filePath) {
+  if (path.extname(filePath) === '.css') return []
+
+  const warnings = []
+  const sectionSurfaceRe = /<(?:section|aside)\b[^>]*className=(?:\{cn\(|["'`])[^>]*>/g
+
+  for (const match of source.matchAll(sectionSurfaceRe)) {
+    if (!SURFACE_CLASS_TOKEN_RE.test(match[0])) continue
+
+    const index = match.index ?? 0
+    warnings.push({
+      filePath,
+      line: lineNumberAt(source, index),
+      rule: 'section-as-card',
+      message: 'review whether this section should be an unframed layout or a shared panel/tool',
+      snippet: compactSnippet(source, index),
+    })
+  }
+
+  const cardTagRe = /<\/?Card\b[^>]*>/g
+  let cardDepth = 0
+  for (const match of source.matchAll(cardTagRe)) {
+    const index = match.index ?? 0
+    const token = match[0]
+    if (token.startsWith('</')) {
+      cardDepth = Math.max(0, cardDepth - 1)
+      continue
+    }
+
+    if (cardDepth > 0) {
+      warnings.push({
+        filePath,
+        line: lineNumberAt(source, index),
+        rule: 'nested-card',
+        message: 'review nested Card usage; prefer a single surface with internal layout',
+        snippet: compactSnippet(source, index),
+      })
+    }
+
+    if (!token.endsWith('/>')) cardDepth += 1
+  }
+
+  const jsxTagRe = /<\/?([A-Za-z][\w.:]*)\b[^>]*>/g
+  const elementStack = []
+  for (const match of source.matchAll(jsxTagRe)) {
+    const index = match.index ?? 0
+    const token = match[0]
+    const tagName = match[1]
+
+    if (token.startsWith('</')) {
+      const openIndex = elementStack.findLastIndex((entry) => entry.tagName === tagName)
+      if (openIndex >= 0) {
+        elementStack.splice(openIndex)
+      }
+      continue
+    }
+
+    const isMoldyCardSurface = /\bclassName=/.test(token) && MOLDY_CARD_CLASS_TOKEN_RE.test(token)
+    if (isMoldyCardSurface && elementStack.some((entry) => entry.isMoldyCardSurface)) {
+      warnings.push({
+        filePath,
+        line: lineNumberAt(source, index),
+        rule: 'nested-moldy-card',
+        message: 'review nested moldy-card surfaces; prefer one surface with internal layout',
+        snippet: compactSnippet(source, index),
+      })
+    }
+
+    if (!token.endsWith('/>')) {
+      elementStack.push({ tagName, isMoldyCardSurface })
+    }
+  }
+
+  return warnings
+}
+
 async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src')) {
   const files = await collectFiles(rootDir)
   const issues = []
@@ -639,8 +718,26 @@ async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src'))
   )
 }
 
+async function findDesignSystemWarnings(rootDir = path.join(process.cwd(), 'src')) {
+  const files = await collectFiles(rootDir)
+  const warnings = []
+
+  for (const file of files) {
+    const source = await readFile(file, 'utf8')
+    const filePath = normalizePath(path.relative(process.cwd(), file))
+    warnings.push(...findCardStructureWarnings(source, filePath))
+  }
+
+  return warnings.sort((left, right) =>
+    left.filePath === right.filePath
+      ? left.line - right.line
+      : left.filePath.localeCompare(right.filePath),
+  )
+}
+
 async function main() {
   const issues = await findDesignSystemIssues()
+  const warnings = await findDesignSystemWarnings()
 
   if (issues.length === 0) {
     console.log('Design system guard passed.')
@@ -659,6 +756,19 @@ async function main() {
     console.log(
       `Allowed inline SVG exceptions: ${INLINE_SVG_ALLOWLIST.length} documented chart/logo cases.`,
     )
+    if (warnings.length > 0) {
+      console.warn(
+        `Card structure warning baseline: ${warnings.length} candidate(s). Review before making these blocking.`,
+      )
+      for (const warning of warnings.slice(0, 24)) {
+        console.warn(
+          `${warning.filePath}:${warning.line} [${warning.rule}] ${warning.message} :: ${warning.snippet}`,
+        )
+      }
+      if (warnings.length > 24) {
+        console.warn(`...and ${warnings.length - 24} more card structure warning(s).`)
+      }
+    }
     return
   }
 
@@ -667,6 +777,9 @@ async function main() {
     console.error(
       `${issue.filePath}:${issue.line} [${issue.rule}] ${issue.message} :: ${issue.snippet}`,
     )
+  }
+  if (warnings.length > 0) {
+    console.warn(`Also found ${warnings.length} card structure warning candidate(s).`)
   }
   process.exitCode = 1
 }
