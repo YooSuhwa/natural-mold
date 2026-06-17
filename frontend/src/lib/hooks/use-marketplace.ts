@@ -7,6 +7,7 @@ import { agentBlueprintQueryKeys } from '@/lib/query-keys/agent-blueprints'
 import { marketplaceQueryKeys } from '@/lib/query-keys/marketplace'
 import { mcpServerQueryKeys } from '@/lib/query-keys/mcp-servers'
 import { skillQueryKeys } from '@/lib/query-keys/skills'
+import { requiredQueryValue } from './required-query-value'
 import type {
   InstallMarketplaceItemBody,
   MarketplaceItemACLBody,
@@ -52,7 +53,7 @@ export function useMarketplaceItemsPage(filters?: MarketplaceListFilters, enable
 export function useMarketplaceItem(itemId: string | null | undefined) {
   return useQuery({
     queryKey: marketplaceQueryKeys.item(itemId),
-    queryFn: () => marketplaceApi.get(itemId!),
+    queryFn: () => marketplaceApi.get(requiredQueryValue(itemId, 'marketplace item id')),
     enabled: !!itemId,
   })
 }
@@ -60,7 +61,7 @@ export function useMarketplaceItem(itemId: string | null | undefined) {
 export function useMarketplaceVersions(itemId: string | null | undefined) {
   return useQuery({
     queryKey: marketplaceQueryKeys.itemVersions(itemId),
-    queryFn: () => marketplaceApi.listVersions(itemId!),
+    queryFn: () => marketplaceApi.listVersions(requiredQueryValue(itemId, 'marketplace item id')),
     enabled: !!itemId,
   })
 }
@@ -68,7 +69,8 @@ export function useMarketplaceVersions(itemId: string | null | undefined) {
 export function useMarketplaceVersion(versionId: string | null | undefined) {
   return useQuery({
     queryKey: marketplaceQueryKeys.version(versionId),
-    queryFn: () => marketplaceApi.getVersion(versionId!),
+    queryFn: () =>
+      marketplaceApi.getVersion(requiredQueryValue(versionId, 'marketplace version id')),
     enabled: !!versionId,
   })
 }

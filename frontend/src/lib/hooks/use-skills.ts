@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { skillsApi } from '@/lib/api/skills'
 import { skillQueryKeys, type SkillListQueryParams } from '@/lib/query-keys/skills'
+import { requiredQueryValue } from './required-query-value'
 import type {
   SkillContentUpdateRequest,
   SkillCreateRequest,
@@ -20,7 +21,7 @@ export function useSkills(params?: SkillListQueryParams) {
 export function useSkill(id: string | null | undefined) {
   return useQuery({
     queryKey: skillQueryKeys.detail(id),
-    queryFn: () => skillsApi.get(id!),
+    queryFn: () => skillsApi.get(requiredQueryValue(id, 'skill id')),
     enabled: !!id,
   })
 }
@@ -28,7 +29,7 @@ export function useSkill(id: string | null | undefined) {
 export function useSkillFiles(id: string | null | undefined) {
   return useQuery({
     queryKey: skillQueryKeys.files(id),
-    queryFn: () => skillsApi.listFiles(id!),
+    queryFn: () => skillsApi.listFiles(requiredQueryValue(id, 'skill id')),
     enabled: !!id,
   })
 }
@@ -36,7 +37,7 @@ export function useSkillFiles(id: string | null | undefined) {
 export function useSkillContent(id: string | null | undefined, enabled = true) {
   return useQuery({
     queryKey: skillQueryKeys.content(id),
-    queryFn: () => skillsApi.getContent(id!),
+    queryFn: () => skillsApi.getContent(requiredQueryValue(id, 'skill id')),
     enabled: !!id && enabled,
   })
 }

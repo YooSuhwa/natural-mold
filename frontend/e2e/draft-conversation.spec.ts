@@ -19,10 +19,7 @@ async function loginApi(request: APIRequestContext): Promise<Record<string, stri
   return { 'X-CSRF-Token': body.csrf_token }
 }
 
-async function listConversationIds(
-  request: APIRequestContext,
-  agentId: string,
-): Promise<string[]> {
+async function listConversationIds(request: APIRequestContext, agentId: string): Promise<string[]> {
   const res = await request.get(`${API_BASE}/api/agents/${agentId}/conversations`)
   expect(res.ok()).toBeTruthy()
   const conversations = (await res.json()) as { id: string }[]
@@ -77,27 +74,24 @@ test.describe('Draft conversation lifecycle', () => {
       (model) =>
         model.provider === 'e2e_scripted' && model.model_name === 'document-artifact-scripted',
     )
-    expect(scriptedModel, 'E2E scripted model should be seeded').toBeTruthy()
+    if (!scriptedModel) throw new Error('E2E scripted model should be seeded')
 
     const agentRes = await request.post(`${API_BASE}/api/agents`, {
       headers: csrfHeaders,
       data: {
         name: 'E2E Draft Conversation Agent',
         system_prompt: 'You are a draft conversation E2E test agent.',
-        model_id: scriptedModel!.id,
+        model_id: scriptedModel.id,
       },
     })
     expect(agentRes.ok()).toBeTruthy()
     const agent = (await agentRes.json()) as { id: string }
     agentId = agent.id
 
-    const conversationRes = await request.post(
-      `${API_BASE}/api/agents/${agentId}/conversations`,
-      {
-        headers: csrfHeaders,
-        data: { title: 'Existing E2E Conversation' },
-      },
-    )
+    const conversationRes = await request.post(`${API_BASE}/api/agents/${agentId}/conversations`, {
+      headers: csrfHeaders,
+      data: { title: 'Existing E2E Conversation' },
+    })
     expect(conversationRes.ok()).toBeTruthy()
     const conversation = (await conversationRes.json()) as { id: string }
     conversationId = conversation.id
@@ -212,10 +206,9 @@ test.describe('Draft conversation lifecycle', () => {
     const firstMessage = 'Draft E2E first message'
     await page.getByPlaceholder('메시지 입력...').fill(firstMessage)
     await page.getByRole('button', { name: /전송/ }).click()
-    await page.waitForURL(
-      new RegExp(`/agents/${agentId}/conversations/(?!new$)[0-9a-f-]+$`),
-      { timeout: 90_000 },
-    )
+    await page.waitForURL(new RegExp(`/agents/${agentId}/conversations/(?!new$)[0-9a-f-]+$`), {
+      timeout: 90_000,
+    })
 
     const createdConversationId = page.url().split('/').pop()
     expect(createdConversationId).toBeTruthy()

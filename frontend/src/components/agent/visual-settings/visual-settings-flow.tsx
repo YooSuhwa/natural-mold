@@ -62,6 +62,11 @@ interface ControlledVisualHandlers {
   onToggleMiddleware: (type: string) => void
 }
 
+interface ControlledVisualEditor {
+  state: ControlledVisualState
+  handlers: ControlledVisualHandlers
+}
+
 export interface VisualSettingsFlowProps {
   agent?: Agent
   agentId?: string
@@ -179,42 +184,52 @@ export function VisualSettingsFlow({
   >(() => new Set(agent?.middleware_configs?.map((mc) => mc.type) ?? []))
 
   // controlledState 제공 시 모든 편집 state는 페이지(workbench) owns. 그렇지 않으면 internal state.
-  const isControlled = embedded && !!controlledState && !!controlledHandlers
-  const name = isControlled ? controlledState!.name : internalName
-  const description = isControlled ? controlledState!.description : internalDescription
-  const systemPrompt = isControlled ? controlledState!.systemPrompt : internalSystemPrompt
-  const modelId = isControlled ? controlledState!.modelId : internalModelId
-  const identityMode = isControlled ? controlledState!.identityMode : internalIdentityMode
-  const temperature = isControlled ? controlledState!.temperature : internalTemperature
-  const topP = isControlled ? controlledState!.topP : internalTopP
-  const maxTokens = isControlled ? controlledState!.maxTokens : internalMaxTokens
-  const selectedToolIds = isControlled ? controlledState!.selectedToolIds : internalSelectedToolIds
-  const selectedMcpToolIds = isControlled
-    ? controlledState!.selectedMcpToolIds
+  const controlledEditor = useMemo<ControlledVisualEditor | null>(() => {
+    if (!embedded || !controlledState || !controlledHandlers) return null
+    return { state: controlledState, handlers: controlledHandlers }
+  }, [embedded, controlledState, controlledHandlers])
+  const isControlled = controlledEditor !== null
+  const name = controlledEditor ? controlledEditor.state.name : internalName
+  const description = controlledEditor ? controlledEditor.state.description : internalDescription
+  const systemPrompt = controlledEditor ? controlledEditor.state.systemPrompt : internalSystemPrompt
+  const modelId = controlledEditor ? controlledEditor.state.modelId : internalModelId
+  const identityMode = controlledEditor ? controlledEditor.state.identityMode : internalIdentityMode
+  const temperature = controlledEditor ? controlledEditor.state.temperature : internalTemperature
+  const topP = controlledEditor ? controlledEditor.state.topP : internalTopP
+  const maxTokens = controlledEditor ? controlledEditor.state.maxTokens : internalMaxTokens
+  const selectedToolIds = controlledEditor
+    ? controlledEditor.state.selectedToolIds
+    : internalSelectedToolIds
+  const selectedMcpToolIds = controlledEditor
+    ? controlledEditor.state.selectedMcpToolIds
     : internalSelectedMcpToolIds
-  const selectedSkillIds = isControlled
-    ? controlledState!.selectedSkillIds
+  const selectedSkillIds = controlledEditor
+    ? controlledEditor.state.selectedSkillIds
     : internalSelectedSkillIds
-  const selectedSubAgentIds = isControlled
-    ? controlledState!.selectedSubAgentIds
+  const selectedSubAgentIds = controlledEditor
+    ? controlledEditor.state.selectedSubAgentIds
     : internalSelectedSubAgentIds
-  const selectedMiddlewareTypes = isControlled
-    ? controlledState!.selectedMiddlewareTypes
+  const selectedMiddlewareTypes = controlledEditor
+    ? controlledEditor.state.selectedMiddlewareTypes
     : internalSelectedMiddlewareTypes
 
-  const setName = isControlled ? controlledHandlers!.onNameChange : setInternalName
-  const setDescription = isControlled
-    ? controlledHandlers!.onDescriptionChange
+  const setName = controlledEditor ? controlledEditor.handlers.onNameChange : setInternalName
+  const setDescription = controlledEditor
+    ? controlledEditor.handlers.onDescriptionChange
     : setInternalDescription
-  const setSystemPrompt = isControlled
-    ? controlledHandlers!.onSystemPromptChange
+  const setSystemPrompt = controlledEditor
+    ? controlledEditor.handlers.onSystemPromptChange
     : setInternalSystemPrompt
-  const setModelId = isControlled ? controlledHandlers!.onModelIdChange : setInternalModelId
-  const setTemperature = isControlled
-    ? controlledHandlers!.onTemperatureChange
+  const setModelId = controlledEditor
+    ? controlledEditor.handlers.onModelIdChange
+    : setInternalModelId
+  const setTemperature = controlledEditor
+    ? controlledEditor.handlers.onTemperatureChange
     : setInternalTemperature
-  const setTopP = isControlled ? controlledHandlers!.onTopPChange : setInternalTopP
-  const setMaxTokens = isControlled ? controlledHandlers!.onMaxTokensChange : setInternalMaxTokens
+  const setTopP = controlledEditor ? controlledEditor.handlers.onTopPChange : setInternalTopP
+  const setMaxTokens = controlledEditor
+    ? controlledEditor.handlers.onMaxTokensChange
+    : setInternalMaxTokens
 
   // Sync state from agent prop (edit mode only, uncontrolled only)
   useEffect(() => {
@@ -249,57 +264,57 @@ export function VisualSettingsFlow({
 
   const toggleTool = useCallback(
     (toolId: string) => {
-      if (isControlled) {
-        controlledHandlers!.onToggleTool(toolId)
+      if (controlledEditor) {
+        controlledEditor.handlers.onToggleTool(toolId)
       } else {
         setInternalSelectedToolIds((prev) => toggleSetItem(prev, toolId))
       }
     },
-    [isControlled, controlledHandlers],
+    [controlledEditor],
   )
 
   const toggleMcpTool = useCallback(
     (id: string) => {
-      if (isControlled) {
-        controlledHandlers!.onToggleMcpTool(id)
+      if (controlledEditor) {
+        controlledEditor.handlers.onToggleMcpTool(id)
       } else {
         setInternalSelectedMcpToolIds((prev) => toggleSetItem(prev, id))
       }
     },
-    [isControlled, controlledHandlers],
+    [controlledEditor],
   )
 
   const toggleSkill = useCallback(
     (skillId: string) => {
-      if (isControlled) {
-        controlledHandlers!.onToggleSkill(skillId)
+      if (controlledEditor) {
+        controlledEditor.handlers.onToggleSkill(skillId)
       } else {
         setInternalSelectedSkillIds((prev) => toggleSetItem(prev, skillId))
       }
     },
-    [isControlled, controlledHandlers],
+    [controlledEditor],
   )
 
   const toggleSubAgent = useCallback(
     (subAgentId: string) => {
-      if (isControlled) {
-        controlledHandlers!.onToggleSubAgent(subAgentId)
+      if (controlledEditor) {
+        controlledEditor.handlers.onToggleSubAgent(subAgentId)
       } else {
         setInternalSelectedSubAgentIds((prev) => toggleSetItem(prev, subAgentId))
       }
     },
-    [isControlled, controlledHandlers],
+    [controlledEditor],
   )
 
   const toggleMiddleware = useCallback(
     (type: string) => {
-      if (isControlled) {
-        controlledHandlers!.onToggleMiddleware(type)
+      if (controlledEditor) {
+        controlledEditor.handlers.onToggleMiddleware(type)
       } else {
         setInternalSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type))
       }
     },
-    [isControlled, controlledHandlers],
+    [controlledEditor],
   )
 
   const currentModelName = useMemo(() => {

@@ -213,31 +213,32 @@ export function McpServersPageClient() {
                 <EmptyState title={t('empty.filtered')} className="bg-card/50" />
               ) : (
                 <ResourceGrid minColumnWidth={300}>
-                  {filteredServers.map((server) => (
-                    <McpServerCard
-                      key={server.id}
-                      server={server}
-                      healthEntry={healthByServer.get(server.id)}
-                      toolCountLabel={t('toolCount', {
-                        count: server.last_tool_count ?? 0,
-                      })}
-                      endpointLabel={formatMcpEndpoint(server)}
-                      lastResponseLabel={formatMcpDate(server.last_pinged_at)}
-                      checkedAtLabel={
-                        healthByServer.get(server.id)
-                          ? formatMcpRelativeTime(healthByServer.get(server.id)!.checked_at, t)
-                          : null
-                      }
-                      checkNowLabel={t('actions.checkNow')}
-                      checkNowAriaLabel={t('actions.checkNowFor', { name: server.name })}
-                      manageLabel={t('actions.manage')}
-                      publishLabel={t('actions.publish')}
-                      onOpen={openDetail}
-                      onPublish={setPublishServer}
-                      onCheckNow={handleCheckNow}
-                      checking={runHealthCheck.isPending}
-                    />
-                  ))}
+                  {filteredServers.map((server) => {
+                    const healthEntry = healthByServer.get(server.id)
+                    return (
+                      <McpServerCard
+                        key={server.id}
+                        server={server}
+                        healthEntry={healthEntry}
+                        toolCountLabel={t('toolCount', {
+                          count: server.last_tool_count ?? 0,
+                        })}
+                        endpointLabel={formatMcpEndpoint(server)}
+                        lastResponseLabel={formatMcpDate(server.last_pinged_at)}
+                        checkedAtLabel={
+                          healthEntry ? formatMcpRelativeTime(healthEntry.checked_at, t) : null
+                        }
+                        checkNowLabel={t('actions.checkNow')}
+                        checkNowAriaLabel={t('actions.checkNowFor', { name: server.name })}
+                        manageLabel={t('actions.manage')}
+                        publishLabel={t('actions.publish')}
+                        onOpen={openDetail}
+                        onPublish={setPublishServer}
+                        onCheckNow={handleCheckNow}
+                        checking={runHealthCheck.isPending}
+                      />
+                    )
+                  })}
                 </ResourceGrid>
               )}
             </ResourcePanel.Body>

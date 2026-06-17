@@ -5,13 +5,16 @@ import type { APIRequestContext, Page } from '@playwright/test'
 // the keyless scripted model: branching by regenerate, branching by editing a
 // user message, and thumbs feedback. assistant-ui reveals the action bar on
 // hover; opacity-0 controls are still clickable.
-const API = process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
+const API =
+  process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
 const EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 
 async function login(request: APIRequestContext): Promise<Record<string, string>> {
-  const res = await request.post(`${API}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } })
+  const res = await request.post(`${API}/api/auth/login`, {
+    data: { email: EMAIL, password: PASSWORD },
+  })
   expect(res.ok()).toBeTruthy()
   return { 'X-CSRF-Token': (await res.json()).csrf_token as string }
 }
@@ -28,7 +31,8 @@ async function waitRunIdle(request: APIRequestContext, convId: string): Promise<
   await expect
     .poll(
       async () =>
-        (await (await request.get(`${API}/api/conversations/${convId}/runs/active`)).json()) === null,
+        (await (await request.get(`${API}/api/conversations/${convId}/runs/active`)).json()) ===
+        null,
       { timeout: 60_000, intervals: [1000] },
     )
     .toBe(true)
@@ -45,7 +49,8 @@ test.describe('Chat interactions', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')!
+    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    if (!scripted) throw new Error('e2e_scripted model should be seeded')
     const agent = (await (
       await request.post(`${API}/api/agents`, {
         headers: csrf,
@@ -73,7 +78,9 @@ test.describe('Chat interactions', () => {
     await page.getByPlaceholder('메시지 입력...').fill(text)
     await page.getByRole('button', { name: /전송/ }).click()
     await expect(page.getByText(text).first()).toBeVisible()
-    await expect.poll(() => assistantCount(request, conv.id), { timeout: 60_000 }).toBeGreaterThan(0)
+    await expect
+      .poll(() => assistantCount(request, conv.id), { timeout: 60_000 })
+      .toBeGreaterThan(0)
     await waitRunIdle(request, conv.id)
     return conv.id
   }
@@ -111,7 +118,10 @@ test.describe('Chat interactions', () => {
     await expect(page.getByText('2/2').first()).toBeVisible()
   })
 
-  test('thumbs-up feedback submits and sticks on the assistant message', async ({ page, request }) => {
+  test('thumbs-up feedback submits and sticks on the assistant message', async ({
+    page,
+    request,
+  }) => {
     test.setTimeout(90_000)
     await startTurn(page, request, 'Please rate this answer')
 
@@ -131,7 +141,9 @@ test.describe('Chat interactions', () => {
     await page.getByPlaceholder('메시지 입력...').fill('Second turn message')
     await page.getByRole('button', { name: /전송/ }).click()
     await expect(page.getByText('Second turn message').first()).toBeVisible()
-    await expect.poll(() => assistantCount(request, convId), { timeout: 60_000 }).toBeGreaterThanOrEqual(2)
+    await expect
+      .poll(() => assistantCount(request, convId), { timeout: 60_000 })
+      .toBeGreaterThanOrEqual(2)
 
     // Both user turns remain in the thread.
     await expect(page.getByText('First turn message').first()).toBeVisible()

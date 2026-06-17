@@ -1758,12 +1758,16 @@ for new findings.
 
 ### Non-Visual Rollout Checklist
 
-- [ ] **Guard 1: Type-safety suppressions**
+- [x] **Guard 1: Type-safety suppressions**
   - Target: keep `as any`, `@ts-ignore`, and `@ts-expect-error` at zero; report
     non-null assertions (`!`) outside narrow DOM/ref/test contexts.
   - Why: the project already has zero `as any` and zero TypeScript suppression
     comments, so this can become a zero-tolerance rule immediately.
   - Tooling: ESLint rules plus a small custom scan for suppression comments.
+  - Implemented: `pnpm lint:type-safety` scans `src`, `e2e`, and `tests` with
+    TypeScript AST checks for explicit `any`, TS suppression comments, and
+    postfix non-null assertions. ESLint also blocks non-null assertions in
+    normal `pnpm lint`.
 
 - [ ] **Guard 2: TanStack Query key factories**
   - Target: raw `queryKey: [...]` and raw `invalidateQueries({ queryKey: [...] })`

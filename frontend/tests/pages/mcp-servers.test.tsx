@@ -156,7 +156,8 @@ describe('McpServersPage', () => {
     render(<McpServersPage />)
 
     // Manage the second card while the deep link still points at mcp-1.
-    const otherCard = screen.getByText('Slack MCP').closest('article')!
+    const otherCard = screen.getByText('Slack MCP').closest('article')
+    if (!otherCard) throw new Error('Slack MCP card should render as an article')
     await user.click(within(otherCard).getByRole('button', { name: '관리' }))
 
     // URL is realigned to the manually opened card (no refresh mismatch).

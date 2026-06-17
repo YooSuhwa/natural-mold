@@ -50,12 +50,14 @@ export default function ConversationalCreationPage({
   // 첫 메시지: 세션 생성 후 stream 시작 / 후속: 기존 세션으로
   const streamFn = useCallback((content: string, signal: AbortSignal): AsyncGenerator<SSEEvent> => {
     async function* run() {
-      if (!sessionIdRef.current) {
+      let activeSessionId = sessionIdRef.current
+      if (!activeSessionId) {
         const session = await builderApi.start(content)
-        sessionIdRef.current = session.id
+        activeSessionId = session.id
+        sessionIdRef.current = activeSessionId
         setSessionId(session.id)
       }
-      yield* streamBuilderMessage(sessionIdRef.current!, content, signal)
+      yield* streamBuilderMessage(activeSessionId, content, signal)
     }
     return run()
   }, [])

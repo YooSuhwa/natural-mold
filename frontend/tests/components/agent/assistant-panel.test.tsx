@@ -135,10 +135,12 @@ describe('AssistantPanel', () => {
     render(<AssistantPanel agentId="agent-1" agentName="Test Agent" />)
 
     const options = mockUseChatRuntime.mock.calls[0]?.[0] as ChatRuntimeOptions
-    expect(options.resumeFn).toBeTypeOf('function')
+    const resumeFn = options.resumeFn
+    expect(resumeFn).toBeTypeOf('function')
+    if (!resumeFn) throw new Error('Assistant resume function should be registered')
 
     const signal = new AbortController().signal
-    for await (const _event of options.resumeFn!([decision], signal, '승인됨', 'intr-1')) {
+    for await (const _event of resumeFn([decision], signal, '승인됨', 'intr-1')) {
       void _event
     }
 
@@ -160,8 +162,10 @@ describe('AssistantPanel', () => {
     render(<AssistantPanel agentId="agent-1" agentName="Test Agent" />)
 
     const options = mockUseChatRuntime.mock.calls[0]?.[0] as ChatRuntimeOptions
+    const resumeFn = options.resumeFn
+    if (!resumeFn) throw new Error('Assistant resume function should be registered')
     const signal = new AbortController().signal
-    for await (const _event of options.resumeFn!([{ type: 'approve' }], signal)) {
+    for await (const _event of resumeFn([{ type: 'approve' }], signal)) {
       void _event
     }
     options.onStreamEnd?.(false)

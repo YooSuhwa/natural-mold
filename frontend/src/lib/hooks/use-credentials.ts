@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { credentialsApi, systemCredentialsApi } from '@/lib/api/credentials'
 import type { CredentialCreateRequest, CredentialUpdateRequest } from '@/lib/types/credential'
+import { requiredQueryValue } from './required-query-value'
 
 const KEY_LIST = ['credentials'] as const
 const KEY_TYPES = ['credential-types'] as const
@@ -19,7 +20,7 @@ export function useCredentialTypes() {
 export function useCredentialType(key: string | null | undefined) {
   return useQuery({
     queryKey: ['credential-types', key],
-    queryFn: () => credentialsApi.getType(key!),
+    queryFn: () => credentialsApi.getType(requiredQueryValue(key, 'credential type key')),
     enabled: !!key,
     staleTime: 5 * 60_000,
   })
@@ -36,7 +37,7 @@ export function useCredentials() {
 export function useCredential(id: string | null | undefined) {
   return useQuery({
     queryKey: ['credentials', id],
-    queryFn: () => credentialsApi.get(id!),
+    queryFn: () => credentialsApi.get(requiredQueryValue(id, 'credential id')),
     enabled: !!id,
   })
 }
@@ -75,7 +76,7 @@ export function useDeleteCredential() {
 export function useCredentialAuditLogs(id: string | null | undefined, limit = 50) {
   return useQuery({
     queryKey: ['credential-audit-logs', id, limit],
-    queryFn: () => credentialsApi.listAuditLogs(id!, limit),
+    queryFn: () => credentialsApi.listAuditLogs(requiredQueryValue(id, 'credential id'), limit),
     enabled: !!id,
   })
 }

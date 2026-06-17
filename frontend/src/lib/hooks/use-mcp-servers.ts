@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { mcpApi } from '@/lib/api/mcp'
+import { requiredQueryValue } from './required-query-value'
 import type {
   McpFromRegistryRequest,
   McpImportRequest,
@@ -24,7 +25,7 @@ export function useMcpServers() {
 export function useMcpServer(id: string | null | undefined) {
   return useQuery({
     queryKey: ['mcp-servers', id],
-    queryFn: () => mcpApi.get(id!),
+    queryFn: () => mcpApi.get(requiredQueryValue(id, 'MCP server id')),
     enabled: !!id,
   })
 }

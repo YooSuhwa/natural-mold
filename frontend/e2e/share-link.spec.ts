@@ -4,14 +4,18 @@ import type { APIRequestContext } from '@playwright/test'
 // Public share links: send a message, publish the conversation, then open the
 // read-only /shared/{token} page in a fresh logged-OUT context (the headline
 // "anyone can open without signing in" promise).
-const API = process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
-const FRONTEND = process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`
+const API =
+  process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
+const FRONTEND =
+  process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`
 const EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 
 async function login(request: APIRequestContext): Promise<Record<string, string>> {
-  const res = await request.post(`${API}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } })
+  const res = await request.post(`${API}/api/auth/login`, {
+    data: { email: EMAIL, password: PASSWORD },
+  })
   expect(res.ok()).toBeTruthy()
   return { 'X-CSRF-Token': (await res.json()).csrf_token as string }
 }
@@ -29,7 +33,8 @@ test.describe('Public share link', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')!
+    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    if (!scripted) throw new Error('e2e_scripted model should be seeded')
     const agent = (await (
       await request.post(`${API}/api/agents`, {
         headers: csrf,

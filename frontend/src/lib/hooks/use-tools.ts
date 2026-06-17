@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toolsApi } from '@/lib/api/tools'
 import { toolQueryKeys, type ToolListQueryParams } from '@/lib/query-keys/tools'
 import type { ToolCreateRequest, ToolPatchRequest } from '@/lib/types/tool'
+import { requiredQueryValue } from './required-query-value'
 
 export function useToolTypes() {
   return useQuery({
@@ -16,7 +17,7 @@ export function useToolTypes() {
 export function useToolType(key: string | null | undefined) {
   return useQuery({
     queryKey: toolQueryKeys.typeDetail(key),
-    queryFn: () => toolsApi.getType(key!),
+    queryFn: () => toolsApi.getType(requiredQueryValue(key, 'tool type key')),
     enabled: !!key,
     staleTime: 5 * 60_000,
   })
@@ -33,7 +34,7 @@ export function useTools(params?: ToolListQueryParams) {
 export function useTool(id: string | null | undefined) {
   return useQuery({
     queryKey: toolQueryKeys.detail(id),
-    queryFn: () => toolsApi.get(id!),
+    queryFn: () => toolsApi.get(requiredQueryValue(id, 'tool id')),
     enabled: !!id,
   })
 }

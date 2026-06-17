@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { healthApi } from '@/lib/api/health'
 import type { HealthCheckEntry, HealthTargetKind, RunHealthCheckInput } from '@/lib/types/health'
+import { requiredQueryValue } from './required-query-value'
 
 const KEY_MODELS = ['health', 'models'] as const
 const KEY_MCP = ['health', 'mcp-servers'] as const
@@ -40,7 +41,8 @@ export function useHealthHistory(
 ) {
   return useQuery({
     queryKey: ['health', 'history', targetKind, targetId, limit] as const,
-    queryFn: () => healthApi.history(targetKind, targetId!, limit),
+    queryFn: () =>
+      healthApi.history(targetKind, requiredQueryValue(targetId, 'health target id'), limit),
     enabled: !!targetId,
     staleTime: 30_000,
   })
