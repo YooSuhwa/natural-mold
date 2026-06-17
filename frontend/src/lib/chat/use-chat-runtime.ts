@@ -47,6 +47,8 @@ import {
 import { compactDeepResearchMessages } from './deep-research-summary'
 import { artifactKeys } from '@/lib/api/artifacts'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
+import { agentQueryKeys } from '@/lib/query-keys/agents'
+import { conversationQueryKeys } from '@/lib/query-keys/conversations'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
 
@@ -422,7 +424,7 @@ export function useChatRuntime({
       // 는 envelope 통째로 갱신해야 한다 (이전엔 ``Message[]`` 로 가정해 prev.slice
       // TypeError 발생).
       queryClient.setQueryData<MessagesEnvelope | undefined>(
-        ['conversations', conversationId, 'messages'],
+        conversationQueryKeys.messages(conversationId),
         (prev) => (prev ? { ...prev, messages: prev.messages.slice(0, truncateAtIndex) } : prev),
       )
     },
@@ -1068,7 +1070,7 @@ export function useChatRuntime({
       const { signal, token } = prepareStream()
       const onRunId = (id: string) => {
         runIdRef.current = id
-        queryClient.invalidateQueries({ queryKey: ['agents'] })
+        queryClient.invalidateQueries({ queryKey: agentQueryKeys.all })
       }
       const onConversationId = (id: string) => {
         conversationIdRef.current = id
@@ -1226,8 +1228,10 @@ export function useChatRuntime({
     setChatCancelInFlight(true)
     try {
       const run = await conversationRunsApi.cancel(activeConversationId, runId)
-      queryClient.invalidateQueries({ queryKey: ['agents'] })
-      queryClient.invalidateQueries({ queryKey: ['conversations', activeConversationId] })
+      queryClient.invalidateQueries({ queryKey: agentQueryKeys.all })
+      queryClient.invalidateQueries({
+        queryKey: conversationQueryKeys.prefix(activeConversationId),
+      })
       if (run.status === 'canceling' || run.status === 'canceled') {
         cancelNoticePendingRef.current = true
         // 사용자가 취소한 run — canceling 상태가 envelope 에 active 로 남아

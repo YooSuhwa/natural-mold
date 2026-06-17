@@ -3,6 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { marketplaceApi } from '@/lib/api/marketplace'
+import { agentBlueprintQueryKeys } from '@/lib/query-keys/agent-blueprints'
+import { marketplaceQueryKeys } from '@/lib/query-keys/marketplace'
+import { mcpServerQueryKeys } from '@/lib/query-keys/mcp-servers'
+import { skillQueryKeys } from '@/lib/query-keys/skills'
 import type {
   InstallMarketplaceItemBody,
   MarketplaceItemACLBody,
@@ -14,12 +18,6 @@ import type {
   PublishSkillBody,
   UpdateInstallationBody,
 } from '@/lib/types/marketplace'
-
-const ITEMS_KEY = ['marketplace', 'items'] as const
-const KSKILL_KEY = ['marketplace', 'admin', 'k-skill'] as const
-const MODERATION_KEY = ['marketplace', 'admin', 'moderation'] as const
-const AGENT_BLUEPRINTS_KEY = ['agent-blueprints'] as const
-const MCP_SERVERS_KEY = ['mcp-servers'] as const
 
 export {
   useAgentBlueprint,
@@ -36,7 +34,7 @@ export {
 
 export function useMarketplaceItems(filters?: MarketplaceListFilters) {
   return useQuery({
-    queryKey: ['marketplace', 'items', filters ?? {}],
+    queryKey: marketplaceQueryKeys.itemList(filters),
     queryFn: () => marketplaceApi.list(filters),
     staleTime: 30_000,
   })
@@ -44,7 +42,7 @@ export function useMarketplaceItems(filters?: MarketplaceListFilters) {
 
 export function useMarketplaceItemsPage(filters?: MarketplaceListFilters, enabled = true) {
   return useQuery({
-    queryKey: ['marketplace', 'items', 'page', filters ?? {}],
+    queryKey: marketplaceQueryKeys.itemPage(filters),
     queryFn: () => marketplaceApi.page(filters),
     enabled,
     staleTime: 30_000,
@@ -53,7 +51,7 @@ export function useMarketplaceItemsPage(filters?: MarketplaceListFilters, enable
 
 export function useMarketplaceItem(itemId: string | null | undefined) {
   return useQuery({
-    queryKey: ['marketplace', 'items', itemId],
+    queryKey: marketplaceQueryKeys.item(itemId),
     queryFn: () => marketplaceApi.get(itemId!),
     enabled: !!itemId,
   })
@@ -61,7 +59,7 @@ export function useMarketplaceItem(itemId: string | null | undefined) {
 
 export function useMarketplaceVersions(itemId: string | null | undefined) {
   return useQuery({
-    queryKey: ['marketplace', 'items', itemId, 'versions'],
+    queryKey: marketplaceQueryKeys.itemVersions(itemId),
     queryFn: () => marketplaceApi.listVersions(itemId!),
     enabled: !!itemId,
   })
@@ -69,7 +67,7 @@ export function useMarketplaceVersions(itemId: string | null | undefined) {
 
 export function useMarketplaceVersion(versionId: string | null | undefined) {
   return useQuery({
-    queryKey: ['marketplace', 'versions', versionId],
+    queryKey: marketplaceQueryKeys.version(versionId),
     queryFn: () => marketplaceApi.getVersion(versionId!),
     enabled: !!versionId,
   })
@@ -77,7 +75,7 @@ export function useMarketplaceVersion(versionId: string | null | undefined) {
 
 export function useModerationQueue(enabled = true) {
   return useQuery({
-    queryKey: MODERATION_KEY,
+    queryKey: marketplaceQueryKeys.moderation,
     queryFn: () => marketplaceApi.moderationQueue(),
     enabled,
     staleTime: 15_000,
@@ -86,7 +84,7 @@ export function useModerationQueue(enabled = true) {
 
 export function useKSkillSyncStatus(enabled = true) {
   return useQuery({
-    queryKey: KSKILL_KEY,
+    queryKey: marketplaceQueryKeys.kSkillAdmin,
     queryFn: () => marketplaceApi.kSkillSyncStatus(),
     enabled,
     staleTime: 30_000,
@@ -96,10 +94,10 @@ export function useKSkillSyncStatus(enabled = true) {
 // ---------- Mutations ----------
 
 function invalidateAllItems(qc: ReturnType<typeof useQueryClient>) {
-  qc.invalidateQueries({ queryKey: ITEMS_KEY })
-  qc.invalidateQueries({ queryKey: ['skills'] })
-  qc.invalidateQueries({ queryKey: AGENT_BLUEPRINTS_KEY })
-  qc.invalidateQueries({ queryKey: MCP_SERVERS_KEY })
+  qc.invalidateQueries({ queryKey: marketplaceQueryKeys.items })
+  qc.invalidateQueries({ queryKey: skillQueryKeys.all })
+  qc.invalidateQueries({ queryKey: agentBlueprintQueryKeys.all })
+  qc.invalidateQueries({ queryKey: mcpServerQueryKeys.all })
 }
 
 export function useInstallItem(itemId: string) {
@@ -221,8 +219,8 @@ export function useReplaceItemACL(itemId: string) {
   return useMutation({
     mutationFn: (body: MarketplaceItemACLBody) => marketplaceApi.replaceACL(itemId, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['marketplace', 'items', itemId] })
-      qc.invalidateQueries({ queryKey: ITEMS_KEY })
+      qc.invalidateQueries({ queryKey: marketplaceQueryKeys.item(itemId) })
+      qc.invalidateQueries({ queryKey: marketplaceQueryKeys.items })
     },
   })
 }
@@ -232,8 +230,8 @@ export function useRemoveItemACLEntry(itemId: string) {
   return useMutation({
     mutationFn: (userId: string) => marketplaceApi.removeACLEntry(itemId, userId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['marketplace', 'items', itemId] })
-      qc.invalidateQueries({ queryKey: ITEMS_KEY })
+      qc.invalidateQueries({ queryKey: marketplaceQueryKeys.item(itemId) })
+      qc.invalidateQueries({ queryKey: marketplaceQueryKeys.items })
     },
   })
 }
@@ -244,7 +242,7 @@ export function useDisableItem() {
     mutationFn: (itemId: string) => marketplaceApi.disableItem(itemId),
     onSuccess: () => {
       invalidateAllItems(qc)
-      qc.invalidateQueries({ queryKey: MODERATION_KEY })
+      qc.invalidateQueries({ queryKey: marketplaceQueryKeys.moderation })
     },
   })
 }
@@ -255,7 +253,7 @@ export function useEnableItem() {
     mutationFn: (itemId: string) => marketplaceApi.enableItem(itemId),
     onSuccess: () => {
       invalidateAllItems(qc)
-      qc.invalidateQueries({ queryKey: MODERATION_KEY })
+      qc.invalidateQueries({ queryKey: marketplaceQueryKeys.moderation })
     },
   })
 }
@@ -275,7 +273,7 @@ export function useAdminSetListed() {
       marketplaceApi.adminSetListed(itemId, isListed),
     onSuccess: () => {
       invalidateAllItems(qc)
-      qc.invalidateQueries({ queryKey: MODERATION_KEY })
+      qc.invalidateQueries({ queryKey: marketplaceQueryKeys.moderation })
     },
   })
 }
