@@ -1769,13 +1769,17 @@ for new findings.
     postfix non-null assertions. ESLint also blocks non-null assertions in
     normal `pnpm lint`.
 
-- [ ] **Guard 2: TanStack Query key factories**
+- [x] **Guard 2: TanStack Query key factories**
   - Target: raw `queryKey: [...]` and raw `invalidateQueries({ queryKey: [...] })`
     outside key factory files.
   - Why: there are many raw query key arrays, which makes cache invalidation and
     stale UI bugs easier to introduce during commonization.
   - Tooling: extend `check-frontend-architecture.mjs` strict baseline, then move
     feature by feature to `src/lib/query-keys` or feature-local key factories.
+  - Implemented: raw `queryKey: [...]` usage in `src` product code was migrated
+    to feature query key factories. `check-frontend-architecture.mjs` no longer
+    baselines raw query key files and now blocks direct raw `queryKey` arrays
+    even in files that define their own key factories.
 
 - [ ] **Guard 3: API boundary and raw fetch**
   - Target: `fetch(` in `src/app` and `src/components`, plus direct

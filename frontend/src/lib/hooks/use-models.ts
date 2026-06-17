@@ -2,9 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { modelsApi } from '@/lib/api/models'
+import { modelQueryKeys } from '@/lib/query-keys/models'
 import type { ModelCreate, ModelTestPreviewRequest, ModelUpdate } from '@/lib/types/model'
-
-const KEY_LIST = ['models'] as const
 
 interface UseModelsOptions {
   /**
@@ -18,7 +17,7 @@ interface UseModelsOptions {
 export function useModels(options?: UseModelsOptions) {
   const includeHidden = options?.includeHidden ?? false
   return useQuery({
-    queryKey: includeHidden ? [...KEY_LIST, 'all'] : KEY_LIST,
+    queryKey: modelQueryKeys.list(includeHidden),
     queryFn: () => modelsApi.list({ include_hidden: includeHidden }),
     staleTime: 60_000,
   })
@@ -26,7 +25,7 @@ export function useModels(options?: UseModelsOptions) {
 
 export function useModel(id: string) {
   return useQuery({
-    queryKey: ['models', id],
+    queryKey: modelQueryKeys.detail(id),
     queryFn: () => modelsApi.get(id),
     enabled: !!id,
   })
@@ -37,8 +36,7 @@ export function useCreateModel() {
   return useMutation({
     mutationFn: (data: ModelCreate) => modelsApi.create(data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: KEY_LIST })
-      qc.invalidateQueries({ queryKey: [...KEY_LIST, 'all'] })
+      qc.invalidateQueries({ queryKey: modelQueryKeys.all })
     },
   })
 }
@@ -48,9 +46,8 @@ export function useUpdateModel() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: ModelUpdate }) => modelsApi.update(id, data),
     onSuccess: (_data, { id }) => {
-      qc.invalidateQueries({ queryKey: KEY_LIST })
-      qc.invalidateQueries({ queryKey: [...KEY_LIST, 'all'] })
-      qc.invalidateQueries({ queryKey: ['models', id] })
+      qc.invalidateQueries({ queryKey: modelQueryKeys.all })
+      qc.invalidateQueries({ queryKey: modelQueryKeys.detail(id) })
     },
   })
 }
@@ -60,8 +57,7 @@ export function useDeleteModel() {
   return useMutation({
     mutationFn: (id: string) => modelsApi.delete(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: KEY_LIST })
-      qc.invalidateQueries({ queryKey: [...KEY_LIST, 'all'] })
+      qc.invalidateQueries({ queryKey: modelQueryKeys.all })
     },
   })
 }

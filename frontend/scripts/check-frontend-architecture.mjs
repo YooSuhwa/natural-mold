@@ -48,22 +48,6 @@ const strictBaseline = new Set([
   'tabs:src/app/settings/usage/page.tsx',
   'client-page:src/app/settings/usage/page.tsx',
   'client-page:src/app/shared/[shareId]/page.tsx',
-  'raw-query-key:src/components/agent/assistant-panel.tsx',
-  'raw-query-key:src/components/chat/artifacts/artifact-preview.tsx',
-  'raw-query-key:src/components/chat/artifacts/providers/use-artifact-binary.ts',
-  'raw-query-key:src/components/chat/right-rail/chat-right-rail.tsx',
-  'raw-query-key:src/components/chat/use-conversation-row-actions.tsx',
-  'raw-query-key:src/lib/hooks/use-agent-blueprints.ts',
-  'raw-query-key:src/lib/hooks/use-agents.ts',
-  'raw-query-key:src/lib/hooks/use-conversation-title.ts',
-  'raw-query-key:src/lib/hooks/use-credential-test.ts',
-  'raw-query-key:src/lib/hooks/use-credentials.ts',
-  'raw-query-key:src/lib/hooks/use-health.ts',
-  'raw-query-key:src/lib/hooks/use-mcp-servers.ts',
-  'raw-query-key:src/lib/hooks/use-middlewares.ts',
-  'raw-query-key:src/lib/hooks/use-models.ts',
-  'raw-query-key:src/lib/hooks/use-templates.ts',
-  'raw-query-key:src/lib/hooks/use-usage.ts',
 ])
 
 function toPosixPath(path) {
@@ -128,7 +112,7 @@ for (const file of files) {
     })
   }
 
-  if (/queryKey:\s*\[[^\]]+]/.test(text) && !/Keys\s*=|queryKeys\s*=/.test(text)) {
+  if (/queryKey:\s*\[[^\]]+]/.test(text)) {
     issues.push({
       rel,
       rule: 'raw-query-key',

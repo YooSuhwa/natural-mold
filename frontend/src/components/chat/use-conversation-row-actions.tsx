@@ -3,7 +3,13 @@
 import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useMutation, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+  type QueryFilters,
+  type QueryKey,
+} from '@tanstack/react-query'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { ShareDialog } from '@/components/chat/share-dialog'
@@ -35,11 +41,11 @@ function isNavigatorPages(data: unknown): data is NavigatorPages {
   return typeof data === 'object' && data !== null && Array.isArray((data as NavigatorPages).pages)
 }
 
-function navigatorCacheFilters(agentId: string) {
+function navigatorCacheFilters(agentId: string): QueryFilters[] {
   // list prefix가 agent page 쿼리까지 포섭하고, ['conversations','page']가 글로벌 쿼리를 잡는다
   return [
     { queryKey: conversationKeys.list(agentId) },
-    { queryKey: ['conversations', 'page'] as QueryKey },
+    { queryKey: conversationKeys.globalPagesRoot },
   ]
 }
 

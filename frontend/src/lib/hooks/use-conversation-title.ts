@@ -43,13 +43,13 @@ export function useConversationTitle(
   )
   const pageTitle = findTitleInPages(
     queryClient.getQueriesData<InfiniteData<ConversationListEnvelope>>({
-      queryKey: ['agents', agentId, 'conversations', 'page'],
+      queryKey: conversationKeys.agentPagesRoot(agentId),
     }),
     conversationId,
   )
   const globalTitle = findTitleInPages(
     queryClient.getQueriesData<InfiniteData<ConversationWithAgentListEnvelope>>({
-      queryKey: ['conversations', 'page'],
+      queryKey: conversationKeys.globalPagesRoot,
     }),
     conversationId,
   )

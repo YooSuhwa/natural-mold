@@ -324,7 +324,7 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
 
   const handleRefresh = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ['artifacts', 'content', artifact.id, artifact.version_id],
+      queryKey: artifactKeys.content(artifact.id, artifact.version_id),
     })
     queryClient.invalidateQueries({ queryKey: artifactKeys.conversation(artifact.conversation_id) })
   }, [artifact.conversation_id, artifact.id, artifact.version_id, queryClient])

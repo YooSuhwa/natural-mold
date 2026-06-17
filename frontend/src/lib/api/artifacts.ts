@@ -23,6 +23,10 @@ export const artifactKeys = {
   all: ['artifacts'] as const,
   conversation: (conversationId: string | null | undefined) =>
     ['artifacts', 'conversation', conversationId ?? 'none'] as const,
+  content: (artifactId: string | null | undefined, versionId: string | null | undefined) =>
+    ['artifacts', 'content', artifactId ?? 'none', versionId ?? 'none'] as const,
+  binary: (artifactId: string, versionId: string | null | undefined) =>
+    ['artifact-binary', artifactId, versionId] as const,
   library: (params: ArtifactLibraryParams) => ['artifacts', 'library', params] as const,
   stats: ['artifacts', 'stats'] as const,
   recent: (limit: number) => ['artifacts', 'recent', limit] as const,

@@ -12,6 +12,7 @@ import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
 import { streamAssistant, streamAssistantResume } from '@/lib/sse/stream-assistant'
 import { AssistantThread } from '@/components/chat/assistant-thread'
 import { FixHero } from '@/components/agent/fix-hero'
+import { agentQueryKeys } from '@/lib/query-keys/agents'
 
 const FIX_AGENT_IMAGE = '/agent-fix-hero.webp'
 const CREATE_HERO_IMAGE = '/agent-create-hero.webp'
@@ -100,9 +101,9 @@ export function AssistantPanel({
       const shouldInvalidate = didMutate || resumeMayMutateRef.current
       resumeMayMutateRef.current = false
       if (!shouldInvalidate) return
-      qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: agentQueryKeys.all })
       if (agentId) {
-        qc.invalidateQueries({ queryKey: ['agents', agentId] })
+        qc.invalidateQueries({ queryKey: agentQueryKeys.detail(agentId) })
       }
     },
     [qc, agentId],

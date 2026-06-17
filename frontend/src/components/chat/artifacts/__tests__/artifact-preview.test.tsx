@@ -5,6 +5,10 @@ import type { ArtifactSummary, ArtifactTextContent } from '@/lib/types'
 import { ArtifactPreview } from '../artifact-preview'
 
 vi.mock('@/lib/api/artifacts', () => ({
+  artifactKeys: {
+    content: (artifactId: string | null | undefined, versionId: string | null | undefined) =>
+      ['artifacts', 'content', artifactId ?? 'none', versionId ?? 'none'] as const,
+  },
   getArtifactTextContent: vi.fn(),
 }))
 

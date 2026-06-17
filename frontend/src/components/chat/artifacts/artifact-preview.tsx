@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { getArtifactTextContent } from '@/lib/api/artifacts'
+import { artifactKeys, getArtifactTextContent } from '@/lib/api/artifacts'
 import type { ArtifactSummary } from '@/lib/types'
 import { getArtifactPreviewProvider } from './preview-registry'
 import { canShowArtifactSource } from './source-capabilities'
@@ -20,7 +20,7 @@ export function ArtifactPreview({ artifact, previewMode = 'preview' }: ArtifactP
     (provider?.requiresText || (previewMode === 'code' && canShowArtifactSource(artifact))),
   )
   const textQuery = useQuery({
-    queryKey: ['artifacts', 'content', artifact?.id ?? 'none', artifact?.version_id ?? 'none'],
+    queryKey: artifactKeys.content(artifact?.id, artifact?.version_id),
     queryFn: () => getArtifactTextContent(artifact?.id ?? ''),
     enabled: shouldLoadText,
     staleTime: 30_000,
