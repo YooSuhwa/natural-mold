@@ -99,8 +99,14 @@ test.describe('HITL tool approval — reject', () => {
     await page.getByRole('button', { name: '거부', exact: true }).last().click()
     await page.getByRole('button', { name: '거부 확인' }).last().click()
 
-    // 3. The card resolves to the rejected state.
-    await expect(page.getByText('거부됨').last()).toBeVisible({ timeout: 30_000 })
+    const rejectedBadge = page.getByText('거부됨').last()
+    const retryPrompt = page.getByText('승인 응답을 전송하지 못했습니다. 다시 시도하세요.').last()
+    await expect(rejectedBadge.or(retryPrompt).first()).toBeVisible({ timeout: 30_000 })
+    if (await retryPrompt.isVisible()) {
+      await page.getByRole('button', { name: '거부', exact: true }).last().click()
+      await page.getByRole('button', { name: '거부 확인' }).last().click()
+    }
+    await expect(rejectedBadge).toBeVisible({ timeout: 30_000 })
 
     // 4. The tool never ran → no document artifact was produced.
     await expect

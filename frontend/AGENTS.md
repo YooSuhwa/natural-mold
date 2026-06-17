@@ -93,8 +93,8 @@ E2E auth failure를 고칠 때 먼저 확인할 것:
 
 라이브 백엔드를 구동하는 UI 단언(`toBeVisible`/`toBeEnabled`)에 **기본 5초** 타임아웃을
 그대로 쓰면 `--workers=4` + 스트리밍 spec 동시 실행에서 flaky하다. 원인은 checkpointer의
-고정 4-커넥션 풀(루트 `CLAUDE.md` 참고)이 백엔드를 직렬화시켜 무관한 목록 조회까지
-느려지는 것이다.
+공유 PostgreSQL pool(루트 `CLAUDE.md` 참고)과 DB 부하가 백엔드를 직렬화시켜 무관한
+목록 조회까지 느려지는 것이다.
 
 - 백엔드 응답에 의존하는 단언은 **`{ timeout: 15_000 }`~`20_000`**으로 넉넉히 준다.
 - API 검증은 `await expect.poll(async () => ..., { timeout: 15_000 })` 패턴을 따른다.

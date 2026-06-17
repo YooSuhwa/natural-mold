@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { BookOpen, ChevronRightIcon, FileText, Package, Plus } from 'lucide-react'
+import { BookOpen, Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
@@ -9,45 +9,68 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { SearchInput } from '@/components/shared/search-input'
 import {
   CountedLineTabs,
-  ResourceBadge,
-  ResourceCardMeta,
   ResourceGrid,
-  ResourceListCard,
   ResourcePage,
   ResourcePanel,
   ResourceToolbar,
 } from '@/components/shared/resource-layout'
 import { Skeleton } from '@/components/ui/skeleton'
-import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
-import { SkillDetailDialog } from '@/components/skill/skill-detail-dialog'
-import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
-import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
-import { PublishWizard } from '@/components/marketplace/publish-wizard'
+import { SkillCard } from '@/components/skill/skill-card'
+import { coerceSkillDetailTab, type SkillDetailTab } from '@/components/skill/skill-detail-tabs'
+import { SkillPageDialogs } from '@/components/skill/skill-page-dialogs'
+import { SkillStateFilterChips } from '@/components/skill/skill-state-filter-chips'
 import { useSkills } from '@/lib/hooks/use-skills'
-import { getResourceTone } from '@/lib/resource-tones'
+import {
+  ALL_SKILL_FILTER,
+  filterSkillList,
+  SKILL_STATE_FILTERS,
+  type SkillKindFilter,
+  type SkillStateFilter,
+} from '@/lib/skill-state-filters'
 import type { Skill, SkillKind } from '@/lib/types/skill'
-import { cn } from '@/lib/utils'
 
-type CreateTab = 'text' | 'package' | 'scratch'
-type SkillTab = 'all' | Skill['kind']
+type CreateTab = 'chat' | 'text' | 'package'
+type BuilderMode = 'create' | 'improve'
+type SkillTab = SkillKindFilter
 
-const ALL_TAB = 'all'
+const SKILL_TABS: readonly SkillTab[] = [ALL_SKILL_FILTER, 'text', 'package']
+
+function isSkillTab(value: string): value is SkillTab {
+  return value === ALL_SKILL_FILTER || value === 'text' || value === 'package'
+}
 
 function formatDate(value: string | null): string {
   if (!value) return ''
   return new Date(value).toLocaleDateString()
 }
 
+function replaceDetailUrl(skillId: string | null, tab: SkillDetailTab) {
+  if (typeof window === 'undefined') return
+  if (!skillId) {
+    window.history.replaceState(null, '', '/skills')
+    return
+  }
+  const params = new URLSearchParams()
+  params.set('detailId', skillId)
+  if (tab !== 'content') params.set('tab', tab)
+  window.history.replaceState(null, '', `/skills?${params.toString()}`)
+}
+
 export default function SkillsPage() {
   const t = useTranslations('skill')
   const [createOpen, setCreateOpen] = useState(false)
-  const [createTab, setCreateTab] = useState<CreateTab>('text')
-  const [activeTab, setActiveTab] = useState<SkillTab>(ALL_TAB)
+  const [createTab, setCreateTab] = useState<CreateTab>('chat')
+  const [builderOpen, setBuilderOpen] = useState(false)
+  const [builderMode, setBuilderMode] = useState<BuilderMode>('create')
+  const [builderSourceSkillId, setBuilderSourceSkillId] = useState<string | null>(null)
+  const [builderInitialRequest, setBuilderInitialRequest] = useState('')
+  const [activeTab, setActiveTab] = useState<SkillTab>(ALL_SKILL_FILTER)
+  const [stateFilter, setStateFilter] = useState<SkillStateFilter>(ALL_SKILL_FILTER)
   const [search, setSearch] = useState('')
   const normalizedSearch = search.trim().toLowerCase()
   const skillQueryParams = useMemo(() => {
     const params: { kind?: SkillKind; q?: string } = {}
-    if (activeTab !== ALL_TAB) params.kind = activeTab
+    if (activeTab !== ALL_SKILL_FILTER) params.kind = activeTab
     if (normalizedSearch) params.q = normalizedSearch
     return Object.keys(params).length > 0 ? params : undefined
   }, [activeTab, normalizedSearch])
@@ -60,6 +83,10 @@ export default function SkillsPage() {
     if (typeof window === 'undefined') return null
     return new URLSearchParams(window.location.search).get('detailId')
   })
+  const [detailTab, setDetailTab] = useState<SkillDetailTab>(() => {
+    if (typeof window === 'undefined') return 'content'
+    return coerceSkillDetailTab(new URLSearchParams(window.location.search).get('tab'))
+  })
   const [publishSkill, setPublishSkill] = useState<Skill | null>(null)
 
   function openCreate(tab: CreateTab) {
@@ -67,32 +94,62 @@ export default function SkillsPage() {
     setCreateOpen(true)
   }
 
+  function openDetail(id: string, tab: SkillDetailTab = 'content') {
+    setDetailId(id)
+    setDetailTab(tab)
+    replaceDetailUrl(id, tab)
+  }
+
+  function openBuilderCreate(request: string) {
+    setBuilderMode('create')
+    setBuilderSourceSkillId(null)
+    setBuilderInitialRequest(request)
+    setBuilderOpen(true)
+  }
+
+  function openBuilderImprove(skillId: string) {
+    setBuilderMode('improve')
+    setBuilderSourceSkillId(skillId)
+    setBuilderInitialRequest('')
+    setBuilderOpen(true)
+  }
+
   const data = useMemo(() => skills ?? [], [skills])
 
   const filteredSkills = useMemo(() => {
-    return data.filter((skill) => {
-      if (activeTab !== ALL_TAB && skill.kind !== activeTab) return false
-      if (!normalizedSearch) return true
-      return [skill.name, skill.slug, skill.description, skill.version, skill.kind]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalizedSearch))
+    return filterSkillList(data, {
+      kind: activeTab,
+      state: stateFilter,
+      query: normalizedSearch,
     })
-  }, [activeTab, data, normalizedSearch])
+  }, [activeTab, data, normalizedSearch, stateFilter])
 
   function countSkills(tab: SkillTab): number {
-    return data.filter((skill) => {
-      if (tab !== ALL_TAB && skill.kind !== tab) return false
-      if (!normalizedSearch) return true
-      return [skill.name, skill.slug, skill.description, skill.version, skill.kind]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalizedSearch))
+    return filterSkillList(data, {
+      kind: tab,
+      state: stateFilter,
+      query: normalizedSearch,
     }).length
   }
 
-  const tabs = ([ALL_TAB, 'text', 'package'] as SkillTab[]).map((value) => ({
+  function countStateSkills(state: SkillStateFilter): number {
+    return filterSkillList(data, {
+      kind: activeTab,
+      state,
+      query: normalizedSearch,
+    }).length
+  }
+
+  const tabs = SKILL_TABS.map((value) => ({
     value,
-    label: value === ALL_TAB ? t('typeFilter.all') : t(`typeFilter.${value}`),
+    label: value === ALL_SKILL_FILTER ? t('typeFilter.all') : t(`typeFilter.${value}`),
     countLabel: t('count', { count: countSkills(value) }),
+  }))
+
+  const stateFilters = SKILL_STATE_FILTERS.map((value) => ({
+    value,
+    label: t(`stateFilter.${value}`),
+    countLabel: t('count', { count: countStateSkills(value) }),
   }))
 
   const isInitialEmpty = !isLoading && data.length === 0
@@ -103,7 +160,7 @@ export default function SkillsPage() {
       title={t('title')}
       description={t('description')}
       action={
-        <Button onClick={() => openCreate('text')}>
+        <Button onClick={() => openCreate('chat')}>
           <Plus className="size-4" />
           {t('new')}
         </Button>
@@ -118,7 +175,7 @@ export default function SkillsPage() {
               description={t('empty.description')}
               className="bg-card/50"
               action={
-                <Button onClick={() => openCreate('text')}>
+                <Button onClick={() => openCreate('chat')}>
                   <Plus className="size-4" />
                   {t('firstSkill')}
                 </Button>
@@ -132,9 +189,18 @@ export default function SkillsPage() {
                 ariaLabel={t('viewMode.label')}
                 value={activeTab}
                 tabs={tabs}
-                onValueChange={(value) => setActiveTab(value as SkillTab)}
+                onValueChange={(value) => {
+                  if (isSkillTab(value)) setActiveTab(value)
+                }}
               />
               <ResourceToolbar>
+                <SkillStateFilterChips
+                  ariaLabel={t('stateFilter.label')}
+                  value={stateFilter}
+                  filters={stateFilters}
+                  onValueChange={setStateFilter}
+                  className="flex-1"
+                />
                 <SearchInput
                   containerClassName="flex-1 sm:max-w-[360px]"
                   placeholder={t('searchPlaceholder')}
@@ -164,7 +230,7 @@ export default function SkillsPage() {
                       updatedLabel={formatDate(skill.updated_at)}
                       actionLabel={t('actions.manage')}
                       publishLabel={t('actions.publish')}
-                      onOpen={setDetailId}
+                      onOpen={openDetail}
                       onPublish={setPublishSkill}
                     />
                   ))}
@@ -175,114 +241,33 @@ export default function SkillsPage() {
         )}
       </ResourcePanel>
 
-      <SkillCreateDialog
-        key={`create-${createTab}`}
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        initialTab={createTab}
-        onCreated={(id) => setDetailId(id)}
-      />
-      <SkillDetailDialog
-        skillId={detailId}
-        open={!!detailId}
-        onOpenChange={(open) => {
+      <SkillPageDialogs
+        createOpen={createOpen}
+        createTab={createTab}
+        builderOpen={builderOpen}
+        builderMode={builderMode}
+        builderSourceSkillId={builderSourceSkillId}
+        builderInitialRequest={builderInitialRequest}
+        detailId={detailId}
+        detailTab={detailTab}
+        publishSkill={publishSkill}
+        onCreateOpenChange={setCreateOpen}
+        onBuilderOpenChange={setBuilderOpen}
+        onCreated={(id, tab = 'content') => openDetail(id, tab)}
+        onStartChat={openBuilderCreate}
+        onDetailTabChange={(tab) => {
+          setDetailTab(tab)
+          replaceDetailUrl(detailId, tab)
+        }}
+        onImprove={openBuilderImprove}
+        onDetailOpenChange={(open) => {
           if (open) return
           setDetailId(null)
-          // /marketplace에서 ``?detailId=...`` deep-link로 진입한 경우, dialog
-          // 닫을 때 URL의 query string도 함께 정리한다. history.replaceState로
-          // route 자체는 다시 그리지 않아 list scroll/state 보존.
-          if (typeof window !== 'undefined' && window.location.search) {
-            window.history.replaceState(null, '', '/skills')
-          }
+          setDetailTab('content')
+          replaceDetailUrl(null, 'content')
         }}
-      />
-
-      <PublishWizard
-        skill={publishSkill}
-        open={!!publishSkill}
-        onOpenChange={(open) => !open && setPublishSkill(null)}
+        onPublishOpenChange={(open) => !open && setPublishSkill(null)}
       />
     </ResourcePage>
-  )
-}
-
-function SkillCard({
-  skill,
-  kindLabel,
-  agentsLabel,
-  updatedLabel,
-  actionLabel,
-  publishLabel,
-  onOpen,
-  onPublish,
-}: {
-  skill: Skill
-  kindLabel: string
-  agentsLabel: string
-  updatedLabel: string
-  actionLabel: string
-  publishLabel: string
-  onOpen: (id: string) => void
-  onPublish: (skill: Skill) => void
-}) {
-  const tone = getResourceTone(skill.kind)
-  const Icon = skill.kind === 'package' ? Package : FileText
-  const canPublish =
-    !skill.publication_summary?.state || skill.publication_summary.state === 'not_published'
-  const metaLabels = [
-    skill.version ? `v${skill.version}` : null,
-    agentsLabel,
-    skill.version ? null : updatedLabel,
-  ]
-    .filter((label): label is string => Boolean(label))
-    .slice(0, 2)
-  const hasMarketplaceSignals = Boolean(skill.origin_summary || skill.publication_summary)
-
-  return (
-    <ResourceListCard as="article" tone={tone} density="rich">
-      <ResourceListCard.Header>
-        <span className={cn('moldy-resource-icon', tone.icon)}>
-          <Icon className="size-4.5" />
-        </span>
-        <ResourceBadge tone={tone}>{kindLabel}</ResourceBadge>
-      </ResourceListCard.Header>
-
-      <ResourceListCard.Title>{skill.name}</ResourceListCard.Title>
-      <ResourceListCard.Subhead tone="mono">{skill.slug}</ResourceListCard.Subhead>
-      <ResourceListCard.Description>{skill.description ?? skill.slug}</ResourceListCard.Description>
-
-      {hasMarketplaceSignals ? (
-        <ResourceListCard.StatusRow>
-          <OriginBadge summary={skill.origin_summary} />
-          <PublicationBadge summary={skill.publication_summary} />
-        </ResourceListCard.StatusRow>
-      ) : null}
-
-      <ResourceListCard.MetaRow>
-        {metaLabels.map((label) => (
-          <ResourceCardMeta key={label}>{label}</ResourceCardMeta>
-        ))}
-      </ResourceListCard.MetaRow>
-
-      <ResourceListCard.Footer className="justify-between">
-        {canPublish ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() => onPublish(skill)}
-          >
-            {publishLabel}
-          </Button>
-        ) : (
-          <span />
-        )}
-        <Button type="button" variant="outline" size="sm" onClick={() => onOpen(skill.id)}>
-          {actionLabel}
-          <ChevronRightIcon aria-hidden className="size-3" />
-        </Button>
-      </ResourceListCard.Footer>
-    </ResourceListCard>
   )
 }

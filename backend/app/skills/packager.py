@@ -3,7 +3,7 @@
 A package is a ZIP archive containing a ``SKILL.md`` at the root or one
 directory level deep. The packager:
 
-1. Validates archive size against ``settings.skill_max_package_bytes``.
+1. Validates archive and extracted size against ``settings.skill_max_package_bytes``.
 2. Iterates every entry, rejecting symlinks, absolute paths, or any name
    that resolves outside the destination directory.
 3. Strips the optional top-level prefix so files always land directly under
@@ -19,10 +19,12 @@ import os
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO, Final
 
 from app.config import settings
 from app.skills.inspector import SkillMetadataError, parse_skill_md
+
+_ZIP_READ_CHUNK_BYTES: Final = 1024 * 1024
 
 
 @dataclass
@@ -104,7 +106,7 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
         if not skill_md:
             raise PackageError("SKILL.md not found in archive (root or 1-level subdir)")
 
-        raw = zf.read(skill_md)
+        raw = _read_member_limited(zf, skill_md, stage="after extraction")
         try:
             parsed = parse_skill_md(raw, require_metadata=True)
         except SkillMetadataError as exc:
@@ -118,6 +120,7 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
 
         files: list[str] = []
         total_bytes = 0
+        file_count = 0
         has_scripts = False
 
         for member in zf.infolist():
@@ -134,6 +137,8 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
             if not rel:
                 continue
 
+            file_count += 1
+            _raise_if_too_many_files(file_count)
             target = (target_dir / rel).resolve()
             try:
                 target.relative_to(target_dir)
@@ -141,10 +146,9 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
                 raise PackageError(f"path traversal detected: {rel!r}") from exc
 
             target.parent.mkdir(parents=True, exist_ok=True)
-            data = zf.read(member.filename)
-            target.write_bytes(data)
+            written_bytes = _copy_member_stream(zf, member, target, total_bytes)
             files.append(rel.replace("\\", "/"))
-            total_bytes += len(data)
+            total_bytes += written_bytes
 
             if rel.startswith("scripts/") and rel.endswith(".py"):
                 has_scripts = True
@@ -170,6 +174,61 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
         has_scripts=has_scripts,
         content_hash=content_hash,
     )
+
+
+def _raise_if_package_too_large(size_bytes: int, stage: str) -> None:
+    if size_bytes > settings.skill_max_package_bytes:
+        raise PackageError(
+            f"package too large {stage}: {size_bytes} bytes "
+            f"(max {settings.skill_max_package_bytes})"
+        )
+
+
+def _raise_if_too_many_files(file_count: int) -> None:
+    if file_count > settings.skill_max_package_files:
+        raise PackageError(f"too many files: {file_count} (max {settings.skill_max_package_files})")
+
+
+def _read_member_limited(zf: zipfile.ZipFile, name: str, *, stage: str) -> bytes:
+    data = bytearray()
+    try:
+        with zf.open(name) as source:
+            while chunk := source.read(_ZIP_READ_CHUNK_BYTES):
+                data.extend(chunk)
+                _raise_if_package_too_large(len(data), stage)
+    except zipfile.BadZipFile as exc:
+        raise PackageError("invalid ZIP file") from exc
+    return bytes(data)
+
+
+def _copy_member_stream(
+    zf: zipfile.ZipFile,
+    member: zipfile.ZipInfo,
+    target: Path,
+    total_bytes: int,
+) -> int:
+    try:
+        with zf.open(member.filename) as source, target.open("wb") as destination:
+            return _copy_limited_stream(source, destination, total_bytes)
+    except PackageError:
+        target.unlink(missing_ok=True)
+        raise
+    except zipfile.BadZipFile as exc:
+        target.unlink(missing_ok=True)
+        raise PackageError("invalid ZIP file") from exc
+
+
+def _copy_limited_stream(
+    source: BinaryIO,
+    destination: BinaryIO,
+    total_bytes: int,
+) -> int:
+    written_bytes = 0
+    while chunk := source.read(_ZIP_READ_CHUNK_BYTES):
+        written_bytes += len(chunk)
+        _raise_if_package_too_large(total_bytes + written_bytes, "after extraction")
+        destination.write(chunk)
+    return written_bytes
 
 
 __all__ = ["PackageError", "PackageInfo", "extract_package"]

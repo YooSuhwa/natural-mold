@@ -55,12 +55,15 @@ describe('frontend lazy-load boundaries', () => {
 
   it('loads zip and artifact data parsers only when those features are used', () => {
     const skillDialogSource = readFrontendFile('src/components/skill/skill-create-dialog.tsx')
+    const skillTabsSource = readFrontendFile('src/components/skill/skill-create-tabs.tsx')
+    const skillsApiSource = readFrontendFile('src/lib/api/skills.ts')
     const dataPreviewSource = readFrontendFile(
       'src/components/chat/artifacts/data-preview-utils.ts',
     )
+    const skillCreateUploadSource = [skillDialogSource, skillTabsSource, skillsApiSource].join('\n')
 
-    expect(skillDialogSource).not.toContain("import JSZip from 'jszip'")
-    expect(skillDialogSource).toContain("import('jszip')")
+    expect(skillCreateUploadSource).not.toContain('jszip')
+    expect(skillsApiSource).toContain("apiUpload<Skill>('/api/skills/upload'")
     expect(dataPreviewSource).not.toContain("from 'csv-parse/browser/esm/sync'")
     expect(dataPreviewSource).not.toContain("from 'smol-toml'")
     expect(dataPreviewSource).not.toContain("from 'yaml'")

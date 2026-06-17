@@ -407,11 +407,8 @@ async def run_v3_message_stream(
     from app.agent_runtime.streaming import stream_agent_response
 
     async with async_session_factory() as db:
-        # async DB call 두 개 병렬, sync 호출은 직접
-        tools_catalog, default_model_name = await asyncio.gather(
-            get_tools_catalog(db, user_id),
-            _get_default_model_name(db),
-        )
+        tools_catalog = await get_tools_catalog(db, user_id)
+        default_model_name = await _get_default_model_name(db)
         middlewares_catalog = _get_middlewares_catalog()
 
     checkpointer = get_checkpointer()

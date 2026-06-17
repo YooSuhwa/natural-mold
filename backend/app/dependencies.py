@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import InvalidTokenError, decode_token
 from app.config import settings
-from app.database import async_session
+from app.database import async_session, close_session_shielded
 from app.exceptions import AppError
 from app.services import user_service
 
@@ -48,8 +48,11 @@ class CurrentUser:
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with async_session() as session:
+    session = async_session()
+    try:
         yield session
+    finally:
+        await close_session_shielded(session)
 
 
 # ---------------------------------------------------------------------------

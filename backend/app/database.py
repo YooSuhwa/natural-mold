@@ -1,12 +1,19 @@
 from collections.abc import AsyncGenerator
 
+import anyio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
 
-engine = create_async_engine(settings.database_url, echo=False)
-async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+class ShieldedAsyncSession(AsyncSession):
+    async def __aexit__(self, type_: object, value: object, traceback: object) -> None:
+        await close_session_shielded(self)
+
+
+engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True)
+async_session = async_sessionmaker(engine, class_=ShieldedAsyncSession, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):
@@ -14,8 +21,16 @@ class Base(DeclarativeBase):
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    async with async_session() as session:
+    session = async_session()
+    try:
         yield session
+    finally:
+        await close_session_shielded(session)
+
+
+async def close_session_shielded(session: AsyncSession) -> None:
+    with anyio.CancelScope(shield=True):
+        await session.close()
 
 
 def is_postgres(db: AsyncSession) -> bool:

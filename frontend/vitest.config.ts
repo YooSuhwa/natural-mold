@@ -1,6 +1,8 @@
 import { defineConfig } from "vitest/config"
 import path from "path"
 
+const maxWorkers = process.env.VITEST_MAX_WORKERS ?? "4"
+
 export default defineConfig({
   test: {
     environment: "jsdom",
@@ -8,6 +10,7 @@ export default defineConfig({
     globals: true,
     css: false,
     exclude: ["e2e/**", "node_modules/**"],
+    maxWorkers,
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],

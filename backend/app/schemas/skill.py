@@ -58,6 +58,42 @@ class SkillFileEntry(BaseModel):
     is_dir: bool
 
 
+class SkillLatestEvaluationSummary(BaseModel):
+    status: Literal[
+        "queued",
+        "running",
+        "grading",
+        "completed",
+        "failed",
+        "cancelled",
+        "missing",
+        "stale",
+        "partial",
+        "passed",
+    ]
+    latest_run_id: uuid.UUID | None = None
+    evaluation_set_id: uuid.UUID | None = None
+    pass_rate: float | None = None
+    skill_content_hash: str | None = None
+    created_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class SkillHealthSummary(BaseModel):
+    state: Literal[
+        "ready",
+        "needs_evaluation",
+        "needs_rerun",
+        "needs_credentials",
+        "evaluation_running",
+        "evaluation_failed",
+        "low_confidence",
+    ]
+    label: str
+    reason: str
+    severity: Literal["success", "info", "warning", "error", "neutral"]
+
+
 class SkillResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -70,7 +106,11 @@ class SkillResponse(BaseModel):
     size_bytes: int
     used_by_count: int
     package_metadata: dict[str, Any] | None
+    credential_requirements: list[dict[str, Any]] | None = None
     execution_profile: dict[str, Any] | None = None
+    current_revision_id: uuid.UUID | None = None
+    latest_evaluation_summary: SkillLatestEvaluationSummary | None = None
+    health: SkillHealthSummary | None = None
     last_modified_at: datetime
     created_at: datetime
     updated_at: datetime
@@ -93,6 +133,8 @@ class SkillBrief(BaseModel):
     kind: Literal["text", "package"]
     description: str | None
     execution_profile: dict[str, Any] | None = None
+    latest_evaluation_summary: SkillLatestEvaluationSummary | None = None
+    health: SkillHealthSummary | None = None
 
     model_config = {"from_attributes": True}
 

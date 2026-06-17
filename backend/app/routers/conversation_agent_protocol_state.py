@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from langchain_core.messages import BaseMessage
+from langgraph.types import Send
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
@@ -227,9 +228,9 @@ def _snapshot_tasks(snapshot: Any) -> list[dict[str, Any]]:
                 "id": _task_value(task, "id"),
                 "name": _task_value(task, "name"),
                 "error": _task_value(task, "error"),
-                "interrupts": _task_value(task, "interrupts") or [],
-                "checkpoint": _task_value(task, "checkpoint"),
-                "state": _task_value(task, "state"),
+                "interrupts": _serialize_value(_task_value(task, "interrupts") or []),
+                "checkpoint": _serialize_value(_task_value(task, "checkpoint")),
+                "state": _serialize_value(_task_value(task, "state")),
             }
         )
     return tasks
@@ -262,6 +263,12 @@ def _snapshot_configurable(snapshot: Any) -> Mapping[str, Any]:
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, BaseMessage):
         return value.model_dump(mode="json")
+    if isinstance(value, Send):
+        return {
+            "node": value.node,
+            "arg": _serialize_value(value.arg),
+            "timeout": value.timeout,
+        }
     if isinstance(value, list):
         return [_serialize_value(item) for item in value]
     if isinstance(value, Mapping):

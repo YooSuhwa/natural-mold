@@ -68,6 +68,35 @@ describe('ApprovalCard', () => {
     expect(unsupportedAddResult).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the approval pending when resume fails', async () => {
+    const onResumeDecisions = vi.fn<() => Promise<void>>().mockRejectedValue(new Error('stale'))
+    const addResult = vi.fn()
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'toolu-1',
+          tool_name: 'write_file',
+          tool_args: { file_path: '/runtime/report.md' },
+        },
+        status: { type: 'requires-action' },
+        addResult,
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('approve'))
+
+    expect(await screen.findByText('resumeFailed')).toBeVisible()
+    expect(addResult).not.toHaveBeenCalled()
+    expect(screen.getByText('approve')).toBeEnabled()
+  })
+
   it('passes the LangGraph interrupt id when registering an approval decision', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     const toolUi = ApprovalCard as unknown as ToolUiRender

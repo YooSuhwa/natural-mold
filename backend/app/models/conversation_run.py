@@ -12,6 +12,7 @@ from app.database import Base
 RUN_ACTIVE_STATUSES = ("queued", "running", "canceling")
 RUN_TERMINAL_STATUSES = ("completed", "failed", "interrupted", "canceled", "stale")
 RUN_STATUS_VALUES = RUN_ACTIVE_STATUSES + RUN_TERMINAL_STATUSES
+RUN_EVENT_ID_MAX_LENGTH = 255
 
 
 def utc_now_naive() -> datetime:
@@ -57,7 +58,9 @@ class ConversationRun(Base):
     worker_instance_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     interrupt_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     input_preview: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    last_event_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    last_event_id: Mapped[str | None] = mapped_column(
+        String(RUN_EVENT_ID_MAX_LENGTH), nullable=True
+    )
     error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     cancel_requested_at: Mapped[datetime | None] = mapped_column(

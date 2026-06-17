@@ -1253,6 +1253,7 @@
       "preparing": "Preparing",
       "approvalRequired": "Approval Required",
       "invalidJson": "Invalid Json",
+      "resumeFailed": "Could not send the approval response. Try again.",
       "rejectConfirm": "Reject Confirm",
       "args": "Args",
       "argsCount": "{count} arguments",
@@ -2164,6 +2165,7 @@
       "cancel": "Cancel",
       "unsavedCount": "{count} unsaved",
       "usedBy": "Used by {count}",
+      "exportPackage": "Export .skill",
       "saveFile": "Save File",
       "pickFile": "Pick File",
       "unsaved": "Unsaved",
@@ -2174,6 +2176,30 @@
       "binaryFile": "Binary File",
       "binaryUnavailable": "Binary Unavailable",
       "download": "Download",
+      "improveByChat": "Improve by chat",
+      "credentialsEmpty": "This skill does not require credentials.",
+      "tabs": {
+        "content": "Content",
+        "credentials": "Credentials",
+        "evaluation": "Evaluation",
+        "history": "History",
+        "metadata": "Metadata"
+      },
+      "evaluation": {
+        "emptyTitle": "No evaluation set yet",
+        "emptyDescription": "When the builder or Evaluation tab creates criteria, you can rerun them here.",
+        "caseCount": "{count} cases"
+      },
+      "history": {
+        "empty": "History starts from the current version.",
+        "revision": "Revision {number}",
+        "files": "{count} files"
+      },
+      "metadata": {
+        "name": "Name",
+        "description": "Description",
+        "version": "Version"
+      },
       "credentialBindingsTitle": "Credential bindings",
       "credentialBindingsDescription": "Choose the credential this skill should use when it runs. Changes apply from the next run.",
       "credentialPlaceholder": "Select a credential",
@@ -2254,7 +2280,7 @@
     "pageTitle": "Skill Management",
     "title": "Skills",
     "description": "Create and manage reusable instructions and executable skill packages.",
-    "new": "New",
+    "new": "Build by chat",
     "count": "{count}",
     "agentsCount": "{count} agents",
     "searchPlaceholder": "Search skills",
@@ -2283,6 +2309,15 @@
       "text": "Text",
       "package": "Package"
     },
+    "stateFilter": {
+      "label": "Skill state filter",
+      "all": "All states",
+      "needs_credentials": "Credentials needed",
+      "needs_rerun": "Rerun needed",
+      "evaluation_failed": "Evaluation failed",
+      "published": "Published",
+      "local_draft": "Local/draft"
+    },
     "deleteConfirm": "Delete Confirm",
     "addSkill": "Add skill",
     "dialogTitle": {
@@ -2298,7 +2333,7 @@
       "content": "Content",
       "contentPlaceholder": "Content Placeholder"
     },
-    "firstSkill": "First Skill",
+    "firstSkill": "Build first skill by chat",
     "modified": "Modified {date}",
     "empty": {
       "title": "Empty",
@@ -2320,12 +2355,20 @@
       "uploadFailed": "Operation failed."
     },
     "createDialog": {
-      "title": "Create Dialog",
-      "description": "Create a text skill or upload a skill package.",
+      "title": "New Skill",
+      "description": "Build a high-quality package skill by chat, or add a text skill or package directly.",
       "tabs": {
+        "chat": "Build by chat",
         "text": "Text",
         "package": "Package",
         "scratch": "Start over"
+      },
+      "chat": {
+        "description": "Describe the skill goal, example inputs, and expected output in natural language. The dedicated builder will draft files and show validation in the next step.",
+        "request": "Request",
+        "placeholder": "Example: Create a skill that turns meeting notes into a table of owners, tasks, and due dates.",
+        "required": "Enter a request first.",
+        "submit": "Start chat"
       },
       "text": {
         "name": "Name",
@@ -2353,6 +2396,127 @@
         "created": "Created",
         "failed": "Failed",
         "submit": "Submit"
+      }
+    },
+    "health": {
+      "ready": "Verified",
+      "needs_evaluation": "Not evaluated",
+      "needs_rerun": "Rerun needed",
+      "needs_credentials": "Credentials needed",
+      "evaluation_running": "Evaluation running",
+      "evaluation_failed": "Evaluation failed",
+      "low_confidence": "Low pass rate"
+    },
+    "evaluationSummary": {
+      "passRate": "Eval {rate}%",
+      "status": {
+        "queued": "Evaluation queued",
+        "running": "Evaluation running",
+        "grading": "Grading",
+        "completed": "Evaluation complete",
+        "failed": "Evaluation failed",
+        "cancelled": "Evaluation cancelled",
+        "missing": "Not evaluated",
+        "stale": "Rerun needed",
+        "partial": "Partial evaluation",
+        "passed": "Evaluation passed"
+      }
+    },
+    "builderDialog": {
+      "titleCreate": "Build Skill by Chat",
+      "titleImprove": "Improve Skill by Chat",
+      "descriptionCreate": "Describe the job you need and Moldy will draft a package skill with validation results.",
+      "descriptionImprove": "Start from the existing skill, review the proposed changes, and apply only after confirmation.",
+      "chatTitle": "Builder chat",
+      "requestLabel": "Request",
+      "requestPlaceholder": "Example: Create a skill that extracts owners, tasks, and due dates from meeting notes.",
+      "requestImprovePlaceholder": "Example: Make due-date extraction stricter and more reliable.",
+      "requestRequired": "Enter a request first.",
+      "startCreate": "Start chat",
+      "startImprove": "Draft improvement",
+      "startFailed": "Failed to start Skill Builder.",
+      "confirmFailed": "Failed to apply the skill.",
+      "previewTitle": "Skill preview",
+      "previewEmpty": "Draft files and validation status will appear here after you send a request.",
+      "filesTitle": "Files",
+      "filesEmpty": "No files have been generated yet.",
+      "validationTitle": "Validation",
+      "compatibilityTitle": "Compatibility",
+      "changelogTitle": "Change summary",
+      "evalTitle": "Evaluation",
+      "fileDiffTitle": "File change summary",
+      "originalFileCount": "{count} original",
+      "proposedFileCount": "{count} proposed",
+      "addedCount": "{count} added",
+      "changedCount": "{count} changed",
+      "deletedCount": "{count} deleted",
+      "validationEmpty": "No validation issues.",
+      "passRateMetric": "Pass rate {value}%",
+      "meanScoreMetric": "Mean score {value}",
+      "deltaMetric": "Delta {value}",
+      "cancel": "Close",
+      "confirmCreate": "Save as skill",
+      "confirmImprove": "Apply improvement",
+      "fileChange": {
+        "added": "Added",
+        "changed": "Changed",
+        "deleted": "Deleted"
+      },
+      "validationSeverity": {
+        "error": "Error",
+        "warning": "Warning",
+        "info": "Info"
+      },
+      "status": {
+        "collecting": "Collecting",
+        "drafting": "Drafting",
+        "review": "Ready for review",
+        "confirming": "Applying",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "fileRole": {
+        "skill": "Skill",
+        "script": "Script",
+        "reference": "Reference",
+        "asset": "Asset",
+        "metadata": "Metadata",
+        "eval": "Evaluation"
+      },
+      "systemLlm": {
+        "title": "System LLM setup is required",
+        "description": "Text creation and package upload are still available.",
+        "userDescription": "The Skill Builder model needs administrator setup. Text creation and package upload are still available.",
+        "adminDescription": "Skill Builder uses the text_primary system model. Connect a model and system credential in System LLM Settings. Text creation and package upload are still available until setup is complete.",
+        "settingsAction": "Open System LLM Settings"
+      },
+      "conflict": {
+        "title": "Skill changed",
+        "description": "The source skill changed after this improvement session started.",
+        "reloadLatest": "Reload latest and reapply",
+        "discard": "Discard session"
+      },
+      "toast": {
+        "created": "Skill created.",
+        "improved": "Skill improvement applied."
+      }
+    },
+    "compatibility": {
+      "title": "Portable compatibility",
+      "empty": "No compatibility result yet.",
+      "targetCount": "{count} targets",
+      "noIssues": "No compatibility issues recorded.",
+      "target": {
+        "openaiCodex": "OpenAI/Codex",
+        "claudeCode": "Claude Code",
+        "vercelAgentSkills": "Vercel Agent Skills"
+      },
+      "status": {
+        "pass": "Pass",
+        "warning": "Warning",
+        "error": "Error",
+        "unknown": "Unknown"
       }
     },
     "detailDialog": {
@@ -2384,6 +2548,7 @@
       "cancel": "Cancel",
       "unsavedCount": "{count} unsaved",
       "usedBy": "Used by {count}",
+      "exportPackage": "Export .skill",
       "saveFile": "Save File",
       "pickFile": "Pick File",
       "unsaved": "Unsaved",
@@ -2394,11 +2559,122 @@
       "binaryFile": "Binary File",
       "binaryUnavailable": "Binary Unavailable",
       "download": "Download",
+      "improveByChat": "Improve by chat",
+      "credentialsEmpty": "This skill does not require credentials.",
+      "tabs": {
+        "content": "Content",
+        "credentials": "Credentials",
+        "evaluation": "Evaluation",
+        "history": "History",
+        "metadata": "Metadata"
+      },
+      "evaluation": {
+        "emptyTitle": "No evaluation set yet",
+        "emptyDescription": "When the builder or Evaluation tab creates criteria, you can rerun them here.",
+        "caseCount": "{count} cases",
+        "runAgain": "Run again",
+        "runAgainPending": "Running…",
+        "runAgainFor": "Run {name} evaluation again",
+        "estimatePending": "Checking…",
+        "estimateTitle": "Confirm evaluation run",
+        "estimateDescription": "Run {name} again against the current skill content.",
+        "estimateCaseCount": "Cases",
+        "estimateModelCalls": "Model calls",
+        "estimateDuration": "Estimated time",
+        "estimateTimeout": "Timeout",
+        "estimateCost": "Estimated cost",
+        "estimateBaseline": "Baseline comparison",
+        "estimateSeconds": "{count}s",
+        "estimateYes": "Yes",
+        "estimateNo": "No",
+        "estimateCancel": "Cancel",
+        "estimateConfirm": "Run evaluation",
+        "cancelRun": "Cancel evaluation",
+        "cancelPending": "Cancelling…",
+        "cancelRunFor": "Cancel {name} evaluation",
+        "connectCredentials": "Connect credentials",
+        "connectCredentialsFor": "Connect credentials for {name}",
+        "selectSet": "Select {name} evaluation set",
+        "runHistoryTitle": "Run history",
+        "noRunHistory": "No run history yet.",
+        "viewRun": "View run {id}",
+        "detailTitle": "Selected run detail",
+        "noRunDetail": "Select a run to see detailed results.",
+        "staleRun": "Rerun needed",
+        "metric": {
+          "passRate": "Pass rate {rate}%",
+          "triggerAccuracy": "Trigger accuracy {rate}%",
+          "averageDuration": "Average {seconds}s",
+          "tokenDelta": "Tokens {count}"
+        },
+        "benchmarkTitle": "Benchmark deltas",
+        "benchmark": {
+          "durationDelta": "Duration {value}ms",
+          "tokenDelta": "Tokens {count}",
+          "qualityDelta": "Quality {rate}%"
+        },
+        "caseResultsTitle": "Case results",
+        "noCaseResults": "No case results recorded.",
+        "errorTitle": "Failure reason",
+        "caseTitle": "Case {number}",
+        "status": {
+          "queued": "Evaluation queued",
+          "running": "Evaluation running",
+          "grading": "Grading",
+          "completed": "Evaluation complete",
+          "failed": "Evaluation failed",
+          "cancelled": "Evaluation cancelled"
+        }
+      },
+      "history": {
+        "empty": "History starts from the current version.",
+        "revision": "Revision {number}",
+        "current": "Current",
+        "selected": "Selected",
+        "view": "View",
+        "viewRevision": "View revision {number}",
+        "detailTitle": "Revision {number} detail",
+        "noDetail": "Select a revision to see its details.",
+        "contentHash": "Content hash",
+        "fileCount": "Files",
+        "files": "{count} files",
+        "changelog": "Changelog",
+        "changedFiles": "Changed files",
+        "compatibility": "Compatibility result",
+        "evaluationSnapshot": "Evaluation snapshot",
+        "noItems": "No items recorded.",
+        "notRecorded": "Not recorded yet.",
+        "rollback": "Roll back to this version",
+        "rollbackFor": "Roll back to revision {number}",
+        "rollbackPending": "Rolling back…",
+        "rollbackCurrentDisabled": "The current version cannot be rolled back.",
+        "rollbackTitle": "Roll back to revision {number}?",
+        "rollbackDescription": "Rolling back preserves the current content as a new history entry.",
+        "rollbackConfirm": "Roll back",
+        "operation": {
+          "create": "Created",
+          "manual_metadata_update": "Metadata edited",
+          "manual_content_update": "Content edited",
+          "manual_file_update": "File edited",
+          "builder_create": "Builder created",
+          "builder_improvement": "Builder improvement",
+          "rollback": "Rollback"
+        }
+      },
+      "metadata": {
+        "name": "Name",
+        "description": "Description",
+        "version": "Version"
+      },
       "credentialBindingsTitle": "Credential bindings",
       "credentialBindingsDescription": "Choose the credential this skill should use when it runs. Changes apply from the next run.",
       "credentialPlaceholder": "Select a credential",
       "requiredCredential": "Required",
       "optionalCredential": "Optional",
+      "missingRequiredCredentials": "{count} required credentials missing",
+      "allRequiredCredentialsBound": "All required credentials are connected",
+      "credentialConnected": "Connected",
+      "credentialMissing": "Not connected",
       "credentialUpdated": "Skill credential updated.",
       "credentialCleared": "Skill credential disconnected.",
       "credentialUpdateFailed": "Failed to update credential."

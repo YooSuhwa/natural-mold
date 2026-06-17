@@ -48,6 +48,7 @@ from app.error_codes import (
 )
 from app.marketplace import credential_requirements
 from app.marketplace.access import can_install_item, is_owner
+from app.marketplace.install_locks import lock_marketplace_item_install
 from app.marketplace.payloads import canonical_json_hash
 from app.marketplace.schemas import (
     InstallMarketplaceItemIn,
@@ -120,9 +121,7 @@ def _slugify(value: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _derive_origin(
-    item: MarketplaceItem, user: CurrentUser
-) -> tuple[str, uuid.UUID | None]:
+def _derive_origin(item: MarketplaceItem, user: CurrentUser) -> tuple[str, uuid.UUID | None]:
     """Compute ``(origin_kind, origin_user_id)`` for a freshly installed
     skill row. Maps directly to Spec §7.5.
 
@@ -398,9 +397,7 @@ async def _validate_version_credential_bindings(
 
         expected_definition = requirement.get("definition_key")
         if expected_definition and credential.definition_key != expected_definition:
-            raise marketplace_credential_required(
-                f"credential definition mismatch: {key}"
-            )
+            raise marketplace_credential_required(f"credential definition mismatch: {key}")
         normalized[key] = str(credential.id)
     return normalized
 
@@ -414,9 +411,7 @@ async def _validate_mcp_bindings(
 ) -> uuid.UUID | None:
     requirements = version.credential_requirements or []
     requirement_by_key = {
-        str(req.get("key")): req
-        for req in requirements
-        if isinstance(req, dict) and req.get("key")
+        str(req.get("key")): req for req in requirements if isinstance(req, dict) and req.get("key")
     }
     credential_id = bindings.get("mcp_auth")
     if credential_id is None:
@@ -484,15 +479,11 @@ async def _materialize_mcp_tool_snapshot(
     snapshot_present = isinstance(payload.get("tool_snapshot"), list)
     snapshot = payload.get("tool_snapshot") if snapshot_present else []
     install_defaults = (
-        payload.get("install_defaults")
-        if isinstance(payload.get("install_defaults"), dict)
-        else {}
+        payload.get("install_defaults") if isinstance(payload.get("install_defaults"), dict) else {}
     )
     raw_enabled_names = install_defaults.get("enabled_tool_names")
     enabled_names: set[str] | None = (
-        {str(name) for name in raw_enabled_names}
-        if isinstance(raw_enabled_names, list)
-        else None
+        {str(name) for name in raw_enabled_names} if isinstance(raw_enabled_names, list) else None
     )
     valid_names: set[str] = set()
     for row in snapshot:
@@ -503,14 +494,10 @@ async def _materialize_mcp_tool_snapshot(
             continue
         valid_names.add(name)
         enabled = name in enabled_names if enabled_names is not None else True
-        input_schema = (
-            row.get("input_schema") if isinstance(row.get("input_schema"), dict) else {}
-        )
+        input_schema = row.get("input_schema") if isinstance(row.get("input_schema"), dict) else {}
         tool = (
             await db.execute(
-                select(McpTool)
-                .where(McpTool.server_id == server.id, McpTool.name == name)
-                .limit(1)
+                select(McpTool).where(McpTool.server_id == server.id, McpTool.name == name).limit(1)
             )
         ).scalar_one_or_none()
         if tool is None:
@@ -533,8 +520,10 @@ async def _materialize_mcp_tool_snapshot(
 
     if snapshot_present:
         existing_tools = (
-            await db.execute(select(McpTool).where(McpTool.server_id == server.id))
-        ).scalars().all()
+            (await db.execute(select(McpTool).where(McpTool.server_id == server.id)))
+            .scalars()
+            .all()
+        )
         # The snapshot is the authoritative tool list for this version, so a
         # tool that vanished was genuinely removed (e.g. renamed). Delete the
         # stale row instead of leaving a permanently-disabled dangling tool,
@@ -543,9 +532,7 @@ async def _materialize_mcp_tool_snapshot(
         for tool in existing_tools:
             if tool.name not in valid_names:
                 await db.execute(
-                    delete(AgentMcpToolLink).where(
-                        AgentMcpToolLink.mcp_tool_id == tool.id
-                    )
+                    delete(AgentMcpToolLink).where(AgentMcpToolLink.mcp_tool_id == tool.id)
                 )
                 await db.delete(tool)
         server.last_tool_count = len(valid_names)
@@ -613,9 +600,7 @@ async def _install_mcp_item(
         user=user,
         bindings=body.credential_bindings,
     )
-    missing = [
-        key for key in _mcp_required_keys(version) if key not in body.credential_bindings
-    ]
+    missing = [key for key in _mcp_required_keys(version) if key not in body.credential_bindings]
     if missing and body.install_missing_credentials == "reject":
         raise marketplace_credential_required(
             f"missing required credential bindings: {', '.join(missing)}"
@@ -867,6 +852,7 @@ async def install_item(
         raise marketplace_item_not_found()
 
     version = await _resolve_version(db, item=item, version_id=body.version_id)
+    await lock_marketplace_item_install(db, item_id=item.id)
 
     if item.resource_type == "mcp":
         return await _install_mcp_item(
@@ -888,9 +874,7 @@ async def install_item(
 
     # Resource_type guard: known marketplace resource types are handled above.
     if item.resource_type != "skill":
-        logger.info(
-            "marketplace_install_unsupported_resource_type %s", item.resource_type
-        )
+        logger.info("marketplace_install_unsupported_resource_type %s", item.resource_type)
         raise marketplace_item_not_found()
 
     # install_mode dispatch (Spec §10.8 / desc 단계 3)
@@ -955,18 +939,14 @@ async def install_item(
 
     # Bind credentials (validate_binding rejects mismatches → 422).
     try:
-        await _persist_bindings(
-            db, skill=skill, user=user, bindings=body.credential_bindings
-        )
+        await _persist_bindings(db, skill=skill, user=user, bindings=body.credential_bindings)
     except Exception:
         await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
         raise
 
     # Determine install_status. ``reject`` mode = caller wants a hard
     # error when something's missing; ``needs_setup`` mode = soft state.
-    missing = await credential_requirements.missing_required_keys(
-        db, skill=skill, user=user
-    )
+    missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
     if missing and body.install_missing_credentials == "reject":
         await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
         raise marketplace_credential_required(
@@ -1215,9 +1195,7 @@ async def update_installation(
         else None
     )
     dirty = bool(
-        installation.is_dirty
-        or (skill and skill.is_dirty)
-        or (blueprint and blueprint.is_dirty)
+        installation.is_dirty or (skill and skill.is_dirty) or (blueprint and blueprint.is_dirty)
     )
     if dirty and body.strategy == "overwrite":
         # ``overwrite`` is allowed but the operator must confirm by sending
@@ -1272,9 +1250,7 @@ async def update_installation(
         raise marketplace_item_not_found()
     await _replace_skill_snapshot(latest, skill)
     _apply_version_metadata_to_skill(skill=skill, item=item, version=latest)
-    missing = await credential_requirements.missing_required_keys(
-        db, skill=skill, user=user
-    )
+    missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
     installation.version_id = latest.id
     installation.install_status = "needs_setup" if missing else "active"
     installation.is_dirty = False
@@ -1357,10 +1333,10 @@ async def _remove_install_artifacts(
         server = await db.get(McpServer, installation.installed_mcp_server_id)
         if server is not None:
             tools = (
-                await db.execute(
-                    select(McpTool).where(McpTool.server_id == server.id)
-                )
-            ).scalars().all()
+                (await db.execute(select(McpTool).where(McpTool.server_id == server.id)))
+                .scalars()
+                .all()
+            )
             for tool in tools:
                 await db.delete(tool)
             await db.delete(server)

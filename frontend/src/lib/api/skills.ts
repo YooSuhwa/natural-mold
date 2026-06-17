@@ -35,6 +35,12 @@ export const skillsApi = {
     }),
   getContent: (id: string) => apiFetch<SkillTextContent>(`/api/skills/${id}/content`),
   delete: (id: string) => apiFetch<void>(`/api/skills/${id}`, { method: 'DELETE' }),
+  exportUrl: (id: string, params?: { includeEvals?: boolean }) => {
+    const search = new URLSearchParams()
+    if (params?.includeEvals) search.set('include_evals', 'true')
+    const qs = search.toString()
+    return `${API_BASE}/api/skills/${id}/export${qs ? `?${qs}` : ''}`
+  },
 
   listFiles: (id: string) => apiFetch<SkillFileEntry[]>(`/api/skills/${id}/files`),
   fileUrl: (id: string, path: string) => `${API_BASE}/api/skills/${id}/files/${encodeURI(path)}`,

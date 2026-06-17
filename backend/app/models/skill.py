@@ -130,6 +130,7 @@ class Skill(Base):
     credential_requirements: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Snapshot of execution_profile (support_level, runners, requires_*).
     execution_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    current_revision_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
 
     # Provenance from the *current owner's* perspective: who created the
     # row originally and where it was published. ``origin_kind`` drives

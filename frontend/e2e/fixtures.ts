@@ -137,13 +137,22 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         errorText.includes('net::ERR_ABORTED') &&
         req.method() === 'GET' &&
         (/\/api\/auth\/me$/.test(url) ||
+          /\/api\/artifacts\/[^/]+\/content(?:\?.*)?$/.test(url) ||
           /\/api\/conversations\/[^/?]+(?:\?.*)?$/.test(url) ||
+          /\/api\/conversations\/[^/]+\/artifacts(?:\?.*)?$/.test(url) ||
+          /\/api\/conversations\/[^/]+\/langgraph\/threads\/[^/]+\/state(?:\?.*)?$/.test(url) ||
           /\/api\/agents\/[^/]+(?:$|\/conversations(?:\/page)?(?:\?.*)?$)/.test(url))
+      const expectedLangGraphSdkTransitionAbort =
+        errorText.includes('net::ERR_ABORTED') &&
+        req.method() === 'POST' &&
+        (/\/threads\/[^/]+\/history(?:\?.*)?$/.test(url) ||
+          /\/api\/conversations\/[^/]+\/langgraph\/threads\/[^/]+\/commands(?:\?.*)?$/.test(url))
       if (
         !url.includes('favicon') &&
         !expectedStreamDetach &&
         !expectedSdkCancelAbort &&
-        !expectedRouteTransitionAbort
+        !expectedRouteTransitionAbort &&
+        !expectedLangGraphSdkTransitionAbort
       ) {
         errors.network.push(`${req.method()} ${url} ${errorText}`)
       }

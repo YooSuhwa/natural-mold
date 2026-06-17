@@ -6,8 +6,20 @@ import type {
   ResourceOriginSummary,
   ResourcePublicationSummary,
 } from './marketplace'
+import type { SkillHealthSummary, SkillLatestEvaluationSummary } from './skill-evaluation'
 
 export type SkillKind = 'text' | 'package'
+
+export interface SkillCredentialRequirement {
+  key: string
+  definition_key: string
+  required: boolean
+  label: string
+  description?: string | null
+  fields: readonly string[]
+  injection: 'env' | 'config'
+  scope: 'user' | 'system_dependency' | 'manual'
+}
 
 export interface Skill {
   id: string
@@ -21,7 +33,11 @@ export interface Skill {
   size_bytes: number
   used_by_count: number
   package_metadata: Record<string, unknown> | null
+  credential_requirements?: readonly SkillCredentialRequirement[] | null
   execution_profile: ExecutionProfile | null
+  current_revision_id?: string | null
+  latest_evaluation_summary?: SkillLatestEvaluationSummary | null
+  health?: SkillHealthSummary | null
   last_modified_at: string
   created_at: string
   updated_at: string

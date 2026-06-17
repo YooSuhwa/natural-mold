@@ -868,15 +868,20 @@ async def _summaries_from_artifacts(
                 conversation_id: title for conversation_id, title in conversation_rows.all()
             }
 
-    return [
-        _summary_from_artifact_with_version(
-            artifact,
-            versions_by_artifact_id[artifact.id],
-            agent_name=agent_names.get(artifact.agent_id),
-            conversation_title=conversation_titles.get(artifact.conversation_id),
+    summaries: list[ArtifactSummary] = []
+    for artifact in artifacts:
+        version = versions_by_artifact_id.get(artifact.id)
+        if version is None:
+            continue
+        summaries.append(
+            _summary_from_artifact_with_version(
+                artifact,
+                version,
+                agent_name=agent_names.get(artifact.agent_id),
+                conversation_title=conversation_titles.get(artifact.conversation_id),
+            )
         )
-        for artifact in artifacts
-    ]
+    return summaries
 
 
 async def _current_versions_for_artifacts(
@@ -920,9 +925,6 @@ async def _current_versions_for_artifacts(
         for version in fallback_versions:
             versions_by_artifact_id.setdefault(version.artifact_id, version)
 
-    for artifact in artifacts:
-        if artifact.id not in versions_by_artifact_id:
-            raise ArtifactNotFoundError("artifact version not found")
     return versions_by_artifact_id
 
 

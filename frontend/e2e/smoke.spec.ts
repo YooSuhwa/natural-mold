@@ -300,7 +300,7 @@ test.describe('Smoke Test - Chat Navigator', () => {
     await page
       .getByRole('textbox', { name: '에이전트 또는 대화 검색' })
       .fill('Navigator smoke session')
-    await expect(page.getByText('검색 결과')).toBeVisible()
+    await expect(page.getByText('검색 결과')).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText('Navigator smoke session').first()).toBeVisible()
     await expect(page.getByText('검색 결과가 없습니다')).toHaveCount(0)
 
@@ -388,7 +388,12 @@ test.describe('Smoke Test - Dialogs', () => {
     // Find a prebuilt tool with a key config button.
     const authButton = page.getByRole('button', { name: /키 설정|개별 키 설정|키 변경/ }).first()
 
-    if (await authButton.isVisible()) {
+    const hasAuthButton = await authButton
+      .waitFor({ state: 'visible', timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false)
+
+    if (hasAuthButton) {
       // Normal click opens both the Card's detail Sheet and the auth Dialog.
       await authButton.click()
 
@@ -405,7 +410,7 @@ test.describe('Smoke Test - Dialogs', () => {
       } else {
         // Sheet opened instead of auth dialog - close Sheet and try clicking button again
         await page.keyboard.press('Escape')
-        await page.waitForTimeout(300)
+        await expect(page.getByRole('dialog').first()).toBeHidden({ timeout: 5_000 })
 
         // Try clicking the auth button again (now no sheet is open)
         await authButton.click()

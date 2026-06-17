@@ -212,7 +212,7 @@ async function dragHorizontally(page: Page, locator: ReturnType<Page['locator']>
   const startY = box.y + Math.min(40, box.height / 2)
   await page.mouse.move(startX, startY)
   await page.mouse.down()
-  await page.mouse.move(startX + deltaX, startY)
+  await page.mouse.move(startX + deltaX, startY, { steps: 8 })
   await page.mouse.up()
 }
 
@@ -279,13 +279,19 @@ test.describe('Chat navigator consolidation', () => {
 
     const initialWidth = await locatorWidth(sidebar)
     await dragHorizontally(page, handle, 80)
-    await expect.poll(() => locatorWidth(sidebar)).toBeGreaterThan(initialWidth + 60)
+    await expect
+      .poll(() => locatorWidth(sidebar), { timeout: 15_000, intervals: [250, 500, 1000] })
+      .toBeGreaterThan(initialWidth + 60)
 
     await dragHorizontally(page, handle, -260)
-    await expect.poll(() => locatorWidth(sidebar)).toBeLessThan(80)
+    await expect
+      .poll(() => locatorWidth(sidebar), { timeout: 15_000, intervals: [250, 500, 1000] })
+      .toBeLessThan(80)
 
     await dragHorizontally(page, handle, 260)
-    await expect.poll(() => locatorWidth(sidebar)).toBeGreaterThanOrEqual(224)
+    await expect
+      .poll(() => locatorWidth(sidebar), { timeout: 15_000, intervals: [250, 500, 1000] })
+      .toBeGreaterThanOrEqual(224)
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])

@@ -1232,6 +1232,7 @@
       "preparing": "승인 요청 준비 중…",
       "approvalRequired": "승인이 필요합니다",
       "invalidJson": "유효하지 않은 JSON 형식입니다",
+      "resumeFailed": "승인 응답을 전송하지 못했습니다. 다시 시도하세요.",
       "rejectConfirm": "거부 확인",
       "args": "실행 인자",
       "argsCount": "{count}개",
@@ -2143,6 +2144,7 @@
       "cancel": "취소",
       "unsavedCount": "{count}개 파일 미저장",
       "usedBy": "{bytes}b · v{version} · {count}개에서 사용",
+      "exportPackage": ".skill 내보내기",
       "saveFile": "파일 저장",
       "pickFile": "편집을 시작하려면 사이드바에서 파일을 선택하세요.",
       "unsaved": "• 미저장",
@@ -2153,6 +2155,30 @@
       "binaryFile": "바이너리 파일",
       "binaryUnavailable": "이 파일 형식은 편집기 미리보기를 사용할 수 없습니다.",
       "download": "다운로드",
+      "improveByChat": "대화로 개선",
+      "credentialsEmpty": "이 스킬에는 필요한 자격증명이 없습니다.",
+      "tabs": {
+        "content": "내용",
+        "credentials": "자격증명",
+        "evaluation": "평가",
+        "history": "이력",
+        "metadata": "메타데이터"
+      },
+      "evaluation": {
+        "emptyTitle": "아직 평가 세트가 없습니다",
+        "emptyDescription": "대화형 빌더나 평가 탭에서 기준을 만들면 여기서 다시 실행할 수 있습니다.",
+        "caseCount": "{count}개 케이스"
+      },
+      "history": {
+        "empty": "현재 버전부터 이력이 쌓입니다.",
+        "revision": "리비전 {number}",
+        "files": "{count}개 파일"
+      },
+      "metadata": {
+        "name": "이름",
+        "description": "설명",
+        "version": "버전"
+      },
       "credentialBindingsTitle": "자격증명 연결",
       "credentialBindingsDescription": "이 스킬이 실행될 때 사용할 자격증명을 선택하세요. 변경사항은 다음 실행부터 적용됩니다.",
       "credentialPlaceholder": "자격증명 선택",
@@ -2233,7 +2259,7 @@
     "pageTitle": "스킬 관리",
     "title": "스킬",
     "description": "에이전트에 붙여 쓰는 마크다운 스니펫과 패키지를 관리하세요.",
-    "new": "새 스킬",
+    "new": "대화로 만들기",
     "count": "{count}개",
     "agentsCount": "{count}개 에이전트",
     "searchPlaceholder": "스킬 검색",
@@ -2262,6 +2288,15 @@
       "text": "텍스트",
       "package": "패키지"
     },
+    "stateFilter": {
+      "label": "스킬 상태 필터",
+      "all": "상태 전체",
+      "needs_credentials": "자격증명 필요",
+      "needs_rerun": "재평가 필요",
+      "evaluation_failed": "평가 실패",
+      "published": "공개됨",
+      "local_draft": "로컬/초안"
+    },
     "deleteConfirm": "이 스킬을 삭제하시겠습니까?",
     "addSkill": "스킬 추가",
     "dialogTitle": {
@@ -2277,7 +2312,7 @@
       "content": "내용 * (마크다운 지원)",
       "contentPlaceholder": "# 스킬명\n\n## 목표\n이 스킬의 목표를 설명합니다.\n\n## 단계\n1. 첫 번째 단계\n2. 두 번째 단계\n\n## 예시\n입력: ...\n출력: ..."
     },
-    "firstSkill": "첫 스킬 만들기",
+    "firstSkill": "대화로 첫 스킬 만들기",
     "modified": "{date} 수정",
     "empty": {
       "title": "아직 스킬이 없어요",
@@ -2300,11 +2335,19 @@
     },
     "createDialog": {
       "title": "새 스킬",
-      "description": "텍스트 스니펫을 만들거나, 패키지를 업로드하거나, 바로 편집할 수 있는 폴더를 생성하세요.",
+      "description": "대화로 고품질 패키지 스킬을 만들거나, 기존 방식으로 텍스트와 패키지를 직접 추가하세요.",
       "tabs": {
+        "chat": "대화로 만들기",
         "text": "텍스트",
         "package": "패키지",
         "scratch": "처음부터"
+      },
+      "chat": {
+        "description": "만들고 싶은 스킬의 목적, 입력 예시, 원하는 결과를 자연어로 적어주세요. 다음 단계에서 전용 빌더가 초안과 검증 결과를 보여줍니다.",
+        "request": "요청",
+        "placeholder": "예: 회의록에서 담당자, 할 일, 마감일을 표로 정리하는 스킬을 만들어줘",
+        "required": "요청 내용을 입력하세요",
+        "submit": "대화 시작"
       },
       "text": {
         "name": "이름",
@@ -2332,6 +2375,127 @@
         "created": "스킬 틀이 생성되었습니다. 편집기를 여는 중...",
         "failed": "스킬 틀 생성에 실패했습니다",
         "submit": "틀 만들고 편집"
+      }
+    },
+    "health": {
+      "ready": "검증됨",
+      "needs_evaluation": "평가 없음",
+      "needs_rerun": "재평가 필요",
+      "needs_credentials": "자격증명 필요",
+      "evaluation_running": "평가 중",
+      "evaluation_failed": "평가 실패",
+      "low_confidence": "낮은 통과율"
+    },
+    "evaluationSummary": {
+      "passRate": "평가 {rate}%",
+      "status": {
+        "queued": "평가 대기",
+        "running": "평가 중",
+        "grading": "채점 중",
+        "completed": "평가 완료",
+        "failed": "평가 실패",
+        "cancelled": "평가 취소",
+        "missing": "평가 없음",
+        "stale": "재평가 필요",
+        "partial": "부분 평가",
+        "passed": "평가 통과"
+      }
+    },
+    "builderDialog": {
+      "titleCreate": "대화로 스킬 만들기",
+      "titleImprove": "대화로 스킬 개선",
+      "descriptionCreate": "필요한 목적을 말하면 패키지 스킬 초안을 만들고 검증 결과를 함께 보여줍니다.",
+      "descriptionImprove": "기존 스킬을 바탕으로 개선안을 만들고, 적용 전 변경 내용을 확인합니다.",
+      "chatTitle": "빌더 대화",
+      "requestLabel": "요청",
+      "requestPlaceholder": "예: 회의록에서 담당자, 할 일, 마감일을 뽑는 스킬을 만들어줘",
+      "requestImprovePlaceholder": "예: 마감일 추출 규칙을 더 엄격하게 개선해줘",
+      "requestRequired": "요청 내용을 입력하세요",
+      "startCreate": "대화 시작",
+      "startImprove": "개선안 만들기",
+      "startFailed": "스킬 빌더를 시작하지 못했습니다",
+      "confirmFailed": "스킬 적용에 실패했습니다",
+      "previewTitle": "스킬 미리보기",
+      "previewEmpty": "요청을 보내면 초안 파일과 검증 상태가 여기에 표시됩니다.",
+      "filesTitle": "파일",
+      "filesEmpty": "아직 생성된 파일이 없습니다.",
+      "validationTitle": "검증 결과",
+      "compatibilityTitle": "호환성",
+      "changelogTitle": "변경 요약",
+      "evalTitle": "평가",
+      "fileDiffTitle": "파일 변경 요약",
+      "originalFileCount": "원본 {count}개",
+      "proposedFileCount": "개선안 {count}개",
+      "addedCount": "추가 {count}",
+      "changedCount": "수정 {count}",
+      "deletedCount": "삭제 {count}",
+      "validationEmpty": "검증 이슈가 없습니다.",
+      "passRateMetric": "통과율 {value}%",
+      "meanScoreMetric": "평균 점수 {value}",
+      "deltaMetric": "변화 {value}",
+      "cancel": "닫기",
+      "confirmCreate": "스킬로 저장",
+      "confirmImprove": "개선 적용",
+      "fileChange": {
+        "added": "추가",
+        "changed": "수정",
+        "deleted": "삭제"
+      },
+      "validationSeverity": {
+        "error": "오류",
+        "warning": "주의",
+        "info": "정보"
+      },
+      "status": {
+        "collecting": "정보 수집",
+        "drafting": "초안 작성",
+        "review": "검토 가능",
+        "confirming": "적용 중",
+        "completed": "완료",
+        "failed": "실패",
+        "cancelled": "취소됨"
+      },
+      "fileRole": {
+        "skill": "스킬",
+        "script": "스크립트",
+        "reference": "참고자료",
+        "asset": "에셋",
+        "metadata": "메타데이터",
+        "eval": "평가"
+      },
+      "systemLlm": {
+        "title": "시스템 LLM 설정이 필요합니다",
+        "description": "텍스트 또는 패키지 업로드는 계속 사용할 수 있습니다.",
+        "userDescription": "스킬 빌더 모델 설정이 필요합니다. 관리자에게 설정을 요청하세요. 텍스트 또는 패키지 업로드는 계속 사용할 수 있습니다.",
+        "adminDescription": "스킬 빌더는 text_primary 시스템 모델을 사용합니다. System LLM 설정에서 모델과 시스템 자격증명을 연결하세요. 설정 전에도 텍스트 또는 패키지 업로드는 계속 사용할 수 있습니다.",
+        "settingsAction": "System LLM 설정 열기"
+      },
+      "conflict": {
+        "title": "스킬이 변경되었습니다",
+        "description": "이 개선 세션을 시작한 뒤 원본 스킬이 변경되었습니다.",
+        "reloadLatest": "최신 기준으로 다시 만들기",
+        "discard": "세션 버리기"
+      },
+      "toast": {
+        "created": "스킬이 생성되었습니다",
+        "improved": "스킬 개선이 적용되었습니다"
+      }
+    },
+    "compatibility": {
+      "title": "공용 호환성",
+      "empty": "호환성 결과가 아직 없습니다.",
+      "targetCount": "{count}개 대상",
+      "noIssues": "기록된 호환성 이슈가 없습니다.",
+      "target": {
+        "openaiCodex": "OpenAI/Codex",
+        "claudeCode": "Claude Code",
+        "vercelAgentSkills": "Vercel Agent Skills"
+      },
+      "status": {
+        "pass": "통과",
+        "warning": "주의",
+        "error": "오류",
+        "unknown": "미확인"
       }
     },
     "detailDialog": {
@@ -2363,6 +2527,7 @@
       "cancel": "취소",
       "unsavedCount": "{count}개 파일 미저장",
       "usedBy": "{bytes}b · v{version} · {count}개에서 사용",
+      "exportPackage": ".skill 내보내기",
       "saveFile": "파일 저장",
       "pickFile": "편집을 시작하려면 사이드바에서 파일을 선택하세요.",
       "unsaved": "• 미저장",
@@ -2373,11 +2538,122 @@
       "binaryFile": "바이너리 파일",
       "binaryUnavailable": "이 파일 형식은 편집기 미리보기를 사용할 수 없습니다.",
       "download": "다운로드",
+      "improveByChat": "대화로 개선",
+      "credentialsEmpty": "이 스킬에는 필요한 자격증명이 없습니다.",
+      "tabs": {
+        "content": "내용",
+        "credentials": "자격증명",
+        "evaluation": "평가",
+        "history": "이력",
+        "metadata": "메타데이터"
+      },
+      "evaluation": {
+        "emptyTitle": "아직 평가 세트가 없습니다",
+        "emptyDescription": "대화형 빌더나 평가 탭에서 기준을 만들면 여기서 다시 실행할 수 있습니다.",
+        "caseCount": "{count}개 케이스",
+        "runAgain": "다시 실행",
+        "runAgainPending": "실행 중…",
+        "runAgainFor": "{name} 평가 다시 실행",
+        "estimatePending": "확인 중…",
+        "estimateTitle": "평가 실행 확인",
+        "estimateDescription": "{name} 평가를 현재 스킬 내용으로 다시 실행합니다.",
+        "estimateCaseCount": "케이스",
+        "estimateModelCalls": "모델 호출",
+        "estimateDuration": "예상 시간",
+        "estimateTimeout": "제한 시간",
+        "estimateCost": "예상 비용",
+        "estimateBaseline": "기준선 비교",
+        "estimateSeconds": "{count}초",
+        "estimateYes": "사용",
+        "estimateNo": "없음",
+        "estimateCancel": "취소",
+        "estimateConfirm": "평가 실행",
+        "cancelRun": "평가 취소",
+        "cancelPending": "취소 중…",
+        "cancelRunFor": "{name} 평가 취소",
+        "connectCredentials": "자격증명 연결",
+        "connectCredentialsFor": "{name} 자격증명 연결",
+        "selectSet": "{name} 평가 세트 선택",
+        "runHistoryTitle": "실행 이력",
+        "noRunHistory": "아직 실행 이력이 없습니다.",
+        "viewRun": "{id} 실행 보기",
+        "detailTitle": "선택한 실행 상세",
+        "noRunDetail": "실행을 선택하면 상세 결과가 표시됩니다.",
+        "staleRun": "재평가 필요",
+        "metric": {
+          "passRate": "통과율 {rate}%",
+          "triggerAccuracy": "트리거 정확도 {rate}%",
+          "averageDuration": "평균 {seconds}초",
+          "tokenDelta": "토큰 {count}"
+        },
+        "benchmarkTitle": "벤치마크 변화",
+        "benchmark": {
+          "durationDelta": "소요 시간 {value}ms",
+          "tokenDelta": "토큰 {count}",
+          "qualityDelta": "품질 {rate}%"
+        },
+        "caseResultsTitle": "케이스 결과",
+        "noCaseResults": "기록된 케이스 결과가 없습니다.",
+        "errorTitle": "실패 원인",
+        "caseTitle": "케이스 {number}",
+        "status": {
+          "queued": "평가 대기",
+          "running": "평가 중",
+          "grading": "채점 중",
+          "completed": "평가 완료",
+          "failed": "평가 실패",
+          "cancelled": "평가 취소"
+        }
+      },
+      "history": {
+        "empty": "현재 버전부터 이력이 쌓입니다.",
+        "revision": "리비전 {number}",
+        "current": "현재 버전",
+        "selected": "선택됨",
+        "view": "보기",
+        "viewRevision": "리비전 {number} 보기",
+        "detailTitle": "리비전 {number} 상세",
+        "noDetail": "리비전을 선택하면 상세 이력이 표시됩니다.",
+        "contentHash": "콘텐츠 해시",
+        "fileCount": "파일",
+        "files": "{count}개 파일",
+        "changelog": "변경 요약",
+        "changedFiles": "변경된 파일",
+        "compatibility": "호환성 결과",
+        "evaluationSnapshot": "평가 스냅샷",
+        "noItems": "기록된 항목이 없습니다.",
+        "notRecorded": "아직 기록되지 않았습니다.",
+        "rollback": "이전 버전으로 되돌리기",
+        "rollbackFor": "리비전 {number} 되돌리기",
+        "rollbackPending": "되돌리는 중…",
+        "rollbackCurrentDisabled": "현재 버전은 되돌릴 수 없습니다.",
+        "rollbackTitle": "리비전 {number}으로 되돌릴까요?",
+        "rollbackDescription": "이전 버전으로 되돌리면 현재 내용은 새 이력으로 보존됩니다.",
+        "rollbackConfirm": "되돌리기",
+        "operation": {
+          "create": "생성",
+          "manual_metadata_update": "메타데이터 수정",
+          "manual_content_update": "내용 수정",
+          "manual_file_update": "파일 수정",
+          "builder_create": "빌더 생성",
+          "builder_improvement": "빌더 개선",
+          "rollback": "롤백"
+        }
+      },
+      "metadata": {
+        "name": "이름",
+        "description": "설명",
+        "version": "버전"
+      },
       "credentialBindingsTitle": "자격증명 연결",
       "credentialBindingsDescription": "이 스킬이 실행될 때 사용할 자격증명을 선택하세요. 변경사항은 다음 실행부터 적용됩니다.",
       "credentialPlaceholder": "자격증명 선택",
       "requiredCredential": "필수",
       "optionalCredential": "선택",
+      "missingRequiredCredentials": "필수 자격증명 {count}개 미연결",
+      "allRequiredCredentialsBound": "필수 자격증명이 모두 연결되었습니다",
+      "credentialConnected": "연결됨",
+      "credentialMissing": "미연결",
       "credentialUpdated": "스킬 자격증명이 업데이트되었습니다",
       "credentialCleared": "스킬 자격증명 연결을 해제했습니다",
       "credentialUpdateFailed": "자격증명 업데이트에 실패했습니다"

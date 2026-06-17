@@ -1,0 +1,170 @@
+import type { JsonValue } from './json'
+
+export type SkillBuilderMode = 'create' | 'improve'
+
+export type SkillBuilderStatus =
+  | 'collecting'
+  | 'drafting'
+  | 'review'
+  | 'confirming'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export type SkillDraftFileRole = 'skill' | 'script' | 'reference' | 'asset' | 'metadata' | 'eval'
+
+export type SkillDraftFile = {
+  readonly path: string
+  readonly content: string
+  readonly media_type: string
+  readonly role: SkillDraftFileRole
+}
+
+export type SkillValidationIssueSeverity = 'error' | 'warning' | 'info'
+
+export type SkillValidationIssue = {
+  readonly code: string
+  readonly severity: SkillValidationIssueSeverity
+  readonly path?: string | null
+  readonly message: string
+}
+
+export type SkillCompatibilityTarget = {
+  readonly status: 'pass' | 'warning' | 'error'
+  readonly issues: readonly SkillValidationIssue[]
+}
+
+export type SkillCompatibilityResult = {
+  readonly targets?: Readonly<Record<string, SkillCompatibilityTarget>>
+  readonly error_count?: number
+  readonly warning_count?: number
+  readonly info_count?: number
+  readonly [key: string]: JsonValue | Readonly<Record<string, SkillCompatibilityTarget>> | undefined
+}
+
+export type SkillDraftPackage = {
+  readonly name: string
+  readonly slug: string
+  readonly description: string
+  readonly files: readonly SkillDraftFile[]
+  readonly credential_requirements: readonly JsonValue[]
+  readonly execution_profile: Readonly<Record<string, JsonValue>>
+  readonly validation_issues: readonly JsonValue[]
+  readonly compatibility_result?: SkillCompatibilityResult | null
+  readonly changelog_draft?: Readonly<Record<string, JsonValue>> | null
+  readonly evals?: Readonly<Record<string, JsonValue>> | null
+  readonly benchmark?: Readonly<Record<string, JsonValue>> | null
+}
+
+export type SkillBuilderStartRequest = {
+  readonly mode: SkillBuilderMode
+  readonly user_request: string
+  readonly source_skill_id?: string | null
+}
+
+export type SkillBuilderMessageRequest = {
+  readonly content: string
+}
+
+export type SkillBuilderStreamEventType =
+  | 'message_start'
+  | 'builder_status'
+  | 'builder_activity'
+  | 'draft_package'
+  | 'validation_result'
+  | 'compatibility_result'
+  | 'changelog_draft'
+  | 'eval_result'
+  | 'content_delta'
+  | 'message_end'
+  | 'error'
+
+export type SkillBuilderStatusPayload = Readonly<Record<string, JsonValue>>
+export type SkillBuilderActivityPayload = Readonly<Record<string, JsonValue>>
+export type SkillBuilderDraftEventPayload = Readonly<Record<string, JsonValue>>
+export type SkillBuilderMessagePayload = Readonly<Record<string, JsonValue>>
+
+export type SkillBuilderStreamEvent =
+  | {
+      readonly event: 'message_start'
+      readonly data: SkillBuilderMessagePayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'builder_status'
+      readonly data: SkillBuilderStatusPayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'builder_activity'
+      readonly data: SkillBuilderActivityPayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'draft_package'
+      readonly data: SkillBuilderDraftEventPayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'validation_result'
+      readonly data: Readonly<Record<string, JsonValue>>
+      readonly id?: string
+    }
+  | {
+      readonly event: 'compatibility_result'
+      readonly data: Readonly<Record<string, JsonValue>>
+      readonly id?: string
+    }
+  | {
+      readonly event: 'changelog_draft'
+      readonly data: Readonly<Record<string, JsonValue>>
+      readonly id?: string
+    }
+  | {
+      readonly event: 'eval_result'
+      readonly data: Readonly<Record<string, JsonValue>>
+      readonly id?: string
+    }
+  | {
+      readonly event: 'content_delta'
+      readonly data: SkillBuilderMessagePayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'message_end'
+      readonly data: SkillBuilderMessagePayload
+      readonly id?: string
+    }
+  | {
+      readonly event: 'error'
+      readonly data: SkillBuilderMessagePayload
+      readonly id?: string
+    }
+
+export type SkillBuilderSession = {
+  readonly id: string
+  readonly user_id: string
+  readonly user_request: string
+  readonly mode: SkillBuilderMode
+  readonly status: SkillBuilderStatus
+  readonly current_phase: number
+  readonly source_skill_id?: string | null
+  readonly base_skill_version?: string | null
+  readonly base_content_hash?: string | null
+  readonly base_snapshot?: Readonly<Record<string, JsonValue>> | null
+  readonly messages?: readonly JsonValue[] | null
+  readonly intent?: Readonly<Record<string, JsonValue>> | null
+  readonly draft_package?: SkillDraftPackage | null
+  readonly validation_result?: Readonly<Record<string, JsonValue>> | null
+  readonly compatibility_result?:
+    | SkillCompatibilityResult
+    | Readonly<Record<string, JsonValue>>
+    | null
+  readonly changelog_draft?: Readonly<Record<string, JsonValue>> | null
+  readonly eval_result?: Readonly<Record<string, JsonValue>> | null
+  readonly trigger_eval_result?: Readonly<Record<string, JsonValue>> | null
+  readonly finalized_skill_id?: string | null
+  readonly error_message?: string | null
+  readonly created_at: string
+  readonly updated_at: string
+}

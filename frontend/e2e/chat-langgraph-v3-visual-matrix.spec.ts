@@ -1,7 +1,15 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { APIRequestContext, Page } from '@playwright/test'
-import { API_BASE, apiDeleteOk, apiPostJson, expect, isRecord, test } from './fixtures'
+import {
+  API_BASE,
+  apiDeleteOk,
+  apiPostJson,
+  expect,
+  failWithBody,
+  isRecord,
+  test,
+} from './fixtures'
 import {
   FINAL_TEXT,
   NOTES_FILE,
@@ -22,6 +30,7 @@ const FRONTEND =
 const CAPTURE_DIR = path.join('..', 'output', 'e2e-captures', '20260614-langgraph-v3-visual-matrix')
 const DESKTOP_VIEWPORT = { width: 1366, height: 900 } as const
 const MOBILE_VIEWPORT = { width: 390, height: 844 } as const
+const TERMINAL_RUN_STATUS_PATTERN = /^(completed|failed|interrupted|canceled|stale|gone)$/
 
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   await expect
@@ -48,8 +57,62 @@ async function expectApprovalCardVisible(page: Page): Promise<void> {
 }
 
 async function deleteSetup(request: APIRequestContext, setup: LangGraphV3Setup): Promise<void> {
+  await settleActiveRun(request, setup)
   await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
   await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+}
+
+async function settleActiveRun(request: APIRequestContext, setup: LangGraphV3Setup): Promise<void> {
+  const activeRun = await activeCancelableRunId(request, setup.conversationId)
+  if (!activeRun) return
+
+  const cancelUrl = `${API_BASE}/api/conversations/${setup.conversationId}/runs/${activeRun}/cancel`
+  const cancelResponse = await request.post(cancelUrl, { headers: setup.csrfHeaders })
+  if (!cancelResponse.ok() && cancelResponse.status() !== 404 && cancelResponse.status() !== 409) {
+    await failWithBody(`POST ${cancelUrl}`, cancelResponse)
+  }
+  if (cancelResponse.status() === 404) return
+
+  await expect
+    .poll(
+      async () => runStatus(request, setup.conversationId, activeRun),
+      { timeout: 45_000, intervals: [500, 1000, 2000] },
+    )
+    .toMatch(TERMINAL_RUN_STATUS_PATTERN)
+}
+
+async function activeCancelableRunId(request: APIRequestContext, conversationId: string): Promise<string | null> {
+  const activeUrl = `${API_BASE}/api/conversations/${conversationId}/runs/active`
+  const response = await request.get(activeUrl)
+  if (response.status() === 404) return null
+  if (!response.ok()) {
+    await failWithBody(`GET ${activeUrl}`, response)
+  }
+  const body: unknown = await response.json()
+  if (!isRecord(body)) return null
+  const id = body.id
+  if (typeof id !== 'string' || !id) return null
+
+  switch (body.status) {
+    case 'queued':
+    case 'running':
+    case 'canceling':
+      return id
+    default:
+      return null
+  }
+}
+
+async function runStatus(
+  request: APIRequestContext,
+  conversationId: string,
+  runId: string,
+): Promise<string> {
+  const response = await request.get(`${API_BASE}/api/conversations/${conversationId}/runs/${runId}`)
+  if (response.status() === 404) return 'gone'
+  if (!response.ok()) return `http-${response.status()}`
+  const body: unknown = await response.json()
+  return isRecord(body) && typeof body.status === 'string' ? body.status : 'unknown'
 }
 
 test.describe('LangGraph v3 visual scenario matrix', () => {
@@ -199,7 +262,7 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       await capture(page, '09-active-streaming-response.png')
 
       await expect(page.getByText(/fixture complete\./).first()).toBeVisible({
-        timeout: 30_000,
+        timeout: 60_000,
       })
       await capture(page, '10-completed-stream-response.png')
 

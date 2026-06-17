@@ -84,14 +84,22 @@ class Settings(BaseSettings):
     # ``*_dir`` settings default to subdirectories under this root.
     data_root: str = "./data"
 
-    # Skills (package)
+    # Skill package uploads. Keep this above the embedded evals/evals.json cap
+    # so image/reference assets can travel with portable .skill archives.
     skill_storage_dir: str = "./data/skills"
     skill_max_package_bytes: int = 52428800
+    skill_max_package_files: int = 1000
     # Skills (JavaScript package runner). Skill scripts run without a shell;
     # this only points the subprocess runner at a Node binary and shared
     # dependency directory for built-in document-generation skills.
     skill_node_binary: str = "node"
     skill_node_modules_dir: str = "./skill-node/node_modules"
+
+    skill_evaluation_enabled: bool = True
+    skill_evaluation_max_concurrent: int = 1
+    skill_evaluation_queue_max_size: int = 20
+    skill_evaluation_run_timeout_seconds: int = 180
+    skill_evaluation_case_timeout_seconds: int = 60
 
     # ADR-017 Slice F — k-skill upstream import (super_user CLI only).
     # ``k_skill_sync_dir`` is the local git working tree the importer

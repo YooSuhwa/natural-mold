@@ -286,10 +286,6 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
           }
         }
 
-        // addResult/result는 Tool UI 내부 표시용이다. 일부 runtime은 tool result
-        // 주입을 지원하지 않으므로 실패해도 backend resume wire는 계속 보낸다.
-        addApprovalResultIfSupported(addResult, response)
-
         const standardDecision = toDecision(d, resumeResponse, args?.tool_name)
         if (!standardDecision) {
           // edit인데 tool_name 미상 — backend가 무효 edited_action으로 거절할 것이므로 abort.
@@ -298,7 +294,15 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
           setDecision(null)
           return
         }
-        await resumeDecision(standardDecision, styles[d].label)
+        try {
+          await resumeDecision(standardDecision, styles[d].label)
+        } catch {
+          setJsonError(t('resumeFailed'))
+          setSubmitting(false)
+          setDecision(null)
+          return
+        }
+        addApprovalResultIfSupported(addResult, response)
         setLocalResult(response)
         setSubmitting(false)
       },
@@ -402,9 +406,10 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                 className="moldy-field-status moldy-status-info w-full resize-none rounded-lg border bg-background px-3 py-2 font-mono text-xs outline-hidden placeholder:text-muted-foreground"
                 rows={4}
               />
-              {jsonError && <p className="mt-1 text-xs text-destructive">{jsonError}</p>}
             </>
           )}
+
+          {jsonError && <p className="mt-1 text-xs text-destructive">{jsonError}</p>}
 
           {/* Action buttons */}
           {!submitting ? (
