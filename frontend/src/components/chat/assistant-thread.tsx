@@ -70,6 +70,7 @@ import {
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
+import { formatCompactCount, formatDisplayUsd } from '@/lib/utils/display-format'
 import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
 import { ImeSafeComposerInput } from '@/components/chat/ime-safe-composer-input'
 import {
@@ -1082,12 +1083,13 @@ function TokenBar({
 }
 
 function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return String(n)
+  return formatCompactCount(n, { thousandSuffix: 'k' })
 }
 
 function formatCost(n: number): string {
-  if (n < 0.01) return `$${n.toFixed(4)}`
-  return `$${n.toFixed(2)}`
+  const decimals = n < 0.01 ? 4 : 2
+  return formatDisplayUsd(n, {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: decimals,
+  })
 }

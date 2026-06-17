@@ -27,6 +27,7 @@ import { CredentialCreateModal } from '@/components/credential/credential-create
 import { CredentialDetailDialog } from '@/components/credential/credential-detail-dialog'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { getResourceTone, resourceStatusChipClassName } from '@/lib/resource-tones'
+import { formatDisplayDate } from '@/lib/utils/display-format'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
 import { cn } from '@/lib/utils'
 import { SettingsShell } from '../_components/settings-shell'
@@ -80,7 +81,7 @@ const CREDENTIAL_CATEGORY_LABEL_KEYS: Record<string, string> = {
 
 function formatDate(value: string | null): string {
   if (!value) return ''
-  return new Date(value).toLocaleDateString()
+  return formatDisplayDate(value, { fallback: '' })
 }
 
 function normalizeStatus(value: string | null | undefined): Exclude<CredentialStatusTab, 'all'> {

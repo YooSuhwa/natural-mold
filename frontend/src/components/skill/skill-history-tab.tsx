@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useLocale, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import {
   useSkillRevision,
   useSkillRevisions,
 } from '@/lib/hooks/use-skill-revisions'
+import { formatDisplayDateTime } from '@/lib/utils/display-format'
 import type { SkillRevisionSummary } from '@/lib/types/skill-revision'
 import type { SkillDetailTabRender } from './skill-detail-tab-shell'
 
@@ -20,13 +21,6 @@ function sortRevisionsNewestFirst(
   revisions: readonly SkillRevisionSummary[],
 ): readonly SkillRevisionSummary[] {
   return [...revisions].sort((a, b) => b.revision_number - a.revision_number)
-}
-
-function formatRevisionDate(value: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value))
 }
 
 export function SkillHistoryTab({
@@ -40,7 +34,6 @@ export function SkillHistoryTab({
 }) {
   const t = useTranslations('skill.detailDialog.history')
   const common = useTranslations('skill.detailDialog')
-  const locale = useLocale()
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null)
   const [rollbackRevision, setRollbackRevision] = useState<SkillRevisionSummary | null>(null)
   const { data: revisions, isLoading } = useSkillRevisions(skillId)
@@ -100,7 +93,7 @@ export function SkillHistoryTab({
                       </div>
                       <p className="mt-1 moldy-ui-micro text-muted-foreground">
                         {t(`operation.${revision.operation}`)} ·{' '}
-                        {formatRevisionDate(revision.created_at, locale)}
+                        {formatDisplayDateTime(revision.created_at)}
                       </p>
                     </div>
                     <Button

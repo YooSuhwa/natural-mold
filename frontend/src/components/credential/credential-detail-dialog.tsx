@@ -20,6 +20,7 @@ import {
 } from '@/lib/hooks/use-credentials'
 import { useStartOAuth2 } from '@/lib/hooks/use-credential-test'
 import { openExternalUrl } from '@/lib/browser/window-open'
+import { formatDisplayDateTime } from '@/lib/utils/display-format'
 
 interface Props {
   credentialId: string | null
@@ -122,22 +123,17 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
             <div className="space-y-2 text-xs">
               <Row label={t('rows.id')} value={credential.id} mono />
               <Row label={t('rows.keyId')} value={credential.key_id} mono />
-              <Row
-                label={t('rows.created')}
-                value={new Date(credential.created_at).toLocaleString()}
-              />
+              <Row label={t('rows.created')} value={formatDisplayDateTime(credential.created_at)} />
               <Row
                 label={t('rows.lastUsed')}
                 value={
-                  credential.last_used_at ? new Date(credential.last_used_at).toLocaleString() : '—'
+                  credential.last_used_at ? formatDisplayDateTime(credential.last_used_at) : '—'
                 }
               />
               <Row
                 label={t('rows.lastTested')}
                 value={
-                  credential.last_tested_at
-                    ? new Date(credential.last_tested_at).toLocaleString()
-                    : '—'
+                  credential.last_tested_at ? formatDisplayDateTime(credential.last_tested_at) : '—'
                 }
               />
               <Row
@@ -166,7 +162,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
                         </p>
                       </div>
                       <span className="shrink-0 moldy-ui-caption text-muted-foreground">
-                        {new Date(log.created_at).toLocaleString()}
+                        {formatDisplayDateTime(log.created_at)}
                       </span>
                     </li>
                   ))}

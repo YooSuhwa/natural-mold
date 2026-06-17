@@ -288,6 +288,19 @@ for (const file of files) {
     })
   }
 
+  if (
+    isProductSurface(rel) &&
+    /\btoLocale(?:String|DateString|TimeString)\s*\(|\bnew\s+Intl\.(?:DateTimeFormat|NumberFormat|RelativeTimeFormat)\b/.test(
+      text,
+    )
+  ) {
+    issues.push({
+      rel,
+      rule: 'display-formatting',
+      message: 'Use display formatting helpers instead of ad hoc locale/date/number formatting.',
+    })
+  }
+
   for (const { path: importPath, kind } of importRecords(text)) {
     const resolvedPath = resolveImportPath(rel, importPath)
     if (!resolvedPath) continue

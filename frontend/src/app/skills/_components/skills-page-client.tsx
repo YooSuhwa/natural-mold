@@ -24,6 +24,7 @@ import {
   type SkillKindFilter,
   type SkillStateFilter,
 } from '@/lib/skill-state-filters'
+import { formatDisplayDate } from '@/lib/utils/display-format'
 import type { Skill, SkillKind } from '@/lib/types/skill'
 import { SkillCard } from './skill-card'
 import { SkillPageDialogs } from './skill-page-dialogs'
@@ -41,7 +42,7 @@ function isSkillTab(value: string): value is SkillTab {
 
 function formatDate(value: string | null): string {
   if (!value) return ''
-  return new Date(value).toLocaleDateString()
+  return formatDisplayDate(value, { fallback: '' })
 }
 
 function replaceDetailUrl(skillId: string | null, tab: SkillDetailTab) {

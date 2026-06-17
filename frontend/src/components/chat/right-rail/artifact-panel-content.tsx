@@ -14,15 +14,10 @@ import { chatRightRailAtom, type ArtifactsPayload } from '@/lib/stores/chat-righ
 import { openExternalUrl } from '@/lib/browser/window-open'
 import type { ArtifactSummary } from '@/lib/types'
 import { cn, resolveImageUrl } from '@/lib/utils'
+import { formatDisplayBytes } from '@/lib/utils/display-format'
 
 interface Props {
   payload: ArtifactsPayload
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function groupByRun(items: ArtifactSummary[]): Array<{ runId: string; items: ArtifactSummary[] }> {
@@ -140,10 +135,11 @@ export function ArtifactPanelContent({ payload }: Props) {
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">
                           {t(`kinds.${artifact.artifact_kind}`)} ·{' '}
-                          {artifact.extension?.toUpperCase() ?? formatBytes(artifact.size_bytes)}
+                          {artifact.extension?.toUpperCase() ??
+                            formatDisplayBytes(artifact.size_bytes)}
                         </span>
                       </span>
-                      <Badge variant="outline">{formatBytes(artifact.size_bytes)}</Badge>
+                      <Badge variant="outline">{formatDisplayBytes(artifact.size_bytes)}</Badge>
                     </button>
                   )
                 })}

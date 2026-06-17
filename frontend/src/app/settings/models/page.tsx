@@ -28,6 +28,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useModels } from '@/lib/hooks/use-models'
 import { useSession } from '@/lib/auth/session'
 import { useModelHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
+import { formatDisplayNumber } from '@/lib/utils/display-format'
 import type { Model } from '@/lib/types/model'
 import type { HealthCheckEntry } from '@/lib/types/health'
 import { SettingsShell } from '../_components/settings-shell'
@@ -182,7 +183,7 @@ export default function ModelsPage() {
         cell: ({ row }) =>
           row.original.context_window ? (
             <span className="font-mono text-xs tabular-nums">
-              {row.original.context_window.toLocaleString()}
+              {formatDisplayNumber(row.original.context_window)}
             </span>
           ) : (
             <span className="text-xs text-muted-foreground">—</span>

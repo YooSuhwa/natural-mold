@@ -1,6 +1,7 @@
 import type { useTranslations } from 'next-intl'
 
 import type { McpServer } from '@/lib/types/mcp'
+import { formatDisplayDate } from '@/lib/utils/display-format'
 
 export type McpStatusTab =
   | 'all'
@@ -23,7 +24,7 @@ export const MCP_STATUS_TABS: readonly McpStatusTab[] = [
 
 export function formatMcpDate(value: string | null): string {
   if (!value) return ''
-  return new Date(value).toLocaleDateString()
+  return formatDisplayDate(value, { fallback: '' })
 }
 
 export function normalizeMcpStatus(value: string | null | undefined): Exclude<McpStatusTab, 'all'> {

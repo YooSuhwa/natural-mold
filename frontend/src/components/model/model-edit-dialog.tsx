@@ -31,6 +31,7 @@ import { useDeleteModel, useUpdateModel } from '@/lib/hooks/use-models'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { useModelHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 import { filterLlmCredentials, resolveCredentialForModel } from '@/lib/utils/credential-resolution'
+import { formatDisplayDateTime } from '@/lib/utils/display-format'
 import type { Model } from '@/lib/types/model'
 
 interface ModelEditDialogProps {
@@ -437,7 +438,7 @@ function ModelHealthPanel({
                 <span className="text-xs text-muted-foreground">{latest.latency_ms} ms</span>
               )}
               <span className="moldy-ui-micro text-muted-foreground">
-                {new Date(latest.checked_at).toLocaleString()}
+                {formatDisplayDateTime(latest.checked_at)}
               </span>
             </div>
           ) : (

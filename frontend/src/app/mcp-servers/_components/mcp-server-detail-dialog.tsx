@@ -23,6 +23,7 @@ import {
   useUpdateMcpServer,
 } from '@/lib/hooks/use-mcp-servers'
 import { useMcpHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
+import { formatDisplayDateTime } from '@/lib/utils/display-format'
 
 interface Props {
   serverId: string | null
@@ -246,7 +247,7 @@ function McpHealthSection({ serverId }: { serverId: string }) {
             <span className="text-muted-foreground">{latest.latency_ms} ms</span>
           ) : null}
           <span className="moldy-ui-micro text-muted-foreground">
-            {new Date(latest.checked_at).toLocaleString()}
+            {formatDisplayDateTime(latest.checked_at)}
           </span>
         </div>
       ) : null}

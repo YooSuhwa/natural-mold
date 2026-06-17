@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select'
 import { useCreateModel, useDiscoverModels } from '@/lib/hooks/use-models'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
+import { formatDisplayNumber } from '@/lib/utils/display-format'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
 import type { DiscoveredModel } from '@/lib/types/model'
 
@@ -293,7 +294,9 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                         {t('outputPrice', { price: formatTokenPrice(m.cost_per_output_token) })}
                       </span>
                       {m.context_window && (
-                        <span>{t('context', { count: m.context_window.toLocaleString() })}</span>
+                        <span>
+                          {t('context', { count: formatDisplayNumber(m.context_window) })}
+                        </span>
                       )}
                     </div>
                     {m.rankings && (

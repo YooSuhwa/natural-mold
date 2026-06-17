@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/u
 import { ErrorState } from '@/components/shared/error-state'
 import { cn } from '@/lib/utils'
 import { useAuditEvents } from '@/lib/hooks/use-audit-events'
+import { formatDisplayDateTime } from '@/lib/utils/display-format'
 import type { AuditEvent, AuditScope } from '@/lib/types/audit'
 
 const ALL_VALUE = '__all__'
@@ -69,13 +70,15 @@ function selectValue(value: string) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(new Date(value))
+  return formatDisplayDateTime(value, {
+    format: {
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    },
+  })
 }
 
 function actorLabel(event: AuditEvent) {

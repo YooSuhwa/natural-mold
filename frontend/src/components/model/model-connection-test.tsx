@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { useTestModel } from '@/lib/hooks/use-models'
+import { formatDisplayNumber, formatDisplayUsd } from '@/lib/utils/display-format'
 import type { ModelTestErrorKind, ModelTestResponse } from '@/lib/types/model'
 
 interface BaseProps {
@@ -228,7 +229,8 @@ function SuccessCard({ result, modelLabel }: { result: ModelTestResponse; modelL
           <ul className="moldy-status-muted-text grid grid-cols-1 gap-1 moldy-ui-caption sm:grid-cols-3">
             <li>
               <span className="font-medium">{t('metrics.latency')}</span>{' '}
-              {result.latency_ms.toLocaleString()} ms
+              {formatDisplayNumber(result.latency_ms, { fallback: '0', maximumFractionDigits: 0 })}{' '}
+              ms
             </li>
             {tokens && (
               <li>
@@ -340,9 +342,11 @@ function CodeBlock({ code }: { code: string }) {
 function formatUsd(value: number | null | undefined): string | null {
   if (value === null || value === undefined) return null
   if (!Number.isFinite(value)) return null
-  // Tiny costs use 6 decimals; bigger ones get 4 to stay readable.
   const decimals = Math.abs(value) < 0.01 ? 6 : 4
-  return `$${value.toFixed(decimals)}`
+  return formatDisplayUsd(value, {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: decimals,
+  })
 }
 
 /**

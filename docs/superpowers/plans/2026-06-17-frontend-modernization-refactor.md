@@ -1873,12 +1873,17 @@ for new findings.
     shells from statically importing heavy viewer/island components. The trace
     debugger page now lazy-loads `TraceDebuggerView`.
 
-- [ ] **Guard 10: Date/number formatting and timezone drift**
+- [x] **Guard 10: Date/number formatting and timezone drift**
   - Target: ad hoc `new Date(...).toLocaleString()`, `toLocaleDateString()`, and
     one-off number formatting in `src/app` and `src/components`.
   - Why: product formatting should consistently handle locale, timezone, and
     empty/invalid values.
   - Expected exceptions: low-level format helpers and tests.
+  - Implemented: `src/lib/utils/display-format.ts` centralizes product
+    date/time, number, USD, compact count, and byte formatting with explicit
+    fallback and KST defaults. `check-frontend-architecture.mjs` now blocks
+    direct `toLocale*` and `new Intl.*Format` usage in `src/app` and
+    `src/components`.
 
 Recommended rollout order:
 

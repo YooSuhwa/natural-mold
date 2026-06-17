@@ -15,6 +15,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { formatDisplayDateTime } from '@/lib/utils/display-format'
 
 const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -135,7 +136,7 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                           title={
                             tool.last_seen_at
                               ? t('lastSeen', {
-                                  date: new Date(tool.last_seen_at).toLocaleString(),
+                                  date: formatDisplayDateTime(tool.last_seen_at),
                                 })
                               : t('neverSeen')
                           }
