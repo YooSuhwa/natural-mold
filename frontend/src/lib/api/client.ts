@@ -164,6 +164,21 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   return response.json()
 }
 
+export async function apiFetchText(path: string, options?: RequestInit): Promise<string> {
+  const method = (options?.method ?? 'GET').toUpperCase()
+  const send = (): Promise<Response> =>
+    fetch(`${API_BASE}${path}`, {
+      ...options,
+      method,
+      credentials: 'include',
+      headers: buildHeaders(method, path, options?.headers),
+    })
+
+  const response = await withAuthRetry(path, send)
+  if (!response.ok) await throwApiError(response, 'UNKNOWN_ERROR')
+  return response.text()
+}
+
 /**
  * Upload a ``FormData`` payload (multipart/form-data) with cookie auth,
  * CSRF header, and the same 401 → refresh → retry semantics as ``apiFetch``.

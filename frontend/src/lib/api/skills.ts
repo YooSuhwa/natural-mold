@@ -1,4 +1,4 @@
-import { API_BASE, apiFetch, apiUpload } from './client'
+import { API_BASE, apiFetch, apiFetchText, apiUpload } from './client'
 import type {
   Skill,
   SkillContentUpdateRequest,
@@ -44,6 +44,8 @@ export const skillsApi = {
 
   listFiles: (id: string) => apiFetch<SkillFileEntry[]>(`/api/skills/${id}/files`),
   fileUrl: (id: string, path: string) => `${API_BASE}/api/skills/${id}/files/${encodeURI(path)}`,
+  getFileText: (id: string, path: string) =>
+    apiFetchText(`/api/skills/${id}/files/${encodeURI(path)}`),
 
   setFile: (id: string, path: string, content: string) =>
     apiFetch<Skill>(`/api/skills/${id}/files/${encodeURI(path)}`, {

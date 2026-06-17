@@ -40,6 +40,12 @@ export function getArtifactTextContent(artifactId: string): Promise<ArtifactText
   return apiFetch<ArtifactTextContent>(`/api/artifacts/${artifactId}/content`)
 }
 
+export async function getArtifactArrayBuffer(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url, { credentials: 'include' })
+  if (!response.ok) throw new Error(`Failed to fetch artifact: ${response.status}`)
+  return response.arrayBuffer()
+}
+
 export function listArtifactLibrary(
   params: ArtifactLibraryParams = {},
 ): Promise<ArtifactLibraryPage> {

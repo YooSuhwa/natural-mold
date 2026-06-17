@@ -9,7 +9,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, type ReactNode } from 'react'
 
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
-import { API_BASE } from '@/lib/api/client'
+import { getAuthPageSession } from '@/lib/auth/auth-page-session'
 import type { User } from '@/lib/types/user'
 
 const AUTH_STAR_COUNT = 5
@@ -26,17 +26,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     t('auth.hero.features.security'),
   ]
 
-  // Raw fetch bypasses apiFetch/withAuthRetry so a 401 here does NOT trigger
-  // fireSessionExpired() → queryClient.clear(). If we used useSession() instead,
-  // the clear() would cancel the in-flight query, re-run it indefinitely, and
-  // show a spurious "session expired" toast while already on the login page.
   const { data: user } = useQuery<User | null>({
     queryKey: SESSION_QUERY_KEY,
-    queryFn: async (): Promise<User | null> => {
-      const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
-      if (!res.ok) return null
-      return (await res.json()) as User
-    },
+    queryFn: getAuthPageSession,
     staleTime: 5 * 60 * 1000,
     retry: false,
   })

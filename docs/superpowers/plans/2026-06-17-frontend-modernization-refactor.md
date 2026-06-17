@@ -1781,7 +1781,7 @@ for new findings.
     baselines raw query key files and now blocks direct raw `queryKey` arrays
     even in files that define their own key factories.
 
-- [ ] **Guard 3: API boundary and raw fetch**
+- [x] **Guard 3: API boundary and raw fetch**
   - Target: `fetch(` in `src/app` and `src/components`, plus direct
     `@/lib/api/*` imports from deeply interactive components where a domain hook
     should own query/mutation behavior.
@@ -1789,6 +1789,12 @@ for new findings.
     retry behavior, and response typing.
   - Expected exceptions: SSE transport, artifact binary loading, download URLs,
     and other low-level `src/lib/api` or `src/lib/sse` modules.
+  - Implemented: product-surface raw `fetch(` in `src/app` and
+    `src/components` is now blocked by `check-frontend-architecture.mjs`.
+    Existing fetches were moved into `lib/api`, `lib/sse`, or the auth-page
+    session helper. Direct domain API imports from product surfaces are tracked
+    in the strict baseline so new imports fail while existing feature-specific
+    migrations continue incrementally.
 
 - [ ] **Guard 4: Browser storage and auth-sensitive state**
   - Target: `localStorage`/`sessionStorage` in product components.

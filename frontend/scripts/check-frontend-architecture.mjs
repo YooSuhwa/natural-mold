@@ -48,6 +48,19 @@ const strictBaseline = new Set([
   'tabs:src/app/settings/usage/page.tsx',
   'client-page:src/app/settings/usage/page.tsx',
   'client-page:src/app/shared/[shareId]/page.tsx',
+  'direct-api-import:src/app/agents/[agentId]/page.tsx',
+  'direct-api-import:src/app/agents/new/conversational/page.tsx',
+  'direct-api-import:src/app/settings/page.tsx',
+  'direct-api-import:src/components/chat/artifacts/artifact-preview.tsx',
+  'direct-api-import:src/components/chat/artifacts/providers/use-artifact-binary.ts',
+  'direct-api-import:src/components/chat/assistant-thread.tsx',
+  'direct-api-import:src/components/chat/right-rail/chat-right-rail.tsx',
+  'direct-api-import:src/components/chat/trace-debugger-view.tsx',
+  'direct-api-import:src/components/chat/use-conversation-row-actions.tsx',
+  'direct-api-import:src/components/skill/skill-builder-dialog.tsx',
+  'direct-api-import:src/components/skill/skill-detail-package-editor.tsx',
+  'direct-api-import:src/components/skill/skill-file-editor-pane.tsx',
+  'direct-api-import:src/components/skill/use-skill-file-remote-cache.ts',
 ])
 
 function toPosixPath(path) {
@@ -78,6 +91,10 @@ const issues = []
 
 function issueKey(issue) {
   return `${issue.rule}:${issue.rel}`
+}
+
+function isProductSurface(rel) {
+  return /^src\/(?:app|components)\//.test(rel)
 }
 
 for (const file of files) {
@@ -117,6 +134,23 @@ for (const file of files) {
       rel,
       rule: 'raw-query-key',
       message: 'Prefer feature query key factories for new TanStack Query keys.',
+    })
+  }
+
+  if (isProductSurface(rel) && /\bfetch\s*\(/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'raw-fetch',
+      message: 'Move raw fetch calls into lib/api, lib/sse, or a focused low-level helper.',
+    })
+  }
+
+  if (isProductSurface(rel) && /from\s+['"]@\/lib\/api\/(?!client['"])[^'"]+['"]/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'direct-api-import',
+      message:
+        'Route product data access through feature hooks instead of direct domain API imports.',
     })
   }
 }
