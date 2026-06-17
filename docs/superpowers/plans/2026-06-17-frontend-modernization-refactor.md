@@ -1616,7 +1616,241 @@ This refactor is complete when:
 - Query key factories are normalized for touched feature hooks.
 - Build route size output is captured at least once after the environment is fixed.
 
-## 12. Future Items
+## 12. Design Lint Guard Rollout Ledger
+
+This ledger prevents the follow-up lint hardening work from being lost while the
+frontend is refactored task-by-task. Apply one guard at a time. After each guard:
+
+1. Add or tighten the rule in `frontend/scripts/check-design-system.mjs`,
+   `frontend/scripts/check-frontend-architecture.mjs`, or `frontend/eslint.config.mjs`.
+2. Run the new guard and classify every failure as either a real design drift or
+   a narrow runtime/layout exception.
+3. Fix real drift before adding exceptions.
+4. Keep exceptions file-specific and context-specific, with a reason.
+5. Run the verification gate.
+6. Commit that single guard before starting the next one.
+
+Per-guard verification gate:
+
+```bash
+cd frontend
+pnpm lint:design-system
+pnpm lint
+pnpm build
+```
+
+If the guard changes user-visible copy or aria labels, also run:
+
+```bash
+cd frontend
+pnpm lint:i18n
+```
+
+If the guard touches layout-heavy shared surfaces, also capture a small visual
+smoke set from a real dev server: dashboard, settings, one resource list, and one
+chat/artifact page.
+
+### Rollout Checklist
+
+- [ ] **Guard 1: Arbitrary spacing and size utilities**
+  - Target: `w-[...]`, `h-[...]`, `min-w-[...]`, `max-w-[...]`,
+    `gap-[...]`, `p-[...]`, `m-[...]`, `grid-cols-[...]`, and similar page-local
+    sizing utilities.
+  - Goal: keep layout dimensions on Moldy tokens, component APIs, or narrow
+    data-driven exceptions.
+  - Expected exceptions: dynamic grids, resizable panels, trace/timeline bars,
+    and file-tree indentation.
+
+- [ ] **Guard 2: Semantic color utility usage**
+  - Target: product-surface uses of direct palette families such as `bg-blue-*`,
+    `text-purple-*`, `border-emerald-*`, and similar one-off colors.
+  - Goal: use semantic tokens and Moldy classes for surfaces; keep color families
+    mostly to status badges, icon dots, charts, and vendor/runtime visualizations.
+  - Expected exceptions: Agent Prism category colors, usage metric bars, and
+    explicitly named status/tone tokens.
+
+- [ ] **Guard 3: z-index, fixed, and absolute positioning**
+  - Target: new arbitrary z-indexes, high `z-*` utilities, and page-local
+    `fixed`/`absolute` overlays.
+  - Goal: prevent overlap regressions and keep stacking contexts centralized.
+  - Expected exceptions: dialogs, popovers, dropdowns, chat right rail mobile
+    layer, resize handles, and timeline markers.
+
+- [ ] **Guard 4: Typography drift**
+  - Target: `leading-[...]`, `tracking-[...]`, negative tracking, and page-local
+    one-off typographic tweaks.
+  - Goal: reduce clipping and inconsistent Korean/English text rhythm across
+    compact panels, tabs, buttons, and cards.
+  - Expected exceptions: code blocks, data tables, monospace trace views, and
+    third-party document/artifact renderers.
+
+- [ ] **Guard 5: Manual SVG icon drift**
+  - Target: inline `<svg>` in product buttons, menus, tabs, and toolbars.
+  - Goal: prefer `lucide-react` or Moldy-owned icon primitives for consistent
+    stroke, size, and accessibility.
+  - Expected exceptions: generated/user artifacts, third-party viewers, charts,
+    logos, and icons that do not exist in the installed icon set.
+
+- [ ] **Guard 6: Nested cards and section-as-card warning**
+  - Target: `Card` inside `Card`, `moldy-card` inside `moldy-card`, and page
+    sections styled as large floating cards.
+  - Goal: keep cards for repeated items, dialogs, and framed tools rather than
+    nested page structure.
+  - Rollout mode: start as report/warning with a baseline because this rule can
+    have false positives.
+
+- [ ] **Guard 7: Accessibility lint**
+  - Target: add JSX accessibility coverage for alt text, interactive handlers,
+    invalid anchors, and keyboard access.
+  - Goal: catch focus and keyboard regressions before visual QA.
+  - Rollout mode: install/configure the plugin, baseline existing findings, then
+    make new findings blocking.
+
+- [ ] **Guard 8: Common component usage**
+  - Target: route-local reimplementation of dialogs, tabs, resource panels,
+    empty/loading/error states, and page headers.
+  - Goal: make the refactor stick by pointing new work to `DialogShell`,
+    `ResourcePage`, `ResourcePanel`, `ResourceListCard`, `CountedTabs`, shared
+    list states, and settings form primitives.
+  - Rollout mode: extend `check-frontend-architecture.mjs` with narrow import or
+    role-based checks and an intentional allowlist.
+
+### Current Narrow Inline Style Exceptions
+
+Keep these exceptions narrow. They are not design choices; they are runtime,
+data, or library API requirements that cannot be represented safely as static
+Tailwind classes.
+
+| File | Runtime need | Why it stays exceptional |
+| --- | --- | --- |
+| `frontend/src/components/skill/skill-package-tree.tsx` | `paddingLeft: depth * 12 + 4` | File-tree indentation depends on arbitrary package depth. |
+| `frontend/src/components/chat/markdown-code-highlighter.tsx` | `style={oneDark}` and `customStyle` | `react-syntax-highlighter` expects a theme object and code-block style API. |
+| `frontend/src/components/usage/spend-bar-chart.tsx` | `width: ${widthPct}%` | Bar width is calculated from cost/token/request data. |
+| `frontend/src/components/shared/resource-layout.tsx` | `gridTemplateColumns: repeat(auto-fill, minmax(...))` | Shared `ResourceGrid` exposes a responsive minimum column width API. |
+| `frontend/src/components/agent-prism/SpanCard/SpanCard.tsx` | dynamic `gridTemplateColumns` and content width | Trace tree connector and content columns depend on nesting depth and expand-button placement. |
+| `frontend/src/components/agent-prism/SpanCard/SpanCardTimeline.tsx` | dynamic `left` and `width` percentages | Timeline bar position depends on span start/end time. |
+| `frontend/src/components/chat/tool-ui/phase-timeline-ui.tsx` | `--phase-ratio` CSS variable | Phase progress depends on completed todo ratio. |
+| `frontend/src/components/chat/right-rail/chat-right-rail.tsx` | `--chat-right-rail-width` and width | Chat right rail width is user-resizable and viewport-clamped. |
+
+Exception rule of thumb: allow runtime numbers, data percentages, third-party
+component style APIs, and CSS variables that drive reusable components. Do not
+allow one-off visual decisions such as color, spacing, radius, shadow,
+typography, or stacking unless the rule above proves the value is runtime-driven.
+
+## 13. Non-Visual Lint Guard Rollout Ledger
+
+This ledger tracks lint/preflight hardening that is not primarily visual. Current
+repo inspection showed these useful signals:
+
+- `frontend/eslint.config.mjs` is thin: Next core web vitals + TypeScript +
+  Prettier, with `e2e/**` ignored.
+- `frontend/scripts/check-frontend-architecture.mjs` already reports direct
+  `DialogContent`, raw tablists, page-level Client Components, and raw query
+  keys, with a strict baseline.
+- Source scan on 2026-06-17 found: `as any` 0, `@ts-ignore`/`@ts-expect-error`
+  0, rough non-null assertions 26, `console.*` 26, raw `fetch(` 7,
+  storage access 22, `dangerouslySetInnerHTML` 1, raw `queryKey` arrays 76,
+  raw `invalidateQueries` arrays 39, direct `@/lib/api/*` imports from
+  `app/components` 30, `test.only` 0, `test.skip` 38, `page.waitForTimeout` 2.
+
+Apply these one by one, with a baseline for existing findings and blocking rules
+for new findings.
+
+### Non-Visual Rollout Checklist
+
+- [ ] **Guard 1: Type-safety suppressions**
+  - Target: keep `as any`, `@ts-ignore`, and `@ts-expect-error` at zero; report
+    non-null assertions (`!`) outside narrow DOM/ref/test contexts.
+  - Why: the project already has zero `as any` and zero TypeScript suppression
+    comments, so this can become a zero-tolerance rule immediately.
+  - Tooling: ESLint rules plus a small custom scan for suppression comments.
+
+- [ ] **Guard 2: TanStack Query key factories**
+  - Target: raw `queryKey: [...]` and raw `invalidateQueries({ queryKey: [...] })`
+    outside key factory files.
+  - Why: there are many raw query key arrays, which makes cache invalidation and
+    stale UI bugs easier to introduce during commonization.
+  - Tooling: extend `check-frontend-architecture.mjs` strict baseline, then move
+    feature by feature to `src/lib/query-keys` or feature-local key factories.
+
+- [ ] **Guard 3: API boundary and raw fetch**
+  - Target: `fetch(` in `src/app` and `src/components`, plus direct
+    `@/lib/api/*` imports from deeply interactive components where a domain hook
+    should own query/mutation behavior.
+  - Why: API calls should centralize credentials, CSRF, error normalization,
+    retry behavior, and response typing.
+  - Expected exceptions: SSE transport, artifact binary loading, download URLs,
+    and other low-level `src/lib/api` or `src/lib/sse` modules.
+
+- [ ] **Guard 4: Browser storage and auth-sensitive state**
+  - Target: `localStorage`/`sessionStorage` in product components.
+  - Why: Moldy auth uses HttpOnly cookies and CSRF; storage should not become a
+    place for tokens, secrets, credentials, or long-lived sensitive state.
+  - Expected exceptions: UI preferences, temporary route handoff state, and
+    explicitly named Jotai persistence helpers.
+
+- [ ] **Guard 5: Console/logging policy**
+  - Target: `console.log`, `console.debug`, `console.info` in `src`, and
+    uncontrolled `console.warn/error` scattered across product code.
+  - Why: console noise hides real runtime regressions, and error reporting should
+    be intentional.
+  - Rollout mode: create or adopt a small logger/reporting helper; allow
+    `console.warn/error` only in approved low-level catch blocks until migrated.
+
+- [ ] **Guard 6: Unsafe HTML / injection sinks**
+  - Target: `dangerouslySetInnerHTML`, `innerHTML`, `DOMParser`, and URL-opening
+    helpers that accept untrusted content.
+  - Why: chat, artifacts, markdown, document preview, and marketplace content can
+    all carry user-generated data.
+  - Expected exceptions: audited markdown/artifact renderers with sanitization or
+    library-owned rendering contracts.
+
+- [ ] **Guard 7: E2E lint and test hygiene**
+  - Target: include `e2e/**` in a separate lint command or test-hygiene script.
+    Block `test.only`, unreviewed `test.skip`, `page.waitForTimeout`, and
+    `force: true` interactions.
+  - Why: E2E is currently ignored by ESLint, yet it is the main confidence layer
+    for chat/runtime regressions.
+  - Rollout mode: allow documented backend/runtime skips, but require a reason
+    string and preferably a linked condition.
+
+- [ ] **Guard 8: Import boundaries and private folders**
+  - Target: imports from another route's `_components`, `_hooks`, or `_lib`;
+    domain hooks imported into `src/components/ui`; and new barrel `index.ts`
+    files.
+  - Why: this keeps the folder architecture from drifting back after the refactor.
+  - Tooling: extend `check-frontend-architecture.mjs`; consider
+    `eslint-plugin-boundaries` only after the custom rules stabilize.
+
+- [ ] **Guard 9: Heavy dependency and client-boundary imports**
+  - Target: Mermaid, document viewers, spreadsheet/PPT/HWP libraries, syntax
+    highlighters, and trace/debug viewers imported into route/page shells instead
+    of lazy Client islands.
+  - Why: page-level Client Components and direct heavy imports are the most likely
+    bundle/performance regressions during commonization.
+  - Tooling: custom import scan first; later pair with bundle analyzer budgets.
+
+- [ ] **Guard 10: Date/number formatting and timezone drift**
+  - Target: ad hoc `new Date(...).toLocaleString()`, `toLocaleDateString()`, and
+    one-off number formatting in `src/app` and `src/components`.
+  - Why: product formatting should consistently handle locale, timezone, and
+    empty/invalid values.
+  - Expected exceptions: low-level format helpers and tests.
+
+Recommended rollout order:
+
+1. Type-safety suppressions, because current count is already zero.
+2. E2E test hygiene, because it is currently outside ESLint.
+3. Query key factories, because it directly prevents stale UI and cache bugs.
+4. API boundary / raw fetch.
+5. Browser storage and auth-sensitive state.
+6. Console/logging policy.
+7. Unsafe HTML / injection sinks.
+8. Import boundaries and private folders.
+9. Heavy dependency/client-boundary imports.
+10. Date/number formatting.
+
+## 14. Future Items
 
 These are intentionally not part of the first modernization pass:
 
@@ -1669,17 +1903,17 @@ These are intentionally not part of the first modernization pass:
     - After architecture guard stabilizes, move some checks into `eslint.config.mjs`.
     - Candidates: direct `@/components/ui/dialog` imports, raw resource `Card`, route page `'use client'`.
 
-## 13. Self-Review Checklist
+## 15. Self-Review Checklist
 
 - Spec coverage:
   - Folder structure: Tasks 5, 6, 7, 12.
   - Commonization: Tasks 3, 4, 6, 8.
   - Performance/preflight: Tasks 1, 2, 10, 13.
   - Lint/AGENTS/CLAUDE considerations: Task 12.
-  - Future items: Section 12.
+  - Future items: Section 14.
 - Placeholder scan:
   - No implementation step uses placeholder markers as an action.
-  - Future work is explicitly separated in Section 12.
+  - Future work is explicitly separated in Section 14.
 - Type/path consistency:
   - New shared component paths are under `frontend/src/components/shared`.
   - Route-local MCP/Tools/Skills targets are under their route `_components`.
