@@ -12,6 +12,8 @@
     "start": "next start",
     "lint": "eslint",
     "lint:design-system": "node scripts/check-design-system.mjs",
+    "lint:frontend-architecture": "node scripts/check-frontend-architecture.mjs",
+    "lint:frontend-architecture:strict": "node scripts/check-frontend-architecture.mjs --strict",
     "lint:i18n": "node scripts/check-static-i18n.mjs",
     "lint:i18n:strict": "node scripts/check-static-i18n.mjs --strict-ascii",
     "format": "prettier --write 'src/**/*.{ts,tsx}'",
