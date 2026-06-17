@@ -13,9 +13,7 @@ export interface ThreadLifecycleStream {
   getThread(): ThreadLifecycleSubscriber | undefined
 }
 
-export async function refreshThreadLifecycleStream(
-  stream: ThreadLifecycleStream,
-): Promise<void> {
+export async function refreshThreadLifecycleStream(stream: ThreadLifecycleStream): Promise<void> {
   const thread = stream.getThread()
   if (!thread) return
   const subscription = await thread.subscribe('lifecycle', {

@@ -121,10 +121,7 @@ export function mergeUntouchedAgentSettingsDraft(
     selectedSkillIds: setsEqual(draft.selectedSkillIds, previousBaseline.selectedSkillIds)
       ? nextBaseline.selectedSkillIds
       : draft.selectedSkillIds,
-    selectedSubAgentIds: setsEqual(
-      draft.selectedSubAgentIds,
-      previousBaseline.selectedSubAgentIds,
-    )
+    selectedSubAgentIds: setsEqual(draft.selectedSubAgentIds, previousBaseline.selectedSubAgentIds)
       ? nextBaseline.selectedSubAgentIds
       : draft.selectedSubAgentIds,
     temperature:

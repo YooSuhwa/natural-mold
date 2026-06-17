@@ -22,10 +22,7 @@ import { PublicationBadge } from '@/components/marketplace/badges/publication-ba
 import { SupportBadge } from '@/components/marketplace/badges/support-badge'
 import { InstallWizard } from '@/components/marketplace/install-wizard'
 import { UpdateStrategyDialog } from '@/components/marketplace/update-strategy-dialog'
-import {
-  derivePrimaryCta,
-  getPrimaryCtaHref,
-} from '@/components/marketplace/marketplace-card'
+import { derivePrimaryCta, getPrimaryCtaHref } from '@/components/marketplace/marketplace-card'
 import { useSession } from '@/lib/auth/session'
 import { ApiError } from '@/lib/api/client'
 import {

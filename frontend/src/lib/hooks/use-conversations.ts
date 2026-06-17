@@ -77,7 +77,7 @@ export function useConversationPages(
       conversationsApi.page(agentId, {
         ...pageParams,
         cursor: pageParam,
-    }),
+      }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled: (options.enabled ?? true) && !!agentId,
@@ -97,7 +97,7 @@ export function useGlobalConversationPages(
       conversationsApi.globalPage({
         ...pageParams,
         cursor: pageParam,
-    }),
+      }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled: options.enabled ?? true,
@@ -173,8 +173,7 @@ export function useUpdateConversation(agentId: string) {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: ConversationUpdateRequest }) =>
       conversationsApi.update(id, data),
-    onSuccess: (_updated, variables) =>
-      invalidateConversationNavigators(qc, agentId, variables.id),
+    onSuccess: (_updated, variables) => invalidateConversationNavigators(qc, agentId, variables.id),
   })
 }
 

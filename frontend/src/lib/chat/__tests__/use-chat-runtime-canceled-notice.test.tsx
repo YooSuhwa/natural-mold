@@ -90,9 +90,7 @@ async function* emptyStream(): AsyncGenerator<SSEEvent> {}
 function threadTexts(runtime: ReturnType<typeof useChatRuntime>['runtime']): string[] {
   return runtime.thread
     .getState()
-    .messages.map((m) =>
-      m.content.map((part) => (part.type === 'text' ? part.text : '')).join(''),
-    )
+    .messages.map((m) => m.content.map((part) => (part.type === 'text' ? part.text : '')).join(''))
 }
 
 const CANCELED_TEXT = '응답이 중단되었습니다'

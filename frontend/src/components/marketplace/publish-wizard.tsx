@@ -330,14 +330,16 @@ function PublishWizardInner({ resource, open, onOpenChange }: PublishWizardProps
                 {visibility === 'restricted' ? (
                   <li>
                     {t('aclSummary', {
-                      count: aclInput.split(',').map((s) => s.trim()).filter(Boolean).length,
+                      count: aclInput
+                        .split(',')
+                        .map((s) => s.trim())
+                        .filter(Boolean).length,
                     })}
                   </li>
                 ) : null}
               </ul>
             </div>
           ) : null}
-
         </DialogShell.Body>
       </DialogShell.Split>
 

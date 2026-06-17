@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Activity, Plus, Eye, EyeOff, Wrench, Lightbulb, Zap } from 'lucide-react'
@@ -32,15 +32,25 @@ import type { Model } from '@/lib/types/model'
 import type { HealthCheckEntry } from '@/lib/types/health'
 import { SettingsShell } from '../_components/settings-shell'
 
+const subscribeHydration = () => () => undefined
+const getHydratedSnapshot = () => true
+const getServerHydratedSnapshot = () => false
+
 export default function ModelsPage() {
   const t = useTranslations('model')
   const { data: user } = useSession()
   const isSuper = Boolean(user?.is_super_user)
+  const sessionHydrated = useSyncExternalStore(
+    subscribeHydration,
+    getHydratedSnapshot,
+    getServerHydratedSnapshot,
+  )
   // Default ON for operators so the new visibility column is discoverable;
   // regular users can't pass include_hidden (backend would 403) so we pin
   // the toggle off + disabled for them.
   const [showHidden, setShowHidden] = useState(true)
-  const effectiveShowHidden = isSuper && showHidden
+  const showOperatorControls = sessionHydrated && isSuper
+  const effectiveShowHidden = showOperatorControls && showHidden
   const { data: models, isLoading } = useModels({
     includeHidden: effectiveShowHidden,
   })
@@ -313,7 +323,7 @@ export default function ModelsPage() {
         />
         {t('catalog.filters.hasBenchmark')}
       </label>
-      {isSuper && (
+      {showOperatorControls && (
         <label
           htmlFor="show-hidden"
           className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"

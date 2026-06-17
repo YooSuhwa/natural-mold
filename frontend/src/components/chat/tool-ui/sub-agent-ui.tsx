@@ -43,9 +43,7 @@ function isToolCallPartLike(part: { readonly type: string }): part is ToolCallPa
   )
 }
 
-function currentTurnTaskToolCallIdKey(
-  content: readonly { readonly type: string }[],
-): string {
+function currentTurnTaskToolCallIdKey(content: readonly { readonly type: string }[]): string {
   const ids: string[] = []
   for (const part of content) {
     if (isToolCallPartLike(part) && part.toolName === 'task') ids.push(part.toolCallId)

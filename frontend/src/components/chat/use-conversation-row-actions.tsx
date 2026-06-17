@@ -3,22 +3,14 @@
 import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import {
-  useMutation,
-  useQueryClient,
-  type QueryClient,
-  type QueryKey,
-} from '@tanstack/react-query'
+import { useMutation, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { ShareDialog } from '@/components/chat/share-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { conversationsApi } from '@/lib/api/conversations'
-import {
-  conversationKeys,
-  invalidateConversationNavigators,
-} from '@/lib/hooks/use-conversations'
+import { conversationKeys, invalidateConversationNavigators } from '@/lib/hooks/use-conversations'
 import type { Conversation, ConversationUpdateRequest } from '@/lib/types'
 
 interface ConversationRowActionsOptions {
@@ -40,9 +32,7 @@ interface NavigatorPages {
 }
 
 function isNavigatorPages(data: unknown): data is NavigatorPages {
-  return (
-    typeof data === 'object' && data !== null && Array.isArray((data as NavigatorPages).pages)
-  )
+  return typeof data === 'object' && data !== null && Array.isArray((data as NavigatorPages).pages)
 }
 
 function navigatorCacheFilters(agentId: string) {

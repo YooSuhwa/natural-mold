@@ -12,7 +12,11 @@ vi.mock('@/i18n/scoped-messages', () => ({
     readonly children: ReactNode
     readonly namespaces: readonly string[]
   }) {
-    return <div data-testid="scoped-provider" data-namespaces={namespaces.join(',')}>{children}</div>
+    return (
+      <div data-testid="scoped-provider" data-namespaces={namespaces.join(',')}>
+        {children}
+      </div>
+    )
   },
 }))
 
