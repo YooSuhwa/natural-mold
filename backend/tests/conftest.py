@@ -6,7 +6,9 @@ import uuid
 from collections.abc import AsyncGenerator
 
 import pytest
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Cipher V2 / new credential domain require ``ENCRYPTION_KEYS`` to be set
@@ -14,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 # module that reads settings during collection sees a valid value.
 os.environ.setdefault("ENCRYPTION_KEYS", secrets.token_hex(32))
 
+from app.auth import password as password_module  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.dependencies import (  # noqa: E402
@@ -32,6 +35,16 @@ from app.services import share_cache  # noqa: E402
 # it on would couple assertions to slowapi's internal counters.
 limiter.enabled = False
 
+# Production bcrypt uses 12 rounds, which is correct for real auth but costs
+# ~200ms per hash/verify on local pytest runs. Keep the same bcrypt algorithm
+# in tests while dropping the work factor so auth-flow tests exercise behavior
+# instead of spending most of their time in CPU-bound hashing.
+password_module._pwd_context = CryptContext(  # noqa: SLF001
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__rounds=4,
+)
+
 # Make sure the settings instance reflects the environment variable above
 # (``BaseSettings`` reads env at class-init time, but explicit assignment
 # guarantees correctness if any other test mutated ``settings``).
@@ -43,17 +56,33 @@ TEST_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 engine = create_async_engine("sqlite+aiosqlite://", echo=False)
 TestSession = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+_schema_ready = False
+
+
+async def _ensure_schema() -> None:
+    global _schema_ready
+    if _schema_ready:
+        return
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    _schema_ready = True
+
+
+async def _clear_database() -> None:
+    async with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(table.delete())
 
 
 @pytest.fixture(autouse=True)
 async def setup_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await _ensure_schema()
     # Snapshot cache leaks across tests otherwise — clear at boundary.
     share_cache.clear_all()
     yield
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    await _clear_database()
+    share_cache.clear_all()
 
 
 @pytest.fixture(autouse=True)
@@ -135,30 +164,40 @@ async def _bypass_verify_csrf() -> None:
     return None
 
 
-@pytest.fixture
-async def client() -> AsyncGenerator[AsyncClient, None]:
+@pytest.fixture(scope="session")
+def test_app() -> FastAPI:
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_current_user_optional] = override_get_current_user
     app.dependency_overrides[verify_csrf] = _bypass_verify_csrf
+    return app
 
-    transport = ASGITransport(app=app)
+
+@pytest.fixture(scope="session")
+def raw_test_app() -> FastAPI:
+    """App without auth/CSRF overrides — exercises real cookie + JWT flow."""
+
+    app = create_app()
+    app.dependency_overrides[get_db] = override_get_db
+    return app
+
+
+@pytest.fixture
+async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
+    transport = ASGITransport(app=test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
 
 @pytest.fixture
-async def raw_client() -> AsyncGenerator[AsyncClient, None]:
+async def raw_client(raw_test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     """App without auth/CSRF overrides — exercises real cookie + JWT flow.
 
     Used by /api/auth tests and the multi-user isolation matrix.
     """
 
-    app = create_app()
-    app.dependency_overrides[get_db] = override_get_db
-
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=raw_test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
