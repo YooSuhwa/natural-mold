@@ -1,5 +1,5 @@
 import { render, screen } from '../../test-utils'
-import { ToolCatalog } from '@/components/tool/tool-catalog'
+import { ToolCatalog } from '@/app/tools/_components/tool-catalog'
 import type { ToolDefinition } from '@/lib/types/tool'
 
 const definitions: ToolDefinition[] = [
@@ -46,9 +46,7 @@ describe('ToolCatalog', () => {
 
     expect(card).toHaveClass('moldy-resource-card')
     expect(card.className).toMatch(/\bmoldy-tone-card-sky\b/)
-    expect(card.querySelector('svg')?.parentElement?.className).toMatch(
-      /\bmoldy-tone-icon-sky\b/,
-    )
+    expect(card.querySelector('svg')?.parentElement?.className).toMatch(/\bmoldy-tone-icon-sky\b/)
   })
 
   it('uses Korean empty state copy after filtering', async () => {

@@ -13,9 +13,8 @@ import { Button } from '@/components/ui/button'
 import { getResourceTone } from '@/lib/resource-tones'
 import type { Skill } from '@/lib/types/skill'
 import { cn } from '@/lib/utils'
-
-import { SkillEvaluationSummaryBadge } from './skill-evaluation-summary-badge'
-import { SkillHealthBadge } from './skill-health-badge'
+import { SkillEvaluationSummaryBadge } from '@/components/skill/skill-evaluation-summary-badge'
+import { SkillHealthBadge } from '@/components/skill/skill-health-badge'
 
 type SkillCardProps = {
   readonly skill: Skill

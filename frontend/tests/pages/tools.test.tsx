@@ -61,8 +61,8 @@ vi.mock('@/lib/hooks/use-credentials', () => ({
 
 // 페이지가 카탈로그 그리드를 렌더하는데 그 안에서 detail 카드 테스트를 따로
 // 책임지므로 stub. 페이지 단위는 단일 탭 구조와 설치됨 전환만 검증한다.
-vi.mock('@/components/tool/tool-catalog', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/components/tool/tool-catalog')>()
+vi.mock('@/app/tools/_components/tool-catalog', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/app/tools/_components/tool-catalog')>()
   return {
     ...actual,
     ToolCatalog: ({ category, search }: { category: string; search: string }) => (
@@ -70,10 +70,10 @@ vi.mock('@/components/tool/tool-catalog', async (importOriginal) => {
     ),
   }
 })
-vi.mock('@/components/tool/tool-create-dialog', () => ({
+vi.mock('@/app/tools/_components/tool-create-dialog', () => ({
   ToolCreateDialog: () => null,
 }))
-vi.mock('@/components/tool/tool-detail-dialog', () => ({
+vi.mock('@/app/tools/_components/tool-detail-dialog', () => ({
   ToolDetailDialog: () => null,
 }))
 

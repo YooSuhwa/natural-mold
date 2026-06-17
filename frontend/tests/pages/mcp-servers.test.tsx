@@ -37,11 +37,11 @@ vi.mock('@/lib/hooks/use-health', () => ({
   useRunHealthCheck: () => mockUseRunHealthCheck(),
 }))
 
-vi.mock('@/components/mcp/mcp-server-wizard', () => ({
+vi.mock('@/app/mcp-servers/_components/mcp-server-wizard', () => ({
   McpServerWizard: () => null,
 }))
 
-vi.mock('@/components/mcp/mcp-server-detail-dialog', () => ({
+vi.mock('@/app/mcp-servers/_components/mcp-server-detail-dialog', () => ({
   McpServerDetailDialog: (props: {
     serverId: string | null
     open: boolean
@@ -49,7 +49,7 @@ vi.mock('@/components/mcp/mcp-server-detail-dialog', () => ({
   }) => mockDetailDialog(props),
 }))
 
-vi.mock('@/components/mcp/mcp-import-dialog', () => ({
+vi.mock('@/app/mcp-servers/_components/mcp-import-dialog', () => ({
   McpImportDialog: () => null,
 }))
 
