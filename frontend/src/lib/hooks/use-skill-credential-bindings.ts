@@ -3,11 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { skillCredentialApi } from '@/lib/api/marketplace'
+import { marketplaceQueryKeys } from '@/lib/query-keys/marketplace'
+import { skillQueryKeys } from '@/lib/query-keys/skills'
 
 import { requireQueryId } from './query-id'
 import { skillEvaluationKeys } from './use-skill-evaluations'
-
-const ITEMS_KEY = ['marketplace', 'items'] as const
 
 export const skillCredentialBindingKeys = {
   requirements: (skillId: string | null | undefined) =>
@@ -66,8 +66,8 @@ function invalidateSkillCredentialBindingCaches(
   skillId: string,
 ): void {
   qc.invalidateQueries({ queryKey: skillCredentialBindingKeys.bindings(skillId) })
-  qc.invalidateQueries({ queryKey: ['skills'] })
-  qc.invalidateQueries({ queryKey: ['skills', skillId] })
-  qc.invalidateQueries({ queryKey: ITEMS_KEY })
+  qc.invalidateQueries({ queryKey: skillQueryKeys.all })
+  qc.invalidateQueries({ queryKey: skillQueryKeys.detail(skillId) })
+  qc.invalidateQueries({ queryKey: marketplaceQueryKeys.items })
   qc.invalidateQueries({ queryKey: skillEvaluationKeys.sets(skillId) })
 }

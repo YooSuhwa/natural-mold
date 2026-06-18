@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { triggersApi } from '@/lib/api/triggers'
+import { agentQueryKeys } from '@/lib/query-keys/agents'
 import type { TriggerCreateRequest, TriggerUpdateRequest } from '@/lib/types'
 
 export const triggerKeys = {
@@ -15,7 +16,7 @@ function invalidateTriggerQueries(qc: ReturnType<typeof useQueryClient>, agentId
   qc.invalidateQueries({ queryKey: triggerKeys.all })
   qc.invalidateQueries({ queryKey: triggerKeys.summary })
   if (agentId) qc.invalidateQueries({ queryKey: triggerKeys.agent(agentId) })
-  qc.invalidateQueries({ queryKey: ['agents'] })
+  qc.invalidateQueries({ queryKey: agentQueryKeys.all })
 }
 
 export function useAllTriggers() {

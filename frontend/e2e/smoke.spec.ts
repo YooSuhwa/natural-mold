@@ -433,7 +433,7 @@ test.describe('Smoke Test - Dialogs', () => {
       // Close any open overlays
       await page.keyboard.press('Escape')
     } else {
-      test.skip()
+      test.skip(true, 'Credential action button is unavailable for this seeded tool card')
     }
 
     expect(errors.console).toEqual([])
@@ -442,7 +442,12 @@ test.describe('Smoke Test - Dialogs', () => {
 
   // "AI로 수정하기" 다이얼로그는 AssistantPanel이 settings 우측 패널로 통합되면서
   // 별도 트리거 버튼이 사라짐. 패널 자체의 동작은 manual QA 또는 후속 e2e로.
-  test.skip('settings page - "AI로 수정하기" dialog opens', async () => {})
+  test('settings page - "AI로 수정하기" dialog opens', async () => {
+    test.skip(
+      true,
+      'AssistantPanel is now integrated into the settings right rail; cover with a focused follow-up E2E',
+    )
+  })
 
   test('settings page - "에이전트 삭제" confirmation dialog opens', async ({ page, errors }) => {
     await page.goto(`/agents/${agentId}/settings`)

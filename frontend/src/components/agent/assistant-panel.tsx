@@ -12,6 +12,7 @@ import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
 import { streamAssistant, streamAssistantResume } from '@/lib/sse/stream-assistant'
 import { AssistantThread } from '@/components/chat/assistant-thread'
 import { FixHero } from '@/components/agent/fix-hero'
+import { agentQueryKeys } from '@/lib/query-keys/agents'
 
 const FIX_AGENT_IMAGE = '/agent-fix-hero.webp'
 const CREATE_HERO_IMAGE = '/agent-create-hero.webp'
@@ -20,11 +21,8 @@ interface AssistantPanelProps {
   agentId: string
   agentName: string
   showHeader?: boolean
-  /** 만들기 모드 — agentId 비어있고 첫 메시지 시 부모가 createAgent + redirect 처리 */
   createMode?: boolean
-  /** createMode일 때 첫 메시지 콜백 (부모가 createAgent + sessionStorage 보존 + redirect) */
   onCreateModeFirstMessage?: (msg: string) => Promise<void>
-  /** 마운트 직후 자동 전송할 메시지 (settings 페이지 진입 시 sessionStorage carry용) */
   initialMessage?: string
 }
 
@@ -100,9 +98,9 @@ export function AssistantPanel({
       const shouldInvalidate = didMutate || resumeMayMutateRef.current
       resumeMayMutateRef.current = false
       if (!shouldInvalidate) return
-      qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: agentQueryKeys.all })
       if (agentId) {
-        qc.invalidateQueries({ queryKey: ['agents', agentId] })
+        qc.invalidateQueries({ queryKey: agentQueryKeys.detail(agentId) })
       }
     },
     [qc, agentId],
@@ -120,7 +118,6 @@ export function AssistantPanel({
     [onResumeDecisions, registerDecision],
   )
 
-  // 마운트 후 initialMessage 자동 전송 (sessionStorage carry-over)
   useEffect(() => {
     if (initialMessage && !initialSentRef.current && agentId) {
       initialSentRef.current = true

@@ -21,12 +21,7 @@ describe('dedupeLangChainMessagesById', () => {
     const toolResult = new HumanMessage({ id: 'user-2', content: 'next' })
     const newAssistant = new AIMessage({ id: 'lc-run-1', content: 'new' })
 
-    const result = dedupeLangChainMessagesById([
-      firstUser,
-      oldAssistant,
-      toolResult,
-      newAssistant,
-    ])
+    const result = dedupeLangChainMessagesById([firstUser, oldAssistant, toolResult, newAssistant])
 
     expect(result).toEqual([firstUser, newAssistant, toolResult])
     expect(result[1]).toBe(newAssistant)

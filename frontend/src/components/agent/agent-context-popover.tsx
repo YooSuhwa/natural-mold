@@ -38,11 +38,7 @@ export function AgentContextPopover({ agent, agentId }: AgentContextPopoverProps
         <DropdownMenuGroup>
           <DropdownMenuLabel>
             <span className="flex min-w-0 items-center gap-2">
-              <AgentAvatar
-                imageUrl={agent?.image_url ?? null}
-                name={agent?.name ?? ''}
-                size="xs"
-              />
+              <AgentAvatar imageUrl={agent?.image_url ?? null} name={agent?.name ?? ''} size="xs" />
               <span className="truncate">{agent?.name ?? t('loading')}</span>
             </span>
           </DropdownMenuLabel>

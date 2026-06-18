@@ -324,7 +324,7 @@ function DataTableFilter({
   const t = useTranslations('common.dataTable')
   return (
     <Select value={value || 'all'} onValueChange={(v) => v !== null && onValueChange(v)}>
-      <SelectTrigger className="h-8 w-[160px]" aria-label={filter.label}>
+      <SelectTrigger className="h-8 w-40" aria-label={filter.label}>
         <SelectValue placeholder={filter.label} />
       </SelectTrigger>
       <SelectContent>

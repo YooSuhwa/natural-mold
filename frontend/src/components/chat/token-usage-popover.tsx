@@ -6,14 +6,11 @@ import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { formatCostUsd } from '@/components/usage/format'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { formatDisplayNumber } from '@/lib/utils/display-format'
 import type { TokenUsageBreakdown } from '@/lib/types'
 
 interface AssistantMetadataCustom {
   usage?: TokenUsageBreakdown
-}
-
-function formatNumber(n: number): string {
-  return n.toLocaleString('en-US')
 }
 
 /**
@@ -51,7 +48,9 @@ export function TokenUsagePopover() {
               aria-label={t('toggleAria')}
             >
               <InfoIcon className="size-3" />
-              <span className="tabular-nums">{formatNumber(total)}</span>
+              <span className="tabular-nums">
+                {formatDisplayNumber(total, { locale: 'en-US' })}
+              </span>
             </button>
           )
         }}
@@ -66,7 +65,7 @@ export function TokenUsagePopover() {
         <div className="mb-1.5 flex items-center justify-between border-b pb-1.5 text-foreground">
           <span className="font-medium">{t('title')}</span>
           <span className="tabular-nums text-muted-foreground">
-            {formatNumber(total)} {t('total')}
+            {formatDisplayNumber(total, { locale: 'en-US' })} {t('total')}
           </span>
         </div>
         <Row label={t('input')} value={usage.prompt_tokens} />
@@ -101,7 +100,7 @@ function Row({ label, value, muted }: { label: string; value: number; muted?: bo
       )}
     >
       <span>{label}</span>
-      <span className="tabular-nums">{formatNumber(value)}</span>
+      <span className="tabular-nums">{formatDisplayNumber(value, { locale: 'en-US' })}</span>
     </div>
   )
 }

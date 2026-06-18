@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { skillBuilderApi } from '@/lib/api/skill-builder'
+import { skillQueryKeys } from '@/lib/query-keys/skills'
 import { requireQueryId } from './query-id'
 import type { SkillBuilderStartRequest, SkillDraftPackage } from '@/lib/types/skill-builder'
 
@@ -62,8 +63,8 @@ function invalidateInstalledSkillCaches(
   qc: ReturnType<typeof useQueryClient>,
   skillId: string,
 ): void {
-  qc.invalidateQueries({ queryKey: ['skills'] })
-  qc.invalidateQueries({ queryKey: ['skills', skillId] })
-  qc.invalidateQueries({ queryKey: ['skills', skillId, 'files'] })
-  qc.invalidateQueries({ queryKey: ['skills', skillId, 'content'] })
+  qc.invalidateQueries({ queryKey: skillQueryKeys.all })
+  qc.invalidateQueries({ queryKey: skillQueryKeys.detail(skillId) })
+  qc.invalidateQueries({ queryKey: skillQueryKeys.files(skillId) })
+  qc.invalidateQueries({ queryKey: skillQueryKeys.content(skillId) })
 }

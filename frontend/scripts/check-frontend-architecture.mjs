@@ -1,0 +1,418 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { dirname, join, normalize, relative, sep } from 'node:path'
+import { exit } from 'node:process'
+
+const root = process.cwd()
+const srcRoot = join(root, 'src')
+const strict = process.argv.includes('--strict')
+
+const allow = {
+  dialogContent: new Set([
+    'src/components/ui/dialog.tsx',
+    'src/components/shared/dialog-shell.tsx',
+    'src/components/shared/delete-confirm-dialog.tsx',
+  ]),
+  tablist: new Set([
+    'src/components/shared/counted-tabs.tsx',
+    'src/components/shared/resource-layout.tsx',
+    'src/components/ui/tabs.tsx',
+    'src/components/ui/line-tabs.tsx',
+  ]),
+  htmlSink: new Set(['src/components/chat/mermaid-diagram.tsx']),
+  windowOpen: new Set(['src/lib/browser/window-open.ts']),
+  emptyStatePrimitive: new Set(['src/components/shared/empty-state.tsx']),
+  pageHeaderPrimitive: new Set(['src/components/shared/page-header.tsx']),
+  resourceSurfacePrimitive: new Set([
+    'src/components/shared/resource-layout.tsx',
+    'src/lib/resource-tones.ts',
+    'src/app/marketplace/loading.tsx',
+    'src/app/mcp-servers/loading.tsx',
+    'src/app/skills/loading.tsx',
+    'src/app/tools/loading.tsx',
+  ]),
+}
+
+const heavyClientImports = [
+  {
+    module: 'mermaid',
+    files: new Set(['src/components/chat/mermaid-diagram.tsx']),
+    prefixes: [],
+  },
+  {
+    module: 'react-syntax-highlighter',
+    files: new Set(['src/components/chat/markdown-code-highlighter.tsx']),
+    prefixes: [],
+  },
+  {
+    module: '@xyflow/react',
+    files: new Set(),
+    prefixes: ['src/components/agent/visual-settings/'],
+  },
+  {
+    module: '@assistant-ui/react-streamdown',
+    files: new Set(['src/components/chat/assistant-thread.tsx']),
+    prefixes: [],
+  },
+  {
+    module: '@streamdown/math',
+    files: new Set(['src/components/chat/assistant-thread.tsx']),
+    prefixes: [],
+  },
+  {
+    module: 'docx-preview',
+    files: new Set(['src/components/chat/artifacts/providers/docx-preview.tsx']),
+    prefixes: [],
+  },
+  {
+    module: 'xlsx',
+    files: new Set(['src/components/chat/artifacts/providers/xlsx-preview.tsx']),
+    prefixes: [],
+  },
+  {
+    module: '@rhwp/core',
+    files: new Set(['src/components/chat/artifacts/providers/hwp-preview.tsx']),
+    prefixes: [],
+  },
+]
+
+const heavyRouteComponents = new Set([
+  '@/components/chat/trace-debugger-view',
+  '@/components/agent/visual-settings/visual-settings-island',
+])
+
+const strictBaseline = new Set([
+  'tabs:src/app/(auth)/layout.tsx',
+  'client-page:src/app/(auth)/login/page.tsx',
+  'client-page:src/app/(auth)/register/page.tsx',
+  'client-page:src/app/agents/[agentId]/conversations/[conversationId]/page.tsx',
+  'client-page:src/app/agents/[agentId]/conversations/[conversationId]/traces/page.tsx',
+  'client-page:src/app/agents/[agentId]/page.tsx',
+  'client-page:src/app/agents/[agentId]/settings/page.tsx',
+  'client-page:src/app/agents/[agentId]/visual-settings/page.tsx',
+  'client-page:src/app/agents/new/conversational/page.tsx',
+  'client-page:src/app/agents/new/manual/page.tsx',
+  'client-page:src/app/agents/new/page.tsx',
+  'client-page:src/app/agents/new/template/page.tsx',
+  'client-page:src/app/marketplace/[item-id]/page.tsx',
+  'client-page:src/app/marketplace/page.tsx',
+  'client-page:src/app/settings/admin-audit/page.tsx',
+  'client-page:src/app/settings/agent-api/page.tsx',
+  'client-page:src/app/settings/credentials/page.tsx',
+  'client-page:src/app/settings/marketplace-admin/page.tsx',
+  'client-page:src/app/settings/memory/page.tsx',
+  'client-page:src/app/settings/models/page.tsx',
+  'client-page:src/app/settings/page.tsx',
+  'client-page:src/app/settings/schedules/page.tsx',
+  'client-page:src/app/settings/system-credentials/page.tsx',
+  'client-page:src/app/settings/system-llm/page.tsx',
+  'tabs:src/app/settings/usage/page.tsx',
+  'client-page:src/app/settings/usage/page.tsx',
+  'client-page:src/app/shared/[shareId]/page.tsx',
+  'common-page-header:src/app/agents/new/page.tsx',
+  'direct-api-import:src/app/agents/[agentId]/page.tsx',
+  'direct-api-import:src/app/agents/new/conversational/page.tsx',
+  'direct-api-import:src/app/settings/page.tsx',
+  'direct-api-import:src/components/chat/artifacts/artifact-preview.tsx',
+  'direct-api-import:src/components/chat/artifacts/providers/use-artifact-binary.ts',
+  'direct-api-import:src/components/chat/assistant-thread.tsx',
+  'direct-api-import:src/components/chat/right-rail/chat-right-rail.tsx',
+  'direct-api-import:src/components/chat/trace-debugger-view.tsx',
+  'direct-api-import:src/components/chat/use-conversation-row-actions.tsx',
+  'direct-api-import:src/components/skill/skill-builder-dialog.tsx',
+  'direct-api-import:src/components/skill/skill-detail-package-editor.tsx',
+  'direct-api-import:src/components/skill/skill-file-editor-pane.tsx',
+  'direct-api-import:src/components/skill/use-skill-file-remote-cache.ts',
+  'private-route-import:src/app/agents/new/manual/page.tsx->src/app/agents/[agentId]/settings/_components/form-mode/form-mode',
+  'private-route-import:src/app/agents/new/manual/page.tsx->src/app/agents/[agentId]/settings/_components/right-panel/right-panel',
+  'barrel-index:src/components/agent-prism/theme/index.ts',
+  'barrel-index:src/components/marketplace/badges/index.ts',
+  'barrel-index:src/lib/types/index.ts',
+])
+
+function toPosixPath(path) {
+  return path.split(sep).join('/')
+}
+
+function normalizePosixPath(path) {
+  return toPosixPath(normalize(path))
+}
+
+function walk(dir) {
+  const out = []
+
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry)
+    const stat = statSync(full)
+
+    if (stat.isDirectory()) {
+      if (entry === 'node_modules' || entry === '.next' || entry === '__tests__') continue
+      out.push(...walk(full))
+      continue
+    }
+
+    if (/\.(tsx|ts)$/.test(entry)) out.push(full)
+  }
+
+  return out
+}
+
+const files = walk(srcRoot)
+const issues = []
+
+function issueKey(issue) {
+  return `${issue.rule}:${issue.id ?? issue.rel}`
+}
+
+function isProductSurface(rel) {
+  return /^src\/(?:app|components)\//.test(rel)
+}
+
+function isClientLogger(rel) {
+  return rel === 'src/lib/logging/client-logger.ts'
+}
+
+function resolveImportPath(rel, importPath) {
+  if (importPath.startsWith('@/')) return `src/${importPath.slice(2)}`
+  if (importPath.startsWith('.')) return normalizePosixPath(join(dirname(rel), importPath))
+  return null
+}
+
+function privateRouteRoot(resolvedPath) {
+  const match = resolvedPath.match(/^(.*)\/_(?:components|hooks|lib)(?:\/|$)/)
+  return match?.[1] ?? null
+}
+
+function importRecords(text) {
+  const imports = []
+  const pattern =
+    /\bimport\s+(?:type\s+)?(?:[^'"]+?\s+from\s+)?['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g
+  for (const match of text.matchAll(pattern)) {
+    imports.push({ path: match[1] ?? match[2], kind: match[1] ? 'static' : 'dynamic' })
+  }
+  return imports
+}
+
+function matchesModule(importPath, moduleName) {
+  return importPath === moduleName || importPath.startsWith(`${moduleName}/`)
+}
+
+function isHeavyImportAllowed(rel, config) {
+  return config.files.has(rel) || config.prefixes.some((prefix) => rel.startsWith(prefix))
+}
+
+for (const file of files) {
+  const rel = toPosixPath(relative(root, file))
+  const text = readFileSync(file, 'utf8')
+
+  if (
+    text.includes("from '@/components/ui/dialog'") &&
+    /\bDialog(Content)?\b/.test(text) &&
+    !allow.dialogContent.has(rel)
+  ) {
+    issues.push({
+      rel,
+      rule: 'dialog-shell',
+      message: 'Use DialogShell for new dialogs instead of direct Dialog/DialogContent.',
+    })
+  }
+
+  if (/role=["']tablist["']/.test(text) && !allow.tablist.has(rel)) {
+    issues.push({
+      rel,
+      rule: 'tabs',
+      message: 'Use CountedTabs/LineTabs/Tabs instead of raw role="tablist".',
+    })
+  }
+
+  if (/^['"]use client['"]/.test(text) && /src\/app\/.+\/page\.tsx$/.test(rel)) {
+    issues.push({
+      rel,
+      rule: 'client-page',
+      message: 'Prefer a Server Component page wrapper plus a route-local Client Component.',
+    })
+  }
+
+  if (/queryKey:\s*\[[^\]]+]/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'raw-query-key',
+      message: 'Prefer feature query key factories for new TanStack Query keys.',
+    })
+  }
+
+  if (isProductSurface(rel) && /\bfetch\s*\(/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'raw-fetch',
+      message: 'Move raw fetch calls into lib/api, lib/sse, or a focused low-level helper.',
+    })
+  }
+
+  if (isProductSurface(rel) && /\b(?:localStorage|sessionStorage)\b|document\.cookie/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'browser-storage',
+      message:
+        'Move browser storage and cookie access into explicit lib helpers so auth-sensitive state stays centralized.',
+    })
+  }
+
+  if (!isClientLogger(rel) && /\bconsole\.(?:log|debug|info|warn|error)\b/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'direct-console',
+      message: 'Use client logging helpers instead of direct console calls in src.',
+    })
+  }
+
+  if (
+    !allow.htmlSink.has(rel) &&
+    /\bdangerouslySetInnerHTML\b|\b(?:innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment)\b|\bDOMParser\b|\bparseFromString\b/.test(
+      text,
+    )
+  ) {
+    issues.push({
+      rel,
+      rule: 'unsafe-html-sink',
+      message: 'Route HTML/SVG sinks through audited renderers or explicit allowlisted helpers.',
+    })
+  }
+
+  if (!allow.windowOpen.has(rel) && /\bwindow\.open\s*\(/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'direct-window-open',
+      message: 'Use browser window helpers for URL validation and opener policy.',
+    })
+  }
+
+  if (
+    /target=["']_blank["']/.test(text) &&
+    !/rel=["'][^"']*noopener[^"']*noreferrer[^"']*["']|rel=["'][^"']*noreferrer[^"']*noopener[^"']*["']/.test(
+      text,
+    )
+  ) {
+    issues.push({
+      rel,
+      rule: 'target-blank-rel',
+      message: 'External blank-target links must include rel="noopener noreferrer".',
+    })
+  }
+
+  if (
+    isProductSurface(rel) &&
+    /\btoLocale(?:String|DateString|TimeString)\s*\(|\bnew\s+Intl\.(?:DateTimeFormat|NumberFormat|RelativeTimeFormat)\b/.test(
+      text,
+    )
+  ) {
+    issues.push({
+      rel,
+      rule: 'display-formatting',
+      message: 'Use display formatting helpers instead of ad hoc locale/date/number formatting.',
+    })
+  }
+
+  if (!allow.emptyStatePrimitive.has(rel) && /\bmoldy-empty-state(?:-icon)?\b/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'common-empty-state',
+      message: 'Use the shared EmptyState primitive instead of direct moldy-empty-state classes.',
+    })
+  }
+
+  if (!allow.pageHeaderPrimitive.has(rel) && /\bmoldy-page-(?:title|kicker)\b/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'common-page-header',
+      message: 'Use PageHeader, PageShell, or ResourcePage instead of direct page title classes.',
+    })
+  }
+
+  if (
+    !allow.resourceSurfacePrimitive.has(rel) &&
+    /\bmoldy-resource-(?:panel|panel-toolbar|panel-body|card)(?!-)\b/.test(text)
+  ) {
+    issues.push({
+      rel,
+      rule: 'common-resource-surface',
+      message:
+        'Use ResourcePage, ResourcePanel, ResourceGrid, or ResourceListCard instead of direct resource surface classes.',
+    })
+  }
+
+  for (const { path: importPath, kind } of importRecords(text)) {
+    const resolvedPath = resolveImportPath(rel, importPath)
+    if (!resolvedPath) continue
+
+    const targetPrivateRoot = privateRouteRoot(resolvedPath)
+    if (targetPrivateRoot && !rel.startsWith(`${targetPrivateRoot}/`)) {
+      issues.push({
+        id: `${rel}->${resolvedPath}`,
+        rel,
+        rule: 'private-route-import',
+        message: 'Do not import another route segment private folder.',
+      })
+    }
+
+    if (/^src\/components\/ui\//.test(rel) && resolvedPath.startsWith('src/lib/hooks/')) {
+      issues.push({
+        id: `${rel}->${resolvedPath}`,
+        rel,
+        rule: 'ui-domain-hook-import',
+        message: 'UI primitives must not import domain hooks.',
+      })
+    }
+
+    if (kind === 'static' && /^src\/app\//.test(rel) && heavyRouteComponents.has(importPath)) {
+      issues.push({
+        id: `${rel}->${importPath}`,
+        rel,
+        rule: 'heavy-route-component-import',
+        message: 'Route shells must lazy-load heavy viewer/island components.',
+      })
+    }
+  }
+
+  for (const { path: importPath } of importRecords(text)) {
+    const heavyConfig = heavyClientImports.find((config) =>
+      matchesModule(importPath, config.module),
+    )
+    if (heavyConfig && !isHeavyImportAllowed(rel, heavyConfig)) {
+      issues.push({
+        id: `${rel}->${importPath}`,
+        rel,
+        rule: 'heavy-client-import',
+        message: 'Heavy client dependencies must stay inside approved lazy islands/providers.',
+      })
+    }
+  }
+
+  if (/\/index\.(?:ts|tsx)$/.test(rel)) {
+    issues.push({
+      rel,
+      rule: 'barrel-index',
+      message: 'Avoid new barrel index files; import concrete modules directly.',
+    })
+  }
+
+  if (isProductSurface(rel) && /from\s+['"]@\/lib\/api\/(?!client['"])[^'"]+['"]/.test(text)) {
+    issues.push({
+      rel,
+      rule: 'direct-api-import',
+      message:
+        'Route product data access through feature hooks instead of direct domain API imports.',
+    })
+  }
+}
+
+for (const issue of issues) {
+  console.log(`${issue.rule}: ${issue.rel} - ${issue.message}`)
+}
+
+console.log(`frontend architecture issues: ${issues.length}`)
+
+if (strict) {
+  const blockingIssues = issues.filter((issue) => !strictBaseline.has(issueKey(issue)))
+  console.log(`frontend architecture strict blocking issues: ${blockingIssues.length}`)
+  if (blockingIssues.length > 0) exit(1)
+}

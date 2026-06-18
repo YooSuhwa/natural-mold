@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { credentialsApi } from '@/lib/api/credentials'
+import { credentialQueryKeys } from '@/lib/query-keys/credentials'
 import type { PreviewTestRequest } from '@/lib/types/credential'
 
 export function useTestCredential() {
@@ -9,9 +10,9 @@ export function useTestCredential() {
   return useMutation({
     mutationFn: (id: string) => credentialsApi.test(id),
     onSuccess: (_data, id) => {
-      qc.invalidateQueries({ queryKey: ['credentials'] })
-      qc.invalidateQueries({ queryKey: ['credentials', id] })
-      qc.invalidateQueries({ queryKey: ['credential-audit-logs', id] })
+      qc.invalidateQueries({ queryKey: credentialQueryKeys.all })
+      qc.invalidateQueries({ queryKey: credentialQueryKeys.detail(id) })
+      qc.invalidateQueries({ queryKey: credentialQueryKeys.auditLogs(id) })
     },
   })
 }

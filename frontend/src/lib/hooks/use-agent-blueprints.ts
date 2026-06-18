@@ -3,15 +3,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { agentBlueprintApi } from '@/lib/api/marketplace'
+import { agentQueryKeys } from '@/lib/query-keys/agents'
+import { agentBlueprintQueryKeys } from '@/lib/query-keys/agent-blueprints'
 import type { CreateAgentFromBlueprintBody } from '@/lib/types/marketplace'
 
 import { requireQueryId } from './query-id'
 
-const AGENT_BLUEPRINTS_KEY = ['agent-blueprints'] as const
-
 export function useAgentBlueprints(enabled = true) {
   return useQuery({
-    queryKey: AGENT_BLUEPRINTS_KEY,
+    queryKey: agentBlueprintQueryKeys.all,
     queryFn: () => agentBlueprintApi.list(),
     enabled,
     staleTime: 30_000,
@@ -20,7 +20,7 @@ export function useAgentBlueprints(enabled = true) {
 
 export function useAgentBlueprint(blueprintId: string | null | undefined) {
   return useQuery({
-    queryKey: ['agent-blueprints', blueprintId],
+    queryKey: agentBlueprintQueryKeys.detail(blueprintId),
     queryFn: () => agentBlueprintApi.get(requireQueryId(blueprintId, 'blueprintId')),
     enabled: !!blueprintId,
   })
@@ -38,8 +38,8 @@ export function useCreateAgentFromBlueprint() {
       readonly body: CreateAgentFromBlueprintBody
     }) => agentBlueprintApi.createAgent(blueprintId, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: AGENT_BLUEPRINTS_KEY })
-      qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: agentBlueprintQueryKeys.all })
+      qc.invalidateQueries({ queryKey: agentQueryKeys.all })
     },
   })
 }

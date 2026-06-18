@@ -27,15 +27,13 @@ import {
   clampSidebarWidth,
   sidebarWidthAtom,
   SIDEBAR_COLLAPSE_THRESHOLD_PX,
-  SIDEBAR_WIDTH_COOKIE_MAX_AGE,
-  SIDEBAR_WIDTH_COOKIE_NAME,
   SIDEBAR_WIDTH_DEFAULT_PX,
   SIDEBAR_WIDTH_MAX_PX,
   SIDEBAR_WIDTH_MIN_PX,
+  writeSidebarOpenCookie,
+  writeSidebarWidthCookie,
 } from '@/lib/stores/sidebar-store'
 
-const SIDEBAR_COOKIE_NAME = 'sidebar_state'
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH_MOBILE = '18rem'
 const SIDEBAR_WIDTH_ICON = '3rem'
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b'
@@ -103,8 +101,7 @@ function SidebarProvider({
       }
       setPreviewSidebarWidth(null)
 
-      // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+      writeSidebarOpenCookie(openState)
     },
     [setOpenProp, open],
   )
@@ -127,7 +124,7 @@ function SidebarProvider({
       setPreviewSidebarWidth(null)
       setHasClientSidebarWidth(true)
       setStoredSidebarWidth(nextWidth)
-      document.cookie = `${SIDEBAR_WIDTH_COOKIE_NAME}=${nextWidth}; path=/; max-age=${SIDEBAR_WIDTH_COOKIE_MAX_AGE}`
+      writeSidebarWidthCookie(nextWidth)
     },
     [setStoredSidebarWidth, stableSidebarWidth],
   )

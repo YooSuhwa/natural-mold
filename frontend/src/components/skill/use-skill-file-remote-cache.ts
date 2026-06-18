@@ -47,10 +47,8 @@ export function useSkillFileRemoteCache({
     if (remoteCache.has(selectedPath)) return
 
     let cancelled = false
-    fetch(skillsApi.fileUrl(skillId, selectedPath), { credentials: 'include' })
-      .then((response) =>
-        response.ok ? response.text() : Promise.reject(new Error(`HTTP ${response.status}`)),
-      )
+    skillsApi
+      .getFileText(skillId, selectedPath)
       .then((body) => {
         if (cancelled) return
         setRemoteCache((prev) => {

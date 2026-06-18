@@ -34,7 +34,7 @@ export function FormFooter({
   return (
     <>
       {extraActions ? <div className="mr-auto flex items-center gap-2">{extraActions}</div> : null}
-      <Button variant="outline" onClick={onCancel} disabled={pending} className="min-w-[80px]">
+      <Button variant="outline" onClick={onCancel} disabled={pending} className="min-w-20">
         {cancelLabel ?? t('cancel')}
       </Button>
       <Button
@@ -43,7 +43,7 @@ export function FormFooter({
         variant={submitVariant}
         onClick={onSubmit}
         disabled={disabled || pending}
-        className="min-w-[80px]"
+        className="min-w-20"
       >
         {pending ? <Loader2Icon className="mr-1 size-4 animate-spin" /> : null}
         {submitLabel ?? t('save')}

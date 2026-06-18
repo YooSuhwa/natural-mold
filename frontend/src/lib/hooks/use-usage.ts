@@ -2,11 +2,12 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { usageApi } from '@/lib/api/usage'
+import { usageQueryKeys } from '@/lib/query-keys/usage'
 import type { UsageDailyParams } from '@/lib/types'
 
 export function useUsageSummary(period?: string) {
   return useQuery({
-    queryKey: ['usage', 'summary', period],
+    queryKey: usageQueryKeys.summary(period),
     queryFn: () => usageApi.summary(period),
     staleTime: 60_000,
   })
@@ -21,7 +22,7 @@ export function useUsageSummary(period?: string) {
  */
 export function useDailyAggregate(params: UsageDailyParams) {
   return useQuery({
-    queryKey: ['usage', 'daily', params],
+    queryKey: usageQueryKeys.daily(params),
     queryFn: () => usageApi.daily(params),
     staleTime: 60_000,
   })

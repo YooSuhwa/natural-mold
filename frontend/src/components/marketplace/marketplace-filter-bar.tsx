@@ -61,7 +61,7 @@ export function MarketplaceFilterBar({ filters, onChange, superUser }: Marketpla
 
   return (
     <ResourceToolbar className="flex-wrap">
-      <div className="relative min-w-[220px] flex-1 sm:max-w-[360px]">
+      <div className="relative min-w-56 flex-1 sm:max-w-sm">
         <SearchIcon
           className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
           aria-hidden
@@ -80,7 +80,7 @@ export function MarketplaceFilterBar({ filters, onChange, superUser }: Marketpla
           update({ source_kind: !v || v === ALL ? undefined : v })
         }
       >
-        <SelectTrigger className="min-w-[140px]" aria-label={t('sourceFilter')}>
+        <SelectTrigger className="min-w-36" aria-label={t('sourceFilter')}>
           <SelectValue>{sourceLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -99,7 +99,7 @@ export function MarketplaceFilterBar({ filters, onChange, superUser }: Marketpla
           update({ support_level: !v || v === ALL ? undefined : v })
         }
       >
-        <SelectTrigger className="min-w-[160px]" aria-label={t('supportFilter')}>
+        <SelectTrigger className="min-w-40" aria-label={t('supportFilter')}>
           <SelectValue>{supportLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -120,7 +120,7 @@ export function MarketplaceFilterBar({ filters, onChange, superUser }: Marketpla
           })
         }
       >
-        <SelectTrigger className="min-w-[160px]" aria-label={t('installStateFilter')}>
+        <SelectTrigger className="min-w-40" aria-label={t('installStateFilter')}>
           <SelectValue>{installStateLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent>

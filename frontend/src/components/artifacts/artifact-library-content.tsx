@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { DownloadIcon, FileIcon, StarIcon } from 'lucide-react'
-import { useLocale, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ArtifactPreview } from '@/components/chat/artifacts/artifact-preview'
@@ -18,19 +18,13 @@ import {
 } from '@/lib/hooks/use-artifact-library'
 import type { ArtifactKind, ArtifactSummary } from '@/lib/types'
 import { cn, resolveImageUrl } from '@/lib/utils'
+import { formatDisplayBytes, formatDisplayDateTime } from '@/lib/utils/display-format'
 
 const ALL = 'all'
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 export function ArtifactLibraryContent() {
   const t = useTranslations('artifacts')
   const tKinds = useTranslations('chat.rightRail.artifacts.kinds')
-  const locale = useLocale()
   const [q, setQ] = useState('')
   const [agentId, setAgentId] = useState(ALL)
   const [conversationId, setConversationId] = useState('')
@@ -65,11 +59,6 @@ export function ArtifactLibraryContent() {
   const selectedFromRecent =
     !hasActiveFilters && selectedId ? recent.data?.find((item) => item.id === selectedId) : null
   const selected = selectedFromItems ?? selectedFromRecent ?? items[0] ?? null
-  const formatter = useMemo(
-    () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }),
-    [locale],
-  )
-
   function selectArtifact(artifact: ArtifactSummary) {
     setSelectedId(artifact.id)
     openedMutation.mutate(artifact.id)
@@ -78,7 +67,7 @@ export function ArtifactLibraryContent() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 p-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+        <h1 className="text-2xl font-semibold text-foreground">{t('title')}</h1>
         <p className="text-sm text-muted-foreground">{t('description')}</p>
       </header>
 
@@ -141,7 +130,7 @@ export function ArtifactLibraryContent() {
                       <span className="flex shrink-0 flex-col items-end gap-1">
                         <Badge variant="outline">{tKinds(artifact.artifact_kind)}</Badge>
                         <span className="text-xs text-muted-foreground">
-                          {formatBytes(artifact.size_bytes)}
+                          {formatDisplayBytes(artifact.size_bytes)}
                         </span>
                       </span>
                     </button>
@@ -174,7 +163,7 @@ export function ArtifactLibraryContent() {
               </h2>
               {selected ? (
                 <p className="truncate text-xs text-muted-foreground">
-                  {formatter.format(new Date(selected.updated_at))}
+                  {formatDisplayDateTime(selected.updated_at)}
                 </p>
               ) : null}
             </div>
@@ -192,7 +181,7 @@ export function ArtifactLibraryContent() {
                   }
                 >
                   <StarIcon
-                    className={cn('size-4', selected.is_favorite && 'fill-current text-amber-500')}
+                    className={cn('size-4', selected.is_favorite && 'moldy-favorite-icon')}
                   />
                 </Button>
                 <Button

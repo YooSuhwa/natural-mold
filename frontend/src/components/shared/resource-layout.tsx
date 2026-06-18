@@ -46,7 +46,7 @@ function ResourcePage({
         className={cn(
           isEmbedded
             ? 'flex min-w-0 flex-col gap-5'
-            : 'mx-auto flex min-h-0 w-full max-w-[1220px] flex-1 flex-col gap-5 px-5 py-6 md:px-8',
+            : 'mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-5 px-5 py-6 md:px-8',
           contentClassName,
         )}
       >

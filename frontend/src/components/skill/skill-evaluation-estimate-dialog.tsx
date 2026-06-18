@@ -14,6 +14,7 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { formatDisplayUsd } from '@/lib/utils/display-format'
 import type { SkillEvaluationRunEstimate } from '@/lib/types/skill-evaluation'
 
 type SkillEvaluationEstimateDialogProps = {
@@ -23,14 +24,6 @@ type SkillEvaluationEstimateDialogProps = {
   readonly isPending: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly onConfirm: () => void
-}
-
-function formatUsd(value: number): string {
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 4,
-  }).format(value)
 }
 
 function roundedSeconds(value: number): number {
@@ -83,7 +76,7 @@ export function SkillEvaluationEstimateDialog({
             </div>
             <div className="flex items-center justify-between gap-3">
               <dt className="text-muted-foreground">{t('estimateCost')}</dt>
-              <dd className="font-medium">{formatUsd(estimate.estimated_cost_usd)}</dd>
+              <dd className="font-medium">{formatDisplayUsd(estimate.estimated_cost_usd)}</dd>
             </div>
             <div className="flex items-center justify-between gap-3">
               <dt className="text-muted-foreground">{t('estimateBaseline')}</dt>

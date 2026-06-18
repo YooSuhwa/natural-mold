@@ -47,6 +47,9 @@ import {
 import { compactDeepResearchMessages } from './deep-research-summary'
 import { artifactKeys } from '@/lib/api/artifacts'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
+import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
+import { agentQueryKeys } from '@/lib/query-keys/agents'
+import { conversationQueryKeys } from '@/lib/query-keys/conversations'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
 
@@ -422,7 +425,7 @@ export function useChatRuntime({
       // 는 envelope 통째로 갱신해야 한다 (이전엔 ``Message[]`` 로 가정해 prev.slice
       // TypeError 발생).
       queryClient.setQueryData<MessagesEnvelope | undefined>(
-        ['conversations', conversationId, 'messages'],
+        conversationQueryKeys.messages(conversationId),
         (prev) => (prev ? { ...prev, messages: prev.messages.slice(0, truncateAtIndex) } : prev),
       )
     },
@@ -987,7 +990,7 @@ export function useChatRuntime({
         failedActiveRunAttachIdRef.current = activeRunId
         setReconnectState('idle')
         setIsRunning(false)
-        console.error('[useChatRuntime] Active run attach failed:', err)
+        reportClientError('useChatRuntime', 'Active run attach failed:', err)
       })
       .finally(() => {
         if (attachedActiveRunIdRef.current === activeRunId) {
@@ -1068,7 +1071,7 @@ export function useChatRuntime({
       const { signal, token } = prepareStream()
       const onRunId = (id: string) => {
         runIdRef.current = id
-        queryClient.invalidateQueries({ queryKey: ['agents'] })
+        queryClient.invalidateQueries({ queryKey: agentQueryKeys.all })
       }
       const onConversationId = (id: string) => {
         conversationIdRef.current = id
@@ -1123,18 +1126,16 @@ export function useChatRuntime({
             return
           }
           toast.error(tReconnect('failed'), { id: TOAST_ID_RECONNECT_FAILED })
-          console.error('[useChatRuntime] Stream resume failed:', err)
+          reportClientError('useChatRuntime', 'Stream resume failed:', err)
         },
       })
       try {
         await consumeStream(wrapped, optimisticMsg, token)
       } catch (err) {
-        // ``llm_credential_required`` is handled in-chat by ``onFailed`` above;
-        // suppress the duplicate console.error stack trace.
         if (err instanceof StreamApiError && err.code === 'llm_credential_required') {
           return
         }
-        console.error('[useChatRuntime] Stream error:', err)
+        reportClientError('useChatRuntime', 'Stream error:', err)
       }
     },
     [
@@ -1216,7 +1217,7 @@ export function useChatRuntime({
     const runId = runIdRef.current
 
     if (!activeConversationId || !runId) {
-      console.warn('[useChatRuntime] Stop requested before server run id was available.')
+      reportClientWarning('useChatRuntime', 'Stop requested before server run id was available.')
       controller?.abort()
       return
     }
@@ -1226,8 +1227,10 @@ export function useChatRuntime({
     setChatCancelInFlight(true)
     try {
       const run = await conversationRunsApi.cancel(activeConversationId, runId)
-      queryClient.invalidateQueries({ queryKey: ['agents'] })
-      queryClient.invalidateQueries({ queryKey: ['conversations', activeConversationId] })
+      queryClient.invalidateQueries({ queryKey: agentQueryKeys.all })
+      queryClient.invalidateQueries({
+        queryKey: conversationQueryKeys.prefix(activeConversationId),
+      })
       if (run.status === 'canceling' || run.status === 'canceled') {
         cancelNoticePendingRef.current = true
         // 사용자가 취소한 run — canceling 상태가 envelope 에 active 로 남아
@@ -1236,7 +1239,11 @@ export function useChatRuntime({
         controller?.abort()
       }
     } catch (err) {
-      console.warn('[useChatRuntime] Server cancel request failed; keeping stream attached.', err)
+      reportClientWarning(
+        'useChatRuntime',
+        'Server cancel request failed; keeping stream attached.',
+        err,
+      )
     } finally {
       cancelInFlightRef.current = false
       setChatCancelInFlight(false)

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeftIcon, ClipboardListIcon, Loader2Icon, WorkflowIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
+import { storeFixInitialMessage } from '@/lib/agents/fix-message-handoff'
 import { useCreateAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
@@ -203,8 +204,7 @@ export default function ManualCreationPage() {
   async function handleCreateModeFirstMessage(msg: string) {
     try {
       const created = await createAgent.mutateAsync(buildCreateRequest())
-      // sessionStorage로 첫 메시지 carry → settings 페이지에서 자동 전송
-      sessionStorage.setItem('fix-initial-message', msg)
+      storeFixInitialMessage(msg)
       router.replace(`/agents/${created.id}/settings`)
     } catch {
       toast.error(t('toast.saveFailed'))

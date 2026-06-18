@@ -27,6 +27,7 @@ import { CredentialCreateModal } from '@/components/credential/credential-create
 import { CredentialDetailDialog } from '@/components/credential/credential-detail-dialog'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { getResourceTone, resourceStatusChipClassName } from '@/lib/resource-tones'
+import { formatDisplayDate } from '@/lib/utils/display-format'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
 import { cn } from '@/lib/utils'
 import { SettingsShell } from '../_components/settings-shell'
@@ -80,7 +81,7 @@ const CREDENTIAL_CATEGORY_LABEL_KEYS: Record<string, string> = {
 
 function formatDate(value: string | null): string {
   if (!value) return ''
-  return new Date(value).toLocaleDateString()
+  return formatDisplayDate(value, { fallback: '' })
 }
 
 function normalizeStatus(value: string | null | undefined): Exclude<CredentialStatusTab, 'all'> {
@@ -216,7 +217,7 @@ export default function CredentialsPage() {
                 />
                 <ResourceToolbar>
                   <SearchInput
-                    containerClassName="flex-1 sm:max-w-[360px]"
+                    containerClassName="flex-1 sm:max-w-sm"
                     placeholder={t('searchPlaceholder')}
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
@@ -228,7 +229,7 @@ export default function CredentialsPage() {
                 {isLoading ? (
                   <ResourceGrid minColumnWidth={252}>
                     {Array.from({ length: 6 }).map((_, index) => (
-                      <Skeleton key={index} className="moldy-skeleton-card h-[176px]" />
+                      <Skeleton key={index} className="moldy-skeleton-card h-44" />
                     ))}
                   </ResourceGrid>
                 ) : isFilteredEmpty ? (

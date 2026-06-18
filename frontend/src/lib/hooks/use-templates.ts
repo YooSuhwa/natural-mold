@@ -2,10 +2,11 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { templatesApi } from '@/lib/api/templates'
+import { templateQueryKeys } from '@/lib/query-keys/templates'
 
 export function useTemplates(category?: string) {
   return useQuery({
-    queryKey: ['templates', category],
+    queryKey: templateQueryKeys.list(category),
     queryFn: () => templatesApi.list(category),
     staleTime: 300000,
   })

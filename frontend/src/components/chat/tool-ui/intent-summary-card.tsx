@@ -30,7 +30,7 @@ function IntentSummaryHeader({
   const t = useTranslations('chat.intentSummary')
   return (
     <PhaseCardHeader variant="gradient">
-      <span className="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--builder-primary)] text-white">
+      <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--builder-primary)] text-white">
         <CheckIcon className="size-2.5" strokeWidth={3.5} />
       </span>
       <span className="moldy-ui-compact font-semibold moldy-builder-color-primary-ink">

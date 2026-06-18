@@ -9,7 +9,9 @@ import {
 } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
 import { conversationPagesContainActiveRun } from '@/lib/chat-runs/status'
+import { agentQueryKeys } from '@/lib/query-keys/agents'
 import type { Conversation, ConversationPageParams, ConversationUpdateRequest } from '@/lib/types'
+import { triggerKeys } from './use-triggers'
 
 interface ConversationPagesOptions {
   readonly enabled?: boolean
@@ -27,8 +29,10 @@ function normalizeConversationPageParams(
 
 export const conversationKeys = {
   list: (agentId: string) => ['agents', agentId, 'conversations'] as const,
+  agentPagesRoot: (agentId: string) => ['agents', agentId, 'conversations', 'page'] as const,
   pages: (agentId: string, params: Omit<ConversationPageParams, 'cursor'>) =>
     ['agents', agentId, 'conversations', 'page', params] as const,
+  globalPagesRoot: ['conversations', 'page'] as const,
   globalPages: (params: Omit<ConversationPageParams, 'cursor'>) =>
     ['conversations', 'page', params] as const,
   detail: (conversationId: string) => ['conversations', conversationId, 'detail'] as const,
@@ -53,8 +57,8 @@ export function invalidateConversationNavigators(
   if (conversationId) {
     queryClient.invalidateQueries({ queryKey: conversationKeys.detail(conversationId) })
   }
-  queryClient.invalidateQueries({ queryKey: ['conversations', 'page'] })
-  queryClient.invalidateQueries({ queryKey: ['agents', 'summary'] })
+  queryClient.invalidateQueries({ queryKey: conversationKeys.globalPagesRoot })
+  queryClient.invalidateQueries({ queryKey: agentQueryKeys.summary })
 }
 
 export function useConversations(agentId: string) {
@@ -77,7 +81,7 @@ export function useConversationPages(
       conversationsApi.page(agentId, {
         ...pageParams,
         cursor: pageParam,
-    }),
+      }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled: (options.enabled ?? true) && !!agentId,
@@ -97,7 +101,7 @@ export function useGlobalConversationPages(
       conversationsApi.globalPage({
         ...pageParams,
         cursor: pageParam,
-    }),
+      }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled: options.enabled ?? true,
@@ -173,8 +177,7 @@ export function useUpdateConversation(agentId: string) {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: ConversationUpdateRequest }) =>
       conversationsApi.update(id, data),
-    onSuccess: (_updated, variables) =>
-      invalidateConversationNavigators(qc, agentId, variables.id),
+    onSuccess: (_updated, variables) => invalidateConversationNavigators(qc, agentId, variables.id),
   })
 }
 
@@ -196,8 +199,8 @@ export function useMarkConversationRead(agentId: string) {
       )
       qc.invalidateQueries({ queryKey: conversationKeys.list(agentId), refetchType: 'inactive' })
       invalidateConversationNavigators(qc, agentId, conversation.id)
-      qc.invalidateQueries({ queryKey: ['triggers'] })
-      qc.invalidateQueries({ queryKey: ['triggers', 'summary'] })
+      qc.invalidateQueries({ queryKey: triggerKeys.all })
+      qc.invalidateQueries({ queryKey: triggerKeys.summary })
     },
   })
 }

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { FormFooter } from '@/components/shared/form-footer'
 import { useCreateTextSkill, useUploadPackageSkill } from '@/lib/hooks/use-skills'
+import { formatDisplayBytes } from '@/lib/utils/display-format'
 
 export function SkillCreateChatTab({
   onCancel,
@@ -184,7 +185,7 @@ export function SkillCreatePackageTab({
         />
         {file ? (
           <p className="rounded-md border border-border/60 bg-muted/40 px-2 py-1.5 text-xs">
-            <span className="font-medium">{file.name}</span> · {(file.size / 1024).toFixed(1)} kb
+            <span className="font-medium">{file.name}</span> · {formatDisplayBytes(file.size)}
           </p>
         ) : null}
       </div>

@@ -68,7 +68,7 @@ async function installDocxSkill(
     request,
     `${API_BASE}/api/marketplace/items/${stringField(item, 'id', 'docx skill')}/install`,
     csrfHeaders,
-    { install_mode: 'reuse_or_update' },
+    { install_mode: 'overwrite_existing' },
   )
 
   if (!isRecord(installed)) throw new Error('skill install did not return an object')

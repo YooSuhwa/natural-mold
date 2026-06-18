@@ -78,9 +78,7 @@ function Header({ icon, title, description, actions, className, srOnly }: Header
         </div>
       ) : null}
       <div className="min-w-0 flex-1">
-        <DialogTitle className="text-base font-semibold tracking-tight text-foreground">
-          {title}
-        </DialogTitle>
+        <DialogTitle className="text-base font-semibold text-foreground">{title}</DialogTitle>
         {description ? (
           <DialogDescription className="mt-1 text-sm text-muted-foreground">
             {description}
@@ -137,7 +135,7 @@ function Sidebar({ className, children }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'moldy-dialog-sidebar w-[260px] shrink-0 overflow-y-auto border-r border-border/60 bg-muted/30 px-4 py-5',
+        'moldy-dialog-sidebar w-64 shrink-0 overflow-y-auto border-r border-border/60 bg-muted/30 px-4 py-5',
         className,
       )}
     >

@@ -197,7 +197,7 @@ export function PackageSkillEditor({
         }}
       />
     ),
-    sidebarClassName: 'w-[260px]',
+    sidebarClassName: 'w-64',
     body: (
       <>
         {showCredentials ? <SkillCredentialBindingsPanel skillId={skillId} /> : null}

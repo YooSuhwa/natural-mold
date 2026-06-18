@@ -52,7 +52,7 @@ export function ToolboxNode({ data }: { data: ToolboxNodeData }) {
         position={Position.Left}
         className="moldy-flow-handle moldy-flow-handle-toolbox"
       />
-      <div className="moldy-flow-node nowheel w-[220px]">
+      <div className="moldy-flow-node nowheel w-56">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.toolbox')}
@@ -66,7 +66,7 @@ export function ToolboxNode({ data }: { data: ToolboxNodeData }) {
           {selectedTools.length === 0 && selectedMcpTools.length === 0 ? (
             <p className="px-2 py-2 text-xs text-muted-foreground">{t('toolbox.empty')}</p>
           ) : (
-            <div className="max-h-[160px] overflow-y-auto">
+            <div className="max-h-40 overflow-y-auto">
               {selectedTools.map((tool) => (
                 <div
                   key={tool.id}

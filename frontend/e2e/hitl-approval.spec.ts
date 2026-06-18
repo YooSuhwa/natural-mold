@@ -7,13 +7,16 @@ import type { APIRequestContext } from '@playwright/test'
 // document-artifact-viewers; this asserts the reject path: rejecting skips the
 // tool, so no artifact is produced. Setup mirrors the document spec (install a
 // system-seed skill, attach it, drive the keyless scripted model via E2E_DOCX).
-const API = process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
+const API =
+  process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
 const EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 
 async function login(request: APIRequestContext): Promise<Record<string, string>> {
-  const res = await request.post(`${API}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } })
+  const res = await request.post(`${API}/api/auth/login`, {
+    data: { email: EMAIL, password: PASSWORD },
+  })
   expect(res.ok()).toBeTruthy()
   return { 'X-CSRF-Token': (await res.json()).csrf_token as string }
 }
@@ -35,19 +38,18 @@ test.describe('HITL tool approval — reject', () => {
     csrf = await login(request)
 
     // Install the seeded docx skill so execute_in_skill is available.
-    const items = await getJson<{ id: string; slug: string; installation: { installed_resource_id?: string | null } }[]>(
-      request,
-      `${API}/api/marketplace/items?resource_type=skill&source_kind=system_seed&limit=200`,
-    )
+    const items = await getJson<
+      { id: string; slug: string; installation: { installed_resource_id?: string | null } }[]
+    >(request, `${API}/api/marketplace/items?resource_type=skill&source_kind=system_seed&limit=200`)
     const docx = items.find((i) => i.slug === 'docx-document')
-    expect(docx, 'docx-document skill should be seeded').toBeTruthy()
+    if (!docx) throw new Error('docx-document skill should be seeded')
     const install = (await (
-      await request.post(`${API}/api/marketplace/items/${docx!.id}/install`, {
+      await request.post(`${API}/api/marketplace/items/${docx.id}/install`, {
         headers: csrf,
         data: { install_mode: 'overwrite_existing' },
       })
     ).json()) as { installed_skill_id?: string | null }
-    const skillId = install.installed_skill_id ?? docx!.installation.installed_resource_id
+    const skillId = install.installed_skill_id ?? docx.installation.installed_resource_id
     expect(skillId).toBeTruthy()
 
     const models = await getJson<{ id: string; provider: string; model_name: string }[]>(
@@ -56,7 +58,8 @@ test.describe('HITL tool approval — reject', () => {
     )
     const scripted = models.find(
       (m) => m.provider === 'e2e_scripted' && m.model_name === 'document-artifact-scripted',
-    )!
+    )
+    if (!scripted) throw new Error('document-artifact-scripted model should be seeded')
 
     const agent = (await (
       await request.post(`${API}/api/agents`, {

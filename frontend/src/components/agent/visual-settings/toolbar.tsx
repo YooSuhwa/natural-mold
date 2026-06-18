@@ -40,7 +40,7 @@ export function Toolbar({ agentId, agentName, onSave, isSaving, mode = 'edit' }:
         >
           <ArrowLeftIcon className="size-4" />
         </Button>
-        <span className="text-sm font-medium truncate max-w-[200px]">{agentName}</span>
+        <span className="text-sm font-medium truncate max-w-52">{agentName}</span>
       </div>
 
       <div className="flex items-center gap-1">

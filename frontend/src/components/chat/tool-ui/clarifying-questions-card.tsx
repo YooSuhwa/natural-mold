@@ -23,7 +23,7 @@ export function ClarifyingQuestionsCard({ label, items }: ClarifyingQuestionsCar
       <div className="mb-2 moldy-ui-compact font-semibold moldy-builder-color-muted">
         {resolvedLabel}
       </div>
-      <ul className="m-0 list-disc pl-[18px] text-sm leading-relaxed moldy-builder-color-ink-2">
+      <ul className="m-0 list-disc pl-5 text-sm leading-relaxed moldy-builder-color-ink-2">
         {items.map((item, idx) => {
           const text = typeof item === 'string' ? item : item.text
           const hint = typeof item === 'string' ? undefined : item.hint

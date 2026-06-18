@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Activity, Plus, Eye, EyeOff, Wrench, Lightbulb, Zap } from 'lucide-react'
@@ -28,19 +28,30 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useModels } from '@/lib/hooks/use-models'
 import { useSession } from '@/lib/auth/session'
 import { useModelHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
+import { formatDisplayNumber } from '@/lib/utils/display-format'
 import type { Model } from '@/lib/types/model'
 import type { HealthCheckEntry } from '@/lib/types/health'
 import { SettingsShell } from '../_components/settings-shell'
+
+const subscribeHydration = () => () => undefined
+const getHydratedSnapshot = () => true
+const getServerHydratedSnapshot = () => false
 
 export default function ModelsPage() {
   const t = useTranslations('model')
   const { data: user } = useSession()
   const isSuper = Boolean(user?.is_super_user)
+  const sessionHydrated = useSyncExternalStore(
+    subscribeHydration,
+    getHydratedSnapshot,
+    getServerHydratedSnapshot,
+  )
   // Default ON for operators so the new visibility column is discoverable;
   // regular users can't pass include_hidden (backend would 403) so we pin
   // the toggle off + disabled for them.
   const [showHidden, setShowHidden] = useState(true)
-  const effectiveShowHidden = isSuper && showHidden
+  const showOperatorControls = sessionHydrated && isSuper
+  const effectiveShowHidden = showOperatorControls && showHidden
   const { data: models, isLoading } = useModels({
     includeHidden: effectiveShowHidden,
   })
@@ -119,7 +130,7 @@ export default function ModelsPage() {
         header: t('catalog.columns.model'),
         cell: ({ row }) => (
           <div
-            className={`flex min-w-[220px] items-center gap-2 ${
+            className={`flex min-w-56 items-center gap-2 ${
               row.original.is_visible ? '' : 'opacity-60'
             }`}
           >
@@ -153,7 +164,7 @@ export default function ModelsPage() {
         accessorFn: (row) => row.cost_per_input_token ?? 0,
         header: t('catalog.columns.price'),
         cell: ({ row }) => (
-          <div className="flex min-w-[118px] flex-col gap-0.5 font-mono moldy-ui-caption tabular-nums">
+          <div className="flex min-w-32 flex-col gap-0.5 font-mono moldy-ui-caption tabular-nums">
             <span>
               <span className="mr-1 font-sans text-muted-foreground">{t('inputModalities')}</span>
               {formatTokenPrice(row.original.cost_per_input_token)}
@@ -172,7 +183,7 @@ export default function ModelsPage() {
         cell: ({ row }) =>
           row.original.context_window ? (
             <span className="font-mono text-xs tabular-nums">
-              {row.original.context_window.toLocaleString()}
+              {formatDisplayNumber(row.original.context_window)}
             </span>
           ) : (
             <span className="text-xs text-muted-foreground">—</span>
@@ -188,7 +199,7 @@ export default function ModelsPage() {
             return <span className="text-xs text-muted-foreground">—</span>
           }
           return (
-            <div className="flex min-w-[132px] flex-wrap gap-1">
+            <div className="flex min-w-32 flex-wrap gap-1">
               <RankingBadge rankingKey="lmarena" value={rankings?.lmarena} />
               <RankingBadge rankingKey="livebench" value={rankings?.livebench} />
               <RankingBadge rankingKey="aa_index" value={rankings?.aa_index} />
@@ -313,7 +324,7 @@ export default function ModelsPage() {
         />
         {t('catalog.filters.hasBenchmark')}
       </label>
-      {isSuper && (
+      {showOperatorControls && (
         <label
           htmlFor="show-hidden"
           className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"
@@ -340,12 +351,12 @@ export default function ModelsPage() {
   )
 
   return (
-    <SettingsShell wide>
+    <SettingsShell wide className="max-w-7xl">
       <ResourcePage
         title={t('catalog.title')}
         description={t('catalog.description')}
         variant="embedded"
-        contentClassName="max-w-[1180px] pb-20"
+        contentClassName="pb-20"
         action={
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="size-4" />

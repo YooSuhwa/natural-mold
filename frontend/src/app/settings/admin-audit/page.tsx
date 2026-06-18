@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 
 import { SettingsShell } from '../_components/settings-shell'
-import { AuditEventsContent } from '../audit/_components/audit-events-content'
+import { AuditEventsContent } from '../_components/audit-events-content'
 import { useSession } from '@/lib/auth/session'
 
 export default function AdminAuditSettingsPage() {

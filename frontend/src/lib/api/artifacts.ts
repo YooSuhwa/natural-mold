@@ -23,6 +23,10 @@ export const artifactKeys = {
   all: ['artifacts'] as const,
   conversation: (conversationId: string | null | undefined) =>
     ['artifacts', 'conversation', conversationId ?? 'none'] as const,
+  content: (artifactId: string | null | undefined, versionId: string | null | undefined) =>
+    ['artifacts', 'content', artifactId ?? 'none', versionId ?? 'none'] as const,
+  binary: (artifactId: string, versionId: string | null | undefined) =>
+    ['artifact-binary', artifactId, versionId] as const,
   library: (params: ArtifactLibraryParams) => ['artifacts', 'library', params] as const,
   stats: ['artifacts', 'stats'] as const,
   recent: (limit: number) => ['artifacts', 'recent', limit] as const,
@@ -34,6 +38,12 @@ export function listConversationArtifacts(conversationId: string): Promise<Artif
 
 export function getArtifactTextContent(artifactId: string): Promise<ArtifactTextContent> {
   return apiFetch<ArtifactTextContent>(`/api/artifacts/${artifactId}/content`)
+}
+
+export async function getArtifactArrayBuffer(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url, { credentials: 'include' })
+  if (!response.ok) throw new Error(`Failed to fetch artifact: ${response.status}`)
+  return response.arrayBuffer()
 }
 
 export function listArtifactLibrary(

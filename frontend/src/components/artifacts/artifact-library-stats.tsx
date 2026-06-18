@@ -3,15 +3,10 @@
 import { FileIcon, StarIcon, TimerIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ArtifactLibraryStats } from '@/lib/types'
+import { formatDisplayBytes } from '@/lib/utils/display-format'
 
 interface Props {
   stats?: ArtifactLibraryStats
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export function ArtifactLibraryStatsView({ stats }: Props) {
@@ -22,7 +17,7 @@ export function ArtifactLibraryStatsView({ stats }: Props) {
       key: 'size',
       icon: FileIcon,
       label: t('size'),
-      value: formatBytes(stats?.total_size_bytes ?? 0),
+      value: formatDisplayBytes(stats?.total_size_bytes ?? 0),
     },
     {
       key: 'favorite',

@@ -3,13 +3,16 @@ import type { APIRequestContext } from '@playwright/test'
 
 // Schedule triggers: create an interval trigger via the API, then verify the
 // settings → triggers tab renders it (name + "매 N분" schedule summary).
-const API = process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
+const API =
+  process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
 const EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 
 async function login(request: APIRequestContext): Promise<Record<string, string>> {
-  const res = await request.post(`${API}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } })
+  const res = await request.post(`${API}/api/auth/login`, {
+    data: { email: EMAIL, password: PASSWORD },
+  })
   expect(res.ok()).toBeTruthy()
   return { 'X-CSRF-Token': (await res.json()).csrf_token as string }
 }
@@ -29,7 +32,8 @@ test.describe('Agent schedule triggers', () => {
     }[]
     // Scheduled triggers require a "fixed"-identity agent; its credential is
     // resolved from the model's default (the seeded LiteLLM model is bound).
-    const litellmModel = models.find((m) => m.provider === 'openai_compatible')!
+    const litellmModel = models.find((m) => m.provider === 'openai_compatible')
+    if (!litellmModel) throw new Error('openai_compatible LiteLLM model should be seeded')
     const agent = (await (
       await request.post(`${API}/api/agents`, {
         headers: csrf,

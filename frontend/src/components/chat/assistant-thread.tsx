@@ -70,6 +70,8 @@ import {
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
+import { formatCompactCount, formatDisplayUsd } from '@/lib/utils/display-format'
+import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
 import { ImeSafeComposerInput } from '@/components/chat/ime-safe-composer-input'
 import {
   MessageEditComposerInput,
@@ -338,7 +340,7 @@ function CopyButton() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.warn('[CopyButton] failed to copy message text', err)
+      reportClientWarning('CopyButton', 'failed to copy message text', err)
     } finally {
       setIsCopying(false)
     }
@@ -455,7 +457,7 @@ function BranchPicker() {
       if (!conversationId || pendingCheckpointId) return
       const checkpointId = siblingCheckpoints[targetIdx]
       if (!checkpointId) {
-        console.warn('[BranchPicker] missing checkpoint id for sibling idx', targetIdx)
+        reportClientWarning('BranchPicker', 'missing checkpoint id for sibling idx', targetIdx)
         return
       }
       setPendingCheckpointId(checkpointId)
@@ -467,7 +469,7 @@ function BranchPicker() {
         })
         dispatchMoldyBranchSwitched({ conversationId, checkpointId })
       } catch (err) {
-        console.error('[BranchPicker] switch failed', err)
+        reportClientError('BranchPicker', 'switch failed', err)
       } finally {
         setPendingCheckpointId(null)
       }
@@ -560,7 +562,7 @@ function UserMessageEditor() {
   return (
     <MessageEditComposerRoot className="moldy-chat-card flex flex-col gap-2 p-2">
       <MessageEditComposerInput
-        className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-hidden"
+        className="min-h-10 w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-hidden"
         autoFocus
       />
       <div className="flex items-center justify-end gap-1">
@@ -822,7 +824,7 @@ export function AssistantThread({
             <div
               className={cn(
                 'mx-auto w-full px-4 py-4',
-                isBuilder ? 'max-w-[880px] space-y-6' : 'max-w-3xl space-y-4',
+                isBuilder ? 'max-w-4xl space-y-6' : 'max-w-3xl space-y-4',
               )}
             >
               <ThreadPrimitive.Messages>
@@ -941,7 +943,7 @@ function ThreadComposer({
           'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-hidden',
           'placeholder:text-muted-foreground',
           'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
-          compact ? 'min-h-[40px] max-h-[120px]' : 'min-h-[44px] max-h-[160px]',
+          compact ? 'min-h-10 max-h-32' : 'min-h-11 max-h-40',
         )}
         rows={1}
       />
@@ -994,7 +996,7 @@ function StopButton() {
     try {
       aui.thread().cancelRun()
     } catch (err) {
-      console.warn('[StopButton] cancelRun error:', err)
+      reportClientWarning('StopButton', 'cancelRun error:', err)
     }
   }
   return (
@@ -1006,7 +1008,7 @@ function StopButton() {
       data-moldy-stop-button="true"
       className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-input bg-background px-3 moldy-ui-compact font-medium text-foreground/80 transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
     >
-      <span aria-hidden className="block size-[9px] rounded-sm bg-foreground/80" />
+      <span aria-hidden className="block size-2.5 rounded-sm bg-foreground/80" />
       {tMsg('stop')}
     </button>
   )
@@ -1031,7 +1033,7 @@ function AttachmentChip() {
       <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">
         {isImage ? <ImageIcon className="size-3.5" /> : <FileIcon className="size-3.5" />}
       </span>
-      <span className="max-w-[180px] truncate">
+      <span className="max-w-48 truncate">
         <AttachmentPrimitive.Name />
       </span>
       {isUploading && (
@@ -1081,12 +1083,13 @@ function TokenBar({
 }
 
 function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return String(n)
+  return formatCompactCount(n, { thousandSuffix: 'k' })
 }
 
 function formatCost(n: number): string {
-  if (n < 0.01) return `$${n.toFixed(4)}`
-  return `$${n.toFixed(2)}`
+  const decimals = n < 0.01 ? 4 : 2
+  return formatDisplayUsd(n, {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: decimals,
+  })
 }

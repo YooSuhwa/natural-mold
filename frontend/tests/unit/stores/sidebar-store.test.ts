@@ -6,16 +6,22 @@ import {
   sidebarOpenAtom,
   sidebarWidthAtom,
   SIDEBAR_COLLAPSE_THRESHOLD_PX,
+  SIDEBAR_OPEN_COOKIE_MAX_AGE,
+  SIDEBAR_OPEN_COOKIE_NAME,
   SIDEBAR_WIDTH_COOKIE_MAX_AGE,
   SIDEBAR_WIDTH_COOKIE_NAME,
   SIDEBAR_WIDTH_DEFAULT_PX,
   SIDEBAR_WIDTH_MAX_PX,
   SIDEBAR_WIDTH_MIN_PX,
+  writeSidebarOpenCookie,
+  writeSidebarWidthCookie,
 } from '@/lib/stores/sidebar-store'
 
 describe('sidebar-store atoms', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    document.cookie = `${SIDEBAR_OPEN_COOKIE_NAME}=; path=/; max-age=0`
+    document.cookie = `${SIDEBAR_WIDTH_COOKIE_NAME}=; path=/; max-age=0`
   })
 
   it('sidebarOpenAtom defaults to true', () => {
@@ -32,6 +38,8 @@ describe('sidebar-store atoms', () => {
   })
 
   it('exposes the sidebar width contract', () => {
+    expect(SIDEBAR_OPEN_COOKIE_NAME).toBe('sidebar_state')
+    expect(SIDEBAR_OPEN_COOKIE_MAX_AGE).toBe(60 * 60 * 24 * 7)
     expect(SIDEBAR_WIDTH_COOKIE_NAME).toBe('moldy_sidebar_width')
     expect(SIDEBAR_WIDTH_COOKIE_MAX_AGE).toBe(60 * 60 * 24 * 400)
     expect(SIDEBAR_WIDTH_DEFAULT_PX).toBe(256)
@@ -52,6 +60,14 @@ describe('sidebar-store atoms', () => {
     expect(readSidebarWidthCookie('180')).toBe(224)
     expect(readSidebarWidthCookie('300')).toBe(300)
     expect(readSidebarWidthCookie('900')).toBe(420)
+  })
+
+  it('writes sidebar preference cookies', () => {
+    writeSidebarOpenCookie(false)
+    writeSidebarWidthCookie(900)
+
+    expect(document.cookie).toContain(`${SIDEBAR_OPEN_COOKIE_NAME}=false`)
+    expect(document.cookie).toContain(`${SIDEBAR_WIDTH_COOKIE_NAME}=420`)
   })
 
   it('persists a clamped sidebar width preference', () => {

@@ -34,9 +34,7 @@ interface RightPanelProps {
   onRequestDeleteTrigger: (target: { id: string; description: string }) => void
   /** 새 에이전트 만들기 모드 — agentId 의존 탭은 placeholder */
   createMode?: boolean
-  /** createMode일 때 Fix 첫 메시지 콜백 (createAgent + redirect 부모 처리) */
   onCreateModeFirstMessage?: (msg: string) => Promise<void>
-  /** Fix 탭 마운트 시 자동 전송할 초기 메시지 (sessionStorage carry용) */
   initialFixMessage?: string
 }
 

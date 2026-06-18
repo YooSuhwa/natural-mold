@@ -2,11 +2,13 @@
 
 import { useState, useCallback } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { ClockIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
-import { ScheduleDialog } from '../dialogs/schedule-dialog'
+import { ScheduleDialog } from '@/features/schedules/components/schedule-dialog'
+import { ScheduleListCard } from '@/features/schedules/components/schedule-list-card'
+import { formatTriggerSummary } from '@/features/schedules/lib/cron-labels'
 import type { AgentTrigger, TriggerCreateRequest, TriggerUpdateRequest } from '@/lib/types'
 
 export interface ScheduleNodeData {
@@ -22,26 +24,13 @@ function useFormatTriggerSummary() {
   const t = useTranslations('agent.schedule')
 
   return useCallback(
-    (trigger: AgentTrigger): string => {
-      const config = trigger.schedule_config ?? {}
-      if (trigger.trigger_type === 'one_time') {
-        return config.scheduled_at ?? trigger.name
-      }
-
-      if (trigger.trigger_type === 'interval') {
-        const mins = config.interval_minutes ?? 10
-        return t('everyNMin', { mins })
-      }
-
-      const cron = config.cron_expression ?? ''
-      const parts = cron.split(' ')
-      if (parts.length !== 5) return cron
-
-      const [min, hour, dom, , dow] = parts
-      const time = `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
-
-      if (dow !== '*') {
-        const dayMap: Record<string, string> = {
+    (trigger: AgentTrigger): string =>
+      formatTriggerSummary(trigger, {
+        everyNMin: (mins) => t('everyNMin', { mins }),
+        atTimeDays: (time, days) => t('atTimeDays', { time, days }),
+        atTimeDay: (time, day) => t('atTimeDay', { time, day }),
+        atTimeEveryDay: (time) => t('atTimeEveryDay', { time }),
+        weekdays: {
           '0': t('weekdays.sun'),
           '1': t('weekdays.mon'),
           '2': t('weekdays.tue'),
@@ -49,26 +38,15 @@ function useFormatTriggerSummary() {
           '4': t('weekdays.thu'),
           '5': t('weekdays.fri'),
           '6': t('weekdays.sat'),
-        }
-        const days = dow
-          .split(',')
-          .map((d) => dayMap[d] ?? d)
-          .join(', ')
-        return t('atTimeDays', { time, days })
-      }
-
-      if (dom !== '*') {
-        return t('atTimeDay', { time, day: dom })
-      }
-
-      return t('atTimeEveryDay', { time })
-    },
+        },
+      }),
     [t],
   )
 }
 
 export function ScheduleNode({ data }: NodeProps) {
   const t = useTranslations('agent.schedule')
+  const tSettings = useTranslations('agent.settings')
   const formatTriggerSummary = useFormatTriggerSummary()
 
   const {
@@ -107,7 +85,7 @@ export function ScheduleNode({ data }: NodeProps) {
 
   return (
     <>
-      <div className="moldy-flow-node w-[220px] nowheel">
+      <div className="moldy-flow-node w-56 nowheel">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
@@ -126,34 +104,17 @@ export function ScheduleNode({ data }: NodeProps) {
               {t('noSchedules')}
             </div>
           ) : (
-            <div className="max-h-[200px] overflow-y-auto p-1.5 space-y-1">
+            <div className="max-h-52 space-y-1 overflow-y-auto p-1.5">
               {triggers.map((trigger) => (
-                <div
+                <ScheduleListCard
                   key={trigger.id}
-                  className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-muted/50"
-                >
-                  <ClockIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate moldy-ui-caption font-medium">{trigger.name}</div>
-                    <div className="truncate moldy-ui-micro text-muted-foreground">
-                      {formatTriggerSummary(trigger)}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                    <button
-                      onClick={() => handleOpenEdit(trigger)}
-                      className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-                    >
-                      <PencilIcon className="size-3" />
-                    </button>
-                    <button
-                      onClick={() => onDeleteTrigger(trigger.id)}
-                      className="rounded p-0.5 text-muted-foreground hover:text-destructive"
-                    >
-                      <TrashIcon className="size-3" />
-                    </button>
-                  </div>
-                </div>
+                  trigger={trigger}
+                  summary={formatTriggerSummary(trigger)}
+                  editLabel={tSettings('trigger.edit')}
+                  deleteLabel={tSettings('trigger.delete')}
+                  onEdit={handleOpenEdit}
+                  onDelete={onDeleteTrigger}
+                />
               ))}
             </div>
           )}

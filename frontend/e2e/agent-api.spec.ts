@@ -7,13 +7,16 @@ import type { APIRequestContext } from '@playwright/test'
 // /api/agent-api endpoints. Only fixed-identity agents are deployable
 // (AGENT_API_FIXED_IDENTITY_REQUIRED), so the agent is seeded with
 // identity_mode: 'fixed'.
-const API = process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
+const API =
+  process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
 const EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 
 async function login(request: APIRequestContext): Promise<Record<string, string>> {
-  const res = await request.post(`${API}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } })
+  const res = await request.post(`${API}/api/auth/login`, {
+    data: { email: EMAIL, password: PASSWORD },
+  })
   expect(res.ok()).toBeTruthy()
   return { 'X-CSRF-Token': (await res.json()).csrf_token as string }
 }
@@ -40,7 +43,8 @@ test.describe('Agent API deployment & keys', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')!
+    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    if (!scripted) throw new Error('e2e_scripted model should be seeded')
     // API deployment requires a fixed-identity agent; the deploy flow itself
     // never runs the model, so the keyless scripted model is fine.
     const agent = (await (
@@ -92,7 +96,11 @@ test.describe('Agent API deployment & keys', () => {
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
     await dialog.locator('input').first().fill(keyName)
-    await dialog.locator('label').filter({ hasText: '배포된 모든 에이전트' }).getByRole('checkbox').click()
+    await dialog
+      .locator('label')
+      .filter({ hasText: '배포된 모든 에이전트' })
+      .getByRole('checkbox')
+      .click()
     await dialog.getByRole('button', { name: '만들기' }).click()
 
     // 4. The one-time secret is revealed; capture it and acknowledge.
@@ -106,20 +114,26 @@ test.describe('Agent API deployment & keys', () => {
     const keyRow = page.locator('.moldy-card').filter({ hasText: keyName })
     await expect(keyRow.getByText('활성')).toBeVisible({ timeout: 15_000 })
     await expect
-      .poll(async () => {
-        const key = (await listKeys(request)).find((k) => k.name === keyName)
-        return key && !key.revoked_at ? 'active' : 'missing'
-      }, { timeout: 15_000 })
+      .poll(
+        async () => {
+          const key = (await listKeys(request)).find((k) => k.name === keyName)
+          return key && !key.revoked_at ? 'active' : 'missing'
+        },
+        { timeout: 15_000 },
+      )
       .toBe('active')
 
     // 6. Revoke it through the UI; the badge flips and the API reflects it.
     await keyRow.getByRole('button', { name: 'API 키 폐기' }).click()
     await expect(keyRow.getByText('폐기됨')).toBeVisible({ timeout: 15_000 })
     await expect
-      .poll(async () => {
-        const key = (await listKeys(request)).find((k) => k.name === keyName)
-        return key?.revoked_at ? 'revoked' : 'active'
-      }, { timeout: 15_000 })
+      .poll(
+        async () => {
+          const key = (await listKeys(request)).find((k) => k.name === keyName)
+          return key?.revoked_at ? 'revoked' : 'active'
+        },
+        { timeout: 15_000 },
+      )
       .toBe('revoked')
   })
 })

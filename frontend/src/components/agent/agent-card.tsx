@@ -59,7 +59,7 @@ export function AgentCard({ agent, onPublish }: AgentCardProps) {
           <div className="flex items-start gap-3">
             <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="md" />
             <div className="min-w-0 flex-1">
-              <CardTitle className="truncate moldy-ui-card-title font-semibold tracking-tight transition-colors group-hover:text-primary-strong">
+              <CardTitle className="truncate moldy-ui-card-title font-semibold transition-colors group-hover:text-primary-strong">
                 {agent.name}
               </CardTitle>
               <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -86,7 +86,7 @@ export function AgentCard({ agent, onPublish }: AgentCardProps) {
               />
             </button>
           </div>
-          <CardDescription className="line-clamp-2 min-h-[2.5rem] moldy-ui-body-sm leading-relaxed">
+          <CardDescription className="line-clamp-2 min-h-10 moldy-ui-body-sm leading-relaxed">
             {agent.description || t('noDescription')}
           </CardDescription>
         </CardHeader>

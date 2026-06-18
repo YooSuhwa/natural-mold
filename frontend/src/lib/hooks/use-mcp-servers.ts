@@ -2,6 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { mcpApi } from '@/lib/api/mcp'
+import { mcpServerQueryKeys } from '@/lib/query-keys/mcp-servers'
+import { requiredQueryValue } from './required-query-value'
 import type {
   McpFromRegistryRequest,
   McpImportRequest,
@@ -10,12 +12,9 @@ import type {
   McpServerUpdateRequest,
 } from '@/lib/types/mcp'
 
-const KEY_LIST = ['mcp-servers'] as const
-const KEY_REGISTRY = ['mcp-server-types'] as const
-
 export function useMcpServers() {
   return useQuery({
-    queryKey: KEY_LIST,
+    queryKey: mcpServerQueryKeys.all,
     queryFn: mcpApi.list,
     staleTime: 30_000,
   })
@@ -23,8 +22,8 @@ export function useMcpServers() {
 
 export function useMcpServer(id: string | null | undefined) {
   return useQuery({
-    queryKey: ['mcp-servers', id],
-    queryFn: () => mcpApi.get(id!),
+    queryKey: mcpServerQueryKeys.detail(id),
+    queryFn: () => mcpApi.get(requiredQueryValue(id, 'MCP server id')),
     enabled: !!id,
   })
 }
@@ -33,7 +32,7 @@ export function useCreateMcpServer() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: McpServerCreateRequest) => mcpApi.create(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: mcpServerQueryKeys.all }),
   })
 }
 
@@ -43,8 +42,8 @@ export function useUpdateMcpServer() {
     mutationFn: ({ id, data }: { id: string; data: McpServerUpdateRequest }) =>
       mcpApi.update(id, data),
     onSuccess: (_data, { id }) => {
-      qc.invalidateQueries({ queryKey: KEY_LIST })
-      qc.invalidateQueries({ queryKey: ['mcp-servers', id] })
+      qc.invalidateQueries({ queryKey: mcpServerQueryKeys.all })
+      qc.invalidateQueries({ queryKey: mcpServerQueryKeys.detail(id) })
     },
   })
 }
@@ -53,7 +52,7 @@ export function useDeleteMcpServer() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => mcpApi.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: mcpServerQueryKeys.all }),
   })
 }
 
@@ -62,8 +61,8 @@ export function useTestMcpServer() {
   return useMutation({
     mutationFn: (id: string) => mcpApi.test(id),
     onSuccess: (_data, id) => {
-      qc.invalidateQueries({ queryKey: KEY_LIST })
-      qc.invalidateQueries({ queryKey: ['mcp-servers', id] })
+      qc.invalidateQueries({ queryKey: mcpServerQueryKeys.all })
+      qc.invalidateQueries({ queryKey: mcpServerQueryKeys.detail(id) })
     },
   })
 }
@@ -73,8 +72,8 @@ export function useDiscoverMcpTools() {
   return useMutation({
     mutationFn: (id: string) => mcpApi.discover(id),
     onSuccess: (_data, id) => {
-      qc.invalidateQueries({ queryKey: KEY_LIST })
-      qc.invalidateQueries({ queryKey: ['mcp-servers', id] })
+      qc.invalidateQueries({ queryKey: mcpServerQueryKeys.all })
+      qc.invalidateQueries({ queryKey: mcpServerQueryKeys.detail(id) })
     },
   })
 }
@@ -87,7 +86,7 @@ export function useProbeMcpServer() {
 
 export function useAllMcpTools() {
   return useQuery({
-    queryKey: ['mcp-tools', 'all'],
+    queryKey: mcpServerQueryKeys.allTools,
     queryFn: mcpApi.listAllTools,
     staleTime: 30_000,
   })
@@ -98,7 +97,7 @@ export function useAllMcpTools() {
 /** One-click MCP server templates. Cached for 5 min — registry rarely changes. */
 export function useMcpRegistry() {
   return useQuery({
-    queryKey: KEY_REGISTRY,
+    queryKey: mcpServerQueryKeys.registry,
     queryFn: mcpApi.listRegistry,
     staleTime: 5 * 60_000,
   })
@@ -108,7 +107,7 @@ export function useCreateFromRegistry() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: McpFromRegistryRequest) => mcpApi.createFromRegistry(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: mcpServerQueryKeys.all }),
   })
 }
 
@@ -120,7 +119,7 @@ export function useImportMcpServers() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: McpImportRequest) => mcpApi.importServers(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: mcpServerQueryKeys.all }),
   })
 }
 

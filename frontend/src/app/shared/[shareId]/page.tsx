@@ -88,7 +88,7 @@ function SharedHeader() {
       <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-5 sm:px-6">
         <Link
           href="/"
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground hover:text-primary-strong"
+          className="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-primary-strong"
         >
           <span className="flex size-7 items-center justify-center rounded-lg bg-primary-strong/15 text-primary-strong">
             <span aria-hidden className="text-base">
@@ -115,10 +115,10 @@ function Hero({ data, messageCount }: { data: SharedConversationView; messageCou
 
   return (
     <section className="pt-16 pb-2 text-center sm:pt-24">
-      <p className="moldy-ui-caption font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <p className="moldy-ui-caption moldy-ui-eyebrow font-semibold text-muted-foreground">
         {t('eyebrow')}
       </p>
-      <h1 className="mt-5 text-3xl font-light leading-tight tracking-tight text-foreground sm:text-4xl">
+      <h1 className="mt-5 text-3xl font-light leading-tight text-foreground sm:text-4xl">
         {data.conversation_title ?? t('titleFallback')}
       </h1>
 
@@ -136,11 +136,7 @@ function Hero({ data, messageCount }: { data: SharedConversationView; messageCou
           {t('footer.messageCount', { count: messageCount })}
         </Badge>
         {data.agent.description ? (
-          <Badge
-            variant="secondary"
-            className="max-w-[260px] truncate"
-            title={data.agent.description}
-          >
+          <Badge variant="secondary" className="max-w-64 truncate" title={data.agent.description}>
             {data.agent.description}
           </Badge>
         ) : null}
@@ -255,7 +251,7 @@ function DividerLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3">
       <span className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
-      <span className="select-none moldy-ui-micro font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <span className="select-none moldy-ui-micro moldy-ui-eyebrow font-semibold text-muted-foreground">
         {children}
       </span>
       <span className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
@@ -330,9 +326,7 @@ function SharedFooter({ messageCount, createdAt }: { messageCount: number; creat
     <footer className="mx-auto mt-10 w-full max-w-3xl px-5 pb-12 sm:px-6">
       <div className="moldy-card p-6 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:p-8">
         <div className="text-center sm:text-left">
-          <p className="text-base font-semibold tracking-tight text-foreground">
-            {t('footer.title')}
-          </p>
+          <p className="text-base font-semibold text-foreground">{t('footer.title')}</p>
           <p className="mt-1 text-xs text-muted-foreground">{t('footer.description')}</p>
         </div>
         <Link
@@ -393,7 +387,7 @@ function SharedError() {
       <div className="moldy-error-icon mb-4 size-14">
         <AlertCircleIcon className="size-6" />
       </div>
-      <h1 className="text-lg font-semibold tracking-tight text-foreground">{t('error.title')}</h1>
+      <h1 className="text-lg font-semibold text-foreground">{t('error.title')}</h1>
       <p className="mt-2 max-w-sm text-sm text-muted-foreground">{t('error.description')}</p>
       <Link href="/" data-variant="solid" className="moldy-action-pill moldy-status-success mt-6">
         <ArrowLeftIcon className="size-4" />

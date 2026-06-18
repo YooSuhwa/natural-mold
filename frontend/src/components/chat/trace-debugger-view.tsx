@@ -17,6 +17,7 @@ import { conversationsApi } from '@/lib/api/conversations'
 import { toAgentPrismTraceViewerData } from '@/lib/agent-prism/trace-adapter'
 import type { DebugTraceDetailResponse, DebugTraceSummary } from '@/lib/types'
 import { conversationKeys, useConversationDebugTraces } from '@/lib/hooks/use-conversations'
+import { formatDisplayDateTime, formatDisplayNumber } from '@/lib/utils/display-format'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -99,7 +100,7 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
                 <Button
                   variant="outline"
                   size="sm"
-                  render={<a href={firstLangfuseUrl} target="_blank" rel="noreferrer" />}
+                  render={<a href={firstLangfuseUrl} target="_blank" rel="noopener noreferrer" />}
                 >
                   <ExternalLinkIcon className="size-3.5" />
                   {t('openLogs')}
@@ -291,11 +292,11 @@ function RunInfoPanel({ traces, spans }: { traces: DebugTraceSummary[]; spans: T
           </Badge>
         </div>
         <div className="space-y-4 text-sm">
-          <InfoRow label={t('traceCount')} value={formatNumber(traces.length)} />
-          <InfoRow label={t('startedAt')} value={formatDateTime(startedAt)} />
-          <InfoRow label={t('completedAt')} value={formatDateTime(completedAt)} />
+          <InfoRow label={t('traceCount')} value={formatDisplayNumber(traces.length)} />
+          <InfoRow label={t('startedAt')} value={formatTraceDateTime(startedAt)} />
+          <InfoRow label={t('completedAt')} value={formatTraceDateTime(completedAt)} />
           <InfoRow label={t('totalDuration')} value={formatDuration(totalDuration || null)} />
-          <InfoRow label={t('totalTokens')} value={formatNumber(totalTokens || null)} />
+          <InfoRow label={t('totalTokens')} value={formatDisplayNumber(totalTokens || null)} />
         </div>
       </section>
 
@@ -379,29 +380,24 @@ function dateBoundary(
   return selected?.value ?? null
 }
 
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-  return new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).format(date)
+function formatTraceDateTime(value: string | null | undefined): string {
+  return formatDisplayDateTime(value, {
+    format: {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    },
+  })
 }
 
 function formatDuration(value: number | null | undefined): string {
   if (value == null) return '-'
   if (value < 1000) return `${value}ms`
   return `${(value / 1000).toFixed(2)}s`
-}
-
-function formatNumber(value: number | null | undefined): string {
-  return value == null ? '-' : new Intl.NumberFormat('ko-KR').format(value)
 }
 
 function TraceSkeleton() {

@@ -156,7 +156,7 @@ function ToolsSkillsBox({
       ) : isEmpty ? (
         <div className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</div>
       ) : (
-        <div className="max-h-[180px] divide-y overflow-y-auto">
+        <div className="max-h-44 divide-y overflow-y-auto">
           {items.map((item) => (
             <Row
               key={item.key}
@@ -227,7 +227,7 @@ function MiddlewaresBox({
           {t('middlewaresEmpty')}
         </div>
       ) : (
-        <div className="max-h-[180px] divide-y overflow-y-auto">
+        <div className="max-h-44 divide-y overflow-y-auto">
           {selected.map((mw) => (
             <Row
               key={mw.type}

@@ -2,17 +2,16 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { healthApi } from '@/lib/api/health'
+import { healthQueryKeys } from '@/lib/query-keys/health'
 import type { HealthCheckEntry, HealthTargetKind, RunHealthCheckInput } from '@/lib/types/health'
-
-const KEY_MODELS = ['health', 'models'] as const
-const KEY_MCP = ['health', 'mcp-servers'] as const
+import { requiredQueryValue } from './required-query-value'
 
 const DEFAULT_HISTORY_LIMIT = 30
 
 /** Latest snapshot per model — drives the "Status" column on /models. */
 export function useModelHealth() {
   return useQuery({
-    queryKey: KEY_MODELS,
+    queryKey: healthQueryKeys.models,
     queryFn: healthApi.listModels,
     // Health is volatile by definition. 60s is a fair compromise between
     // freshness and avoiding a request storm during heavy table renders.
@@ -23,7 +22,7 @@ export function useModelHealth() {
 /** Latest snapshot per MCP server — drives the "Status" column on /mcp-servers. */
 export function useMcpHealth() {
   return useQuery({
-    queryKey: KEY_MCP,
+    queryKey: healthQueryKeys.mcpServers,
     queryFn: healthApi.listMcpServers,
     staleTime: 60_000,
   })
@@ -39,8 +38,9 @@ export function useHealthHistory(
   limit: number = DEFAULT_HISTORY_LIMIT,
 ) {
   return useQuery({
-    queryKey: ['health', 'history', targetKind, targetId, limit] as const,
-    queryFn: () => healthApi.history(targetKind, targetId!, limit),
+    queryKey: healthQueryKeys.history(targetKind, targetId, limit),
+    queryFn: () =>
+      healthApi.history(targetKind, requiredQueryValue(targetId, 'health target id'), limit),
     enabled: !!targetId,
     staleTime: 30_000,
   })
@@ -59,7 +59,8 @@ export function useRunHealthCheck() {
   return useMutation({
     mutationFn: (input: RunHealthCheckInput) => healthApi.runCheck(input),
     onSuccess: (data, input) => {
-      const listKey = input.targetKind === 'model' ? KEY_MODELS : KEY_MCP
+      const listKey =
+        input.targetKind === 'model' ? healthQueryKeys.models : healthQueryKeys.mcpServers
       // Optimistic write: replace this target's row with the fresh probe so
       // the UI reflects the new status immediately, before the refetch lands.
       qc.setQueryData<HealthCheckEntry[] | undefined>(listKey, (prev) => {
@@ -73,7 +74,7 @@ export function useRunHealthCheck() {
       })
       qc.invalidateQueries({ queryKey: listKey })
       qc.invalidateQueries({
-        queryKey: ['health', 'history', input.targetKind, input.targetId],
+        queryKey: healthQueryKeys.history(input.targetKind, input.targetId),
       })
     },
   })

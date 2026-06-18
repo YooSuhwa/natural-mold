@@ -89,7 +89,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
         position={Position.Left}
         className="moldy-flow-handle moldy-flow-handle-agent"
       />
-      <div className="moldy-flow-node nowheel w-[280px]">
+      <div className="moldy-flow-node nowheel w-72">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.agent')}

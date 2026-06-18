@@ -300,7 +300,8 @@ function EditFileToolView({ args, statusType }: { args: EditFileArgs; statusType
   const t = useTranslations('chat.toolCall.file')
   const filePath = args?.file_path ?? args?.path
   const filename = extractFilename(filePath)
-  const hasEdit = args?.old_string && args?.new_string
+  const oldString = args?.old_string
+  const newString = args?.new_string
 
   return (
     <FileToolPill
@@ -309,9 +310,9 @@ function EditFileToolView({ args, statusType }: { args: EditFileArgs; statusType
       filePath={filePath}
       status={pillStatusFromAssistantUi(statusType)}
     >
-      {hasEdit && (
-        <DiffBlock oldStr={args.old_string!} newStr={args.new_string!} filename={filename} />
-      )}
+      {typeof oldString === 'string' && typeof newString === 'string' ? (
+        <DiffBlock oldStr={oldString} newStr={newString} filename={filename} />
+      ) : null}
     </FileToolPill>
   )
 }

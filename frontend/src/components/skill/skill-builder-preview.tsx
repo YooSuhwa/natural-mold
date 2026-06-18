@@ -14,7 +14,7 @@ export function SkillBuilderPreview({ session, draft }: SkillBuilderPreviewProps
   const t = useTranslations('skill.builderDialog')
   if (!draft) {
     return (
-      <div className="moldy-muted-panel flex min-h-[220px] items-center justify-center p-6 text-center text-sm text-muted-foreground">
+      <div className="moldy-muted-panel flex min-h-56 items-center justify-center p-6 text-center text-sm text-muted-foreground">
         {t('previewEmpty')}
       </div>
     )

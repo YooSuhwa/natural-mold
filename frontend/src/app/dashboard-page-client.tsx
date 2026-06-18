@@ -107,7 +107,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0 flex-1 space-y-1.5">
             <p className="text-sm font-medium text-muted-foreground">{t(greetingKey)},</p>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            <h1 className="text-2xl font-bold sm:text-3xl">
               {t('greetingName', { name: userName })}
             </h1>
             <p className="pt-1 text-sm text-muted-foreground sm:text-base">
@@ -131,24 +131,20 @@ export default function DashboardPage() {
       <div className="grid shrink-0 grid-cols-1 gap-4 md:grid-cols-[1.4fr_1fr]">
         {/* Primary: 대화로 만들기 */}
         <Link href="/agents/new" className="moldy-card-link group">
-          <Card
-            className={cn('moldy-dashboard-action-primary h-full min-h-[152px] gap-3 p-1.5 ring-0')}
-          >
+          <Card className={cn('moldy-dashboard-action-primary h-full min-h-40 gap-3 p-1.5 ring-0')}>
             <CardContent className="flex h-full flex-col gap-3 p-5">
               <div className="flex items-center gap-3">
                 <div className="moldy-dashboard-action-icon moldy-status-success flex size-11 shrink-0 items-center justify-center">
-                  <MessageSquareIcon className="size-[22px]" />
+                  <MessageSquareIcon className="size-5" />
                 </div>
                 <div className="flex items-center gap-2">
-                  <p className="text-base font-semibold tracking-tight">
-                    {t('quickAction.conversational.label')}
-                  </p>
+                  <p className="text-base font-semibold">{t('quickAction.conversational.label')}</p>
                   <Badge className="moldy-dashboard-action-badge moldy-ui-micro tracking-wide hover:opacity-95">
                     {t('recommended')}
                   </Badge>
                 </div>
               </div>
-              <p className="max-w-[36ch] text-sm leading-relaxed text-muted-foreground">
+              <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
                 {t('quickAction.conversational.description')}
               </p>
               <div className="moldy-status-success moldy-status-text mt-auto flex items-center gap-1 text-sm font-semibold transition-transform group-hover:translate-x-0.5">
@@ -163,14 +159,14 @@ export default function DashboardPage() {
         <div className="grid grid-rows-2 gap-4">
           <SecondaryActionCard
             href="/agents/new/manual"
-            icon={<PenLineIcon className="size-[18px]" />}
+            icon={<PenLineIcon className="size-5" />}
             label={t('quickAction.manual.label')}
             description={t('quickAction.manual.description')}
             tone="violet"
           />
           <SecondaryActionCard
             href="/agents/new/template"
-            icon={<LayoutTemplateIcon className="size-[18px]" />}
+            icon={<LayoutTemplateIcon className="size-5" />}
             label={t('quickAction.template.label')}
             description={t('quickAction.template.description')}
             tone="sky"
@@ -182,7 +178,7 @@ export default function DashboardPage() {
       <div className="scrollbar-hide flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-1 pb-16">
         {agentsLoading ? (
           <div>
-            <h2 className="mb-4 text-lg font-semibold tracking-tight">{t('myAgents')}</h2>
+            <h2 className="mb-4 text-lg font-semibold">{t('myAgents')}</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
                 <AgentCardSkeleton key={i} />
@@ -192,7 +188,7 @@ export default function DashboardPage() {
         ) : agents && agents.length > 0 ? (
           <div>
             <div className="mb-4 flex flex-wrap items-center gap-3">
-              <h2 className="text-lg font-semibold tracking-tight">
+              <h2 className="text-lg font-semibold">
                 {t('myAgents')}
                 <span className="ml-2 text-sm font-medium text-muted-foreground">
                   {filteredAgents.length}
@@ -255,10 +251,11 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="moldy-empty-state p-8">
-                <SearchIcon className="mb-2 size-6 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">{t('noSearchResults')}</p>
-              </div>
+              <EmptyState
+                className="p-8"
+                icon={<SearchIcon className="size-6 text-muted-foreground" />}
+                title={t('noSearchResults')}
+              />
             )}
           </div>
         ) : (
@@ -318,14 +315,14 @@ function SecondaryActionCard({ href, icon, label, description, tone }: Secondary
         <CardContent className="flex h-full items-center gap-3 p-4">
           <div
             className={cn(
-              'moldy-dashboard-action-icon flex size-[38px] shrink-0 items-center justify-center',
+              'moldy-dashboard-action-icon flex size-10 shrink-0 items-center justify-center',
               iconBg,
             )}
           >
             {icon}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold tracking-tight">{label}</p>
+            <p className="text-sm font-semibold">{label}</p>
             <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{description}</p>
           </div>
           <span className="moldy-dashboard-arrow">

@@ -1250,6 +1250,23 @@
     box-shadow: 0 0 0 3px color-mix(in oklch, var(--moldy-status-color) 16%, transparent);
   }
 
+  .moldy-favorite-icon {
+    color: var(--status-warn);
+    fill: currentColor;
+  }
+
+  .moldy-data-type-string {
+    color: color-mix(in oklch, var(--status-success) 78%, var(--foreground));
+  }
+
+  .moldy-data-type-number {
+    color: color-mix(in oklch, var(--status-info) 78%, var(--foreground));
+  }
+
+  .moldy-data-type-boolean {
+    color: color-mix(in oklch, var(--status-accent) 78%, var(--foreground));
+  }
+
   .moldy-status-pill {
     border: 1px solid var(--border);
     border-radius: var(--moldy-radius-pill);
@@ -1882,6 +1899,11 @@
   .moldy-ui-caption {
     font-size: 0.6875rem;
     line-height: 1rem;
+  }
+
+  .moldy-ui-eyebrow {
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
   }
 
   .moldy-ui-meta {

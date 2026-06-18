@@ -7,7 +7,6 @@ import { useTranslations } from 'next-intl'
 
 import { useDailyAggregate, useUsageSummary } from '@/lib/hooks/use-usage'
 import type { UsageDailyEntry, UsageGroupBy, UsageMetric, UsageTargetKind } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
   SelectTrigger,
@@ -29,6 +28,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ResourcePage, ResourcePanel } from '@/components/shared/resource-layout'
+import { SettingsSectionCard } from '@/components/shared/settings-section-card'
 import { SpendLineChart } from '@/components/usage/spend-line-chart'
 import { SpendBarChart } from '@/components/usage/spend-bar-chart'
 import { formatCostUsd, formatRequests, formatTokens } from '@/components/usage/format'
@@ -163,12 +163,12 @@ export default function UsagePage() {
   ]
 
   return (
-    <SettingsShell wide>
+    <SettingsShell wide className="max-w-7xl">
       <ResourcePage
         title={t('pageTitle')}
         description={t('subtitle')}
         variant="embedded"
-        contentClassName="max-w-[1180px] gap-6 pb-20"
+        contentClassName="gap-6 pb-20"
       >
         {/* Summary cards — current month rollup, independent of filters. */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -190,7 +190,7 @@ export default function UsagePage() {
                   {t('filters.range')}
                 </span>
                 <Select value={preset} onValueChange={(v) => v && setPreset(v as RangePreset)}>
-                  <SelectTrigger className="w-[160px]" data-testid="range-preset-select">
+                  <SelectTrigger className="w-40" data-testid="range-preset-select">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -212,7 +212,7 @@ export default function UsagePage() {
                       type="date"
                       value={customFrom}
                       onChange={(e) => setCustomFrom(e.target.value)}
-                      className="w-[160px]"
+                      className="w-40"
                       data-testid="custom-from"
                     />
                   </div>
@@ -224,7 +224,7 @@ export default function UsagePage() {
                       type="date"
                       value={customTo}
                       onChange={(e) => setCustomTo(e.target.value)}
-                      className="w-[160px]"
+                      className="w-40"
                       data-testid="custom-to"
                     />
                   </div>
@@ -293,9 +293,9 @@ export default function UsagePage() {
         </ResourcePanel>
 
         {/* Raw data table + CSV export */}
-        <Card className="moldy-card">
-          <CardHeader className="flex flex-row items-center justify-between gap-3 pb-2">
-            <CardTitle className="text-sm">{t('tableTitle')}</CardTitle>
+        <SettingsSectionCard
+          title={t('tableTitle')}
+          actions={
             <Button
               variant="outline"
               size="sm"
@@ -306,52 +306,51 @@ export default function UsagePage() {
               <DownloadIcon className="size-3.5" />
               {t('downloadCsv')}
             </Button>
-          </CardHeader>
-          <CardContent>
-            {entries.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">{t('empty.title')}</p>
-            ) : (
-              <div className="max-h-[420px] overflow-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {groupBy === 'date' ? (
-                        <TableHead>{t('table.date')}</TableHead>
-                      ) : (
-                        <TableHead>{t('table.target')}</TableHead>
-                      )}
-                      <TableHead className="text-right">{t('table.tokensIn')}</TableHead>
-                      <TableHead className="text-right">{t('table.tokensOut')}</TableHead>
-                      <TableHead className="text-right">{t('table.requests')}</TableHead>
-                      <TableHead className="text-right">{t('table.cost')}</TableHead>
+          }
+        >
+          {entries.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">{t('empty.title')}</p>
+          ) : (
+            <div className="max-h-[420px] overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {groupBy === 'date' ? (
+                      <TableHead>{t('table.date')}</TableHead>
+                    ) : (
+                      <TableHead>{t('table.target')}</TableHead>
+                    )}
+                    <TableHead className="text-right">{t('table.tokensIn')}</TableHead>
+                    <TableHead className="text-right">{t('table.tokensOut')}</TableHead>
+                    <TableHead className="text-right">{t('table.requests')}</TableHead>
+                    <TableHead className="text-right">{t('table.cost')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {entries.map((e, i) => (
+                    <TableRow key={`${e.date ?? ''}-${e.target_id ?? ''}-${i}`}>
+                      <TableCell className="font-medium">
+                        {groupBy === 'date' ? (e.date ?? '—') : renderTargetLink(e, targetKind)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatTokens(e.total_tokens_in)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatTokens(e.total_tokens_out)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatRequests(e.request_count)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCostUsd(e.total_cost_usd)}
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {entries.map((e, i) => (
-                      <TableRow key={`${e.date ?? ''}-${e.target_id ?? ''}-${i}`}>
-                        <TableCell className="font-medium">
-                          {groupBy === 'date' ? (e.date ?? '—') : renderTargetLink(e, targetKind)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatTokens(e.total_tokens_in)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatTokens(e.total_tokens_out)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatRequests(e.request_count)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatCostUsd(e.total_cost_usd)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </SettingsSectionCard>
       </ResourcePage>
     </SettingsShell>
   )
@@ -401,14 +400,10 @@ function PillTabs<T extends string>({
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <Card className="moldy-card">
-      <CardHeader className="pb-1">
-        <CardTitle className="text-sm font-medium text-foreground/70">{label}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <span className="text-2xl font-bold tabular-nums">{value}</span>
-      </CardContent>
-    </Card>
+    <section className="moldy-card p-4">
+      <p className="text-sm font-medium text-foreground/70">{label}</p>
+      <span className="mt-2 block text-2xl font-bold tabular-nums">{value}</span>
+    </section>
   )
 }
 

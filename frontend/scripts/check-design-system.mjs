@@ -22,6 +22,9 @@ const SKIP_FILE_PATTERNS = [
   /(^|\/)src\/components\/ui\//,
 ]
 
+const SURFACE_CLASS_TOKEN_RE = /(?<![A-Za-z0-9_-])(?:moldy-card|moldy-panel)(?![A-Za-z0-9_-])/
+const MOLDY_CARD_CLASS_TOKEN_RE = /(?<![A-Za-z0-9_-])moldy-card(?![A-Za-z0-9_-])/
+
 const ZERO_TOLERANCE_RULES = [
   {
     id: 'large-radius-utility',
@@ -39,10 +42,26 @@ const ZERO_TOLERANCE_RULES = [
     message: 'map raw hex color utilities into Moldy semantic tokens',
   },
   {
+    id: 'direct-palette-utility',
+    pattern:
+      /\b(?:bg|text|border|ring|fill|stroke|from|via|to)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}(?:\/[0-9]{1,3})?\b/g,
+    message: 'use Moldy semantic color tokens/status classes instead of direct palette utilities',
+  },
+  {
     id: 'resource-tone-background',
     pattern: /\bbg-\[var\(--moldy-(?:mint|sky|violet|amber|rose)\)\]/g,
     message:
       'use neutral resource cards; keep tone colors to icons, dots, status signals, and interaction states',
+  },
+  {
+    id: 'arbitrary-spacing-utility',
+    pattern: /!?\b-?(?:gap|p|px|py|pt|pr|pb|pl|m|mx|my|mt|mr|mb|ml)-\[[^\]]+\]/g,
+    message: 'use Tailwind spacing scale tokens or a Moldy component spacing API',
+  },
+  {
+    id: 'arbitrary-icon-size',
+    pattern: /!?\bsize-\[[^\]]+\]/g,
+    message: 'use Tailwind size scale tokens or a shared icon/button size primitive',
   },
   {
     id: 'arbitrary-text-class',
@@ -58,6 +77,263 @@ const ZERO_TOLERANCE_RULES = [
     id: 'transition-all',
     pattern: /\btransition-all\b/g,
     message: 'list transition properties explicitly',
+  },
+]
+
+const ARBITRARY_LAYOUT_ALLOWLIST = [
+  {
+    filePath: 'src/app/dashboard-page-client.tsx',
+    tokenPattern: /^grid-cols-\[1\.4fr_1fr\]$/,
+    reason: 'dashboard primary/secondary metric balance',
+  },
+  {
+    filePath: 'src/app/agents/[agentId]/conversations/[conversationId]/traces/page.tsx',
+    tokenPattern: /^h-\[calc\(100vh-12rem\)\]$/,
+    reason: 'trace route loading skeleton fills remaining viewport height',
+  },
+  {
+    filePath: 'src/app/agents/[agentId]/settings/page.tsx',
+    tokenPattern: /^min-h-\[420px\]$/,
+    reason: 'settings form route keeps a stable editor shell floor',
+  },
+  {
+    filePath: 'src/app/agents/[agentId]/visual-settings/page.tsx',
+    tokenPattern: /^h-\[calc\(100vh-10rem\)\]$/,
+    reason: 'visual builder loading skeleton fills remaining viewport height',
+  },
+  {
+    filePath: 'src/app/agents/new/manual/page.tsx',
+    tokenPattern: /^(?:h-\[calc\(100vh-10rem\)\]|min-h-\[420px\])$/,
+    reason: 'manual builder route keeps a stable editor shell floor',
+  },
+  {
+    filePath: 'src/app/marketplace/[item-id]/page.tsx',
+    tokenPattern: /^grid-cols-\[120px_1fr\]$/,
+    reason: 'marketplace metadata label/value grid',
+  },
+  {
+    filePath: 'src/app/settings/_components/audit-events-content.tsx',
+    tokenPattern:
+      /^grid-cols-\[(?:minmax\(0,1fr\)_180px_150px|minmax\(0,1fr\)_340px|170px_minmax\(0,1fr\)_160px|96px_minmax\(0,1fr\))\]$/,
+    reason: 'audit event rows use table-like responsive columns',
+  },
+  {
+    filePath: 'src/app/settings/loading.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(0,1fr\)_280px\]$/,
+    reason: 'settings skeleton mirrors the settings navigation rail layout',
+  },
+  {
+    filePath: 'src/app/settings/page.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(0,1fr\)_280px\]$/,
+    reason: 'settings layout keeps a fixed secondary navigation rail',
+  },
+  {
+    filePath: 'src/app/settings/usage/page.tsx',
+    tokenPattern: /^max-h-\[420px\]$/,
+    reason: 'usage table scroll viewport',
+  },
+  {
+    filePath: 'src/app/shared/[shareId]/page.tsx',
+    tokenPattern: /^max-w-\[85%\]$/,
+    reason: 'shared transcript bubble width ratio',
+  },
+  {
+    filePath: 'src/components/agent-prism/SpanCard/SpanCardConnector.tsx',
+    tokenPattern: /^h-\[7px\]$/,
+    reason: 'trace connector pixel alignment',
+  },
+  {
+    filePath: 'src/components/agent-prism/TraceViewer/TraceViewer.tsx',
+    tokenPattern: /^h-\[calc\(100vh-50px\)\]$/,
+    reason: 'trace viewer fills viewport below its toolbar',
+  },
+  {
+    filePath: 'src/components/agent/sub-agents-dialog.tsx',
+    tokenPattern: /^(?:h|max-h)-\[60vh\]$/,
+    reason: 'dual-column picker uses viewport-bound scroll regions',
+  },
+  {
+    filePath: 'src/components/agent/visual-settings/dialogs/middlewares-dialog.tsx',
+    tokenPattern: /^(?:h|max-h)-\[60vh\]$/,
+    reason: 'visual builder picker uses viewport-bound scroll regions',
+  },
+  {
+    filePath: 'src/components/agent/visual-settings/dialogs/tools-skills-current-column.tsx',
+    tokenPattern: /^(?:h|max-h)-\[60vh\]$/,
+    reason: 'visual builder current-item column uses viewport-bound scroll regions',
+  },
+  {
+    filePath: 'src/components/agent/visual-settings/nodes/agent-node.tsx',
+    tokenPattern: /^h-\[600px\]$/,
+    reason: 'React Flow agent detail pane needs a stable inspection height',
+  },
+  {
+    filePath: 'src/components/artifacts/artifact-library-content.tsx',
+    tokenPattern:
+      /^(?:grid-cols-\[minmax\(360px,0\.95fr\)_minmax\(420px,1\.05fr\)\]|min-h-\[420px\]|max-h-\[(?:640|680)px\])$/,
+    reason: 'artifact library master/detail panes need bounded inspection areas',
+  },
+  {
+    filePath: 'src/components/artifacts/artifact-library-filters.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(220px,1fr\)_160px_180px_150px_150px\]$/,
+    reason: 'artifact filter controls keep scan-friendly column widths',
+  },
+  {
+    filePath: 'src/components/auth/UserMenu.tsx',
+    tokenPattern: /^w-\[--anchor-width\]$/,
+    reason: 'dropdown content follows the trigger width CSS variable',
+  },
+  {
+    filePath: 'src/components/chat/assistant-thread.tsx',
+    tokenPattern: /^max-w-\[80%\]$/,
+    reason: 'chat message bubbles use a transcript column ratio',
+  },
+  {
+    filePath: 'src/components/chat/builder-overrides.tsx',
+    tokenPattern: /^max-w-\[72%\]$/,
+    reason: 'builder override bubbles use a narrower transcript ratio',
+  },
+  {
+    filePath: 'src/components/chat/chat-image.tsx',
+    tokenPattern:
+      /^(?:(?:h|max-h)-\[calc\(100vh-2rem\)\]|(?:w|max-w)-\[calc\(100vw-2rem\)\]|w-\[min\(calc\(100vw-2rem\),1200px\)\])$/,
+    reason: 'fullscreen image preview is viewport-clamped',
+  },
+  {
+    filePattern: /^src\/components\/chat\/artifacts\/providers\/.+\.tsx$/,
+    tokenPattern: /^(?:(?:h|max-h)-\[(?:520|620)px\]|w-\[(?:125|150)%\])$/,
+    reason: 'artifact previews use bounded inspection panes and zoom widths',
+  },
+  {
+    filePath: 'src/components/chat/right-rail/tool-result-panel-content.tsx',
+    tokenPattern: /^max-h-\[60vh\]$/,
+    reason: 'tool output preview is viewport-clamped',
+  },
+  {
+    filePath: 'src/components/chat/tool-ui/memory-tool-ui.tsx',
+    tokenPattern: /^max-w-\[min\(34rem,54vw\)\]$/,
+    reason: 'memory item content truncates at a responsive formula',
+  },
+  {
+    filePath: 'src/components/chat/trace-debugger-view.tsx',
+    tokenPattern: /^grid-cols-\[280px_minmax\(420px,1fr\)_minmax\(360px,42%\)\]$/,
+    reason: 'trace debugger uses a fixed three-pane inspection grid',
+  },
+  {
+    filePath: 'src/components/credential/credential-create-modal.tsx',
+    tokenPattern: /^max-h-\[40vh\]$/,
+    reason: 'credential field list is viewport-clamped inside a modal',
+  },
+  {
+    filePath: 'src/features/schedules/components/schedule-form.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(0,0\.9fr\)_minmax\(0,1\.1fr\)\]$/,
+    reason: 'schedule form keeps primary settings and review panels balanced',
+  },
+  {
+    filePath: 'src/lib/design-tokens.ts',
+    tokenPattern:
+      /^(?:w-\[(?:400|560|720|920|1080)px\]|h-\[(?:480|640|760)px\]|max-h-\[calc\(100vh-4rem\)\])$/,
+    reason: 'dialog dimensions are centralized design tokens consumed by DialogShell',
+  },
+  {
+    filePath: 'src/components/model/model-discover-panel.tsx',
+    tokenPattern: /^max-h-\[44vh\]$/,
+    reason: 'model discovery list is viewport-clamped',
+  },
+  {
+    filePath: 'src/components/shared/dialog-shell.tsx',
+    tokenPattern: /^max-w-\[calc\(100%-2rem\)\]$/,
+    reason: 'mobile dialogs keep a calculated viewport gutter',
+  },
+  {
+    filePath: 'src/components/skill/skill-detail-text-editor.tsx',
+    tokenPattern: /^min-h-\[400px\]$/,
+    reason: 'text skill editor keeps a minimum writing area',
+  },
+  {
+    filePath: 'src/components/skill/skill-evaluation-tab.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(0,0\.9fr\)_minmax\(20rem,1fr\)\]$/,
+    reason: 'skill evaluation keeps form/result split panes',
+  },
+  {
+    filePath: 'src/components/skill/skill-file-editor-pane.tsx',
+    tokenPattern: /^max-h-\[420px\]$/,
+    reason: 'package image preview is capped inside the editor pane',
+  },
+  {
+    filePath: 'src/components/skill/skill-history-tab.tsx',
+    tokenPattern: /^grid-cols-\[minmax\(0,1fr\)_minmax\(18rem,0\.85fr\)\]$/,
+    reason: 'skill history keeps version/detail split panes',
+  },
+]
+
+const POSITIONING_UTILITY_ALLOWLIST = [
+  {
+    filePath: 'src/app/shared/[shareId]/page.tsx',
+    rulePattern: /^high-z-index-utility$/,
+    context: /sticky top-0 z-40/,
+    reason: 'shared transcript header must stay above the scrollable conversation',
+  },
+  {
+    filePath: 'src/features/schedules/components/schedule-form.tsx',
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /moldy-popover absolute left-0 right-0 top-full z-20/,
+    reason: 'schedule form timezone picker is an anchored popover',
+  },
+  {
+    filePath: 'src/app/agents/[agentId]/settings/_components/right-panel/settings-panel.tsx',
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /absolute inset-0 flex items-center justify-center/,
+    reason: 'right-panel save overlay is scoped to its rounded button',
+  },
+  {
+    filePath: 'src/components/agent-prism/DetailsView/DetailsViewContentViewer.tsx',
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /absolute right-1\.5 top-1\.5 z-10/,
+    reason: 'Agent Prism raw data copy action floats inside the code viewer',
+  },
+  {
+    filePattern: /^src\/components\/agent-prism\/SpanCard\/.+\.tsx$/,
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /absolute/,
+    reason: 'Agent Prism trace connectors and timeline markers require absolute positioning',
+  },
+  {
+    filePath: 'src/components/chat/chat-image.tsx',
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /!loaded && 'absolute inset-0 opacity-0'/,
+    reason: 'image preview keeps unloaded image out of layout flow',
+  },
+  {
+    filePath: 'src/components/chat/right-rail/chat-right-rail.tsx',
+    rulePattern: /^(?:absolute-overlay-utility|fixed-overlay-utility|high-z-index-utility)$/,
+    context:
+      /(?:fixed inset-0 z-40|absolute inset-0|absolute inset-y-0 left-0 z-20|moldy-side-panel moldy-right-rail-mobile absolute inset-y-0 right-0)/,
+    reason: 'chat right rail owns its resize handle and mobile modal layer',
+  },
+]
+
+const TYPOGRAPHY_UTILITY_ALLOWLIST = [
+  {
+    filePath: 'src/components/agent-prism/SpanCard/SpanCard.tsx',
+    rulePattern: /^arbitrary-typography-utility$/,
+    context: /text-agentprism-foreground max-w-32 truncate text-sm leading-\[14px\]/,
+    reason: 'Agent Prism trace title line-height is tied to compact span-card geometry',
+  },
+]
+
+const INLINE_SVG_ALLOWLIST = [
+  {
+    filePath: 'src/components/shared/health-history-chart.tsx',
+    reason: 'data-driven health history chart',
+  },
+  {
+    filePath: 'src/components/usage/spend-line-chart.tsx',
+    reason: 'data-driven usage spend line chart',
+  },
+  {
+    filePath: 'src/components/agent-prism/BrandLogo.tsx',
+    reason: 'vendor/brand logos without lucide equivalents',
   },
 ]
 
@@ -198,6 +474,228 @@ function findInlineStyleIssues(source, filePath) {
   return issues
 }
 
+function isAllowedArbitraryLayoutUtility(filePath, token) {
+  const normalizedToken = token.replace(/^!/, '')
+
+  return ARBITRARY_LAYOUT_ALLOWLIST.some((entry) => {
+    const pathMatches =
+      'filePath' in entry ? entry.filePath === filePath : entry.filePattern.test(filePath)
+    return pathMatches && entry.tokenPattern.test(normalizedToken)
+  })
+}
+
+function findArbitraryLayoutIssues(source, filePath) {
+  const issues = []
+  const layoutUtilityRe = /!?\b(?:w|h|min-w|min-h|max-w|max-h|grid-cols|grid-rows)-\[[^\]]+\]/g
+
+  for (const match of source.matchAll(layoutUtilityRe)) {
+    const index = match.index ?? 0
+    const token = match[0]
+    if (isAllowedArbitraryLayoutUtility(filePath, token)) continue
+    issues.push({
+      filePath,
+      line: lineNumberAt(source, index),
+      rule: 'arbitrary-layout-utility',
+      message: 'use Tailwind scale tokens, a Moldy layout API, or a documented narrow exception',
+      snippet: compactSnippet(source, index),
+    })
+  }
+
+  return issues
+}
+
+function isAllowedPositioningUtility(filePath, rule, source, index) {
+  const context = source.slice(Math.max(0, index - 180), index + 260)
+
+  return POSITIONING_UTILITY_ALLOWLIST.some((entry) => {
+    const pathMatches =
+      'filePath' in entry ? entry.filePath === filePath : entry.filePattern.test(filePath)
+    return pathMatches && entry.rulePattern.test(rule) && entry.context.test(context)
+  })
+}
+
+function findPositioningIssues(source, filePath) {
+  if (path.extname(filePath) === '.css') return []
+
+  const issues = []
+  const rules = [
+    {
+      id: 'high-z-index-utility',
+      pattern: /\bz-\[[^\]]+\]|\bz-(?:40|50|[6-9][0-9]|[1-9][0-9]{2,})\b/g,
+      message: 'use a documented overlay/stacking primitive instead of high or arbitrary z-index',
+    },
+    {
+      id: 'fixed-overlay-utility',
+      pattern: /\bfixed\b(?=[^'"`<>]{0,120}\binset-)/g,
+      message: 'keep fixed viewport layers in shared overlay primitives or documented exceptions',
+    },
+    {
+      id: 'absolute-overlay-utility',
+      pattern: /\babsolute\b(?=[^'"`<>]{0,140}\b(?:inset-0|z-\d+|z-\[[^\]]+\]))/g,
+      message:
+        'keep absolute overlays/stacking contexts in shared primitives or documented exceptions',
+    },
+  ]
+
+  for (const rule of rules) {
+    for (const match of source.matchAll(rule.pattern)) {
+      const index = match.index ?? 0
+      if (isAllowedPositioningUtility(filePath, rule.id, source, index)) continue
+      issues.push({
+        filePath,
+        line: lineNumberAt(source, index),
+        rule: rule.id,
+        message: rule.message,
+        snippet: compactSnippet(source, index),
+      })
+    }
+  }
+
+  return issues
+}
+
+function isAllowedTypographyUtility(filePath, rule, source, index) {
+  const context = source.slice(Math.max(0, index - 160), index + 220)
+
+  return TYPOGRAPHY_UTILITY_ALLOWLIST.some(
+    (entry) =>
+      entry.filePath === filePath && entry.rulePattern.test(rule) && entry.context.test(context),
+  )
+}
+
+function findTypographyIssues(source, filePath) {
+  const issues = []
+  const rules = [
+    {
+      id: 'arbitrary-typography-utility',
+      pattern: /\b(?:leading|tracking|font)-\[[^\]]+\]/g,
+      message: 'use Moldy typography classes or a documented renderer/layout exception',
+    },
+    {
+      id: 'negative-tracking-utility',
+      pattern: /\btracking-(?:tight|tighter)\b/g,
+      message: 'keep letter spacing at zero unless a semantic typography class owns it',
+    },
+  ]
+
+  for (const rule of rules) {
+    for (const match of source.matchAll(rule.pattern)) {
+      const index = match.index ?? 0
+      if (isAllowedTypographyUtility(filePath, rule.id, source, index)) continue
+      issues.push({
+        filePath,
+        line: lineNumberAt(source, index),
+        rule: rule.id,
+        message: rule.message,
+        snippet: compactSnippet(source, index),
+      })
+    }
+  }
+
+  return issues
+}
+
+function isAllowedInlineSvg(filePath) {
+  return INLINE_SVG_ALLOWLIST.some((entry) => entry.filePath === filePath)
+}
+
+function findInlineSvgIssues(source, filePath) {
+  if (!filePath.endsWith('.tsx')) return []
+  if (isAllowedInlineSvg(filePath)) return []
+
+  const issues = []
+  const inlineSvgRe = /<svg\b/g
+
+  for (const match of source.matchAll(inlineSvgRe)) {
+    const index = match.index ?? 0
+    issues.push({
+      filePath,
+      line: lineNumberAt(source, index),
+      rule: 'inline-svg',
+      message: 'use lucide-react or a Moldy-owned icon primitive instead of inline SVG',
+      snippet: compactSnippet(source, index),
+    })
+  }
+
+  return issues
+}
+
+function findCardStructureWarnings(source, filePath) {
+  if (path.extname(filePath) === '.css') return []
+
+  const warnings = []
+  const sectionSurfaceRe = /<(?:section|aside)\b[^>]*className=(?:\{cn\(|["'`])[^>]*>/g
+
+  for (const match of source.matchAll(sectionSurfaceRe)) {
+    if (!SURFACE_CLASS_TOKEN_RE.test(match[0])) continue
+
+    const index = match.index ?? 0
+    warnings.push({
+      filePath,
+      line: lineNumberAt(source, index),
+      rule: 'section-as-card',
+      message: 'review whether this section should be an unframed layout or a shared panel/tool',
+      snippet: compactSnippet(source, index),
+    })
+  }
+
+  const cardTagRe = /<\/?Card\b[^>]*>/g
+  let cardDepth = 0
+  for (const match of source.matchAll(cardTagRe)) {
+    const index = match.index ?? 0
+    const token = match[0]
+    if (token.startsWith('</')) {
+      cardDepth = Math.max(0, cardDepth - 1)
+      continue
+    }
+
+    if (cardDepth > 0) {
+      warnings.push({
+        filePath,
+        line: lineNumberAt(source, index),
+        rule: 'nested-card',
+        message: 'review nested Card usage; prefer a single surface with internal layout',
+        snippet: compactSnippet(source, index),
+      })
+    }
+
+    if (!token.endsWith('/>')) cardDepth += 1
+  }
+
+  const jsxTagRe = /<\/?([A-Za-z][\w.:]*)\b[^>]*>/g
+  const elementStack = []
+  for (const match of source.matchAll(jsxTagRe)) {
+    const index = match.index ?? 0
+    const token = match[0]
+    const tagName = match[1]
+
+    if (token.startsWith('</')) {
+      const openIndex = elementStack.findLastIndex((entry) => entry.tagName === tagName)
+      if (openIndex >= 0) {
+        elementStack.splice(openIndex)
+      }
+      continue
+    }
+
+    const isMoldyCardSurface = /\bclassName=/.test(token) && MOLDY_CARD_CLASS_TOKEN_RE.test(token)
+    if (isMoldyCardSurface && elementStack.some((entry) => entry.isMoldyCardSurface)) {
+      warnings.push({
+        filePath,
+        line: lineNumberAt(source, index),
+        rule: 'nested-moldy-card',
+        message: 'review nested moldy-card surfaces; prefer one surface with internal layout',
+        snippet: compactSnippet(source, index),
+      })
+    }
+
+    if (!token.endsWith('/>')) {
+      elementStack.push({ tagName, isMoldyCardSurface })
+    }
+  }
+
+  return warnings
+}
+
 async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src')) {
   const files = await collectFiles(rootDir)
   const issues = []
@@ -206,6 +704,10 @@ async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src'))
     const source = await readFile(file, 'utf8')
     const filePath = normalizePath(path.relative(process.cwd(), file))
     issues.push(...findZeroToleranceIssues(source, filePath))
+    issues.push(...findArbitraryLayoutIssues(source, filePath))
+    issues.push(...findPositioningIssues(source, filePath))
+    issues.push(...findTypographyIssues(source, filePath))
+    issues.push(...findInlineSvgIssues(source, filePath))
     issues.push(...findInlineStyleIssues(source, filePath))
   }
 
@@ -216,14 +718,57 @@ async function findDesignSystemIssues(rootDir = path.join(process.cwd(), 'src'))
   )
 }
 
+async function findDesignSystemWarnings(rootDir = path.join(process.cwd(), 'src')) {
+  const files = await collectFiles(rootDir)
+  const warnings = []
+
+  for (const file of files) {
+    const source = await readFile(file, 'utf8')
+    const filePath = normalizePath(path.relative(process.cwd(), file))
+    warnings.push(...findCardStructureWarnings(source, filePath))
+  }
+
+  return warnings.sort((left, right) =>
+    left.filePath === right.filePath
+      ? left.line - right.line
+      : left.filePath.localeCompare(right.filePath),
+  )
+}
+
 async function main() {
   const issues = await findDesignSystemIssues()
+  const warnings = await findDesignSystemWarnings()
 
   if (issues.length === 0) {
     console.log('Design system guard passed.')
     console.log(
       `Allowed inline style exceptions: ${STYLE_ATTRIBUTE_ALLOWLIST.length} documented dynamic/layout cases.`,
     )
+    console.log(
+      `Allowed arbitrary layout exceptions: ${ARBITRARY_LAYOUT_ALLOWLIST.length} documented runtime/layout cases.`,
+    )
+    console.log(
+      `Allowed positioning exceptions: ${POSITIONING_UTILITY_ALLOWLIST.length} documented overlay/stacking cases.`,
+    )
+    console.log(
+      `Allowed typography exceptions: ${TYPOGRAPHY_UTILITY_ALLOWLIST.length} documented renderer/layout cases.`,
+    )
+    console.log(
+      `Allowed inline SVG exceptions: ${INLINE_SVG_ALLOWLIST.length} documented chart/logo cases.`,
+    )
+    if (warnings.length > 0) {
+      console.warn(
+        `Card structure warning baseline: ${warnings.length} candidate(s). Review before making these blocking.`,
+      )
+      for (const warning of warnings.slice(0, 24)) {
+        console.warn(
+          `${warning.filePath}:${warning.line} [${warning.rule}] ${warning.message} :: ${warning.snippet}`,
+        )
+      }
+      if (warnings.length > 24) {
+        console.warn(`...and ${warnings.length - 24} more card structure warning(s).`)
+      }
+    }
     return
   }
 
@@ -232,6 +777,9 @@ async function main() {
     console.error(
       `${issue.filePath}:${issue.line} [${issue.rule}] ${issue.message} :: ${issue.snippet}`,
     )
+  }
+  if (warnings.length > 0) {
+    console.warn(`Also found ${warnings.length} card structure warning candidate(s).`)
   }
   process.exitCode = 1
 }

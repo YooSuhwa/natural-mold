@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { skillEvaluationsApi } from '@/lib/api/skill-evaluations'
+import { skillQueryKeys } from '@/lib/query-keys/skills'
 import { requireQueryId } from './query-id'
 import type {
   SkillEvaluationRun,
@@ -117,8 +118,8 @@ function invalidateSkillEvaluationCaches(
   skillId: string,
   evaluationSetId?: string,
 ): void {
-  qc.invalidateQueries({ queryKey: ['skills'] })
-  qc.invalidateQueries({ queryKey: ['skills', skillId] })
+  qc.invalidateQueries({ queryKey: skillQueryKeys.all })
+  qc.invalidateQueries({ queryKey: skillQueryKeys.detail(skillId) })
   qc.invalidateQueries({ queryKey: skillEvaluationKeys.sets(skillId) })
   if (evaluationSetId) {
     qc.invalidateQueries({ queryKey: skillEvaluationKeys.set(skillId, evaluationSetId) })

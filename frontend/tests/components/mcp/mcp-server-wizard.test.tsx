@@ -1,5 +1,5 @@
 import { render, screen, userEvent, waitFor } from '../../test-utils'
-import { McpServerWizard } from '@/components/mcp/mcp-server-wizard'
+import { McpServerWizard } from '@/app/mcp-servers/_components/mcp-server-wizard'
 
 const hookMocks = vi.hoisted(() => ({
   create: vi.fn(),

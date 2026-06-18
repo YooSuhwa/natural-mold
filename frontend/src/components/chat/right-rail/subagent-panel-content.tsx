@@ -91,11 +91,7 @@ function formatMessage(message: BaseMessage): string {
   return formatUnknown(content)
 }
 
-function scopedMessageKey(
-  message: BaseMessage,
-  subagentId: string,
-  index: number,
-): string {
+function scopedMessageKey(message: BaseMessage, subagentId: string, index: number): string {
   return `${message.id ?? `${subagentId}-message`}:${index}`
 }
 

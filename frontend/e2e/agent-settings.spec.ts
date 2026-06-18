@@ -5,13 +5,16 @@ import type { APIRequestContext } from '@playwright/test'
 // edit the system prompt and attach a sub-agent, then verify each persisted
 // via the API. The settings page uses a single-save draft model — all edits
 // commit on one top-right "저장" click (PATCH /api/agents/{id}).
-const API = process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
+const API =
+  process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
 const EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 
 async function login(request: APIRequestContext): Promise<Record<string, string>> {
-  const res = await request.post(`${API}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } })
+  const res = await request.post(`${API}/api/auth/login`, {
+    data: { email: EMAIL, password: PASSWORD },
+  })
   expect(res.ok()).toBeTruthy()
   return { 'X-CSRF-Token': (await res.json()).csrf_token as string }
 }
@@ -40,11 +43,16 @@ test.describe('Agent settings — edit & attach', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')!
+    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    if (!scripted) throw new Error('e2e_scripted model should be seeded')
     const main = (await (
       await request.post(`${API}/api/agents`, {
         headers: csrf,
-        data: { name: 'E2E Settings Agent', system_prompt: 'Original prompt.', model_id: scripted.id },
+        data: {
+          name: 'E2E Settings Agent',
+          system_prompt: 'Original prompt.',
+          model_id: scripted.id,
+        },
       })
     ).json()) as { id: string }
     agentId = main.id
@@ -102,7 +110,10 @@ test.describe('Agent settings — edit & attach', () => {
       .toBe(newPrompt)
   })
 
-  test('attaching a sub-agent and saving persists the delegation link', async ({ page, request }) => {
+  test('attaching a sub-agent and saving persists the delegation link', async ({
+    page,
+    request,
+  }) => {
     await page.goto(`/agents/${agentId}/settings`)
     await page.getByRole('button', { name: '서브에이전트 관리' }).click()
 
@@ -110,7 +121,10 @@ test.describe('Agent settings — edit & attach', () => {
     await expect(dialog).toBeVisible()
     await dialog.getByPlaceholder('에이전트 검색...').fill(childName)
     // Add the child from the "available" column (per-row add action).
-    await dialog.getByRole('button', { name: new RegExp(`(추가|${childName})`) }).first().click()
+    await dialog
+      .getByRole('button', { name: new RegExp(`(추가|${childName})`) })
+      .first()
+      .click()
     await dialog.getByRole('button', { name: '닫기' }).click()
 
     await page.getByRole('button', { name: '저장', exact: true }).click()

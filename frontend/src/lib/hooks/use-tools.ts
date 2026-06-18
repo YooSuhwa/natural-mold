@@ -2,14 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toolsApi } from '@/lib/api/tools'
+import { toolQueryKeys, type ToolListQueryParams } from '@/lib/query-keys/tools'
 import type { ToolCreateRequest, ToolPatchRequest } from '@/lib/types/tool'
-
-const KEY_LIST = ['tools'] as const
-const KEY_TYPES = ['tool-types'] as const
+import { requiredQueryValue } from './required-query-value'
 
 export function useToolTypes() {
   return useQuery({
-    queryKey: KEY_TYPES,
+    queryKey: toolQueryKeys.types,
     queryFn: toolsApi.listTypes,
     staleTime: 5 * 60_000,
   })
@@ -17,16 +16,16 @@ export function useToolTypes() {
 
 export function useToolType(key: string | null | undefined) {
   return useQuery({
-    queryKey: ['tool-types', key],
-    queryFn: () => toolsApi.getType(key!),
+    queryKey: toolQueryKeys.typeDetail(key),
+    queryFn: () => toolsApi.getType(requiredQueryValue(key, 'tool type key')),
     enabled: !!key,
     staleTime: 5 * 60_000,
   })
 }
 
-export function useTools(params?: { definition_key?: string; enabled?: boolean }) {
+export function useTools(params?: ToolListQueryParams) {
   return useQuery({
-    queryKey: ['tools', params ?? {}],
+    queryKey: toolQueryKeys.list(params),
     queryFn: () => toolsApi.list(params),
     staleTime: 30_000,
   })
@@ -34,8 +33,8 @@ export function useTools(params?: { definition_key?: string; enabled?: boolean }
 
 export function useTool(id: string | null | undefined) {
   return useQuery({
-    queryKey: ['tools', id],
-    queryFn: () => toolsApi.get(id!),
+    queryKey: toolQueryKeys.detail(id),
+    queryFn: () => toolsApi.get(requiredQueryValue(id, 'tool id')),
     enabled: !!id,
   })
 }
@@ -44,7 +43,7 @@ export function useCreateTool() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: ToolCreateRequest) => toolsApi.create(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: toolQueryKeys.all }),
   })
 }
 
@@ -53,8 +52,8 @@ export function useUpdateTool() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: ToolPatchRequest }) => toolsApi.update(id, data),
     onSuccess: (_data, { id }) => {
-      qc.invalidateQueries({ queryKey: KEY_LIST })
-      qc.invalidateQueries({ queryKey: ['tools', id] })
+      qc.invalidateQueries({ queryKey: toolQueryKeys.all })
+      qc.invalidateQueries({ queryKey: toolQueryKeys.detail(id) })
     },
   })
 }
@@ -63,7 +62,7 @@ export function useDeleteTool() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => toolsApi.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: toolQueryKeys.all }),
   })
 }
 

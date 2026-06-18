@@ -135,10 +135,7 @@ export function BreadcrumbNav() {
               aria-hidden="true"
             />
             {crumb.isLast ? (
-              <span
-                className="text-foreground font-medium truncate max-w-[200px]"
-                aria-current="page"
-              >
+              <span className="text-foreground font-medium truncate max-w-52" aria-current="page">
                 {crumbContent}
               </span>
             ) : (

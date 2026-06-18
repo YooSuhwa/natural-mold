@@ -37,11 +37,11 @@ vi.mock('@/lib/hooks/use-health', () => ({
   useRunHealthCheck: () => mockUseRunHealthCheck(),
 }))
 
-vi.mock('@/components/mcp/mcp-server-wizard', () => ({
+vi.mock('@/app/mcp-servers/_components/mcp-server-wizard', () => ({
   McpServerWizard: () => null,
 }))
 
-vi.mock('@/components/mcp/mcp-server-detail-dialog', () => ({
+vi.mock('@/app/mcp-servers/_components/mcp-server-detail-dialog', () => ({
   McpServerDetailDialog: (props: {
     serverId: string | null
     open: boolean
@@ -49,7 +49,7 @@ vi.mock('@/components/mcp/mcp-server-detail-dialog', () => ({
   }) => mockDetailDialog(props),
 }))
 
-vi.mock('@/components/mcp/mcp-import-dialog', () => ({
+vi.mock('@/app/mcp-servers/_components/mcp-import-dialog', () => ({
   McpImportDialog: () => null,
 }))
 
@@ -156,7 +156,8 @@ describe('McpServersPage', () => {
     render(<McpServersPage />)
 
     // Manage the second card while the deep link still points at mcp-1.
-    const otherCard = screen.getByText('Slack MCP').closest('article')!
+    const otherCard = screen.getByText('Slack MCP').closest('article')
+    if (!otherCard) throw new Error('Slack MCP card should render as an article')
     await user.click(within(otherCard).getByRole('button', { name: '관리' }))
 
     // URL is realigned to the manually opened card (no refresh mismatch).

@@ -1,5 +1,6 @@
 'use client'
 
+import { useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { useTheme } from 'next-themes'
@@ -9,6 +10,33 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { isSupportedLocale, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { persistLocaleCookie } from '@/i18n/client-locale'
 import { cn } from '@/lib/utils'
+
+const hydrationSubscribers = new Set<() => void>()
+let appearanceHydrated = false
+let hydrationNotificationQueued = false
+
+function subscribeHydration(listener: () => void) {
+  hydrationSubscribers.add(listener)
+  if (!appearanceHydrated && !hydrationNotificationQueued) {
+    hydrationNotificationQueued = true
+    queueMicrotask(() => {
+      appearanceHydrated = true
+      hydrationSubscribers.forEach((subscriber) => subscriber())
+    })
+  }
+
+  return () => {
+    hydrationSubscribers.delete(listener)
+  }
+}
+
+function getHydratedSnapshot() {
+  return appearanceHydrated
+}
+
+function getServerHydratedSnapshot() {
+  return false
+}
 
 export function AppearanceSettingsContent() {
   const t = useTranslations('appSettings.appearance')
@@ -31,6 +59,11 @@ export function AppearanceSettingsContent() {
 function ThemeCard() {
   const { theme, setTheme } = useTheme()
   const t = useTranslations('appSettings.appearance.theme')
+  const hydrated = useSyncExternalStore(
+    subscribeHydration,
+    getHydratedSnapshot,
+    getServerHydratedSnapshot,
+  )
 
   const themes = [
     { value: 'light', label: t('light'), icon: SunIcon },
@@ -49,7 +82,7 @@ function ThemeCard() {
       </CardHeader>
       <CardContent className="space-y-2">
         {themes.map(({ value, label, icon: Icon }) => {
-          const active = theme === value
+          const active = hydrated && theme === value
           return (
             <button
               key={value}

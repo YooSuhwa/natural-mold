@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { getArtifactTextContent, artifactKeys } from '@/lib/api/artifacts'
 import { useSetArtifactFavorite } from '@/lib/hooks/use-artifact-library'
+import { reportClientWarning } from '@/lib/logging/client-logger'
 import { cn, resolveImageUrl } from '@/lib/utils'
 import { chatArtifactsAtom, type ChatArtifactsState } from '@/lib/stores/chat-artifacts'
 import {
@@ -318,13 +319,13 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
     } catch (error) {
-      console.warn('[ArtifactViewerHeader] failed to copy artifact text', error)
+      reportClientWarning('ArtifactViewerHeader', 'failed to copy artifact text', error)
     }
   }, [artifact.id, canShowSource])
 
   const handleRefresh = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ['artifacts', 'content', artifact.id, artifact.version_id],
+      queryKey: artifactKeys.content(artifact.id, artifact.version_id),
     })
     queryClient.invalidateQueries({ queryKey: artifactKeys.conversation(artifact.conversation_id) })
   }, [artifact.conversation_id, artifact.id, artifact.version_id, queryClient])
@@ -409,7 +410,7 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
               {tArtifacts('downloadOriginal')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleFavorite}>
-              <StarIcon className={cn(artifact.is_favorite && 'fill-current text-amber-500')} />
+              <StarIcon className={cn(artifact.is_favorite && 'moldy-favorite-icon')} />
               {tArtifacts(artifact.is_favorite ? 'unfavorite' : 'favorite')}
             </DropdownMenuItem>
           </DropdownMenuContent>
