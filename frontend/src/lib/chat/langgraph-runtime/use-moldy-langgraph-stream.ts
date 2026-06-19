@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   useExternalMessageConverter,
   useExternalStoreRuntime,
@@ -269,8 +269,22 @@ export function primeStickyConversationMessagesFromThreadState(
 ): boolean {
   const messages = messagesFromThreadState(state)
   if (!messages || messages.length === 0) return false
+  if (!hasReadyAssistantMessage(messages)) return false
   cacheStickyMessages(conversationId, messages)
   return true
+}
+
+function lastAssistantMessage(messages: readonly BaseMessage[]): BaseMessage | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (isAssistantMessage(message)) return message
+  }
+  return null
+}
+
+function hasReadyAssistantMessage(messages: readonly BaseMessage[]): boolean {
+  const lastAssistant = lastAssistantMessage(messages)
+  return Boolean(lastAssistant && !isEmptyAssistantMessage(lastAssistant))
 }
 
 function isCoercibleMessage(value: unknown): value is BaseMessageLike {
@@ -1156,9 +1170,36 @@ function isEmptyAssistantMessage(message: BaseMessage | undefined): boolean {
   if (!message || typeof message._getType !== 'function' || message._getType() !== 'ai') {
     return false
   }
-  const content = message.content
+  if (assistantMessageHasToolCalls(message)) return false
+  return isEmptyMessageContent(message.content)
+}
+
+function assistantMessageHasToolCalls(message: BaseMessage): boolean {
+  const source = message as BaseMessage & {
+    readonly additional_kwargs?: unknown
+    readonly invalid_tool_calls?: unknown
+    readonly tool_calls?: unknown
+  }
+  if (Array.isArray(source.tool_calls) && source.tool_calls.length > 0) return true
+  if (Array.isArray(source.invalid_tool_calls) && source.invalid_tool_calls.length > 0) return true
+  const additionalKwargs = isRecord(source.additional_kwargs) ? source.additional_kwargs : {}
+  const additionalToolCalls = additionalKwargs.tool_calls
+  return Array.isArray(additionalToolCalls) && additionalToolCalls.length > 0
+}
+
+function isEmptyMessageContent(content: BaseMessage['content']): boolean {
   if (typeof content === 'string') return content.length === 0
-  return Array.isArray(content) && content.length === 0
+  if (Array.isArray(content)) {
+    return content.length === 0 || content.every(isEmptyTextContentPart)
+  }
+  return false
+}
+
+function isEmptyTextContentPart(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  if (value.type !== 'text') return false
+  const text = value.text
+  return text === undefined || text === ''
 }
 
 function useStickyConversationMessages(
@@ -1172,7 +1213,7 @@ function useStickyConversationMessages(
     return messages
   }, [conversationId, messages, replaceMessages])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const cached = stickyMessagesByConversation.get(conversationId)
     if (!replaceMessages && cached && messageListIsDegraded(messages, cached)) return
     cacheStickyMessages(conversationId, messages)
@@ -1185,18 +1226,72 @@ function useStickyConvertedMessages(
   conversationId: string,
   messages: readonly ConvertedMessage[],
   isRunning: boolean,
+  sourceMessages: readonly BaseMessage[],
 ): readonly ConvertedMessage[] {
   const stickyMessages = useMemo(() => {
     const cached = stickyConvertedMessagesByConversation.get(conversationId)
     if (!isRunning && messages.length === 0 && cached && cached.length > 0) return cached
+    if (!isRunning && cached && convertedMessageListIsDegraded(messages, cached, sourceMessages)) {
+      return cached
+    }
     return messages
-  }, [conversationId, isRunning, messages])
+  }, [conversationId, isRunning, messages, sourceMessages])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const cached = stickyConvertedMessagesByConversation.get(conversationId)
+    if (cached && convertedMessageListIsDegraded(messages, cached, sourceMessages)) return
     if (messages.length > 0) cacheStickyConvertedMessages(conversationId, messages)
-  }, [conversationId, messages])
+  }, [conversationId, messages, sourceMessages])
 
   return stickyMessages
+}
+
+function convertedMessageListIsDegraded(
+  candidate: readonly ConvertedMessage[],
+  cached: readonly ConvertedMessage[],
+  sourceMessages: readonly BaseMessage[],
+): boolean {
+  if (candidate.length < cached.length) {
+    return convertedMessagesSharePrefix(candidate, cached, candidate.length)
+  }
+  if (candidate.length !== cached.length || candidate.length === 0) return false
+
+  const lastIndex = candidate.length - 1
+  const sourceLast = sourceMessages[lastIndex]
+  return (
+    isAssistantMessage(sourceLast) &&
+    convertedMessagesSharePrefix(candidate, cached, lastIndex) &&
+    isEmptyConvertedMessage(candidate[lastIndex]) &&
+    !isEmptyConvertedMessage(cached[lastIndex])
+  )
+}
+
+function convertedMessagesSharePrefix(
+  left: readonly ConvertedMessage[],
+  right: readonly ConvertedMessage[],
+  length: number,
+): boolean {
+  if (left.length < length || right.length < length) return false
+  return left
+    .slice(0, length)
+    .every(
+      (message, index) =>
+        convertedMessageFingerprint(message) === convertedMessageFingerprint(right[index]),
+    )
+}
+
+function convertedMessageFingerprint(message: ConvertedMessage | undefined): string {
+  if (!isRecord(message)) return ''
+  return stableString({
+    id: message.id,
+    role: message.role,
+    content: message.content,
+  })
+}
+
+function isEmptyConvertedMessage(message: ConvertedMessage | undefined): boolean {
+  if (!isRecord(message)) return false
+  return convertedMessageText(message) === ''
 }
 
 function visibleMessagesWithIds(
@@ -1357,7 +1452,12 @@ export function useMoldyLangGraphStream({
     let cancelled = false
     void loadServerThreadState(conversationId)
       .then((state: ThreadStateResponse) => {
-        if (!cancelled) handleThreadState(state)
+        if (cancelled) return
+        const stateMessages = messagesFromThreadState(state)
+        handleThreadState(
+          state,
+          hasReadyAssistantMessage(stateMessages ?? []) ? { replaceMessages: true } : undefined,
+        )
       })
       .catch(() => undefined)
     return () => {
@@ -1581,6 +1681,7 @@ export function useMoldyLangGraphStream({
     conversationId,
     stableMessagesWithoutPendingEditDuplicate,
     isRunning,
+    stickyMessagesWithTerminalNotice,
   )
   const checkpointVisibleMessages = useMemo(
     () => visibleMessagesWithIds(messages, stickyMessagesWithTerminalNotice),

@@ -25,6 +25,7 @@ const conversationHookMocks = vi.hoisted(() => ({
 }))
 
 const routerMocks = vi.hoisted(() => ({
+  pathname: '/agents/agent-1/conversations/new',
   push: vi.fn(),
 }))
 
@@ -63,7 +64,7 @@ vi.mock('next/link', () => ({
 }))
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/agents/agent-1/conversations/new',
+  usePathname: () => routerMocks.pathname,
   useRouter: () => ({ push: routerMocks.push }),
 }))
 
@@ -109,6 +110,7 @@ function createRowActions(): ConversationRowActions {
 
 describe('ChatNavigator', () => {
   beforeEach(() => {
+    routerMocks.pathname = '/agents/agent-1/conversations/new'
     routerMocks.push.mockClear()
     sidebarMocks.setOpen.mockClear()
     sidebarMocks.toggleSidebar.mockClear()
@@ -167,13 +169,15 @@ describe('ChatNavigator', () => {
   })
 
   it('promotes a remountless draft route replacement to the real active session', async () => {
-    render(<ChatNavigator />)
+    const { rerender } = render(<ChatNavigator />)
 
     await waitFor(() => expect(screen.getByRole('link', { name: /새 대화/ })).toBeInTheDocument())
 
     act(() => {
-      replaceChatRouteWithoutRemount('/agents/agent-1/conversations/conv-1')
+      routerMocks.pathname = '/agents/agent-1/conversations/conv-1'
+      replaceChatRouteWithoutRemount(routerMocks.pathname)
     })
+    rerender(<ChatNavigator />)
 
     expect(screen.queryByRole('link', { name: /새 대화/ })).not.toBeInTheDocument()
     expect(screen.getByText('Test Conversation').closest('[data-chat-session-href]')).toHaveClass(

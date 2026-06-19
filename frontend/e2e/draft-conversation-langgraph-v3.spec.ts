@@ -116,6 +116,21 @@ async function waitRunIdle(request: APIRequestContext, conversationId: string): 
     .toBe(null)
 }
 
+async function waitRunActive(request: APIRequestContext, conversationId: string): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const run = await apiGetJson(
+          request,
+          `${API_BASE}/api/conversations/${conversationId}/runs/active`,
+        )
+        return run === null ? null : 'active'
+      },
+      { timeout: 10_000, intervals: [100, 250, 500] },
+    )
+    .toBe('active')
+}
+
 async function visibleStopButtonCount(page: Page): Promise<number> {
   return page
     .getByRole('button', { name: '중단' })
@@ -733,6 +748,54 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
       await expect(page.getByText(EMPTY_STATE_TEXT)).toHaveCount(0)
       await expectNoEmptyStateReappearance(page)
       await expectNoMessageDisappearance(page)
+
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
+
+  test('promotes the draft navigator row as soon as the first response starts streaming', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    const setup = await setupLangGraphV3Agent(request)
+    const draftConversationIds = watchDraftConversationIds(page, setup.parentAgentId)
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      await page.getByRole('button', { name: '새 채팅', exact: true }).first().click()
+      await page.waitForURL(`**/agents/${setup.parentAgentId}/conversations/new`, {
+        timeout: 10_000,
+      })
+      await expect.poll(async () => draftConversationIds.length, { timeout: 10_000 }).toBe(1)
+
+      const draftConversationId = draftConversationIds[0] ?? ''
+      const prompt = `E2E_VISUAL_SLOW_STREAM E2E_DRAFT_NAV_${Date.now()}`
+      await sendMessage(page, prompt)
+      await expectConversationDetailStatus(request, draftConversationId, 200)
+      await waitRunActive(request, draftConversationId)
+      await expect(page.getByText(/E2E visual stream fixture is still running/).last()).toBeVisible({
+        timeout: 10_000,
+      })
+
+      await expect(page).toHaveURL(
+        new RegExp(`/agents/${setup.parentAgentId}/conversations/${draftConversationId}$`),
+        { timeout: 1_000 },
+      )
+      await expect(
+        page.locator(
+          `[data-chat-session-href="/agents/${setup.parentAgentId}/conversations/new"]`,
+        ),
+      ).toHaveCount(0)
+      const promotedRow = page.locator(
+        `[data-chat-session-href="/agents/${setup.parentAgentId}/conversations/${draftConversationId}"]`,
+      )
+      await expect(promotedRow).toBeVisible({ timeout: 5_000 })
+      await expect(promotedRow).toHaveClass(/bg-primary/)
 
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
