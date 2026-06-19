@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useCallback, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { useAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
@@ -40,12 +40,11 @@ import { useChatNavigatorShortcuts } from './use-chat-navigator-shortcuts'
 
 export function ChatNavigator() {
   const pathname = usePathname()
-  const browserPathname = useSyncExternalStore(
-    subscribeChatRoutePathname,
-    getBrowserPathnameSnapshot,
-    () => pathname,
-  )
-  const visiblePathname = browserPathname.startsWith('/agents/') ? browserPathname : pathname
+  const [replacedPathname, setReplacedPathname] = useState<string | null>(null)
+  const shouldUseReplacedPathname =
+    replacedPathname !== null &&
+    (typeof window === 'undefined' || pathname !== window.location.pathname)
+  const visiblePathname = shouldUseReplacedPathname ? replacedPathname : pathname
   const t = useTranslations('sidebar.agents')
   const { setOpen, state } = useSidebar()
   const route = useMemo(() => parseChatRoute(visiblePathname), [visiblePathname])
@@ -116,6 +115,20 @@ export function ChatNavigator() {
     onOpenQuickSwitcher: openQuickSwitcher,
     onEscape: closeTransientUi,
   })
+
+  useEffect(() => {
+    const handleRouteReplacement = (event: Event) => {
+      if (isChatRouteReplacedEvent(event)) setReplacedPathname(event.detail.pathname)
+    }
+    const handlePopState = () => setReplacedPathname(null)
+
+    window.addEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [])
 
   const activeAgentId = route.agentId
 
@@ -255,22 +268,4 @@ export function ChatNavigator() {
       />
     </SidebarGroup>
   )
-}
-
-function getBrowserPathnameSnapshot(): string {
-  return typeof window === 'undefined' ? '' : window.location.pathname
-}
-
-function subscribeChatRoutePathname(listener: () => void): () => void {
-  const handleRouteReplacement = (event: Event) => {
-    if (isChatRouteReplacedEvent(event)) listener()
-  }
-  const handlePopState = () => listener()
-
-  window.addEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
-  window.addEventListener('popstate', handlePopState)
-  return () => {
-    window.removeEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
-    window.removeEventListener('popstate', handlePopState)
-  }
 }

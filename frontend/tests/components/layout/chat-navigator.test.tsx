@@ -169,20 +169,20 @@ describe('ChatNavigator', () => {
   })
 
   it('promotes a remountless draft route replacement to the real active session', async () => {
-    const { rerender } = render(<ChatNavigator />)
+    render(<ChatNavigator />)
 
     await waitFor(() => expect(screen.getByRole('link', { name: /새 대화/ })).toBeInTheDocument())
 
     act(() => {
-      routerMocks.pathname = '/agents/agent-1/conversations/conv-1'
-      replaceChatRouteWithoutRemount(routerMocks.pathname)
+      replaceChatRouteWithoutRemount('/agents/agent-1/conversations/conv-1')
     })
-    rerender(<ChatNavigator />)
 
-    expect(screen.queryByRole('link', { name: /새 대화/ })).not.toBeInTheDocument()
-    expect(screen.getByText('Test Conversation').closest('[data-chat-session-href]')).toHaveClass(
-      'bg-primary',
-    )
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: /새 대화/ })).not.toBeInTheDocument()
+      expect(screen.getByText('Test Conversation').closest('[data-chat-session-href]')).toHaveClass(
+        'bg-primary',
+      )
+    })
   })
 
   it('shows global search results above agent groups', async () => {

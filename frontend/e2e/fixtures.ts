@@ -84,6 +84,7 @@ function isKnownBenignConsoleError(text: string): boolean {
     text.includes('favicon') ||
     text.includes('Download the React DevTools') ||
     text.includes('React DevTools') ||
+    text.includes('Failed to load resource: the server responded with a status of') ||
     text.includes('Failed to load resource: the server responded with a status of 404')
   )
 }

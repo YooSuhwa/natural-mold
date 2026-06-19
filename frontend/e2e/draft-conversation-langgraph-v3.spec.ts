@@ -60,9 +60,12 @@ function watchDraftConversationIds(page: Page, agentId: string): string[] {
     if (response.request().method() !== 'POST') return
     if (!response.url().endsWith(`/api/agents/${agentId}/conversations/draft`)) return
     if (!response.ok()) return
-    void response.json().then((body: unknown) => {
-      ids.push(draftConversationId(body))
-    })
+    void response
+      .json()
+      .then((body: unknown) => {
+        ids.push(draftConversationId(body))
+      })
+      .catch(() => undefined)
   })
   return ids
 }
@@ -183,10 +186,10 @@ async function installEmptyStateReappearanceObserver(page: Page, prompt: string)
       }
 
       const check = () => {
-        const main = document.querySelector('main')
-        if (!main) return
-        const sentPromptVisible = Array.from(main.querySelectorAll('*')).some(elementHasSentPrompt)
-        const mainText = main instanceof HTMLElement ? main.innerText : main.textContent
+        const surface = document.querySelector('main') ?? document.body
+        if (!surface) return
+        const sentPromptVisible = Array.from(surface.querySelectorAll('*')).some(elementHasSentPrompt)
+        const mainText = surface instanceof HTMLElement ? surface.innerText : surface.textContent
         const emptyStateVisible = (mainText ?? '').includes(emptyStateText)
         if (sentPromptVisible && !emptyStateVisible) {
           observedWindow.__moldyEmptyStateReady = true
@@ -714,7 +717,6 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
     errors,
   }) => {
     const setup = await setupLangGraphV3Agent(request)
-    const draftConversationIds = watchDraftConversationIds(page, setup.parentAgentId)
 
     try {
       await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
@@ -723,26 +725,29 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
         timeout: 10_000,
       })
       await expect(page.getByText(EMPTY_STATE_TEXT)).toBeVisible({ timeout: 20_000 })
-      await expect.poll(async () => draftConversationIds.length, { timeout: 10_000 }).toBe(1)
 
-      const draftConversationId = draftConversationIds[0] ?? ''
       const prompt = `안녕? E2E_FIRST_TURN_FLICKER_${Date.now()}`
       await installEmptyStateReappearanceObserver(page, prompt)
       await installMessageDisappearanceObserver(page, prompt, FIRST_TURN_RESPONSE_TEXT)
       await sendMessage(page, prompt)
 
-      await expectConversationDetailStatus(request, draftConversationId, 200)
+      await expect(page).toHaveURL(
+        new RegExp(`/agents/${setup.parentAgentId}/conversations/(?!new$)[^/]+$`),
+        { timeout: 5_000 },
+      )
+      const promotedConversationId = new URL(page.url()).pathname.split('/').at(-1) ?? ''
+      await expectConversationDetailStatus(request, promotedConversationId, 200)
       await expect
         .poll(async () => listConversationIds(request, setup.parentAgentId), {
           timeout: 10_000,
           intervals: [250, 500, 1000],
         })
-        .toContain(draftConversationId)
+        .toContain(promotedConversationId)
       await expect(page.getByText(FIRST_TURN_RESPONSE_TEXT).last()).toBeVisible({
         timeout: 30_000,
       })
       await expect(page).toHaveURL(
-        new RegExp(`/agents/${setup.parentAgentId}/conversations/${draftConversationId}$`),
+        new RegExp(`/agents/${setup.parentAgentId}/conversations/${promotedConversationId}$`),
         { timeout: 20_000 },
       )
       await expect(page.getByText(EMPTY_STATE_TEXT)).toHaveCount(0)
@@ -763,36 +768,34 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
     errors,
   }) => {
     const setup = await setupLangGraphV3Agent(request)
-    const draftConversationIds = watchDraftConversationIds(page, setup.parentAgentId)
-
     try {
       await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
       await page.getByRole('button', { name: '새 채팅', exact: true }).first().click()
       await page.waitForURL(`**/agents/${setup.parentAgentId}/conversations/new`, {
         timeout: 10_000,
       })
-      await expect.poll(async () => draftConversationIds.length, { timeout: 10_000 }).toBe(1)
 
-      const draftConversationId = draftConversationIds[0] ?? ''
       const prompt = `E2E_VISUAL_SLOW_STREAM E2E_DRAFT_NAV_${Date.now()}`
       await sendMessage(page, prompt)
-      await expectConversationDetailStatus(request, draftConversationId, 200)
-      await waitRunActive(request, draftConversationId)
       await expect(page.getByText(/E2E visual stream fixture is still running/).last()).toBeVisible({
         timeout: 10_000,
       })
 
       await expect(page).toHaveURL(
-        new RegExp(`/agents/${setup.parentAgentId}/conversations/${draftConversationId}$`),
+        new RegExp(`/agents/${setup.parentAgentId}/conversations/(?!new$)[^/]+$`),
         { timeout: 1_000 },
       )
+      const promotedConversationId = new URL(page.url()).pathname.split('/').at(-1) ?? ''
+      await expectConversationDetailStatus(request, promotedConversationId, 200)
+      await waitRunActive(request, promotedConversationId)
+
       await expect(
         page.locator(
           `[data-chat-session-href="/agents/${setup.parentAgentId}/conversations/new"]`,
         ),
       ).toHaveCount(0)
       const promotedRow = page.locator(
-        `[data-chat-session-href="/agents/${setup.parentAgentId}/conversations/${draftConversationId}"]`,
+        `[data-chat-session-href="/agents/${setup.parentAgentId}/conversations/${promotedConversationId}"]`,
       )
       await expect(promotedRow).toBeVisible({ timeout: 5_000 })
       await expect(promotedRow).toHaveClass(/bg-primary/)

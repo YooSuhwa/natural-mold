@@ -71,16 +71,14 @@ async function prefetchConversationMessagesUntilReady(
   for (let attempt = 0; attempt < DRAFT_MESSAGE_PREFETCH_ATTEMPTS; attempt += 1) {
     if (!shouldContinue()) return false
     queryClient.invalidateQueries({ queryKey, refetchType: 'none' })
-    const [envelope, threadState] = await Promise.all([
-      queryClient.fetchQuery({
-        queryKey,
-        queryFn: () => conversationsApi.messagesEnvelope(conversationId),
-      }),
-      loadServerThreadState(conversationId).catch(() => null),
-    ])
+    const envelope = await queryClient.fetchQuery({
+      queryKey,
+      queryFn: () => conversationsApi.messagesEnvelope(conversationId),
+    })
     if (!shouldContinue()) return false
-    if (threadState) primeStickyConversationMessagesFromThreadState(conversationId, threadState)
     if (conversationMessagesAreReady(envelope.messages, minimumMessages)) {
+      const threadState = await loadServerThreadState(conversationId).catch(() => null)
+      if (threadState) primeStickyConversationMessagesFromThreadState(conversationId, threadState)
       return true
     }
     await delay(Math.min(100 * (attempt + 1), 500))
@@ -286,6 +284,13 @@ export default function ChatPage({
     },
     [agentId, messages.length, queryClient],
   )
+  const replaceCommittedDraftRoute = useCallback(
+    (createdConversationId: string) => {
+      rememberPromotedDraftConversation(createdConversationId)
+      replaceChatRouteWithoutRemount(`/agents/${agentId}/conversations/${createdConversationId}`)
+    },
+    [agentId],
+  )
 
   const onStreamEnd = useCallback(() => {
     // draft에서 시작된 스트림은 ref에 기록된 실제 대화 id로 detail까지 무효화한다
@@ -309,9 +314,21 @@ export default function ChatPage({
       queryClient.invalidateQueries({
         queryKey: conversationKeys.debugTraces(createdConversationId),
       })
-      navigateToCommittedDraft(createdConversationId)
+      if (runtimeMode === 'langgraph_v3') {
+        navigateToCommittedDraft(createdConversationId)
+      } else {
+        router.replace(`/agents/${agentId}/conversations/${createdConversationId}`)
+      }
     }
-  }, [queryClient, conversationId, agentId, isDraftConversation, navigateToCommittedDraft])
+  }, [
+    queryClient,
+    conversationId,
+    agentId,
+    isDraftConversation,
+    navigateToCommittedDraft,
+    router,
+    runtimeMode,
+  ])
 
   // P0-1c — current feedback per message id, derived from the messages query.
   // Looked up by ``feedback-adapter`` to decide between POST(upsert) vs DELETE.
@@ -363,14 +380,20 @@ export default function ChatPage({
     startedConversationIdRef.current = committedConversationId
     rememberPromotedDraftConversation(committedConversationId)
     setSuppressEmptyStateForConversationId(committedConversationId)
-  }, [commitDraftConversation, isDraftConversation, langGraphDraftConversationId])
+    replaceCommittedDraftRoute(committedConversationId)
+  }, [
+    commitDraftConversation,
+    isDraftConversation,
+    langGraphDraftConversationId,
+    replaceCommittedDraftRoute,
+  ])
   const handleNewMessageAccepted = useCallback(() => {
     if (!isDraftConversation) return
     const committedConversationId = startedConversationIdRef.current
     if (!committedConversationId) return
     setSuppressEmptyStateForConversationId(committedConversationId)
     invalidateConversationNavigators(queryClient, agentId, committedConversationId)
-    navigateToCommittedDraft(committedConversationId, { immediate: true })
+    navigateToCommittedDraft(committedConversationId)
   }, [agentId, isDraftConversation, navigateToCommittedDraft, queryClient])
 
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
