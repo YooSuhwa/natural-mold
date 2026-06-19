@@ -440,6 +440,58 @@ async def test_thread_state_exposes_branch_metadata_for_langchain_messages(
 
 
 @pytest.mark.asyncio
+async def test_thread_state_uses_active_checkpoint_for_same_id_user_edit_branches(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    old_leaf = _CheckpointSlim(
+        checkpoint_id="ck-z-old",
+        parent_checkpoint_id=None,
+        messages=[
+            HumanMessage(id="user-same-id", content="안녕?"),
+            AIMessage(id="assistant-old", content="old"),
+        ],
+    )
+    middle_leaf = _CheckpointSlim(
+        checkpoint_id="ck-a-middle",
+        parent_checkpoint_id=None,
+        messages=[
+            HumanMessage(id="user-same-id", content="바보"),
+            AIMessage(id="assistant-middle", content="middle"),
+        ],
+    )
+    active_leaf = _CheckpointSlim(
+        checkpoint_id="ck-m-new",
+        parent_checkpoint_id=None,
+        messages=[
+            HumanMessage(id="user-same-id", content="반가워"),
+            AIMessage(id="assistant-new", content="new"),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: _FakeCheckpointer([active_leaf, middle_leaf, old_leaf]),
+    )
+
+    response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert response.status_code == 200
+    state = response.json()
+    messages = state["values"]["messages"]
+    user_metadata = messages[0]["additional_kwargs"]["metadata"]
+    assert messages[0]["content"] == "반가워"
+    assert user_metadata["checkpoint_id"] == "ck-m-new"
+    assert user_metadata["siblingCheckpointIds"] == ["ck-z-old", "ck-a-middle", "ck-m-new"]
+    assert user_metadata["branchIndex"] == 2
+    assert user_metadata["branchTotal"] == 3
+    assert "branches" not in messages[1]["additional_kwargs"]["metadata"]
+
+
+@pytest.mark.asyncio
 async def test_thread_state_uses_unique_branch_ids_for_synthetic_langchain_messages(
     client: AsyncClient,
     db: AsyncSession,

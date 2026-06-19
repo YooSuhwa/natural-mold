@@ -67,6 +67,7 @@ __all__ = [
     "list_messages_from_checkpointer",
     "mark_conversation_read",
     "maybe_set_auto_title",
+    "promote_draft_conversation",
     "save_token_usage",
     "touch_conversation",
     "trigger_blocked_tools_for_agent_tree",
@@ -709,10 +710,30 @@ async def list_global_conversations_page(
 
 
 async def create_conversation(
-    db: AsyncSession, agent_id: uuid.UUID, title: str | None = None
+    db: AsyncSession,
+    agent_id: uuid.UUID,
+    title: str | None = None,
+    *,
+    source: str = "ui",
 ) -> Conversation:
-    conv = Conversation(agent_id=agent_id, title=title or "새 대화")
+    conv = Conversation(agent_id=agent_id, title=title or "새 대화", source=source)
     db.add(conv)
+    await db.flush()
+    await db.refresh(conv)
+    return conv
+
+
+async def promote_draft_conversation(
+    db: AsyncSession,
+    conv: Conversation,
+    *,
+    title_from_content: str | None = None,
+) -> Conversation:
+    if conv.source != "draft":
+        return conv
+    conv.source = "ui"
+    if title_from_content:
+        conv.title = conversation_title_from_content(title_from_content)
     await db.flush()
     await db.refresh(conv)
     return conv

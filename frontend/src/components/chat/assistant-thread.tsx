@@ -59,6 +59,7 @@ import { UserAvatar } from '@/components/auth/UserAvatar'
 import type { User } from '@/lib/types/user'
 import {
   chatCancelInFlightAtom,
+  pendingEditBranchPickerSuppressionAtom,
   sessionTokenUsageAtom,
   type TokenUsage,
 } from '@/lib/stores/chat-store'
@@ -312,7 +313,10 @@ function AssistantArtifactCards() {
  * 사용자/AI 메시지 쪽 정렬을 표현. */
 function MessageMetaRow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-1 flex min-h-7 max-w-full items-center gap-1 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100">
+    <div
+      className="mt-1 flex min-h-7 max-w-full items-center gap-1 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+      data-moldy-message-meta-row="true"
+    >
       {children}
     </div>
   )
@@ -407,6 +411,8 @@ interface BranchMeta {
   branchCheckpointId?: string | null
   branchIndex?: number | null
   branchTotal?: number | null
+  moldyBranchPickerDisplayOnly?: boolean
+  moldySuppressBranchPicker?: boolean
 }
 
 /** M-CHAT1b — `<1/2>` style branch picker.
@@ -425,16 +431,16 @@ function canRenderBranchPicker(
 ): meta is BranchMeta & {
   branchIndex: number
   branchTotal: number
-  siblingCheckpointIds: string[]
 } {
   const siblingCheckpoints = meta.siblingCheckpointIds ?? []
   const { branchIndex, branchTotal } = meta
+  const hasBranchNumbers =
+    typeof branchIndex === 'number' && typeof branchTotal === 'number' && branchTotal >= 2
   return (
     !!conversationId &&
-    branchIndex != null &&
-    branchTotal != null &&
-    branchTotal >= 2 &&
-    siblingCheckpoints.length === branchTotal
+    meta.moldySuppressBranchPicker !== true &&
+    hasBranchNumbers &&
+    (meta.moldyBranchPickerDisplayOnly === true || siblingCheckpoints.length === branchTotal)
   )
 }
 
@@ -443,6 +449,10 @@ function BranchPicker() {
   const conversationId = useChatConversationId()
   const queryClient = useQueryClient()
   const [pendingCheckpointId, setPendingCheckpointId] = useState<string | null>(null)
+  const threadIsRunning = useAuiState((s) => s.thread.isRunning)
+  const pendingEditSuppression = useAtomValue(pendingEditBranchPickerSuppressionAtom)
+  const messageId = useAuiState((s) => (typeof s.message?.id === 'string' ? s.message.id : null))
+  const messageText = useAuiState((s) => getMessageCopyText(s.message?.content))
   const meta = useAuiState(
     (s) =>
       ((s.message?.metadata as { custom?: BranchMeta } | undefined)?.custom ?? {}) as BranchMeta,
@@ -451,10 +461,11 @@ function BranchPicker() {
     () => meta.siblingCheckpointIds ?? [],
     [meta.siblingCheckpointIds],
   )
+  const displayOnly = meta.moldyBranchPickerDisplayOnly === true
 
   const switchTo = useCallback(
     async (targetIdx: number) => {
-      if (!conversationId || pendingCheckpointId) return
+      if (!conversationId || pendingCheckpointId || threadIsRunning || displayOnly) return
       const checkpointId = siblingCheckpoints[targetIdx]
       if (!checkpointId) {
         reportClientWarning('BranchPicker', 'missing checkpoint id for sibling idx', targetIdx)
@@ -474,9 +485,25 @@ function BranchPicker() {
         setPendingCheckpointId(null)
       }
     },
-    [conversationId, pendingCheckpointId, queryClient, siblingCheckpoints],
+    [
+      conversationId,
+      displayOnly,
+      pendingCheckpointId,
+      queryClient,
+      siblingCheckpoints,
+      threadIsRunning,
+    ],
   )
 
+  const pendingEditMatchesMessage =
+    pendingEditSuppression?.conversationId === conversationId &&
+    (pendingEditSuppression.messageId === messageId ||
+      pendingEditSuppression.content === messageText)
+  const branchIsNewest =
+    typeof meta.branchTotal !== 'number' ||
+    meta.branchTotal < 2 ||
+    meta.branchIndex === meta.branchTotal - 1
+  if (pendingEditMatchesMessage && !branchIsNewest) return null
   if (!canRenderBranchPicker(conversationId, meta)) return null
   // canRenderBranchPicker guarantees conversationId is non-null + the index/
   // total/checkpoint counts line up. The casts below are narrowing helpers
@@ -487,12 +514,16 @@ function BranchPicker() {
   const total = branchTotal
   const display = currentIdx + 1
   const isSwitching = pendingCheckpointId !== null
+  const controlsDisabled = isSwitching || threadIsRunning || displayOnly
   return (
-    <span className="inline-flex items-center gap-0.5 moldy-ui-micro tabular-nums text-muted-foreground">
+    <span
+      className="inline-flex items-center gap-0.5 moldy-ui-micro tabular-nums text-muted-foreground"
+      data-moldy-branch-picker="true"
+    >
       <button
         type="button"
         className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
-        disabled={isSwitching || currentIdx <= 0}
+        disabled={controlsDisabled || currentIdx <= 0}
         onClick={() => void switchTo(currentIdx - 1)}
         aria-label={t('previous')}
       >
@@ -504,7 +535,7 @@ function BranchPicker() {
       <button
         type="button"
         className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
-        disabled={isSwitching || currentIdx >= total - 1}
+        disabled={controlsDisabled || currentIdx >= total - 1}
         onClick={() => void switchTo(currentIdx + 1)}
         aria-label={t('next')}
       >
@@ -694,6 +725,7 @@ export function AssistantThread({
     () => ({
       UserMessage: function UserMsg() {
         const { isBuilder, showMessageTimestamp, user } = useAssistantThreadDynamicContext()
+        const messageId = useAuiState((s) => s.message?.id)
         const metaRow = (
           <MessageMetaRow>
             <BranchPicker />
@@ -710,7 +742,11 @@ export function AssistantThread({
           )
         }
         return (
-          <div className="group relative flex justify-end gap-3 [contain-intrinsic-size:0_96px] [content-visibility:auto]">
+          <div
+            className="group relative flex justify-end gap-3 [contain-intrinsic-size:0_96px] [content-visibility:auto]"
+            data-moldy-message-id={messageId}
+            data-moldy-message-role="user"
+          >
             <div className="flex w-full max-w-[80%] flex-col items-end">
               <div className="moldy-chat-bubble-user px-4 py-2.5 text-sm leading-relaxed">
                 <MessagePrimitive.Content />
@@ -750,6 +786,7 @@ export function AssistantThread({
           isBuilder,
           showMessageTimestamp,
         } = useAssistantThreadDynamicContext()
+        const messageId = useAuiState((s) => s.message?.id)
         const tChat = useTranslations('chat')
         const isStreamingMessage = useIsStreamingMessage()
         const metaRow = (
@@ -781,6 +818,8 @@ export function AssistantThread({
               'group relative flex gap-3',
               !isStreamingMessage && '[contain-intrinsic-size:0_180px] [content-visibility:auto]',
             )}
+            data-moldy-message-id={messageId}
+            data-moldy-message-role="assistant"
           >
             <StreamingMessageLoadingIndicator
               activities={activities}

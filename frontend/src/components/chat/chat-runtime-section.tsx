@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import {
   AssistantRuntimeProvider,
   type AssistantRuntime,
@@ -47,6 +47,8 @@ export interface ChatRuntimeSectionProps {
   readonly messages: Message[]
   readonly modelName?: string
   readonly onRuntimeStatusChange: (status: ConversationRuntimeStatus) => void
+  readonly onBeforeNewMessage?: () => void
+  readonly onNewMessageAccepted?: () => void
   readonly onStreamEnd: (didMutate: boolean) => void
   readonly streamFn: StreamFn
   readonly totalCost?: number
@@ -67,6 +69,8 @@ export function ChatRuntimeSection({
   messages,
   modelName,
   onRuntimeStatusChange,
+  onBeforeNewMessage,
+  onNewMessageAccepted,
   onStreamEnd,
   streamFn,
   totalCost,
@@ -92,8 +96,11 @@ export function ChatRuntimeSection({
         attachmentAdapter={attachmentAdapter}
         conversationId={activeConversationId}
         feedbackAdapter={feedbackAdapter}
+        onBeforeNewMessage={onBeforeNewMessage}
+        onNewMessageAccepted={onNewMessageAccepted}
         onRuntimeStatusChange={onRuntimeStatusChange}
         onStreamEnd={onStreamEnd}
+        serverMessages={messages}
         threadProps={threadProps}
       />
     )
@@ -164,8 +171,11 @@ interface LangGraphRuntimeSectionProps {
   readonly attachmentAdapter?: AttachmentAdapter
   readonly conversationId: string
   readonly feedbackAdapter?: FeedbackAdapter
+  readonly onBeforeNewMessage?: () => void
+  readonly onNewMessageAccepted?: () => void
   readonly onRuntimeStatusChange: (status: ConversationRuntimeStatus) => void
   readonly onStreamEnd: (didMutate: boolean) => void
+  readonly serverMessages: readonly Message[]
   readonly threadProps: ThreadRenderProps
 }
 
@@ -174,10 +184,16 @@ function LangGraphRuntimeSection({
   attachmentAdapter,
   conversationId,
   feedbackAdapter,
+  onBeforeNewMessage,
+  onNewMessageAccepted,
   onRuntimeStatusChange,
   onStreamEnd,
+  serverMessages,
   threadProps,
 }: LangGraphRuntimeSectionProps) {
+  const handleSubmitSettled = useCallback(() => {
+    onStreamEnd(false)
+  }, [onStreamEnd])
   const {
     assistantRuntime,
     activities,
@@ -190,6 +206,10 @@ function LangGraphRuntimeSection({
     conversationId,
     feedbackAdapter,
     attachmentAdapter,
+    onBeforeSubmit: onBeforeNewMessage,
+    onRunStartAccepted: onNewMessageAccepted,
+    onSubmitSettled: handleSubmitSettled,
+    serverMessages,
   })
   const wasRunningRef = useRef(false)
   const hitlValue = useMemo(

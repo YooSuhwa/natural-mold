@@ -52,6 +52,30 @@ describe('createMoldyAgentTransport', () => {
     expect('apiUrl' in transport).toBe(false)
   })
 
+  it('notifies after a run.start command is accepted', async () => {
+    const onRunStartAccepted = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        type: 'success',
+        id: 1,
+        result: { run_id: 'run-1' },
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-1', 'agent-1', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onRunStartAccepted,
+    })
+
+    await transport.send({
+      id: 1,
+      method: 'run.start',
+      params: { assistant_id: '_', input: { messages: [] } },
+    })
+
+    expect(onRunStartAccepted).toHaveBeenCalledOnce()
+  })
+
   it('uses the state path for SDK hydration without adding CSRF to GET requests', async () => {
     csrfStore.set('csrf-2')
     const onState = vi.fn()

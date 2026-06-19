@@ -82,22 +82,27 @@ async def load_thread_state_snapshot(
     for idx, node in enumerate(tree.nodes):
         aliases = _message_id_aliases(node.message, conversation, idx)
         message_id = aliases[0] if aliases else None
+        branch_metadata = _branch_metadata(tree.branches_by_message, node, conversation, idx)
         checkpoint_id = (
-            checkpoint_by_message_id.get(message_id)
-            if message_id is not None
-            else node.introduced_by_checkpoint_id
+            node.introduced_by_checkpoint_id
+            if branch_metadata
+            else (
+                checkpoint_by_message_id.get(message_id)
+                if message_id is not None
+                else node.introduced_by_checkpoint_id
+            )
         )
         checkpoint_id = checkpoint_id or node.introduced_by_checkpoint_id
         payload = serialize_langchain_message(
             node.message,
             checkpoint_id=checkpoint_id,
-            metadata=_branch_metadata(tree.branches_by_message, node, conversation, idx),
+            metadata=branch_metadata,
         )
         if message_id is not None:
             payload = {**payload, "id": message_id}
         messages.append(payload)
         for alias in aliases:
-            checkpoint_by_message_id[alias] = checkpoint_id
+            checkpoint_by_message_id.setdefault(alias, checkpoint_id)
 
     return ThreadStateSnapshot(
         values={**values, "messages": messages},

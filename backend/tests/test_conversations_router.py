@@ -36,6 +36,7 @@ def test_conversation_routes_registered_from_facade():
         ("GET", "/api/agents/{agent_id}/conversations/page"),
         ("GET", "/api/agents/{agent_id}/conversations"),
         ("POST", "/api/agents/{agent_id}/conversations"),
+        ("POST", "/api/agents/{agent_id}/conversations/draft"),
         ("POST", "/api/agents/{agent_id}/conversations/start"),
         ("PATCH", "/api/conversations/{conversation_id}"),
         ("POST", "/api/conversations/{conversation_id}/read"),
@@ -548,6 +549,22 @@ async def test_create_conversation_default_title(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_create_draft_conversation_is_hidden_from_user_lists(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+
+    resp = await client.post(f"/api/agents/{agent_id}/conversations/draft", json={})
+
+    assert resp.status_code == 201
+    draft = resp.json()
+    assert draft["title"] == "새 대화"
+    assert draft["agent_id"] == str(agent_id)
+
+    list_resp = await client.get(f"/api/agents/{agent_id}/conversations")
+    assert list_resp.status_code == 200
+    assert list_resp.json() == []
+
+
+@pytest.mark.asyncio
 async def test_create_conversation_agent_not_found(client: AsyncClient):
     fake_id = "00000000-0000-0000-0000-000000000099"
     resp = await client.post(f"/api/agents/{fake_id}/conversations", json={})
@@ -862,9 +879,7 @@ async def test_send_message_stream_error_marks_trace_failed(
 
     async with TestSession() as db:
         record = (
-            await db.execute(
-                select(MessageEvent).where(MessageEvent.conversation_id == conv_id)
-            )
+            await db.execute(select(MessageEvent).where(MessageEvent.conversation_id == conv_id))
         ).scalar_one()
         assert record.status == "failed"
         assert record.events[-1]["data"]["status"] == "failed"

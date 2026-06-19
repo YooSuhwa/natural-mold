@@ -8,6 +8,7 @@ export interface MoldyAgentTransportOptions {
   apiBase?: string
   fetch?: typeof fetch
   onState?: (state: AgentServerState<unknown>) => void
+  onRunStartAccepted?: () => void
 }
 
 type AgentServerState<StateType = unknown> = {
@@ -82,16 +83,19 @@ class MoldyHttpAgentServerAdapter implements AgentServerAdapter {
   readonly #agentId: string
   readonly #delegate: HttpAgentServerAdapter
   readonly #onState: MoldyAgentTransportOptions['onState']
+  readonly #onRunStartAccepted: MoldyAgentTransportOptions['onRunStartAccepted']
   threadId: string
 
   constructor(
     agentId: string,
     options: ConstructorParameters<typeof HttpAgentServerAdapter>[0],
     onState?: MoldyAgentTransportOptions['onState'],
+    onRunStartAccepted?: MoldyAgentTransportOptions['onRunStartAccepted'],
   ) {
     this.#agentId = agentId
     this.#delegate = new HttpAgentServerAdapter(options)
     this.#onState = onState
+    this.#onRunStartAccepted = onRunStartAccepted
     this.threadId = this.#delegate.threadId
   }
 
@@ -104,8 +108,12 @@ class MoldyHttpAgentServerAdapter implements AgentServerAdapter {
     return this.#delegate.open()
   }
 
-  send(command: ProtocolCommand): ProtocolSendResult {
-    return this.#delegate.send(commandWithAgentId(command, this.#agentId))
+  async send(command: ProtocolCommand): Promise<Awaited<ProtocolSendResult>> {
+    const value = await this.#delegate.send(commandWithAgentId(command, this.#agentId))
+    if (command.method === 'run.start') {
+      this.#onRunStartAccepted?.()
+    }
+    return value
   }
 
   events(): ReturnType<AgentServerAdapter['events']> {
@@ -147,5 +155,6 @@ export function createMoldyAgentTransport(
       },
     },
     options.onState,
+    options.onRunStartAccepted,
   )
 }

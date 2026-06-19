@@ -95,4 +95,32 @@ describe('convertMoldyLangChainMessage', () => {
       branchTotal: 2,
     })
   })
+
+  it('preserves display-only branch picker metadata from pending reload messages', () => {
+    const message = new AIMessage({
+      id: 'assistant-branch-display-only',
+      content: 'partial answer',
+      additional_kwargs: {
+        metadata: {
+          branches: ['pending-reload-0', 'pending-reload-1'],
+          siblingCheckpointIds: ['pending-reload-0', 'pending-reload-1'],
+          activeBranchId: 'pending-reload-1',
+          branchCheckpointId: 'pending-reload-1',
+          branchIndex: 1,
+          branchTotal: 2,
+          checkpoint_id: 'pending-reload-1',
+          moldyBranchPickerDisplayOnly: true,
+        },
+      },
+    })
+
+    const converted = convertMoldyLangChainMessage(message, converterMetadata())
+
+    expect(customMetadata(converted)).toMatchObject({
+      branchIndex: 1,
+      branchTotal: 2,
+      moldyBranchPickerDisplayOnly: true,
+      siblingCheckpointIds: ['pending-reload-0', 'pending-reload-1'],
+    })
+  })
 })

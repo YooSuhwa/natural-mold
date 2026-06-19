@@ -12,10 +12,13 @@ import {
   type FormHTMLAttributes,
 } from 'react'
 import { useAui, useAuiState } from '@assistant-ui/react'
+import { useSetAtom } from 'jotai'
 
 import { reportClientError } from '@/lib/logging/client-logger'
 import { cn } from '@/lib/utils'
+import { pendingEditBranchPickerSuppressionAtom } from '@/lib/stores/chat-store'
 import { requestThreadComposerFocus } from './composer-focus'
+import { useChatConversationId } from './conversation-context'
 
 type SubmitMode = 'enter' | 'ctrlEnter' | 'none'
 type MessageEditComposerRootProps = FormHTMLAttributes<HTMLFormElement>
@@ -45,6 +48,8 @@ export function MessageEditComposerRoot({
   ...props
 }: MessageEditComposerRootProps) {
   const aui = useAui()
+  const conversationId = useChatConversationId()
+  const setPendingBranchPickerSuppression = useSetAtom(pendingEditBranchPickerSuppressionAtom)
 
   function handleSubmit(event: MessageEditComposerSubmitEvent) {
     onSubmit?.(event)
@@ -54,6 +59,12 @@ export function MessageEditComposerRoot({
     const composer = aui.message().composer()
     const state = composer.getState()
     if (!state.isEditing || state.isEmpty) return
+    const message = aui.message().getState()
+    setPendingBranchPickerSuppression({
+      conversationId,
+      messageId: typeof message.id === 'string' ? message.id : null,
+      content: state.text,
+    })
     composer.send()
     requestThreadComposerFocus()
   }
@@ -67,6 +78,7 @@ export function MessageEditComposerRoot({
 
 export function useMessageEditComposerControls() {
   const aui = useAui()
+  const setPendingBranchPickerSuppression = useSetAtom(pendingEditBranchPickerSuppressionAtom)
   const canCancel = useAuiState((state) => state.message.composer.canCancel)
   const canSend = useAuiState(
     (state) =>
@@ -79,9 +91,10 @@ export function useMessageEditComposerControls() {
     const composer = aui.message().composer()
     if (composer.getState().canCancel) {
       composer.cancel()
+      setPendingBranchPickerSuppression(null)
       requestThreadComposerFocus()
     }
-  }, [aui])
+  }, [aui, setPendingBranchPickerSuppression])
 
   return { canCancel, canSend, cancel }
 }
@@ -108,6 +121,8 @@ export const MessageEditComposerInput = forwardRef<
     forwardedRef,
   ) => {
     const aui = useAui()
+    const conversationId = useChatConversationId()
+    const setPendingBranchPickerSuppression = useSetAtom(pendingEditBranchPickerSuppressionAtom)
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const compositionRef = useRef(false)
     const effectiveSubmitMode = submitMode ?? (submitOnEnter === false ? 'none' : 'enter')
@@ -148,8 +163,14 @@ export const MessageEditComposerInput = forwardRef<
         const composer = aui.message().composer()
         if (!composer.getState().isEditing) return
         composer.setText(next)
+        const message = aui.message().getState()
+        setPendingBranchPickerSuppression({
+          conversationId,
+          messageId: typeof message.id === 'string' ? message.id : null,
+          content: next,
+        })
       },
-      [aui],
+      [aui, conversationId, setPendingBranchPickerSuppression],
     )
 
     const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {

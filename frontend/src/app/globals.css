@@ -880,6 +880,10 @@
     user-select: none;
   }
 
+  [data-moldy-message-meta-row='true']:has([data-moldy-branch-picker='true']) {
+    opacity: 1;
+  }
+
   .moldy-resize-handle::after {
     position: absolute;
     inset-block: 0;

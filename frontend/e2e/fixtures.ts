@@ -147,12 +147,17 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         req.method() === 'POST' &&
         (/\/threads\/[^/]+\/history(?:\?.*)?$/.test(url) ||
           /\/api\/conversations\/[^/]+\/langgraph\/threads\/[^/]+\/commands(?:\?.*)?$/.test(url))
+      const expectedBranchSwitchAbort =
+        errorText.includes('net::ERR_ABORTED') &&
+        req.method() === 'POST' &&
+        /\/api\/conversations\/[^/]+\/messages\/switch-branch(?:\?.*)?$/.test(url)
       if (
         !url.includes('favicon') &&
         !expectedStreamDetach &&
         !expectedSdkCancelAbort &&
         !expectedRouteTransitionAbort &&
-        !expectedLangGraphSdkTransitionAbort
+        !expectedLangGraphSdkTransitionAbort &&
+        !expectedBranchSwitchAbort
       ) {
         errors.network.push(`${req.method()} ${url} ${errorText}`)
       }

@@ -516,6 +516,45 @@ async def test_run_start_command_rejects_sdk_camel_case_unsupported_multitask_st
 
 
 @pytest.mark.asyncio
+async def test_run_start_command_promotes_draft_conversation_to_ui(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    conversation.source = "draft"
+    conversation.title = "새 대화"
+    await db.commit()
+    started = {}
+
+    async def fake_start_conversation_run(**kwargs):
+        started.update(kwargs)
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fake_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": "run-draft",
+            "method": "run.start",
+            "params": {
+                "input": {"messages": [{"role": "user", "content": "draft hello"}]},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["type"] == "success"
+    await db.refresh(conversation)
+    assert conversation.source == "ui"
+    assert conversation.title == "draft hello"
+    assert started["conversation_id"] == conversation.id
+
+
+@pytest.mark.asyncio
 async def test_run_start_command_forwards_edit_source_to_worker(
     client: AsyncClient,
     db: AsyncSession,
@@ -559,3 +598,50 @@ async def test_run_start_command_forwards_edit_source_to_worker(
     run = await db.get(ConversationRun, uuid.UUID(response.json()["result"]["run_id"]))
     assert run is not None
     assert run.source == "edit"
+
+
+@pytest.mark.asyncio
+async def test_run_start_command_strips_trailing_assistant_for_regenerate(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    fork_kwargs = {}
+    started = {}
+
+    async def fake_fork_overwrite_input(**kwargs):
+        fork_kwargs.update(kwargs)
+        return {"messages": []}
+
+    async def fake_start_conversation_run(**kwargs):
+        started.update(kwargs)
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_commands._fork_overwrite_input",
+        fake_fork_overwrite_input,
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fake_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": "run-regenerate",
+            "method": "run.start",
+            "params": {
+                "checkpoint": {"checkpoint_id": "ck-leaf-with-assistant"},
+                "input": {},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["type"] == "success"
+    assert fork_kwargs["drop_trailing_assistant"] is True
+    assert started["moldy_source"] == "regenerate"
+    run = await db.get(ConversationRun, uuid.UUID(response.json()["result"]["run_id"]))
+    assert run is not None
+    assert run.source == "regenerate"

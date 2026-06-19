@@ -146,6 +146,7 @@ describe('useMoldyLangGraphStream', () => {
     mocks.stream.messages = []
     mocks.stream.values = { messages: [] }
     mocks.stream.interrupts = []
+    mocks.stream.isLoading = false
     mocks.stream.submit.mockClear()
     mocks.stream.respond.mockClear()
     mocks.stream.respondAll.mockClear()
@@ -285,6 +286,84 @@ describe('useMoldyLangGraphStream', () => {
       messages: [expect.objectContaining({ content: 'hello' })],
     })
     expect(mocks.stream.stop).toHaveBeenCalled()
+  })
+
+  it('runs the before-submit callback before submitting new assistant-ui messages', async () => {
+    const callOrder: string[] = []
+    const onBeforeSubmit = vi.fn(() => {
+      callOrder.push('before')
+    })
+    mocks.stream.submit.mockImplementationOnce(async () => {
+      callOrder.push('submit')
+    })
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-2',
+          conversationId: 'conversation-2',
+          onBeforeSubmit,
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onNew: (message: { content: { type: string; text: string }[] }) => Promise<void>
+    }
+    await runtimeOptions.onNew({ content: [{ type: 'text', text: 'hello' }] })
+
+    expect(onBeforeSubmit).toHaveBeenCalledOnce()
+    expect(callOrder).toEqual(['before', 'submit'])
+  })
+
+  it('passes the run-start accepted callback to the LangGraph transport', () => {
+    const onRunStartAccepted = vi.fn()
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-2',
+          conversationId: 'conversation-2',
+          onRunStartAccepted,
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith(
+      'conversation-2',
+      'agent-2',
+      expect.objectContaining({ onRunStartAccepted }),
+    )
+  })
+
+  it('keeps the completed assistant message when SDK history briefly shrinks to a prefix', () => {
+    const userMessage = new HumanMessage('hello')
+    const assistantMessage = new AIMessage('complete response')
+    mocks.stream.messages = [userMessage, assistantMessage]
+
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-sticky',
+          conversationId: 'conversation-sticky',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    expect(mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: [userMessage, assistantMessage],
+      }),
+    )
+
+    mocks.stream.messages = [userMessage]
+    rerender()
+
+    expect(mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: [userMessage, assistantMessage],
+      }),
+    )
   })
 
   it('routes assistant-ui cancel through the LangGraph stream stop contract', async () => {
@@ -473,6 +552,25 @@ describe('useMoldyLangGraphStream', () => {
         }),
       )
     })
+  })
+
+  it('does not render a lone blank assistant placeholder before the optimistic user message arrives', () => {
+    mocks.stream.isLoading = true
+    mocks.stream.messages = [new AIMessage({ id: 'stream-placeholder', content: '' })]
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-first-frame',
+          conversationId: 'conversation-first-frame',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+      | { messages: readonly unknown[] }
+      | undefined
+    expect(converterOptions?.messages).toEqual([])
   })
 
   it('hydrates branch-selected v3 messages after the shared branch picker switches checkpoint', async () => {

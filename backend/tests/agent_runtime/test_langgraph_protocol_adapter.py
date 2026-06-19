@@ -24,7 +24,7 @@ class FakeChunk:
     tool_call_chunks: list[dict[str, object]] | None = None
 
 
-def test_v3_message_tuple_preserves_sdk_payload_metadata_pair() -> None:
+def test_v3_message_tuple_flattens_sdk_payload_and_preserves_metadata() -> None:
     event = adapt_v3_protocol_event(
         {
             "type": "event",
@@ -37,6 +37,7 @@ def test_v3_message_tuple_preserves_sdk_payload_metadata_pair() -> None:
                         "event": "content-block-delta",
                         "index": 0,
                         "delta": {"type": "text-delta", "text": "hello"},
+                        "metadata": {"provider": "scripted"},
                     },
                     {
                         "langgraph_node": "model",
@@ -60,19 +61,18 @@ def test_v3_message_tuple_preserves_sdk_payload_metadata_pair() -> None:
     assert event["checkpoint_id"] == "ck-1"
     assert event["checkpoint_ns"] == "model"
     assert event["timestamp"] == "1781294167426"
-    assert event["data"] == [
-        {
-            "event": "content-block-delta",
-            "index": 0,
-            "delta": {"type": "text-delta", "text": "hello"},
-        },
-        {
+    assert event["data"] == {
+        "event": "content-block-delta",
+        "index": 0,
+        "delta": {"type": "text-delta", "text": "hello"},
+        "metadata": {
+            "provider": "scripted",
             "langgraph_node": "model",
             "run_id": "lc-run-1",
             "checkpoint_id": "ck-1",
             "checkpoint_ns": "model",
         },
-    ]
+    }
 
 
 def test_v3_reasoning_content_is_redacted_before_storage() -> None:
@@ -358,15 +358,13 @@ def test_non_json_message_object_serializes_stable_fields() -> None:
         thread_id="thread-1",
     )
 
-    assert event["data"] == [
-        {
-            "id": "msg-1",
-            "type": "AIMessageChunk",
-            "content": "hi",
-            "tool_call_chunks": [{"id": "call-1", "name": "search"}],
-        },
-        {"langgraph_node": "model"},
-    ]
+    assert event["data"] == {
+        "id": "msg-1",
+        "type": "AIMessageChunk",
+        "content": "hi",
+        "tool_call_chunks": [{"id": "call-1", "name": "search"}],
+        "metadata": {"langgraph_node": "model"},
+    }
 
 
 def test_subagent_discovery_normalizes_status_and_trigger() -> None:
