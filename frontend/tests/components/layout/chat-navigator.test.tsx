@@ -9,6 +9,7 @@ import {
 import { ChatNavigatorSessionRow } from '@/components/layout/chat-navigator-session-row'
 import { formatShortcutLabel } from '@/components/layout/use-chat-navigator-shortcuts'
 import type { ConversationRowActions } from '@/components/chat/use-conversation-row-actions'
+import { replaceChatRouteWithoutRemount } from '@/lib/chat/chat-route-replacement'
 import { shortcutPreviewActiveAtom } from '@/lib/stores/chat-navigator-store'
 import {
   mockAgentSummaryList,
@@ -125,6 +126,7 @@ describe('ChatNavigator', () => {
     })
     // atomWithStorage(collapsedAgentIdsAtom)가 테스트 간 상태를 누수하지 않게 한다
     window.localStorage.clear()
+    window.history.replaceState(null, '', '/')
     conversationHookMocks.useConversationPages.mockReturnValue({
       data: { pages: [mockConversationPage] },
       isLoading: false,
@@ -162,6 +164,21 @@ describe('ChatNavigator', () => {
     }
     expect(activeAgentControls).toHaveClass('opacity-100')
     expect(screen.queryByRole('button', { name: 'Test Agent 대화 검색' })).not.toBeInTheDocument()
+  })
+
+  it('promotes a remountless draft route replacement to the real active session', async () => {
+    render(<ChatNavigator />)
+
+    await waitFor(() => expect(screen.getByRole('link', { name: /새 대화/ })).toBeInTheDocument())
+
+    act(() => {
+      replaceChatRouteWithoutRemount('/agents/agent-1/conversations/conv-1')
+    })
+
+    expect(screen.queryByRole('link', { name: /새 대화/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Test Conversation').closest('[data-chat-session-href]')).toHaveClass(
+      'bg-primary',
+    )
   })
 
   it('shows global search results above agent groups', async () => {

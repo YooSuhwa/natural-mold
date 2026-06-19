@@ -26,6 +26,7 @@ import {
 import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { getChatRuntimeMode } from '@/lib/chat/runtime-mode'
+import { replaceChatRouteWithoutRemount } from '@/lib/chat/chat-route-replacement'
 import { useLangGraphDraftConversation } from '@/lib/chat/langgraph-runtime/use-langgraph-draft-conversation'
 import { loadServerThreadState } from '@/lib/chat/langgraph-runtime/thread-state-checkpoints'
 import { primeStickyConversationMessagesFromThreadState } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
@@ -42,10 +43,6 @@ const PROMOTED_DRAFT_CONVERSATION_IDS = new Set<string>()
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function replaceUrlWithoutRemount(path: string): void {
-  History.prototype.replaceState.call(window.history, window.history.state, '', path)
 }
 
 async function prefetchConversationMessagesUntilReady(
@@ -175,10 +172,21 @@ export default function ChatPage({
     runtimeMode,
     onConversationId: handleLangGraphDraftConversationId,
   })
-  const resolvedConversationTitle = useConversationTitle(agentId, conversationId, agent?.name)
-  const currentTitle = isDraftConversation ? t('newConversation') : resolvedConversationTitle
   const activeConversationId = isDraftConversation ? langGraphDraftConversationId : conversationId
   const resolvedSideEffectConversationId = activeConversationId ?? conversationId
+  const committedTitleConversationId =
+    isDraftConversation &&
+    activeConversationId !== null &&
+    (suppressEmptyStateForConversationId === activeConversationId ||
+      PROMOTED_DRAFT_CONVERSATION_IDS.has(activeConversationId))
+      ? activeConversationId
+      : null
+  const titleConversationId = committedTitleConversationId ?? conversationId
+  const resolvedConversationTitle = useConversationTitle(agentId, titleConversationId, agent?.name)
+  const currentTitle =
+    isDraftConversation && committedTitleConversationId === null
+      ? t('newConversation')
+      : resolvedConversationTitle
 
   const streamFn = useCallback(
     async function* (content: string, signal: AbortSignal, options?: StreamChatOptions) {
@@ -229,7 +237,9 @@ export default function ChatPage({
           )
           if (!isReady) return
           if (!canContinue()) return
-          replaceUrlWithoutRemount(`/agents/${agentId}/conversations/${createdConversationId}`)
+          replaceChatRouteWithoutRemount(
+            `/agents/${agentId}/conversations/${createdConversationId}`,
+          )
         } finally {
           if (draftNavigationTokenRef.current === navigationToken) {
             draftNavigationTokenRef.current = null
@@ -259,6 +269,7 @@ export default function ChatPage({
     }
     const createdConversationId = startedConversationIdRef.current
     if (createdConversationId) {
+      setSuppressEmptyStateForConversationId(createdConversationId)
       queryClient.invalidateQueries({
         queryKey: conversationKeys.debugTraces(createdConversationId),
       })
@@ -327,6 +338,7 @@ export default function ChatPage({
     if (!isDraftConversation) return
     const committedConversationId = startedConversationIdRef.current
     if (!committedConversationId) return
+    setSuppressEmptyStateForConversationId(committedConversationId)
     invalidateConversationNavigators(queryClient, agentId, committedConversationId)
     navigateToCommittedDraft(committedConversationId)
   }, [agentId, isDraftConversation, navigateToCommittedDraft, queryClient])

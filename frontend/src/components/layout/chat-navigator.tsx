@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useSyncExternalStore } from 'react'
 import { usePathname } from 'next/navigation'
 import { useAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
@@ -9,6 +9,10 @@ import { SidebarGroup, SidebarGroupContent, useSidebar } from '@/components/ui/s
 import { SearchInput } from '@/components/shared/search-input'
 import { useAgentSummaries } from '@/lib/hooks/use-agents'
 import { useGlobalConversationPages } from '@/lib/hooks/use-conversations'
+import {
+  CHAT_ROUTE_REPLACED_EVENT,
+  isChatRouteReplacedEvent,
+} from '@/lib/chat/chat-route-replacement'
 import {
   agentSortAtom,
   collapsedAgentIdsAtom,
@@ -36,9 +40,15 @@ import { useChatNavigatorShortcuts } from './use-chat-navigator-shortcuts'
 
 export function ChatNavigator() {
   const pathname = usePathname()
+  const browserPathname = useSyncExternalStore(
+    subscribeChatRoutePathname,
+    getBrowserPathnameSnapshot,
+    () => pathname,
+  )
+  const visiblePathname = browserPathname.startsWith('/agents/') ? browserPathname : pathname
   const t = useTranslations('sidebar.agents')
   const { setOpen, state } = useSidebar()
-  const route = useMemo(() => parseChatRoute(pathname), [pathname])
+  const route = useMemo(() => parseChatRoute(visiblePathname), [visiblePathname])
   const { data: agents, isLoading } = useAgentSummaries()
   const [mode, setMode] = useAtom(navigatorModeAtom)
   const [agentSort, setAgentSort] = useAtom(agentSortAtom)
@@ -245,4 +255,22 @@ export function ChatNavigator() {
       />
     </SidebarGroup>
   )
+}
+
+function getBrowserPathnameSnapshot(): string {
+  return typeof window === 'undefined' ? '' : window.location.pathname
+}
+
+function subscribeChatRoutePathname(listener: () => void): () => void {
+  const handleRouteReplacement = (event: Event) => {
+    if (isChatRouteReplacedEvent(event)) listener()
+  }
+  const handlePopState = () => listener()
+
+  window.addEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
+  window.addEventListener('popstate', handlePopState)
+  return () => {
+    window.removeEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
+    window.removeEventListener('popstate', handlePopState)
+  }
 }
