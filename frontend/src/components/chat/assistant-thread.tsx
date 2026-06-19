@@ -64,10 +64,7 @@ import {
   type TokenUsage,
 } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
-import {
-  isStreamingMessageState,
-  StreamingMessageLoadingIndicator,
-} from '@/components/chat/assistant-message-loading'
+import { StreamingMessageLoadingIndicator } from '@/components/chat/assistant-message-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
@@ -242,10 +239,6 @@ function AssistantMessageParts() {
       <MessagePrimitive.Content components={ASSISTANT_PART_COMPONENTS} />
     </div>
   )
-}
-
-function useIsStreamingMessage(): boolean {
-  return useAuiState((s) => isStreamingMessageState(s.message))
 }
 
 function useMessageArtifacts(): ArtifactSummary[] {
@@ -743,7 +736,7 @@ export function AssistantThread({
         }
         return (
           <div
-            className="group relative flex justify-end gap-3 [contain-intrinsic-size:0_96px] [content-visibility:auto]"
+            className="group relative flex justify-end gap-3"
             data-moldy-message-id={messageId}
             data-moldy-message-role="user"
           >
@@ -788,7 +781,6 @@ export function AssistantThread({
         } = useAssistantThreadDynamicContext()
         const messageId = useAuiState((s) => s.message?.id)
         const tChat = useTranslations('chat')
-        const isStreamingMessage = useIsStreamingMessage()
         const metaRow = (
           <MessageMetaRow>
             {showMessageTimestamp && <MessageTimestamp />}
@@ -814,10 +806,7 @@ export function AssistantThread({
         }
         return (
           <div
-            className={cn(
-              'group relative flex gap-3',
-              !isStreamingMessage && '[contain-intrinsic-size:0_180px] [content-visibility:auto]',
-            )}
+            className="group relative flex gap-3"
             data-moldy-message-id={messageId}
             data-moldy-message-role="assistant"
           >

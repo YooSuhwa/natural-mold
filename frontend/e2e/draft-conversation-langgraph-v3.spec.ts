@@ -26,6 +26,10 @@ type EmptyStateObserverWindow = Window & {
   __moldyWrongBranchIndexObserver?: MutationObserver
   __moldyWrongBranchIndexReadyAt?: number
   __moldyWrongBranchIndexFrames?: string[]
+  __moldyUserTextStabilityObserver?: MutationObserver
+  __moldyUserTextStabilityReadyAt?: number
+  __moldyUserTextFlickerFrames?: string[]
+  __moldyUserTextExpectedTexts?: string[]
 }
 
 function conversationRows(value: unknown): ConversationRow[] {
@@ -188,8 +192,10 @@ async function installEmptyStateReappearanceObserver(page: Page, prompt: string)
       const check = () => {
         const surface = document.querySelector('main') ?? document.body
         if (!surface) return
-        const sentPromptVisible = Array.from(surface.querySelectorAll('*')).some(elementHasSentPrompt)
-        const mainText = surface instanceof HTMLElement ? surface.innerText : surface.textContent
+        const sentPromptVisible = Array.from(surface.querySelectorAll('*')).some(
+          elementHasSentPrompt,
+        )
+        const mainText = surface.innerText
         const emptyStateVisible = (mainText ?? '').includes(emptyStateText)
         if (sentPromptVisible && !emptyStateVisible) {
           observedWindow.__moldyEmptyStateReady = true
@@ -503,6 +509,81 @@ async function expectNoWrongBranchIndex(page: Page, durationMs = 1000): Promise<
   ).toEqual([])
 }
 
+async function installUserTextStabilityObserver(
+  page: Page,
+  texts: readonly string[],
+): Promise<void> {
+  await page.evaluate((expectedTexts) => {
+    const observedWindow = window as EmptyStateObserverWindow
+    observedWindow.__moldyUserTextStabilityObserver?.disconnect()
+    observedWindow.__moldyUserTextStabilityReadyAt = undefined
+    observedWindow.__moldyUserTextFlickerFrames = []
+    observedWindow.__moldyUserTextExpectedTexts = [...expectedTexts]
+
+    const userMessageSnapshots = (): readonly string[] =>
+      Array.from(document.querySelectorAll<HTMLElement>('[data-moldy-message-role="user"]')).map(
+        (element) => {
+          const id = element.dataset.moldyMessageId ?? 'no-id'
+          return `${id}:${element.innerText.replace(/\s+/g, ' ').trim()}`
+        },
+      )
+
+    const check = () => {
+      const snapshots = userMessageSnapshots()
+      const visibleTexts = snapshots.join('\n')
+      const allVisible = expectedTexts.every((text) => visibleTexts.includes(text))
+      if (allVisible) {
+        observedWindow.__moldyUserTextStabilityReadyAt ??= performance.now()
+        return
+      }
+      if (typeof observedWindow.__moldyUserTextStabilityReadyAt !== 'number') return
+      observedWindow.__moldyUserTextFlickerFrames?.push(
+        `${window.location.pathname}\n${snapshots.join('\n')}`,
+      )
+    }
+
+    const observer = new MutationObserver(check)
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+    observedWindow.__moldyUserTextStabilityObserver = observer
+    check()
+  }, texts)
+}
+
+async function expectNoUserTextFlicker(page: Page, durationMs = 1500): Promise<void> {
+  await page.waitForFunction(
+    (stableDurationMs) => {
+      const observedWindow = window as EmptyStateObserverWindow
+      const expectedTexts = observedWindow.__moldyUserTextExpectedTexts ?? []
+      const snapshots = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-moldy-message-role="user"]'),
+      ).map((element) => {
+        const id = element.dataset.moldyMessageId ?? 'no-id'
+        return `${id}:${element.innerText.replace(/\s+/g, ' ').trim()}`
+      })
+      const visibleTexts = snapshots.join('\n')
+      const allVisible = expectedTexts.every((text) => visibleTexts.includes(text))
+      if (allVisible) {
+        observedWindow.__moldyUserTextStabilityReadyAt ??= performance.now()
+      } else if (typeof observedWindow.__moldyUserTextStabilityReadyAt === 'number') {
+        observedWindow.__moldyUserTextFlickerFrames?.push(
+          `${window.location.pathname}\n${snapshots.join('\n')}`,
+        )
+      }
+      const readyAt = observedWindow.__moldyUserTextStabilityReadyAt
+      return typeof readyAt === 'number' && performance.now() - readyAt >= stableDurationMs
+    },
+    durationMs,
+    { timeout: durationMs + 5000, polling: 50 },
+  )
+  const frames = await page.evaluate(() => {
+    const observedWindow = window as EmptyStateObserverWindow
+    return observedWindow.__moldyUserTextFlickerFrames ?? []
+  })
+  expect(frames, `user message text flickered while streaming:\n${frames.join('\n---\n')}`).toEqual(
+    [],
+  )
+}
+
 async function expectAssistantTextOccurrenceCount(
   assistantMessage: ReturnType<Page['locator']>,
   pattern: RegExp,
@@ -777,9 +858,11 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
 
       const prompt = `E2E_VISUAL_SLOW_STREAM E2E_DRAFT_NAV_${Date.now()}`
       await sendMessage(page, prompt)
-      await expect(page.getByText(/E2E visual stream fixture is still running/).last()).toBeVisible({
-        timeout: 10_000,
-      })
+      await expect(page.getByText(/E2E visual stream fixture is still running/).last()).toBeVisible(
+        {
+          timeout: 10_000,
+        },
+      )
 
       await expect(page).toHaveURL(
         new RegExp(`/agents/${setup.parentAgentId}/conversations/(?!new$)[^/]+$`),
@@ -790,15 +873,97 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
       await waitRunActive(request, promotedConversationId)
 
       await expect(
-        page.locator(
-          `[data-chat-session-href="/agents/${setup.parentAgentId}/conversations/new"]`,
-        ),
+        page.locator(`[data-chat-session-href="/agents/${setup.parentAgentId}/conversations/new"]`),
       ).toHaveCount(0)
       const promotedRow = page.locator(
         `[data-chat-session-href="/agents/${setup.parentAgentId}/conversations/${promotedConversationId}"]`,
       )
       await expect(promotedRow).toBeVisible({ timeout: 5_000 })
       await expect(promotedRow).toHaveClass(/bg-primary/)
+
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
+
+  test('keeps the second streamed assistant reply visible after it settles', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    const setup = await setupLangGraphV3Agent(request)
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      const firstPrompt = `안녕? E2E_SECOND_TURN_FIRST_${Date.now()}`
+      await sendMessage(page, firstPrompt)
+      await expect(page.getByText(FIRST_TURN_RESPONSE_TEXT).last()).toBeVisible({
+        timeout: 30_000,
+      })
+      await waitRunIdle(request, setup.conversationId)
+      await waitForNoVisibleStopButton(page)
+
+      const secondPrompt = `반가워 E2E_SECOND_TURN_${Date.now()}`
+      await sendMessage(page, secondPrompt)
+      await expect(page.getByText(secondPrompt)).toBeVisible({ timeout: 10_000 })
+      const assistantMessages = page.locator('[data-moldy-message-role="assistant"]').filter({
+        hasText: FIRST_TURN_RESPONSE_TEXT,
+      })
+      await expect(assistantMessages).toHaveCount(2, { timeout: 30_000 })
+      await waitRunIdle(request, setup.conversationId)
+      await expect(assistantMessages).toHaveCount(2)
+      await page.waitForTimeout(1500)
+      await expect(assistantMessages).toHaveCount(2)
+
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
+
+  test('keeps earlier user message text visible while a later assistant reply streams', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    const setup = await setupLangGraphV3Agent(request)
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      const unique = Date.now()
+      const firstPrompt = `안녕? E2E_USER_TEXT_FIRST_${unique}`
+      const secondPrompt = `반가워 E2E_VISUAL_SLOW_STREAM E2E_USER_TEXT_SECOND_${unique}`
+
+      await sendMessage(page, firstPrompt)
+      await expect(page.getByText(FIRST_TURN_RESPONSE_TEXT).last()).toBeVisible({
+        timeout: 30_000,
+      })
+      await waitRunIdle(request, setup.conversationId)
+      await waitForNoVisibleStopButton(page)
+
+      await sendMessage(page, secondPrompt)
+      const userMessages = page.locator('[data-moldy-message-role="user"]')
+      await expect(userMessages.filter({ hasText: firstPrompt })).toHaveCount(1, {
+        timeout: 10_000,
+      })
+      await expect(userMessages.filter({ hasText: secondPrompt })).toHaveCount(1, {
+        timeout: 10_000,
+      })
+      await installUserTextStabilityObserver(page, [firstPrompt, secondPrompt])
+      await expect(page.getByText(/E2E visual stream fixture is still running/).last()).toBeVisible(
+        {
+          timeout: 10_000,
+        },
+      )
+      await expectNoUserTextFlicker(page)
+      await waitRunIdle(request, setup.conversationId)
+      await expect(userMessages.filter({ hasText: firstPrompt })).toHaveCount(1)
+      await expect(userMessages.filter({ hasText: secondPrompt })).toHaveCount(1)
 
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])

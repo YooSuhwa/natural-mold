@@ -1,7 +1,11 @@
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages'
 import { unstable_convertExternalMessages } from '@assistant-ui/react'
 import { describe, expect, it } from 'vitest'
-import { dedupeLangChainMessagesById, dedupeThreadMessagesById } from '../message-list'
+import {
+  dedupeLangChainMessagesById,
+  dedupeThreadMessagesById,
+  sourceMessageIdFromThreadMessageId,
+} from '../message-list'
 import { convertMoldyLangChainMessage } from '../langchain-message-conversion'
 
 describe('dedupeLangChainMessagesById', () => {
@@ -18,13 +22,33 @@ describe('dedupeLangChainMessagesById', () => {
   it('updates duplicate LangChain messages in their first stable position', () => {
     const firstUser = new HumanMessage({ id: 'user-1', content: 'hello' })
     const oldAssistant = new AIMessage({ id: 'lc-run-1', content: 'old' })
-    const toolResult = new HumanMessage({ id: 'user-2', content: 'next' })
+    const toolResult = new ToolMessage({
+      id: 'tool-result',
+      content: 'done',
+      tool_call_id: 'call-tool',
+    })
     const newAssistant = new AIMessage({ id: 'lc-run-1', content: 'new' })
 
     const result = dedupeLangChainMessagesById([firstUser, oldAssistant, toolResult, newAssistant])
 
     expect(result).toEqual([firstUser, newAssistant, toolResult])
     expect(result[1]).toBe(newAssistant)
+  })
+
+  it('preserves duplicate assistant ids after a later user message as a new turn', () => {
+    const firstUser = new HumanMessage({ id: 'user-1', content: 'hello' })
+    const firstAssistant = new AIMessage({ id: 'lc-run-1', content: 'first reply' })
+    const secondUser = new HumanMessage({ id: 'user-2', content: 'next' })
+    const secondAssistant = new AIMessage({ id: 'lc-run-1', content: 'second reply' })
+
+    const result = dedupeLangChainMessagesById([
+      firstUser,
+      firstAssistant,
+      secondUser,
+      secondAssistant,
+    ])
+
+    expect(result).toEqual([firstUser, firstAssistant, secondUser, secondAssistant])
   })
 
   it('preserves messages without ids because they cannot collide in assistant-ui keys', () => {
@@ -83,17 +107,53 @@ describe('dedupeThreadMessagesById', () => {
       role: 'assistant',
       content: [{ type: 'text', text: 'old' }],
     }
-    const secondUser = { id: 'user-2', role: 'user', content: [{ type: 'text', text: 'next' }] }
+    const toolResult = {
+      id: 'tool-result',
+      role: 'tool',
+      content: [{ type: 'text', text: 'done' }],
+    }
     const newAssistant = {
       id: 'lc_run--1',
       role: 'assistant',
       content: [{ type: 'text', text: 'new' }],
     }
 
-    const result = dedupeThreadMessagesById([firstUser, oldAssistant, secondUser, newAssistant])
+    const result = dedupeThreadMessagesById([firstUser, oldAssistant, toolResult, newAssistant])
 
-    expect(result).toEqual([firstUser, newAssistant, secondUser])
+    expect(result).toEqual([firstUser, newAssistant, toolResult])
     expect(result[1]).toBe(newAssistant)
+  })
+
+  it('disambiguates duplicate assistant-ui ids after a later user message as a new turn', () => {
+    const firstUser = { id: 'user-1', role: 'user', content: [{ type: 'text', text: 'hello' }] }
+    const firstAssistant = {
+      id: 'lc_run--1',
+      role: 'assistant',
+      content: [{ type: 'text', text: 'first' }],
+    }
+    const secondUser = { id: 'user-2', role: 'user', content: [{ type: 'text', text: 'next' }] }
+    const secondAssistant = {
+      id: 'lc_run--1',
+      role: 'assistant',
+      content: [{ type: 'text', text: 'second' }],
+    }
+
+    const result = dedupeThreadMessagesById([
+      firstUser,
+      firstAssistant,
+      secondUser,
+      secondAssistant,
+    ])
+
+    expect(result).toHaveLength(4)
+    expect(result[0]).toBe(firstUser)
+    expect(result[1]).toBe(firstAssistant)
+    expect(result[2]).toBe(secondUser)
+    expect(result[3]).not.toBe(secondAssistant)
+    expect(result[3]).toMatchObject({ ...secondAssistant, id: expect.any(String) })
+    expect(result[3]?.id).not.toBe(secondAssistant.id)
+    expect(sourceMessageIdFromThreadMessageId(result[3]?.id)).toBe(secondAssistant.id)
+    expect(new Set(result.map((message) => message.id)).size).toBe(result.length)
   })
 
   it('keeps array identity when assistant-ui message ids are already unique', () => {

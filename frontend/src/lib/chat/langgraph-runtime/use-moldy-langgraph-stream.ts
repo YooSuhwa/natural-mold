@@ -37,8 +37,8 @@ import {
 import { useLangGraphMemoryEffects } from './memory-events'
 import {
   dedupeLangChainMessagesById,
+  sourceMessageIdFromThreadMessageId,
   stableString,
-  suppressInitialEmptyAssistantPlaceholder,
   useStableConvertedMessages,
 } from './message-list'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
@@ -60,7 +60,11 @@ import {
 import type { Decision, Message as MoldyMessage } from '@/lib/types'
 
 type ConvertedMessage = ReturnType<typeof useExternalMessageConverter>[number]
-type VisibleMessageWithId = { readonly id: string; readonly role?: string }
+type VisibleMessageWithId = {
+  readonly id: string
+  readonly role?: string
+  readonly sourceId?: string
+}
 
 interface MoldyGraphState {
   messages: BaseMessage[]
@@ -76,7 +80,6 @@ interface UseMoldyLangGraphStreamOptions {
   attachmentAdapter?: AttachmentAdapter
   onBeforeSubmit?: () => void
   onRunStartAccepted?: () => void
-  onSubmitSettled?: () => void
   serverMessages?: readonly MoldyMessage[]
 }
 
@@ -151,6 +154,8 @@ const EMPTY_SERVER_MESSAGE_METADATA: ServerMessageMetadataSnapshot = {
 const EMPTY_RESOLVED_INTERRUPTS: readonly ResolvedInterruptToolCall[] = []
 const STICKY_MESSAGE_CACHE_LIMIT = 50
 const PENDING_EDIT_HYDRATION_RETRY_MS = 150
+const POST_RUN_HYDRATION_RETRY_MS = 150
+const POST_RUN_HYDRATION_TIMEOUT_MS = 10_000
 const stickyMessagesByConversation = new Map<string, readonly BaseMessage[]>()
 const stickyConvertedMessagesByConversation = new Map<string, readonly ConvertedMessage[]>()
 const BRANCH_PICKER_METADATA_KEYS = [
@@ -287,6 +292,14 @@ function hasReadyAssistantMessage(messages: readonly BaseMessage[]): boolean {
   return Boolean(lastAssistant && !isEmptyAssistantMessage(lastAssistant))
 }
 
+function hasReadyAssistantAfterLastHumanMessage(messages: readonly BaseMessage[]): boolean {
+  const lastHumanIndex = lastHumanMessageIndex(messages)
+  if (lastHumanIndex < 0) return hasReadyAssistantMessage(messages)
+  return messages
+    .slice(lastHumanIndex + 1)
+    .some((message) => isAssistantMessage(message) && !isEmptyAssistantMessage(message))
+}
+
 function isCoercibleMessage(value: unknown): value is BaseMessageLike {
   if (isBaseMessage(value)) return true
   if (!isRecord(value)) return false
@@ -325,9 +338,10 @@ function suppressPendingEditBranchMetadata(
   const targetIndex = pendingEditTargetIndex(messages, pendingEdit)
   if (targetIndex < 0) return messages
   const targetMessage = messages[targetIndex]
+  if (!targetMessage) return messages
   if (!messageContentEqualsText(targetMessage, pendingEdit.content)) return messages
   const replacement = cloneMessageWithoutBranchPickerMetadata(targetMessage)
-  if (replacement === targetMessage) return messages
+  if (!replacement || replacement === targetMessage) return messages
   return [...messages.slice(0, targetIndex), replacement, ...messages.slice(targetIndex + 1)]
 }
 
@@ -445,7 +459,7 @@ function appendTerminalRunNotice(
 
 function cacheStickyMessages(conversationId: string, messages: readonly BaseMessage[]): void {
   if (messages.length === 0) return
-  stickyMessagesByConversation.set(conversationId, messages)
+  stickyMessagesByConversation.set(conversationId, snapshotBaseMessages(messages))
   if (stickyMessagesByConversation.size <= STICKY_MESSAGE_CACHE_LIMIT) return
   const oldestKey = stickyMessagesByConversation.keys().next().value
   if (typeof oldestKey === 'string') stickyMessagesByConversation.delete(oldestKey)
@@ -465,6 +479,56 @@ function cacheStickyConvertedMessages(
 function clearStickyConversationMessages(conversationId: string): void {
   stickyMessagesByConversation.delete(conversationId)
   stickyConvertedMessagesByConversation.delete(conversationId)
+}
+
+function snapshotBaseMessages(messages: readonly BaseMessage[]): readonly BaseMessage[] {
+  return messages.map(cloneBaseMessageSnapshot)
+}
+
+type SnapshotCloneableMessage = BaseMessage & {
+  readonly additional_kwargs?: unknown
+  readonly invalid_tool_calls?: unknown
+  readonly response_metadata?: unknown
+  readonly tool_call_id?: unknown
+  readonly tool_calls?: unknown
+  readonly usage_metadata?: unknown
+}
+
+function cloneBaseMessageSnapshot(message: BaseMessage): BaseMessage {
+  const source = message as SnapshotCloneableMessage
+  const clone = Object.create(Object.getPrototypeOf(message)) as BaseMessage
+  Object.assign(clone, message, {
+    content: snapshotValue(message.content),
+    additional_kwargs: snapshotValue(source.additional_kwargs),
+    response_metadata: snapshotValue(source.response_metadata),
+    tool_calls: snapshotValue(source.tool_calls),
+    invalid_tool_calls: snapshotValue(source.invalid_tool_calls),
+    tool_call_id: snapshotValue(source.tool_call_id),
+    usage_metadata: snapshotValue(source.usage_metadata),
+  })
+  return clone
+}
+
+function snapshotValue<T>(value: T): T {
+  if (value === null || value === undefined) return value
+  if (typeof globalThis.structuredClone === 'function') {
+    try {
+      return globalThis.structuredClone(value)
+    } catch {
+      // Fall through for class instances or other non-cloneable values.
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => snapshotValue(item)) as T
+  }
+  if (isRecord(value)) {
+    const cloned: Record<string, unknown> = {}
+    for (const [key, nestedValue] of Object.entries(value)) {
+      cloned[key] = snapshotValue(nestedValue)
+    }
+    return cloned as T
+  }
+  return value
 }
 
 function activePendingEditRenderState(
@@ -996,9 +1060,10 @@ function suppressPendingEditConvertedBranchMetadata(
   const targetIndex = pendingEditConvertedTargetIndex(messages, pendingEdit)
   if (targetIndex < 0) return messages
   const targetMessage = messages[targetIndex]
+  if (!targetMessage) return messages
   if (convertedMessageText(targetMessage) !== pendingEdit.content) return messages
   const replacement = cloneConvertedMessageWithoutBranchPickerMetadata(targetMessage)
-  if (replacement === targetMessage) return messages
+  if (!replacement || replacement === targetMessage) return messages
   return [...messages.slice(0, targetIndex), replacement, ...messages.slice(targetIndex + 1)]
 }
 
@@ -1006,8 +1071,9 @@ function cloneConvertedMessageWithoutBranchPickerMetadata(
   message: ConvertedMessage | undefined,
 ): ConvertedMessage | undefined {
   if (!isRecord(message)) return message
-  const metadata = isRecord(message.metadata) ? message.metadata : {}
-  const custom = isRecord(metadata.custom) ? metadata.custom : {}
+  const metadata: Record<string, unknown> = isRecord(message.metadata) ? message.metadata : {}
+  const customValue = metadata.custom
+  const custom = isRecord(customValue) ? customValue : {}
   const nextCustom = clearedBranchPickerCustomMetadata(custom)
   const nextMetadata = {
     ...metadata,
@@ -1092,6 +1158,10 @@ function messageContentFingerprint(message: BaseMessage | undefined): string {
   })
 }
 
+function messageListFingerprint(messages: readonly BaseMessage[]): string {
+  return stableString(messages.map(messageRenderKey))
+}
+
 function messageRenderKey(message: BaseMessage): string {
   const metadata = branchMetadataFromMessage(message)
   return stableString({
@@ -1166,12 +1236,57 @@ function messageListIsDegraded(
   )
 }
 
+function postRunHydrationIsReady(
+  stateMessages: readonly BaseMessage[],
+  visibleMessages: readonly BaseMessage[],
+): boolean {
+  if (!hasReadyAssistantAfterLastHumanMessage(stateMessages)) return false
+  if (visibleMessages.length === 0) return true
+  if (stateMessages.length < visibleMessages.length) return false
+  if (messageListIsDegraded(stateMessages, visibleMessages)) return false
+  return humanMessageCount(stateMessages) >= humanMessageCount(visibleMessages)
+}
+
+function humanMessageCount(messages: readonly BaseMessage[]): number {
+  return messages.filter(isHumanMessage).length
+}
+
+function mergeCachedReadyAssistantMessages(
+  candidate: readonly BaseMessage[],
+  cached: readonly BaseMessage[],
+): readonly BaseMessage[] {
+  if (candidate.length === 0 || cached.length === 0) return candidate
+
+  let changed = false
+  const merged = candidate.map((message, index) => {
+    const cachedMessage = cached[index]
+    if (!cachedMessage) return message
+    if (!canReuseCachedReadyAssistantMessage(message, cachedMessage)) return message
+    changed = true
+    return cachedMessage
+  })
+  return changed ? merged : candidate
+}
+
+function canReuseCachedReadyAssistantMessage(candidate: BaseMessage, cached: BaseMessage): boolean {
+  if (!isAssistantMessage(candidate) || !isAssistantMessage(cached)) return false
+  return isEmptyAssistantMessage(candidate) && !isEmptyAssistantMessage(cached)
+}
+
 function isEmptyAssistantMessage(message: BaseMessage | undefined): boolean {
   if (!message || typeof message._getType !== 'function' || message._getType() !== 'ai') {
     return false
   }
   if (assistantMessageHasToolCalls(message)) return false
   return isEmptyMessageContent(message.content)
+}
+
+function suppressRunningEmptyAssistantPlaceholder(
+  messages: readonly BaseMessage[],
+  isRunning: boolean,
+): readonly BaseMessage[] {
+  if (!isRunning) return messages
+  return isEmptyAssistantMessage(messages.at(-1)) ? messages.slice(0, -1) : messages
 }
 
 function assistantMessageHasToolCalls(message: BaseMessage): boolean {
@@ -1209,47 +1324,118 @@ function useStickyConversationMessages(
 ): readonly BaseMessage[] {
   const stickyMessages = useMemo(() => {
     const cached = stickyMessagesByConversation.get(conversationId)
-    if (!replaceMessages && cached && messageListIsDegraded(messages, cached)) return cached
-    return messages
+    const mergedMessages =
+      !replaceMessages && cached
+        ? mergeCachedReadyAssistantMessages(
+            mergeCachedPrefixForAppendOnlyStream(messages, cached),
+            cached,
+          )
+        : messages
+    if (!replaceMessages && cached && messageListIsDegraded(mergedMessages, cached)) return cached
+    return mergedMessages
   }, [conversationId, messages, replaceMessages])
 
   useLayoutEffect(() => {
     const cached = stickyMessagesByConversation.get(conversationId)
-    if (!replaceMessages && cached && messageListIsDegraded(messages, cached)) return
-    cacheStickyMessages(conversationId, messages)
+    const mergedMessages =
+      !replaceMessages && cached
+        ? mergeCachedReadyAssistantMessages(
+            mergeCachedPrefixForAppendOnlyStream(messages, cached),
+            cached,
+          )
+        : messages
+    if (!replaceMessages && cached && messageListIsDegraded(mergedMessages, cached)) return
+    cacheStickyMessages(conversationId, mergedMessages)
   }, [conversationId, messages, replaceMessages])
 
   return stickyMessages
+}
+
+function mergeCachedPrefixForAppendOnlyStream(
+  candidate: readonly BaseMessage[],
+  cached: readonly BaseMessage[],
+): readonly BaseMessage[] {
+  if (candidate.length === 0 || cached.length === 0) return candidate
+  if (messageListsSharePrefix(candidate, cached, Math.min(candidate.length, cached.length))) {
+    return candidate
+  }
+  const firstCandidate = candidate[0]
+  if (!isHumanMessage(firstCandidate)) return candidate
+  const firstCandidateId = firstCandidate.id
+  if (firstCandidateId && cached.some((message) => message.id === firstCandidateId)) {
+    return candidate
+  }
+  return [...cached, ...candidate]
 }
 
 function useStickyConvertedMessages(
   conversationId: string,
   messages: readonly ConvertedMessage[],
   isRunning: boolean,
-  sourceMessages: readonly BaseMessage[],
 ): readonly ConvertedMessage[] {
   const stickyMessages = useMemo(() => {
     const cached = stickyConvertedMessagesByConversation.get(conversationId)
+    const mergedMessages = cached
+      ? mergeCachedConvertedMessages(messages, cached, { reuseReadyAssistant: !isRunning })
+      : messages
     if (!isRunning && messages.length === 0 && cached && cached.length > 0) return cached
-    if (!isRunning && cached && convertedMessageListIsDegraded(messages, cached, sourceMessages)) {
+    if (!isRunning && cached && convertedMessageListIsDegraded(mergedMessages, cached)) {
       return cached
     }
-    return messages
-  }, [conversationId, isRunning, messages, sourceMessages])
+    return mergedMessages
+  }, [conversationId, isRunning, messages])
 
   useLayoutEffect(() => {
+    if (isRunning) return
     const cached = stickyConvertedMessagesByConversation.get(conversationId)
-    if (cached && convertedMessageListIsDegraded(messages, cached, sourceMessages)) return
-    if (messages.length > 0) cacheStickyConvertedMessages(conversationId, messages)
-  }, [conversationId, messages, sourceMessages])
+    const mergedMessages = cached
+      ? mergeCachedConvertedMessages(messages, cached, { reuseReadyAssistant: true })
+      : messages
+    if (cached && convertedMessageListIsDegraded(mergedMessages, cached)) return
+    if (mergedMessages.length > 0) cacheStickyConvertedMessages(conversationId, mergedMessages)
+  }, [conversationId, isRunning, messages])
 
   return stickyMessages
+}
+
+function mergeCachedConvertedMessages(
+  candidate: readonly ConvertedMessage[],
+  cached: readonly ConvertedMessage[],
+  options: { readonly reuseReadyAssistant: boolean },
+): readonly ConvertedMessage[] {
+  if (candidate.length === 0 || cached.length === 0) return candidate
+
+  let changed = false
+  const merged = candidate.map((message, index) => {
+    const cachedMessage = cached[index]
+    if (!cachedMessage) return message
+    if (!canReuseCachedConvertedMessage(message, cachedMessage, options)) return message
+    changed = true
+    return cachedMessage
+  })
+  return changed ? merged : candidate
+}
+
+function canReuseCachedConvertedMessage(
+  candidate: ConvertedMessage,
+  cached: ConvertedMessage,
+  options: { readonly reuseReadyAssistant: boolean },
+): boolean {
+  if (
+    isConvertedUserMessage(candidate) &&
+    isConvertedUserMessage(cached) &&
+    convertedMessageId(candidate) === convertedMessageId(cached)
+  ) {
+    return isEmptyConvertedMessage(candidate) && !isEmptyConvertedMessage(cached)
+  }
+  if (!options.reuseReadyAssistant) return false
+  if (!isConvertedAssistantMessage(candidate) || !isConvertedAssistantMessage(cached)) return false
+  return isEmptyConvertedMessage(candidate) && !isEmptyConvertedMessage(cached)
 }
 
 function convertedMessageListIsDegraded(
   candidate: readonly ConvertedMessage[],
   cached: readonly ConvertedMessage[],
-  sourceMessages: readonly BaseMessage[],
 ): boolean {
   if (candidate.length < cached.length) {
     return convertedMessagesSharePrefix(candidate, cached, candidate.length)
@@ -1257,10 +1443,10 @@ function convertedMessageListIsDegraded(
   if (candidate.length !== cached.length || candidate.length === 0) return false
 
   const lastIndex = candidate.length - 1
-  const sourceLast = sourceMessages[lastIndex]
   return (
-    isAssistantMessage(sourceLast) &&
     convertedMessagesSharePrefix(candidate, cached, lastIndex) &&
+    isConvertedAssistantMessage(candidate[lastIndex]) &&
+    isConvertedAssistantMessage(cached[lastIndex]) &&
     isEmptyConvertedMessage(candidate[lastIndex]) &&
     !isEmptyConvertedMessage(cached[lastIndex])
   )
@@ -1291,7 +1477,12 @@ function convertedMessageFingerprint(message: ConvertedMessage | undefined): str
 
 function isEmptyConvertedMessage(message: ConvertedMessage | undefined): boolean {
   if (!isRecord(message)) return false
-  return convertedMessageText(message) === ''
+  const text = convertedMessageText(message)
+  return text === null || text === ''
+}
+
+function isConvertedAssistantMessage(message: ConvertedMessage | undefined): boolean {
+  return isRecord(message) && message.role === 'assistant'
 }
 
 function visibleMessagesWithIds(
@@ -1303,9 +1494,12 @@ function visibleMessagesWithIds(
     if (!('id' in message)) continue
     if (typeof message.id !== 'string' || message.id.length === 0) continue
     const role = convertedMessageRole(message) ?? langChainMessageRole(sourceMessages[index])
+    const sourceId =
+      sourceMessageIdFromThreadMessageId(message.id) ?? langChainMessageId(sourceMessages[index])
     visibleMessages.push({
       id: message.id,
       ...(role ? { role } : {}),
+      ...(sourceId && sourceId !== message.id ? { sourceId } : {}),
     })
   }
   return visibleMessages
@@ -1324,6 +1518,10 @@ function langChainMessageRole(message: BaseMessage | undefined): string | null {
   return type
 }
 
+function langChainMessageId(message: BaseMessage | undefined): string | null {
+  return typeof message?.id === 'string' && message.id.length > 0 ? message.id : null
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -1335,7 +1533,6 @@ export function useMoldyLangGraphStream({
   attachmentAdapter,
   onBeforeSubmit,
   onRunStartAccepted,
-  onSubmitSettled,
   serverMessages,
 }: UseMoldyLangGraphStreamOptions) {
   const setChatCancelInFlight = useSetAtom(chatCancelInFlightAtom)
@@ -1367,6 +1564,7 @@ export function useMoldyLangGraphStream({
   )
   const [serverStateMessages, setServerStateMessages] =
     useState<ServerStateMessagesSnapshot | null>(null)
+  const latestVisibleMessagesRef = useRef<readonly BaseMessage[]>([])
   const clearServerHydrationState = useCallback(() => {
     setServerStateMessages(null)
     setServerMessageMetadataState(null)
@@ -1427,6 +1625,7 @@ export function useMoldyLangGraphStream({
     resolvedInterruptsState?.conversationId === conversationId
       ? resolvedInterruptsState.items
       : EMPTY_RESOLVED_INTERRUPTS
+  const [postRunHydrationPending, setPostRunHydrationPending] = useState(false)
   const setResolvedInterrupts = useCallback(
     (
       updater: (
@@ -1441,29 +1640,21 @@ export function useMoldyLangGraphStream({
     [conversationId],
   )
   const wasLoadingRef = useRef(false)
-  useEffect(() => {
-    if (stream.isLoading) {
-      wasLoadingRef.current = true
-      return undefined
-    }
-    if (!wasLoadingRef.current) return undefined
+  const settlePostRunHydration = useCallback(() => {
     wasLoadingRef.current = false
-    if (pendingEditRender || pendingReloadRender) return undefined
+    setPostRunHydrationPending(false)
+  }, [])
+  useEffect(() => {
     let cancelled = false
-    void loadServerThreadState(conversationId)
-      .then((state: ThreadStateResponse) => {
-        if (cancelled) return
-        const stateMessages = messagesFromThreadState(state)
-        handleThreadState(
-          state,
-          hasReadyAssistantMessage(stateMessages ?? []) ? { replaceMessages: true } : undefined,
-        )
-      })
-      .catch(() => undefined)
+    queueMicrotask(() => {
+      if (cancelled) return
+      wasLoadingRef.current = false
+      setPostRunHydrationPending(false)
+    })
     return () => {
       cancelled = true
     }
-  }, [conversationId, handleThreadState, pendingEditRender, pendingReloadRender, stream.isLoading])
+  }, [conversationId])
   useEffect(() => {
     if (!pendingEditRender || stream.isLoading) return undefined
     let cancelled = false
@@ -1570,16 +1761,17 @@ export function useMoldyLangGraphStream({
     () => messagesFromServerMessages(serverMessages),
     [serverMessages],
   )
+  const streamStateIsSettling = stream.isLoading || postRunHydrationPending
   const visibleStreamMessagesWithFallback = useMemo(() => {
-    if (stream.isLoading || serverLangChainMessages.length === 0) return visibleStreamMessages
+    if (streamStateIsSettling || serverLangChainMessages.length === 0) return visibleStreamMessages
     if (messageListIsDegraded(visibleStreamMessages, serverLangChainMessages)) {
       return serverLangChainMessages
     }
     return visibleStreamMessages
-  }, [serverLangChainMessages, stream.isLoading, visibleStreamMessages])
+  }, [serverLangChainMessages, streamStateIsSettling, visibleStreamMessages])
   const renderableStreamMessages = useMemo(
     () =>
-      suppressInitialEmptyAssistantPlaceholder(visibleStreamMessagesWithFallback, stream.isLoading),
+      suppressRunningEmptyAssistantPlaceholder(visibleStreamMessagesWithFallback, stream.isLoading),
     [stream.isLoading, visibleStreamMessagesWithFallback],
   )
   const streamMessagesWithServerMetadata = useMemo(
@@ -1648,6 +1840,73 @@ export function useMoldyLangGraphStream({
       pendingEditRender !== null ||
       pendingReloadRender !== null,
   )
+  useLayoutEffect(() => {
+    latestVisibleMessagesRef.current = snapshotBaseMessages(stickyMessagesWithTerminalNotice)
+  }, [stickyMessagesWithTerminalNotice])
+  useEffect(() => {
+    if (stream.isLoading) {
+      wasLoadingRef.current = true
+      queueMicrotask(() => setPostRunHydrationPending(false))
+      return undefined
+    }
+    if (!wasLoadingRef.current) return undefined
+    if (pendingEditRender || pendingReloadRender) return undefined
+
+    let cancelled = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    const startedAt = Date.now()
+    queueMicrotask(() => {
+      if (!cancelled) setPostRunHydrationPending(true)
+    })
+    const retryHydrationOrSettle = (): void => {
+      if (Date.now() - startedAt <= POST_RUN_HYDRATION_TIMEOUT_MS) {
+        retryTimer = setTimeout(hydrateCompletedRun, POST_RUN_HYDRATION_RETRY_MS)
+        return
+      }
+      settlePostRunHydration()
+    }
+    const hydrateCompletedRun = (): void => {
+      void loadServerThreadState(conversationId)
+        .then((state: ThreadStateResponse) => {
+          if (cancelled) return
+          const stateMessages = messagesFromThreadState(state)
+          if (
+            stateMessages &&
+            postRunHydrationIsReady(stateMessages, latestVisibleMessagesRef.current)
+          ) {
+            handleThreadState(state, { replaceMessages: true })
+            settlePostRunHydration()
+            return
+          }
+          handleThreadState(state)
+          retryHydrationOrSettle()
+        })
+        .catch(() => {
+          if (cancelled) return
+          retryHydrationOrSettle()
+        })
+    }
+    hydrateCompletedRun()
+    return () => {
+      cancelled = true
+      if (retryTimer) clearTimeout(retryTimer)
+    }
+  }, [
+    conversationId,
+    handleThreadState,
+    pendingEditRender,
+    pendingReloadRender,
+    settlePostRunHydration,
+    stream.isLoading,
+  ])
+  const conversionSourceFingerprint = messageListFingerprint(stickyMessagesWithTerminalNotice)
+  const conversionCallback = useMemo<typeof convertMoldyLangChainMessage>(() => {
+    const conversionEpoch = conversionSourceFingerprint
+    return (message, metadata) => {
+      void conversionEpoch
+      return convertMoldyLangChainMessage(message, metadata)
+    }
+  }, [conversionSourceFingerprint])
   const conversionSourceMessages = useMemo(
     () => [...stickyMessagesWithTerminalNotice],
     [stickyMessagesWithTerminalNotice],
@@ -1655,8 +1914,13 @@ export function useMoldyLangGraphStream({
   useLangGraphMemoryEffects({ stream })
   const isRunning =
     stream.isLoading && interruptPayloads.length === 0 && threadRunNotice?.status !== 'stale'
+  const runtimeIsRunning =
+    isRunning ||
+    postRunHydrationPending ||
+    pendingEditRender !== null ||
+    pendingReloadRender !== null
   const convertedMessages = useExternalMessageConverter({
-    callback: convertMoldyLangChainMessage,
+    callback: conversionCallback,
     messages: conversionSourceMessages,
     isRunning,
   })
@@ -1680,8 +1944,7 @@ export function useMoldyLangGraphStream({
   const messages = useStickyConvertedMessages(
     conversationId,
     stableMessagesWithoutPendingEditDuplicate,
-    isRunning,
-    stickyMessagesWithTerminalNotice,
+    streamStateIsSettling,
   )
   const checkpointVisibleMessages = useMemo(
     () => visibleMessagesWithIds(messages, stickyMessagesWithTerminalNotice),
@@ -1749,12 +2012,10 @@ export function useMoldyLangGraphStream({
       setPendingEditRender(null)
       setPendingReloadRender(null)
       await submitNew(...args)
-      onSubmitSettled?.()
     },
     [
       clearServerHydrationState,
       onBeforeSubmit,
-      onSubmitSettled,
       setPendingBranchPickerSuppression,
       setPendingEditRender,
       setPendingReloadRender,
@@ -1904,7 +2165,7 @@ export function useMoldyLangGraphStream({
 
   const assistantRuntime = useExternalStoreRuntime({
     messages,
-    isRunning,
+    isRunning: runtimeIsRunning,
     adapters,
     onNew,
     onEdit,

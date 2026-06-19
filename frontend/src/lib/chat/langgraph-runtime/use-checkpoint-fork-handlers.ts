@@ -12,6 +12,7 @@ import {
   loadServerCheckpointContext,
   type ServerCheckpointContext,
 } from './thread-state-checkpoints'
+import { sourceMessageIdFromThreadMessageId } from './message-list'
 import { reportClientWarning } from '@/lib/logging/client-logger'
 
 const CHECKPOINT_CONTEXT_RETRY_INTERVAL_MS = 250
@@ -20,9 +21,13 @@ const CHECKPOINT_CONTEXT_RETRY_TIMEOUT_MS = 10_000
 interface UseCheckpointForkHandlersOptions<StateType extends object> {
   conversationId: string
   stream: UseStreamReturn<StateType>
-  visibleMessages: readonly Pick<ThreadMessage, 'id'>[]
+  visibleMessages: readonly VisibleMessageReference[]
   langChainMessages: readonly BaseMessage[]
   onBeforeEditSubmit?: (edit: PendingCheckpointEditSubmit) => void
+}
+
+type VisibleMessageReference = Pick<ThreadMessage, 'id'> & {
+  readonly sourceId?: string
 }
 
 type SubmitInput<StateType extends object> = Parameters<UseStreamReturn<StateType>['submit']>[0]
@@ -96,7 +101,10 @@ export function useCheckpointForkHandlers<StateType extends object>({
         humanInput<StateType>(
           content,
           attachments,
-          message.sourceId ?? message.parentId ?? undefined,
+          sourceMessageIdForVisibleCandidate(
+            message.sourceId ?? message.parentId,
+            checkpointContext.visibleMessages,
+          ) ?? undefined,
         ),
         {
           forkFrom: checkpointId,
@@ -163,7 +171,7 @@ function attachmentRefs(message: { attachments?: readonly { id?: unknown }[] }):
 
 function pendingEditVisibleTarget(
   message: Pick<AppendMessage, 'sourceId' | 'parentId'>,
-  visibleMessages: readonly Pick<ThreadMessage, 'id'>[],
+  visibleMessages: readonly VisibleMessageReference[],
 ): { readonly id: string | null; readonly index: number | null } {
   const candidateIds = uniquePresentIds([message.sourceId, message.parentId])
   for (const candidateId of candidateIds) {
@@ -171,6 +179,15 @@ function pendingEditVisibleTarget(
     if (index >= 0) return { id: candidateId, index }
   }
   return { id: null, index: null }
+}
+
+function sourceMessageIdForVisibleCandidate(
+  messageId: string | null | undefined,
+  visibleMessages: readonly VisibleMessageReference[],
+): string | null {
+  if (!messageId) return null
+  const visibleMessage = visibleMessages.find((message) => message.id === messageId)
+  return visibleMessage?.sourceId ?? sourceMessageIdFromThreadMessageId(messageId) ?? messageId
 }
 
 function uniquePresentIds(values: readonly (string | null | undefined)[]): string[] {

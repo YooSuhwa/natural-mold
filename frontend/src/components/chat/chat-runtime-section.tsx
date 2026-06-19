@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import {
   AssistantRuntimeProvider,
   type AssistantRuntime,
@@ -191,9 +191,6 @@ function LangGraphRuntimeSection({
   serverMessages,
   threadProps,
 }: LangGraphRuntimeSectionProps) {
-  const handleSubmitSettled = useCallback(() => {
-    onStreamEnd(false)
-  }, [onStreamEnd])
   const {
     assistantRuntime,
     activities,
@@ -208,7 +205,6 @@ function LangGraphRuntimeSection({
     attachmentAdapter,
     onBeforeSubmit: onBeforeNewMessage,
     onRunStartAccepted: onNewMessageAccepted,
-    onSubmitSettled: handleSubmitSettled,
     serverMessages,
   })
   const wasRunningRef = useRef(false)

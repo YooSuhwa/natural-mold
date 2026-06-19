@@ -5,7 +5,12 @@ import type { BaseMessage } from '@langchain/core/messages'
 
 type MessageWithId = {
   readonly id?: unknown
+  readonly role?: unknown
+  readonly _getType?: unknown
 }
+
+type MessageTurnRole = 'user' | 'assistant' | 'tool'
+const THREAD_MESSAGE_TURN_ID_SEPARATOR = '::moldy-turn-'
 
 export function stableString(value: unknown): string {
   if (value === undefined) return ''
@@ -53,8 +58,29 @@ export function dedupeLangChainMessagesById(
   return dedupeMessagesById(messages)
 }
 
+export function sourceMessageIdFromThreadMessageId(messageId: unknown): string | null {
+  if (typeof messageId !== 'string' || messageId.length === 0) return null
+  const separatorIndex = messageId.lastIndexOf(THREAD_MESSAGE_TURN_ID_SEPARATOR)
+  if (separatorIndex < 0) return messageId
+  const suffix = messageId.slice(separatorIndex + THREAD_MESSAGE_TURN_ID_SEPARATOR.length)
+  return /^\d+$/.test(suffix) ? messageId.slice(0, separatorIndex) : messageId
+}
+
 function messageId(message: MessageWithId): string | null {
   return typeof message.id === 'string' && message.id.length > 0 ? message.id : null
+}
+
+function messageTurnRole(message: MessageWithId): MessageTurnRole | null {
+  if ('_getType' in message && typeof message._getType === 'function') {
+    const type = message._getType()
+    if (type === 'human') return 'user'
+    if (type === 'ai') return 'assistant'
+    if (type === 'tool') return 'tool'
+  }
+  if (!isRecord(message)) return null
+  const role = message.role
+  if (role === 'user' || role === 'assistant' || role === 'tool') return role
+  return null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,31 +126,64 @@ export function suppressInitialEmptyAssistantPlaceholder(
   messages: readonly BaseMessage[],
   isRunning: boolean,
 ): readonly BaseMessage[] {
-  if (!isRunning || messages.length !== 1) return messages
-  const [message] = messages
-  return message && isBlankAssistantPlaceholder(message) ? [] : messages
+  if (!isRunning || messages.length === 0) return messages
+  const lastMessage = messages.at(-1)
+  return lastMessage && isBlankAssistantPlaceholder(lastMessage) ? messages.slice(0, -1) : messages
 }
 
-function dedupeMessagesById<T extends MessageWithId>(messages: readonly T[]): readonly T[] {
-  const indexById = new Map<string, number>()
+function threadMessageIdForTurn(sourceId: string, turnIndex: number): string {
+  return `${sourceId}${THREAD_MESSAGE_TURN_ID_SEPARATOR}${turnIndex}`
+}
+
+function messageWithId<T extends MessageWithId>(
+  message: T,
+  id: string,
+): T & { readonly id: string } {
+  return { ...message, id }
+}
+
+function dedupeMessagesById<T extends MessageWithId>(
+  messages: readonly T[],
+  options: { readonly disambiguateCrossTurnIds?: boolean } = {},
+): readonly T[] {
+  const indexByScopedId = new Map<string, number>()
+  const firstTurnBySourceId = new Map<string, number>()
   const deduped: T[] = []
   let changed = false
+  let turnIndex = -1
 
   for (const message of messages) {
+    if (messageTurnRole(message) === 'user') turnIndex += 1
     const id = messageId(message)
     if (id === null) {
       deduped.push(message)
       continue
     }
 
-    const existingIndex = indexById.get(id)
+    const sourceId = sourceMessageIdFromThreadMessageId(id) ?? id
+    const scopedId = `${turnIndex}:${sourceId}`
+    const existingIndex = indexByScopedId.get(scopedId)
     if (existingIndex === undefined) {
-      indexById.set(id, deduped.length)
-      deduped.push(message)
+      indexByScopedId.set(scopedId, deduped.length)
+      const firstTurn = firstTurnBySourceId.get(sourceId)
+      firstTurnBySourceId.set(sourceId, firstTurn ?? turnIndex)
+      const nextId =
+        options.disambiguateCrossTurnIds && firstTurn !== undefined && firstTurn !== turnIndex
+          ? threadMessageIdForTurn(sourceId, turnIndex)
+          : id
+      const nextMessage = nextId === id ? message : messageWithId(message, nextId)
+      if (nextMessage !== message) changed = true
+      deduped.push(nextMessage)
       continue
     }
 
-    deduped[existingIndex] = message
+    const existingMessage = deduped[existingIndex]
+    const existingId = existingMessage ? messageId(existingMessage) : null
+    const nextMessage =
+      options.disambiguateCrossTurnIds && existingId !== null && existingId !== id
+        ? messageWithId(message, existingId)
+        : message
+    deduped[existingIndex] = nextMessage
     changed = true
   }
 
@@ -134,7 +193,7 @@ function dedupeMessagesById<T extends MessageWithId>(messages: readonly T[]): re
 export function dedupeThreadMessagesById<T extends MessageWithId>(
   messages: readonly T[],
 ): readonly T[] {
-  return dedupeMessagesById(messages)
+  return dedupeMessagesById(messages, { disambiguateCrossTurnIds: true })
 }
 
 export function useStableConvertedMessages<T extends MessageWithId>(
@@ -143,15 +202,10 @@ export function useStableConvertedMessages<T extends MessageWithId>(
   isRunning: boolean,
 ): readonly T[] {
   const deduped = useMemo(() => dedupeThreadMessagesById(messages), [messages])
-  const fingerprint = useMemo(
-    () =>
-      stableString({
-        status: isRunning ? 'running' : 'idle',
-        source: sourceMessages.map(langChainMessageFingerprint),
-      }),
-    [isRunning, sourceMessages],
-  )
-
+  const fingerprint = stableString({
+    status: isRunning ? 'running' : 'idle',
+    source: sourceMessages.map(langChainMessageFingerprint),
+  })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => deduped, [fingerprint])
 }

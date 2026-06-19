@@ -90,7 +90,7 @@ const mocks = vi.hoisted(() => {
     useChannelEffect: vi.fn(),
     useExternalMessageConverter: vi.fn((options: { messages: readonly unknown[] }) => {
       void options
-      return [{ id: 'converted' }]
+      return [{ id: 'converted' }] as { id: string; role?: string; content?: unknown }[]
     }),
     useExternalStoreRuntime: vi.fn((options: unknown) => ({ kind: 'runtime', options })),
     convertLangChainBaseMessage: vi.fn(),
@@ -229,6 +229,31 @@ describe('useMoldyLangGraphStream', () => {
     expect(result.current.activities).toEqual([])
     expect(result.current.deepAgentsState).toEqual({ todos: [], files: [] })
     expect(result.current.assistantRuntime).toEqual(expect.objectContaining({ kind: 'runtime' }))
+  })
+
+  it('keeps assistant-ui running while a submitted user turn is waiting for the first assistant token', () => {
+    mocks.stream.isLoading = true
+    mocks.useExternalMessageConverter.mockReturnValue([
+      { id: 'pending-user', role: 'user', content: [{ type: 'text', text: '안녕?' }] },
+    ])
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-running',
+          conversationId: 'conversation-running',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    expect(mocks.useExternalStoreRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isRunning: true,
+        messages: [
+          { id: 'pending-user', role: 'user', content: [{ type: 'text', text: '안녕?' }] },
+        ],
+      }),
+    )
   })
 
   it('renders terminal stale state from LangGraph hydration as a localized assistant notice', async () => {

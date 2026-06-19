@@ -136,6 +136,12 @@ export async function sendMessage(page: Page, text: string): Promise<void> {
   await expect(composer).toBeEnabled({ timeout: CHAT_COMPOSER_TIMEOUT_MS })
   await composer.fill(text)
   await composer.press('Enter')
+  const remainingText = await composer.inputValue().catch(() => '')
+  if (remainingText.trim().length === 0) return
+
+  const sendButton = page.getByRole('button', { name: /전송|Send Button|Send/ }).last()
+  await expect(sendButton).toBeEnabled({ timeout: CHAT_COMPOSER_TIMEOUT_MS })
+  await sendButton.click()
 }
 
 export function commandMethod(request: Request): string | null {
