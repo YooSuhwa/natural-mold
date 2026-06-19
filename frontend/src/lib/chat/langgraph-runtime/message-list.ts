@@ -142,14 +142,14 @@ export function useStableConvertedMessages<T extends MessageWithId>(
   sourceMessages: readonly BaseMessage[],
   isRunning: boolean,
 ): readonly T[] {
-  void isRunning
   const deduped = useMemo(() => dedupeThreadMessagesById(messages), [messages])
   const fingerprint = useMemo(
     () =>
       stableString({
+        status: isRunning ? 'running' : 'idle',
         source: sourceMessages.map(langChainMessageFingerprint),
       }),
-    [sourceMessages],
+    [isRunning, sourceMessages],
   )
 
   // eslint-disable-next-line react-hooks/exhaustive-deps

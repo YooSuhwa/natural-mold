@@ -90,4 +90,39 @@ describe('reduceProtocolActivity', () => {
     })
     expect(activities.filter((item) => item.status === 'running')).toEqual([])
   })
+
+  it('deduplicates streaming response chunks with different event ids', () => {
+    const activities = reduce([
+      event(
+        'messages',
+        {
+          event: 'content-block-delta',
+          delta: { type: 'text-delta', text: 'hello' },
+        },
+        { event_id: 'message-1', seq: 1 },
+      ),
+      event(
+        'messages',
+        {
+          event: 'content-block-delta',
+          delta: { type: 'text-delta', text: ' world' },
+        },
+        { event_id: 'message-2', seq: 2 },
+      ),
+      event(
+        'messages',
+        {
+          event: 'content-block-delta',
+          delta: { type: 'text-delta', text: '!' },
+        },
+        { event_id: 'message-3', seq: 3 },
+      ),
+    ])
+
+    expect(activities.filter((item) => item.kind === 'responding')).toHaveLength(1)
+    expect(activities.find((item) => item.kind === 'responding')).toMatchObject({
+      status: 'running',
+      data: { preview: '!' },
+    })
+  })
 })

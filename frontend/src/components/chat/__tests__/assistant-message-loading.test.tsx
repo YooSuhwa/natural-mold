@@ -7,7 +7,11 @@ import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
 const mocks = vi.hoisted(() => ({
   state: {
     thread: { isRunning: true },
-    message: { metadata: { custom: { isStreamingMessage: true } } },
+    message: {
+      metadata: { custom: { isStreamingMessage: true } },
+      status: undefined as { readonly type?: string } | undefined,
+      parts: [] as readonly unknown[],
+    },
   },
   useSubagentProgressSummary: vi.fn(),
 }))
@@ -48,6 +52,8 @@ describe('StreamingMessageLoadingIndicator', () => {
     vi.clearAllMocks()
     mocks.state.thread.isRunning = true
     mocks.state.message.metadata = { custom: { isStreamingMessage: true } }
+    mocks.state.message.status = undefined
+    mocks.state.message.parts = []
     mocks.useSubagentProgressSummary.mockReturnValue({
       total: 0,
       running: 0,
@@ -63,10 +69,117 @@ describe('StreamingMessageLoadingIndicator', () => {
     expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
   })
 
+  it('shows witty loading when assistant-ui marks the message running', () => {
+    mocks.state.message.metadata = { custom: { isStreamingMessage: undefined } }
+    mocks.state.message.status = { type: 'running' }
+
+    render(<StreamingMessageLoadingIndicator activities={[]} />)
+
+    expect(screen.getByTestId('witty-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
+  })
+
   it('hides witty loading when semantic activity exists', () => {
     render(<StreamingMessageLoadingIndicator activities={[activity()]} />)
 
     expect(screen.getByTestId('run-activity-strip')).toBeInTheDocument()
+    expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
+  })
+
+  it('keeps witty loading when only interrupt activities exist', () => {
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:interrupt:one',
+            kind: 'interrupt',
+            status: 'requires_action',
+            title: 'Needs approval',
+          }),
+          activity({
+            id: 'run-1:interrupt:two',
+            kind: 'interrupt',
+            status: 'requires_action',
+            title: 'Needs approval',
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByTestId('witty-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
+  })
+
+  it('hides generic responding activity and terminal rows while streaming', () => {
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:responding:root',
+            kind: 'responding',
+            status: 'running',
+            title: 'Responding',
+          }),
+          activity({
+            id: 'run-1:responding:old',
+            kind: 'responding',
+            status: 'complete',
+            title: 'Responding',
+          }),
+          activity({
+            id: 'run-1:done:run',
+            kind: 'done',
+            status: 'complete',
+            title: 'Done',
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
+    expect(screen.queryByText('응답을 작성하는 중')).not.toBeInTheDocument()
+    expect(screen.queryByText('완료됨')).not.toBeInTheDocument()
+  })
+
+  it('hides generic responding activity once assistant text is visible', () => {
+    mocks.state.message.parts = [{ type: 'text', text: 'Partial assistant response' }]
+
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:responding:root',
+            kind: 'responding',
+            status: 'running',
+            title: 'Responding',
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
+  })
+
+  it('keeps non-text progress visible while assistant text is streaming', () => {
+    mocks.state.message.parts = [{ type: 'text', text: 'Partial assistant response' }]
+
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:tool:search',
+            kind: 'tool',
+            status: 'running',
+            title: 'web_search',
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByTestId('run-activity-strip')).toBeInTheDocument()
+    expect(screen.getByText('web_search 실행 중')).toBeInTheDocument()
     expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
   })
 

@@ -62,7 +62,7 @@ function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): 
   const content = textValue(data.chunk) ?? textValue(data.content)
   if (content) {
     next = upsertActivity(next, {
-      ...activityBase(event, 'responding', namespaceKey(namespace)),
+      ...streamingStatusActivityBase(next, event, 'responding'),
       status: 'running',
       title: 'Responding',
       data: { preview: content },
@@ -72,12 +72,34 @@ function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): 
   const blocks = asRecords(data.content_blocks)
   if (blocks.some((block) => textValue(block.type)?.includes('reasoning'))) {
     next = upsertActivity(next, {
-      ...activityBase(event, 'thinking', namespaceKey(namespace)),
+      ...streamingStatusActivityBase(next, event, 'thinking'),
       status: 'running',
       title: 'Thinking',
     })
   }
   return next
+}
+
+function streamingStatusActivityBase(
+  current: readonly RunActivity[],
+  event: ProtocolEvent,
+  kind: 'responding' | 'thinking',
+): Pick<RunActivity, 'id' | 'runId' | 'kind' | 'namespace' | 'startedAt'> {
+  const namespace = eventNamespace(event)
+  const existing = current.find(
+    (item) =>
+      item.kind === kind &&
+      item.status === 'running' &&
+      namespaceKey(item.namespace) === namespaceKey(namespace),
+  )
+  if (!existing) return activityBase(event, kind, namespaceKey(namespace))
+  return {
+    id: existing.id,
+    runId: existing.runId,
+    kind,
+    namespace,
+    startedAt: existing.startedAt ?? event.params?.timestamp,
+  }
 }
 
 function reduceTools(current: readonly RunActivity[], event: ProtocolEvent): RunActivity[] {

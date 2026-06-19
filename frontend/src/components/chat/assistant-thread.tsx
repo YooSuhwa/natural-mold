@@ -65,7 +65,7 @@ import {
 } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
 import {
-  isStreamingMessageMetadata,
+  isStreamingMessageState,
   StreamingMessageLoadingIndicator,
 } from '@/components/chat/assistant-message-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
@@ -245,7 +245,7 @@ function AssistantMessageParts() {
 }
 
 function useIsStreamingMessage(): boolean {
-  return useAuiState((s) => isStreamingMessageMetadata(s.message?.metadata))
+  return useAuiState((s) => isStreamingMessageState(s.message))
 }
 
 function useMessageArtifacts(): ArtifactSummary[] {
