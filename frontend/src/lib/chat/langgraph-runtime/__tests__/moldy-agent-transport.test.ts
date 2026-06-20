@@ -102,10 +102,39 @@ describe('createMoldyAgentTransport', () => {
     expect(init?.method).toBe('GET')
     expect(init?.credentials).toBe('include')
     expect(new Headers(init?.headers).has('X-CSRF-Token')).toBe(false)
+    expect(onState).not.toHaveBeenCalled()
+    const deactivate = transport.activateStateHydration()
     expect(onState).toHaveBeenCalledWith({
       values: { messages: [] },
       next: [],
       tasks: [],
     })
+    deactivate()
+  })
+
+  it('notifies an active state hydration listener when SDK hydration finishes later', async () => {
+    const onState = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        values: { messages: [{ id: 'message-1' }] },
+        next: [],
+        tasks: [],
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-3', 'agent-3', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onState,
+    })
+    const deactivate = transport.activateStateHydration()
+
+    await transport.getState?.()
+
+    expect(onState).toHaveBeenCalledWith({
+      values: { messages: [{ id: 'message-1' }] },
+      next: [],
+      tasks: [],
+    })
+    deactivate()
   })
 })

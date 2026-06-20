@@ -231,6 +231,58 @@ describe('useMoldyLangGraphStream', () => {
     expect(result.current.assistantRuntime).toEqual(expect.objectContaining({ kind: 'runtime' }))
   })
 
+  it('defers transport state hydration emitted during initial render until after mount', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mocks.useStream.mockImplementationOnce((options: MockUseStreamOptions) => {
+      const transport = options.transport as MockTransportOptions
+      setTimeout(() => {
+        transport.onState?.({
+          metadata: {
+            latest_run: { id: 'run-render-hydration', status: 'stale' },
+          },
+        })
+      }, 0)
+      return mocks.stream
+    })
+
+    try {
+      renderHook(
+        () =>
+          useMoldyLangGraphStream({
+            agentId: 'agent-hydrate-render',
+            conversationId: 'conversation-hydrate-render',
+          }),
+        { wrapper: createQueryWrapper() },
+      )
+
+      await waitFor(() => {
+        const options = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+          messages: readonly { id?: string; content?: unknown }[]
+        }
+        expect(options.messages).toEqual([
+          expect.objectContaining({
+            id: 'moldy-stale-run-render-hydration',
+            content: 'stale',
+          }),
+        ])
+      })
+
+      expect(
+        consoleError.mock.calls.some((call) =>
+          call.some(
+            (item) =>
+              typeof item === 'string' &&
+              item.includes(
+                "Can't perform a React state update on a component that hasn't mounted yet",
+              ),
+          ),
+        ),
+      ).toBe(false)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
   it('keeps assistant-ui running while a submitted user turn is waiting for the first assistant token', () => {
     mocks.stream.isLoading = true
     mocks.useExternalMessageConverter.mockReturnValue([

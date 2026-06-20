@@ -41,7 +41,7 @@ import {
   stableString,
   useStableConvertedMessages,
 } from './message-list'
-import { createMoldyAgentTransport } from './moldy-agent-transport'
+import { createMoldyAgentTransport, type MoldyAgentServerAdapter } from './moldy-agent-transport'
 import { refreshThreadLifecycleStream } from './lifecycle-subscription'
 import { loadServerThreadState, type ThreadStateResponse } from './thread-state-checkpoints'
 import {
@@ -1406,14 +1406,59 @@ function mergeCachedConvertedMessages(
   if (candidate.length === 0 || cached.length === 0) return candidate
 
   let changed = false
+  const usedCachedIndexes = new Set<number>()
   const merged = candidate.map((message, index) => {
-    const cachedMessage = cached[index]
+    const cachedMessage = reusableCachedConvertedMessage(
+      message,
+      cached,
+      index,
+      options,
+      usedCachedIndexes,
+    )
     if (!cachedMessage) return message
-    if (!canReuseCachedConvertedMessage(message, cachedMessage, options)) return message
     changed = true
     return cachedMessage
   })
   return changed ? merged : candidate
+}
+
+function reusableCachedConvertedMessage(
+  candidate: ConvertedMessage,
+  cached: readonly ConvertedMessage[],
+  index: number,
+  options: { readonly reuseReadyAssistant: boolean },
+  usedCachedIndexes: Set<number>,
+): ConvertedMessage | null {
+  const indexed = cached[index]
+  if (
+    indexed &&
+    !usedCachedIndexes.has(index) &&
+    canReuseCachedConvertedMessage(candidate, indexed, options)
+  ) {
+    usedCachedIndexes.add(index)
+    return indexed
+  }
+
+  const identity = convertedMessageIdentity(candidate)
+  if (!identity) return null
+
+  for (const [cachedIndex, cachedMessage] of cached.entries()) {
+    if (usedCachedIndexes.has(cachedIndex)) continue
+    if (convertedMessageIdentity(cachedMessage) !== identity) continue
+    if (!canReuseCachedConvertedMessage(candidate, cachedMessage, options)) continue
+    usedCachedIndexes.add(cachedIndex)
+    return cachedMessage
+  }
+
+  return null
+}
+
+function convertedMessageIdentity(message: ConvertedMessage): string | null {
+  const id = convertedMessageId(message)
+  if (!id) return null
+  const role = convertedMessageRole(message)
+  const sourceId = sourceMessageIdFromThreadMessageId(id) ?? id
+  return role ? `${role}:${sourceId}` : sourceId
 }
 
 function canReuseCachedConvertedMessage(
@@ -1424,7 +1469,7 @@ function canReuseCachedConvertedMessage(
   if (
     isConvertedUserMessage(candidate) &&
     isConvertedUserMessage(cached) &&
-    convertedMessageId(candidate) === convertedMessageId(cached)
+    convertedMessageIdentity(candidate) === convertedMessageIdentity(cached)
   ) {
     return isEmptyConvertedMessage(candidate) && !isEmptyConvertedMessage(cached)
   }
@@ -1609,6 +1654,11 @@ export function useMoldyLangGraphStream({
     transport,
     threadId: conversationId,
   })
+  useEffect(() => {
+    const moldyTransport = transport as Partial<MoldyAgentServerAdapter>
+    if (typeof moldyTransport.activateStateHydration !== 'function') return undefined
+    return moldyTransport.activateStateHydration()
+  }, [transport])
   const activityEvents = useChannel(stream, ACTIVITY_CHANNELS, undefined, { bufferSize: 300 })
   const activities = useMemo(
     () =>

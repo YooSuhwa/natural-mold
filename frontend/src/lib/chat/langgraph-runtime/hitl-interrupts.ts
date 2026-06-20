@@ -222,6 +222,92 @@ function sameArgs(left: Record<string, unknown>, right: Record<string, unknown>)
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+const HITL_METADATA_KEYS = new Set([
+  'approval_id',
+  'allowed_decisions',
+  'hitl_interrupt_id',
+  'hitl_action_index',
+  'hitl_total_actions',
+])
+
+type MutableToolCall = {
+  id?: string
+  name: string
+  args: Record<string, unknown>
+  type?: string
+}
+
+function stripHitLMetadata(args: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(args).filter(([key]) => !HITL_METADATA_KEYS.has(key)))
+}
+
+function equivalentToolArgs(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): boolean {
+  return JSON.stringify(stripHitLMetadata(left)) === JSON.stringify(stripHitLMetadata(right))
+}
+
+function mutableToolCalls(message: BaseMessage): MutableToolCall[] | null {
+  if (!AIMessage.isInstance(message)) return null
+  const toolCalls = message.tool_calls
+  return Array.isArray(toolCalls) ? (toolCalls as MutableToolCall[]) : null
+}
+
+function mergeExistingAskUserToolCallMetadata(
+  messages: readonly BaseMessage[],
+  payload: StandardInterruptPayload,
+): boolean {
+  let merged = false
+  const syntheticToolCalls = standardInterruptToToolCalls(payload)
+
+  for (const synthetic of syntheticToolCalls) {
+    if (synthetic.name !== 'ask_user') continue
+
+    for (const message of messages) {
+      const toolCalls = mutableToolCalls(message)
+      if (!toolCalls) continue
+
+      const index = toolCalls.findIndex(
+        (existing) =>
+          existing.name === synthetic.name && equivalentToolArgs(existing.args, synthetic.args),
+      )
+      if (index < 0) continue
+
+      const existing = toolCalls[index]
+      if (!existing) continue
+      toolCalls[index] = {
+        ...existing,
+        args: {
+          ...existing.args,
+          ...synthetic.args,
+          approval_id: existing.id ?? synthetic.args.approval_id,
+        },
+      }
+      merged = true
+      break
+    }
+  }
+
+  return merged
+}
+
+function hasExistingAskUserToolCall(
+  messages: readonly BaseMessage[],
+  toolCall: ToolCallInfo,
+): boolean {
+  if (toolCall.name !== 'ask_user') return false
+  return messages.some((message) => {
+    const toolCalls = mutableToolCalls(message)
+    return (
+      toolCalls?.some(
+        (existing) =>
+          existing.name === toolCall.name && equivalentToolArgs(existing.args, toolCall.args),
+      ) ?? false
+    )
+  })
+}
+
 function completedToolCallIds(messages: readonly BaseMessage[]): Set<string> {
   const ids = new Set<string>()
   for (const message of messages) {
@@ -336,6 +422,7 @@ export function appendInterruptToolCallMessages(
     const toolCalls = standardInterruptToToolCalls(payload)
     const ids = new Set(toolCalls.map((toolCall) => toolCall.id).filter(isString))
     if (ids.size === 0 || projected.some((message) => hasToolCallId(message, ids))) continue
+    if (mergeExistingAskUserToolCallMetadata(projected, payload)) continue
     projected.push(interruptedAssistantMessage(payload))
   }
   return projected
@@ -350,6 +437,7 @@ export function appendResolvedInterruptToolCallMessages(
   for (const item of resolved) {
     const toolCallId = item.toolCall.id
     if (!toolCallId) continue
+    if (hasExistingAskUserToolCall(projected, item.toolCall)) continue
     if (!projected.some((message) => hasToolCallId(message, new Set([toolCallId])))) {
       projected.push(
         Object.assign(
