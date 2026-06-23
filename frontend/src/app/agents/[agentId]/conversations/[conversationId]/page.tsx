@@ -188,7 +188,6 @@ export default function ChatPage({
     agent?.name,
     {
       detailEnabled:
-        runtimeMode !== 'langgraph_v3' &&
         draftTitleDetailSuppressionConversationId !== titleConversationId &&
         suppressEmptyStateForConversationId !== titleConversationId,
     },
