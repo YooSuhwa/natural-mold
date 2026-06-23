@@ -38,15 +38,21 @@ async def _seed_conversation(*, owner_id: uuid.UUID = TEST_USER_ID) -> uuid.UUID
 
 def _events(msg_id: str, *, failed: bool = False, secret: str | None = None) -> list[dict]:
     tool_args = {"query": "moldy"}
+    input_payload = {"messages": [{"role": "user", "content": "debug this trace"}]}
     if secret is not None:
         tool_args["api_key"] = secret
+        input_payload["headers"] = {
+            "Authorization": f"Bearer {secret}",
+            "Cookie": f"moldy_at={secret}",
+            "User-Agent": "safe-agent",
+        }
     body = [
         {
             "id": f"{msg_id}-1",
             "event": "message_start",
             "data": {
                 "id": msg_id,
-                "input": {"messages": [{"role": "user", "content": "debug this trace"}]},
+                "input": input_payload,
             },
         },
         {
@@ -254,6 +260,11 @@ async def test_debug_trace_detail_redacts_sensitive_message_event_payloads(
     assert response.status_code == 200
     body = response.json()
     assert secret not in repr(body)
+    assert body["spans"][0]["input"]["headers"] == {
+        "Authorization": "<redacted>",
+        "Cookie": "<redacted>",
+        "User-Agent": "safe-agent",
+    }
     tool_span = next(
         span for span in body["spans"] if span["metadata"].get("event") == "tool_call_start"
     )
@@ -320,9 +331,24 @@ async def test_debug_trace_detail_redacts_sensitive_langfuse_observations(
                 "name": "execute_in_skill",
                 "type": "SPAN",
                 "level": "DEFAULT",
-                "input": {"api_key": secret, "query": "safe"},
-                "output": f"api_key={secret}",
-                "metadata": {"api_key": secret, "note": "safe"},
+                "input": {
+                    "api_key": secret,
+                    "headers": {
+                        "Authorization": f"Bearer {secret}",
+                        "Cookie": f"moldy_at={secret}",
+                        "User-Agent": "safe-agent",
+                    },
+                    "query": "safe",
+                },
+                "output": f"Authorization: Bearer {secret}",
+                "metadata": {
+                    "api_key": secret,
+                    "headers": {
+                        "Set-Cookie": f"moldy_rt={secret}",
+                        "User-Agent": "safe-agent",
+                    },
+                    "note": "safe",
+                },
                 "usageDetails": {"total_tokens": 9},
             }
         ], None
@@ -343,7 +369,27 @@ async def test_debug_trace_detail_redacts_sensitive_langfuse_observations(
     assert response.status_code == 200
     body = response.json()
     assert secret not in repr(body)
-    assert body["raw"][0]["input"] == {"api_key": "<redacted>", "query": "safe"}
-    assert body["spans"][0]["input"] == {"api_key": "<redacted>", "query": "safe"}
+    assert body["raw"][0]["input"] == {
+        "api_key": "<redacted>",
+        "headers": {
+            "Authorization": "<redacted>",
+            "Cookie": "<redacted>",
+            "User-Agent": "safe-agent",
+        },
+        "query": "safe",
+    }
+    assert body["spans"][0]["input"] == {
+        "api_key": "<redacted>",
+        "headers": {
+            "Authorization": "<redacted>",
+            "Cookie": "<redacted>",
+            "User-Agent": "safe-agent",
+        },
+        "query": "safe",
+    }
     assert body["spans"][0]["metadata"]["api_key"] == "<redacted>"
+    assert body["spans"][0]["metadata"]["headers"] == {
+        "Set-Cookie": "<redacted>",
+        "User-Agent": "safe-agent",
+    }
     assert body["spans"][0]["metadata"]["usage"] == {"total_tokens": 9}

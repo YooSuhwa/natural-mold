@@ -28,10 +28,12 @@ SAFE_TOKEN_METRIC_KEYS: Final = frozenset(
 )
 SENSITIVE_KEY_SOURCE: Final = (
     r"password|api[_-]?key|secret|token|access[_-]?key|refresh[_-]?token|"
-    r"client[_-]?secret|private[_-]?key"
+    r"client[_-]?secret|private[_-]?key|authorization|proxy[_-]?authorization|"
+    r"cookie|set[_-]?cookie|csrf|xsrf|session"
 )
+SENSITIVE_PROTOCOL_KEY_RE: Final = re.compile(SENSITIVE_KEY_SOURCE, re.IGNORECASE)
 SENSITIVE_ASSIGNMENT_RE: Final = re.compile(
-    rf"((?:{SENSITIVE_KEY_SOURCE})[\"']?\s*[:=]\s*[\"']?)([^\"',}}\]\s]+)([\"']?)",
+    rf"((?:{SENSITIVE_KEY_SOURCE})[\"']?\s*[:=]\s*[\"']?(?:Bearer\s+)?)([^\"',}}\]\s]+)([\"']?)",
     re.IGNORECASE,
 )
 ASSIGNMENT_KEY_RE: Final = re.compile(r"([A-Za-z0-9_-]+)")
@@ -66,7 +68,9 @@ def _redact_sensitive_keys(data: Any) -> Any:
 
 
 def _is_sensitive_protocol_key(key: str) -> bool:
-    return key not in SAFE_TOKEN_METRIC_KEYS and is_sensitive_key(key)
+    return key not in SAFE_TOKEN_METRIC_KEYS and (
+        is_sensitive_key(key) or SENSITIVE_PROTOCOL_KEY_RE.search(key) is not None
+    )
 
 
 def _redact_sensitive_string(data: str) -> str:
