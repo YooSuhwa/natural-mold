@@ -1199,6 +1199,10 @@ function appendMessageText(message: {
     .join('')
 }
 
+function appendMessageHasAttachments(message: { attachments?: readonly unknown[] }): boolean {
+  return Array.isArray(message.attachments) && message.attachments.length > 0
+}
+
 function suppressPendingEditConvertedDuplicate(
   messages: readonly ConvertedMessage[],
   pendingEdit: PendingEditRenderState | null,
@@ -1574,28 +1578,6 @@ function suppressRunningEmptyAssistantPlaceholder(
   return isEmptyAssistantMessage(messages.at(-1)) ? messages.slice(0, -1) : messages
 }
 
-function markCurrentAssistantTurnAsStreaming(
-  messages: readonly BaseMessage[],
-  isRunning: boolean,
-): readonly BaseMessage[] {
-  if (!isRunning) return messages
-
-  let lastHumanIndex = -1
-  for (const [index, message] of messages.entries()) {
-    if (isHumanMessage(message)) lastHumanIndex = index
-  }
-
-  for (let index = messages.length - 1; index > lastHumanIndex; index -= 1) {
-    const message = messages[index]
-    if (!isAssistantMessage(message)) continue
-    if (messageMetadataValue(message, 'isStreamingMessage') === true) return messages
-    const replacement = withAdditionalMessageMetadata(message, { isStreamingMessage: true })
-    return [...messages.slice(0, index), replacement, ...messages.slice(index + 1)]
-  }
-
-  return messages
-}
-
 function assistantMessageHasToolCalls(message: BaseMessage): boolean {
   const source = message as BaseMessage & {
     readonly additional_kwargs?: unknown
@@ -1607,13 +1589,6 @@ function assistantMessageHasToolCalls(message: BaseMessage): boolean {
   const additionalKwargs = isRecord(source.additional_kwargs) ? source.additional_kwargs : {}
   const additionalToolCalls = additionalKwargs.tool_calls
   return Array.isArray(additionalToolCalls) && additionalToolCalls.length > 0
-}
-
-function messageMetadataValue(message: BaseMessage, key: string): unknown {
-  const source = message as BaseMessage & { readonly additional_kwargs?: unknown }
-  const additionalKwargs = isRecord(source.additional_kwargs) ? source.additional_kwargs : {}
-  const metadata = isRecord(additionalKwargs.metadata) ? additionalKwargs.metadata : {}
-  return metadata[key]
 }
 
 function isEmptyMessageContent(content: BaseMessage['content']): boolean {
@@ -2045,6 +2020,15 @@ export function useMoldyLangGraphStream({
     conversationId,
     pendingReloadRenderState,
   )
+  const clearPendingEditRenderState = useCallback(() => {
+    pendingEditBaseMessagesRef.current = null
+    pendingEditBaseConvertedMessagesRef.current = null
+    setPendingBranchPickerSuppression(null)
+    setPendingEditRender(null)
+  }, [setPendingBranchPickerSuppression, setPendingEditRender])
+  const clearPendingReloadRenderState = useCallback(() => {
+    setPendingReloadRender(null)
+  }, [setPendingReloadRender])
   const getPendingNewSubmitSnapshot = useCallback(
     () => pendingNewSubmitsByConversation.get(conversationId) ?? null,
     [conversationId],
@@ -2149,6 +2133,7 @@ export function useMoldyLangGraphStream({
     if (!pendingEditRender || stream.isLoading) return undefined
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
+    const startedAt = Date.now()
     const hydrateCompletedEdit = (attempt: number): void => {
       void loadServerThreadState(conversationId)
         .then((state: ThreadStateResponse) => {
@@ -2156,6 +2141,10 @@ export function useMoldyLangGraphStream({
           const hydrationReady = pendingEditHydrationIsReady(state, pendingEditRender)
           if (!hydrationReady) {
             handleThreadState(state)
+            if (Date.now() - startedAt > POST_RUN_HYDRATION_TIMEOUT_MS) {
+              clearPendingEditRenderState()
+              return
+            }
             retryTimer = setTimeout(
               () => hydrateCompletedEdit(attempt + 1),
               PENDING_EDIT_HYDRATION_RETRY_MS,
@@ -2163,18 +2152,12 @@ export function useMoldyLangGraphStream({
             return
           }
           handleThreadState(state, { replaceMessages: true })
-          setPendingBranchPickerSuppression(null)
-          pendingEditBaseMessagesRef.current = null
-          pendingEditBaseConvertedMessagesRef.current = null
-          setPendingEditRender(null)
+          clearPendingEditRenderState()
         })
         .catch(() => {
           if (cancelled) return
           clearServerHydrationState()
-          setPendingBranchPickerSuppression(null)
-          pendingEditBaseMessagesRef.current = null
-          pendingEditBaseConvertedMessagesRef.current = null
-          setPendingEditRender(null)
+          clearPendingEditRenderState()
         })
     }
     hydrateCompletedEdit(0)
@@ -2183,34 +2166,38 @@ export function useMoldyLangGraphStream({
       if (retryTimer) clearTimeout(retryTimer)
     }
   }, [
+    clearPendingEditRenderState,
     clearServerHydrationState,
     conversationId,
     handleThreadState,
     pendingEditRender,
-    setPendingBranchPickerSuppression,
-    setPendingEditRender,
     stream.isLoading,
   ])
   useEffect(() => {
     if (!pendingReloadRender || stream.isLoading) return undefined
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
+    const startedAt = Date.now()
     const hydrateCompletedReload = (): void => {
       void loadServerThreadState(conversationId)
         .then((state: ThreadStateResponse) => {
           if (cancelled) return
           const hydrationReady = pendingReloadHydrationIsReady(state, pendingReloadRender)
           if (!hydrationReady) {
+            if (Date.now() - startedAt > POST_RUN_HYDRATION_TIMEOUT_MS) {
+              clearPendingReloadRenderState()
+              return
+            }
             retryTimer = setTimeout(hydrateCompletedReload, PENDING_EDIT_HYDRATION_RETRY_MS)
             return
           }
           handleThreadState(state, { replaceMessages: true })
-          setPendingReloadRender(null)
+          clearPendingReloadRenderState()
         })
         .catch(() => {
           if (cancelled) return
           clearServerHydrationState()
-          setPendingReloadRender(null)
+          clearPendingReloadRenderState()
         })
     }
     hydrateCompletedReload()
@@ -2219,11 +2206,11 @@ export function useMoldyLangGraphStream({
       if (retryTimer) clearTimeout(retryTimer)
     }
   }, [
+    clearPendingReloadRenderState,
     clearServerHydrationState,
     conversationId,
     handleThreadState,
     pendingReloadRender,
-    setPendingReloadRender,
     stream.isLoading,
   ])
   useEffect(() => {
@@ -2291,21 +2278,14 @@ export function useMoldyLangGraphStream({
     [stream.isLoading, visibleStreamMessagesWithFallback],
   )
   const streamMessagesWithServerMetadata = useMemo(() => {
-    const messagesWithMetadata = applyPendingReloadBranchMetadata(
+    return applyPendingReloadBranchMetadata(
       applyPendingEditBranchMetadata(
         mergeServerMessageMetadata(renderableStreamMessages, serverMessageMetadata),
         pendingEditRender,
       ),
       pendingReloadRender,
     )
-    return markCurrentAssistantTurnAsStreaming(messagesWithMetadata, stream.isLoading)
-  }, [
-    pendingEditRender,
-    pendingReloadRender,
-    renderableStreamMessages,
-    serverMessageMetadata,
-    stream.isLoading,
-  ])
+  }, [pendingEditRender, pendingReloadRender, renderableStreamMessages, serverMessageMetadata])
   const allInterruptPayloads = standardPayloadsFromInterrupts([
     ...serverInterrupts,
     ...stream.interrupts,
@@ -2546,6 +2526,12 @@ export function useMoldyLangGraphStream({
 
   const onNew = useCallback(
     async (...args: Parameters<typeof submitNew>) => {
+      const content = appendMessageText(args[0]).trim()
+      const hasAttachments = appendMessageHasAttachments(args[0])
+      if (content.length === 0 && !hasAttachments) {
+        await submitNew(...args)
+        return
+      }
       onBeforeSubmit?.()
       setThreadRunNotice(null)
       clearServerHydrationState()
@@ -2554,7 +2540,6 @@ export function useMoldyLangGraphStream({
       pendingEditBaseMessagesRef.current = null
       pendingEditBaseConvertedMessagesRef.current = null
       setPendingReloadRender(null)
-      const content = appendMessageText(args[0]).trim()
       if (content.length > 0) {
         const pending: PendingNewSubmitState = {
           conversationId,
@@ -2609,20 +2594,22 @@ export function useMoldyLangGraphStream({
         ),
       )
       clearStickyConversationMessages(conversationId)
-      const submitted = await submitEdit(message)
-      if (!submitted) {
-        pendingEditBaseMessagesRef.current = null
-        pendingEditBaseConvertedMessagesRef.current = null
-        setPendingBranchPickerSuppression(null)
-        setPendingEditRender(null)
+      try {
+        const submitted = await submitEdit(message)
+        if (!submitted) {
+          clearPendingEditRenderState()
+        }
+      } catch (caught) {
+        clearPendingEditRenderState()
+        throw caught
       }
     },
     [
       checkpointVisibleMessages,
+      clearPendingEditRenderState,
       clearServerHydrationState,
       conversationId,
       messages,
-      setPendingBranchPickerSuppression,
       setPendingEditRender,
       setPendingReloadRender,
       setThreadRunNotice,
@@ -2650,11 +2637,17 @@ export function useMoldyLangGraphStream({
         ),
       )
       clearStickyConversationMessages(conversationId)
-      const submitted = await submitReload(parentId)
-      if (!submitted) setPendingReloadRender(null)
+      try {
+        const submitted = await submitReload(parentId)
+        if (!submitted) clearPendingReloadRenderState()
+      } catch (caught) {
+        clearPendingReloadRenderState()
+        throw caught
+      }
     },
     [
       checkpointVisibleMessages,
+      clearPendingReloadRenderState,
       clearServerHydrationState,
       conversationId,
       setPendingBranchPickerSuppression,

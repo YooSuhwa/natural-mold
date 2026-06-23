@@ -157,7 +157,7 @@ describe('useMoldyLangGraphStream', () => {
     mocks.stream.values = { messages: [] }
     mocks.stream.interrupts = []
     mocks.stream.isLoading = false
-    mocks.stream.submit.mockClear()
+    mocks.stream.submit.mockReset()
     mocks.stream.respond.mockClear()
     mocks.stream.respondAll.mockClear()
     mocks.stream.stop.mockClear()
@@ -500,6 +500,29 @@ describe('useMoldyLangGraphStream', () => {
 
     expect(onBeforeSubmit).toHaveBeenCalledOnce()
     expect(callOrder).toEqual(['before', 'submit'])
+  })
+
+  it('does not run the before-submit callback for blank assistant-ui messages', async () => {
+    const onBeforeSubmit = vi.fn()
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-2',
+          conversationId: 'conversation-2',
+          onBeforeSubmit,
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onNew: (message: { content: { type: string; text: string }[] }) => Promise<void>
+    }
+    await act(async () => {
+      await runtimeOptions.onNew({ content: [{ type: 'text', text: '   ' }] })
+    })
+
+    expect(onBeforeSubmit).not.toHaveBeenCalled()
   })
 
   it('keeps a submitted user message visible until the stream echoes it', async () => {
@@ -1358,7 +1381,7 @@ describe('useMoldyLangGraphStream', () => {
     expect(converterOptions?.messages).toEqual([])
   })
 
-  it('marks the current assistant turn as streaming while a later response is running', () => {
+  it('passes running state without mutating assistant message metadata', () => {
     mocks.stream.isLoading = true
     mocks.stream.messages = [
       new HumanMessage({ id: 'first-user', content: 'first prompt' }),
@@ -1378,23 +1401,23 @@ describe('useMoldyLangGraphStream', () => {
 
     const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
       | {
+          readonly isRunning?: boolean
           readonly messages: readonly {
             readonly id?: string
             readonly additional_kwargs?: unknown
           }[]
         }
       | undefined
+    expect(converterOptions?.isRunning).toBe(true)
     expect(converterOptions?.messages[1]?.additional_kwargs).not.toEqual(
       expect.objectContaining({
         metadata: expect.objectContaining({ isStreamingMessage: true }),
       }),
     )
-    expect(converterOptions?.messages[3]).toEqual(
+    expect(converterOptions?.messages[3]).toBe(mocks.stream.messages[3])
+    expect(converterOptions?.messages[3]?.additional_kwargs).not.toEqual(
       expect.objectContaining({
-        id: 'second-assistant',
-        additional_kwargs: expect.objectContaining({
-          metadata: expect.objectContaining({ isStreamingMessage: true }),
-        }),
+        metadata: expect.objectContaining({ isStreamingMessage: true }),
       }),
     )
   })

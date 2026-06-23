@@ -135,7 +135,7 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
     mocks.stream.messages = []
     mocks.stream.values = { messages: [] }
     mocks.stream.isLoading = false
-    mocks.stream.submit.mockClear()
+    mocks.stream.submit.mockReset()
     mocks.apiFetch.mockReset()
     mocks.apiFetch.mockResolvedValue({ metadata: {} })
     mocks.metadataStore.getSnapshot.mockReturnValue(new Map())
@@ -172,6 +172,82 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
     await runtimeOptions.onReload('user-1')
 
     expect(mocks.stream.submit).toHaveBeenCalledWith(null, { forkFrom: 'ck-after-user-1' })
+  })
+
+  it('restores the current transcript when edit submission fails', async () => {
+    const originalUserMessage = new HumanMessage({
+      id: 'rollback-edit-user',
+      content: 'original prompt',
+      additional_kwargs: { metadata: { checkpoint_id: 'ck-after-original-user' } },
+    })
+    const staleAssistantMessage = new AIMessage({
+      id: 'rollback-edit-assistant',
+      content: 'old answer',
+    })
+    const submitFailure = new Error('submit failed')
+    mocks.stream.messages = [originalUserMessage, staleAssistantMessage]
+    mocks.convertedMessages = [{ id: 'rollback-edit-user' }, { id: 'rollback-edit-assistant' }]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['rollback-edit-user', { parentCheckpointId: 'ck-before-original-user' }]]),
+    )
+    mocks.stream.submit.mockRejectedValueOnce(submitFailure)
+
+    const runtimeOptions = renderRuntimeOptions()
+    let thrown: unknown
+    await act(async () => {
+      try {
+        await runtimeOptions.onEdit({
+          content: [{ type: 'text', text: 'edited prompt' }],
+          parentId: 'rollback-edit-user',
+          sourceId: 'rollback-edit-user',
+        })
+      } catch (caught) {
+        thrown = caught
+      }
+    })
+
+    expect(thrown).toBe(submitFailure)
+    expect(mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: [originalUserMessage, staleAssistantMessage],
+      }),
+    )
+  })
+
+  it('restores the current transcript when reload submission fails', async () => {
+    const userMessage = new HumanMessage({
+      id: 'rollback-reload-user',
+      content: 'prompt',
+      additional_kwargs: { metadata: { checkpoint_id: 'ck-after-reload-user' } },
+    })
+    const assistantMessage = new AIMessage({
+      id: 'rollback-reload-assistant',
+      content: 'old answer',
+    })
+    const submitFailure = new Error('reload failed')
+    mocks.stream.messages = [userMessage, assistantMessage]
+    mocks.convertedMessages = [{ id: 'rollback-reload-user' }, { id: 'rollback-reload-assistant' }]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['rollback-reload-assistant', { parentCheckpointId: 'ck-after-reload-user' }]]),
+    )
+    mocks.stream.submit.mockRejectedValueOnce(submitFailure)
+
+    const runtimeOptions = renderRuntimeOptions()
+    let thrown: unknown
+    await act(async () => {
+      try {
+        await runtimeOptions.onReload('rollback-reload-user')
+      } catch (caught) {
+        thrown = caught
+      }
+    })
+
+    expect(thrown).toBe(submitFailure)
+    expect(mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: [userMessage, assistantMessage],
+      }),
+    )
   })
 
   it('prefers the assistant parent checkpoint when assistant-ui passes the assistant id', async () => {

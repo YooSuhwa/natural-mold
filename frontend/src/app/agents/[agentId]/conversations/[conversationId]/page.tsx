@@ -329,24 +329,25 @@ export default function ChatPage({
   )
   const handleBeforeNewMessage = useCallback(() => {
     if (!isDraftConversation) return
-    const committedConversationId =
-      commitDraftConversation() ?? langGraphDraftConversationId ?? startedConversationIdRef.current
-    if (!committedConversationId) return
-    startedConversationIdRef.current = committedConversationId
-    setSuppressEmptyStateForConversationId(committedConversationId)
-    promoteDraftRoute(committedConversationId)
+    const draftConversationId = langGraphDraftConversationId ?? startedConversationIdRef.current
+    if (!draftConversationId) return
+    startedConversationIdRef.current = draftConversationId
+    setSuppressEmptyStateForConversationId(draftConversationId)
+  }, [isDraftConversation, langGraphDraftConversationId])
+  const handleNewMessageAccepted = useCallback(() => {
+    const acceptedConversationId =
+      commitDraftConversation() ?? startedConversationIdRef.current ?? langGraphDraftConversationId
+    if (!acceptedConversationId) return
+    startedConversationIdRef.current = acceptedConversationId
+    setSuppressEmptyStateForConversationId(acceptedConversationId)
+    promoteDraftRoute(acceptedConversationId)
+    syncPromotedDraftNavigator(acceptedConversationId)
   }, [
     commitDraftConversation,
-    isDraftConversation,
     langGraphDraftConversationId,
     promoteDraftRoute,
+    syncPromotedDraftNavigator,
   ])
-  const handleNewMessageAccepted = useCallback(() => {
-    const committedConversationId = startedConversationIdRef.current
-    if (!committedConversationId) return
-    setSuppressEmptyStateForConversationId(committedConversationId)
-    syncPromotedDraftNavigator(committedConversationId)
-  }, [syncPromotedDraftNavigator])
 
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
   const shouldSuppressEmptyContent =
