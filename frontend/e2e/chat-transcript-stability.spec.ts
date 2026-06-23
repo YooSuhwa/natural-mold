@@ -161,8 +161,8 @@ async function expectRichOutputRendered(page: Page): Promise<void> {
 test.describe('Chat transcript stability QA bundle', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
   test.skip(
-    process.env.NEXT_PUBLIC_CHAT_RUNTIME !== 'langgraph_v3',
-    'Requires NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3',
+    process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy',
+    'Skipped for the legacy chat runtime',
   )
 
   test('shows one ask_user card and keeps the user prompt visible through draft promotion', async ({

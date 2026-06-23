@@ -10,8 +10,9 @@ cd frontend
 pnpm test:e2e:chat-transcript-stability
 ```
 
-이 스위트는 `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3`와 실제 backend/frontend
-Playwright 서버를 사용한다.
+이 스위트는 실제 backend/frontend Playwright 서버를 사용한다. 앱 기본 채팅 런타임은
+`langgraph_v3`이므로 `pnpm test:e2e` 전체 실행에도 포함된다. 단,
+`NEXT_PUBLIC_CHAT_RUNTIME=legacy`로 명시한 legacy 실행에서는 skip된다.
 
 ## 고정 기준
 
