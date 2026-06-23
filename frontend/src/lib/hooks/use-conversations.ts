@@ -5,12 +5,21 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type InfiniteData,
   type QueryClient,
 } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
 import { conversationPagesContainActiveRun } from '@/lib/chat-runs/status'
 import { agentQueryKeys } from '@/lib/query-keys/agents'
-import type { Conversation, ConversationPageParams, ConversationUpdateRequest } from '@/lib/types'
+import type {
+  Conversation,
+  ConversationAgentBrief,
+  ConversationListEnvelope,
+  ConversationPageParams,
+  ConversationUpdateRequest,
+  ConversationWithAgent,
+  ConversationWithAgentListEnvelope,
+} from '@/lib/types'
 import { triggerKeys } from './use-triggers'
 
 interface ConversationPagesOptions {
@@ -59,6 +68,85 @@ export function invalidateConversationNavigators(
   }
   queryClient.invalidateQueries({ queryKey: conversationKeys.globalPagesRoot })
   queryClient.invalidateQueries({ queryKey: agentQueryKeys.summary })
+}
+
+function mergeConversationRow(current: Conversation | undefined, next: Conversation): Conversation {
+  return current ? { ...current, ...next } : next
+}
+
+function upsertConversationList(
+  rows: readonly Conversation[] | undefined,
+  conversation: Conversation,
+): Conversation[] | undefined {
+  if (!rows) return rows
+  const existing = rows.find((row) => row.id === conversation.id)
+  const merged = mergeConversationRow(existing, conversation)
+  return [merged, ...rows.filter((row) => row.id !== conversation.id)]
+}
+
+function upsertConversationPages(
+  data: InfiniteData<ConversationListEnvelope> | undefined,
+  conversation: Conversation,
+): InfiniteData<ConversationListEnvelope> | undefined {
+  if (!data) return data
+  return {
+    ...data,
+    pages: data.pages.map((page, index) => {
+      const existing = page.items.find((row) => row.id === conversation.id)
+      const rowsWithoutConversation = page.items.filter((row) => row.id !== conversation.id)
+      if (index !== 0) return { ...page, items: rowsWithoutConversation }
+      return {
+        ...page,
+        items: [mergeConversationRow(existing, conversation), ...rowsWithoutConversation],
+      }
+    }),
+  }
+}
+
+function upsertGlobalConversationPages(
+  data: InfiniteData<ConversationWithAgentListEnvelope> | undefined,
+  conversation: ConversationWithAgent,
+): InfiniteData<ConversationWithAgentListEnvelope> | undefined {
+  if (!data) return data
+  return {
+    ...data,
+    pages: data.pages.map((page, index) => {
+      const existing = page.items.find((row) => row.id === conversation.id)
+      const rowsWithoutConversation = page.items.filter((row) => row.id !== conversation.id)
+      if (index !== 0) return { ...page, items: rowsWithoutConversation }
+      return {
+        ...page,
+        items: [
+          {
+            ...(existing ?? conversation),
+            ...conversation,
+            agent: conversation.agent,
+          },
+          ...rowsWithoutConversation,
+        ],
+      }
+    }),
+  }
+}
+
+export function upsertConversationNavigatorCache(
+  queryClient: QueryClient,
+  conversation: Conversation,
+  agent?: ConversationAgentBrief | null,
+): void {
+  queryClient.setQueryData<Conversation[]>(
+    conversationKeys.list(conversation.agent_id),
+    (current) => upsertConversationList(current, conversation),
+  )
+  queryClient.setQueriesData<InfiniteData<ConversationListEnvelope>>(
+    { queryKey: conversationKeys.agentPagesRoot(conversation.agent_id) },
+    (current) => upsertConversationPages(current, conversation),
+  )
+  if (!agent) return
+  queryClient.setQueriesData<InfiniteData<ConversationWithAgentListEnvelope>>(
+    { queryKey: conversationKeys.globalPagesRoot },
+    (current) => upsertGlobalConversationPages(current, { ...conversation, agent }),
+  )
 }
 
 export function useConversations(agentId: string) {

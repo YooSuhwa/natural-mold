@@ -61,6 +61,7 @@ class MiddlewareModelCredentialRequiredError(AppError):
             status=422,
         )
 
+
 def build_agent(
     model: BaseChatModel,
     tools: list[BaseTool],
@@ -93,6 +94,7 @@ def build_agent(
         name=name,
         subagents=cast(Any, subagents),
     )
+
 
 _MIDDLEWARE_MODEL_FIELDS = frozenset({"model", "fallback_model"})
 
@@ -444,6 +446,22 @@ def _memory_tool_instruction_prompt() -> str:
     )
 
 
+def _interactive_tool_instruction_prompt() -> str:
+    return (
+        "## Interactive Tool Rules\n"
+        "- If the user explicitly asks you to ask the user, use ask_user, "
+        "let them choose, or pick from options, call the `ask_user` tool. "
+        "Do not answer with plain text that only describes asking.\n"
+        "- For a single-choice option request, call `ask_user` with "
+        '`mode="option_list"`, a concise title, the requested options, '
+        "`minSelections=1`, and `maxSelections=1`.\n"
+        "- If the user explicitly asks to use an available tool or MCP tool, "
+        "call the matching tool instead of simulating the tool result in text.\n"
+        "- If a tool requires HITL approval, wait for the approval result before "
+        "claiming that the tool ran or that the requested side effect happened."
+    )
+
+
 def _artifact_file_instruction_prompt(thread_id: str) -> str:
     return (
         "## Generated File Rules\n"
@@ -480,6 +498,8 @@ async def _prepare_runtime_components(
 
     system_prompt = _system_prompt_with_temporal_context(cfg.system_prompt)
     system_prompt += "\n\n" + _artifact_file_instruction_prompt(cfg.thread_id)
+    if include_ask_user and not is_trigger_mode:
+        system_prompt += "\n\n" + _interactive_tool_instruction_prompt()
     model_candidates = _build_model_candidates(cfg)
     model = model_candidates[0]
     mark_timing("model_ms")

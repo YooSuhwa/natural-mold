@@ -1,6 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import {
   useExternalMessageConverter,
   useExternalStoreRuntime,
@@ -109,10 +117,18 @@ interface ServerStateMessagesSnapshot {
   readonly messages: readonly BaseMessage[]
 }
 
+interface ServerInterruptsSnapshot {
+  readonly conversationId: string
+  readonly interrupts: readonly LangGraphInterruptLike[]
+}
+
 interface PendingEditRenderState extends PendingCheckpointEditSubmit {
   readonly conversationId: string
   readonly staleTailFingerprints: readonly string[]
+  readonly staleTailContentFingerprints: readonly string[]
+  readonly staleConvertedTailContentFingerprints: readonly string[]
   readonly requiresLatestBranchMetadata: boolean
+  readonly pendingBranchTotal: number | null
 }
 
 interface PendingReloadRenderState {
@@ -124,6 +140,13 @@ interface PendingReloadRenderState {
   readonly staleMessageKey: string
   readonly requiredAssistantBranch: PendingReloadRequiredAssistantBranch
   readonly requiredUserBranch: PendingReloadRequiredUserBranch | null
+}
+
+interface PendingNewSubmitState {
+  readonly conversationId: string
+  readonly content: string
+  readonly baseMessageCount: number
+  readonly message: HumanMessage
 }
 
 interface PendingReloadRequiredAssistantBranch {
@@ -158,6 +181,8 @@ const POST_RUN_HYDRATION_RETRY_MS = 150
 const POST_RUN_HYDRATION_TIMEOUT_MS = 10_000
 const stickyMessagesByConversation = new Map<string, readonly BaseMessage[]>()
 const stickyConvertedMessagesByConversation = new Map<string, readonly ConvertedMessage[]>()
+const pendingNewSubmitsByConversation = new Map<string, PendingNewSubmitState>()
+const pendingNewSubmitListeners = new Set<() => void>()
 const BRANCH_PICKER_METADATA_KEYS = [
   'branches',
   'siblingCheckpointIds',
@@ -191,10 +216,31 @@ const ACTIVITY_CHANNELS = [
   'custom',
 ] as const satisfies readonly Channel[]
 
+const PERSISTED_CONVERSATION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function threadInterruptsFromStream(stream: {
   getThread?: () => { readonly interrupts?: readonly LangGraphInterruptLike[] } | undefined
 }): readonly LangGraphInterruptLike[] {
   return stream.getThread?.()?.interrupts ?? []
+}
+
+function interruptRecords(value: unknown): readonly LangGraphInterruptLike[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is LangGraphInterruptLike => isRecord(item))
+}
+
+function interruptsFromThreadState(state: unknown): readonly LangGraphInterruptLike[] {
+  if (!isRecord(state)) return []
+  const interrupts: LangGraphInterruptLike[] = [...interruptRecords(state.interrupts)]
+  const values = isRecord(state.values) ? state.values : {}
+  interrupts.push(...interruptRecords(values.__interrupt__))
+  const tasks = Array.isArray(state.tasks) ? state.tasks : []
+  for (const task of tasks) {
+    if (!isRecord(task)) continue
+    interrupts.push(...interruptRecords(task.interrupts))
+  }
+  return interrupts
 }
 
 function terminalRunNoticeFromThreadState(state: unknown): ThreadRunNotice | null {
@@ -330,7 +376,7 @@ function mergeServerMessageMetadata(
   })
 }
 
-function suppressPendingEditBranchMetadata(
+function applyPendingEditBranchMetadata(
   messages: readonly BaseMessage[],
   pendingEdit: PendingEditRenderState | null,
 ): readonly BaseMessage[] {
@@ -340,7 +386,7 @@ function suppressPendingEditBranchMetadata(
   const targetMessage = messages[targetIndex]
   if (!targetMessage) return messages
   if (!messageContentEqualsText(targetMessage, pendingEdit.content)) return messages
-  const replacement = cloneMessageWithoutBranchPickerMetadata(targetMessage)
+  const replacement = cloneMessageWithPendingEditBranchMetadata(targetMessage, pendingEdit)
   if (!replacement || replacement === targetMessage) return messages
   return [...messages.slice(0, targetIndex), replacement, ...messages.slice(targetIndex + 1)]
 }
@@ -390,11 +436,20 @@ function cloneMessageWithPendingReloadBranchMetadata(
   return clone
 }
 
-function cloneMessageWithoutBranchPickerMetadata(
-  message: BaseMessage | undefined,
+function cloneMessageWithPendingEditBranchMetadata(
+  message: BaseMessage,
+  pendingEdit: PendingEditRenderState,
 ): BaseMessage | undefined {
-  if (!message) return message
-  const nextAdditionalKwargs = withoutBranchPickerMetadata(message.additional_kwargs)
+  const additionalKwargs = isRecord(message.additional_kwargs) ? message.additional_kwargs : {}
+  const metadata = isRecord(additionalKwargs.metadata) ? additionalKwargs.metadata : {}
+  const nextMetadata =
+    pendingEdit.pendingBranchTotal !== null
+      ? pendingBranchPickerCustomMetadata(metadata, pendingEdit.pendingBranchTotal, 'pending-edit')
+      : clearedBranchPickerCustomMetadata(metadata)
+  const nextAdditionalKwargs = {
+    ...additionalKwargs,
+    metadata: nextMetadata,
+  }
   if (stableString(nextAdditionalKwargs) === stableString(message.additional_kwargs)) return message
   const clone = Object.create(Object.getPrototypeOf(message)) as BaseMessage
   Object.assign(clone, message, {
@@ -476,6 +531,40 @@ function cacheStickyConvertedMessages(
   if (typeof oldestKey === 'string') stickyConvertedMessagesByConversation.delete(oldestKey)
 }
 
+function cachePendingNewSubmit(pending: PendingNewSubmitState): void {
+  pendingNewSubmitsByConversation.set(pending.conversationId, pending)
+  if (pendingNewSubmitsByConversation.size > STICKY_MESSAGE_CACHE_LIMIT) {
+    const oldestKey = pendingNewSubmitsByConversation.keys().next().value
+    if (typeof oldestKey === 'string') pendingNewSubmitsByConversation.delete(oldestKey)
+  }
+  emitPendingNewSubmitChange()
+}
+
+function clearPendingNewSubmit(conversationId: string, content: string): void {
+  const current = pendingNewSubmitsByConversation.get(conversationId)
+  if (current?.content !== content) return
+  pendingNewSubmitsByConversation.delete(conversationId)
+  emitPendingNewSubmitChange()
+}
+
+function clearPendingNewSubmitForConversation(conversationId: string): void {
+  if (!pendingNewSubmitsByConversation.delete(conversationId)) return
+  emitPendingNewSubmitChange()
+}
+
+function emitPendingNewSubmitChange(): void {
+  for (const listener of pendingNewSubmitListeners) listener()
+}
+
+function subscribePendingNewSubmitStore(listener: () => void): () => void {
+  pendingNewSubmitListeners.add(listener)
+  return () => pendingNewSubmitListeners.delete(listener)
+}
+
+function getEmptyPendingNewSubmitSnapshot(): PendingNewSubmitState | null {
+  return null
+}
+
 function clearStickyConversationMessages(conversationId: string): void {
   stickyMessagesByConversation.delete(conversationId)
   stickyConvertedMessagesByConversation.delete(conversationId)
@@ -489,6 +578,7 @@ type SnapshotCloneableMessage = BaseMessage & {
   readonly additional_kwargs?: unknown
   readonly invalid_tool_calls?: unknown
   readonly response_metadata?: unknown
+  readonly status?: unknown
   readonly tool_call_id?: unknown
   readonly tool_calls?: unknown
   readonly usage_metadata?: unknown
@@ -501,6 +591,7 @@ function cloneBaseMessageSnapshot(message: BaseMessage): BaseMessage {
     content: snapshotValue(message.content),
     additional_kwargs: snapshotValue(source.additional_kwargs),
     response_metadata: snapshotValue(source.response_metadata),
+    status: snapshotValue(source.status),
     tool_calls: snapshotValue(source.tool_calls),
     invalid_tool_calls: snapshotValue(source.invalid_tool_calls),
     tool_call_id: snapshotValue(source.tool_call_id),
@@ -751,6 +842,7 @@ function pendingEditRenderFromAppendMessage(
   message: AppendMessage,
   visibleMessages: readonly VisibleMessageWithId[],
   currentMessages: readonly BaseMessage[],
+  convertedMessages: readonly ConvertedMessage[] = [],
 ): PendingEditRenderState | null {
   const content = appendMessageText(message).trim()
   if (!content) return null
@@ -765,6 +857,7 @@ function pendingEditRenderFromAppendMessage(
       targetIndex: target.index,
     },
     currentMessages,
+    convertedMessages,
   )
 }
 
@@ -772,13 +865,33 @@ function pendingEditRenderFromSubmit(
   conversationId: string,
   edit: PendingCheckpointEditSubmit,
   currentMessages: readonly BaseMessage[],
+  convertedMessages: readonly ConvertedMessage[] = [],
 ): PendingEditRenderState {
   return {
     conversationId,
     ...edit,
     staleTailFingerprints: staleTailFingerprintsForEdit(currentMessages, edit),
+    staleTailContentFingerprints: staleTailContentFingerprintsForEdit(currentMessages, edit),
+    staleConvertedTailContentFingerprints: staleConvertedTailContentFingerprintsForEdit(
+      convertedMessages,
+      edit,
+    ),
     requiresLatestBranchMetadata: editRequiresLatestBranchMetadata(currentMessages, edit),
+    pendingBranchTotal: pendingEditBranchTotal(currentMessages, edit),
   }
+}
+
+function pendingEditBranchTotal(
+  messages: readonly BaseMessage[],
+  edit: PendingCheckpointEditSubmit,
+): number | null {
+  const targetIndex = pendingEditTargetIndex(messages, edit)
+  if (targetIndex < 0) return null
+  const targetMessage = messages[targetIndex]
+  if (!isHumanMessage(targetMessage)) return null
+  const metadata = branchMetadataFromMessage(targetMessage)
+  const branchTotal = metadata?.branchTotal
+  return typeof branchTotal === 'number' && branchTotal >= 2 ? branchTotal + 1 : 2
 }
 
 function editRequiresLatestBranchMetadata(
@@ -799,6 +912,24 @@ function staleTailFingerprintsForEdit(
   const targetIndex = pendingEditTargetIndex(messages, edit)
   if (targetIndex < 0) return []
   return messages.slice(targetIndex + 1).map(messageContentFingerprint)
+}
+
+function staleTailContentFingerprintsForEdit(
+  messages: readonly BaseMessage[],
+  edit: PendingCheckpointEditSubmit,
+): readonly string[] {
+  const targetIndex = pendingEditTargetIndex(messages, edit)
+  if (targetIndex < 0) return []
+  return messages.slice(targetIndex + 1).map(messageContentRoleFingerprint)
+}
+
+function staleConvertedTailContentFingerprintsForEdit(
+  messages: readonly ConvertedMessage[],
+  edit: PendingCheckpointEditSubmit,
+): readonly string[] {
+  const targetIndex = pendingEditConvertedTargetIndex(messages, edit)
+  if (targetIndex < 0) return []
+  return messages.slice(targetIndex + 1).map(convertedMessageContentRoleFingerprint)
 }
 
 function pendingEditTailAfterStaleMessages(
@@ -849,7 +980,7 @@ function editedHumanMessage(
   pendingEdit: PendingEditRenderState,
 ): HumanMessage {
   const id = typeof originalMessage?.id === 'string' ? originalMessage.id : pendingEdit.sourceId
-  const additionalKwargs = withoutBranchPickerMetadata(originalMessage?.additional_kwargs)
+  const additionalKwargs = pendingEditAdditionalKwargs(originalMessage, pendingEdit)
   return new HumanMessage({
     content: pendingEdit.content,
     ...(id ? { id } : {}),
@@ -859,13 +990,21 @@ function editedHumanMessage(
   })
 }
 
-function withoutBranchPickerMetadata(value: unknown): Record<string, unknown> {
-  const additionalKwargs = isRecord(value) ? value : {}
-  const metadata = isRecord(additionalKwargs.metadata) ? additionalKwargs.metadata : null
-  if (!metadata) return { ...additionalKwargs }
+function pendingEditAdditionalKwargs(
+  originalMessage: BaseMessage | undefined,
+  pendingEdit: PendingEditRenderState,
+): Record<string, unknown> {
+  const additionalKwargs = isRecord(originalMessage?.additional_kwargs)
+    ? originalMessage.additional_kwargs
+    : {}
+  const metadata = isRecord(additionalKwargs.metadata) ? additionalKwargs.metadata : {}
+  const nextMetadata =
+    pendingEdit.pendingBranchTotal !== null
+      ? pendingBranchPickerCustomMetadata(metadata, pendingEdit.pendingBranchTotal, 'pending-edit')
+      : clearedBranchPickerCustomMetadata(metadata)
   return {
     ...additionalKwargs,
-    metadata: withoutBranchPickerCustomMetadata(metadata),
+    metadata: nextMetadata,
   }
 }
 
@@ -882,6 +1021,26 @@ function clearedBranchPickerCustomMetadata(value: unknown): Record<string, unkno
   return {
     ...withoutBranchPickerCustomMetadata(value),
     ...CLEARED_BRANCH_PICKER_METADATA,
+  }
+}
+
+function pendingBranchPickerCustomMetadata(
+  value: unknown,
+  branchTotal: number,
+  idPrefix: string,
+): Record<string, unknown> {
+  const branchIndex = branchTotal - 1
+  const branchIds = Array.from({ length: branchTotal }, (_, index) => `${idPrefix}-${index}`)
+  return {
+    ...withoutBranchPickerCustomMetadata(value),
+    branches: branchIds,
+    siblingCheckpointIds: branchIds,
+    activeBranchId: branchIds[branchIndex] ?? null,
+    branchCheckpointId: branchIds[branchIndex] ?? null,
+    branchIndex,
+    branchTotal,
+    checkpoint_id: branchIds[branchIndex] ?? null,
+    moldyBranchPickerDisplayOnly: true,
   }
 }
 
@@ -1052,7 +1211,43 @@ function suppressPendingEditConvertedDuplicate(
   return [...messages.slice(0, duplicateIndex), ...messages.slice(duplicateIndex + 1)]
 }
 
-function suppressPendingEditConvertedBranchMetadata(
+function suppressPendingEditConvertedStaleTail(
+  messages: readonly ConvertedMessage[],
+  pendingEdit: PendingEditRenderState | null,
+): readonly ConvertedMessage[] {
+  if (!pendingEdit) return messages
+  const staleTailContentFingerprints =
+    pendingEdit.staleConvertedTailContentFingerprints.length > 0
+      ? pendingEdit.staleConvertedTailContentFingerprints
+      : pendingEdit.staleTailContentFingerprints
+  if (staleTailContentFingerprints.length === 0) return messages
+  const targetIndex = pendingEditConvertedTargetIndex(messages, pendingEdit)
+  if (targetIndex < 0) return messages
+  const tail = messages.slice(targetIndex + 1)
+  const stalePrefixLength = convertedStaleTailPrefixLength(tail, staleTailContentFingerprints)
+  if (stalePrefixLength <= 0) return messages
+  return [
+    ...messages.slice(0, targetIndex + 1),
+    ...tail.slice(stalePrefixLength),
+  ] as readonly ConvertedMessage[]
+}
+
+function convertedStaleTailPrefixLength(
+  tail: readonly ConvertedMessage[],
+  staleTailContentFingerprints: readonly string[],
+): number {
+  const limit = Math.min(tail.length, staleTailContentFingerprints.length)
+  let index = 0
+  while (
+    index < limit &&
+    convertedMessageContentRoleFingerprint(tail[index]) === staleTailContentFingerprints[index]
+  ) {
+    index += 1
+  }
+  return index
+}
+
+function applyPendingEditConvertedBranchMetadata(
   messages: readonly ConvertedMessage[],
   pendingEdit: PendingEditRenderState | null,
 ): readonly ConvertedMessage[] {
@@ -1062,19 +1257,23 @@ function suppressPendingEditConvertedBranchMetadata(
   const targetMessage = messages[targetIndex]
   if (!targetMessage) return messages
   if (convertedMessageText(targetMessage) !== pendingEdit.content) return messages
-  const replacement = cloneConvertedMessageWithoutBranchPickerMetadata(targetMessage)
+  const replacement = cloneConvertedMessageWithPendingEditBranchMetadata(targetMessage, pendingEdit)
   if (!replacement || replacement === targetMessage) return messages
   return [...messages.slice(0, targetIndex), replacement, ...messages.slice(targetIndex + 1)]
 }
 
-function cloneConvertedMessageWithoutBranchPickerMetadata(
+function cloneConvertedMessageWithPendingEditBranchMetadata(
   message: ConvertedMessage | undefined,
+  pendingEdit: PendingEditRenderState,
 ): ConvertedMessage | undefined {
   if (!isRecord(message)) return message
   const metadata: Record<string, unknown> = isRecord(message.metadata) ? message.metadata : {}
   const customValue = metadata.custom
   const custom = isRecord(customValue) ? customValue : {}
-  const nextCustom = clearedBranchPickerCustomMetadata(custom)
+  const nextCustom =
+    pendingEdit.pendingBranchTotal !== null
+      ? pendingBranchPickerCustomMetadata(custom, pendingEdit.pendingBranchTotal, 'pending-edit')
+      : clearedBranchPickerCustomMetadata(custom)
   const nextMetadata = {
     ...metadata,
     custom: nextCustom,
@@ -1088,7 +1287,10 @@ function cloneConvertedMessageWithoutBranchPickerMetadata(
 
 function pendingEditConvertedTargetIndex(
   messages: readonly ConvertedMessage[],
-  pendingEdit: PendingEditRenderState,
+  pendingEdit: Pick<
+    PendingCheckpointEditSubmit,
+    'parentId' | 'sourceId' | 'targetId' | 'targetIndex'
+  >,
 ): number {
   for (const candidateId of [pendingEdit.sourceId, pendingEdit.parentId, pendingEdit.targetId]) {
     if (!candidateId) continue
@@ -1118,6 +1320,24 @@ function pendingEditConvertedDuplicateIndex(
   return -1
 }
 
+function appendPendingNewSubmitMessage(
+  messages: readonly BaseMessage[],
+  pendingNewSubmit: PendingNewSubmitState | null,
+): readonly BaseMessage[] {
+  if (!pendingNewSubmit) return messages
+  const alreadyVisible = messages.some(
+    (message) =>
+      isHumanMessage(message) && messageContentEqualsText(message, pendingNewSubmit.content),
+  )
+  if (alreadyVisible) return messages
+  const insertionIndex = Math.min(pendingNewSubmit.baseMessageCount, messages.length)
+  return [
+    ...messages.slice(0, insertionIndex),
+    pendingNewSubmit.message,
+    ...messages.slice(insertionIndex),
+  ]
+}
+
 function convertedMessageId(message: ConvertedMessage | undefined): string | null {
   if (!isRecord(message)) return null
   return typeof message.id === 'string' ? message.id : null
@@ -1127,9 +1347,23 @@ function isConvertedUserMessage(message: ConvertedMessage | undefined): boolean 
   return isRecord(message) && message.role === 'user'
 }
 
+function convertedMessageContentRoleFingerprint(message: ConvertedMessage | undefined): string {
+  const role = isRecord(message) && typeof message.role === 'string' ? message.role : null
+  return stableString({
+    type: role === 'user' ? 'human' : role === 'assistant' ? 'ai' : role,
+    content: convertedMessageComparableContent(message),
+  })
+}
+
 function convertedMessageText(message: ConvertedMessage | undefined): string | null {
   if (!isRecord(message)) return null
   return textFromUnknownContent(message.content)
+}
+
+function convertedMessageComparableContent(message: ConvertedMessage | undefined): unknown {
+  if (!isRecord(message)) return null
+  const text = convertedMessageText(message)
+  return text !== null ? text : message.content
 }
 
 function textFromUnknownContent(content: unknown): string | null {
@@ -1158,17 +1392,29 @@ function messageContentFingerprint(message: BaseMessage | undefined): string {
   })
 }
 
+function messageContentRoleFingerprint(message: BaseMessage | undefined): string {
+  if (!message) return ''
+  return stableString({
+    type: typeof message._getType === 'function' ? message._getType() : undefined,
+    content: textContentFromMessageContent(message.content),
+  })
+}
+
 function messageListFingerprint(messages: readonly BaseMessage[]): string {
   return stableString(messages.map(messageRenderKey))
 }
 
 function messageRenderKey(message: BaseMessage): string {
   const metadata = branchMetadataFromMessage(message)
+  const source = message as SnapshotCloneableMessage
   return stableString({
     id: message.id ?? null,
     checkpointId: metadata?.checkpoint_id ?? null,
     branchCheckpointId: metadata?.branchCheckpointId ?? null,
     fingerprint: messageContentFingerprint(message),
+    status: source.status,
+    tool_calls: source.tool_calls,
+    invalid_tool_calls: source.invalid_tool_calls,
   })
 }
 
@@ -1209,21 +1455,60 @@ function messageListsSharePrefix(
   right: readonly BaseMessage[],
   length: number,
 ): boolean {
-  if (left.length < length || right.length < length) return false
-  return left
-    .slice(0, length)
-    .every(
-      (message, index) =>
-        messageContentFingerprint(message) === messageContentFingerprint(right[index]),
-    )
+  return messageListsSharedPrefixLength(left, right) >= length
+}
+
+function messageListsSharedPrefixLength(
+  left: readonly BaseMessage[],
+  right: readonly BaseMessage[],
+): number {
+  const length = Math.min(left.length, right.length)
+  let index = 0
+  while (
+    index < length &&
+    messageContentFingerprint(left[index]) === messageContentFingerprint(right[index])
+  ) {
+    index += 1
+  }
+  return index
+}
+
+function messageListIsOrderedSubsequence(
+  candidate: readonly BaseMessage[],
+  cached: readonly BaseMessage[],
+): boolean {
+  let cachedIndex = 0
+  for (const candidateMessage of candidate) {
+    let found = false
+    while (cachedIndex < cached.length) {
+      if (messagesShareStableIdentity(candidateMessage, cached[cachedIndex])) {
+        found = true
+        cachedIndex += 1
+        break
+      }
+      cachedIndex += 1
+    }
+    if (!found) return false
+  }
+  return true
+}
+
+function messagesShareStableIdentity(left: BaseMessage, right: BaseMessage | undefined): boolean {
+  if (!right) return false
+  const leftIdentity = baseMessageIdentity(left)
+  const rightIdentity = baseMessageIdentity(right)
+  if (leftIdentity && rightIdentity) return leftIdentity === rightIdentity
+  return messageContentFingerprint(left) === messageContentFingerprint(right)
 }
 
 function messageListIsDegraded(
   candidate: readonly BaseMessage[],
   cached: readonly BaseMessage[],
 ): boolean {
-  if (candidate.length < cached.length)
-    return messageListsSharePrefix(candidate, cached, candidate.length)
+  if (candidate.length < cached.length) {
+    if (messageListsSharePrefix(candidate, cached, candidate.length)) return true
+    return messageListIsOrderedSubsequence(candidate, cached)
+  }
   if (candidate.length !== cached.length || candidate.length === 0) return false
 
   const lastIndex = candidate.length - 1
@@ -1289,6 +1574,28 @@ function suppressRunningEmptyAssistantPlaceholder(
   return isEmptyAssistantMessage(messages.at(-1)) ? messages.slice(0, -1) : messages
 }
 
+function markCurrentAssistantTurnAsStreaming(
+  messages: readonly BaseMessage[],
+  isRunning: boolean,
+): readonly BaseMessage[] {
+  if (!isRunning) return messages
+
+  let lastHumanIndex = -1
+  for (const [index, message] of messages.entries()) {
+    if (isHumanMessage(message)) lastHumanIndex = index
+  }
+
+  for (let index = messages.length - 1; index > lastHumanIndex; index -= 1) {
+    const message = messages[index]
+    if (!isAssistantMessage(message)) continue
+    if (messageMetadataValue(message, 'isStreamingMessage') === true) return messages
+    const replacement = withAdditionalMessageMetadata(message, { isStreamingMessage: true })
+    return [...messages.slice(0, index), replacement, ...messages.slice(index + 1)]
+  }
+
+  return messages
+}
+
 function assistantMessageHasToolCalls(message: BaseMessage): boolean {
   const source = message as BaseMessage & {
     readonly additional_kwargs?: unknown
@@ -1300,6 +1607,13 @@ function assistantMessageHasToolCalls(message: BaseMessage): boolean {
   const additionalKwargs = isRecord(source.additional_kwargs) ? source.additional_kwargs : {}
   const additionalToolCalls = additionalKwargs.tool_calls
   return Array.isArray(additionalToolCalls) && additionalToolCalls.length > 0
+}
+
+function messageMetadataValue(message: BaseMessage, key: string): unknown {
+  const source = message as BaseMessage & { readonly additional_kwargs?: unknown }
+  const additionalKwargs = isRecord(source.additional_kwargs) ? source.additional_kwargs : {}
+  const metadata = isRecord(additionalKwargs.metadata) ? additionalKwargs.metadata : {}
+  return metadata[key]
 }
 
 function isEmptyMessageContent(content: BaseMessage['content']): boolean {
@@ -1324,26 +1638,32 @@ function useStickyConversationMessages(
 ): readonly BaseMessage[] {
   const stickyMessages = useMemo(() => {
     const cached = stickyMessagesByConversation.get(conversationId)
+    const contentMergedMessages = cached
+      ? mergeCachedNonEmptyMessageContent(messages, cached)
+      : messages
     const mergedMessages =
       !replaceMessages && cached
         ? mergeCachedReadyAssistantMessages(
-            mergeCachedPrefixForAppendOnlyStream(messages, cached),
+            mergeCachedPrefixForAppendOnlyStream(contentMergedMessages, cached),
             cached,
           )
-        : messages
+        : contentMergedMessages
     if (!replaceMessages && cached && messageListIsDegraded(mergedMessages, cached)) return cached
     return mergedMessages
   }, [conversationId, messages, replaceMessages])
 
   useLayoutEffect(() => {
     const cached = stickyMessagesByConversation.get(conversationId)
+    const contentMergedMessages = cached
+      ? mergeCachedNonEmptyMessageContent(messages, cached)
+      : messages
     const mergedMessages =
       !replaceMessages && cached
         ? mergeCachedReadyAssistantMessages(
-            mergeCachedPrefixForAppendOnlyStream(messages, cached),
+            mergeCachedPrefixForAppendOnlyStream(contentMergedMessages, cached),
             cached,
           )
-        : messages
+        : contentMergedMessages
     if (!replaceMessages && cached && messageListIsDegraded(mergedMessages, cached)) return
     cacheStickyMessages(conversationId, mergedMessages)
   }, [conversationId, messages, replaceMessages])
@@ -1351,49 +1671,122 @@ function useStickyConversationMessages(
   return stickyMessages
 }
 
+function mergeCachedNonEmptyMessageContent(
+  candidate: readonly BaseMessage[],
+  cached: readonly BaseMessage[],
+): readonly BaseMessage[] {
+  if (candidate.length === 0 || cached.length === 0) return candidate
+
+  let changed = false
+  const usedCachedIndexes = new Set<number>()
+  const merged = candidate.map((message, index) => {
+    const cachedMessage = reusableCachedContentMessage(message, cached, index, usedCachedIndexes)
+    if (!cachedMessage) return message
+    changed = true
+    return cachedMessage
+  })
+  return changed ? merged : candidate
+}
+
+function reusableCachedContentMessage(
+  candidate: BaseMessage,
+  cached: readonly BaseMessage[],
+  index: number,
+  usedCachedIndexes: Set<number>,
+): BaseMessage | null {
+  const indexed = cached[index]
+  if (
+    indexed &&
+    !usedCachedIndexes.has(index) &&
+    canReuseCachedNonEmptyMessageContent(candidate, indexed)
+  ) {
+    usedCachedIndexes.add(index)
+    return indexed
+  }
+
+  const identity = baseMessageIdentity(candidate)
+  if (!identity) return null
+  for (const [cachedIndex, cachedMessage] of cached.entries()) {
+    if (usedCachedIndexes.has(cachedIndex)) continue
+    if (baseMessageIdentity(cachedMessage) !== identity) continue
+    if (!canReuseCachedNonEmptyMessageContent(candidate, cachedMessage)) continue
+    usedCachedIndexes.add(cachedIndex)
+    return cachedMessage
+  }
+  return null
+}
+
+function baseMessageIdentity(message: BaseMessage): string | null {
+  const id = langChainMessageId(message)
+  if (!id) return null
+  if (isHumanMessage(message)) return `human:${id}`
+  if (isAssistantMessage(message)) return `ai:${id}`
+  return null
+}
+
+function canReuseCachedNonEmptyMessageContent(
+  candidate: BaseMessage,
+  cached: BaseMessage,
+): boolean {
+  if (isHumanMessage(candidate) && isHumanMessage(cached)) {
+    return isEmptyMessageContent(candidate.content) && !isEmptyMessageContent(cached.content)
+  }
+  return canReuseCachedReadyAssistantMessage(candidate, cached)
+}
+
 function mergeCachedPrefixForAppendOnlyStream(
   candidate: readonly BaseMessage[],
   cached: readonly BaseMessage[],
 ): readonly BaseMessage[] {
   if (candidate.length === 0 || cached.length === 0) return candidate
-  if (messageListsSharePrefix(candidate, cached, Math.min(candidate.length, cached.length))) {
+  const sharedPrefixLength = messageListsSharedPrefixLength(candidate, cached)
+  if (sharedPrefixLength === 0) return candidate
+  if (sharedPrefixLength === candidate.length || sharedPrefixLength === cached.length) {
     return candidate
   }
-  const firstCandidate = candidate[0]
-  if (!isHumanMessage(firstCandidate)) return candidate
-  const firstCandidateId = firstCandidate.id
-  if (firstCandidateId && cached.some((message) => message.id === firstCandidateId)) {
-    return candidate
-  }
-  return [...cached, ...candidate]
+  const tail = candidate.slice(sharedPrefixLength)
+  const firstTailMessage = tail[0]
+  if (!firstTailMessage || !isHumanMessage(firstTailMessage)) return candidate
+  const uncachedTail = tail.filter((message) => !cachedContainsStableIdentity(cached, message))
+  return uncachedTail.length === 0 ? cached : [...cached, ...uncachedTail]
+}
+
+function cachedContainsStableIdentity(
+  cached: readonly BaseMessage[],
+  candidate: BaseMessage,
+): boolean {
+  const identity = baseMessageIdentity(candidate)
+  if (!identity) return false
+  return cached.some((message) => baseMessageIdentity(message) === identity)
 }
 
 function useStickyConvertedMessages(
   conversationId: string,
   messages: readonly ConvertedMessage[],
   isRunning: boolean,
+  replaceMessages: boolean,
 ): readonly ConvertedMessage[] {
   const stickyMessages = useMemo(() => {
     const cached = stickyConvertedMessagesByConversation.get(conversationId)
     const mergedMessages = cached
       ? mergeCachedConvertedMessages(messages, cached, { reuseReadyAssistant: !isRunning })
       : messages
-    if (!isRunning && messages.length === 0 && cached && cached.length > 0) return cached
-    if (!isRunning && cached && convertedMessageListIsDegraded(mergedMessages, cached)) {
+    if (!replaceMessages && messages.length === 0 && cached && cached.length > 0) return cached
+    if (!replaceMessages && cached && convertedMessageListIsDegraded(mergedMessages, cached)) {
       return cached
     }
     return mergedMessages
-  }, [conversationId, isRunning, messages])
+  }, [conversationId, isRunning, messages, replaceMessages])
 
   useLayoutEffect(() => {
-    if (isRunning) return
     const cached = stickyConvertedMessagesByConversation.get(conversationId)
     const mergedMessages = cached
-      ? mergeCachedConvertedMessages(messages, cached, { reuseReadyAssistant: true })
+      ? mergeCachedConvertedMessages(messages, cached, { reuseReadyAssistant: !isRunning })
       : messages
-    if (cached && convertedMessageListIsDegraded(mergedMessages, cached)) return
+    if (!replaceMessages && messages.length === 0 && cached && cached.length > 0) return
+    if (!replaceMessages && cached && convertedMessageListIsDegraded(mergedMessages, cached)) return
     if (mergedMessages.length > 0) cacheStickyConvertedMessages(conversationId, mergedMessages)
-  }, [conversationId, isRunning, messages])
+  }, [conversationId, isRunning, messages, replaceMessages])
 
   return stickyMessages
 }
@@ -1522,8 +1915,22 @@ function convertedMessageFingerprint(message: ConvertedMessage | undefined): str
 
 function isEmptyConvertedMessage(message: ConvertedMessage | undefined): boolean {
   if (!isRecord(message)) return false
-  const text = convertedMessageText(message)
-  return text === null || text === ''
+  return isEmptyConvertedContent(message.content)
+}
+
+function isEmptyConvertedContent(content: unknown): boolean {
+  if (typeof content === 'string') return content.length === 0
+  if (!Array.isArray(content)) return true
+  if (content.length === 0) return true
+  return content.every(isEmptyConvertedTextPart)
+}
+
+function isEmptyConvertedTextPart(part: unknown): boolean {
+  if (typeof part === 'string') return part.length === 0
+  if (!isRecord(part)) return false
+  if (part.type !== 'text') return false
+  const text = part.text
+  return text === undefined || text === ''
 }
 
 function isConvertedAssistantMessage(message: ConvertedMessage | undefined): boolean {
@@ -1609,10 +2016,17 @@ export function useMoldyLangGraphStream({
   )
   const [serverStateMessages, setServerStateMessages] =
     useState<ServerStateMessagesSnapshot | null>(null)
+  const [serverInterruptsState, setServerInterruptsState] =
+    useState<ServerInterruptsSnapshot | null>(null)
+  const serverInterrupts =
+    serverInterruptsState?.conversationId === conversationId ? serverInterruptsState.interrupts : []
   const latestVisibleMessagesRef = useRef<readonly BaseMessage[]>([])
+  const pendingEditBaseMessagesRef = useRef<readonly BaseMessage[] | null>(null)
+  const pendingEditBaseConvertedMessagesRef = useRef<readonly ConvertedMessage[] | null>(null)
   const clearServerHydrationState = useCallback(() => {
     setServerStateMessages(null)
     setServerMessageMetadataState(null)
+    setServerInterruptsState(null)
   }, [])
   const [pendingEditRenderState, setPendingEditRenderState] =
     useState<PendingEditRenderState | null>(null)
@@ -1631,11 +2045,22 @@ export function useMoldyLangGraphStream({
     conversationId,
     pendingReloadRenderState,
   )
+  const getPendingNewSubmitSnapshot = useCallback(
+    () => pendingNewSubmitsByConversation.get(conversationId) ?? null,
+    [conversationId],
+  )
+  const cachedPendingNewSubmit = useSyncExternalStore(
+    subscribePendingNewSubmitStore,
+    getPendingNewSubmitSnapshot,
+    getEmptyPendingNewSubmitSnapshot,
+  )
   const handleThreadState = useCallback(
     (state: unknown, options?: ThreadStateHydrationOptions) => {
       setThreadRunNotice(terminalRunNoticeFromThreadState(state))
       setServerMessageMetadata(messageMetadataFromThreadState(state))
-      if (options?.replaceMessages) {
+      const interrupts = interruptsFromThreadState(state)
+      setServerInterruptsState({ conversationId, interrupts })
+      if (options?.replaceMessages || interrupts.length > 0) {
         const messages = messagesFromThreadState(state)
         setServerStateMessages(messages ? { conversationId, messages } : null)
       }
@@ -1645,15 +2070,30 @@ export function useMoldyLangGraphStream({
   const transport = useMemo(
     () =>
       createMoldyAgentTransport(conversationId, agentId, {
-        onRunStartAccepted,
         onState: handleThreadState,
       }),
-    [agentId, conversationId, handleThreadState, onRunStartAccepted],
+    [agentId, conversationId, handleThreadState],
   )
+  useEffect(() => {
+    transport.setRunStartAcceptedListener(onRunStartAccepted)
+    return () => transport.setRunStartAcceptedListener(undefined)
+  }, [onRunStartAccepted, transport])
   const stream = useStream<MoldyGraphState>({
     transport,
     threadId: conversationId,
   })
+  useEffect(() => {
+    if (!PERSISTED_CONVERSATION_ID_PATTERN.test(conversationId)) return undefined
+    let cancelled = false
+    void loadServerThreadState(conversationId)
+      .then((state: ThreadStateResponse) => {
+        if (!cancelled) handleThreadState(state)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [conversationId, handleThreadState])
   useEffect(() => {
     const moldyTransport = transport as Partial<MoldyAgentServerAdapter>
     if (typeof moldyTransport.activateStateHydration !== 'function') return undefined
@@ -1693,7 +2133,7 @@ export function useMoldyLangGraphStream({
   const settlePostRunHydration = useCallback(() => {
     wasLoadingRef.current = false
     setPostRunHydrationPending(false)
-  }, [])
+  }, [setPostRunHydrationPending])
   useEffect(() => {
     let cancelled = false
     queueMicrotask(() => {
@@ -1724,12 +2164,16 @@ export function useMoldyLangGraphStream({
           }
           handleThreadState(state, { replaceMessages: true })
           setPendingBranchPickerSuppression(null)
+          pendingEditBaseMessagesRef.current = null
+          pendingEditBaseConvertedMessagesRef.current = null
           setPendingEditRender(null)
         })
         .catch(() => {
           if (cancelled) return
           clearServerHydrationState()
           setPendingBranchPickerSuppression(null)
+          pendingEditBaseMessagesRef.current = null
+          pendingEditBaseConvertedMessagesRef.current = null
           setPendingEditRender(null)
         })
     }
@@ -1799,13 +2243,35 @@ export function useMoldyLangGraphStream({
     serverStateMessages?.conversationId === conversationId
       ? serverStateMessages.messages
       : stream.messages
+  const cachedPendingNewSubmitAcknowledged =
+    cachedPendingNewSubmit !== null &&
+    rawVisibleStreamMessages.some(
+      (message) =>
+        isHumanMessage(message) &&
+        messageContentEqualsText(message, cachedPendingNewSubmit.content),
+    )
+  const pendingNewSubmit = cachedPendingNewSubmitAcknowledged ? null : cachedPendingNewSubmit
+  useEffect(() => {
+    if (!cachedPendingNewSubmit) return
+    const acknowledged = rawVisibleStreamMessages.some(
+      (message) =>
+        isHumanMessage(message) &&
+        messageContentEqualsText(message, cachedPendingNewSubmit.content),
+    )
+    if (!acknowledged) return
+    clearPendingNewSubmit(conversationId, cachedPendingNewSubmit.content)
+  }, [cachedPendingNewSubmit, conversationId, rawVisibleStreamMessages])
+  const visibleStreamMessagesWithPendingSubmit = useMemo(
+    () => appendPendingNewSubmitMessage(rawVisibleStreamMessages, pendingNewSubmit),
+    [pendingNewSubmit, rawVisibleStreamMessages],
+  )
   const visibleStreamMessages = useMemo(
     () =>
       applyPendingReloadRenderState(
-        applyPendingEditRenderState(rawVisibleStreamMessages, pendingEditRender),
+        applyPendingEditRenderState(visibleStreamMessagesWithPendingSubmit, pendingEditRender),
         pendingReloadRender,
       ),
-    [pendingEditRender, pendingReloadRender, rawVisibleStreamMessages],
+    [pendingEditRender, pendingReloadRender, visibleStreamMessagesWithPendingSubmit],
   )
   const serverLangChainMessages = useMemo(
     () => messagesFromServerMessages(serverMessages),
@@ -1824,18 +2290,24 @@ export function useMoldyLangGraphStream({
       suppressRunningEmptyAssistantPlaceholder(visibleStreamMessagesWithFallback, stream.isLoading),
     [stream.isLoading, visibleStreamMessagesWithFallback],
   )
-  const streamMessagesWithServerMetadata = useMemo(
-    () =>
-      applyPendingReloadBranchMetadata(
-        suppressPendingEditBranchMetadata(
-          mergeServerMessageMetadata(renderableStreamMessages, serverMessageMetadata),
-          pendingEditRender,
-        ),
-        pendingReloadRender,
+  const streamMessagesWithServerMetadata = useMemo(() => {
+    const messagesWithMetadata = applyPendingReloadBranchMetadata(
+      applyPendingEditBranchMetadata(
+        mergeServerMessageMetadata(renderableStreamMessages, serverMessageMetadata),
+        pendingEditRender,
       ),
-    [pendingEditRender, pendingReloadRender, renderableStreamMessages, serverMessageMetadata],
-  )
+      pendingReloadRender,
+    )
+    return markCurrentAssistantTurnAsStreaming(messagesWithMetadata, stream.isLoading)
+  }, [
+    pendingEditRender,
+    pendingReloadRender,
+    renderableStreamMessages,
+    serverMessageMetadata,
+    stream.isLoading,
+  ])
   const allInterruptPayloads = standardPayloadsFromInterrupts([
+    ...serverInterrupts,
     ...stream.interrupts,
     ...threadInterruptsFromStream(stream),
   ])
@@ -1980,21 +2452,34 @@ export function useMoldyLangGraphStream({
     isRunning,
   )
   const stableMessagesWithoutPendingEditBranchMetadata = useMemo(
-    () => suppressPendingEditConvertedBranchMetadata(stableMessages, pendingEditRender),
+    () => applyPendingEditConvertedBranchMetadata(stableMessages, pendingEditRender),
     [pendingEditRender, stableMessages],
   )
-  const stableMessagesWithoutPendingEditDuplicate = useMemo(
+  const stableMessagesWithoutPendingEditStaleTail = useMemo(
     () =>
-      suppressPendingEditConvertedDuplicate(
+      suppressPendingEditConvertedStaleTail(
         stableMessagesWithoutPendingEditBranchMetadata,
         pendingEditRender,
       ),
     [pendingEditRender, stableMessagesWithoutPendingEditBranchMetadata],
   )
-  const messages = useStickyConvertedMessages(
+  const stableMessagesWithoutPendingEditDuplicate = useMemo(
+    () =>
+      suppressPendingEditConvertedDuplicate(
+        stableMessagesWithoutPendingEditStaleTail,
+        pendingEditRender,
+      ),
+    [pendingEditRender, stableMessagesWithoutPendingEditStaleTail],
+  )
+  const stickyRuntimeMessages = useStickyConvertedMessages(
     conversationId,
     stableMessagesWithoutPendingEditDuplicate,
     streamStateIsSettling,
+    pendingEditRender !== null || pendingReloadRender !== null,
+  )
+  const messages = useMemo(
+    () => suppressPendingEditConvertedStaleTail(stickyRuntimeMessages, pendingEditRender),
+    [pendingEditRender, stickyRuntimeMessages],
   )
   const checkpointVisibleMessages = useMemo(
     () => visibleMessagesWithIds(messages, stickyMessagesWithTerminalNotice),
@@ -2010,8 +2495,14 @@ export function useMoldyLangGraphStream({
     visibleMessages: checkpointVisibleMessages,
     langChainMessages: stickyMessagesWithTerminalNotice,
     onBeforeEditSubmit: (edit) => {
+      const baseMessages =
+        pendingEditBaseMessagesRef.current ??
+        (latestVisibleMessagesRef.current.length > 0
+          ? latestVisibleMessagesRef.current
+          : stickyMessagesWithTerminalNotice)
+      const baseConvertedMessages = pendingEditBaseConvertedMessagesRef.current ?? messages
       setPendingEditRender(
-        pendingEditRenderFromSubmit(conversationId, edit, stickyMessagesWithTerminalNotice),
+        pendingEditRenderFromSubmit(conversationId, edit, baseMessages, baseConvertedMessages),
       )
     },
   })
@@ -2060,11 +2551,32 @@ export function useMoldyLangGraphStream({
       clearServerHydrationState()
       setPendingBranchPickerSuppression(null)
       setPendingEditRender(null)
+      pendingEditBaseMessagesRef.current = null
+      pendingEditBaseConvertedMessagesRef.current = null
       setPendingReloadRender(null)
-      await submitNew(...args)
+      const content = appendMessageText(args[0]).trim()
+      if (content.length > 0) {
+        const pending: PendingNewSubmitState = {
+          conversationId,
+          content,
+          baseMessageCount: latestVisibleMessagesRef.current.length,
+          message: new HumanMessage({
+            id: `moldy-pending-user:${conversationId}:${Date.now()}`,
+            content,
+          }),
+        }
+        flushSync(() => cachePendingNewSubmit(pending))
+      }
+      try {
+        await submitNew(...args)
+      } catch (caught) {
+        clearPendingNewSubmit(conversationId, content)
+        throw caught
+      }
     },
     [
       clearServerHydrationState,
+      conversationId,
       onBeforeSubmit,
       setPendingBranchPickerSuppression,
       setPendingEditRender,
@@ -2078,19 +2590,29 @@ export function useMoldyLangGraphStream({
       setThreadRunNotice(null)
       clearServerHydrationState()
       setPendingReloadRender(null)
+      clearPendingNewSubmitForConversation(conversationId)
+      const editBaseMessages =
+        latestVisibleMessagesRef.current.length > 0
+          ? latestVisibleMessagesRef.current
+          : stickyMessagesWithTerminalNotice
+      pendingEditBaseMessagesRef.current = editBaseMessages
+      pendingEditBaseConvertedMessagesRef.current = messages
       flushSync(() =>
         setPendingEditRender(
           pendingEditRenderFromAppendMessage(
             conversationId,
             message,
             checkpointVisibleMessages,
-            stickyMessagesWithTerminalNotice,
+            editBaseMessages,
+            messages,
           ),
         ),
       )
       clearStickyConversationMessages(conversationId)
       const submitted = await submitEdit(message)
       if (!submitted) {
+        pendingEditBaseMessagesRef.current = null
+        pendingEditBaseConvertedMessagesRef.current = null
         setPendingBranchPickerSuppression(null)
         setPendingEditRender(null)
       }
@@ -2099,6 +2621,7 @@ export function useMoldyLangGraphStream({
       checkpointVisibleMessages,
       clearServerHydrationState,
       conversationId,
+      messages,
       setPendingBranchPickerSuppression,
       setPendingEditRender,
       setPendingReloadRender,
@@ -2113,6 +2636,9 @@ export function useMoldyLangGraphStream({
       clearServerHydrationState()
       setPendingBranchPickerSuppression(null)
       setPendingEditRender(null)
+      pendingEditBaseMessagesRef.current = null
+      pendingEditBaseConvertedMessagesRef.current = null
+      clearPendingNewSubmitForConversation(conversationId)
       flushSync(() =>
         setPendingReloadRender(
           pendingReloadRenderFromParentId(

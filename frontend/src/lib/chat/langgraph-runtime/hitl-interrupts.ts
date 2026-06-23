@@ -254,17 +254,43 @@ function mutableToolCalls(message: BaseMessage): MutableToolCall[] | null {
   return Array.isArray(toolCalls) ? (toolCalls as MutableToolCall[]) : null
 }
 
-function mergeExistingAskUserToolCallMetadata(
-  messages: readonly BaseMessage[],
+function hydratedRequiresActionMessage(
+  message: BaseMessage,
+  toolCalls: readonly MutableToolCall[],
+  index: number,
+  synthetic: ToolCallInfo,
+): BaseMessage {
+  const existing = toolCalls[index]
+  if (!existing) return message
+  const nextToolCalls = [...toolCalls]
+  nextToolCalls[index] = {
+    ...existing,
+    args: {
+      ...existing.args,
+      ...synthetic.args,
+      approval_id: existing.id ?? synthetic.args.approval_id,
+    },
+  }
+  return Object.assign(Object.create(Object.getPrototypeOf(message)) as BaseMessage, message, {
+    tool_calls: nextToolCalls,
+    status: {
+      type: 'requires-action' as const,
+      reason: 'tool-calls' as const,
+    },
+  })
+}
+
+function hydrateExistingAskUserToolCallMetadata(
+  messages: BaseMessage[],
   payload: StandardInterruptPayload,
 ): boolean {
-  let merged = false
+  let hydrated = false
   const syntheticToolCalls = standardInterruptToToolCalls(payload)
 
   for (const synthetic of syntheticToolCalls) {
     if (synthetic.name !== 'ask_user') continue
 
-    for (const message of messages) {
+    for (const [messageIndex, message] of messages.entries()) {
       const toolCalls = mutableToolCalls(message)
       if (!toolCalls) continue
 
@@ -274,22 +300,13 @@ function mergeExistingAskUserToolCallMetadata(
       )
       if (index < 0) continue
 
-      const existing = toolCalls[index]
-      if (!existing) continue
-      toolCalls[index] = {
-        ...existing,
-        args: {
-          ...existing.args,
-          ...synthetic.args,
-          approval_id: existing.id ?? synthetic.args.approval_id,
-        },
-      }
-      merged = true
+      messages[messageIndex] = hydratedRequiresActionMessage(message, toolCalls, index, synthetic)
+      hydrated = true
       break
     }
   }
 
-  return merged
+  return hydrated
 }
 
 function hasExistingAskUserToolCall(
@@ -420,9 +437,9 @@ export function appendInterruptToolCallMessages(
   const projected: BaseMessage[] = [...messages]
   for (const payload of payloads) {
     const toolCalls = standardInterruptToToolCalls(payload)
+    if (hydrateExistingAskUserToolCallMetadata(projected, payload)) continue
     const ids = new Set(toolCalls.map((toolCall) => toolCall.id).filter(isString))
     if (ids.size === 0 || projected.some((message) => hasToolCallId(message, ids))) continue
-    if (mergeExistingAskUserToolCallMetadata(projected, payload)) continue
     projected.push(interruptedAssistantMessage(payload))
   }
   return projected

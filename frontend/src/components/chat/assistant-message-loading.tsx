@@ -31,20 +31,6 @@ function isRunningMessageStatus(status: unknown): boolean {
   return isRecord(status) && status.type === 'running'
 }
 
-function isVisibleTextPart(part: unknown): boolean {
-  return (
-    isRecord(part) &&
-    part.type === 'text' &&
-    typeof part.text === 'string' &&
-    part.text.trim().length > 0
-  )
-}
-
-function messageHasVisibleText(message: unknown): boolean {
-  if (!isRecord(message) || !Array.isArray(message.parts)) return false
-  return message.parts.some(isVisibleTextPart)
-}
-
 export function isStreamingMessageState(message: unknown): boolean {
   if (!isRecord(message)) return false
   return isStreamingMessageMetadata(message.metadata) || isRunningMessageStatus(message.status)
@@ -71,17 +57,12 @@ function isVisibleProgressActivity(activity: RunActivity): boolean {
   )
 }
 
-function hasSuppressedRespondingActivity(activities: readonly RunActivity[]): boolean {
-  return activities.some((activity) => activity.kind === 'responding')
-}
-
 export function StreamingMessageLoadingIndicator({
   activities = [],
   deepAgentsState,
   className,
 }: StreamingMessageLoadingIndicatorProps) {
   const isStreamingMessage = useIsStreamingMessage()
-  const hasVisibleText = useAuiState((s) => messageHasVisibleText(s.message))
   const semanticActivities = useMemo(
     () => activities.filter((activity) => activity.kind !== 'interrupt'),
     [activities],
@@ -100,9 +81,6 @@ export function StreamingMessageLoadingIndicator({
   const hasState = hasDeepAgentsState(deepAgentsState)
   const hasSubagentProgress = subagentProgress.total > 0
   const hasStatusPanel = hasActivities || hasState || hasSubagentProgress
-  const shouldStayEmpty =
-    hasVisibleText ||
-    (progressActivities.length === 0 && hasSuppressedRespondingActivity(semanticActivities))
 
   return (
     <AuiIf condition={(s) => s.thread.isRunning}>
@@ -112,7 +90,7 @@ export function StreamingMessageLoadingIndicator({
           {hasSubagentProgress ? <SubagentProgress summary={subagentProgress} /> : null}
           {hasActivities ? <RunActivityStrip activities={progressActivities} /> : null}
         </div>
-      ) : shouldStayEmpty ? null : (
+      ) : (
         <WittyLoadingMessage className={cn('pointer-events-none mb-1 px-1', className)} />
       )}
     </AuiIf>

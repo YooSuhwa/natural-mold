@@ -30,6 +30,9 @@ type EmptyStateObserverWindow = Window & {
   __moldyUserTextStabilityReadyAt?: number
   __moldyUserTextFlickerFrames?: string[]
   __moldyUserTextExpectedTexts?: string[]
+  __moldyStableAssistantCountSince?: number
+  __moldyStableAssistantCountLast?: number
+  __moldyStableAssistantCountText?: string
 }
 
 function conversationRows(value: unknown): ConversationRow[] {
@@ -166,6 +169,41 @@ async function waitForNoVisibleStopButton(page: Page): Promise<void> {
   await expect
     .poll(() => visibleStopButtonCount(page), { timeout: 60_000, intervals: [250, 500, 1000] })
     .toBe(0)
+}
+
+async function expectAssistantMessageCountStable(
+  page: Page,
+  assistantText: string,
+  expectedCount: number,
+  stableDurationMs = 1500,
+): Promise<void> {
+  await page.waitForFunction(
+    ({ text, count, durationMs }) => {
+      const observedWindow = window as EmptyStateObserverWindow
+      const actualCount = Array.from(
+        document.querySelectorAll('[data-moldy-message-role="assistant"]'),
+      ).filter((element) => (element.textContent ?? '').includes(text)).length
+
+      if (
+        observedWindow.__moldyStableAssistantCountText !== text ||
+        observedWindow.__moldyStableAssistantCountLast !== actualCount
+      ) {
+        observedWindow.__moldyStableAssistantCountText = text
+        observedWindow.__moldyStableAssistantCountLast = actualCount
+        observedWindow.__moldyStableAssistantCountSince = performance.now()
+        return false
+      }
+
+      const since = observedWindow.__moldyStableAssistantCountSince
+      return (
+        actualCount === count &&
+        typeof since === 'number' &&
+        performance.now() - since >= durationMs
+      )
+    },
+    { text: assistantText, count: expectedCount, durationMs: stableDurationMs },
+    { timeout: stableDurationMs + 5000, polling: 100 },
+  )
 }
 
 async function installEmptyStateReappearanceObserver(page: Page, prompt: string): Promise<void> {
@@ -914,9 +952,7 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
       })
       await expect(assistantMessages).toHaveCount(2, { timeout: 30_000 })
       await waitRunIdle(request, setup.conversationId)
-      await expect(assistantMessages).toHaveCount(2)
-      await page.waitForTimeout(1500)
-      await expect(assistantMessages).toHaveCount(2)
+      await expectAssistantMessageCountStable(page, FIRST_TURN_RESPONSE_TEXT, 2)
 
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
@@ -960,8 +996,11 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
           timeout: 10_000,
         },
       )
+      const wittyLoading = page.locator('[data-moldy-witty-loading="true"]')
+      await expect(wittyLoading.last()).toBeVisible({ timeout: 10_000 })
       await expectNoUserTextFlicker(page)
       await waitRunIdle(request, setup.conversationId)
+      await expect(wittyLoading).toHaveCount(0, { timeout: 10_000 })
       await expect(userMessages.filter({ hasText: firstPrompt })).toHaveCount(1)
       await expect(userMessages.filter({ hasText: secondPrompt })).toHaveCount(1)
 

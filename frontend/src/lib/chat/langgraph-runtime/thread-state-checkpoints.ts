@@ -12,6 +12,8 @@ export interface ServerCheckpointContext {
 export interface ThreadStateResponse {
   readonly metadata?: unknown
   readonly values?: unknown
+  readonly tasks?: unknown
+  readonly interrupts?: unknown
 }
 
 export async function loadServerThreadState(conversationId: string): Promise<ThreadStateResponse> {

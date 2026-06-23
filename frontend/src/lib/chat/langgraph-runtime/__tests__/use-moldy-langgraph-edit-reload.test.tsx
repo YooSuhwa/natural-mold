@@ -54,7 +54,10 @@ const mocks = vi.hoisted(() => {
       content?: unknown
       metadata?: unknown
     }[],
-    createMoldyAgentTransport: vi.fn(() => ({ kind: 'transport' })),
+    createMoldyAgentTransport: vi.fn(() => ({
+      kind: 'transport',
+      setRunStartAcceptedListener: vi.fn(),
+    })),
     useStream: vi.fn(() => stream),
     useChannel: vi.fn(() => []),
     useChannelEffect: vi.fn(),
@@ -321,9 +324,13 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
         content: 'edited prompt',
       }),
     ])
-    expect(staleTailConverterOptions.messages[0]?.additional_kwargs).toEqual({
-      metadata: {},
-    })
+    expect(staleTailConverterOptions.messages[0]?.additional_kwargs?.metadata).toEqual(
+      expect.objectContaining({
+        branchIndex: 2,
+        branchTotal: 3,
+        moldyBranchPickerDisplayOnly: true,
+      }),
+    )
     expect(staleTailConverterOptions.messages).not.toContain(staleAssistantMessage)
 
     mocks.stream.messages = [editedUserMessage, newAssistantMessage]
@@ -435,9 +442,11 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
         content: 'third prompt',
       }),
     )
-    expect(pendingEditConverterOptions.messages[0]?.additional_kwargs?.metadata).not.toEqual(
+    expect(pendingEditConverterOptions.messages[0]?.additional_kwargs?.metadata).toEqual(
       expect.objectContaining({
-        branchIndex: expect.any(Number),
+        branchIndex: 3,
+        branchTotal: 4,
+        moldyBranchPickerDisplayOnly: true,
       }),
     )
   })
@@ -516,9 +525,11 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
         content: 'third prompt',
       }),
     )
-    expect(converterOptions.messages[0]?.additional_kwargs?.metadata).not.toEqual(
+    expect(converterOptions.messages[0]?.additional_kwargs?.metadata).toEqual(
       expect.objectContaining({
-        branchIndex: expect.any(Number),
+        branchIndex: 1,
+        branchTotal: 2,
+        moldyBranchPickerDisplayOnly: true,
       }),
     )
   })
@@ -582,15 +593,14 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
     }
     expect(finalRuntimeOptions.messages[0]?.metadata).toEqual({
       custom: {
-        activeBranchId: null,
-        branchCheckpointId: null,
-        branchIndex: null,
-        branchTotal: null,
-        branches: [],
-        checkpoint_id: null,
-        moldyBranchPickerDisplayOnly: null,
-        moldySuppressBranchPicker: true,
-        siblingCheckpointIds: [],
+        activeBranchId: 'pending-edit-1',
+        branchCheckpointId: 'pending-edit-1',
+        branchIndex: 1,
+        branchTotal: 2,
+        branches: ['pending-edit-0', 'pending-edit-1'],
+        checkpoint_id: 'pending-edit-1',
+        moldyBranchPickerDisplayOnly: true,
+        siblingCheckpointIds: ['pending-edit-0', 'pending-edit-1'],
         usage: { total_tokens: 7 },
       },
     })

@@ -28,9 +28,11 @@ class _FakeCheckpointer:
         checkpoints: list[_CheckpointSlim],
         *,
         values_by_checkpoint: dict[str, dict[str, Any]] | None = None,
+        pending_writes: list[tuple[str, str, list[Any]]] | None = None,
     ) -> None:
         self._checkpoints = checkpoints
         self._values_by_checkpoint = values_by_checkpoint or {}
+        self._pending_writes = pending_writes or []
 
     async def alist(self, _config: Any) -> AsyncIterator[Any]:
         for checkpoint in self._checkpoints:
@@ -49,6 +51,32 @@ class _FakeCheckpointer:
                     "checkpoint": {"channel_values": channel_values},
                 },
             )()
+
+    async def aget_tuple(self, _config: Any) -> Any:
+        configurable = _config.get("configurable") if isinstance(_config, dict) else {}
+        checkpoint_id = (
+            configurable.get("checkpoint_id") if isinstance(configurable, dict) else None
+        )
+        if isinstance(checkpoint_id, str):
+            for checkpoint in self._checkpoints:
+                if checkpoint.checkpoint_id != checkpoint_id:
+                    continue
+                channel_values = dict(self._values_by_checkpoint.get(checkpoint_id, {}))
+                channel_values.setdefault("messages", checkpoint.messages)
+                return type(
+                    "CheckpointTuple",
+                    (),
+                    {
+                        "config": {"configurable": {"checkpoint_id": checkpoint_id}},
+                        "checkpoint": {"channel_values": channel_values},
+                        "pending_writes": self._pending_writes,
+                    },
+                )()
+        return type(
+            "CheckpointTuple",
+            (),
+            {"pending_writes": self._pending_writes},
+        )()
 
 
 async def _seed_protocol_conversation(db: AsyncSession) -> Conversation:
@@ -139,6 +167,71 @@ async def test_thread_state_hydrates_pending_input_requested_interrupt(
 
     assert compat_response.status_code == 200
     assert compat_response.json()["interrupts"] == [interrupt]
+
+
+@pytest.mark.asyncio
+async def test_thread_state_recovers_interrupt_from_checkpointer_when_protocol_event_is_empty(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    run_id = uuid.uuid4()
+    payload = _approval_payload()
+    interrupt = type("Interrupt", (), {"id": "intr-checkpoint", "value": payload})()
+    monkeypatch.setattr(
+        "app.agent_runtime.checkpointer.get_checkpointer",
+        lambda: _FakeCheckpointer(
+            [],
+            pending_writes=[("task-1", "__interrupt__", [interrupt])],
+        ),
+    )
+    db.add(
+        ConversationRun(
+            id=run_id,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            status="interrupted",
+            is_active=False,
+            interrupt_id="intr-checkpoint",
+        )
+    )
+    db.add(
+        MessageEvent(
+            conversation_id=conversation.id,
+            assistant_msg_id=str(run_id),
+            events=[
+                stored_protocol_event(
+                    run_id=str(run_id),
+                    thread_id=str(conversation.id),
+                    seq=4,
+                    method="input.requested",
+                    namespace=[],
+                    data={},
+                    event_id="input-empty",
+                )
+            ],
+            last_event_id="input-empty",
+            status="completed",
+        )
+    )
+    await db.commit()
+
+    state_response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert state_response.status_code == 200
+    expected_payload = {"interrupt_id": "intr-checkpoint", **payload}
+    assert state_response.json()["tasks"] == [
+        {
+            "id": str(run_id),
+            "name": "interrupted",
+            "interrupts": [{"id": "intr-checkpoint", "value": expected_payload, "ns": []}],
+        }
+    ]
 
 
 @pytest.mark.asyncio

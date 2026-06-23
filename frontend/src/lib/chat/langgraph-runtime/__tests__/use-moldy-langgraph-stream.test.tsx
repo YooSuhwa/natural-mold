@@ -40,6 +40,14 @@ interface MockUseStreamOptions {
 
 interface MockTransportOptions {
   onState?: (state: unknown) => void
+  onRunStartAccepted?: () => void
+}
+
+interface MockTransport {
+  kind: 'transport'
+  conversationId: string
+  onState?: (state: unknown) => void
+  setRunStartAcceptedListener: ReturnType<typeof vi.fn>
 }
 
 const mocks = vi.hoisted(() => {
@@ -76,11 +84,13 @@ const mocks = vi.hoisted(() => {
     stream,
     thread,
     createMoldyAgentTransport: vi.fn(
-      (conversationId: string, _agentId: string, options?: MockTransportOptions) => ({
-        kind: 'transport',
-        conversationId,
-        onState: options?.onState,
-      }),
+      (conversationId: string, _agentId: string, options?: MockTransportOptions) =>
+        ({
+          kind: 'transport',
+          conversationId,
+          onState: options?.onState,
+          setRunStartAcceptedListener: vi.fn(),
+        }) satisfies MockTransport,
     ),
     useStream: vi.fn((options: MockUseStreamOptions) => {
       void options
@@ -308,6 +318,105 @@ describe('useMoldyLangGraphStream', () => {
     )
   })
 
+  it('keeps a converted ask_user tool-call card when the same assistant message previously rendered as text only', () => {
+    const assistantSourceTextOnly = new AIMessage({
+      id: 'assistant-ask-user-cache',
+      content: '네, 골라봐요!',
+    })
+    const assistantSourceWithToolCall = new AIMessage({
+      id: 'assistant-ask-user-cache',
+      content: '네, 골라봐요!',
+      tool_calls: [
+        {
+          id: 'call_e2e_ask_user_fruit',
+          name: 'ask_user',
+          args: {
+            approval_id: 'call_e2e_ask_user_fruit',
+            hitl_interrupt_id: 'intr-ask-user',
+            hitl_action_index: 0,
+            hitl_total_actions: 1,
+            allowed_decisions: ['respond'],
+            mode: 'option_list',
+            title: '입력이 필요합니다',
+            question: '어떤 과일이 좋아요?',
+            options: [{ id: 'apple', label: '🍎 사과' }],
+          },
+        },
+      ],
+    })
+    const textOnlyAssistant = [
+      {
+        id: 'assistant-ask-user-cache',
+        role: 'assistant',
+        content: [{ type: 'text', text: '네, 골라봐요!' }],
+      },
+    ]
+    const pendingAskUserAssistant = [
+      {
+        id: 'assistant-ask-user-cache',
+        role: 'assistant',
+        status: { type: 'requires-action', reason: 'tool-calls' },
+        content: [
+          { type: 'text', text: '네, 골라봐요!' },
+          {
+            type: 'tool-call',
+            toolCallId: 'call_e2e_ask_user_fruit',
+            toolName: 'ask_user',
+            args: {
+              approval_id: 'call_e2e_ask_user_fruit',
+              hitl_interrupt_id: 'intr-ask-user',
+              hitl_action_index: 0,
+              hitl_total_actions: 1,
+              allowed_decisions: ['respond'],
+              mode: 'option_list',
+              title: '입력이 필요합니다',
+              question: '어떤 과일이 좋아요?',
+              options: [{ id: 'apple', label: '🍎 사과' }],
+            },
+          },
+        ],
+      },
+    ]
+    mocks.useExternalMessageConverter
+      .mockReturnValueOnce(textOnlyAssistant)
+      .mockReturnValue(pendingAskUserAssistant)
+    mocks.stream.messages = [assistantSourceTextOnly]
+
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-ask-user-cache',
+          conversationId: 'conversation-ask-user-cache',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({ messages: textOnlyAssistant }),
+    )
+
+    mocks.stream.messages = [assistantSourceWithToolCall]
+    rerender()
+
+    expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: [
+          expect.objectContaining({
+            id: 'assistant-ask-user-cache',
+            status: { type: 'requires-action', reason: 'tool-calls' },
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                type: 'tool-call',
+                toolCallId: 'call_e2e_ask_user_fruit',
+                toolName: 'ask_user',
+              }),
+            ]),
+          }),
+        ],
+      }),
+    )
+  })
+
   it('renders terminal stale state from LangGraph hydration as a localized assistant notice', async () => {
     renderHook(
       () =>
@@ -393,7 +502,35 @@ describe('useMoldyLangGraphStream', () => {
     expect(callOrder).toEqual(['before', 'submit'])
   })
 
-  it('passes the run-start accepted callback to the LangGraph transport', () => {
+  it('keeps a submitted user message visible until the stream echoes it', async () => {
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-2',
+          conversationId: 'conversation-2',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onNew: (message: { content: { type: string; text: string }[] }) => Promise<void>
+    }
+    await act(async () => {
+      await runtimeOptions.onNew({ content: [{ type: 'text', text: '사과를 골라줘' }] })
+    })
+
+    await waitFor(() => {
+      const sawPendingUser = mocks.useExternalMessageConverter.mock.calls.some(([options]) => {
+        const messages = (options as { messages?: readonly unknown[] }).messages ?? []
+        return messages.some(
+          (message) => HumanMessage.isInstance(message) && message.content === '사과를 골라줘',
+        )
+      })
+      expect(sawPendingUser).toBe(true)
+    })
+  })
+
+  it('passes a run-start accepted callback to the LangGraph transport', () => {
     const onRunStartAccepted = vi.fn()
 
     renderHook(
@@ -409,8 +546,45 @@ describe('useMoldyLangGraphStream', () => {
     expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith(
       'conversation-2',
       'agent-2',
-      expect.objectContaining({ onRunStartAccepted }),
+      expect.objectContaining({ onState: expect.any(Function) }),
     )
+    const transport = mocks.createMoldyAgentTransport.mock.results[0]?.value as
+      | MockTransport
+      | undefined
+    expect(transport?.setRunStartAcceptedListener).toHaveBeenCalledWith(onRunStartAccepted)
+  })
+
+  it('keeps the LangGraph transport stable when only the run-start callback changes', async () => {
+    const firstCallback = vi.fn()
+    const secondCallback = vi.fn()
+
+    const { rerender } = renderHook(
+      ({ callback }: { callback: () => void }) =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-2',
+          conversationId: 'conversation-2',
+          onRunStartAccepted: callback,
+        }),
+      {
+        initialProps: { callback: firstCallback },
+        wrapper: createQueryWrapper(),
+      },
+    )
+
+    const transport = mocks.createMoldyAgentTransport.mock.results[0]?.value as
+      | MockTransport
+      | undefined
+    await act(async () => {
+      rerender({ callback: secondCallback })
+    })
+
+    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledOnce()
+    const listenerCall = transport?.setRunStartAcceptedListener.mock.calls
+      .toReversed()
+      .find((call): call is [() => void] => typeof call[0] === 'function')
+    listenerCall?.[0]()
+    expect(firstCallback).not.toHaveBeenCalled()
+    expect(secondCallback).toHaveBeenCalledOnce()
   })
 
   it('keeps the completed assistant message when SDK history briefly shrinks to a prefix', () => {
@@ -441,6 +615,258 @@ describe('useMoldyLangGraphStream', () => {
         messages: [userMessage, assistantMessage],
       }),
     )
+  })
+
+  it('keeps cached converted history when assistant-ui conversion briefly shrinks during a new run', () => {
+    const firstUser = new HumanMessage({ id: 'user-1', content: '안녕?' })
+    const firstAssistant = new AIMessage({ id: 'assistant-1', content: '안녕하세요!' })
+    const secondUser = new HumanMessage({ id: 'user-2', content: '반가워' })
+    const secondAssistant = new AIMessage({ id: 'assistant-2', content: '반갑습니다!' })
+    const readyMessages = [firstUser, firstAssistant, secondUser, secondAssistant]
+    const readyConvertedMessages = [
+      { id: 'user-1', role: 'user', content: [{ type: 'text', text: '안녕?' }] },
+      { id: 'assistant-1', role: 'assistant', content: [{ type: 'text', text: '안녕하세요!' }] },
+      { id: 'user-2', role: 'user', content: [{ type: 'text', text: '반가워' }] },
+      { id: 'assistant-2', role: 'assistant', content: [{ type: 'text', text: '반갑습니다!' }] },
+    ]
+    mocks.stream.messages = readyMessages
+    mocks.useExternalMessageConverter.mockReturnValue(readyConvertedMessages)
+
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-converted-sticky',
+          conversationId: 'conversation-converted-sticky',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: readyConvertedMessages,
+      }),
+    )
+
+    const thirdUser = new HumanMessage({ id: 'user-3', content: '바보야' })
+    const optimisticConvertedMessages = [
+      ...readyConvertedMessages,
+      { id: 'user-3', role: 'user', content: [{ type: 'text', text: '바보야' }] },
+    ]
+    mocks.stream.isLoading = true
+    mocks.stream.messages = [...readyMessages, thirdUser]
+    mocks.useExternalMessageConverter.mockReturnValue(optimisticConvertedMessages)
+    rerender()
+
+    expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: optimisticConvertedMessages,
+      }),
+    )
+
+    mocks.stream.messages = [firstUser, firstAssistant, secondUser]
+    mocks.useExternalMessageConverter.mockReturnValue(readyConvertedMessages.slice(0, 3))
+    rerender()
+
+    expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: optimisticConvertedMessages,
+      }),
+    )
+  })
+
+  it('keeps visible user message text when a live stream briefly reports the same user id with empty content', () => {
+    const firstUser = new HumanMessage({ id: 'stable-user-1', content: '안녕?' })
+    const firstAssistant = new AIMessage({ id: 'stable-assistant-1', content: '안녕하세요!' })
+    const secondUser = new HumanMessage({ id: 'stable-user-2', content: '반가워' })
+    mocks.stream.messages = [firstUser, firstAssistant, secondUser]
+    mocks.useExternalMessageConverter.mockReturnValue([
+      { id: 'stable-user-1', role: 'user', content: [{ type: 'text', text: '안녕?' }] },
+      {
+        id: 'stable-assistant-1',
+        role: 'assistant',
+        content: [{ type: 'text', text: '안녕하세요!' }],
+      },
+      { id: 'stable-user-2', role: 'user', content: [{ type: 'text', text: '반가워' }] },
+    ])
+
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-user-text-sticky',
+          conversationId: 'conversation-user-text-sticky',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    const transientBlankSecondUser = new HumanMessage({
+      id: 'stable-user-2',
+      content: '',
+    })
+    mocks.stream.isLoading = true
+    mocks.stream.messages = [firstUser, firstAssistant, transientBlankSecondUser]
+    mocks.useExternalMessageConverter.mockReturnValue([
+      { id: 'stable-user-1', role: 'user', content: [{ type: 'text', text: '안녕?' }] },
+      {
+        id: 'stable-assistant-1',
+        role: 'assistant',
+        content: [{ type: 'text', text: '안녕하세요!' }],
+      },
+      { id: 'stable-user-2', role: 'user', content: [{ type: 'text', text: '' }] },
+    ])
+    rerender()
+
+    const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+      | { messages: readonly { id?: string; content?: unknown }[] }
+      | undefined
+    expect(converterOptions?.messages).toEqual([
+      expect.objectContaining({ id: 'stable-user-1', content: '안녕?' }),
+      expect.objectContaining({ id: 'stable-assistant-1', content: '안녕하세요!' }),
+      expect.objectContaining({ id: 'stable-user-2', content: '반가워' }),
+    ])
+  })
+
+  it('keeps completed middle turns when SDK briefly reports an older prefix plus the newest user turn', () => {
+    const firstUser = new HumanMessage({ id: 'middle-user-1', content: '안녕?' })
+    const firstAssistant = new AIMessage({ id: 'middle-assistant-1', content: '안녕하세요!' })
+    const secondUser = new HumanMessage({ id: 'middle-user-2', content: '반가워' })
+    const secondAssistant = new AIMessage({ id: 'middle-assistant-2', content: '반갑습니다!' })
+    const thirdUser = new HumanMessage({ id: 'middle-user-3', content: '바보야' })
+    const readyMessages = [firstUser, firstAssistant, secondUser, secondAssistant]
+    mocks.useExternalMessageConverter.mockImplementation(
+      (options: { messages: readonly (HumanMessage | AIMessage)[] }) =>
+        options.messages.map((message) => ({
+          id: message.id,
+          role: message._getType() === 'human' ? 'user' : 'assistant',
+          content: [{ type: 'text', text: String(message.content) }],
+        })),
+    )
+    mocks.stream.messages = readyMessages
+
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-middle-turn-sticky',
+          conversationId: 'conversation-middle-turn-sticky',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    mocks.stream.isLoading = true
+    mocks.stream.messages = [...readyMessages, thirdUser]
+    rerender()
+
+    expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: [
+          expect.objectContaining({ id: 'middle-user-1' }),
+          expect.objectContaining({ id: 'middle-assistant-1' }),
+          expect.objectContaining({ id: 'middle-user-2' }),
+          expect.objectContaining({ id: 'middle-assistant-2' }),
+          expect.objectContaining({ id: 'middle-user-3' }),
+        ],
+      }),
+    )
+
+    mocks.stream.messages = [firstUser, firstAssistant, thirdUser]
+    rerender()
+
+    const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+      | { messages: readonly { id?: string }[] }
+      | undefined
+    expect(converterOptions?.messages.map((message) => message.id)).toEqual([
+      'middle-user-1',
+      'middle-assistant-1',
+      'middle-user-2',
+      'middle-assistant-2',
+      'middle-user-3',
+    ])
+    expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: [
+          expect.objectContaining({ id: 'middle-user-1' }),
+          expect.objectContaining({ id: 'middle-assistant-1' }),
+          expect.objectContaining({ id: 'middle-user-2' }),
+          expect.objectContaining({ id: 'middle-assistant-2' }),
+          expect.objectContaining({ id: 'middle-user-3' }),
+        ],
+      }),
+    )
+  })
+
+  it('keeps an optimistic converted user turn when server hydration briefly replaces source with an older prefix', async () => {
+    const firstUser = new HumanMessage({ id: 'hydration-user-1', content: '안녕?' })
+    const firstAssistant = new AIMessage({ id: 'hydration-assistant-1', content: '안녕하세요!' })
+    const secondUser = new HumanMessage({ id: 'hydration-user-2', content: '반가워' })
+    const secondAssistant = new AIMessage({ id: 'hydration-assistant-2', content: '반갑습니다!' })
+    const thirdUser = new HumanMessage({ id: 'hydration-user-3', content: '바보야' })
+    const readyMessages = [firstUser, firstAssistant, secondUser, secondAssistant]
+    const readyConvertedMessages = [
+      { id: 'hydration-user-1', role: 'user', content: [{ type: 'text', text: '안녕?' }] },
+      {
+        id: 'hydration-assistant-1',
+        role: 'assistant',
+        content: [{ type: 'text', text: '안녕하세요!' }],
+      },
+      { id: 'hydration-user-2', role: 'user', content: [{ type: 'text', text: '반가워' }] },
+      {
+        id: 'hydration-assistant-2',
+        role: 'assistant',
+        content: [{ type: 'text', text: '반갑습니다!' }],
+      },
+    ]
+    const optimisticConvertedMessages = [
+      ...readyConvertedMessages,
+      { id: 'hydration-user-3', role: 'user', content: [{ type: 'text', text: '바보야' }] },
+    ]
+    mocks.stream.messages = readyMessages
+    mocks.useExternalMessageConverter.mockReturnValue(readyConvertedMessages)
+
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hydration-sticky',
+          conversationId: 'conversation-hydration-sticky',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    mocks.stream.isLoading = true
+    mocks.stream.messages = [...readyMessages, thirdUser]
+    mocks.useExternalMessageConverter.mockReturnValue(optimisticConvertedMessages)
+    rerender()
+
+    expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: optimisticConvertedMessages,
+      }),
+    )
+
+    mocks.useExternalMessageConverter.mockReturnValue(readyConvertedMessages.slice(0, 3))
+    mocks.apiFetch.mockResolvedValueOnce({
+      values: {
+        messages: [
+          { type: 'human', id: 'hydration-user-1', content: '안녕?' },
+          { type: 'ai', id: 'hydration-assistant-1', content: '안녕하세요!' },
+          { type: 'human', id: 'hydration-user-2', content: '반가워' },
+        ],
+      },
+    })
+
+    await act(async () => {
+      dispatchMoldyBranchSwitched({
+        conversationId: 'conversation-hydration-sticky',
+        checkpointId: 'ck-stale-prefix',
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+        expect.objectContaining({
+          messages: optimisticConvertedMessages,
+        }),
+      )
+    })
   })
 
   it('routes assistant-ui cancel through the LangGraph stream stop contract', async () => {
@@ -581,6 +1007,288 @@ describe('useMoldyLangGraphStream', () => {
     })
   })
 
+  it('projects pending ask_user interrupts from hydrated thread tasks into the transcript', async () => {
+    mocks.stream.messages = [
+      new HumanMessage({
+        id: 'human-ask-user',
+        content: '사과, 배, 포도 중에 하나 선택하는 ask user 해줘',
+      }),
+      new AIMessage({ id: 'assistant-preface', content: '네, 골라봐요!' }),
+    ]
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-ask-user-state',
+          conversationId: 'conversation-ask-user-state',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    const transportOptions = mocks.createMoldyAgentTransport.mock.calls.at(-1)?.[2] as
+      | { onState?: (state: unknown) => void }
+      | undefined
+    act(() => {
+      transportOptions?.onState?.({
+        values: {
+          messages: [
+            {
+              type: 'human',
+              id: 'human-ask-user',
+              content: '사과, 배, 포도 중에 하나 선택하는 ask user 해줘',
+            },
+            { type: 'ai', id: 'assistant-preface', content: '네, 골라봐요!' },
+          ],
+        },
+        tasks: [
+          {
+            id: 'run-ask-user',
+            name: 'interrupted',
+            interrupts: [
+              {
+                id: 'intr-ask-user',
+                ns: [],
+                value: {
+                  action_requests: [
+                    {
+                      name: 'ask_user',
+                      args: {
+                        mode: 'option_list',
+                        title: '입력이 필요합니다',
+                        question: '어떤 과일이 좋아요?',
+                        options: [
+                          { id: 'apple', label: '🍎 사과' },
+                          { id: 'pear', label: '🍐 배' },
+                          { id: 'grape', label: '🍇 포도' },
+                        ],
+                      },
+                    },
+                  ],
+                  review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+                },
+              },
+            ],
+          },
+        ],
+      })
+    })
+
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { messages: readonly { id?: string; tool_calls?: readonly { name?: string }[] }[] }
+        | undefined
+      expect(converterOptions?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'moldy-hitl:intr-ask-user',
+            tool_calls: [
+              expect.objectContaining({
+                name: 'ask_user',
+              }),
+            ],
+          }),
+        ]),
+      )
+    })
+  })
+
+  it('hydrates pending ask_user interrupts from persisted thread state on mount', async () => {
+    const conversationId = '11111111-1111-4111-8111-111111111111'
+    mocks.stream.messages = [
+      new HumanMessage({
+        id: 'human-ask-user-mount',
+        content: '사과, 배, 포도 중에 하나 선택하는 ask user 해줘',
+      }),
+      new AIMessage({ id: 'assistant-preface-mount', content: '네, 골라봐요!' }),
+    ]
+    mocks.apiFetch.mockResolvedValueOnce({
+      values: {
+        messages: [
+          {
+            type: 'human',
+            id: 'human-ask-user-mount',
+            content: '사과, 배, 포도 중에 하나 선택하는 ask user 해줘',
+          },
+          { type: 'ai', id: 'assistant-preface-mount', content: '네, 골라봐요!' },
+        ],
+      },
+      tasks: [
+        {
+          id: 'run-ask-user-mount',
+          name: 'interrupted',
+          interrupts: [
+            {
+              id: 'intr-ask-user-mount',
+              ns: [],
+              value: {
+                action_requests: [
+                  {
+                    name: 'ask_user',
+                    args: {
+                      mode: 'option_list',
+                      title: '입력이 필요합니다',
+                      question: '어떤 과일이 좋아요?',
+                      options: [
+                        { id: 'apple', label: '🍎 사과' },
+                        { id: 'pear', label: '🍐 배' },
+                        { id: 'grape', label: '🍇 포도' },
+                      ],
+                    },
+                  },
+                ],
+                review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+              },
+            },
+          ],
+        },
+      ],
+    })
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-ask-user-state',
+          conversationId,
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    await waitFor(() => {
+      expect(mocks.apiFetch).toHaveBeenCalledWith(
+        `/api/conversations/${conversationId}/langgraph/threads/${conversationId}/state`,
+      )
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { messages: readonly { id?: string; tool_calls?: readonly { name?: string }[] }[] }
+        | undefined
+      expect(converterOptions?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'moldy-hitl:intr-ask-user-mount',
+            tool_calls: [
+              expect.objectContaining({
+                name: 'ask_user',
+              }),
+            ],
+          }),
+        ]),
+      )
+    })
+  })
+
+  it('hydrates a persisted ask_user tool call from interrupted thread state without duplicating it', async () => {
+    const conversationId = '22222222-2222-4222-8222-222222222222'
+    const askUserArgs = {
+      mode: 'option_list',
+      title: '입력이 필요합니다',
+      question: '어떤 과일이 좋아요?',
+      options: [
+        { id: 'apple', label: '🍎 사과' },
+        { id: 'pear', label: '🍐 배' },
+        { id: 'grape', label: '🍇 포도' },
+      ],
+    }
+    mocks.stream.messages = []
+    mocks.apiFetch.mockResolvedValueOnce({
+      values: {
+        messages: [
+          {
+            type: 'human',
+            id: 'human-ask-user-persisted',
+            content: '사과, 배, 포도 중에 하나 선택하는 ask user 해줘',
+          },
+          {
+            type: 'ai',
+            id: 'assistant-ask-user-persisted',
+            content: [
+              { type: 'text', text: '네, 골라봐요!', index: 0 },
+              {
+                type: 'tool_call',
+                id: 'call_e2e_ask_user_fruit',
+                name: 'ask_user',
+                args: askUserArgs,
+              },
+            ],
+            tool_calls: [
+              {
+                id: 'call_e2e_ask_user_fruit',
+                name: 'ask_user',
+                args: askUserArgs,
+                type: 'tool_call',
+              },
+            ],
+          },
+        ],
+      },
+      tasks: [
+        {
+          id: 'run-ask-user-persisted',
+          name: 'interrupted',
+          interrupts: [
+            {
+              id: 'intr-ask-user-persisted',
+              ns: [],
+              value: {
+                action_requests: [{ name: 'ask_user', args: askUserArgs }],
+                review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+              },
+            },
+          ],
+        },
+      ],
+    })
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-ask-user-state',
+          conversationId,
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | {
+            messages: readonly {
+              id?: string
+              tool_calls?: readonly {
+                id?: string
+                name?: string
+                args?: Record<string, unknown>
+              }[]
+            }[]
+          }
+        | undefined
+      const messages = converterOptions?.messages ?? []
+      const askUserToolCalls = messages.flatMap((message) =>
+        (message.tool_calls ?? []).filter((toolCall) => toolCall.name === 'ask_user'),
+      )
+      const assistantMessage = messages.find(
+        (message) => message.id === 'assistant-ask-user-persisted',
+      )
+
+      expect(askUserToolCalls).toHaveLength(1)
+      expect(assistantMessage).toEqual(
+        expect.objectContaining({
+          status: { type: 'requires-action', reason: 'tool-calls' },
+        }),
+      )
+      expect(askUserToolCalls[0]).toEqual(
+        expect.objectContaining({
+          id: 'call_e2e_ask_user_fruit',
+          args: expect.objectContaining({
+            approval_id: 'call_e2e_ask_user_fruit',
+            hitl_interrupt_id: 'intr-ask-user-persisted',
+            hitl_action_index: 0,
+            hitl_total_actions: 1,
+          }),
+        }),
+      )
+      expect(messages.some((message) => message.id === 'moldy-hitl:intr-ask-user-persisted')).toBe(
+        false,
+      )
+    })
+  })
+
   it('hydrates stable server ids onto idless live messages before edit actions', async () => {
     mocks.stream.messages = [new HumanMessage('Original user message')]
     renderHook(
@@ -648,6 +1356,47 @@ describe('useMoldyLangGraphStream', () => {
       | { messages: readonly unknown[] }
       | undefined
     expect(converterOptions?.messages).toEqual([])
+  })
+
+  it('marks the current assistant turn as streaming while a later response is running', () => {
+    mocks.stream.isLoading = true
+    mocks.stream.messages = [
+      new HumanMessage({ id: 'first-user', content: 'first prompt' }),
+      new AIMessage({ id: 'first-assistant', content: 'first answer' }),
+      new HumanMessage({ id: 'second-user', content: 'second prompt' }),
+      new AIMessage({ id: 'second-assistant', content: 'partial second answer' }),
+    ]
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-streaming-current-turn',
+          conversationId: 'conversation-streaming-current-turn',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+      | {
+          readonly messages: readonly {
+            readonly id?: string
+            readonly additional_kwargs?: unknown
+          }[]
+        }
+      | undefined
+    expect(converterOptions?.messages[1]?.additional_kwargs).not.toEqual(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ isStreamingMessage: true }),
+      }),
+    )
+    expect(converterOptions?.messages[3]).toEqual(
+      expect.objectContaining({
+        id: 'second-assistant',
+        additional_kwargs: expect.objectContaining({
+          metadata: expect.objectContaining({ isStreamingMessage: true }),
+        }),
+      }),
+    )
   })
 
   it('hydrates branch-selected v3 messages after the shared branch picker switches checkpoint', async () => {

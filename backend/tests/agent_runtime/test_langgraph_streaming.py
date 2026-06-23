@@ -280,6 +280,81 @@ async def test_langgraph_streaming_emits_state_pending_interrupt_before_persist_
 
 
 @pytest.mark.asyncio
+async def test_langgraph_streaming_replaces_empty_input_requested_with_state_payload() -> None:
+    raw_events = [
+        {
+            "type": "event",
+            "method": "messages",
+            "params": {"namespace": [], "data": {"chunk": "waiting"}},
+            "seq": 1,
+            "event_id": "upstream-waiting",
+        },
+        {
+            "type": "event",
+            "method": "input.requested",
+            "params": {"namespace": [], "data": {}},
+            "seq": 2,
+            "event_id": "empty-input-requested",
+        },
+    ]
+    state = SimpleNamespace(
+        interrupts=[
+            SimpleNamespace(
+                id="intr-ask-user",
+                value={
+                    "action_requests": [
+                        {
+                            "name": "ask_user",
+                            "args": {
+                                "mode": "option_list",
+                                "title": "과일 선택",
+                                "options": ["사과", "배", "포도"],
+                                "minSelections": 1,
+                                "maxSelections": 1,
+                            },
+                        }
+                    ],
+                    "review_configs": [
+                        {"action_name": "ask_user", "allowed_decisions": ["respond"]}
+                    ],
+                },
+            )
+        ]
+    )
+    persisted: list[list[dict[str, Any]]] = []
+
+    async def persist(events: list[dict[str, Any]]) -> None:
+        persisted.append(events)
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            StateBackedProtocolAgent(raw_events, state),
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-empty-input"}},
+            persist_callback=persist,
+            run_id="run-empty-input",
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    input_requested = [payload for payload in payloads if payload["method"] == "input.requested"]
+    assert len(input_requested) == 1
+    assert input_requested[0]["event_id"] != "empty-input-requested"
+    data = input_requested[0]["params"]["data"]
+    assert data["interrupt_id"] == "intr-ask-user"
+    assert data["payload"]["action_requests"][0]["name"] == "ask_user"
+    assert data["payload"]["action_requests"][0]["args"]["options"] == ["사과", "배", "포도"]
+    assert payloads[-1]["params"]["data"] == {"event": "interrupted"}
+
+    persisted_events = [event for batch in persisted for event in batch]
+    persisted_input = [event for event in persisted_events if event["method"] == "input.requested"]
+    assert len(persisted_input) == 1
+    assert persisted_input[0]["upstream_event_id"] != "empty-input-requested"
+    assert persisted_input[0]["data"]["interrupt_id"] == "intr-ask-user"
+
+
+@pytest.mark.asyncio
 async def test_langgraph_streaming_redacts_synthesized_tool_args_before_persist() -> None:
     raw_event = {
         "type": "event",

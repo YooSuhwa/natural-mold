@@ -34,6 +34,7 @@ function langChainMessageFingerprint(message: BaseMessage): string {
     readonly additional_kwargs?: unknown
     readonly invalid_tool_calls?: unknown
     readonly response_metadata?: unknown
+    readonly status?: unknown
     readonly tool_call_id?: unknown
     readonly tool_calls?: unknown
     readonly usage_metadata?: unknown
@@ -45,6 +46,7 @@ function langChainMessageFingerprint(message: BaseMessage): string {
     content: source.content,
     additional_kwargs: source.additional_kwargs,
     response_metadata: source.response_metadata,
+    status: source.status,
     tool_calls: source.tool_calls,
     invalid_tool_calls: source.invalid_tool_calls,
     tool_call_id: source.tool_call_id,

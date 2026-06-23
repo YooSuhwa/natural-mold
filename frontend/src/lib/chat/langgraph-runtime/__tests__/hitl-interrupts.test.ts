@@ -156,7 +156,7 @@ describe('appendInterruptToolCallMessages', () => {
     expect(projected).toEqual([existing])
   })
 
-  it('uses the persisted ask_user tool call instead of appending a duplicate interrupt card', () => {
+  it('hydrates the persisted ask_user tool call instead of appending a duplicate interrupt card', () => {
     const existing = new AIMessage({
       id: 'assistant-ask',
       content: [
@@ -210,6 +210,72 @@ describe('appendInterruptToolCallMessages', () => {
         name: 'ask_user',
         args: expect.objectContaining({
           approval_id: 'toolu-ask',
+          hitl_interrupt_id: 'intr-ask',
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+        }),
+      }),
+    ])
+  })
+
+  it('hydrates a persisted ask_user tool call even when the interrupt id already matches', () => {
+    const existing = new AIMessage({
+      id: 'assistant-ask',
+      content: [
+        {
+          type: 'tool_call',
+          id: 'intr-ask:0',
+          name: 'ask_user',
+          args: {
+            mode: 'option_list',
+            question: '과일을 골라주세요',
+            options: ['사과', '포도', '배'],
+          },
+        },
+      ],
+      tool_calls: [
+        {
+          id: 'intr-ask:0',
+          name: 'ask_user',
+          args: {
+            mode: 'option_list',
+            question: '과일을 골라주세요',
+            options: ['사과', '포도', '배'],
+          },
+        },
+      ],
+    })
+    const projected = appendInterruptToolCallMessages(
+      [new HumanMessage({ id: 'user-1', content: 'ask user 해줘' }), existing],
+      [
+        {
+          interrupt_id: 'intr-ask',
+          action_requests: [
+            {
+              name: 'ask_user',
+              args: {
+                mode: 'option_list',
+                question: '과일을 골라주세요',
+                options: ['사과', '포도', '배'],
+              },
+            },
+          ],
+          review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+        },
+      ],
+    )
+
+    expect(projected).toHaveLength(2)
+    expect(projected[1]).not.toBe(existing)
+    expect(projected[1]).toMatchObject({
+      status: { type: 'requires-action', reason: 'tool-calls' },
+    })
+    expect(AIMessage.isInstance(projected[1]) ? projected[1].tool_calls : []).toEqual([
+      expect.objectContaining({
+        id: 'intr-ask:0',
+        name: 'ask_user',
+        args: expect.objectContaining({
+          approval_id: 'intr-ask:0',
           hitl_interrupt_id: 'intr-ask',
           hitl_action_index: 0,
           hitl_total_actions: 1,

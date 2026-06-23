@@ -110,7 +110,7 @@ describe('StreamingMessageLoadingIndicator', () => {
     expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
   })
 
-  it('hides generic responding activity and terminal rows while streaming', () => {
+  it('keeps witty loading when only generic responding and terminal rows exist while streaming', () => {
     render(
       <StreamingMessageLoadingIndicator
         activities={[
@@ -137,12 +137,12 @@ describe('StreamingMessageLoadingIndicator', () => {
     )
 
     expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
+    expect(screen.getByTestId('witty-loading')).toBeInTheDocument()
     expect(screen.queryByText('응답을 작성하는 중')).not.toBeInTheDocument()
     expect(screen.queryByText('완료됨')).not.toBeInTheDocument()
   })
 
-  it('hides generic responding activity once assistant text is visible', () => {
+  it('keeps witty loading once assistant text is visible while streaming', () => {
     mocks.state.message.parts = [{ type: 'text', text: 'Partial assistant response' }]
 
     render(
@@ -159,7 +159,7 @@ describe('StreamingMessageLoadingIndicator', () => {
     )
 
     expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
+    expect(screen.getByTestId('witty-loading')).toBeInTheDocument()
   })
 
   it('keeps non-text progress visible while assistant text is streaming', () => {

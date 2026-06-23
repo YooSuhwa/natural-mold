@@ -9,7 +9,17 @@ from app.agent_runtime.e2e_langgraph_v3_script import (
     LANGGRAPH_V3_SECRET_TOOL_ARG_VALUE,
     LANGGRAPH_V3_SECRET_TOOL_ARGS_REQUEST,
 )
-from app.agent_runtime.e2e_scripted_model import E2EScriptedChatModel
+from app.agent_runtime.e2e_scripted_model import (
+    ASK_USER_FRUIT_FINAL_CONTENT,
+    ASK_USER_FRUIT_MARKER,
+    ASK_USER_FRUIT_PREFACE_CONTENT,
+    ASK_USER_FRUIT_TOOL_ARGS,
+    ASK_USER_FRUIT_TOOL_CALL_ID,
+    CHAT_RICH_OUTPUT_CONTENT,
+    CHAT_RICH_OUTPUT_PROMPT,
+    SCRIPTED_DOCUMENT_COMMANDS,
+    E2EScriptedChatModel,
+)
 from app.models.model import Model
 from app.seed.e2e_scripted_model import (
     E2E_SCRIPTED_MODEL_NAME,
@@ -329,6 +339,97 @@ def test_e2e_scripted_model_emits_usage_stream_marker() -> None:
         chunk.usage_metadata == {"input_tokens": 30, "output_tokens": 12, "total_tokens": 42}
         for chunk in chunks
     )
+
+
+def test_e2e_scripted_model_emits_rich_chat_output_fixture() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted")
+
+    result = model.invoke([HumanMessage(content=CHAT_RICH_OUTPUT_PROMPT)])
+
+    assert result.content == CHAT_RICH_OUTPUT_CONTENT
+    assert "| Table | E2E table cell |" in str(result.content)
+    assert "```ts" in str(result.content)
+    assert "$$" in str(result.content)
+    assert "![E2E rich output image](/moldy-mascot.webp)" in str(result.content)
+
+
+def test_e2e_scripted_model_emits_ask_user_tool_call() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "ask_user"}]
+    )
+
+    result = model.invoke([HumanMessage(content=f"{ASK_USER_FRUIT_MARKER} 과일을 골라줘")])
+
+    assert result.content == ASK_USER_FRUIT_PREFACE_CONTENT
+    assert result.tool_calls == [
+        {
+            "name": "ask_user",
+            "args": ASK_USER_FRUIT_TOOL_ARGS,
+            "id": ASK_USER_FRUIT_TOOL_CALL_ID,
+            "type": "tool_call",
+        }
+    ]
+
+
+def test_e2e_scripted_model_emits_ask_user_tool_call_for_natural_request() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "ask_user"}]
+    )
+
+    result = model.invoke([HumanMessage(content="사과, 포도, 배 중에 하나 선택하는 ask user 해줘")])
+
+    assert result.content == ASK_USER_FRUIT_PREFACE_CONTENT
+    assert result.tool_calls == [
+        {
+            "name": "ask_user",
+            "args": ASK_USER_FRUIT_TOOL_ARGS,
+            "id": ASK_USER_FRUIT_TOOL_CALL_ID,
+            "type": "tool_call",
+        }
+    ]
+
+
+def test_e2e_scripted_model_emits_hitl_approval_tool_call_for_natural_request() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke([HumanMessage(content="mcp 도구 사용 승인 HITL")])
+
+    assert result.tool_calls == [
+        {
+            "name": "execute_in_skill",
+            "args": SCRIPTED_DOCUMENT_COMMANDS["E2E_DOCX"],
+            "id": "call_e2e_docx",
+            "type": "tool_call",
+        }
+    ]
+
+
+def test_e2e_scripted_model_emits_ask_user_tool_call_from_openai_tool_schema() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"type": "function", "function": {"name": "ask_user"}}]
+    )
+
+    result = model.invoke([HumanMessage(content=f"{ASK_USER_FRUIT_MARKER} 과일을 골라줘")])
+
+    assert result.tool_calls[0]["name"] == "ask_user"
+    assert result.tool_calls[0]["args"] == ASK_USER_FRUIT_TOOL_ARGS
+
+
+def test_e2e_scripted_model_returns_after_ask_user_tool_result() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "ask_user"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content=f"{ASK_USER_FRUIT_MARKER} 과일을 골라줘"),
+            ToolMessage(content="🍎 사과", tool_call_id=ASK_USER_FRUIT_TOOL_CALL_ID),
+        ]
+    )
+
+    assert result.content == ASK_USER_FRUIT_FINAL_CONTENT
 
 
 def test_e2e_scripted_model_langgraph_v3_subagent_marker_returns_scoped_result() -> None:

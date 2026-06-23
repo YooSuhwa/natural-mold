@@ -26,7 +26,8 @@
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test",
     "test:e2e:legacy": "NEXT_PUBLIC_CHAT_RUNTIME=legacy playwright test",
-    "test:e2e:langgraph-v3": "NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 E2E_WORKERS=1 playwright test e2e/chat-langgraph-v3.spec.ts e2e/chat-langgraph-v3-visual-matrix.spec.ts e2e/draft-conversation-langgraph-v3.spec.ts --workers=1",
+    "test:e2e:langgraph-v3": "NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 E2E_WORKERS=1 playwright test e2e/chat-langgraph-v3.spec.ts e2e/chat-langgraph-v3-visual-matrix.spec.ts e2e/draft-conversation-langgraph-v3.spec.ts e2e/chat-transcript-stability.spec.ts --workers=1",
+    "test:e2e:chat-transcript-stability": "NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 E2E_WORKERS=1 playwright test e2e/draft-conversation-langgraph-v3.spec.ts e2e/chat-langgraph-v3-regressions.spec.ts e2e/chat-transcript-stability.spec.ts --workers=1",
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {

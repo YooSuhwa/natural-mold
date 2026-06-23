@@ -24,6 +24,7 @@ type StateHydrationListener = (state: AgentServerState<unknown>) => void
 
 export interface MoldyAgentServerAdapter extends AgentServerAdapter {
   activateStateHydration(): () => void
+  setRunStartAcceptedListener(listener: (() => void) | undefined): void
 }
 
 function encodePathSegment(value: string): string {
@@ -89,7 +90,7 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   readonly #agentId: string
   readonly #delegate: HttpAgentServerAdapter
   readonly #onState: MoldyAgentTransportOptions['onState']
-  readonly #onRunStartAccepted: MoldyAgentTransportOptions['onRunStartAccepted']
+  #onRunStartAccepted: MoldyAgentTransportOptions['onRunStartAccepted']
   readonly #stateHydrationListeners = new Set<StateHydrationListener>()
   #latestState: AgentServerState<unknown> | undefined
   threadId: string
@@ -110,6 +111,10 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   setThreadId(threadId: string): void {
     this.#delegate.setThreadId(threadId)
     this.threadId = this.#delegate.threadId
+  }
+
+  setRunStartAcceptedListener(listener: (() => void) | undefined): void {
+    this.#onRunStartAccepted = listener
   }
 
   open(): Promise<void> {

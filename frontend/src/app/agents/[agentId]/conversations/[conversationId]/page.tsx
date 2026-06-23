@@ -12,10 +12,11 @@ import {
   useMarkConversationRead,
   conversationKeys,
   invalidateConversationNavigators,
+  upsertConversationNavigatorCache,
 } from '@/lib/hooks/use-conversations'
-import { useConversationTitle } from '@/lib/hooks/use-conversation-title'
-import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
+import { useConversationTitle } from '@/lib/hooks/use-conversation-title'
+import { useQueryClient } from '@tanstack/react-query'
 import { streamChat, streamStartConversation, type StreamChatOptions } from '@/lib/sse/stream-chat'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { chatRightRailAtom, toggleArtifactListRailState } from '@/lib/stores/chat-right-rail'
@@ -26,10 +27,12 @@ import {
 import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { getChatRuntimeMode } from '@/lib/chat/runtime-mode'
-import { replaceChatRouteWithoutRemount } from '@/lib/chat/chat-route-replacement'
+import {
+  CHAT_ROUTE_REPLACED_EVENT,
+  isChatRouteReplacedEvent,
+  replaceChatRouteWithoutRemount,
+} from '@/lib/chat/chat-route-replacement'
 import { useLangGraphDraftConversation } from '@/lib/chat/langgraph-runtime/use-langgraph-draft-conversation'
-import { loadServerThreadState } from '@/lib/chat/langgraph-runtime/thread-state-checkpoints'
-import { primeStickyConversationMessagesFromThreadState } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
 import { ChatRuntimeSection } from '@/components/chat/chat-runtime-section'
 import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
@@ -38,56 +41,21 @@ import { ChatRightRail } from '@/components/chat/right-rail/chat-right-rail'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const EMPTY_MESSAGES: Message[] = []
-const DRAFT_MESSAGE_PREFETCH_ATTEMPTS = 120
-const PROMOTED_DRAFT_CONVERSATION_IDS = new Set<string>()
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+interface RouteConversationOverride {
+  readonly routeKey: string
+  readonly conversationId: string
 }
 
-function assistantMessageIsReady(message: Message): boolean {
-  return message.content.trim().length > 0 || (message.tool_calls?.length ?? 0) > 0
+interface DraftTitleDetailSuppression {
+  readonly routeKey: string
+  readonly conversationId: string
 }
 
-function conversationMessagesAreReady(
-  messages: readonly Message[],
-  minimumMessages: number,
-): boolean {
-  if (messages.length < minimumMessages) return false
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message?.role === 'assistant') return assistantMessageIsReady(message)
-  }
-  return false
-}
-
-async function prefetchConversationMessagesUntilReady(
-  queryClient: QueryClient,
-  conversationId: string,
-  minimumMessages: number,
-  shouldContinue: () => boolean = () => true,
-): Promise<boolean> {
-  const queryKey = conversationKeys.messages(conversationId)
-  for (let attempt = 0; attempt < DRAFT_MESSAGE_PREFETCH_ATTEMPTS; attempt += 1) {
-    if (!shouldContinue()) return false
-    queryClient.invalidateQueries({ queryKey, refetchType: 'none' })
-    const envelope = await queryClient.fetchQuery({
-      queryKey,
-      queryFn: () => conversationsApi.messagesEnvelope(conversationId),
-    })
-    if (!shouldContinue()) return false
-    if (conversationMessagesAreReady(envelope.messages, minimumMessages)) {
-      const threadState = await loadServerThreadState(conversationId).catch(() => null)
-      if (threadState) primeStickyConversationMessagesFromThreadState(conversationId, threadState)
-      return true
-    }
-    await delay(Math.min(100 * (attempt + 1), 500))
-  }
-  return false
-}
-
-function rememberPromotedDraftConversation(conversationId: string): void {
-  PROMOTED_DRAFT_CONVERSATION_IDS.add(conversationId)
+function conversationIdFromChatPath(pathname: string, agentId: string): string | null {
+  const match = /^\/agents\/([^/]+)\/conversations\/([^/]+)$/.exec(pathname)
+  if (!match || match[1] !== agentId) return null
+  return decodeURIComponent(match[2])
 }
 
 export default function ChatPage({
@@ -98,22 +66,29 @@ export default function ChatPage({
   const { agentId, conversationId } = use(params)
   const router = useRouter()
   const queryClient = useQueryClient()
-  const isDraftConversation = conversationId === 'new'
+  const routeKey = `${agentId}:${conversationId}`
+  const [routeConversationOverride, setRouteConversationOverride] =
+    useState<RouteConversationOverride | null>(null)
+  const routeConversationId =
+    routeConversationOverride?.routeKey === routeKey
+      ? routeConversationOverride.conversationId
+      : conversationId
+  const isDraftConversation = routeConversationId === 'new'
   const startedConversationIdRef = useRef<string | null>(null)
+  const [draftTitleDetailSuppression, setDraftTitleDetailSuppression] =
+    useState<DraftTitleDetailSuppression | null>(null)
+  const draftTitleDetailSuppressionConversationId =
+    draftTitleDetailSuppression?.routeKey === routeKey
+      ? draftTitleDetailSuppression.conversationId
+      : null
   const [suppressEmptyStateForConversationId, setSuppressEmptyStateForConversationId] = useState<
     string | null
-  >(() =>
-    conversationId !== 'new' && PROMOTED_DRAFT_CONVERSATION_IDS.has(conversationId)
-      ? conversationId
-      : null,
-  )
-  const [promotedRouteConversationId, setPromotedRouteConversationId] = useState<string | null>(
-    null,
-  )
+  >(null)
   const { data: agent } = useAgent(agentId)
   const { data: user } = useSession()
-  const messageEnvelopeConversationId = promotedRouteConversationId ?? conversationId
-  const shouldLoadMessageEnvelope = !isDraftConversation || promotedRouteConversationId !== null
+  const messageEnvelopeConversationId = routeConversationId
+  const shouldLoadMessageEnvelope = !isDraftConversation
+  const isPromotedDraftRoute = conversationId === 'new' && !isDraftConversation
   // W7-4 — envelope에서 conversation 누적 비용을 가져와 토큰 바에 흘림. 같은
   // query observer 하나에서 messages와 cost를 함께 파생해 채팅 트리 리렌더를 줄인다.
   const { data: envelope, isLoading: messagesLoading } = useMessagesEnvelope(
@@ -127,49 +102,56 @@ export default function ChatPage({
   const setSessionTokenUsage = useSetAtom(sessionTokenUsageAtom)
   const setRightRail = useSetAtom(chatRightRailAtom)
   const setConversationRuntimeStatus = useSetAtom(conversationRuntimeStatusAtom)
-  const draftNavigationInFlightRef = useRef(false)
-  const draftNavigationTokenRef = useRef<symbol | null>(null)
-  const routeKeyRef = useRef(`${agentId}:${conversationId}`)
 
   // 캐시에서 현재 대화 제목만 추출 (전체 목록 구독 방지)
   const currentConversation = queryClient
     .getQueryData<Conversation[]>(conversationKeys.list(agentId))
-    ?.find((c) => c.id === conversationId)
+    ?.find((c) => c.id === routeConversationId)
   const markedReadKeyRef = useRef<string | null>(null)
   const runtimeMode = getChatRuntimeMode()
 
   useEffect(() => {
-    const routeKey = `${agentId}:${conversationId}`
-    routeKeyRef.current = routeKey
-    return () => {
-      if (routeKeyRef.current !== routeKey) return
-      draftNavigationTokenRef.current = null
-      draftNavigationInFlightRef.current = false
+    const handleRouteReplacement = (event: Event) => {
+      if (!isChatRouteReplacedEvent(event)) return
+      const replacedConversationId = conversationIdFromChatPath(event.detail.pathname, agentId)
+      if (!replacedConversationId) return
+      setRouteConversationOverride({
+        routeKey,
+        conversationId: replacedConversationId,
+      })
     }
-  }, [agentId, conversationId])
+    const handlePopState = () => setRouteConversationOverride(null)
+
+    window.addEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [agentId, routeKey])
 
   useEffect(() => {
     setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
     markedReadKeyRef.current = null
     startedConversationIdRef.current = null
-  }, [conversationId, setSessionTokenUsage])
+  }, [agentId, conversationId, setSessionTokenUsage])
 
   useEffect(() => {
     if (isDraftConversation) return
     if (messagesLoading || isMarkingRead) return
     const unreadCount = currentConversation?.unread_count ?? 0
     if (unreadCount <= 0) return
-    const markReadKey = `${conversationId}:${unreadCount}`
+    const markReadKey = `${routeConversationId}:${unreadCount}`
     if (markedReadKeyRef.current === markReadKey) return
     markedReadKeyRef.current = markReadKey
-    markRead(conversationId)
+    markRead(routeConversationId)
   }, [
-    conversationId,
     currentConversation?.unread_count,
     isDraftConversation,
     isMarkingRead,
     markRead,
     messagesLoading,
+    routeConversationId,
   ])
 
   const setRuntimeStatus = useCallback(
@@ -178,9 +160,13 @@ export default function ChatPage({
     },
     [setConversationRuntimeStatus],
   )
-  const handleLangGraphDraftConversationId = useCallback((id: string) => {
-    startedConversationIdRef.current = id
-  }, [])
+  const handleLangGraphDraftConversationId = useCallback(
+    (id: string) => {
+      startedConversationIdRef.current = id
+      setDraftTitleDetailSuppression({ routeKey, conversationId: id })
+    },
+    [routeKey],
+  )
   const {
     conversationId: langGraphDraftConversationId,
     isBootstrapping: isLangGraphDraftBootstrapping,
@@ -191,28 +177,31 @@ export default function ChatPage({
     runtimeMode,
     onConversationId: handleLangGraphDraftConversationId,
   })
-  const activeConversationId = isDraftConversation ? langGraphDraftConversationId : conversationId
-  const resolvedSideEffectConversationId = activeConversationId ?? conversationId
-  const committedTitleConversationId =
-    isDraftConversation &&
-    activeConversationId !== null &&
-    promotedRouteConversationId === activeConversationId
-      ? activeConversationId
-      : null
-  const titleConversationId = committedTitleConversationId ?? conversationId
-  const resolvedConversationTitle = useConversationTitle(agentId, titleConversationId, agent?.name)
-  const currentTitle =
-    isDraftConversation && committedTitleConversationId === null
-      ? t('newConversation')
-      : resolvedConversationTitle
+  const activeConversationId = isDraftConversation
+    ? langGraphDraftConversationId
+    : routeConversationId
+  const resolvedSideEffectConversationId = activeConversationId ?? routeConversationId
+  const titleConversationId = routeConversationId
+  const resolvedConversationTitle = useConversationTitle(
+    agentId,
+    titleConversationId,
+    agent?.name,
+    {
+      detailEnabled:
+        runtimeMode !== 'langgraph_v3' &&
+        draftTitleDetailSuppressionConversationId !== titleConversationId &&
+        suppressEmptyStateForConversationId !== titleConversationId,
+    },
+  )
+  const currentTitle = isDraftConversation ? t('newConversation') : resolvedConversationTitle
 
   const streamFn = useCallback(
     async function* (content: string, signal: AbortSignal, options?: StreamChatOptions) {
-      let runtimeConversationId = isDraftConversation ? null : conversationId
+      let runtimeConversationId = isDraftConversation ? null : routeConversationId
       if (runtimeConversationId) setRuntimeStatus(runtimeConversationId, 'running')
       try {
         const stream = !isDraftConversation
-          ? streamChat(conversationId, content, signal, options)
+          ? streamChat(routeConversationId, content, signal, options)
           : streamStartConversation(agentId, content, signal, {
               ...options,
               onConversationId: (id) => {
@@ -229,106 +218,73 @@ export default function ChatPage({
         if (runtimeConversationId) setRuntimeStatus(runtimeConversationId, 'idle')
       }
     },
-    [agentId, conversationId, isDraftConversation, setRuntimeStatus],
+    [agentId, isDraftConversation, routeConversationId, setRuntimeStatus],
   )
-
-  const navigateToCommittedDraft = useCallback(
-    (
-      createdConversationId: string,
-      options: { readonly immediate?: boolean; readonly shouldContinue?: () => boolean } = {},
-    ) => {
-      if (draftNavigationInFlightRef.current) return
-      draftNavigationInFlightRef.current = true
-      const navigationToken = Symbol(createdConversationId)
-      const routeKey = routeKeyRef.current
-      draftNavigationTokenRef.current = navigationToken
-      const canContinue = () =>
-        draftNavigationTokenRef.current === navigationToken &&
-        routeKeyRef.current === routeKey &&
-        (options.shouldContinue?.() ?? true)
-      const replaceRoute = () => {
-        replaceChatRouteWithoutRemount(`/agents/${agentId}/conversations/${createdConversationId}`)
-      }
-      const hydratePromotedRoute = () => {
-        setPromotedRouteConversationId(createdConversationId)
-      }
-      rememberPromotedDraftConversation(createdConversationId)
-      if (options.immediate) {
-        if (!canContinue()) {
-          draftNavigationTokenRef.current = null
-          draftNavigationInFlightRef.current = false
-          return
-        }
-        replaceRoute()
-      }
-      const expectedMessageCount = messages.length + 2
-      void (async () => {
-        try {
-          const isReady = await prefetchConversationMessagesUntilReady(
-            queryClient,
-            createdConversationId,
-            expectedMessageCount,
-            canContinue,
-          )
-          if (isReady && canContinue()) {
-            hydratePromotedRoute()
-            if (!options.immediate) replaceRoute()
-          }
-        } finally {
-          if (draftNavigationTokenRef.current === navigationToken) {
-            draftNavigationTokenRef.current = null
-            draftNavigationInFlightRef.current = false
-          }
-        }
-      })()
-    },
-    [agentId, messages.length, queryClient],
-  )
-  const replaceCommittedDraftRoute = useCallback(
+  const promoteDraftRoute = useCallback(
     (createdConversationId: string) => {
-      rememberPromotedDraftConversation(createdConversationId)
+      setRouteConversationOverride({
+        routeKey,
+        conversationId: createdConversationId,
+      })
       replaceChatRouteWithoutRemount(`/agents/${agentId}/conversations/${createdConversationId}`)
     },
-    [agentId],
+    [agentId, routeKey],
+  )
+
+  const syncPromotedDraftNavigator = useCallback(
+    (createdConversationId: string) => {
+      void queryClient
+        .fetchQuery({
+          queryKey: conversationKeys.detail(createdConversationId),
+          queryFn: () => conversationsApi.get(createdConversationId),
+        })
+        .then((conversation) => {
+          upsertConversationNavigatorCache(
+            queryClient,
+            conversation,
+            agent
+              ? {
+                  id: agent.id,
+                  name: agent.name,
+                  image_url: agent.image_url ?? null,
+                }
+              : null,
+          )
+          invalidateConversationNavigators(queryClient, agentId, createdConversationId)
+        })
+        .catch(() => {
+          invalidateConversationNavigators(queryClient, agentId, createdConversationId)
+        })
+    },
+    [agent, agentId, queryClient],
   )
 
   const onStreamEnd = useCallback(() => {
     // draft에서 시작된 스트림은 ref에 기록된 실제 대화 id로 detail까지 무효화한다
     const settledConversationId = isDraftConversation
       ? startedConversationIdRef.current
-      : conversationId
+      : routeConversationId
     invalidateConversationNavigators(queryClient, agentId, settledConversationId)
-    if (!isDraftConversation) {
+    if (settledConversationId) {
       void queryClient.refetchQueries({
-        queryKey: conversationKeys.messages(conversationId),
+        queryKey: conversationKeys.messages(settledConversationId),
         type: 'active',
       })
       queryClient.invalidateQueries({
-        queryKey: conversationKeys.debugTraces(conversationId),
+        queryKey: conversationKeys.debugTraces(settledConversationId),
       })
+    }
+    if (!isDraftConversation) {
       return
     }
     const createdConversationId = startedConversationIdRef.current
     if (createdConversationId) {
       setSuppressEmptyStateForConversationId(createdConversationId)
-      queryClient.invalidateQueries({
-        queryKey: conversationKeys.debugTraces(createdConversationId),
-      })
-      if (runtimeMode === 'langgraph_v3') {
-        navigateToCommittedDraft(createdConversationId)
-      } else {
+      if (runtimeMode !== 'langgraph_v3') {
         router.replace(`/agents/${agentId}/conversations/${createdConversationId}`)
       }
     }
-  }, [
-    queryClient,
-    conversationId,
-    agentId,
-    isDraftConversation,
-    navigateToCommittedDraft,
-    router,
-    runtimeMode,
-  ])
+  }, [agentId, isDraftConversation, queryClient, routeConversationId, router, runtimeMode])
 
   // P0-1c — current feedback per message id, derived from the messages query.
   // Looked up by ``feedback-adapter`` to decide between POST(upsert) vs DELETE.
@@ -378,30 +334,26 @@ export default function ChatPage({
       commitDraftConversation() ?? langGraphDraftConversationId ?? startedConversationIdRef.current
     if (!committedConversationId) return
     startedConversationIdRef.current = committedConversationId
-    rememberPromotedDraftConversation(committedConversationId)
     setSuppressEmptyStateForConversationId(committedConversationId)
-    replaceCommittedDraftRoute(committedConversationId)
+    promoteDraftRoute(committedConversationId)
   }, [
     commitDraftConversation,
     isDraftConversation,
     langGraphDraftConversationId,
-    replaceCommittedDraftRoute,
+    promoteDraftRoute,
   ])
   const handleNewMessageAccepted = useCallback(() => {
-    if (!isDraftConversation) return
     const committedConversationId = startedConversationIdRef.current
     if (!committedConversationId) return
     setSuppressEmptyStateForConversationId(committedConversationId)
-    invalidateConversationNavigators(queryClient, agentId, committedConversationId)
-    navigateToCommittedDraft(committedConversationId)
-  }, [agentId, isDraftConversation, navigateToCommittedDraft, queryClient])
+    syncPromotedDraftNavigator(committedConversationId)
+  }, [syncPromotedDraftNavigator])
 
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
   const shouldSuppressEmptyContent =
     useLangGraphRuntime &&
     ((activeConversationId !== null &&
-      (suppressEmptyStateForConversationId === activeConversationId ||
-        PROMOTED_DRAFT_CONVERSATION_IDS.has(activeConversationId))) ||
+      suppressEmptyStateForConversationId === activeConversationId) ||
       messages.length > 0)
   const renderedEmptyContent = shouldSuppressEmptyContent ? (
     <div aria-hidden="true" />
@@ -427,7 +379,8 @@ export default function ChatPage({
         <AgentSkillsRow skills={agent?.skills} />
 
         {/* Thread */}
-        {(!isDraftConversation && messagesLoading) || isLangGraphDraftBootstrapping ? (
+        {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||
+        isLangGraphDraftBootstrapping ? (
           <div className="flex-1 px-4 py-4">
             <div className="mx-auto max-w-3xl space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (

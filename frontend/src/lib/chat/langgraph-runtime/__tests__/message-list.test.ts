@@ -1,10 +1,12 @@
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages'
 import { unstable_convertExternalMessages } from '@assistant-ui/react'
+import { renderHook } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import {
   dedupeLangChainMessagesById,
   dedupeThreadMessagesById,
   sourceMessageIdFromThreadMessageId,
+  useStableConvertedMessages,
 } from '../message-list'
 import { convertMoldyLangChainMessage } from '../langchain-message-conversion'
 
@@ -165,5 +167,137 @@ describe('dedupeThreadMessagesById', () => {
     const result = dedupeThreadMessagesById(messages)
 
     expect(result).toBe(messages)
+  })
+})
+
+describe('useStableConvertedMessages', () => {
+  it('converts a persisted pending ask_user assistant message with text into a tool-call part', () => {
+    const message = Object.assign(
+      new AIMessage({
+        id: 'assistant-ask',
+        content: [
+          { type: 'text', text: '네, 골라봐요!', index: 0 },
+          {
+            type: 'tool_call',
+            id: 'call-ask',
+            name: 'ask_user',
+            args: {
+              mode: 'option_list',
+              title: '입력이 필요합니다',
+              question: '어떤 과일?',
+              options: [{ id: 'apple', label: '🍎 사과' }],
+              approval_id: 'call-ask',
+              hitl_interrupt_id: 'intr-ask',
+              hitl_action_index: 0,
+              hitl_total_actions: 1,
+              allowed_decisions: ['respond'],
+            },
+          },
+        ],
+        tool_calls: [
+          {
+            id: 'call-ask',
+            name: 'ask_user',
+            args: {
+              mode: 'option_list',
+              title: '입력이 필요합니다',
+              question: '어떤 과일?',
+              options: [{ id: 'apple', label: '🍎 사과' }],
+              approval_id: 'call-ask',
+              hitl_interrupt_id: 'intr-ask',
+              hitl_action_index: 0,
+              hitl_total_actions: 1,
+              allowed_decisions: ['respond'],
+            },
+          },
+        ],
+      }),
+      { status: { type: 'requires-action' as const, reason: 'tool-calls' as const } },
+    )
+
+    const converted = unstable_convertExternalMessages(
+      [message],
+      convertMoldyLangChainMessage,
+      false,
+      {},
+    )
+
+    expect(converted).toEqual([
+      expect.objectContaining({
+        role: 'assistant',
+        status: { type: 'requires-action', reason: 'tool-calls' },
+        content: expect.arrayContaining([
+          expect.objectContaining({ type: 'text', text: '네, 골라봐요!' }),
+          expect.objectContaining({
+            type: 'tool-call',
+            toolCallId: 'call-ask',
+            toolName: 'ask_user',
+          }),
+        ]),
+      }),
+    ])
+  })
+
+  it('updates converted messages when only the source assistant status changes', () => {
+    type ConvertedFixtureMessage = {
+      readonly id: string
+      readonly role: string
+      readonly status?: { readonly type: string }
+      readonly content: readonly { readonly type: string; readonly text: string }[]
+    }
+    const toolCall = {
+      id: 'call-ask',
+      name: 'ask_user',
+      args: { question: '어느 과일?' },
+    }
+    const readySource = new AIMessage({
+      id: 'assistant-ask',
+      content: '골라봐요',
+      tool_calls: [toolCall],
+    })
+    const pendingSource = Object.assign(
+      new AIMessage({
+        id: 'assistant-ask',
+        content: '골라봐요',
+        tool_calls: [toolCall],
+      }),
+      { status: { type: 'requires-action' as const, reason: 'tool-calls' as const } },
+    )
+    const readyConverted = [
+      { id: 'assistant-ask', role: 'assistant', content: [{ type: 'text', text: '골라봐요' }] },
+    ]
+    const pendingConverted = [
+      {
+        id: 'assistant-ask',
+        role: 'assistant',
+        status: { type: 'requires-action' },
+        content: [{ type: 'text', text: '골라봐요' }],
+      },
+    ]
+
+    const { result, rerender } = renderHook(
+      ({
+        converted,
+        source,
+      }: {
+        readonly converted: readonly ConvertedFixtureMessage[]
+        readonly source: readonly AIMessage[]
+      }) => useStableConvertedMessages(converted, source, false),
+      {
+        initialProps: {
+          converted: readyConverted,
+          source: [readySource],
+        },
+      },
+    )
+
+    expect(result.current).toBe(readyConverted)
+
+    rerender({
+      converted: pendingConverted,
+      source: [pendingSource],
+    })
+
+    expect(result.current).toBe(pendingConverted)
   })
 })

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+import logging
+from collections.abc import Mapping, Sequence
 from typing import Any, TypedDict
 
 from app.agent_runtime.protocol_events import (
@@ -10,6 +11,8 @@ from app.agent_runtime.protocol_events import (
     stored_protocol_event,
 )
 from app.agent_runtime.streaming import _interrupt_to_standard_chunk
+
+logger = logging.getLogger(__name__)
 
 
 class PendingInputPayload(TypedDict):
@@ -118,6 +121,77 @@ def _interrupt_payloads_from_state(state: Any) -> list[PendingInputPayload]:
     return top_level_payloads
 
 
+def _thread_id_from_config(config: dict[str, Any]) -> str | None:
+    configurable = config.get("configurable")
+    if not isinstance(configurable, Mapping):
+        return None
+    thread_id = configurable.get("thread_id")
+    return thread_id if isinstance(thread_id, str) and thread_id else None
+
+
+def _append_unique_payloads(
+    target: list[PendingInputPayload],
+    source: list[PendingInputPayload],
+) -> None:
+    seen = {payload["interrupt_id"] for payload in target}
+    for payload in source:
+        interrupt_id = payload["interrupt_id"]
+        if not interrupt_id or interrupt_id in seen:
+            continue
+        target.append(payload)
+        seen.add(interrupt_id)
+
+
+def _interrupt_payloads_from_pending_writes(pending_writes: Any) -> list[PendingInputPayload]:
+    if not isinstance(pending_writes, Sequence) or isinstance(pending_writes, str | bytes):
+        return []
+
+    payloads: list[PendingInputPayload] = []
+    for write in pending_writes:
+        if not isinstance(write, Sequence) or isinstance(write, str | bytes) or len(write) < 3:
+            continue
+        channel = write[1]
+        if channel != "__interrupt__":
+            continue
+        raw_interrupts = write[2]
+        if not isinstance(raw_interrupts, Sequence) or isinstance(raw_interrupts, str | bytes):
+            continue
+        for index, interrupt in enumerate(raw_interrupts):
+            payload = _payload_from_interrupt(
+                interrupt,
+                namespace=_namespace_from_interrupt(interrupt),
+                index=index,
+            )
+            if payload is not None:
+                payloads.append(payload)
+    return payloads
+
+
+async def interrupt_payloads_from_checkpointer(
+    config: dict[str, Any],
+) -> list[PendingInputPayload]:
+    thread_id = _thread_id_from_config(config)
+    if thread_id is None:
+        return []
+
+    try:
+        from app.agent_runtime.checkpointer import get_checkpointer
+
+        checkpointer = get_checkpointer()
+        checkpoint_tuple = await checkpointer.aget_tuple({"configurable": {"thread_id": thread_id}})
+    except RuntimeError:
+        return []
+    except Exception:
+        logger.warning("checkpointer pending interrupt lookup failed", exc_info=True)
+        return []
+
+    if checkpoint_tuple is None:
+        return []
+    return _interrupt_payloads_from_pending_writes(
+        getattr(checkpoint_tuple, "pending_writes", None)
+    )
+
+
 async def pending_input_requested_events(
     agent: Any,
     config: dict[str, Any],
@@ -134,9 +208,12 @@ async def pending_input_requested_events(
     except Exception as exc:
         raise PendingInputStateUnavailable("pending input state unavailable") from exc
 
+    payloads = _interrupt_payloads_from_state(state)
+    _append_unique_payloads(payloads, await interrupt_payloads_from_checkpointer(config))
+
     seen_interrupt_ids = _seen_interrupt_ids(emitted)
     raw_interrupts: list[dict[str, Any]] = []
-    for payload in _interrupt_payloads_from_state(state):
+    for payload in payloads:
         interrupt_id = payload["interrupt_id"]
         if not interrupt_id or interrupt_id in seen_interrupt_ids:
             continue

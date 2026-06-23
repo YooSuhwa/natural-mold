@@ -28,6 +28,19 @@ def _approval_interrupt(interrupt_id: str) -> SimpleNamespace:
     )
 
 
+class _CheckpointerBackedAgent:
+    async def aget_state(self, _config: dict[str, Any]) -> SimpleNamespace:
+        return SimpleNamespace(interrupts=[], tasks=[])
+
+
+class _PendingWritesCheckpointer:
+    def __init__(self, pending_writes: list[tuple[str, str, list[SimpleNamespace]]]) -> None:
+        self.pending_writes = pending_writes
+
+    async def aget_tuple(self, _config: dict[str, Any]) -> SimpleNamespace:
+        return SimpleNamespace(pending_writes=self.pending_writes)
+
+
 @pytest.mark.asyncio
 async def test_pending_input_events_preserve_task_namespace_from_state_task_path() -> None:
     state = SimpleNamespace(
@@ -78,3 +91,28 @@ async def test_pending_input_events_prefer_task_namespace_for_flattened_interrup
     assert len(events) == 1
     assert events[0]["namespace"] == ["tools:call-1"]
     assert events[0]["data"]["namespace"] == ["tools:call-1"]
+
+
+@pytest.mark.asyncio
+async def test_pending_input_events_reads_checkpointer_pending_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.agent_runtime.checkpointer.get_checkpointer",
+        lambda: _PendingWritesCheckpointer(
+            [("task-1", "__interrupt__", [_approval_interrupt("intr-checkpoint")])]
+        ),
+    )
+
+    events = await pending_input_requested_events(
+        _CheckpointerBackedAgent(),
+        {"configurable": {"thread_id": "thread-1"}},
+        run_id="run-1",
+        thread_id="thread-1",
+        emitted=[],
+    )
+
+    assert len(events) == 1
+    assert events[0]["method"] == "input.requested"
+    assert events[0]["data"]["interrupt_id"] == "intr-checkpoint"
+    assert events[0]["data"]["payload"]["action_requests"][0]["name"] == "execute_in_skill"

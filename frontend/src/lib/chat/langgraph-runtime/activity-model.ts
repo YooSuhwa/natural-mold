@@ -48,7 +48,7 @@ function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): 
       continuationToolCallId(next, name, namespace, chunkIndex)
     if (!toolCallId) continue
     next = upsertActivity(next, {
-      ...activityBase(event, 'tool', toolCallId),
+      ...toolActivityBase(next, event, toolCallId),
       status: 'running',
       title: name,
       toolCallId,
@@ -80,6 +80,28 @@ function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): 
   return next
 }
 
+function toolActivityBase(
+  current: readonly RunActivity[],
+  event: ProtocolEvent,
+  toolCallId: string,
+): Pick<RunActivity, 'id' | 'runId' | 'kind' | 'namespace' | 'startedAt'> {
+  const namespace = eventNamespace(event)
+  const existing = current.find(
+    (item) =>
+      item.kind === 'tool' &&
+      item.toolCallId === toolCallId &&
+      namespaceKey(item.namespace) === namespaceKey(namespace),
+  )
+  if (!existing) return activityBase(event, 'tool', toolCallId)
+  return {
+    id: existing.id,
+    runId: existing.runId,
+    kind: 'tool',
+    namespace,
+    startedAt: existing.startedAt ?? event.params?.timestamp,
+  }
+}
+
 function streamingStatusActivityBase(
   current: readonly RunActivity[],
   event: ProtocolEvent,
@@ -109,7 +131,7 @@ function reduceTools(current: readonly RunActivity[], event: ProtocolEvent): Run
   const name = textValue(data.tool_name) ?? textValue(data.name) ?? 'Tool'
   const status = statusFromValue(data.status ?? data.event)
   return upsertActivity(current, {
-    ...activityBase(event, 'tool', toolCallId),
+    ...toolActivityBase(current, event, toolCallId),
     status,
     title: name,
     toolCallId,

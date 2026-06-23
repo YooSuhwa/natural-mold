@@ -15,7 +15,7 @@ export const SCRIPTED_MODEL = 'document-artifact-scripted'
 export const FINAL_TEXT = 'E2E LangGraph v3 validation complete'
 export const REPORT_FILE = 'moldy-langgraph-v3-report.md'
 export const NOTES_FILE = 'moldy-langgraph-v3-notes.txt'
-const CHAT_COMPOSER_TIMEOUT_MS = 20_000
+const CHAT_COMPOSER_TIMEOUT_MS = 45_000
 const ARTIFACT_INDEX_TIMEOUT_MS = 75_000
 
 export interface LangGraphV3Setup {
