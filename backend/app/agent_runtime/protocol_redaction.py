@@ -83,6 +83,13 @@ _SAFE_METRIC_KEY_RE: Final = re.compile(
 # identifier (``{1,64}``) and re-validated by :func:`_is_sensitive_protocol_key`,
 # so only sensitive keys are masked and non-sensitive assignments survive.
 #
+# KEPT (M2 / ADR-021 Q2 default "keep bounded"): value-based masking covers a
+# DB-origin ``key=value`` (the value is in the run secret set), but an
+# LLM-generated assignment like ``api_key=<token the model made up>`` is NOT in
+# the run set — this regex is its only coverage, so removing it would increase
+# leak risk. It is already ``{1,64}`` bounded (no overlapping quantifier) and
+# stays linear on 60KB+ identifier runs, so the ReDoS surface is acceptable.
+#
 # ReDoS note: the previous pattern wrapped the key fragment in overlapping
 # ``[A-Za-z0-9_-]*`` quantifiers (``…*(?:frag)…*``) which caused catastrophic
 # backtracking on long runs of identifier characters (O(n^2)+). A single
@@ -96,20 +103,59 @@ SENSITIVE_ASSIGNMENT_RE: Final = re.compile(
 ASSIGNMENT_KEY_RE: Final = re.compile(r"([A-Za-z0-9_-]+)")
 
 # Value-based masking — secondary defence for secrets that appear with no
-# (or an unrecognised) key in front of them. Each pattern keeps a harmless
-# prefix and masks only the credential body so normal prose is preserved.
+# (or an unrecognised) key in front of them. Since M0/M1 (ADR-021) value-based
+# masking exact-replaces the run's *actual* injected secrets BEFORE these
+# patterns run, these are now a FALLBACK only — for secrets that are NOT in the
+# run set (e.g. a token the LLM generated in its own response, or a secret
+# echoed back by an external API). Each pattern keeps a harmless prefix and
+# masks only the credential body so normal prose is preserved.
+#
+# M2 (ADR-021 §4/§7) shrink decisions — conservative bias, never increase leak:
+#   * Bearer: TIGHTENED below (false-positive reduction, no coverage loss).
+#   * JWT / ``sk-`` / ``moldy_*=``: KEPT — value-based can't cover LLM-generated
+#     secrets, the anchors are specific (negligible false-positive) and linear.
+#   * URL/DSN userinfo + ``SENSITIVE_ASSIGNMENT_RE``: KEPT bounded (ADR Q2
+#     default) — their sole unique coverage is LLM-generated arbitrary
+#     DSN/assignment secrets absent from the run set; removing them would
+#     increase leak risk, so they stay. Both are already length-bounded and
+#     verified linear on 60KB+ adversarial blobs.
 _VALUE_MASK_PATTERNS: Final = (
-    # Bearer <token>  (also covers ``Authorization: Bearer ...`` output)
-    (re.compile(r"\bBearer\s+\S+", re.IGNORECASE), "Bearer <redacted>"),
+    # Bearer <token>  (also covers ``Authorization: Bearer ...`` output).
+    #
+    # M2: tightened from ``\S+`` to a token-shaped, terminator-aware body.
+    # ``\S+`` greedily ate everything up to the next whitespace — including a
+    # trailing ``;`` / ``,`` / ``)`` / ``}`` / quote (ADR §4/§6: it also
+    # over-masked prose like "Bearer of bad news"). The body class below is the
+    # base64url + JWT alphabet (``A-Za-z0-9`` plus ``._~+/=-``), so a real
+    # Bearer/JWT/``sk-`` token is still fully masked while delimiters after the
+    # token survive. This strictly REDUCES false positives with no loss of
+    # real-token coverage, and stays linear (single bounded class, no
+    # overlapping quantifier). Note: very short prose words (e.g. "Bearer of")
+    # are still masked — length can't distinguish them from the legitimate
+    # short ``Bearer xyz`` token contract, and value-based masking is the real
+    # defence for genuine tokens, so we accept the ADR §6 "Low" residual.
+    (re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE), "Bearer <redacted>"),
     # JWT — three base64url segments separated by dots, starting ``eyJ``.
+    # KEPT (M2): value-based masking cannot catch a JWT the LLM minted in its
+    # own response; the ``eyJ`` anchor + fixed 3-segment shape is highly
+    # specific (near-zero false positive) and linear.
     (re.compile(r"\beyJ[\w-]+\.[\w-]+\.[\w-]+"), "<redacted>"),
     # OpenAI-style keys: ``sk-...`` (incl. ``sk-proj-...``) with a long body.
+    # KEPT (M2): covers an ``sk-`` key the LLM echoes/generates that is not in
+    # the run set; anchored prefix + ``{20,}`` bounded body keeps it linear.
     (re.compile(r"\bsk-(?:[A-Za-z0-9_-]+-)?[A-Za-z0-9]{20,}"), "<redacted>"),
     # Non-standard auth cookie token names emitted as ``moldy_at=...``.
+    # KEPT (M2): app-specific cookie names that an external system / browser
+    # context can echo back outside the run secret set; trivially linear.
     (re.compile(r"\b(moldy_(?:at|rt|csrf))=\S+", re.IGNORECASE), r"\1=<redacted>"),
     # URL/DSN userinfo credentials: ``scheme://user:pw@host`` -> mask ``user:pw``.
     # Any scheme (http(s), postgres, redis, mongodb, amqp, ...) so DSNs embedded
     # in trace/error strings don't leak their password.
+    #
+    # KEPT (M2 / ADR Q2 default "keep bounded"): value-based masking covers a
+    # DB-origin DSN (its plaintext is in the run set), but an LLM-generated /
+    # externally-echoed DSN with an arbitrary password is NOT in the run set —
+    # this is its sole unique coverage, so removing it would increase leak risk.
     #
     # ReDoS note: the scheme is anchored with ``\b`` and length-bounded
     # (``{0,31}``). An unbounded ``[a-z0-9+.\-]*://`` scheme would start a match

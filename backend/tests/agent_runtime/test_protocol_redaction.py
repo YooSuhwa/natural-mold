@@ -167,6 +167,70 @@ def test_assignment_secret_in_string_is_masked() -> None:
     assert REDACTED_SENSITIVE_FIELD in result
 
 
+# --- M2 (ADR-021 §7): tightened Bearer still redacts every real token shape --
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        # Opaque token body (hyphens / mixed alnum).
+        "Authorization: Bearer moldy-super-secret-bearer-token-value",
+        # JWT body (dot-separated base64url segments).
+        "Authorization: Bearer eyJabc.def.ghi",
+        # OpenAI-style key as a bearer token.
+        "Authorization: Bearer sk-proj-AAAA1111BBBB2222CCCC3333",
+        # base64url body with ``+`` / ``/`` / ``=`` padding chars.
+        "Bearer aB3kLm9Qp5Rs7Tv1Wx+yz/0123==",
+    ],
+)
+def test_m2_bearer_tightened_still_masks_real_tokens(raw: str) -> None:
+    # The M2 tightening narrowed the body from ``\S+`` to the base64url/JWT
+    # alphabet; every legitimate bearer token shape must still be fully masked.
+    token = raw.split("Bearer ", 1)[1]
+    result = redact_protocol_data("debug_traces", raw)
+    assert token not in result
+    assert "Bearer <redacted>" in result
+
+
+@pytest.mark.parametrize(
+    ("raw", "preserved_tail"),
+    [
+        # ``\S+`` used to swallow the trailing ``;`` and following text.
+        ('header "Bearer abc123token"; next=value', '"; next=value'),
+        # ``\S+`` ate the comma + next list element.
+        ("Bearer abc123token,next-element", ",next-element"),
+        # Trailing close-paren / brace after the token is preserved.
+        ("(Bearer eyJabc.def.ghi)", ")"),
+        ("{Bearer sometoken12345}", "}"),
+    ],
+)
+def test_m2_bearer_tightened_preserves_trailing_delimiters(raw: str, preserved_tail: str) -> None:
+    # M2 false-positive reduction: a token-shaped, terminator-aware body no
+    # longer eats ``;`` / ``,`` / ``)`` / ``}`` / quotes after the token.
+    result = redact_protocol_data("debug_traces", raw)
+    assert "Bearer <redacted>" in result
+    assert result.endswith(preserved_tail)
+
+
+def test_m2_bearer_does_not_eat_following_json_field() -> None:
+    # In a serialized blob the token must be masked without consuming the
+    # adjacent JSON punctuation / next field (a concrete ``\S+`` over-eat).
+    raw = '{"auth":"Bearer abc123tokenvalue","next":"keep-me"}'
+    result = redact_protocol_data("debug_traces", raw)
+    assert "abc123tokenvalue" not in result
+    assert "keep-me" in result
+
+
+def test_m2_bearer_body_is_linear_on_adversarial_run() -> None:
+    # The tightened Bearer body is a single bounded character class with no
+    # overlapping quantifier — it must stay linear even on a 60KB token run.
+    blob = "Bearer " + "aA0-_." * 12000
+    start = time.perf_counter()
+    redact_protocol_data("custom", {"detail": blob})
+    elapsed = time.perf_counter() - start
+    assert elapsed < 1.0, f"Bearer redaction took {elapsed:.2f}s — possible ReDoS regression"
+
+
 # --- normal prose must not be over-masked ----------------------------------
 
 
