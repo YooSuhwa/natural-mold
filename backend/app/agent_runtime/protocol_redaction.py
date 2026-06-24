@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Final
 
 from app.agent_runtime.memory_event_projection import MEMORY_EVENT_NAMES, MEMORY_TOOL_NAMES
+from app.agent_runtime.run_secrets import get_run_secrets
+from app.marketplace.redaction import replace_secret_values
 
 REDACTED_MEMORY_FIELD: Final = "<redacted>"
 REDACTED_SENSITIVE_FIELD: Final = "<redacted>"
@@ -121,13 +123,64 @@ _VALUE_MASK_PATTERNS: Final = (
 )
 
 
-def redact_protocol_data(method: str, data: Any, *, redact_memory: bool = True) -> Any:
-    redacted = _redact_sensitive_keys(data)
+def redact_protocol_data(
+    method: str,
+    data: Any,
+    *,
+    redact_memory: bool = True,
+    secret_values: Iterable[str] | None = None,
+) -> Any:
+    """Mask secrets in a protocol event payload before egress (ADR-021).
+
+    Two layers, value-based first:
+
+    1. ``_mask_known_values`` — exact-substring replace every plaintext secret
+       injected into the current run. ``secret_values`` defaults to the
+       run-scoped ContextVar (:func:`app.agent_runtime.run_secrets.get_run_secrets`),
+       so the five call sites stay unchanged and get values implicitly. A
+       ``None`` ContextVar (unit tests / trigger mode) makes this a no-op.
+    2. The legacy key/value heuristics — fallback for secrets not in the run
+       set (e.g. tokens the LLM generated in its own response).
+    """
+
+    if secret_values is None:
+        secret_values = get_run_secrets()
+    masked = _mask_known_values(data, secret_values)
+
+    redacted = _redact_sensitive_keys(masked)
     if redact_memory and method == "tools":
         return _redact_tool_event(redacted)
     if redact_memory and method == "custom":
         return _redact_custom_event(redacted)
     return redacted
+
+
+def _mask_known_values(data: Any, secret_values: Iterable[str] | None) -> Any:
+    """Recurse the payload, exact-replacing known secret values in str leaves.
+
+    Returns ``data`` unchanged when there are no secrets to mask (fast path
+    for the common ContextVar-unset case). Mapping keys are left untouched —
+    the key heuristics own those — so only *values* are scanned. The shared
+    :func:`replace_secret_values` core sorts length-desc, drops ``<5`` and
+    does a pure ``str.replace`` (no regex / no ReDoS).
+    """
+
+    if not secret_values:
+        return data
+    secrets = tuple(secret_values)
+    if not secrets:
+        return data
+    return _mask_values_recursive(data, secrets)
+
+
+def _mask_values_recursive(data: Any, secrets: tuple[str, ...]) -> Any:
+    if isinstance(data, Mapping):
+        return {key: _mask_values_recursive(value, secrets) for key, value in data.items()}
+    if isinstance(data, Sequence) and not isinstance(data, str | bytes | bytearray):
+        return [_mask_values_recursive(item, secrets) for item in data]
+    if isinstance(data, str):
+        return replace_secret_values(data, secrets, placeholder=REDACTED_SENSITIVE_FIELD)
+    return data
 
 
 def _redact_sensitive_keys(data: Any) -> Any:

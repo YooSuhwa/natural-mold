@@ -48,9 +48,39 @@ def is_sensitive_key(name: str) -> bool:
     return bool(_SENSITIVE_KEY_PATTERN.search(name))
 
 
-def redact_credential_values(
-    text: str, mapped_env_vars: dict[str, str] | None
+def replace_secret_values(
+    text: str,
+    secret_values: Iterable[str] | None,
+    *,
+    placeholder: str,
 ) -> str:
+    """Exact-substring replace every secret value in ``text``.
+
+    Shared core (ADR-021): callers supply an iterable of plaintext secrets
+    and the placeholder to substitute. Values shorter than
+    :data:`_MIN_REDACT_LEN`, duplicates and non-``str`` entries are dropped.
+    Values are sorted by length descending so a longer secret that contains a
+    shorter one is replaced first (otherwise the shorter match would consume a
+    fragment of the longer one and leave a dangling marker).
+
+    Pure single-pass ``str.replace`` per value — no regex, so ReDoS is
+    structurally impossible.
+    """
+
+    if not text or not secret_values:
+        return text
+
+    unique = {
+        value for value in secret_values if isinstance(value, str) and len(value) >= _MIN_REDACT_LEN
+    }
+    out = text
+    for value in sorted(unique, key=len, reverse=True):
+        if value in out:
+            out = out.replace(value, placeholder)
+    return out
+
+
+def redact_credential_values(text: str, mapped_env_vars: dict[str, str] | None) -> str:
     """Replace every credential value occurrence in ``text``.
 
     ``mapped_env_vars`` is ``{env_var_name: value}`` — the same dict
@@ -118,4 +148,5 @@ __all__ = [
     "is_sensitive_key",
     "redact_credential_values",
     "redact_keys",
+    "replace_secret_values",
 ]
