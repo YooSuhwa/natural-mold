@@ -17,6 +17,7 @@ from app.agent_runtime.e2e_scripted_model import (
     ASK_USER_FRUIT_TOOL_CALL_ID,
     CHAT_RICH_OUTPUT_CONTENT,
     CHAT_RICH_OUTPUT_PROMPT,
+    HITL_APPROVAL_MARKER,
     SCRIPTED_DOCUMENT_COMMANDS,
     E2EScriptedChatModel,
 )
@@ -404,6 +405,36 @@ def test_e2e_scripted_model_emits_hitl_approval_tool_call_for_natural_request() 
             "type": "tool_call",
         }
     ]
+
+
+def test_e2e_scripted_model_emits_hitl_approval_tool_call_for_explicit_marker() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke([HumanMessage(content=f"{HITL_APPROVAL_MARKER} please")])
+
+    assert result.tool_calls == [
+        {
+            "name": "execute_in_skill",
+            "args": SCRIPTED_DOCUMENT_COMMANDS["E2E_DOCX"],
+            "id": "call_e2e_docx",
+            "type": "tool_call",
+        }
+    ]
+
+
+def test_e2e_scripted_model_does_not_trigger_hitl_for_descriptive_prompt() -> None:
+    # A generic descriptive prompt mentioning tools+approval but no execution intent
+    # must NOT accidentally fire an execute_in_skill tool call.
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke([HumanMessage(content="도구 승인 절차를 설명해줘")])
+
+    assert result.tool_calls == []
+    assert result.content == "E2E scripted document model is ready."
 
 
 def test_e2e_scripted_model_emits_ask_user_tool_call_from_openai_tool_schema() -> None:

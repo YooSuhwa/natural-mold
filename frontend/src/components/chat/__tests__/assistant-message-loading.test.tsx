@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   state: {
     thread: { isRunning: true },
     message: {
-      metadata: { custom: { isStreamingMessage: true } },
+      metadata: { custom: { isStreamingMessage: true as boolean | undefined } },
       status: undefined as { readonly type?: string } | undefined,
       parts: [] as readonly unknown[],
     },
@@ -200,6 +200,17 @@ describe('StreamingMessageLoadingIndicator', () => {
 
   it('renders nothing outside the active streaming message', () => {
     mocks.state.message.metadata = { custom: { isStreamingMessage: false } }
+
+    const { container } = render(<StreamingMessageLoadingIndicator activities={[activity()]} />)
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('M6 — treats an explicit isStreamingMessage:false as not streaming even with a stale running status', () => {
+    // sticky/converted 재사용으로 완료된 메시지에 stale running이 남은 케이스.
+    // metadata가 streaming=false라고 명시하면 running status보다 우선해야 한다.
+    mocks.state.message.metadata = { custom: { isStreamingMessage: false } }
+    mocks.state.message.status = { type: 'running' }
 
     const { container } = render(<StreamingMessageLoadingIndicator activities={[activity()]} />)
 

@@ -276,4 +276,28 @@ describe('useLangGraphDraftConversation', () => {
 
     expect(mocks.delete).not.toHaveBeenCalled()
   })
+
+  it('keeps a submitted draft conversation before route promotion is accepted', async () => {
+    const onConversationId = vi.fn()
+
+    const { result, rerender } = renderHook(
+      ({ isDraftConversation }) =>
+        useLangGraphDraftConversation({
+          agentId: 'agent-1',
+          isDraftConversation,
+          runtimeMode: 'langgraph_v3',
+          onConversationId,
+        }),
+      { initialProps: { isDraftConversation: true } },
+    )
+
+    await waitFor(() => {
+      expect(result.current.conversationId).toBe('conversation-v3')
+    })
+
+    expect(result.current.retainDraftConversation()).toBe('conversation-v3')
+    rerender({ isDraftConversation: false })
+
+    expect(mocks.delete).not.toHaveBeenCalled()
+  })
 })

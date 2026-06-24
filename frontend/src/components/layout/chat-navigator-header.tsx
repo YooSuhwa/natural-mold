@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { SidebarGroupLabel } from '@/components/ui/sidebar'
+import { clearChatRouteReplacement } from '@/lib/chat/chat-route-replacement'
 import type { AgentSort, AgentSummary, ConversationSort, NavigatorMode } from '@/lib/types'
 import { ChatNavigatorMenu } from './chat-navigator-menu'
 
@@ -52,7 +53,12 @@ export function ChatNavigatorHeader({
           <Button
             variant="ghost"
             size="icon-xs"
-            render={<Link href={`/agents/${activeAgentId}/conversations/new`} />}
+            render={
+              <Link
+                href={`/agents/${activeAgentId}/conversations/new`}
+                onClick={clearChatRouteReplacement}
+              />
+            }
             aria-label={t('newChat')}
           >
             <PlusIcon className="size-3.5" />
@@ -68,7 +74,12 @@ export function ChatNavigatorHeader({
               {sortedAgents.slice(0, 6).map((agent) => (
                 <DropdownMenuItem
                   key={agent.id}
-                  render={<Link href={`/agents/${agent.id}/conversations/new`} />}
+                  render={
+                    <Link
+                      href={`/agents/${agent.id}/conversations/new`}
+                      onClick={clearChatRouteReplacement}
+                    />
+                  }
                 >
                   <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="xs" />
                   {agent.name}

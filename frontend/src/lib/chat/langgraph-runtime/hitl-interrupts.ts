@@ -280,8 +280,16 @@ function hydratedRequiresActionMessage(
   })
 }
 
+/**
+ * IN-PLACE MUTATION 계약: `draft`는 **호출자 소유의 shallow copy**여야 한다.
+ * 이 함수는 매칭되는 메시지 슬롯을 새 메시지 객체로 교체(slot 단위 immutable
+ * replace)하지만 배열 자체는 in place로 수정한다. 유일한 호출자
+ * (`appendInterruptToolCallMessages`)가 `[...messages]`로 만든 사본을 넘기므로
+ * 원본 인자 배열은 변형되지 않는다. 다른 위치에서 호출할 때도 반드시 사본을
+ * 넘길 것 — 원본 배열을 그대로 넘기면 호출자의 배열이 변형된다.
+ */
 function hydrateExistingAskUserToolCallMetadata(
-  messages: BaseMessage[],
+  draft: BaseMessage[],
   payload: StandardInterruptPayload,
 ): boolean {
   let hydrated = false
@@ -290,7 +298,7 @@ function hydrateExistingAskUserToolCallMetadata(
   for (const synthetic of syntheticToolCalls) {
     if (synthetic.name !== 'ask_user') continue
 
-    for (const [messageIndex, message] of messages.entries()) {
+    for (const [messageIndex, message] of draft.entries()) {
       const toolCalls = mutableToolCalls(message)
       if (!toolCalls) continue
 
@@ -300,7 +308,7 @@ function hydrateExistingAskUserToolCallMetadata(
       )
       if (index < 0) continue
 
-      messages[messageIndex] = hydratedRequiresActionMessage(message, toolCalls, index, synthetic)
+      draft[messageIndex] = hydratedRequiresActionMessage(message, toolCalls, index, synthetic)
       hydrated = true
       break
     }

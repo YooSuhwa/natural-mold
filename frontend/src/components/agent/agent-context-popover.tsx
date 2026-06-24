@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { clearChatRouteReplacement } from '@/lib/chat/chat-route-replacement'
 import type { Agent } from '@/lib/types'
 
 interface AgentContextPopoverProps {
@@ -65,7 +66,14 @@ export function AgentContextPopover({ agent, agentId }: AgentContextPopoverProps
           </div>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link href={`/agents/${agentId}/conversations/new`} />}>
+        <DropdownMenuItem
+          render={
+            <Link
+              href={`/agents/${agentId}/conversations/new`}
+              onClick={clearChatRouteReplacement}
+            />
+          }
+        >
           <SquarePenIcon />
           {t('newChat')}
         </DropdownMenuItem>

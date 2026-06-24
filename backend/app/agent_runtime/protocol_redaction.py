@@ -6,10 +6,13 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
 from app.agent_runtime.memory_event_projection import MEMORY_EVENT_NAMES, MEMORY_TOOL_NAMES
-from app.marketplace.redaction import is_sensitive_key
 
 REDACTED_MEMORY_FIELD: Final = "<redacted>"
 REDACTED_SENSITIVE_FIELD: Final = "<redacted>"
+
+# Usage / token-accounting keys are debug-critical and never carry secrets.
+# Exact members are always safe; the predicate below also treats any
+# ``*_tokens`` / ``token_count`` / ``*_token_details`` key as a metric.
 SAFE_TOKEN_METRIC_KEYS: Final = frozenset(
     {
         "cache_creation_tokens",
@@ -26,17 +29,81 @@ SAFE_TOKEN_METRIC_KEYS: Final = frozenset(
         "usage_metadata",
     }
 )
-SENSITIVE_KEY_SOURCE: Final = (
-    r"password|api[_-]?key|secret|token|access[_-]?key|refresh[_-]?token|"
-    r"client[_-]?secret|private[_-]?key|authorization|proxy[_-]?authorization|"
-    r"cookie|set[_-]?cookie|csrf|xsrf|session"
+
+# Keys matched as whole tokens (exact only), never as substrings of unrelated
+# words. ``cookies_enabled`` must NOT match ``cookie``; ``session_id`` /
+# ``session_count`` must NOT match a bare ``session``.
+_SENSITIVE_EXACT_KEYS: Final = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "proxy_authorization",
+        "cookie",
+        "set-cookie",
+        "set_cookie",
+        "session",
+        "csrf",
+        "xsrf",
+    }
 )
-SENSITIVE_PROTOCOL_KEY_RE: Final = re.compile(SENSITIVE_KEY_SOURCE, re.IGNORECASE)
+
+# Sensitive key fragments matched on word boundaries: a fragment must sit at
+# the start/end of the key or be delimited by ``_`` / ``-``. This redacts
+# ``api_key`` / ``access_token`` / ``session_token`` / ``csrf_token`` /
+# ``refresh_token`` / ``client_secret`` / ``password`` while leaving
+# ``session_id`` / ``session_count`` / ``token_count`` / ``tokens_used`` /
+# ``possession`` / ``my_secretary`` / ``cookies_enabled`` untouched.
+# ``session_token`` is covered by the ``token`` fragment (``_token`` suffix).
+_SENSITIVE_KEY_FRAGMENT: Final = (
+    r"password|passwd|"
+    r"api[_-]?key|access[_-]?key|secret[_-]?key|private[_-]?key|"
+    r"secret|"
+    r"token|"
+    r"access[_-]?token|refresh[_-]?token|bearer[_-]?token|"
+    r"client[_-]?secret|"
+    r"csrf[_-]?token|xsrf[_-]?token"
+)
+SENSITIVE_PROTOCOL_KEY_RE: Final = re.compile(
+    rf"(?:^|[_\-])(?:{_SENSITIVE_KEY_FRAGMENT})(?:[_\-]|$)",
+    re.IGNORECASE,
+)
+
+# Token-metric keys to keep visible: exact members above plus any key ending
+# in ``_tokens`` (e.g. ``reasoning_tokens``), the literal ``token_count``, or
+# any ``*_token_details`` aggregate.
+_SAFE_METRIC_KEY_RE: Final = re.compile(
+    r"(?:^|[_\-])tokens$|^token_count$|_token_details$",
+    re.IGNORECASE,
+)
+
+# Assignment leak: ``<sensitive_key> = value`` / ``: value`` style fragments
+# inside opaque strings (e.g. ``api_key=sk-...``). The key is re-validated by
+# :func:`_is_sensitive_protocol_key` so non-sensitive assignments survive.
 SENSITIVE_ASSIGNMENT_RE: Final = re.compile(
-    rf"((?:{SENSITIVE_KEY_SOURCE})[\"']?\s*[:=]\s*[\"']?(?:Bearer\s+)?)([^\"',}}\]\s]+)([\"']?)",
+    rf"((?:[A-Za-z0-9_-]*(?:{_SENSITIVE_KEY_FRAGMENT})[A-Za-z0-9_-]*)"
+    rf"[\"']?\s*[:=]\s*[\"']?(?:Bearer\s+)?)([^\"',}}\]\s]+)([\"']?)",
     re.IGNORECASE,
 )
 ASSIGNMENT_KEY_RE: Final = re.compile(r"([A-Za-z0-9_-]+)")
+
+# Value-based masking — secondary defence for secrets that appear with no
+# (or an unrecognised) key in front of them. Each pattern keeps a harmless
+# prefix and masks only the credential body so normal prose is preserved.
+_VALUE_MASK_PATTERNS: Final = (
+    # Bearer <token>  (also covers ``Authorization: Bearer ...`` output)
+    (re.compile(r"\bBearer\s+\S+", re.IGNORECASE), "Bearer <redacted>"),
+    # JWT — three base64url segments separated by dots, starting ``eyJ``.
+    (re.compile(r"\beyJ[\w-]+\.[\w-]+\.[\w-]+"), "<redacted>"),
+    # OpenAI-style keys: ``sk-...`` (incl. ``sk-proj-...``) with a long body.
+    (re.compile(r"\bsk-(?:[A-Za-z0-9_-]+-)?[A-Za-z0-9]{20,}"), "<redacted>"),
+    # Non-standard auth cookie token names emitted as ``moldy_at=...``.
+    (re.compile(r"\b(moldy_(?:at|rt|csrf))=\S+", re.IGNORECASE), r"\1=<redacted>"),
+    # URL userinfo credentials: ``scheme://user:pw@host`` -> mask ``user:pw``.
+    (
+        re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+(@)", re.IGNORECASE),
+        r"\1<redacted>\2",
+    ),
+)
 
 
 def redact_protocol_data(method: str, data: Any, *, redact_memory: bool = True) -> Any:
@@ -45,8 +112,6 @@ def redact_protocol_data(method: str, data: Any, *, redact_memory: bool = True) 
         return _redact_tool_event(redacted)
     if redact_memory and method == "custom":
         return _redact_custom_event(redacted)
-    if method in {"values", "updates"}:
-        return _redact_state_snapshot(redacted)
     return redacted
 
 
@@ -68,9 +133,12 @@ def _redact_sensitive_keys(data: Any) -> Any:
 
 
 def _is_sensitive_protocol_key(key: str) -> bool:
-    return key not in SAFE_TOKEN_METRIC_KEYS and (
-        is_sensitive_key(key) or SENSITIVE_PROTOCOL_KEY_RE.search(key) is not None
-    )
+    normalized = key.strip().lower()
+    if normalized in SAFE_TOKEN_METRIC_KEYS or _SAFE_METRIC_KEY_RE.search(normalized):
+        return False
+    if normalized in _SENSITIVE_EXACT_KEYS:
+        return True
+    return SENSITIVE_PROTOCOL_KEY_RE.search(normalized) is not None
 
 
 def _redact_sensitive_string(data: str) -> str:
@@ -79,7 +147,14 @@ def _redact_sensitive_string(data: str) -> str:
         redacted = _redact_sensitive_keys(parsed)
         if redacted != parsed:
             return json.dumps(redacted, ensure_ascii=False, separators=(",", ":"))
-    return SENSITIVE_ASSIGNMENT_RE.sub(_redact_assignment_match, data)
+    masked = SENSITIVE_ASSIGNMENT_RE.sub(_redact_assignment_match, data)
+    return _mask_sensitive_values(masked)
+
+
+def _mask_sensitive_values(data: str) -> str:
+    for pattern, replacement in _VALUE_MASK_PATTERNS:
+        data = pattern.sub(replacement, data)
+    return data
 
 
 def _parse_json_container(data: str) -> Any | None:
@@ -124,14 +199,6 @@ def _redact_custom_event(data: Any) -> Any:
     if name not in MEMORY_EVENT_NAMES or not isinstance(payload, Mapping):
         return data
     return {**dict(data), "payload": _redact_memory_mapping(payload)}
-
-
-def _redact_state_snapshot(data: Any) -> Any:
-    if isinstance(data, Mapping):
-        return {str(key): _redact_state_snapshot(item) for key, item in data.items()}
-    if isinstance(data, Sequence) and not isinstance(data, str | bytes | bytearray):
-        return [_redact_state_snapshot(item) for item in data]
-    return data
 
 
 def _redact_memory_mapping(data: Mapping[str, Any]) -> dict[str, Any]:

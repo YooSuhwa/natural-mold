@@ -17,6 +17,7 @@ vi.mock('@assistant-ui/react', () => ({
         send: mocks.send,
         setText: mocks.setText,
       }),
+      getState: () => ({ id: 'msg-1' }),
     }),
     thread: () => ({
       getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),

@@ -74,7 +74,8 @@ function mergeConversationRow(current: Conversation | undefined, next: Conversat
   return current ? { ...current, ...next } : next
 }
 
-function upsertConversationList(
+// M1 — 순수 캐시 upsert 헬퍼는 단위 테스트 대상이라 export한다.
+export function upsertConversationList(
   rows: readonly Conversation[] | undefined,
   conversation: Conversation,
 ): Conversation[] | undefined {
@@ -84,7 +85,7 @@ function upsertConversationList(
   return [merged, ...rows.filter((row) => row.id !== conversation.id)]
 }
 
-function upsertConversationPages(
+export function upsertConversationPages(
   data: InfiniteData<ConversationListEnvelope> | undefined,
   conversation: Conversation,
 ): InfiniteData<ConversationListEnvelope> | undefined {
@@ -103,7 +104,7 @@ function upsertConversationPages(
   }
 }
 
-function upsertGlobalConversationPages(
+export function upsertGlobalConversationPages(
   data: InfiniteData<ConversationWithAgentListEnvelope> | undefined,
   conversation: ConversationWithAgent,
 ): InfiniteData<ConversationWithAgentListEnvelope> | undefined {
@@ -116,14 +117,9 @@ function upsertGlobalConversationPages(
       if (index !== 0) return { ...page, items: rowsWithoutConversation }
       return {
         ...page,
-        items: [
-          {
-            ...(existing ?? conversation),
-            ...conversation,
-            agent: conversation.agent,
-          },
-          ...rowsWithoutConversation,
-        ],
+        // `...conversation`이 모든 필드(agent 포함)를 덮으므로 existing은 빈
+        // 객체 fallback이면 충분하다.
+        items: [{ ...(existing ?? {}), ...conversation }, ...rowsWithoutConversation],
       }
     }),
   }

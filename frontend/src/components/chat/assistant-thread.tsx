@@ -488,10 +488,15 @@ function BranchPicker() {
     ],
   )
 
+  // M3 — branch picker 억제는 편집 중인 그 메시지에만 적용한다. messageId가
+  // 있으면 id로만 매칭하고, id가 없을 때만 content fallback을 쓴다. 예전처럼
+  // id || content로 OR 매칭하면 본문이 같은 다른 메시지("응", "ok" 등)의
+  // branch picker까지 잘못 숨겨졌다.
   const pendingEditMatchesMessage =
     pendingEditSuppression?.conversationId === conversationId &&
-    (pendingEditSuppression.messageId === messageId ||
-      pendingEditSuppression.content === messageText)
+    (messageId != null
+      ? pendingEditSuppression.messageId === messageId
+      : pendingEditSuppression.content === messageText)
   const branchIsNewest =
     typeof meta.branchTotal !== 'number' ||
     meta.branchTotal < 2 ||
@@ -735,6 +740,13 @@ export function AssistantThread({
           )
         }
         return (
+          // M2 — off-screen `content-visibility:auto`/`contain-intrinsic-size`
+          // 최적화는 `fix(chat): stabilize branch rendering`에서 의도적으로
+          // 제거했다. off-screen 메시지의 렌더를 건너뛰면 message-id scroll
+          // targeting, `<n/m>` branch picker, meta-row `:has()` 가시성 등
+          // 레이아웃/측정 의존 기능이 어긋났다. 공용 `.moldy-content-visibility`
+          // 는 `contain-intrinsic-size`가 1px 680px로 고정이라 메시지 높이에도
+          // 맞지 않으므로 대안이 아니다. 복원 금지.
           <div
             className="group relative flex justify-end gap-3"
             data-moldy-message-id={messageId}
@@ -805,6 +817,9 @@ export function AssistantThread({
           )
         }
         return (
+          // M2 — UserMessage와 동일하게 off-screen content-visibility 최적화를
+          // 의도적으로 제거한 상태다(`fix(chat): stabilize branch rendering`).
+          // 복원 금지 — 위 UserMessage 주석 참고.
           <div
             className="group relative flex gap-3"
             data-moldy-message-id={messageId}

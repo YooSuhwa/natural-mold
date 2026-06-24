@@ -22,6 +22,7 @@ interface UseLangGraphDraftConversationResult {
   readonly conversationId: string | null
   readonly error: unknown
   readonly isBootstrapping: boolean
+  readonly retainDraftConversation: () => string | null
   readonly commitDraftConversation: () => string | null
 }
 
@@ -134,17 +135,25 @@ export function useLangGraphDraftConversation({
       })
   }, [agentId, conversationId, key])
 
-  const commitDraftConversation = useCallback((): string | null => {
+  const retainDraftConversation = useCallback((): string | null => {
     const current = stateRef.current
     const currentConversationId = current.key === key ? current.conversationId : null
     if (currentConversationId) committedConversationIdsRef.current.add(currentConversationId)
     return currentConversationId
   }, [key])
 
+  // `commitDraftConversation` is an intentional alias of `retainDraftConversation`
+  // with identical effect. The two names exist purely for caller readability: a
+  // caller "retains" the draft before sending a message (keep it alive), and
+  // "commits" it once the run is accepted. Keep both exports — page.tsx (owned by
+  // another module) calls them by name.
+  const commitDraftConversation = retainDraftConversation
+
   return {
     conversationId,
     error,
     isBootstrapping: key !== null && conversationId === null && error === null,
+    retainDraftConversation,
     commitDraftConversation,
   }
 }

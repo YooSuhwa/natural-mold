@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   dedupeLangChainMessagesById,
   dedupeThreadMessagesById,
+  langChainMessageFingerprint,
   sourceMessageIdFromThreadMessageId,
   useStableConvertedMessages,
 } from '../message-list'
@@ -299,5 +300,60 @@ describe('useStableConvertedMessages', () => {
     })
 
     expect(result.current).toBe(pendingConverted)
+  })
+
+  it('reflects converted output when only usage_metadata changes (H4 unified fingerprint)', () => {
+    type ConvertedFixtureMessage = {
+      readonly id: string
+      readonly role: string
+      readonly content: readonly { readonly type: string; readonly text: string }[]
+      readonly metadata?: { readonly custom?: { readonly usage?: unknown } }
+    }
+    // The old converter-cache key only fingerprinted content + type, so a
+    // source change limited to usage_metadata (which the converter reads via
+    // usageFromMessage) altered the converted output yet stayed invisible.
+    const baseSource = new AIMessage({ id: 'assistant-usage', content: '응답' })
+    const usageSource = new AIMessage({
+      id: 'assistant-usage',
+      content: '응답',
+      usage_metadata: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+    })
+    // The content-only fingerprint is identical for both, proving the field set
+    // that `messageRenderKey` alone tracks would have missed the change.
+    expect(baseSource.content).toEqual(usageSource.content)
+    expect(langChainMessageFingerprint(baseSource)).not.toBe(
+      langChainMessageFingerprint(usageSource),
+    )
+
+    const withoutUsage: readonly ConvertedFixtureMessage[] = [
+      { id: 'assistant-usage', role: 'assistant', content: [{ type: 'text', text: '응답' }] },
+    ]
+    const withUsage: readonly ConvertedFixtureMessage[] = [
+      {
+        id: 'assistant-usage',
+        role: 'assistant',
+        content: [{ type: 'text', text: '응답' }],
+        metadata: { custom: { usage: { totalTokens: 15 } } },
+      },
+    ]
+
+    const { result, rerender } = renderHook(
+      ({
+        converted,
+        source,
+      }: {
+        readonly converted: readonly ConvertedFixtureMessage[]
+        readonly source: readonly AIMessage[]
+      }) => useStableConvertedMessages(converted, source, false),
+      {
+        initialProps: { converted: withoutUsage, source: [baseSource] },
+      },
+    )
+
+    expect(result.current).toBe(withoutUsage)
+
+    rerender({ converted: withUsage, source: [usageSource] })
+
+    expect(result.current).toBe(withUsage)
   })
 })

@@ -29,7 +29,15 @@ export function stableString(value: unknown): string {
   }
 }
 
-function langChainMessageFingerprint(message: BaseMessage): string {
+/**
+ * Fingerprint covering every LangChain message field the converter
+ * (`convertMoldyLangChainMessage`) can read. Both the converter-cache
+ * invalidation in `use-moldy-langgraph-stream.ts` (`messageListFingerprint`)
+ * and `useStableConvertedMessages` below derive from this SAME field set, so a
+ * source change that alters converted output is never invisible to one side
+ * while caught by the other (the H4 drift this unifies).
+ */
+export function langChainMessageFingerprint(message: BaseMessage): string {
   const source = message as BaseMessage & {
     readonly additional_kwargs?: unknown
     readonly invalid_tool_calls?: unknown

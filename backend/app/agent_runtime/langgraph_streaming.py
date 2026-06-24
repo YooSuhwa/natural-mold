@@ -226,6 +226,12 @@ async def stream_agent_response_langgraph(
         try:
             stream = await _open_v3_stream(agent, actual_input, config)
         except (AttributeError, NotImplementedError):
+            # Fallback path: only reached for stream-mode-only agents (test fakes
+            # that lack ``astream_events`` v3). Unlike the v3 path it intentionally
+            # omits the deferred ``_is_empty_input_requested_event`` normalization —
+            # stream-mode chunks never carry a standalone empty ``input.requested``
+            # method, so there is nothing to defer here. Pending interrupts are still
+            # recovered uniformly via ``pending_input_requested_events`` below.
             fallback_seq = 0
             stream = await _open_stream_mode_fallback(agent, actual_input, config)
             async for raw_chunk in stream:

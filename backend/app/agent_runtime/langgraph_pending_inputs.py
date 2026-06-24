@@ -60,6 +60,12 @@ def _namespace_from_task(task: Any) -> list[str]:
 
 
 def _namespace_from_interrupt(interrupt: Any) -> list[str]:
+    # NOTE: ``langgraph.types.Interrupt`` defines ``__slots__ == ("value", "id")``
+    # in v0.6+, so checkpointer-recovered interrupts carry NO ``ns``/``namespace``
+    # attribute and this returns ``[]``. The namespace of subgraph interrupts (which
+    # the frontend forwards verbatim to ``stream.respond({...}, {namespace})`` for
+    # server-validated resume routing) is instead recovered from the owning task's
+    # ``path`` via ``_task_namespaces_by_id`` — see ``interrupt_payloads_from_checkpointer``.
     for attr in ("ns", "namespace"):
         value = getattr(interrupt, attr, None)
         if isinstance(value, Sequence) and not isinstance(value, str | bytes):
@@ -67,6 +73,24 @@ def _namespace_from_interrupt(interrupt: Any) -> list[str]:
             if namespace:
                 return namespace
     return []
+
+
+def _task_namespaces_by_id(state: Any) -> dict[str, list[str]]:
+    """Map each pending task id to its namespace derived from ``task.path``.
+
+    pending_writes only carry ``(task_id, channel, value)``; the interrupt object
+    itself has no namespace. The task id matches ``PregelTask.id`` in state, so we
+    rebuild the subgraph namespace from the task's ``path`` to keep resume routing
+    correct for nested/subagent interrupts.
+    """
+    namespaces: dict[str, list[str]] = {}
+    for task in getattr(state, "tasks", ()) or ():
+        task_id = getattr(task, "id", None)
+        if isinstance(task_id, str) and task_id:
+            namespace = _namespace_from_task(task)
+            if namespace:
+                namespaces[task_id] = namespace
+    return namespaces
 
 
 def _payload_from_interrupt(
@@ -142,10 +166,15 @@ def _append_unique_payloads(
         seen.add(interrupt_id)
 
 
-def _interrupt_payloads_from_pending_writes(pending_writes: Any) -> list[PendingInputPayload]:
+def _interrupt_payloads_from_pending_writes(
+    pending_writes: Any,
+    *,
+    task_namespaces: Mapping[str, list[str]] | None = None,
+) -> list[PendingInputPayload]:
     if not isinstance(pending_writes, Sequence) or isinstance(pending_writes, str | bytes):
         return []
 
+    task_namespaces = task_namespaces or {}
     payloads: list[PendingInputPayload] = []
     for write in pending_writes:
         if not isinstance(write, Sequence) or isinstance(write, str | bytes) or len(write) < 3:
@@ -156,10 +185,15 @@ def _interrupt_payloads_from_pending_writes(pending_writes: Any) -> list[Pending
         raw_interrupts = write[2]
         if not isinstance(raw_interrupts, Sequence) or isinstance(raw_interrupts, str | bytes):
             continue
+        task_id = write[0]
+        # The Interrupt object has no namespace attr (slots: value, id) — recover the
+        # subgraph namespace from the owning task's path via the pending_write task id.
+        recovered_namespace = task_namespaces.get(task_id, []) if isinstance(task_id, str) else []
         for index, interrupt in enumerate(raw_interrupts):
+            namespace = _namespace_from_interrupt(interrupt) or recovered_namespace
             payload = _payload_from_interrupt(
                 interrupt,
-                namespace=_namespace_from_interrupt(interrupt),
+                namespace=namespace,
                 index=index,
             )
             if payload is not None:
@@ -169,6 +203,8 @@ def _interrupt_payloads_from_pending_writes(pending_writes: Any) -> list[Pending
 
 async def interrupt_payloads_from_checkpointer(
     config: dict[str, Any],
+    *,
+    task_namespaces: Mapping[str, list[str]] | None = None,
 ) -> list[PendingInputPayload]:
     thread_id = _thread_id_from_config(config)
     if thread_id is None:
@@ -188,7 +224,8 @@ async def interrupt_payloads_from_checkpointer(
     if checkpoint_tuple is None:
         return []
     return _interrupt_payloads_from_pending_writes(
-        getattr(checkpoint_tuple, "pending_writes", None)
+        getattr(checkpoint_tuple, "pending_writes", None),
+        task_namespaces=task_namespaces,
     )
 
 
@@ -209,7 +246,18 @@ async def pending_input_requested_events(
         raise PendingInputStateUnavailable("pending input state unavailable") from exc
 
     payloads = _interrupt_payloads_from_state(state)
-    _append_unique_payloads(payloads, await interrupt_payloads_from_checkpointer(config))
+    # On the normal path ``state.tasks[].interrupts`` is already populated, so the
+    # checkpointer fallback (a second ``aget_tuple`` DB read against the shared
+    # checkpointer pool) is only needed when state carries no interrupts at all
+    # (e.g. checkpointer-recovered runs where interrupts live in pending_writes).
+    if not payloads:
+        _append_unique_payloads(
+            payloads,
+            await interrupt_payloads_from_checkpointer(
+                config,
+                task_namespaces=_task_namespaces_by_id(state),
+            ),
+        )
 
     seen_interrupt_ids = _seen_interrupt_ids(emitted)
     raw_interrupts: list[dict[str, Any]] = []

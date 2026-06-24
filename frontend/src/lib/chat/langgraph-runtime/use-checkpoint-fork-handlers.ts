@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
 import type { MessageMetadata, MessageMetadataMap, UseStreamReturn } from '@langchain/react'
 import type { AppendMessage, ThreadMessage } from '@assistant-ui/react'
@@ -66,6 +66,22 @@ export function useCheckpointForkHandlers<StateType extends object>({
     [visibleMessages, metadataByMessageId, checkpointByMessageId],
   )
 
+  // 서버 checkpoint 폴링(최대 10s)을 unmount/handler 재생성 시 취소한다.
+  // 취소가 없으면 dead stream에 ``stream.submit``을 호출할 수 있다.
+  const serverCheckpointAbortRef = useRef<AbortController | null>(null)
+  const beginServerCheckpointPoll = useCallback(() => {
+    serverCheckpointAbortRef.current?.abort()
+    const controller = new AbortController()
+    serverCheckpointAbortRef.current = controller
+    return controller.signal
+  }, [])
+  useEffect(() => {
+    return () => {
+      serverCheckpointAbortRef.current?.abort()
+      serverCheckpointAbortRef.current = null
+    }
+  }, [])
+
   const onNew = useCallback(
     async (message: AppendMessage) => {
       const content = appendMessageText(message).trim()
@@ -82,9 +98,19 @@ export function useCheckpointForkHandlers<StateType extends object>({
       const attachments = attachmentRefs(message)
       if (!content && attachments.length === 0) return false
 
+      const localCheckpointId = checkpointForEdit(message, checkpointContext)
+      let signal: AbortSignal | null = null
       const checkpointId =
-        checkpointForEdit(message, checkpointContext) ??
-        (await checkpointForEditFromServer(message, conversationId, checkpointContext))
+        localCheckpointId ??
+        (await checkpointForEditFromServer(
+          message,
+          conversationId,
+          checkpointContext,
+          (signal = beginServerCheckpointPoll()),
+        ))
+      // 서버 폴링을 거쳤고 그 사이 unmount/handler 재생성으로 취소됐다면
+      // dead stream에 submit하지 않는다.
+      if (signal?.aborted) return false
       if (!checkpointId) {
         reportClientWarning('useMoldyLangGraphStream', 'Edit skipped: checkpoint is unavailable.')
         return false
@@ -112,14 +138,22 @@ export function useCheckpointForkHandlers<StateType extends object>({
       )
       return true
     },
-    [checkpointContext, conversationId, onBeforeEditSubmit, stream],
+    [beginServerCheckpointPoll, checkpointContext, conversationId, onBeforeEditSubmit, stream],
   )
 
   const onReload = useCallback(
     async (parentId: string | null) => {
+      const localCheckpointId = checkpointForReload(parentId, checkpointContext)
+      let signal: AbortSignal | null = null
       const checkpointId =
-        checkpointForReload(parentId, checkpointContext) ??
-        (await checkpointForReloadFromServer(parentId, conversationId, checkpointContext))
+        localCheckpointId ??
+        (await checkpointForReloadFromServer(
+          parentId,
+          conversationId,
+          checkpointContext,
+          (signal = beginServerCheckpointPoll()),
+        ))
+      if (signal?.aborted) return false
       if (!checkpointId) {
         reportClientWarning('useMoldyLangGraphStream', 'Reload skipped: checkpoint is unavailable.')
         return false
@@ -127,7 +161,7 @@ export function useCheckpointForkHandlers<StateType extends object>({
       await stream.submit(null, { forkFrom: checkpointId })
       return true
     },
-    [checkpointContext, conversationId, stream],
+    [beginServerCheckpointPoll, checkpointContext, conversationId, stream],
   )
 
   return { onNew, onEdit, onReload }
@@ -204,9 +238,11 @@ async function checkpointForEditFromServer(
   message: Pick<AppendMessage, 'sourceId' | 'parentId'>,
   conversationId: string,
   context: CheckpointContext,
+  signal: AbortSignal,
 ): Promise<string | null> {
-  return retryServerCheckpoint(() =>
-    checkpointForEditFromServerOnce(message, conversationId, context),
+  return retryServerCheckpoint(
+    () => checkpointForEditFromServerOnce(message, conversationId, context),
+    signal,
   )
 }
 
@@ -214,9 +250,11 @@ async function checkpointForReloadFromServer(
   parentId: string | null,
   conversationId: string,
   context: CheckpointContext,
+  signal: AbortSignal,
 ): Promise<string | null> {
-  return retryServerCheckpoint(() =>
-    checkpointForReloadFromServerOnce(parentId, conversationId, context),
+  return retryServerCheckpoint(
+    () => checkpointForReloadFromServerOnce(parentId, conversationId, context),
+    signal,
   )
 }
 
@@ -248,20 +286,38 @@ async function checkpointForReloadFromServerOnce(
 
 async function retryServerCheckpoint(
   resolve: () => Promise<ServerCheckpointAttempt | null>,
+  signal: AbortSignal,
 ): Promise<string | null> {
   const startedAt = Date.now()
   while (Date.now() - startedAt <= CHECKPOINT_CONTEXT_RETRY_TIMEOUT_MS) {
+    if (signal.aborted) return null
     const attempt = await resolve()
+    if (signal.aborted) return null
     if (attempt?.checkpointId) return attempt.checkpointId
     if (attempt?.hasServerMessages) return null
-    await sleep(CHECKPOINT_CONTEXT_RETRY_INTERVAL_MS)
+    await sleep(CHECKPOINT_CONTEXT_RETRY_INTERVAL_MS, signal)
+    if (signal.aborted) return null
   }
   return null
 }
 
-function sleep(ms: number): Promise<void> {
+/** abort 가능한 sleep — signal이 발화하면 즉시 resolve해 폴링 루프를 빠르게
+ *  빠져나가게 한다(timer leak 방지 포함). */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, ms)
+    if (signal.aborted) {
+      resolve()
+      return
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
   })
 }
 

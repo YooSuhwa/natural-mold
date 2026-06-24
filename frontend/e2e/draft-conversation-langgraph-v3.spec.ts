@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, apiDeleteOk, apiGetJson, isRecord } from './fixtures'
+import { test, expect, API_BASE, apiDeleteOk, apiGetJson, failWithBody, isRecord } from './fixtures'
 import type { APIRequestContext, Page } from '@playwright/test'
 import { sendMessage, setupLangGraphV3Agent } from './langgraph-v3-helpers'
 
@@ -139,6 +139,28 @@ async function waitRunActive(request: APIRequestContext, conversationId: string)
       { timeout: 10_000, intervals: [100, 250, 500] },
     )
     .toBe('active')
+}
+
+async function cancelActiveRunIfPresent(
+  request: APIRequestContext,
+  conversationId: string | null,
+  csrfHeaders: Record<string, string>,
+): Promise<void> {
+  if (!conversationId) return
+  const activeRun = await apiGetJson(
+    request,
+    `${API_BASE}/api/conversations/${conversationId}/runs/active`,
+  )
+  if (!isRecord(activeRun) || typeof activeRun.id !== 'string') return
+
+  const cancelUrl = `${API_BASE}/api/conversations/${conversationId}/runs/${activeRun.id}/cancel`
+  const response = await request.post(cancelUrl, { headers: csrfHeaders })
+  if (!response.ok() && response.status() !== 404 && response.status() !== 409) {
+    await failWithBody(`POST ${cancelUrl}`, response)
+  }
+  if (response.status() !== 404) {
+    await waitRunIdle(request, conversationId)
+  }
 }
 
 async function visibleStopButtonCount(page: Page): Promise<number> {
@@ -881,12 +903,63 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
     }
   })
 
+  test('opens a fresh draft after a promoted draft route', async ({ page, request, errors }) => {
+    const setup = await setupLangGraphV3Agent(request)
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      await page.getByRole('button', { name: '새 채팅', exact: true }).first().click()
+      await page.waitForURL(`**/agents/${setup.parentAgentId}/conversations/new`, {
+        timeout: 10_000,
+      })
+      await expect(page.getByText(EMPTY_STATE_TEXT)).toBeVisible({ timeout: 20_000 })
+
+      const prompt = `안녕? E2E_REOPEN_DRAFT_${Date.now()}`
+      await sendMessage(page, prompt)
+      await expect(page).toHaveURL(
+        new RegExp(`/agents/${setup.parentAgentId}/conversations/(?!new$)[^/]+$`),
+        { timeout: 5_000 },
+      )
+      const promotedConversationId = new URL(page.url()).pathname.split('/').at(-1) ?? ''
+      await expect(page.getByText(FIRST_TURN_RESPONSE_TEXT).last()).toBeVisible({
+        timeout: 30_000,
+      })
+
+      await page.getByRole('button', { name: '새 채팅', exact: true }).first().click()
+      await page.waitForURL(`**/agents/${setup.parentAgentId}/conversations/new`, {
+        timeout: 10_000,
+      })
+      await expect(page.getByText(EMPTY_STATE_TEXT)).toBeVisible({ timeout: 20_000 })
+      await expect(
+        page.locator('[data-moldy-message-role="user"]').filter({ hasText: prompt }),
+      ).toHaveCount(0)
+
+      const draftRow = page.locator(
+        `[data-chat-session-href="/agents/${setup.parentAgentId}/conversations/new"]`,
+      )
+      await expect(draftRow).toBeVisible({ timeout: 10_000 })
+      await expect(draftRow).toHaveClass(/bg-primary/)
+      const promotedRow = page.locator(
+        `[data-chat-session-href="/agents/${setup.parentAgentId}/conversations/${promotedConversationId}"]`,
+      )
+      await expect(promotedRow).toBeVisible({ timeout: 10_000 })
+      await expect(promotedRow).not.toHaveClass(/bg-primary/)
+
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
+
   test('promotes the draft navigator row as soon as the first response starts streaming', async ({
     page,
     request,
     errors,
   }) => {
     const setup = await setupLangGraphV3Agent(request)
+    let promotedConversationId: string | null = null
     try {
       await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
       await page.getByRole('button', { name: '새 채팅', exact: true }).first().click()
@@ -906,7 +979,7 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
         new RegExp(`/agents/${setup.parentAgentId}/conversations/(?!new$)[^/]+$`),
         { timeout: 1_000 },
       )
-      const promotedConversationId = new URL(page.url()).pathname.split('/').at(-1) ?? ''
+      promotedConversationId = new URL(page.url()).pathname.split('/').at(-1) ?? ''
       await expectConversationDetailStatus(request, promotedConversationId, 200)
       await waitRunActive(request, promotedConversationId)
 
@@ -922,6 +995,7 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
     } finally {
+      await cancelActiveRunIfPresent(request, promotedConversationId, setup.csrfHeaders)
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
     }

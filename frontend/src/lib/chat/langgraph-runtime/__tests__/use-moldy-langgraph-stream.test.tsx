@@ -474,6 +474,63 @@ describe('useMoldyLangGraphStream', () => {
     expect(mocks.stream.stop).toHaveBeenCalled()
   })
 
+  it('starts post-run hydration polling when a run completes normally', async () => {
+    mocks.stream.isLoading = false
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hydrate',
+          conversationId: 'conversation-hydrate',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    // Flush the mount microtask that resets wasLoadingRef, then enter a run.
+    await act(async () => {})
+    mocks.stream.isLoading = true
+    rerender()
+    await act(async () => {})
+    mocks.apiFetch.mockClear()
+    // Run completes (no cancel) -> hydration polling should query thread state.
+    mocks.stream.isLoading = false
+    rerender()
+    await waitFor(() => {
+      expect(mocks.apiFetch.mock.calls.some(([path]) => String(path).endsWith('/state'))).toBe(true)
+    })
+  })
+
+  it('does not start post-run hydration polling when the user cancels the run', async () => {
+    mocks.stream.isLoading = false
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-cancel',
+          conversationId: 'conversation-cancel',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    await act(async () => {})
+    mocks.stream.isLoading = true
+    rerender()
+    await act(async () => {})
+
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onCancel: () => Promise<void>
+    }
+    mocks.apiFetch.mockClear()
+    // Cancel: stop the stream, which flips isLoading false on the next render.
+    await act(async () => {
+      const cancelled = runtimeOptions.onCancel()
+      mocks.stream.isLoading = false
+      rerender()
+      await cancelled
+    })
+    // Give any (incorrectly scheduled) hydration microtask/poll a chance to run.
+    await act(async () => {})
+    await act(async () => {})
+
+    expect(mocks.apiFetch.mock.calls.some(([path]) => String(path).endsWith('/state'))).toBe(false)
+  })
+
   it('runs the before-submit callback before submitting new assistant-ui messages', async () => {
     const callOrder: string[] = []
     const onBeforeSubmit = vi.fn(() => {
@@ -756,9 +813,9 @@ describe('useMoldyLangGraphStream', () => {
     const thirdUser = new HumanMessage({ id: 'middle-user-3', content: '바보야' })
     const readyMessages = [firstUser, firstAssistant, secondUser, secondAssistant]
     mocks.useExternalMessageConverter.mockImplementation(
-      (options: { messages: readonly (HumanMessage | AIMessage)[] }) =>
-        options.messages.map((message) => ({
-          id: message.id,
+      (options: { messages: readonly unknown[] }) =>
+        (options.messages as readonly (HumanMessage | AIMessage)[]).map((message) => ({
+          id: message.id as string,
           role: message._getType() === 'human' ? 'user' : 'assistant',
           content: [{ type: 'text', text: String(message.content) }],
         })),

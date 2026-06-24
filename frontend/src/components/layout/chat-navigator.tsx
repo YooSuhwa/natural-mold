@@ -10,6 +10,7 @@ import { SearchInput } from '@/components/shared/search-input'
 import { useAgentSummaries } from '@/lib/hooks/use-agents'
 import { useGlobalConversationPages } from '@/lib/hooks/use-conversations'
 import {
+  CHAT_ROUTE_CLEARED_EVENT,
   CHAT_ROUTE_REPLACED_EVENT,
   isChatRouteReplacedEvent,
 } from '@/lib/chat/chat-route-replacement'
@@ -120,15 +121,27 @@ export function ChatNavigator() {
     const handleRouteReplacement = (event: Event) => {
       if (isChatRouteReplacedEvent(event)) setReplacedPathname(event.detail.pathname)
     }
-    const handlePopState = () => setReplacedPathname(null)
+    const clearRouteReplacement = () => setReplacedPathname(null)
 
     window.addEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
-    window.addEventListener('popstate', handlePopState)
+    window.addEventListener(CHAT_ROUTE_CLEARED_EVENT, clearRouteReplacement)
+    window.addEventListener('popstate', clearRouteReplacement)
     return () => {
       window.removeEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
-      window.removeEventListener('popstate', handlePopState)
+      window.removeEventListener(CHAT_ROUTE_CLEARED_EVENT, clearRouteReplacement)
+      window.removeEventListener('popstate', clearRouteReplacement)
     }
   }, [])
+
+  // M7 — `usePathname()`이 replaced pathname을 따라잡으면 stale override를 정리한다.
+  // effect 안에서 동기적으로 setState하면 `react-hooks/set-state-in-effect`에 걸리고
+  // (AGENTS.md 참고) cascading render를 유발하므로, 대신 라우터가 따라잡았을 때
+  // 렌더 중에 곧장 state를 비운다. setState during render는 같은 렌더 안에서
+  // 즉시 재실행되어 cascade 없이 정착하는 React 권장 패턴이다
+  // (https://react.dev/reference/react/useState#storing-information-from-previous-renders).
+  if (replacedPathname !== null && pathname === replacedPathname) {
+    setReplacedPathname(null)
+  }
 
   const activeAgentId = route.agentId
 

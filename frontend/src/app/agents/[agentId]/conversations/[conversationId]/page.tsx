@@ -28,7 +28,10 @@ import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { getChatRuntimeMode } from '@/lib/chat/runtime-mode'
 import {
+  CHAT_ROUTE_CLEARED_EVENT,
   CHAT_ROUTE_REPLACED_EVENT,
+  clearChatRouteReplacement,
+  conversationIdFromChatPath,
   isChatRouteReplacedEvent,
   replaceChatRouteWithoutRemount,
 } from '@/lib/chat/chat-route-replacement'
@@ -50,12 +53,6 @@ interface RouteConversationOverride {
 interface DraftTitleDetailSuppression {
   readonly routeKey: string
   readonly conversationId: string
-}
-
-function conversationIdFromChatPath(pathname: string, agentId: string): string | null {
-  const match = /^\/agents\/([^/]+)\/conversations\/([^/]+)$/.exec(pathname)
-  if (!match || match[1] !== agentId) return null
-  return decodeURIComponent(match[2])
 }
 
 export default function ChatPage({
@@ -120,13 +117,15 @@ export default function ChatPage({
         conversationId: replacedConversationId,
       })
     }
-    const handlePopState = () => setRouteConversationOverride(null)
+    const clearRouteOverride = () => setRouteConversationOverride(null)
 
     window.addEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
-    window.addEventListener('popstate', handlePopState)
+    window.addEventListener(CHAT_ROUTE_CLEARED_EVENT, clearRouteOverride)
+    window.addEventListener('popstate', clearRouteOverride)
     return () => {
       window.removeEventListener(CHAT_ROUTE_REPLACED_EVENT, handleRouteReplacement)
-      window.removeEventListener('popstate', handlePopState)
+      window.removeEventListener(CHAT_ROUTE_CLEARED_EVENT, clearRouteOverride)
+      window.removeEventListener('popstate', clearRouteOverride)
     }
   }, [agentId, routeKey])
 
@@ -136,6 +135,16 @@ export default function ChatPage({
     startedConversationIdRef.current = null
   }, [agentId, conversationId, setSessionTokenUsage])
 
+  // M4 — read 처리 effect.
+  // ``currentConversation``은 (전체 목록 구독을 피하려고) 캐시에서 동기적으로
+  // 읽으므로 이 컴포넌트는 list 쿼리를 구독하지 않는다. 따라서 이 effect가
+  // 새 unread를 보고 다시 도는 트리거는 다음 둘뿐이다:
+  //   1) ``routeConversationId`` 변경(대화 전환),
+  //   2) navigator 무효화로 list 쿼리가 refetch되어 ``unread_count``가 바뀌면서
+  //      리렌더가 발생 → 이 effect의 ``currentConversation?.unread_count`` 의존성이
+  //      갱신될 때.
+  // markedReadKey가 ``${id}:${unreadCount}``라서 같은 unread 값에 대한 중복
+  // mark는 한 번으로 억제되고, unread가 늘면 다시 한 번만 mark된다.
   useEffect(() => {
     if (isDraftConversation) return
     if (messagesLoading || isMarkingRead) return
@@ -170,6 +179,7 @@ export default function ChatPage({
   const {
     conversationId: langGraphDraftConversationId,
     isBootstrapping: isLangGraphDraftBootstrapping,
+    retainDraftConversation,
     commitDraftConversation,
   } = useLangGraphDraftConversation({
     agentId,
@@ -238,6 +248,11 @@ export default function ChatPage({
           queryFn: () => conversationsApi.get(createdConversationId),
         })
         .then((conversation) => {
+          // M5 — optimistic upsert로 navigator(list/agent pages/global pages)를
+          // 즉시 채운다. 여기서 broad invalidate를 또 호출하면 방금 upsert한
+          // 페이지/summary가 곧장 stale 처리되어 refetch storm이 나고 optimistic
+          // upsert가 무효화된다. navigator 최종 정합은 ``onStreamEnd``가 책임지므로
+          // 여기서는 추가 무효화를 하지 않는다.
           upsertConversationNavigatorCache(
             queryClient,
             conversation,
@@ -249,9 +264,10 @@ export default function ChatPage({
                 }
               : null,
           )
-          invalidateConversationNavigators(queryClient, agentId, createdConversationId)
         })
         .catch(() => {
+          // detail fetch 실패로 upsert를 못 했으니, 이때만 navigator를 무효화해
+          // 다음 fetch로 새 대화가 목록에 들어오게 한다.
           invalidateConversationNavigators(queryClient, agentId, createdConversationId)
         })
     },
@@ -308,6 +324,7 @@ export default function ChatPage({
   const useLangGraphRuntime = runtimeMode === 'langgraph_v3' && activeConversationId !== null
 
   function handleNewConversation() {
+    clearChatRouteReplacement()
     router.push(`/agents/${agentId}/conversations/new`)
   }
   const handleOpenTrace = useCallback(() => {
@@ -329,11 +346,12 @@ export default function ChatPage({
   )
   const handleBeforeNewMessage = useCallback(() => {
     if (!isDraftConversation) return
-    const draftConversationId = langGraphDraftConversationId ?? startedConversationIdRef.current
+    const draftConversationId =
+      retainDraftConversation() ?? langGraphDraftConversationId ?? startedConversationIdRef.current
     if (!draftConversationId) return
     startedConversationIdRef.current = draftConversationId
     setSuppressEmptyStateForConversationId(draftConversationId)
-  }, [isDraftConversation, langGraphDraftConversationId])
+  }, [isDraftConversation, langGraphDraftConversationId, retainDraftConversation])
   const handleNewMessageAccepted = useCallback(() => {
     const acceptedConversationId =
       commitDraftConversation() ?? startedConversationIdRef.current ?? langGraphDraftConversationId

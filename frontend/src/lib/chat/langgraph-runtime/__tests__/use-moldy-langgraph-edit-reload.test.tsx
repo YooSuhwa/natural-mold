@@ -24,6 +24,7 @@ type RuntimeOptions = {
     sourceId: string | null
   }) => Promise<void>
   onReload: (parentId: string | null) => Promise<void>
+  onCancel: () => Promise<void>
 }
 
 const mocks = vi.hoisted(() => {
@@ -54,14 +55,28 @@ const mocks = vi.hoisted(() => {
       content?: unknown
       metadata?: unknown
     }[],
-    createMoldyAgentTransport: vi.fn(() => ({
-      kind: 'transport',
-      setRunStartAcceptedListener: vi.fn(),
-    })),
+    createMoldyAgentTransport: vi.fn(
+      (
+        conversationId: string,
+        agentId: string,
+        options?: { onState?: (state: unknown) => void },
+      ) => {
+        void conversationId
+        void agentId
+        void options
+        return {
+          kind: 'transport',
+          setRunStartAcceptedListener: vi.fn(),
+        }
+      },
+    ),
     useStream: vi.fn(() => stream),
     useChannel: vi.fn(() => []),
     useChannelEffect: vi.fn(),
-    useExternalMessageConverter: vi.fn(() => mocks.convertedMessages),
+    useExternalMessageConverter: vi.fn((options: { messages: readonly unknown[] }) => {
+      void options
+      return mocks.convertedMessages
+    }),
     useExternalStoreRuntime: vi.fn((options: unknown) => ({ kind: 'runtime', options })),
     convertLangChainBaseMessage: vi.fn(),
     apiFetch: vi.fn(),
@@ -247,6 +262,51 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
       expect.objectContaining({
         messages: [userMessage, assistantMessage],
       }),
+    )
+  })
+
+  it('restores the current transcript when canceling an edit run', async () => {
+    const originalUserMessage = new HumanMessage({
+      id: 'cancel-edit-user',
+      content: 'original prompt',
+      additional_kwargs: { metadata: { checkpoint_id: 'ck-after-cancel-user' } },
+    })
+    const staleAssistantMessage = new AIMessage({
+      id: 'cancel-edit-assistant',
+      content: 'old answer',
+    })
+    mocks.stream.messages = [originalUserMessage, staleAssistantMessage]
+    mocks.convertedMessages = [{ id: 'cancel-edit-user' }, { id: 'cancel-edit-assistant' }]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['cancel-edit-user', { parentCheckpointId: 'ck-before-cancel-user' }]]),
+    )
+
+    const runtimeOptions = renderRuntimeOptions()
+    await act(async () => {
+      await runtimeOptions.onEdit({
+        content: [{ type: 'text', text: 'edited prompt' }],
+        parentId: 'cancel-edit-user',
+        sourceId: 'cancel-edit-user',
+      })
+    })
+    expect(mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        messages: expect.arrayContaining([expect.objectContaining({ content: 'edited prompt' })]),
+      }),
+    )
+
+    await act(async () => {
+      await runtimeOptions.onCancel()
+    })
+
+    const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+      readonly messages: readonly BaseMessage[]
+    }
+    expect(converterOptions.messages).toEqual(
+      expect.arrayContaining([originalUserMessage, staleAssistantMessage]),
+    )
+    expect(converterOptions.messages.some((message) => message.content === 'edited prompt')).toBe(
+      false,
     )
   })
 

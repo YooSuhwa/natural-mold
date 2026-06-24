@@ -169,6 +169,7 @@ CHAT_RICH_OUTPUT_CONTENT = "\n".join(
         "```",
     )
 )
+HITL_APPROVAL_MARKER = "E2E_HITL_APPROVAL"
 ASK_USER_FRUIT_MARKER = "E2E_ASK_USER_FRUIT"
 ASK_USER_FRUIT_TOOL_CALL_ID = "call_e2e_ask_user_fruit"
 ASK_USER_FRUIT_PREFACE_CONTENT = "네, 골라봐요!"
@@ -210,10 +211,23 @@ def _is_ask_user_fruit_request(human_text: str) -> bool:
 
 
 def _is_hitl_approval_request(human_text: str) -> bool:
+    # Explicit marker always wins so a generic prompt like "도구 승인 절차를
+    # 설명해줘" (explain the tool-approval flow) does not accidentally fire an
+    # ``execute_in_skill`` tool call.
+    if HITL_APPROVAL_MARKER in human_text:
+        return True
+
     lowered = human_text.lower()
     mentions_tool = "mcp" in lowered or "도구" in human_text or "tool" in lowered
     mentions_hitl = "hitl" in lowered or "승인" in human_text or "approval" in lowered
-    return mentions_tool and mentions_hitl
+    # Require an explicit execution intent in addition to the tool/approval
+    # mention so descriptive prompts ("설명/알려줘") are not mistaken for an
+    # approval-triggering request. Backward compatible with existing specs that
+    # phrase the prompt as "도구 사용 승인" / "tool ... HITL".
+    mentions_execution = (
+        "사용" in human_text or "실행" in human_text or "use" in lowered or "run" in lowered
+    )
+    return mentions_tool and mentions_hitl and mentions_execution
 
 
 def _document_tool_call(marker: str, tool_args: dict[str, str]) -> dict[str, Any]:
@@ -420,6 +434,7 @@ __all__ = [
     "CHAT_RICH_OUTPUT_CONTENT",
     "CHAT_RICH_OUTPUT_MARKER",
     "CHAT_RICH_OUTPUT_PROMPT",
+    "HITL_APPROVAL_MARKER",
     "ASK_USER_FRUIT_FINAL_CONTENT",
     "ASK_USER_FRUIT_MARKER",
     "ASK_USER_FRUIT_PREFACE_CONTENT",

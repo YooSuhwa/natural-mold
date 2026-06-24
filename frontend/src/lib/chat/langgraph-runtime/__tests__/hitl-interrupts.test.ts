@@ -283,6 +283,37 @@ describe('appendInterruptToolCallMessages', () => {
       }),
     ])
   })
+
+  it('하이드레이션 시 입력 배열을 변형하지 않는다(immutability 계약)', () => {
+    const existing = new AIMessage({
+      id: 'assistant-ask',
+      content: '',
+      tool_calls: [
+        {
+          id: 'toolu-ask',
+          name: 'ask_user',
+          args: { mode: 'option_list', question: 'Q', options: ['a', 'b'] },
+        },
+      ],
+    })
+    const input = [new HumanMessage({ id: 'user-1', content: 'ask' }), existing]
+    const inputSnapshot = [...input]
+
+    const projected = appendInterruptToolCallMessages(input, [
+      {
+        interrupt_id: 'intr-ask',
+        action_requests: [
+          { name: 'ask_user', args: { mode: 'option_list', question: 'Q', options: ['a', 'b'] } },
+        ],
+        review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+      },
+    ])
+
+    // 원본 배열과 그 요소 참조는 그대로, 반환 배열만 새 메시지로 교체된다.
+    expect(input).toEqual(inputSnapshot)
+    expect(input[1]).toBe(existing)
+    expect(projected[1]).not.toBe(existing)
+  })
 })
 
 describe('appendResolvedInterruptToolCallMessages', () => {

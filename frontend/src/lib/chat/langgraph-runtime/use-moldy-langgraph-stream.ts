@@ -45,6 +45,7 @@ import {
 import { useLangGraphMemoryEffects } from './memory-events'
 import {
   dedupeLangChainMessagesById,
+  langChainMessageFingerprint,
   sourceMessageIdFromThreadMessageId,
   stableString,
   useStableConvertedMessages,
@@ -1404,8 +1405,19 @@ function messageContentRoleFingerprint(message: BaseMessage | undefined): string
   })
 }
 
+// H4: the converter-cache invalidation key (`conversionEpoch`) must cover the
+// SAME fields the converter reads as `useStableConvertedMessages`'s fingerprint
+// (which delegates to `langChainMessageFingerprint`). `messageRenderKey` alone
+// only fingerprints content/type plus checkpoint/branch metadata, so source
+// changes in name/additional_kwargs/response_metadata/tool_call_id/usage_metadata
+// would alter converted output yet leave this key (and the cache) stale. We
+// union both so neither side can miss a converter-relevant change.
 function messageListFingerprint(messages: readonly BaseMessage[]): string {
-  return stableString(messages.map(messageRenderKey))
+  return stableString(
+    messages.map(
+      (message) => `${messageRenderKey(message)}|${langChainMessageFingerprint(message)}`,
+    ),
+  )
 }
 
 function messageRenderKey(message: BaseMessage): string {
@@ -1611,7 +1623,11 @@ function useStickyConversationMessages(
   messages: readonly BaseMessage[],
   replaceMessages: boolean,
 ): readonly BaseMessage[] {
-  const stickyMessages = useMemo(() => {
+  // Perf: the merge pipeline below is worst-case O(n^2). Run it ONCE in the memo
+  // and reuse the result in the layout effect instead of recomputing it. `cached`
+  // is read only inside the effect (cache writes happen there), so the memo and
+  // the effect observe the same cache snapshot within a single synchronous render.
+  const { sticky, cacheable } = useMemo(() => {
     const cached = stickyMessagesByConversation.get(conversationId)
     const contentMergedMessages = cached
       ? mergeCachedNonEmptyMessageContent(messages, cached)
@@ -1623,27 +1639,19 @@ function useStickyConversationMessages(
             cached,
           )
         : contentMergedMessages
-    if (!replaceMessages && cached && messageListIsDegraded(mergedMessages, cached)) return cached
-    return mergedMessages
+    if (!replaceMessages && cached && messageListIsDegraded(mergedMessages, cached)) {
+      // Degraded candidate: keep showing the cached list and do not overwrite it.
+      return { sticky: cached, cacheable: null as readonly BaseMessage[] | null }
+    }
+    return { sticky: mergedMessages, cacheable: mergedMessages }
   }, [conversationId, messages, replaceMessages])
 
   useLayoutEffect(() => {
-    const cached = stickyMessagesByConversation.get(conversationId)
-    const contentMergedMessages = cached
-      ? mergeCachedNonEmptyMessageContent(messages, cached)
-      : messages
-    const mergedMessages =
-      !replaceMessages && cached
-        ? mergeCachedReadyAssistantMessages(
-            mergeCachedPrefixForAppendOnlyStream(contentMergedMessages, cached),
-            cached,
-          )
-        : contentMergedMessages
-    if (!replaceMessages && cached && messageListIsDegraded(mergedMessages, cached)) return
-    cacheStickyMessages(conversationId, mergedMessages)
-  }, [conversationId, messages, replaceMessages])
+    if (cacheable === null) return
+    cacheStickyMessages(conversationId, cacheable)
+  }, [cacheable, conversationId])
 
-  return stickyMessages
+  return sticky
 }
 
 function mergeCachedNonEmptyMessageContent(
@@ -1741,29 +1749,32 @@ function useStickyConvertedMessages(
   isRunning: boolean,
   replaceMessages: boolean,
 ): readonly ConvertedMessage[] {
-  const stickyMessages = useMemo(() => {
+  // Perf: as in useStickyConversationMessages, the convert merge is O(n^2). Run
+  // it once in the memo and reuse the result in the effect rather than redoing it.
+  const { sticky, cacheable } = useMemo(() => {
     const cached = stickyConvertedMessagesByConversation.get(conversationId)
     const mergedMessages = cached
       ? mergeCachedConvertedMessages(messages, cached, { reuseReadyAssistant: !isRunning })
       : messages
-    if (!replaceMessages && messages.length === 0 && cached && cached.length > 0) return cached
-    if (!replaceMessages && cached && convertedMessageListIsDegraded(mergedMessages, cached)) {
-      return cached
+    const none = null as readonly ConvertedMessage[] | null
+    if (!replaceMessages && messages.length === 0 && cached && cached.length > 0) {
+      return { sticky: cached, cacheable: none }
     }
-    return mergedMessages
+    if (!replaceMessages && cached && convertedMessageListIsDegraded(mergedMessages, cached)) {
+      return { sticky: cached, cacheable: none }
+    }
+    return {
+      sticky: mergedMessages,
+      cacheable: mergedMessages.length > 0 ? mergedMessages : none,
+    }
   }, [conversationId, isRunning, messages, replaceMessages])
 
   useLayoutEffect(() => {
-    const cached = stickyConvertedMessagesByConversation.get(conversationId)
-    const mergedMessages = cached
-      ? mergeCachedConvertedMessages(messages, cached, { reuseReadyAssistant: !isRunning })
-      : messages
-    if (!replaceMessages && messages.length === 0 && cached && cached.length > 0) return
-    if (!replaceMessages && cached && convertedMessageListIsDegraded(mergedMessages, cached)) return
-    if (mergedMessages.length > 0) cacheStickyConvertedMessages(conversationId, mergedMessages)
-  }, [conversationId, isRunning, messages, replaceMessages])
+    if (cacheable === null) return
+    cacheStickyConvertedMessages(conversationId, cacheable)
+  }, [cacheable, conversationId])
 
-  return stickyMessages
+  return sticky
 }
 
 function mergeCachedConvertedMessages(
@@ -2114,6 +2125,10 @@ export function useMoldyLangGraphStream({
     [conversationId],
   )
   const wasLoadingRef = useRef(false)
+  // Set when the user cancels a run so the post-run hydration polling does NOT
+  // start on the resulting isLoading true->false transition. Reset whenever a new
+  // run begins (isLoading becomes true), so a later genuine completion still hydrates.
+  const hydrationCanceledRef = useRef(false)
   const settlePostRunHydration = useCallback(() => {
     wasLoadingRef.current = false
     setPostRunHydrationPending(false)
@@ -2286,11 +2301,23 @@ export function useMoldyLangGraphStream({
       pendingReloadRender,
     )
   }, [pendingEditRender, pendingReloadRender, renderableStreamMessages, serverMessageMetadata])
-  const allInterruptPayloads = standardPayloadsFromInterrupts([
+  // Perf: the three interrupt sources are all reference-unstable — `serverInterrupts`
+  // is a fresh `[]` when the conversation id differs, `stream.interrupts` mutates on
+  // every streaming token, and `threadInterruptsFromStream` falls back to a fresh `[]`.
+  // Keying the memo off their array identities would invalidate it every render (and
+  // re-run on every token), cascading through the downstream interrupt memos, so we key
+  // off a content fingerprint instead and only recompute when the interrupts truly change.
+  const rawInterrupts = [
     ...serverInterrupts,
     ...stream.interrupts,
     ...threadInterruptsFromStream(stream),
-  ])
+  ]
+  const rawInterruptsFingerprint = stableString(rawInterrupts)
+  const allInterruptPayloads = useMemo(
+    () => standardPayloadsFromInterrupts(rawInterrupts),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawInterruptsFingerprint],
+  )
   const interruptPayloads = useMemo(
     () =>
       activeInterruptPayloads(
@@ -2348,10 +2375,14 @@ export function useMoldyLangGraphStream({
   useEffect(() => {
     if (stream.isLoading) {
       wasLoadingRef.current = true
+      // A new run is underway: clear any prior cancel so its completion hydrates.
+      hydrationCanceledRef.current = false
       queueMicrotask(() => setPostRunHydrationPending(false))
       return undefined
     }
     if (!wasLoadingRef.current) return undefined
+    // User canceled this run: do not start the (up to 10s) hydration polling.
+    if (hydrationCanceledRef.current) return undefined
     if (pendingEditRender || pendingReloadRender) return undefined
 
     let cancelled = false
@@ -2401,8 +2432,20 @@ export function useMoldyLangGraphStream({
     settlePostRunHydration,
     stream.isLoading,
   ])
-  const conversionSourceFingerprint = messageListFingerprint(stickyMessagesWithTerminalNotice)
+  // Perf: full serialization of the sticky message list is expensive; memoize it
+  // off the (sticky-stable) message reference so it only re-runs when the list
+  // actually changes instead of on every render (including each streaming token).
+  const conversionSourceFingerprint = useMemo(
+    () => messageListFingerprint(stickyMessagesWithTerminalNotice),
+    [stickyMessagesWithTerminalNotice],
+  )
   const conversionCallback = useMemo<typeof convertMoldyLangChainMessage>(() => {
+    // `conversionEpoch` is intentionally captured-but-unused (`void` below): it is
+    // NOT dead code. `useExternalMessageConverter` memoizes converted output keyed
+    // by the callback identity, so changing this closure's identity whenever the
+    // source fingerprint changes is what invalidates that converter cache. Without
+    // it, source edits that don't change message identity would render stale
+    // converted messages. Do not remove.
     const conversionEpoch = conversionSourceFingerprint
     return (message, metadata) => {
       void conversionEpoch
@@ -2502,6 +2545,11 @@ export function useMoldyLangGraphStream({
     }
   }, [feedbackAdapter, attachmentAdapter])
   const onCancel = useCallback(async () => {
+    // Stop post-run hydration before stream.stop() flips isLoading false: refs are
+    // synchronous, so the hydration effect sees the cancel on that transition and
+    // early-returns instead of polling the server for up to 10s.
+    hydrationCanceledRef.current = true
+    wasLoadingRef.current = false
     setChatCancelInFlight(true)
     try {
       await stream.stop()
@@ -2511,15 +2559,15 @@ export function useMoldyLangGraphStream({
       }
       setThreadRunNotice({ id: `local-${conversationId}`, status: 'canceled' })
     } finally {
-      setPendingBranchPickerSuppression(null)
-      setPendingReloadRender(null)
+      clearPendingEditRenderState()
+      clearPendingReloadRenderState()
       setChatCancelInFlight(false)
     }
   }, [
+    clearPendingEditRenderState,
+    clearPendingReloadRenderState,
     conversationId,
     setChatCancelInFlight,
-    setPendingBranchPickerSuppression,
-    setPendingReloadRender,
     setThreadRunNotice,
     stream,
   ])

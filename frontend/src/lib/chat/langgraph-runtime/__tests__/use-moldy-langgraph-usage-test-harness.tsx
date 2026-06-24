@@ -64,7 +64,10 @@ const hoistedMocks = vi.hoisted(() => {
     STREAM_CONTROLLER,
     metadataStore,
     stream,
-    createMoldyAgentTransport: vi.fn(() => ({ kind: 'transport' })),
+    createMoldyAgentTransport: vi.fn(() => ({
+      kind: 'transport',
+      setRunStartAcceptedListener: vi.fn(),
+    })),
     useStream: vi.fn(() => stream),
     useChannel: vi.fn<MockUseChannel>(() => []),
     useChannelEffect: vi.fn(),
