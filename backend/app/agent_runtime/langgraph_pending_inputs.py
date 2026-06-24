@@ -77,26 +77,32 @@ def _payload_from_interrupt(
 def _interrupt_payloads_from_state(state: Any) -> list[PendingInputPayload]:
     task_payloads: list[PendingInputPayload] = []
     task_interrupt_ids: set[str] = set()
+    # Monotonic across ALL tasks (and the top-level scan below) so two id-less
+    # interrupts in different tasks don't both synthesize ``interrupt-1`` and
+    # collide under id-based dedup (ADR-021 review #8).
+    fallback_index = 0
     for task in getattr(state, "tasks", ()) or ():
         # Real ``PregelTask.path`` is e.g. ``('__pregel_pull', 'tools')`` — there is no
         # ``node:task_id`` segment to recover a subgraph namespace from (that lives in
         # ``metadata['langgraph_checkpoint_ns']``, not ``path``). The namespace here is
         # therefore always empty; the resume round-trip validates the empty value.
         namespace: list[str] = []
-        for index, interrupt in enumerate(getattr(task, "interrupts", ()) or ()):
-            payload = _payload_from_interrupt(interrupt, namespace=namespace, index=index)
+        for interrupt in getattr(task, "interrupts", ()) or ():
+            payload = _payload_from_interrupt(interrupt, namespace=namespace, index=fallback_index)
+            fallback_index += 1
             if payload is not None:
                 task_payloads.append(payload)
                 task_interrupt_ids.add(payload["interrupt_id"])
 
     top_level_payloads: list[PendingInputPayload] = []
     interrupts = list(getattr(state, "interrupts", ()) or ())
-    for index, interrupt in enumerate(interrupts):
+    for interrupt in interrupts:
         payload = _payload_from_interrupt(
             interrupt,
             namespace=_namespace_from_interrupt(interrupt),
-            index=index,
+            index=fallback_index,
         )
+        fallback_index += 1
         if payload is not None:
             top_level_payloads.append(payload)
 
@@ -148,6 +154,13 @@ def _interrupt_payloads_from_pending_writes(
         return []
 
     payloads: list[PendingInputPayload] = []
+    # Monotonic across the WHOLE scan, not per-write: a per-write ``enumerate``
+    # would synthesize ``interrupt-1`` for the first id-less interrupt of every
+    # write, and two such writes would collide → dedup drops one interrupt on
+    # checkpointer recovery (ADR-021 review #8). Real ``Interrupt`` objects carry
+    # a content-derived id so the fallback is rare, but a unique fallback keeps
+    # it correct regardless.
+    fallback_index = 0
     for write in pending_writes:
         if not isinstance(write, Sequence) or isinstance(write, str | bytes) or len(write) < 3:
             continue
@@ -157,12 +170,13 @@ def _interrupt_payloads_from_pending_writes(
         raw_interrupts = write[2]
         if not isinstance(raw_interrupts, Sequence) or isinstance(raw_interrupts, str | bytes):
             continue
-        for index, interrupt in enumerate(raw_interrupts):
+        for interrupt in raw_interrupts:
             payload = _payload_from_interrupt(
                 interrupt,
                 namespace=_namespace_from_interrupt(interrupt),
-                index=index,
+                index=fallback_index,
             )
+            fallback_index += 1
             if payload is not None:
                 payloads.append(payload)
     return payloads

@@ -46,6 +46,15 @@ from langchain_core.messages import BaseMessage
 
 logger = logging.getLogger(__name__)
 
+# Default rank for a sibling whose checkpoint isn't in ``checkpoint_rank_by_id``.
+# Real ranks are list indices (>= 0, 0 = newest), and the sort key negates them
+# (``-rank``), so every real sibling has a key <= 0. A negative default makes an
+# unranked sibling's key strictly positive => it sorts deterministically LAST.
+# In practice this is unreachable (every sibling checkpoint_id comes from the
+# chain/leaf set that built the rank map), but the explicit sentinel documents
+# the ordering instead of leaving a bare ``-1`` magic number (ADR-021 review).
+_UNRANKED_SIBLING_RANK = -1
+
 
 @dataclass
 class _CheckpointSlim:
@@ -515,7 +524,10 @@ def _build_tree_from_checkpoints(
 
         if len(siblings) >= 2:
             siblings.sort(
-                key=lambda s: (-checkpoint_rank_by_id.get(s.checkpoint_id, -1), s.checkpoint_id)
+                key=lambda s: (
+                    -checkpoint_rank_by_id.get(s.checkpoint_id, _UNRANKED_SIBLING_RANK),
+                    s.checkpoint_id,
+                )
             )
             branches_by_message[active_mid] = siblings
 
@@ -649,7 +661,10 @@ def _build_tree_from_leaf_checkpoints(
 
         if len(siblings) >= 2:
             siblings.sort(
-                key=lambda s: (-checkpoint_rank_by_id.get(s.checkpoint_id, -1), s.checkpoint_id)
+                key=lambda s: (
+                    -checkpoint_rank_by_id.get(s.checkpoint_id, _UNRANKED_SIBLING_RANK),
+                    s.checkpoint_id,
+                )
             )
             branches_by_message[active_mid] = siblings
             active_pos = next(
