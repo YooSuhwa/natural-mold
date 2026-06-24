@@ -108,8 +108,14 @@ _VALUE_MASK_PATTERNS: Final = (
     # URL/DSN userinfo credentials: ``scheme://user:pw@host`` -> mask ``user:pw``.
     # Any scheme (http(s), postgres, redis, mongodb, amqp, ...) so DSNs embedded
     # in trace/error strings don't leak their password.
+    #
+    # ReDoS note: the scheme is anchored with ``\b`` and length-bounded
+    # (``{0,31}``). An unbounded ``[a-z0-9+.\-]*://`` scheme would start a match
+    # at nearly every position of a long identifier run and scan forward for
+    # ``://``, giving O(n^2) on attacker-controlled blobs (a plain 96KB token
+    # run stalled ~23s). The bound + word-boundary removes those start sites.
     (
-        re.compile(r"([a-z][a-z0-9+.\-]*://)[^/\s:@]+:[^/\s@]+(@)", re.IGNORECASE),
+        re.compile(r"\b([a-z][a-z0-9+.\-]{0,31}://)[^/\s:@]+:[^/\s@]+(@)", re.IGNORECASE),
         r"\1<redacted>\2",
     ),
 )
@@ -148,6 +154,11 @@ def _normalize_key(key: str) -> str:
     # boundary (``sessiontoken`` no longer has a ``_token`` segment) and the
     # secret key would leak — a regression vs. the old substring matcher.
     spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key.strip())
+    # Also split acronym->word boundaries so a sensitive fragment behind an
+    # uppercase run isn't swallowed: ``IDToken`` -> ``ID_Token``,
+    # ``JWTSecret`` -> ``JWT_Secret``, ``SSOToken`` -> ``SSO_Token``. Without
+    # this the ``_token``/``_secret`` segment vanishes and the key leaks.
+    spaced = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", "_", spaced)
     return spaced.lower()
 
 

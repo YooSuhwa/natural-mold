@@ -215,6 +215,13 @@ CAMEL_CASE_SENSITIVE_KEYS = [
     "accessToken",
     "refreshToken",
     "csrfToken",
+    # Acronym-prefixed keys (uppercase run before the fragment) must also
+    # redact — a naive lowercase-only camelCase split would leak these.
+    "IDToken",
+    "SSOToken",
+    "JWTSecret",
+    "OAUTHToken",
+    "URLSecret",
 ]
 
 
@@ -257,12 +264,22 @@ def test_plain_url_without_credentials_is_preserved() -> None:
 # --- 6. ReDoS guard: assignment regex stays linear on long identifier runs --
 
 
-def test_assignment_redaction_is_not_quadratic() -> None:
-    # A long run of identifier characters with no ``=``/``:`` triggered
-    # catastrophic backtracking in the previous pattern (~1.4s at 6.4KB,
-    # O(n^2)+). The bounded key class must keep this well under a second
-    # even at ~60KB, on the persistence/streaming hot path.
-    blob = "token" + "a0_" * 20000
+@pytest.mark.parametrize(
+    "blob",
+    [
+        # Long identifier run with ``_`` separators (assignment-regex hot path).
+        "token" + "a0_" * 20000,
+        # Pure delimiter-less run — exercises the DSN scheme scanner, which a
+        # naive ``[a-z0-9+.\-]*://`` generalization turned O(n^2) (~23s at 96KB).
+        "a" * 60000,
+        # Hex blob (common in traces: hashes/UUIDs) — same DSN hot path.
+        "deadbeef" * 12000,
+    ],
+)
+def test_redaction_is_not_quadratic(blob: str) -> None:
+    # All redaction regexes must stay linear on attacker-controlled trace
+    # blobs reaching the persistence/streaming hot path. Both the assignment
+    # leak regex and the value-mask (esp. DSN scheme) patterns are covered.
     start = time.perf_counter()
     redact_protocol_data("custom", {"detail": blob})
     elapsed = time.perf_counter() - start
