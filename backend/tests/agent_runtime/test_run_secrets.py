@@ -46,6 +46,24 @@ def test_collect_extracts_basic_token_body() -> None:
     assert "dXNlcjpwYXNzd29yZA==" in result
 
 
+def test_collect_pair_shape_takes_value_only() -> None:
+    # ADR-021 review #3 — ``{name|key|header: <meta>, value: <secret>}`` is the
+    # canonical serialized header/param pair shape. The metadata field (e.g. the
+    # header name ``Authorization``) must NOT be collected, else it over-masks
+    # that common word in legitimate prose.
+    result = collect_secret_values(
+        [{"name": "Authorization", "value": "Bearer supersecrettoken12345"}]
+    )
+    assert "Authorization" not in result
+    assert "Bearer supersecrettoken12345" in result
+    assert "supersecrettoken12345" in result  # bare body still split out
+
+    # ``{key, value}`` variant behaves the same.
+    keyed = collect_secret_values({"key": "x-api-name", "value": "longsecret999"})
+    assert "x-api-name" not in keyed
+    assert "longsecret999" in keyed
+
+
 def test_collect_ignores_non_str_leaves() -> None:
     result = collect_secret_values({"count": 12345, "flag": True, "blob": b"rawbytes"})
     assert result == set()

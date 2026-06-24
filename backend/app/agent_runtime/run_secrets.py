@@ -44,6 +44,12 @@ _MIN_SECRET_LEN = 5
 # after the scheme so the bare token is masked too.
 _AUTH_SCHEME_PREFIXES = ("Bearer ", "Basic ")
 
+# Canonical serialized header / param pair shape: ``{"name"|"key"|"header":
+# <meta>, "value": <secret>}`` (MCP headers, tool params). The name/key/header
+# field is metadata, not a secret — collecting it over-masks common header
+# names like ``Authorization`` when they appear in legitimate prose (ADR-021).
+_PAIR_META_KEYS = ("name", "key", "header")
+
 _run_secrets: ContextVar[set[str] | None] = ContextVar("moldy_run_secrets", default=None)
 
 
@@ -177,6 +183,11 @@ def _collect_into(obj: object, out: set[str]) -> None:
         _add_str_leaf(obj, out)
         return
     if isinstance(obj, Mapping):
+        # ``{name/key/header: <meta>, value: <secret>}`` — collect only the
+        # value so the metadata field (e.g. the header name) isn't masked.
+        if "value" in obj and any(meta in obj for meta in _PAIR_META_KEYS):
+            _collect_into(obj["value"], out)
+            return
         for value in obj.values():
             _collect_into(value, out)
         return

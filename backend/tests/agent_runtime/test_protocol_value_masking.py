@@ -54,12 +54,19 @@ def test_mask_known_values_noop_without_secrets() -> None:
     assert _mask_known_values(data, []) is data
 
 
-def test_mask_leaves_keys_untouched() -> None:
-    # The value layer scans *values* only — a secret matching a key name does
-    # not rewrite the key, just its occurrence inside the value string.
+def test_mask_masks_secret_dict_keys() -> None:
+    # ADR-021 review #2 — a secret echoed as a dict KEY must be masked too, not
+    # just its occurrence inside values. Value-only masking leaked the key.
     out = _mask_known_values({"my-secret-token": "my-secret-token at end"}, ["my-secret-token"])
-    assert "my-secret-token" in out  # key preserved verbatim
-    assert out["my-secret-token"] == f"{REDACTED_SENSITIVE_FIELD} at end"
+    assert "my-secret-token" not in out  # key masked, not preserved
+    assert out == {REDACTED_SENSITIVE_FIELD: f"{REDACTED_SENSITIVE_FIELD} at end"}
+
+
+def test_mask_preserves_non_secret_keys() -> None:
+    # Keys that don't contain a run secret are left verbatim (no over-masking).
+    secret = "sk-secret-value-123"
+    out = _mask_known_values({"status": "ok", "api_key": secret}, [secret])
+    assert out == {"status": "ok", "api_key": REDACTED_SENSITIVE_FIELD}
 
 
 # --- (c) propagation via ContextVar without an explicit arg -----------------

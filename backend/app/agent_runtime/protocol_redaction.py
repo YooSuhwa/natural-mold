@@ -216,10 +216,12 @@ def _mask_known_values(data: Any, secret_values: Iterable[str] | None) -> Any:
     """Recurse the payload, exact-replacing known secret values in str leaves.
 
     Returns ``data`` unchanged when there are no secrets to mask (fast path
-    for the common ContextVar-unset case). Mapping keys are left untouched —
-    the key heuristics own those — so only *values* are scanned. The shared
-    :func:`replace_secret_values` core sorts length-desc, drops ``<5`` and
-    does a pure ``str.replace`` (no regex / no ReDoS).
+    for the common ContextVar-unset case). Both Mapping *keys* and *values* are
+    scanned: a secret echoed as a dict key (``{api_key_value: {...}}``) would
+    otherwise survive value-only masking (ADR-021 — key heuristics only catch
+    sensitive key *names*, not keys that ARE injected secret values). The
+    shared :func:`replace_secret_values` core sorts length-desc, drops ``<5``
+    and does a pure ``str.replace`` (no regex / no ReDoS).
     """
 
     if not secret_values:
@@ -232,7 +234,17 @@ def _mask_known_values(data: Any, secret_values: Iterable[str] | None) -> Any:
 
 def _mask_values_recursive(data: Any, secrets: tuple[str, ...]) -> Any:
     if isinstance(data, Mapping):
-        return {key: _mask_values_recursive(value, secrets) for key, value in data.items()}
+        # Mask str keys too — a tool/API response can echo an injected secret
+        # as an object key, which value-only masking would leak. Exact
+        # substring replace (pure str.replace, no regex), so still ReDoS-free.
+        return {
+            (
+                replace_secret_values(key, secrets, placeholder=REDACTED_SENSITIVE_FIELD)
+                if isinstance(key, str)
+                else key
+            ): _mask_values_recursive(value, secrets)
+            for key, value in data.items()
+        }
     if isinstance(data, Sequence) and not isinstance(data, str | bytes | bytearray):
         return [_mask_values_recursive(item, secrets) for item in data]
     if isinstance(data, str):

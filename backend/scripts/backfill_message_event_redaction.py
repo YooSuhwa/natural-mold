@@ -209,7 +209,11 @@ def redact_events(events: Any) -> tuple[list[dict[str, Any]] | Any, int]:
 
 
 def _elide(text: str) -> str:
-    return _ELIDE_RE.sub(lambda m: f"{m.group(0)[:4]}…<elided:{len(m.group(0))}>", text)
+    # Elide the WHOLE run — no leading-char preview. Keeping a prefix leaked up
+    # to the first 4 chars of a 5-char secret (and one prefix per special-char
+    # segment) into the dry-run sample, violating the "raw plaintext never
+    # reaches stdout" contract (ADR-021 review).
+    return _ELIDE_RE.sub(lambda m: f"<elided:{len(m.group(0))}>", text)
 
 
 def _diff_windows(before: Any, after: Any, *, context: int = 36) -> list[tuple[str, str]]:
