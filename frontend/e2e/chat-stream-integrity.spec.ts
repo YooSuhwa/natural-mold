@@ -1,6 +1,6 @@
 import { API_BASE, apiDeleteOk, expect, test } from './fixtures'
 import { expectNoUserTextFlicker, installUserTextStabilityObserver } from './helpers/stability-observers'
-import { sendMessage, setupLangGraphV3Agent } from './langgraph-v3-helpers'
+import { approveExecuteInSkill, sendMessage, setupLangGraphV3Agent } from './langgraph-v3-helpers'
 
 /**
  * Streaming render INTEGRITY (text-only path via E2E_SLOW_STREAM, ~6 chunks ×
@@ -54,6 +54,44 @@ test.describe('Chat streaming render integrity', () => {
 
       // errors fixture auto-asserts: no page JS exceptions during the stream.
       expect(errors.console, 'console errors during stream').toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
+
+  test('renders exactly one HITL approval card (no duplicate) that resolves on approve', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    test.setTimeout(120_000)
+    const setup = await setupLangGraphV3Agent(request)
+    const approveButton = page.locator('[data-testid="approval-approve-button"]')
+    const userBubbles = page.locator('[data-moldy-message-role="user"]')
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      const prompt = 'E2E_HITL_APPROVAL 승인 카드 무결성'
+      await sendMessage(page, prompt)
+
+      // The execute_in_skill tool pauses on an approval card (the "called X" box).
+      await expect(page.getByText('승인이 필요합니다').last()).toBeVisible({ timeout: 30_000 })
+      // The tool name is shown in the card.
+      await expect(page.getByText('execute_in_skill').last()).toBeVisible({ timeout: 15_000 })
+      // Exactly ONE approval card — no duplicate / stacked cards.
+      await expect(approveButton).toHaveCount(1)
+
+      // The user prompt stays stable while the approval card renders.
+      await installUserTextStabilityObserver(page, [prompt])
+      await expectNoUserTextFlicker(page, 1000)
+
+      // Approve → the card resolves cleanly (approve button removed, no leftover).
+      await approveExecuteInSkill(page)
+      await expect(approveButton).toHaveCount(0, { timeout: 30_000 })
+      await expect(userBubbles).toHaveCount(1)
+
+      expect(errors.console, 'console errors during HITL approval').toEqual([])
     } finally {
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
