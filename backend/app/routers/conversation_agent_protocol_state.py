@@ -47,7 +47,7 @@ async def load_thread_history_response(
     # explicitly (best-effort) and thread them into the serialized messages.
     secrets: tuple[str, ...] | None = None
     if db is not None and user is not None:
-        secrets = tuple(await collect_state_secret_values(db, conversation, user))
+        secrets = tuple(await collect_state_secret_values(db, conversation))
 
     checkpoints = await _collect_checkpoints(checkpointer, str(conversation.id))
     checkpoint_by_message_id = _checkpoint_by_message_id_from_checkpoints(checkpoints)

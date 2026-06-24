@@ -54,6 +54,7 @@ __all__ = [
     "conversation_title_from_content",
     "build_tools_config",
     "clear_active_branch_override",
+    "collect_conversation_secret_values",
     "create_conversation",
     "delete_conversation",
     "gc_orphan_draft_conversations",
@@ -485,18 +486,25 @@ async def _hydrate_pending_interrupt_tool_calls(
             response.tool_calls = _merge_interrupt_tool_calls(response.tool_calls or [], payload)
 
 
-async def _collect_message_secret_values(
+async def collect_conversation_secret_values(
     db: AsyncSession,
     conversation: Conversation,
 ) -> set[str]:
     """ADR-021 C2 — gather the conversation agent's plaintext secrets.
 
-    GET /messages renders persisted tool_calls outside any run, so we rebuild
-    the eager secret set (LLM ``api_key`` + each tool config's plaintext
-    ``credentials`` + MCP transport headers) from the conversation's agent and
-    pass it explicitly to ``redact_protocol_data``. Best-effort: a missing
-    agent / model / credential degrades to heuristics-only rather than failing
-    the read. ``base_url`` userinfo is also folded in (M1).
+    Read/poll endpoints (GET /messages, GET /threads/{id}/state, share-link
+    render) run *outside* any agent run, so the run-scoped redaction ContextVar
+    is never set. This is the single LIGHTWEIGHT collector those paths share to
+    rebuild the eager secret set (LLM ``api_key`` + each tool config's plaintext
+    ``credentials`` + MCP transport headers + base_url/url userinfo) and pass it
+    explicitly to ``redact_protocol_data``.
+
+    Deliberately does NOT use ``resolve_agent_context``: that additionally
+    assembles every sub-agent config + resolves run identities, which is full
+    run-prep cost on a polling endpoint (ADR-021 review #1). One ``select(Agent)``
+    with the runtime eager-load chain + ``build_tools_config`` is the correct
+    weight here. Best-effort: a missing agent / model / credential degrades to
+    heuristics-only rather than failing the read.
     """
 
     from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
@@ -1040,7 +1048,7 @@ async def list_messages_from_checkpointer(
             conversation_id=conversation.id,
             responses=responses,
         )
-    secrets = tuple(await _collect_message_secret_values(db, conversation))
+    secrets = tuple(await collect_conversation_secret_values(db, conversation))
     _redact_response_tool_calls(responses, secret_values=secrets)
 
     # Hydrate per-message feedback (current user) + attachments/artifacts. Wrapped in

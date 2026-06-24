@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -10,16 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.message_utils import parse_msg_id
 from app.agent_runtime.protocol_redaction import redact_protocol_data
-from app.agent_runtime.run_secrets import collect_cfg_secret_values
-from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_checkpoint_state import (
     load_checkpoint_channel_values,
 )
 from app.routers.conversation_agent_protocol_legacy import legacy_state_messages
 from app.services.thread_branch_service import _collect_checkpoints, build_message_tree
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -59,30 +54,23 @@ def serialize_langchain_message(
 async def collect_state_secret_values(
     db: AsyncSession,
     conversation: Conversation,
-    user: CurrentUser,
 ) -> set[str]:
     """ADR-021 C2 — gather the run's plaintext secrets for state-API egress.
 
     State / history endpoints are plain HTTP GETs that run *outside* any agent
     run, so the run-scoped redaction ContextVar is never set. We rebuild the
-    eager secret set from the same source as a live run (``resolve_agent_context``
-    → ``collect_cfg_secret_values``) and hand it to ``redact_protocol_data``
-    explicitly. Best-effort: any failure (agent without model, missing
-    credential) degrades to heuristics-only rather than blocking the read.
+    eager secret set and hand it to ``redact_protocol_data`` explicitly.
+
+    Delegates to the shared LIGHTWEIGHT collector (one ``select(Agent)`` +
+    ``build_tools_config``), NOT ``resolve_agent_context`` — the latter also
+    assembles every sub-agent config + resolves run identities, which is full
+    run-prep cost on a polling endpoint (ADR-021 review #1). Best-effort:
+    failure degrades to heuristics-only rather than blocking the read.
     """
 
-    from app.services.conversation_stream_service import resolve_agent_context
+    from app.services.chat_service import collect_conversation_secret_values
 
-    try:
-        cfg = await resolve_agent_context(db, conversation.id, user)
-    except Exception:  # noqa: BLE001 — state read must not fail on secret-collect
-        logger.debug(
-            "state secret collection skipped for conversation %s (heuristics only)",
-            conversation.id,
-            exc_info=True,
-        )
-        return set()
-    return collect_cfg_secret_values(cfg)
+    return await collect_conversation_secret_values(db, conversation)
 
 
 async def load_thread_state_snapshot(

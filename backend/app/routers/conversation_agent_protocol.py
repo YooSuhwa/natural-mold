@@ -105,7 +105,7 @@ async def get_thread_state(
         user_id=user.id,
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
-    secrets = await collect_state_secret_values(db, conversation, user)
+    secrets = await collect_state_secret_values(db, conversation)
     snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=secrets)
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
@@ -296,7 +296,7 @@ async def get_compat_thread_state(
         user_id=user.id,
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
-    secrets = await collect_state_secret_values(db, conversation, user)
+    secrets = await collect_state_secret_values(db, conversation)
     snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=secrets)
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
