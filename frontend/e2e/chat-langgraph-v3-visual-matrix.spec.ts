@@ -53,7 +53,7 @@ async function waitForCapturePaint(page: Page): Promise<void> {
     () =>
       new Promise<void>((resolve) => {
         requestAnimationFrame(() => {
-          requestAnimationFrame(resolve)
+          requestAnimationFrame(() => resolve())
         })
       }),
   )
