@@ -153,6 +153,19 @@ describe('replaceChatRouteWithoutRemount', () => {
       '/agents/agent-1/conversations/conv-42',
     )
   })
+
+  it('SSR(window 미정의)에서는 no-op으로 안전하게 반환한다', () => {
+    const original = globalThis.window
+    // @ts-expect-error - SSR 환경 시뮬레이션을 위해 window를 일시적으로 제거한다.
+    delete globalThis.window
+    try {
+      expect(() =>
+        replaceChatRouteWithoutRemount('/agents/agent-1/conversations/conv-42'),
+      ).not.toThrow()
+    } finally {
+      globalThis.window = original
+    }
+  })
 })
 
 describe('clearChatRouteReplacement', () => {
@@ -172,5 +185,16 @@ describe('clearChatRouteReplacement', () => {
     expect(events[0]?.type).toBe(CHAT_ROUTE_CLEARED_EVENT)
     // cleared 이벤트는 replaced 이벤트가 아니다.
     expect(isChatRouteReplacedEvent(events[0] as Event)).toBe(false)
+  })
+
+  it('SSR(window 미정의)에서는 no-op으로 안전하게 반환한다', () => {
+    const original = globalThis.window
+    // @ts-expect-error - SSR 환경 시뮬레이션을 위해 window를 일시적으로 제거한다.
+    delete globalThis.window
+    try {
+      expect(() => clearChatRouteReplacement()).not.toThrow()
+    } finally {
+      globalThis.window = original
+    }
   })
 })

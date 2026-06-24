@@ -212,10 +212,18 @@ export function useStableConvertedMessages<T extends MessageWithId>(
   isRunning: boolean,
 ): readonly T[] {
   const deduped = useMemo(() => dedupeThreadMessagesById(messages), [messages])
-  const fingerprint = stableString({
-    status: isRunning ? 'running' : 'idle',
-    source: sourceMessages.map(langChainMessageFingerprint),
-  })
+  // Perf: the fingerprint is a full serialization of every source message, so
+  // recomputing it unconditionally every render is expensive on the streaming
+  // hot path. It only depends on `sourceMessages`/`isRunning`, so memoize it on
+  // those — correctness is identical (same value for the same inputs).
+  const fingerprint = useMemo(
+    () =>
+      stableString({
+        status: isRunning ? 'running' : 'idle',
+        source: sourceMessages.map(langChainMessageFingerprint),
+      }),
+    [isRunning, sourceMessages],
+  )
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => deduped, [fingerprint])
 }

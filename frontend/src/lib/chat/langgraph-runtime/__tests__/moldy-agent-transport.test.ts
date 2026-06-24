@@ -112,6 +112,38 @@ describe('createMoldyAgentTransport', () => {
     deactivate()
   })
 
+  it('keeps the listener under StrictMode double-activate when the first deactivate runs', async () => {
+    const onState = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        values: { messages: [{ id: 'message-strict' }] },
+        next: [],
+        tasks: [],
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-strict', 'agent-strict', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onState,
+    })
+
+    // StrictMode mounts effects twice; the first cleanup must not remove the
+    // second activation's listener (per-activation wrapper).
+    const deactivateFirst = transport.activateStateHydration()
+    const deactivateSecond = transport.activateStateHydration()
+    deactivateFirst()
+
+    await transport.getState?.()
+
+    expect(onState).toHaveBeenCalledTimes(1)
+    expect(onState).toHaveBeenCalledWith({
+      values: { messages: [{ id: 'message-strict' }] },
+      next: [],
+      tasks: [],
+    })
+    deactivateSecond()
+  })
+
   it('notifies an active state hydration listener when SDK hydration finishes later', async () => {
     const onState = vi.fn()
     const fetchMock = vi.fn<typeof fetch>(async () =>

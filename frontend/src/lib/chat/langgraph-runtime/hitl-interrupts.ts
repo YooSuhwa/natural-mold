@@ -291,6 +291,7 @@ function hydratedRequiresActionMessage(
 function hydrateExistingAskUserToolCallMetadata(
   draft: BaseMessage[],
   payload: StandardInterruptPayload,
+  usedSlots: Set<string>,
 ): boolean {
   let hydrated = false
   const syntheticToolCalls = standardInterruptToToolCalls(payload)
@@ -298,16 +299,22 @@ function hydrateExistingAskUserToolCallMetadata(
   for (const synthetic of syntheticToolCalls) {
     if (synthetic.name !== 'ask_user') continue
 
+    // Track which (message, tool-call) slots are already bound so two
+    // arg-equivalent ask_user interrupts don't both hydrate the SAME first
+    // match (the second slot would never be hydrated → duplicate/incorrect card).
     for (const [messageIndex, message] of draft.entries()) {
       const toolCalls = mutableToolCalls(message)
       if (!toolCalls) continue
 
       const index = toolCalls.findIndex(
-        (existing) =>
-          existing.name === synthetic.name && equivalentToolArgs(existing.args, synthetic.args),
+        (existing, toolCallIndex) =>
+          !usedSlots.has(`${messageIndex}:${toolCallIndex}`) &&
+          existing.name === synthetic.name &&
+          equivalentToolArgs(existing.args, synthetic.args),
       )
       if (index < 0) continue
 
+      usedSlots.add(`${messageIndex}:${index}`)
       draft[messageIndex] = hydratedRequiresActionMessage(message, toolCalls, index, synthetic)
       hydrated = true
       break
@@ -443,9 +450,10 @@ export function appendInterruptToolCallMessages(
 ): BaseMessage[] {
   if (payloads.length === 0) return [...messages]
   const projected: BaseMessage[] = [...messages]
+  const hydratedSlots = new Set<string>()
   for (const payload of payloads) {
     const toolCalls = standardInterruptToToolCalls(payload)
-    if (hydrateExistingAskUserToolCallMetadata(projected, payload)) continue
+    if (hydrateExistingAskUserToolCallMetadata(projected, payload, hydratedSlots)) continue
     const ids = new Set(toolCalls.map((toolCall) => toolCall.id).filter(isString))
     if (ids.size === 0 || projected.some((message) => hasToolCallId(message, ids))) continue
     projected.push(interruptedAssistantMessage(payload))

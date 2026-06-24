@@ -143,8 +143,13 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   }
 
   activateStateHydration(): () => void {
-    if (!this.#onState) return () => {}
-    const listener = this.#onState
+    const onState = this.#onState
+    if (!onState) return () => {}
+    // Per-activation wrapper so each activate/deactivate is tracked independently.
+    // Under StrictMode double-activate, sharing a single stored listener reference
+    // means the first deactivate() removes the only Set entry and the second
+    // activation silently loses its listener.
+    const listener: StateHydrationListener = (state) => onState(state)
     this.#stateHydrationListeners.add(listener)
     if (this.#latestState !== undefined) {
       listener(this.#latestState)

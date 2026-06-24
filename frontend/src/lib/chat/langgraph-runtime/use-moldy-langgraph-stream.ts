@@ -292,7 +292,9 @@ function messagesFromThreadState(state: unknown): readonly BaseMessage[] | null 
   return converted
 }
 
-function messagesFromServerMessages(messages: readonly MoldyMessage[] | undefined): BaseMessage[] {
+export function messagesFromServerMessages(
+  messages: readonly MoldyMessage[] | undefined,
+): BaseMessage[] {
   if (!messages || messages.length === 0) return []
   return messages.map((message) => {
     if (message.role === 'user') {
@@ -308,9 +310,15 @@ function messagesFromServerMessages(messages: readonly MoldyMessage[] | undefine
         tool_call_id: message.tool_call_id ?? '',
       })
     }
+    // Preserve assistant tool_calls so tool-call-only turns don't render as an
+    // empty assistant bubble and downstream branch/interrupt metadata derived
+    // from tool_calls survives the degraded server-message fallback.
     return new AIMessage({
       id: message.id,
       content: message.content,
+      ...(message.tool_calls && message.tool_calls.length > 0
+        ? { tool_calls: message.tool_calls }
+        : {}),
     })
   })
 }
@@ -1325,7 +1333,7 @@ function pendingEditConvertedDuplicateIndex(
   return -1
 }
 
-function appendPendingNewSubmitMessage(
+export function appendPendingNewSubmitMessage(
   messages: readonly BaseMessage[],
   pendingNewSubmit: PendingNewSubmitState | null,
 ): readonly BaseMessage[] {
@@ -1335,7 +1343,15 @@ function appendPendingNewSubmitMessage(
       isHumanMessage(message) && messageContentEqualsText(message, pendingNewSubmit.content),
   )
   if (alreadyVisible) return messages
-  const insertionIndex = Math.min(pendingNewSubmit.baseMessageCount, messages.length)
+  // `baseMessageCount` was captured at submit time. If the raw list has SHRUNK
+  // below it (messages dropped/replaced between capture and render), the captured
+  // index points mid-list, so clamp the optimistic bubble to the tail. In the
+  // normal (non-shrunk) case `baseMessageCount <= messages.length`, so this is
+  // identical to inserting at the captured index.
+  const insertionIndex =
+    pendingNewSubmit.baseMessageCount <= messages.length
+      ? pendingNewSubmit.baseMessageCount
+      : messages.length
   return [
     ...messages.slice(0, insertionIndex),
     pendingNewSubmit.message,

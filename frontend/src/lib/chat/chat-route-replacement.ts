@@ -34,6 +34,7 @@ export function isChatRouteReplacedEvent(
  *   Next 가이드 예시와 동일하게 `null`을 쓴다.
  */
 export function replaceChatRouteWithoutRemount(path: string): void {
+  if (typeof window === 'undefined') return
   window.history.replaceState(null, '', path)
   const pathname = new URL(path, window.location.href).pathname
   window.dispatchEvent(
@@ -44,6 +45,7 @@ export function replaceChatRouteWithoutRemount(path: string): void {
 }
 
 export function clearChatRouteReplacement(): void {
+  if (typeof window === 'undefined') return
   window.dispatchEvent(new Event(CHAT_ROUTE_CLEARED_EVENT))
 }
 

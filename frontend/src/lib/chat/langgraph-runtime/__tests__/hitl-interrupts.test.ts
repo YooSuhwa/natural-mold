@@ -284,6 +284,55 @@ describe('appendInterruptToolCallMessages', () => {
     ])
   })
 
+  it('binds two arg-equivalent ask_user interrupts to distinct persisted slots', () => {
+    const askArgs = {
+      mode: 'option_list',
+      question: '과일을 골라주세요',
+      options: ['사과', '포도', '배'],
+    }
+    const first = new AIMessage({
+      id: 'assistant-ask-1',
+      content: '',
+      tool_calls: [{ id: 'toolu-ask-1', name: 'ask_user', args: { ...askArgs } }],
+    })
+    const second = new AIMessage({
+      id: 'assistant-ask-2',
+      content: '',
+      tool_calls: [{ id: 'toolu-ask-2', name: 'ask_user', args: { ...askArgs } }],
+    })
+
+    const projected = appendInterruptToolCallMessages(
+      [new HumanMessage({ id: 'user-1', content: 'ask twice' }), first, second],
+      [
+        {
+          interrupt_id: 'intr-ask-a',
+          action_requests: [{ name: 'ask_user', args: { ...askArgs } }],
+          review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+        },
+        {
+          interrupt_id: 'intr-ask-b',
+          action_requests: [{ name: 'ask_user', args: { ...askArgs } }],
+          review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+        },
+      ],
+    )
+
+    // No duplicate card appended; both persisted slots hydrate distinctly.
+    expect(projected).toHaveLength(3)
+    expect(AIMessage.isInstance(projected[1]) ? projected[1].tool_calls : []).toEqual([
+      expect.objectContaining({
+        id: 'toolu-ask-1',
+        args: expect.objectContaining({ hitl_interrupt_id: 'intr-ask-a' }),
+      }),
+    ])
+    expect(AIMessage.isInstance(projected[2]) ? projected[2].tool_calls : []).toEqual([
+      expect.objectContaining({
+        id: 'toolu-ask-2',
+        args: expect.objectContaining({ hitl_interrupt_id: 'intr-ask-b' }),
+      }),
+    ])
+  })
+
   it('하이드레이션 시 입력 배열을 변형하지 않는다(immutability 계약)', () => {
     const existing = new AIMessage({
       id: 'assistant-ask',
