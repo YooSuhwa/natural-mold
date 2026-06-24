@@ -310,15 +310,9 @@ export function messagesFromServerMessages(
         tool_call_id: message.tool_call_id ?? '',
       })
     }
-    // Preserve assistant tool_calls so tool-call-only turns don't render as an
-    // empty assistant bubble and downstream branch/interrupt metadata derived
-    // from tool_calls survives the degraded server-message fallback.
     return new AIMessage({
       id: message.id,
       content: message.content,
-      ...(message.tool_calls && message.tool_calls.length > 0
-        ? { tool_calls: message.tool_calls }
-        : {}),
     })
   })
 }
