@@ -27,15 +27,6 @@ export function isStreamingMessageMetadata(metadata: unknown): boolean {
   return metadata.custom.isStreamingMessage === true
 }
 
-/** custom.isStreamingMessage가 명시적으로 false면 sticky/converted 재사용으로
- *  이미 완료 표시된 메시지다. 이 경우 잔존 `running` status는 stale로 보고
- *  streaming으로 취급하지 않는다(M6 오탐 방지). */
-function isExplicitlyNotStreamingMessageMetadata(metadata: unknown): boolean {
-  return (
-    isRecord(metadata) && isRecord(metadata.custom) && metadata.custom.isStreamingMessage === false
-  )
-}
-
 function isRunningMessageStatus(status: unknown): boolean {
   return isRecord(status) && status.type === 'running'
 }
@@ -43,18 +34,21 @@ function isRunningMessageStatus(status: unknown): boolean {
 /** M6 — 메시지가 "현재 스트리밍 중"인지 판정.
  *
  * 두 신호를 OR한다: (1) 우리가 직접 심는 `metadata.custom.isStreamingMessage`,
- * (2) assistant-ui status가 `running`. (2)만으로는 sticky/converted 메시지
- * 재사용 시 완료된 메시지에 stale `running`이 남아 오탐할 수 있다. 이를 두 겹으로
- * 방어한다:
- *  - 호출 컴포넌트(`StreamingMessageLoadingIndicator`)가
- *    `AuiIf condition={(s) => s.thread.isRunning}`로 감싸므로, thread가 idle이면
- *    어떤 메시지든 인디케이터가 렌더되지 않는다(주 노출 범위 제한).
- *  - 여기서는 metadata가 streaming=false라고 *명시*하면 `running` status보다
- *    우선해 streaming이 아님으로 본다(같은 턴 안의 stale running 오탐 방지). */
+ * (2) assistant-ui status가 `running`.
+ *
+ * `metadata.custom.isStreamingMessage`는 `convert-message.ts`가 id가 `stream-`로
+ * 시작하는 메시지에 대해서만 `true`로 심으며, `false`를 명시하는 production 경로는
+ * 없다(완료 시엔 필드가 단순히 부재한다). 따라서 "metadata가 streaming=false라고
+ * 명시하면 running status를 무시한다"는 식의 추가 가드는 런타임에서 절대 발화될 수
+ * 없는 dead code였다 — 이를 제거하고 위 두 신호의 단순 OR로 되돌렸다.
+ *
+ * sticky/converted 재사용으로 완료 메시지에 stale `running` status가 남을 수 있다는
+ * 우려는 호출 컴포넌트(`StreamingMessageLoadingIndicator`)가
+ * `AuiIf condition={(s) => s.thread.isRunning}`로 감싸 thread가 idle이면 어떤
+ * 메시지든 인디케이터가 렌더되지 않는 것으로 방어한다. */
 export function isStreamingMessageState(message: unknown): boolean {
   if (!isRecord(message)) return false
   if (isStreamingMessageMetadata(message.metadata)) return true
-  if (isExplicitlyNotStreamingMessageMetadata(message.metadata)) return false
   return isRunningMessageStatus(message.status)
 }
 

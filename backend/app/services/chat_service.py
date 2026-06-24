@@ -765,8 +765,13 @@ async def gc_orphan_draft_conversations(db: AsyncSession, *, retention_hours: in
     number of drafts deleted.
     """
 
-    if retention_hours < 0:
-        raise ValueError(f"retention_hours must be >= 0, got {retention_hours}")
+    # Reject (rather than clamp) a non-positive retention. ``retention_hours == 0``
+    # sets ``cutoff = now`` and would delete a draft the user opened moments ago (still
+    # typing), so a mis-set ``0`` must surface loudly as a config error instead of
+    # silently destroying live drafts or silently substituting a value the operator
+    # never chose.
+    if retention_hours <= 0:
+        raise ValueError(f"retention_hours must be >= 1, got {retention_hours}")
 
     cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=retention_hours)
     has_event = (

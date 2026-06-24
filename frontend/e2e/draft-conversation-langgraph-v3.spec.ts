@@ -903,6 +903,65 @@ test.describe('LangGraph v3 draft conversation lifecycle', () => {
     }
   })
 
+  test('navigates back to the opener conversation after a promoted draft route', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    const setup = await setupLangGraphV3Agent(request)
+
+    try {
+      // 1) opener 대화에서 시작 → "새 채팅"으로 draft(`/new`) 진입.
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      await expect(page).toHaveURL(
+        new RegExp(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}$`),
+        { timeout: 20_000 },
+      )
+      await page.getByRole('button', { name: '새 채팅', exact: true }).first().click()
+      await page.waitForURL(`**/agents/${setup.parentAgentId}/conversations/new`, {
+        timeout: 10_000,
+      })
+      await expect(page.getByText(EMPTY_STATE_TEXT)).toBeVisible({ timeout: 20_000 })
+
+      // 2) 첫 메시지 전송 → draft가 real 대화로 승격되고 URL이 replaceState로 교체된다.
+      const prompt = `안녕? E2E_BACK_NAV_${Date.now()}`
+      await sendMessage(page, prompt)
+      await expect(page).toHaveURL(
+        new RegExp(`/agents/${setup.parentAgentId}/conversations/(?!new$)[^/]+$`),
+        { timeout: 5_000 },
+      )
+      const promotedConversationId = new URL(page.url()).pathname.split('/').at(-1) ?? ''
+      expect(promotedConversationId).not.toBe('new')
+      expect(promotedConversationId).not.toBe(setup.conversationId)
+      await expectConversationDetailStatus(request, promotedConversationId, 200)
+      await expect(page.getByText(FIRST_TURN_RESPONSE_TEXT).last()).toBeVisible({
+        timeout: 30_000,
+      })
+      await waitRunIdle(request, promotedConversationId)
+
+      // 3) 뒤로가기. draft route는 replaceState로 교체됐으므로 history 직전 엔트리는
+      //    opener 대화여야 한다. 회귀 버그(OLD URL의 stale state 재사용)에서는 엉뚱한
+      //    대화나 `/new`로 돌아갔다.
+      await page.goBack()
+      await expect(page).toHaveURL(
+        new RegExp(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}$`),
+        { timeout: 20_000 },
+      )
+      await expect(page).not.toHaveURL(
+        new RegExp(`/agents/${setup.parentAgentId}/conversations/new$`),
+      )
+      await expect(page).not.toHaveURL(
+        new RegExp(`/agents/${setup.parentAgentId}/conversations/${promotedConversationId}$`),
+      )
+
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
+
   test('opens a fresh draft after a promoted draft route', async ({ page, request, errors }) => {
     const setup = await setupLangGraphV3Agent(request)
 

@@ -36,7 +36,7 @@ def _approval_interrupt(interrupt_id: str) -> SimpleNamespace:
 
 def _real_approval_interrupt(interrupt_id: str) -> Interrupt:
     # A genuine LangGraph Interrupt (slots: value, id) — no ns/namespace attribute,
-    # exactly what checkpointer recovery yields.
+    # exactly what state.tasks and checkpointer recovery yield.
     return Interrupt(value=dict(_APPROVAL_VALUE), id=interrupt_id)
 
 
@@ -46,7 +46,7 @@ class _CheckpointerBackedAgent:
 
 
 class _PendingWritesCheckpointer:
-    def __init__(self, pending_writes: list[tuple[str, str, list[SimpleNamespace]]]) -> None:
+    def __init__(self, pending_writes: list[tuple[str, str, list[Any]]]) -> None:
         self.pending_writes = pending_writes
 
     async def aget_tuple(self, _config: dict[str, Any]) -> SimpleNamespace:
@@ -54,13 +54,18 @@ class _PendingWritesCheckpointer:
 
 
 @pytest.mark.asyncio
-async def test_pending_input_events_preserve_task_namespace_from_state_task_path() -> None:
+async def test_pending_input_events_empty_namespace_for_real_task_path() -> None:
+    # Real ``PregelTask.path`` is ``('__pregel_pull', 'tools')`` (verified against
+    # LangGraph 1.2.5) — there is NO ``node:task_id`` segment to recover a subgraph
+    # namespace from, so the emitted namespace is empty. This locks in the actual
+    # behavior so nobody re-adds a false "namespace is recovered from path" claim.
     state = SimpleNamespace(
         interrupts=[],
         tasks=[
             SimpleNamespace(
-                path=("tools:call-1", "__pregel_pull", "worker"),
-                interrupts=[_approval_interrupt("intr-subgraph")],
+                id="task-1",
+                path=("__pregel_pull", "tools"),
+                interrupts=[_real_approval_interrupt("intr-real")],
             )
         ],
     )
@@ -75,34 +80,9 @@ async def test_pending_input_events_preserve_task_namespace_from_state_task_path
 
     assert len(events) == 1
     assert events[0]["method"] == "input.requested"
-    assert events[0]["namespace"] == ["tools:call-1"]
-    assert events[0]["data"]["namespace"] == ["tools:call-1"]
-
-
-@pytest.mark.asyncio
-async def test_pending_input_events_prefer_task_namespace_for_flattened_interrupts() -> None:
-    interrupt = _approval_interrupt("intr-subgraph")
-    state = SimpleNamespace(
-        interrupts=[interrupt],
-        tasks=[
-            SimpleNamespace(
-                path=("tools:call-1", "__pregel_pull", "worker"),
-                interrupts=[interrupt],
-            )
-        ],
-    )
-
-    events = await pending_input_requested_events(
-        _StateBackedAgent(state),
-        {"configurable": {"thread_id": "thread-1"}},
-        run_id="run-1",
-        thread_id="thread-1",
-        emitted=[],
-    )
-
-    assert len(events) == 1
-    assert events[0]["namespace"] == ["tools:call-1"]
-    assert events[0]["data"]["namespace"] == ["tools:call-1"]
+    assert events[0]["data"]["interrupt_id"] == "intr-real"
+    assert events[0]["namespace"] == []
+    assert events[0]["data"]["namespace"] == []
 
 
 @pytest.mark.asyncio
@@ -112,7 +92,7 @@ async def test_pending_input_events_reads_checkpointer_pending_writes(
     monkeypatch.setattr(
         "app.agent_runtime.checkpointer.get_checkpointer",
         lambda: _PendingWritesCheckpointer(
-            [("task-1", "__interrupt__", [_approval_interrupt("intr-checkpoint")])]
+            [("task-1", "__interrupt__", [_real_approval_interrupt("intr-checkpoint")])]
         ),
     )
 
@@ -128,11 +108,16 @@ async def test_pending_input_events_reads_checkpointer_pending_writes(
     assert events[0]["method"] == "input.requested"
     assert events[0]["data"]["interrupt_id"] == "intr-checkpoint"
     assert events[0]["data"]["payload"]["action_requests"][0]["name"] == "execute_in_skill"
+    # Checkpointer-recovered interrupts carry an empty namespace — validated by the
+    # resume round-trip and intentional (see _interrupt_payloads_from_pending_writes).
+    assert events[0]["namespace"] == []
+    assert events[0]["data"]["namespace"] == []
 
 
-def test_pending_writes_real_interrupt_has_empty_namespace_without_task_mapping() -> None:
-    # A real langgraph Interrupt exposes NO ns/namespace attr, so without a task-id
-    # mapping the recovered namespace must be empty (root-level resume default).
+def test_pending_writes_real_interrupt_has_empty_namespace() -> None:
+    # A real langgraph Interrupt exposes NO ns/namespace attr, and pending_writes carry
+    # only (task_id, channel, value) — there is no path segment to recover a namespace
+    # from. The recovered namespace must therefore be ``[]`` (root-level resume default).
     payloads = _interrupt_payloads_from_pending_writes(
         [("task-1", "__interrupt__", [_real_approval_interrupt("intr-real")])]
     )
@@ -140,56 +125,6 @@ def test_pending_writes_real_interrupt_has_empty_namespace_without_task_mapping(
     assert len(payloads) == 1
     assert payloads[0]["interrupt_id"] == "intr-real"
     assert payloads[0]["namespace"] == []
-
-
-def test_pending_writes_real_interrupt_recovers_namespace_from_task_path() -> None:
-    # For subgraph interrupts the namespace must be recovered from the owning task's
-    # path (keyed by the pending_write task id), since the Interrupt itself has none.
-    payloads = _interrupt_payloads_from_pending_writes(
-        [("task-sub", "__interrupt__", [_real_approval_interrupt("intr-real")])],
-        task_namespaces={"task-sub": ["tools:call-1"]},
-    )
-
-    assert len(payloads) == 1
-    assert payloads[0]["namespace"] == ["tools:call-1"]
-
-
-@pytest.mark.asyncio
-async def test_pending_input_events_recovers_subgraph_namespace_via_task_id(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # State has a task with a subgraph path but no populated interrupts (a recovered
-    # run), so the checkpointer fallback fires; its pending_write task id matches the
-    # task in state, letting us rebuild the namespace for resume routing.
-    state = SimpleNamespace(
-        interrupts=[],
-        tasks=[
-            SimpleNamespace(
-                id="task-sub",
-                path=("tools:call-1", "__pregel_pull", "worker"),
-                interrupts=[],
-            )
-        ],
-    )
-    monkeypatch.setattr(
-        "app.agent_runtime.checkpointer.get_checkpointer",
-        lambda: _PendingWritesCheckpointer(
-            [("task-sub", "__interrupt__", [_real_approval_interrupt("intr-real")])]
-        ),
-    )
-
-    events = await pending_input_requested_events(
-        _StateBackedAgent(state),
-        {"configurable": {"thread_id": "thread-1"}},
-        run_id="run-1",
-        thread_id="thread-1",
-        emitted=[],
-    )
-
-    assert len(events) == 1
-    assert events[0]["data"]["interrupt_id"] == "intr-real"
-    assert events[0]["namespace"] == ["tools:call-1"]
-    assert events[0]["data"]["namespace"] == ["tools:call-1"]
 
 
 @pytest.mark.asyncio
@@ -203,7 +138,7 @@ async def test_pending_input_events_skips_checkpointer_when_state_has_interrupts
         tasks=[
             SimpleNamespace(
                 id="task-1",
-                path=("tools:call-1", "__pregel_pull", "worker"),
+                path=("__pregel_pull", "tools"),
                 interrupts=[_approval_interrupt("intr-state")],
             )
         ],

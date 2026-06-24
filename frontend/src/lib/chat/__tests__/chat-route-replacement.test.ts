@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CHAT_ROUTE_CLEARED_EVENT,
   CHAT_ROUTE_REPLACED_EVENT,
+  clearChatRouteReplacement,
   conversationIdFromChatPath,
   isChatRouteReplacedEvent,
+  replaceChatRouteWithoutRemount,
 } from '../chat-route-replacement'
 
 describe('conversationIdFromChatPath', () => {
@@ -90,5 +92,85 @@ describe('isChatRouteReplacedEvent', () => {
     expect(
       isChatRouteReplacedEvent(new CustomEvent(CHAT_ROUTE_REPLACED_EVENT, { detail: null })),
     ).toBe(false)
+  })
+})
+
+describe('replaceChatRouteWithoutRemount', () => {
+  beforeEach(() => {
+    // jsdom 시작 경로를 알려진 값으로 고정해 상대 경로 해석을 안정화한다.
+    window.history.replaceState(null, '', '/agents/agent-1/conversations/new')
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('window.history.replaceState를 (null, "", path)로 호출한다', () => {
+    const replaceStateSpy = vi.spyOn(window.history, 'replaceState')
+    const path = '/agents/agent-1/conversations/conv-42'
+
+    replaceChatRouteWithoutRemount(path)
+
+    // 회귀: state 인자는 반드시 null이어야 한다(OLD URL의 stale state 재사용 금지).
+    // 또한 History.prototype이 아닌 window.history.replaceState(Next monkey-patch
+    // wrapper)를 거쳐야 App Router 캐시/pathname이 동기화된다.
+    expect(replaceStateSpy).toHaveBeenCalledWith(null, '', path)
+  })
+
+  it('detail.pathname을 가진 CHAT_ROUTE_REPLACED_EVENT를 dispatch한다', () => {
+    const path = '/agents/agent-1/conversations/conv-42'
+    const events: CustomEvent<unknown>[] = []
+    const listener = (event: Event) => {
+      events.push(event as CustomEvent<unknown>)
+    }
+    window.addEventListener(CHAT_ROUTE_REPLACED_EVENT, listener)
+    try {
+      replaceChatRouteWithoutRemount(path)
+    } finally {
+      window.removeEventListener(CHAT_ROUTE_REPLACED_EVENT, listener)
+    }
+
+    expect(events).toHaveLength(1)
+    const event = events[0]
+    expect(event?.type).toBe(CHAT_ROUTE_REPLACED_EVENT)
+    expect(isChatRouteReplacedEvent(event as Event)).toBe(true)
+    expect((event?.detail as { pathname?: unknown })?.pathname).toBe(path)
+  })
+
+  it('쿼리스트링이 붙은 경로에서도 pathname만 detail에 담는다', () => {
+    const events: CustomEvent<unknown>[] = []
+    const listener = (event: Event) => {
+      events.push(event as CustomEvent<unknown>)
+    }
+    window.addEventListener(CHAT_ROUTE_REPLACED_EVENT, listener)
+    try {
+      replaceChatRouteWithoutRemount('/agents/agent-1/conversations/conv-42?from=draft')
+    } finally {
+      window.removeEventListener(CHAT_ROUTE_REPLACED_EVENT, listener)
+    }
+
+    expect((events[0]?.detail as { pathname?: unknown })?.pathname).toBe(
+      '/agents/agent-1/conversations/conv-42',
+    )
+  })
+})
+
+describe('clearChatRouteReplacement', () => {
+  it('CHAT_ROUTE_CLEARED_EVENT를 dispatch한다', () => {
+    const events: Event[] = []
+    const listener = (event: Event) => {
+      events.push(event)
+    }
+    window.addEventListener(CHAT_ROUTE_CLEARED_EVENT, listener)
+    try {
+      clearChatRouteReplacement()
+    } finally {
+      window.removeEventListener(CHAT_ROUTE_CLEARED_EVENT, listener)
+    }
+
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe(CHAT_ROUTE_CLEARED_EVENT)
+    // cleared 이벤트는 replaced 이벤트가 아니다.
+    expect(isChatRouteReplacedEvent(events[0] as Event)).toBe(false)
   })
 })

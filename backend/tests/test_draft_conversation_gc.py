@@ -100,3 +100,23 @@ async def test_gc_returns_zero_when_nothing_to_collect(db: AsyncSession) -> None
 async def test_gc_negative_retention_rejected(db: AsyncSession) -> None:
     with pytest.raises(ValueError):
         await gc_orphan_draft_conversations(db, retention_hours=-1)
+
+
+@pytest.mark.asyncio
+async def test_gc_zero_retention_rejected_and_spares_just_created_draft(
+    db: AsyncSession,
+) -> None:
+    # ``retention_hours == 0`` sets ``cutoff = now``, so a draft created moments ago
+    # (user still typing) would be deleted. We REJECT 0 (chosen over clamping so a
+    # mis-set value surfaces loudly), and the just-created draft must survive untouched.
+    agent_id = await _seed_agent(db)
+    fresh_draft = _conv(agent_id, source="draft", age_hours=0)
+    db.add(fresh_draft)
+    await db.commit()
+    fresh_draft_id = fresh_draft.id
+
+    with pytest.raises(ValueError):
+        await gc_orphan_draft_conversations(db, retention_hours=0)
+
+    remaining = {row.id for row in (await db.execute(select(Conversation))).scalars().all()}
+    assert fresh_draft_id in remaining

@@ -14,6 +14,7 @@ Guards two confirmed flaws in the original ``protocol_redaction``:
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -202,3 +203,67 @@ def test_state_snapshot_output_matches_key_redaction(method: str) -> None:
         "api_key": REDACTED_SENSITIVE_FIELD,
         "nested": {"refresh_token": REDACTED_SENSITIVE_FIELD, "total_tokens": 5},
     }
+
+
+# --- 4. camelCase / delimiter-less keys must redact (regression) -----------
+
+CAMEL_CASE_SENSITIVE_KEYS = [
+    "sessionToken",
+    "XAuthToken",
+    "authToken",
+    "xApiKey",
+    "accessToken",
+    "refreshToken",
+    "csrfToken",
+]
+
+
+@pytest.mark.parametrize("key", CAMEL_CASE_SENSITIVE_KEYS)
+def test_camel_case_sensitive_keys_are_redacted(key: str) -> None:
+    # Word-boundary matching must not regress vs. the old substring matcher:
+    # camelCase keys (common in JS/HTTP header payloads) carry real secrets.
+    assert _is_sensitive_protocol_key(key) is True
+
+
+def test_camel_case_opaque_token_value_does_not_leak() -> None:
+    result = redact_protocol_data("values", {"sessionToken": "9f3a2bRANDOMopaque1234567890"})
+    assert result == {"sessionToken": REDACTED_SENSITIVE_FIELD}
+
+
+# --- 5. DSN userinfo credentials are masked for any scheme -----------------
+
+
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "postgres://user:p4ss@host/db",
+        "redis://user:secretpw@host:6379",
+        "mongodb://admin:topsecret@host",
+    ],
+)
+def test_dsn_userinfo_password_is_masked(dsn: str) -> None:
+    rendered = json.dumps(redact_protocol_data("custom", {"detail": dsn}))
+    assert "p4ss" not in rendered
+    assert "secretpw" not in rendered
+    assert "topsecret" not in rendered
+    assert "<redacted>" in rendered
+
+
+def test_plain_url_without_credentials_is_preserved() -> None:
+    result = redact_protocol_data("custom", {"detail": "https://api.example.com/v1?id=42"})
+    assert result == {"detail": "https://api.example.com/v1?id=42"}
+
+
+# --- 6. ReDoS guard: assignment regex stays linear on long identifier runs --
+
+
+def test_assignment_redaction_is_not_quadratic() -> None:
+    # A long run of identifier characters with no ``=``/``:`` triggered
+    # catastrophic backtracking in the previous pattern (~1.4s at 6.4KB,
+    # O(n^2)+). The bounded key class must keep this well under a second
+    # even at ~60KB, on the persistence/streaming hot path.
+    blob = "token" + "a0_" * 20000
+    start = time.perf_counter()
+    redact_protocol_data("custom", {"detail": blob})
+    elapsed = time.perf_counter() - start
+    assert elapsed < 1.0, f"redaction took {elapsed:.2f}s — possible ReDoS regression"

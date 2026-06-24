@@ -8,7 +8,9 @@ const mocks = vi.hoisted(() => ({
   state: {
     thread: { isRunning: true },
     message: {
-      metadata: { custom: { isStreamingMessage: true as boolean | undefined } },
+      metadata: { custom: { isStreamingMessage: true as boolean | undefined } } as
+        | { custom: { isStreamingMessage: boolean | undefined } }
+        | undefined,
       status: undefined as { readonly type?: string } | undefined,
       parts: [] as readonly unknown[],
     },
@@ -199,18 +201,24 @@ describe('StreamingMessageLoadingIndicator', () => {
   })
 
   it('renders nothing outside the active streaming message', () => {
-    mocks.state.message.metadata = { custom: { isStreamingMessage: false } }
+    // 완료된 메시지의 실제 형태: convert-message는 streaming일 때만
+    // isStreamingMessage=true를 심고 완료 시엔 필드를 아예 비운다(false를 쓰지 않음).
+    // status도 running이 아니므로 두 신호 모두 꺼져 있다.
+    mocks.state.message.metadata = { custom: { isStreamingMessage: undefined } }
+    mocks.state.message.status = { type: 'complete' }
 
     const { container } = render(<StreamingMessageLoadingIndicator activities={[activity()]} />)
 
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('M6 — treats an explicit isStreamingMessage:false as not streaming even with a stale running status', () => {
-    // sticky/converted 재사용으로 완료된 메시지에 stale running이 남은 케이스.
-    // metadata가 streaming=false라고 명시하면 running status보다 우선해야 한다.
-    mocks.state.message.metadata = { custom: { isStreamingMessage: false } }
-    mocks.state.message.status = { type: 'running' }
+  it('M6 — a completed message with neither metadata flag nor running status is not streaming', () => {
+    // sticky/converted 재사용으로 완료된 메시지에 stale running이 남을 수 있다는
+    // 우려에 대한 회귀 테스트. production 경로는 완료 메시지에 isStreamingMessage:false를
+    // 쓰지 않고 metadata.custom 자체가 없을 수 있으므로, 실제 발생 가능한 형태(필드 부재 +
+    // running 아님)에서 streaming으로 오탐하지 않음을 고정한다.
+    mocks.state.message.metadata = undefined
+    mocks.state.message.status = { type: 'complete' }
 
     const { container } = render(<StreamingMessageLoadingIndicator activities={[activity()]} />)
 

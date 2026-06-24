@@ -38,34 +38,12 @@ def _seen_interrupt_ids(events: list[dict[str, Any]]) -> set[str]:
     return seen
 
 
-def _namespace_from_path_segment(segment: Any) -> list[str]:
-    if isinstance(segment, str):
-        return [segment] if ":" in segment and not segment.startswith("__") else []
-    if isinstance(segment, Sequence) and not isinstance(segment, str | bytes):
-        namespace: list[str] = []
-        for item in segment:
-            namespace.extend(_namespace_from_path_segment(item))
-        return namespace
-    return []
-
-
-def _namespace_from_task(task: Any) -> list[str]:
-    path = getattr(task, "path", ())
-    if not isinstance(path, Sequence) or isinstance(path, str | bytes):
-        return []
-    namespace: list[str] = []
-    for segment in path:
-        namespace.extend(_namespace_from_path_segment(segment))
-    return namespace
-
-
 def _namespace_from_interrupt(interrupt: Any) -> list[str]:
-    # NOTE: ``langgraph.types.Interrupt`` defines ``__slots__ == ("value", "id")``
-    # in v0.6+, so checkpointer-recovered interrupts carry NO ``ns``/``namespace``
-    # attribute and this returns ``[]``. The namespace of subgraph interrupts (which
-    # the frontend forwards verbatim to ``stream.respond({...}, {namespace})`` for
-    # server-validated resume routing) is instead recovered from the owning task's
-    # ``path`` via ``_task_namespaces_by_id`` — see ``interrupt_payloads_from_checkpointer``.
+    # ``langgraph.types.Interrupt`` defines ``__slots__ == ("value", "id")`` (verified
+    # against LangGraph 1.2.5), so it carries NO ``ns``/``namespace`` attribute and this
+    # returns ``[]`` for every real interrupt — whether read from ``state.tasks`` or
+    # recovered from checkpointer pending_writes. We keep this defensive lookup only in
+    # case a future LangGraph release exposes a namespace attribute on the object itself.
     for attr in ("ns", "namespace"):
         value = getattr(interrupt, attr, None)
         if isinstance(value, Sequence) and not isinstance(value, str | bytes):
@@ -73,24 +51,6 @@ def _namespace_from_interrupt(interrupt: Any) -> list[str]:
             if namespace:
                 return namespace
     return []
-
-
-def _task_namespaces_by_id(state: Any) -> dict[str, list[str]]:
-    """Map each pending task id to its namespace derived from ``task.path``.
-
-    pending_writes only carry ``(task_id, channel, value)``; the interrupt object
-    itself has no namespace. The task id matches ``PregelTask.id`` in state, so we
-    rebuild the subgraph namespace from the task's ``path`` to keep resume routing
-    correct for nested/subagent interrupts.
-    """
-    namespaces: dict[str, list[str]] = {}
-    for task in getattr(state, "tasks", ()) or ():
-        task_id = getattr(task, "id", None)
-        if isinstance(task_id, str) and task_id:
-            namespace = _namespace_from_task(task)
-            if namespace:
-                namespaces[task_id] = namespace
-    return namespaces
 
 
 def _payload_from_interrupt(
@@ -118,7 +78,11 @@ def _interrupt_payloads_from_state(state: Any) -> list[PendingInputPayload]:
     task_payloads: list[PendingInputPayload] = []
     task_interrupt_ids: set[str] = set()
     for task in getattr(state, "tasks", ()) or ():
-        namespace = _namespace_from_task(task)
+        # Real ``PregelTask.path`` is e.g. ``('__pregel_pull', 'tools')`` — there is no
+        # ``node:task_id`` segment to recover a subgraph namespace from (that lives in
+        # ``metadata['langgraph_checkpoint_ns']``, not ``path``). The namespace here is
+        # therefore always empty; the resume round-trip validates the empty value.
+        namespace: list[str] = []
         for index, interrupt in enumerate(getattr(task, "interrupts", ()) or ()):
             payload = _payload_from_interrupt(interrupt, namespace=namespace, index=index)
             if payload is not None:
@@ -168,13 +132,21 @@ def _append_unique_payloads(
 
 def _interrupt_payloads_from_pending_writes(
     pending_writes: Any,
-    *,
-    task_namespaces: Mapping[str, list[str]] | None = None,
 ) -> list[PendingInputPayload]:
+    # Checkpointer-recovered interrupts always carry an EMPTY namespace here, and that
+    # is correct and intentional:
+    #   * The ``Interrupt`` object has no ``ns``/``namespace`` attr (slots: value, id),
+    #     so ``_namespace_from_interrupt`` returns ``[]``.
+    #   * pending_writes only carry ``(task_id, channel, value)`` — there is no real
+    #     ``node:task_id`` path segment to rebuild a subgraph namespace from (an earlier
+    #     "recover namespace from ``PregelTask.path``" attempt was a verified no-op:
+    #     real paths look like ``('__pregel_pull', 'tools')`` with no ``:`` segment).
+    #   * The empty namespace is validated by the resume round-trip (root-level resume
+    #     default), and the hydration caller in ``conversation_agent_protocol_interrupts``
+    #     does NOT pass any task namespaces — so empty is the only honest value.
     if not isinstance(pending_writes, Sequence) or isinstance(pending_writes, str | bytes):
         return []
 
-    task_namespaces = task_namespaces or {}
     payloads: list[PendingInputPayload] = []
     for write in pending_writes:
         if not isinstance(write, Sequence) or isinstance(write, str | bytes) or len(write) < 3:
@@ -185,15 +157,10 @@ def _interrupt_payloads_from_pending_writes(
         raw_interrupts = write[2]
         if not isinstance(raw_interrupts, Sequence) or isinstance(raw_interrupts, str | bytes):
             continue
-        task_id = write[0]
-        # The Interrupt object has no namespace attr (slots: value, id) — recover the
-        # subgraph namespace from the owning task's path via the pending_write task id.
-        recovered_namespace = task_namespaces.get(task_id, []) if isinstance(task_id, str) else []
         for index, interrupt in enumerate(raw_interrupts):
-            namespace = _namespace_from_interrupt(interrupt) or recovered_namespace
             payload = _payload_from_interrupt(
                 interrupt,
-                namespace=namespace,
+                namespace=_namespace_from_interrupt(interrupt),
                 index=index,
             )
             if payload is not None:
@@ -203,8 +170,6 @@ def _interrupt_payloads_from_pending_writes(
 
 async def interrupt_payloads_from_checkpointer(
     config: dict[str, Any],
-    *,
-    task_namespaces: Mapping[str, list[str]] | None = None,
 ) -> list[PendingInputPayload]:
     thread_id = _thread_id_from_config(config)
     if thread_id is None:
@@ -225,7 +190,6 @@ async def interrupt_payloads_from_checkpointer(
         return []
     return _interrupt_payloads_from_pending_writes(
         getattr(checkpoint_tuple, "pending_writes", None),
-        task_namespaces=task_namespaces,
     )
 
 
@@ -253,10 +217,7 @@ async def pending_input_requested_events(
     if not payloads:
         _append_unique_payloads(
             payloads,
-            await interrupt_payloads_from_checkpointer(
-                config,
-                task_namespaces=_task_namespaces_by_id(state),
-            ),
+            await interrupt_payloads_from_checkpointer(config),
         )
 
     seen_interrupt_ids = _seen_interrupt_ids(emitted)

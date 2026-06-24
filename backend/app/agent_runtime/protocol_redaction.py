@@ -76,12 +76,19 @@ _SAFE_METRIC_KEY_RE: Final = re.compile(
     re.IGNORECASE,
 )
 
-# Assignment leak: ``<sensitive_key> = value`` / ``: value`` style fragments
-# inside opaque strings (e.g. ``api_key=sk-...``). The key is re-validated by
-# :func:`_is_sensitive_protocol_key` so non-sensitive assignments survive.
+# Assignment leak: ``<key> = value`` / ``: value`` style fragments inside
+# opaque strings (e.g. ``api_key=sk-...``). The key is matched as a *bounded*
+# identifier (``{1,64}``) and re-validated by :func:`_is_sensitive_protocol_key`,
+# so only sensitive keys are masked and non-sensitive assignments survive.
+#
+# ReDoS note: the previous pattern wrapped the key fragment in overlapping
+# ``[A-Za-z0-9_-]*`` quantifiers (``…*(?:frag)…*``) which caused catastrophic
+# backtracking on long runs of identifier characters (O(n^2)+). A single
+# bounded ``{1,64}`` identifier class has no overlapping quantifier and caps
+# backtracking, so attacker-controlled trace blobs can no longer stall the
+# event loop on the persistence/streaming hot paths.
 SENSITIVE_ASSIGNMENT_RE: Final = re.compile(
-    rf"((?:[A-Za-z0-9_-]*(?:{_SENSITIVE_KEY_FRAGMENT})[A-Za-z0-9_-]*)"
-    rf"[\"']?\s*[:=]\s*[\"']?(?:Bearer\s+)?)([^\"',}}\]\s]+)([\"']?)",
+    r"([A-Za-z0-9_-]{1,64}[\"']?\s*[:=]\s*[\"']?(?:Bearer\s+)?)([^\"',}\]\s]+)([\"']?)",
     re.IGNORECASE,
 )
 ASSIGNMENT_KEY_RE: Final = re.compile(r"([A-Za-z0-9_-]+)")
@@ -98,9 +105,11 @@ _VALUE_MASK_PATTERNS: Final = (
     (re.compile(r"\bsk-(?:[A-Za-z0-9_-]+-)?[A-Za-z0-9]{20,}"), "<redacted>"),
     # Non-standard auth cookie token names emitted as ``moldy_at=...``.
     (re.compile(r"\b(moldy_(?:at|rt|csrf))=\S+", re.IGNORECASE), r"\1=<redacted>"),
-    # URL userinfo credentials: ``scheme://user:pw@host`` -> mask ``user:pw``.
+    # URL/DSN userinfo credentials: ``scheme://user:pw@host`` -> mask ``user:pw``.
+    # Any scheme (http(s), postgres, redis, mongodb, amqp, ...) so DSNs embedded
+    # in trace/error strings don't leak their password.
     (
-        re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+(@)", re.IGNORECASE),
+        re.compile(r"([a-z][a-z0-9+.\-]*://)[^/\s:@]+:[^/\s@]+(@)", re.IGNORECASE),
         r"\1<redacted>\2",
     ),
 )
@@ -132,8 +141,18 @@ def _redact_sensitive_keys(data: Any) -> Any:
     return data
 
 
+def _normalize_key(key: str) -> str:
+    # Split camelCase / digit->upper boundaries with ``_`` before lower-casing so
+    # keys like ``sessionToken`` / ``XAuthToken`` / ``xApiKey`` still match the
+    # word-boundary sensitive patterns. Without this, lower-casing erases the
+    # boundary (``sessiontoken`` no longer has a ``_token`` segment) and the
+    # secret key would leak — a regression vs. the old substring matcher.
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key.strip())
+    return spaced.lower()
+
+
 def _is_sensitive_protocol_key(key: str) -> bool:
-    normalized = key.strip().lower()
+    normalized = _normalize_key(key)
     if normalized in SAFE_TOKEN_METRIC_KEYS or _SAFE_METRIC_KEY_RE.search(normalized):
         return False
     if normalized in _SENSITIVE_EXACT_KEYS:
