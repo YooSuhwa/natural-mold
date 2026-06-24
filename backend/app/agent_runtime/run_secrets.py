@@ -183,12 +183,15 @@ def _collect_into(obj: object, out: set[str]) -> None:
         _add_str_leaf(obj, out)
         return
     if isinstance(obj, Mapping):
-        # ``{name/key/header: <meta>, value: <secret>}`` — collect only the
-        # value so the metadata field (e.g. the header name) isn't masked.
-        if "value" in obj and any(meta in obj for meta in _PAIR_META_KEYS):
-            _collect_into(obj["value"], out)
-            return
-        for value in obj.values():
+        # ``{name/key/header: <meta>, value: <secret>}`` — skip ONLY the
+        # metadata field (e.g. the header name) so it isn't over-collected, but
+        # still recurse every OTHER field. A bare ``return`` after the value
+        # would drop sibling secret fields (e.g. ``{name, value, token}`` loses
+        # ``token``) → under-masking (ADR-021 re-review #3).
+        skip_meta = "value" in obj and any(meta in obj for meta in _PAIR_META_KEYS)
+        for key, value in obj.items():
+            if skip_meta and key in _PAIR_META_KEYS:
+                continue
             _collect_into(value, out)
         return
     # Strings are handled above; bytes/bytearray are not secrets we mask.

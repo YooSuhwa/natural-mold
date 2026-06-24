@@ -64,6 +64,18 @@ def test_collect_pair_shape_takes_value_only() -> None:
     assert "longsecret999" in keyed
 
 
+def test_collect_pair_shape_keeps_sibling_secrets() -> None:
+    # ADR-021 re-review #3 — skipping the meta field must NOT drop sibling
+    # secret fields. ``{name, value, token}`` keeps ``token`` (only ``name`` is
+    # treated as metadata and skipped).
+    result = collect_secret_values(
+        {"name": "Authorization", "value": "Bearer aaaaa11111", "token": "sk-sibling-secret-99999"}
+    )
+    assert "Authorization" not in result  # meta field still skipped
+    assert "Bearer aaaaa11111" in result
+    assert "sk-sibling-secret-99999" in result  # sibling secret survives
+
+
 def test_collect_ignores_non_str_leaves() -> None:
     result = collect_secret_values({"count": 12345, "flag": True, "blob": b"rawbytes"})
     assert result == set()

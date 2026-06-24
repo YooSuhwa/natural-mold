@@ -182,3 +182,47 @@ def test_serialize_langchain_message_masks_secret_value() -> None:
     # And without the secret set, it is left intact (heuristics can't catch it).
     leaked = serialize_langchain_message(msg)
     assert OPAQUE_SECRET in json.dumps(leaked)
+
+
+@pytest.mark.asyncio
+async def test_collect_conversation_secrets_includes_fallback_base_url_userinfo(
+    db: AsyncSession,
+) -> None:
+    """ADR-021 re-review #1 — the shared read-path collector must cover fallback
+    model ``base_url`` userinfo. The live run masks it (collect_cfg_secret_values
+    walks the fallback chain), so a read/poll path that skipped it would
+    under-mask a credential embedded in a self-hosted fallback endpoint.
+    """
+
+    from app.services.chat_service import collect_conversation_secret_values
+
+    user = await db.get(User, TEST_USER_ID)
+    if user is None:
+        user = User(id=TEST_USER_ID, email="fb-redact@test.dev", name="FB Redact")
+        db.add(user)
+    primary = Model(provider="openai", model_name="gpt-4o", display_name="Primary")
+    fallback = Model(
+        provider="openai_compatible",
+        model_name="local-llm",
+        display_name="Fallback",
+        base_url="https://fbuser:fallbackpw99999@self-hosted.example/v1",
+    )
+    db.add_all([primary, fallback])
+    await db.flush()
+    agent = Agent(
+        user_id=user.id,
+        name="FB Agent",
+        system_prompt="You are helpful.",
+        model_id=primary.id,
+        model_fallback_list=[str(fallback.id)],
+    )
+    db.add(agent)
+    await db.flush()
+    conversation = Conversation(agent_id=agent.id, title="FB Conversation")
+    db.add(conversation)
+    await db.commit()
+
+    secrets = await collect_conversation_secret_values(db, conversation)
+
+    assert "fallbackpw99999" in secrets, "fallback base_url password must be collected"
+    assert "fbuser" in secrets
