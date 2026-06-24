@@ -10,7 +10,9 @@ from typing import Any
 
 import httpx
 
+from app.agent_runtime.run_secrets import get_run_secrets
 from app.config import settings
+from app.marketplace.redaction import replace_secret_values
 
 logger = logging.getLogger(__name__)
 
@@ -110,9 +112,7 @@ class LangfuseRunContext:
 
 def _has_langfuse_config() -> bool:
     return bool(
-        settings.langfuse_public_key
-        and settings.langfuse_secret_key
-        and _langfuse_base_url()
+        settings.langfuse_public_key and settings.langfuse_secret_key and _langfuse_base_url()
     )
 
 
@@ -293,6 +293,26 @@ def build_langfuse_run_context(
         return LangfuseRunContext(enabled=False)
 
 
+def _mask_run_secrets(text: str) -> str:
+    """Strip the active run's known injected secret values from ``text``.
+
+    ADR-021 M3 — the Langfuse ``mask`` callback runs synchronously inside the
+    run's async task (span attributes are masked at observation
+    creation/update/end, NOT deferred to a background flush thread; see
+    ``langfuse/_client/span.py``), so the run-scoped ContextVar is live here.
+    We read it directly rather than snapshotting at capture-registration time.
+
+    No-op when no run is active (``get_run_secrets()`` returns ``None`` — unit
+    tests, trigger mode) or the set is empty. Reuses the shared exact-substring
+    ``replace_secret_values`` (ReDoS-impossible) instead of new heuristics.
+    """
+
+    secrets = get_run_secrets()
+    if not secrets:
+        return text
+    return replace_secret_values(text, secrets, placeholder="[redacted]")
+
+
 def redact_payload(data: Any, **_kwargs: Any) -> Any:
     if not settings.langfuse_capture_input_output:
         if isinstance(data, dict):
@@ -324,7 +344,11 @@ def redact_payload(data: Any, **_kwargs: Any) -> Any:
     if isinstance(data, list):
         return [redact_payload(item) for item in data]
     if isinstance(data, str):
-        masked = _TOKEN_RE.sub("[redacted]", data)
+        # Value-based masking FIRST (ADR-021): strip the run's known injected
+        # secrets by exact substring, then fall back to the key/value
+        # heuristics for secrets not in the run set (LLM-generated tokens etc.).
+        masked = _mask_run_secrets(data)
+        masked = _TOKEN_RE.sub("[redacted]", masked)
         return _HEX_SECRET_RE.sub("[redacted]", masked)
     return data
 
