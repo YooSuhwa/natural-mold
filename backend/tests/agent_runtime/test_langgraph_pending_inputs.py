@@ -127,6 +127,26 @@ def test_pending_writes_real_interrupt_has_empty_namespace() -> None:
     assert payloads[0]["namespace"] == []
 
 
+def test_pending_writes_idless_interrupts_get_distinct_synthetic_ids() -> None:
+    # ADR-021 re-review #8 — id-less interrupts across SEPARATE pending_writes
+    # entries must get DISTINCT synthetic ids (monotonic across the whole scan).
+    # A per-write enumerate gave both ``interrupt-1`` → id-based dedup downstream
+    # dropped one interrupt on checkpointer recovery.
+    idless_a = SimpleNamespace(value=dict(_APPROVAL_VALUE))  # no id attr → fallback fires
+    idless_b = SimpleNamespace(value=dict(_APPROVAL_VALUE))
+    payloads = _interrupt_payloads_from_pending_writes(
+        [
+            ("task-a", "__interrupt__", [idless_a]),
+            ("task-b", "__interrupt__", [idless_b]),
+        ]
+    )
+
+    ids = [p["interrupt_id"] for p in payloads]
+    assert len(payloads) == 2
+    assert len(set(ids)) == 2  # no collision
+    assert ids == ["interrupt-1", "interrupt-2"]
+
+
 @pytest.mark.asyncio
 async def test_pending_input_events_skips_checkpointer_when_state_has_interrupts(
     monkeypatch: pytest.MonkeyPatch,

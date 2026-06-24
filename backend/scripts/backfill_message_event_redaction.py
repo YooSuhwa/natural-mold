@@ -125,7 +125,11 @@ _NO_VALUES: tuple[str, ...] = ()
 # Threshold matches ``_MIN_REDACT_LEN`` (5) in ``app/marketplace/redaction.py``:
 # the redactor catches secrets as short as 5 chars, so a 12-char floor here would
 # let a 5–11 char secret print in plaintext in the before/after sample.
-_ELIDE_RE = re.compile(r"[A-Za-z0-9+/=_\-.]{5,}")
+# The class includes DSN/secret special chars (``:@#%!&|~?``) so a credential
+# like ``usr:p@ss!word@host`` elides as ONE run instead of leaving ``p@ss!word``
+# fragments between class breaks (ADR-021 re-review A3). JSON quotes/whitespace
+# are NOT in the class, so structural delimiters still bound each run.
+_ELIDE_RE = re.compile(r"[A-Za-z0-9+/=_.:@#%!&|~?-]{5,}")
 
 
 @dataclass

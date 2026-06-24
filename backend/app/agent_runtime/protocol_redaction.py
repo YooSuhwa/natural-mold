@@ -237,6 +237,10 @@ def _mask_values_recursive(data: Any, secrets: tuple[str, ...]) -> Any:
         # Mask str keys too — a tool/API response can echo an injected secret
         # as an object key, which value-only masking would leak. Exact
         # substring replace (pure str.replace, no regex), so still ReDoS-free.
+        # Edge case: if two DISTINCT secret keys both mask to the placeholder
+        # they collapse to one entry (last value wins) — acceptable for a
+        # redacted egress view (both keys are secrets; no leak — values are
+        # masked independently). Distinct secrets as sibling keys are rare.
         return {
             (
                 replace_secret_values(key, secrets, placeholder=REDACTED_SENSITIVE_FIELD)

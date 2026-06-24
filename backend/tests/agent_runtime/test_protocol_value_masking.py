@@ -69,6 +69,18 @@ def test_mask_preserves_non_secret_keys() -> None:
     assert out == {"status": "ok", "api_key": REDACTED_SENSITIVE_FIELD}
 
 
+def test_mask_secret_key_collision_collapses_without_leak() -> None:
+    # ADR-021 re-review #2 — two DISTINCT secret keys both mask to the
+    # placeholder and collapse to one entry (documented egress behavior). No
+    # leak: both keys are masked; the surviving value is also masked if secret.
+    out = _mask_known_values(
+        {"secretAAAAA": "vA", "secretBBBBB": "vB"}, ["secretAAAAA", "secretBBBBB"]
+    )
+    assert list(out.keys()) == [REDACTED_SENSITIVE_FIELD]  # collapsed, no plaintext key
+    assert "secretAAAAA" not in out
+    assert "secretBBBBB" not in out
+
+
 # --- (c) propagation via ContextVar without an explicit arg -----------------
 
 
