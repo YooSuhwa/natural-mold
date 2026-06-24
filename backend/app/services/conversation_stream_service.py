@@ -20,7 +20,7 @@ from app.agent_runtime.identity import (
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
-from app.agent_runtime.run_secrets import collect_secret_values
+from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
 from app.agent_runtime.subagents import build_subagents_config
@@ -165,32 +165,10 @@ async def resolve_agent_context(
         parent_cfg=cfg,
         is_trigger_mode=False,
     )
-    cfg.secret_values = _collect_cfg_secret_values(cfg)
+    # ``.update`` (not ``=``) so the subagent secrets already unioned into the
+    # set by ``build_subagents_config`` above survive (ADR-021 H1).
+    cfg.secret_values.update(collect_cfg_secret_values(cfg))
     return cfg
-
-
-def _collect_cfg_secret_values(cfg: AgentConfig) -> set[str]:
-    """ADR-021 — gather eager plaintext secrets injected into this run.
-
-    Sources at request-entry time (ADR-021 §1 eager set): the LLM ``api_key``
-    (and any ``provider_api_keys``), each tool config's plaintext
-    ``credentials`` dict, and MCP ``mcp_transport_headers``
-    (Authorization/Cookie). Skill credentials resolve later and union in
-    lazily via ``add_run_secrets`` in ``_prepare_runtime_components`` (which
-    also covers subagents, since they share the same run task / secret set).
-    """
-
-    secrets: set[str] = set()
-    if cfg.api_key:
-        secrets |= collect_secret_values(cfg.api_key)
-    if cfg.provider_api_keys:
-        secrets |= collect_secret_values(cfg.provider_api_keys)
-    for tool_config in cfg.tools_config or []:
-        if not isinstance(tool_config, dict):
-            continue
-        secrets |= collect_secret_values(tool_config.get("credentials"))
-        secrets |= collect_secret_values(tool_config.get("mcp_transport_headers"))
-    return secrets
 
 
 async def resolve_fallback_chain(

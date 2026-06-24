@@ -28,6 +28,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from contextvars import ContextVar, Token
+from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
+
+if TYPE_CHECKING:
+    from app.agent_runtime.runtime_config import AgentConfig
 
 # Values shorter than this are low signal — masking 4-char fragments would
 # scrub user-visible output for no benefit. Mirrors marketplace
@@ -104,6 +109,69 @@ def collect_secret_values(obj: object) -> set[str]:
     return out
 
 
+def collect_url_userinfo(value: object, out: set[str]) -> None:
+    """Add username/password embedded in a ``scheme://user:pw@host`` URL.
+
+    ADR-021 M1 — base URLs and MCP endpoints may carry credentials in the
+    userinfo component (``postgres://user:pw@host``, ``https://tok@host``).
+    Only the *username* and *password* are collected (parsed with
+    :func:`urllib.parse.urlsplit`) so we never over-mask the host / path /
+    scheme. Non-string / unparseable values are ignored.
+    """
+
+    if not isinstance(value, str) or "://" not in value:
+        return
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return
+    for component in (parts.username, parts.password):
+        if isinstance(component, str) and len(component) >= _MIN_SECRET_LEN:
+            out.add(component)
+
+
+def collect_cfg_secret_values(cfg: AgentConfig, *, extra: object = None) -> set[str]:
+    """Gather every eager plaintext secret injected into ``cfg``'s run.
+
+    ADR-021 §1 (eager set) — the shared collector every run entrypoint calls
+    so value-based redaction sees the run's *actual* secrets. Covers:
+
+    * LLM ``api_key`` + ``provider_api_keys``.
+    * Each tool config's plaintext ``credentials`` dict.
+    * MCP ``mcp_transport_headers`` (Authorization / Cookie; the ``collect``
+      core also splits the ``Bearer``/``Basic`` token body).
+    * **M1** — userinfo embedded in ``cfg.base_url`` + every
+      ``model_fallback_chain[*]["base_url"]`` (username/password only).
+    * **M1** — credentials embedded in an MCP tool config ``url``
+      (``tool_config["url"]`` userinfo).
+
+    Skill-binding credentials resolve later and union in lazily via
+    :func:`add_run_secrets` from ``_prepare_runtime_components`` (which also
+    covers subagents — they share the parent run task / secret set). ``extra``
+    lets a caller fold in extra plaintext (e.g. a subagent's own creds into the
+    parent set).
+    """
+
+    secrets: set[str] = set()
+    if cfg.api_key:
+        secrets |= collect_secret_values(cfg.api_key)
+    if cfg.provider_api_keys:
+        secrets |= collect_secret_values(cfg.provider_api_keys)
+    collect_url_userinfo(cfg.base_url, secrets)
+    for entry in cfg.model_fallback_chain or []:
+        if isinstance(entry, Mapping):
+            collect_url_userinfo(entry.get("base_url"), secrets)
+    for tool_config in cfg.tools_config or []:
+        if not isinstance(tool_config, Mapping):
+            continue
+        secrets |= collect_secret_values(tool_config.get("credentials"))
+        secrets |= collect_secret_values(tool_config.get("mcp_transport_headers"))
+        collect_url_userinfo(tool_config.get("url"), secrets)
+    if extra is not None:
+        secrets |= collect_secret_values(extra)
+    return secrets
+
+
 def _collect_into(obj: object, out: set[str]) -> None:
     if isinstance(obj, str):
         _add_str_leaf(obj, out)
@@ -135,7 +203,9 @@ def _add_str_leaf(value: str, out: set[str]) -> None:
 
 __all__ = [
     "add_run_secrets",
+    "collect_cfg_secret_values",
     "collect_secret_values",
+    "collect_url_userinfo",
     "get_run_secrets",
     "reset_run_secrets",
     "set_run_secrets",

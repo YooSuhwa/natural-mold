@@ -362,6 +362,28 @@ async def execute_agent_invoke(
     moldy_source: str = "trigger",
 ) -> str:
     """비스트리밍 실행 (트리거용). 최종 응답 텍스트만 반환."""
+    # ADR-021 H1 — install the run-scoped secret set so the lazy skill-credential
+    # union in ``_prepare_runtime_components`` works and any redaction during the
+    # invoke (langfuse mask, persistence) sees the run's real secrets.
+    secret_token = set_run_secrets(cfg.secret_values)
+    try:
+        return await _execute_agent_invoke_inner(
+            cfg,
+            messages_history,
+            run_id=run_id,
+            moldy_source=moldy_source,
+        )
+    finally:
+        reset_run_secrets(secret_token)
+
+
+async def _execute_agent_invoke_inner(
+    cfg: AgentConfig,
+    messages_history: list[dict[str, str]],
+    *,
+    run_id: str | None = None,
+    moldy_source: str = "trigger",
+) -> str:
     agent, lc_messages, config = await _prepare_agent(
         cfg,
         messages_history=messages_history,

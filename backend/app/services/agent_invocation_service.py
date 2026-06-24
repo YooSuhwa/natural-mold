@@ -15,6 +15,7 @@ from app.agent_runtime.identity import (
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
+from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.subagents import build_subagents_config
 from app.dependencies import CurrentUser
@@ -215,4 +216,9 @@ async def build_agent_config_for_loaded_agent(
         parent_cfg=cfg,
         is_trigger_mode=source == "trigger",
     )
+    # ADR-021 H1 — populate the eager secret set so value-based redaction works
+    # for Agent API / non-chat entrypoints (Agent API stream already installs
+    # the ContextVar via execute_agent_stream, so this set becomes effective).
+    # ``.update`` preserves any subagent secrets already unioned above.
+    cfg.secret_values.update(collect_cfg_secret_values(cfg))
     return cfg

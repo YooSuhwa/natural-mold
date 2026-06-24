@@ -18,6 +18,7 @@ import base64
 import json
 import logging
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, assert_never
@@ -484,11 +485,76 @@ async def _hydrate_pending_interrupt_tool_calls(
             response.tool_calls = _merge_interrupt_tool_calls(response.tool_calls or [], payload)
 
 
-def _redact_response_tool_calls(responses: list[MessageResponse]) -> None:
+async def _collect_message_secret_values(
+    db: AsyncSession,
+    conversation: Conversation,
+) -> set[str]:
+    """ADR-021 C2 — gather the conversation agent's plaintext secrets.
+
+    GET /messages renders persisted tool_calls outside any run, so we rebuild
+    the eager secret set (LLM ``api_key`` + each tool config's plaintext
+    ``credentials`` + MCP transport headers) from the conversation's agent and
+    pass it explicitly to ``redact_protocol_data``. Best-effort: a missing
+    agent / model / credential degrades to heuristics-only rather than failing
+    the read. ``base_url`` userinfo is also folded in (M1).
+    """
+
+    from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
+    from app.agent_runtime.run_secrets import collect_secret_values, collect_url_userinfo
+
+    secrets: set[str] = set()
+    try:
+        # GET /messages (and share-link render) run outside any agent run, and
+        # the routers load the conversation WITHOUT eager-loading ``agent`` (the
+        # runtime selectin chain is too costly for this hot read path). Touching
+        # ``conversation.agent`` here would emit a lazy load with no greenlet
+        # context (sqlalchemy MissingGreenlet), so fetch the agent + runtime
+        # relations explicitly. ``agent_id`` is a plain column already loaded on
+        # the conversation row, so reading it triggers no IO.
+        agent_id = getattr(conversation, "agent_id", None)
+        if agent_id is None:
+            return set()
+        result = await db.execute(
+            select(Agent).where(Agent.id == agent_id).options(*_agent_runtime_load_options())
+        )
+        agent = result.unique().scalar_one_or_none()
+        if agent is None:
+            return set()
+        api_key = await resolve_llm_api_key_for_agent(db, agent)
+        if api_key:
+            secrets |= collect_secret_values(api_key)
+        model = getattr(agent, "model", None)
+        if model is not None:
+            collect_url_userinfo(getattr(model, "base_url", None), secrets)
+        tools_config = await build_tools_config(agent, db=db, conversation_id=str(conversation.id))
+        for tool_config in tools_config or []:
+            if not isinstance(tool_config, dict):
+                continue
+            secrets |= collect_secret_values(tool_config.get("credentials"))
+            secrets |= collect_secret_values(tool_config.get("mcp_transport_headers"))
+            collect_url_userinfo(tool_config.get("url"), secrets)
+    except Exception:  # noqa: BLE001 — message read must not fail on secret-collect
+        logger.debug(
+            "message secret collection skipped for conversation %s (heuristics only)",
+            conversation.id,
+            exc_info=True,
+        )
+    return secrets
+
+
+def _redact_response_tool_calls(
+    responses: list[MessageResponse],
+    *,
+    secret_values: Sequence[str] | None = None,
+) -> None:
+    # ADR-021 C2 — this runs in a GET /messages request (no active run /
+    # ContextVar), so the run's secrets are passed explicitly by the caller.
     for response in responses:
         if not response.tool_calls:
             continue
-        redacted = redact_protocol_data("messages", response.tool_calls)
+        redacted = redact_protocol_data(
+            "messages", response.tool_calls, secret_values=secret_values
+        )
         if isinstance(redacted, list) and all(isinstance(item, dict) for item in redacted):
             response.tool_calls = redacted
 
@@ -974,7 +1040,8 @@ async def list_messages_from_checkpointer(
             conversation_id=conversation.id,
             responses=responses,
         )
-    _redact_response_tool_calls(responses)
+    secrets = tuple(await _collect_message_secret_values(db, conversation))
+    _redact_response_tool_calls(responses, secret_values=secrets)
 
     # Hydrate per-message feedback (current user) + attachments/artifacts. Wrapped in
     # broad try/except so a missing migration (m27/m28 not yet applied) or
