@@ -122,19 +122,30 @@ ASSIGNMENT_KEY_RE: Final = re.compile(r"([A-Za-z0-9_-]+)")
 _VALUE_MASK_PATTERNS: Final = (
     # Bearer <token>  (also covers ``Authorization: Bearer ...`` output).
     #
-    # M2: tightened from ``\S+`` to a token-shaped, terminator-aware body.
-    # ``\S+`` greedily ate everything up to the next whitespace — including a
-    # trailing ``;`` / ``,`` / ``)`` / ``}`` / quote (ADR §4/§6: it also
-    # over-masked prose like "Bearer of bad news"). The body class below is the
-    # base64url + JWT alphabet (``A-Za-z0-9`` plus ``._~+/=-``), so a real
-    # Bearer/JWT/``sk-`` token is still fully masked while delimiters after the
-    # token survive. This strictly REDUCES false positives with no loss of
-    # real-token coverage, and stays linear (single bounded class, no
-    # overlapping quantifier). Note: very short prose words (e.g. "Bearer of")
-    # are still masked — length can't distinguish them from the legitimate
-    # short ``Bearer xyz`` token contract, and value-based masking is the real
-    # defence for genuine tokens, so we accept the ADR §6 "Low" residual.
-    (re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE), "Bearer <redacted>"),
+    # M2 first tightened ``\S+`` to a *positive* base64url/JWT class
+    # ``[A-Za-z0-9._~+/=-]+`` to stop over-eating trailing ``;`` / ``,`` /
+    # ``)`` / ``}`` / quotes. But that positive class also NARROWED real-token
+    # coverage and re-introduced a leak: token bodies containing chars outside
+    # the class (``#`` ``@`` ``%`` ``&`` ``|`` ``!`` ``(`` ``*`` …) stopped the
+    # match early, leaving the tail in plaintext
+    # (``Bearer v2.local.abcDEF#sha256sum`` masked only up to ``#``); and a body
+    # that *starts* with a quote produced no match at all, leaving the whole
+    # token unmasked.
+    #
+    # Fix: use a NEGATIVE class that includes every token char and only stops at
+    # true delimiters — whitespace plus ``;`` ``,`` ``)`` ``}`` ``]`` and
+    # quotes. This restores ``\S+``'s full coverage of special-char token bodies
+    # while KEEPING M2's sole real goal (don't eat the trailing delimiter after
+    # the token). It is a single negative character class with no overlapping
+    # quantifier, so it stays linear/ReDoS-safe (~1ms on a 200KB adversarial
+    # run). Residuals (accepted, ADR §6 "Low"): (1) short prose words like
+    # "Bearer of" are still masked — length can't distinguish them from a short
+    # legitimate token; (2) a token that *starts* with a quote in prose
+    # (``Bearer "opaque" downstream``) still won't match because the quote is a
+    # terminator — value-based masking + sensitive-key heuristics cover the
+    # realistic cases, and handling a leading quote here would reintroduce
+    # delimiter over-eating.
+    (re.compile(r"\bBearer\s+[^\s;,)}\]\"']+", re.IGNORECASE), "Bearer <redacted>"),
     # JWT — three base64url segments separated by dots, starting ``eyJ``.
     # KEPT (M2): value-based masking cannot catch a JWT the LLM minted in its
     # own response; the ``eyJ`` anchor + fixed 3-segment shape is highly

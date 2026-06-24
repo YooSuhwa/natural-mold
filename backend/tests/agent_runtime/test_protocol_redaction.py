@@ -222,13 +222,66 @@ def test_m2_bearer_does_not_eat_following_json_field() -> None:
 
 
 def test_m2_bearer_body_is_linear_on_adversarial_run() -> None:
-    # The tightened Bearer body is a single bounded character class with no
-    # overlapping quantifier — it must stay linear even on a 60KB token run.
+    # The Bearer body is a single negative character class with no overlapping
+    # quantifier — it must stay linear even on a 60KB token run.
     blob = "Bearer " + "aA0-_." * 12000
     start = time.perf_counter()
     redact_protocol_data("custom", {"detail": blob})
     elapsed = time.perf_counter() - start
     assert elapsed < 1.0, f"Bearer redaction took {elapsed:.2f}s — possible ReDoS regression"
+
+
+# --- Bearer special-char body regression (M2 narrowing leak) ----------------
+#
+# M2 narrowed the Bearer body from ``\S+`` to a positive base64url/JWT class
+# ``[A-Za-z0-9._~+/=-]+``. That under-masked: token bodies with chars outside
+# the class stopped the match early, leaking the tail in plaintext. The fix is a
+# NEGATIVE class that stops only at true delimiters, restoring full coverage.
+
+
+@pytest.mark.parametrize(
+    ("raw", "leaked_tail"),
+    [
+        # ``#`` is outside the base64url class — the positive M2 class masked
+        # only up to ``#``, leaving ``#sha256sum`` in plaintext.
+        ("... Bearer v2.local.abcDEF#sha256sum and then", "#sha256sum"),
+        # ``%`` mid-body.
+        ("Bearer tok%enWith%percent next", "%percent"),
+        # ``&`` mid-body.
+        ("Bearer a&b&c&d after", "&b&c&d"),
+        # ``|`` mid-body.
+        ("Bearer p|q|r done", "|q|r"),
+        # ``!`` mid-body.
+        ("Bearer x!y!z end", "!y!z"),
+        # ``(`` / ``*`` mid-body.
+        ("Bearer foo(bar*baz tail", "(bar*baz"),
+        # ``@`` mid-body.
+        ("Bearer one@two@three rest", "@two@three"),
+    ],
+)
+def test_bearer_special_char_body_is_fully_masked(raw: str, leaked_tail: str) -> None:
+    # The whole token body — including chars outside the base64url alphabet —
+    # must be masked. The previously-leaking tail must NOT survive in the output.
+    result = redact_protocol_data("debug_traces", raw)
+    assert "Bearer <redacted>" in result
+    assert leaked_tail not in result
+
+
+def test_bearer_leading_quote_in_prose_is_residual_not_masked() -> None:
+    # Documented residual (ADR §6 "Low"): a token that *starts* with a quote in
+    # prose is NOT masked by the Bearer heuristic because the quote is a
+    # terminator (handling it would reintroduce delimiter over-eating). The
+    # realistic leak cases are covered by value-based masking + the sensitive
+    # ``Authorization`` key heuristic; this asserts the known boundary so any
+    # future change to it is intentional.
+    raw = 'Bearer "opaquetoken123" downstream'
+    result = redact_protocol_data("debug_traces", raw)
+    assert result == raw  # unchanged: leading-quote body is the residual
+
+    # But when the same value sits under a sensitive key, the key heuristic
+    # redacts it regardless of the Bearer body shape — the real defence.
+    keyed = redact_protocol_data("values", {"authorization": 'Bearer "opaquetoken123"'})
+    assert keyed["authorization"] == REDACTED_SENSITIVE_FIELD
 
 
 # --- normal prose must not be over-masked ----------------------------------

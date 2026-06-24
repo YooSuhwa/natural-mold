@@ -121,8 +121,11 @@ logger = logging.getLogger("backfill.message_event_redaction")
 # the ContextVar lookup in ``redact_protocol_data``.
 _NO_VALUES: tuple[str, ...] = ()
 
-# Mask long opaque runs so raw secrets never reach stdout in dry-run diffs.
-_ELIDE_RE = re.compile(r"[A-Za-z0-9+/=_\-.]{12,}")
+# Mask opaque runs so raw secrets never reach stdout in dry-run diffs.
+# Threshold matches ``_MIN_REDACT_LEN`` (5) in ``app/marketplace/redaction.py``:
+# the redactor catches secrets as short as 5 chars, so a 12-char floor here would
+# let a 5–11 char secret print in plaintext in the before/after sample.
+_ELIDE_RE = re.compile(r"[A-Za-z0-9+/=_\-.]{5,}")
 
 
 @dataclass
