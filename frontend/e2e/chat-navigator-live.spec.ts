@@ -209,4 +209,93 @@ test.describe('Chat navigator live integration', () => {
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
   })
+
+  test('row menu pins, renames, and deletes conversations end to end', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    // Multi-step menu flow (pin → rename → delete) plus a cold first-navigation
+    // route compile exceeds the default 60s budget when run in isolation.
+    test.setTimeout(120_000)
+    const headers = await loginApi(request)
+    const modelId = await firstModelId(request)
+    const agent = await createAgent(request, headers, modelId, `E2E Navigator Mgmt ${Date.now()}`)
+
+    try {
+      // `target` is the active conversation we pin + rename; `keep` is a second,
+      // non-active row we delete (deleting the ACTIVE row would navigate away).
+      const target = await createConversation(request, headers, agent.id, 'Mgmt target session')
+      const keep = await createConversation(request, headers, agent.id, 'Mgmt keep session')
+
+      await page.goto(`/agents/${agent.id}/conversations/${target.id}`)
+      await page.waitForLoadState('domcontentloaded')
+
+      const targetRow = page.locator(
+        `[data-chat-session-href="/agents/${agent.id}/conversations/${target.id}"]`,
+      )
+      const keepRow = page.locator(
+        `[data-chat-session-href="/agents/${agent.id}/conversations/${keep.id}"]`,
+      )
+      await expect(targetRow).toBeVisible({ timeout: 15_000 })
+      await expect(keepRow).toBeVisible({ timeout: 15_000 })
+
+      const openRowMenu = async (row: typeof targetRow) => {
+        await row.hover()
+        await row.getByRole('button', { name: '대화 메뉴' }).click()
+      }
+      const conversationStatus = async (id: string) =>
+        (await request.get(`${API_BASE}/api/conversations/${id}`)).status()
+      const conversationField = async (id: string, field: 'is_pinned' | 'title') => {
+        const response = await request.get(`${API_BASE}/api/conversations/${id}`)
+        await expectOk(response, 'conversation get')
+        return (await readObject(response, 'conversation'))[field]
+      }
+
+      // ── Pin ── exact:true so the '고정' menuitem is not matched by '고정 해제'.
+      await openRowMenu(targetRow)
+      await page.getByRole('menuitem', { name: '고정', exact: true }).click()
+      await expect
+        .poll(() => conversationField(target.id, 'is_pinned'), { timeout: 15_000 })
+        .toBe(true)
+      // The menu now offers Unpin — proves the optimistic + server pin landed.
+      await openRowMenu(targetRow)
+      await expect(page.getByRole('menuitem', { name: '고정 해제', exact: true })).toBeVisible()
+      await page.keyboard.press('Escape')
+
+      // ── Rename ──
+      const newTitle = `Renamed mgmt ${Date.now()}`
+      await openRowMenu(targetRow)
+      await page.getByRole('menuitem', { name: '이름 변경', exact: true }).click()
+      const renameDialog = page.getByRole('dialog')
+      const renameInput = renameDialog.getByPlaceholder('대화 제목 입력')
+      await expect(renameInput).toBeVisible({ timeout: 10_000 })
+      await renameInput.fill(newTitle)
+      await renameDialog.getByRole('button', { name: '저장', exact: true }).click()
+      await expect(page.getByText(newTitle).first()).toBeVisible({ timeout: 15_000 })
+      await expect
+        .poll(() => conversationField(target.id, 'title'), { timeout: 15_000 })
+        .toBe(newTitle)
+
+      // ── Delete (the non-active `keep` row, so the page does not navigate away) ──
+      await openRowMenu(keepRow)
+      await page.getByRole('menuitem', { name: '삭제', exact: true }).click()
+      const confirmDialog = page.getByRole('alertdialog')
+      await confirmDialog.getByRole('button', { name: '삭제', exact: true }).click()
+      await expect(keepRow).toHaveCount(0, { timeout: 15_000 })
+      await expect.poll(() => conversationStatus(keep.id), { timeout: 15_000 }).toBe(404)
+
+      // The pinned + renamed target survived the delete.
+      await expect(targetRow).toBeVisible()
+
+      expect(errors.console).toEqual([])
+      // The polled 404s above are issued via the APIRequestContext (`request`),
+      // not the page, so they never reach page.on('response'); a clean
+      // errors.network keeps this test as strong as the sibling above.
+      expect(errors.network).toEqual([])
+    } finally {
+      const cleanupHeaders = await loginApi(request)
+      await deleteAgent(request, cleanupHeaders, agent.id)
+    }
+  })
 })
