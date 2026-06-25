@@ -1160,6 +1160,27 @@
       "confirm": "삭제"
     }
   },
+  "share": {
+    "title": "대화 공유",
+    "description": "누구나 링크로 이 대화를 읽기 전용으로 볼 수 있어요.",
+    "loading": "불러오는 중…",
+    "linkLabel": "공유 링크",
+    "copyLink": "링크 복사",
+    "copy": "복사",
+    "copied": "복사됨",
+    "sharedHint": "링크를 받은 사람은 로그인 없이 이 대화의 메시지를 볼 수 있어요. 새 메시지나 편집이 일어나도 공개된 스냅샷은 유지됩니다.",
+    "privateHint": "아직 비공개 대화입니다. 공유 링크를 만들면 누구나 읽기 전용으로 접근할 수 있어요.",
+    "revoke": "공유 해제",
+    "create": "공유 링크 만들기",
+    "toast": {
+      "copied": "공유 링크를 복사했어요.",
+      "copyFailed": "복사에 실패했습니다.",
+      "created": "공유 링크가 생성됐습니다.",
+      "createFailed": "공유 링크 생성 실패",
+      "revoked": "공유를 해제했습니다.",
+      "revokeFailed": "공유 해제 실패"
+    }
+  },
   "chat": {
     "defaultAgentName": "에이전트",
     "memory": {
@@ -1321,27 +1342,6 @@
       "stop": "중단",
       "artifacts": {
         "openLabel": "{name} 파일 열기"
-      }
-    },
-    "share": {
-      "title": "대화 공유",
-      "description": "누구나 링크로 이 대화를 읽기 전용으로 볼 수 있어요.",
-      "loading": "불러오는 중…",
-      "linkLabel": "공유 링크",
-      "copyLink": "링크 복사",
-      "copy": "복사",
-      "copied": "복사됨",
-      "sharedHint": "링크를 받은 사람은 로그인 없이 이 대화의 메시지를 볼 수 있어요. 새 메시지나 편집이 일어나도 공개된 스냅샷은 유지됩니다.",
-      "privateHint": "아직 비공개 대화입니다. 공유 링크를 만들면 누구나 읽기 전용으로 접근할 수 있어요.",
-      "revoke": "공유 해제",
-      "create": "공유 링크 만들기",
-      "toast": {
-        "copied": "공유 링크를 복사했어요.",
-        "copyFailed": "복사에 실패했습니다.",
-        "created": "공유 링크가 생성됐습니다.",
-        "createFailed": "공유 링크 생성 실패",
-        "revoked": "공유를 해제했습니다.",
-        "revokeFailed": "공유 해제 실패"
       }
     },
     "markdown": {

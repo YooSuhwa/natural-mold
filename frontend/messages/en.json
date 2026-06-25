@@ -1181,6 +1181,27 @@
       "confirm": "Delete"
     }
   },
+  "share": {
+    "title": "Share",
+    "description": "Anyone with this link can view the shared conversation.",
+    "loading": "Loading",
+    "linkLabel": "Link Label",
+    "copyLink": "Copy Link",
+    "copy": "Copy",
+    "copied": "Copied",
+    "sharedHint": "Shared Hint",
+    "privateHint": "Private Hint",
+    "revoke": "Revoke",
+    "create": "Create",
+    "toast": {
+      "copied": "Copied",
+      "copyFailed": "Operation failed.",
+      "created": "Created",
+      "createFailed": "Operation failed.",
+      "revoked": "Revoked",
+      "revokeFailed": "Operation failed."
+    }
+  },
   "chat": {
     "defaultAgentName": "Default Agent Name",
     "memory": {
@@ -1342,27 +1363,6 @@
       "stop": "Stop",
       "artifacts": {
         "openLabel": "Open {name} file"
-      }
-    },
-    "share": {
-      "title": "Share",
-      "description": "Anyone with this link can view the shared conversation.",
-      "loading": "Loading",
-      "linkLabel": "Link Label",
-      "copyLink": "Copy Link",
-      "copy": "Copy",
-      "copied": "Copied",
-      "sharedHint": "Shared Hint",
-      "privateHint": "Private Hint",
-      "revoke": "Revoke",
-      "create": "Create",
-      "toast": {
-        "copied": "Copied",
-        "copyFailed": "Operation failed.",
-        "created": "Created",
-        "createFailed": "Operation failed.",
-        "revoked": "Revoked",
-        "revokeFailed": "Operation failed."
       }
     },
     "markdown": {
