@@ -1183,6 +1183,19 @@
   },
   "chat": {
     "defaultAgentName": "에이전트",
+    "toolGroup": {
+      "count": "{count}회",
+      "labels": {
+        "webSearch": "웹 검색",
+        "naverBlog": "네이버 블로그",
+        "naverNews": "네이버 뉴스",
+        "googleSearch": "구글 검색",
+        "googleNews": "구글 뉴스",
+        "readFile": "파일 읽기",
+        "writeFile": "파일 쓰기",
+        "editFile": "파일 수정"
+      }
+    },
     "memory": {
       "title": "메모리",
       "proposed": "저장 제안",

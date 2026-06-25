@@ -21,6 +21,11 @@ from app.agent_runtime.e2e_scripted_model import (
     HITL_MULTI_MARKER,
     HITL_MULTI_TOOL_CALLS,
     SCRIPTED_DOCUMENT_COMMANDS,
+    TOOL_GROUP_FINAL_CONTENT,
+    TOOL_GROUP_GROUPED_COUNT,
+    TOOL_GROUP_GROUPED_TOOL,
+    TOOL_GROUP_MARKER,
+    TOOL_GROUP_SEPARATE_TOOL,
     E2EScriptedChatModel,
 )
 from app.models.model import Model
@@ -484,6 +489,58 @@ def test_e2e_scripted_model_returns_final_message_after_hitl_multi_tool_results(
 
     assert result.tool_calls == []
     assert "문서 파일 생성이 완료" in str(result.content)
+
+
+def test_e2e_scripted_model_emits_grouped_tool_calls_for_tool_group_marker() -> None:
+    # ONE AIMessage with N≥2 consecutive same-tool calls + 1 different tool, so the
+    # frontend GroupedParts collapses the repeated tool into a single container while
+    # the different tool renders separately. Both are no-network temporal builtins.
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": TOOL_GROUP_GROUPED_TOOL}, {"name": TOOL_GROUP_SEPARATE_TOOL}]
+    )
+
+    result = model.invoke([HumanMessage(content=f"{TOOL_GROUP_MARKER} 그룹 렌더 확인")])
+
+    names = [call["name"] for call in result.tool_calls]
+    assert names == (
+        [TOOL_GROUP_GROUPED_TOOL] * TOOL_GROUP_GROUPED_COUNT + [TOOL_GROUP_SEPARATE_TOOL]
+    )
+    # Distinct ids so the grouped per-call parts do not collapse on identity.
+    ids = [call["id"] for call in result.tool_calls]
+    assert len(set(ids)) == len(ids)
+
+
+def test_e2e_scripted_model_stream_preserves_tool_group_tool_calls() -> None:
+    model = E2EScriptedChatModel(
+        model="document-artifact-scripted",
+        slow_stream_delay_seconds=0,
+    ).bind_tools([{"name": TOOL_GROUP_GROUPED_TOOL}, {"name": TOOL_GROUP_SEPARATE_TOOL}])
+
+    chunks = list(model.stream([HumanMessage(content=f"{TOOL_GROUP_MARKER} 그룹 렌더 확인")]))
+
+    names = [call["name"] for chunk in chunks for call in chunk.tool_calls]
+    assert names == (
+        [TOOL_GROUP_GROUPED_TOOL] * TOOL_GROUP_GROUPED_COUNT + [TOOL_GROUP_SEPARATE_TOOL]
+    )
+
+
+def test_e2e_scripted_model_returns_final_message_after_tool_group_tool_results() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": TOOL_GROUP_GROUPED_TOOL}, {"name": TOOL_GROUP_SEPARATE_TOOL}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content=f"{TOOL_GROUP_MARKER} 그룹 렌더 확인"),
+            ToolMessage(content="{}", tool_call_id="call_e2e_tool_group_dt_0"),
+            ToolMessage(content="{}", tool_call_id="call_e2e_tool_group_dt_1"),
+            ToolMessage(content="{}", tool_call_id="call_e2e_tool_group_dt_2"),
+            ToolMessage(content="{}", tool_call_id="call_e2e_tool_group_relative"),
+        ]
+    )
+
+    assert result.tool_calls == []
+    assert str(result.content) == TOOL_GROUP_FINAL_CONTENT
 
 
 def test_e2e_scripted_model_does_not_trigger_hitl_for_descriptive_prompt() -> None:

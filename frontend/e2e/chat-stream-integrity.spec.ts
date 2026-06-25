@@ -98,6 +98,91 @@ test.describe('Chat streaming render integrity', () => {
     }
   })
 
+  test('groups N consecutive same-tool calls into one container, keeps the different tool separate', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    // Generous budget: the FIRST cold run compiles the chat route on `goto`
+    // (Next dev), which alone can take >60s before the streamed run even starts.
+    test.setTimeout(180_000)
+    const setup = await setupLangGraphV3Agent(request)
+
+    // Mirrors backend E2E_TOOL_GROUP (e2e_scripted_model.py): ONE assistant turn
+    // emits current_datetime ×3 (consecutive, same tool) + resolve_relative_date
+    // ×1. Both are no-network, no-HITL temporal builtins, so the run streams to
+    // completion without an approval card. Neither tool maps to a
+    // chat.toolGroup.labels.* key, so the group header falls back to the raw
+    // tool name (locale-independent assertion target).
+    const GROUPED_TOOL = 'current_datetime'
+    const GROUPED_COUNT = 3
+    const SEPARATE_TOOL = 'resolve_relative_date'
+    const FINAL_TEXT = 'E2E tool group rendering complete.'
+    const COUNT_META = `${GROUPED_COUNT}회`
+
+    const userBubbles = page.locator('[data-moldy-message-role="user"]')
+    // The group container is the CollapsiblePill whose meta shows "{N}회".
+    const groupContainer = page.locator('.moldy-tool-pill').filter({ hasText: COUNT_META })
+    const separatePill = page
+      .locator('.moldy-tool-pill')
+      .filter({ hasText: SEPARATE_TOOL })
+      .filter({ hasNotText: COUNT_META })
+
+    try {
+      // `domcontentloaded` (not the default `load`) so navigation resolves
+      // without blocking on the cold Next dev compile of the chat route; the
+      // composer-visible wait inside sendMessage already gates on hydration.
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`, {
+        waitUntil: 'domcontentloaded',
+      })
+      const prompt = 'E2E_TOOL_GROUP 그룹 렌더 확인'
+      await sendMessage(page, prompt)
+
+      // Wait for the run to settle (final assistant text). Once settled the
+      // group is collapsed (running→done remounts CollapsiblePill with
+      // defaultExpanded=false), so the per-call children are NOT in the DOM and
+      // each label/count appears exactly once — making the counts unambiguous.
+      await expect(page.getByText(FINAL_TEXT).last()).toBeVisible({ timeout: 60_000 })
+
+      // Exactly ONE group container, showing the grouped tool name + "{N}회".
+      // NOT N separate boxes for the repeated tool.
+      await expect(groupContainer).toHaveCount(1, { timeout: 15_000 })
+      await expect(groupContainer).toContainText(GROUPED_TOOL)
+      await expect(groupContainer).toContainText(COUNT_META)
+      // The count meta string appears exactly once across the whole transcript
+      // (only the single group container carries it).
+      await expect(page.getByText(COUNT_META)).toHaveCount(1)
+
+      // The different tool renders as its OWN pill, separate from the group —
+      // not collapsed inside the container.
+      await expect(separatePill).toHaveCount(1, { timeout: 15_000 })
+      await expect(separatePill).toContainText(SEPARATE_TOOL)
+      // The separate pill is a top-level sibling, NOT a descendant of the group
+      // container (no nesting of the different tool inside the group).
+      await expect(groupContainer.locator('.moldy-tool-pill')).toHaveCount(0)
+
+      // Settled state is collapsed: the group container's toggle reads "Expand"
+      // (aria-expanded=false). This proves the done→collapsed behavior.
+      const groupToggle = groupContainer.getByRole('button', { name: 'Expand' })
+      await expect(groupToggle).toHaveCount(1)
+      await expect(groupToggle).toHaveAttribute('aria-expanded', 'false')
+
+      // Expanding the group reveals exactly the N grouped per-call pills inside
+      // it (the children were collapsed, not dropped).
+      await groupToggle.click()
+      await expect(groupContainer.locator('.moldy-tool-pill').filter({ hasText: GROUPED_TOOL })).toHaveCount(
+        GROUPED_COUNT,
+        { timeout: 10_000 },
+      )
+
+      await expect(userBubbles).toHaveCount(1)
+      expect(errors.console, 'console errors during tool grouping').toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
+
   test('renders two HITL approval cards (multi-action) and resumes once after approving both', async ({
     page,
     request,

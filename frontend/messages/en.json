@@ -1204,6 +1204,19 @@
   },
   "chat": {
     "defaultAgentName": "Default Agent Name",
+    "toolGroup": {
+      "count": "{count} calls",
+      "labels": {
+        "webSearch": "Web search",
+        "naverBlog": "Naver blog",
+        "naverNews": "Naver news",
+        "googleSearch": "Google search",
+        "googleNews": "Google news",
+        "readFile": "Read file",
+        "writeFile": "Write file",
+        "editFile": "Edit file"
+      }
+    },
     "memory": {
       "title": "Memory",
       "proposed": "Save proposed",

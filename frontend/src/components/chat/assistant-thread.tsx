@@ -8,6 +8,7 @@ import {
   useContext,
   useMemo,
   useState,
+  type ReactNode,
   type UIEvent,
 } from 'react'
 import {
@@ -22,6 +23,8 @@ import {
   useAui,
   type AssistantDataUI,
   type AssistantToolUI,
+  type EnrichedPartState,
+  type PartState,
 } from '@assistant-ui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
@@ -64,6 +67,8 @@ import {
   type TokenUsage,
 } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
+import { ToolGroupContainer } from '@/components/chat/tool-ui/tool-group-container'
+import { isGroupableTool } from '@/lib/chat/tool-group-meta'
 import { StreamingMessageLoadingIndicator } from '@/components/chat/assistant-message-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
@@ -215,7 +220,16 @@ function OrderedTextPart() {
   )
 }
 
-function OrderedToolFallback(props: {
+/** order-1 자리에 개별 tool-call 한 줄(등록 per-tool UI 또는 폴백)을 렌더.
+ * 그룹 컨테이너(ToolGroupContainer)와 동일한 order-1을 써서 시각 위치를 통일. */
+function OrderedToolCall({
+  toolUI,
+  toolName,
+  args,
+  result,
+  status,
+}: {
+  toolUI: ReactNode
   toolName: string
   args: Record<string, unknown>
   result?: unknown
@@ -223,20 +237,112 @@ function OrderedToolFallback(props: {
 }) {
   return (
     <div className="order-1">
-      <ToolCallFallback {...props} />
+      {toolUI ?? (
+        <ToolCallFallback toolName={toolName} args={args} result={result} status={status} />
+      )}
     </div>
   )
 }
 
-const ASSISTANT_PART_COMPONENTS = {
-  Text: OrderedTextPart,
-  tools: { Fallback: OrderedToolFallback },
-} as const
+// ── 범용 tool-call 그룹핑 (공식 MessagePrimitive.GroupedParts) ─────────────
+//
+// 연속 같은 도구 호출(N≥2)을 1개 ToolGroupContainer로 묶는다. N=1·비-tool part는
+// 기존과 동일하게 개별 렌더. groupBy/render fn은 모듈 레벨 const로 둬서
+// assistant-ui 내부 메모화(identity 기반)가 매 토큰마다 깨지지 않게 한다 —
+// 위 OrderedTextPart 주석과 같은 이유로 streaming 표시 안정성에 필요하다.
+
+const GROUP_TOOL_PREFIX = 'group-tool:'
+
+/** groupBy: tool-call이고 그룹 대상이면 `group-tool:<toolName>` 단일 경로, 아니면 null.
+ * key에 toolName을 포함해 "연속 같은 도구"만 합쳐지고, 인접한 다른 도구는 분리된다. */
+export function groupAssistantParts(part: PartState): readonly [`group-${string}`] | null {
+  if (part.type === 'tool-call' && isGroupableTool(part.toolName)) {
+    return [`${GROUP_TOOL_PREFIX}${part.toolName}` as `group-${string}`]
+  }
+  return null
+}
+
+type GroupedRenderInfo = {
+  readonly part:
+    | {
+        readonly type: `group-${string}`
+        readonly status?: { type?: string }
+        readonly indices: readonly number[]
+      }
+    | EnrichedPartState
+    | { readonly type: 'indicator' }
+  readonly children: ReactNode
+}
+
+/** GroupedParts의 노드/leaf를 그린다. group-tool 노드는 N≥2면 컨테이너, N=1이면
+ * 개별 패스스루. leaf는 MessagePrimitive.Parts 기본 동작을 재현한다(아래 default 주석). */
+export function renderGroupedAssistantPart({ part, children }: GroupedRenderInfo): ReactNode {
+  if (part.type.startsWith(GROUP_TOOL_PREFIX)) {
+    const group = part as {
+      type: `group-${string}`
+      status?: { type?: string }
+      indices: readonly number[]
+    }
+    const toolName = group.type.slice(GROUP_TOOL_PREFIX.length)
+    const running = group.status?.type === 'running'
+    // N=1은 컨테이너 없이 개별 tool-call과 동일한 order-1로 통과. buildGroupTree는
+    // 단일 tool-call도 그룹 노드로 감싸므로 여기서 임계값(N<2)을 처리한다.
+    if (group.indices.length < 2) {
+      return <div className="order-1">{children}</div>
+    }
+    // running→펼침/done→접힘은 key remount로 달성한다(CollapsiblePill은 uncontrolled).
+    return (
+      <div className="order-1">
+        <ToolGroupContainer
+          key={running ? 'running' : 'done'}
+          toolName={toolName}
+          count={group.indices.length}
+          running={running}
+        >
+          {children}
+        </ToolGroupContainer>
+      </div>
+    )
+  }
+
+  switch (part.type) {
+    case 'text':
+      return <OrderedTextPart />
+    case 'tool-call': {
+      const leaf = part as Extract<EnrichedPartState, { type: 'tool-call' }>
+      return (
+        <OrderedToolCall
+          toolUI={leaf.toolUI}
+          toolName={leaf.toolName}
+          args={leaf.args as Record<string, unknown>}
+          result={leaf.result}
+          status={leaf.status}
+        />
+      )
+    }
+    case 'data': {
+      // MessagePrimitive.Parts의 data 기본값은 등록된 data renderer(우리: reasoning).
+      // order wrapper 없이(=order-0) 렌더 → 기존 동작대로 tool-call/text보다 앞에 표시.
+      const leaf = part as Extract<EnrichedPartState, { type: 'data' }>
+      return leaf.dataRendererUI
+    }
+    case 'indicator':
+      // indicator="never"라 발화하지 않지만 방어적으로 null. 로딩 인디케이터는
+      // AssistantMsg가 StreamingMessageLoadingIndicator로 별도 렌더한다.
+      return null
+    default:
+      // image/file/source/reasoning 등: 우리 앱은 Parts에 Text/tools.Fallback만
+      // 넘겼고 나머지는 Parts 기본값이 전부 null을 반환한다. 그 동작을 그대로 재현.
+      return null
+  }
+}
 
 function AssistantMessageParts() {
   return (
     <div className="flex flex-col">
-      <MessagePrimitive.Content components={ASSISTANT_PART_COMPONENTS} />
+      <MessagePrimitive.GroupedParts groupBy={groupAssistantParts} indicator="never">
+        {renderGroupedAssistantPart}
+      </MessagePrimitive.GroupedParts>
     </div>
   )
 }
