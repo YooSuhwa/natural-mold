@@ -151,14 +151,15 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         errorText.includes('net::ERR_ABORTED') &&
         req.method() === 'POST' &&
         /\/api\/conversations\/[^/]+\/messages\/switch-branch(?:\?.*)?$/.test(url)
-      // Deleting a conversation row: the server completes the DELETE (the row
-      // disappears and a follow-up GET returns 404), but the client aborts the
-      // in-flight request as the navigator invalidates and the row unmounts —
-      // a benign transport artifact, mirroring the GET route-transition aborts.
+      // Owner DELETE on a conversation-scoped resource (deleting the conversation,
+      // or revoking its share link): the server completes the DELETE (a follow-up
+      // GET returns 404), but the client aborts the in-flight request as the
+      // navigator / dialog query invalidates and re-renders — a benign transport
+      // artifact, mirroring the GET route-transition aborts.
       const expectedConversationDeleteAbort =
         errorText.includes('net::ERR_ABORTED') &&
         req.method() === 'DELETE' &&
-        /\/api\/conversations\/[^/?]+(?:\?.*)?$/.test(url)
+        /\/api\/conversations\/[^/?]+(?:\/share)?(?:\?.*)?$/.test(url)
       if (
         !url.includes('favicon') &&
         !expectedStreamDetach &&

@@ -377,4 +377,73 @@ test.describe('Chat navigator live integration', () => {
       await deleteAgent(request, cleanupHeaders, agent.id)
     }
   })
+
+  test('row menu shares then revokes a conversation through the dialog', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    // Light-route navigation + cold first-nav compile; see the paging test. The
+    // ShareDialog's `share` namespace is now root-scoped, so it renders translated
+    // here too (not only on the heavy chat route).
+    test.setTimeout(180_000)
+    const headers = await loginApi(request)
+    const modelId = await firstModelId(request)
+    const agentName = `E2E Navigator Share ${Date.now()}`
+    const agent = await createAgent(request, headers, modelId, agentName)
+
+    try {
+      const conv = await createConversation(request, headers, agent.id, 'Share target session')
+
+      await page.goto('/tools', { waitUntil: 'domcontentloaded', timeout: 120_000 })
+
+      // Expand this agent's group (scoped by its unique name) to reveal its rows.
+      await page
+        .locator('div', { has: page.getByRole('link', { name: agentName, exact: true }) })
+        .getByRole('button', { name: '에이전트 펼치기' })
+        .first()
+        .click({ timeout: 20_000 })
+
+      const row = page.locator(
+        `[data-chat-session-href="/agents/${agent.id}/conversations/${conv.id}"]`,
+      )
+      await expect(row).toBeVisible({ timeout: 20_000 })
+
+      // Open the row menu → 공유 → ShareDialog.
+      await row.hover()
+      await row.getByRole('button', { name: '대화 메뉴' }).click()
+      await page.getByRole('menuitem', { name: '공유', exact: true }).click()
+
+      const dialog = page.getByRole('dialog')
+      const createButton = dialog.getByRole('button', { name: '공유 링크 만들기', exact: true })
+      const revokeButton = dialog.getByRole('button', { name: '공유 해제', exact: true })
+
+      // A private conversation opens on the create action.
+      await expect(createButton).toBeVisible({ timeout: 15_000 })
+
+      // Create the public link → the dialog flips to the shared state (revoke action).
+      await createButton.click()
+      await expect(revokeButton).toBeVisible({ timeout: 15_000 })
+
+      // The dialog surfaces the real public link; capture its token.
+      const shareUrl = await dialog.getByRole('textbox', { name: '공유 링크' }).inputValue()
+      const token = shareUrl.split('/shared/')[1] ?? ''
+      expect(token, 'share token in dialog link').toBeTruthy()
+
+      // Revoke → the dialog flips back to private and the public link 404s.
+      await revokeButton.click()
+      await expect(createButton).toBeVisible({ timeout: 15_000 })
+      await expect
+        .poll(async () => (await request.get(`${API_BASE}/api/shares/${token}`)).status(), {
+          timeout: 15_000,
+        })
+        .toBe(404)
+
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      const cleanupHeaders = await loginApi(request)
+      await deleteAgent(request, cleanupHeaders, agent.id)
+    }
+  })
 })
