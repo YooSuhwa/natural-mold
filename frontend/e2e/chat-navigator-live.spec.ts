@@ -177,11 +177,19 @@ test.describe('Chat navigator live integration', () => {
     page,
     errors,
   }) => {
+    // This test navigates the heavy conversation route first; a cold Next dev
+    // app compile can exceed the default 60s budget, matching the siblings below.
+    test.setTimeout(120_000)
     const alpha = requireFixture(alphaAgent, 'alphaAgent')
     const conversation = requireFixture(alphaConversation, 'alphaConversation')
 
-    await page.goto(`/agents/${alpha.id}/conversations/${conversation.id}`)
-    await page.waitForLoadState('domcontentloaded')
+    // waitUntil 'domcontentloaded' (not the default 'load'): the heavy chat route
+    // keeps streaming/polling so 'load' can lag past the budget and the frame
+    // detaches (ERR_ABORTED) on a cold first navigation.
+    await page.goto(`/agents/${alpha.id}/conversations/${conversation.id}`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 120_000,
+    })
 
     await expect(page.getByRole('textbox', { name: '에이전트 또는 대화 검색' })).toHaveCount(0)
     await expect(page.getByText(alpha.name).first()).toBeVisible()

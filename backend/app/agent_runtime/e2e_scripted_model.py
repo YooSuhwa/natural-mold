@@ -392,7 +392,11 @@ class E2EScriptedChatModel(BaseChatModel):
         if _is_hitl_multi_request(human_text):
             message = AIMessage(
                 content="",
-                tool_calls=[dict(call) for call in HITL_MULTI_TOOL_CALLS],
+                # Deep-copy each call's args too (not just the outer dict) so a
+                # downstream in-place mutation can't corrupt the module-level
+                # HITL_MULTI_TOOL_CALLS constant across runs — matching the
+                # dict(tool_args) copy in _document_tool_call.
+                tool_calls=[{**call, "args": dict(call["args"])} for call in HITL_MULTI_TOOL_CALLS],
             )
             return ChatResult(generations=[ChatGeneration(message=message)])
 

@@ -152,10 +152,13 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         req.method() === 'POST' &&
         /\/api\/conversations\/[^/]+\/messages\/switch-branch(?:\?.*)?$/.test(url)
       // Owner DELETE on a conversation-scoped resource (deleting the conversation,
-      // or revoking its share link): the server completes the DELETE (a follow-up
-      // GET returns 404), but the client aborts the in-flight request as the
-      // navigator / dialog query invalidates and re-renders — a benign transport
-      // artifact, mirroring the GET route-transition aborts.
+      // or revoking its share link): the server completes the DELETE (confirmed by
+      // a follow-up GET that returns 404), but the in-flight client request is
+      // observed to abort around completion — a benign transport artifact,
+      // mirroring the GET route-transition aborts. The functional outcome is still
+      // asserted server-side via the 404 poll, so this only suppresses the
+      // transport-level ERR_ABORTED, never a real 4xx/5xx (those surface via the
+      // response handler above).
       const expectedConversationDeleteAbort =
         errorText.includes('net::ERR_ABORTED') &&
         req.method() === 'DELETE' &&
