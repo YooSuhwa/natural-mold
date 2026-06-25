@@ -52,6 +52,30 @@ describe('createMoldyAgentTransport', () => {
     expect('apiUrl' in transport).toBe(false)
   })
 
+  it('notifies after a run.start command is accepted', async () => {
+    const onRunStartAccepted = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        type: 'success',
+        id: 1,
+        result: { run_id: 'run-1' },
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-1', 'agent-1', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onRunStartAccepted,
+    })
+
+    await transport.send({
+      id: 1,
+      method: 'run.start',
+      params: { assistant_id: '_', input: { messages: [] } },
+    })
+
+    expect(onRunStartAccepted).toHaveBeenCalledOnce()
+  })
+
   it('uses the state path for SDK hydration without adding CSRF to GET requests', async () => {
     csrfStore.set('csrf-2')
     const onState = vi.fn()
@@ -78,10 +102,71 @@ describe('createMoldyAgentTransport', () => {
     expect(init?.method).toBe('GET')
     expect(init?.credentials).toBe('include')
     expect(new Headers(init?.headers).has('X-CSRF-Token')).toBe(false)
+    expect(onState).not.toHaveBeenCalled()
+    const deactivate = transport.activateStateHydration()
     expect(onState).toHaveBeenCalledWith({
       values: { messages: [] },
       next: [],
       tasks: [],
     })
+    deactivate()
+  })
+
+  it('keeps the listener under StrictMode double-activate when the first deactivate runs', async () => {
+    const onState = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        values: { messages: [{ id: 'message-strict' }] },
+        next: [],
+        tasks: [],
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-strict', 'agent-strict', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onState,
+    })
+
+    // StrictMode mounts effects twice; the first cleanup must not remove the
+    // second activation's listener (per-activation wrapper).
+    const deactivateFirst = transport.activateStateHydration()
+    const deactivateSecond = transport.activateStateHydration()
+    deactivateFirst()
+
+    await transport.getState?.()
+
+    expect(onState).toHaveBeenCalledTimes(1)
+    expect(onState).toHaveBeenCalledWith({
+      values: { messages: [{ id: 'message-strict' }] },
+      next: [],
+      tasks: [],
+    })
+    deactivateSecond()
+  })
+
+  it('notifies an active state hydration listener when SDK hydration finishes later', async () => {
+    const onState = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        values: { messages: [{ id: 'message-1' }] },
+        next: [],
+        tasks: [],
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-3', 'agent-3', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onState,
+    })
+    const deactivate = transport.activateStateHydration()
+
+    await transport.getState?.()
+
+    expect(onState).toHaveBeenCalledWith({
+      values: { messages: [{ id: 'message-1' }] },
+      next: [],
+      tasks: [],
+    })
+    deactivate()
   })
 })

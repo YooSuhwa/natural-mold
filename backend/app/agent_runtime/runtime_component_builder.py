@@ -23,6 +23,7 @@ from app.agent_runtime.middleware_registry import (
     get_provider_middleware,
 )
 from app.agent_runtime.model_factory import create_chat_model
+from app.agent_runtime.run_secrets import add_run_secrets
 from app.agent_runtime.runtime_config import _DATA_DIR, AgentConfig, RuntimeComponents
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.agent_runtime.skill_tool_dependencies import build_skill_dependency_tool_configs
@@ -61,6 +62,7 @@ class MiddlewareModelCredentialRequiredError(AppError):
             status=422,
         )
 
+
 def build_agent(
     model: BaseChatModel,
     tools: list[BaseTool],
@@ -93,6 +95,7 @@ def build_agent(
         name=name,
         subagents=cast(Any, subagents),
     )
+
 
 _MIDDLEWARE_MODEL_FIELDS = frozenset({"model", "fallback_model"})
 
@@ -348,6 +351,20 @@ def _build_interrupt_on_policy(
     return policy or None
 
 
+def _add_skill_secrets_to_run(skill_ctx: Any) -> None:
+    """ADR-021 — union resolved skill credential plaintext into the run set.
+
+    After ``resolve_runtime_credentials`` populates
+    ``descriptor.credential_bindings[*].decrypted`` (``dict[str, str]``), feed
+    those plaintext values to the run-scoped redaction set. ``add_run_secrets``
+    is a no-op when the run ContextVar is unset.
+    """
+
+    for descriptor in getattr(skill_ctx, "descriptors", {}).values():
+        for binding in getattr(descriptor, "credential_bindings", {}).values():
+            add_run_secrets(getattr(binding, "decrypted", None))
+
+
 def _selected_skill_slugs(agent_skills: list[dict[str, Any]] | None) -> list[str]:
     if not agent_skills:
         return []
@@ -444,6 +461,22 @@ def _memory_tool_instruction_prompt() -> str:
     )
 
 
+def _interactive_tool_instruction_prompt() -> str:
+    return (
+        "## Interactive Tool Rules\n"
+        "- If the user explicitly asks you to ask the user, use ask_user, "
+        "let them choose, or pick from options, call the `ask_user` tool. "
+        "Do not answer with plain text that only describes asking.\n"
+        "- For a single-choice option request, call `ask_user` with "
+        '`mode="option_list"`, a concise title, the requested options, '
+        "`minSelections=1`, and `maxSelections=1`.\n"
+        "- If the user explicitly asks to use an available tool or MCP tool, "
+        "call the matching tool instead of simulating the tool result in text.\n"
+        "- If a tool requires HITL approval, wait for the approval result before "
+        "claiming that the tool ran or that the requested side effect happened."
+    )
+
+
 def _artifact_file_instruction_prompt(thread_id: str) -> str:
     return (
         "## Generated File Rules\n"
@@ -480,6 +513,8 @@ async def _prepare_runtime_components(
 
     system_prompt = _system_prompt_with_temporal_context(cfg.system_prompt)
     system_prompt += "\n\n" + _artifact_file_instruction_prompt(cfg.thread_id)
+    if include_ask_user and not is_trigger_mode:
+        system_prompt += "\n\n" + _interactive_tool_instruction_prompt()
     model_candidates = _build_model_candidates(cfg)
     model = model_candidates[0]
     mark_timing("model_ms")
@@ -554,6 +589,11 @@ async def _prepare_runtime_components(
 
             async with _async_session_factory() as _runtime_db:
                 await resolve_runtime_credentials(skill_ctx, db=_runtime_db, cfg=cfg)
+            # ADR-021 — union the just-resolved skill credential plaintext into
+            # the run-scoped redaction set (lazy path). No-op when the run
+            # ContextVar is unset (DB-free tests, trigger mode). Works for the
+            # parent run; subagents share the same in-place set object.
+            _add_skill_secrets_to_run(skill_ctx)
         skills_virtual_prefix = (
             f"/runtime/{cfg.thread_id}/agents/{cfg.agent_runtime_name}/skills/"
             if cfg.agent_runtime_name

@@ -516,14 +516,15 @@ test.describe('Document artifact viewers', () => {
       )
       expect(artifact.status).toBe('ready')
 
-      const activeRun = await waitForActiveRun(cancelApi, cancelSetup.conversationId)
+      const cancelConversationId = cancelSetup.conversationId
+      const activeRun = await waitForActiveRun(cancelApi, cancelConversationId)
       const cancelResponse = page.waitForResponse((response) => {
         if (response.request().method() !== 'POST') return false
         const url = response.url()
         return (
           url.includes(
-            `/api/conversations/${cancelSetup.conversationId}/runs/${activeRun.id}/cancel`,
-          ) || url.includes(`/threads/${cancelSetup.conversationId}/runs/${activeRun.id}/cancel`)
+            `/api/conversations/${cancelConversationId}/runs/${activeRun.id}/cancel`,
+          ) || url.includes(`/threads/${cancelConversationId}/runs/${activeRun.id}/cancel`)
         )
       })
       await page.locator('[data-moldy-stop-button="true"]').click()

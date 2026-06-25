@@ -127,6 +127,153 @@ TOKEN_USAGE_METADATA = {
     "output_tokens": 12,
     "total_tokens": 42,
 }
+CHAT_RICH_OUTPUT_MARKER = "E2E_CHAT_RICH_OUTPUTS"
+CHAT_RICH_OUTPUT_PROMPT = (
+    "체크리스트, 표, TypeScript 코드, 수식, 이미지, 링크, 인용문, "
+    "Mermaid 다이어그램을 모두 포함해서 채팅 출력 예시를 보여줘"
+)
+CHAT_RICH_OUTPUT_CONTENT = "\n".join(
+    (
+        "# E2E rich output contract",
+        "",
+        "이 응답은 채팅 렌더러가 여러 출력 형식을 안정적으로 유지하는지 확인합니다.",
+        "",
+        "- [x] E2E checklist item",
+        "- Inline code: `e2e_inline_code`",
+        "",
+        "| Surface | Contract |",
+        "| --- | --- |",
+        "| Table | E2E table cell |",
+        "",
+        "```ts",
+        "export function e2eRichOutput(value: number): number {",
+        "  return value + 7",
+        "}",
+        "```",
+        "",
+        "Inline math $x + y = z$ and block math:",
+        "",
+        "$$",
+        "a^2 + b^2 = c^2",
+        "$$",
+        "",
+        "![E2E rich output image](/moldy-mascot.webp)",
+        "",
+        "[E2E reference link](https://example.com/e2e-chat-rich-output)",
+        "",
+        "> E2E blockquote remains rendered.",
+        "",
+        "```mermaid",
+        "flowchart LR",
+        "  A[E2E Mermaid Source] --> B[E2E Mermaid Rendered]",
+        "```",
+    )
+)
+HITL_APPROVAL_MARKER = "E2E_HITL_APPROVAL"
+HITL_MULTI_MARKER = "E2E_HITL_MULTI"
+# Two execute_in_skill calls in ONE AIMessage. langchain's HumanInTheLoopMiddleware
+# batches every interrupting tool call from a single AIMessage into ONE interrupt
+# with N action_requests, so this fixture drives the multi-action approval-card +
+# HiTL coordinator path (collect both decisions, resume once). Distinct ids keep the
+# two synthetic request_approval cards from collapsing, and distinct docx outputs let
+# both skills execute successfully against the single installed docx-document skill.
+HITL_MULTI_TOOL_CALLS = (
+    {
+        "id": "call_e2e_hitl_multi_0",
+        "name": "execute_in_skill",
+        "args": {
+            "skill_directory": "/skills/docx-document",
+            "command": (
+                "node scripts/create_docx.cjs --input examples/e2e-docx.json "
+                "--output moldy-hitl-multi-1.docx"
+            ),
+        },
+    },
+    {
+        "id": "call_e2e_hitl_multi_1",
+        "name": "execute_in_skill",
+        "args": {
+            "skill_directory": "/skills/docx-document",
+            "command": (
+                "node scripts/create_docx.cjs --input examples/e2e-docx.json "
+                "--output moldy-hitl-multi-2.docx"
+            ),
+        },
+    },
+)
+ASK_USER_FRUIT_MARKER = "E2E_ASK_USER_FRUIT"
+ASK_USER_FRUIT_TOOL_CALL_ID = "call_e2e_ask_user_fruit"
+ASK_USER_FRUIT_PREFACE_CONTENT = "네, 골라봐요!"
+ASK_USER_FRUIT_FINAL_CONTENT = "E2E ask_user fruit selection received."
+ASK_USER_FRUIT_TOOL_ARGS = {
+    "mode": "option_list",
+    "title": "입력이 필요합니다",
+    "question": "어떤 과일이 좋아요?",
+    "options": [
+        {"id": "apple", "label": "🍎 사과"},
+        {"id": "grape", "label": "🍇 포도"},
+        {"id": "pear", "label": "🍐 배"},
+    ],
+    "minSelections": 1,
+    "maxSelections": 1,
+}
+
+
+def _is_rich_output_request(human_text: str) -> bool:
+    if CHAT_RICH_OUTPUT_MARKER in human_text:
+        return True
+
+    lowered = human_text.lower()
+    requested_surfaces = ("체크리스트", "표", "코드", "수식", "이미지", "링크")
+    mentions_required_surfaces = all(surface in human_text for surface in requested_surfaces)
+    mentions_quote = "인용" in human_text or "blockquote" in lowered
+    mentions_mermaid = "mermaid" in lowered or "머메이드" in human_text
+    return mentions_required_surfaces and mentions_quote and mentions_mermaid
+
+
+def _is_ask_user_fruit_request(human_text: str) -> bool:
+    if ASK_USER_FRUIT_MARKER in human_text:
+        return True
+
+    lowered = human_text.lower()
+    asks_user = "ask user" in lowered or "ask_user" in lowered
+    mentions_fruit_options = all(option in human_text for option in ("사과", "포도", "배"))
+    return asks_user and mentions_fruit_options
+
+
+def _is_hitl_approval_request(human_text: str) -> bool:
+    # Explicit marker always wins so a generic prompt like "도구 승인 절차를
+    # 설명해줘" (explain the tool-approval flow) does not accidentally fire an
+    # ``execute_in_skill`` tool call.
+    if HITL_APPROVAL_MARKER in human_text:
+        return True
+
+    lowered = human_text.lower()
+    mentions_tool = "mcp" in lowered or "도구" in human_text or "tool" in lowered
+    mentions_hitl = "hitl" in lowered or "승인" in human_text or "approval" in lowered
+    # Require an explicit execution intent in addition to the tool/approval
+    # mention so descriptive prompts ("설명/알려줘") are not mistaken for an
+    # approval-triggering request. Backward compatible with existing specs that
+    # phrase the prompt as "도구 사용 승인" / "tool ... HITL".
+    mentions_execution = (
+        "사용" in human_text or "실행" in human_text or "use" in lowered or "run" in lowered
+    )
+    return mentions_tool and mentions_hitl and mentions_execution
+
+
+def _is_hitl_multi_request(human_text: str) -> bool:
+    # Explicit marker only — there is no natural-language form. The multi-action
+    # fixture must never fire accidentally because it stalls the run on two
+    # approval cards until both are resolved.
+    return HITL_MULTI_MARKER in human_text
+
+
+def _document_tool_call(marker: str, tool_args: dict[str, str]) -> dict[str, Any]:
+    return {
+        "id": f"call_{marker.lower()}",
+        "name": "execute_in_skill",
+        "args": dict(tool_args),
+    }
 
 
 def _message_text(message: BaseMessage) -> str:
@@ -166,10 +313,17 @@ class E2EScriptedChatModel(BaseChatModel):
         for tool in tools:
             if isinstance(tool, BaseTool):
                 names.append(tool.name)
-            elif isinstance(tool, dict) and isinstance(tool.get("name"), str):
-                names.append(tool["name"])
+            elif isinstance(tool, dict):
+                if isinstance(tool.get("name"), str):
+                    names.append(tool["name"])
+                    continue
+                function = tool.get("function")
+                if isinstance(function, dict) and isinstance(function.get("name"), str):
+                    names.append(function["name"])
             elif hasattr(tool, "__name__"):
                 names.append(str(tool.__name__))
+            elif hasattr(tool, "name") and isinstance(tool.name, str):
+                names.append(tool.name)
         clone._bound_tool_names = tuple(names)
         return clone
 
@@ -196,6 +350,9 @@ class E2EScriptedChatModel(BaseChatModel):
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if messages and isinstance(messages[-1], ToolMessage):
+            if _is_ask_user_fruit_request(human_text):
+                message = AIMessage(content=ASK_USER_FRUIT_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
             if ARTIFACT_SLOW_FINAL_MARKER in human_text:
                 message = AIMessage(content="".join(ARTIFACT_SLOW_FINAL_PARTS))
                 return ChatResult(generations=[ChatGeneration(message=message)])
@@ -216,18 +373,47 @@ class E2EScriptedChatModel(BaseChatModel):
                 usage_metadata=dict(TOKEN_USAGE_METADATA),
             )
             return ChatResult(generations=[ChatGeneration(message=message)])
+        if _is_rich_output_request(human_text):
+            message = AIMessage(content=CHAT_RICH_OUTPUT_CONTENT)
+            return ChatResult(generations=[ChatGeneration(message=message)])
+        if _is_ask_user_fruit_request(human_text):
+            message = AIMessage(
+                content=ASK_USER_FRUIT_PREFACE_CONTENT,
+                tool_calls=[
+                    {
+                        "id": ASK_USER_FRUIT_TOOL_CALL_ID,
+                        "name": "ask_user",
+                        "args": dict(ASK_USER_FRUIT_TOOL_ARGS),
+                    }
+                ],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if _is_hitl_multi_request(human_text):
+            message = AIMessage(
+                content="",
+                # Deep-copy each call's args too (not just the outer dict) so a
+                # downstream in-place mutation can't corrupt the module-level
+                # HITL_MULTI_TOOL_CALLS constant across runs — matching the
+                # dict(tool_args) copy in _document_tool_call.
+                tool_calls=[{**call, "args": dict(call["args"])} for call in HITL_MULTI_TOOL_CALLS],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if _is_hitl_approval_request(human_text):
+            message = AIMessage(
+                content="",
+                tool_calls=[
+                    _document_tool_call("E2E_DOCX", SCRIPTED_DOCUMENT_COMMANDS["E2E_DOCX"]),
+                ],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
 
         for marker, tool_args in SCRIPTED_DOCUMENT_COMMANDS.items():
             if marker in human_text:
                 message = AIMessage(
                     content="",
-                    tool_calls=[
-                        {
-                            "id": f"call_{marker.lower()}",
-                            "name": "execute_in_skill",
-                            "args": dict(tool_args),
-                        }
-                    ],
+                    tool_calls=[_document_tool_call(marker, tool_args)],
                 )
                 return ChatResult(generations=[ChatGeneration(message=message)])
 
@@ -294,6 +480,17 @@ class E2EScriptedChatModel(BaseChatModel):
 __all__ = [
     "E2EScriptedChatModel",
     "ARTIFACT_SLOW_FINAL_MARKER",
+    "CHAT_RICH_OUTPUT_CONTENT",
+    "CHAT_RICH_OUTPUT_MARKER",
+    "CHAT_RICH_OUTPUT_PROMPT",
+    "HITL_APPROVAL_MARKER",
+    "HITL_MULTI_MARKER",
+    "HITL_MULTI_TOOL_CALLS",
+    "ASK_USER_FRUIT_FINAL_CONTENT",
+    "ASK_USER_FRUIT_MARKER",
+    "ASK_USER_FRUIT_PREFACE_CONTENT",
+    "ASK_USER_FRUIT_TOOL_ARGS",
+    "ASK_USER_FRUIT_TOOL_CALL_ID",
     "LANGGRAPH_V3_MARKER",
     "SCRIPTED_DOCUMENT_COMMANDS",
     "SLOW_STREAM_MARKER",

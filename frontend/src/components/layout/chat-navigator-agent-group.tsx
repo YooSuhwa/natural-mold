@@ -8,6 +8,7 @@ import type { ConversationRowActions } from '@/components/chat/use-conversation-
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ChatNavigatorSessionRow } from '@/components/layout/chat-navigator-session-row'
+import { clearChatRouteReplacement } from '@/lib/chat/chat-route-replacement'
 import { useConversationPages } from '@/lib/hooks/use-conversations'
 import type { AgentSummary, ConversationSort } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -142,7 +143,12 @@ export function ChatNavigatorAgentGroup({
           <Button
             variant="ghost"
             size="icon-xs"
-            render={<Link href={`/agents/${agent.id}/conversations/new`} />}
+            render={
+              <Link
+                href={`/agents/${agent.id}/conversations/new`}
+                onClick={clearChatRouteReplacement}
+              />
+            }
             aria-label={t('newChatForAgent', { name: agent.name })}
           >
             <PlusIcon className="size-3" />
@@ -166,7 +172,9 @@ export function ChatNavigatorAgentGroup({
             <>
               {showDraft ? (
                 <Link
+                  data-chat-session-href={`/agents/${agent.id}/conversations/new`}
                   href={`/agents/${agent.id}/conversations/new`}
+                  onClick={clearChatRouteReplacement}
                   className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-2 text-xs font-medium text-primary-foreground"
                 >
                   <MessageSquareIcon className="size-3.5" />

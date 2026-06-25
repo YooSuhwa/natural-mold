@@ -23,6 +23,7 @@ from app.agent_runtime.identity import (
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
+from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.subagents import build_subagents_config
 from app.database import async_session
@@ -279,6 +280,10 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             )
             await db.refresh(run)
             return run
+        # ADR-021 H1 — populate the eager secret set (subagents resolved above)
+        # so value-based redaction masks trigger-run trace persistence too.
+        # ``.update`` preserves the subagent secrets already unioned above.
+        cfg.secret_values.update(collect_cfg_secret_values(cfg))
         try:
             output = await execute_agent_invoke(
                 cfg,

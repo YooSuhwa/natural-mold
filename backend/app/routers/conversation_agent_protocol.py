@@ -32,7 +32,10 @@ from app.routers.conversation_agent_protocol_runtime import (
     protocol_broker_generator,
 )
 from app.routers.conversation_agent_protocol_stale import maybe_mark_stale_active_run
-from app.routers.conversation_agent_protocol_state_snapshot import load_thread_state_snapshot
+from app.routers.conversation_agent_protocol_state_snapshot import (
+    collect_state_secret_values,
+    load_thread_state_snapshot,
+)
 from app.routers.conversation_agent_protocol_thread_stream import (
     needs_thread_stream,
     protocol_thread_stream_generator,
@@ -102,7 +105,8 @@ async def get_thread_state(
         user_id=user.id,
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
-    snapshot = await load_thread_state_snapshot(conversation, db=db)
+    secrets = await collect_state_secret_values(db, conversation)
+    snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=secrets)
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,
@@ -172,7 +176,7 @@ async def get_thread_history(
         thread_id=thread_id,
         user_id=user.id,
     )
-    return await state_api.load_thread_history_response(conversation, request)
+    return await state_api.load_thread_history_response(conversation, request, db=db, user=user)
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/stream/events")
@@ -292,7 +296,8 @@ async def get_compat_thread_state(
         user_id=user.id,
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
-    snapshot = await load_thread_state_snapshot(conversation, db=db)
+    secrets = await collect_state_secret_values(db, conversation)
+    snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=secrets)
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,

@@ -10,6 +10,10 @@ export const ROOT_MESSAGE_NAMESPACES = [
   'common',
   'metadata',
   'nav',
+  // `share` lives at the root because the ShareDialog is only reachable from the
+  // global chat navigator (in the root layout shell), which is outside the chat
+  // page's own message scope — see chat-navigator / use-conversation-row-actions.
+  'share',
   'sidebar',
 ] as const
 

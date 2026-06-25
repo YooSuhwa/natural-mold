@@ -222,6 +222,124 @@ function sameArgs(left: Record<string, unknown>, right: Record<string, unknown>)
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+const HITL_METADATA_KEYS = new Set([
+  'approval_id',
+  'allowed_decisions',
+  'hitl_interrupt_id',
+  'hitl_action_index',
+  'hitl_total_actions',
+])
+
+type MutableToolCall = {
+  id?: string
+  name: string
+  args: Record<string, unknown>
+  type?: string
+}
+
+function stripHitLMetadata(args: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(args).filter(([key]) => !HITL_METADATA_KEYS.has(key)))
+}
+
+function equivalentToolArgs(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): boolean {
+  return JSON.stringify(stripHitLMetadata(left)) === JSON.stringify(stripHitLMetadata(right))
+}
+
+function mutableToolCalls(message: BaseMessage): MutableToolCall[] | null {
+  if (!AIMessage.isInstance(message)) return null
+  const toolCalls = message.tool_calls
+  return Array.isArray(toolCalls) ? (toolCalls as MutableToolCall[]) : null
+}
+
+function hydratedRequiresActionMessage(
+  message: BaseMessage,
+  toolCalls: readonly MutableToolCall[],
+  index: number,
+  synthetic: ToolCallInfo,
+): BaseMessage {
+  const existing = toolCalls[index]
+  if (!existing) return message
+  const nextToolCalls = [...toolCalls]
+  nextToolCalls[index] = {
+    ...existing,
+    args: {
+      ...existing.args,
+      ...synthetic.args,
+      approval_id: existing.id ?? synthetic.args.approval_id,
+    },
+  }
+  return Object.assign(Object.create(Object.getPrototypeOf(message)) as BaseMessage, message, {
+    tool_calls: nextToolCalls,
+    status: {
+      type: 'requires-action' as const,
+      reason: 'tool-calls' as const,
+    },
+  })
+}
+
+/**
+ * IN-PLACE MUTATION 계약: `draft`는 **호출자 소유의 shallow copy**여야 한다.
+ * 이 함수는 매칭되는 메시지 슬롯을 새 메시지 객체로 교체(slot 단위 immutable
+ * replace)하지만 배열 자체는 in place로 수정한다. 유일한 호출자
+ * (`appendInterruptToolCallMessages`)가 `[...messages]`로 만든 사본을 넘기므로
+ * 원본 인자 배열은 변형되지 않는다. 다른 위치에서 호출할 때도 반드시 사본을
+ * 넘길 것 — 원본 배열을 그대로 넘기면 호출자의 배열이 변형된다.
+ */
+function hydrateExistingAskUserToolCallMetadata(
+  draft: BaseMessage[],
+  payload: StandardInterruptPayload,
+  usedSlots: Set<string>,
+): boolean {
+  let hydrated = false
+  const syntheticToolCalls = standardInterruptToToolCalls(payload)
+
+  for (const synthetic of syntheticToolCalls) {
+    if (synthetic.name !== 'ask_user') continue
+
+    // Track which (message, tool-call) slots are already bound so two
+    // arg-equivalent ask_user interrupts don't both hydrate the SAME first
+    // match (the second slot would never be hydrated → duplicate/incorrect card).
+    for (const [messageIndex, message] of draft.entries()) {
+      const toolCalls = mutableToolCalls(message)
+      if (!toolCalls) continue
+
+      const index = toolCalls.findIndex(
+        (existing, toolCallIndex) =>
+          !usedSlots.has(`${messageIndex}:${toolCallIndex}`) &&
+          existing.name === synthetic.name &&
+          equivalentToolArgs(existing.args, synthetic.args),
+      )
+      if (index < 0) continue
+
+      usedSlots.add(`${messageIndex}:${index}`)
+      draft[messageIndex] = hydratedRequiresActionMessage(message, toolCalls, index, synthetic)
+      hydrated = true
+      break
+    }
+  }
+
+  return hydrated
+}
+
+function hasExistingAskUserToolCall(
+  messages: readonly BaseMessage[],
+  toolCall: ToolCallInfo,
+): boolean {
+  if (toolCall.name !== 'ask_user') return false
+  return messages.some((message) => {
+    const toolCalls = mutableToolCalls(message)
+    return (
+      toolCalls?.some(
+        (existing) =>
+          existing.name === toolCall.name && equivalentToolArgs(existing.args, toolCall.args),
+      ) ?? false
+    )
+  })
+}
+
 function completedToolCallIds(messages: readonly BaseMessage[]): Set<string> {
   const ids = new Set<string>()
   for (const message of messages) {
@@ -332,8 +450,10 @@ export function appendInterruptToolCallMessages(
 ): BaseMessage[] {
   if (payloads.length === 0) return [...messages]
   const projected: BaseMessage[] = [...messages]
+  const hydratedSlots = new Set<string>()
   for (const payload of payloads) {
     const toolCalls = standardInterruptToToolCalls(payload)
+    if (hydrateExistingAskUserToolCallMetadata(projected, payload, hydratedSlots)) continue
     const ids = new Set(toolCalls.map((toolCall) => toolCall.id).filter(isString))
     if (ids.size === 0 || projected.some((message) => hasToolCallId(message, ids))) continue
     projected.push(interruptedAssistantMessage(payload))
@@ -350,6 +470,7 @@ export function appendResolvedInterruptToolCallMessages(
   for (const item of resolved) {
     const toolCallId = item.toolCall.id
     if (!toolCallId) continue
+    if (hasExistingAskUserToolCall(projected, item.toolCall)) continue
     if (!projected.some((message) => hasToolCallId(message, new Set([toolCallId])))) {
       projected.push(
         Object.assign(

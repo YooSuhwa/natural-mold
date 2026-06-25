@@ -140,8 +140,27 @@ def extract_subagent_discovery(event: StoredProtocolEvent) -> dict[str, Any] | N
 def _normalize_protocol_data(method: str, data: Any) -> Any:
     if method == "messages" and _is_payload_metadata_tuple(data):
         payload, metadata = data
-        return [_serialize_value(payload), _serialize_value(metadata)]
+        serialized_payload = _serialize_value(payload)
+        serialized_metadata = _serialize_value(metadata)
+        if isinstance(serialized_payload, Mapping):
+            return _message_payload_with_metadata(serialized_payload, serialized_metadata)
+        return serialized_payload
     return _serialize_value(data)
+
+
+def _message_payload_with_metadata(
+    payload: Mapping[str, Any],
+    metadata: Any,
+) -> dict[str, Any]:
+    normalized = dict(payload)
+    if isinstance(metadata, Mapping) and metadata:
+        existing = normalized.get("metadata")
+        normalized["metadata"] = (
+            {**dict(metadata), **dict(existing)}
+            if isinstance(existing, Mapping)
+            else dict(metadata)
+        )
+    return normalized
 
 
 def _merge_params_interrupts(*, data: Any, interrupts: Any) -> Any:

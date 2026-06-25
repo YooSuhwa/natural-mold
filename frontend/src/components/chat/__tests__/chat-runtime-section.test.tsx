@@ -124,6 +124,20 @@ describe('ChatRuntimeSection', () => {
     expect(document.querySelector('[data-runtime="langgraph-runtime"]')).toBeInTheDocument()
   })
 
+  it('passes the draft commit callback to the LangGraph runtime', () => {
+    const onBeforeNewMessage = vi.fn()
+    const onNewMessageAccepted = vi.fn()
+
+    renderSection({ onBeforeNewMessage, onNewMessageAccepted, useLangGraphRuntime: true })
+
+    expect(mocks.useMoldyLangGraphStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onBeforeSubmit: onBeforeNewMessage,
+        onRunStartAccepted: onNewMessageAccepted,
+      }),
+    )
+  })
+
   it('passes LangGraph activities through to the assistant thread', () => {
     mocks.useMoldyLangGraphStream.mockReturnValue({
       assistantRuntime: 'langgraph-runtime',

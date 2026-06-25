@@ -7,7 +7,13 @@ import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
 const mocks = vi.hoisted(() => ({
   state: {
     thread: { isRunning: true },
-    message: { metadata: { custom: { isStreamingMessage: true } } },
+    message: {
+      metadata: { custom: { isStreamingMessage: true as boolean | undefined } } as
+        | { custom: { isStreamingMessage: boolean | undefined } }
+        | undefined,
+      status: undefined as { readonly type?: string } | undefined,
+      parts: [] as readonly unknown[],
+    },
   },
   useSubagentProgressSummary: vi.fn(),
 }))
@@ -48,6 +54,8 @@ describe('StreamingMessageLoadingIndicator', () => {
     vi.clearAllMocks()
     mocks.state.thread.isRunning = true
     mocks.state.message.metadata = { custom: { isStreamingMessage: true } }
+    mocks.state.message.status = undefined
+    mocks.state.message.parts = []
     mocks.useSubagentProgressSummary.mockReturnValue({
       total: 0,
       running: 0,
@@ -63,10 +71,117 @@ describe('StreamingMessageLoadingIndicator', () => {
     expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
   })
 
+  it('shows witty loading when assistant-ui marks the message running', () => {
+    mocks.state.message.metadata = { custom: { isStreamingMessage: undefined } }
+    mocks.state.message.status = { type: 'running' }
+
+    render(<StreamingMessageLoadingIndicator activities={[]} />)
+
+    expect(screen.getByTestId('witty-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
+  })
+
   it('hides witty loading when semantic activity exists', () => {
     render(<StreamingMessageLoadingIndicator activities={[activity()]} />)
 
     expect(screen.getByTestId('run-activity-strip')).toBeInTheDocument()
+    expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
+  })
+
+  it('keeps witty loading when only interrupt activities exist', () => {
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:interrupt:one',
+            kind: 'interrupt',
+            status: 'requires_action',
+            title: 'Needs approval',
+          }),
+          activity({
+            id: 'run-1:interrupt:two',
+            kind: 'interrupt',
+            status: 'requires_action',
+            title: 'Needs approval',
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByTestId('witty-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
+  })
+
+  it('keeps witty loading when only generic responding and terminal rows exist while streaming', () => {
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:responding:root',
+            kind: 'responding',
+            status: 'running',
+            title: 'Responding',
+          }),
+          activity({
+            id: 'run-1:responding:old',
+            kind: 'responding',
+            status: 'complete',
+            title: 'Responding',
+          }),
+          activity({
+            id: 'run-1:done:run',
+            kind: 'done',
+            status: 'complete',
+            title: 'Done',
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
+    expect(screen.getByTestId('witty-loading')).toBeInTheDocument()
+    expect(screen.queryByText('응답을 작성하는 중')).not.toBeInTheDocument()
+    expect(screen.queryByText('완료됨')).not.toBeInTheDocument()
+  })
+
+  it('keeps witty loading once assistant text is visible while streaming', () => {
+    mocks.state.message.parts = [{ type: 'text', text: 'Partial assistant response' }]
+
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:responding:root',
+            kind: 'responding',
+            status: 'running',
+            title: 'Responding',
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.queryByTestId('run-activity-strip')).not.toBeInTheDocument()
+    expect(screen.getByTestId('witty-loading')).toBeInTheDocument()
+  })
+
+  it('keeps non-text progress visible while assistant text is streaming', () => {
+    mocks.state.message.parts = [{ type: 'text', text: 'Partial assistant response' }]
+
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:tool:search',
+            kind: 'tool',
+            status: 'running',
+            title: 'web_search',
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByTestId('run-activity-strip')).toBeInTheDocument()
+    expect(screen.getByText('web_search 실행 중')).toBeInTheDocument()
     expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
   })
 
@@ -86,7 +201,24 @@ describe('StreamingMessageLoadingIndicator', () => {
   })
 
   it('renders nothing outside the active streaming message', () => {
-    mocks.state.message.metadata = { custom: { isStreamingMessage: false } }
+    // 완료된 메시지의 실제 형태: convert-message는 streaming일 때만
+    // isStreamingMessage=true를 심고 완료 시엔 필드를 아예 비운다(false를 쓰지 않음).
+    // status도 running이 아니므로 두 신호 모두 꺼져 있다.
+    mocks.state.message.metadata = { custom: { isStreamingMessage: undefined } }
+    mocks.state.message.status = { type: 'complete' }
+
+    const { container } = render(<StreamingMessageLoadingIndicator activities={[activity()]} />)
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('M6 — a completed message with neither metadata flag nor running status is not streaming', () => {
+    // sticky/converted 재사용으로 완료된 메시지에 stale running이 남을 수 있다는
+    // 우려에 대한 회귀 테스트. production 경로는 완료 메시지에 isStreamingMessage:false를
+    // 쓰지 않고 metadata.custom 자체가 없을 수 있으므로, 실제 발생 가능한 형태(필드 부재 +
+    // running 아님)에서 streaming으로 오탐하지 않음을 고정한다.
+    mocks.state.message.metadata = undefined
+    mocks.state.message.status = { type: 'complete' }
 
     const { container } = render(<StreamingMessageLoadingIndicator activities={[activity()]} />)
 

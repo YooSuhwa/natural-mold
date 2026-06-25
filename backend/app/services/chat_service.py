@@ -18,11 +18,12 @@ import base64
 import json
 import logging
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, assert_never
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute, contains_eager, selectinload
 
@@ -37,6 +38,7 @@ from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation import Conversation
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
+from app.models.message_event import MessageEvent
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
@@ -52,8 +54,10 @@ __all__ = [
     "conversation_title_from_content",
     "build_tools_config",
     "clear_active_branch_override",
+    "collect_conversation_secret_values",
     "create_conversation",
     "delete_conversation",
+    "gc_orphan_draft_conversations",
     "get_agent_with_tools",
     "get_conversation",
     "get_owned_conversation",
@@ -67,6 +71,7 @@ __all__ = [
     "list_messages_from_checkpointer",
     "mark_conversation_read",
     "maybe_set_auto_title",
+    "promote_draft_conversation",
     "save_token_usage",
     "touch_conversation",
     "trigger_blocked_tools_for_agent_tree",
@@ -481,11 +486,106 @@ async def _hydrate_pending_interrupt_tool_calls(
             response.tool_calls = _merge_interrupt_tool_calls(response.tool_calls or [], payload)
 
 
-def _redact_response_tool_calls(responses: list[MessageResponse]) -> None:
+async def collect_conversation_secret_values(
+    db: AsyncSession,
+    conversation: Conversation,
+) -> set[str]:
+    """ADR-021 C2 — gather the conversation agent's plaintext secrets.
+
+    Read/poll endpoints (GET /messages, GET /threads/{id}/state, share-link
+    render) run *outside* any agent run, so the run-scoped redaction ContextVar
+    is never set. This is the single LIGHTWEIGHT collector those paths share to
+    rebuild the eager secret set (LLM ``api_key`` + each tool config's plaintext
+    ``credentials`` + MCP transport headers + base_url/url userinfo) and pass it
+    explicitly to ``redact_protocol_data``.
+
+    Deliberately does NOT use ``resolve_agent_context``: that additionally
+    assembles every sub-agent config + resolves run identities, which is full
+    run-prep cost on a polling endpoint (ADR-021 review #1). One ``select(Agent)``
+    with the runtime eager-load chain + ``build_tools_config`` is the correct
+    weight here. Best-effort: a missing agent / model / credential degrades to
+    heuristics-only rather than failing the read.
+    """
+
+    from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
+    from app.agent_runtime.run_secrets import collect_secret_values, collect_url_userinfo
+    from app.services.conversation_stream_service import resolve_fallback_chain
+
+    secrets: set[str] = set()
+    # GET /messages (and share-link render) run outside any agent run, and the
+    # routers load the conversation WITHOUT eager-loading ``agent`` (the runtime
+    # selectin chain is too costly for this hot read path). Touching
+    # ``conversation.agent`` here would emit a lazy load with no greenlet context
+    # (sqlalchemy MissingGreenlet), so fetch the agent + runtime relations
+    # explicitly. ``agent_id`` is a plain column already loaded on the
+    # conversation row, so reading it triggers no IO.
+    agent_id = getattr(conversation, "agent_id", None)
+    if agent_id is None:
+        return secrets
+    try:
+        result = await db.execute(
+            select(Agent).where(Agent.id == agent_id).options(*_agent_runtime_load_options())
+        )
+        agent = result.unique().scalar_one_or_none()
+    except Exception:  # noqa: BLE001 — read must not fail on secret-collect
+        logger.debug("secret-collect agent load failed for %s", conversation.id, exc_info=True)
+        return secrets
+    if agent is None:
+        return secrets
+
+    # Each source is isolated: a failure in ONE (e.g. resolve_llm_api_key_for_agent
+    # raises for an agent whose LLM credential was deleted) must NOT abort the
+    # others, or tool/MCP/base_url secrets would silently go uncollected →
+    # under-masking (ADR-021 re-review #1).
+    try:
+        api_key = await resolve_llm_api_key_for_agent(db, agent)
+        if api_key:
+            secrets |= collect_secret_values(api_key)
+    except Exception:  # noqa: BLE001
+        logger.debug("secret-collect api_key skipped for %s", conversation.id, exc_info=True)
+
+    model = getattr(agent, "model", None)
+    if model is not None:
+        collect_url_userinfo(getattr(model, "base_url", None), secrets)
+
+    # Fallback models can carry credentials in their ``base_url`` userinfo too —
+    # the live run masks these (collect_cfg_secret_values walks the chain), so a
+    # read/poll path must match. One bounded ``select(Model) where id in (...)``.
+    try:
+        fallback_chain = await resolve_fallback_chain(db, agent.model_fallback_list)
+        for entry in fallback_chain or []:
+            if isinstance(entry, dict):
+                collect_url_userinfo(entry.get("base_url"), secrets)
+    except Exception:  # noqa: BLE001
+        logger.debug("secret-collect fallback chain skipped for %s", conversation.id, exc_info=True)
+
+    try:
+        tools_config = await build_tools_config(agent, db=db, conversation_id=str(conversation.id))
+        for tool_config in tools_config or []:
+            if not isinstance(tool_config, dict):
+                continue
+            secrets |= collect_secret_values(tool_config.get("credentials"))
+            secrets |= collect_secret_values(tool_config.get("mcp_transport_headers"))
+            collect_url_userinfo(tool_config.get("url"), secrets)
+    except Exception:  # noqa: BLE001
+        logger.debug("secret-collect tools_config skipped for %s", conversation.id, exc_info=True)
+
+    return secrets
+
+
+def _redact_response_tool_calls(
+    responses: list[MessageResponse],
+    *,
+    secret_values: Sequence[str] | None = None,
+) -> None:
+    # ADR-021 C2 — this runs in a GET /messages request (no active run /
+    # ContextVar), so the run's secrets are passed explicitly by the caller.
     for response in responses:
         if not response.tool_calls:
             continue
-        redacted = redact_protocol_data("messages", response.tool_calls)
+        redacted = redact_protocol_data(
+            "messages", response.tool_calls, secret_values=secret_values
+        )
         if isinstance(redacted, list) and all(isinstance(item, dict) for item in redacted):
             response.tool_calls = redacted
 
@@ -709,13 +809,87 @@ async def list_global_conversations_page(
 
 
 async def create_conversation(
-    db: AsyncSession, agent_id: uuid.UUID, title: str | None = None
+    db: AsyncSession,
+    agent_id: uuid.UUID,
+    title: str | None = None,
+    *,
+    source: str = "ui",
 ) -> Conversation:
-    conv = Conversation(agent_id=agent_id, title=title or "새 대화")
+    conv = Conversation(agent_id=agent_id, title=title or "새 대화", source=source)
     db.add(conv)
     await db.flush()
     await db.refresh(conv)
     return conv
+
+
+async def promote_draft_conversation(
+    db: AsyncSession,
+    conv: Conversation,
+    *,
+    title_from_content: str | None = None,
+) -> Conversation:
+    if conv.source != "draft":
+        return conv
+    conv.source = "ui"
+    if title_from_content:
+        conv.title = conversation_title_from_content(title_from_content)
+    await db.flush()
+    await db.refresh(conv)
+    return conv
+
+
+async def gc_orphan_draft_conversations(db: AsyncSession, *, retention_hours: int) -> int:
+    """Delete abandoned, message-less draft conversations past the cutoff.
+
+    A draft (``source == "draft"``) is created by ``POST
+    .../conversations/draft`` and only flips to ``"ui"`` via
+    :func:`promote_draft_conversation` when the user sends a first message.
+    A draft abandoned before sending is invisible to the UI (the list filters
+    ``source == "ui"``) and never deleted, so empty drafts accumulate.
+
+    This removes rows that are **both**:
+
+    * still ``source == "draft"`` (never promoted — promotion is the
+      first-message signal, so a non-draft row is never touched), AND
+    * message-less: no ``message_events`` turn row exists for the
+      conversation (the ORM-visible proxy for a recorded assistant turn).
+
+    The age check uses ``created_at`` (naive UTC, matching the column) so a
+    just-opened draft the user is still typing into is never collected. Child
+    rows (message_events, attachments, runs, share links, ...) are all
+    ``ON DELETE CASCADE``, so the row delete is self-contained. Commits the
+    transaction so the cron caller doesn't have to manage one. Returns the
+    number of drafts deleted.
+    """
+
+    # Reject (rather than clamp) a non-positive retention. ``retention_hours == 0``
+    # sets ``cutoff = now`` and would delete a draft the user opened moments ago (still
+    # typing), so a mis-set ``0`` must surface loudly as a config error instead of
+    # silently destroying live drafts or silently substituting a value the operator
+    # never chose.
+    if retention_hours <= 0:
+        raise ValueError(f"retention_hours must be >= 1, got {retention_hours}")
+
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=retention_hours)
+    has_event = (
+        select(MessageEvent.id).where(MessageEvent.conversation_id == Conversation.id).exists()
+    )
+    result = await db.execute(
+        delete(Conversation).where(
+            Conversation.source == "draft",
+            Conversation.created_at < cutoff,
+            ~has_event,
+        )
+    )
+    await db.commit()
+    deleted = int(getattr(result, "rowcount", 0) or 0)
+    if deleted:
+        logger.info(
+            "Draft conversation GC: deleted %d orphan draft(s) older than %s",
+            deleted,
+            cutoff.isoformat(),
+        )
+    return deleted
 
 
 async def get_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> Conversation | None:
@@ -897,7 +1071,8 @@ async def list_messages_from_checkpointer(
             conversation_id=conversation.id,
             responses=responses,
         )
-    _redact_response_tool_calls(responses)
+    secrets = tuple(await collect_conversation_secret_values(db, conversation))
+    _redact_response_tool_calls(responses, secret_values=secrets)
 
     # Hydrate per-message feedback (current user) + attachments/artifacts. Wrapped in
     # broad try/except so a missing migration (m27/m28 not yet applied) or

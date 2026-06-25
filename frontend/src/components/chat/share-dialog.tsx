@@ -24,7 +24,7 @@ function buildShareUrl(token: string): string {
 }
 
 export function ShareDialog({ open, onOpenChange, conversationId }: ShareDialogProps) {
-  const t = useTranslations('chat.share')
+  const t = useTranslations('share')
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
       <DialogShell.Header
@@ -40,7 +40,7 @@ export function ShareDialog({ open, onOpenChange, conversationId }: ShareDialogP
 }
 
 function ShareDialogBody({ conversationId }: { conversationId: string }) {
-  const t = useTranslations('chat.share')
+  const t = useTranslations('share')
   const { data: link, isLoading } = useActiveShare(conversationId)
   const create = useCreateShare(conversationId)
   const revoke = useRevokeShare(conversationId)

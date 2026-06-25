@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+import logging
+from collections.abc import Mapping, Sequence
 from typing import Any, TypedDict
 
 from app.agent_runtime.protocol_events import (
@@ -10,6 +11,8 @@ from app.agent_runtime.protocol_events import (
     stored_protocol_event,
 )
 from app.agent_runtime.streaming import _interrupt_to_standard_chunk
+
+logger = logging.getLogger(__name__)
 
 
 class PendingInputPayload(TypedDict):
@@ -35,28 +38,12 @@ def _seen_interrupt_ids(events: list[dict[str, Any]]) -> set[str]:
     return seen
 
 
-def _namespace_from_path_segment(segment: Any) -> list[str]:
-    if isinstance(segment, str):
-        return [segment] if ":" in segment and not segment.startswith("__") else []
-    if isinstance(segment, Sequence) and not isinstance(segment, str | bytes):
-        namespace: list[str] = []
-        for item in segment:
-            namespace.extend(_namespace_from_path_segment(item))
-        return namespace
-    return []
-
-
-def _namespace_from_task(task: Any) -> list[str]:
-    path = getattr(task, "path", ())
-    if not isinstance(path, Sequence) or isinstance(path, str | bytes):
-        return []
-    namespace: list[str] = []
-    for segment in path:
-        namespace.extend(_namespace_from_path_segment(segment))
-    return namespace
-
-
 def _namespace_from_interrupt(interrupt: Any) -> list[str]:
+    # ``langgraph.types.Interrupt`` defines ``__slots__ == ("value", "id")`` (verified
+    # against LangGraph 1.2.5), so it carries NO ``ns``/``namespace`` attribute and this
+    # returns ``[]`` for every real interrupt — whether read from ``state.tasks`` or
+    # recovered from checkpointer pending_writes. We keep this defensive lookup only in
+    # case a future LangGraph release exposes a namespace attribute on the object itself.
     for attr in ("ns", "namespace"):
         value = getattr(interrupt, attr, None)
         if isinstance(value, Sequence) and not isinstance(value, str | bytes):
@@ -90,22 +77,32 @@ def _payload_from_interrupt(
 def _interrupt_payloads_from_state(state: Any) -> list[PendingInputPayload]:
     task_payloads: list[PendingInputPayload] = []
     task_interrupt_ids: set[str] = set()
+    # Monotonic across ALL tasks (and the top-level scan below) so two id-less
+    # interrupts in different tasks don't both synthesize ``interrupt-1`` and
+    # collide under id-based dedup (ADR-021 review #8).
+    fallback_index = 0
     for task in getattr(state, "tasks", ()) or ():
-        namespace = _namespace_from_task(task)
-        for index, interrupt in enumerate(getattr(task, "interrupts", ()) or ()):
-            payload = _payload_from_interrupt(interrupt, namespace=namespace, index=index)
+        # Real ``PregelTask.path`` is e.g. ``('__pregel_pull', 'tools')`` — there is no
+        # ``node:task_id`` segment to recover a subgraph namespace from (that lives in
+        # ``metadata['langgraph_checkpoint_ns']``, not ``path``). The namespace here is
+        # therefore always empty; the resume round-trip validates the empty value.
+        namespace: list[str] = []
+        for interrupt in getattr(task, "interrupts", ()) or ():
+            payload = _payload_from_interrupt(interrupt, namespace=namespace, index=fallback_index)
+            fallback_index += 1
             if payload is not None:
                 task_payloads.append(payload)
                 task_interrupt_ids.add(payload["interrupt_id"])
 
     top_level_payloads: list[PendingInputPayload] = []
     interrupts = list(getattr(state, "interrupts", ()) or ())
-    for index, interrupt in enumerate(interrupts):
+    for interrupt in interrupts:
         payload = _payload_from_interrupt(
             interrupt,
             namespace=_namespace_from_interrupt(interrupt),
-            index=index,
+            index=fallback_index,
         )
+        fallback_index += 1
         if payload is not None:
             top_level_payloads.append(payload)
 
@@ -116,6 +113,98 @@ def _interrupt_payloads_from_state(state: Any) -> list[PendingInputPayload]:
             if payload["interrupt_id"] not in task_interrupt_ids
         ]
     return top_level_payloads
+
+
+def _thread_id_from_config(config: dict[str, Any]) -> str | None:
+    configurable = config.get("configurable")
+    if not isinstance(configurable, Mapping):
+        return None
+    thread_id = configurable.get("thread_id")
+    return thread_id if isinstance(thread_id, str) and thread_id else None
+
+
+def _append_unique_payloads(
+    target: list[PendingInputPayload],
+    source: list[PendingInputPayload],
+) -> None:
+    seen = {payload["interrupt_id"] for payload in target}
+    for payload in source:
+        interrupt_id = payload["interrupt_id"]
+        if not interrupt_id or interrupt_id in seen:
+            continue
+        target.append(payload)
+        seen.add(interrupt_id)
+
+
+def _interrupt_payloads_from_pending_writes(
+    pending_writes: Any,
+) -> list[PendingInputPayload]:
+    # Checkpointer-recovered interrupts always carry an EMPTY namespace here, and that
+    # is correct and intentional:
+    #   * The ``Interrupt`` object has no ``ns``/``namespace`` attr (slots: value, id),
+    #     so ``_namespace_from_interrupt`` returns ``[]``.
+    #   * pending_writes only carry ``(task_id, channel, value)`` — there is no real
+    #     ``node:task_id`` path segment to rebuild a subgraph namespace from (an earlier
+    #     "recover namespace from ``PregelTask.path``" attempt was a verified no-op:
+    #     real paths look like ``('__pregel_pull', 'tools')`` with no ``:`` segment).
+    #   * The empty namespace is validated by the resume round-trip (root-level resume
+    #     default), and the hydration caller in ``conversation_agent_protocol_interrupts``
+    #     does NOT pass any task namespaces — so empty is the only honest value.
+    if not isinstance(pending_writes, Sequence) or isinstance(pending_writes, str | bytes):
+        return []
+
+    payloads: list[PendingInputPayload] = []
+    # Monotonic across the WHOLE scan, not per-write: a per-write ``enumerate``
+    # would synthesize ``interrupt-1`` for the first id-less interrupt of every
+    # write, and two such writes would collide → dedup drops one interrupt on
+    # checkpointer recovery (ADR-021 review #8). Real ``Interrupt`` objects carry
+    # a content-derived id so the fallback is rare, but a unique fallback keeps
+    # it correct regardless.
+    fallback_index = 0
+    for write in pending_writes:
+        if not isinstance(write, Sequence) or isinstance(write, str | bytes) or len(write) < 3:
+            continue
+        channel = write[1]
+        if channel != "__interrupt__":
+            continue
+        raw_interrupts = write[2]
+        if not isinstance(raw_interrupts, Sequence) or isinstance(raw_interrupts, str | bytes):
+            continue
+        for interrupt in raw_interrupts:
+            payload = _payload_from_interrupt(
+                interrupt,
+                namespace=_namespace_from_interrupt(interrupt),
+                index=fallback_index,
+            )
+            fallback_index += 1
+            if payload is not None:
+                payloads.append(payload)
+    return payloads
+
+
+async def interrupt_payloads_from_checkpointer(
+    config: dict[str, Any],
+) -> list[PendingInputPayload]:
+    thread_id = _thread_id_from_config(config)
+    if thread_id is None:
+        return []
+
+    try:
+        from app.agent_runtime.checkpointer import get_checkpointer
+
+        checkpointer = get_checkpointer()
+        checkpoint_tuple = await checkpointer.aget_tuple({"configurable": {"thread_id": thread_id}})
+    except RuntimeError:
+        return []
+    except Exception:
+        logger.warning("checkpointer pending interrupt lookup failed", exc_info=True)
+        return []
+
+    if checkpoint_tuple is None:
+        return []
+    return _interrupt_payloads_from_pending_writes(
+        getattr(checkpoint_tuple, "pending_writes", None),
+    )
 
 
 async def pending_input_requested_events(
@@ -134,9 +223,20 @@ async def pending_input_requested_events(
     except Exception as exc:
         raise PendingInputStateUnavailable("pending input state unavailable") from exc
 
+    payloads = _interrupt_payloads_from_state(state)
+    # On the normal path ``state.tasks[].interrupts`` is already populated, so the
+    # checkpointer fallback (a second ``aget_tuple`` DB read against the shared
+    # checkpointer pool) is only needed when state carries no interrupts at all
+    # (e.g. checkpointer-recovered runs where interrupts live in pending_writes).
+    if not payloads:
+        _append_unique_payloads(
+            payloads,
+            await interrupt_payloads_from_checkpointer(config),
+        )
+
     seen_interrupt_ids = _seen_interrupt_ids(emitted)
     raw_interrupts: list[dict[str, Any]] = []
-    for payload in _interrupt_payloads_from_state(state):
+    for payload in payloads:
         interrupt_id = payload["interrupt_id"]
         if not interrupt_id or interrupt_id in seen_interrupt_ids:
             continue

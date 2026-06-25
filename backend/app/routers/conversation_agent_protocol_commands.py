@@ -78,6 +78,7 @@ async def _handle_run_start_command(
             conversation_id=conversation.id,
             checkpoint_id=resolved_checkpoint_id,
             append_messages=append_messages,
+            drop_trailing_assistant=not append_messages and not attachment_ids,
         )
         run_source = "edit" if append_messages or attachment_ids else "regenerate"
     preview = input_preview(input_payload)
@@ -87,7 +88,13 @@ async def _handle_run_start_command(
         user,
         checkpoint_id=resolved_checkpoint_id,
     )
-    if preview:
+    if conversation.source == "draft":
+        await chat_service.promote_draft_conversation(
+            db,
+            conversation,
+            title_from_content=preview,
+        )
+    elif preview:
         await chat_service.maybe_set_auto_title(db, conversation.id, preview)
     await chat_service.touch_conversation(db, conversation.id)
     await record_conversation_audit(
@@ -158,6 +165,7 @@ async def _fork_overwrite_input(
     conversation_id: uuid.UUID,
     checkpoint_id: str,
     append_messages: list[BaseMessage],
+    drop_trailing_assistant: bool = False,
 ) -> dict[str, Any]:
     from app.agent_runtime.checkpointer import get_checkpointer
     from app.services.thread_branch_service import build_fork_overwrite_input
@@ -167,6 +175,7 @@ async def _fork_overwrite_input(
         str(conversation_id),
         checkpoint_id,
         append=append_messages,
+        drop_trailing_assistant=drop_trailing_assistant,
     )
 
 

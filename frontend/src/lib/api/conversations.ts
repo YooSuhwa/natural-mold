@@ -39,6 +39,11 @@ export const conversationsApi = {
       method: 'POST',
       body: JSON.stringify({ title }),
     }),
+  createDraft: (agentId: string) =>
+    apiFetch<Conversation>(`/api/agents/${agentId}/conversations/draft`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
   update: (conversationId: string, data: ConversationUpdateRequest) =>
     apiFetch<Conversation>(`/api/conversations/${conversationId}`, {
       method: 'PATCH',

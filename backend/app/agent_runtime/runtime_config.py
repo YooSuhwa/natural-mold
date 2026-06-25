@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +62,13 @@ class AgentConfig:
     # (used by edit / regenerate to branch off an earlier message instead of
     # appending to the thread tip).
     checkpoint_id: str | None = None
+    # ADR-021 — plaintext secret values injected into this run (LLM api_key,
+    # tool/MCP credentials, transport headers). Gathered eagerly by
+    # ``conversation_stream_service`` and seeded into the run-scoped redaction
+    # ContextVar by ``_run_agent_stream``; skill credentials union in lazily.
+    # ``default_factory=set`` keeps it per-instance mutable (never shared) and
+    # DB-free unit tests get an empty set with unchanged behaviour.
+    secret_values: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,

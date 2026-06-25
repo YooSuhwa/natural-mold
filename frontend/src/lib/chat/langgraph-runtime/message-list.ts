@@ -5,7 +5,12 @@ import type { BaseMessage } from '@langchain/core/messages'
 
 type MessageWithId = {
   readonly id?: unknown
+  readonly role?: unknown
+  readonly _getType?: unknown
 }
+
+type MessageTurnRole = 'user' | 'assistant' | 'tool'
+const THREAD_MESSAGE_TURN_ID_SEPARATOR = '::moldy-turn-'
 
 export function stableString(value: unknown): string {
   if (value === undefined) return ''
@@ -24,11 +29,20 @@ export function stableString(value: unknown): string {
   }
 }
 
-function langChainMessageFingerprint(message: BaseMessage): string {
+/**
+ * Fingerprint covering every LangChain message field the converter
+ * (`convertMoldyLangChainMessage`) can read. Both the converter-cache
+ * invalidation in `use-moldy-langgraph-stream.ts` (`messageListFingerprint`)
+ * and `useStableConvertedMessages` below derive from this SAME field set, so a
+ * source change that alters converted output is never invisible to one side
+ * while caught by the other (the H4 drift this unifies).
+ */
+export function langChainMessageFingerprint(message: BaseMessage): string {
   const source = message as BaseMessage & {
     readonly additional_kwargs?: unknown
     readonly invalid_tool_calls?: unknown
     readonly response_metadata?: unknown
+    readonly status?: unknown
     readonly tool_call_id?: unknown
     readonly tool_calls?: unknown
     readonly usage_metadata?: unknown
@@ -40,6 +54,7 @@ function langChainMessageFingerprint(message: BaseMessage): string {
     content: source.content,
     additional_kwargs: source.additional_kwargs,
     response_metadata: source.response_metadata,
+    status: source.status,
     tool_calls: source.tool_calls,
     invalid_tool_calls: source.invalid_tool_calls,
     tool_call_id: source.tool_call_id,
@@ -53,30 +68,132 @@ export function dedupeLangChainMessagesById(
   return dedupeMessagesById(messages)
 }
 
+export function sourceMessageIdFromThreadMessageId(messageId: unknown): string | null {
+  if (typeof messageId !== 'string' || messageId.length === 0) return null
+  const separatorIndex = messageId.lastIndexOf(THREAD_MESSAGE_TURN_ID_SEPARATOR)
+  if (separatorIndex < 0) return messageId
+  const suffix = messageId.slice(separatorIndex + THREAD_MESSAGE_TURN_ID_SEPARATOR.length)
+  return /^\d+$/.test(suffix) ? messageId.slice(0, separatorIndex) : messageId
+}
+
 function messageId(message: MessageWithId): string | null {
   return typeof message.id === 'string' && message.id.length > 0 ? message.id : null
 }
 
-function dedupeMessagesById<T extends MessageWithId>(messages: readonly T[]): readonly T[] {
-  const indexById = new Map<string, number>()
+function messageTurnRole(message: MessageWithId): MessageTurnRole | null {
+  if ('_getType' in message && typeof message._getType === 'function') {
+    const type = message._getType()
+    if (type === 'human') return 'user'
+    if (type === 'ai') return 'assistant'
+    if (type === 'tool') return 'tool'
+  }
+  if (!isRecord(message)) return null
+  const role = message.role
+  if (role === 'user' || role === 'assistant' || role === 'tool') return role
+  return null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function hasArrayItems(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0
+}
+
+function isEmptyTextContentPart(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  const type = value.type
+  if (type !== 'text') return false
+  const text = value.text
+  return text === undefined || text === ''
+}
+
+function isEmptyMessageContent(content: BaseMessage['content']): boolean {
+  if (typeof content === 'string') return content.length === 0
+  if (Array.isArray(content)) {
+    return content.length === 0 || content.every(isEmptyTextContentPart)
+  }
+  return false
+}
+
+function isBlankAssistantPlaceholder(message: BaseMessage): boolean {
+  if (typeof message._getType === 'function' && message._getType() !== 'ai') return false
+  if (!isEmptyMessageContent(message.content)) return false
+
+  const source = message as BaseMessage & {
+    readonly additional_kwargs?: unknown
+    readonly invalid_tool_calls?: unknown
+    readonly tool_calls?: unknown
+  }
+  if (hasArrayItems(source.tool_calls) || hasArrayItems(source.invalid_tool_calls)) return false
+
+  const additionalKwargs = isRecord(source.additional_kwargs) ? source.additional_kwargs : {}
+  return !hasArrayItems(additionalKwargs.tool_calls)
+}
+
+export function suppressInitialEmptyAssistantPlaceholder(
+  messages: readonly BaseMessage[],
+  isRunning: boolean,
+): readonly BaseMessage[] {
+  if (!isRunning || messages.length === 0) return messages
+  const lastMessage = messages.at(-1)
+  return lastMessage && isBlankAssistantPlaceholder(lastMessage) ? messages.slice(0, -1) : messages
+}
+
+function threadMessageIdForTurn(sourceId: string, turnIndex: number): string {
+  return `${sourceId}${THREAD_MESSAGE_TURN_ID_SEPARATOR}${turnIndex}`
+}
+
+function messageWithId<T extends MessageWithId>(
+  message: T,
+  id: string,
+): T & { readonly id: string } {
+  return { ...message, id }
+}
+
+function dedupeMessagesById<T extends MessageWithId>(
+  messages: readonly T[],
+  options: { readonly disambiguateCrossTurnIds?: boolean } = {},
+): readonly T[] {
+  const indexByScopedId = new Map<string, number>()
+  const firstTurnBySourceId = new Map<string, number>()
   const deduped: T[] = []
   let changed = false
+  let turnIndex = -1
 
   for (const message of messages) {
+    if (messageTurnRole(message) === 'user') turnIndex += 1
     const id = messageId(message)
     if (id === null) {
       deduped.push(message)
       continue
     }
 
-    const existingIndex = indexById.get(id)
+    const sourceId = sourceMessageIdFromThreadMessageId(id) ?? id
+    const scopedId = `${turnIndex}:${sourceId}`
+    const existingIndex = indexByScopedId.get(scopedId)
     if (existingIndex === undefined) {
-      indexById.set(id, deduped.length)
-      deduped.push(message)
+      indexByScopedId.set(scopedId, deduped.length)
+      const firstTurn = firstTurnBySourceId.get(sourceId)
+      firstTurnBySourceId.set(sourceId, firstTurn ?? turnIndex)
+      const nextId =
+        options.disambiguateCrossTurnIds && firstTurn !== undefined && firstTurn !== turnIndex
+          ? threadMessageIdForTurn(sourceId, turnIndex)
+          : id
+      const nextMessage = nextId === id ? message : messageWithId(message, nextId)
+      if (nextMessage !== message) changed = true
+      deduped.push(nextMessage)
       continue
     }
 
-    deduped[existingIndex] = message
+    const existingMessage = deduped[existingIndex]
+    const existingId = existingMessage ? messageId(existingMessage) : null
+    const nextMessage =
+      options.disambiguateCrossTurnIds && existingId !== null && existingId !== id
+        ? messageWithId(message, existingId)
+        : message
+    deduped[existingIndex] = nextMessage
     changed = true
   }
 
@@ -86,7 +203,7 @@ function dedupeMessagesById<T extends MessageWithId>(messages: readonly T[]): re
 export function dedupeThreadMessagesById<T extends MessageWithId>(
   messages: readonly T[],
 ): readonly T[] {
-  return dedupeMessagesById(messages)
+  return dedupeMessagesById(messages, { disambiguateCrossTurnIds: true })
 }
 
 export function useStableConvertedMessages<T extends MessageWithId>(
@@ -95,17 +212,18 @@ export function useStableConvertedMessages<T extends MessageWithId>(
   isRunning: boolean,
 ): readonly T[] {
   const deduped = useMemo(() => dedupeThreadMessagesById(messages), [messages])
+  // Perf: the fingerprint is a full serialization of every source message, so
+  // recomputing it unconditionally every render is expensive on the streaming
+  // hot path. It only depends on `sourceMessages`/`isRunning`, so memoize it on
+  // those — correctness is identical (same value for the same inputs).
   const fingerprint = useMemo(
     () =>
       stableString({
         status: isRunning ? 'running' : 'idle',
-        length: deduped.length,
         source: sourceMessages.map(langChainMessageFingerprint),
-        converted: deduped,
       }),
-    [deduped, isRunning, sourceMessages],
+    [isRunning, sourceMessages],
   )
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => deduped, [fingerprint])
 }

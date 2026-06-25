@@ -5,6 +5,7 @@ from typing import Any, TypedDict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.langgraph_pending_inputs import interrupt_payloads_from_checkpointer
 from app.agent_runtime.protocol_events import StoredProtocolEvent, protocol_interrupts_from_event
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_replay import load_protocol_events
@@ -60,6 +61,17 @@ async def load_pending_interrupt_tasks(
         if event["run_id"] == run_id
     ]
     interrupts = _pending_interrupts_for_events(events)
+    if not interrupts:
+        interrupts = [
+            {
+                "id": payload["interrupt_id"],
+                "value": payload["payload"],
+                "ns": payload["namespace"],
+            }
+            for payload in await interrupt_payloads_from_checkpointer(
+                {"configurable": {"thread_id": str(conversation.id)}}
+            )
+        ]
     if not interrupts:
         return []
     return [{"id": run_id, "name": "interrupted", "interrupts": interrupts}]

@@ -203,6 +203,35 @@ async def create_conversation(
     return conv
 
 
+@router.post(
+    "/api/agents/{agent_id}/conversations/draft",
+    response_model=ConversationResponse,
+    status_code=201,
+)
+async def create_draft_conversation(
+    agent_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+):
+    agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
+    if not agent:
+        raise agent_not_found()
+    conv = await chat_service.create_conversation(db, agent_id, source="draft")
+    await record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.draft_create",
+        conversation_id=conv.id,
+        agent_id=agent_id,
+        title=conv.title,
+    )
+    await db.commit()
+    return conv
+
+
 @router.patch(
     "/api/conversations/{conversation_id}",
     response_model=ConversationResponse,

@@ -28,9 +28,11 @@ class _FakeCheckpointer:
         checkpoints: list[_CheckpointSlim],
         *,
         values_by_checkpoint: dict[str, dict[str, Any]] | None = None,
+        pending_writes: list[tuple[str, str, list[Any]]] | None = None,
     ) -> None:
         self._checkpoints = checkpoints
         self._values_by_checkpoint = values_by_checkpoint or {}
+        self._pending_writes = pending_writes or []
 
     async def alist(self, _config: Any) -> AsyncIterator[Any]:
         for checkpoint in self._checkpoints:
@@ -49,6 +51,32 @@ class _FakeCheckpointer:
                     "checkpoint": {"channel_values": channel_values},
                 },
             )()
+
+    async def aget_tuple(self, _config: Any) -> Any:
+        configurable = _config.get("configurable") if isinstance(_config, dict) else {}
+        checkpoint_id = (
+            configurable.get("checkpoint_id") if isinstance(configurable, dict) else None
+        )
+        if isinstance(checkpoint_id, str):
+            for checkpoint in self._checkpoints:
+                if checkpoint.checkpoint_id != checkpoint_id:
+                    continue
+                channel_values = dict(self._values_by_checkpoint.get(checkpoint_id, {}))
+                channel_values.setdefault("messages", checkpoint.messages)
+                return type(
+                    "CheckpointTuple",
+                    (),
+                    {
+                        "config": {"configurable": {"checkpoint_id": checkpoint_id}},
+                        "checkpoint": {"channel_values": channel_values},
+                        "pending_writes": self._pending_writes,
+                    },
+                )()
+        return type(
+            "CheckpointTuple",
+            (),
+            {"pending_writes": self._pending_writes},
+        )()
 
 
 async def _seed_protocol_conversation(db: AsyncSession) -> Conversation:
@@ -139,6 +167,71 @@ async def test_thread_state_hydrates_pending_input_requested_interrupt(
 
     assert compat_response.status_code == 200
     assert compat_response.json()["interrupts"] == [interrupt]
+
+
+@pytest.mark.asyncio
+async def test_thread_state_recovers_interrupt_from_checkpointer_when_protocol_event_is_empty(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    run_id = uuid.uuid4()
+    payload = _approval_payload()
+    interrupt = type("Interrupt", (), {"id": "intr-checkpoint", "value": payload})()
+    monkeypatch.setattr(
+        "app.agent_runtime.checkpointer.get_checkpointer",
+        lambda: _FakeCheckpointer(
+            [],
+            pending_writes=[("task-1", "__interrupt__", [interrupt])],
+        ),
+    )
+    db.add(
+        ConversationRun(
+            id=run_id,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            status="interrupted",
+            is_active=False,
+            interrupt_id="intr-checkpoint",
+        )
+    )
+    db.add(
+        MessageEvent(
+            conversation_id=conversation.id,
+            assistant_msg_id=str(run_id),
+            events=[
+                stored_protocol_event(
+                    run_id=str(run_id),
+                    thread_id=str(conversation.id),
+                    seq=4,
+                    method="input.requested",
+                    namespace=[],
+                    data={},
+                    event_id="input-empty",
+                )
+            ],
+            last_event_id="input-empty",
+            status="completed",
+        )
+    )
+    await db.commit()
+
+    state_response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert state_response.status_code == 200
+    expected_payload = {"interrupt_id": "intr-checkpoint", **payload}
+    assert state_response.json()["tasks"] == [
+        {
+            "id": str(run_id),
+            "name": "interrupted",
+            "interrupts": [{"id": "intr-checkpoint", "value": expected_payload, "ns": []}],
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -437,6 +530,58 @@ async def test_thread_state_exposes_branch_metadata_for_langchain_messages(
     assert assistant_metadata["branchCheckpointId"] == "ck-assistant-2-new"
     assert assistant_metadata["branchIndex"] == 1
     assert assistant_metadata["branchTotal"] == 2
+
+
+@pytest.mark.asyncio
+async def test_thread_state_uses_active_checkpoint_for_same_id_user_edit_branches(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    old_leaf = _CheckpointSlim(
+        checkpoint_id="ck-z-old",
+        parent_checkpoint_id=None,
+        messages=[
+            HumanMessage(id="user-same-id", content="안녕?"),
+            AIMessage(id="assistant-old", content="old"),
+        ],
+    )
+    middle_leaf = _CheckpointSlim(
+        checkpoint_id="ck-a-middle",
+        parent_checkpoint_id=None,
+        messages=[
+            HumanMessage(id="user-same-id", content="바보"),
+            AIMessage(id="assistant-middle", content="middle"),
+        ],
+    )
+    active_leaf = _CheckpointSlim(
+        checkpoint_id="ck-m-new",
+        parent_checkpoint_id=None,
+        messages=[
+            HumanMessage(id="user-same-id", content="반가워"),
+            AIMessage(id="assistant-new", content="new"),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: _FakeCheckpointer([active_leaf, middle_leaf, old_leaf]),
+    )
+
+    response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert response.status_code == 200
+    state = response.json()
+    messages = state["values"]["messages"]
+    user_metadata = messages[0]["additional_kwargs"]["metadata"]
+    assert messages[0]["content"] == "반가워"
+    assert user_metadata["checkpoint_id"] == "ck-m-new"
+    assert user_metadata["siblingCheckpointIds"] == ["ck-z-old", "ck-a-middle", "ck-m-new"]
+    assert user_metadata["branchIndex"] == 2
+    assert user_metadata["branchTotal"] == 3
+    assert "branches" not in messages[1]["additional_kwargs"]["metadata"]
 
 
 @pytest.mark.asyncio

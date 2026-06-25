@@ -239,8 +239,8 @@ function firstDebugTraceId(value: unknown): string {
 test.describe('LangGraph v3 regression coverage', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
   test.skip(
-    process.env.NEXT_PUBLIC_CHAT_RUNTIME !== 'langgraph_v3',
-    'Requires NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3',
+    process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy',
+    'Skipped for the legacy chat runtime',
   )
 
   test('restores an interrupted HITL run after reload and redacts protocol traces/share data', async ({

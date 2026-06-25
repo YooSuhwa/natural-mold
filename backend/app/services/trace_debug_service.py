@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.models.message_event import MessageEvent
 from app.observability.langfuse import fetch_langfuse_observations, is_langfuse_enabled
 from app.schemas.conversation import DebugTraceSpan, DebugTraceSummary
@@ -45,6 +46,22 @@ def _event_usage_total(record: MessageEvent) -> int | None:
         if isinstance(prompt, int) or isinstance(completion, int):
             return int(prompt or 0) + int(completion or 0)
     return None
+
+
+def _redact_debug_trace_value(value: Any) -> Any:
+    return redact_protocol_data("debug_traces", value)
+
+
+def _redacted_debug_mapping(value: dict[str, Any]) -> dict[str, Any]:
+    redacted = _redact_debug_trace_value(value)
+    return redacted if isinstance(redacted, dict) else {}
+
+
+def _redacted_debug_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    redacted = _redact_debug_trace_value(rows)
+    if not isinstance(redacted, list):
+        return []
+    return [row for row in redacted if isinstance(row, dict)]
 
 
 def _source_from_events(record: MessageEvent) -> str:
@@ -115,14 +132,16 @@ def spans_from_message_events(record: MessageEvent) -> list[DebugTraceSpan]:
             started_at=record.created_at,
             ended_at=record.completed_at,
             duration_ms=_duration_ms(record.created_at, record.completed_at),
-            input=_root_input_from_events(record),
-            output=_last_message_output(record),
-            metadata={
-                "moldy_run_id": record.assistant_msg_id,
-                "provider": "message_events",
-                "external_trace_provider": record.external_trace_provider,
-                "external_trace_id": record.external_trace_id,
-            },
+            input=_redact_debug_trace_value(_root_input_from_events(record)),
+            output=_redact_debug_trace_value(_last_message_output(record)),
+            metadata=_redacted_debug_mapping(
+                {
+                    "moldy_run_id": record.assistant_msg_id,
+                    "provider": "message_events",
+                    "external_trace_provider": record.external_trace_provider,
+                    "external_trace_id": record.external_trace_id,
+                }
+            ),
         )
     ]
 
@@ -141,9 +160,13 @@ def spans_from_message_events(record: MessageEvent) -> list[DebugTraceSpan]:
                 started_at=record.created_at,
                 ended_at=record.completed_at,
                 duration_ms=None,
-                input=data.get("args") or data.get("input"),
-                output=data.get("result") or data.get("output") or data.get("content"),
-                metadata={"event": event_name, "sequence": index, "data": data},
+                input=_redact_debug_trace_value(data.get("args") or data.get("input")),
+                output=_redact_debug_trace_value(
+                    data.get("result") or data.get("output") or data.get("content")
+                ),
+                metadata=_redacted_debug_mapping(
+                    {"event": event_name, "sequence": index, "data": data}
+                ),
             )
         )
     return spans
@@ -184,13 +207,15 @@ def spans_from_observations(rows: list[dict[str, Any]]) -> list[DebugTraceSpan]:
                 started_at=started,
                 ended_at=ended,
                 duration_ms=_duration_ms(started, ended),
-                input=row.get("input"),
-                output=row.get("output"),
-                metadata={
-                    **metadata,
-                    "model": row.get("providedModelName") or row.get("model"),
-                    "usage": row.get("usageDetails") or row.get("usage"),
-                },
+                input=_redact_debug_trace_value(row.get("input")),
+                output=_redact_debug_trace_value(row.get("output")),
+                metadata=_redacted_debug_mapping(
+                    {
+                        **metadata,
+                        "model": row.get("providedModelName") or row.get("model"),
+                        "usage": row.get("usageDetails") or row.get("usage"),
+                    }
+                ),
             )
         )
     span_ids = {span.id for span in spans}
@@ -214,10 +239,11 @@ async def build_debug_detail(
     if should_fetch_langfuse and record.external_trace_id:
         rows, error = await fetch_langfuse_observations(record.external_trace_id)
         if rows:
+            safe_rows = _redacted_debug_rows(rows)
             return (
                 summary_from_record(record, run_status=run_status),
-                spans_from_observations(rows),
-                rows,
+                spans_from_observations(safe_rows),
+                safe_rows,
                 None,
             )
 

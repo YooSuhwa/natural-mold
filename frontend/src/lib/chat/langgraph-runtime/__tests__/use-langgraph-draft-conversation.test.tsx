@@ -5,18 +5,37 @@ import { useLangGraphDraftConversation } from '../use-langgraph-draft-conversati
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
+  createDraft: vi.fn(),
+  delete: vi.fn(),
 }))
 
 vi.mock('@/lib/api/conversations', () => ({
   conversationsApi: {
     create: mocks.create,
+    createDraft: mocks.createDraft,
+    delete: mocks.delete,
   },
 }))
 
 describe('useLangGraphDraftConversation', () => {
   beforeEach(() => {
     mocks.create.mockReset()
+    mocks.createDraft.mockReset()
+    mocks.delete.mockReset()
+    mocks.delete.mockResolvedValue(undefined)
     mocks.create.mockResolvedValue({
+      id: 'conversation-v3',
+      agent_id: 'agent-1',
+      title: null,
+      is_pinned: false,
+      unread_count: 0,
+      last_read_at: null,
+      last_unread_at: null,
+      last_activity_source: 'user',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    mocks.createDraft.mockResolvedValue({
       id: 'conversation-v3',
       agent_id: 'agent-1',
       title: null,
@@ -30,7 +49,7 @@ describe('useLangGraphDraftConversation', () => {
     })
   })
 
-  it('creates a concrete conversation for LangGraph v3 draft threads', async () => {
+  it('creates a hidden draft conversation for LangGraph v3 draft threads', async () => {
     const onConversationId = vi.fn()
 
     const { result } = renderHook(() =>
@@ -46,7 +65,8 @@ describe('useLangGraphDraftConversation', () => {
     await waitFor(() => {
       expect(result.current.conversationId).toBe('conversation-v3')
     })
-    expect(mocks.create).toHaveBeenCalledWith('agent-1')
+    expect(mocks.createDraft).toHaveBeenCalledWith('agent-1')
+    expect(mocks.create).not.toHaveBeenCalled()
     expect(onConversationId).toHaveBeenCalledWith('conversation-v3')
   })
 
@@ -71,12 +91,13 @@ describe('useLangGraphDraftConversation', () => {
     )
 
     expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.createDraft).not.toHaveBeenCalled()
     expect(onConversationId).not.toHaveBeenCalled()
   })
 
   it('does not restart draft bootstrap when only the callback changes', async () => {
     let resolveFirst: (conversation: { id: string }) => void = () => undefined
-    mocks.create.mockReturnValueOnce(
+    mocks.createDraft.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveFirst = resolve
       }),
@@ -101,7 +122,7 @@ describe('useLangGraphDraftConversation', () => {
     await waitFor(() => {
       expect(result.current.conversationId).toBe('cancelled-conversation')
     })
-    expect(mocks.create).toHaveBeenCalledTimes(1)
+    expect(mocks.createDraft).toHaveBeenCalledTimes(1)
     expect(firstCallback).not.toHaveBeenCalled()
     expect(secondCallback).toHaveBeenCalledWith('cancelled-conversation')
   })
@@ -126,13 +147,13 @@ describe('useLangGraphDraftConversation', () => {
     await waitFor(() => {
       expect(result.current.conversationId).toBe('conversation-v3')
     })
-    expect(mocks.create).toHaveBeenCalledTimes(1)
+    expect(mocks.createDraft).toHaveBeenCalledTimes(1)
     expect(onConversationId).toHaveBeenCalledWith('conversation-v3')
   })
 
   it('returns bootstrap errors instead of throwing during render', async () => {
     const failure = new Error('network unavailable')
-    mocks.create.mockRejectedValueOnce(failure)
+    mocks.createDraft.mockRejectedValueOnce(failure)
     const onConversationId = vi.fn()
 
     const { result } = renderHook(() =>
@@ -153,7 +174,7 @@ describe('useLangGraphDraftConversation', () => {
   })
 
   it('creates a fresh conversation when the same agent re-enters a v3 draft route', async () => {
-    mocks.create
+    mocks.createDraft
       .mockResolvedValueOnce({
         id: 'conversation-first',
         agent_id: 'agent-1',
@@ -202,8 +223,81 @@ describe('useLangGraphDraftConversation', () => {
     await waitFor(() => {
       expect(result.current.conversationId).toBe('conversation-second')
     })
-    expect(mocks.create).toHaveBeenCalledTimes(2)
+    expect(mocks.createDraft).toHaveBeenCalledTimes(2)
     expect(onConversationId).toHaveBeenNthCalledWith(1, 'conversation-first')
     expect(onConversationId).toHaveBeenNthCalledWith(2, 'conversation-second')
+  })
+
+  it('deletes an uncommitted draft conversation when leaving the draft route', async () => {
+    const onConversationId = vi.fn()
+
+    const { result, rerender } = renderHook(
+      ({ isDraftConversation }) =>
+        useLangGraphDraftConversation({
+          agentId: 'agent-1',
+          isDraftConversation,
+          runtimeMode: 'langgraph_v3',
+          onConversationId,
+        }),
+      { initialProps: { isDraftConversation: true } },
+    )
+
+    await waitFor(() => {
+      expect(result.current.conversationId).toBe('conversation-v3')
+    })
+
+    rerender({ isDraftConversation: false })
+
+    await waitFor(() => {
+      expect(mocks.delete).toHaveBeenCalledWith('conversation-v3')
+    })
+  })
+
+  it('keeps a committed draft conversation when leaving the draft route', async () => {
+    const onConversationId = vi.fn()
+
+    const { result, rerender } = renderHook(
+      ({ isDraftConversation }) =>
+        useLangGraphDraftConversation({
+          agentId: 'agent-1',
+          isDraftConversation,
+          runtimeMode: 'langgraph_v3',
+          onConversationId,
+        }),
+      { initialProps: { isDraftConversation: true } },
+    )
+
+    await waitFor(() => {
+      expect(result.current.conversationId).toBe('conversation-v3')
+    })
+
+    expect(result.current.commitDraftConversation()).toBe('conversation-v3')
+    rerender({ isDraftConversation: false })
+
+    expect(mocks.delete).not.toHaveBeenCalled()
+  })
+
+  it('keeps a submitted draft conversation before route promotion is accepted', async () => {
+    const onConversationId = vi.fn()
+
+    const { result, rerender } = renderHook(
+      ({ isDraftConversation }) =>
+        useLangGraphDraftConversation({
+          agentId: 'agent-1',
+          isDraftConversation,
+          runtimeMode: 'langgraph_v3',
+          onConversationId,
+        }),
+      { initialProps: { isDraftConversation: true } },
+    )
+
+    await waitFor(() => {
+      expect(result.current.conversationId).toBe('conversation-v3')
+    })
+
+    expect(result.current.retainDraftConversation()).toBe('conversation-v3')
+    rerender({ isDraftConversation: false })
+
+    expect(mocks.delete).not.toHaveBeenCalled()
   })
 })

@@ -36,20 +36,29 @@ async def _seed_conversation(*, owner_id: uuid.UUID = TEST_USER_ID) -> uuid.UUID
         return conv.id
 
 
-def _events(msg_id: str, *, failed: bool = False) -> list[dict]:
+def _events(msg_id: str, *, failed: bool = False, secret: str | None = None) -> list[dict]:
+    tool_args = {"query": "moldy"}
+    input_payload = {"messages": [{"role": "user", "content": "debug this trace"}]}
+    if secret is not None:
+        tool_args["api_key"] = secret
+        input_payload["headers"] = {
+            "Authorization": f"Bearer {secret}",
+            "Cookie": f"moldy_at={secret}",
+            "User-Agent": "safe-agent",
+        }
     body = [
         {
             "id": f"{msg_id}-1",
             "event": "message_start",
             "data": {
                 "id": msg_id,
-                "input": {"messages": [{"role": "user", "content": "debug this trace"}]},
+                "input": input_payload,
             },
         },
         {
             "id": f"{msg_id}-2",
             "event": "tool_call_start",
-            "data": {"name": "web_search", "args": {"query": "moldy"}},
+            "data": {"name": "web_search", "args": tool_args},
         },
     ]
     if failed:
@@ -80,12 +89,13 @@ async def _seed_trace(
     run_id: str = "run-debugger",
     trace_id: str = "lf-trace-debugger",
     failed: bool = False,
+    secret: str | None = None,
 ) -> None:
     async with TestSession() as db:
         await trace_storage.record_turn(
             db,
             conversation_id=conversation_id,
-            events=_events(run_id, failed=failed),
+            events=_events(run_id, failed=failed, secret=secret),
             status="failed" if failed else "completed",
             external_trace_provider="langfuse",
             external_trace_id=trace_id,
@@ -223,6 +233,49 @@ async def test_debug_trace_detail_falls_back_to_message_events(
 
 
 @pytest.mark.asyncio
+async def test_debug_trace_detail_redacts_sensitive_message_event_payloads(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "moldy-e2e-secret-token-should-not-persist"
+    conv_id = await _seed_conversation()
+    await _seed_trace(conv_id, trace_id="lf-trace-secret-fallback", secret=secret)
+
+    async def _fake_fetch(*_args, **_kwargs):
+        return [], "langfuse unavailable"
+
+    monkeypatch.setattr(
+        "app.services.trace_debug_service.is_langfuse_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "app.services.trace_debug_service.fetch_langfuse_observations",
+        _fake_fetch,
+    )
+
+    response = await client.get(
+        f"/api/conversations/{conv_id}/debug/traces/lf-trace-secret-fallback"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert secret not in repr(body)
+    assert body["spans"][0]["input"]["headers"] == {
+        "Authorization": "<redacted>",
+        "Cookie": "<redacted>",
+        "User-Agent": "safe-agent",
+    }
+    tool_span = next(
+        span for span in body["spans"] if span["metadata"].get("event") == "tool_call_start"
+    )
+    assert tool_span["input"] == {"query": "moldy", "api_key": "<redacted>"}
+    assert tool_span["metadata"]["data"]["args"] == {
+        "query": "moldy",
+        "api_key": "<redacted>",
+    }
+
+
+@pytest.mark.asyncio
 async def test_debug_trace_detail_roots_orphan_langfuse_observations(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -260,3 +313,83 @@ async def test_debug_trace_detail_roots_orphan_langfuse_observations(
     assert body["spans"][0]["input"] == {
         "messages": [{"role": "user", "content": "debug this trace"}]
     }
+
+
+@pytest.mark.asyncio
+async def test_debug_trace_detail_redacts_sensitive_langfuse_observations(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "moldy-e2e-secret-token-should-not-persist"
+    conv_id = await _seed_conversation()
+    await _seed_trace(conv_id, trace_id="lf-trace-secret-observation")
+
+    async def _fake_fetch(*_args, **_kwargs):
+        return [
+            {
+                "id": "obs-secret",
+                "name": "execute_in_skill",
+                "type": "SPAN",
+                "level": "DEFAULT",
+                "input": {
+                    "api_key": secret,
+                    "headers": {
+                        "Authorization": f"Bearer {secret}",
+                        "Cookie": f"moldy_at={secret}",
+                        "User-Agent": "safe-agent",
+                    },
+                    "query": "safe",
+                },
+                "output": f"Authorization: Bearer {secret}",
+                "metadata": {
+                    "api_key": secret,
+                    "headers": {
+                        "Set-Cookie": f"moldy_rt={secret}",
+                        "User-Agent": "safe-agent",
+                    },
+                    "note": "safe",
+                },
+                "usageDetails": {"total_tokens": 9},
+            }
+        ], None
+
+    monkeypatch.setattr(
+        "app.services.trace_debug_service.is_langfuse_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "app.services.trace_debug_service.fetch_langfuse_observations",
+        _fake_fetch,
+    )
+
+    response = await client.get(
+        f"/api/conversations/{conv_id}/debug/traces/lf-trace-secret-observation"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert secret not in repr(body)
+    assert body["raw"][0]["input"] == {
+        "api_key": "<redacted>",
+        "headers": {
+            "Authorization": "<redacted>",
+            "Cookie": "<redacted>",
+            "User-Agent": "safe-agent",
+        },
+        "query": "safe",
+    }
+    assert body["spans"][0]["input"] == {
+        "api_key": "<redacted>",
+        "headers": {
+            "Authorization": "<redacted>",
+            "Cookie": "<redacted>",
+            "User-Agent": "safe-agent",
+        },
+        "query": "safe",
+    }
+    assert body["spans"][0]["metadata"]["api_key"] == "<redacted>"
+    assert body["spans"][0]["metadata"]["headers"] == {
+        "Set-Cookie": "<redacted>",
+        "User-Agent": "safe-agent",
+    }
+    assert body["spans"][0]["metadata"]["usage"] == {"total_tokens": 9}

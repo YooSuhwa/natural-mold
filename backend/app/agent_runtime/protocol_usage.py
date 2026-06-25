@@ -233,7 +233,11 @@ def _candidate_from_usage_mapping(
 
 def _message_like_children(value: Mapping[str, Any]) -> list[Any]:
     children: list[Any] = []
-    for key in ("messages", "message", "chunk", "payload"):
+    # "metadata" is included because the v3 messages adapter flattens the SDK
+    # ``[payload, metadata]`` tuple into a single mapping, nesting stream metadata
+    # (which may carry usage) under ``payload["metadata"]``. Without traversing it,
+    # usage living only in stream metadata would be unreachable.
+    for key in ("messages", "message", "chunk", "payload", "metadata"):
         child = value.get(key)
         if child is not None:
             children.append(child)

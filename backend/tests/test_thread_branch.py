@@ -20,6 +20,7 @@ from app.models.model import Model
 from app.models.user import User
 from app.services.thread_branch_service import (
     _build_tree_from_checkpoints,
+    _build_tree_from_leaf_checkpoints,
     _CheckpointSlim,
     rewind_to_checkpoint_before_message,
 )
@@ -82,6 +83,57 @@ def test_build_tree_user_edit_creates_sibling():
     active_user_node = tree.nodes[0]
     assert active_user_node.branch_index == 1  # u2 is the second (newest) sibling
     assert active_user_node.branch_total == 2
+
+
+def test_build_tree_same_user_id_edit_branches_on_user_content():
+    leaf_a = _CheckpointSlim(
+        checkpoint_id="ckA",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "original"), _msg("ai", "a1", "old answer")],
+    )
+    leaf_b = _CheckpointSlim(
+        checkpoint_id="ckB",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "edited"), _msg("ai", "a2", "new answer")],
+    )
+
+    tree = _build_tree_from_checkpoints([leaf_b, leaf_a])
+
+    assert [getattr(n.message, "id", None) for n in tree.nodes] == ["u1", "a2"]
+    sib_u1 = tree.branches_by_message["u1"]
+    assert [s.checkpoint_id for s in sib_u1] == ["ckA", "ckB"]
+    assert tree.nodes[0].branch_index == 1
+    assert tree.nodes[0].branch_total == 2
+    assert "a2" not in tree.branches_by_message
+    assert tree.nodes[1].branch_index is None
+    assert tree.nodes[1].branch_total is None
+
+
+def test_build_leaf_tree_same_user_id_edit_branches_on_user_content():
+    leaf_a = _CheckpointSlim(
+        checkpoint_id="ckA",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "original"), _msg("ai", "a1", "old answer")],
+    )
+    leaf_b = _CheckpointSlim(
+        checkpoint_id="ckB",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "edited"), _msg("ai", "a2", "new answer")],
+    )
+
+    tree = _build_tree_from_leaf_checkpoints(
+        [leaf_b, leaf_a],
+        {"ckA": None, "ckB": None},
+    )
+
+    assert [getattr(n.message, "id", None) for n in tree.nodes] == ["u1", "a2"]
+    sib_u1 = tree.branches_by_message["u1"]
+    assert [s.checkpoint_id for s in sib_u1] == ["ckA", "ckB"]
+    assert tree.nodes[0].branch_index == 1
+    assert tree.nodes[0].branch_total == 2
+    assert "a2" not in tree.branches_by_message
+    assert tree.nodes[1].branch_index is None
+    assert tree.nodes[1].branch_total is None
 
 
 def test_build_tree_assistant_regenerate():
@@ -158,6 +210,63 @@ def test_build_tree_three_siblings_cycle_correctly():
     assert tree.nodes[0].branch_total == 3
 
 
+def test_build_tree_three_same_id_user_edits_use_checkpoint_iteration_order():
+    leaf_a = _CheckpointSlim(
+        checkpoint_id="ck-z-old",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "안녕?"), _msg("ai", "a1", "r1")],
+    )
+    leaf_b = _CheckpointSlim(
+        checkpoint_id="ck-a-middle",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "바보"), _msg("ai", "a2", "r2")],
+    )
+    leaf_c = _CheckpointSlim(
+        checkpoint_id="ck-m-new",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "반가워"), _msg("ai", "a3", "r3")],
+    )
+
+    tree = _build_tree_from_checkpoints([leaf_c, leaf_b, leaf_a])
+
+    assert [getattr(n.message, "content", None) for n in tree.nodes] == ["반가워", "r3"]
+    sib_u1 = tree.branches_by_message["u1"]
+    assert [s.checkpoint_id for s in sib_u1] == ["ck-z-old", "ck-a-middle", "ck-m-new"]
+    assert tree.nodes[0].branch_index == 2
+    assert tree.nodes[0].branch_total == 3
+    assert "a3" not in tree.branches_by_message
+
+
+def test_build_leaf_tree_three_same_id_user_edits_use_checkpoint_iteration_order():
+    leaf_a = _CheckpointSlim(
+        checkpoint_id="ck-z-old",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "안녕?"), _msg("ai", "a1", "r1")],
+    )
+    leaf_b = _CheckpointSlim(
+        checkpoint_id="ck-a-middle",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "바보"), _msg("ai", "a2", "r2")],
+    )
+    leaf_c = _CheckpointSlim(
+        checkpoint_id="ck-m-new",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "반가워"), _msg("ai", "a3", "r3")],
+    )
+
+    tree = _build_tree_from_leaf_checkpoints(
+        [leaf_c, leaf_b, leaf_a],
+        {"ck-z-old": None, "ck-a-middle": None, "ck-m-new": None},
+    )
+
+    assert [getattr(n.message, "content", None) for n in tree.nodes] == ["반가워", "r3"]
+    sib_u1 = tree.branches_by_message["u1"]
+    assert [s.checkpoint_id for s in sib_u1] == ["ck-z-old", "ck-a-middle", "ck-m-new"]
+    assert tree.nodes[0].branch_index == 2
+    assert tree.nodes[0].branch_total == 3
+    assert "a3" not in tree.branches_by_message
+
+
 def test_build_tree_empty():
     tree = _build_tree_from_checkpoints([])
     assert tree.nodes == []
@@ -224,9 +333,7 @@ class _FakeCheckpointer:
                     "CT",
                     (),
                     {
-                        "config": {
-                            "configurable": {"checkpoint_id": ck.checkpoint_id}
-                        },
+                        "config": {"configurable": {"checkpoint_id": ck.checkpoint_id}},
                         "parent_config": (
                             {"configurable": {"checkpoint_id": ck.parent_checkpoint_id}}
                             if ck.parent_checkpoint_id
@@ -268,6 +375,40 @@ async def test_rewind_first_message_returns_none():
     cp = _FakeCheckpointer([leaf])
     cid = await rewind_to_checkpoint_before_message(cp, "thread1", "u1")
     assert cid is None
+
+
+@pytest.mark.asyncio
+async def test_build_fork_overwrite_input_drops_trailing_assistant_for_regenerate():
+    from langgraph.types import Overwrite
+
+    from app.services.thread_branch_service import build_fork_overwrite_input
+
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck-leaf",
+        parent_checkpoint_id=None,
+        messages=[
+            _msg("user", "u1", "first prompt"),
+            _msg("ai", "a1", "first answer"),
+            _msg("user", "u2", "latest prompt"),
+            _msg("ai", "a2", "stale answer"),
+        ],
+    )
+    cp = _FakeCheckpointer([leaf])
+
+    history = await build_fork_overwrite_input(
+        cp,
+        "thread1",
+        "ck-leaf",
+        drop_trailing_assistant=True,
+    )
+
+    overwrite = history["messages"]
+    assert isinstance(overwrite, Overwrite)
+    assert [message.content for message in overwrite.value] == [
+        "first prompt",
+        "first answer",
+        "latest prompt",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -320,9 +461,7 @@ async def test_switch_branch_persists_checkpoint(client: AsyncClient):
     async with TestSession() as db:
         from sqlalchemy import select
 
-        result = await db.execute(
-            select(Conversation).where(Conversation.id == conv_id)
-        )
+        result = await db.execute(select(Conversation).where(Conversation.id == conv_id))
         row = result.scalar_one()
         assert row.active_branch_checkpoint_id == "ck-xyz"
 
@@ -354,9 +493,7 @@ async def test_switch_branch_rejects_checkpoint_outside_conversation(
     async with TestSession() as db:
         from sqlalchemy import select
 
-        result = await db.execute(
-            select(Conversation).where(Conversation.id == conv_id)
-        )
+        result = await db.execute(select(Conversation).where(Conversation.id == conv_id))
         row = result.scalar_one()
         assert row.active_branch_checkpoint_id is None
 
@@ -851,9 +988,7 @@ async def test_conversation_file_preview_generates_cached_webp(
     )
     image.save(source)
 
-    resp = await client.get(
-        f"/api/conversations/{conv_id}/files/image.png?variant=preview"
-    )
+    resp = await client.get(f"/api/conversations/{conv_id}/files/image.png?variant=preview")
 
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "image/webp"

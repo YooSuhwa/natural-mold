@@ -44,7 +44,10 @@ const mocks = vi.hoisted(() => {
   return {
     STREAM_CONTROLLER,
     stream,
-    createMoldyAgentTransport: vi.fn(() => ({ kind: 'transport' })),
+    createMoldyAgentTransport: vi.fn(() => ({
+      kind: 'transport',
+      setRunStartAcceptedListener: vi.fn(),
+    })),
     useStream: vi.fn(() => stream),
     useChannel: vi.fn(() => []),
     useChannelEffect: vi.fn(),

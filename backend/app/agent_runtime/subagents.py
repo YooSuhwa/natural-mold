@@ -12,6 +12,7 @@ from app.agent_runtime.identity import (
     derive_child_agent_run_identity,
     make_agent_runtime_name,
 )
+from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_component_builder import _prepare_runtime_components
 from app.agent_runtime.runtime_config import AgentConfig
 from app.models.agent import Agent
@@ -130,6 +131,13 @@ async def build_subagents_config(
             identity_mode=child_identity.identity_mode,
             agent_runtime_name=child_identity.runtime_name,
         )
+        # ADR-021 H1 — fold the child's eager secrets (LLM key, tool/MCP creds,
+        # base_url userinfo) into the PARENT run set so a subagent's injected
+        # credentials are masked in the shared run's trace egress. We mutate the
+        # parent set in place; callers that later re-assign ``cfg.secret_values``
+        # do so via ``.update(...)`` (not ``=``), preserving this union.
+        parent_cfg.secret_values.update(collect_cfg_secret_values(child_cfg))
+
         components = await _prepare_runtime_components(
             child_cfg,
             is_trigger_mode=is_trigger_mode,

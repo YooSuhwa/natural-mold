@@ -27,4 +27,4 @@ async def get_sdk_thread_history(
         thread_id=str(thread_id),
         user_id=user.id,
     )
-    return await state_api.load_thread_history_response(conversation, request)
+    return await state_api.load_thread_history_response(conversation, request, db=db, user=user)

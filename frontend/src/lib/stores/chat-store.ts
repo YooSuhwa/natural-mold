@@ -20,3 +20,12 @@ export const reconnectStateAtom = atom<ReconnectState>('idle')
 
 /** 서버 cancel 요청이 진행 중인 동안 Stop 버튼 연타를 막기 위한 UI 상태. */
 export const chatCancelInFlightAtom = atom(false)
+
+export interface PendingEditBranchPickerSuppression {
+  conversationId: string | null
+  messageId: string | null
+  content: string
+}
+
+export const pendingEditBranchPickerSuppressionAtom =
+  atom<PendingEditBranchPickerSuppression | null>(null)

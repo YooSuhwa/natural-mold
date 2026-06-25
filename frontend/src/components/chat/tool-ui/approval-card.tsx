@@ -348,7 +348,20 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const toolArgs = args?.tool_args ? redactSensitiveRecord(args.tool_args) : undefined
 
     return (
-      <div className="moldy-chat-card moldy-status-surface moldy-status-warn w-full">
+      <div
+        className="moldy-chat-card moldy-status-surface moldy-status-warn w-full"
+        // Per-action selector for multi-action HiTL interrupts: one approval card
+        // renders per action_request, scoped by its index so E2E can approve each
+        // independently and assert the total-action count.
+        data-testid={
+          typeof args?.hitl_action_index === 'number'
+            ? `approval-action-${args.hitl_action_index}`
+            : undefined
+        }
+        data-hitl-total-actions={
+          typeof args?.hitl_total_actions === 'number' ? String(args.hitl_total_actions) : undefined
+        }
+      >
         {/* Header */}
         <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
           <ShieldCheckIcon className="moldy-status-icon size-4" />

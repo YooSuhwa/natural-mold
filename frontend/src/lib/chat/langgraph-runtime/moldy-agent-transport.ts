@@ -8,6 +8,7 @@ export interface MoldyAgentTransportOptions {
   apiBase?: string
   fetch?: typeof fetch
   onState?: (state: AgentServerState<unknown>) => void
+  onRunStartAccepted?: () => void
 }
 
 type AgentServerState<StateType = unknown> = {
@@ -18,6 +19,13 @@ type AgentServerState<StateType = unknown> = {
   checkpoint?: { checkpoint_id?: string } | null
   parent_checkpoint?: { checkpoint_id?: string } | null
 } | null
+
+type StateHydrationListener = (state: AgentServerState<unknown>) => void
+
+export interface MoldyAgentServerAdapter extends AgentServerAdapter {
+  activateStateHydration(): () => void
+  setRunStartAcceptedListener(listener: (() => void) | undefined): void
+}
 
 function encodePathSegment(value: string): string {
   return encodeURIComponent(value)
@@ -78,20 +86,25 @@ function registerLangGraphClientDefaults(apiUrl: string, fetchImpl: typeof fetch
   })
 }
 
-class MoldyHttpAgentServerAdapter implements AgentServerAdapter {
+class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   readonly #agentId: string
   readonly #delegate: HttpAgentServerAdapter
   readonly #onState: MoldyAgentTransportOptions['onState']
+  #onRunStartAccepted: MoldyAgentTransportOptions['onRunStartAccepted']
+  readonly #stateHydrationListeners = new Set<StateHydrationListener>()
+  #latestState: AgentServerState<unknown> | undefined
   threadId: string
 
   constructor(
     agentId: string,
     options: ConstructorParameters<typeof HttpAgentServerAdapter>[0],
     onState?: MoldyAgentTransportOptions['onState'],
+    onRunStartAccepted?: MoldyAgentTransportOptions['onRunStartAccepted'],
   ) {
     this.#agentId = agentId
     this.#delegate = new HttpAgentServerAdapter(options)
     this.#onState = onState
+    this.#onRunStartAccepted = onRunStartAccepted
     this.threadId = this.#delegate.threadId
   }
 
@@ -100,12 +113,20 @@ class MoldyHttpAgentServerAdapter implements AgentServerAdapter {
     this.threadId = this.#delegate.threadId
   }
 
+  setRunStartAcceptedListener(listener: (() => void) | undefined): void {
+    this.#onRunStartAccepted = listener
+  }
+
   open(): Promise<void> {
     return this.#delegate.open()
   }
 
-  send(command: ProtocolCommand): ProtocolSendResult {
-    return this.#delegate.send(commandWithAgentId(command, this.#agentId))
+  async send(command: ProtocolCommand): Promise<Awaited<ProtocolSendResult>> {
+    const value = await this.#delegate.send(commandWithAgentId(command, this.#agentId))
+    if (command.method === 'run.start') {
+      this.#onRunStartAccepted?.()
+    }
+    return value
   }
 
   events(): ReturnType<AgentServerAdapter['events']> {
@@ -114,8 +135,28 @@ class MoldyHttpAgentServerAdapter implements AgentServerAdapter {
 
   async getState<StateType = unknown>(): Promise<AgentServerState<StateType>> {
     const state = (await this.#delegate.getState?.<StateType>()) ?? null
-    this.#onState?.(state as AgentServerState<unknown>)
+    this.#latestState = state as AgentServerState<unknown>
+    for (const listener of this.#stateHydrationListeners) {
+      listener(this.#latestState)
+    }
     return state ?? null
+  }
+
+  activateStateHydration(): () => void {
+    const onState = this.#onState
+    if (!onState) return () => {}
+    // Per-activation wrapper so each activate/deactivate is tracked independently.
+    // Under StrictMode double-activate, sharing a single stored listener reference
+    // means the first deactivate() removes the only Set entry and the second
+    // activation silently loses its listener.
+    const listener: StateHydrationListener = (state) => onState(state)
+    this.#stateHydrationListeners.add(listener)
+    if (this.#latestState !== undefined) {
+      listener(this.#latestState)
+    }
+    return () => {
+      this.#stateHydrationListeners.delete(listener)
+    }
   }
 
   openEventStream(params: EventStreamParams): EventStreamHandle {
@@ -123,6 +164,7 @@ class MoldyHttpAgentServerAdapter implements AgentServerAdapter {
   }
 
   close(): Promise<void> {
+    this.#stateHydrationListeners.clear()
     return this.#delegate.close()
   }
 }
@@ -131,7 +173,7 @@ export function createMoldyAgentTransport(
   conversationId: string,
   agentId: string,
   options: MoldyAgentTransportOptions = {},
-): AgentServerAdapter {
+): MoldyAgentServerAdapter {
   const authedFetch = withMoldyAuth(options.fetch ?? fetch)
   registerLangGraphClientDefaults(options.apiBase ?? API_BASE, authedFetch)
   return new MoldyHttpAgentServerAdapter(
@@ -147,5 +189,6 @@ export function createMoldyAgentTransport(
       },
     },
     options.onState,
+    options.onRunStartAccepted,
   )
 }

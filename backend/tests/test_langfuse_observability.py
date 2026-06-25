@@ -268,3 +268,138 @@ async def test_fetch_observations_hides_upstream_http_errors(monkeypatch) -> Non
     assert error == "Langfuse observations unavailable; showing local trace events fallback"
     assert "501" not in error
     assert "/api/public/v2/observations" not in error
+
+
+# ADR-021 M3 — Langfuse capture-time mask integrates run-scoped value masking.
+#
+# Capture-context finding: the SDK applies the ``mask`` callback synchronously
+# when span attributes are set (observation create/update/end in
+# ``langfuse/_client/span.py``), NOT in a deferred flush thread. The LangChain
+# CallbackHandler fires those in the run's async task while
+# ``_run_agent_stream`` holds the run-scoped secret ContextVar (set at
+# agent_stream_runner.py:119, reset in the outer finally after flush at :237).
+# So ``redact_payload`` reads ``get_run_secrets()`` directly — no snapshot.
+
+
+_INJECTED_SECRET = "tok-live-9f3c2b1a7e6d5c4b3a2f1e0d"
+
+
+def _enable_redaction(monkeypatch) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "langfuse_capture_input_output", True, raising=False)
+    monkeypatch.setattr(settings, "langfuse_redaction_enabled", True, raising=False)
+
+
+def test_redact_payload_masks_run_secret_when_contextvar_set(monkeypatch) -> None:
+    from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
+    from app.observability.langfuse import redact_payload
+
+    _enable_redaction(monkeypatch)
+
+    token = set_run_secrets({_INJECTED_SECRET})
+    try:
+        masked = redact_payload(f"Authorization header carried {_INJECTED_SECRET} downstream")
+    finally:
+        reset_run_secrets(token)
+
+    assert _INJECTED_SECRET not in masked
+    assert "[redacted]" in masked
+
+
+def test_redact_payload_masks_run_secret_in_nested_payload(monkeypatch) -> None:
+    from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
+    from app.observability.langfuse import redact_payload
+
+    _enable_redaction(monkeypatch)
+
+    payload = {
+        "tool_calls": [
+            {"args": {"note": f"calls api with {_INJECTED_SECRET}"}},
+        ],
+        # Sensitive key still wins via the existing heuristic.
+        "api_key": _INJECTED_SECRET,
+    }
+
+    token = set_run_secrets({_INJECTED_SECRET})
+    try:
+        out = redact_payload(payload)
+    finally:
+        reset_run_secrets(token)
+
+    assert out["tool_calls"][0]["args"]["note"] == "calls api with [redacted]"
+    assert out["api_key"] == "[redacted]"
+    assert _INJECTED_SECRET not in str(out)
+
+
+def test_redact_payload_keeps_existing_heuristics_alongside_value_mask(monkeypatch) -> None:
+    from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
+    from app.observability.langfuse import redact_payload
+
+    _enable_redaction(monkeypatch)
+
+    # ``sk-...`` token is NOT in the run secret set — the heuristic must still
+    # catch it, while the injected value is masked by the value path.
+    text = f"used {_INJECTED_SECRET} then sk-ABCDEFGHIJKL01234567"
+
+    token = set_run_secrets({_INJECTED_SECRET})
+    try:
+        masked = redact_payload(text)
+    finally:
+        reset_run_secrets(token)
+
+    assert _INJECTED_SECRET not in masked
+    assert "sk-ABCDEFGHIJKL01234567" not in masked
+    assert masked.count("[redacted]") == 2
+
+
+def test_redact_payload_noop_without_run_secrets(monkeypatch) -> None:
+    """No active run (ContextVar unset) → only the legacy heuristics run."""
+
+    from app.observability.langfuse import redact_payload
+
+    _enable_redaction(monkeypatch)
+
+    plain = "harmless conversation text with no secrets"
+    assert redact_payload(plain) == plain
+    # The injected value is unknown without a run set, so it survives the
+    # value path — and (being opaque, no sk-/hex shape) survives heuristics too.
+    assert redact_payload(_INJECTED_SECRET) == _INJECTED_SECRET
+
+
+def test_redact_payload_unchanged_when_redaction_disabled(monkeypatch) -> None:
+    """Operator opt-out (``langfuse_redaction_enabled=False``) stays verbatim."""
+
+    from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
+    from app.config import settings
+    from app.observability.langfuse import redact_payload
+
+    monkeypatch.setattr(settings, "langfuse_capture_input_output", True, raising=False)
+    monkeypatch.setattr(settings, "langfuse_redaction_enabled", False, raising=False)
+
+    token = set_run_secrets({_INJECTED_SECRET})
+    try:
+        text = f"verbatim {_INJECTED_SECRET}"
+        assert redact_payload(text) == text
+    finally:
+        reset_run_secrets(token)
+
+
+def test_redact_payload_capture_disabled_path_unchanged(monkeypatch) -> None:
+    """``capture_input_output=False`` fully redacts strings regardless of run."""
+
+    from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
+    from app.config import settings
+    from app.observability.langfuse import redact_payload
+
+    monkeypatch.setattr(settings, "langfuse_capture_input_output", False, raising=False)
+
+    token = set_run_secrets({_INJECTED_SECRET})
+    try:
+        # Strings are blanket-redacted on this path; the secret cannot leak and
+        # the behaviour matches the pre-M3 contract.
+        assert redact_payload(f"text {_INJECTED_SECRET}") == "[redacted]"
+        out = redact_payload({"input": _INJECTED_SECRET, "other": _INJECTED_SECRET})
+        assert out == {"input": "[redacted]", "other": "[redacted]"}
+    finally:
+        reset_run_secrets(token)

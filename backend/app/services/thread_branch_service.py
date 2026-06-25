@@ -46,6 +46,15 @@ from langchain_core.messages import BaseMessage
 
 logger = logging.getLogger(__name__)
 
+# Default rank for a sibling whose checkpoint isn't in ``checkpoint_rank_by_id``.
+# Real ranks are list indices (>= 0, 0 = newest), and the sort key negates them
+# (``-rank``), so every real sibling has a key <= 0. A negative default makes an
+# unranked sibling's key strictly positive => it sorts deterministically LAST.
+# In practice this is unreachable (every sibling checkpoint_id comes from the
+# chain/leaf set that built the rank map), but the explicit sentinel documents
+# the ordering instead of leaving a bare ``-1`` magic number (ADR-021 review).
+_UNRANKED_SIBLING_RANK = -1
+
 
 @dataclass
 class _CheckpointSlim:
@@ -214,9 +223,7 @@ async def materialize_messages_at_checkpoint(
 
     cfg = {"configurable": {"thread_id": thread_id, "checkpoint_id": checkpoint_id}}
     try:
-        histories = await checkpointer.aget_delta_channel_history(
-            config=cfg, channels=["messages"]
-        )
+        histories = await checkpointer.aget_delta_channel_history(config=cfg, channels=["messages"])
     except (AttributeError, NotImplementedError):
         # Pre-DeltaChannel saver (테스트 fake) — fall back to channel_values.
         tup = await checkpointer.aget_tuple(cfg)
@@ -255,6 +262,7 @@ async def build_fork_overwrite_input(
     checkpoint_id: str | None,
     *,
     append: list[BaseMessage] | None = None,
+    drop_trailing_assistant: bool = False,
 ) -> dict[str, Any]:
     """Build the agent input dict for fork-edit / regenerate.
 
@@ -275,8 +283,21 @@ async def build_fork_overwrite_input(
             )
         except Exception:  # noqa: BLE001
             pre_msgs = []
+    if drop_trailing_assistant:
+        pre_msgs = without_trailing_assistant_messages(pre_msgs)
     value: list[BaseMessage] = [*pre_msgs, *(append or [])]
     return {"messages": Overwrite(value=value)}
+
+
+def without_trailing_assistant_messages(messages: list[BaseMessage]) -> list[BaseMessage]:
+    trimmed = list(messages)
+    while trimmed and _is_assistant_message(trimmed[-1]):
+        trimmed.pop()
+    return trimmed
+
+
+def _is_assistant_message(message: BaseMessage) -> bool:
+    return getattr(message, "type", None) == "ai"
 
 
 def _is_leaf(checkpoint_id: str, all_parent_ids: set[str]) -> bool:
@@ -388,9 +409,7 @@ def _checkpoint_for_message_in_leaf(
     """
 
     chain = _build_leaf_chain(leaf, by_id)
-    return _checkpoint_for_message_in_chain(
-        chain, target_msg_id, target_idx, leaf.checkpoint_id
-    )
+    return _checkpoint_for_message_in_chain(chain, target_msg_id, target_idx, leaf.checkpoint_id)
 
 
 def _build_tree_from_checkpoints(
@@ -413,6 +432,9 @@ def _build_tree_from_checkpoints(
     if not leaves:
         # Defensive — every checkpoint has a child (cycle?). Use newest.
         leaves = [checkpoints[0]]
+    checkpoint_rank_by_id = {
+        checkpoint.checkpoint_id: index for index, checkpoint in enumerate(checkpoints)
+    }
 
     active = _resolve_active_leaf(checkpoints, leaves, active_checkpoint_id)
 
@@ -431,9 +453,7 @@ def _build_tree_from_checkpoints(
     prev_id: str | None = None
     for idx, msg in enumerate(active.messages):
         mid = _message_id(msg, idx)
-        ck_for_msg = _checkpoint_for_message_in_chain(
-            active_chain, mid, idx, active.checkpoint_id
-        )
+        ck_for_msg = _checkpoint_for_message_in_chain(active_chain, mid, idx, active.checkpoint_id)
         nodes.append(
             MessageTreeNode(
                 message=msg,
@@ -453,23 +473,14 @@ def _build_tree_from_checkpoints(
     #   - they have different ids
     branches_by_message: dict[str, list[BranchSibling]] = {}
 
-    # Pair-based parent key — `(msg_id, introducing_checkpoint)` for synthetic
-    # ids, ``(msg_id, "")`` for real ids. LangChain HumanMessage 는 id 를 안
-    # 박아서 fork-edit 두 분기의 user 메시지가 똑같이 ``synthetic-{idx}`` 로
-    # 나온다. 그땐 checkpoint 까지 함께 봐야 분기점이 sibling 으로 잡힌다.
-    # 반대로 진짜 langchain id (lc_run-…) 는 메시지 단위로 유니크하므로
-    # 같은 msg_id 가 여러 leaf 의 체인에서 나타나면 그건 “같은 메시지” —
-    # dedup 해야 한다 (안 그러면 regenerate 후 첫 AI 가 7 siblings 처럼 잘못
-    # 잡힘).
-    def _sibling_key(mid: str, ck: str) -> tuple[str, str]:
-        return (mid, ck) if _is_synthetic_id(mid) else (mid, "")
-
     expected_parent_key: tuple[str, str] | None = None
 
     for idx, active_mid in enumerate(active_msg_ids):
         if idx > 0:
-            expected_parent_key = _sibling_key(
-                active_msg_ids[idx - 1], nodes[idx - 1].introduced_by_checkpoint_id
+            expected_parent_key = _message_branch_key(
+                active.messages[idx - 1],
+                idx - 1,
+                nodes[idx - 1].introduced_by_checkpoint_id,
             )
 
         seen_keys: set[tuple[str, str]] = set()
@@ -477,7 +488,7 @@ def _build_tree_from_checkpoints(
 
         active_ck = nodes[idx].introduced_by_checkpoint_id
         siblings.append(BranchSibling(message_id=active_mid, checkpoint_id=active_ck))
-        seen_keys.add(_sibling_key(active_mid, active_ck))
+        seen_keys.add(_message_branch_key(active.messages[idx], idx, active_ck))
 
         for leaf in leaves:
             if leaf.checkpoint_id == active.checkpoint_id:
@@ -496,7 +507,7 @@ def _build_tree_from_checkpoints(
                     idx - 1,
                     leaf.checkpoint_id,
                 )
-                this_parent_key = _sibling_key(parent_mid, parent_ck)
+                this_parent_key = _message_branch_key(msgs[idx - 1], idx - 1, parent_ck)
             if this_parent_key != expected_parent_key:
                 continue
             sibling_ck = _checkpoint_for_message_in_chain(
@@ -505,36 +516,26 @@ def _build_tree_from_checkpoints(
                 idx,
                 leaf.checkpoint_id,
             )
-            key = _sibling_key(this_mid, sibling_ck)
+            key = _message_branch_key(msgs[idx], idx, sibling_ck)
             if key in seen_keys:
                 continue
-            siblings.append(
-                BranchSibling(message_id=this_mid, checkpoint_id=sibling_ck)
-            )
+            siblings.append(BranchSibling(message_id=this_mid, checkpoint_id=sibling_ck))
             seen_keys.add(key)
 
         if len(siblings) >= 2:
-            # Stable chronological order: oldest branch first → newest last.
-            # LangGraph checkpoint ids are UUIDv6-like and sortable lex, so
-            # sorting siblings by checkpoint_id ascending == time-ascending.
-            # This guarantees: (a) deterministic numbering across reloads,
-            # (b) freshly-edited branch lands at the *end* of the picker so
-            # ``<N/N>`` reflects "you're on the newest fork", and ◀ is active.
-            siblings.sort(key=lambda s: s.checkpoint_id)
+            siblings.sort(
+                key=lambda s: (
+                    -checkpoint_rank_by_id.get(s.checkpoint_id, _UNRANKED_SIBLING_RANK),
+                    s.checkpoint_id,
+                )
+            )
             branches_by_message[active_mid] = siblings
 
             # Stamp the active node with its position in the sibling list so
             # the frontend gets ``branch_index/branch_total`` for free —
             # avoids a second indexOf round-trip and the index-bug it caused.
-            # 매칭 키는 (msg_id, checkpoint) 쌍. synthetic 동률 시 msg_id 만으로
-            # 비교하면 항상 첫 번째가 잡혀 active_index 가 0 으로 고정된다.
-            active_key = _sibling_key(active_mid, active_ck)
             active_pos = next(
-                (
-                    i
-                    for i, s in enumerate(siblings)
-                    if _sibling_key(s.message_id, s.checkpoint_id) == active_key
-                ),
+                (i for i, s in enumerate(siblings) if s.checkpoint_id == active_ck),
                 0,
             )
             nodes[idx] = MessageTreeNode(
@@ -556,13 +557,18 @@ def _build_tree_from_checkpoints(
 
 
 def _message_fingerprint(msg: BaseMessage) -> tuple[str, str, str | None]:
-    """Stable-enough identity for synthetic LangChain messages without ids."""
-
     return (
         str(getattr(msg, "type", msg.__class__.__name__)),
         repr(getattr(msg, "content", "")),
         getattr(msg, "name", None),
     )
+
+
+def _message_branch_key(msg: BaseMessage, idx: int, checkpoint_id: str) -> tuple[str, str]:
+    mid = _message_id(msg, idx)
+    if _is_synthetic_id(mid):
+        return (mid, checkpoint_id)
+    return (mid, repr(_message_fingerprint(msg)))
 
 
 def _resolve_active_leaf_from_parent_map(
@@ -601,6 +607,7 @@ def _build_tree_from_leaf_checkpoints(
         return MessageTree(nodes=[], active_tip_message_id=None, active_checkpoint_id=None)
 
     active = _resolve_active_leaf_from_parent_map(leaves, parent_by_id, active_checkpoint_id)
+    checkpoint_rank_by_id = {leaf.checkpoint_id: index for index, leaf in enumerate(leaves)}
 
     nodes: list[MessageTreeNode] = []
     active_msg_ids: list[str] = []
@@ -619,8 +626,6 @@ def _build_tree_from_leaf_checkpoints(
 
     def sibling_key(msg: BaseMessage, idx: int) -> tuple[str, str]:
         mid = _message_id(msg, idx)
-        if not _is_synthetic_id(mid):
-            return (mid, "")
         return (mid, repr(_message_fingerprint(msg)))
 
     branches_by_message: dict[str, list[BranchSibling]] = {}
@@ -655,14 +660,15 @@ def _build_tree_from_leaf_checkpoints(
             seen_keys.add(key)
 
         if len(siblings) >= 2:
-            siblings.sort(key=lambda s: s.checkpoint_id)
+            siblings.sort(
+                key=lambda s: (
+                    -checkpoint_rank_by_id.get(s.checkpoint_id, _UNRANKED_SIBLING_RANK),
+                    s.checkpoint_id,
+                )
+            )
             branches_by_message[active_mid] = siblings
             active_pos = next(
-                (
-                    i
-                    for i, s in enumerate(siblings)
-                    if s.checkpoint_id == active.checkpoint_id
-                ),
+                (i for i, s in enumerate(siblings) if s.checkpoint_id == active.checkpoint_id),
                 0,
             )
             nodes[idx] = MessageTreeNode(

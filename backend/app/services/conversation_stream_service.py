@@ -20,6 +20,7 @@ from app.agent_runtime.identity import (
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
+from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
 from app.agent_runtime.subagents import build_subagents_config
@@ -164,6 +165,9 @@ async def resolve_agent_context(
         parent_cfg=cfg,
         is_trigger_mode=False,
     )
+    # ``.update`` (not ``=``) so the subagent secrets already unioned into the
+    # set by ``build_subagents_config`` above survive (ADR-021 H1).
+    cfg.secret_values.update(collect_cfg_secret_values(cfg))
     return cfg
 
 

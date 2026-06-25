@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   activeInterruptPayloads,
   appendInterruptToolCallMessages,
+  appendResolvedInterruptToolCallMessages,
   interruptPayloadResolvedByMessages,
   standardPayloadFromInterrupt,
   standardPayloadsFromInterrupts,
@@ -148,6 +149,255 @@ describe('appendInterruptToolCallMessages', () => {
           interrupt_id: 'intr-1',
           action_requests: [{ name: 'send_email', args: {} }],
           review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve'] }],
+        },
+      ],
+    )
+
+    expect(projected).toEqual([existing])
+  })
+
+  it('hydrates the persisted ask_user tool call instead of appending a duplicate interrupt card', () => {
+    const existing = new AIMessage({
+      id: 'assistant-ask',
+      content: [
+        {
+          type: 'tool_call',
+          id: 'toolu-ask',
+          name: 'ask_user',
+          args: {
+            mode: 'option_list',
+            question: '과일을 골라주세요',
+            options: ['사과', '포도', '배'],
+          },
+        },
+      ],
+      tool_calls: [
+        {
+          id: 'toolu-ask',
+          name: 'ask_user',
+          args: {
+            mode: 'option_list',
+            question: '과일을 골라주세요',
+            options: ['사과', '포도', '배'],
+          },
+        },
+      ],
+    })
+    const projected = appendInterruptToolCallMessages(
+      [new HumanMessage({ id: 'user-1', content: 'ask user 해줘' }), existing],
+      [
+        {
+          interrupt_id: 'intr-ask',
+          action_requests: [
+            {
+              name: 'ask_user',
+              args: {
+                mode: 'option_list',
+                question: '과일을 골라주세요',
+                options: ['사과', '포도', '배'],
+              },
+            },
+          ],
+          review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+        },
+      ],
+    )
+
+    expect(projected).toHaveLength(2)
+    expect(AIMessage.isInstance(projected[1]) ? projected[1].tool_calls : []).toEqual([
+      expect.objectContaining({
+        id: 'toolu-ask',
+        name: 'ask_user',
+        args: expect.objectContaining({
+          approval_id: 'toolu-ask',
+          hitl_interrupt_id: 'intr-ask',
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+        }),
+      }),
+    ])
+  })
+
+  it('hydrates a persisted ask_user tool call even when the interrupt id already matches', () => {
+    const existing = new AIMessage({
+      id: 'assistant-ask',
+      content: [
+        {
+          type: 'tool_call',
+          id: 'intr-ask:0',
+          name: 'ask_user',
+          args: {
+            mode: 'option_list',
+            question: '과일을 골라주세요',
+            options: ['사과', '포도', '배'],
+          },
+        },
+      ],
+      tool_calls: [
+        {
+          id: 'intr-ask:0',
+          name: 'ask_user',
+          args: {
+            mode: 'option_list',
+            question: '과일을 골라주세요',
+            options: ['사과', '포도', '배'],
+          },
+        },
+      ],
+    })
+    const projected = appendInterruptToolCallMessages(
+      [new HumanMessage({ id: 'user-1', content: 'ask user 해줘' }), existing],
+      [
+        {
+          interrupt_id: 'intr-ask',
+          action_requests: [
+            {
+              name: 'ask_user',
+              args: {
+                mode: 'option_list',
+                question: '과일을 골라주세요',
+                options: ['사과', '포도', '배'],
+              },
+            },
+          ],
+          review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+        },
+      ],
+    )
+
+    expect(projected).toHaveLength(2)
+    expect(projected[1]).not.toBe(existing)
+    expect(projected[1]).toMatchObject({
+      status: { type: 'requires-action', reason: 'tool-calls' },
+    })
+    expect(AIMessage.isInstance(projected[1]) ? projected[1].tool_calls : []).toEqual([
+      expect.objectContaining({
+        id: 'intr-ask:0',
+        name: 'ask_user',
+        args: expect.objectContaining({
+          approval_id: 'intr-ask:0',
+          hitl_interrupt_id: 'intr-ask',
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+        }),
+      }),
+    ])
+  })
+
+  it('binds two arg-equivalent ask_user interrupts to distinct persisted slots', () => {
+    const askArgs = {
+      mode: 'option_list',
+      question: '과일을 골라주세요',
+      options: ['사과', '포도', '배'],
+    }
+    const first = new AIMessage({
+      id: 'assistant-ask-1',
+      content: '',
+      tool_calls: [{ id: 'toolu-ask-1', name: 'ask_user', args: { ...askArgs } }],
+    })
+    const second = new AIMessage({
+      id: 'assistant-ask-2',
+      content: '',
+      tool_calls: [{ id: 'toolu-ask-2', name: 'ask_user', args: { ...askArgs } }],
+    })
+
+    const projected = appendInterruptToolCallMessages(
+      [new HumanMessage({ id: 'user-1', content: 'ask twice' }), first, second],
+      [
+        {
+          interrupt_id: 'intr-ask-a',
+          action_requests: [{ name: 'ask_user', args: { ...askArgs } }],
+          review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+        },
+        {
+          interrupt_id: 'intr-ask-b',
+          action_requests: [{ name: 'ask_user', args: { ...askArgs } }],
+          review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+        },
+      ],
+    )
+
+    // No duplicate card appended; both persisted slots hydrate distinctly.
+    expect(projected).toHaveLength(3)
+    expect(AIMessage.isInstance(projected[1]) ? projected[1].tool_calls : []).toEqual([
+      expect.objectContaining({
+        id: 'toolu-ask-1',
+        args: expect.objectContaining({ hitl_interrupt_id: 'intr-ask-a' }),
+      }),
+    ])
+    expect(AIMessage.isInstance(projected[2]) ? projected[2].tool_calls : []).toEqual([
+      expect.objectContaining({
+        id: 'toolu-ask-2',
+        args: expect.objectContaining({ hitl_interrupt_id: 'intr-ask-b' }),
+      }),
+    ])
+  })
+
+  it('하이드레이션 시 입력 배열을 변형하지 않는다(immutability 계약)', () => {
+    const existing = new AIMessage({
+      id: 'assistant-ask',
+      content: '',
+      tool_calls: [
+        {
+          id: 'toolu-ask',
+          name: 'ask_user',
+          args: { mode: 'option_list', question: 'Q', options: ['a', 'b'] },
+        },
+      ],
+    })
+    const input = [new HumanMessage({ id: 'user-1', content: 'ask' }), existing]
+    const inputSnapshot = [...input]
+
+    const projected = appendInterruptToolCallMessages(input, [
+      {
+        interrupt_id: 'intr-ask',
+        action_requests: [
+          { name: 'ask_user', args: { mode: 'option_list', question: 'Q', options: ['a', 'b'] } },
+        ],
+        review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+      },
+    ])
+
+    // 원본 배열과 그 요소 참조는 그대로, 반환 배열만 새 메시지로 교체된다.
+    expect(input).toEqual(inputSnapshot)
+    expect(input[1]).toBe(existing)
+    expect(projected[1]).not.toBe(existing)
+  })
+})
+
+describe('appendResolvedInterruptToolCallMessages', () => {
+  it('does not append a synthetic completed ask_user card when the persisted ask_user call is visible', () => {
+    const existing = new AIMessage({
+      id: 'assistant-ask',
+      content: '',
+      tool_calls: [
+        {
+          id: 'toolu-ask',
+          name: 'ask_user',
+          args: {
+            mode: 'option_list',
+            question: '과일을 골라주세요',
+            options: ['사과', '포도', '배'],
+          },
+        },
+      ],
+    })
+
+    const projected = appendResolvedInterruptToolCallMessages(
+      [existing],
+      [
+        {
+          toolCall: {
+            id: 'intr-ask:0',
+            name: 'ask_user',
+            args: {
+              mode: 'option_list',
+              question: '과일을 골라주세요',
+              options: ['사과', '포도', '배'],
+              hitl_interrupt_id: 'intr-ask',
+            },
+          },
+          result: { decision: 'approved' },
         },
       ],
     )

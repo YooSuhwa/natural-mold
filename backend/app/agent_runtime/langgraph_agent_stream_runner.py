@@ -10,6 +10,7 @@ from langgraph.types import Command
 
 from app.agent_runtime.agent_stream_runner import _hook_ctx_for_agent, _hook_result_from_usage
 from app.agent_runtime.langgraph_streaming import stream_agent_response_langgraph
+from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
 from app.agent_runtime.runtime_component_builder import _prepare_agent
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
@@ -32,6 +33,59 @@ async def _run_langgraph_agent_stream(
     moldy_source: str = "chat",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
 ) -> AsyncGenerator[str, None]:
+    # ADR-021 C1 — install the run-scoped secret set BEFORE ``_prepare_agent``
+    # (mirrors agent_stream_runner.py:119/144) so the lazy skill-credential
+    # union in ``_prepare_runtime_components`` (incl. subagents) mutates the
+    # same object, and so the redaction ContextVar is live for the whole
+    # streaming generator. ``emit`` (langgraph_streaming) and the
+    # ``persist_callback`` both run in this same async task — directly, not via
+    # a spawned task — so the ContextVar survives across yields (ADR §2 / C5).
+    # ``reset`` happens in ``finally`` so the set never leaks into the next run
+    # on this task.
+    secret_token = set_run_secrets(cfg.secret_values)
+    try:
+        async for chunk in _stream_langgraph_with_secrets(
+            cfg,
+            messages_history=messages_history,
+            stream_input=stream_input,
+            trace_sink=trace_sink,
+            msg_id_sink=msg_id_sink,
+            error_sink=error_sink,
+            broker=broker,
+            persist_callback=persist_callback,
+            run_id=run_id,
+            artifact_recorder=artifact_recorder,
+            moldy_source=moldy_source,
+            langfuse_sink=langfuse_sink,
+        ):
+            yield chunk
+    finally:
+        reset_run_secrets(secret_token)
+
+
+async def _stream_langgraph_with_secrets(
+    cfg: AgentConfig,
+    *,
+    messages_history: list[dict[str, str]],
+    stream_input: Any,
+    trace_sink: list[dict[str, Any]] | None = None,
+    msg_id_sink: list[str] | None = None,
+    error_sink: list[StreamErrorRecord] | None = None,
+    broker: Any | None = None,
+    persist_callback: Any | None = None,
+    run_id: str | None = None,
+    artifact_recorder: Any | None = None,
+    moldy_source: str = "chat",
+    langfuse_sink: list[LangfuseTraceRecord] | None = None,
+) -> AsyncGenerator[str, None]:
+    """Inner body — runs with the run-scoped secret ContextVar already set.
+
+    Split out of ``_run_langgraph_agent_stream`` so the set/reset can wrap
+    prepare + the full stream without nesting the existing hook / langfuse
+    try/finally inside an extra indentation level (mirrors
+    ``agent_stream_runner._stream_with_secrets``).
+    """
+
     agent, lc_messages, config = await _prepare_agent(
         cfg,
         messages_history=messages_history,

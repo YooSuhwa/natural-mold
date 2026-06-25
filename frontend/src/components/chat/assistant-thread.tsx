@@ -59,14 +59,12 @@ import { UserAvatar } from '@/components/auth/UserAvatar'
 import type { User } from '@/lib/types/user'
 import {
   chatCancelInFlightAtom,
+  pendingEditBranchPickerSuppressionAtom,
   sessionTokenUsageAtom,
   type TokenUsage,
 } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
-import {
-  isStreamingMessageMetadata,
-  StreamingMessageLoadingIndicator,
-} from '@/components/chat/assistant-message-loading'
+import { StreamingMessageLoadingIndicator } from '@/components/chat/assistant-message-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
@@ -243,10 +241,6 @@ function AssistantMessageParts() {
   )
 }
 
-function useIsStreamingMessage(): boolean {
-  return useAuiState((s) => isStreamingMessageMetadata(s.message?.metadata))
-}
-
 function useMessageArtifacts(): ArtifactSummary[] {
   return useAuiState((s) => selectMessageArtifactsFromMessage(s.message))
 }
@@ -312,7 +306,10 @@ function AssistantArtifactCards() {
  * 사용자/AI 메시지 쪽 정렬을 표현. */
 function MessageMetaRow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-1 flex min-h-7 max-w-full items-center gap-1 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100">
+    <div
+      className="mt-1 flex min-h-7 max-w-full items-center gap-1 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+      data-moldy-message-meta-row="true"
+    >
       {children}
     </div>
   )
@@ -407,6 +404,8 @@ interface BranchMeta {
   branchCheckpointId?: string | null
   branchIndex?: number | null
   branchTotal?: number | null
+  moldyBranchPickerDisplayOnly?: boolean
+  moldySuppressBranchPicker?: boolean
 }
 
 /** M-CHAT1b — `<1/2>` style branch picker.
@@ -425,16 +424,16 @@ function canRenderBranchPicker(
 ): meta is BranchMeta & {
   branchIndex: number
   branchTotal: number
-  siblingCheckpointIds: string[]
 } {
   const siblingCheckpoints = meta.siblingCheckpointIds ?? []
   const { branchIndex, branchTotal } = meta
+  const hasBranchNumbers =
+    typeof branchIndex === 'number' && typeof branchTotal === 'number' && branchTotal >= 2
   return (
     !!conversationId &&
-    branchIndex != null &&
-    branchTotal != null &&
-    branchTotal >= 2 &&
-    siblingCheckpoints.length === branchTotal
+    meta.moldySuppressBranchPicker !== true &&
+    hasBranchNumbers &&
+    (meta.moldyBranchPickerDisplayOnly === true || siblingCheckpoints.length === branchTotal)
   )
 }
 
@@ -443,6 +442,10 @@ function BranchPicker() {
   const conversationId = useChatConversationId()
   const queryClient = useQueryClient()
   const [pendingCheckpointId, setPendingCheckpointId] = useState<string | null>(null)
+  const threadIsRunning = useAuiState((s) => s.thread.isRunning)
+  const pendingEditSuppression = useAtomValue(pendingEditBranchPickerSuppressionAtom)
+  const messageId = useAuiState((s) => (typeof s.message?.id === 'string' ? s.message.id : null))
+  const messageText = useAuiState((s) => getMessageCopyText(s.message?.content))
   const meta = useAuiState(
     (s) =>
       ((s.message?.metadata as { custom?: BranchMeta } | undefined)?.custom ?? {}) as BranchMeta,
@@ -451,10 +454,11 @@ function BranchPicker() {
     () => meta.siblingCheckpointIds ?? [],
     [meta.siblingCheckpointIds],
   )
+  const displayOnly = meta.moldyBranchPickerDisplayOnly === true
 
   const switchTo = useCallback(
     async (targetIdx: number) => {
-      if (!conversationId || pendingCheckpointId) return
+      if (!conversationId || pendingCheckpointId || threadIsRunning || displayOnly) return
       const checkpointId = siblingCheckpoints[targetIdx]
       if (!checkpointId) {
         reportClientWarning('BranchPicker', 'missing checkpoint id for sibling idx', targetIdx)
@@ -474,9 +478,30 @@ function BranchPicker() {
         setPendingCheckpointId(null)
       }
     },
-    [conversationId, pendingCheckpointId, queryClient, siblingCheckpoints],
+    [
+      conversationId,
+      displayOnly,
+      pendingCheckpointId,
+      queryClient,
+      siblingCheckpoints,
+      threadIsRunning,
+    ],
   )
 
+  // M3 — branch picker 억제는 편집 중인 그 메시지에만 적용한다. messageId가
+  // 있으면 id로만 매칭하고, id가 없을 때만 content fallback을 쓴다. 예전처럼
+  // id || content로 OR 매칭하면 본문이 같은 다른 메시지("응", "ok" 등)의
+  // branch picker까지 잘못 숨겨졌다.
+  const pendingEditMatchesMessage =
+    pendingEditSuppression?.conversationId === conversationId &&
+    (messageId != null
+      ? pendingEditSuppression.messageId === messageId
+      : pendingEditSuppression.content === messageText)
+  const branchIsNewest =
+    typeof meta.branchTotal !== 'number' ||
+    meta.branchTotal < 2 ||
+    meta.branchIndex === meta.branchTotal - 1
+  if (pendingEditMatchesMessage && !branchIsNewest) return null
   if (!canRenderBranchPicker(conversationId, meta)) return null
   // canRenderBranchPicker guarantees conversationId is non-null + the index/
   // total/checkpoint counts line up. The casts below are narrowing helpers
@@ -487,12 +512,16 @@ function BranchPicker() {
   const total = branchTotal
   const display = currentIdx + 1
   const isSwitching = pendingCheckpointId !== null
+  const controlsDisabled = isSwitching || threadIsRunning || displayOnly
   return (
-    <span className="inline-flex items-center gap-0.5 moldy-ui-micro tabular-nums text-muted-foreground">
+    <span
+      className="inline-flex items-center gap-0.5 moldy-ui-micro tabular-nums text-muted-foreground"
+      data-moldy-branch-picker="true"
+    >
       <button
         type="button"
         className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
-        disabled={isSwitching || currentIdx <= 0}
+        disabled={controlsDisabled || currentIdx <= 0}
         onClick={() => void switchTo(currentIdx - 1)}
         aria-label={t('previous')}
       >
@@ -504,7 +533,7 @@ function BranchPicker() {
       <button
         type="button"
         className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
-        disabled={isSwitching || currentIdx >= total - 1}
+        disabled={controlsDisabled || currentIdx >= total - 1}
         onClick={() => void switchTo(currentIdx + 1)}
         aria-label={t('next')}
       >
@@ -694,6 +723,7 @@ export function AssistantThread({
     () => ({
       UserMessage: function UserMsg() {
         const { isBuilder, showMessageTimestamp, user } = useAssistantThreadDynamicContext()
+        const messageId = useAuiState((s) => s.message?.id)
         const metaRow = (
           <MessageMetaRow>
             <BranchPicker />
@@ -710,7 +740,18 @@ export function AssistantThread({
           )
         }
         return (
-          <div className="group relative flex justify-end gap-3 [contain-intrinsic-size:0_96px] [content-visibility:auto]">
+          // M2 — off-screen `content-visibility:auto`/`contain-intrinsic-size`
+          // 최적화는 `fix(chat): stabilize branch rendering`에서 의도적으로
+          // 제거했다. off-screen 메시지의 렌더를 건너뛰면 message-id scroll
+          // targeting, `<n/m>` branch picker, meta-row `:has()` 가시성 등
+          // 레이아웃/측정 의존 기능이 어긋났다. 공용 `.moldy-content-visibility`
+          // 는 `contain-intrinsic-size`가 1px 680px로 고정이라 메시지 높이에도
+          // 맞지 않으므로 대안이 아니다. 복원 금지.
+          <div
+            className="group relative flex justify-end gap-3"
+            data-moldy-message-id={messageId}
+            data-moldy-message-role="user"
+          >
             <div className="flex w-full max-w-[80%] flex-col items-end">
               <div className="moldy-chat-bubble-user px-4 py-2.5 text-sm leading-relaxed">
                 <MessagePrimitive.Content />
@@ -750,8 +791,8 @@ export function AssistantThread({
           isBuilder,
           showMessageTimestamp,
         } = useAssistantThreadDynamicContext()
+        const messageId = useAuiState((s) => s.message?.id)
         const tChat = useTranslations('chat')
-        const isStreamingMessage = useIsStreamingMessage()
         const metaRow = (
           <MessageMetaRow>
             {showMessageTimestamp && <MessageTimestamp />}
@@ -776,11 +817,13 @@ export function AssistantThread({
           )
         }
         return (
+          // M2 — UserMessage와 동일하게 off-screen content-visibility 최적화를
+          // 의도적으로 제거한 상태다(`fix(chat): stabilize branch rendering`).
+          // 복원 금지 — 위 UserMessage 주석 참고.
           <div
-            className={cn(
-              'group relative flex gap-3',
-              !isStreamingMessage && '[contain-intrinsic-size:0_180px] [content-visibility:auto]',
-            )}
+            className="group relative flex gap-3"
+            data-moldy-message-id={messageId}
+            data-moldy-message-role="assistant"
           >
             <StreamingMessageLoadingIndicator
               activities={activities}

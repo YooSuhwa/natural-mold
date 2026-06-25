@@ -2,8 +2,12 @@ import { useSyncExternalStore } from 'react'
 import { STREAM_CONTROLLER, type MessageMetadataMap, type UseStreamReturn } from '@langchain/react'
 import type { BaseMessage } from '@langchain/core/messages'
 import type { AppendMessage, ThreadMessage } from '@assistant-ui/react'
+import { sourceMessageIdFromThreadMessageId } from './message-list'
 
-type VisibleMessage = Pick<ThreadMessage, 'id'>
+type VisibleMessage = Pick<ThreadMessage, 'id'> & {
+  readonly role?: unknown
+  readonly sourceId?: string
+}
 type CheckpointContext = {
   visibleMessages: readonly VisibleMessage[]
   metadataByMessageId: MessageMetadataMap
@@ -38,14 +42,14 @@ export function checkpointForEdit(
   if (visibleCandidateIds.length === 0) return null
 
   for (const messageId of stableMessageIds) {
-    const liveCheckpoint = context.metadataByMessageId.get(messageId)?.parentCheckpointId
+    const liveCheckpoint = metadataCheckpointForVisibleId(context, messageId)
     if (liveCheckpoint) return liveCheckpoint
   }
 
   for (const messageId of visibleCandidateIds) {
     const previousId = previousVisibleMessageId(context.visibleMessages, messageId)
     if (!previousId) continue
-    const checkpointId = context.checkpointByMessageId.get(previousId)
+    const checkpointId = checkpointForVisibleId(context, previousId)
     if (checkpointId) return checkpointId
   }
 
@@ -63,20 +67,31 @@ export function checkpointForReload(
   parentId: string | null,
   context: CheckpointContext,
 ): string | null {
+  const parentMessage = parentId ? visibleMessageById(context.visibleMessages, parentId) : null
+  if (parentId && parentMessage && isAssistantVisibleMessage(parentMessage)) {
+    const liveCheckpoint = metadataCheckpointForVisibleId(context, parentId)
+    if (liveCheckpoint) return liveCheckpoint
+
+    const parentIndex = visibleMessageIndex(context.visibleMessages, parentId)
+    const serverParentCheckpoint = parentCheckpointForServerIndex(context, parentIndex)
+    if (serverParentCheckpoint) return serverParentCheckpoint
+  }
+
   const targetId = nextVisibleMessageId(context.visibleMessages, parentId)
-  const liveCheckpoint = targetId
-    ? context.metadataByMessageId.get(targetId)?.parentCheckpointId
-    : undefined
+  const liveCheckpoint = targetId ? metadataCheckpointForVisibleId(context, targetId) : undefined
   if (liveCheckpoint) return liveCheckpoint
 
   if (targetId) {
     const targetIndex = visibleMessageIndex(context.visibleMessages, targetId)
     const serverCheckpoint = parentCheckpointForServerIndex(context, targetIndex)
     if (serverCheckpoint) return serverCheckpoint
+    const targetMessage = visibleMessageById(context.visibleMessages, targetId)
+    if (targetMessage && isAssistantVisibleMessage(targetMessage)) return null
   }
 
   if (!parentId) return null
-  const checkpointId = context.checkpointByMessageId.get(parentId)
+  if (parentMessage && isAssistantVisibleMessage(parentMessage)) return null
+  const checkpointId = checkpointForVisibleId(context, parentId)
   if (checkpointId) return checkpointId
 
   const parentIndex = visibleMessageIndex(context.visibleMessages, parentId)
@@ -99,6 +114,13 @@ function previousVisibleMessageId(
   return messages[index - 1]?.id ?? null
 }
 
+function visibleMessageById(
+  messages: readonly VisibleMessage[],
+  messageId: string,
+): VisibleMessage | null {
+  return messages.find((message) => message.id === messageId) ?? null
+}
+
 function nextVisibleMessageId(
   messages: readonly VisibleMessage[],
   parentId: string | null,
@@ -111,6 +133,28 @@ function nextVisibleMessageId(
 
 function visibleMessageIndex(messages: readonly VisibleMessage[], messageId: string): number {
   return messages.findIndex((message) => message.id === messageId)
+}
+
+function sourceIdForVisibleId(context: CheckpointContext, messageId: string): string {
+  const visibleMessage = visibleMessageById(context.visibleMessages, messageId)
+  return visibleMessage?.sourceId ?? sourceMessageIdFromThreadMessageId(messageId) ?? messageId
+}
+
+function metadataCheckpointForVisibleId(
+  context: CheckpointContext,
+  messageId: string,
+): string | undefined {
+  return (
+    context.metadataByMessageId.get(messageId)?.parentCheckpointId ??
+    context.metadataByMessageId.get(sourceIdForVisibleId(context, messageId))?.parentCheckpointId
+  )
+}
+
+function checkpointForVisibleId(context: CheckpointContext, messageId: string): string | undefined {
+  return (
+    context.checkpointByMessageId.get(messageId) ??
+    context.checkpointByMessageId.get(sourceIdForVisibleId(context, messageId))
+  )
 }
 
 function parentCheckpointForServerIndex(context: CheckpointContext, index: number): string | null {
@@ -135,6 +179,10 @@ function checkpointForServerIndex(context: CheckpointContext, index: number): st
 
 function isStableMessageId(value: string): boolean {
   return !value.startsWith('opt-') && !value.startsWith('stream-')
+}
+
+function isAssistantVisibleMessage(message: VisibleMessage): boolean {
+  return message.role === 'assistant'
 }
 
 function uniquePresentIds(values: readonly (string | null | undefined)[]): string[] {

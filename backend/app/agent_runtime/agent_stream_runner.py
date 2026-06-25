@@ -8,6 +8,7 @@ from contextlib import nullcontext
 from datetime import UTC, datetime
 from typing import Any
 
+from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
 from app.agent_runtime.runtime_component_builder import _prepare_agent
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord, stream_agent_response
@@ -110,10 +111,63 @@ async def _run_agent_stream(
       append_events 콜백, run_id(=assistant_msg_id) 를 주입.
     """
 
-    agent, lc_messages, config = await _prepare_agent(
-        cfg,
-        messages_history=messages_history,
-    )
+    # ADR-021 — install the run-scoped secret set BEFORE prepare so the lazy
+    # skill-credential union in ``_prepare_runtime_components`` (incl. subagents)
+    # mutates the same object, and so the redaction ContextVar is live for the
+    # whole streaming generator. ``reset`` happens in the outer ``finally`` to
+    # avoid leaking the set into the next run on this task.
+    secret_token = set_run_secrets(cfg.secret_values)
+    try:
+        agent, lc_messages, config = await _prepare_agent(
+            cfg,
+            messages_history=messages_history,
+        )
+        async for chunk in _stream_with_secrets(
+            cfg,
+            agent=agent,
+            lc_messages=lc_messages,
+            config=config,
+            stream_input=stream_input,
+            hook_metadata_extra=hook_metadata_extra,
+            trace_sink=trace_sink,
+            msg_id_sink=msg_id_sink,
+            error_sink=error_sink,
+            broker=broker,
+            persist_callback=persist_callback,
+            run_id=run_id,
+            artifact_recorder=artifact_recorder,
+            moldy_source=moldy_source,
+            langfuse_sink=langfuse_sink,
+        ):
+            yield chunk
+    finally:
+        reset_run_secrets(secret_token)
+
+
+async def _stream_with_secrets(
+    cfg: AgentConfig,
+    *,
+    agent: Any,
+    lc_messages: list[Any],
+    config: dict[str, Any],
+    stream_input: Any,
+    hook_metadata_extra: dict[str, Any] | None,
+    trace_sink: list[dict[str, Any]] | None,
+    msg_id_sink: list[str] | None,
+    error_sink: list[StreamErrorRecord] | None,
+    broker: Any | None,
+    persist_callback: Any | None,
+    run_id: str | None,
+    artifact_recorder: Any | None,
+    moldy_source: str,
+    langfuse_sink: list[LangfuseTraceRecord] | None,
+) -> AsyncGenerator[str, None]:
+    """Inner streaming body — runs with the run-scoped secret ContextVar set.
+
+    Split out of ``_run_agent_stream`` so the secret ContextVar set/reset can
+    wrap prepare + the full stream without nesting the existing hook /
+    langfuse try/finally inside an extra indentation level.
+    """
 
     # stream_input이 ``_USE_PREPPED_LC_MESSAGES`` sentinel이면 변환된 lc_messages를
     # 그대로 입력으로 사용 (execute path). 빈 리스트는 None으로 폴백 — LangGraph
@@ -308,6 +362,28 @@ async def execute_agent_invoke(
     moldy_source: str = "trigger",
 ) -> str:
     """비스트리밍 실행 (트리거용). 최종 응답 텍스트만 반환."""
+    # ADR-021 H1 — install the run-scoped secret set so the lazy skill-credential
+    # union in ``_prepare_runtime_components`` works and any redaction during the
+    # invoke (langfuse mask, persistence) sees the run's real secrets.
+    secret_token = set_run_secrets(cfg.secret_values)
+    try:
+        return await _execute_agent_invoke_inner(
+            cfg,
+            messages_history,
+            run_id=run_id,
+            moldy_source=moldy_source,
+        )
+    finally:
+        reset_run_secrets(secret_token)
+
+
+async def _execute_agent_invoke_inner(
+    cfg: AgentConfig,
+    messages_history: list[dict[str, str]],
+    *,
+    run_id: str | None = None,
+    moldy_source: str = "trigger",
+) -> str:
     agent, lc_messages, config = await _prepare_agent(
         cfg,
         messages_history=messages_history,

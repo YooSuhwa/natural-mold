@@ -90,4 +90,85 @@ describe('reduceProtocolActivity', () => {
     })
     expect(activities.filter((item) => item.status === 'running')).toEqual([])
   })
+
+  it('deduplicates streaming response chunks with different event ids', () => {
+    const activities = reduce([
+      event(
+        'messages',
+        {
+          event: 'content-block-delta',
+          delta: { type: 'text-delta', text: 'hello' },
+        },
+        { event_id: 'message-1', seq: 1 },
+      ),
+      event(
+        'messages',
+        {
+          event: 'content-block-delta',
+          delta: { type: 'text-delta', text: ' world' },
+        },
+        { event_id: 'message-2', seq: 2 },
+      ),
+      event(
+        'messages',
+        {
+          event: 'content-block-delta',
+          delta: { type: 'text-delta', text: '!' },
+        },
+        { event_id: 'message-3', seq: 3 },
+      ),
+    ])
+
+    expect(activities.filter((item) => item.kind === 'responding')).toHaveLength(1)
+    expect(activities.find((item) => item.kind === 'responding')).toMatchObject({
+      status: 'running',
+      data: { preview: '!' },
+    })
+  })
+
+  it('deduplicates one tool call across message and tools channels when run ids differ', () => {
+    const activities = reduce([
+      event(
+        'messages',
+        {
+          event: 'content-block-start',
+          index: 0,
+          content: {
+            type: 'tool_call_chunk',
+            id: 'call_e2e_ask_user_fruit',
+            name: 'ask_user',
+            args: '{"mode":"option_list"}',
+          },
+        },
+        { event_id: 'message-1', run_id: 'model-run-1', seq: 1 },
+      ),
+      event(
+        'tools',
+        {
+          event: 'tool-started',
+          tool_call_id: 'call_e2e_ask_user_fruit',
+          tool_name: 'ask_user',
+        },
+        { event_id: 'synthetic-tool-start-1', seq: 2 },
+      ),
+      event(
+        'tools',
+        {
+          event: 'tool-finished',
+          tool_call_id: 'call_e2e_ask_user_fruit',
+          tool_name: 'ask_user',
+        },
+        { event_id: 'synthetic-tool-finish-1', seq: 3 },
+      ),
+    ])
+
+    const toolActivities = activities.filter((item) => item.kind === 'tool')
+    expect(toolActivities).toHaveLength(1)
+    expect(toolActivities[0]).toMatchObject({
+      id: 'model-run-1:tool:call_e2e_ask_user_fruit',
+      status: 'complete',
+      title: 'ask_user',
+      toolCallId: 'call_e2e_ask_user_fruit',
+    })
+  })
 })

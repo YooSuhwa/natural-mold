@@ -354,6 +354,9 @@ async def test_execute_stream_keeps_temporal_context_out_of_user_message(
     system_prompt = mock_build.call_args[0][2]
     assert system_prompt.startswith("Hello")
     assert "현재 기준 날짜" in system_prompt
+    assert "Interactive Tool Rules" in system_prompt
+    assert "ask_user" in system_prompt
+    assert "MCP" in system_prompt
 
     messages = captured_stream_messages["messages"]
     assert len(messages) == 1

@@ -25,6 +25,7 @@ from app.agent_runtime.protocol_events import (
     canonical_input_requested_events,
     format_protocol_sse,
     protocol_event_cursor,
+    protocol_interrupts_from_event,
     resequence_protocol_event,
     stored_protocol_event,
     to_protocol_wire_event,
@@ -121,6 +122,10 @@ def _error_event(
     )
 
 
+def _is_empty_input_requested_event(event: StoredProtocolEvent) -> bool:
+    return event["method"] == "input.requested" and not protocol_interrupts_from_event(event)
+
+
 async def stream_agent_response_langgraph(
     agent: Any,
     input_: list[Any] | Command | dict[str, Any] | None,
@@ -143,6 +148,7 @@ async def stream_agent_response_langgraph(
     side_effect_seq = 0
     max_emitted_seq = -1
     input_requested_emitted = False
+    deferred_empty_input_requested: StoredProtocolEvent | None = None
     emitted: list[dict[str, Any]] = []
     persist_buffer: list[dict[str, Any]] = []
     last_persist_flush_at = time.monotonic()
@@ -220,6 +226,12 @@ async def stream_agent_response_langgraph(
         try:
             stream = await _open_v3_stream(agent, actual_input, config)
         except (AttributeError, NotImplementedError):
+            # Fallback path: only reached for stream-mode-only agents (test fakes
+            # that lack ``astream_events`` v3). Unlike the v3 path it intentionally
+            # omits the deferred ``_is_empty_input_requested_event`` normalization —
+            # stream-mode chunks never carry a standalone empty ``input.requested``
+            # method, so there is nothing to defer here. Pending interrupts are still
+            # recovered uniformly via ``pending_input_requested_events`` below.
             fallback_seq = 0
             stream = await _open_stream_mode_fallback(agent, actual_input, config)
             async for raw_chunk in stream:
@@ -271,6 +283,9 @@ async def stream_agent_response_langgraph(
                     run_id=msg_id,
                     thread_id=thread_id,
                 )
+                if _is_empty_input_requested_event(event):
+                    deferred_empty_input_requested = event
+                    continue
                 yield await emit(event)
                 for chunk in await emit_canonical_interrupts(event):
                     yield chunk
@@ -314,6 +329,8 @@ async def stream_agent_response_langgraph(
         )
         for pending_event in pending_input_events:
             yield await emit(pending_event)
+        if not pending_input_events and deferred_empty_input_requested is not None:
+            yield await emit(deferred_empty_input_requested)
         yield await emit(
             lifecycle_protocol_event(
                 run_id=msg_id,

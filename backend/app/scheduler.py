@@ -427,6 +427,46 @@ def register_refresh_token_gc_job() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Orphan draft-conversation GC
+# ---------------------------------------------------------------------------
+
+DRAFT_CONVERSATION_GC_JOB_ID = "draft_conversation_gc"
+
+
+async def draft_conversation_gc_run() -> int:
+    """Delete abandoned, message-less ``source="draft"`` conversations.
+
+    Drafts only flip to ``"ui"`` when the user sends a first message; one
+    abandoned before sending is invisible to the UI and never cleaned up.
+    Removes drafts that are BOTH older than
+    ``settings.draft_conversation_gc_retention_hours`` AND have no recorded
+    messages. Wrapped so a transient failure doesn't disable the cron.
+    """
+
+    from app.services import chat_service
+
+    async with async_session() as db:
+        try:
+            return await chat_service.gc_orphan_draft_conversations(
+                db, retention_hours=settings.draft_conversation_gc_retention_hours
+            )
+        except Exception:  # noqa: BLE001 — keep cron alive
+            logger.exception("draft conversation GC failed; will retry next run")
+            return 0
+
+
+def register_draft_conversation_gc_job() -> None:
+    _register_cron_job(
+        job_id=DRAFT_CONVERSATION_GC_JOB_ID,
+        func=draft_conversation_gc_run,
+        cron_expr=settings.draft_conversation_gc_cron,
+        cron_setting_name="draft_conversation_gc_cron",
+        log_label="draft conversation GC",
+        log_extra=f" (retention={settings.draft_conversation_gc_retention_hours}h)",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Lightweight MCP health polling
 # ---------------------------------------------------------------------------
 

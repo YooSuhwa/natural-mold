@@ -35,6 +35,7 @@ export function useConversationTitle(
   agentId: string,
   conversationId: string,
   fallbackAgentName?: string | null,
+  options: { readonly detailEnabled?: boolean } = {},
 ): string | undefined {
   const queryClient = useQueryClient()
   const listTitle = findConversationTitle(
@@ -54,6 +55,9 @@ export function useConversationTitle(
     conversationId,
   )
   const cachedTitle = listTitle ?? pageTitle ?? globalTitle
-  const detail = useConversationDetail(conversationId, !cachedTitle)
+  const detail = useConversationDetail(
+    conversationId,
+    (options.detailEnabled ?? true) && !cachedTitle,
+  )
   return cachedTitle ?? detail.data?.title ?? fallbackAgentName ?? undefined
 }

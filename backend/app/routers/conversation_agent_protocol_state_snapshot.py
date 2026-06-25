@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,6 +29,7 @@ def serialize_langchain_message(
     *,
     checkpoint_id: str | None = None,
     metadata: Mapping[str, Any] | None = None,
+    secret_values: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     if hasattr(message, "model_dump"):
         dumped = message.model_dump(mode="json")
@@ -40,7 +41,9 @@ def serialize_langchain_message(
             "content": getattr(message, "content", ""),
             "id": getattr(message, "id", None),
         }
-    payload = redact_protocol_data("messages", payload)
+    # ADR-021 C2 — this runs in a plain HTTP GET (no active run / ContextVar),
+    # so the run secret set is passed explicitly by the router.
+    payload = redact_protocol_data("messages", payload, secret_values=secret_values)
     if not isinstance(payload, dict):
         payload = {"type": "unknown", "content": payload}
     if checkpoint_id is None and not metadata:
@@ -48,10 +51,37 @@ def serialize_langchain_message(
     return _with_checkpoint_metadata(payload, checkpoint_id, metadata=metadata)
 
 
+async def collect_state_secret_values(
+    db: AsyncSession,
+    conversation: Conversation,
+) -> set[str]:
+    """ADR-021 C2 — gather the run's plaintext secrets for state-API egress.
+
+    State / history endpoints are plain HTTP GETs that run *outside* any agent
+    run, so the run-scoped redaction ContextVar is never set. We rebuild the
+    eager secret set and hand it to ``redact_protocol_data`` explicitly.
+
+    Delegates to the shared LIGHTWEIGHT collector (one ``select(Agent)`` +
+    ``build_tools_config``), NOT ``resolve_agent_context`` — the latter also
+    assembles every sub-agent config + resolves run identities, which is full
+    run-prep cost on a polling endpoint (ADR-021 review #1). Best-effort:
+    failure degrades to heuristics-only rather than blocking the read.
+    """
+
+    from app.services.chat_service import collect_conversation_secret_values
+
+    return await collect_conversation_secret_values(db, conversation)
+
+
 async def load_thread_state_snapshot(
     conversation: Conversation,
     db: AsyncSession | None = None,
+    *,
+    secret_values: Iterable[str] | None = None,
 ) -> ThreadStateSnapshot:
+    # Materialise once — the set is consumed for the values payload plus every
+    # message below; a one-shot generator would be exhausted after the first.
+    secrets = tuple(secret_values) if secret_values is not None else None
     try:
         checkpointer = get_checkpointer()
         tree = await build_message_tree(
@@ -75,6 +105,7 @@ async def load_thread_state_snapshot(
             thread_id=str(conversation.id),
             checkpoint_id=tree.active_checkpoint_id,
         ),
+        secret_values=secrets,
     )
     if not isinstance(values, dict):
         values = {}
@@ -82,22 +113,28 @@ async def load_thread_state_snapshot(
     for idx, node in enumerate(tree.nodes):
         aliases = _message_id_aliases(node.message, conversation, idx)
         message_id = aliases[0] if aliases else None
+        branch_metadata = _branch_metadata(tree.branches_by_message, node, conversation, idx)
         checkpoint_id = (
-            checkpoint_by_message_id.get(message_id)
-            if message_id is not None
-            else node.introduced_by_checkpoint_id
+            node.introduced_by_checkpoint_id
+            if branch_metadata
+            else (
+                checkpoint_by_message_id.get(message_id)
+                if message_id is not None
+                else node.introduced_by_checkpoint_id
+            )
         )
         checkpoint_id = checkpoint_id or node.introduced_by_checkpoint_id
         payload = serialize_langchain_message(
             node.message,
             checkpoint_id=checkpoint_id,
-            metadata=_branch_metadata(tree.branches_by_message, node, conversation, idx),
+            metadata=branch_metadata,
+            secret_values=secrets,
         )
         if message_id is not None:
             payload = {**payload, "id": message_id}
         messages.append(payload)
         for alias in aliases:
-            checkpoint_by_message_id[alias] = checkpoint_id
+            checkpoint_by_message_id.setdefault(alias, checkpoint_id)
 
     return ThreadStateSnapshot(
         values={**values, "messages": messages},
