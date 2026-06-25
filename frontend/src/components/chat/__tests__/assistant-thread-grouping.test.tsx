@@ -1,8 +1,24 @@
 import type { ReactNode } from 'react'
 import type { PartState } from '@assistant-ui/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '../../../../tests/test-utils'
-import { groupAssistantParts, renderGroupedAssistantPart } from '../assistant-thread'
+
+// ToolGroupContainer가 검색 그룹 출처 집계를 위해 useAuiState로 message.parts를
+// 읽으므로, aui provider 없는 단위 테스트에서도 동작하도록 useAuiState만 mock한다.
+// (나머지 assistant-thread import는 실제 모듈을 그대로 쓴다.)
+const auiMocks = vi.hoisted(() => ({
+  state: { message: { parts: [] as readonly { readonly result?: unknown }[] } },
+}))
+
+vi.mock('@assistant-ui/react', async () => {
+  const actual = await vi.importActual<typeof import('@assistant-ui/react')>('@assistant-ui/react')
+  return {
+    ...actual,
+    useAuiState: (selector: (state: typeof auiMocks.state) => unknown) => selector(auiMocks.state),
+  }
+})
+
+const { groupAssistantParts, renderGroupedAssistantPart } = await import('../assistant-thread')
 
 function toolCallPart(toolName: string): PartState {
   return {

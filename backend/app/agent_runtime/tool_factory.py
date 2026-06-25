@@ -13,6 +13,7 @@ out of the box and don't justify a registry entry of their own.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -221,11 +222,101 @@ def _build_resolve_relative_date_tool() -> BaseTool:
     )
 
 
+# E2E-only scripted search tool. Deterministic, no network. The frontend
+# search-group aggregate (domain badges + "출처 N개") reads each grouped
+# tool-call's ``result``; this tool returns ``{"results":[{title,url}, ...]}``
+# whose URLs span multiple domains so the aggregate has real sources to show.
+# Each distinct ``query`` returns a DISTINCT slice of sources, so N consecutive
+# calls with different queries accumulate to a known unique-source count.
+#
+# Source plan (9 unique URLs across 5 unique domains):
+#   slice 0: react.dev, vercel.com, nextjs.org
+#   slice 1: react.dev, typescriptlang.org, developer.mozilla.org
+#   slice 2: vercel.com, nextjs.org, typescriptlang.org
+# Unique URLs = 9 (every path differs), unique domains = 5.
+# Keyed by query so the result is independent of call ordering/concurrency
+# (LangGraph's ToolNode may run async tool calls concurrently). The scripted
+# model emits exactly these three queries.
+E2E_SCRIPTED_SEARCH_TOOL_NAME = "tavily_search"
+_E2E_SCRIPTED_SEARCH_RESULTS: dict[str, tuple[dict[str, str], ...]] = {
+    "react routing": (
+        {"title": "React docs", "url": "https://react.dev/learn"},
+        {"title": "Vercel platform", "url": "https://vercel.com/docs"},
+        {"title": "Next.js App Router", "url": "https://nextjs.org/docs/app"},
+    ),
+    "react hooks": (
+        {"title": "React hooks", "url": "https://react.dev/reference/react"},
+        {"title": "TypeScript handbook", "url": "https://www.typescriptlang.org/docs/"},
+        {"title": "MDN fetch", "url": "https://developer.mozilla.org/en-US/docs/Web/API/fetch"},
+    ),
+    "typescript generics": (
+        {"title": "Vercel functions", "url": "https://vercel.com/docs/functions"},
+        {
+            "title": "Next.js routing",
+            "url": "https://nextjs.org/docs/app/building-your-application",
+        },
+        {
+            "title": "TypeScript generics",
+            "url": "https://www.typescriptlang.org/docs/handbook/2/generics.html",
+        },
+    ),
+}
+# Domain pool for queries that aren't one of the curated keys above. Lets any
+# E2E fixture (e.g. a second search group with fresh queries) get a deterministic
+# multi-domain result without adding a curated entry. Curated keys keep their
+# exact slices so the E2E_SEARCH_GROUP source math (9 URLs / 5 domains) is stable.
+_E2E_SCRIPTED_SEARCH_DOMAIN_POOL: tuple[str, ...] = (
+    "react.dev",
+    "vuejs.org",
+    "svelte.dev",
+    "nextjs.org",
+    "remix.run",
+    "angular.dev",
+    "solidjs.com",
+    "astro.build",
+)
+
+
+def _e2e_scripted_search_slice(query: str) -> list[dict[str, str]]:
+    """Curated slice for known queries, else deterministic multi-domain results."""
+
+    curated = _E2E_SCRIPTED_SEARCH_RESULTS.get(query.strip())
+    if curated is not None:
+        return [dict(item) for item in curated]
+    # Deterministically pick 3 distinct domains from the pool by hashing the query
+    # (stable md5, not builtin hash() which is PYTHONHASHSEED-randomized), so each
+    # distinct query yields a distinct, run-stable multi-domain result (no network).
+    pool = _E2E_SCRIPTED_SEARCH_DOMAIN_POOL
+    digest = hashlib.md5(query.strip().encode("utf-8")).hexdigest()  # noqa: S324 (non-crypto)
+    start = int(digest, 16) % len(pool)
+    slug = re.sub(r"[^a-z0-9]+", "-", query.strip().lower()).strip("-") or "q"
+    results: list[dict[str, str]] = []
+    for offset in range(3):
+        domain = pool[(start + offset) % len(pool)]
+        results.append({"title": f"{domain} — {query}", "url": f"https://{domain}/{slug}/{offset}"})
+    return results
+
+
+def _build_e2e_scripted_search_tool() -> BaseTool:
+    async def tavily_search(query: str) -> str:
+        """Deterministic E2E search: returns scripted multi-domain results."""
+
+        results = _e2e_scripted_search_slice(query)
+        return json.dumps({"query": query, "results": results}, ensure_ascii=False)
+
+    return StructuredTool.from_function(
+        coroutine=tavily_search,
+        name=E2E_SCRIPTED_SEARCH_TOOL_NAME,
+        description="E2E-only scripted web search returning deterministic multi-domain results.",
+    )
+
+
 _BUILTIN_BUILDERS: dict[str, Callable[[], BaseTool]] = {
     "builtin:web_search": _build_web_search_tool,
     "builtin:web_scraper": _build_web_scraper_tool,
     "builtin:current_datetime": _build_current_datetime_tool,
     "builtin:resolve_relative_date": _build_resolve_relative_date_tool,
+    "builtin:e2e_scripted_search": _build_e2e_scripted_search_tool,
 }
 
 

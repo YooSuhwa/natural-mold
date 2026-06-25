@@ -241,6 +241,39 @@ def _tool_group_tool_calls() -> list[dict[str, Any]]:
     return calls
 
 
+SEARCH_GROUP_MARKER = "E2E_SEARCH_GROUP"
+# Search-tool grouping + source-aggregate fixture (LITE deep-research source row).
+# ONE AIMessage emits ``tavily_search`` ×3 *consecutive same-tool* calls with
+# DISTINCT queries. ``tavily_search`` is the deterministic, no-network scripted
+# search builtin (``builtin:e2e_scripted_search`` in ``tool_factory``) that the
+# runtime appends only when ``e2e_scripted_model_enabled`` is set. Each query
+# returns a different multi-domain slice, so the frontend search-group aggregate
+# collapses the 3 calls into ONE container ("웹 검색 · 3회") whose header shows
+# domain badges + "출처 N개". ``tavily_search`` maps to label key ``webSearch``
+# and carries NO HITL interrupt, so the run streams to completion uninterrupted.
+#
+# Source math (see ``_E2E_SCRIPTED_SEARCH_RESULTS``): 3 calls × 3 results = 9
+# unique URLs across 5 unique domains (react.dev, vercel.com, nextjs.org,
+# typescriptlang.org, developer.mozilla.org) → sourceCount = 9.
+SEARCH_GROUP_TOOL = "tavily_search"
+SEARCH_GROUP_QUERIES = ("react routing", "react hooks", "typescript generics")
+SEARCH_GROUP_COUNT = len(SEARCH_GROUP_QUERIES)
+SEARCH_GROUP_SOURCE_COUNT = 9
+SEARCH_GROUP_DOMAIN_COUNT = 5
+SEARCH_GROUP_FINAL_CONTENT = "E2E search group rendering complete."
+
+
+def _search_group_tool_calls() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": f"call_e2e_search_group_{index}",
+            "name": SEARCH_GROUP_TOOL,
+            "args": {"query": query},
+        }
+        for index, query in enumerate(SEARCH_GROUP_QUERIES)
+    ]
+
+
 ASK_USER_FRUIT_MARKER = "E2E_ASK_USER_FRUIT"
 ASK_USER_FRUIT_TOOL_CALL_ID = "call_e2e_ask_user_fruit"
 ASK_USER_FRUIT_PREFACE_CONTENT = "네, 골라봐요!"
@@ -390,6 +423,9 @@ class E2EScriptedChatModel(BaseChatModel):
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if messages and isinstance(messages[-1], ToolMessage):
+            if SEARCH_GROUP_MARKER in human_text:
+                message = AIMessage(content=SEARCH_GROUP_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
             if TOOL_GROUP_MARKER in human_text:
                 message = AIMessage(content=TOOL_GROUP_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
@@ -441,6 +477,13 @@ class E2EScriptedChatModel(BaseChatModel):
                 # dict(tool_args) copy in _document_tool_call.
                 tool_calls=[{**call, "args": dict(call["args"])} for call in HITL_MULTI_TOOL_CALLS],
             )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if SEARCH_GROUP_MARKER in human_text:
+            # ONE AIMessage with N≥2 consecutive same-tool search calls (distinct
+            # queries → distinct scripted result slices). Fresh dicts every call
+            # so the downstream graph cannot mutate shared module state.
+            message = AIMessage(content="", tool_calls=_search_group_tool_calls())
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if TOOL_GROUP_MARKER in human_text:
@@ -543,6 +586,13 @@ __all__ = [
     "ASK_USER_FRUIT_TOOL_CALL_ID",
     "LANGGRAPH_V3_MARKER",
     "SCRIPTED_DOCUMENT_COMMANDS",
+    "SEARCH_GROUP_COUNT",
+    "SEARCH_GROUP_DOMAIN_COUNT",
+    "SEARCH_GROUP_FINAL_CONTENT",
+    "SEARCH_GROUP_MARKER",
+    "SEARCH_GROUP_QUERIES",
+    "SEARCH_GROUP_SOURCE_COUNT",
+    "SEARCH_GROUP_TOOL",
     "SLOW_STREAM_MARKER",
     "TOKEN_USAGE_CONTENT",
     "TOKEN_USAGE_MARKER",

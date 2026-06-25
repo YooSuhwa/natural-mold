@@ -310,6 +310,26 @@ def _append_temporal_tools(tools: list[BaseTool]) -> None:
         existing.add(tool.name)
 
 
+def _append_e2e_scripted_search_tool(tools: list[BaseTool]) -> None:
+    """Attach the deterministic scripted ``tavily_search`` tool for E2E only.
+
+    Gated by ``e2e_scripted_model_enabled`` (which already refuses to run in
+    production), so real deployments never see this tool. Mirrors
+    ``_append_temporal_tools`` so the E2E search-group fixture
+    (``E2E_SEARCH_GROUP``) can emit consecutive search calls whose results the
+    frontend aggregates into domain badges + a source count — without any
+    network call or product behavior change.
+    """
+
+    if not settings.e2e_scripted_model_enabled:
+        return
+    existing = {tool.name for tool in tools}
+    tool = create_builtin_tool("builtin:e2e_scripted_search")
+    if tool is None or tool.name in existing:
+        return
+    tools.append(tool)
+
+
 def _default_interrupt_on_from_tools(tools: list[BaseTool]) -> dict[str, Any]:
     """Build the minimum HITL policy from attached tool risk metadata."""
 
@@ -541,6 +561,7 @@ async def _prepare_runtime_components(
 
     langchain_tools.extend(await _build_mcp_tools(mcp_configs))
     _append_temporal_tools(langchain_tools)
+    _append_e2e_scripted_search_tool(langchain_tools)
 
     memory_write_policy = await _memory_write_policy_for_run(
         cfg,

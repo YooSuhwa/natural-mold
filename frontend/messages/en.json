@@ -1206,6 +1206,7 @@
     "defaultAgentName": "Default Agent Name",
     "toolGroup": {
       "count": "{count} calls",
+      "sourceCount": "{count} sources",
       "labels": {
         "webSearch": "Web search",
         "naverBlog": "Naver blog",

@@ -183,6 +183,115 @@ test.describe('Chat streaming render integrity', () => {
     }
   })
 
+  test('collapses a search-tool group into one container with a source aggregate (domain badges + 출처 N개)', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    // Generous budget: the FIRST cold run compiles the chat route on `goto`
+    // (Next dev), which alone can take >60s before the streamed run even starts.
+    test.setTimeout(180_000)
+    const setup = await setupLangGraphV3Agent(request)
+
+    // Mirrors backend E2E_SEARCH_GROUP (e2e_scripted_model.py): ONE assistant
+    // turn emits tavily_search ×3 (consecutive, same tool) with distinct queries.
+    // tavily_search is the deterministic no-network scripted search builtin
+    // (builtin:e2e_scripted_search), appended only when E2E_SCRIPTED_MODEL_ENABLED.
+    // Each query returns a different multi-domain slice, so the collapsed search
+    // group's header aggregates the per-call results into domain badges + a
+    // source count ("출처 9개"). tavily_search maps to label key webSearch
+    // ("웹 검색") and carries no HITL interrupt, so the run streams to completion.
+    const GROUPED_COUNT = 3
+    const SOURCE_COUNT = 9
+    const SEARCH_LABEL = '웹 검색' // chat.toolGroup.labels.webSearch (ko)
+    const FINAL_TEXT = 'E2E search group rendering complete.'
+    const COUNT_META = `${GROUPED_COUNT}회`
+    const SOURCE_META = `출처 ${SOURCE_COUNT}개` // chat.toolGroup.sourceCount (ko)
+    // SourceBadges renders at most 3 domain chips (domains.slice(0, 3)). All five
+    // scripted domains are candidates; the exact three shown depend on a stable
+    // frequency sort, so assert the COUNT (3) and that the rank-1 domain
+    // (react.dev — highest frequency, first inserted) is badged, rather than the
+    // tie-sensitive identities of all three.
+    const RANK_ONE_DOMAIN = 'react.dev'
+    const ALL_DOMAINS = [
+      'react.dev',
+      'vercel.com',
+      'nextjs.org',
+      'typescriptlang.org',
+      'developer.mozilla.org',
+    ]
+
+    const userBubbles = page.locator('[data-moldy-message-role="user"]')
+    // The group container is the CollapsiblePill whose meta shows "{N}회".
+    const groupContainer = page.locator('.moldy-tool-pill').filter({ hasText: COUNT_META })
+
+    try {
+      // `domcontentloaded` (not the default `load`) so navigation resolves
+      // without blocking on the cold Next dev compile of the chat route; the
+      // composer-visible wait inside sendMessage already gates on hydration.
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`, {
+        waitUntil: 'domcontentloaded',
+      })
+      const prompt = 'E2E_SEARCH_GROUP 검색 그룹 렌더 확인'
+      await sendMessage(page, prompt)
+
+      // Wait for the run to settle (final assistant text). Once settled the group
+      // is collapsed (running→done remounts CollapsiblePill with
+      // defaultExpanded=false), so the source aggregate is computed and rendered
+      // in the collapsed header.
+      await expect(page.getByText(FINAL_TEXT).last()).toBeVisible({ timeout: 60_000 })
+
+      // Exactly ONE search group container — NOT 3 separate boxes. It shows the
+      // "웹 검색" label and "{N}회".
+      await expect(groupContainer).toHaveCount(1, { timeout: 15_000 })
+      await expect(groupContainer).toContainText(SEARCH_LABEL)
+      await expect(groupContainer).toContainText(COUNT_META)
+      // The count meta string appears exactly once across the whole transcript.
+      await expect(page.getByText(COUNT_META)).toHaveCount(1)
+
+      // The LITE source aggregate row is present in the collapsed group header:
+      // the exact source count and domain badges.
+      await expect(groupContainer).toContainText(SOURCE_META)
+      await expect(page.getByText(SOURCE_META)).toHaveCount(1)
+      // Domain badges: SourceBadges renders an avatar chip per domain with a
+      // title attribute, capped at 3 (slice(0, 3)). Assert exactly 3 chips, each
+      // a real scripted domain, and that the rank-1 domain is among them.
+      const badges = groupContainer.locator('.moldy-avatar-chip[title]')
+      await expect(badges).toHaveCount(3)
+      const badgeTitles = await badges.evaluateAll((els) =>
+        els.map((el) => el.getAttribute('title')),
+      )
+      expect(badgeTitles).toContain(RANK_ONE_DOMAIN)
+      for (const title of badgeTitles) {
+        expect(ALL_DOMAINS).toContain(title)
+      }
+
+      // Settled state is collapsed: the toggle reads "Expand" (aria-expanded=false).
+      // The top-level toggle is the FIRST Expand button (its own child search
+      // pills, once revealed, also have Expand toggles).
+      const groupToggle = groupContainer.getByRole('button', { name: 'Expand' }).first()
+      await expect(groupToggle).toHaveAttribute('aria-expanded', 'false')
+
+      // Expanding the group reveals exactly the N search child pills inside it.
+      // Each child pill (SearchRender) titles itself with its quoted query, not
+      // the "웹 검색" group label, so count the child .moldy-tool-pill nodes and
+      // confirm each scripted query is shown.
+      await groupToggle.click()
+      await expect(groupContainer.locator('.moldy-tool-pill')).toHaveCount(GROUPED_COUNT, {
+        timeout: 10_000,
+      })
+      for (const query of ['react routing', 'react hooks', 'typescript generics']) {
+        await expect(groupContainer.getByText(`"${query}"`)).toHaveCount(1)
+      }
+
+      await expect(userBubbles).toHaveCount(1)
+      expect(errors.console, 'console errors during search grouping').toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
+
   test('renders two HITL approval cards (multi-action) and resumes once after approving both', async ({
     page,
     request,

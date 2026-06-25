@@ -298,6 +298,7 @@ export function renderGroupedAssistantPart({ part, children }: GroupedRenderInfo
           toolName={toolName}
           count={group.indices.length}
           running={running}
+          indices={group.indices}
         >
           {children}
         </ToolGroupContainer>

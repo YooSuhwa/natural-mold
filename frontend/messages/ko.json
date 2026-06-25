@@ -1185,6 +1185,7 @@
     "defaultAgentName": "에이전트",
     "toolGroup": {
       "count": "{count}회",
+      "sourceCount": "출처 {count}개",
       "labels": {
         "webSearch": "웹 검색",
         "naverBlog": "네이버 블로그",

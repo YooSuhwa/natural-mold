@@ -29,6 +29,25 @@ export function toolGroupLabelKey(toolName: string): string | null {
 }
 
 /**
+ * 검색류 도구. 결과가 `{results:[{title,url}]}` 모양이라 그룹 헤더에 출처
+ * 도메인 배지 + "출처 N개" 집계를 띄울 수 있는 도구들. 나머지(파일류 등)는
+ * 출처 개념이 없으므로 집계 행을 붙이지 않는다.
+ */
+const SEARCH_TOOLS: ReadonlySet<string> = new Set([
+  'tavily_search',
+  'web_search',
+  'naver_blog_search',
+  'naver_news_search',
+  'google_search',
+  'google_news_search',
+])
+
+/** 해당 도구가 검색류(그룹 헤더에 출처 집계를 띄울 수 있는 도구)인지. */
+export function isSearchTool(toolName: string): boolean {
+  return SEARCH_TOOLS.has(toolName)
+}
+
+/**
  * 그룹핑에서 제외할 도구. HiTL/승인처럼 각 호출이 사용자와의 독립 상호작용이라
  * 하나로 뭉치면 안 되는 도구들. 나머지 일반 도구는 연속 N≥2면 그룹된다.
  */

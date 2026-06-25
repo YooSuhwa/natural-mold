@@ -21,6 +21,12 @@ from app.agent_runtime.e2e_scripted_model import (
     HITL_MULTI_MARKER,
     HITL_MULTI_TOOL_CALLS,
     SCRIPTED_DOCUMENT_COMMANDS,
+    SEARCH_GROUP_COUNT,
+    SEARCH_GROUP_FINAL_CONTENT,
+    SEARCH_GROUP_MARKER,
+    SEARCH_GROUP_QUERIES,
+    SEARCH_GROUP_SOURCE_COUNT,
+    SEARCH_GROUP_TOOL,
     TOOL_GROUP_FINAL_CONTENT,
     TOOL_GROUP_GROUPED_COUNT,
     TOOL_GROUP_GROUPED_TOOL,
@@ -541,6 +547,100 @@ def test_e2e_scripted_model_returns_final_message_after_tool_group_tool_results(
 
     assert result.tool_calls == []
     assert str(result.content) == TOOL_GROUP_FINAL_CONTENT
+
+
+def test_e2e_scripted_model_emits_search_group_tool_calls_for_search_group_marker() -> None:
+    # ONE AIMessage with N≥2 consecutive same-tool search calls (distinct queries),
+    # so the frontend GroupedParts collapses them into a single search container and
+    # the header aggregates the per-call results into domain badges + a source count.
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": SEARCH_GROUP_TOOL}]
+    )
+
+    result = model.invoke([HumanMessage(content=f"{SEARCH_GROUP_MARKER} 검색 그룹 렌더 확인")])
+
+    names = [call["name"] for call in result.tool_calls]
+    assert names == [SEARCH_GROUP_TOOL] * SEARCH_GROUP_COUNT
+    queries = [call["args"]["query"] for call in result.tool_calls]
+    assert queries == list(SEARCH_GROUP_QUERIES)
+    # Distinct ids so the grouped per-call parts do not collapse on identity.
+    ids = [call["id"] for call in result.tool_calls]
+    assert len(set(ids)) == len(ids)
+
+
+def test_e2e_scripted_model_stream_preserves_search_group_tool_calls() -> None:
+    model = E2EScriptedChatModel(
+        model="document-artifact-scripted",
+        slow_stream_delay_seconds=0,
+    ).bind_tools([{"name": SEARCH_GROUP_TOOL}])
+
+    prompt = f"{SEARCH_GROUP_MARKER} 검색 그룹 렌더 확인"
+    chunks = list(model.stream([HumanMessage(content=prompt)]))
+
+    names = [call["name"] for chunk in chunks for call in chunk.tool_calls]
+    assert names == [SEARCH_GROUP_TOOL] * SEARCH_GROUP_COUNT
+
+
+def test_e2e_scripted_model_returns_final_message_after_search_group_tool_results() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": SEARCH_GROUP_TOOL}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content=f"{SEARCH_GROUP_MARKER} 검색 그룹 렌더 확인"),
+            ToolMessage(content="{}", tool_call_id="call_e2e_search_group_0"),
+            ToolMessage(content="{}", tool_call_id="call_e2e_search_group_1"),
+            ToolMessage(content="{}", tool_call_id="call_e2e_search_group_2"),
+        ]
+    )
+
+    assert result.tool_calls == []
+    assert str(result.content) == SEARCH_GROUP_FINAL_CONTENT
+
+
+@pytest.mark.asyncio
+async def test_e2e_scripted_search_tool_yields_expected_unique_sources() -> None:
+    # The scripted search tool drives the LITE source aggregate. Verify that the
+    # three scripted queries collectively yield SEARCH_GROUP_SOURCE_COUNT unique
+    # URLs so the E2E "출처 N개" assertion has a stable, documented N.
+    import json
+
+    from app.agent_runtime.tool_factory import create_builtin_tool
+
+    tool = create_builtin_tool("builtin:e2e_scripted_search")
+    assert tool is not None
+    assert tool.name == SEARCH_GROUP_TOOL
+
+    seen_urls: set[str] = set()
+    seen_domains: set[str] = set()
+    for query in SEARCH_GROUP_QUERIES:
+        payload = json.loads(await tool.ainvoke({"query": query}))
+        for item in payload["results"]:
+            seen_urls.add(item["url"])
+            seen_domains.add(item["url"].split("/")[2].removeprefix("www."))
+
+    assert len(seen_urls) == SEARCH_GROUP_SOURCE_COUNT
+    assert len(seen_domains) == 5
+
+
+def test_e2e_scripted_search_tool_is_read_only_with_no_hitl_interrupt() -> None:
+    # The scripted search tool must be READ_ONLY (like the real web_search) so the
+    # search-group fixture streams to completion. If it falls back to UNKNOWN risk
+    # it gets requires_approval=True and the run stalls on an approval card.
+    from app.agent_runtime.tool_factory import create_builtin_tool
+    from app.tools.risk import (
+        ToolRiskLevel,
+        get_tool_risk,
+        interrupt_policy_for_tool,
+    )
+
+    tool = create_builtin_tool("builtin:e2e_scripted_search")
+    assert tool is not None
+    risk = get_tool_risk(tool)
+    assert risk.risk_level == ToolRiskLevel.READ_ONLY
+    assert risk.requires_approval is False
+    assert interrupt_policy_for_tool(tool) == {}
 
 
 def test_e2e_scripted_model_does_not_trigger_hitl_for_descriptive_prompt() -> None:
