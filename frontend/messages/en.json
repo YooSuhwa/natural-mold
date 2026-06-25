@@ -1182,24 +1182,24 @@
     }
   },
   "share": {
-    "title": "Share",
-    "description": "Anyone with this link can view the shared conversation.",
-    "loading": "Loading",
-    "linkLabel": "Link Label",
-    "copyLink": "Copy Link",
+    "title": "Share conversation",
+    "description": "Anyone with the link can view this conversation read-only.",
+    "loading": "Loading…",
+    "linkLabel": "Share link",
+    "copyLink": "Copy link",
     "copy": "Copy",
     "copied": "Copied",
-    "sharedHint": "Shared Hint",
-    "privateHint": "Private Hint",
-    "revoke": "Revoke",
-    "create": "Create",
+    "sharedHint": "Anyone with the link can read this conversation without signing in. The published snapshot stays fixed even if new messages or edits are added later.",
+    "privateHint": "This conversation is still private. Create a share link to let anyone view it read-only.",
+    "revoke": "Disable sharing",
+    "create": "Create share link",
     "toast": {
-      "copied": "Copied",
-      "copyFailed": "Operation failed.",
-      "created": "Created",
-      "createFailed": "Operation failed.",
-      "revoked": "Revoked",
-      "revokeFailed": "Operation failed."
+      "copied": "Share link copied.",
+      "copyFailed": "Failed to copy the link.",
+      "created": "Share link created.",
+      "createFailed": "Failed to create the share link.",
+      "revoked": "Sharing disabled.",
+      "revokeFailed": "Failed to disable sharing."
     }
   },
   "chat": {
