@@ -298,4 +298,83 @@ test.describe('Chat navigator live integration', () => {
       await deleteAgent(request, cleanupHeaders, agent.id)
     }
   })
+
+  test('agent group loads a second keyset page of conversations on demand', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    // 31 sequential creates + a cold Next dev first-navigation app compile +
+    // multi-step paging. The first goto bears the whole-app initial compile.
+    test.setTimeout(180_000)
+    const headers = await loginApi(request)
+    const modelId = await firstModelId(request)
+    const agentName = `E2E Navigator Paging ${Date.now()}`
+    const agent = await createAgent(request, headers, modelId, agentName)
+
+    try {
+      // Backend page size is 30 and the keyset sort is is_pinned DESC, updated_at
+      // DESC. Creating 31 conversations sequentially makes the FIRST one (oldest
+      // updated_at) sort last, so it lives only on server page 2 — fetched only
+      // after the cursor crosses the boundary.
+      let oldestId = ''
+      for (let index = 0; index < 31; index += 1) {
+        const conv = await createConversation(
+          request,
+          headers,
+          agent.id,
+          `Paging session ${String(index).padStart(2, '0')}`,
+        )
+        if (index === 0) oldestId = conv.id
+      }
+
+      // Render the chat navigator from a LIGHT route (not the heavy conversation
+      // page, whose cold dev compile + chat runtime can stall navigation). The
+      // navigator sidebar is global on non-settings routes; on /tools no agent is
+      // active, so this agent's group starts collapsed and we expand it by hand.
+      await page.goto('/tools', { waitUntil: 'domcontentloaded', timeout: 120_000 })
+
+      const agentRows = page.locator(
+        `[data-chat-session-href^="/agents/${agent.id}/conversations/"]`,
+      )
+      const oldestRow = page.locator(
+        `[data-chat-session-href="/agents/${agent.id}/conversations/${oldestId}"]`,
+      )
+      const loadMore = page.getByRole('button', { name: '더 보기' })
+
+      // Expand this agent's group (scoped by its unique name) — collapsed groups do
+      // not fetch conversations, so this triggers the first keyset page.
+      await page
+        .locator('div', { has: page.getByRole('link', { name: agentName, exact: true }) })
+        .getByRole('button', { name: '에이전트 펼치기' })
+        .first()
+        .click({ timeout: 20_000 })
+
+      // Collapsed view caps at DEFAULT_SESSION_CAP (5); the page-2 conv is absent.
+      await expect(agentRows).toHaveCount(5, { timeout: 20_000 })
+      await expect(oldestRow).toHaveCount(0)
+
+      // 1st "더 보기" reveals the rest of the already-loaded first page (5 → 30,
+      // client-side only) — the page-2 conv is still not fetched.
+      await loadMore.click({ timeout: 15_000 })
+      await expect(agentRows).toHaveCount(30, { timeout: 15_000 })
+      await expect(oldestRow).toHaveCount(0)
+
+      // 2nd "더 보기" fetches the next keyset page (30 → 31). The oldest conv, which
+      // lives only on page 2, now renders — proving the cursor crossed the boundary.
+      await loadMore.click({ timeout: 15_000 })
+      await expect(agentRows).toHaveCount(31, { timeout: 15_000 })
+      await expect(oldestRow).toBeVisible()
+
+      // With no further pages the load-more control flips to Collapse. exact:true so
+      // it is not matched by the agent group's "에이전트 접기" chevron.
+      await expect(page.getByRole('button', { name: '접기', exact: true })).toBeVisible()
+
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      const cleanupHeaders = await loginApi(request)
+      await deleteAgent(request, cleanupHeaders, agent.id)
+    }
+  })
 })
