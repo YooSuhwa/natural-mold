@@ -97,4 +97,90 @@ test.describe('Chat streaming render integrity', () => {
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
     }
   })
+
+  test('renders two HITL approval cards (multi-action) and resumes once after approving both', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    test.setTimeout(150_000)
+    const setup = await setupLangGraphV3Agent(request)
+    const FINAL_TEXT_PARTIAL = '문서 파일 생성이 완료'
+    const cards = page.locator('[data-testid^="approval-action-"]')
+    const approveButtons = page.locator('[data-testid="approval-approve-button"]')
+    const userBubbles = page.locator('[data-moldy-message-role="user"]')
+
+    // Count resume commands. langchain batches both execute_in_skill calls into ONE
+    // interrupt with two action_requests, so the HiTL coordinator must collect both
+    // decisions and fire exactly ONE resume carrying both — never one resume per card.
+    let resumeCount = 0
+    page.on('request', (req) => {
+      if (req.method() !== 'POST') return
+      if ((req.postData() ?? '').includes('"decisions"')) resumeCount += 1
+    })
+
+    const approveCard = async (index: number) => {
+      const card = page.getByTestId(`approval-action-${index}`)
+      await expect(card).toBeVisible({ timeout: 15_000 })
+      const approve = card.getByTestId('approval-approve-button')
+      await expect(approve).toBeEnabled({ timeout: 10_000 })
+      await approve.click()
+    }
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      const prompt = 'E2E_HITL_MULTI 멀티 승인 카드 무결성'
+      await sendMessage(page, prompt)
+
+      // One AIMessage with two execute_in_skill calls → ONE interrupt → exactly TWO
+      // approval cards (no duplicate / stacked / collapsed-into-one).
+      await expect(page.getByText('승인이 필요합니다').first()).toBeVisible({ timeout: 30_000 })
+      await expect(cards).toHaveCount(2, { timeout: 15_000 })
+      await expect(approveButtons).toHaveCount(2)
+
+      // Each card is scoped to its action index and advertises the total action count.
+      await expect(page.getByTestId('approval-action-0')).toHaveAttribute(
+        'data-hitl-total-actions',
+        '2',
+      )
+      await expect(page.getByTestId('approval-action-1')).toHaveAttribute(
+        'data-hitl-total-actions',
+        '2',
+      )
+      // exact: true → match only the tool-name chip, not the description paragraph
+      // ("…Tool: execute_in_skill…") which also contains the tool name.
+      await expect(
+        page.getByTestId('approval-action-0').getByText('execute_in_skill', { exact: true }),
+      ).toBeVisible()
+      await expect(
+        page.getByTestId('approval-action-1').getByText('execute_in_skill', { exact: true }),
+      ).toBeVisible()
+      await expect(userBubbles).toHaveCount(1, { timeout: 15_000 })
+
+      // User prompt stays stable while both cards render (no flicker/disappearance).
+      await installUserTextStabilityObserver(page, [prompt])
+      await expectNoUserTextFlicker(page, 1000)
+
+      // Approve only the FIRST card. The coordinator must NOT resume yet: the second
+      // card stays pending and the run stays interrupted (no final text).
+      await approveCard(0)
+      await expect(cards).toHaveCount(1, { timeout: 15_000 })
+      await expect(approveButtons).toHaveCount(1)
+      await expect(page.getByText(FINAL_TEXT_PARTIAL)).toHaveCount(0)
+      expect(resumeCount, 'resume must not fire after only one of two approvals').toBe(0)
+
+      // Approve the SECOND card → coordinator flushes both decisions in ONE resume.
+      await approveCard(1)
+      await expect(cards).toHaveCount(0, { timeout: 30_000 })
+      await expect(approveButtons).toHaveCount(0)
+      await expect(page.getByText(FINAL_TEXT_PARTIAL).last()).toBeVisible({ timeout: 60_000 })
+      await expect(userBubbles).toHaveCount(1)
+      expect(resumeCount, 'exactly one batched resume for both actions').toBe(1)
+
+      expect(errors.console, 'console errors during multi-action HITL').toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
 })

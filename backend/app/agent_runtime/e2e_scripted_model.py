@@ -170,6 +170,37 @@ CHAT_RICH_OUTPUT_CONTENT = "\n".join(
     )
 )
 HITL_APPROVAL_MARKER = "E2E_HITL_APPROVAL"
+HITL_MULTI_MARKER = "E2E_HITL_MULTI"
+# Two execute_in_skill calls in ONE AIMessage. langchain's HumanInTheLoopMiddleware
+# batches every interrupting tool call from a single AIMessage into ONE interrupt
+# with N action_requests, so this fixture drives the multi-action approval-card +
+# HiTL coordinator path (collect both decisions, resume once). Distinct ids keep the
+# two synthetic request_approval cards from collapsing, and distinct docx outputs let
+# both skills execute successfully against the single installed docx-document skill.
+HITL_MULTI_TOOL_CALLS = (
+    {
+        "id": "call_e2e_hitl_multi_0",
+        "name": "execute_in_skill",
+        "args": {
+            "skill_directory": "/skills/docx-document",
+            "command": (
+                "node scripts/create_docx.cjs --input examples/e2e-docx.json "
+                "--output moldy-hitl-multi-1.docx"
+            ),
+        },
+    },
+    {
+        "id": "call_e2e_hitl_multi_1",
+        "name": "execute_in_skill",
+        "args": {
+            "skill_directory": "/skills/docx-document",
+            "command": (
+                "node scripts/create_docx.cjs --input examples/e2e-docx.json "
+                "--output moldy-hitl-multi-2.docx"
+            ),
+        },
+    },
+)
 ASK_USER_FRUIT_MARKER = "E2E_ASK_USER_FRUIT"
 ASK_USER_FRUIT_TOOL_CALL_ID = "call_e2e_ask_user_fruit"
 ASK_USER_FRUIT_PREFACE_CONTENT = "네, 골라봐요!"
@@ -228,6 +259,13 @@ def _is_hitl_approval_request(human_text: str) -> bool:
         "사용" in human_text or "실행" in human_text or "use" in lowered or "run" in lowered
     )
     return mentions_tool and mentions_hitl and mentions_execution
+
+
+def _is_hitl_multi_request(human_text: str) -> bool:
+    # Explicit marker only — there is no natural-language form. The multi-action
+    # fixture must never fire accidentally because it stalls the run on two
+    # approval cards until both are resolved.
+    return HITL_MULTI_MARKER in human_text
 
 
 def _document_tool_call(marker: str, tool_args: dict[str, str]) -> dict[str, Any]:
@@ -351,6 +389,13 @@ class E2EScriptedChatModel(BaseChatModel):
             )
             return ChatResult(generations=[ChatGeneration(message=message)])
 
+        if _is_hitl_multi_request(human_text):
+            message = AIMessage(
+                content="",
+                tool_calls=[dict(call) for call in HITL_MULTI_TOOL_CALLS],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
         if _is_hitl_approval_request(human_text):
             message = AIMessage(
                 content="",
@@ -435,6 +480,8 @@ __all__ = [
     "CHAT_RICH_OUTPUT_MARKER",
     "CHAT_RICH_OUTPUT_PROMPT",
     "HITL_APPROVAL_MARKER",
+    "HITL_MULTI_MARKER",
+    "HITL_MULTI_TOOL_CALLS",
     "ASK_USER_FRUIT_FINAL_CONTENT",
     "ASK_USER_FRUIT_MARKER",
     "ASK_USER_FRUIT_PREFACE_CONTENT",

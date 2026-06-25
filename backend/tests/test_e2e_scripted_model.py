@@ -18,6 +18,8 @@ from app.agent_runtime.e2e_scripted_model import (
     CHAT_RICH_OUTPUT_CONTENT,
     CHAT_RICH_OUTPUT_PROMPT,
     HITL_APPROVAL_MARKER,
+    HITL_MULTI_MARKER,
+    HITL_MULTI_TOOL_CALLS,
     SCRIPTED_DOCUMENT_COMMANDS,
     E2EScriptedChatModel,
 )
@@ -422,6 +424,66 @@ def test_e2e_scripted_model_emits_hitl_approval_tool_call_for_explicit_marker() 
             "type": "tool_call",
         }
     ]
+
+
+def test_e2e_scripted_model_emits_two_execute_in_skill_tool_calls_for_hitl_multi() -> None:
+    # langchain's HumanInTheLoopMiddleware batches every interrupting tool call from
+    # a single AIMessage into ONE interrupt with N action_requests. Emitting two
+    # execute_in_skill calls in one message exercises the multi-action approval-card
+    # + HiTL coordinator path.
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke([HumanMessage(content=f"{HITL_MULTI_MARKER} 멀티 승인 카드")])
+
+    assert [(call["id"], call["name"]) for call in result.tool_calls] == [
+        ("call_e2e_hitl_multi_0", "execute_in_skill"),
+        ("call_e2e_hitl_multi_1", "execute_in_skill"),
+    ]
+    # Distinct ids AND distinct args keep the two synthetic approval cards from
+    # collapsing in mergeInterruptToolCalls on the frontend.
+    assert result.tool_calls[0]["args"] != result.tool_calls[1]["args"]
+    assert result.tool_calls[0]["args"] == HITL_MULTI_TOOL_CALLS[0]["args"]
+    assert result.tool_calls[1]["args"] == HITL_MULTI_TOOL_CALLS[1]["args"]
+
+
+def test_e2e_scripted_model_stream_preserves_hitl_multi_tool_calls() -> None:
+    model = E2EScriptedChatModel(
+        model="document-artifact-scripted",
+        slow_stream_delay_seconds=0,
+    ).bind_tools([{"name": "execute_in_skill"}])
+
+    chunks = list(model.stream([HumanMessage(content=f"{HITL_MULTI_MARKER} 멀티 승인 카드")]))
+
+    tool_calls = [tool_call for chunk in chunks for tool_call in chunk.tool_calls]
+    assert [call["id"] for call in tool_calls] == [
+        "call_e2e_hitl_multi_0",
+        "call_e2e_hitl_multi_1",
+    ]
+
+
+def test_e2e_scripted_model_returns_final_message_after_hitl_multi_tool_results() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content=f"{HITL_MULTI_MARKER} 멀티 승인 카드"),
+            ToolMessage(
+                content="OUTPUT_FILES: moldy-hitl-multi-1.docx",
+                tool_call_id="call_e2e_hitl_multi_0",
+            ),
+            ToolMessage(
+                content="OUTPUT_FILES: moldy-hitl-multi-2.docx",
+                tool_call_id="call_e2e_hitl_multi_1",
+            ),
+        ]
+    )
+
+    assert result.tool_calls == []
+    assert "문서 파일 생성이 완료" in str(result.content)
 
 
 def test_e2e_scripted_model_does_not_trigger_hitl_for_descriptive_prompt() -> None:
