@@ -2,7 +2,7 @@
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
-import { ExternalLinkIcon, GlobeIcon } from 'lucide-react'
+import { ExternalLinkIcon, GlobeIcon, SearchIcon } from 'lucide-react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 import { parseSearchResults, type SearchResultItem } from './search-tool-data'
 
@@ -104,6 +104,7 @@ function SearchRender({
   return (
     <CollapsiblePill
       kind="tool"
+      leadingIcon={SearchIcon}
       status={pillStatusFromAssistantUi(status.type)}
       title={title}
       meta={meta}

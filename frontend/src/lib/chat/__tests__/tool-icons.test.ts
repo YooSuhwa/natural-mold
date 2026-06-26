@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ClockIcon, SearchIcon, WrenchIcon } from 'lucide-react'
-import { toolIcon } from '../tool-icons'
+import { builtinToolIcon, toolIcon } from '../tool-icons'
 import { toolCallChildLabel } from '../tool-group-meta'
 
 describe('toolIcon', () => {
@@ -16,6 +16,13 @@ describe('toolIcon', () => {
 
   it('모르는 도구는 렌치 폴백', () => {
     expect(toolIcon('some_random_mcp_tool')).toBe(WrenchIcon)
+  })
+})
+
+describe('builtinToolIcon', () => {
+  it('빌트인은 아이콘, 모르는 도구는 null(icon_id/렌치 폴백을 호출 측에 위임)', () => {
+    expect(builtinToolIcon('current_datetime')).toBe(ClockIcon)
+    expect(builtinToolIcon('some_custom_tool')).toBeNull()
   })
 })
 

@@ -46,6 +46,8 @@ export interface McpToolBrief {
 export interface ToolBrief {
   id: string
   name: string
+  /** 도구 registry 정의의 icon_id. 채팅 도구 pill 아이콘 해석에 쓴다. */
+  icon_id?: string | null
 }
 
 export interface SkillBrief {

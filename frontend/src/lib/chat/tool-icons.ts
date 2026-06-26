@@ -68,12 +68,22 @@ const PREFIX_TOOL_ICONS: ReadonlyArray<readonly [string, LucideIcon]> = [
   ['google_', SearchIcon],
 ]
 
-/** toolName → leading 아이콘. 알려진 도구면 의미 아이콘, 아니면 렌치 폴백. */
-export function toolIcon(toolName: string): LucideIcon {
+/**
+ * toolName → 빌트인 고정 맵 아이콘. 매핑에 없으면 null(호출 측이 도구 icon_id나
+ * 렌치로 폴백). 런타임 주입 빌트인은 agent.tools에 없어 icon_id가 없으므로 이
+ * 고정 맵이 1순위다.
+ */
+export function builtinToolIcon(toolName: string): LucideIcon | null {
   const exact = EXACT_TOOL_ICONS[toolName]
   if (exact) return exact
   for (const [prefix, icon] of PREFIX_TOOL_ICONS) {
     if (toolName.startsWith(prefix)) return icon
   }
-  return WrenchIcon
+  return null
+}
+
+/** toolName → leading 아이콘. 알려진 빌트인이면 의미 아이콘, 아니면 렌치 폴백.
+ * (icon_id까지 고려하려면 컴포넌트에서 ``useToolIcon`` 훅을 쓴다.) */
+export function toolIcon(toolName: string): LucideIcon {
+  return builtinToolIcon(toolName) ?? WrenchIcon
 }

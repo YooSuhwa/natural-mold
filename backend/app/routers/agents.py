@@ -27,6 +27,7 @@ from app.schemas.skill import SkillBrief
 from app.services import agent_service, audit_service, image_service
 from app.services.agent_image_paths import build_agent_image_url, resolve_agent_image_path
 from app.services.image_preview import get_or_create_image_preview_async
+from app.tools.registry import registry as tool_registry
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 middleware_router = APIRouter(tags=["middlewares"])
@@ -35,6 +36,13 @@ middleware_router = APIRouter(tags=["middlewares"])
 def _sub_agent_image_url(sub: Agent) -> str | None:
     """Compute image_url for a sub-agent (mirrors _agent_to_response logic)."""
     return build_agent_image_url(sub.id, updated_at=sub.updated_at, image_path=sub.image_path)
+
+
+def _tool_icon_id(definition_key: str) -> str | None:
+    """도구 registry 정의에서 icon_id를 해석. Tool ORM에는 icon_id 컬럼이 없고
+    definition_key → 메모리 registry 정의가 ground truth다."""
+    definition = tool_registry.get(definition_key)
+    return definition.icon_id if definition is not None else None
 
 
 def _agent_to_response(agent: Agent) -> AgentResponse:
@@ -58,7 +66,14 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         # rows from before the m18 wipe). The schema accepts None and the
         # frontend prompts re-binding instead of crashing the agents list.
         model=agent.model if agent.model is not None else None,
-        tools=[ToolBrief(id=link.tool.id, name=link.tool.name) for link in agent.tool_links],
+        tools=[
+            ToolBrief(
+                id=link.tool.id,
+                name=link.tool.name,
+                icon_id=_tool_icon_id(link.tool.definition_key),
+            )
+            for link in agent.tool_links
+        ],
         mcp_tools=[
             McpToolBrief(
                 id=link.mcp_tool.id,

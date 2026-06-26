@@ -156,6 +156,9 @@ class ModelBrief(BaseModel):
 class ToolBrief(BaseModel):
     id: uuid.UUID
     name: str
+    # 도구 registry 정의의 icon_id(domain `icon_id`). 채팅 도구 pill이 의미 아이콘을
+    # 고르는 데 쓴다. registry에 정의가 없으면 null(프론트는 렌치로 폴백).
+    icon_id: str | None = None
 
     model_config = {"from_attributes": True}
 
