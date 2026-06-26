@@ -32,6 +32,8 @@ export interface AgentBrief {
 export interface ModelBrief {
   id: string
   display_name: string
+  /** 컨텍스트 창 한도(토큰). null이면 한도 미설정(게이지 비활성). */
+  context_window?: number | null
 }
 
 export interface McpToolBrief {

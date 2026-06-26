@@ -1359,6 +1359,14 @@
       "tokensPerSecond": "{value} tok/s",
       "ttft": "First token {value}"
     },
+    "contextWindow": {
+      "label": "Context usage",
+      "percentAria": "Context {percent}% used",
+      "disabledAria": "Context limit unknown",
+      "disabledShort": "no limit",
+      "disabled": "This model has no configured context window (context_window), so usage can't be shown.",
+      "compactHint": "Context is nearly full. Consider starting a new conversation or compacting."
+    },
     "message": {
       "toolResult": "Tool Result",
       "copy": "Copy",

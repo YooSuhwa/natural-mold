@@ -61,12 +61,14 @@ import { UserAvatar } from '@/components/auth/UserAvatar'
 import type { User } from '@/lib/types/user'
 import {
   chatCancelInFlightAtom,
+  latestTurnUsageAtom,
   pendingEditBranchPickerSuppressionAtom,
   sessionTokenUsageAtom,
   type TokenUsage,
 } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
 import { ToolGroupContainer } from '@/components/chat/tool-ui/tool-group-container'
+import { ContextWindowGauge } from '@/components/chat/context-window-gauge'
 import {
   groupAssistantParts,
   isGroupToolNode,
@@ -704,6 +706,11 @@ export interface AssistantThreadProps {
   modelName?: string
   /** true이면 Composer 토큰 바 표시 */
   showTokenBar?: boolean
+  /** true이면 Composer 하단에 컨텍스트 창 사용량 게이지 표시(메인 v3 채팅 전용).
+   * 켜지면 모델명은 상단 바 대신 게이지 옆(하단)에 표시된다. */
+  showContextGauge?: boolean
+  /** 컨텍스트 게이지 한도. agent.model.context_window. null이면 게이지 비활성. */
+  contextWindow?: number | null
   /** 컴팩트 모드 (AssistantPanel용) — Composer 높이 축소 */
   compact?: boolean
   /** true이면 메시지 하단에 createdAt 시간 라벨 표시 */
@@ -761,6 +768,8 @@ export function AssistantThread({
   user,
   modelName,
   showTokenBar = false,
+  showContextGauge = false,
+  contextWindow,
   compact = false,
   showMessageTimestamp = false,
   emptyContent,
@@ -994,6 +1003,8 @@ export function AssistantThread({
               <ThreadComposer
                 modelName={modelName}
                 showTokenBar={showTokenBar}
+                showContextGauge={showContextGauge}
+                contextWindow={contextWindow}
                 compact={compact}
                 enableAttachments={enableAttachments}
                 focusKey={conversationId}
@@ -1031,12 +1042,16 @@ function ScrollToBottomButton({ isAtBottom }: { isAtBottom: boolean }) {
 function ThreadComposer({
   modelName,
   showTokenBar,
+  showContextGauge = false,
+  contextWindow,
   compact,
   enableAttachments = false,
   focusKey,
 }: {
   modelName?: string
   showTokenBar?: boolean
+  showContextGauge?: boolean
+  contextWindow?: number | null
   compact?: boolean
   enableAttachments?: boolean
   focusKey?: string | null
@@ -1044,14 +1059,17 @@ function ThreadComposer({
   const t = useTranslations('chat.input')
   const tMsg = useTranslations('chat.message')
   const tokenUsage = useAtomValue(sessionTokenUsageAtom)
+  const latestTurnUsage = useAtomValue(latestTurnUsageAtom)
   const hasTokens = showTokenBar && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)
+  // 컨텍스트 게이지를 켜면 모델명은 상단 바 대신 하단 게이지 옆에 표시(클로드코드式).
+  const showTopModelName = Boolean(modelName) && !showContextGauge
 
   return (
     <ComposerPrimitive.Root className="moldy-chat-card">
       {/* Model & Token bar */}
-      {(modelName || hasTokens) && (
+      {(showTopModelName || hasTokens) && (
         <div className="flex items-center gap-3 border-b border-border/60 bg-primary/35 px-3.5 py-1.5 text-xs text-muted-foreground">
-          {modelName && <span className="font-medium text-foreground/70">{modelName}</span>}
+          {showTopModelName && <span className="font-medium text-foreground/70">{modelName}</span>}
           {hasTokens && (
             <TokenBar tokenUsage={tokenUsage} showDivider={false} className="ml-auto" />
           )}
@@ -1080,8 +1098,8 @@ function ThreadComposer({
       />
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-2 py-1.5">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+        <div className="flex min-w-0 items-center gap-1">
           {enableAttachments && (
             <ComposerPrimitive.AddAttachment asChild>
               <Button
@@ -1096,17 +1114,27 @@ function ThreadComposer({
             </ComposerPrimitive.AddAttachment>
           )}
         </div>
-        <AuiIf condition={(s) => !s.thread.isRunning}>
-          <ComposerPrimitive.Send asChild>
-            <Button type="submit" size="icon-sm" className="rounded-full">
-              <SendIcon className="size-4" />
-              <span className="sr-only">{t('sendButton')}</span>
-            </Button>
-          </ComposerPrimitive.Send>
-        </AuiIf>
-        <AuiIf condition={(s) => s.thread.isRunning}>
-          <StopButton />
-        </AuiIf>
+        {/* 오른쪽 아래: 모델명 + 컨텍스트 창 사용량 게이지(클로드코드式) + Send/Stop */}
+        <div className="flex min-w-0 items-center gap-1.5">
+          {showContextGauge && (
+            <ContextWindowGauge
+              usage={latestTurnUsage}
+              contextWindow={contextWindow}
+              modelName={modelName}
+            />
+          )}
+          <AuiIf condition={(s) => !s.thread.isRunning}>
+            <ComposerPrimitive.Send asChild>
+              <Button type="submit" size="icon-sm" className="rounded-full">
+                <SendIcon className="size-4" />
+                <span className="sr-only">{t('sendButton')}</span>
+              </Button>
+            </ComposerPrimitive.Send>
+          </AuiIf>
+          <AuiIf condition={(s) => s.thread.isRunning}>
+            <StopButton />
+          </AuiIf>
+        </div>
       </div>
     </ComposerPrimitive.Root>
   )

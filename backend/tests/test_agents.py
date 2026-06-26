@@ -26,6 +26,7 @@ async def _create_model(client: AsyncClient) -> str:
             model_name="gpt-4o",
             display_name="GPT-4o",
             is_default=True,
+            context_window=128000,
         )
         db.add(model)
         await db.commit()
@@ -51,6 +52,8 @@ async def test_agent_crud(client: AsyncClient):
     agent = resp.json()
     assert agent["name"] == "Test Agent"
     assert agent["model"]["display_name"] == "GPT-4o"
+    # 채팅 컴포저 컨텍스트 게이지가 참조하는 context_window가 ModelBrief로 노출된다.
+    assert agent["model"]["context_window"] == 128000
     assert agent["identity_mode"] == "per_user"
     assert agent["runtime_name"].startswith("agent_")
     agent_id = agent["id"]

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChannel, type AnyStream } from '@langchain/react'
 import type { BaseMessage } from '@langchain/core/messages'
 import { useSetAtom } from 'jotai'
-import { sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
+import { latestTurnUsageAtom, sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
 import type { TokenUsageBreakdown } from '@/lib/types'
 import {
   isRecord,
@@ -411,6 +411,7 @@ export function useLangGraphUsageEffects({
   stateMessages = [],
 }: UseLangGraphUsageEffectsOptions): MessageWithUsage[] {
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
+  const setLatestTurnUsage = useSetAtom(latestTurnUsageAtom)
   const usageScope = useMemo(
     () => ({
       conversationId,
@@ -502,5 +503,30 @@ export function useLangGraphUsageEffects({
     [messages, usagesByMessageId],
   )
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => attachUsageToMessages(messages, usagesByMessageId), [attachedFingerprint])
+  const attachedMessages = useMemo(
+    () => attachUsageToMessages(messages, usagesByMessageId),
+    [attachedFingerprint],
+  )
+
+  // 컨텍스트 게이지용 — 가장 최근 assistant 메시지의 usage(점유량은 prompt_tokens,
+  // 세션 누적이 아니라 "현재 컨텍스트 크기 = 마지막 턴 입력"). usagesByMessageId의
+  // 키(run/message id)는 렌더 메시지 id와 어긋날 수 있으므로, usage가 이미 붙은
+  // attachedMessages에서 토큰 팝오버와 동일하게 usageFromMessage로 읽는다.
+  const latestTurnUsage = useMemo<TokenUsageBreakdown | null>(() => {
+    for (let index = attachedMessages.length - 1; index >= 0; index -= 1) {
+      const message = attachedMessages[index]
+      if (!isAssistantMessage(message)) continue
+      const usage = usageFromMessage(message)
+      if (usage) return usage
+    }
+    return null
+  }, [attachedMessages])
+  const lastTurnUsageRef = useRef<TokenUsageBreakdown | null>(null)
+  useEffect(() => {
+    if (sameUsage(lastTurnUsageRef.current ?? undefined, latestTurnUsage ?? undefined)) return
+    lastTurnUsageRef.current = latestTurnUsage
+    setLatestTurnUsage(latestTurnUsage)
+  }, [setLatestTurnUsage, latestTurnUsage])
+
+  return attachedMessages
 }

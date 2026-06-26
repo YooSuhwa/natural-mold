@@ -146,6 +146,9 @@ class AgentUpdate(BaseModel):
 class ModelBrief(BaseModel):
     id: uuid.UUID
     display_name: str
+    # 컨텍스트 창 한도(토큰). 채팅 컴포저의 컨텍스트 사용량 게이지가 참조한다.
+    # null이면 한도 미설정 모델(게이지 비활성).
+    context_window: int | None = None
 
     model_config = {"from_attributes": True}
 

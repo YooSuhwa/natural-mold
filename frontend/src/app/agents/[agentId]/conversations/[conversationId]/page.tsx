@@ -422,6 +422,8 @@ export default function ChatPage({
             latestRun={envelope?.latest_run ?? null}
             messages={messages}
             modelName={agent?.model?.display_name}
+            showContextGauge
+            contextWindow={agent?.model?.context_window ?? null}
             onBeforeNewMessage={handleBeforeNewMessage}
             onNewMessageAccepted={handleNewMessageAccepted}
             onRuntimeStatusChange={handleRuntimeStatusChange}
