@@ -39,7 +39,6 @@ import { useLangGraphDraftConversation } from '@/lib/chat/langgraph-runtime/use-
 import { ChatRuntimeSection } from '@/components/chat/chat-runtime-section'
 import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
-import { AgentSkillsRow } from '@/components/chat/agent-skills-row'
 import { ChatRightRail } from '@/components/chat/right-rail/chat-right-rail'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -392,9 +391,6 @@ export default function ChatPage({
           onOpenTrace={handleOpenTrace}
           onToggleArtifacts={handleToggleArtifacts}
         />
-
-        {/* Agent skills row (P2-10 — visualizes attached skills) */}
-        <AgentSkillsRow skills={agent?.skills} />
 
         {/* Thread */}
         {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||

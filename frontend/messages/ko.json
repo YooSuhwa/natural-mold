@@ -1709,9 +1709,6 @@
         "description": "이 작업은 되돌릴 수 없습니다. 대화의 모든 메시지가 삭제됩니다."
       }
     },
-    "skillsRow": {
-      "label": "스킬:"
-    },
     "branch": {
       "previous": "이전 분기",
       "next": "다음 분기"

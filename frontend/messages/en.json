@@ -1730,9 +1730,6 @@
         "description": "This conversation will be deleted. This cannot be undone."
       }
     },
-    "skillsRow": {
-      "label": "Label"
-    },
     "branch": {
       "previous": "Previous",
       "next": "Next"
