@@ -61,3 +61,79 @@ const NON_GROUPABLE_TOOLS: ReadonlySet<string> = new Set([
 export function isGroupableTool(toolName: string): boolean {
   return !NON_GROUPABLE_TOOLS.has(toolName)
 }
+
+/** 호출별 대표 인자 키 — 그룹 자식 제목에 쓸 "구분값"을 이 순서로 찾는다. */
+const CHILD_LABEL_ARG_KEYS = [
+  'query',
+  'q',
+  'file_path',
+  'path',
+  'url',
+  'expression',
+  'keyword',
+  'date',
+  'timezone',
+  'command',
+  'name',
+] as const
+
+function shortenLabel(value: string): string {
+  const trimmed = value.trim().replace(/\s+/g, ' ')
+  return trimmed.length > 48 ? `${trimmed.slice(0, 47)}…` : trimmed
+}
+
+/** JSON 값에서 첫 스칼라(문자열/숫자/불리언) 하나를 뽑는다 — raw JSON보다 읽기 좋게. */
+function firstScalar(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const scalar = firstScalar(item)
+      if (scalar) return scalar
+    }
+    return null
+  }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) {
+      const scalar = firstScalar(item)
+      if (scalar) return scalar
+    }
+  }
+  return null
+}
+
+function resultPreview(result: unknown): string | null {
+  if (typeof result !== 'string') return null
+  const text = result.trim()
+  if (!text) return null
+  // JSON 객체/배열 결과면 대표 스칼라 하나를 뽑아 `{"now_iso": "…",` 대신 값만 표시.
+  if (text.startsWith('{') || text.startsWith('[')) {
+    try {
+      const scalar = firstScalar(JSON.parse(text))
+      if (scalar) return shortenLabel(scalar)
+    } catch {
+      // JSON 파싱 실패 → 아래 첫 줄 폴백.
+    }
+  }
+  const firstLine = text.split('\n').find((line) => line.trim().length > 0)
+  return firstLine ? shortenLabel(firstLine) : null
+}
+
+/**
+ * 그룹 자식 pill의 제목 — 도구명(그룹 헤더에 이미 있음) 대신 "이 호출이 뭘 했나"를
+ * 보여준다. 대표 인자 → 임의 첫 문자열 인자 → 결과 미리보기 순. 마땅한 게 없으면
+ * null(호출 측이 도구명으로 폴백).
+ */
+export function toolCallChildLabel(
+  args: Record<string, unknown> | undefined,
+  result: unknown,
+): string | null {
+  for (const key of CHILD_LABEL_ARG_KEYS) {
+    const value = args?.[key]
+    if (typeof value === 'string' && value.trim()) return shortenLabel(value)
+  }
+  for (const value of Object.values(args ?? {})) {
+    if (typeof value === 'string' && value.trim()) return shortenLabel(value)
+  }
+  return resultPreview(result)
+}
