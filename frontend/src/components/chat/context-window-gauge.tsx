@@ -49,7 +49,7 @@ export function ContextWindowGauge({ usage, contextWindow, modelName }: ContextW
   const strokeDashoffset = RING_CIRCUMFERENCE * (1 - percent / 100)
 
   const ring = (
-    <span className={cn('inline-flex items-center gap-1.5', colorClass)}>
+    <span className={cn('inline-flex shrink-0 items-center gap-1.5', colorClass)}>
       <svg viewBox="0 0 16 16" className="size-3.5 -rotate-90" aria-hidden focusable="false">
         <circle
           cx="8"
@@ -106,12 +106,16 @@ export function ContextWindowGauge({ usage, contextWindow, modelName }: ContextW
               }
             >
               {modelName ? (
-                <>
-                  <span className="truncate font-medium text-foreground/70">{modelName}</span>
+                // 좁은 컴포저(패널 폭 < @md)에서는 모델명을 숨겨 게이지·비용이
+                // 빡빡하지 않게 — 넓을 때만 모델명 표시(긴 이름은 truncate).
+                <span className="hidden min-w-0 items-center gap-1.5 @md:flex">
+                  <span className="max-w-40 truncate font-medium text-foreground/70">
+                    {modelName}
+                  </span>
                   <span className="shrink-0 text-muted-foreground/50" aria-hidden>
                     ·
                   </span>
-                </>
+                </span>
               ) : null}
               {ring}
             </button>

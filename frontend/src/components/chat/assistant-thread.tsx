@@ -148,8 +148,9 @@ function MessageTimestamp() {
   const tCommon = useTranslations('common')
   const createdAt = useAuiState((s) => (s.message as { createdAt?: Date } | undefined)?.createdAt)
   if (!createdAt) return null
+  // 액션 아이콘 클러스터와 시각(정보)을 구분 — 끝에 두고 약간 떨어뜨린다.
   return (
-    <span className="moldy-ui-micro text-muted-foreground">
+    <span className="ml-1 shrink-0 tabular-nums moldy-ui-micro text-muted-foreground">
       {formatRelativeShort(createdAt, tCommon('yesterday'))}
     </span>
   )
@@ -398,7 +399,7 @@ function AssistantArtifactCards() {
 function MessageMetaRow({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="mt-1 flex min-h-7 max-w-full items-center gap-1 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+      className="mt-1 flex min-h-7 max-w-full items-center gap-0.5 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
       data-moldy-message-meta-row="true"
     >
       {children}
@@ -893,12 +894,12 @@ export function AssistantThread({
         const tChat = useTranslations('chat')
         const metaRow = (
           <MessageMetaRow>
-            {showMessageTimestamp && <MessageTimestamp />}
             <BranchPicker />
             <CopyButton />
             <RegenerateButton />
             <FeedbackButtons />
             <TokenUsagePopover />
+            {showMessageTimestamp && <MessageTimestamp />}
           </MessageMetaRow>
         )
         if (isBuilder) {
@@ -1069,7 +1070,7 @@ function ThreadComposer({
   const topBarVisible = !showContextGauge && (showTopModelName || hasTokens)
 
   return (
-    <ComposerPrimitive.Root className="moldy-chat-card">
+    <ComposerPrimitive.Root className="moldy-chat-card @container">
       {/* Model & Token bar (레거시 표면 전용 — 게이지 모드에선 하단으로 이동) */}
       {topBarVisible && (
         <div className="flex items-center gap-3 border-b border-border/60 bg-primary/35 px-3.5 py-1.5 text-xs text-muted-foreground">
