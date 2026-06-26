@@ -1355,7 +1355,9 @@
       "cacheCreation": "Cache Creation",
       "cacheRead": "Cache Read",
       "cost": "Cost",
-      "toggleAria": "Toggle Aria"
+      "toggleAria": "Toggle Aria",
+      "tokensPerSecond": "{value} tok/s",
+      "ttft": "First token {value}"
     },
     "message": {
       "toolResult": "Tool Result",

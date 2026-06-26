@@ -59,12 +59,16 @@ function updateUsageMap(
   if (shouldDeleteSuperseded && supersededKey) {
     delete next[supersededKey]
   }
-  if (sameUsage(next[key], usage) && !shouldDeleteSuperseded) {
+  // v3는 같은 메시지에 token-only(message-finish)와 timing/cost 포함(합성 usage)
+  // 두 소스가 와서 서로 덮어쓴다. 비어 있는 timing/cost를 기존 값으로 backfill해
+  // 어느 순서로 도착해도 유실되지 않게 한다.
+  const merged = mergeUsageTiming(next[key], usage)
+  if (sameUsage(next[key], merged) && !shouldDeleteSuperseded) {
     return current
   }
   return {
     ...next,
-    [key]: usage,
+    [key]: merged,
   }
 }
 
@@ -94,8 +98,36 @@ function sameUsage(
     left.completion_tokens === right.completion_tokens &&
     left.cache_creation_tokens === right.cache_creation_tokens &&
     left.cache_read_tokens === right.cache_read_tokens &&
-    left.estimated_cost === right.estimated_cost
+    left.estimated_cost === right.estimated_cost &&
+    left.ttft_ms === right.ttft_ms &&
+    left.generation_ms === right.generation_ms &&
+    left.tokens_per_second === right.tokens_per_second
   )
+}
+
+/**
+ * v3는 같은 메시지에 usage 소스가 둘 — ① message-finish의 raw usage_metadata(token만),
+ * ② 합성 `usage` 프로토콜 이벤트(token + cost + 스트리밍 timing). 둘이 같은 키로 매핑돼
+ * 나중에 온 쪽이 덮어쓰므로 timing/cost가 한쪽에만 있으면 유실된다. 새 usage가 비운
+ * timing/cost를 기존 값으로 backfill해 도착 순서와 무관하게 보존한다.
+ */
+function mergeUsageTiming(
+  prev: TokenUsageBreakdown | undefined,
+  next: TokenUsageBreakdown,
+): TokenUsageBreakdown {
+  if (!prev) return next
+  const merged: TokenUsageBreakdown = { ...next }
+  if (merged.ttft_ms === undefined && prev.ttft_ms !== undefined) merged.ttft_ms = prev.ttft_ms
+  if (merged.generation_ms === undefined && prev.generation_ms !== undefined) {
+    merged.generation_ms = prev.generation_ms
+  }
+  if (merged.tokens_per_second === undefined && prev.tokens_per_second !== undefined) {
+    merged.tokens_per_second = prev.tokens_per_second
+  }
+  if (merged.estimated_cost === undefined && prev.estimated_cost !== undefined) {
+    merged.estimated_cost = prev.estimated_cost
+  }
+  return merged
 }
 
 function sameTokenUsage(left: TokenUsage | null, right: TokenUsage): boolean {
@@ -144,6 +176,10 @@ function usageFingerprint(usage: TokenUsageBreakdown | undefined): string {
     cache_creation_tokens: usage.cache_creation_tokens,
     cache_read_tokens: usage.cache_read_tokens,
     estimated_cost: usage.estimated_cost,
+    // timing이 token-only usage 뒤에 도착할 때 useStableUsageMap이 재메모화하도록 포함.
+    ttft_ms: usage.ttft_ms,
+    generation_ms: usage.generation_ms,
+    tokens_per_second: usage.tokens_per_second,
   })
 }
 

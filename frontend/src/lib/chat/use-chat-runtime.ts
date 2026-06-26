@@ -816,6 +816,10 @@ export function useChatRuntime({
                   cache_creation_tokens: usage.cache_creation_tokens ?? 0,
                   cache_read_tokens: usage.cache_read_tokens ?? 0,
                   estimated_cost: usage.estimated_cost,
+                  // 스트리밍 timing — 명시 키 재빌드라 추가하지 않으면 drop된다.
+                  ttft_ms: usage.ttft_ms,
+                  generation_ms: usage.generation_ms,
+                  tokens_per_second: usage.tokens_per_second,
                 }
                 messageUsage = breakdown
                 // streamingMessages에 박힌 후 위쪽 useEffect가 토큰 바를

@@ -13,6 +13,16 @@ interface AssistantMetadataCustom {
   usage?: TokenUsageBreakdown
 }
 
+/** ms → 짧은 표기 ("0.42s" / "5.2s" / "1m 5s"). locale 무관. */
+function formatDurationMs(ms: number): string {
+  const seconds = ms / 1000
+  if (seconds < 1) return `${seconds.toFixed(2)}s`
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  return `${m}m ${s}s`
+}
+
 /**
  * Assistant 메시지 푸터의 토큰 사용량 hover 팝오버.
  *
@@ -84,6 +94,25 @@ export function TokenUsagePopover() {
           <div className="mt-1.5 flex items-center justify-between border-t pt-1.5 text-foreground">
             <span>{t('cost')}</span>
             <span className="tabular-nums">{formatCostUsd(usage.estimated_cost)}</span>
+          </div>
+        )}
+        {(usage.tokens_per_second !== undefined || usage.generation_ms !== undefined) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 border-t pt-1.5 tabular-nums text-muted-foreground">
+            {usage.tokens_per_second !== undefined && (
+              <span>{t('tokensPerSecond', { value: usage.tokens_per_second })}</span>
+            )}
+            {usage.generation_ms !== undefined && (
+              <>
+                <span aria-hidden>·</span>
+                <span>{formatDurationMs(usage.generation_ms)}</span>
+              </>
+            )}
+            {usage.ttft_ms !== undefined && (
+              <>
+                <span aria-hidden>·</span>
+                <span>{t('ttft', { value: formatDurationMs(usage.ttft_ms) })}</span>
+              </>
+            )}
           </div>
         )}
       </TooltipContent>

@@ -1334,7 +1334,9 @@
       "cacheCreation": "캐시 생성",
       "cacheRead": "캐시 적중",
       "cost": "추정 비용",
-      "toggleAria": "토큰 사용량 보기"
+      "toggleAria": "토큰 사용량 보기",
+      "tokensPerSecond": "{value} tok/s",
+      "ttft": "첫 토큰 {value}"
     },
     "message": {
       "toolResult": "도구 결과: ",

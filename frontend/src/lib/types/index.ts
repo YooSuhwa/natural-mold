@@ -313,13 +313,19 @@ export interface Message {
   usage?: TokenUsageBreakdown | null
 }
 
-/** W7 — 메시지별 토큰 사용량 4종 분해. */
+/** W7 — 메시지별 토큰 사용량 4종 분해 (+ 스트리밍 timing). */
 export interface TokenUsageBreakdown {
   prompt_tokens: number
   completion_tokens: number
   cache_creation_tokens: number
   cache_read_tokens: number
   estimated_cost?: number
+  /** 스트리밍 timing (live-only, 새로고침 후 undefined). 첫 토큰까지(ms). */
+  ttft_ms?: number
+  /** 총 생성 시간(ms). */
+  generation_ms?: number
+  /** 출력 토큰/초. */
+  tokens_per_second?: number
 }
 
 /**
