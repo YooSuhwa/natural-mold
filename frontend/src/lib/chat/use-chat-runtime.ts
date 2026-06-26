@@ -44,7 +44,6 @@ import {
   standardInterruptToToolCalls,
   type HiTLDecisionCoordinator,
 } from './standard-interrupt'
-import { compactDeepResearchMessages } from './deep-research-summary'
 import { artifactKeys } from '@/lib/api/artifacts'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
 import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
@@ -464,15 +463,16 @@ export function useChatRuntime({
       : null
 
   const allMessages = useMemo(() => {
-    const merged = compactDeepResearchMessages(
-      mergeMessagesForRender({
-        messages,
-        streamingMessages,
-        // eslint-disable-next-line react-hooks/refs -- merge needs the last committed snapshot without triggering renders.
-        previousMessages: prevMessagesRef.current,
-        isRunning,
-      }),
-    )
+    // 검색류 N개 그룹핑은 더 이상 메시지 사전변환(deep-research compaction)에
+    // 의존하지 않는다 — 렌더 시점 `MessagePrimitive.GroupedParts`가 모든 표면에서
+    // 일반화해 처리한다(Phase-2b). 여기서는 fetch/stream 병합만 한다.
+    const merged = mergeMessagesForRender({
+      messages,
+      streamingMessages,
+      // eslint-disable-next-line react-hooks/refs -- merge needs the last committed snapshot without triggering renders.
+      previousMessages: prevMessagesRef.current,
+      isRunning,
+    })
     if (!durableCanceledRun) return merged
     return appendDurableCanceledNotice(merged, tPage('canceled'), durableCanceledRun)
   }, [isRunning, messages, streamingMessages, durableCanceledRun, tPage])

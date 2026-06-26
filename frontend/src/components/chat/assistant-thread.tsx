@@ -24,7 +24,6 @@ import {
   type AssistantDataUI,
   type AssistantToolUI,
   type EnrichedPartState,
-  type PartState,
 } from '@assistant-ui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
@@ -68,7 +67,12 @@ import {
 } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
 import { ToolGroupContainer } from '@/components/chat/tool-ui/tool-group-container'
-import { isGroupableTool } from '@/lib/chat/tool-group-meta'
+import {
+  groupAssistantParts,
+  isGroupToolNode,
+  groupToolName,
+  type GroupedRenderInfo,
+} from '@/lib/chat/group-assistant-parts'
 import { StreamingMessageLoadingIndicator } from '@/components/chat/assistant-message-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
@@ -250,44 +254,21 @@ function OrderedToolCall({
 // 기존과 동일하게 개별 렌더. groupBy/render fn은 모듈 레벨 const로 둬서
 // assistant-ui 내부 메모화(identity 기반)가 매 토큰마다 깨지지 않게 한다 —
 // 위 OrderedTextPart 주석과 같은 이유로 streaming 표시 안정성에 필요하다.
+//
+// groupBy/노드 판별은 빌더 렌더(builder-overrides.tsx)와 공유하므로
+// `group-assistant-parts.ts`에 두고, 각 표면의 leaf 비주얼만 render fn에서 분기한다.
 
-const GROUP_TOOL_PREFIX = 'group-tool:'
-
-/** groupBy: tool-call이고 그룹 대상이면 `group-tool:<toolName>` 단일 경로, 아니면 null.
- * key에 toolName을 포함해 "연속 같은 도구"만 합쳐지고, 인접한 다른 도구는 분리된다. */
-export function groupAssistantParts(part: PartState): readonly [`group-${string}`] | null {
-  if (part.type === 'tool-call' && isGroupableTool(part.toolName)) {
-    return [`${GROUP_TOOL_PREFIX}${part.toolName}` as `group-${string}`]
-  }
-  return null
-}
-
-type GroupedRenderInfo = {
-  readonly part:
-    | {
-        readonly type: `group-${string}`
-        readonly status?: { type?: string }
-        readonly indices: readonly number[]
-      }
-    | EnrichedPartState
-    | { readonly type: 'indicator' }
-  readonly children: ReactNode
-}
+// 기존 테스트(assistant-thread-grouping.test)가 이 모듈에서 import하므로 re-export.
+export { groupAssistantParts }
 
 /** GroupedParts의 노드/leaf를 그린다. group-tool 노드는 N≥2면 컨테이너, N=1이면
  * 개별 패스스루. leaf는 MessagePrimitive.Parts 기본 동작을 재현한다(아래 default 주석). */
 export function renderGroupedAssistantPart({ part, children }: GroupedRenderInfo): ReactNode {
-  if (part.type.startsWith(GROUP_TOOL_PREFIX)) {
-    const group = part as {
-      type: `group-${string}`
-      status?: { type?: string }
-      indices: readonly number[]
-    }
-    const toolName = group.type.slice(GROUP_TOOL_PREFIX.length)
-    const running = group.status?.type === 'running'
+  if (isGroupToolNode(part)) {
+    const running = part.status?.type === 'running'
     // N=1은 컨테이너 없이 개별 tool-call과 동일한 order-1로 통과. buildGroupTree는
     // 단일 tool-call도 그룹 노드로 감싸므로 여기서 임계값(N<2)을 처리한다.
-    if (group.indices.length < 2) {
+    if (part.indices.length < 2) {
       return <div className="order-1">{children}</div>
     }
     // running→펼침/done→접힘은 key remount로 달성한다(CollapsiblePill은 uncontrolled).
@@ -295,10 +276,10 @@ export function renderGroupedAssistantPart({ part, children }: GroupedRenderInfo
       <div className="order-1">
         <ToolGroupContainer
           key={running ? 'running' : 'done'}
-          toolName={toolName}
-          count={group.indices.length}
+          toolName={groupToolName(part)}
+          count={part.indices.length}
           running={running}
-          indices={group.indices}
+          indices={part.indices}
         >
           {children}
         </ToolGroupContainer>
