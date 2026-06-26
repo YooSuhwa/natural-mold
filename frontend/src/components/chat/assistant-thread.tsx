@@ -51,6 +51,7 @@ import {
   ImageIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CoinsIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useAtomValue, useSetAtom } from 'jotai'
@@ -1062,29 +1063,19 @@ function ThreadComposer({
   const latestTurnUsage = useAtomValue(latestTurnUsageAtom)
   const hasTokens = showTokenBar && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)
   const hasCost = showTokenBar && tokenUsage.cost > 0
-  // 컨텍스트 게이지를 켜면 모델명은 상단 바 대신 하단 게이지 옆에 표시(클로드코드式).
+  // 컨텍스트 게이지 모드: 모델명·게이지·세션비용을 모두 하단 툴바로 모으고 상단
+  // 민트 바는 없앤다(클로드코드式). 레거시 표면은 상단 모델/토큰 바를 그대로 쓴다.
   const showTopModelName = Boolean(modelName) && !showContextGauge
-  // 게이지 모드: 상단 바는 "세션 총비용"만 표시한다. 누적 토큰 숫자는 하단 게이지
-  // (최신 턴 입력)와 1턴에서 같은 값으로 겹쳐 헷갈리므로 제거 — 역할 분리.
-  const topBarVisible = showContextGauge ? hasCost : showTopModelName || hasTokens
+  const topBarVisible = !showContextGauge && (showTopModelName || hasTokens)
 
   return (
     <ComposerPrimitive.Root className="moldy-chat-card">
-      {/* Model & Token bar */}
+      {/* Model & Token bar (레거시 표면 전용 — 게이지 모드에선 하단으로 이동) */}
       {topBarVisible && (
         <div className="flex items-center gap-3 border-b border-border/60 bg-primary/35 px-3.5 py-1.5 text-xs text-muted-foreground">
           {showTopModelName && <span className="font-medium text-foreground/70">{modelName}</span>}
-          {showContextGauge ? (
-            hasCost && (
-              <span className="ml-auto flex items-center gap-1 tabular-nums">
-                <span className="text-muted-foreground/70">{t('sessionCost')}</span>
-                {formatCost(tokenUsage.cost)}
-              </span>
-            )
-          ) : (
-            hasTokens && (
-              <TokenBar tokenUsage={tokenUsage} showDivider={false} className="ml-auto" />
-            )
+          {hasTokens && (
+            <TokenBar tokenUsage={tokenUsage} showDivider={false} className="ml-auto" />
           )}
         </div>
       )}
@@ -1127,7 +1118,7 @@ function ThreadComposer({
             </ComposerPrimitive.AddAttachment>
           )}
         </div>
-        {/* 오른쪽 아래: 모델명 + 컨텍스트 창 사용량 게이지(클로드코드式) + Send/Stop */}
+        {/* 오른쪽 아래: 모델명 + 컨텍스트 게이지 + 세션 총비용(클로드코드式) + Send/Stop */}
         <div className="flex min-w-0 items-center gap-1.5">
           {showContextGauge && (
             <ContextWindowGauge
@@ -1135,6 +1126,15 @@ function ThreadComposer({
               contextWindow={contextWindow}
               modelName={modelName}
             />
+          )}
+          {showContextGauge && hasCost && (
+            <span
+              className="flex shrink-0 items-center gap-1 moldy-ui-micro tabular-nums text-muted-foreground"
+              title={t('sessionCost')}
+            >
+              <CoinsIcon className="size-3" aria-hidden />
+              {formatCost(tokenUsage.cost)}
+            </span>
           )}
           <AuiIf condition={(s) => !s.thread.isRunning}>
             <ComposerPrimitive.Send asChild>
