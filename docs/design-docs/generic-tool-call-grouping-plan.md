@@ -143,7 +143,11 @@
 
 ## 6. 기존 deep-research 그룹핑 정리
 
-- `deep-research-summary.ts` + `deep-research-summary-ui.tsx`의 운명 결정:
+> **결정 (2026-06-26): 제거 + 확장 경로 문서화.** Phase-2(a)에서 검색 그룹 출처 집계(LITE)를 흡수했으므로 tavily 전용 특수처리는 중복이다. **Phase-2(b)에서 제거 대상**: `deep-research-summary.ts`(`compactDeepResearchMessages`) + `deep-research-summary-ui.tsx`(FULL 카드) + `tool-ui-registry.ts`의 `DeepResearchSummaryToolUI` 등록 + `use-chat-runtime.ts:467` 와이어링. ⚠️ **레거시/빌더 표면 그룹핑 적용과 반드시 함께** 한다 — 단독 제거 시 레거시 표면의 tavily ×N이 개별 박스로 퇴화한다.
+>
+> **미래에 더 풍부한 검색 표현이 필요하면** (사용자 우려 대응): `deep_research_summary` 합성 메시지를 부활시키지 말고 **`ToolGroupContainer`를 rich 모드로 확장**한다. 이미 그룹 `indices`로 각 검색 `result`에 접근하므로, 펼침 시 **출처 링크 리스트**(FULL의 핵심 가치)를 render-time으로 추가할 수 있다(합성 불필요, 우리 그룹핑과 일관). FULL 카드 원본 마크업이 필요하면 **commit 258d71a0 이전의 `deep-research-summary-ui.tsx`** 참조. 단 제목("React 생태계…")·소요시간(42s)·완료 N·M은 LLM 합성 데이터라 render-time 재현 대상이 아니며 의도적으로 버린다.
+
+- (참고, 당시 기획) `deep-research-summary.ts` + `deep-research-summary-ui.tsx`의 운명 결정:
   - **(a) 일반 ToolGroup으로 흡수 + 풍부한 요약 보존(권장 if 가치 있음)**: tavily 그룹의 footer에 기존 집계(출처 dedup/도메인/완료 N·M/소요시간)를 특수 렌더로 유지(§5.5 출처 pill로 흡수).
   - (b) 풍부한 요약 폐기, 심플 일반 그룹으로 통일(코드↓).
 - 레거시 `use-chat-runtime.ts:467`의 `compactDeepResearchMessages` 호출은: 일반 그룹핑이 v3에 안착하면 **메시지 사전변환 방식 자체를 제거**하고 레거시 표면도 `GroupedParts`로 통일하거나, 단계적으로 둘 다 마이그레이션.
