@@ -1345,7 +1345,8 @@
       "sendButton": "Send Button",
       "scrollToBottom": "Scroll to bottom",
       "attachComingSoon": "Attach Coming Soon",
-      "templateComingSoon": "Template Coming Soon"
+      "templateComingSoon": "Template Coming Soon",
+      "sessionCost": "Session cost"
     },
     "tokenUsage": {
       "title": "Token Usage",

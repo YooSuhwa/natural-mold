@@ -1324,7 +1324,8 @@
       "sendButton": "전송",
       "scrollToBottom": "맨 아래로 이동",
       "attachComingSoon": "파일 첨부 (준비 중)",
-      "templateComingSoon": "템플릿에서 가져오기 (준비 중)"
+      "templateComingSoon": "템플릿에서 가져오기 (준비 중)",
+      "sessionCost": "세션 비용"
     },
     "tokenUsage": {
       "title": "토큰 사용량",

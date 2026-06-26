@@ -1061,17 +1061,30 @@ function ThreadComposer({
   const tokenUsage = useAtomValue(sessionTokenUsageAtom)
   const latestTurnUsage = useAtomValue(latestTurnUsageAtom)
   const hasTokens = showTokenBar && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)
+  const hasCost = showTokenBar && tokenUsage.cost > 0
   // 컨텍스트 게이지를 켜면 모델명은 상단 바 대신 하단 게이지 옆에 표시(클로드코드式).
   const showTopModelName = Boolean(modelName) && !showContextGauge
+  // 게이지 모드: 상단 바는 "세션 총비용"만 표시한다. 누적 토큰 숫자는 하단 게이지
+  // (최신 턴 입력)와 1턴에서 같은 값으로 겹쳐 헷갈리므로 제거 — 역할 분리.
+  const topBarVisible = showContextGauge ? hasCost : showTopModelName || hasTokens
 
   return (
     <ComposerPrimitive.Root className="moldy-chat-card">
       {/* Model & Token bar */}
-      {(showTopModelName || hasTokens) && (
+      {topBarVisible && (
         <div className="flex items-center gap-3 border-b border-border/60 bg-primary/35 px-3.5 py-1.5 text-xs text-muted-foreground">
           {showTopModelName && <span className="font-medium text-foreground/70">{modelName}</span>}
-          {hasTokens && (
-            <TokenBar tokenUsage={tokenUsage} showDivider={false} className="ml-auto" />
+          {showContextGauge ? (
+            hasCost && (
+              <span className="ml-auto flex items-center gap-1 tabular-nums">
+                <span className="text-muted-foreground/70">{t('sessionCost')}</span>
+                {formatCost(tokenUsage.cost)}
+              </span>
+            )
+          ) : (
+            hasTokens && (
+              <TokenBar tokenUsage={tokenUsage} showDivider={false} className="ml-auto" />
+            )
           )}
         </div>
       )}
