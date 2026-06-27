@@ -38,6 +38,12 @@ class AgentConfig:
     provider_api_keys: dict[str, str | None] | None = None
     cost_per_input_token: float | None = None
     cost_per_output_token: float | None = None
+    # Single source of truth for the model context limit (``models.context_window``).
+    # Forwarded into the LangChain ``model.profile`` so deepagents' auto
+    # SummarizationMiddleware triggers at ``0.85 × context_window`` — the same
+    # number the chat context gauge reads. ``None`` keeps deepagents' own
+    # profile/170k fallback (backward compatible for internal sub-agents).
+    context_window: int | None = None
     # Hook framework correlation — populated by router/trigger executor.
     # NOTE: ``agent_id`` 가 설정되면 반드시 ``user_id`` 도 설정되어야 한다
     # (``__post_init__`` 가드). 일치하지 않으면 ValueError.

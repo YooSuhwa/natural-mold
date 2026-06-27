@@ -6,6 +6,7 @@ export type RunActivityKind =
   | 'background_subagent'
   | 'artifact'
   | 'memory'
+  | 'compaction'
   | 'interrupt'
   | 'checkpoint'
   | 'responding'

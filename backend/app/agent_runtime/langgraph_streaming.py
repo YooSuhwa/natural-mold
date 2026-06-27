@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from langgraph.types import Command
 
+from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
 from app.agent_runtime.langgraph_lifecycle_events import (
     lifecycle_protocol_event,
@@ -27,6 +28,7 @@ from app.agent_runtime.protocol_events import (
     protocol_event_cursor,
     protocol_interrupts_from_event,
     resequence_protocol_event,
+    stored_custom_protocol_event,
     stored_protocol_event,
     to_protocol_wire_event,
 )
@@ -43,6 +45,7 @@ from app.agent_runtime.streaming import (
     PersistCallback,
     StreamErrorRecord,
 )
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 _FLUSH_BATCH_SIZE = 32
@@ -126,6 +129,88 @@ def _is_empty_input_requested_event(event: StoredProtocolEvent) -> bool:
     return event["method"] == "input.requested" and not protocol_interrupts_from_event(event)
 
 
+def _compaction_summarization_event(event: StoredProtocolEvent) -> Mapping[str, Any] | None:
+    if event["method"] != "values":
+        return None
+    data = event["data"]
+    if not isinstance(data, Mapping):
+        return None
+    summarization_event = data.get("_summarization_event")
+    return summarization_event if isinstance(summarization_event, Mapping) else None
+
+
+def _compaction_signal(event: StoredProtocolEvent) -> str | None:
+    """Classify the auto-compaction signal in an adapted v3 protocol event.
+
+    deepagents 0.6.9 streams its summarization tokens on the ``messages`` channel
+    tagged ``metadata.lc_source == "summarization"`` (these must be suppressed so
+    the summary text never leaks into the answer), and commits the compaction via
+    a ``_summarization_event`` on the ``values`` channel. Returns
+    ``"summary_token"`` / ``"committed"`` / ``None``.
+    """
+    method = event["method"]
+    data = event["data"]
+    if method == "messages" and isinstance(data, Mapping):
+        metadata = data.get("metadata")
+        if isinstance(metadata, Mapping) and metadata.get("lc_source") == "summarization":
+            return "summary_token"
+    summarization_event = _compaction_summarization_event(event)
+    if summarization_event is not None:
+        cutoff_index = summarization_event.get("cutoff_index")
+        if isinstance(cutoff_index, int) and cutoff_index > 0:
+            return "committed"
+    return None
+
+
+def _compaction_offload_path(event: StoredProtocolEvent, thread_id: str) -> str | None:
+    summarization_event = _compaction_summarization_event(event)
+    if summarization_event is not None:
+        file_path = summarization_event.get("file_path")
+        if isinstance(file_path, str) and file_path:
+            return file_path
+    # FilesystemBackend(virtual_mode=True) offloads deterministically here when the
+    # event omits an explicit ``file_path`` (runtime_component_builder).
+    return f"/conversation_history/{thread_id}.md" if thread_id else None
+
+
+def _compaction_cutoff_index(event: StoredProtocolEvent) -> int | None:
+    summarization_event = _compaction_summarization_event(event)
+    if summarization_event is not None:
+        cutoff_index = summarization_event.get("cutoff_index")
+        if isinstance(cutoff_index, int):
+            return cutoff_index
+    return None
+
+
+def _compaction_event(
+    *,
+    run_id: str,
+    thread_id: str,
+    seq: int,
+    state: str,
+    offload_path: str | None = None,
+    cutoff_index: int | None = None,
+) -> StoredProtocolEvent:
+    payload: dict[str, Any] = {"state": state}
+    if offload_path is not None:
+        payload["offload_path"] = offload_path
+    if cutoff_index is not None:
+        payload["cutoff_index"] = cutoff_index
+    # Stable event id (``run:compaction:<state>``) so a reload replay dedupes the
+    # marker instead of stacking duplicates — same contract as memory/artifact
+    # side-effect events.
+    stable_id = f"{run_id}:compaction:{state}"
+    return stored_custom_protocol_event(
+        run_id=run_id,
+        thread_id=thread_id,
+        seq=seq,
+        name=event_names.COMPACTION,
+        payload=payload,
+        event_id=stable_id,
+        id=stable_id,
+    )
+
+
 async def stream_agent_response_langgraph(
     agent: Any,
     input_: list[Any] | Command | dict[str, Any] | None,
@@ -154,6 +239,11 @@ async def stream_agent_response_langgraph(
     last_persist_flush_at = time.monotonic()
     seen_usage_keys: set[tuple[str | None, int, int, int, int, float | None]] = set()
     seen_synthesized_tool_call_ids: set[str] = set()
+    # Auto-compaction marker — one running + one done per run (dedup flags). When
+    # the flag is off, summarization tokens flow through unchanged (legacy).
+    compaction_enabled = settings.compaction_marker_enabled
+    compaction_running_emitted = False
+    compaction_done_emitted = False
     # 스트리밍 timing — 스트림 시작부터 첫 텍스트 토큰(messages 채널)까지(TTFT) +
     # 총 생성시간. usage 이벤트에 실려 같은 경로로 흐른다.
     stream_started_at = time.monotonic()
@@ -248,6 +338,34 @@ async def stream_agent_response_langgraph(
                     thread_id=thread_id,
                     seq=fallback_seq,
                 )
+                if compaction_enabled:
+                    signal = _compaction_signal(event)
+                    if signal == "summary_token":
+                        if not compaction_running_emitted:
+                            compaction_running_emitted = True
+                            side_effect_seq += 1
+                            yield await emit(
+                                _compaction_event(
+                                    run_id=msg_id,
+                                    thread_id=thread_id,
+                                    seq=side_effect_seq,
+                                    state="running",
+                                )
+                            )
+                        continue
+                    if signal == "committed" and not compaction_done_emitted:
+                        compaction_done_emitted = True
+                        side_effect_seq += 1
+                        yield await emit(
+                            _compaction_event(
+                                run_id=msg_id,
+                                thread_id=thread_id,
+                                seq=side_effect_seq,
+                                state="done",
+                                offload_path=_compaction_offload_path(event, thread_id),
+                                cutoff_index=_compaction_cutoff_index(event),
+                            )
+                        )
                 yield await emit(event)
                 for chunk in await emit_canonical_interrupts(event):
                     yield chunk
@@ -294,6 +412,38 @@ async def stream_agent_response_langgraph(
                 if _is_empty_input_requested_event(event):
                     deferred_empty_input_requested = event
                     continue
+                if compaction_enabled:
+                    signal = _compaction_signal(event)
+                    if signal == "summary_token":
+                        # ★ Suppress: summarization tokens must never reach the
+                        # client (they would render as ghost/answer text). Emit the
+                        # transient "running" marker once on the first such token.
+                        if not compaction_running_emitted:
+                            compaction_running_emitted = True
+                            side_effect_seq += 1
+                            yield await emit(
+                                _compaction_event(
+                                    run_id=msg_id,
+                                    thread_id=thread_id,
+                                    seq=side_effect_seq,
+                                    state="running",
+                                )
+                            )
+                        continue
+                    if signal == "committed" and not compaction_done_emitted:
+                        compaction_done_emitted = True
+                        side_effect_seq += 1
+                        yield await emit(
+                            _compaction_event(
+                                run_id=msg_id,
+                                thread_id=thread_id,
+                                seq=side_effect_seq,
+                                state="done",
+                                offload_path=_compaction_offload_path(event, thread_id),
+                                cutoff_index=_compaction_cutoff_index(event),
+                            )
+                        )
+                        # The values event itself still flows below (state sync).
                 yield await emit(event)
                 for chunk in await emit_canonical_interrupts(event):
                     yield chunk

@@ -267,12 +267,14 @@ class TestCreateChatModelGpt5Family:
     @staticmethod
     def _patched_create(model_name: str, **extra):
         from unittest.mock import MagicMock, patch
+
         mock_cls = MagicMock()
         with patch.dict(
             "app.agent_runtime.model_factory.PROVIDER_MAP",
             {"openai": mock_cls},
         ):
             from app.agent_runtime.model_factory import create_chat_model
+
             create_chat_model("openai", model_name, api_key="sk-test", **extra)
         return mock_cls.call_args[1]
 
@@ -322,12 +324,14 @@ class TestCreateChatModelBaseUrlGuard:
     @staticmethod
     def _patched_create(provider: str, model_name: str, base_url=None):
         from unittest.mock import MagicMock, patch
+
         mock_cls = MagicMock()
         with patch.dict(
             "app.agent_runtime.model_factory.PROVIDER_MAP",
             {provider: mock_cls},
         ):
             from app.agent_runtime.model_factory import create_chat_model
+
             create_chat_model(provider, model_name, api_key="sk-test", base_url=base_url)
         return mock_cls.call_args[1]
 
@@ -351,3 +355,105 @@ class TestCreateChatModelBaseUrlGuard:
         """anthropic 은 ChatOpenAI 가 아니므로 base_url 가드 영향 없음."""
         kwargs = self._patched_create("anthropic", "claude-sonnet-4-6")
         assert "base_url" not in kwargs
+
+
+class TestContextWindowProfileInjection:
+    """Phase 0 — context_window → model.profile['max_input_tokens'] 주입.
+
+    deepagents 자동 SummarizationMiddleware 의 compute_summarization_defaults
+    가 우리 단일 source(context_window)를 임계값으로 쓰게 한다.
+    """
+
+    def test_context_window_not_forwarded_to_model_constructor(self):
+        """context_window 는 profile 주입용이지 모델 생성 kwarg 가 아니다 — 누수 금지."""
+        mock_cls = MagicMock()
+        with patch.dict(
+            "app.agent_runtime.model_factory.PROVIDER_MAP",
+            {"openai_compatible": mock_cls},
+        ):
+            from app.agent_runtime.model_factory import create_chat_model
+
+            create_chat_model(
+                "openai_compatible",
+                "gw-model",
+                api_key="sk-x",
+                base_url="https://gw/v1",
+                context_window=1500,
+            )
+        kwargs = mock_cls.call_args[1]
+        assert "context_window" not in kwargs
+
+    def test_profileless_model_flips_to_fraction_trigger(self):
+        """openai_compatible(프로필 없음): cw 주입 → 고정 170k → ('fraction', 0.85)."""
+        from deepagents.middleware.summarization import compute_summarization_defaults
+
+        from app.agent_runtime.model_factory import create_chat_model
+
+        model = create_chat_model(
+            "openai_compatible",
+            "gw-model",
+            api_key="sk-x",
+            base_url="https://gw/v1",
+            context_window=1500,
+        )
+        assert (model.profile or {}).get("max_input_tokens") == 1500
+        assert compute_summarization_defaults(model)["trigger"] == ("fraction", 0.85)
+
+    def test_no_context_window_keeps_default_threshold(self):
+        """cw 미지정: 프로필 그대로 → 기존 동작 보존(profile-less = 고정 170k)."""
+        from deepagents.middleware.summarization import compute_summarization_defaults
+
+        from app.agent_runtime.model_factory import create_chat_model
+
+        model = create_chat_model(
+            "openai_compatible",
+            "gw-model",
+            api_key="sk-x",
+            base_url="https://gw/v1",
+        )
+        assert model.profile is None
+        assert compute_summarization_defaults(model)["trigger"] == ("tokens", 170000)
+
+    def test_our_window_overrides_builtin_profile(self):
+        """정식 모델(내장 프로필 보유)도 우리 cw 가 단일 source 로 override."""
+        from app.agent_runtime.model_factory import create_chat_model
+
+        model = create_chat_model(
+            "anthropic", "claude-sonnet-4-6", api_key="sk-x", context_window=200000
+        )
+        assert (model.profile or {}).get("max_input_tokens") == 200000
+
+    def test_distinct_windows_are_not_cache_shared(self):
+        """cw 가 다르면 캐시 슬롯 분리 — tiny-window 빌드가 운영 인스턴스를 오염시키지 않는다."""
+        from app.agent_runtime.model_factory import create_chat_model
+
+        small = create_chat_model(
+            "openai_compatible",
+            "same",
+            api_key="sk-x",
+            base_url="https://gw/v1",
+            context_window=1500,
+        )
+        big = create_chat_model(
+            "openai_compatible",
+            "same",
+            api_key="sk-x",
+            base_url="https://gw/v1",
+            context_window=200000,
+        )
+        assert small is not big
+        assert (small.profile or {}).get("max_input_tokens") == 1500
+        assert (big.profile or {}).get("max_input_tokens") == 200000
+
+    def test_invalid_window_is_ignored(self):
+        """0/음수/비정수 cw 는 무시 — profile 주입 안 함."""
+        from app.agent_runtime.model_factory import create_chat_model
+
+        model = create_chat_model(
+            "openai_compatible",
+            "gw-model",
+            api_key="sk-x",
+            base_url="https://gw/v1",
+            context_window=0,
+        )
+        assert model.profile is None

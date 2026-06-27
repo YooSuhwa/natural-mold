@@ -140,6 +140,7 @@ def _model_cache_key(
     resolved_key: str | None,
     base_url: str | None,
     kwargs: dict[str, Any],
+    context_window: int | None = None,
 ) -> tuple[Any, ...]:
     key_kwargs = {
         k: v for k, v in kwargs.items() if k not in {"api_key", "http_async_client", "http_client"}
@@ -149,8 +150,44 @@ def _model_cache_key(
         model_name,
         base_url,
         _api_key_fingerprint(resolved_key),
+        # ``context_window`` is injected post-construction into ``model.profile``
+        # (not a constructor kwarg), so it must be part of the key to keep
+        # models built with different windows in distinct cache slots — a
+        # tiny-window test build must not poison the production instance.
+        context_window,
         json.dumps(_jsonable(key_kwargs), sort_keys=True, separators=(",", ":")),
     )
+
+
+def _apply_context_window_profile(model: BaseChatModel, context_window: int | None) -> None:
+    """Inject our DB ``context_window`` into the LangChain model ``profile``.
+
+    deepagents auto-injects ``SummarizationMiddleware``; its
+    ``compute_summarization_defaults`` reads ``model.profile["max_input_tokens"]``
+    to pick the trigger. Profile-less models (``openai_compatible``/custom
+    gateways) otherwise fall back to a fixed ``("tokens", 170000)`` threshold
+    that is unrelated to the real limit. Writing our single-source-of-truth
+    window flips them onto the model-aware ``("fraction", 0.85)`` path and keeps
+    the chat context gauge and the auto-compaction threshold on the same number.
+
+    ``model.profile`` is a writable Pydantic field (verified for ChatOpenAI /
+    ChatAnthropic / ChatGoogleGenerativeAI); failures are swallowed defensively
+    so a profile quirk never breaks model construction.
+    """
+
+    if not context_window:
+        return
+    try:
+        cw = int(context_window)
+    except (TypeError, ValueError):
+        return
+    if cw <= 0:
+        return
+    try:
+        existing = getattr(model, "profile", None) or {}
+        model.profile = {**existing, "max_input_tokens": cw}
+    except Exception:  # noqa: BLE001 — profile write is best-effort
+        logger.debug("context_window profile injection failed", exc_info=True)
 
 
 async def _await_close_result(result: Awaitable[Any]) -> None:
@@ -234,6 +271,10 @@ def create_chat_model(
 
     cls = PROVIDER_MAP.get(provider, ChatOpenAI)
 
+    # ``context_window`` is consumed here (injected into ``model.profile`` for
+    # the auto-summarization threshold), not forwarded to the model constructor.
+    context_window = extra.pop("context_window", None)
+
     fallback_key = _ENV_FALLBACK.get(provider) if allow_env_fallback else None
     resolved_key = api_key or fallback_key or None
     kwargs: dict[str, Any] = {"model": model_name}
@@ -255,12 +296,14 @@ def create_chat_model(
     _apply_openai_compatible_base_url(provider, kwargs)
 
     kwargs["stream_usage"] = True
+    cw = int(context_window) if isinstance(context_window, int) and context_window > 0 else None
     cache_key = _model_cache_key(
         provider=provider,
         model_name=model_name,
         resolved_key=resolved_key,
         base_url=base_url,
         kwargs=kwargs,
+        context_window=cw,
     )
     cached = _MODEL_CACHE.get(cache_key)
     if cached is not None:
@@ -270,6 +313,7 @@ def create_chat_model(
     _apply_openai_ssl_clients(cls, kwargs)
 
     model = cls(**kwargs)
+    _apply_context_window_profile(model, cw)
     _MODEL_CACHE[cache_key] = model
     _MODEL_CACHE.move_to_end(cache_key)
     while len(_MODEL_CACHE) > _MODEL_CACHE_MAXSIZE:

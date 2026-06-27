@@ -26,6 +26,11 @@ INTERRUPT: Final = "interrupt"
 TOOL_CALL_START: Final = "tool_call_start"
 TOOL_CALL_RESULT: Final = "tool_call_result"
 FILE_EVENT: Final = "file_event"
+# Auto-compaction side-channel (dev-plan-context-compaction-marker.md). Emitted as
+# a ``custom`` protocol event (``name="moldy.compaction"``) carrying ``{state}`` —
+# ``running`` while deepagents summarizes older messages, ``done`` once the
+# ``_summarization_event`` is committed (with ``offload_path`` / ``cutoff_index``).
+COMPACTION: Final = "moldy.compaction"
 MEMORY_PROPOSED: Final = "memory_proposed"
 MEMORY_SAVED: Final = "memory_saved"
 MEMORY_REJECTED: Final = "memory_rejected"

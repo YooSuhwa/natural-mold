@@ -88,9 +88,7 @@ async def _seed_credential() -> tuple[uuid.UUID, str]:
 
 def test_recoverable_classifier_accepts_documented_codes() -> None:
     for status in (401, 403, 404, 408, 409, 429, 500, 502, 503, 504):
-        response = httpx.Response(
-            status, request=httpx.Request("POST", "https://example/v1/x")
-        )
+        response = httpx.Response(status, request=httpx.Request("POST", "https://example/v1/x"))
         exc = httpx.HTTPStatusError("x", request=response.request, response=response)
         assert _is_fallback_recoverable(exc), f"{status} should be recoverable"
 
@@ -129,6 +127,51 @@ def test_executor_chain_uses_fallback_when_primary_fails() -> None:
     assert isinstance(result, _FakeChatModel)
     assert result.marker == "anthropic/claude-sonnet"
     assert calls == [("openai", "gpt-4o"), ("anthropic", "claude-sonnet")]
+
+
+def test_context_window_forwarded_to_create_chat_model() -> None:
+    """AgentConfig.context_window → create_chat_model(context_window=...) 배선 (Phase 0)."""
+    captured: dict[str, Any] = {}
+
+    def _fake(provider: str, model_name: str, *args: Any, **kwargs: Any) -> _FakeChatModel:
+        captured.update(kwargs)
+        return _FakeChatModel(f"{provider}/{model_name}")
+
+    cfg = AgentConfig(
+        provider="openai_compatible",
+        model_name="gw-model",
+        api_key=None,
+        base_url="https://gw/v1",
+        system_prompt="hi",
+        tools_config=[],
+        thread_id="t",
+        context_window=1500,
+    )
+    with patch("app.agent_runtime.runtime_component_builder.create_chat_model", side_effect=_fake):
+        _build_model_with_fallback(cfg)
+    assert captured.get("context_window") == 1500
+
+
+def test_context_window_absent_when_unset() -> None:
+    """context_window 미설정이면 kwarg 자체를 넘기지 않는다 (내부 sub-agent 등 하위호환)."""
+    captured: dict[str, Any] = {}
+
+    def _fake(provider: str, model_name: str, *args: Any, **kwargs: Any) -> _FakeChatModel:
+        captured.update(kwargs)
+        return _FakeChatModel(f"{provider}/{model_name}")
+
+    cfg = AgentConfig(
+        provider="openai",
+        model_name="gpt-4o",
+        api_key=None,
+        base_url=None,
+        system_prompt="hi",
+        tools_config=[],
+        thread_id="t",
+    )
+    with patch("app.agent_runtime.runtime_component_builder.create_chat_model", side_effect=_fake):
+        _build_model_with_fallback(cfg)
+    assert "context_window" not in captured
 
 
 def test_executor_chain_re_raises_when_all_fail() -> None:
@@ -287,9 +330,8 @@ async def test_with_fallback_records_audit_on_each_attempt() -> None:
 
         agent_loaded = (
             await db.execute(
-                __import__(
-                    "sqlalchemy", fromlist=["select"]
-                ).select(Agent)
+                __import__("sqlalchemy", fromlist=["select"])
+                .select(Agent)
                 .where(Agent.id == agent.id)
                 .options(selectinload(Agent.model))
             )
@@ -297,22 +339,24 @@ async def test_with_fallback_records_audit_on_each_attempt() -> None:
 
         _, fake = _wire_create_model_failures(fail_count=1)
         with patch.object(model_factory, "create_chat_model", side_effect=fake):
-            chat = await create_chat_model_with_fallback(
-                agent_loaded, db, api_key="sk-test"
-            )
+            chat = await create_chat_model_with_fallback(agent_loaded, db, api_key="sk-test")
         assert isinstance(chat, _FakeChatModel)
 
     async with TestSession() as db:
         from sqlalchemy import select
 
         rows = (
-            await db.execute(
-                select(CredentialAuditLog).where(
-                    CredentialAuditLog.credential_id == cred_id,
-                    CredentialAuditLog.action == "fallback",
+            (
+                await db.execute(
+                    select(CredentialAuditLog).where(
+                        CredentialAuditLog.credential_id == cred_id,
+                        CredentialAuditLog.action == "fallback",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         # One failure (primary) + one success (fallback) = 2 audit rows.
         assert len(rows) == 2
         successes = [r for r in rows if (r.log_metadata or {}).get("success") is True]
@@ -355,9 +399,7 @@ async def test_with_fallback_no_chain_returns_primary() -> None:
 
         _, fake = _wire_create_model_failures(fail_count=0)
         with patch.object(model_factory, "create_chat_model", side_effect=fake):
-            result = await create_chat_model_with_fallback(
-                agent_loaded, db, api_key="sk-test"
-            )
+            result = await create_chat_model_with_fallback(agent_loaded, db, api_key="sk-test")
         assert isinstance(result, _FakeChatModel)
 
     # No fallback list → no audit rows
@@ -365,11 +407,15 @@ async def test_with_fallback_no_chain_returns_primary() -> None:
         from sqlalchemy import select
 
         rows = (
-            await db.execute(
-                select(CredentialAuditLog).where(
-                    CredentialAuditLog.credential_id == cred_id,
-                    CredentialAuditLog.action == "fallback",
+            (
+                await db.execute(
+                    select(CredentialAuditLog).where(
+                        CredentialAuditLog.credential_id == cred_id,
+                        CredentialAuditLog.action == "fallback",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(rows) == 0

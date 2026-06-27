@@ -84,7 +84,10 @@ from app.scheduler import (
 from app.security.production_check import enforce_production_safety
 from app.seed.bootstrap_from_env import bootstrap_system_credentials
 from app.seed.default_marketplace_skills import seed_default_marketplace_skills
-from app.seed.default_models import DEFAULT_MODELS
+from app.seed.default_models import (
+    DEFAULT_MODELS,
+    backfill_default_model_context_windows,
+)
 from app.seed.default_templates import DEFAULT_TEMPLATES
 from app.seed.e2e_llm import seed_e2e_llm
 from app.seed.e2e_scripted_model import seed_e2e_scripted_model
@@ -114,6 +117,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     if k not in {"provider_id", "api_key_encrypted"}
                 }
                 db.add(Model(**clean))
+        else:
+            # Backfill ``context_window`` for the seeded default models on DBs
+            # created before it was seeded (single source of truth for the chat
+            # context gauge + auto-summarization threshold). Only fills NULLs;
+            # operator-customised windows are never overwritten.
+            await backfill_default_model_context_windows(db)
 
         # Seed default templates (upsert by name).
         existing_tmpl = await db.execute(select(Template.name))
