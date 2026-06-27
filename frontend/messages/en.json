@@ -1619,12 +1619,18 @@
       "subagent": "{name} is working",
       "artifact": "Preparing files",
       "memory": "Updating memory",
+      "compaction": "Compacting earlier messages…",
       "interrupt": "Waiting for approval",
       "checkpoint": "Saving checkpoint",
       "responding": "Writing response",
       "reconnecting": "Reconnecting stream",
       "done": "Done",
       "error": "Something went wrong"
+    },
+    "compaction": {
+      "summary": "Older messages were summarized to free up context",
+      "viewOriginal": "View original",
+      "copied": "Path copied"
     },
     "subagents": {
       "progress": "{completed}/{total} sub-agents done",

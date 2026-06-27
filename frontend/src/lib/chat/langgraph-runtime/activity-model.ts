@@ -284,6 +284,18 @@ function reduceCustom(current: readonly RunActivity[], event: ProtocolEvent): Ru
       data: dataRecord(payload),
     })
   }
+  if (name === 'compaction' || name === 'moldy.compaction') {
+    // Transient "압축 중…" — running while deepagents summarizes; flips to
+    // complete (and disappears from the strip) once the done marker lands. Same
+    // activity id across running/done so upsert transitions the one pill.
+    const state = isRecord(payload) ? textValue(payload.state) : undefined
+    return upsertActivity(current, {
+      ...activityBase(event, 'compaction', 'compaction'),
+      status: state === 'done' ? 'complete' : 'running',
+      title: 'Compaction',
+      data: dataRecord(payload),
+    })
+  }
   if (name === 'stale' || name === 'reconnect') {
     return upsertActivity(current, {
       ...activityBase(event, 'reconnecting', name),

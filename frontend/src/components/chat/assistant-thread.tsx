@@ -77,6 +77,8 @@ import {
   type GroupedRenderInfo,
 } from '@/lib/chat/group-assistant-parts'
 import { StreamingMessageLoadingIndicator } from '@/components/chat/assistant-message-loading'
+import { CompactionSummary } from '@/components/chat/compaction-summary'
+import type { CompactionMarker } from '@/lib/chat/langgraph-runtime/compaction-events'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
@@ -335,6 +337,19 @@ function AssistantMessageParts() {
 
 function useMessageArtifacts(): ArtifactSummary[] {
   return useAuiState((s) => selectMessageArtifactsFromMessage(s.message))
+}
+
+function AssistantCompactionMarker() {
+  // Selector returns the marker object (reference-stable while the converted
+  // message is unchanged) or the null constant — never a fresh object, so this
+  // can't loop-render `useAuiState`.
+  const compaction = useAuiState(
+    (s) =>
+      (s.message?.metadata as { custom?: { compaction?: CompactionMarker } } | undefined)?.custom
+        ?.compaction ?? null,
+  )
+  if (!compaction) return null
+  return <CompactionSummary offloadPath={compaction.offloadPath} className="mt-2" />
 }
 
 function AssistantArtifactCards() {
@@ -938,6 +953,7 @@ export function AssistantThread({
             <div className="min-w-0 flex-1">
               <AssistantMessageParts />
               <AssistantArtifactCards />
+              <AssistantCompactionMarker />
               {metaRow}
             </div>
           </div>

@@ -22,6 +22,7 @@ from app.agent_runtime.memory_event_projection import (
 from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
 from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.agent_runtime.usage_timing import compute_usage_timing
+from app.config import settings
 from app.marketplace.redaction import redact_keys
 
 logger = logging.getLogger(__name__)
@@ -400,6 +401,16 @@ async def stream_agent_response(
                 # Builder v3 sub-LLM 호출은 화면 스트림에서 제외 (helpers.py에서 tag 부여)
                 chunk_tags = (metadata or {}).get("tags") or []
                 if "builder:internal" in chunk_tags:
+                    continue
+                # ★ Auto-compaction leak guard — deepagents summarization tokens
+                # carry ``metadata.lc_source == "summarization"``. Suppress them so
+                # the summary text never bleeds into the answer. The legacy path is
+                # non-production, so it only suppresses (no running/done marker; that
+                # is v3-only). Exact match — answer tokens have no lc_source.
+                if (
+                    settings.compaction_marker_enabled
+                    and (metadata or {}).get("lc_source") == "summarization"
+                ):
                     continue
                 # LangChain ``usage_metadata``는 input/output 외에
                 # ``input_token_details``로 cache_creation/cache_read를 분리해 전달

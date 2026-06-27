@@ -233,6 +233,12 @@ class Settings(BaseSettings):
     e2e_llm_model: str = ""
     chat_run_stale_after_seconds: int = 300
     chat_run_stale_sweep_interval_seconds: int = 60
+    # Auto-compaction marker (dev-plan-context-compaction-marker.md). When on, the
+    # v3 stream suppresses deepagents summarization tokens (leak guard) and emits a
+    # ``moldy.compaction`` side-channel event (running/done) so the chat UI can show
+    # a transient "압축 중…" indicator + a permanent "이전 대화를 요약했어요" marker.
+    # Off = legacy behavior (summarization tokens flow through, no marker).
+    compaction_marker_enabled: bool = True
 
     # CORS allowed origins. Comma-separated origins, e.g.
     # "https://moldy.dev,https://staging.moldy.dev". Default permits the

@@ -1598,12 +1598,18 @@
       "subagent": "{name} 작업 중",
       "artifact": "파일을 준비하는 중",
       "memory": "기억을 업데이트하는 중",
+      "compaction": "이전 대화를 압축하는 중…",
       "interrupt": "승인을 기다리는 중",
       "checkpoint": "작업 지점을 저장하는 중",
       "responding": "응답을 작성하는 중",
       "reconnecting": "스트림을 다시 연결하는 중",
       "done": "완료됨",
       "error": "문제가 발생했습니다"
+    },
+    "compaction": {
+      "summary": "이전 대화를 요약해 컨텍스트를 정리했어요",
+      "viewOriginal": "원본 보기",
+      "copied": "경로가 복사되었습니다"
     },
     "subagents": {
       "progress": "서브 에이전트 {completed}/{total} 완료",

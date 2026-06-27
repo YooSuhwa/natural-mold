@@ -43,6 +43,7 @@ import {
   type ResolvedInterruptToolCall,
 } from './hitl-interrupts'
 import { useLangGraphMemoryEffects } from './memory-events'
+import { useLangGraphCompactionEffects } from './compaction-events'
 import {
   dedupeLangChainMessagesById,
   langChainMessageFingerprint,
@@ -2366,11 +2367,15 @@ export function useMoldyLangGraphStream({
     messages: messagesWithArtifacts,
     stateMessages: stream.values?.messages ?? [],
   })
+  const messagesWithCompaction = useLangGraphCompactionEffects({
+    stream,
+    messages: messagesWithUsage,
+  })
   const terminalNoticeText =
     threadRunNotice?.status === 'stale' ? tReconnect('stale') : tPage('canceled')
   const messagesWithTerminalNotice = useMemo(
-    () => appendTerminalRunNotice(messagesWithUsage, threadRunNotice, terminalNoticeText),
-    [messagesWithUsage, terminalNoticeText, threadRunNotice],
+    () => appendTerminalRunNotice(messagesWithCompaction, threadRunNotice, terminalNoticeText),
+    [messagesWithCompaction, terminalNoticeText, threadRunNotice],
   )
   const stickyMessagesWithTerminalNotice = useStickyConversationMessages(
     conversationId,
