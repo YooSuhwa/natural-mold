@@ -39,11 +39,13 @@
 ## 테스트 (§7 — 85% 안 채우고 window 작게)
 - [x] L1 vitest — compaction-events 9개 (파싱/attach/fallback + reduceCustom) + compaction-summary 렌더
 - [x] L2 백엔드 — B7 (누수 0 + emit 1쌍 + 답변 무손실 + flag off) 2 passed
-- [ ] L3 (선택) scripted E2E_COMPACTION 캡쳐 — 사용자 확인 후 결정
+- [x] L3 scripted E2E `chat-compaction.spec.ts` — 작은-context scripted model로 압축 재현,
+      transient pill + 영구 마커 단언. throwaway 스택에서 `--retries=0` **1 passed (1.4m)** clean pass.
+      (tool-icons.ts pre-existing unhandled error는 별도 fix 커밋 8f97f511로 해결)
 
-## 완료 기준
+## 완료 기준 — 전부 충족 ✅
 - [x] tsc 0 / vitest 1049 / 백엔드 ruff+pytest / lint(i18n·design-system) / build 그린
-      (vitest 1 unhandled error = tool-icons.ts pre-existing, 내 변경 무관)
-- [ ] 실서버(또는 scripted) 캡쳐: "압축 중…" + 영구 마커 — L3과 함께 결정
+- [x] 실서버 캡쳐: "압축 중…" + 영구 마커 (scripted model context_window=50 실제 압축 재현, png 2종 전달)
+- [x] scripted E2E spec clean pass (--retries=0)
 - [x] feature flag off 가능
-- [ ] 마커 전용 독립 커밋 → push → PR
+- [x] 마커 전용 독립 커밋 → push → PR #262 (E2E spec 커밋 추가)
