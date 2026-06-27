@@ -74,6 +74,9 @@ const PREFIX_TOOL_ICONS: ReadonlyArray<readonly [string, LucideIcon]> = [
  * 고정 맵이 1순위다.
  */
 export function builtinToolIcon(toolName: string): LucideIcon | null {
+  // Defensive: a tool fallback can render before its name resolves (undefined),
+  // which previously threw on ``.startsWith``. Treat a missing name as unmapped.
+  if (!toolName) return null
   const exact = EXACT_TOOL_ICONS[toolName]
   if (exact) return exact
   for (const [prefix, icon] of PREFIX_TOOL_ICONS) {
