@@ -2,8 +2,9 @@
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
-import { ExternalLinkIcon, GlobeIcon } from 'lucide-react'
+import { ExternalLinkIcon, GlobeIcon, SearchIcon } from 'lucide-react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
+import { useIsToolGroupChild } from './tool-group-child-context'
 import { parseSearchResults, type SearchResultItem } from './search-tool-data'
 
 // ──────────────────────────────────────────────
@@ -83,6 +84,9 @@ function SearchRender({
   status: { readonly type: string }
 }) {
   const t = useTranslations('chat.toolCall.search')
+  // 그룹 안의 검색 자식은 기본 접힘(쿼리 제목만) — N개가 모두 카드까지 펼쳐지면
+  // 너무 길어진다. 단독 검색(그룹 아님)은 지금처럼 결과를 바로 펼친다.
+  const isGroupChild = useIsToolGroupChild()
   const isRunning = status.type === 'running'
   const items = parseSearchResults(result)
   const title = args?.query ? `"${args.query}"` : t('defaultTitle')
@@ -104,10 +108,11 @@ function SearchRender({
   return (
     <CollapsiblePill
       kind="tool"
+      leadingIcon={SearchIcon}
       status={pillStatusFromAssistantUi(status.type)}
       title={title}
       meta={meta}
-      defaultExpanded={!isRunning && items.length > 0}
+      defaultExpanded={!isGroupChild && !isRunning && items.length > 0}
     >
       {body}
     </CollapsiblePill>

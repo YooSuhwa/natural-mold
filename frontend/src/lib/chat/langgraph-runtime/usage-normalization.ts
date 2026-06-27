@@ -73,6 +73,14 @@ function usageFromRecord(payload: Record<string, unknown>): TokenUsageBreakdown 
   if (estimatedCost !== undefined) {
     usage.estimated_cost = estimatedCost
   }
+  // 스트리밍 timing (TTFT/총시간/tok-s) — usage 옆에 실려 오므로 함께 복사.
+  // 새 객체를 명시 빌드하는 화이트리스트라 추가하지 않으면 drop된다.
+  const ttftMs = numberValue(payload.ttft_ms)
+  if (ttftMs !== undefined) usage.ttft_ms = ttftMs
+  const generationMs = numberValue(payload.generation_ms)
+  if (generationMs !== undefined) usage.generation_ms = generationMs
+  const tokensPerSecond = numberValue(payload.tokens_per_second)
+  if (tokensPerSecond !== undefined) usage.tokens_per_second = tokensPerSecond
   return usage
 }
 
@@ -105,14 +113,27 @@ export function protocolUsagePayload(event: unknown): UsagePayload | null {
 
 export function usageFromMessage(message: BaseMessage): TokenUsageBreakdown | null {
   const usageMetadata = (message as { usage_metadata?: unknown }).usage_metadata
-  if (isRecord(usageMetadata)) {
-    return usageFromRecord(usageMetadata)
-  }
+  const native = isRecord(usageMetadata) ? usageFromRecord(usageMetadata) : null
+
+  // ``additional_kwargs.metadata.usage`` 는 우리 usage 이벤트 프로젝션이 써 넣은
+  // enriched usage (token + cost + 스트리밍 timing). native ``usage_metadata`` 는
+  // 토큰만 있고 cost/timing 이 없으므로, 토큰은 native 기준으로 두되 cost/timing 은
+  // enriched 에서 보강한다(둘 다 같은 응답이라 토큰은 동일).
   const additionalKwargs = (message as { additional_kwargs?: unknown }).additional_kwargs
   const metadata =
     isRecord(additionalKwargs) && isRecord(additionalKwargs.metadata)
       ? additionalKwargs.metadata
       : null
-  const usage = metadata?.usage
-  return isRecord(usage) ? usageFromRecord(usage) : null
+  const enriched = isRecord(metadata?.usage) ? usageFromRecord(metadata.usage) : null
+
+  if (native && enriched) {
+    return {
+      ...native,
+      estimated_cost: native.estimated_cost ?? enriched.estimated_cost,
+      ttft_ms: enriched.ttft_ms,
+      generation_ms: enriched.generation_ms,
+      tokens_per_second: enriched.tokens_per_second,
+    }
+  }
+  return native ?? enriched
 }

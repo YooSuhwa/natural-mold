@@ -11,7 +11,6 @@ import {
   GoogleSearchToolUI,
   GoogleNewsSearchToolUI,
 } from '@/components/chat/tool-ui/search-tool-ui'
-import { DeepResearchSummaryToolUI } from '@/components/chat/tool-ui/deep-research-summary-ui'
 import {
   ReadFileToolUI,
   WriteFileToolUI,
@@ -46,7 +45,6 @@ export const ALL_TOOL_UI = [
   ProposeMemoryToolUI,
   SaveUserMemoryToolUI,
   SaveAgentMemoryToolUI,
-  DeepResearchSummaryToolUI,
   TavilySearchToolUI,
   WebSearchToolUI,
   NaverBlogSearchToolUI,

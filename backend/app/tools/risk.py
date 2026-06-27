@@ -172,6 +172,10 @@ def builtin_tool_risk(definition_key: str) -> ToolRiskMetadata:
         "builtin:web_scraper",
         "builtin:current_datetime",
         "builtin:resolve_relative_date",
+        # E2E-only deterministic scripted search (gated by
+        # e2e_scripted_model_enabled). READ_ONLY like the real web_search so the
+        # search-group fixture streams to completion without a HITL interrupt.
+        "builtin:e2e_scripted_search",
     }:
         return coerce_tool_risk(risk_metadata_dict(ToolRiskLevel.READ_ONLY))
     return coerce_tool_risk(

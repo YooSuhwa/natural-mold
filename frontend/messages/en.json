@@ -1204,6 +1204,20 @@
   },
   "chat": {
     "defaultAgentName": "Default Agent Name",
+    "toolGroup": {
+      "count": "{count} calls",
+      "sourceCount": "{count} sources",
+      "labels": {
+        "webSearch": "Web search",
+        "naverBlog": "Naver blog",
+        "naverNews": "Naver news",
+        "googleSearch": "Google search",
+        "googleNews": "Google news",
+        "readFile": "Read file",
+        "writeFile": "Write file",
+        "editFile": "Edit file"
+      }
+    },
     "memory": {
       "title": "Memory",
       "proposed": "Save proposed",
@@ -1331,7 +1345,8 @@
       "sendButton": "Send Button",
       "scrollToBottom": "Scroll to bottom",
       "attachComingSoon": "Attach Coming Soon",
-      "templateComingSoon": "Template Coming Soon"
+      "templateComingSoon": "Template Coming Soon",
+      "sessionCost": "Session cost"
     },
     "tokenUsage": {
       "title": "Token Usage",
@@ -1341,7 +1356,17 @@
       "cacheCreation": "Cache Creation",
       "cacheRead": "Cache Read",
       "cost": "Cost",
-      "toggleAria": "Toggle Aria"
+      "toggleAria": "Toggle Aria",
+      "tokensPerSecond": "{value} tok/s",
+      "ttft": "First token {value}"
+    },
+    "contextWindow": {
+      "label": "Context usage",
+      "percentAria": "Context {percent}% used",
+      "disabledAria": "Context limit unknown",
+      "disabledShort": "no limit",
+      "disabled": "This model has no configured context window (context_window), so usage can't be shown.",
+      "compactHint": "Context is nearly full. Consider starting a new conversation or compacting."
     },
     "message": {
       "toolResult": "Tool Result",
@@ -1480,12 +1505,6 @@
         "defaultTitle": "Default Title",
         "running": "Running",
         "count": "{count} results"
-      },
-      "deepResearch": {
-        "completed": "Research complete",
-        "running": "Researching · {count} searches",
-        "sourceCount": "{count} sources",
-        "resultCount": "{count} results"
       },
       "plan": {
         "title": "Plan",
@@ -1710,9 +1729,6 @@
         "title": "Delete Dialog",
         "description": "This conversation will be deleted. This cannot be undone."
       }
-    },
-    "skillsRow": {
-      "label": "Label"
     },
     "branch": {
       "previous": "Previous",

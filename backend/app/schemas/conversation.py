@@ -163,6 +163,12 @@ class TokenUsageBreakdown(BaseModel):
     cache_creation_tokens: int
     cache_read_tokens: int
     estimated_cost: float | None = None
+    # 스트리밍 timing 메트릭 (TTFT / 총 생성시간(ms) / 출력 tok/s). live-only —
+    # checkpointer에 영속되지 않아 새로고침 후엔 None. token/cost 옆에 실어
+    # 같은 SSE/변환 경로로 흐른다 (assistant-ui ``useMessageTiming`` 호환 개념).
+    ttft_ms: float | None = None
+    generation_ms: float | None = None
+    tokens_per_second: float | None = None
 
 
 class MessageResponse(BaseModel):

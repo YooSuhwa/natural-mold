@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, NotRequired, TypedDict
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_custom_protocol_event
+from app.agent_runtime.usage_timing import compute_usage_timing
 
 
 class UsageMetricsPayload(TypedDict):
@@ -12,6 +13,10 @@ class UsageMetricsPayload(TypedDict):
     cache_creation_tokens: int
     cache_read_tokens: int
     estimated_cost: NotRequired[float]
+    # 스트리밍 timing (live-only) — usage 옆에 실어 같은 경로로 흐른다.
+    ttft_ms: NotRequired[float]
+    generation_ms: NotRequired[float]
+    tokens_per_second: NotRequired[float]
 
 
 class UsagePayload(UsageMetricsPayload):
@@ -36,6 +41,8 @@ def collect_protocol_usage_event(
     usage_sink: dict[str, Any] | None,
     cost_per_input_token: float | None,
     cost_per_output_token: float | None,
+    started_at: float | None = None,
+    first_token_at: float | None = None,
 ) -> tuple[StoredProtocolEvent | None, int]:
     candidate = _usage_candidate_from_event(
         event,
@@ -73,6 +80,16 @@ def collect_protocol_usage_event(
         payload["estimated_cost"] = sink_payload["estimated_cost"]
     if candidate["assistant_msg_id"] is not None:
         payload["assistant_msg_id"] = candidate["assistant_msg_id"]
+
+    # 스트리밍 timing — usage 이벤트가 증분 발행되므로 매 발행마다 현재 elapsed를
+    # 실으면 마지막(최종 토큰) 이벤트가 최종 timing이 된다(특수 처리 불필요).
+    if started_at is not None:
+        timing = compute_usage_timing(
+            started_at=started_at,
+            first_token_at=first_token_at,
+            completion_tokens=candidate["completion_tokens"],
+        )
+        payload.update(timing)  # type: ignore[typeddict-item]  # NotRequired float keys
 
     event_id = f"{event['id']}:usage"
     return (

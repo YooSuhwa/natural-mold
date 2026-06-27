@@ -154,6 +154,10 @@ async def stream_agent_response_langgraph(
     last_persist_flush_at = time.monotonic()
     seen_usage_keys: set[tuple[str | None, int, int, int, int, float | None]] = set()
     seen_synthesized_tool_call_ids: set[str] = set()
+    # 스트리밍 timing — 스트림 시작부터 첫 텍스트 토큰(messages 채널)까지(TTFT) +
+    # 총 생성시간. usage 이벤트에 실려 같은 경로로 흐른다.
+    stream_started_at = time.monotonic()
+    first_token_at: float | None = None
 
     async def flush_persist_buffer(*, force: bool = False) -> None:
         nonlocal last_persist_flush_at, persist_buffer
@@ -247,6 +251,8 @@ async def stream_agent_response_langgraph(
                 yield await emit(event)
                 for chunk in await emit_canonical_interrupts(event):
                     yield chunk
+                if first_token_at is None and event["method"] == "messages":
+                    first_token_at = time.monotonic()
                 usage_event, side_effect_seq = collect_protocol_usage_event(
                     event,
                     next_seq=side_effect_seq,
@@ -254,6 +260,8 @@ async def stream_agent_response_langgraph(
                     usage_sink=usage_sink,
                     cost_per_input_token=cost_per_input_token,
                     cost_per_output_token=cost_per_output_token,
+                    started_at=stream_started_at,
+                    first_token_at=first_token_at,
                 )
                 if usage_event is not None:
                     yield await emit(usage_event)
@@ -289,6 +297,8 @@ async def stream_agent_response_langgraph(
                 yield await emit(event)
                 for chunk in await emit_canonical_interrupts(event):
                     yield chunk
+                if first_token_at is None and event["method"] == "messages":
+                    first_token_at = time.monotonic()
                 usage_event, side_effect_seq = collect_protocol_usage_event(
                     event,
                     next_seq=side_effect_seq,
@@ -296,6 +306,8 @@ async def stream_agent_response_langgraph(
                     usage_sink=usage_sink,
                     cost_per_input_token=cost_per_input_token,
                     cost_per_output_token=cost_per_output_token,
+                    started_at=stream_started_at,
+                    first_token_at=first_token_at,
                 )
                 if usage_event is not None:
                     yield await emit(usage_event)

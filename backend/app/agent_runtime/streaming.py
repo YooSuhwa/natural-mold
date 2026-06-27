@@ -21,6 +21,7 @@ from app.agent_runtime.memory_event_projection import (
 )
 from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
 from app.agent_runtime.stream_error_messages import public_stream_error_message
+from app.agent_runtime.usage_timing import compute_usage_timing
 from app.marketplace.redaction import redact_keys
 
 logger = logging.getLogger(__name__)
@@ -357,6 +358,8 @@ async def stream_agent_response(
     was_interrupted = False
     stream_failed = False
     usage_data: dict[str, int] = {}
+    # 스트리밍 timing — message_start 직전부터 첫 content 토큰까지(TTFT) + 총 생성시간.
+    first_token_at: float | None = None
     # AIMessageChunk가 같은 tool_call을 partial state로 반복 emit하므로 dedupe.
     emitted_tool_call_keys: set[tuple[str, str]] = set()
     # ADR-004: PatchToolCallsMiddleware가 스트림 필터링을 하지 않으므로
@@ -384,6 +387,7 @@ async def stream_agent_response(
     debug_input = _debug_input_for_message_start(actual_input)
     if debug_input is not None:
         start_data["input"] = debug_input
+    stream_started_at = time.monotonic()
     yield emit(event_names.MESSAGE_START, start_data)
     try:
         try:
@@ -430,6 +434,8 @@ async def stream_agent_response(
                     # 보내므로 text 블록만 평탄화. message_utils의 공유 헬퍼 사용.
                     delta = content_to_text(msg.content)
                     if delta:
+                        if first_token_at is None:
+                            first_token_at = time.monotonic()
                         _pending = ""
                         for ch in delta:
                             if ch == "{" and _brace_depth == 0:
@@ -592,8 +598,20 @@ async def stream_agent_response(
             usage_data["estimated_cost"] = round(cost, 8)  # type: ignore[assignment]  # SSE payload는 float 허용
 
         # Surface captured usage to the caller (executor → hook framework).
+        # timing은 hook이 쓰지 않으므로 sink 갱신 이후, SSE emit 직전에만 병합한다.
         if usage_sink is not None and usage_data:
             usage_sink.update(usage_data)
+
+        # 스트리밍 timing(TTFT/총시간/tok-s)을 usage payload에 같이 실어 보낸다.
+        # 토큰이 있을 때만(=팝오버가 렌더되는 경우만) 의미가 있어 그 경우에 병합.
+        if usage_data:
+            usage_data.update(  # type: ignore[arg-type]  # timing은 float, SSE payload 허용
+                compute_usage_timing(
+                    started_at=stream_started_at,
+                    first_token_at=first_token_at,
+                    completion_tokens=int(usage_data.get("completion_tokens", 0) or 0),
+                )
+            )
 
         yield emit(
             event_names.MESSAGE_END,

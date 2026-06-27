@@ -57,6 +57,10 @@ vi.mock('@assistant-ui/react', () => {
     },
     MessagePrimitive: {
       Content: () => <span>메시지</span>,
+      // AssistantMessageParts now renders parts via GroupedParts. These action
+      // tests don't assert on tool grouping, so a minimal stub that mirrors the
+      // old Content text output keeps the message body present.
+      GroupedParts: () => <span>메시지</span>,
     },
     ComposerPrimitive: {
       Root: passthrough,

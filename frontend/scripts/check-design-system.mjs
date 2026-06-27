@@ -332,6 +332,10 @@ const INLINE_SVG_ALLOWLIST = [
     reason: 'data-driven usage spend line chart',
   },
   {
+    filePath: 'src/components/chat/context-window-gauge.tsx',
+    reason: 'data-driven context-window progress ring (SVG donut)',
+  },
+  {
     filePath: 'src/components/agent-prism/BrandLogo.tsx',
     reason: 'vendor/brand logos without lucide equivalents',
   },
@@ -352,6 +356,11 @@ const STYLE_ATTRIBUTE_ALLOWLIST = [
     filePath: 'src/components/usage/spend-bar-chart.tsx',
     reason: 'data-driven bar width',
     context: /style=\{\{\s*width:\s*`\$\{widthPct\}%`\s*\}\}/,
+  },
+  {
+    filePath: 'src/components/chat/context-window-gauge.tsx',
+    reason: 'SVG ring stroke-dashoffset for context-window progress ratio',
+    context: /style=\{\{\s*strokeDashoffset\s*\}\}/,
   },
   {
     filePath: 'src/components/shared/resource-layout.tsx',

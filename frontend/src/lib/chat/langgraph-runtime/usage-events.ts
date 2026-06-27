@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChannel, type AnyStream } from '@langchain/react'
 import type { BaseMessage } from '@langchain/core/messages'
 import { useSetAtom } from 'jotai'
-import { sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
+import { latestTurnUsageAtom, sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
 import type { TokenUsageBreakdown } from '@/lib/types'
 import {
   isRecord,
@@ -59,12 +59,16 @@ function updateUsageMap(
   if (shouldDeleteSuperseded && supersededKey) {
     delete next[supersededKey]
   }
-  if (sameUsage(next[key], usage) && !shouldDeleteSuperseded) {
+  // v3는 같은 메시지에 token-only(message-finish)와 timing/cost 포함(합성 usage)
+  // 두 소스가 와서 서로 덮어쓴다. 비어 있는 timing/cost를 기존 값으로 backfill해
+  // 어느 순서로 도착해도 유실되지 않게 한다.
+  const merged = mergeUsageTiming(next[key], usage)
+  if (sameUsage(next[key], merged) && !shouldDeleteSuperseded) {
     return current
   }
   return {
     ...next,
-    [key]: usage,
+    [key]: merged,
   }
 }
 
@@ -94,8 +98,36 @@ function sameUsage(
     left.completion_tokens === right.completion_tokens &&
     left.cache_creation_tokens === right.cache_creation_tokens &&
     left.cache_read_tokens === right.cache_read_tokens &&
-    left.estimated_cost === right.estimated_cost
+    left.estimated_cost === right.estimated_cost &&
+    left.ttft_ms === right.ttft_ms &&
+    left.generation_ms === right.generation_ms &&
+    left.tokens_per_second === right.tokens_per_second
   )
+}
+
+/**
+ * v3는 같은 메시지에 usage 소스가 둘 — ① message-finish의 raw usage_metadata(token만),
+ * ② 합성 `usage` 프로토콜 이벤트(token + cost + 스트리밍 timing). 둘이 같은 키로 매핑돼
+ * 나중에 온 쪽이 덮어쓰므로 timing/cost가 한쪽에만 있으면 유실된다. 새 usage가 비운
+ * timing/cost를 기존 값으로 backfill해 도착 순서와 무관하게 보존한다.
+ */
+function mergeUsageTiming(
+  prev: TokenUsageBreakdown | undefined,
+  next: TokenUsageBreakdown,
+): TokenUsageBreakdown {
+  if (!prev) return next
+  const merged: TokenUsageBreakdown = { ...next }
+  if (merged.ttft_ms === undefined && prev.ttft_ms !== undefined) merged.ttft_ms = prev.ttft_ms
+  if (merged.generation_ms === undefined && prev.generation_ms !== undefined) {
+    merged.generation_ms = prev.generation_ms
+  }
+  if (merged.tokens_per_second === undefined && prev.tokens_per_second !== undefined) {
+    merged.tokens_per_second = prev.tokens_per_second
+  }
+  if (merged.estimated_cost === undefined && prev.estimated_cost !== undefined) {
+    merged.estimated_cost = prev.estimated_cost
+  }
+  return merged
 }
 
 function sameTokenUsage(left: TokenUsage | null, right: TokenUsage): boolean {
@@ -144,6 +176,10 @@ function usageFingerprint(usage: TokenUsageBreakdown | undefined): string {
     cache_creation_tokens: usage.cache_creation_tokens,
     cache_read_tokens: usage.cache_read_tokens,
     estimated_cost: usage.estimated_cost,
+    // timing이 token-only usage 뒤에 도착할 때 useStableUsageMap이 재메모화하도록 포함.
+    ttft_ms: usage.ttft_ms,
+    generation_ms: usage.generation_ms,
+    tokens_per_second: usage.tokens_per_second,
   })
 }
 
@@ -375,6 +411,7 @@ export function useLangGraphUsageEffects({
   stateMessages = [],
 }: UseLangGraphUsageEffectsOptions): MessageWithUsage[] {
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
+  const setLatestTurnUsage = useSetAtom(latestTurnUsageAtom)
   const usageScope = useMemo(
     () => ({
       conversationId,
@@ -466,5 +503,30 @@ export function useLangGraphUsageEffects({
     [messages, usagesByMessageId],
   )
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => attachUsageToMessages(messages, usagesByMessageId), [attachedFingerprint])
+  const attachedMessages = useMemo(
+    () => attachUsageToMessages(messages, usagesByMessageId),
+    [attachedFingerprint],
+  )
+
+  // 컨텍스트 게이지용 — 가장 최근 assistant 메시지의 usage(점유량은 prompt_tokens,
+  // 세션 누적이 아니라 "현재 컨텍스트 크기 = 마지막 턴 입력"). usagesByMessageId의
+  // 키(run/message id)는 렌더 메시지 id와 어긋날 수 있으므로, usage가 이미 붙은
+  // attachedMessages에서 토큰 팝오버와 동일하게 usageFromMessage로 읽는다.
+  const latestTurnUsage = useMemo<TokenUsageBreakdown | null>(() => {
+    for (let index = attachedMessages.length - 1; index >= 0; index -= 1) {
+      const message = attachedMessages[index]
+      if (!isAssistantMessage(message)) continue
+      const usage = usageFromMessage(message)
+      if (usage) return usage
+    }
+    return null
+  }, [attachedMessages])
+  const lastTurnUsageRef = useRef<TokenUsageBreakdown | null>(null)
+  useEffect(() => {
+    if (sameUsage(lastTurnUsageRef.current ?? undefined, latestTurnUsage ?? undefined)) return
+    lastTurnUsageRef.current = latestTurnUsage
+    setLatestTurnUsage(latestTurnUsage)
+  }, [setLatestTurnUsage, latestTurnUsage])
+
+  return attachedMessages
 }

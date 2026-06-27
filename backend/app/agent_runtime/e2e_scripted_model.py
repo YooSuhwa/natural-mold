@@ -201,6 +201,79 @@ HITL_MULTI_TOOL_CALLS = (
         },
     },
 )
+TOOL_GROUP_MARKER = "E2E_TOOL_GROUP"
+# Generic tool-call grouping fixture. ONE AIMessage emits N≥2 *consecutive*
+# tool_calls of the SAME tool (``current_datetime`` ×3) plus ONE call of a
+# DIFFERENT tool (``resolve_relative_date`` ×1). The frontend
+# ``MessagePrimitive.GroupedParts`` must collapse the three identical calls into
+# a single group container ("current_datetime · 3회") while the single different
+# call renders as its own pill.
+#
+# Both tools are the always-appended temporal builtins
+# (``_append_temporal_tools`` in ``runtime_component_builder``): no network, no
+# external API, no flakiness, and — unlike ``write_file``/``execute_in_skill`` —
+# they carry NO default HITL ``interrupt_on`` policy, so the run streams to
+# completion without pausing on an approval card. Neither tool name maps to a
+# ``chat.toolGroup.labels.*`` key, so the group header falls back to the raw
+# tool name, which the E2E asserts on directly (locale-independent, robust).
+TOOL_GROUP_GROUPED_TOOL = "current_datetime"
+TOOL_GROUP_GROUPED_COUNT = 3
+TOOL_GROUP_SEPARATE_TOOL = "resolve_relative_date"
+TOOL_GROUP_FINAL_CONTENT = "E2E tool group rendering complete."
+
+
+def _tool_group_tool_calls() -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = [
+        {
+            "id": f"call_e2e_tool_group_dt_{index}",
+            "name": TOOL_GROUP_GROUPED_TOOL,
+            "args": {},
+        }
+        for index in range(TOOL_GROUP_GROUPED_COUNT)
+    ]
+    calls.append(
+        {
+            "id": "call_e2e_tool_group_relative",
+            "name": TOOL_GROUP_SEPARATE_TOOL,
+            "args": {"expression": "오늘"},
+        }
+    )
+    return calls
+
+
+SEARCH_GROUP_MARKER = "E2E_SEARCH_GROUP"
+# Search-tool grouping + source-aggregate fixture (LITE deep-research source row).
+# ONE AIMessage emits ``tavily_search`` ×3 *consecutive same-tool* calls with
+# DISTINCT queries. ``tavily_search`` is the deterministic, no-network scripted
+# search builtin (``builtin:e2e_scripted_search`` in ``tool_factory``) that the
+# runtime appends only when ``e2e_scripted_model_enabled`` is set. Each query
+# returns a different multi-domain slice, so the frontend search-group aggregate
+# collapses the 3 calls into ONE container ("웹 검색 · 3회") whose header shows
+# domain badges + "출처 N개". ``tavily_search`` maps to label key ``webSearch``
+# and carries NO HITL interrupt, so the run streams to completion uninterrupted.
+#
+# Source math (see ``_E2E_SCRIPTED_SEARCH_RESULTS``): 3 calls × 3 results = 9
+# unique URLs across 5 unique domains (react.dev, vercel.com, nextjs.org,
+# typescriptlang.org, developer.mozilla.org) → sourceCount = 9.
+SEARCH_GROUP_TOOL = "tavily_search"
+SEARCH_GROUP_QUERIES = ("react routing", "react hooks", "typescript generics")
+SEARCH_GROUP_COUNT = len(SEARCH_GROUP_QUERIES)
+SEARCH_GROUP_SOURCE_COUNT = 9
+SEARCH_GROUP_DOMAIN_COUNT = 5
+SEARCH_GROUP_FINAL_CONTENT = "E2E search group rendering complete."
+
+
+def _search_group_tool_calls() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": f"call_e2e_search_group_{index}",
+            "name": SEARCH_GROUP_TOOL,
+            "args": {"query": query},
+        }
+        for index, query in enumerate(SEARCH_GROUP_QUERIES)
+    ]
+
+
 ASK_USER_FRUIT_MARKER = "E2E_ASK_USER_FRUIT"
 ASK_USER_FRUIT_TOOL_CALL_ID = "call_e2e_ask_user_fruit"
 ASK_USER_FRUIT_PREFACE_CONTENT = "네, 골라봐요!"
@@ -350,6 +423,12 @@ class E2EScriptedChatModel(BaseChatModel):
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if messages and isinstance(messages[-1], ToolMessage):
+            if SEARCH_GROUP_MARKER in human_text:
+                message = AIMessage(content=SEARCH_GROUP_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
+            if TOOL_GROUP_MARKER in human_text:
+                message = AIMessage(content=TOOL_GROUP_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
             if _is_ask_user_fruit_request(human_text):
                 message = AIMessage(content=ASK_USER_FRUIT_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
@@ -398,6 +477,20 @@ class E2EScriptedChatModel(BaseChatModel):
                 # dict(tool_args) copy in _document_tool_call.
                 tool_calls=[{**call, "args": dict(call["args"])} for call in HITL_MULTI_TOOL_CALLS],
             )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if SEARCH_GROUP_MARKER in human_text:
+            # ONE AIMessage with N≥2 consecutive same-tool search calls (distinct
+            # queries → distinct scripted result slices). Fresh dicts every call
+            # so the downstream graph cannot mutate shared module state.
+            message = AIMessage(content="", tool_calls=_search_group_tool_calls())
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if TOOL_GROUP_MARKER in human_text:
+            # ONE AIMessage with N≥2 consecutive same-tool calls + 1 different
+            # tool. _tool_group_tool_calls() builds fresh dicts every call so the
+            # downstream graph cannot mutate shared module state across runs.
+            message = AIMessage(content="", tool_calls=_tool_group_tool_calls())
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if _is_hitl_approval_request(human_text):
@@ -493,9 +586,21 @@ __all__ = [
     "ASK_USER_FRUIT_TOOL_CALL_ID",
     "LANGGRAPH_V3_MARKER",
     "SCRIPTED_DOCUMENT_COMMANDS",
+    "SEARCH_GROUP_COUNT",
+    "SEARCH_GROUP_DOMAIN_COUNT",
+    "SEARCH_GROUP_FINAL_CONTENT",
+    "SEARCH_GROUP_MARKER",
+    "SEARCH_GROUP_QUERIES",
+    "SEARCH_GROUP_SOURCE_COUNT",
+    "SEARCH_GROUP_TOOL",
     "SLOW_STREAM_MARKER",
     "TOKEN_USAGE_CONTENT",
     "TOKEN_USAGE_MARKER",
     "TOKEN_USAGE_METADATA",
+    "TOOL_GROUP_FINAL_CONTENT",
+    "TOOL_GROUP_GROUPED_COUNT",
+    "TOOL_GROUP_GROUPED_TOOL",
+    "TOOL_GROUP_MARKER",
+    "TOOL_GROUP_SEPARATE_TOOL",
     "VISUAL_SLOW_STREAM_MARKER",
 ]

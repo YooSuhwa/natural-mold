@@ -31,7 +31,14 @@ type StreamFn = (
 
 type ThreadRenderProps = Pick<
   AssistantThreadProps,
-  'agentImageUrl' | 'agentName' | 'conversationId' | 'emptyContent' | 'modelName' | 'user'
+  | 'agentImageUrl'
+  | 'agentName'
+  | 'conversationId'
+  | 'contextWindow'
+  | 'emptyContent'
+  | 'modelName'
+  | 'showContextGauge'
+  | 'user'
 >
 
 export interface ChatRuntimeSectionProps {
@@ -46,6 +53,10 @@ export interface ChatRuntimeSectionProps {
   readonly latestRun: ConversationRun | null
   readonly messages: Message[]
   readonly modelName?: string
+  /** 메인 v3 채팅 컴포저에 컨텍스트 창 사용량 게이지 표시. */
+  readonly showContextGauge?: boolean
+  /** 컨텍스트 게이지 한도(agent.model.context_window). null이면 비활성. */
+  readonly contextWindow?: number | null
   readonly onRuntimeStatusChange: (status: ConversationRuntimeStatus) => void
   readonly onBeforeNewMessage?: () => void
   readonly onNewMessageAccepted?: () => void
@@ -68,6 +79,8 @@ export function ChatRuntimeSection({
   latestRun,
   messages,
   modelName,
+  showContextGauge,
+  contextWindow,
   onRuntimeStatusChange,
   onBeforeNewMessage,
   onNewMessageAccepted,
@@ -82,11 +95,22 @@ export function ChatRuntimeSection({
       agentImageUrl,
       agentName,
       conversationId: activeConversationId ?? undefined,
+      contextWindow,
       emptyContent,
       modelName,
+      showContextGauge,
       user,
     }),
-    [activeConversationId, agentImageUrl, agentName, emptyContent, modelName, user],
+    [
+      activeConversationId,
+      agentImageUrl,
+      agentName,
+      contextWindow,
+      emptyContent,
+      modelName,
+      showContextGauge,
+      user,
+    ],
   )
 
   if (useLangGraphRuntime && activeConversationId) {

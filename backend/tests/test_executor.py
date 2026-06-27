@@ -412,8 +412,16 @@ async def test_execute_stream_runtime_tool_called_per_entry(
     mock_build: MagicMock,
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     from app.agent_runtime.agent_stream_runner import execute_agent_stream
+    from app.config import settings
+
+    # builtin:e2e_scripted_search는 E2E 전용 도구(e2e_scripted_model_enabled로
+    # gating)인데 dev .env가 E2E_SCRIPTED_MODEL_ENABLED=true라 unit 빌드에 새어
+    # 든다. 이 테스트는 production-like runtime-tool 구성(개수)을 검증하므로
+    # 명시적으로 비활성화한다.
+    monkeypatch.setattr(settings, "e2e_scripted_model_enabled", False)
 
     mock_model_factory.return_value = MagicMock()
     mock_convert.return_value = []

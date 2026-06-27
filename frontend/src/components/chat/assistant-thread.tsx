@@ -8,6 +8,7 @@ import {
   useContext,
   useMemo,
   useState,
+  type ReactNode,
   type UIEvent,
 } from 'react'
 import {
@@ -22,6 +23,7 @@ import {
   useAui,
   type AssistantDataUI,
   type AssistantToolUI,
+  type EnrichedPartState,
 } from '@assistant-ui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
@@ -49,6 +51,7 @@ import {
   ImageIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CoinsIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useAtomValue, useSetAtom } from 'jotai'
@@ -59,11 +62,20 @@ import { UserAvatar } from '@/components/auth/UserAvatar'
 import type { User } from '@/lib/types/user'
 import {
   chatCancelInFlightAtom,
+  latestTurnUsageAtom,
   pendingEditBranchPickerSuppressionAtom,
   sessionTokenUsageAtom,
   type TokenUsage,
 } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
+import { ToolGroupContainer } from '@/components/chat/tool-ui/tool-group-container'
+import { ContextWindowGauge } from '@/components/chat/context-window-gauge'
+import {
+  groupAssistantParts,
+  isGroupToolNode,
+  groupToolName,
+  type GroupedRenderInfo,
+} from '@/lib/chat/group-assistant-parts'
 import { StreamingMessageLoadingIndicator } from '@/components/chat/assistant-message-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
@@ -136,8 +148,9 @@ function MessageTimestamp() {
   const tCommon = useTranslations('common')
   const createdAt = useAuiState((s) => (s.message as { createdAt?: Date } | undefined)?.createdAt)
   if (!createdAt) return null
+  // 액션 아이콘 클러스터와 시각(정보)을 구분 — 끝에 두고 약간 떨어뜨린다.
   return (
-    <span className="moldy-ui-micro text-muted-foreground">
+    <span className="ml-1 shrink-0 tabular-nums moldy-ui-micro text-muted-foreground">
       {formatRelativeShort(createdAt, tCommon('yesterday'))}
     </span>
   )
@@ -215,7 +228,16 @@ function OrderedTextPart() {
   )
 }
 
-function OrderedToolFallback(props: {
+/** order-1 자리에 개별 tool-call 한 줄(등록 per-tool UI 또는 폴백)을 렌더.
+ * 그룹 컨테이너(ToolGroupContainer)와 동일한 order-1을 써서 시각 위치를 통일. */
+function OrderedToolCall({
+  toolUI,
+  toolName,
+  args,
+  result,
+  status,
+}: {
+  toolUI: ReactNode
   toolName: string
   args: Record<string, unknown>
   result?: unknown
@@ -223,20 +245,90 @@ function OrderedToolFallback(props: {
 }) {
   return (
     <div className="order-1">
-      <ToolCallFallback {...props} />
+      {toolUI ?? (
+        <ToolCallFallback toolName={toolName} args={args} result={result} status={status} />
+      )}
     </div>
   )
 }
 
-const ASSISTANT_PART_COMPONENTS = {
-  Text: OrderedTextPart,
-  tools: { Fallback: OrderedToolFallback },
-} as const
+// ── 범용 tool-call 그룹핑 (공식 MessagePrimitive.GroupedParts) ─────────────
+//
+// 연속 같은 도구 호출(N≥2)을 1개 ToolGroupContainer로 묶는다. N=1·비-tool part는
+// 기존과 동일하게 개별 렌더. groupBy/render fn은 모듈 레벨 const로 둬서
+// assistant-ui 내부 메모화(identity 기반)가 매 토큰마다 깨지지 않게 한다 —
+// 위 OrderedTextPart 주석과 같은 이유로 streaming 표시 안정성에 필요하다.
+//
+// groupBy/노드 판별은 빌더 렌더(builder-overrides.tsx)와 공유하므로
+// `group-assistant-parts.ts`에 두고, 각 표면의 leaf 비주얼만 render fn에서 분기한다.
+
+// 기존 테스트(assistant-thread-grouping.test)가 이 모듈에서 import하므로 re-export.
+export { groupAssistantParts }
+
+/** GroupedParts의 노드/leaf를 그린다. group-tool 노드는 N≥2면 컨테이너, N=1이면
+ * 개별 패스스루. leaf는 MessagePrimitive.Parts 기본 동작을 재현한다(아래 default 주석). */
+export function renderGroupedAssistantPart({ part, children }: GroupedRenderInfo): ReactNode {
+  if (isGroupToolNode(part)) {
+    const running = part.status?.type === 'running'
+    // N=1은 컨테이너 없이 개별 tool-call과 동일한 order-1로 통과. buildGroupTree는
+    // 단일 tool-call도 그룹 노드로 감싸므로 여기서 임계값(N<2)을 처리한다.
+    if (part.indices.length < 2) {
+      return <div className="order-1">{children}</div>
+    }
+    // running→펼침/done→접힘은 key remount로 달성한다(CollapsiblePill은 uncontrolled).
+    return (
+      <div className="order-1">
+        <ToolGroupContainer
+          key={running ? 'running' : 'done'}
+          toolName={groupToolName(part)}
+          count={part.indices.length}
+          running={running}
+          indices={part.indices}
+        >
+          {children}
+        </ToolGroupContainer>
+      </div>
+    )
+  }
+
+  switch (part.type) {
+    case 'text':
+      return <OrderedTextPart />
+    case 'tool-call': {
+      const leaf = part as Extract<EnrichedPartState, { type: 'tool-call' }>
+      return (
+        <OrderedToolCall
+          toolUI={leaf.toolUI}
+          toolName={leaf.toolName}
+          args={leaf.args as Record<string, unknown>}
+          result={leaf.result}
+          status={leaf.status}
+        />
+      )
+    }
+    case 'data': {
+      // MessagePrimitive.Parts의 data 기본값은 등록된 data renderer(우리: reasoning).
+      // order wrapper 없이(=order-0) 렌더 → 기존 동작대로 tool-call/text보다 앞에 표시.
+      const leaf = part as Extract<EnrichedPartState, { type: 'data' }>
+      return leaf.dataRendererUI
+    }
+    case 'indicator':
+      // indicator="never"라 발화하지 않지만 방어적으로 null. 로딩 인디케이터는
+      // AssistantMsg가 StreamingMessageLoadingIndicator로 별도 렌더한다.
+      return null
+    default:
+      // image/file/source/reasoning 등: 우리 앱은 Parts에 Text/tools.Fallback만
+      // 넘겼고 나머지는 Parts 기본값이 전부 null을 반환한다. 그 동작을 그대로 재현.
+      return null
+  }
+}
 
 function AssistantMessageParts() {
   return (
     <div className="flex flex-col">
-      <MessagePrimitive.Content components={ASSISTANT_PART_COMPONENTS} />
+      <MessagePrimitive.GroupedParts groupBy={groupAssistantParts} indicator="never">
+        {renderGroupedAssistantPart}
+      </MessagePrimitive.GroupedParts>
     </div>
   )
 }
@@ -307,7 +399,7 @@ function AssistantArtifactCards() {
 function MessageMetaRow({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="mt-1 flex min-h-7 max-w-full items-center gap-1 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+      className="mt-1 flex min-h-7 max-w-full items-center gap-0.5 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
       data-moldy-message-meta-row="true"
     >
       {children}
@@ -616,6 +708,11 @@ export interface AssistantThreadProps {
   modelName?: string
   /** true이면 Composer 토큰 바 표시 */
   showTokenBar?: boolean
+  /** true이면 Composer 하단에 컨텍스트 창 사용량 게이지 표시(메인 v3 채팅 전용).
+   * 켜지면 모델명은 상단 바 대신 게이지 옆(하단)에 표시된다. */
+  showContextGauge?: boolean
+  /** 컨텍스트 게이지 한도. agent.model.context_window. null이면 게이지 비활성. */
+  contextWindow?: number | null
   /** 컴팩트 모드 (AssistantPanel용) — Composer 높이 축소 */
   compact?: boolean
   /** true이면 메시지 하단에 createdAt 시간 라벨 표시 */
@@ -673,6 +770,8 @@ export function AssistantThread({
   user,
   modelName,
   showTokenBar = false,
+  showContextGauge = false,
+  contextWindow,
   compact = false,
   showMessageTimestamp = false,
   emptyContent,
@@ -795,12 +894,12 @@ export function AssistantThread({
         const tChat = useTranslations('chat')
         const metaRow = (
           <MessageMetaRow>
-            {showMessageTimestamp && <MessageTimestamp />}
             <BranchPicker />
             <CopyButton />
             <RegenerateButton />
             <FeedbackButtons />
             <TokenUsagePopover />
+            {showMessageTimestamp && <MessageTimestamp />}
           </MessageMetaRow>
         )
         if (isBuilder) {
@@ -906,6 +1005,8 @@ export function AssistantThread({
               <ThreadComposer
                 modelName={modelName}
                 showTokenBar={showTokenBar}
+                showContextGauge={showContextGauge}
+                contextWindow={contextWindow}
                 compact={compact}
                 enableAttachments={enableAttachments}
                 focusKey={conversationId}
@@ -943,12 +1044,16 @@ function ScrollToBottomButton({ isAtBottom }: { isAtBottom: boolean }) {
 function ThreadComposer({
   modelName,
   showTokenBar,
+  showContextGauge = false,
+  contextWindow,
   compact,
   enableAttachments = false,
   focusKey,
 }: {
   modelName?: string
   showTokenBar?: boolean
+  showContextGauge?: boolean
+  contextWindow?: number | null
   compact?: boolean
   enableAttachments?: boolean
   focusKey?: string | null
@@ -956,14 +1061,20 @@ function ThreadComposer({
   const t = useTranslations('chat.input')
   const tMsg = useTranslations('chat.message')
   const tokenUsage = useAtomValue(sessionTokenUsageAtom)
+  const latestTurnUsage = useAtomValue(latestTurnUsageAtom)
   const hasTokens = showTokenBar && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)
+  const hasCost = showTokenBar && tokenUsage.cost > 0
+  // 컨텍스트 게이지 모드: 모델명·게이지·세션비용을 모두 하단 툴바로 모으고 상단
+  // 민트 바는 없앤다(클로드코드式). 레거시 표면은 상단 모델/토큰 바를 그대로 쓴다.
+  const showTopModelName = Boolean(modelName) && !showContextGauge
+  const topBarVisible = !showContextGauge && (showTopModelName || hasTokens)
 
   return (
-    <ComposerPrimitive.Root className="moldy-chat-card">
-      {/* Model & Token bar */}
-      {(modelName || hasTokens) && (
+    <ComposerPrimitive.Root className="moldy-chat-card @container">
+      {/* Model & Token bar (레거시 표면 전용 — 게이지 모드에선 하단으로 이동) */}
+      {topBarVisible && (
         <div className="flex items-center gap-3 border-b border-border/60 bg-primary/35 px-3.5 py-1.5 text-xs text-muted-foreground">
-          {modelName && <span className="font-medium text-foreground/70">{modelName}</span>}
+          {showTopModelName && <span className="font-medium text-foreground/70">{modelName}</span>}
           {hasTokens && (
             <TokenBar tokenUsage={tokenUsage} showDivider={false} className="ml-auto" />
           )}
@@ -992,8 +1103,8 @@ function ThreadComposer({
       />
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-2 py-1.5">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+        <div className="flex min-w-0 items-center gap-1">
           {enableAttachments && (
             <ComposerPrimitive.AddAttachment asChild>
               <Button
@@ -1008,17 +1119,36 @@ function ThreadComposer({
             </ComposerPrimitive.AddAttachment>
           )}
         </div>
-        <AuiIf condition={(s) => !s.thread.isRunning}>
-          <ComposerPrimitive.Send asChild>
-            <Button type="submit" size="icon-sm" className="rounded-full">
-              <SendIcon className="size-4" />
-              <span className="sr-only">{t('sendButton')}</span>
-            </Button>
-          </ComposerPrimitive.Send>
-        </AuiIf>
-        <AuiIf condition={(s) => s.thread.isRunning}>
-          <StopButton />
-        </AuiIf>
+        {/* 오른쪽 아래: 모델명 + 컨텍스트 게이지 + 세션 총비용(클로드코드式) + Send/Stop */}
+        <div className="flex min-w-0 items-center gap-1.5">
+          {showContextGauge && (
+            <ContextWindowGauge
+              usage={latestTurnUsage}
+              contextWindow={contextWindow}
+              modelName={modelName}
+            />
+          )}
+          {showContextGauge && hasCost && (
+            <span
+              className="flex shrink-0 items-center gap-1 moldy-ui-micro tabular-nums text-muted-foreground"
+              title={t('sessionCost')}
+            >
+              <CoinsIcon className="size-3" aria-hidden />
+              {formatCost(tokenUsage.cost)}
+            </span>
+          )}
+          <AuiIf condition={(s) => !s.thread.isRunning}>
+            <ComposerPrimitive.Send asChild>
+              <Button type="submit" size="icon-sm" className="rounded-full">
+                <SendIcon className="size-4" />
+                <span className="sr-only">{t('sendButton')}</span>
+              </Button>
+            </ComposerPrimitive.Send>
+          </AuiIf>
+          <AuiIf condition={(s) => s.thread.isRunning}>
+            <StopButton />
+          </AuiIf>
+        </div>
       </div>
     </ComposerPrimitive.Root>
   )

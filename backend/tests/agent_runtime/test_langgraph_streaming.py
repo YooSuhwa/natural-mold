@@ -66,18 +66,25 @@ async def test_langgraph_streaming_projects_usage_metadata_to_custom_event() -> 
         "lifecycle",
     ]
     assert payloads[0]["params"]["data"] == {"event": "running"}
-    assert payloads[2]["params"]["data"] == {
-        "name": "usage",
-        "payload": {
-            "assistant_msg_id": "assistant-usage-1",
-            "run_id": "run-usage",
-            "prompt_tokens": 12,
-            "completion_tokens": 5,
-            "cache_creation_tokens": 2,
-            "cache_read_tokens": 3,
-            "estimated_cost": 0.22,
-        },
-    }
+    usage_event_data = payloads[2]["params"]["data"]
+    assert usage_event_data["name"] == "usage"
+    usage_payload = usage_event_data["payload"]
+    # 핵심 usage(토큰/비용) 키는 정확히 일치한다.
+    for key, value in {
+        "assistant_msg_id": "assistant-usage-1",
+        "run_id": "run-usage",
+        "prompt_tokens": 12,
+        "completion_tokens": 5,
+        "cache_creation_tokens": 2,
+        "cache_read_tokens": 3,
+        "estimated_cost": 0.22,
+    }.items():
+        assert usage_payload[key] == value
+    # 스트리밍 timing 이 usage payload 에 함께 실린다 (값은 monotonic 기반 비결정적이라
+    # 존재/타입만 검증). messages 이벤트가 usage 보다 먼저라 TTFT 도 측정된다.
+    assert isinstance(usage_payload["generation_ms"], float)
+    assert isinstance(usage_payload["tokens_per_second"], float)
+    assert isinstance(usage_payload["ttft_ms"], float)
     assert payloads[3]["params"]["data"] == {"event": "completed"}
     assert usage_sink == {
         "prompt_tokens": 12,

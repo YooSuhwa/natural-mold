@@ -37,9 +37,9 @@ import {
 } from '@/lib/chat/chat-route-replacement'
 import { useLangGraphDraftConversation } from '@/lib/chat/langgraph-runtime/use-langgraph-draft-conversation'
 import { ChatRuntimeSection } from '@/components/chat/chat-runtime-section'
+import { ToolIconProvider } from '@/components/chat/tool-ui/tool-icon-context'
 import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
-import { AgentSkillsRow } from '@/components/chat/agent-skills-row'
 import { ChatRightRail } from '@/components/chat/right-rail/chat-right-rail'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -367,6 +367,15 @@ export default function ChatPage({
     syncPromotedDraftNavigator,
   ])
 
+  // 채팅 도구 pill 아이콘용 — 이 에이전트 도구의 toolName → registry icon_id.
+  const toolIconIds = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {}
+    for (const tool of agent?.tools ?? []) {
+      if (tool.icon_id) map[tool.name] = tool.icon_id
+    }
+    return map
+  }, [agent?.tools])
+
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
   const shouldSuppressEmptyContent =
     useLangGraphRuntime &&
@@ -393,9 +402,6 @@ export default function ChatPage({
           onToggleArtifacts={handleToggleArtifacts}
         />
 
-        {/* Agent skills row (P2-10 — visualizes attached skills) */}
-        <AgentSkillsRow skills={agent?.skills} />
-
         {/* Thread */}
         {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||
         isLangGraphDraftBootstrapping ? (
@@ -410,8 +416,9 @@ export default function ChatPage({
             </div>
           </div>
         ) : (
-          <ChatRuntimeSection
-            activeConversationId={activeConversationId}
+          <ToolIconProvider iconIds={toolIconIds}>
+            <ChatRuntimeSection
+              activeConversationId={activeConversationId}
             activeRun={envelope?.active_run ?? null}
             agentId={agentId}
             agentImageUrl={agent?.image_url}
@@ -422,6 +429,8 @@ export default function ChatPage({
             latestRun={envelope?.latest_run ?? null}
             messages={messages}
             modelName={agent?.model?.display_name}
+            showContextGauge
+            contextWindow={agent?.model?.context_window ?? null}
             onBeforeNewMessage={handleBeforeNewMessage}
             onNewMessageAccepted={handleNewMessageAccepted}
             onRuntimeStatusChange={handleRuntimeStatusChange}
@@ -430,7 +439,8 @@ export default function ChatPage({
             totalCost={envelope?.total_estimated_cost}
             useLangGraphRuntime={useLangGraphRuntime}
             user={user}
-          />
+            />
+          </ToolIconProvider>
         )}
       </section>
 

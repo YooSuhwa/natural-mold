@@ -6,9 +6,12 @@ import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
+import { useIsToolGroupChild } from './tool-group-child-context'
+import { useToolIcon } from './tool-icon-context'
 import { ChatImage } from '@/components/chat/chat-image'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import { toolCallChildLabel } from '@/lib/chat/tool-group-meta'
 
 // ──────────────────────────────────────────────
 // ToolFallbackPanel — 확장 가능 도구 패널
@@ -159,6 +162,10 @@ export function ToolFallbackPanel({
   const t = useTranslations('chat.toolCall')
   const setRail = useSetAtom(chatRightRailAtom)
   const conversationId = useChatConversationId()
+  const leadingIcon = useToolIcon(toolName)
+  // 그룹 자식이면 도구명(그룹 헤더에 이미 있음) 대신 호출별 인자/결과 요약을 제목으로.
+  const isGroupChild = useIsToolGroupChild()
+  const pillTitle = (isGroupChild ? toolCallChildLabel(args, result) : null) ?? toolName
   const hasArgs = args && Object.keys(args).length > 0
   const hasResult = result !== undefined && result !== null
   const railStatus =
@@ -196,8 +203,9 @@ export function ToolFallbackPanel({
     <div className="space-y-2">
       <CollapsiblePill
         kind="tool"
+        leadingIcon={leadingIcon}
         status={pillStatusFromAssistantUi(status)}
-        title={toolName}
+        title={pillTitle}
         meta={status === 'running' ? t('calling') : t('completed')}
         trailing={trailing}
         renderBody={

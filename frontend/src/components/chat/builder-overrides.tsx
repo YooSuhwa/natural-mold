@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import Image from 'next/image'
 import Markdown from 'react-markdown'
 import { useTranslations } from 'next-intl'
@@ -11,6 +11,7 @@ import {
   useAui,
   useAuiState,
   useMessagePartText,
+  type EnrichedPartState,
 } from '@assistant-ui/react'
 import { LayoutGridIcon, PaperclipIcon, SendIcon } from 'lucide-react'
 import { useAtomValue } from 'jotai'
@@ -18,6 +19,13 @@ import { useAtomValue } from 'jotai'
 import { buildMarkdownComponents } from './markdown-components'
 import { CHAT_FINAL_REMARK_PLUGINS } from './markdown-final-plugins'
 import { ToolFallbackPanel } from './tool-ui/generic-tool-ui'
+import { ToolGroupContainer } from './tool-ui/tool-group-container'
+import {
+  groupAssistantParts,
+  isGroupToolNode,
+  groupToolName,
+  type GroupedRenderInfo,
+} from '@/lib/chat/group-assistant-parts'
 import { parsePhaseNarration, type PhaseSegment } from './builder-phase-parser'
 import { SystemEventChip } from './system-event-chip'
 import { ImeSafeComposerInput } from './ime-safe-composer-input'
@@ -165,16 +173,76 @@ function BuilderToolFallback(props: {
   )
 }
 
-const BUILDER_PART_COMPONENTS = {
-  Text: BuilderAssistantTextPart,
-  tools: { Fallback: BuilderToolFallback },
-} as const
+// ── 빌더 표면 tool-call 그룹핑 (메인 v3와 공유하는 GroupedParts) ───────────
+//
+// groupBy/노드 판별은 `group-assistant-parts.ts`에서 메인 v3 채팅과 공유한다.
+// leaf 비주얼만 빌더 전용으로 분기: 텍스트는 phase-narration을 SystemEventChip으로
+// 바꾸는 `BuilderAssistantTextPart`, 도구 박스는 등록된 per-tool UI(leaf.toolUI) →
+// 없으면 `BuilderToolFallback`. 메인 v3와 달리 order 재배치 없이 자연 순서를 쓰며,
+// 묶는 비주얼만 `ToolGroupContainer`(검색류면 출처 집계까지)로 통일한다.
 
-/** Builder Assistant 메시지 본문 — parts 사이에 12px gap stack. */
+/** GroupedParts의 노드/leaf를 빌더 톤으로 그린다. group-tool 노드는 N≥2면 컨테이너,
+ * N=1이면 패스스루. text leaf는 phase-narration 보존, tool-call leaf는 등록 UI 우선. */
+export function renderBuilderGroupedPart({ part, children }: GroupedRenderInfo): ReactNode {
+  if (isGroupToolNode(part)) {
+    const running = part.status?.type === 'running'
+    // N=1은 컨테이너 없이 그룹 내부(단일 tool-call leaf)를 그대로 통과.
+    if (part.indices.length < 2) {
+      return children
+    }
+    // running→펼침/done→접힘은 key remount로 달성(CollapsiblePill은 uncontrolled).
+    return (
+      <ToolGroupContainer
+        key={running ? 'running' : 'done'}
+        toolName={groupToolName(part)}
+        count={part.indices.length}
+        running={running}
+        indices={part.indices}
+      >
+        {children}
+      </ToolGroupContainer>
+    )
+  }
+
+  switch (part.type) {
+    case 'text':
+      return <BuilderAssistantTextPart />
+    case 'tool-call': {
+      // 등록된 per-tool UI(BUILDER_TOOL_UI)는 leaf.toolUI로 흐른다. 미등록 도구는
+      // BuilderToolFallback이 안전망으로 표시 — 기존 tools.Fallback 동작과 동일.
+      const leaf = part as Extract<EnrichedPartState, { type: 'tool-call' }>
+      return (
+        leaf.toolUI ?? (
+          <BuilderToolFallback
+            toolName={leaf.toolName}
+            args={leaf.args as Record<string, unknown>}
+            result={leaf.result}
+            status={leaf.status}
+          />
+        )
+      )
+    }
+    case 'data':
+      // 빌더는 dataUI를 등록하지 않아 보통 undefined(=렌더 없음). 메인 v3와 동일하게
+      // 등록된 data renderer가 있으면 그대로 위임.
+      return (part as Extract<EnrichedPartState, { type: 'data' }>).dataRendererUI
+    case 'indicator':
+      // indicator="never"라 발화하지 않지만 방어적으로 null.
+      return null
+    default:
+      // image/file/source/reasoning 등: 빌더는 Text/tool만 렌더했으므로 기본 null.
+      return null
+  }
+}
+
+/** Builder Assistant 메시지 본문 — parts 사이에 12px gap stack. 연속 같은 도구는
+ * 메인 v3와 동일하게 1개 그룹 컨테이너로 묶는다(GroupedParts). */
 export function BuilderAssistantMessageParts() {
   return (
     <div className="flex flex-col gap-3">
-      <MessagePrimitive.Content components={BUILDER_PART_COMPONENTS} />
+      <MessagePrimitive.GroupedParts groupBy={groupAssistantParts} indicator="never">
+        {renderBuilderGroupedPart}
+      </MessagePrimitive.GroupedParts>
     </div>
   )
 }

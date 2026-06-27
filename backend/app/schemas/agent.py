@@ -146,6 +146,9 @@ class AgentUpdate(BaseModel):
 class ModelBrief(BaseModel):
     id: uuid.UUID
     display_name: str
+    # 컨텍스트 창 한도(토큰). 채팅 컴포저의 컨텍스트 사용량 게이지가 참조한다.
+    # null이면 한도 미설정 모델(게이지 비활성).
+    context_window: int | None = None
 
     model_config = {"from_attributes": True}
 
@@ -153,6 +156,9 @@ class ModelBrief(BaseModel):
 class ToolBrief(BaseModel):
     id: uuid.UUID
     name: str
+    # 도구 registry 정의의 icon_id(domain `icon_id`). 채팅 도구 pill이 의미 아이콘을
+    # 고르는 데 쓴다. registry에 정의가 없으면 null(프론트는 렌치로 폴백).
+    icon_id: str | None = None
 
     model_config = {"from_attributes": True}
 
