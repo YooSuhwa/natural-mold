@@ -2,6 +2,13 @@
 
 상태: Draft (구현 전 합의용)
 관련: ADR-001(Deep Agent Engine), ADR-012(HiTL Middleware), ADR-019(System LLM), 컨텍스트 게이지(commit 82f8ab32)
+구현 문서: `dev-plan-context-compaction.md`
+
+> **갱신 (범위·사실 정정)** — 구현 문서에서 다음을 확정/정정했다. 본 SPEC의 일부 서술보다 구현 문서가 우선한다.
+> 1. **자동 압축은 정식 모델(LangChain이 아는 Claude/GPT/Gemini)에선 이미 정상 동작**한다(`model.profile` 보유). **커스텀/`openai_compatible`만 고정 170k fallback으로 임계값이 틀린다** → Phase 0가 교정.
+> 2. **수동 compact는 이번 범위에서 제외(후속 옵션)**. 자동만으로 기능 충분. 권장 범위 = **Phase 0(context_window 단일화) + 자동압축 인라인 마커**(Tier 2).
+> 3. **수동을 붙일 때도 자동 미들웨어 "제거"는 불필요**하다. `create_summarization_tool_middleware`는 도구 레이어만 추가하고 자동은 deepagents 기본이 유지된다(중복 없음, state 공유). 제거는 `model.profile`가 read-only라 임계값 교정을 명시 미들웨어로 해야 할 때의 폴백뿐.
+> 4. context_window 주입은 **옵션 A(프로필 주입)가 기본**, 옵션 B(제외+교체)는 폴백.
 
 ## 1. 배경 / 문제
 
