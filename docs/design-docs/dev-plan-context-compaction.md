@@ -180,3 +180,48 @@ Day3-4 E2E + 캡쳐(게이지 전후, 마커) + /code-review
 | R4 | 정식 모델은 자동 이미 동작 | Phase 0는 그들에겐 "게이지용"; 커스텀 모델에 핵심 |
 
 **구현 전 확정:** 옵션 A/B(R1 spike 결과) 하나면 끝. 수동(§6)은 별도 의사결정.
+
+---
+
+## 8. 테스트 전략 — "85%까지 채우지 않고" 검증
+
+핵심 원리: **자동 압축 임계값은 `context_window`에 비례**(`0.85 × max_input_tokens`)한다. 따라서 **테스트에서 `context_window`를 작게(예 1500~2000) 잡으면 메시지 2~3개 만에 임계값을 넘겨** 압축을 재현한다. 200k를 무한히 채울 필요 없음.
+
+```
+테스트 모델 context_window = 1500
+→ 트리거 ≈ 0.85 × 1500 = 1275 토큰
+→ 시스템 프롬프트 + 답변 2~3턴이면 도달 → 자동 압축 발생
+```
+> 토큰 카운트는 `count_tokens_approximately`가 **메시지 content에서 직접** 센다(usage_metadata 불필요). 그래서 scripted 모델 메시지도 길이만 충분하면 카운트됨. 가장 확실한 건 `context_window`를 작게 두는 것.
+
+### Level 1 — 프론트 단위 (즉시, LLM 불필요) [필수]
+압축 "표현"만 검증. 트리거 자체가 불필요.
+- `langchain-message-conversion.ts`: **mock 요약 메시지**(`HumanMessage` + `additional_kwargs.lc_source="summarization"`, content에 `/conversation_history/...` 경로)를 변환 → `metadata.isCompactionSummary === true` + 오프로드 경로 추출 단언.
+- `compaction-summary.tsx`: 마커가 "요약됨 + 원본 보기"를 렌더하고, 일반 user 말풍선으로 안 그려지는지 단언.
+- vitest, 밀리초. **85% 무관.**
+
+### Level 2 — 백엔드 통합 (수 초, 브라우저 X) [권장]
+압축이 실제로 **트리거**되는지 + 오프로드 검증.
+- 테스트에서 `context_window=1500`(작게)인 모델로 에이전트 빌드 → 메시지 2~3개 invoke → state messages가 요약 메시지로 교체됐는지(`lc_source=="summarization"`) + 오프로드 파일 생성됐는지 assert.
+- aiosqlite/in-memory로 가능하면 빠르고 결정론적. (LLM 호출이 필요하면 E2E scripted 모델 또는 cheap 게이트웨이 모델로 최소 턴.)
+- Phase 0 자체 단위: `cw → trigger 토큰(0.85)` 계산, `model.profile` 주입 후 `compute_summarization_defaults`가 fraction 경로 타는지.
+
+### Level 3 — E2E (브라우저, 몇 턴) [권장]
+UI까지. **85%가 아니라 tiny-context로 몇 턴.**
+- 격리 스택(5433/8101/3100). 테스트 DB 모델 `context_window`를 작게 UPDATE(게이지 캡쳐 때 쓴 패턴) → 2~3턴 전송 → **인라인 마커 표시 + 게이지 하락** 단언/캡쳐.
+- 캡쳐: 압축 전/후(마커 + 게이지 90%→낮은 값).
+
+### 옵션 — 결정론적 scripted 압축 마커 (가장 견고한 프론트 E2E)
+프론트 마커를 LLM·토큰카운팅 없이 100% 안정적으로 E2E하려면, 기존 `E2E_TOOL_GROUP`/`E2E_SEARCH_GROUP`처럼 **`E2E_COMPACTION` scripted 마커**를 `backend/app/agent_runtime/e2e_scripted_model.py`에 추가:
+- 마커 입력 시 **요약 `HumanMessage`(lc_source="summarization") + 오프로드 경로**를 결정론적으로 방출.
+- 프론트는 이 메시지를 받아 마커 렌더 → 단언. (트리거 로직과 분리되어 flaky 없음.)
+- 분담: **트리거 동작 = Level 2(tiny-context)**, **마커 렌더 = scripted 마커 E2E**.
+
+### 검증 매트릭스
+| 검증 대상 | 방법 | 85% 채움? |
+|-----------|------|-----------|
+| 게이지 활성/% 정확 | E2E tiny-context (기존 패턴) | ❌ |
+| 자동압축 트리거 + 오프로드 | Level 2 통합(cw=1500) | ❌ (몇 턴) |
+| 마커 변환/렌더 | Level 1 단위(mock) | ❌ |
+| 마커 UI 전체 | scripted `E2E_COMPACTION` 또는 Level 3 | ❌ |
+| 커스텀 모델 임계값 교정 | Level 2: profile 주입 후 fraction 경로 | ❌ |
