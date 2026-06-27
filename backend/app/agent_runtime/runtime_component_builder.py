@@ -133,6 +133,10 @@ def _resolve_middleware_model_params(
 def _model_constructor_params(cfg: AgentConfig) -> dict[str, Any]:
     params = dict(cfg.model_params or {})
     params.pop("recursion_limit", None)
+    # Forward the model context limit so ``create_chat_model`` injects it into
+    # ``model.profile`` (auto-summarization threshold = single source of truth).
+    if cfg.context_window:
+        params["context_window"] = cfg.context_window
     return params
 
 

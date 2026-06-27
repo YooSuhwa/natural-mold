@@ -146,6 +146,7 @@ async def resolve_agent_context(
         cost_per_output_token=(
             float(agent.model.cost_per_output_token) if agent.model.cost_per_output_token else None
         ),
+        context_window=agent.model.context_window,
         user_id=str(user.id),
         model_id=str(agent.model.id) if agent.model else None,
         llm_credential_id=(

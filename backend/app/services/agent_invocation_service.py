@@ -197,6 +197,7 @@ async def build_agent_config_for_loaded_agent(
         cost_per_output_token=(
             float(agent.model.cost_per_output_token) if agent.model.cost_per_output_token else None
         ),
+        context_window=agent.model.context_window,
         user_id=str(agent.user_id),
         model_id=str(agent.model.id),
         llm_credential_id=(

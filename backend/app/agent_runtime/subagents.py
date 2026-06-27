@@ -120,6 +120,7 @@ async def build_subagents_config(
             agent_id=str(child.id),
             agent_name=child.name,
             provider_api_keys={child.model.provider: child_api_key} if child_api_key else None,
+            context_window=child.model.context_window,
             user_id=str(child.user_id),
             model_id=str(child.model.id),
             llm_credential_id=(str(child.llm_credential_id) if child.llm_credential_id else None),
