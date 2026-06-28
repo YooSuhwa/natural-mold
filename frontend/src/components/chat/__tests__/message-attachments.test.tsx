@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen, userEvent, within } from '../../../../tests/test-utils'
-import { MessageAttachmentItem, briefFromAttachment } from '@/components/chat/message-attachments'
-import type { MessageAttachmentBrief } from '@/lib/types'
+import { MessageAttachmentItem, fileItemToBrief } from '@/components/chat/message-attachments'
+import type { FileItem, MessageAttachmentBrief } from '@/lib/types'
 
 function brief(overrides: Partial<MessageAttachmentBrief> = {}): MessageAttachmentBrief {
   return {
@@ -14,52 +14,35 @@ function brief(overrides: Partial<MessageAttachmentBrief> = {}): MessageAttachme
   }
 }
 
-describe('briefFromAttachment', () => {
-  it('reconstructs a brief from an image attachment (image content part)', () => {
-    const result = briefFromAttachment({
-      id: 'upload-1',
-      type: 'image',
-      name: 'photo.png',
-      contentType: 'image/png',
-      status: { type: 'complete' },
-      content: [{ type: 'image', image: '/api/uploads/upload-1' }],
-    })
-
-    expect(result).toEqual({
-      id: 'upload-1',
-      filename: 'photo.png',
-      mime_type: 'image/png',
-      size_bytes: 0,
-      url: '/api/uploads/upload-1',
-    })
-  })
-
-  it('prefers the carried url + size_bytes fields when present', () => {
-    const result = briefFromAttachment({
-      id: 'upload-2',
-      type: 'file',
+describe('fileItemToBrief', () => {
+  it('maps an attached /files row to a preview brief (preview_url → url)', () => {
+    const file: FileItem = {
+      source: 'attached',
+      id: 'upload-9',
       name: 'report.pdf',
-      contentType: 'application/pdf',
-      content: [{ type: 'text', text: '[attachment: report.pdf](/api/uploads/upload-2)' }],
-      url: '/api/uploads/upload-2',
+      mime_type: 'application/pdf',
+      extension: 'pdf',
+      kind: null,
       size_bytes: 42,
-    })
+      preview_url: '/api/uploads/upload-9',
+      download_url: '/api/uploads/upload-9',
+      message_id: 'msg-1',
+      created_at: '2026-06-05T00:00:00',
+      editable: false,
+    }
 
-    expect(result).toEqual({
-      id: 'upload-2',
+    expect(fileItemToBrief(file)).toEqual({
+      id: 'upload-9',
       filename: 'report.pdf',
       mime_type: 'application/pdf',
       size_bytes: 42,
-      url: '/api/uploads/upload-2',
+      url: '/api/uploads/upload-9',
     })
   })
 
-  it('returns null when there is no recoverable id or url', () => {
-    expect(briefFromAttachment(null)).toBeNull()
-    expect(briefFromAttachment({ name: 'no-id.png' })).toBeNull()
-    expect(
-      briefFromAttachment({ id: 'x', name: 'no-url.txt', content: [{ type: 'text' }] }),
-    ).toBeNull()
+  it('defaults a missing size to 0', () => {
+    const file = { id: 'u', name: 'f', mime_type: 'image/png', preview_url: '/x' } as FileItem
+    expect(fileItemToBrief(file).size_bytes).toBe(0)
   })
 })
 

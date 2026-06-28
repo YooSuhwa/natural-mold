@@ -2,56 +2,26 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState } from 'react'
-import { MessagePrimitive, useAuiState } from '@assistant-ui/react'
+import { useMemo, useState } from 'react'
+import { useAuiState } from '@assistant-ui/react'
 import { FileIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn, resolveImageUrl } from '@/lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ArtifactPreview } from '@/components/chat/artifacts/artifact-preview'
 import { attachmentToArtifactSummary } from '@/lib/chat/attachment-to-artifact'
-import type { MessageAttachmentBrief } from '@/lib/types'
+import { useChatConversationId } from '@/components/chat/conversation-context'
+import { useConversationFiles } from '@/lib/hooks/use-conversation-files'
+import type { FileItem, MessageAttachmentBrief } from '@/lib/types'
 
-/**
- * assistant-ui ``CompleteAttachment`` + convert-message가 보존한 비표준 메타
- * (``url``/``size_bytes``)를 함께 읽기 위한 런타임 형태. 모두 optional/unknown으로
- * 두고 ``briefFromAttachment``에서 가드한다.
- */
-interface MessageAttachmentLike {
-  id?: unknown
-  name?: unknown
-  contentType?: unknown
-  url?: unknown
-  size_bytes?: unknown
-  content?: ReadonlyArray<{ type?: string; image?: unknown }>
-}
-
-/** 이미지 첨부는 IMAGE 파트(content[0].image)에 업로드 URL을 담는다. */
-function urlFromContent(content: MessageAttachmentLike['content']): string | null {
-  const first = content?.[0]
-  if (first?.type === 'image' && typeof first.image === 'string' && first.image.length > 0) {
-    return first.image
-  }
-  return null
-}
-
-/**
- * assistant-ui attachment 객체 → ``MessageAttachmentBrief`` 재구성.
- * id/url을 복원하지 못하면(미리보기를 열 수 없으므로) null을 반환한다.
- */
-export function briefFromAttachment(attachment: unknown): MessageAttachmentBrief | null {
-  if (!attachment || typeof attachment !== 'object') return null
-  const att = attachment as MessageAttachmentLike
-  if (typeof att.id !== 'string' || att.id.length === 0) return null
-  const url =
-    typeof att.url === 'string' && att.url.length > 0 ? att.url : urlFromContent(att.content)
-  if (!url) return null
+/** Unified-files attachment row → the brief the preview cards consume. */
+export function fileItemToBrief(file: FileItem): MessageAttachmentBrief {
   return {
-    id: att.id,
-    filename: typeof att.name === 'string' && att.name.length > 0 ? att.name : 'file',
-    mime_type: typeof att.contentType === 'string' ? att.contentType : '',
-    size_bytes: typeof att.size_bytes === 'number' ? att.size_bytes : 0,
-    url,
+    id: file.id,
+    filename: file.name,
+    mime_type: file.mime_type,
+    size_bytes: file.size_bytes ?? 0,
+    url: file.preview_url,
   }
 }
 
@@ -129,19 +99,28 @@ export function MessageAttachmentItem({ brief }: { brief: MessageAttachmentBrief
  * 무한 렌더 가드: count selector는 reference-stable한 숫자만 반환한다.
  */
 export function UserMessageAttachments() {
-  const count = useAuiState((s) =>
-    s.message?.role === 'user' ? (s.message.attachments?.length ?? 0) : 0,
-  )
-  if (count === 0) return null
+  // The v3 runtime builds messages from LangGraph state (LangChain messages),
+  // which do NOT carry the moldy attachment side channel — so `s.message`
+  // never exposes `attachments`. Instead we key off the message id (which
+  // equals the backfilled `message_attachments.message_id` — same id the
+  // anchor/jump uses) and look this turn's attachments up from the unified
+  // `/files` list. Reference-stable selector (a string id) avoids re-render loops.
+  const conversationId = useChatConversationId()
+  const messageId = useAuiState((s) => (s.message?.role === 'user' ? s.message.id : null))
+  const { data } = useConversationFiles(conversationId)
+  const briefs = useMemo<MessageAttachmentBrief[]>(() => {
+    if (!messageId) return []
+    return (data ?? [])
+      .filter((f) => f.source === 'attached' && f.message_id === messageId)
+      .map(fileItemToBrief)
+  }, [data, messageId])
+
+  if (briefs.length === 0) return null
   return (
     <div className="mt-1.5 flex flex-wrap justify-end gap-1.5">
-      <MessagePrimitive.Attachments>
-        {({ attachment }) => {
-          const brief = briefFromAttachment(attachment)
-          if (!brief) return null
-          return <MessageAttachmentItem brief={brief} />
-        }}
-      </MessagePrimitive.Attachments>
+      {briefs.map((brief) => (
+        <MessageAttachmentItem key={brief.id} brief={brief} />
+      ))}
     </div>
   )
 }
