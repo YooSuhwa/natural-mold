@@ -168,12 +168,15 @@ test.describe('Chat streaming render integrity', () => {
       await expect(groupToggle).toHaveAttribute('aria-expanded', 'false')
 
       // Expanding the group reveals exactly the N grouped per-call pills inside
-      // it (the children were collapsed, not dropped).
+      // it (the children were collapsed, not dropped). By design each child pill
+      // shows that call's distinct RESULT (e.g. the datetime), not the tool
+      // name — the tool name lives only in the group header (asserted above) —
+      // so count the revealed child pills directly rather than matching the
+      // header-only tool name on them.
       await groupToggle.click()
-      await expect(groupContainer.locator('.moldy-tool-pill').filter({ hasText: GROUPED_TOOL })).toHaveCount(
-        GROUPED_COUNT,
-        { timeout: 10_000 },
-      )
+      await expect(groupContainer.locator('.moldy-tool-pill')).toHaveCount(GROUPED_COUNT, {
+        timeout: 10_000,
+      })
 
       await expect(userBubbles).toHaveCount(1)
       expect(errors.console, 'console errors during tool grouping').toEqual([])
