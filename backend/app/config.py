@@ -73,6 +73,14 @@ class Settings(BaseSettings):
     # are BOTH older than the retention window AND have no recorded messages.
     draft_conversation_gc_cron: str = "15 * * * *"
     draft_conversation_gc_retention_hours: int = 24
+    # Orphan attachment GC (APScheduler crontab; default: hourly :30).
+    # ``POST /api/uploads`` creates ``message_attachments`` rows with
+    # ``message_id IS NULL``; turn finalize stamps the message id once the
+    # upload is actually sent (M1). A row still NULL past the retention window
+    # was staged in the composer but never sent — invisible to every read path
+    # and never cleaned up. This job deletes the row and its on-disk blob.
+    orphan_attachment_gc_cron: str = "30 * * * *"
+    orphan_attachment_gc_retention_hours: int = 24
     # Model catalog refresh (APScheduler crontab format; default: every 6 hours)
     catalog_update_cron: str = "0 */6 * * *"
     # Retention window for ``health_check_history`` rows. The cleanup job is a

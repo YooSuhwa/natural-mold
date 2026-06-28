@@ -151,6 +151,7 @@ async def _handle_run_start_command(
         input_payload=runtime_input_payload,
         moldy_source=run_source,
         executor_fn=executor_fn,
+        attachment_ids=attachment_ids,
     )
     return command_success(
         command,

@@ -494,6 +494,16 @@
   }
 }
 
+@keyframes moldy-jump-highlight {
+  0%,
+  60% {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
 @layer components {
   .auth-shell {
     position: relative;
@@ -971,6 +981,12 @@
     border-color: color-mix(in oklch, var(--primary-strong) 24%, var(--border));
     box-shadow: var(--moldy-shadow-hover);
     transform: translateY(-1px);
+  }
+
+  /* 파일 목록 → "대화로 이동" 시 대상 메시지에 잠깐 표시하는 하이라이트. */
+  .moldy-jump-highlight {
+    border-radius: var(--moldy-radius-card);
+    animation: moldy-jump-highlight 1.5s ease-out;
   }
 
   .moldy-chat-card {

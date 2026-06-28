@@ -64,6 +64,8 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     pages: (agentId: string, params: unknown) =>
       ['agents', agentId, 'conversations', 'page', params] as const,
     messages: (conversationId: string) => ['messages', conversationId] as const,
+    files: (conversationId: string | null | undefined) =>
+      ['conversations', conversationId ?? 'none', 'files'] as const,
     debugTraces: (conversationId: string) => ['debug-traces', conversationId] as const,
     debugTraceDetail: (conversationId: string, traceId: string) =>
       ['debug-traces', conversationId, traceId] as const,

@@ -48,6 +48,7 @@ import {
   ThumbsDownIcon,
   XIcon,
   FileIcon,
+  FolderOpenIcon,
   ImageIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -77,6 +78,7 @@ import {
   type GroupedRenderInfo,
 } from '@/lib/chat/group-assistant-parts'
 import { StreamingMessageLoadingIndicator } from '@/components/chat/assistant-message-loading'
+import { UserMessageAttachments } from '@/components/chat/message-attachments'
 import { CompactionSummary } from '@/components/chat/compaction-summary'
 import type { CompactionMarker } from '@/lib/chat/langgraph-runtime/compaction-events'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
@@ -94,6 +96,7 @@ import {
   ChatConversationContext,
   useChatConversationId,
 } from '@/components/chat/conversation-context'
+import { useInvalidateFilesOnRunComplete } from '@/components/chat/use-files-run-sync'
 import { isThreadViewportAtBottom } from '@/components/chat/scroll-bottom'
 import { copyTextToClipboard, getMessageCopyText } from '@/components/chat/message-copy'
 import { selectMessageArtifactsFromMessage } from '@/components/chat/message-artifact-metadata'
@@ -870,6 +873,8 @@ export function AssistantThread({
               <div className="moldy-chat-bubble-user px-4 py-2.5 text-sm leading-relaxed">
                 <MessagePrimitive.Content />
               </div>
+              {/* 보낸 첨부를 버블 아래 인라인 렌더 — 클릭 시 미리보기 다이얼로그 */}
+              <UserMessageAttachments />
               {metaRow}
             </div>
             <UserAvatar user={user} size="sm" />
@@ -1076,6 +1081,16 @@ function ThreadComposer({
 }) {
   const t = useTranslations('chat.input')
   const tMsg = useTranslations('chat.message')
+  const tFiles = useTranslations('chat.files')
+  const conversationId = useChatConversationId()
+  const setRightRail = useSetAtom(chatRightRailAtom)
+  // Run-complete → refetch /files so a just-sent attachment shows inline
+  // without waiting for staleTime or a reload (message_id backfills at finalize).
+  useInvalidateFilesOnRunComplete(conversationId)
+  const openFilesPanel = () => {
+    if (!conversationId) return
+    setRightRail({ mode: 'artifacts', artifacts: { conversationId, view: 'list' } })
+  }
   const tokenUsage = useAtomValue(sessionTokenUsageAtom)
   const latestTurnUsage = useAtomValue(latestTurnUsageAtom)
   const hasTokens = showTokenBar && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)
@@ -1133,6 +1148,20 @@ function ThreadComposer({
                 <PaperclipIcon className="size-4" />
               </Button>
             </ComposerPrimitive.AddAttachment>
+          )}
+          {/* 대화의 파일(생성+첨부) 목록 패널 열기 — 첨부만 있는 대화도 도달 가능. */}
+          {conversationId && (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className="text-muted-foreground"
+              aria-label={tFiles('openPanel')}
+              title={tFiles('openPanel')}
+              onClick={openFilesPanel}
+            >
+              <FolderOpenIcon className="size-4" />
+            </Button>
           )}
         </div>
         {/* 오른쪽 아래: 모델명 + 컨텍스트 게이지 + 세션 총비용(클로드코드式) + Send/Stop */}

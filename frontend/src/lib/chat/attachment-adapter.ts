@@ -35,6 +35,12 @@ export class MoldyAttachmentAdapter implements AttachmentAdapter {
   async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
     const uploaded = await uploadFile(attachment.file)
     const isImage = uploaded.mime_type.startsWith('image/')
+    // No content parts: the message body must stay clean (just the user's
+    // text). The runtime flattens each attachment's `content` into the message
+    // body, so a `[attachment: name](url)` text part would show as raw markdown
+    // in the bubble next to the thumbnail/chip. Persistence is unaffected — it
+    // rides the attachment `id` (linked + backfilled, surfaced via /files), not
+    // the body text. (P2 model input will use proper multimodal blocks, not this.)
     return {
       id: uploaded.id,
       type: isImage ? 'image' : 'file',
@@ -42,12 +48,7 @@ export class MoldyAttachmentAdapter implements AttachmentAdapter {
       contentType: uploaded.mime_type,
       file: attachment.file,
       status: { type: 'complete' },
-      content: [
-        {
-          type: 'text',
-          text: `[attachment: ${uploaded.filename}](${uploaded.url})`,
-        },
-      ],
+      content: [],
     }
   }
 

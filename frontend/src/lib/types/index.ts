@@ -276,6 +276,27 @@ export interface MessageAttachmentBrief {
   url: string
 }
 
+/**
+ * 대화 파일 목록(`GET /api/conversations/{id}/files`)의 단일 항목.
+ * `generated`(에이전트 산출물)와 `attached`(사용자가 보낸 첨부)를 한 형태로 합친다.
+ * 백엔드 `FileItem` 스키마와 1:1 대응.
+ */
+export interface FileItem {
+  source: 'generated' | 'attached'
+  id: string
+  name: string
+  mime_type: string
+  extension?: string | null
+  kind?: string | null
+  size_bytes?: number | null
+  preview_url: string
+  download_url: string
+  /** 생성: assistant 메시지 id / 첨부: user 메시지 id. 대화로 이동 앵커. */
+  message_id?: string | null
+  created_at: string
+  editable: boolean
+}
+
 export interface Message {
   id: string
   conversation_id: string

@@ -3,16 +3,26 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { artifactKeys, getArtifactTextContent } from '@/lib/api/artifacts'
-import type { ArtifactSummary } from '@/lib/types'
+import type { ArtifactSummary, ArtifactTextContent } from '@/lib/types'
 import { getArtifactPreviewProvider } from './preview-registry'
 import { canShowArtifactSource } from './source-capabilities'
 
 interface ArtifactPreviewProps {
   artifact: ArtifactSummary | null
   previewMode?: 'preview' | 'code'
+  /**
+   * Override the text-content fetch. Attachments are not artifacts, so their
+   * text body must be read from `/api/uploads/{id}/content` rather than the
+   * artifact content endpoint (which 404s on an upload id).
+   */
+  textLoader?: (() => Promise<ArtifactTextContent>) | null
 }
 
-export function ArtifactPreview({ artifact, previewMode = 'preview' }: ArtifactPreviewProps) {
+export function ArtifactPreview({
+  artifact,
+  previewMode = 'preview',
+  textLoader,
+}: ArtifactPreviewProps) {
   const t = useTranslations('chat.rightRail.artifacts')
   const provider = artifact ? getArtifactPreviewProvider(artifact) : null
   const shouldLoadText = Boolean(
@@ -20,8 +30,10 @@ export function ArtifactPreview({ artifact, previewMode = 'preview' }: ArtifactP
     (provider?.requiresText || (previewMode === 'code' && canShowArtifactSource(artifact))),
   )
   const textQuery = useQuery({
-    queryKey: artifactKeys.content(artifact?.id, artifact?.version_id),
-    queryFn: () => getArtifactTextContent(artifact?.id ?? ''),
+    queryKey: textLoader
+      ? ['upload-content', artifact?.id ?? '']
+      : artifactKeys.content(artifact?.id, artifact?.version_id),
+    queryFn: () => (textLoader ? textLoader() : getArtifactTextContent(artifact?.id ?? '')),
     enabled: shouldLoadText,
     staleTime: 30_000,
   })

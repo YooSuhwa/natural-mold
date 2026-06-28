@@ -43,6 +43,9 @@ export interface ArtifactSummary {
   url: string
   preview_url: string
   download_url: string
+  /** Real assistant message id(s) this artifact links to (matches the bubble
+   * anchor). `assistant_msg_id` above is the run id, which does not. */
+  linked_message_ids?: string[] | null
 }
 
 export interface FileEventPayload extends ArtifactSummary {

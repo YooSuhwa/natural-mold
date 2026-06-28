@@ -46,20 +46,11 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
       content: message.content,
       createdAt: parseTimestamp(message.created_at),
     }
-    if (message.attachments && message.attachments.length > 0) {
-      // assistant-ui expects CompleteAttachment shape; we tag content with the
-      // upload URL so any UI in the message body can render previews.
-      ;(userMsg as unknown as { attachments: unknown }).attachments = message.attachments.map(
-        (att) => ({
-          id: att.id,
-          type: att.mime_type.startsWith('image/') ? 'image' : 'file',
-          name: att.filename,
-          contentType: att.mime_type,
-          status: { type: 'complete' },
-          content: [{ type: 'text', text: `[attachment: ${att.filename}](${att.url})` }],
-        }),
-      )
-    }
+    // NOTE: attachments are intentionally NOT mapped onto the converted message.
+    // Inline display is data-driven — UserMessageAttachments looks them up by
+    // message id from /files — so attaching a CompleteAttachment shape here would
+    // be dead for rendering and would only risk flattening `[attachment](url)`
+    // text into the message body.
     // M-CHAT1b — surface branch info via metadata.custom so the inline
     // BranchPicker UI can read it from useAuiState.
     const userBranchMeta = buildBranchMeta(message)
