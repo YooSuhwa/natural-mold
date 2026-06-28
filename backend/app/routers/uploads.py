@@ -124,9 +124,7 @@ async def get_upload(
     project conventions on 404/403 parity).
     """
 
-    result = await db.execute(
-        select(MessageAttachment).where(MessageAttachment.id == upload_id)
-    )
+    result = await db.execute(select(MessageAttachment).where(MessageAttachment.id == upload_id))
     row = result.scalar_one_or_none()
     if row is None or row.user_id != user.id:
         raise file_not_found()
@@ -135,8 +133,12 @@ async def get_upload(
     exists = await asyncio.to_thread(path.is_file)
     if not exists:
         raise file_not_found()
+    # Serve inline so the frontend can render previews in-place (``<img>``,
+    # ``<iframe>`` for PDF). The download button forces a save client-side via
+    # ``<a download>`` regardless, so inline disposition doesn't block downloads.
     return FileResponse(
         path,
         media_type=row.mime_type,
         filename=row.filename,
+        content_disposition_type="inline",
     )

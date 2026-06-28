@@ -29,11 +29,12 @@ async def test_upload_text_file_roundtrip(client: AsyncClient, tmp_path: Path):
     assert body["size_bytes"] == 8
     assert body["url"].startswith("/api/uploads/")
 
-    # GET serves the bytes back
+    # GET serves the bytes back, inline so previews (img/iframe) render in-place.
     upload_id = body["id"]
     resp = await client.get(f"/api/uploads/{upload_id}")
     assert resp.status_code == 200
     assert resp.content == b"hi there"
+    assert "inline" in resp.headers.get("content-disposition", "")
 
 
 @pytest.mark.asyncio
