@@ -42,7 +42,12 @@ from app.models.message_event import MessageEvent
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
-from app.schemas.conversation import ConversationSort, ConversationUpdate, MessageResponse
+from app.schemas.conversation import (
+    ConversationSort,
+    ConversationUpdate,
+    FileItem,
+    MessageResponse,
+)
 from app.skills.runtime import build_skills_for_agent
 
 logger = logging.getLogger(__name__)
@@ -1392,6 +1397,82 @@ async def link_attachments_to_message(
     )
     await db.flush()
     return int(getattr(result, "rowcount", 0) or 0)
+
+
+async def list_conversation_files(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+) -> list[FileItem]:
+    """Unified conversation file list (D12/M3): generated + attached, merged.
+
+    Returns one created_at-sorted (newest first) stream of :class:`FileItem`,
+    each tagged ``source``. Generated files reuse the artifact summaries
+    (editable); attachments are the sent uploads (``message_id`` backfilled),
+    read-only with preview/download pointing at ``/api/uploads/{id}``. The
+    caller owns the ownership guard; both queries are already scoped to the
+    conversation (and artifacts additionally to ``user_id``).
+    """
+
+    from pathlib import Path
+
+    from app.models.message_attachment import MessageAttachment
+    from app.services.artifact_service import list_conversation_artifacts
+
+    artifacts = await list_conversation_artifacts(
+        db, user_id=user_id, conversation_id=conversation_id
+    )
+    items: list[FileItem] = [
+        FileItem(
+            source="generated",
+            id=str(a.id),
+            name=a.display_name,
+            mime_type=a.mime_type,
+            extension=a.extension,
+            kind=a.artifact_kind,
+            size_bytes=a.size_bytes,
+            preview_url=a.preview_url,
+            download_url=a.download_url,
+            message_id=a.assistant_msg_id,
+            created_at=a.created_at,
+            editable=True,
+        )
+        for a in artifacts
+    ]
+
+    attach_rows = (
+        (
+            await db.execute(
+                select(MessageAttachment).where(
+                    MessageAttachment.conversation_id == conversation_id,
+                    MessageAttachment.message_id.is_not(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    items.extend(
+        FileItem(
+            source="attached",
+            id=str(att.id),
+            name=att.filename,
+            mime_type=att.mime_type,
+            extension=(Path(att.filename).suffix.lstrip(".") or None),
+            kind=None,
+            size_bytes=att.size_bytes,
+            preview_url=att.url,
+            download_url=att.url,
+            message_id=att.message_id,
+            created_at=att.created_at,
+            editable=False,
+        )
+        for att in attach_rows
+    )
+
+    items.sort(key=lambda f: f.created_at, reverse=True)
+    return items
 
 
 async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> None:

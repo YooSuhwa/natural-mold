@@ -135,6 +135,34 @@ class MessageAttachmentBrief(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class FileItem(BaseModel):
+    """Unified conversation file-list entry (D12): generated artifact OR sent
+    attachment, normalized to one shape.
+
+    ``GET /api/conversations/{id}/files`` merges generated artifacts and sent
+    attachments into a single created_at-sorted stream. ``source`` tags the
+    origin and ``editable`` is false for attachments (read-only, D5). Both
+    surfaces dispatch through the same frontend preview registry via
+    ``mime_type`` / ``extension`` / ``preview_url`` (unsupported → download
+    fallback).
+    """
+
+    source: Literal["generated", "attached"]
+    id: str
+    name: str
+    mime_type: str
+    extension: str | None = None
+    # artifact_kind for generated files; None for attachments.
+    kind: str | None = None
+    size_bytes: int | None = None
+    preview_url: str
+    download_url: str
+    # attached → the user message; generated → the assistant_msg_id.
+    message_id: str | None = None
+    created_at: UtcDatetime
+    editable: bool
+
+
 class MessageCreate(BaseModel):
     content: str
     # Optional list of upload ids that should be attached to this message.
