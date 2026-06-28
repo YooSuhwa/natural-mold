@@ -91,7 +91,9 @@ function GeneratedFileRow({
       <Badge variant="outline" className="shrink-0">
         {formatDisplayBytes(artifact.size_bytes)}
       </Badge>
-      <JumpToMessageButton messageId={artifact.assistant_msg_id} />
+      <JumpToMessageButton
+        messageId={artifact.linked_message_ids?.[0] ?? artifact.assistant_msg_id}
+      />
     </div>
   )
 }

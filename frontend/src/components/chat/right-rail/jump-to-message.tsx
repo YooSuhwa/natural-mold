@@ -39,26 +39,54 @@ export function jumpToMessage(messageId: string): boolean {
   return true
 }
 
-const NOOP = () => () => {}
+// One shared MutationObserver for ALL jump buttons (the rail can render many
+// files). Per-button observers would each re-process every streamed-token DOM
+// mutation; instead a single observer notifies subscribers, coalesced to one
+// notification per animation frame so a burst of mutations costs one pass.
+const anchorListeners = new Set<() => void>()
+let anchorObserver: MutationObserver | null = null
+let anchorNotifyScheduled = false
+
+function flushAnchorListeners(): void {
+  anchorNotifyScheduled = false
+  for (const listener of anchorListeners) listener()
+}
+
+function scheduleAnchorNotify(): void {
+  if (anchorNotifyScheduled) return
+  anchorNotifyScheduled = true
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flushAnchorListeners)
+  else flushAnchorListeners()
+}
+
+function subscribeAnchors(onStoreChange: () => void): () => void {
+  if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return () => {}
+  anchorListeners.add(onStoreChange)
+  if (!anchorObserver) {
+    anchorObserver = new MutationObserver(scheduleAnchorNotify)
+    anchorObserver.observe(document.body, { childList: true, subtree: true })
+  }
+  return () => {
+    anchorListeners.delete(onStoreChange)
+    if (anchorListeners.size === 0 && anchorObserver) {
+      anchorObserver.disconnect()
+      anchorObserver = null
+    }
+  }
+}
 
 /**
  * 메시지 앵커가 현재 transcript에 존재하는지 DOM에서 구독한다.
  * transcript는 가상화되지 않으므로 "로드된 메시지"에 대해서만 앵커가 있다.
  * ``useSyncExternalStore``로 외부 mutable 소스(DOM)를 읽어 effect-setState 없이
- * 렌더 중 스냅샷을 얻고, body mutation을 관찰해 메시지가 늦게 로드돼도 갱신한다.
+ * 렌더 중 스냅샷을 얻고, 공유 옵저버로 메시지가 늦게 로드돼도 갱신한다.
  */
 function useMessageInLoadedPage(messageId: string | null | undefined): boolean {
-  const subscribe = useCallback((onStoreChange: () => void) => {
-    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return NOOP()
-    const observer = new MutationObserver(onStoreChange)
-    observer.observe(document.body, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  }, [])
   const getSnapshot = useCallback(
     () => (messageId ? messageAnchorExists(messageId) : false),
     [messageId],
   )
-  return useSyncExternalStore(subscribe, getSnapshot, () => false)
+  return useSyncExternalStore(subscribeAnchors, getSnapshot, () => false)
 }
 
 /**

@@ -8,6 +8,7 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import { ArtifactPreview } from '@/components/chat/artifacts/artifact-preview'
 import { ChatImage } from '@/components/chat/chat-image'
 import { attachmentToArtifactSummary } from '@/lib/chat/attachment-to-artifact'
+import { getUploadTextContent } from '@/lib/api/uploads'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { useConversationFiles } from '@/lib/hooks/use-conversation-files'
 import type { FileItem, MessageAttachmentBrief } from '@/lib/types'
@@ -49,7 +50,12 @@ export function AttachmentPreviewDialog({
     >
       <DialogShell.Header title={<span className="truncate">{brief.filename}</span>} />
       <DialogShell.Body className="min-h-0 overflow-auto">
-        {open ? <ArtifactPreview artifact={attachmentToArtifactSummary(brief)} /> : null}
+        {open ? (
+          <ArtifactPreview
+            artifact={attachmentToArtifactSummary(brief)}
+            textLoader={() => getUploadTextContent(brief.id)}
+          />
+        ) : null}
       </DialogShell.Body>
     </DialogShell>
   )

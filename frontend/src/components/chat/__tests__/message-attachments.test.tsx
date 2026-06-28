@@ -1,7 +1,17 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { render, screen, userEvent, within } from '../../../../tests/test-utils'
 import { MessageAttachmentItem, fileItemToBrief } from '@/components/chat/message-attachments'
 import type { FileItem, MessageAttachmentBrief } from '@/lib/types'
+
+vi.mock('@/lib/api/uploads', () => ({
+  uploadFile: vi.fn(),
+  getUploadTextContent: vi.fn(async () => ({
+    text: 'hello from a text attachment',
+    truncated: false,
+    mime_type: 'text/plain',
+    size_bytes: 28,
+  })),
+}))
 
 function brief(overrides: Partial<MessageAttachmentBrief> = {}): MessageAttachmentBrief {
   return {
@@ -91,5 +101,19 @@ describe('MessageAttachmentItem', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     await user.click(screen.getByRole('button', { name: /spec\.pdf/ }))
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('renders text content for a text attachment (via /uploads/{id}/content, not artifacts)', async () => {
+    const user = userEvent.setup()
+    render(
+      <MessageAttachmentItem
+        brief={brief({ id: 'u4', filename: 'note.txt', mime_type: 'text/plain' })}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /note\.txt/ }))
+    const dialog = await screen.findByRole('dialog')
+    // The body text comes from the upload content endpoint, not an empty 404.
+    expect(await within(dialog).findByText(/hello from a text attachment/)).toBeInTheDocument()
   })
 })

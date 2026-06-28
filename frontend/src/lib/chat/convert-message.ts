@@ -46,31 +46,11 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
       content: message.content,
       createdAt: parseTimestamp(message.created_at),
     }
-    if (message.attachments && message.attachments.length > 0) {
-      // assistant-ui expects a CompleteAttachment shape. 이미지는 IMAGE 파트로
-      // 넣어 썸네일 src가 업로드 URL로 해석되게 하고, 그 외 파일은 모델이
-      // 평문만 보더라도 의미가 남도록 마크다운 링크 텍스트로 둔다.
-      // ``url``/``size_bytes``는 비표준 필드지만 assistant-ui가 attachment
-      // 객체를 ``...spread``로 보존하므로(fromThreadMessageLike + message-runtime
-      // 둘 다 spread) 히스토리 렌더에서 미리보기를 열 때 그대로 복원할 수 있다.
-      ;(userMsg as unknown as { attachments: unknown }).attachments = message.attachments.map(
-        (att) => {
-          const isImage = att.mime_type.startsWith('image/')
-          return {
-            id: att.id,
-            type: isImage ? 'image' : 'file',
-            name: att.filename,
-            contentType: att.mime_type,
-            status: { type: 'complete' },
-            content: isImage
-              ? [{ type: 'image', image: att.url }]
-              : [{ type: 'text', text: `[attachment: ${att.filename}](${att.url})` }],
-            url: att.url,
-            size_bytes: att.size_bytes,
-          }
-        },
-      )
-    }
+    // NOTE: attachments are intentionally NOT mapped onto the converted message.
+    // Inline display is data-driven — UserMessageAttachments looks them up by
+    // message id from /files — so attaching a CompleteAttachment shape here would
+    // be dead for rendering and would only risk flattening `[attachment](url)`
+    // text into the message body.
     // M-CHAT1b — surface branch info via metadata.custom so the inline
     // BranchPicker UI can read it from useAuiState.
     const userBranchMeta = buildBranchMeta(message)
