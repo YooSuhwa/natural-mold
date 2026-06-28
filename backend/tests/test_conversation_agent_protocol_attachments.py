@@ -55,11 +55,17 @@ async def _seed_attachment(db: AsyncSession) -> MessageAttachment:
 
 
 @pytest.mark.asyncio
-async def test_run_start_command_links_attachments_without_forwarding_them_to_langgraph(
+async def test_run_start_command_links_attachments_and_forwards_ids_for_backfill(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The v3 protocol run.start path (the real chat send) links attachments to
+    the conversation, strips them from the LangGraph input, AND forwards the
+    attachment ids to the worker so finalize can backfill ``message_id`` (M1).
+    Regression guard: the chat UI sends via this agent-protocol path — NOT the
+    REST /messages handlers — so the ids must be threaded here too."""
+
     conversation = await _seed_conversation(db)
     attachment = await _seed_attachment(db)
     started: dict[str, Any] = {}
@@ -90,8 +96,11 @@ async def test_run_start_command_links_attachments_without_forwarding_them_to_la
 
     assert response.status_code == 200
     assert attachment.conversation_id == conversation.id
+    # Attachments are stripped from the LangGraph input (not model-visible here)...
     assert started["input_payload"] == {
         "messages": [{"role": "user", "content": "please review"}],
     }
+    # ...but forwarded as ids so the finalize backfill can stamp message_id.
+    assert started["attachment_ids"] == [attachment.id]
     assert started["moldy_source"] == "chat"
     assert uuid.UUID(response.json()["result"]["run_id"]) == started["run_id"]
