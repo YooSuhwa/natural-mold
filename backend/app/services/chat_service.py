@@ -1289,9 +1289,10 @@ async def link_attachments_to_conversation(
 ) -> None:
     """Stamp orphan ``MessageAttachment`` rows with their conversation id.
 
-    ``message_id`` stays null at send time (LangGraph hands the id back
-    inside the SSE stream); the frontend currently keys previews on the
-    upload id directly, so leaving it null doesn't block rendering.
+    ``message_id`` stays null at send time — LangGraph assigns the user
+    HumanMessage id only inside the run. It is backfilled at turn finalize by
+    :func:`link_attachments_to_message` (M1) so reads can echo the attachment on
+    the right user bubble.
     """
 
     if not attachment_ids:
@@ -1307,6 +1308,85 @@ async def link_attachments_to_conversation(
         .values(conversation_id=conversation_id)
     )
     await db.flush()
+
+
+async def resolve_turn_user_message_id(
+    db: AsyncSession,
+    conversation: Conversation,
+    *,
+    tree: Any = None,
+) -> str | None:
+    """Resolve THIS turn's user message id as the read path will compute it (M1).
+
+    A sent upload's ``message_attachments.message_id`` must equal the id that
+    :func:`list_messages_from_checkpointer` will later key attachment hydration
+    on — i.e. ``str(parse_msg_id(msg.id, conversation.id, idx))`` for the user
+    message. We reproduce **the exact same tree walk and enumeration** that the
+    read path uses (``messages = [node.message for node in tree.nodes]`` →
+    ``enumerate``), then take the **last** ``human`` message: the assistant's
+    reply never appends a HumanMessage, so the last human in the active chain is
+    always the message the user just sent. This holds across multi-turn /
+    branch / HiTL-interrupt because the active chain is rebuilt each time.
+
+    ``msg_id_sink`` carries **AI** message ids only (streaming only sinks
+    ``ai``/``AIMessageChunk``), so the user id is never available there — it
+    must be derived from the post-run checkpoint, never assumed at ``idx=0``.
+
+    Returns the id as a string, or ``None`` if there is no user message (e.g.
+    an empty/garbage checkpoint). ``db`` is unused today but kept in the
+    signature so a future pricing/identity lookup needn't change call sites.
+    """
+
+    from app.agent_runtime.message_utils import parse_msg_id
+
+    if tree is None:
+        from app.agent_runtime.checkpointer import get_checkpointer
+        from app.services.thread_branch_service import build_message_tree
+
+        tree = await build_message_tree(
+            get_checkpointer(),
+            str(conversation.id),
+            active_checkpoint_id=conversation.active_branch_checkpoint_id,
+        )
+
+    if not tree.nodes:
+        return None
+
+    messages = [node.message for node in tree.nodes]
+    for idx in range(len(messages) - 1, -1, -1):
+        msg = messages[idx]
+        if getattr(msg, "type", None) == "human":
+            return str(parse_msg_id(getattr(msg, "id", None), conversation.id, idx))
+    return None
+
+
+async def link_attachments_to_message(
+    db: AsyncSession,
+    *,
+    attachment_ids: list[uuid.UUID],
+    message_id: str,
+) -> int:
+    """Backfill ``message_attachments.message_id`` for this send's uploads (M1).
+
+    Only rows whose ``message_id`` is still NULL are stamped, so a stale orphan
+    from an earlier turn whose finalize failed can't be mis-attached to this
+    turn's user message (cross-send mis-link guard). Returns the rows updated.
+    """
+
+    if not attachment_ids:
+        return 0
+    from app.models.message_attachment import MessageAttachment
+
+    result = await db.execute(
+        update(MessageAttachment)
+        .where(
+            MessageAttachment.id.in_(attachment_ids),
+            MessageAttachment.message_id.is_(None),
+        )
+        .values(message_id=message_id)
+    )
+    await db.flush()
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> None:

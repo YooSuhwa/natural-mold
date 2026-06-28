@@ -119,6 +119,7 @@ async def start_conversation_with_message(
         input_payload=[{"role": "user", "content": data.content}],
         moldy_source="chat",
         executor_fn=execute_agent_stream,
+        attachment_ids=[a.id for a in data.attachments] if data.attachments else None,
     )
     return sse_response(
         _broker_resume_generator(ctx.broker, None),
@@ -434,6 +435,7 @@ async def send_message(
         input_payload=[{"role": "user", "content": data.content}],
         moldy_source="chat",
         executor_fn=execute_agent_stream,
+        attachment_ids=[a.id for a in data.attachments] if data.attachments else None,
     )
     return sse_response(
         _broker_resume_generator(ctx.broker, None),

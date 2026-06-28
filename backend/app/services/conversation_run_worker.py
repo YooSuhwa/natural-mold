@@ -174,6 +174,7 @@ async def start_conversation_run(
     moldy_source: str,
     executor_fn: AgentStreamExecutor,
     registry: RunTaskRegistry | None = None,
+    attachment_ids: list[uuid.UUID] | None = None,
 ) -> StreamCtx:
     registry = registry or get_run_task_registry()
     ctx = stream_service.prepare_stream_context(conversation_id, run_id=str(run_id))
@@ -188,6 +189,7 @@ async def start_conversation_run(
             executor_fn=executor_fn,
             ctx=ctx,
             registry=registry,
+            attachment_ids=attachment_ids,
         ),
         name=f"conversation-run-{run_id}",
     )
@@ -392,6 +394,30 @@ def _trace_status_for_run(status: conversation_run_service.RunStatus) -> str:
     return "failed"
 
 
+async def _backfill_turn_attachments(
+    conversation_id: uuid.UUID, attachment_ids: list[uuid.UUID]
+) -> None:
+    """Stamp this send's uploads with the turn's user message id (M1).
+
+    Runs once at finalize, after the turn's HumanMessage is in the checkpoint,
+    in its own session so it can't poison the run-teardown transaction.
+    """
+
+    from app.services import chat_service
+
+    async with _session_factory()() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        if conversation is None:
+            return
+        message_id = await chat_service.resolve_turn_user_message_id(session, conversation)
+        if not message_id:
+            return
+        await chat_service.link_attachments_to_message(
+            session, attachment_ids=attachment_ids, message_id=message_id
+        )
+        await session.commit()
+
+
 async def _run_conversation(
     *,
     run_id: uuid.UUID,
@@ -403,6 +429,7 @@ async def _run_conversation(
     executor_fn: AgentStreamExecutor,
     ctx: StreamCtx,
     registry: RunTaskRegistry,
+    attachment_ids: list[uuid.UUID] | None = None,
 ) -> None:
     final_status: conversation_run_service.RunStatus = "completed"
     failure: Exception | None = None
@@ -506,6 +533,18 @@ async def _run_conversation(
                 )
             except Exception:
                 logger.exception("conversation run trace finalization failed run_id=%s", run_id)
+
+            if attachment_ids:
+                # M1 — stamp this send's uploads with the user message id the
+                # read path will compute, now that the turn's HumanMessage is in
+                # the checkpoint. Best-effort: a failure leaves message_id NULL
+                # (orphan GC reaps it later) rather than breaking run teardown.
+                try:
+                    await _backfill_turn_attachments(conversation_id, attachment_ids)
+                except Exception:
+                    logger.exception(
+                        "attachment message_id backfill failed run_id=%s", run_id
+                    )
 
             try:
                 final_run = await _transition(

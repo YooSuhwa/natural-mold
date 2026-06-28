@@ -10,7 +10,9 @@ import pytest
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.message_attachment import MessageAttachment
 from app.services import (
+    chat_service,
     conversation_run_service,
     conversation_run_worker,
     conversation_stream_service,
@@ -153,6 +155,45 @@ async def test_worker_skips_finalization_when_run_already_terminal() -> None:
         assert refreshed is not None
         assert refreshed.status == "stale"
         assert refreshed.error_code == "stale_heartbeat"
+
+
+@pytest.mark.asyncio
+async def test_backfill_turn_attachments_stamps_orphan_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Finalize-side wiring (M1): resolve this turn's user message id and stamp
+    the send's orphan uploads with it (own session, committed)."""
+
+    conversation_id = await seed_conversation_with_agent()
+    upload_id = uuid.uuid4()
+    async with TestSession() as db:
+        db.add(
+            MessageAttachment(
+                id=upload_id,
+                user_id=TEST_USER_ID,
+                conversation_id=conversation_id,
+                message_id=None,
+                filename="f.png",
+                mime_type="image/png",
+                size_bytes=3,
+                storage_path=f"/tmp/{upload_id}.png",
+                url=f"/api/uploads/{upload_id}",
+            )
+        )
+        await db.commit()
+
+    # No real checkpointer in unit tests — pin the resolved user message id.
+    async def fake_resolve(_db: object, _conv: object, *, tree: object = None) -> str:
+        return "resolved-user-msg-id"
+
+    monkeypatch.setattr(chat_service, "resolve_turn_user_message_id", fake_resolve)
+
+    await conversation_run_worker._backfill_turn_attachments(conversation_id, [upload_id])
+
+    async with TestSession() as db:
+        row = await db.get(MessageAttachment, upload_id)
+        assert row is not None
+        assert row.message_id == "resolved-user-msg-id"
 
 
 @pytest.mark.asyncio
