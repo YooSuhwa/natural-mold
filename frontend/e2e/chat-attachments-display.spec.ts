@@ -134,6 +134,9 @@ test.describe('Chat attachments display', () => {
     await expect(liveUserMsg.getByRole('img', { name: imageName })).toBeVisible({
       timeout: 25_000,
     })
+    // The bubble body stays clean — no raw `[attachment: …](url)` markdown next
+    // to the thumbnail (the attachment rides its id, not body text).
+    await expect(liveUserMsg).not.toContainText('[attachment:')
 
     // fix 1 — the composer "파일 목록" button opens the file panel even though this
     //         conversation has no generated artifact card to click; the attachment
@@ -159,6 +162,8 @@ test.describe('Chat attachments display', () => {
     await expect(reloadedUserMsg.getByRole('img', { name: imageName })).toBeVisible({
       timeout: 30_000,
     })
+    // ...and the stored content is still clean after reload.
+    await expect(reloadedUserMsg).not.toContainText('[attachment:')
 
     // 4. Unified /files lists it as a read-only attachment linked to a message (M3).
     const files = (await (
