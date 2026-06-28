@@ -58,6 +58,10 @@ async def test_get_upload_disposition_inline_only_for_preview_safe_types(
         ("a.png", "image/png", "inline"),
         ("b.svg", "image/svg+xml", "attachment"),
         ("c.html", "text/html", "attachment"),
+        # The mime is client-supplied: case + params must not bypass the svg
+        # exclusion into an inline (scriptable) render.
+        ("d.svg", "image/svg+XML", "attachment"),
+        ("e.svg", "image/svg+xml; charset=utf-8", "attachment"),
     ]
     for name, mime, expected in cases:
         files = {"file": (name, io.BytesIO(b"<x/>"), mime)}

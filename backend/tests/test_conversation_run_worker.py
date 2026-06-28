@@ -197,6 +197,74 @@ async def test_backfill_turn_attachments_stamps_orphan_rows(
 
 
 @pytest.mark.asyncio
+async def test_backfill_runs_after_branch_activation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """H2 regression: in the finalize block, the attachment backfill must run
+    AFTER branch activation. resolve_turn_user_message_id reads
+    ``active_branch_checkpoint_id``; an edit/regenerate run forks a new leaf that
+    is activated in the finalize block, so resolving before activation would walk
+    the stale branch and mis-link. Guards against silently reverting the order
+    (the helpers are correct in isolation; only their ordering here matters)."""
+
+    conversation_id = await seed_conversation_with_agent()
+    async with TestSession() as db:
+        conv = await db.get(Conversation, conversation_id)
+        assert conv is not None
+        run = await conversation_run_service.create_run(
+            db,
+            conversation_id=conversation_id,
+            agent_id=conv.agent_id,
+            user_id=TEST_USER_ID,
+            source="regenerate",
+            input_preview="edit with attachment",
+        )
+        await db.commit()
+        run_id = run.id
+
+    call_order: list[str] = []
+
+    async def fake_activate(**_kwargs: Any) -> None:
+        call_order.append("activate")
+
+    async def fake_backfill(_conv_id: object, _att_ids: object) -> None:
+        call_order.append("backfill")
+
+    monkeypatch.setattr(
+        conversation_run_worker, "_activate_latest_branch_leaf_if_needed", fake_activate
+    )
+    monkeypatch.setattr(conversation_run_worker, "_backfill_turn_attachments", fake_backfill)
+
+    async def empty_stream(*_args: Any, **_kwargs: Any) -> AsyncGenerator[str, None]:
+        if False:  # pragma: no cover - async generator 형태 유지
+            yield ""
+
+    user = CurrentUser(
+        id=TEST_USER_ID,
+        email="test@test.com",
+        name="Test User",
+        is_super_user=True,
+    )
+    registry = conversation_run_worker.RunTaskRegistry(worker_instance_id="order-worker")
+    await conversation_run_worker.start_conversation_run(
+        run_id=run_id,
+        conversation_id=conversation_id,
+        cfg=cast(Any, object()),
+        user=user,
+        input_payload={"content": "x"},
+        moldy_source="regenerate",
+        executor_fn=empty_stream,
+        registry=registry,
+        attachment_ids=[uuid.uuid4()],
+    )
+    task = registry.get(run_id)
+    assert task is not None
+    await task
+
+    assert call_order == ["activate", "backfill"], call_order
+
+
+@pytest.mark.asyncio
 async def test_completed_regenerate_run_persists_latest_branch_leaf(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

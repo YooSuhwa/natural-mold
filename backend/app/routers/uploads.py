@@ -16,7 +16,7 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,6 +43,26 @@ def _is_allowed(mime: str) -> bool:
     if any(mime.startswith(p) for p in _ALLOWED_PREFIXES):
         return True
     return mime in _ALLOWED_EXACT
+
+
+def _normalize_mime(mime: str) -> str:
+    """Lowercased base mime with ``; params`` stripped — for security/type
+    comparisons, since the client-supplied mime varies in case and params."""
+
+    return mime.split(";", 1)[0].strip().lower()
+
+
+def _is_inline_safe(mime: str) -> bool:
+    """Whether an upload may be served ``inline`` without XSS risk: only PDF and
+    raster images. SVG is scriptable, so it (and everything else) is download-only."""
+
+    base = _normalize_mime(mime)
+    return base == "application/pdf" or (base.startswith("image/") and base != "image/svg+xml")
+
+
+def _is_textual_mime(mime: str) -> bool:
+    base = _normalize_mime(mime)
+    return base.startswith("text/") or base == "application/json"
 
 
 def _ensure_dir() -> Path:
@@ -157,9 +177,12 @@ async def get_upload(
     # ``attachment`` so navigating to ``/api/uploads/{id}`` downloads instead of
     # rendering+running it (the mime is client-supplied, so don't trust it for
     # inline). ``nosniff`` also blocks content-type sniffing into a script.
-    inline_ok = row.mime_type == "application/pdf" or (
-        row.mime_type.startswith("image/") and row.mime_type != "image/svg+xml"
-    )
+    #
+    # Normalize first: the mime is client-supplied, browsers match it
+    # case-insensitively and ignore ``; charset=...`` params, so an exact
+    # ``!= "image/svg+xml"`` compare against the raw value would let
+    # ``image/svg+XML`` / ``image/svg+xml; charset=utf-8`` slip through as inline.
+    inline_ok = _is_inline_safe(row.mime_type)
     return FileResponse(
         path,
         media_type=row.mime_type,
@@ -172,6 +195,7 @@ async def get_upload(
 @router.get("/api/uploads/{upload_id}/content", response_model=ArtifactTextContent)
 async def get_upload_content(
     upload_id: uuid.UUID,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> ArtifactTextContent:
@@ -184,7 +208,7 @@ async def get_upload_content(
     """
 
     row = await _get_owned_attachment(db, upload_id, user)
-    if not (row.mime_type.startswith("text/") or row.mime_type == "application/json"):
+    if not _is_textual_mime(row.mime_type):
         raise file_not_found()
     path = Path(row.storage_path)
     if not await asyncio.to_thread(path.is_file):
@@ -192,6 +216,8 @@ async def get_upload_content(
 
     max_bytes = settings.artifact_preview_max_text_bytes
     data = await asyncio.to_thread(_read_file_prefix, path, max_bytes + 1)
+    # Match get_upload — never let the JSON body be sniffed into something active.
+    response.headers["X-Content-Type-Options"] = "nosniff"
     return ArtifactTextContent(
         text=data[:max_bytes].decode("utf-8", errors="replace"),
         truncated=len(data) > max_bytes,
