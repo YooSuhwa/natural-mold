@@ -51,6 +51,11 @@ Plan: `~/.claude/plans/frolicking-marinating-quilt.md`
 - [x] DoD 충족, 회귀 없음 (백엔드 2473 / 프론트 vitest 1078 / tsc / lint / E2E 2/2)
 - [ ] push (pre-push 막히면 SKILL_EVALUATION_ENABLED=true)
 
-## 알려진 한계 (후속)
-- 첨부만 있는 대화는 우측 파일 패널을 여는 트리거가 없음(레일은 artifact 카드 클릭으로만 열림). 인라인 표시는 정상. 전용 "파일" 버튼은 별도 작업.
-- 생성 파일의 jump-to-message는 assistant_msg_id=run_id 매칭 의존(첨부 jump는 정확). 라이브 전송 직후 인라인은 /files refetch(=run 완료 후) 시점에 표시.
+## 후속 수정 (1·2a·2b 이번에 처리)
+- [x] (1) 첨부만 있는 대화용 "파일" 버튼 — composer 툴바에서 파일 패널(list) 열기
+- [x] (2a) run 완료 시 /files invalidate → 라이브 전송 첨부가 답변 끝나면 바로 인라인 표시
+- [x] (2b) 생성 FileItem.message_id = linked_message_ids[0](실제 메시지 id) → 생성 파일 jump 정확
+
+## TODO (꼭 해야 함, 이번 범위 아님)
+- [ ] **O2 업로드 암호화**: 첨부·생성 파일 둘 다 디스크에 평문 저장(shutil.copy2 / write_bytes). API는 인증 보호됨.
+      정책 결정(전체 / 민감 MIME만 / 안 함) 후 첨부+생성에 일괄 적용. 첨부만의 신규 약점은 아님(기존 생성 파일과 동일).

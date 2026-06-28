@@ -128,6 +128,21 @@ test.describe('Chat attachments display', () => {
       timeout: 60_000,
     })
 
+    // 2a — WITHOUT a reload, the just-sent attachment appears inline once the run
+    //      completes and the /files query is refetched (message_id backfill).
+    const liveUserMsg = page.locator('[data-moldy-message-role="user"]').last()
+    await expect(liveUserMsg.getByRole('img', { name: imageName })).toBeVisible({
+      timeout: 25_000,
+    })
+
+    // fix 1 — the composer "파일 목록" button opens the file panel even though this
+    //         conversation has no generated artifact card to click; the attachment
+    //         shows there under "내가 보낸 파일" with the 첨부 badge.
+    await page.getByRole('button', { name: '파일 목록' }).click()
+    // (the rail renders in both the desktop + overlay slots → match the first)
+    await expect(page.getByText('내가 보낸 파일').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('첨부').first()).toBeVisible()
+
     // 1. Read path echoes the attachment on the user message (M1 backfill).
     const envelope = (await (
       await request.get(`${API}/api/conversations/${conversationId}/messages`)

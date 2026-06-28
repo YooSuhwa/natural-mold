@@ -1526,7 +1526,8 @@
       "attachedSection": "Files you sent",
       "generatedSection": "Generated files",
       "jumpToMessage": "Go to message",
-      "notInLoaded": "Earlier message"
+      "notInLoaded": "Earlier message",
+      "openPanel": "Files"
     },
     "rightRail": {
       "closePanel": "Close panel",

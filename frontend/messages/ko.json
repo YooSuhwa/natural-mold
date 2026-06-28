@@ -1505,7 +1505,8 @@
       "attachedSection": "내가 보낸 파일",
       "generatedSection": "생성된 파일",
       "jumpToMessage": "대화로 이동",
-      "notInLoaded": "이전 메시지"
+      "notInLoaded": "이전 메시지",
+      "openPanel": "파일 목록"
     },
     "rightRail": {
       "closePanel": "Close panel",
