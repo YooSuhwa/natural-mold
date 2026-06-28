@@ -56,6 +56,32 @@ export function briefFromAttachment(attachment: unknown): MessageAttachmentBrief
 }
 
 /**
+ * 첨부 1개의 미리보기 다이얼로그(제어형). 보낸 메시지 버블과 우측 레일의 첨부
+ * 카드가 동일한 미리보기 경로(``ArtifactPreview``)를 공유하기 위해 분리했다.
+ * ``open``일 때만 ``ArtifactPreview``를 마운트해 불필요한 text fetch를 막는다.
+ */
+export function AttachmentPreviewDialog({
+  brief,
+  open,
+  onOpenChange,
+}: {
+  brief: MessageAttachmentBrief
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="truncate pr-8">{brief.filename}</DialogTitle>
+        </DialogHeader>
+        {open ? <ArtifactPreview artifact={attachmentToArtifactSummary(brief)} /> : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
  * 보낸 메시지 버블에 표시되는 첨부 1개. 이미지는 썸네일, 그 외는 파일 칩.
  * 클릭하면 기존 artifact 미리보기(``ArtifactPreview``)를 다이얼로그로 연다.
  * 보낸 첨부이므로 읽기 전용(제거/수정 없음).
@@ -91,14 +117,7 @@ export function MessageAttachmentItem({ brief }: { brief: MessageAttachmentBrief
           </>
         )}
       </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="truncate pr-8">{brief.filename}</DialogTitle>
-          </DialogHeader>
-          {open ? <ArtifactPreview artifact={attachmentToArtifactSummary(brief)} /> : null}
-        </DialogContent>
-      </Dialog>
+      <AttachmentPreviewDialog brief={brief} open={open} onOpenChange={setOpen} />
     </>
   )
 }

@@ -1499,6 +1499,14 @@
       },
       "expandToPanel": "Expand to panel"
     },
+    "files": {
+      "attachedBadge": "첨부",
+      "generatedBadge": "생성",
+      "attachedSection": "내가 보낸 파일",
+      "generatedSection": "생성된 파일",
+      "jumpToMessage": "대화로 이동",
+      "notInLoaded": "이전 메시지"
+    },
     "rightRail": {
       "closePanel": "Close panel",
       "resizePanel": "파일 패널 크기 조절",

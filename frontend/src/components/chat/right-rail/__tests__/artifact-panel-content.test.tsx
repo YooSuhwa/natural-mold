@@ -1,13 +1,21 @@
 import { Provider, createStore } from 'jotai'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, userEvent } from '../../../../../tests/test-utils'
 import { chatArtifactsAtom } from '@/lib/stores/chat-artifacts'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
-import type { ArtifactSummary } from '@/lib/types'
+import type { ArtifactSummary, FileItem } from '@/lib/types'
 import { ArtifactPanelContent } from '../artifact-panel-content'
+
+const { useConversationFilesMock } = vi.hoisted(() => ({
+  useConversationFilesMock: vi.fn(() => ({ data: [] as FileItem[] })),
+}))
 
 vi.mock('@/lib/hooks/use-conversation-artifacts', () => ({
   useConversationArtifacts: () => ({ isLoading: false }),
+}))
+
+vi.mock('@/lib/hooks/use-conversation-files', () => ({
+  useConversationFiles: () => useConversationFilesMock(),
 }))
 
 vi.mock('@/lib/hooks/use-artifact-library', () => ({
@@ -51,6 +59,24 @@ function artifact(overrides: Partial<ArtifactSummary>): ArtifactSummary {
     url: '/api/conversations/conversation-1/artifacts/artifact-1',
     preview_url: '/api/conversations/conversation-1/artifacts/artifact-1/content',
     download_url: '/api/conversations/conversation-1/artifacts/artifact-1/download',
+    ...overrides,
+  }
+}
+
+function fileItem(overrides: Partial<FileItem> = {}): FileItem {
+  return {
+    source: 'attached',
+    id: 'attach-1',
+    name: 'photo.png',
+    mime_type: 'image/png',
+    extension: 'png',
+    kind: 'image',
+    size_bytes: 2048,
+    preview_url: '/api/uploads/attach-1',
+    download_url: '/api/uploads/attach-1',
+    message_id: 'user-msg-1',
+    created_at: '2026-06-05T00:00:00',
+    editable: false,
     ...overrides,
   }
 }
@@ -116,6 +142,10 @@ function renderPanelWithStalePayload() {
 }
 
 describe('ArtifactPanelContent', () => {
+  afterEach(() => {
+    useConversationFilesMock.mockReturnValue({ data: [] })
+  })
+
   it('shows only the session file list in list mode', () => {
     renderPanel('list')
 
@@ -154,5 +184,47 @@ describe('ArtifactPanelContent', () => {
         view: 'preview',
       },
     })
+  })
+
+  it('renders generated items with the 생성 badge', () => {
+    renderPanel('list')
+
+    expect(screen.getByText('생성된 파일')).toBeInTheDocument()
+    expect(screen.getAllByText('생성').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('renders an attached file with the 첨부 badge as a read-only card', () => {
+    useConversationFilesMock.mockReturnValue({ data: [fileItem({ name: 'sent.png' })] })
+
+    renderPanel('list')
+
+    // 첨부 섹션 + 배지 + 파일명이 보인다.
+    expect(screen.getByText('내가 보낸 파일')).toBeInTheDocument()
+    expect(screen.getByText('첨부')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /sent\.png/ })).toBeInTheDocument()
+    // 읽기 전용: edit/save/remove 류 액션이 없다.
+    expect(screen.queryByRole('button', { name: /제거|삭제|편집|수정|저장/ })).toBeNull()
+    // 다운로드 어포던스는 존재한다(base-ui Button이 <a>에 role=button을 부여).
+    const download = screen.getByRole('button', { name: '다운로드' })
+    expect(download.getAttribute('href')).toContain('/api/uploads/attach-1')
+    // 생성 섹션도 그대로 함께 렌더된다(레그레션).
+    expect(screen.getByText('생성된 파일')).toBeInTheDocument()
+  })
+
+  it('renders only the attachments section when there are no generated artifacts', () => {
+    useConversationFilesMock.mockReturnValue({ data: [fileItem()] })
+
+    const store = createStore()
+    store.set(chatArtifactsAtom, {
+      'conversation-1': { items: [], selectedArtifactId: null },
+    })
+    render(
+      <Provider store={store}>
+        <ArtifactPanelContent payload={{ conversationId: 'conversation-1', view: 'list' }} />
+      </Provider>,
+    )
+
+    expect(screen.getByText('내가 보낸 파일')).toBeInTheDocument()
+    expect(screen.queryByText('생성된 파일')).not.toBeInTheDocument()
   })
 })

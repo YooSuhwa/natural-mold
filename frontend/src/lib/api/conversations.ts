@@ -8,6 +8,7 @@ import type {
   ConversationWithAgentListEnvelope,
   DebugTraceDetailResponse,
   DebugTraceListResponse,
+  FileItem,
   Message,
   MessagesEnvelope,
 } from '@/lib/types'
@@ -68,6 +69,13 @@ export const conversationsApi = {
     ),
   messagesEnvelope: (conversationId: string) =>
     apiFetch<MessagesEnvelope>(`/api/conversations/${conversationId}/messages`),
+  /**
+   * 대화 파일 목록(생성 산출물 + 사용자 첨부)을 합쳐 반환. 우측 레일의
+   * 첨부 섹션은 `source==='attached'`만 사용하고, 생성 산출물은 기존
+   * `chatArtifactsAtom` 스트리밍 경로를 그대로 유지한다.
+   */
+  files: (conversationId: string): Promise<FileItem[]> =>
+    apiFetch<FileItem[]>(`/api/conversations/${conversationId}/files`),
   debugTraces: (conversationId: string) =>
     apiFetch<DebugTraceListResponse>(`/api/conversations/${conversationId}/debug/traces`),
   debugTraceDetail: (conversationId: string, traceId: string) =>

@@ -1520,6 +1520,14 @@
       },
       "expandToPanel": "Expand to panel"
     },
+    "files": {
+      "attachedBadge": "Attached",
+      "generatedBadge": "Generated",
+      "attachedSection": "Files you sent",
+      "generatedSection": "Generated files",
+      "jumpToMessage": "Go to message",
+      "notInLoaded": "Earlier message"
+    },
     "rightRail": {
       "closePanel": "Close panel",
       "resizePanel": "Resize files panel",

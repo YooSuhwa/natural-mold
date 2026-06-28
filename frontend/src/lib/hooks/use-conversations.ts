@@ -46,6 +46,8 @@ export const conversationKeys = {
     ['conversations', 'page', params] as const,
   detail: (conversationId: string) => ['conversations', conversationId, 'detail'] as const,
   messages: (conversationId: string) => ['conversations', conversationId, 'messages'] as const,
+  files: (conversationId: string | null | undefined) =>
+    ['conversations', conversationId ?? 'none', 'files'] as const,
   debugTraces: (conversationId: string) =>
     ['conversations', conversationId, 'debug-traces'] as const,
   debugTraceDetail: (conversationId: string, traceId: string) =>
