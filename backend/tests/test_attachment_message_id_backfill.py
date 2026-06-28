@@ -115,6 +115,28 @@ async def test_resolver_id_matches_read_path_and_echoes_on_last_user_bubble(
 
 
 @pytest.mark.asyncio
+async def test_share_view_excludes_attachments(db: AsyncSession) -> None:
+    """D11/M2 — a public share reads with ``user_id=None``; backfilled
+    attachments must stay out of the snapshot (authed-view side channel only)."""
+
+    conv = await _seed_conversation(db)
+    msg_id = str(uuid.uuid4())
+    tree = _tree(
+        [HumanMessage(content="hi", id=msg_id), AIMessage(content="yo", id=str(uuid.uuid4()))]
+    )
+    db.add(_attachment(conv, message_id=msg_id))
+    await db.flush()
+
+    # Authed view echoes it...
+    authed = await list_messages_from_checkpointer(db, conv, user_id=TEST_USER_ID, tree=tree)
+    assert any(r.attachments for r in authed)
+
+    # ...the share view (user_id=None) does not.
+    shared = await list_messages_from_checkpointer(db, conv, user_id=None, tree=tree)
+    assert all(r.attachments is None for r in shared)
+
+
+@pytest.mark.asyncio
 async def test_resolver_matches_read_path_for_idless_human(db: AsyncSession) -> None:
     """When the checkpoint message has no id, both sides fall back to the
     same ``uuid5(conversation_id, idx)`` — so idx alignment must match too."""

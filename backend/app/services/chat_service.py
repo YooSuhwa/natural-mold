@@ -1161,25 +1161,30 @@ async def list_messages_from_checkpointer(
                 exc_info=True,
             )
 
-    try:
-        attach_result = await db.execute(
-            select(MessageAttachment).where(
-                MessageAttachment.conversation_id == conversation.id,
-                MessageAttachment.message_id.is_not(None),
+    # D11/M2 — attachments are an authed-view side channel only. A public
+    # share reads with ``user_id=None``; gating here keeps attachments (now
+    # that message_id is backfilled) out of the share snapshot, matching the
+    # artifact block below which is already authed-only.
+    if user_id is not None:
+        try:
+            attach_result = await db.execute(
+                select(MessageAttachment).where(
+                    MessageAttachment.conversation_id == conversation.id,
+                    MessageAttachment.message_id.is_not(None),
+                )
             )
-        )
-        for att in attach_result.scalars().all():
-            if att.message_id is None:
-                continue
-            attachments_by_msg.setdefault(att.message_id, []).append(
-                MessageAttachmentBrief.model_validate(att)
+            for att in attach_result.scalars().all():
+                if att.message_id is None:
+                    continue
+                attachments_by_msg.setdefault(att.message_id, []).append(
+                    MessageAttachmentBrief.model_validate(att)
+                )
+        except Exception:  # noqa: BLE001 — non-critical hydration
+            logger.warning(
+                "attachment hydrate failed for conversation %s — skipping",
+                conversation.id,
+                exc_info=True,
             )
-    except Exception:  # noqa: BLE001 — non-critical hydration
-        logger.warning(
-            "attachment hydrate failed for conversation %s — skipping",
-            conversation.id,
-            exc_info=True,
-        )
 
     if user_id is not None:
         try:
