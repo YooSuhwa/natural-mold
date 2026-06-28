@@ -1,14 +1,12 @@
 'use client'
 
-/* eslint-disable @next/next/no-img-element */
-
 import { useMemo, useState } from 'react'
 import { useAuiState } from '@assistant-ui/react'
 import { FileIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { cn, resolveImageUrl } from '@/lib/utils'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import { ArtifactPreview } from '@/components/chat/artifacts/artifact-preview'
+import { ChatImage } from '@/components/chat/chat-image'
 import { attachmentToArtifactSummary } from '@/lib/chat/attachment-to-artifact'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { useConversationFiles } from '@/lib/hooks/use-conversation-files'
@@ -26,9 +24,11 @@ export function fileItemToBrief(file: FileItem): MessageAttachmentBrief {
 }
 
 /**
- * 첨부 1개의 미리보기 다이얼로그(제어형). 보낸 메시지 버블과 우측 레일의 첨부
- * 카드가 동일한 미리보기 경로(``ArtifactPreview``)를 공유하기 위해 분리했다.
- * ``open``일 때만 ``ArtifactPreview``를 마운트해 불필요한 text fetch를 막는다.
+ * 비이미지 첨부(PDF/문서/텍스트…)의 미리보기 다이얼로그.
+ *
+ * 이미지가 여는 ``ChatImage`` 라이트박스와 **같은 풀스크린 ``DialogShell`` 껍데기**를
+ * 써서 두 뷰어가 시각적으로 일관되게 보이게 한다(내용은 ``ArtifactPreview``로 타입별
+ * 렌더 — 미지원은 다운로드 fallback). ``open``일 때만 마운트해 불필요한 fetch를 막는다.
  */
 export function AttachmentPreviewDialog({
   brief,
@@ -40,29 +40,37 @@ export function AttachmentPreviewDialog({
   onOpenChange: (open: boolean) => void
 }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="truncate pr-8">{brief.filename}</DialogTitle>
-        </DialogHeader>
+    <DialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      size="xl"
+      height="auto"
+      className="!h-[calc(100vh-2rem)] !max-h-[calc(100vh-2rem)] !w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] lg:!w-[min(calc(100vw-2rem),1200px)]"
+    >
+      <DialogShell.Header title={<span className="truncate">{brief.filename}</span>} />
+      <DialogShell.Body className="min-h-0 overflow-auto">
         {open ? <ArtifactPreview artifact={attachmentToArtifactSummary(brief)} /> : null}
-      </DialogContent>
-    </Dialog>
+      </DialogShell.Body>
+    </DialogShell>
   )
 }
 
 /**
- * 보낸 메시지 버블에 표시되는 첨부 1개. 이미지는 썸네일, 그 외는 파일 칩.
- * 클릭하면 기존 artifact 미리보기(``ArtifactPreview``)를 다이얼로그로 연다.
+ * 보낸 메시지 버블에 표시되는 첨부 1개.
+ * - 이미지: 채팅 공용 ``ChatImage`` 재사용 → 마크다운/인라인 이미지와 동일한
+ *   썸네일 + 클릭 시 풀스크린 라이트박스(일관 UX).
+ * - 그 외(PDF/문서/텍스트): 파일 칩 → ``ArtifactPreview`` 다이얼로그(미지원은 다운로드 fallback).
  * 보낸 첨부이므로 읽기 전용(제거/수정 없음).
  */
 export function MessageAttachmentItem({ brief }: { brief: MessageAttachmentBrief }) {
   const tMessageArtifacts = useTranslations('chat.message.artifacts')
   const [open, setOpen] = useState(false)
-  const isImage = brief.mime_type.startsWith('image/')
-  const src = resolveImageUrl(brief.url) ?? brief.url
-  const openLabel = tMessageArtifacts('openLabel', { name: brief.filename })
 
+  if (brief.mime_type.startsWith('image/')) {
+    return <ChatImage src={brief.url} alt={brief.filename} />
+  }
+
+  const openLabel = tMessageArtifacts('openLabel', { name: brief.filename })
   return (
     <>
       <button
@@ -70,22 +78,12 @@ export function MessageAttachmentItem({ brief }: { brief: MessageAttachmentBrief
         onClick={() => setOpen(true)}
         aria-label={openLabel}
         title={brief.filename}
-        className={cn(
-          'moldy-card-hover overflow-hidden rounded-lg border border-border bg-muted/40 text-left transition-colors',
-          'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
-          isImage ? 'size-20' : 'inline-flex max-w-56 items-center gap-2 px-2.5 py-2',
-        )}
+        className="moldy-card-hover inline-flex max-w-56 items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {isImage ? (
-          <img src={src} alt={brief.filename} className="size-full object-cover" />
-        ) : (
-          <>
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-              <FileIcon className="size-3.5" />
-            </span>
-            <span className="min-w-0 truncate text-xs text-foreground">{brief.filename}</span>
-          </>
-        )}
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
+          <FileIcon className="size-3.5" />
+        </span>
+        <span className="min-w-0 truncate text-xs text-foreground">{brief.filename}</span>
       </button>
       <AttachmentPreviewDialog brief={brief} open={open} onOpenChange={setOpen} />
     </>

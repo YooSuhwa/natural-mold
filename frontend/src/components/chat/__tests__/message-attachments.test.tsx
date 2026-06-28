@@ -47,13 +47,24 @@ describe('fileItemToBrief', () => {
 })
 
 describe('MessageAttachmentItem', () => {
-  it('renders an image attachment as a clickable thumbnail', () => {
+  it('renders an image attachment via the shared ChatImage viewer', () => {
     render(<MessageAttachmentItem brief={brief()} />)
 
-    const button = screen.getByRole('button', { name: /photo\.png/ })
-    expect(button).toBeInTheDocument()
-    const thumbnail = within(button).getByRole('img')
-    expect(thumbnail).toHaveAttribute('alt', 'photo.png')
+    const thumbnail = screen.getByRole('img', { name: 'photo.png' })
+    // 마크다운/인라인 이미지와 동일한 공용 ChatImage(.chat-image)로 렌더된다.
+    expect(thumbnail).toHaveClass('chat-image')
+  })
+
+  it('opens a fullscreen image lightbox when the image is clicked', async () => {
+    const user = userEvent.setup()
+    render(<MessageAttachmentItem brief={brief()} />)
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await user.click(screen.getByRole('img', { name: 'photo.png' }))
+
+    // ChatImage 라이트박스(DialogShell) 안에 원본 이미지가 뜬다.
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('img', { name: 'photo.png' })).toBeInTheDocument()
   })
 
   it('renders a non-image attachment as a file chip with the filename', () => {
@@ -69,16 +80,16 @@ describe('MessageAttachmentItem', () => {
     expect(button).toHaveTextContent('spec.pdf')
   })
 
-  it('opens the artifact preview dialog when clicked', async () => {
+  it('opens the artifact preview dialog for a non-image file', async () => {
     const user = userEvent.setup()
-    render(<MessageAttachmentItem brief={brief()} />)
+    render(
+      <MessageAttachmentItem
+        brief={brief({ id: 'u3', filename: 'spec.pdf', mime_type: 'application/pdf' })}
+      />,
+    )
 
     expect(screen.queryByRole('dialog')).toBeNull()
-    await user.click(screen.getByRole('button', { name: /photo\.png/ }))
-
-    const dialog = await screen.findByRole('dialog')
-    // 이미지 첨부 → 기존 ImagePreview가 다이얼로그 안에서 미리보기를 렌더한다.
-    expect(within(dialog).getByText('이미지 미리보기')).toBeInTheDocument()
-    expect(within(dialog).getAllByRole('img').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: /spec\.pdf/ }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
 })
