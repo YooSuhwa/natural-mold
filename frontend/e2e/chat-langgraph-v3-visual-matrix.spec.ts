@@ -159,7 +159,12 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       )
       const runId = await waitForActiveRun(request, setup.conversationId)
 
-      await expect(page.getByText('Collect LangGraph v3 runtime evidence')).toBeVisible({
+      // `.first()`: while the run is still streaming the planning todos render in
+      // two places at once — the live activity panel ("작업 목록") and the message
+      // "Plan" card — so a bare `getByText` trips Playwright strict mode. Either
+      // copy being visible proves the planning state was captured. (The duplicate
+      // render itself is addressed separately by gating the activity panel.)
+      await expect(page.getByText('Collect LangGraph v3 runtime evidence').first()).toBeVisible({
         timeout: 30_000,
       })
       await waitForCapturePaint(page)

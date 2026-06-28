@@ -185,7 +185,27 @@ describe('StreamingMessageLoadingIndicator', () => {
     expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
   })
 
-  it('hides witty loading when DeepAgents state exists', () => {
+  it('shows the live panel for files but defers todos to the message plan card', () => {
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[]}
+        deepAgentsState={{
+          todos: [{ id: 'todo-1', content: 'Plan work', status: 'in_progress' }],
+          files: [{ id: 'file-1', name: 'brief.md', path: 'reports/brief.md', sizeBytes: 1200 }],
+        }}
+      />,
+    )
+
+    // Files are live-only, so they render in the loading panel...
+    expect(screen.getByText('파일')).toBeInTheDocument()
+    // ...but the todos are not duplicated here — the assistant message's
+    // persistent "Plan" card (write_todos tool-ui) is their single source.
+    expect(screen.queryByText('작업 목록')).not.toBeInTheDocument()
+    expect(screen.queryByText('Plan work')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
+  })
+
+  it('defers a todos-only run to witty loading (todos shown by the message plan card)', () => {
     render(
       <StreamingMessageLoadingIndicator
         activities={[]}
@@ -196,8 +216,8 @@ describe('StreamingMessageLoadingIndicator', () => {
       />,
     )
 
-    expect(screen.getByText('작업 목록')).toBeInTheDocument()
-    expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
+    expect(screen.queryByText('작업 목록')).not.toBeInTheDocument()
+    expect(screen.getByTestId('witty-loading')).toBeInTheDocument()
   })
 
   it('renders nothing outside the active streaming message', () => {

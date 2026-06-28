@@ -22,6 +22,7 @@ import {
   waitForArtifact,
   waitForRunStatus,
 } from './langgraph-v3-helpers'
+import { waitForThreadStateText } from './langgraph-v3-state-helpers'
 
 const SCRIPTED_PROVIDER = 'e2e_scripted'
 const SCRIPTED_MODEL = 'document-artifact-scripted'
@@ -310,6 +311,71 @@ test.describe('LangGraph v3 regression coverage', () => {
       const shareText = stringifyJson(sharedSnapshot, 'shared conversation')
       expect(shareText).not.toContain(SECRET_TOOL_ARG_VALUE)
       expect(shareText).toContain('<redacted>')
+
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
+
+  test('keeps the delegated subagent result inline after reload and HITL resume', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    test.setTimeout(180_000)
+    const setup = await setupLangGraphV3Agent(request)
+    const subagentChip = page.getByText(setup.childRuntimeName).first()
+    // The delegated subagent's scoped final report. It renders inside the
+    // subagent card body, so it is only visible when that card is expanded —
+    // exactly the state the reload-hydration regression collapsed.
+    const subagentResult = page.getByText('E2E subagent scoped result ready.').first()
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      await sendMessage(page, `E2E_LANGGRAPH_V3 subagent=${setup.childRuntimeName}`)
+
+      const runId = await waitForActiveRun(request, setup.conversationId)
+      await waitForRunStatus(request, setup.conversationId, runId, 'interrupted')
+      await expect(page.getByText('Collect LangGraph v3 runtime evidence').first()).toBeVisible({
+        timeout: 30_000,
+      })
+      // Live (before any reload): the subagent card is expanded with its result.
+      await expect(subagentChip).toBeVisible()
+      await expect(subagentResult).toBeVisible()
+
+      // The subagent finished before the HITL interrupt, so on reload its
+      // discovery snapshot is seeded asynchronously from getState. Regression:
+      // CollapsiblePill read `defaultExpanded` only at mount, so the card mounted
+      // collapsed and never re-expanded once the snapshot landed — hiding the
+      // scoped result after reload. Wait for the subagent state to persist first
+      // so getState actually carries it.
+      await waitForThreadStateText(
+        request,
+        setup.conversationId,
+        'Render delegated subagent progress',
+      )
+      await page.reload()
+      await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible({
+        timeout: 30_000,
+      })
+      await approveExecuteInSkill(page)
+      await waitForArtifact(request, setup.conversationId, REPORT_FILE)
+      await expectFinalTextVisible(page)
+
+      // After reload + resume the scoped result is back inline in the transcript
+      // (no right-rail click) — this is the assertion the fix restores.
+      await expect(subagentChip).toBeVisible()
+      await expect(subagentResult).toBeVisible({ timeout: 30_000 })
+
+      // A second reload of the now-completed thread exercises the pure hydration
+      // path (no live stream at all): the subagent card must rehydrate expanded.
+      await page.reload()
+      await expectFinalTextVisible(page)
+      await expect(subagentChip).toBeVisible()
+      await expect(subagentResult).toBeVisible({ timeout: 30_000 })
 
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])

@@ -9,7 +9,6 @@ import { WittyLoadingMessage } from '@/components/chat/witty-loading'
 import { cn } from '@/lib/utils'
 import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
 import type { DeepAgentsStateSnapshot } from '@/lib/chat/langgraph-runtime/deepagents-state'
-import { hasDeepAgentsState } from '@/lib/chat/langgraph-runtime/deepagents-state'
 import { useSubagentProgressSummary } from '@/lib/chat/langgraph-runtime/subagent-runtime'
 
 interface StreamingMessageLoadingIndicatorProps {
@@ -94,15 +93,20 @@ export function StreamingMessageLoadingIndicator({
   const subagentProgress = useSubagentProgressSummary(subagentToolCallIds)
   if (!isStreamingMessage) return null
   const hasActivities = progressActivities.length > 0
-  const hasState = hasDeepAgentsState(deepAgentsState)
+  // Todos are owned by the assistant message's persistent "Plan" card
+  // (the write_todos tool-ui), so the live panel only earns its place when it
+  // has files — its live-only content. Gating on files (not all deep-agents
+  // state) keeps the planning todos from rendering twice while a run streams,
+  // and avoids an empty panel when only todos exist.
+  const filesState = deepAgentsState && deepAgentsState.files.length > 0 ? deepAgentsState : null
   const hasSubagentProgress = subagentProgress.total > 0
-  const hasStatusPanel = hasActivities || hasState || hasSubagentProgress
+  const hasStatusPanel = hasActivities || filesState !== null || hasSubagentProgress
 
   return (
     <AuiIf condition={(s) => s.thread.isRunning}>
       {hasStatusPanel ? (
         <div className={cn('mb-1 flex flex-col gap-1.5', className)}>
-          {hasState ? <DeepAgentsStatePanel state={deepAgentsState} /> : null}
+          {filesState ? <DeepAgentsStatePanel state={filesState} showTodos={false} /> : null}
           {hasSubagentProgress ? <SubagentProgress summary={subagentProgress} /> : null}
           {hasActivities ? <RunActivityStrip activities={progressActivities} /> : null}
         </div>
