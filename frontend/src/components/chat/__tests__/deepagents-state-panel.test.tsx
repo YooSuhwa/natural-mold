@@ -99,6 +99,30 @@ describe('DeepAgentsStatePanel', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  it('hides the todos section but keeps files when showTodos is false', () => {
+    render(<DeepAgentsStatePanel state={state} showTodos={false} />)
+
+    // Todos are deferred to the message "Plan" card, so they do not render here.
+    expect(screen.queryByText('작업 목록')).not.toBeInTheDocument()
+    expect(screen.queryByText('Plan work')).not.toBeInTheDocument()
+    // Files stay live-only and remain visible.
+    expect(screen.getByText('파일')).toBeInTheDocument()
+  })
+
+  it('renders nothing when showTodos is false and there are only todos', () => {
+    const { container } = render(
+      <DeepAgentsStatePanel
+        state={{
+          todos: [{ id: 'todo-1', content: 'Plan work', status: 'in_progress' }],
+          files: [],
+        }}
+        showTodos={false}
+      />,
+    )
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
   it('disables edit and save actions while loading or interrupted', async () => {
     const stateWithEditableFile: DeepAgentsStateSnapshot = {
       todos: [],

@@ -129,13 +129,22 @@ export function CollapsiblePill({
   // snapshot lands. Without re-syncing, the card would stay collapsed on reload
   // even though it auto-expands live — and because the scoped body only mounts
   // (and lazily resolves its messages) when expanded, the subagent's result
-  // would never render. Re-sync on the rising edge only, so a user's manual
-  // collapse — which does not change `defaultExpanded` — is preserved.
+  // would never render. Re-sync on the rising edge only, and never once the
+  // user has toggled the pill themselves: otherwise a later `defaultExpanded`
+  // flip (e.g. the subagent snapshot dropping then re-seeding across runs)
+  // would re-open a card the user deliberately collapsed.
+  const userToggledRef = useRef(false)
   const prevDefaultExpandedRef = useRef(defaultExpanded)
   useEffect(() => {
-    if (defaultExpanded && !prevDefaultExpandedRef.current) setExpanded(true)
+    if (defaultExpanded && !prevDefaultExpandedRef.current && !userToggledRef.current) {
+      setExpanded(true)
+    }
     prevDefaultExpandedRef.current = defaultExpanded
   }, [defaultExpanded])
+  const toggleExpanded = () => {
+    userToggledRef.current = true
+    setExpanded((value) => !value)
+  }
   const { Icon: StatusIcon, iconClass, containerClass, spin } = STATUS_META[status]
   // leadingIcon이 명시되면 그것을 사용, 없으면 kind 매핑 폴백
   const HeaderIcon = leadingIcon ?? (kind ? KIND_ICON[kind] : null)
@@ -199,7 +208,7 @@ export function CollapsiblePill({
           type="button"
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
           onClick={() => {
-            if (expandable) setExpanded((v) => !v)
+            if (expandable) toggleExpanded()
             else if (onClick) onClick()
           }}
           disabled={!expandable && !onClick}
@@ -210,7 +219,7 @@ export function CollapsiblePill({
         {expandable ? (
           <button
             type="button"
-            onClick={() => setExpanded((v) => !v)}
+            onClick={toggleExpanded}
             aria-label={expanded ? 'Collapse' : 'Expand'}
             aria-expanded={expanded}
             className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
