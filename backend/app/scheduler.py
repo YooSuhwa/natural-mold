@@ -466,6 +466,41 @@ def register_draft_conversation_gc_job() -> None:
     )
 
 
+ORPHAN_ATTACHMENT_GC_JOB_ID = "orphan_attachment_gc"
+
+
+async def orphan_attachment_gc_run() -> int:
+    """Delete never-sent uploads (orphan ``message_attachments``) + their blobs.
+
+    A ``POST /api/uploads`` row stays ``message_id IS NULL`` until turn finalize
+    stamps it (M1). One still NULL past
+    ``settings.orphan_attachment_gc_retention_hours`` was staged but never sent.
+    Wrapped so a transient failure doesn't disable the cron.
+    """
+
+    from app.services import chat_service
+
+    async with async_session() as db:
+        try:
+            return await chat_service.gc_orphan_attachments(
+                db, retention_hours=settings.orphan_attachment_gc_retention_hours
+            )
+        except Exception:  # noqa: BLE001 — keep cron alive
+            logger.exception("orphan attachment GC failed; will retry next run")
+            return 0
+
+
+def register_orphan_attachment_gc_job() -> None:
+    _register_cron_job(
+        job_id=ORPHAN_ATTACHMENT_GC_JOB_ID,
+        func=orphan_attachment_gc_run,
+        cron_expr=settings.orphan_attachment_gc_cron,
+        cron_setting_name="orphan_attachment_gc_cron",
+        log_label="orphan attachment GC",
+        log_extra=f" (retention={settings.orphan_attachment_gc_retention_hours}h)",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Lightweight MCP health polling
 # ---------------------------------------------------------------------------

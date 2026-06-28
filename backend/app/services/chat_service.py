@@ -892,6 +892,68 @@ async def gc_orphan_draft_conversations(db: AsyncSession, *, retention_hours: in
     return deleted
 
 
+def _unlink_paths(paths: Sequence[str]) -> None:
+    """Best-effort delete of stored upload files (runs off the event loop)."""
+
+    from pathlib import Path
+
+    for raw in paths:
+        try:
+            Path(raw).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("orphan attachment file delete failed: %s", raw, exc_info=True)
+
+
+async def gc_orphan_attachments(db: AsyncSession, *, retention_hours: int) -> int:
+    """Delete never-sent uploads (orphan ``message_attachments``) past the cutoff.
+
+    ``POST /api/uploads`` creates a row with ``message_id IS NULL``; it is
+    stamped with the user's message id at turn finalize (M1). A row whose
+    ``message_id`` is still NULL after ``retention_hours`` was uploaded but
+    never sent (composer abandoned) — invisible to every read path and never
+    cleaned up, so both the DB row and its on-disk blob accumulate.
+
+    Removes rows that are **both** ``message_id IS NULL`` AND older than the
+    cutoff. The on-disk file is unlinked first (best-effort, off the event
+    loop) so a delete failure can't strand bytes after the row is gone.
+    Commits so the cron caller doesn't manage a transaction. Returns the
+    number of orphan uploads deleted.
+    """
+
+    import asyncio
+
+    from app.models.message_attachment import MessageAttachment
+
+    # Reject (not clamp) a non-positive retention — ``0`` sets ``cutoff = now``
+    # and would reap an upload the user just staged but hasn't sent yet. A
+    # mis-set value must surface as a config error, not silently destroy data.
+    if retention_hours <= 0:
+        raise ValueError(f"retention_hours must be >= 1, got {retention_hours}")
+
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=retention_hours)
+    result = await db.execute(
+        select(MessageAttachment).where(
+            MessageAttachment.message_id.is_(None),
+            MessageAttachment.created_at < cutoff,
+        )
+    )
+    orphans = list(result.scalars().all())
+    if not orphans:
+        return 0
+
+    await asyncio.to_thread(_unlink_paths, [att.storage_path for att in orphans])
+
+    ids = [att.id for att in orphans]
+    await db.execute(delete(MessageAttachment).where(MessageAttachment.id.in_(ids)))
+    await db.commit()
+    logger.info(
+        "Orphan attachment GC: deleted %d never-sent upload(s) older than %s",
+        len(ids),
+        cutoff.isoformat(),
+    )
+    return len(ids)
+
+
 async def get_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> Conversation | None:
     result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
     return result.scalar_one_or_none()

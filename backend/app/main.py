@@ -75,6 +75,7 @@ from app.scheduler import (
     register_draft_conversation_gc_job,
     register_health_check_job,
     register_mcp_health_job,
+    register_orphan_attachment_gc_job,
     register_refresh_token_gc_job,
     register_skill_runtime_cleanup_job,
     release_scheduler_leader,
@@ -229,6 +230,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Orphan draft-conversation GC (hourly) — removes abandoned, message-less
         # ``source="draft"`` rows the UI can never surface or delete.
         register_draft_conversation_gc_job()
+        # Orphan attachment GC (hourly) — removes never-sent uploads
+        # (``message_attachments.message_id IS NULL``) + their on-disk blobs.
+        register_orphan_attachment_gc_job()
         # ADR-017 Slice E — per-thread skill runtime root cleanup
         # (10m interval, 1h retention). Also run once at startup to clear
         # anything left over from a previous server crash.

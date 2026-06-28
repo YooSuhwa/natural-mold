@@ -112,14 +112,23 @@ async def create_upload(
 async def get_upload(
     upload_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ) -> FileResponse:
-    """Serve the stored file inline — used by the frontend preview cards."""
+    """Serve the stored file inline — used by the frontend preview cards.
+
+    Auth + ownership guarded (Phase 0): only the uploader may fetch. The
+    browser sends the session cookie on same-origin ``<img src>`` / ``<a href>``
+    requests, so previews keep working. A missing row and a row owned by
+    someone else collapse to the **same 404** so the endpoint can't be used to
+    probe which upload ids exist (enumeration-oracle uniformity — see
+    project conventions on 404/403 parity).
+    """
 
     result = await db.execute(
         select(MessageAttachment).where(MessageAttachment.id == upload_id)
     )
     row = result.scalar_one_or_none()
-    if row is None:
+    if row is None or row.user_id != user.id:
         raise file_not_found()
 
     path = Path(row.storage_path)
