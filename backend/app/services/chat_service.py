@@ -1434,7 +1434,10 @@ async def list_conversation_files(
             size_bytes=a.size_bytes,
             preview_url=a.preview_url,
             download_url=a.download_url,
-            message_id=a.assistant_msg_id,
+            # Prefer the real assistant message id (parse_msg_id form, matches the
+            # bubble anchor) so "jump to message" lands on the right turn;
+            # ``assistant_msg_id`` is the run id and won't match the anchor.
+            message_id=(a.linked_message_ids[0] if a.linked_message_ids else a.assistant_msg_id),
             created_at=a.created_at,
             editable=True,
         )

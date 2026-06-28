@@ -26,9 +26,7 @@ from tests.artifact_test_helpers import seed_artifact_conversation
 from tests.conftest import TEST_USER_ID, TestSession
 
 
-async def _seed_generated_artifact(
-    conv_id: uuid.UUID, agent_id: uuid.UUID, tmp_path: Path
-) -> None:
+async def _seed_generated_artifact(conv_id: uuid.UUID, agent_id: uuid.UUID, tmp_path: Path) -> None:
     output_dir = tmp_path / "outputs"
     output_dir.mkdir(exist_ok=True)
     recorder = ArtifactDeltaRecorder(
@@ -96,6 +94,41 @@ async def test_files_endpoint_merges_generated_and_attached(
     # Single created_at-sorted (newest first) stream.
     times = [i["created_at"] for i in items]
     assert times == sorted(times, reverse=True)
+
+
+@pytest.mark.asyncio
+async def test_generated_file_jump_uses_linked_message_id_not_run_id(
+    client: AsyncClient, db: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A generated file's jump target must be the real assistant message id
+    (parse_msg_id form, matches the bubble anchor), not the run id."""
+
+    from sqlalchemy import select, update
+
+    from app.models.conversation_artifact import ConversationArtifact
+
+    monkeypatch.setattr(settings, "artifact_storage_dir", str(tmp_path / "artifacts"))
+    conv_id, agent_id = await seed_artifact_conversation()
+    await _seed_generated_artifact(conv_id, agent_id, tmp_path)
+
+    # finalize links the artifact to the turn's assistant message id(s).
+    real_msg_id = "019f0d8e-3c19-7469-bd30-57cd567fca07"
+    await db.execute(
+        update(ConversationArtifact)
+        .where(ConversationArtifact.conversation_id == conv_id)
+        .values(linked_message_ids=[real_msg_id])
+    )
+    await db.commit()
+    artifact = (
+        await db.execute(
+            select(ConversationArtifact).where(ConversationArtifact.conversation_id == conv_id)
+        )
+    ).scalar_one()
+    assert artifact.assistant_msg_id != real_msg_id  # run id differs from the message id
+
+    resp = await client.get(f"/api/conversations/{conv_id}/files")
+    generated = next(i for i in resp.json() if i["source"] == "generated")
+    assert generated["message_id"] == real_msg_id
 
 
 @pytest.mark.asyncio

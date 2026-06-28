@@ -991,6 +991,7 @@ def _summary_from_artifact_with_version(
         url=f"/api/conversations/{artifact.conversation_id}/artifacts/{artifact.id}",
         preview_url=f"/api/conversations/{artifact.conversation_id}/artifacts/{artifact.id}/content",
         download_url=f"/api/conversations/{artifact.conversation_id}/artifacts/{artifact.id}/download",
+        linked_message_ids=artifact.linked_message_ids,
     )
 
 

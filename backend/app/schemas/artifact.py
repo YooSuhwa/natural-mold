@@ -52,6 +52,9 @@ class ArtifactSummary(BaseModel):
     url: str
     preview_url: str
     download_url: str
+    # Real assistant message id(s) this artifact is linked to (parse_msg_id form,
+    # matches the bubble anchor). ``assistant_msg_id`` above is the run id.
+    linked_message_ids: list[str] | None = None
 
 
 class FileEventPayload(ArtifactSummary):
@@ -87,4 +90,3 @@ class ArtifactTextContent(BaseModel):
 
 class ArtifactFavoriteUpdate(BaseModel):
     is_favorite: bool
-
