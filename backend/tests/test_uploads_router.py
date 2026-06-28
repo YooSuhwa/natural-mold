@@ -29,12 +29,14 @@ async def test_upload_text_file_roundtrip(client: AsyncClient, tmp_path: Path):
     assert body["size_bytes"] == 8
     assert body["url"].startswith("/api/uploads/")
 
-    # GET serves the bytes back, inline so previews (img/iframe) render in-place.
+    # GET serves the bytes back with nosniff. text/* is NOT inline-safe (could be
+    # html/script in our origin), so it's served as an attachment (download).
     upload_id = body["id"]
     resp = await client.get(f"/api/uploads/{upload_id}")
     assert resp.status_code == 200
     assert resp.content == b"hi there"
-    assert "inline" in resp.headers.get("content-disposition", "")
+    assert resp.headers.get("x-content-type-options") == "nosniff"
+    assert "attachment" in resp.headers.get("content-disposition", "")
 
 
 @pytest.mark.asyncio
@@ -43,6 +45,51 @@ async def test_upload_rejects_unsupported_mime(client: AsyncClient, tmp_path: Pa
     files = {"file": ("bad.bin", io.BytesIO(b"\x00\x01"), "application/octet-stream")}
     resp = await client.post("/api/uploads", files=files)
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_upload_disposition_inline_only_for_preview_safe_types(
+    client: AsyncClient, tmp_path: Path
+):
+    """Images/PDF render inline; html/svg are forced to attachment (anti-XSS)."""
+
+    settings.upload_dir = str(tmp_path / "uploads")
+    cases = [
+        ("a.png", "image/png", "inline"),
+        ("b.svg", "image/svg+xml", "attachment"),
+        ("c.html", "text/html", "attachment"),
+    ]
+    for name, mime, expected in cases:
+        files = {"file": (name, io.BytesIO(b"<x/>"), mime)}
+        upload_id = (await client.post("/api/uploads", files=files)).json()["id"]
+        resp = await client.get(f"/api/uploads/{upload_id}")
+        assert resp.status_code == 200
+        assert resp.headers.get("x-content-type-options") == "nosniff"
+        assert expected in resp.headers.get("content-disposition", ""), (name, mime)
+
+
+@pytest.mark.asyncio
+async def test_get_upload_content_returns_text_for_text_uploads(
+    client: AsyncClient, tmp_path: Path
+):
+    settings.upload_dir = str(tmp_path / "uploads")
+    files = {"file": ("notes.md", io.BytesIO(b"# Title\n\nbody"), "text/markdown")}
+    upload_id = (await client.post("/api/uploads", files=files)).json()["id"]
+
+    resp = await client.get(f"/api/uploads/{upload_id}/content")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["text"] == "# Title\n\nbody"
+    assert body["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_upload_content_404_for_non_text(client: AsyncClient, tmp_path: Path):
+    settings.upload_dir = str(tmp_path / "uploads")
+    files = {"file": ("a.png", io.BytesIO(b"\x89PNG\r\n"), "image/png")}
+    upload_id = (await client.post("/api/uploads", files=files)).json()["id"]
+    # Non-text uploads have no text body (images/pdf preview from the URL).
+    assert (await client.get(f"/api/uploads/{upload_id}/content")).status_code == 404
 
 
 @pytest.mark.asyncio

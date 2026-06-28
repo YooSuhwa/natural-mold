@@ -534,18 +534,6 @@ async def _run_conversation(
             except Exception:
                 logger.exception("conversation run trace finalization failed run_id=%s", run_id)
 
-            if attachment_ids:
-                # M1 — stamp this send's uploads with the user message id the
-                # read path will compute, now that the turn's HumanMessage is in
-                # the checkpoint. Best-effort: a failure leaves message_id NULL
-                # (orphan GC reaps it later) rather than breaking run teardown.
-                try:
-                    await _backfill_turn_attachments(conversation_id, attachment_ids)
-                except Exception:
-                    logger.exception(
-                        "attachment message_id backfill failed run_id=%s", run_id
-                    )
-
             try:
                 final_run = await _transition(
                     run_id,
@@ -569,6 +557,19 @@ async def _run_conversation(
                 )
             except Exception:
                 logger.exception("conversation run status finalization failed run_id=%s", run_id)
+
+            if attachment_ids:
+                # M1 — stamp this send's uploads with the user message id the read
+                # path will compute. Runs AFTER branch activation so it resolves
+                # against the SAME active_branch_checkpoint_id the read path uses
+                # (an edit/regenerate run forks a new leaf that's activated just
+                # above; resolving before activation would walk the stale branch
+                # and mis-link). Best-effort: a failure leaves message_id NULL
+                # (orphan GC reaps it later) rather than breaking run teardown.
+                try:
+                    await _backfill_turn_attachments(conversation_id, attachment_ids)
+                except Exception:
+                    logger.exception("attachment message_id backfill failed run_id=%s", run_id)
 
         ctx.broker.close(error=failure)
         registry.discard(run_id)
