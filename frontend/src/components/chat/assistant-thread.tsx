@@ -77,6 +77,7 @@ import {
   type GroupedRenderInfo,
 } from '@/lib/chat/group-assistant-parts'
 import { StreamingMessageLoadingIndicator } from '@/components/chat/assistant-message-loading'
+import { UserMessageAttachments } from '@/components/chat/message-attachments'
 import { CompactionSummary } from '@/components/chat/compaction-summary'
 import type { CompactionMarker } from '@/lib/chat/langgraph-runtime/compaction-events'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
@@ -870,6 +871,8 @@ export function AssistantThread({
               <div className="moldy-chat-bubble-user px-4 py-2.5 text-sm leading-relaxed">
                 <MessagePrimitive.Content />
               </div>
+              {/* 보낸 첨부를 버블 아래 인라인 렌더 — 클릭 시 미리보기 다이얼로그 */}
+              <UserMessageAttachments />
               {metaRow}
             </div>
             <UserAvatar user={user} size="sm" />
