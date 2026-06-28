@@ -27,6 +27,15 @@ interface DeepAgentsStatePanelProps extends DeepAgentsStateFileActions {
   readonly className?: string
   readonly isLoading?: boolean
   readonly isInterrupted?: boolean
+  /**
+   * Render the todos ("작업 목록") section. Defaults to true. The live streaming
+   * loading indicator passes false: the assistant message already renders the
+   * same todos as its persistent "Plan" card (the `write_todos` tool-ui), so
+   * showing them here too duplicated the planning state on screen (and tripped
+   * Playwright strict mode on the doubled todo text). Files / subagent progress
+   * stay live-only, so the indicator keeps rendering those.
+   */
+  readonly showTodos?: boolean
 }
 
 const STATUS_META: Record<
@@ -87,6 +96,7 @@ export function DeepAgentsStatePanel({
   className,
   isLoading = false,
   isInterrupted = false,
+  showTodos = true,
   onCopyFile,
   onDownloadFile,
   onOpenPreview,
@@ -95,13 +105,16 @@ export function DeepAgentsStatePanel({
 }: DeepAgentsStatePanelProps) {
   const t = useTranslations('chat.deepAgentsState')
   if (!hasDeepAgentsState(state)) return null
+  const showTodosSection = showTodos && state.todos.length > 0
+  const showFilesSection = state.files.length > 0
+  if (!showTodosSection && !showFilesSection) return null
   const done = completedCount(state.todos)
   const editDisabledReason =
     isLoading || isInterrupted ? t('files.editDisabledRunning') : t('files.editDisabledUnsupported')
 
   return (
     <div className={cn('flex w-full flex-col gap-1.5', className)}>
-      {state.todos.length > 0 ? (
+      {showTodosSection ? (
         <CollapsiblePill
           status="loading"
           kind="thinking"
@@ -113,14 +126,14 @@ export function DeepAgentsStatePanel({
           <TodosBody todos={state.todos} />
         </CollapsiblePill>
       ) : null}
-      {state.files.length > 0 ? (
+      {showFilesSection ? (
         <CollapsiblePill
           status="loading"
           kind="tool"
           title={t('files.title')}
           meta={t('files.count', { count: state.files.length })}
           leadingIcon={FileTextIcon}
-          defaultExpanded={state.todos.length === 0}
+          defaultExpanded={!showTodosSection}
         >
           <div className="space-y-2">
             <DeepAgentsStateFileList
