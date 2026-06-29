@@ -197,4 +197,56 @@ test.describe('Chat generative UI (ui_data demo)', () => {
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
     }
   })
+
+  test('multi-turn: each turn\'s ui_data stays in its own bubble (no collapse, after reload)', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    test.setTimeout(240_000)
+    const setup = await setupLangGraphV3Agent(request)
+
+    const FINAL_TEXT = 'E2E generative UI demo rendered.'
+    const table = page.locator('[data-testid="data-ui-data-table"]')
+    const chart = page.locator('[data-testid="data-ui-chart"]')
+    // The assistant bubble that contains the table.
+    const tableBubble = page.locator('[data-moldy-message-id]').filter({ has: table })
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`, {
+        waitUntil: 'domcontentloaded',
+      })
+
+      // Turn 1 → data_table. Wait for the run to settle before turn 2.
+      await sendMessage(page, 'E2E_UI_DATA_TABLE 첫 번째 턴')
+      await expect(table).toHaveCount(1, { timeout: 60_000 })
+      await expect(page.getByText(FINAL_TEXT)).toHaveCount(1, { timeout: 30_000 })
+
+      // Turn 2 → chart.
+      await sendMessage(page, 'E2E_UI_DATA_CHART 두 번째 턴')
+      await expect(chart).toHaveCount(1, { timeout: 60_000 })
+
+      // Both render exactly once, in SEPARATE turns. The pre-fix bug collapsed
+      // every turn's items onto the last assistant bubble — so the bubble that
+      // holds the (turn-1) table would also hold the (turn-2) chart. Assert it
+      // does NOT, which is the decisive anti-collapse check.
+      await expect(table).toHaveCount(1)
+      await expect(chart).toHaveCount(1)
+      await expect(tableBubble.locator('[data-testid="data-ui-chart"]')).toHaveCount(0)
+
+      // Reload — the collapse manifested after state hydration; this is where the
+      // run_id-keyed fallback used to dump both onto the final bubble.
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await expect(table).toHaveCount(1, { timeout: 60_000 })
+      await expect(chart).toHaveCount(1, { timeout: 15_000 })
+      await expect(
+        page.locator('[data-moldy-message-id]').filter({ has: table }).locator('[data-testid="data-ui-chart"]'),
+      ).toHaveCount(0)
+
+      expect(errors.console, 'console errors during multi-turn ui_data').toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
 })

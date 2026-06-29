@@ -2396,6 +2396,7 @@ export function useMoldyLangGraphStream({
   // re-runs when a (possibly late/replayed) ui_data event arrives.
   const stickyMessagesWithDataUI = useLangGraphDataUIEffects({
     stream,
+    conversationId,
     messages: stickyMessagesWithTerminalNotice,
   })
   useLayoutEffect(() => {

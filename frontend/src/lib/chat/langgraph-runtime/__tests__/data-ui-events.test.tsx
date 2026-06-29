@@ -83,23 +83,39 @@ describe('protocolUIDataPayload', () => {
 })
 
 describe('attachDataUIToMessages', () => {
-  it('attaches by exact message id', () => {
-    const message = new AIMessage({ id: 'assistant-1', content: 'hi' })
-    const item: UIDataItem = { type: 'demo_note', props: { text: 'x' }, tool_call_id: null }
-    const result = attachDataUIToMessages([message], { 'assistant-1': [item] })
-    expect((result[0] as { uiData?: UIDataItem[] }).uiData).toEqual([item])
+  const item = (toolCallId: string | null): UIDataItem => ({
+    type: 'demo_note',
+    props: { text: 'x' },
+    tool_call_id: toolCallId,
+  })
+  const caller = (id: string, toolCallId: string) =>
+    new AIMessage({ id, content: '', tool_calls: [{ id: toolCallId, name: 't', args: {} }] })
+
+  it('attaches by tool_call_id to the assistant message that made the call', () => {
+    const messages = [caller('a1', 'call-1'), new AIMessage({ id: 'a2', content: 'done' })]
+    const result = attachDataUIToMessages(messages, { 'run-1': [item('call-1')] })
+    expect((result[0] as { uiData?: UIDataItem[] }).uiData).toEqual([item('call-1')])
+    expect((result[1] as { uiData?: UIDataItem[] }).uiData).toBeUndefined()
   })
 
-  it('falls back to the last assistant message for unmatched keys', () => {
-    const message = new AIMessage({ id: 'assistant-1', content: 'hi' })
-    const item: UIDataItem = { type: 'demo_note', props: { text: 'x' }, tool_call_id: null }
-    // key 'run-xyz' does not match any message id → last-assistant fallback.
-    const result = attachDataUIToMessages([message], { 'run-xyz': [item] })
-    expect((result[0] as { uiData?: UIDataItem[] }).uiData).toEqual([item])
+  it('does not collapse multi-turn ui_data onto the last assistant bubble', () => {
+    const messages = [caller('a1', 'call-1'), caller('a2', 'call-2')]
+    const result = attachDataUIToMessages(messages, {
+      'run-1': [item('call-1')],
+      'run-2': [item('call-2')],
+    })
+    expect((result[0] as { uiData?: UIDataItem[] }).uiData).toEqual([item('call-1')])
+    expect((result[1] as { uiData?: UIDataItem[] }).uiData).toEqual([item('call-2')])
+  })
+
+  it('falls back to the last assistant message when no tool call matches', () => {
+    const message = new AIMessage({ id: 'a1', content: 'hi' })
+    const result = attachDataUIToMessages([message], { 'run-xyz': [item(null)] })
+    expect((result[0] as { uiData?: UIDataItem[] }).uiData).toEqual([item(null)])
   })
 
   it('returns messages unchanged when there are no items', () => {
-    const message = new AIMessage({ id: 'assistant-1', content: 'hi' })
+    const message = new AIMessage({ id: 'a1', content: 'hi' })
     const result = attachDataUIToMessages([message], {})
     expect(result[0]).toBe(message)
   })
@@ -117,6 +133,7 @@ describe('useLangGraphDataUIEffects', () => {
     const { result } = renderHook(() =>
       useLangGraphDataUIEffects({
         stream,
+        conversationId: 'conversation-1',
         messages: [assistantMessage],
       }),
     )
@@ -142,6 +159,7 @@ describe('useLangGraphDataUIEffects', () => {
     const { result } = renderHook(() =>
       useLangGraphDataUIEffects({
         stream,
+        conversationId: 'conversation-1',
         messages: [assistantMessage],
       }),
     )
@@ -152,6 +170,43 @@ describe('useLangGraphDataUIEffects', () => {
     act(() => {
       effectOptions?.onEvent(protocolEvent(payload()))
       effectOptions?.onEvent(protocolEvent(payload()))
+    })
+
+    expect((result.current[0] as { uiData?: UIDataItem[] }).uiData).toHaveLength(1)
+  })
+
+  it('dedupes the same tool_call_id re-delivered under a different run_id/event_id', () => {
+    // A later run re-synthesizes a prior turn's tool result → same tool_call_id,
+    // different run_id + event_id. Must NOT double-render.
+    const stream = { kind: 'stream' } as unknown as AnyStream
+    const assistantMessage = new AIMessage({ id: 'assistant-1', content: 'hi' })
+
+    const { result } = renderHook(() =>
+      useLangGraphDataUIEffects({
+        stream,
+        conversationId: 'conversation-1',
+        messages: [assistantMessage],
+      }),
+    )
+    const effectOptions = mocks.useChannelEffect.mock.calls[0]?.[2] as
+      | ChannelEffectOptions
+      | undefined
+
+    act(() => {
+      effectOptions?.onEvent({
+        type: 'event',
+        method: 'custom',
+        event_id: 'event-run-A',
+        seq: 9,
+        params: { namespace: [], data: { name: 'ui_data', payload: payload({ run_id: 'run-A' }) } },
+      })
+      effectOptions?.onEvent({
+        type: 'event',
+        method: 'custom',
+        event_id: 'event-run-B',
+        seq: 14,
+        params: { namespace: [], data: { name: 'ui_data', payload: payload({ run_id: 'run-B' }) } },
+      })
     })
 
     expect((result.current[0] as { uiData?: UIDataItem[] }).uiData).toHaveLength(1)

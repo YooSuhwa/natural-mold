@@ -514,13 +514,16 @@ class E2EScriptedChatModel(BaseChatModel):
         ui_data_kind = _ui_data_marker_kind(human_text)
         if ui_data_kind is not None:
             # ONE AIMessage calls the demo tool with the requested kind; its JSON
-            # result projects into a ``moldy.ui_data`` event. Fresh args every call.
+            # result projects into a ``moldy.ui_data`` event. The tool_call_id is
+            # per-kind so a multi-turn conversation (different kinds) never reuses
+            # one id within a thread — duplicate ids confuse LangGraph state and
+            # collapse the frontend's per-turn tool_call_id attach. Fresh args.
             args: dict[str, Any] = {} if ui_data_kind == "demo_note" else {"kind": ui_data_kind}
             message = AIMessage(
                 content="",
                 tool_calls=[
                     {
-                        "id": UI_DATA_TOOL_CALL_ID,
+                        "id": f"call_e2e_ui_data_{ui_data_kind}",
                         "name": UI_DATA_TOOL_NAME,
                         "args": args,
                     }

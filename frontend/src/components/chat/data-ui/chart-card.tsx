@@ -28,8 +28,13 @@ function pointX(index: number, count: number): number {
 }
 
 function valueY(value: number, max: number): number {
-  if (max <= 0) return PAD.top + PLOT_H
-  return PAD.top + PLOT_H - (value / max) * PLOT_H
+  const baseline = PAD.top + PLOT_H
+  if (max <= 0) return baseline
+  // Clamp to the plot box so negative/over-max values can't produce invalid SVG
+  // geometry (a negative-height rect / a point outside the viewBox). Negatives
+  // render at the baseline (this chart assumes a non-negative range).
+  const fraction = Math.min(1, Math.max(0, value / max))
+  return baseline - fraction * PLOT_H
 }
 
 /**
@@ -72,7 +77,7 @@ export function ChartCard({ chartType, series, title, xLabel, yLabel }: ChartCar
               const y = valueY(point.value, max)
               return (
                 <rect
-                  key={point.label}
+                  key={index}
                   x={x}
                   y={y}
                   width={barWidth}
@@ -95,7 +100,7 @@ export function ChartCard({ chartType, series, title, xLabel, yLabel }: ChartCar
               />
               {series.map((point, index) => (
                 <circle
-                  key={point.label}
+                  key={index}
                   cx={pointX(index, series.length)}
                   cy={valueY(point.value, max)}
                   r={3}
@@ -106,7 +111,7 @@ export function ChartCard({ chartType, series, title, xLabel, yLabel }: ChartCar
           )}
           {series.map((point, index) => (
             <text
-              key={point.label}
+              key={index}
               x={pointX(index, series.length)}
               y={VIEW_H - 8}
               textAnchor="middle"

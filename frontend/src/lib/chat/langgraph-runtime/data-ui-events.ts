@@ -7,11 +7,11 @@ import { type DataUIByMessageId, upsertMessageDataUI } from '@/lib/stores/chat-d
 import type { UIDataEventPayload, UIDataItem } from '@/lib/types/ui-data'
 
 /**
- * Generative UI ingestion (chat-generative-ui-dev-plan §5.2) — a faithful clone
- * of ``artifact-events.ts``. Consumes ``moldy.ui_data`` custom protocol events,
- * dedupes by event key, and attaches a ``uiData`` property to messages (exact
- * assistant-message match, else last-assistant fallback). The converter
- * (path A) injects a data part from this property.
+ * Generative UI ingestion (chat-generative-ui-dev-plan §5.2), modeled on
+ * ``artifact-events.ts``. Consumes ``moldy.ui_data`` custom protocol events,
+ * dedupes by tool_call_id, and attaches a ``uiData`` property to the assistant
+ * message that made the tool call (else a last-assistant fallback). The
+ * converter (path A) injects a data part from this property.
  */
 
 interface ProtocolUIDataEvent {
@@ -31,6 +31,7 @@ type MessageWithUIData = BaseMessage & {
 
 interface UseLangGraphDataUIEffectsOptions {
   stream: AnyStream
+  conversationId: string
   messages: readonly BaseMessage[]
 }
 
@@ -82,9 +83,16 @@ export function protocolUIDataPayload(event: ProtocolUIDataEvent): UIDataEventPa
 }
 
 function uiDataEventKey(event: ProtocolUIDataEvent, payload: UIDataEventPayload): string {
+  // A single tool call yields exactly one ui_data payload, so dedup by
+  // tool_call_id when present — the same logical event is re-delivered with
+  // DIFFERENT event_id/run_id/seq (live broker, replay, and especially when a
+  // later run re-synthesizes a prior turn's tool result from accumulated state),
+  // which an event_id/run_id-based key would miss, double-rendering the card.
+  const toolCallId = textValue(payload.tool_call_id)
+  if (toolCallId) return `tc:${toolCallId}`
   return (
     textValue(event.event_id) ??
-    `${payload.run_id ?? 'no-run'}:${payload.tool_call_id ?? 'no-call'}:${payload.type}:${event.seq ?? 'no-seq'}`
+    `${payload.run_id ?? 'no-run'}:${payload.type}:${event.seq ?? 'no-seq'}`
   )
 }
 
@@ -94,10 +102,6 @@ function attachKey(payload: UIDataEventPayload): string | undefined {
 
 function itemFromPayload(payload: UIDataEventPayload): UIDataItem {
   return { type: payload.type, props: payload.props, tool_call_id: payload.tool_call_id ?? null }
-}
-
-function messageId(message: BaseMessage): string | undefined {
-  return textValue((message as { id?: unknown }).id)
 }
 
 function messageKind(message: BaseMessage): string | undefined {
@@ -114,54 +118,115 @@ function isAssistantMessage(message: BaseMessage): boolean {
   return kind === 'ai' || kind === 'assistant' || kind === 'AIMessage'
 }
 
+/** Tool-call ids on an assistant message (top-level + additional_kwargs). */
+function messageToolCallIds(message: BaseMessage): Set<string> {
+  const ids = new Set<string>()
+  const collect = (calls: unknown): void => {
+    if (!Array.isArray(calls)) return
+    for (const call of calls) {
+      const id = textValue((call as { id?: unknown })?.id)
+      if (id) ids.add(id)
+    }
+  }
+  collect((message as { tool_calls?: unknown }).tool_calls)
+  collect(
+    (message as { additional_kwargs?: { tool_calls?: unknown } }).additional_kwargs?.tool_calls,
+  )
+  return ids
+}
+
 function withUIData(message: BaseMessage, uiData: UIDataItem[]): MessageWithUIData {
   return Object.assign(Object.create(Object.getPrototypeOf(message)), message, {
     uiData,
   }) as MessageWithUIData
 }
 
+/**
+ * Attach each ui_data item to the assistant message that made its tool call
+ * (``tool_call_id`` — which lives in the message content, so it survives
+ * reload/state-hydration). This keeps per-turn items on the correct bubble; the
+ * earlier ``run_id``-keyed last-assistant fallback collapsed every turn's items
+ * onto the final assistant message (``run_id`` never equals the v3 LangChain
+ * bubble id). Items without a matching tool call (no tool_call_id, or the AI
+ * message hasn't arrived mid-stream yet) fall back to the last assistant
+ * message — safe only because that case has a single in-flight item.
+ */
 export function attachDataUIToMessages(
   messages: readonly BaseMessage[],
   dataUIByMessageId: DataUIByMessageId,
 ): MessageWithUIData[] {
-  const entries = Object.entries(dataUIByMessageId)
-  if (entries.length === 0) return messages as MessageWithUIData[]
+  const allItems = Object.values(dataUIByMessageId).flat()
+  if (allItems.length === 0) return messages as MessageWithUIData[]
 
-  const messageIds = new Set(messages.map(messageId).filter((id): id is string => Boolean(id)))
-  const unmatched = entries.filter(([key]) => !messageIds.has(key)).flatMap(([, items]) => items)
+  const itemsByIndex = new Map<number, UIDataItem[]>()
+  const matched = new Set<UIDataItem>()
+  const pushItem = (index: number, item: UIDataItem): void => {
+    const list = itemsByIndex.get(index)
+    if (list) list.push(item)
+    else itemsByIndex.set(index, [item])
+  }
+
+  messages.forEach((message, index) => {
+    if (!isAssistantMessage(message)) return
+    const toolIds = messageToolCallIds(message)
+    if (toolIds.size === 0) return
+    for (const item of allItems) {
+      if (!matched.has(item) && item.tool_call_id && toolIds.has(item.tool_call_id)) {
+        pushItem(index, item)
+        matched.add(item)
+      }
+    }
+  })
+
+  const unmatched = allItems.filter((item) => !matched.has(item))
   const lastAssistantIndex = messages.findLastIndex(isAssistantMessage)
+  if (unmatched.length > 0 && lastAssistantIndex >= 0) {
+    for (const item of unmatched) pushItem(lastAssistantIndex, item)
+  }
 
+  if (itemsByIndex.size === 0) return messages as MessageWithUIData[]
   return messages.map((message, index) => {
-    const id = messageId(message)
-    const exact = id ? dataUIByMessageId[id] : undefined
-    const fallback = !exact && index === lastAssistantIndex ? unmatched : undefined
-    const items = exact ?? fallback
+    const items = itemsByIndex.get(index)
     return items && items.length > 0 ? withUIData(message, items) : message
   })
 }
 
 export function useLangGraphDataUIEffects({
   stream,
+  conversationId,
   messages,
 }: UseLangGraphDataUIEffectsOptions): MessageWithUIData[] {
   const seenEventKeysRef = useRef(new Set<string>())
-  const [dataUIByMessageId, setDataUIByMessageId] = useState<DataUIByMessageId>({})
+  // Tie the accumulated items to a conversation id IN STATE so a conversation
+  // switch (the hook instance can outlive it — the page isn't keyed) drops the
+  // prior conversation's items instead of leaking them (via the fallback) into
+  // the new one. The dedup ref only ever skips duplicates and its keys are
+  // run-scoped, so it needs no reset.
+  const [store, setStore] = useState<{ conversationId: string; items: DataUIByMessageId }>({
+    conversationId,
+    items: {},
+  })
+  const dataUIByMessageId = store.conversationId === conversationId ? store.items : {}
 
-  // The stream is already conversation-scoped, so no conversation filtering is
-  // needed (unlike artifacts, ui_data payloads carry no conversation_id). Refs
-  // and the state setter are stable, so the handler needs no deps.
-  const handleEvent = useCallback((event: Event) => {
-    const payload = protocolUIDataPayload(event)
-    if (!payload) return
-    const key = attachKey(payload)
-    if (!key) return
+  const handleEvent = useCallback(
+    (event: Event) => {
+      const payload = protocolUIDataPayload(event)
+      if (!payload) return
+      const key = attachKey(payload)
+      if (!key) return
 
-    const eventKey = uiDataEventKey(event, payload)
-    if (seenEventKeysRef.current.has(eventKey)) return
-    seenEventKeysRef.current.add(eventKey)
+      const eventKey = uiDataEventKey(event, payload)
+      if (seenEventKeysRef.current.has(eventKey)) return
+      seenEventKeysRef.current.add(eventKey)
 
-    setDataUIByMessageId((current) => upsertMessageDataUI(current, key, itemFromPayload(payload)))
-  }, [])
+      setStore((current) => {
+        const items = current.conversationId === conversationId ? current.items : {}
+        return { conversationId, items: upsertMessageDataUI(items, key, itemFromPayload(payload)) }
+      })
+    },
+    // conversationId scopes the reset above; a switch re-subscribes the channel.
+    [conversationId],
+  )
 
   useChannelEffect(stream, DATA_UI_CHANNELS, {
     replay: true,

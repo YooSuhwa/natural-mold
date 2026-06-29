@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { makeAssistantDataUI, type DataMessagePartProps } from '@assistant-ui/react'
 import { ReasoningDataUI } from '@/components/chat/tool-ui/reasoning-ui'
 import { MOLDY_UI_DATA_PART_NAME, resolveDataUI } from './data-ui-registry'
@@ -19,8 +20,10 @@ interface MoldyUIData {
 
 function DataUIDispatcher({ data }: DataMessagePartProps<MoldyUIData>) {
   const type = typeof data?.type === 'string' ? data.type : null
-  if (!type) return null
-  const resolved = resolveDataUI(type, data.props)
+  const rawProps = data?.props
+  // Memoize the Zod parse on the (stable, converter-cached) data reference so
+  // the resolved props keep a stable identity across re-renders.
+  const resolved = useMemo(() => (type ? resolveDataUI(type, rawProps) : null), [type, rawProps])
   if (!resolved) return null
   const { Component, props } = resolved
   return <Component {...props} />
