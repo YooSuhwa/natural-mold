@@ -2362,17 +2362,10 @@ export function useMoldyLangGraphStream({
     conversationId,
     messages: messagesWithInterrupts,
   })
-  // Generative UI (chat-generative-ui-dev-plan §5.2): attach ``uiData`` beside
-  // artifacts; the converter injects data parts from it (path A). Downstream
-  // effects preserve the property (Object.assign spread), like artifacts.
-  const messagesWithDataUI = useLangGraphDataUIEffects({
-    stream,
-    messages: messagesWithArtifacts,
-  })
   const messagesWithUsage = useLangGraphUsageEffects({
     conversationId,
     stream,
-    messages: messagesWithDataUI,
+    messages: messagesWithArtifacts,
     stateMessages: stream.values?.messages ?? [],
   })
   const messagesWithCompaction = useLangGraphCompactionEffects({
@@ -2392,6 +2385,19 @@ export function useMoldyLangGraphStream({
       pendingEditRender !== null ||
       pendingReloadRender !== null,
   )
+  // Generative UI (chat-generative-ui-dev-plan §5.2, path A): attach ``uiData``
+  // AFTER the sticky merge. The sticky layer reuses cached message objects to
+  // avoid flicker, which would drop a post-conversion side-channel property like
+  // uiData attached to a fresh candidate (the reason inline data parts vanished
+  // on reload). uiData is transient/derived, so attaching it here — past sticky,
+  // just before conversion — keeps the converter input correct on live + reload
+  // without polluting the sticky cache. The converter injects the data part and
+  // langChainMessageFingerprint includes uiData so the memoized converter
+  // re-runs when a (possibly late/replayed) ui_data event arrives.
+  const stickyMessagesWithDataUI = useLangGraphDataUIEffects({
+    stream,
+    messages: stickyMessagesWithTerminalNotice,
+  })
   useLayoutEffect(() => {
     latestVisibleMessagesRef.current = snapshotBaseMessages(stickyMessagesWithTerminalNotice)
   }, [stickyMessagesWithTerminalNotice])
@@ -2459,8 +2465,8 @@ export function useMoldyLangGraphStream({
   // off the (sticky-stable) message reference so it only re-runs when the list
   // actually changes instead of on every render (including each streaming token).
   const conversionSourceFingerprint = useMemo(
-    () => messageListFingerprint(stickyMessagesWithTerminalNotice),
-    [stickyMessagesWithTerminalNotice],
+    () => messageListFingerprint(stickyMessagesWithDataUI),
+    [stickyMessagesWithDataUI],
   )
   const conversionCallback = useMemo<typeof convertMoldyLangChainMessage>(() => {
     // `conversionEpoch` is intentionally captured-but-unused (`void` below): it is
@@ -2476,8 +2482,8 @@ export function useMoldyLangGraphStream({
     }
   }, [conversionSourceFingerprint])
   const conversionSourceMessages = useMemo(
-    () => [...stickyMessagesWithTerminalNotice],
-    [stickyMessagesWithTerminalNotice],
+    () => [...stickyMessagesWithDataUI],
+    [stickyMessagesWithDataUI],
   )
   useLangGraphMemoryEffects({ stream })
   const isRunning =
@@ -2494,7 +2500,7 @@ export function useMoldyLangGraphStream({
   })
   const stableMessages = useStableConvertedMessages(
     convertedMessages,
-    stickyMessagesWithTerminalNotice,
+    stickyMessagesWithDataUI,
     isRunning,
   )
   const stableMessagesWithoutPendingEditBranchMetadata = useMemo(
