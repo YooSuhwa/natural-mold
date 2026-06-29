@@ -78,6 +78,25 @@ def test_projects_chart_from_recognized_demo_tool() -> None:
     ]
 
 
+def test_projects_stats_from_recognized_demo_tool() -> None:
+    result = json.dumps(
+        {"ui_type": "stats", "items": [{"label": "총 요청", "value": 1240, "delta": 12}]}
+    )
+
+    payloads = ui_data_from_tool_result(DEMO_UI_DATA_TOOL_NAME, result, tool_call_id="c")
+
+    assert payloads == [
+        {
+            "schema_version": 1,
+            "type": "stats",
+            "message_id": None,
+            "run_id": None,
+            "tool_call_id": "c",
+            "props": {"items": [{"label": "총 요청", "value": 1240, "delta": 12}]},
+        }
+    ]
+
+
 def test_unrecognized_tool_returns_empty() -> None:
     result = json.dumps({"ui_type": "demo_note", "text": "hello"})
 

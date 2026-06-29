@@ -349,6 +349,14 @@ E2E_UI_DATA_DEMO_FIXTURES: dict[str, dict[str, Any]] = {
             {"label": "Fri", "value": 15},
         ],
     },
+    "stats": {
+        "ui_type": "stats",
+        "items": [
+            {"label": "총 요청", "value": 1240, "delta": 12},
+            {"label": "성공률", "value": 98.6, "unit": "%", "delta": 2},
+            {"label": "평균 지연", "value": 320, "unit": "ms", "delta": -8},
+        ],
+    },
 }
 
 

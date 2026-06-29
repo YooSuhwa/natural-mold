@@ -65,4 +65,23 @@ describe('resolveDataUI', () => {
     ).toBeNull()
     expect(resolveDataUI('chart', {})).toBeNull()
   })
+
+  it('resolves a valid stats payload (string or number value)', () => {
+    const resolved = resolveDataUI('stats', {
+      items: [
+        { label: 'a', value: 10, delta: 5 },
+        { label: 'b', value: 'ok' },
+      ],
+    })
+    expect(resolved).not.toBeNull()
+    expect((resolved?.props as { items: unknown[] }).items).toHaveLength(2)
+  })
+
+  it('returns null when stats props fail validation (fail-safe)', () => {
+    // item missing value
+    expect(resolveDataUI('stats', { items: [{ label: 'a' }] })).toBeNull()
+    // delta not a number
+    expect(resolveDataUI('stats', { items: [{ label: 'a', value: 1, delta: 'x' }] })).toBeNull()
+    expect(resolveDataUI('stats', {})).toBeNull()
+  })
 })

@@ -106,6 +106,15 @@ describe('generative UI render (path A)', () => {
     expect(screen.getByText('캡쳐 차트')).toBeInTheDocument()
   })
 
+  it('routes a stats part to the Stats component', async () => {
+    render(
+      <Harness uiType="stats" props={{ items: [{ label: '총 요청', value: 1240, delta: 12 }] }} />,
+    )
+    await waitFor(() => expect(screen.getByTestId('data-ui-stats')).toBeInTheDocument())
+    expect(screen.getByText('총 요청')).toBeInTheDocument()
+    expect(screen.getByText('1,240')).toBeInTheDocument()
+  })
+
   it('renders nothing for an unknown type (fail-safe, no crash)', async () => {
     render(<Harness uiType="unknown_type" props={{ text: 'x' }} />)
     // The text part still renders; the unknown data part is safely skipped.

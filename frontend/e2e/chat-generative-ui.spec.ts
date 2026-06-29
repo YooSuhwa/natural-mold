@@ -135,4 +135,33 @@ test.describe('Chat generative UI (ui_data demo)', () => {
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
     }
   })
+
+  test('renders a stats data part as a KPI grid (Phase 2)', async ({ page, request, errors }) => {
+    test.setTimeout(180_000)
+    const setup = await setupLangGraphV3Agent(request)
+
+    const FINAL_TEXT = 'E2E generative UI demo rendered.'
+    const stats = page.locator('[data-testid="data-ui-stats"]')
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`, {
+        waitUntil: 'domcontentloaded',
+      })
+      await sendMessage(page, 'E2E_UI_DATA_STATS 통계 렌더 확인')
+
+      await expect(page.getByText(FINAL_TEXT).last()).toBeVisible({ timeout: 60_000 })
+      await expect(stats).toHaveCount(1, { timeout: 15_000 })
+      await expect(stats.getByText('총 요청')).toBeVisible()
+      await expect(stats.getByText('1,240')).toBeVisible()
+
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await expect(page.getByText(FINAL_TEXT).last()).toBeVisible({ timeout: 60_000 })
+      await expect(stats).toHaveCount(1, { timeout: 15_000 })
+
+      expect(errors.console, 'console errors during stats render').toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
 })
