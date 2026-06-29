@@ -97,6 +97,25 @@ def test_projects_stats_from_recognized_demo_tool() -> None:
     ]
 
 
+def test_projects_terminal_from_recognized_demo_tool() -> None:
+    result = json.dumps(
+        {"ui_type": "terminal", "command": "pytest -q", "exitCode": 0, "lines": ["3 passed"]}
+    )
+
+    payloads = ui_data_from_tool_result(DEMO_UI_DATA_TOOL_NAME, result, tool_call_id="c")
+
+    assert payloads == [
+        {
+            "schema_version": 1,
+            "type": "terminal",
+            "message_id": None,
+            "run_id": None,
+            "tool_call_id": "c",
+            "props": {"command": "pytest -q", "exitCode": 0, "lines": ["3 passed"]},
+        }
+    ]
+
+
 def test_unrecognized_tool_returns_empty() -> None:
     result = json.dumps({"ui_type": "demo_note", "text": "hello"})
 

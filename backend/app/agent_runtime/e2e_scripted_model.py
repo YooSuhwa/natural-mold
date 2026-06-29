@@ -289,6 +289,7 @@ UI_DATA_KIND_BY_MARKER = {
     "E2E_UI_DATA_TABLE": "data_table",
     "E2E_UI_DATA_CHART": "chart",
     "E2E_UI_DATA_STATS": "stats",
+    "E2E_UI_DATA_TERMINAL": "terminal",
 }
 # Backward-compatible aliases.
 UI_DATA_DEMO_TOOL_NAME = UI_DATA_TOOL_NAME

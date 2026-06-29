@@ -16,8 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-# Phase 2 extends incrementally: "terminal"
-UIDataType = Literal["demo_note", "data_table", "chart", "stats"]
+UIDataType = Literal["demo_note", "data_table", "chart", "stats", "terminal"]
 
 
 class UIDataEvent(BaseModel):

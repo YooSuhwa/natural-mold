@@ -357,6 +357,17 @@ E2E_UI_DATA_DEMO_FIXTURES: dict[str, dict[str, Any]] = {
             {"label": "평균 지연", "value": 320, "unit": "ms", "delta": -8},
         ],
     },
+    "terminal": {
+        "ui_type": "terminal",
+        "command": "pytest -q",
+        "exitCode": 0,
+        "lines": [
+            "============ test session starts ============",
+            "collected 3 items",
+            "tests/test_e2e.py ...                   [100%]",
+            "============= 3 passed in 0.42s =============",
+        ],
+    },
 }
 
 

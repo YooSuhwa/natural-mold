@@ -84,4 +84,23 @@ describe('resolveDataUI', () => {
     expect(resolveDataUI('stats', { items: [{ label: 'a', value: 1, delta: 'x' }] })).toBeNull()
     expect(resolveDataUI('stats', {})).toBeNull()
   })
+
+  it('resolves a valid terminal payload (string or array lines)', () => {
+    expect(resolveDataUI('terminal', { lines: 'one line' })).not.toBeNull()
+    const resolved = resolveDataUI('terminal', {
+      lines: ['a', 'b'],
+      command: 'ls',
+      exitCode: 0,
+    })
+    expect(resolved).not.toBeNull()
+    expect((resolved?.props as { lines: string[] }).lines).toHaveLength(2)
+  })
+
+  it('returns null when terminal props fail validation (fail-safe)', () => {
+    // lines wrong type
+    expect(resolveDataUI('terminal', { lines: 123 })).toBeNull()
+    // exitCode not a number
+    expect(resolveDataUI('terminal', { lines: 'x', exitCode: 'nope' })).toBeNull()
+    expect(resolveDataUI('terminal', {})).toBeNull()
+  })
 })

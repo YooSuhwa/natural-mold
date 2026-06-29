@@ -115,6 +115,18 @@ describe('generative UI render (path A)', () => {
     expect(screen.getByText('1,240')).toBeInTheDocument()
   })
 
+  it('routes a terminal part to the Terminal component', async () => {
+    render(
+      <Harness
+        uiType="terminal"
+        props={{ command: 'pytest -q', exitCode: 0, lines: ['3 passed'] }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByTestId('data-ui-terminal')).toBeInTheDocument())
+    expect(screen.getByText('$ pytest -q')).toBeInTheDocument()
+    expect(screen.getByText(/3 passed/)).toBeInTheDocument()
+  })
+
   it('renders nothing for an unknown type (fail-safe, no crash)', async () => {
     render(<Harness uiType="unknown_type" props={{ text: 'x' }} />)
     // The text part still renders; the unknown data part is safely skipped.
