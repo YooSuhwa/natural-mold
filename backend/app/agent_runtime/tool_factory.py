@@ -311,12 +311,37 @@ def _build_e2e_scripted_search_tool() -> BaseTool:
     )
 
 
+# E2E-only generative-UI demo tool. Returns a JSON result carrying ``ui_type``
+# so ``ui_data_from_tool_result`` projects it into a ``moldy.ui_data`` event
+# (Phase 1 demo type ``demo_note``). Registered only when the scripted model is
+# enabled (see ``runtime_component_builder``), so real deployments never see it.
+E2E_UI_DATA_DEMO_TOOL_NAME = "e2e_ui_data_demo"
+E2E_UI_DATA_DEMO_TEXT = "E2E generative UI demo note."
+
+
+def _build_e2e_ui_data_demo_tool() -> BaseTool:
+    async def e2e_ui_data_demo() -> str:
+        """Deterministic E2E generative-UI demo: returns a demo_note payload."""
+
+        return json.dumps(
+            {"ui_type": "demo_note", "text": E2E_UI_DATA_DEMO_TEXT},
+            ensure_ascii=False,
+        )
+
+    return StructuredTool.from_function(
+        coroutine=e2e_ui_data_demo,
+        name=E2E_UI_DATA_DEMO_TOOL_NAME,
+        description="E2E-only generative UI demo tool returning a demo_note payload.",
+    )
+
+
 _BUILTIN_BUILDERS: dict[str, Callable[[], BaseTool]] = {
     "builtin:web_search": _build_web_search_tool,
     "builtin:web_scraper": _build_web_scraper_tool,
     "builtin:current_datetime": _build_current_datetime_tool,
     "builtin:resolve_relative_date": _build_resolve_relative_date_tool,
     "builtin:e2e_scripted_search": _build_e2e_scripted_search_tool,
+    "builtin:e2e_ui_data_demo": _build_e2e_ui_data_demo_tool,
 }
 
 

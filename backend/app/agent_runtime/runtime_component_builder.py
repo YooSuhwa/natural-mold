@@ -334,6 +334,23 @@ def _append_e2e_scripted_search_tool(tools: list[BaseTool]) -> None:
     tools.append(tool)
 
 
+def _append_e2e_ui_data_demo_tool(tools: list[BaseTool]) -> None:
+    """Attach the deterministic generative-UI demo tool for E2E only.
+
+    Gated by ``e2e_scripted_model_enabled`` so real deployments never see it.
+    Lets the ``E2E_UI_DATA_DEMO`` fixture drive one ``moldy.ui_data`` event
+    (``demo_note``) end-to-end without any product behavior change.
+    """
+
+    if not settings.e2e_scripted_model_enabled:
+        return
+    existing = {tool.name for tool in tools}
+    tool = create_builtin_tool("builtin:e2e_ui_data_demo")
+    if tool is None or tool.name in existing:
+        return
+    tools.append(tool)
+
+
 def _default_interrupt_on_from_tools(tools: list[BaseTool]) -> dict[str, Any]:
     """Build the minimum HITL policy from attached tool risk metadata."""
 
@@ -566,6 +583,7 @@ async def _prepare_runtime_components(
     langchain_tools.extend(await _build_mcp_tools(mcp_configs))
     _append_temporal_tools(langchain_tools)
     _append_e2e_scripted_search_tool(langchain_tools)
+    _append_e2e_ui_data_demo_tool(langchain_tools)
 
     memory_write_policy = await _memory_write_policy_for_run(
         cfg,

@@ -64,6 +64,55 @@ async def test_langgraph_streaming_emits_file_event_after_artifact_tool_result()
 
 
 @pytest.mark.asyncio
+async def test_langgraph_streaming_emits_ui_data_event_after_demo_tool_result() -> None:
+    raw_event: dict[str, Any] = {
+        "type": "event",
+        "method": "tools",
+        "params": {
+            "namespace": [],
+            "data": {
+                "event": "tool-finished",
+                "tool_name": "e2e_ui_data_demo",
+                "tool_call_id": "ui-data-call-1",
+                "output": json.dumps({"ui_type": "demo_note", "text": "demo note"}),
+            },
+        },
+        "seq": 1,
+        "event_id": "ui-data-tool-finished-1",
+    }
+    agent = ProtocolAgent([raw_event])
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-ui-data"}},
+            run_id="run-ui-data",
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    assert [payload["method"] for payload in payloads] == [
+        "lifecycle",
+        "tools",
+        "custom",
+        "lifecycle",
+    ]
+    assert payloads[2]["params"]["data"] == {
+        "name": "ui_data",
+        "payload": {
+            "schema_version": 1,
+            "type": "demo_note",
+            "message_id": None,
+            "run_id": "run-ui-data",
+            "tool_call_id": "ui-data-call-1",
+            "props": {"text": "demo note"},
+        },
+    }
+
+
+@pytest.mark.asyncio
 async def test_langgraph_streaming_emits_memory_event_after_memory_tool_result() -> None:
     raw_event: dict[str, Any] = {
         "type": "event",

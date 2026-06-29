@@ -31,6 +31,11 @@ FILE_EVENT: Final = "file_event"
 # ``running`` while deepagents summarizes older messages, ``done`` once the
 # ``_summarization_event`` is committed (with ``offload_path`` / ``cutoff_index``).
 COMPACTION: Final = "moldy.compaction"
+# Generative UI side-channel (chat-generative-ui-dev-plan §2.1). Emitted as a
+# ``custom`` protocol event (``name="moldy.ui_data"``) carrying a typed
+# ``{type, props}`` payload the frontend renders via an allowlist registry. Shares
+# the ``custom`` channel with FILE_EVENT; consumers disambiguate by custom name.
+UI_DATA_EVENT: Final = "moldy.ui_data"
 MEMORY_PROPOSED: Final = "memory_proposed"
 MEMORY_SAVED: Final = "memory_saved"
 MEMORY_REJECTED: Final = "memory_rejected"

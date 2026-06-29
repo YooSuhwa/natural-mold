@@ -274,6 +274,16 @@ def _search_group_tool_calls() -> list[dict[str, Any]]:
     ]
 
 
+UI_DATA_DEMO_MARKER = "E2E_UI_DATA_DEMO"
+# Generative UI demo fixture (chat-generative-ui-dev-plan §7.3). ONE AIMessage
+# calls the E2E-only ``e2e_ui_data_demo`` tool whose JSON result projects into a
+# ``moldy.ui_data`` event (``demo_note``); the follow-up turn streams a final
+# message. Tool name matches ``tool_factory.E2E_UI_DATA_DEMO_TOOL_NAME`` (kept as
+# a literal to avoid an import cycle).
+UI_DATA_DEMO_TOOL_NAME = "e2e_ui_data_demo"
+UI_DATA_DEMO_TOOL_CALL_ID = "call_e2e_ui_data_demo"
+UI_DATA_DEMO_FINAL_CONTENT = "E2E generative UI demo rendered."
+
 ASK_USER_FRUIT_MARKER = "E2E_ASK_USER_FRUIT"
 ASK_USER_FRUIT_TOOL_CALL_ID = "call_e2e_ask_user_fruit"
 ASK_USER_FRUIT_PREFACE_CONTENT = "네, 골라봐요!"
@@ -423,6 +433,9 @@ class E2EScriptedChatModel(BaseChatModel):
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if messages and isinstance(messages[-1], ToolMessage):
+            if UI_DATA_DEMO_MARKER in human_text:
+                message = AIMessage(content=UI_DATA_DEMO_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
             if SEARCH_GROUP_MARKER in human_text:
                 message = AIMessage(content=SEARCH_GROUP_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
@@ -476,6 +489,21 @@ class E2EScriptedChatModel(BaseChatModel):
                 # HITL_MULTI_TOOL_CALLS constant across runs — matching the
                 # dict(tool_args) copy in _document_tool_call.
                 tool_calls=[{**call, "args": dict(call["args"])} for call in HITL_MULTI_TOOL_CALLS],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if UI_DATA_DEMO_MARKER in human_text:
+            # ONE AIMessage calls the demo tool; its result projects into a
+            # ``moldy.ui_data`` (demo_note) event. Fresh args dict every call.
+            message = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": UI_DATA_DEMO_TOOL_CALL_ID,
+                        "name": UI_DATA_DEMO_TOOL_NAME,
+                        "args": {},
+                    }
+                ],
             )
             return ChatResult(generations=[ChatGeneration(message=message)])
 
@@ -602,5 +630,9 @@ __all__ = [
     "TOOL_GROUP_GROUPED_TOOL",
     "TOOL_GROUP_MARKER",
     "TOOL_GROUP_SEPARATE_TOOL",
+    "UI_DATA_DEMO_FINAL_CONTENT",
+    "UI_DATA_DEMO_MARKER",
+    "UI_DATA_DEMO_TOOL_CALL_ID",
+    "UI_DATA_DEMO_TOOL_NAME",
     "VISUAL_SLOW_STREAM_MARKER",
 ]
