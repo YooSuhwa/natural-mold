@@ -1,0 +1,86 @@
+/**
+ * End-to-end render proof for the generative UI path A: a ``moldy_ui`` data part
+ * (as the converter injects) renders through the registered ``MoldyDataUI`` +
+ * allowlist registry, using the REAL assistant-ui external store runtime. This
+ * is the unit-level proof of regression-gate item C10.
+ */
+import { describe, expect, it } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import {
+  AssistantRuntimeProvider,
+  MessagePrimitive,
+  ThreadPrimitive,
+  useExternalStoreRuntime,
+  type ThreadMessageLike,
+} from '@assistant-ui/react'
+import { ALL_DATA_UI } from '../data-ui'
+
+interface SourceMessage {
+  readonly id: string
+  readonly uiType: string
+  readonly props: Record<string, unknown>
+}
+
+function convertMessage(message: SourceMessage): ThreadMessageLike {
+  return {
+    role: 'assistant',
+    id: message.id,
+    content: [
+      { type: 'text', text: 'assistant answer' },
+      // What the path-A converter injects from message.uiData.
+      { type: 'data', name: 'moldy_ui', data: { type: message.uiType, props: message.props } },
+    ],
+  }
+}
+
+function AssistantMessage() {
+  // Mirrors assistant-thread.tsx: render data parts via dataRendererUI.
+  return (
+    <MessagePrimitive.Root>
+      <MessagePrimitive.Parts>
+        {({ part }) => {
+          if (part.type === 'text') return <span>{part.text}</span>
+          if (part.type === 'data') return <>{part.dataRendererUI}</>
+          return null
+        }}
+      </MessagePrimitive.Parts>
+    </MessagePrimitive.Root>
+  )
+}
+
+function Harness({ uiType, props }: { uiType: string; props: Record<string, unknown> }) {
+  const runtime = useExternalStoreRuntime<SourceMessage>({
+    messages: [{ id: 'm1', uiType, props }],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage,
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <ThreadPrimitive.Root>
+        <ThreadPrimitive.Viewport>
+          <ThreadPrimitive.Messages components={{ AssistantMessage, UserMessage: () => null }} />
+        </ThreadPrimitive.Viewport>
+        {ALL_DATA_UI.map((DataComponent, index) => (
+          <DataComponent key={index} />
+        ))}
+      </ThreadPrimitive.Root>
+    </AssistantRuntimeProvider>
+  )
+}
+
+describe('generative UI render (path A)', () => {
+  it('renders a demo_note data part via the registry', async () => {
+    render(<Harness uiType="demo_note" props={{ text: 'PoC works' }} />)
+    await waitFor(() =>
+      expect(screen.getByTestId('data-ui-demo-note')).toHaveTextContent('PoC works'),
+    )
+  })
+
+  it('renders nothing for an unknown type (fail-safe, no crash)', async () => {
+    render(<Harness uiType="unknown_type" props={{ text: 'x' }} />)
+    // The text part still renders; the unknown data part is safely skipped.
+    expect(await screen.findByText('assistant answer')).toBeInTheDocument()
+    expect(screen.queryByTestId('data-ui-demo-note')).not.toBeInTheDocument()
+  })
+})

@@ -31,6 +31,7 @@ import { useTranslations } from 'next-intl'
 import { flushSync } from 'react-dom'
 import { reduceProtocolActivity } from './activity-protocol'
 import { useLangGraphArtifactEffects } from './artifact-events'
+import { useLangGraphDataUIEffects } from './data-ui-events'
 import { MOLDY_BRANCH_SWITCHED_EVENT, isMoldyBranchSwitchedEvent } from './branch-switch-events'
 import { selectDeepAgentsState } from './deepagents-state'
 import {
@@ -2361,10 +2362,17 @@ export function useMoldyLangGraphStream({
     conversationId,
     messages: messagesWithInterrupts,
   })
+  // Generative UI (chat-generative-ui-dev-plan §5.2): attach ``uiData`` beside
+  // artifacts; the converter injects data parts from it (path A). Downstream
+  // effects preserve the property (Object.assign spread), like artifacts.
+  const messagesWithDataUI = useLangGraphDataUIEffects({
+    stream,
+    messages: messagesWithArtifacts,
+  })
   const messagesWithUsage = useLangGraphUsageEffects({
     conversationId,
     stream,
-    messages: messagesWithArtifacts,
+    messages: messagesWithDataUI,
     stateMessages: stream.values?.messages ?? [],
   })
   const messagesWithCompaction = useLangGraphCompactionEffects({

@@ -96,6 +96,32 @@ describe('convertMoldyLangChainMessage', () => {
     })
   })
 
+  it('injects a moldy_ui data part for each attached uiData item (path A producer)', () => {
+    const message = Object.assign(new AIMessage({ id: 'assistant-ui-data-1', content: 'here' }), {
+      uiData: [{ type: 'demo_note', props: { text: 'hello' }, tool_call_id: 'call-1' }],
+    })
+
+    const converted = convertMoldyLangChainMessage(message, converterMetadata())
+    const content = (converted as { content?: unknown[] }).content ?? []
+
+    expect(content).toContainEqual({
+      type: 'data',
+      name: 'moldy_ui',
+      data: { type: 'demo_note', props: { text: 'hello' } },
+    })
+    // The original text part is preserved alongside the injected data part.
+    expect(content.some((part) => (part as { type?: string }).type === 'text')).toBe(true)
+  })
+
+  it('does not change content when no uiData is attached (regression-zero)', () => {
+    const message = new AIMessage({ id: 'assistant-no-ui-data', content: 'plain answer' })
+
+    const converted = convertMoldyLangChainMessage(message, converterMetadata())
+    const content = (converted as { content?: unknown[] }).content ?? []
+
+    expect(content.some((part) => (part as { type?: string }).type === 'data')).toBe(false)
+  })
+
   it('preserves display-only branch picker metadata from pending reload messages', () => {
     const message = new AIMessage({
       id: 'assistant-branch-display-only',
