@@ -64,7 +64,13 @@ async def test_langgraph_streaming_emits_file_event_after_artifact_tool_result()
 
 
 @pytest.mark.asyncio
-async def test_langgraph_streaming_emits_ui_data_event_after_demo_tool_result() -> None:
+async def test_langgraph_streaming_emits_ui_data_event_after_demo_tool_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The demo tool is only recognized when the scripted model is enabled.
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "e2e_scripted_model_enabled", True)
     raw_event: dict[str, Any] = {
         "type": "event",
         "method": "tools",

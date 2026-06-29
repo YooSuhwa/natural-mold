@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from app.agent_runtime.memory_event_projection import memory_event_from_tool_result
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_custom_protocol_event
 from app.agent_runtime.ui_data_projection import ui_data_from_tool_result
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,12 @@ def _collect_ui_data_events(
     if output is None:
         return [], next_seq
 
-    payloads = ui_data_from_tool_result(tool_name, output, tool_call_id=tool_call_id)
+    payloads = ui_data_from_tool_result(
+        tool_name,
+        output,
+        tool_call_id=tool_call_id,
+        demo_enabled=settings.e2e_scripted_model_enabled,
+    )
     emitted: list[StoredProtocolEvent] = []
     seq = next_seq
     for index, payload in enumerate(payloads):
