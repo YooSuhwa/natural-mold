@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import { z } from 'zod'
 import { DemoNoteCard } from '@/components/chat/data-ui/demo-note-card'
+import { DataTableCard } from '@/components/chat/data-ui/data-table-card'
 
 /**
  * Generative UI allowlist registry (chat-generative-ui-dev-plan §5.2). Maps a
@@ -29,10 +30,18 @@ function defineDataUI<P>(props: z.ZodType<P>, Component: ComponentType<P>): Data
 
 const demoNoteProps = z.object({ text: z.string() })
 
+const dataTableProps = z.object({
+  columns: z.array(z.object({ key: z.string(), header: z.string() })),
+  rows: z.array(z.record(z.string(), z.unknown())),
+  title: z.string().optional(),
+  searchable: z.boolean().optional(),
+})
+
 // Each entry is internally type-aligned via defineDataUI. Phase 2 extends:
-// data_table, chart, stats, terminal.
+// chart, stats, terminal.
 export const DATA_UI_REGISTRY = {
   demo_note: defineDataUI(demoNoteProps, DemoNoteCard),
+  data_table: defineDataUI(dataTableProps, DataTableCard),
 }
 
 export interface ResolvedDataUI {

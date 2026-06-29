@@ -5,7 +5,9 @@
  * is the unit-level proof of regression-gate item C10.
  */
 import { describe, expect, it } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+// test-utils render wraps NextIntl + Query + Tooltip providers (DataTable needs
+// useTranslations); demo_note doesn't but data_table does.
+import { render, screen, waitFor } from '../../../../tests/test-utils'
 import {
   AssistantRuntimeProvider,
   MessagePrimitive,
@@ -75,6 +77,22 @@ describe('generative UI render (path A)', () => {
     await waitFor(() =>
       expect(screen.getByTestId('data-ui-demo-note')).toHaveTextContent('PoC works'),
     )
+  })
+
+  it('routes a data_table part to the DataTable component', async () => {
+    render(
+      <Harness
+        uiType="data_table"
+        props={{
+          title: '캡쳐 테이블',
+          columns: [{ key: 'name', header: '이름' }],
+          rows: [{ name: 'Zed' }],
+        }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByTestId('data-ui-data-table')).toBeInTheDocument())
+    expect(screen.getByText('캡쳐 테이블')).toBeInTheDocument()
+    expect(screen.getByText('Zed')).toBeInTheDocument()
   })
 
   it('renders nothing for an unknown type (fail-safe, no crash)', async () => {

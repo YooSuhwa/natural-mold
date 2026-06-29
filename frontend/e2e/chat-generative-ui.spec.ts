@@ -59,4 +59,43 @@ test.describe('Chat generative UI (ui_data demo)', () => {
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
     }
   })
+
+  test('renders a data_table data part with headers and rows (Phase 2)', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    test.setTimeout(180_000)
+    const setup = await setupLangGraphV3Agent(request)
+
+    // Backend E2E_UI_DATA_TABLE → e2e_ui_data_demo(kind=data_table) → a
+    // {"ui_type":"data_table", columns, rows} payload → DataTableCard.
+    const FINAL_TEXT = 'E2E generative UI demo rendered.'
+    const table = page.locator('[data-testid="data-ui-data-table"]')
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`, {
+        waitUntil: 'domcontentloaded',
+      })
+      await sendMessage(page, 'E2E_UI_DATA_TABLE 데이터 테이블 렌더 확인')
+
+      await expect(page.getByText(FINAL_TEXT).last()).toBeVisible({ timeout: 60_000 })
+      await expect(table).toHaveCount(1, { timeout: 15_000 })
+      // Headers + a cell value from the scripted fixture.
+      await expect(table.getByText('이름')).toBeVisible()
+      await expect(table.getByText('Alice')).toBeVisible()
+      await expect(table.getByText('95')).toBeVisible()
+
+      // Reload → re-renders from the replayed ui_data event.
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await expect(page.getByText(FINAL_TEXT).last()).toBeVisible({ timeout: 60_000 })
+      await expect(table).toHaveCount(1, { timeout: 15_000 })
+      await expect(table.getByText('Alice')).toBeVisible()
+
+      expect(errors.console, 'console errors during data_table render').toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
 })

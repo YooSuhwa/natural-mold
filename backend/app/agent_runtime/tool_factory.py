@@ -312,26 +312,44 @@ def _build_e2e_scripted_search_tool() -> BaseTool:
 
 
 # E2E-only generative-UI demo tool. Returns a JSON result carrying ``ui_type``
-# so ``ui_data_from_tool_result`` projects it into a ``moldy.ui_data`` event
-# (Phase 1 demo type ``demo_note``). Registered only when the scripted model is
-# enabled (see ``runtime_component_builder``), so real deployments never see it.
+# so ``ui_data_from_tool_result`` projects it into a ``moldy.ui_data`` event.
+# Parameterized by ``kind`` so each component type (Phase 1 demo_note, Phase 2
+# data_table/chart/stats/terminal) has a deterministic fixture. Registered only
+# when the scripted model is enabled (see ``runtime_component_builder``), so real
+# deployments never see it.
 E2E_UI_DATA_DEMO_TOOL_NAME = "e2e_ui_data_demo"
 E2E_UI_DATA_DEMO_TEXT = "E2E generative UI demo note."
+E2E_UI_DATA_DEMO_FIXTURES: dict[str, dict[str, Any]] = {
+    "demo_note": {"ui_type": "demo_note", "text": E2E_UI_DATA_DEMO_TEXT},
+    "data_table": {
+        "ui_type": "data_table",
+        "title": "E2E 데이터 테이블",
+        "searchable": True,
+        "columns": [
+            {"key": "name", "header": "이름"},
+            {"key": "role", "header": "역할"},
+            {"key": "score", "header": "점수"},
+        ],
+        "rows": [
+            {"name": "Alice", "role": "Engineer", "score": 92},
+            {"name": "Bob", "role": "Designer", "score": 88},
+            {"name": "Carol", "role": "PM", "score": 95},
+        ],
+    },
+}
 
 
 def _build_e2e_ui_data_demo_tool() -> BaseTool:
-    async def e2e_ui_data_demo() -> str:
-        """Deterministic E2E generative-UI demo: returns a demo_note payload."""
+    async def e2e_ui_data_demo(kind: str = "demo_note") -> str:
+        """Deterministic E2E generative-UI demo: returns a payload for ``kind``."""
 
-        return json.dumps(
-            {"ui_type": "demo_note", "text": E2E_UI_DATA_DEMO_TEXT},
-            ensure_ascii=False,
-        )
+        payload = E2E_UI_DATA_DEMO_FIXTURES.get(kind, E2E_UI_DATA_DEMO_FIXTURES["demo_note"])
+        return json.dumps(payload, ensure_ascii=False)
 
     return StructuredTool.from_function(
         coroutine=e2e_ui_data_demo,
         name=E2E_UI_DATA_DEMO_TOOL_NAME,
-        description="E2E-only generative UI demo tool returning a demo_note payload.",
+        description="E2E-only generative UI demo tool returning a typed ui_data payload by kind.",
     )
 
 

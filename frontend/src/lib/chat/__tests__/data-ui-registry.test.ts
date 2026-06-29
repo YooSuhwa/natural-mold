@@ -25,4 +25,24 @@ describe('resolveDataUI', () => {
     expect(Object.keys(DATA_UI_REGISTRY)).toContain('demo_note')
     expect(MOLDY_UI_DATA_PART_NAME).toBe('moldy_ui')
   })
+
+  it('resolves a valid data_table payload', () => {
+    const resolved = resolveDataUI('data_table', {
+      title: 'T',
+      searchable: true,
+      columns: [{ key: 'a', header: 'A' }],
+      rows: [{ a: 1 }, { a: 2 }],
+    })
+    expect(resolved).not.toBeNull()
+    expect((resolved?.props as { columns: unknown[] }).columns).toHaveLength(1)
+    expect(typeof resolved?.Component).toBe('function')
+  })
+
+  it('returns null when data_table props fail validation (fail-safe)', () => {
+    // columns missing header
+    expect(resolveDataUI('data_table', { columns: [{ key: 'a' }], rows: [] })).toBeNull()
+    // rows not an array
+    expect(resolveDataUI('data_table', { columns: [], rows: {} })).toBeNull()
+    expect(resolveDataUI('data_table', {})).toBeNull()
+  })
 })
