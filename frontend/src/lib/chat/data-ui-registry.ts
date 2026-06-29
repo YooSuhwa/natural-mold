@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import { z } from 'zod'
 import { DemoNoteCard } from '@/components/chat/data-ui/demo-note-card'
 import { DataTableCard } from '@/components/chat/data-ui/data-table-card'
+import { ChartCard } from '@/components/chat/data-ui/chart-card'
 
 /**
  * Generative UI allowlist registry (chat-generative-ui-dev-plan §5.2). Maps a
@@ -37,11 +38,20 @@ const dataTableProps = z.object({
   searchable: z.boolean().optional(),
 })
 
+const chartProps = z.object({
+  chartType: z.enum(['line', 'bar']),
+  series: z.array(z.object({ label: z.string(), value: z.number() })),
+  title: z.string().optional(),
+  xLabel: z.string().optional(),
+  yLabel: z.string().optional(),
+})
+
 // Each entry is internally type-aligned via defineDataUI. Phase 2 extends:
-// chart, stats, terminal.
+// stats, terminal.
 export const DATA_UI_REGISTRY = {
   demo_note: defineDataUI(demoNoteProps, DemoNoteCard),
   data_table: defineDataUI(dataTableProps, DataTableCard),
+  chart: defineDataUI(chartProps, ChartCard),
 }
 
 export interface ResolvedDataUI {

@@ -336,6 +336,19 @@ E2E_UI_DATA_DEMO_FIXTURES: dict[str, dict[str, Any]] = {
             {"name": "Carol", "role": "PM", "score": 95},
         ],
     },
+    "chart": {
+        "ui_type": "chart",
+        "chartType": "bar",
+        "title": "E2E 주간 차트",
+        "yLabel": "건수",
+        "series": [
+            {"label": "Mon", "value": 12},
+            {"label": "Tue", "value": 19},
+            {"label": "Wed", "value": 7},
+            {"label": "Thu", "value": 22},
+            {"label": "Fri", "value": 15},
+        ],
+    },
 }
 
 

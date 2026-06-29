@@ -287,6 +287,7 @@ UI_DATA_DEMO_FINAL_CONTENT = "E2E generative UI demo rendered."
 UI_DATA_KIND_BY_MARKER = {
     "E2E_UI_DATA_DEMO": "demo_note",
     "E2E_UI_DATA_TABLE": "data_table",
+    "E2E_UI_DATA_CHART": "chart",
 }
 # Backward-compatible aliases.
 UI_DATA_DEMO_TOOL_NAME = UI_DATA_TOOL_NAME

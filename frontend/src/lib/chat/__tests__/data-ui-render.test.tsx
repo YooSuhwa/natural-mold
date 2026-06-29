@@ -95,6 +95,17 @@ describe('generative UI render (path A)', () => {
     expect(screen.getByText('Zed')).toBeInTheDocument()
   })
 
+  it('routes a chart part to the Chart component', async () => {
+    render(
+      <Harness
+        uiType="chart"
+        props={{ chartType: 'bar', title: '캡쳐 차트', series: [{ label: 'A', value: 5 }] }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByTestId('data-ui-chart')).toBeInTheDocument())
+    expect(screen.getByText('캡쳐 차트')).toBeInTheDocument()
+  })
+
   it('renders nothing for an unknown type (fail-safe, no crash)', async () => {
     render(<Harness uiType="unknown_type" props={{ text: 'x' }} />)
     // The text part still renders; the unknown data part is safely skipped.

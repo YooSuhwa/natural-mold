@@ -98,4 +98,41 @@ test.describe('Chat generative UI (ui_data demo)', () => {
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
     }
   })
+
+  test('renders a chart data part as an SVG bar chart (Phase 2)', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    test.setTimeout(180_000)
+    const setup = await setupLangGraphV3Agent(request)
+
+    // Backend E2E_UI_DATA_CHART → e2e_ui_data_demo(kind=chart) → a
+    // {"ui_type":"chart", chartType:"bar", series} payload → ChartCard (SVG).
+    const FINAL_TEXT = 'E2E generative UI demo rendered.'
+    const chart = page.locator('[data-testid="data-ui-chart"]')
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`, {
+        waitUntil: 'domcontentloaded',
+      })
+      await sendMessage(page, 'E2E_UI_DATA_CHART 차트 렌더 확인')
+
+      await expect(page.getByText(FINAL_TEXT).last()).toBeVisible({ timeout: 60_000 })
+      await expect(chart).toHaveCount(1, { timeout: 15_000 })
+      await expect(chart).toHaveAttribute('data-chart-type', 'bar')
+      // X-axis labels from the scripted fixture.
+      await expect(chart.getByText('Mon')).toBeVisible()
+      await expect(chart.getByText('Fri')).toBeVisible()
+
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await expect(page.getByText(FINAL_TEXT).last()).toBeVisible({ timeout: 60_000 })
+      await expect(chart).toHaveCount(1, { timeout: 15_000 })
+
+      expect(errors.console, 'console errors during chart render').toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
 })

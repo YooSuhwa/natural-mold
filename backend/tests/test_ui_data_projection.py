@@ -55,6 +55,29 @@ def test_projects_data_table_from_recognized_demo_tool() -> None:
     ]
 
 
+def test_projects_chart_from_recognized_demo_tool() -> None:
+    result = json.dumps(
+        {
+            "ui_type": "chart",
+            "chartType": "bar",
+            "series": [{"label": "Mon", "value": 12}],
+        }
+    )
+
+    payloads = ui_data_from_tool_result(DEMO_UI_DATA_TOOL_NAME, result, tool_call_id="c")
+
+    assert payloads == [
+        {
+            "schema_version": 1,
+            "type": "chart",
+            "message_id": None,
+            "run_id": None,
+            "tool_call_id": "c",
+            "props": {"chartType": "bar", "series": [{"label": "Mon", "value": 12}]},
+        }
+    ]
+
+
 def test_unrecognized_tool_returns_empty() -> None:
     result = json.dumps({"ui_type": "demo_note", "text": "hello"})
 

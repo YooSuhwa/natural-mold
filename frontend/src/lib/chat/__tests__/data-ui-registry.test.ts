@@ -45,4 +45,24 @@ describe('resolveDataUI', () => {
     expect(resolveDataUI('data_table', { columns: [], rows: {} })).toBeNull()
     expect(resolveDataUI('data_table', {})).toBeNull()
   })
+
+  it('resolves a valid chart payload', () => {
+    const resolved = resolveDataUI('chart', {
+      chartType: 'line',
+      series: [{ label: 'a', value: 1 }],
+      title: 'T',
+    })
+    expect(resolved).not.toBeNull()
+    expect((resolved?.props as { chartType: string }).chartType).toBe('line')
+  })
+
+  it('returns null when chart props fail validation (fail-safe)', () => {
+    // invalid chartType
+    expect(resolveDataUI('chart', { chartType: 'pie', series: [] })).toBeNull()
+    // non-numeric value
+    expect(
+      resolveDataUI('chart', { chartType: 'bar', series: [{ label: 'a', value: 'x' }] }),
+    ).toBeNull()
+    expect(resolveDataUI('chart', {})).toBeNull()
+  })
 })
