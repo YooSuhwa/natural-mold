@@ -83,13 +83,15 @@ export function protocolUIDataPayload(event: ProtocolUIDataEvent): UIDataEventPa
 }
 
 function uiDataEventKey(event: ProtocolUIDataEvent, payload: UIDataEventPayload): string {
-  // A single tool call yields exactly one ui_data payload, so dedup by
-  // tool_call_id when present — the same logical event is re-delivered with
+  // Dedup by tool_call_id + type: the same logical event is re-delivered with a
   // DIFFERENT event_id/run_id/seq (live broker, replay, and especially when a
   // later run re-synthesizes a prior turn's tool result from accumulated state),
-  // which an event_id/run_id-based key would miss, double-rendering the card.
+  // which an event_id/run_id-based key would miss → the card double-renders. The
+  // backend projects ≤1 payload per (tool_call, type) (``ui_data_from_tool_result``),
+  // so including ``type`` keeps distinct cards from one tool call separable while
+  // still collapsing the re-delivered duplicate.
   const toolCallId = textValue(payload.tool_call_id)
-  if (toolCallId) return `tc:${toolCallId}`
+  if (toolCallId) return `tc:${toolCallId}:${payload.type}`
   return (
     textValue(event.event_id) ??
     `${payload.run_id ?? 'no-run'}:${payload.type}:${event.seq ?? 'no-seq'}`
@@ -196,12 +198,16 @@ export function useLangGraphDataUIEffects({
   conversationId,
   messages,
 }: UseLangGraphDataUIEffectsOptions): MessageWithUIData[] {
-  const seenEventKeysRef = useRef(new Set<string>())
-  // Tie the accumulated items to a conversation id IN STATE so a conversation
-  // switch (the hook instance can outlive it — the page isn't keyed) drops the
-  // prior conversation's items instead of leaking them (via the fallback) into
-  // the new one. The dedup ref only ever skips duplicates and its keys are
-  // run-scoped, so it needs no reset.
+  // Both the dedup set AND the accumulated items are scoped to a conversation id
+  // (the hook instance can outlive a conversation switch — the page isn't keyed).
+  // Crucially the dedup set MUST reset too: dedup keys aren't globally unique (the
+  // scripted demo reuses per-kind tool_call_ids), and on RE-ENTRY the backend
+  // replays the conversation's stored ui_data events — a stale seen key would
+  // suppress them and the cards would silently vanish until a full reload.
+  const seenRef = useRef<{ conversationId: string; keys: Set<string> }>({
+    conversationId,
+    keys: new Set(),
+  })
   const [store, setStore] = useState<{ conversationId: string; items: DataUIByMessageId }>({
     conversationId,
     items: {},
@@ -215,16 +221,20 @@ export function useLangGraphDataUIEffects({
       const key = attachKey(payload)
       if (!key) return
 
+      if (seenRef.current.conversationId !== conversationId) {
+        seenRef.current = { conversationId, keys: new Set() }
+      }
+      const seen = seenRef.current.keys
       const eventKey = uiDataEventKey(event, payload)
-      if (seenEventKeysRef.current.has(eventKey)) return
-      seenEventKeysRef.current.add(eventKey)
+      if (seen.has(eventKey)) return
+      seen.add(eventKey)
 
       setStore((current) => {
         const items = current.conversationId === conversationId ? current.items : {}
         return { conversationId, items: upsertMessageDataUI(items, key, itemFromPayload(payload)) }
       })
     },
-    // conversationId scopes the reset above; a switch re-subscribes the channel.
+    // conversationId scopes the dedup + store reset; a switch re-subscribes the channel.
     [conversationId],
   )
 

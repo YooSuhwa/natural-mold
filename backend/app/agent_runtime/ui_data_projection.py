@@ -36,7 +36,13 @@ def ui_data_from_tool_result(
     *,
     tool_call_id: str | None,
 ) -> list[dict[str, Any]]:
-    """Project a tool result (JSON string) into ui_data payloads, or ``[]``."""
+    """Project a tool result (JSON string) into ui_data payloads, or ``[]``.
+
+    Contract: at most ONE payload per (tool_call, ui_type). The frontend dedup
+    keys on ``tc:<tool_call_id>:<type>`` (data-ui-events.ts) to collapse the same
+    event re-delivered across live/replay/re-synthesis, so a single tool result
+    must not yield two payloads of the same type under one tool_call_id.
+    """
 
     if tool_name not in _RECOGNIZED_TOOL_NAMES:
         return []

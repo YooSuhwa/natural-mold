@@ -211,4 +211,71 @@ describe('useLangGraphDataUIEffects', () => {
 
     expect((result.current[0] as { uiData?: UIDataItem[] }).uiData).toHaveLength(1)
   })
+
+  it('keeps distinct ui_data types from the same tool_call_id', () => {
+    const stream = { kind: 'stream' } as unknown as AnyStream
+    const caller = new AIMessage({
+      id: 'a1',
+      content: '',
+      tool_calls: [{ id: 'call-1', name: 't', args: {} }],
+    })
+
+    const { result } = renderHook(() =>
+      useLangGraphDataUIEffects({ stream, conversationId: 'conversation-1', messages: [caller] }),
+    )
+    const effectOptions = mocks.useChannelEffect.mock.calls[0]?.[2] as
+      | ChannelEffectOptions
+      | undefined
+
+    act(() => {
+      effectOptions?.onEvent(protocolEvent(payload({ type: 'demo_note', tool_call_id: 'call-1' })))
+      effectOptions?.onEvent(protocolEvent(payload({ type: 'data_table', tool_call_id: 'call-1' })))
+    })
+
+    expect((result.current[0] as { uiData?: UIDataItem[] }).uiData).toHaveLength(2)
+  })
+
+  it("re-ingests a conversation's replayed event after switching away and back", () => {
+    // The hook can outlive a conversation switch (page not keyed). On re-entry the
+    // backend replays the conversation's stored ui_data — a stale seen key must NOT
+    // suppress it (the card would silently vanish). Regression for the review fix.
+    const stream = { kind: 'stream' } as unknown as AnyStream
+    const caller = new AIMessage({
+      id: 'a1',
+      content: '',
+      tool_calls: [{ id: 'call-1', name: 't', args: {} }],
+    })
+
+    const { result, rerender } = renderHook(
+      (props: { conversationId: string }) =>
+        useLangGraphDataUIEffects({
+          stream,
+          conversationId: props.conversationId,
+          messages: [caller],
+        }),
+      { initialProps: { conversationId: 'conv-A' } },
+    )
+    const latest = () =>
+      mocks.useChannelEffect.mock.calls.at(-1)?.[2] as ChannelEffectOptions | undefined
+
+    // In A: ingest tc:call-1.
+    act(() =>
+      latest()?.onEvent(protocolEvent(payload({ run_id: 'run-A', tool_call_id: 'call-1' }))),
+    )
+    expect((result.current[0] as { uiData?: UIDataItem[] }).uiData).toHaveLength(1)
+
+    // Switch to B and ingest a different tool call (resets the conversation-scoped store).
+    rerender({ conversationId: 'conv-B' })
+    act(() =>
+      latest()?.onEvent(protocolEvent(payload({ run_id: 'run-B', tool_call_id: 'call-2' }))),
+    )
+
+    // Back to A — A's items were dropped on the switch; the replayed A event
+    // (same tc:call-1) must be re-ingested, not deduped by a stale seen key.
+    rerender({ conversationId: 'conv-A' })
+    act(() =>
+      latest()?.onEvent(protocolEvent(payload({ run_id: 'run-A', tool_call_id: 'call-1' }))),
+    )
+    expect((result.current[0] as { uiData?: UIDataItem[] }).uiData).toHaveLength(1)
+  })
 })
