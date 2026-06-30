@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { API_BASE, loginApi, test } from '../fixtures'
+import { API_BASE, apiGetJson, isRecord, loginApi, test } from '../fixtures'
 import { sendMessage, waitForActiveRun, approveExecuteInSkill } from '../langgraph-v3-helpers'
 import {
   addIntervalTrigger,
@@ -235,31 +235,55 @@ test.describe('Wave 7 — rich content captures', () => {
     const agent = (await created.json()) as { id: string }
     try {
       const cid = await createConversation(request, csrf, agent.id, '트레이스 대화')
-      await nav(page, `/agents/${agent.id}/conversations/${cid}`)
+      await page.goto(`/agents/${agent.id}/conversations/${cid}`, { waitUntil: 'commit', timeout: 120_000 }).catch(() => {})
+      await page.getByPlaceholder('메시지 입력...').waitFor({ state: 'visible', timeout: 60_000 }).catch(() => {})
       await sendMessage(page, 'E2E_TOOL_GROUP')
-      await waitForActiveRun(request, cid).catch(() => {})
+      const traceRunId = await waitForActiveRun(request, cid).catch(() => '')
       await settleStream(page)
-      await nav(page, `/agents/${agent.id}/conversations/${cid}/traces`)
+      // The /traces route redirects to the creation hub if the trace isn't ready
+      // yet — poll the run to completion (and the trace to exist) before navigating.
+      for (let i = 0; i < 30 && traceRunId; i += 1) {
+        const run = await apiGetJson(
+          request,
+          `${API_BASE}/api/conversations/${cid}/runs/${traceRunId}`,
+        ).catch(() => null)
+        const st = isRecord(run) && typeof run.status === 'string' ? run.status : null
+        if (st && !['queued', 'running', 'streaming'].includes(st)) break
+        await page.waitForTimeout(1_000)
+      }
+      // Ensure the trace is materialized before navigating (mirrors the working
+      // diagnostic, which fetched this before the /traces nav landed correctly).
+      for (let i = 0; i < 15; i += 1) {
+        const t = await apiGetJson(request, `${API_BASE}/api/conversations/${cid}/debug/traces`).catch(() => null)
+        const traces = isRecord(t) && Array.isArray(t.traces) ? t.traces : []
+        if (traces.length > 0) break
+        await page.waitForTimeout(1_000)
+      }
+      await page.waitForTimeout(1_500)
+      // 'commit' nav: under domcontentloaded the /traces route redirected to the
+      // creation hub (a client-side race); commit lands on the trace page.
+      await page
+        .goto(`/agents/${agent.id}/conversations/${cid}/traces`, { waitUntil: 'commit', timeout: 120_000 })
+        .catch(() => {})
+      await page.getByText(/Trace 상세|트레이스/).first().waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
       await settle(page, 1_800)
-      // Expand the tree so child spans are clickable.
-      await page.getByRole('button', { name: /전체 펼치기|모두 펼치기|펼치기|expand/i }).first().click().catch(() => {})
-      await page.waitForTimeout(600)
-      // The default selection is the root span (no conversation). Select a
-      // child LLM/agent span so the detail panel shows the actual messages.
+      // Capture the trace page as loaded first (proves it rendered).
+      await capture(page, WAVE, '18-trace.png')
+      // Span selection MUST be scoped to the trace grid — an unscoped getByText
+      // matched the sidebar's "새 에이전트" and navigated to the creation hub.
+      const grid = page.locator('.moldy-trace-grid')
       const selectSpan = async (pattern: RegExp): Promise<boolean> => {
-        const node = page.getByText(pattern).first()
+        const node = grid.getByText(pattern).first()
         if ((await node.count()) > 0 && (await node.isVisible().catch(() => false))) {
           await node.click().catch(() => {})
-          await page.waitForTimeout(800)
+          await page.waitForTimeout(900)
           return true
         }
         return false
       }
-      ;(await selectSpan(/ChatModel|chat_model|LLM|model|에이전트|agent|LangGraph|call_model/i)) ||
-        (await selectSpan(/current_datetime|resolve_relative|tool|도구/i))
-      await capture(page, WAVE, '18-trace.png')
-      // Select a different (tool/result) span for the detail view.
-      await selectSpan(/current_datetime|resolve_relative|tool|output|결과|result/i)
+      ;(await selectSpan(/ChatModel|chat_model|call_model|LLM/i)) ||
+        (await selectSpan(/current_datetime|resolve_relative|tool/i)) ||
+        (await selectSpan(/agent|graph|run/i))
       await capture(page, WAVE, '19-trace-detail.png')
     } finally {
       await request.delete(`${API_BASE}/api/agents/${agent.id}`, { headers: csrf }).catch(() => {})
