@@ -182,6 +182,27 @@ function ApprovalBadge({ result }: { result: unknown }) {
   )
 }
 
+/**
+ * Human-readable rendering of a single arg value. Scalars are shown as-is so the
+ * approver reads "report.md" not "\"report.md\""; objects/arrays fall back to
+ * compact JSON (the common approval args — command, file_path, url — are scalar).
+ */
+function formatArgValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value === null) return 'null'
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return JSON.stringify(value)
+}
+
+function isScalarArg(value: unknown): boolean {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  )
+}
+
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   const t = useTranslations('chat.approval')
   const [expanded, setExpanded] = useState(false)
@@ -206,11 +227,28 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
         />
       </button>
       {expanded && (
-        <div className="border-t border-border/40 px-3 py-2">
-          <pre className="whitespace-pre-wrap break-all font-mono moldy-ui-caption text-foreground/80">
-            {JSON.stringify(args, null, 2)}
-          </pre>
-        </div>
+        // Readable key/value list instead of a raw JSON dump — each arg name is a
+        // label and its value renders plainly (mono only for non-scalar JSON).
+        <dl className="space-y-1.5 border-t border-border/40 px-3 py-2">
+          {entries.map(([key, value]) => (
+            <div
+              key={key}
+              className="grid grid-cols-[minmax(0,8rem)_1fr] gap-x-3 gap-y-0.5 text-xs"
+            >
+              <dt className="truncate font-mono font-medium text-muted-foreground" title={key}>
+                {key}
+              </dt>
+              <dd
+                className={cn(
+                  'min-w-0 break-words whitespace-pre-wrap text-foreground/80',
+                  !isScalarArg(value) && 'font-mono',
+                )}
+              >
+                {formatArgValue(value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
       )}
     </div>
   )

@@ -81,7 +81,7 @@
 - ✅ **첨부 인라인 버블(15) + 17-lightbox**: 투어 플로우를 검증된 `chat-attachments-display` 스펙대로 재작성(composer 가시성 게이트 + 업로드 201 단언 + alt-text 셀렉터 `getByRole('img',{name:'membership-card.png'})`, best-effort 래핑). (15=97KB, 17=90KB 확인)
 - ✅ **empty-state 채팅 / rich-markdown 상단**: (1) empty-state는 composer 게이트 추가(콜드컴파일 흡수). (2) rich-markdown은 새 `captureLocator`로 메시지 엘리먼트 스코프 스크린샷(내부 overflow-y-auto 클리핑 회피). + 근본 수정: `settle()`의 `waitForLoadState('networkidle')`를 5s 상한으로 캡(chat 라우트는 SSE로 networkidle에 영영 도달 못 해 테스트 타임아웃까지 hang했음). + 워밍업 `beforeAll`(훅 타임아웃 300s)로 cold compile를 테스트 budget 밖으로.
 - ✅ **3 다이얼로그(tool/schedule/api-key)**: 단순 라벨 문제 아니었음 — tool은 카탈로그 카드 클릭(`data-testid="tool-catalog-card"`), schedule은 페이지가 아닌 에이전트 설정 스케줄 탭(`data-testid="trigger-add-button"`), api-key는 deployment 시드 후 활성화(`data-testid="api-key-create-button"`). 전용 테스트 3개로 분리.
-- ⏸ **승인 카드 args UI 개선**(approval-card raw dict) — 여전히 별도 결정 대기(코드 변경 안 함).
+- ✅ **승인 카드 args UI 개선**(approval-card): 펼친 args를 raw `JSON.stringify` `<pre>` 덤프 → 읽기 쉬운 key/value 목록으로(스칼라는 그대로, 객체/배열만 compact JSON). redaction·edit(JSON) 경로는 불변. 회귀 테스트 추가(approval-card 7/7, vitest 1123/1123).
 
 #### scripted 그럴싸함 (별도 백엔드 작업) → ✅ 해결
 - `e2e_scripted_model.py`에 `E2E_DAILY_GREETING` 마커 + 따뜻한 일상비서 응답 추가(기본 센티넬 "E2E scripted document model is ready."는 불변 → 의존 테스트 8 프론트+1 백엔드 안 깨짐). 일상대화 hero에 인사 Turn 0로 opt-in. (`01b-greeting-reply.png` 확인)

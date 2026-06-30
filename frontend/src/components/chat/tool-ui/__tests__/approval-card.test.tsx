@@ -205,6 +205,37 @@ describe('ApprovalCard', () => {
     expect(document.body.textContent).not.toContain('raw-secret-value')
   })
 
+  it('renders tool args as a readable key/value list, not a raw JSON dump', () => {
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'toolu-kv',
+          tool_name: 'write_file',
+          tool_args: { file_path: 'report.md', overwrite: true },
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn() }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('args'))
+
+    // Each arg name is a label; scalar values render plainly (no JSON quotes).
+    expect(screen.getByText('file_path')).toBeInTheDocument()
+    expect(screen.getByText('report.md')).toBeInTheDocument()
+    expect(screen.getByText('overwrite')).toBeInTheDocument()
+    expect(screen.getByText('true')).toBeInTheDocument()
+    // Not the old raw `JSON.stringify(args, null, 2)` dump.
+    expect(document.body.textContent).not.toContain('"file_path"')
+    expect(document.body.textContent).not.toContain('{\n')
+  })
+
   it('restores redacted placeholders from raw args before sending edited approvals', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     const toolUi = ApprovalCard as unknown as ToolUiRender
