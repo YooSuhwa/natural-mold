@@ -418,6 +418,15 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const description = rawDescription ? redactSensitiveText(rawDescription) : undefined
     const toolArgs = args?.tool_args ? redactSensitiveRecord(args.tool_args) : undefined
 
+    // allowed_decisions 게이팅 — 카드가 받은 도구별 화이트리스트대로 버튼을 노출.
+    // 빈/누락이면 approve+reject만(edit 제외) — standard-interrupt의
+    // reviewForAction fallback과 동일 정책. 따라서 execute_in_skill처럼
+    // edit 불가 도구(allowed=[approve,reject])엔 수정 버튼이 뜨지 않는다.
+    const allowedDecisions = new Set(args?.allowed_decisions ?? [])
+    const canApprove = allowedDecisions.size === 0 || allowedDecisions.has('approve')
+    const canEdit = allowedDecisions.has('edit')
+    const canReject = allowedDecisions.size === 0 || allowedDecisions.has('reject')
+
     return (
       <div
         className="moldy-chat-card moldy-status-surface moldy-status-warn w-full"
@@ -500,65 +509,69 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
           {!submitting ? (
             <div className="flex items-center gap-2">
               {/* 승인 */}
-              <button
-                type="button"
-                onClick={() => handleDecision('approved')}
-                data-testid="approval-approve-button"
-                data-variant="solid"
-                className="moldy-action-pill moldy-status-success"
-              >
-                <CheckIcon className="size-3" />
-                {t('approve')}
-              </button>
-
-              {/* 수정 후 승인 */}
-              {!showEdit ? (
+              {canApprove && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowEdit(true)
-                    setEditedArgs(toolArgs ? JSON.stringify(toolArgs, null, 2) : '{}')
-                  }}
-                  data-variant="outline"
-                  className="moldy-action-pill moldy-status-info"
-                >
-                  <PencilIcon className="size-3" />
-                  {t('edit')}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleDecision('modified')}
+                  onClick={() => handleDecision('approved')}
+                  data-testid="approval-approve-button"
                   data-variant="solid"
-                  className="moldy-action-pill moldy-status-info"
+                  className="moldy-action-pill moldy-status-success"
                 >
-                  <PencilIcon className="size-3" />
-                  {t('editAndApprove')}
+                  <CheckIcon className="size-3" />
+                  {t('approve')}
                 </button>
               )}
+
+              {/* 수정 후 승인 — allowed_decisions에 edit이 있을 때만 노출 */}
+              {canEdit &&
+                (!showEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEdit(true)
+                      setEditedArgs(toolArgs ? JSON.stringify(toolArgs, null, 2) : '{}')
+                    }}
+                    data-variant="outline"
+                    className="moldy-action-pill moldy-status-info"
+                  >
+                    <PencilIcon className="size-3" />
+                    {t('edit')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleDecision('modified')}
+                    data-variant="solid"
+                    className="moldy-action-pill moldy-status-info"
+                  >
+                    <PencilIcon className="size-3" />
+                    {t('editAndApprove')}
+                  </button>
+                ))}
 
               {/* 거부 */}
-              {decision !== 'rejected' ? (
-                <button
-                  type="button"
-                  onClick={() => setDecision('rejected')}
-                  data-variant="outline"
-                  className="moldy-action-pill moldy-status-danger"
-                >
-                  <XIcon className="size-3" />
-                  {t('reject')}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleDecision('rejected')}
-                  data-variant="solid"
-                  className="moldy-action-pill moldy-status-danger"
-                >
-                  <XIcon className="size-3" />
-                  {t('rejectConfirm')}
-                </button>
-              )}
+              {canReject &&
+                (decision !== 'rejected' ? (
+                  <button
+                    type="button"
+                    onClick={() => setDecision('rejected')}
+                    data-variant="outline"
+                    className="moldy-action-pill moldy-status-danger"
+                  >
+                    <XIcon className="size-3" />
+                    {t('reject')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleDecision('rejected')}
+                    data-variant="solid"
+                    className="moldy-action-pill moldy-status-danger"
+                  >
+                    <XIcon className="size-3" />
+                    {t('rejectConfirm')}
+                  </button>
+                ))}
             </div>
           ) : (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">

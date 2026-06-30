@@ -183,6 +183,7 @@ describe('ApprovalCard', () => {
             api_key: 'raw-secret-value',
             usage_metadata: { prompt_tokens: 12 },
           },
+          allowed_decisions: ['approve', 'edit', 'reject'],
         },
         status: { type: 'requires-action' },
       })
@@ -306,6 +307,7 @@ describe('ApprovalCard', () => {
           hitl_action_index: 0,
           hitl_total_actions: 1,
           hitl_interrupt_id: 'interrupt-approval',
+          allowed_decisions: ['approve', 'edit', 'reject'],
         },
         status: { type: 'requires-action' },
       })
@@ -345,6 +347,92 @@ describe('ApprovalCard', () => {
         },
         'editApproved',
         'interrupt-approval',
+      )
+    })
+  })
+
+  // ── allowed_decisions 버튼 게이팅 ──────────────────────────────────
+  function renderCard(args: Record<string, unknown>, hitl?: Record<string, unknown>) {
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: args as never,
+        status: { type: 'requires-action' },
+      })
+    }
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), ...hitl } as never}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+  }
+
+  it('hides the edit button when allowed_decisions excludes edit', () => {
+    renderCard({
+      approval_id: 'gate-1',
+      tool_name: 'execute_in_skill',
+      tool_args: { command: 'node build.cjs' },
+      allowed_decisions: ['approve', 'reject'],
+    })
+
+    expect(screen.getByText('approve')).toBeInTheDocument()
+    expect(screen.getByText('reject')).toBeInTheDocument()
+    expect(screen.queryByText('edit')).toBeNull()
+  })
+
+  it('shows approve, edit, and reject when all are allowed', () => {
+    renderCard({
+      approval_id: 'gate-2',
+      tool_name: 'write_file',
+      tool_args: { file_path: 'report.md' },
+      allowed_decisions: ['approve', 'edit', 'reject'],
+    })
+
+    expect(screen.getByText('approve')).toBeInTheDocument()
+    expect(screen.getByText('edit')).toBeInTheDocument()
+    expect(screen.getByText('reject')).toBeInTheDocument()
+  })
+
+  it('falls back to approve+reject (no edit) when allowed_decisions is missing', () => {
+    renderCard({
+      approval_id: 'gate-3',
+      tool_name: 'write_file',
+      tool_args: { file_path: 'report.md' },
+    })
+
+    expect(screen.getByText('approve')).toBeInTheDocument()
+    expect(screen.getByText('reject')).toBeInTheDocument()
+    expect(screen.queryByText('edit')).toBeNull()
+  })
+
+  it('shows only reject (with confirm) when allowed_decisions is reject-only', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    renderCard(
+      {
+        approval_id: 'gate-4:0',
+        tool_name: 'send_email',
+        tool_args: { to: 'x@y' },
+        hitl_action_index: 0,
+        hitl_total_actions: 1,
+        hitl_interrupt_id: 'gate-4',
+        allowed_decisions: ['reject'],
+      },
+      { registerDecision },
+    )
+
+    expect(screen.queryByText('approve')).toBeNull()
+    expect(screen.queryByText('edit')).toBeNull()
+    expect(screen.getByText('reject')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('reject'))
+    fireEvent.click(screen.getByText('rejectConfirm'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        { type: 'reject', message: undefined },
+        'rejected',
+        'gate-4',
       )
     })
   })
