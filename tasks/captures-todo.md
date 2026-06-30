@@ -38,5 +38,17 @@
 ### Wave 5 — operator/super_user 화면 (캡처)
 - [ ] system-llm, system-credentials, admin-audit, marketplace-admin(moderation), models(system).
 
-## 진행 로그
-- (착수) Wave 0/1 시작.
+## 진행 로그 (결과)
+- **Wave 0 하네스 ✓** — _capture-helpers.ts (capture/seed/scriptedModelId). 영속 스택(reuseExistingServer)으로 재실행 가속.
+- **Wave 2 페이지 26/26 ✓** — 대시보드(시드 에이전트 5), agent-new(hub/manual/template), 리소스 목록(skills/tools/mcp/marketplace/artifacts), usage, settings/*(profile/appearance/credentials/agent-api/audit/security/memory/artifacts/models/schedules), operator(system-llm/system-credentials/admin-audit/marketplace-admin), auth(login/register). super_user 인증 검증됨.
+- **Wave 4 채팅 상태 13/14 ✓** — rich markdown, tool group, search group, ask_user, 생성UI(table/chart/stats/terminal), HITL 승인(단일+멀티), artifact, langgraph-v3 planning, branch picker. (누락: empty-state — chat 라우트 콜드컴파일 반복 실패, 최소 중요도.)
+- **Wave 3 다이얼로그 5/8 ✓** — credential/skill/mcp/model create + agent delete. (누락: tool/schedule/api-key create — 빈 상태 아이콘 CTA라 라벨 매칭 불가.)
+- **Wave 1 hero 플로우** — 빌더 생성 플로우 ✓(05 welcome + 06 단계 타임라인+이름 제안, video 2 재현). 일상대화 멀티턴 ✗(240s 타임아웃; 컴포넌트는 Wave 4에 전부 존재).
+
+총 **46장** → output/captures/{wave1-flows,wave2-pages,wave3-dialogs,wave4-chat-states}/
+
+## 남은 보정(선택)
+- 일상대화 hero 플로우: 첫 goto 콜드컴파일 + 멀티턴 누적이 240s 초과 → 타임아웃 상향 또는 사전 워밍 + 턴 축소.
+- 3개 다이얼로그(tool/schedule/api-key): 빈 상태 아이콘 CTA → testid/getByLabel로 정확 타겟.
+- empty-state 채팅 / rich-markdown 상단(내부 스크롤) → 메시지 element 캡처로 보정.
+- 그럴싸함 강화: scripted 기본응답이 "E2E scripted document model is ready."라 일상대화 자연스러움엔 scripted 시나리오 보강 필요(별도 백엔드 작업).
