@@ -15,7 +15,11 @@ import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { toApprove, toEdit, toReject } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
-import { redactSensitiveRecord, redactSensitiveText } from '@/lib/chat/sensitive-display'
+import {
+  isSensitiveDisplayKey,
+  redactSensitiveRecord,
+  redactSensitiveText,
+} from '@/lib/chat/sensitive-display'
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
 import type { Decision as StandardDecision } from '@/lib/types'
 import { CountdownBadge } from './countdown-badge'
@@ -51,32 +55,6 @@ interface ApprovalResult {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function restoreRedactedPlaceholders(value: unknown, original: unknown): unknown {
-  if (value === REDACTED_PLACEHOLDER) return original
-  if (Array.isArray(value)) {
-    const originalItems = Array.isArray(original) ? original : []
-    return value.map((item, index) => restoreRedactedPlaceholders(item, originalItems[index]))
-  }
-  if (isRecord(value)) {
-    const originalRecord = isRecord(original) ? original : {}
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
-        key,
-        restoreRedactedPlaceholders(item, originalRecord[key]),
-      ]),
-    )
-  }
-  return value
-}
-
-function restoreRedactedRecordPlaceholders(
-  value: Record<string, unknown>,
-  original: Record<string, unknown> | undefined,
-): Record<string, unknown> {
-  const restored = restoreRedactedPlaceholders(value, original ?? {})
-  return isRecord(restored) ? restored : value
 }
 
 function parseApprovalResult(result: unknown): ApprovalResult | null {
@@ -119,14 +97,19 @@ function toDecision(
   d: Decision,
   response: ApprovalResult,
   toolName: string | undefined,
-): StandardDecision | null {
+): StandardDecision {
   switch (d) {
     case 'approved':
       return toApprove()
     case 'modified':
-      // edited_action.name은 미들웨어가 ToolCall로 재발행하므로 비워서 보낼 수 없다.
-      if (!toolName) return null
-      return toEdit({ name: toolName, args: response.modified_args ?? {} })
+      // edited_action.name은 백엔드가 pending action을 positional index로 매칭해
+      // 권위적으로 채운다. 도구 이름을 알면 advisory로 첨부하고, 모르면 생략한다
+      // (예전엔 name이 없으면 하드 중단했지만 더 이상 필요 없다).
+      return toEdit(
+        toolName
+          ? { name: toolName, args: response.modified_args ?? {} }
+          : { args: response.modified_args ?? {} },
+      )
     case 'rejected':
       return toReject(response.reason)
   }
@@ -287,6 +270,108 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   )
 }
 
+/**
+ * Field-based editor for approval args. Each value is editable in its own
+ * control instead of one raw JSON blob, so a syntax error in a single field
+ * can't abort the whole submit. Secret keys (`isSensitiveDisplayKey`) are
+ * locked read-only as `<redacted>` — the backend restores them from the
+ * checkpoint by index, so the frontend never reconstructs or leaks them.
+ */
+function ArgsEditor({
+  value,
+  onChange,
+  onInteract,
+}: {
+  value: Record<string, unknown>
+  onChange: (next: Record<string, unknown>) => void
+  onInteract: () => void
+}) {
+  const t = useTranslations('chat.approval')
+  // Non-scalar (object/array/number/boolean/null) values are edited as compact
+  // JSON text; a parse failure flags only that field and keeps the last good
+  // value in the draft — it never blocks submit (§ field-editor contract).
+  const [jsonText, setJsonText] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      Object.entries(value)
+        .filter(([key, item]) => !isSensitiveDisplayKey(key) && typeof item !== 'string')
+        .map(([key, item]) => [key, JSON.stringify(item)]),
+    ),
+  )
+  const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({})
+
+  const entries = Object.entries(value)
+  if (entries.length === 0) return null
+
+  const updateString = (key: string, next: string) => {
+    onInteract()
+    onChange({ ...value, [key]: next })
+  }
+
+  const updateJson = (key: string, next: string) => {
+    onInteract()
+    setJsonText((prev) => ({ ...prev, [key]: next }))
+    try {
+      const parsed: unknown = JSON.parse(next)
+      onChange({ ...value, [key]: parsed })
+      setFieldErrors((prev) => ({ ...prev, [key]: false }))
+    } catch {
+      setFieldErrors((prev) => ({ ...prev, [key]: true }))
+    }
+  }
+
+  return (
+    <dl className="space-y-1.5 rounded-lg border border-border/40 bg-muted/30 px-3 py-2">
+      {entries.map(([key, item]) => {
+        const locked = isSensitiveDisplayKey(key)
+        const isStringField = typeof item === 'string'
+        return (
+          <div key={key} className="space-y-1 text-xs">
+            <dt className="truncate font-mono font-medium text-muted-foreground" title={key}>
+              {key}
+            </dt>
+            <dd className="min-w-0">
+              {locked ? (
+                <input
+                  type="text"
+                  aria-label={key}
+                  value={REDACTED_PLACEHOLDER}
+                  readOnly
+                  disabled
+                  title={t('lockedSecretHint')}
+                  className="moldy-field-status w-full cursor-not-allowed rounded-lg border bg-muted/50 px-2 py-1 font-mono text-xs text-muted-foreground outline-hidden"
+                />
+              ) : isStringField ? (
+                <input
+                  type="text"
+                  aria-label={key}
+                  value={String(value[key] ?? '')}
+                  onChange={(e) => updateString(key, e.target.value)}
+                  onFocus={onInteract}
+                  className="moldy-field-status moldy-status-info w-full rounded-lg border bg-background px-2 py-1 text-xs outline-hidden"
+                />
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    aria-label={key}
+                    value={jsonText[key] ?? JSON.stringify(item)}
+                    onChange={(e) => updateJson(key, e.target.value)}
+                    onFocus={onInteract}
+                    className="moldy-field-status moldy-status-info w-full rounded-lg border bg-background px-2 py-1 font-mono text-xs outline-hidden"
+                  />
+                  {fieldErrors[key] && (
+                    <p className="mt-0.5 text-xs text-destructive">{t('invalidFieldValue')}</p>
+                  )}
+                </>
+              )}
+            </dd>
+          </div>
+        )
+      })}
+    </dl>
+  )
+}
+
 export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
   toolName: 'request_approval',
   render: function ApprovalRender({ args, result, status, addResult }) {
@@ -295,10 +380,12 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const hitl = useHiTL()
     const [decision, setDecision] = useState<Decision | null>(null)
     const [rejectReason, setRejectReason] = useState('')
-    const [editedArgs, setEditedArgs] = useState('')
+    // 수정 모드 draft — field-based editor가 키별로 편집한다. raw JSON 텍스트
+    // 대신 칸별 값을 들고 있어 JSON.parse 실패로 전체 submit이 막히지 않는다.
+    const [draft, setDraft] = useState<Record<string, unknown>>({})
     const [showEdit, setShowEdit] = useState(false)
     const [submitting, setSubmitting] = useState(false)
-    const [jsonError, setJsonError] = useState<string | null>(null)
+    const [resumeError, setResumeError] = useState<string | null>(null)
     const [localResult, setLocalResult] = useState<ApprovalResult | null>(null)
 
     // 카드 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
@@ -339,36 +426,19 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
           resumeResponse.reason = reason
         }
 
-        if (d === 'modified' && editedArgs) {
-          try {
-            const parsed: unknown = JSON.parse(editedArgs)
-            if (!isRecord(parsed)) throw new Error('edited args must be an object')
-            response.modified_args = parsed
-            resumeResponse.modified_args = restoreRedactedRecordPlaceholders(
-              parsed,
-              args?.tool_args,
-            )
-            setJsonError(null)
-          } catch {
-            setJsonError(t('invalidJson'))
-            setSubmitting(false)
-            setDecision(null)
-            return
-          }
+        if (d === 'modified') {
+          // field-based editor의 draft를 그대로 사용한다. 시크릿 칸은 잠겨
+          // <redacted>로 남고, 백엔드가 checkpoint 원본으로 복원한다(프론트
+          // 복원 없음). JSON.parse가 없으므로 syntax 에러로 막히지 않는다.
+          response.modified_args = draft
+          resumeResponse.modified_args = draft
         }
 
         const standardDecision = toDecision(d, resumeResponse, args?.tool_name)
-        if (!standardDecision) {
-          // edit인데 tool_name 미상 — backend가 무효 edited_action으로 거절할 것이므로 abort.
-          setJsonError(t('invalidJson'))
-          setSubmitting(false)
-          setDecision(null)
-          return
-        }
         try {
           await resumeDecision(standardDecision, styles[d].label)
         } catch {
-          setJsonError(t('resumeFailed'))
+          setResumeError(t('resumeFailed'))
           setSubmitting(false)
           setDecision(null)
           return
@@ -377,7 +447,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
         setLocalResult(response)
         setSubmitting(false)
       },
-      [addResult, rejectReason, editedArgs, t, styles, args, resumeDecision],
+      [addResult, rejectReason, draft, t, styles, args, resumeDecision],
     )
 
     // 만료 시 자동 reject — handleDecision 변동에 영향받지 않도록 ref로 보관
@@ -485,25 +555,13 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
             />
           )}
 
-          {/* 수정 인자 입력 (수정 선택 시) */}
+          {/* 수정 인자 입력 (수정 선택 시) — 칸별 field editor. 시크릿 키는
+              read-only 잠금, 비-scalar는 칸별 JSON. raw JSON textarea 아님. */}
           {showEdit && !submitting && (
-            <>
-              <textarea
-                value={editedArgs}
-                onChange={(e) => {
-                  setEditedArgs(e.target.value)
-                  setJsonError(null)
-                  onInteract()
-                }}
-                onFocus={onInteract}
-                placeholder={t('editArgsPlaceholder')}
-                className="moldy-field-status moldy-status-info w-full resize-none rounded-lg border bg-background px-3 py-2 font-mono text-xs outline-hidden placeholder:text-muted-foreground"
-                rows={4}
-              />
-            </>
+            <ArgsEditor value={draft} onChange={setDraft} onInteract={onInteract} />
           )}
 
-          {jsonError && <p className="mt-1 text-xs text-destructive">{jsonError}</p>}
+          {resumeError && <p className="mt-1 text-xs text-destructive">{resumeError}</p>}
 
           {/* Action buttons */}
           {!submitting ? (
@@ -529,7 +587,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                     type="button"
                     onClick={() => {
                       setShowEdit(true)
-                      setEditedArgs(toolArgs ? JSON.stringify(toolArgs, null, 2) : '{}')
+                      setDraft({ ...(toolArgs ?? {}) })
                     }}
                     data-variant="outline"
                     className="moldy-action-pill moldy-status-info"

@@ -482,8 +482,12 @@ export type InterruptPayload = StandardInterruptPayload
 /** Resume 송신용 단일 결정. LangChain `HITLResponse.decisions[i]`와 1:1. */
 export interface Decision {
   type: DecisionType
-  /** type='edit' 시 필수: 수정된 tool_call. */
-  edited_action?: { name: string; args: Record<string, unknown> }
+  /**
+   * type='edit' 시 필수: 수정된 tool_call. `name`은 optional — 백엔드가
+   * pending action을 positional index로 매칭해 권위적으로 채우므로, 프론트는
+   * 도구 이름을 모를 때 생략하고 args만 보낼 수 있다.
+   */
+  edited_action?: { name?: string; args: Record<string, unknown> }
   /** type='respond' 시 필수, type='reject' 시 선택. */
   message?: string
 }

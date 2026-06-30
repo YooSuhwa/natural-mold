@@ -292,17 +292,24 @@ describe('ApprovalCard', () => {
     expect(document.body.textContent).not.toContain('execute_in_skill')
   })
 
-  it('restores redacted placeholders from raw args before sending edited approvals', async () => {
+  // Replaces the old "restores redacted placeholders" test, which injected an
+  // UN-redacted tool_args and asserted client-side restoration — a path that is
+  // a no-op in production (tool_args arrive already redacted) and gave false
+  // confidence. The real contract: the secret field is locked read-only and the
+  // card submits <redacted>; the BACKEND restores it from the checkpoint by
+  // index (covered by test_hitl_wire.py).
+  it('locks secret fields read-only and submits <redacted> for the backend to restore', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
       return toolUi.render({
         args: {
           approval_id: 'interrupt-approval:0',
-          tool_name: 'execute_in_skill',
+          tool_name: 'write_file',
+          // Production shape: tool_args arrive already redacted (key-based).
           tool_args: {
-            command: 'node scripts/create_docx.cjs',
-            api_key: 'raw-secret-value',
+            file_path: '/runtime/report.md',
+            api_key: '<redacted>',
           },
           hitl_action_index: 0,
           hitl_total_actions: 1,
@@ -320,15 +327,15 @@ describe('ApprovalCard', () => {
     )
 
     fireEvent.click(screen.getByText('edit'))
-    expect(document.body.textContent).not.toContain('raw-secret-value')
 
-    fireEvent.change(screen.getByPlaceholderText('editArgsPlaceholder'), {
-      target: {
-        value: JSON.stringify({
-          command: 'node scripts/updated_docx.cjs',
-          api_key: '<redacted>',
-        }),
-      },
+    // Secret field is locked: disabled and masked as <redacted> — not editable.
+    const secretField = screen.getByLabelText('api_key') as HTMLInputElement
+    expect(secretField).toBeDisabled()
+    expect(secretField).toHaveValue('<redacted>')
+
+    // Only the non-secret field is editable; no raw JSON textarea.
+    fireEvent.change(screen.getByLabelText('file_path'), {
+      target: { value: '/runtime/updated.md' },
     })
     fireEvent.click(screen.getByText('editAndApprove'))
 
@@ -338,17 +345,57 @@ describe('ApprovalCard', () => {
         {
           type: 'edit',
           edited_action: {
-            name: 'execute_in_skill',
-            args: {
-              command: 'node scripts/updated_docx.cjs',
-              api_key: 'raw-secret-value',
-            },
+            name: 'write_file',
+            args: { file_path: '/runtime/updated.md', api_key: '<redacted>' },
           },
         },
         'editApproved',
         'interrupt-approval',
       )
     })
+  })
+
+  it('submits an edit without a tool name (backend fills it by index)', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          // No tool_name — a merged raw-model-call slot can arrive without it.
+          // Edit must still submit (no invalidJson abort); the backend fills
+          // edited_action.name by positional index.
+          approval_id: 'interrupt-approval:0',
+          tool_args: { command: 'node old.cjs' },
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+          hitl_interrupt_id: 'interrupt-approval',
+          allowed_decisions: ['approve', 'edit', 'reject'],
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('edit'))
+    fireEvent.change(screen.getByLabelText('command'), {
+      target: { value: 'node new.cjs' },
+    })
+    fireEvent.click(screen.getByText('editAndApprove'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        { type: 'edit', edited_action: { args: { command: 'node new.cjs' } } },
+        'editApproved',
+        'interrupt-approval',
+      )
+    })
+    expect(screen.queryByText('invalidJson')).toBeNull()
   })
 
   // ── allowed_decisions 버튼 게이팅 ──────────────────────────────────
