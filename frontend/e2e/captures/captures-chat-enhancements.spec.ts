@@ -4,6 +4,7 @@ import {
   sendMessage,
   setupLangGraphV3Agent,
   waitForActiveRun,
+  waitForRunStatus,
 } from '../langgraph-v3-helpers'
 import { capture, DESKTOP_VIEWPORT } from './_capture-helpers'
 
@@ -136,9 +137,12 @@ test.describe('Wave 6 — chat enhancement captures', () => {
         title: 'write_todos plan',
         run: async (cid) => {
           await send(cid, `E2E_LANGGRAPH_V3 slow_subagent=true subagent=${childRuntimeName}`)
-          await waitForActiveRun(request, cid).catch(() => {})
+          const runId = await waitForActiveRun(request, cid).catch(() => '')
           await page.getByText(/Collect LangGraph v3 runtime evidence/).waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
-          await page.waitForTimeout(1_000)
+          // Wait until the run settles (interrupted) so the capture isn't taken
+          // mid-stream — capturing during the slow subagent stream corrupted the PNG.
+          if (runId) await waitForRunStatus(request, cid, runId, 'interrupted').catch(() => {})
+          await page.waitForTimeout(1_500)
         },
       },
       {

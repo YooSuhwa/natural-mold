@@ -4,6 +4,7 @@ import { sendMessage, waitForActiveRun, approveExecuteInSkill } from '../langgra
 import {
   addIntervalTrigger,
   capture,
+  createConfiguredAgent,
   createConversation,
   createRichAgent,
   DESKTOP_VIEWPORT,
@@ -62,7 +63,7 @@ test.describe('Wave 7 — rich content captures', () => {
   test('agent edit — tabs with content + visual', async ({ page, request }) => {
     test.setTimeout(240_000)
     const csrf = await loginApi(request)
-    const { agentId, childId } = await createRichAgent(request, csrf)
+    const { agentId, childId } = await createConfiguredAgent(request, csrf)
     await addIntervalTrigger(request, csrf, agentId, 30)
     try {
       await nav(page, `/agents/${agentId}/settings`)
@@ -116,15 +117,19 @@ test.describe('Wave 7 — rich content captures', () => {
       await settle(page, 1_200)
       await capture(page, WAVE, '11-dashboard-sessions.png')
 
-      // Dashboard grid sort control (opens a sort menu: 최신순 / 이름순 …).
+      // Dashboard grid sort control — a dropdown trigger labeled with the current
+      // sort (최신순). Click it to open the menu (최신순 / 이름순 / 즐겨찾기) and capture it open.
       await nav(page, '/')
       await settle(page, 1_000)
-      const sort = page.getByText(/최신순|이름순/).first()
-      if ((await sort.count()) > 0) {
-        await sort.click().catch(() => {})
-        await page.waitForTimeout(700)
-        await capture(page, WAVE, '12-dashboard-sort.png')
+      const sortTrigger = page.getByRole('button', { name: /최신순|이름순|즐겨찾기/ }).first()
+      if ((await sortTrigger.count()) > 0) {
+        await sortTrigger.click().catch(() => {})
+      } else {
+        await page.getByText(/최신순/).first().click().catch(() => {})
       }
+      await page.getByRole('menuitem').first().waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {})
+      await page.waitForTimeout(500)
+      await capture(page, WAVE, '12-dashboard-sort.png')
     } finally {
       await request.delete(`${API_BASE}/api/agents/${agent.id}`, { headers: csrf }).catch(() => {})
     }
@@ -133,29 +138,33 @@ test.describe('Wave 7 — rich content captures', () => {
   test('schedules — registered trigger', async ({ page, request }) => {
     test.setTimeout(180_000)
     const csrf = await loginApi(request)
-    const modelId = await scriptedModelId(request)
-    const created = await request.post(`${API_BASE}/api/agents`, {
-      headers: csrf,
-      data: { name: '일일 리포트 봇', system_prompt: '리포트 작성.', model_id: modelId },
-    })
-    const agent = (await created.json()) as { id: string }
-    await addIntervalTrigger(request, csrf, agent.id, 30)
+    // Triggers require a fixed-identity agent on the openai_compatible model.
+    const { agentId, childId } = await createConfiguredAgent(request, csrf)
+    await addIntervalTrigger(request, csrf, agentId, 30)
     try {
       await nav(page, '/settings/schedules')
-      await settle(page, 1_200)
+      await settle(page, 1_500)
       await capture(page, WAVE, '13-schedules-registered.png')
     } finally {
-      await request.delete(`${API_BASE}/api/agents/${agent.id}`, { headers: csrf }).catch(() => {})
+      await request.delete(`${API_BASE}/api/agents/${agentId}`, { headers: csrf }).catch(() => {})
+      if (childId) await request.delete(`${API_BASE}/api/agents/${childId}`, { headers: csrf }).catch(() => {})
     }
   })
 
   test('files — attachment (composer + bubble), list, image lightbox', async ({ page, request }) => {
     test.setTimeout(300_000)
     const csrf = await loginApi(request)
-    const { agentId, childId } = await createRichAgent(request, csrf) // has docx skill
+    // Attachment flow on a SIMPLE scripted agent (matches the proven
+    // chat-attachments-display flow — no skill to perturb the inline render).
+    const simpleModelId = await scriptedModelId(request)
+    const simpleCreated = await request.post(`${API_BASE}/api/agents`, {
+      headers: csrf,
+      data: { name: '첨부 도우미', system_prompt: '첨부를 확인합니다.', model_id: simpleModelId },
+    })
+    const simpleAgent = (await simpleCreated.json()) as { id: string }
     try {
-      const cid = await createConversation(request, csrf, agentId, '첨부 데모')
-      await nav(page, `/agents/${agentId}/conversations/${cid}`)
+      const cid = await createConversation(request, csrf, simpleAgent.id, '첨부 데모')
+      await nav(page, `/agents/${simpleAgent.id}/conversations/${cid}`)
 
       // Attach an image in the composer → capture the staged chip.
       const [chooser] = await Promise.all([
@@ -196,18 +205,23 @@ test.describe('Wave 7 — rich content captures', () => {
         await page.keyboard.press('Escape').catch(() => {})
       }
 
-      // Generate a real artifact so the Files (생성된 파일) list isn't empty.
-      const cid2 = await createConversation(request, csrf, agentId, '문서 생성')
-      await nav(page, `/agents/${agentId}/conversations/${cid2}`)
-      await sendMessage(page, 'E2E_DOCX 문서를 생성해줘')
-      await approveExecuteInSkill(page).catch(() => {})
-      await settleStream(page, 120_000)
-      await nav(page, '/artifacts')
-      await settle(page, 1_500)
-      await capture(page, WAVE, '16-file-list.png')
+      // Generate a real artifact (skill agent) so the Files (생성된 파일) list isn't empty.
+      const { agentId: skillAgentId, childId } = await createRichAgent(request, csrf)
+      try {
+        const cid2 = await createConversation(request, csrf, skillAgentId, '문서 생성')
+        await nav(page, `/agents/${skillAgentId}/conversations/${cid2}`)
+        await sendMessage(page, 'E2E_DOCX 문서를 생성해줘')
+        await approveExecuteInSkill(page).catch(() => {})
+        await settleStream(page, 120_000)
+        await nav(page, '/artifacts')
+        await settle(page, 1_500)
+        await capture(page, WAVE, '16-file-list.png')
+      } finally {
+        await request.delete(`${API_BASE}/api/agents/${skillAgentId}`, { headers: csrf }).catch(() => {})
+        if (childId) await request.delete(`${API_BASE}/api/agents/${childId}`, { headers: csrf }).catch(() => {})
+      }
     } finally {
-      await request.delete(`${API_BASE}/api/agents/${agentId}`, { headers: csrf }).catch(() => {})
-      if (childId) await request.delete(`${API_BASE}/api/agents/${childId}`, { headers: csrf }).catch(() => {})
+      await request.delete(`${API_BASE}/api/agents/${simpleAgent.id}`, { headers: csrf }).catch(() => {})
     }
   })
 
@@ -227,11 +241,26 @@ test.describe('Wave 7 — rich content captures', () => {
       await waitForActiveRun(request, cid).catch(() => {})
       await settleStream(page)
       await nav(page, `/agents/${agent.id}/conversations/${cid}/traces`)
-      await settle(page, 1_500)
+      await settle(page, 1_800)
+      // Expand the tree so child spans are clickable.
+      await page.getByRole('button', { name: /전체 펼치기|모두 펼치기|펼치기|expand/i }).first().click().catch(() => {})
+      await page.waitForTimeout(600)
+      // The default selection is the root span (no conversation). Select a
+      // child LLM/agent span so the detail panel shows the actual messages.
+      const selectSpan = async (pattern: RegExp): Promise<boolean> => {
+        const node = page.getByText(pattern).first()
+        if ((await node.count()) > 0 && (await node.isVisible().catch(() => false))) {
+          await node.click().catch(() => {})
+          await page.waitForTimeout(800)
+          return true
+        }
+        return false
+      }
+      ;(await selectSpan(/ChatModel|chat_model|LLM|model|에이전트|agent|LangGraph|call_model/i)) ||
+        (await selectSpan(/current_datetime|resolve_relative|tool|도구/i))
       await capture(page, WAVE, '18-trace.png')
-      // Expand the first trace node to reveal the conversation/tool detail.
-      await page.locator('[role="button"], button').filter({ hasText: /./ }).first().click().catch(() => {})
-      await page.waitForTimeout(800)
+      // Select a different (tool/result) span for the detail view.
+      await selectSpan(/current_datetime|resolve_relative|tool|output|결과|result/i)
       await capture(page, WAVE, '19-trace-detail.png')
     } finally {
       await request.delete(`${API_BASE}/api/agents/${agent.id}`, { headers: csrf }).catch(() => {})

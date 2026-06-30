@@ -174,6 +174,54 @@ export async function createRichAgent(
   return { agentId: agent.id, childId }
 }
 
+/** The seeded openai_compatible (LiteLLM) model — required for fixed-identity agents (triggers). */
+export async function openaiCompatibleModelId(request: APIRequestContext): Promise<string | null> {
+  const models = await apiGetJson(request, `${API_BASE}/api/models`)
+  if (!Array.isArray(models)) return null
+  const model = models.find((row) => isRecord(row) && row.provider === 'openai_compatible')
+  return isRecord(model) && typeof model.id === 'string' ? model.id : null
+}
+
+/**
+ * A fully-configured, fixed-identity agent: LiteLLM model + opener questions +
+ * tools + skill + subagent. Fixed identity + openai_compatible model are required
+ * for scheduled triggers; opener questions populate the opener tab. (Settings
+ * captures never chat with it, so the real model is never called.)
+ */
+export async function createConfiguredAgent(
+  request: APIRequestContext,
+  csrfHeaders: CsrfHeaders,
+): Promise<{ agentId: string; childId: string | null }> {
+  const modelId = (await openaiCompatibleModelId(request)) ?? (await scriptedModelId(request))
+  const skillId = await installDocxSkill(request, csrfHeaders)
+  const toolIds = await systemToolIds(request, 3)
+  const child = await apiPostJson(request, `${API_BASE}/api/agents`, csrfHeaders, {
+    name: '예약 처리 보조',
+    description: '수업 예약/취소 전용 서브에이전트',
+    system_prompt: '예약과 취소만 전담합니다.',
+    model_id: modelId,
+  })
+  const childId = isRecord(child) && typeof child.id === 'string' ? child.id : null
+  const agent = await apiPostJson(request, `${API_BASE}/api/agents`, csrfHeaders, {
+    name: '핏라이프 멤버십 지원봇',
+    description: '헬스장 멤버십 문의·예약·취소를 처리하는 고객지원 에이전트',
+    system_prompt:
+      '당신은 핏라이프 피트니스의 고객지원 상담원입니다. 멤버십 크레딧 조회, 수업 예약, 멤버십 취소를 도와줍니다. 한 번에 하나씩, 친절하고 간결하게 응대하세요.',
+    model_id: modelId,
+    identity_mode: 'fixed',
+    opener_questions: [
+      '멤버십 크레딧이 얼마나 남았는지 알려줘',
+      '이번 주 요가 수업을 예약하고 싶어',
+      '멤버십을 취소하려면 어떻게 해?',
+    ],
+    tool_ids: toolIds,
+    skill_ids: skillId ? [skillId] : [],
+    sub_agent_ids: childId ? [childId] : [],
+  })
+  if (!isRecord(agent) || typeof agent.id !== 'string') throw new Error('configured agent create failed')
+  return { agentId: agent.id, childId }
+}
+
 export async function addIntervalTrigger(
   request: APIRequestContext,
   csrfHeaders: CsrfHeaders,
