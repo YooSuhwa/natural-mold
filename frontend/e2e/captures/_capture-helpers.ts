@@ -252,6 +252,6 @@ export async function createConversation(
   return convo.id
 }
 
-/** A tiny valid 1×1 PNG (red) for an image attachment / lightbox capture. */
+/** A 1×1 PNG (the exact buffer the proven chat-attachments-display E2E uses). */
 export const TINY_PNG_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
