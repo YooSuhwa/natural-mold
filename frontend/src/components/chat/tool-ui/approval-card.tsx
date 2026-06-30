@@ -437,7 +437,9 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
             {description && <p className="text-xs text-muted-foreground">{description}</p>}
           </div>
 
-          {/* Args preview */}
+          {/* Args preview — collapsed by default; the title ("도구 사용 승인이
+              필요합니다") + tool name already convey what's being approved. Expand
+              to inspect the exact arguments. */}
           {toolArgs && Object.keys(toolArgs).length > 0 && <ArgsPreview args={toolArgs} />}
 
           {/* 거부 사유 입력 (거부 선택 시) */}

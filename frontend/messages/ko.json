@@ -1265,7 +1265,7 @@
       "toolCall": "도구 호출",
       "processing": "처리 중…",
       "preparing": "승인 요청 준비 중…",
-      "approvalRequired": "승인이 필요합니다",
+      "approvalRequired": "도구 사용 승인이 필요합니다",
       "invalidJson": "유효하지 않은 JSON 형식입니다",
       "resumeFailed": "승인 응답을 전송하지 못했습니다. 다시 시도하세요.",
       "rejectConfirm": "거부 확인",
