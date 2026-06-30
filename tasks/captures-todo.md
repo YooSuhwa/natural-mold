@@ -67,6 +67,18 @@
 - [ ] 채팅 — ask_user 변형 5종 캡처(Wave 6 픽스처 기반).
 - [ ] empty-state 채팅 / rich-markdown 상단(메시지 element 캡처).
 
+## Wave 6/7 결과 (사용자 피드백 반영)
+- **Wave 6 (7장)**: ask_user 단일/다중/텍스트/question_flow, 웹검색 펼침, todo/플랜, 재색칠 차트. + 백엔드 ask_user 변형 3종 + chart 색상 코드 수정.
+- **Wave 7 (17장)**: 편집 개요+탭(form-visual/test/opener/schedule/settings/api)+visual, 대시보드 세션, 스케줄 등록, 첨부 컴포저, 파일리스트(docx), 첨부 버블, 이미지 lightbox, trace+detail, usage.
+
+**총 70장** → output/captures/{wave1-flows,wave2-pages,wave3-dialogs,wave4-chat-states,wave6-chat-enhancements,wave7-rich-content}/
+
+### 미해결(소수)
+- **12-dashboard-sort**: 정렬 컨트롤 "최신순"을 getByText로 못 잡음(아이콘+커스텀). testid 필요.
+- **첨부 인라인 버블(15)**: 컴포저 스테이징(14)은 완벽하나, 버블 인라인 썸네일이 캡처 플로우에서 안 뜸(전용 E2E chat-attachments-display는 통과 → 기능은 정상, 투어 플로우 타이밍/링크 차이). 17-lightbox도 동일 의존.
+- **empty-state 채팅 / rich-markdown 상단**(내부 스크롤) / **3 다이얼로그(tool/schedule/api-key)** 아이콘 CTA.
+- **승인 카드 args UI 개선**(approval-card raw dict) — 별도 결정.
+
 ## 남은 보정(선택)
 - 일상대화 hero 플로우: 첫 goto 콜드컴파일 + 멀티턴 누적이 240s 초과 → 타임아웃 상향 또는 사전 워밍 + 턴 축소.
 - 3개 다이얼로그(tool/schedule/api-key): 빈 상태 아이콘 CTA → testid/getByLabel로 정확 타겟.
