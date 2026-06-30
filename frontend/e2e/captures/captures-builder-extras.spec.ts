@@ -73,7 +73,7 @@ test.describe('Wave 8 — builder + extras captures', () => {
   })
 
   test('opener questions — empty chat state', async ({ page, request }) => {
-    test.setTimeout(180_000)
+    test.setTimeout(300_000)
     const csrf = await loginApi(request)
     const modelId = await scriptedModelId(request)
     const created = await apiPostJson(request, `${API_BASE}/api/agents`, csrf, {
@@ -107,28 +107,34 @@ test.describe('Wave 8 — builder + extras captures', () => {
 
     const advanceLabels =
       /다음|계속|제출|확인|선택 완료|완료|생성|만들기|저장|빌드|시작|승인|적용/
-    const radioLike = '[role="radio"], [role="menuitemradio"], input[type="radio"], [data-slot="option"]'
+    // Builder choice cards render options as <button>s inside a role="listbox"
+    // (question-flow-card); selecting one enables the advance button.
+    const optionSel = '[role="listbox"] button, [role="option"], [role="radio"]'
 
     // Progress through the builder, capturing each phase. Best-effort: select the
     // first option (if a choice card is shown), click an advance button, wait,
-    // and capture. Stop when no advance button appears twice in a row.
+    // and capture. Stop when no advance happens twice in a row.
     let dryRounds = 0
-    for (let step = 1; step <= 14 && dryRounds < 2; step += 1) {
+    for (let step = 1; step <= 16 && dryRounds < 2; step += 1) {
       await streamSettle(page, 60_000)
       await capture(page, WAVE, `11-builder-step-${String(step).padStart(2, '0')}.png`)
 
-      // Pick the first selectable option in the visible card, if any.
-      const option = page.locator(radioLike).last()
+      // Select the first enabled option in the visible card, if any.
+      const option = page.locator(optionSel).first()
       if ((await option.count()) > 0 && (await option.isVisible().catch(() => false))) {
         await option.click().catch(() => {})
-        await page.waitForTimeout(400)
+        await page.waitForTimeout(500)
       }
 
       const advance = page.getByRole('button', { name: advanceLabels }).last()
-      if ((await advance.count()) > 0 && (await advance.isEnabled().catch(() => false))) {
+      if (
+        (await advance.count()) > 0 &&
+        (await advance.isVisible().catch(() => false)) &&
+        (await advance.isEnabled().catch(() => false))
+      ) {
         await advance.click().catch(() => {})
         dryRounds = 0
-        await page.waitForTimeout(1_200)
+        await page.waitForTimeout(1_500)
       } else {
         dryRounds += 1
         await page.waitForTimeout(1_500)
