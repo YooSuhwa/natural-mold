@@ -74,6 +74,7 @@ export default function AgentApiSettingsPage() {
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{t('description')}</p>
           </div>
           <Button
+            data-testid="api-key-create-button"
             onClick={() => setCreateOpen(true)}
             disabled={(deployments.data ?? []).length === 0}
           >

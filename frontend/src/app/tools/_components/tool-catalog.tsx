@@ -183,7 +183,13 @@ function ToolDefinitionCard({
   const tone = getResourceTone(definition.category || 'general')
 
   return (
-    <ResourceListCard as="button" tone={tone} density="compact" onClick={() => onPick(definition)}>
+    <ResourceListCard
+      as="button"
+      tone={tone}
+      density="compact"
+      data-testid="tool-catalog-card"
+      onClick={() => onPick(definition)}
+    >
       <ResourceListCard.Header>
         <span className={cn('moldy-resource-icon', tone.icon)}>
           <DomainIcon iconId={definition.icon_id ?? definition.key} className="size-4.5" />

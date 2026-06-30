@@ -73,14 +73,18 @@
 
 **총 70장** → output/captures/{wave1-flows,wave2-pages,wave3-dialogs,wave4-chat-states,wave6-chat-enhancements,wave7-rich-content}/
 
-### 미해결(소수)
-- **12-dashboard-sort**: 정렬 컨트롤 "최신순"을 getByText로 못 잡음(아이콘+커스텀). testid 필요.
-- **첨부 인라인 버블(15)**: 컴포저 스테이징(14)은 완벽하나, 버블 인라인 썸네일이 캡처 플로우에서 안 뜸(전용 E2E chat-attachments-display는 통과 → 기능은 정상, 투어 플로우 타이밍/링크 차이). 17-lightbox도 동일 의존.
-- **empty-state 채팅 / rich-markdown 상단**(내부 스크롤) / **3 다이얼로그(tool/schedule/api-key)** 아이콘 CTA.
-- **승인 카드 args UI 개선**(approval-card raw dict) — 별도 결정.
+### 미해결(소수) → ✅ 전부 해결 (branch `fix/capture-issues`)
 
-## 남은 보정(선택)
-- 일상대화 hero 플로우: 첫 goto 콜드컴파일 + 멀티턴 누적이 240s 초과 → 타임아웃 상향 또는 사전 워밍 + 턴 축소.
-- 3개 다이얼로그(tool/schedule/api-key): 빈 상태 아이콘 CTA → testid/getByLabel로 정확 타겟.
-- empty-state 채팅 / rich-markdown 상단(내부 스크롤) → 메시지 element 캡처로 보정.
-- 그럴싸함 강화: scripted 기본응답이 "E2E scripted document model is ready."라 일상대화 자연스러움엔 scripted 시나리오 보강 필요(별도 백엔드 작업).
+수정 후 영향 스펙 전부 그린: chat-states 14/14(51.7s), flows 2/2(daily 11.6s), dialogs 5/5, rich-content 6/6. 실제 PNG로 검증.
+
+- ✅ **12-dashboard-sort**: `dashboard-page-client.tsx` 정렬 트리거에 `data-testid="dashboard-sort-trigger"` 추가 → 스펙 `getByTestId`. (287KB 캡쳐 확인)
+- ✅ **첨부 인라인 버블(15) + 17-lightbox**: 투어 플로우를 검증된 `chat-attachments-display` 스펙대로 재작성(composer 가시성 게이트 + 업로드 201 단언 + alt-text 셀렉터 `getByRole('img',{name:'membership-card.png'})`, best-effort 래핑). (15=97KB, 17=90KB 확인)
+- ✅ **empty-state 채팅 / rich-markdown 상단**: (1) empty-state는 composer 게이트 추가(콜드컴파일 흡수). (2) rich-markdown은 새 `captureLocator`로 메시지 엘리먼트 스코프 스크린샷(내부 overflow-y-auto 클리핑 회피). + 근본 수정: `settle()`의 `waitForLoadState('networkidle')`를 5s 상한으로 캡(chat 라우트는 SSE로 networkidle에 영영 도달 못 해 테스트 타임아웃까지 hang했음). + 워밍업 `beforeAll`(훅 타임아웃 300s)로 cold compile를 테스트 budget 밖으로.
+- ✅ **3 다이얼로그(tool/schedule/api-key)**: 단순 라벨 문제 아니었음 — tool은 카탈로그 카드 클릭(`data-testid="tool-catalog-card"`), schedule은 페이지가 아닌 에이전트 설정 스케줄 탭(`data-testid="trigger-add-button"`), api-key는 deployment 시드 후 활성화(`data-testid="api-key-create-button"`). 전용 테스트 3개로 분리.
+- ⏸ **승인 카드 args UI 개선**(approval-card raw dict) — 여전히 별도 결정 대기(코드 변경 안 함).
+
+#### scripted 그럴싸함 (별도 백엔드 작업) → ✅ 해결
+- `e2e_scripted_model.py`에 `E2E_DAILY_GREETING` 마커 + 따뜻한 일상비서 응답 추가(기본 센티넬 "E2E scripted document model is ready."는 불변 → 의존 테스트 8 프론트+1 백엔드 안 깨짐). 일상대화 hero에 인사 Turn 0로 opt-in. (`01b-greeting-reply.png` 확인)
+
+#### daily-conversation hero 추가 수정
+- ask_user **선택/재개**(`04-after-selection`)는 인터럽트 루프(20+ 재invoke)로 240s를 넘겨 제거 — wave4 HITL 캡쳐처럼 ask_user 카드(03)를 자연스러운 피날레로. 멀티턴 누적 초과는 `settle` 상한 + 워밍업으로 해소(240s → 11.6s).

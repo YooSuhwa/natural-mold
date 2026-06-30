@@ -7,7 +7,13 @@ import {
   waitForActiveRun,
   waitForRunStatus,
 } from '../langgraph-v3-helpers'
-import { capture, DESKTOP_VIEWPORT, settle } from './_capture-helpers'
+import {
+  capture,
+  captureLocator,
+  DESKTOP_VIEWPORT,
+  settle,
+  warmUpChatRoute,
+} from './_capture-helpers'
 
 /**
  * Wave 4 — chat UI state/component matrix. Drives each chat component via the
@@ -45,6 +51,14 @@ async function settleStream(page: Page, timeout = 90_000): Promise<void> {
 test.describe('Wave 4 — chat state captures', () => {
   test.skip(process.env.E2E_CAPTURE_TOUR !== '1', 'Set E2E_CAPTURE_TOUR=1 to run the capture tour')
 
+  // This spec runs first (alphabetical), so it pays the chat route's one-time cold
+  // compile. Warm it here, out of the matrix test's 600s budget, so all 14 steps
+  // fit. Raise the hook timeout first — the config default (60s) < a cold compile.
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(300_000)
+    await warmUpChatRoute(browser)
+  })
+
   test('captures the chat UI component matrix', async ({ page, request }) => {
     test.setTimeout(600_000)
     await page.setViewportSize(DESKTOP_VIEWPORT)
@@ -57,6 +71,10 @@ test.describe('Wave 4 — chat state captures', () => {
       readonly file: string
       readonly title: string
       readonly run: (conversationId: string) => Promise<void>
+      // Capture only the last assistant message element instead of the full page.
+      // The chat thread is a nested overflow-y-auto viewport that auto-scrolls to
+      // the bottom, so a full-page screenshot clips the top of a tall message.
+      readonly captureMessageEl?: boolean
     }
 
     const gotoChat = async (conversationId: string): Promise<void> => {
@@ -86,12 +104,21 @@ test.describe('Wave 4 — chat state captures', () => {
         title: 'Empty chat',
         run: async (conversationId) => {
           await gotoChat(conversationId)
+          // Gate on the composer (the route-ready signal sendMessage relies on) so
+          // we never screenshot a half-hydrated/blank chat. As the FIRST step this
+          // also absorbs the chat route's one-time cold compile, warming it for the
+          // rest of the matrix; the timeout is generous for that first compile.
+          await page
+            .locator('textarea[data-moldy-composer-input="true"]')
+            .last()
+            .waitFor({ state: 'visible', timeout: 90_000 })
           await settle(page)
         },
       },
       {
         file: '02-rich-markdown.png',
         title: 'Rich markdown',
+        captureMessageEl: true,
         run: async (conversationId) => {
           await goAndSend(
             conversationId,
@@ -234,7 +261,13 @@ test.describe('Wave 4 — chat state captures', () => {
         try {
           const conversationId = await freshConversation(request, csrfHeaders, agentId, step.title)
           await step.run(conversationId)
-          await capture(page, WAVE, step.file)
+          if (step.captureMessageEl) {
+            const el = page.locator('[data-moldy-message-role="assistant"]').last()
+            await el.scrollIntoViewIfNeeded().catch(() => {})
+            await captureLocator(el, WAVE, step.file)
+          } else {
+            await capture(page, WAVE, step.file)
+          }
         } catch (error) {
           console.warn(`[capture-tour] chat-state ${step.file} failed: ${String(error)}`)
         }
