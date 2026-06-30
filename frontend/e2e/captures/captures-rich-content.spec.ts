@@ -189,16 +189,17 @@ test.describe('Wave 7 — rich content captures', () => {
         .first()
         .waitFor({ state: 'visible', timeout: 60_000 })
         .catch(() => {})
-      const userMsg = page.locator('[data-moldy-message-role="user"]').last()
-      const inlineImg = userMsg.getByRole('img', { name: 'membership-card.png' })
-      await inlineImg.waitFor({ state: 'visible', timeout: 25_000 }).catch(() => {})
-      await page.waitForTimeout(500)
+      // The inline thumbnail renders as an <img> inside the user bubble (loaded
+      // from /files after the message_id backfill). Wait for it, then settle.
+      const inlineImg = page.locator('[data-moldy-message-role="user"] img').last()
+      await inlineImg.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+      await page.waitForTimeout(2_500)
       await capture(page, WAVE, '15-attachment-bubble.png')
 
       // Click the inline attachment image → lightbox (image enlarge).
       if ((await inlineImg.count()) > 0) {
-        await inlineImg.first().click().catch(() => {})
-        await page.waitForTimeout(900)
+        await inlineImg.click().catch(() => {})
+        await page.waitForTimeout(1_200)
         await capture(page, WAVE, '17-image-lightbox.png')
         await page.keyboard.press('Escape').catch(() => {})
       }

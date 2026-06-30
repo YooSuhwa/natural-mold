@@ -117,23 +117,23 @@ test.describe('Wave 8 — builder + extras captures', () => {
 
     const advanceLabels =
       /다음|계속|제출|확인|선택 완료|완료|생성|만들기|저장|빌드|시작|승인|적용/
-    // Builder choice cards render options as <button>s inside a role="listbox"
-    // (question-flow-card); selecting one enables the advance button.
-    const optionSel = '[role="listbox"] button, [role="option"], [role="radio"]'
+    // Builder choice options are <button role="option"> (verified via diagnostics);
+    // selecting one enables the advance button. The phase advances after the LLM
+    // processes, so wait generously after each advance.
+    const optionSel = '[role="option"]'
 
-    // Progress through the builder, capturing each phase. Best-effort: select the
-    // first option (if a choice card is shown), click an advance button, wait,
-    // and capture. Stop when no advance happens twice in a row.
+    // Progress through the builder, capturing each step/phase. Stop when no
+    // advance happens twice in a row.
     let dryRounds = 0
-    for (let step = 1; step <= 16 && dryRounds < 2; step += 1) {
+    for (let step = 1; step <= 20 && dryRounds < 2; step += 1) {
       await streamSettle(page, 60_000)
       await capture(page, WAVE, `11-builder-step-${String(step).padStart(2, '0')}.png`)
 
-      // Select the first enabled option in the visible card, if any.
+      // Select the first option in the visible card, if any.
       const option = page.locator(optionSel).first()
       if ((await option.count()) > 0 && (await option.isVisible().catch(() => false))) {
         await option.click().catch(() => {})
-        await page.waitForTimeout(500)
+        await page.waitForTimeout(600)
       }
 
       const advance = page.getByRole('button', { name: advanceLabels }).last()
@@ -144,10 +144,10 @@ test.describe('Wave 8 — builder + extras captures', () => {
       ) {
         await advance.click().catch(() => {})
         dryRounds = 0
-        await page.waitForTimeout(1_500)
+        await page.waitForTimeout(2_500)
       } else {
         dryRounds += 1
-        await page.waitForTimeout(1_500)
+        await page.waitForTimeout(2_000)
       }
     }
 
