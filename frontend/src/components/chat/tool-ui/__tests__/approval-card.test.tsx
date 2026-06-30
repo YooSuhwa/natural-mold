@@ -236,6 +236,34 @@ describe('ApprovalCard', () => {
     expect(document.body.textContent).not.toContain('{\n')
   })
 
+  it('drops the langchain boilerplate description (header/tool/args duplication)', () => {
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'toolu-boiler',
+          tool_name: 'execute_in_skill',
+          tool_args: { command: 'node build.cjs' },
+          description:
+            'Tool execution requires approval\n\nTool: execute_in_skill\nArgs: {"command": "node build.cjs"}',
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn() }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    // The auto-generated boilerplate (which just repeats the header/tool/args)
+    // is suppressed, but the tool name itself is still shown.
+    expect(document.body.textContent).not.toContain('Tool execution requires approval')
+    expect(document.body.textContent).not.toContain('Args: {')
+    expect(screen.getByText('execute_in_skill')).toBeInTheDocument()
+  })
+
   it('restores redacted placeholders from raw args before sending edited approvals', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     const toolUi = ApprovalCard as unknown as ToolUiRender

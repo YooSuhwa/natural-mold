@@ -203,6 +203,19 @@ function isScalarArg(value: unknown): boolean {
   )
 }
 
+// langchain's HumanInTheLoopMiddleware auto-builds the description as
+// `${prefix}\n\nTool: ${name}\nArgs: ${args}`, which just repeats the card's
+// header, tool-name line, and args list. Strip that boilerplate so the card
+// isn't three copies of the same thing; keep only a meaningful custom prefix.
+const DEFAULT_APPROVAL_DESCRIPTION_PREFIX = 'Tool execution requires approval'
+
+function cleanApprovalDescription(raw: string | undefined): string | undefined {
+  if (!raw) return undefined
+  const prefix = raw.split(/\n\nTool:/)[0].trim()
+  if (!prefix || prefix === DEFAULT_APPROVAL_DESCRIPTION_PREFIX) return undefined
+  return prefix
+}
+
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   const t = useTranslations('chat.approval')
   const [expanded, setExpanded] = useState(false)
@@ -381,7 +394,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
 
     // ── requires-action: 승인 카드 ──
     const toolName = args?.tool_name ?? t('toolCall')
-    const rawDescription = args?.description ?? args?.message
+    const rawDescription = cleanApprovalDescription(args?.description ?? args?.message)
     const description = rawDescription ? redactSensitiveText(rawDescription) : undefined
     const toolArgs = args?.tool_args ? redactSensitiveRecord(args.tool_args) : undefined
 
