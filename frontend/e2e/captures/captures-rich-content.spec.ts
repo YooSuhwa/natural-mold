@@ -93,7 +93,7 @@ test.describe('Wave 7 — rich content captures', () => {
   })
 
   test('dashboard — agent expanded sessions + sort', async ({ page, request }) => {
-    test.setTimeout(240_000)
+    test.setTimeout(420_000)
     const csrf = await loginApi(request)
     const modelId = await scriptedModelId(request)
     const created = await request.post(`${API_BASE}/api/agents`, {
@@ -190,10 +190,16 @@ test.describe('Wave 7 — rich content captures', () => {
       await page.getByPlaceholder('메시지 입력...').fill('이 회원증 이미지 확인해줘')
       await page.getByRole('button', { name: /전송/ }).click().catch(() => {})
       await uploadDone
-      await settleStream(page)
+      // Match the proven chat-attachments-display flow: wait for the scripted
+      // reply, then the inline image (looked up by message id from /files).
+      await page
+        .getByText('E2E scripted document model is ready.')
+        .first()
+        .waitFor({ state: 'visible', timeout: 60_000 })
+        .catch(() => {})
       const userMsg = page.locator('[data-moldy-message-role="user"]').last()
       const inlineImg = userMsg.getByRole('img', { name: 'membership-card.png' })
-      await inlineImg.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+      await inlineImg.waitFor({ state: 'visible', timeout: 25_000 }).catch(() => {})
       await page.waitForTimeout(500)
       await capture(page, WAVE, '15-attachment-bubble.png')
 
