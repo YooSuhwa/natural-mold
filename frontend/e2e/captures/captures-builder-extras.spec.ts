@@ -90,8 +90,18 @@ test.describe('Wave 8 — builder + extras captures', () => {
     const agentId = isRecord(created) && typeof created.id === 'string' ? created.id : ''
     try {
       const cid = await createConversation(request, csrf, agentId, '새 대화')
-      await nav(page, `/agents/${agentId}/conversations/${cid}`)
-      await settle(page, 1_500)
+      // 'commit' returns as soon as the navigation commits (avoids the
+      // domcontentloaded/networkidle hang seen on the chat route); then wait for
+      // the empty state's opener questions to render.
+      await page
+        .goto(`/agents/${agentId}/conversations/${cid}`, { waitUntil: 'commit', timeout: 120_000 })
+        .catch(() => {})
+      await page
+        .getByText(/멤버십 크레딧이 얼마나|요가 수업을 예약|멤버십을 취소/)
+        .first()
+        .waitFor({ state: 'visible', timeout: 90_000 })
+        .catch(() => {})
+      await page.waitForTimeout(1_500)
       await capture(page, WAVE, '03-opener-empty-state.png')
     } finally {
       await deleteAgents(request, csrf, [agentId])
