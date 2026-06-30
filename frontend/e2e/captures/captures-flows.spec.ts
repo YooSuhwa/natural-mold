@@ -1,7 +1,13 @@
 import type { APIRequestContext } from '@playwright/test'
 import { API_BASE, apiPostJson, isRecord, loginApi, test, type CsrfHeaders } from '../fixtures'
 import { sendMessage } from '../langgraph-v3-helpers'
-import { capture, DESKTOP_VIEWPORT, scriptedModelId, settle } from './_capture-helpers'
+import {
+  capture,
+  DESKTOP_VIEWPORT,
+  scriptedModelId,
+  settle,
+  warmUpChatRoute,
+} from './_capture-helpers'
 
 /**
  * Wave 1 — hero flows (the two demo videos): natural-language agent creation
@@ -31,6 +37,15 @@ test.describe('Wave 1 — hero flow captures', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize(DESKTOP_VIEWPORT)
+  })
+
+  // Compile the heavy chat conversation route once, out of the per-test budget,
+  // so the daily-conversation test's 240s is free for the turns rather than being
+  // eaten by the cold compile. Raise the hook timeout first — the config default
+  // (60s) is shorter than a cold compile.
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(300_000)
+    await warmUpChatRoute(browser)
   })
 
   test('daily conversation — multi-turn chat components', async ({ page, request }) => {
@@ -71,6 +86,12 @@ test.describe('Wave 1 — hero flow captures', () => {
         await page.waitForTimeout(800)
       }
 
+      // Turn 0 — a warm natural greeting reply (marker-driven, so the opener reads
+      // like a real daily assistant instead of the bare scripted sentinel).
+      await sendMessage(page, 'E2E_DAILY_GREETING 안녕하세요! 오늘 뭐부터 도와줄 수 있어요?')
+      await settleStream()
+      await capture(page, WAVE, '01b-greeting-reply.png')
+
       // Turn 1 — a rich, formatted answer (natural-language trigger).
       await sendMessage(
         page,
@@ -90,10 +111,11 @@ test.describe('Wave 1 — hero flow captures', () => {
       await page.waitForTimeout(600)
       await capture(page, WAVE, '03-ask-user.png')
 
-      // Answer the option → the conversation continues.
-      await page.getByRole('button', { name: /사과/ }).first().click().catch(() => {})
-      await settleStream()
-      await capture(page, WAVE, '04-after-selection.png')
+      // The ask_user card is the natural finale. Like the wave4 HITL approval
+      // captures (10/11), we capture the interactive card WITHOUT resuming:
+      // resuming the option mid-hero-flow left the run looping in the interrupt
+      // (20+ re-invokes) and blew the 240s budget, and every component is already
+      // captured reliably in the wave4 matrix anyway.
     } finally {
       await request.delete(`${API_BASE}/api/agents/${agentId}`, { headers: csrfHeaders }).catch(() => {})
     }

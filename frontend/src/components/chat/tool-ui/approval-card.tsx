@@ -182,6 +182,60 @@ function ApprovalBadge({ result }: { result: unknown }) {
   )
 }
 
+/**
+ * Human-readable rendering of a single arg value. Scalars are shown as-is so the
+ * approver reads "report.md" not "\"report.md\""; objects/arrays fall back to
+ * compact JSON (the common approval args — command, file_path, url — are scalar).
+ */
+function formatArgValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value === null) return 'null'
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return JSON.stringify(value)
+}
+
+function isScalarArg(value: unknown): boolean {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  )
+}
+
+// langchain's HumanInTheLoopMiddleware auto-builds the description as
+// `${prefix}\n\nTool: ${name}\nArgs: ${args}`, which just repeats the card's
+// header, tool-name line, and args list. Strip that boilerplate so the card
+// isn't three copies of the same thing; keep only a meaningful custom prefix.
+const DEFAULT_APPROVAL_DESCRIPTION_PREFIX = 'Tool execution requires approval'
+
+function cleanApprovalDescription(raw: string | undefined): string | undefined {
+  if (!raw) return undefined
+  const prefix = raw.split(/\n\nTool:/)[0].trim()
+  if (!prefix || prefix === DEFAULT_APPROVAL_DESCRIPTION_PREFIX) return undefined
+  return prefix
+}
+
+// The headline should name the actual action being approved. `execute_in_skill`
+// is a generic mechanism (and redundant with the "도구 사용 승인" header), so show
+// the skill itself instead — derived from skill_directory ("/skills/docx-document"
+// → "docx-document") or an explicit skill arg.
+function resolveApprovalToolName(
+  toolName: string | undefined,
+  toolArgs: Record<string, unknown> | undefined,
+): string | undefined {
+  if (toolName === 'execute_in_skill' && toolArgs) {
+    const dir = toolArgs.skill_directory
+    if (typeof dir === 'string') {
+      const skill = dir.split('/').filter(Boolean).pop()
+      if (skill) return skill
+    }
+    const named = toolArgs.skill ?? toolArgs.skill_name
+    if (typeof named === 'string' && named.trim()) return named.trim()
+  }
+  return toolName
+}
+
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   const t = useTranslations('chat.approval')
   const [expanded, setExpanded] = useState(false)
@@ -206,11 +260,28 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
         />
       </button>
       {expanded && (
-        <div className="border-t border-border/40 px-3 py-2">
-          <pre className="whitespace-pre-wrap break-all font-mono moldy-ui-caption text-foreground/80">
-            {JSON.stringify(args, null, 2)}
-          </pre>
-        </div>
+        // Readable key/value list instead of a raw JSON dump — each arg name is a
+        // label and its value renders plainly (mono only for non-scalar JSON).
+        <dl className="space-y-1.5 border-t border-border/40 px-3 py-2">
+          {entries.map(([key, value]) => (
+            <div
+              key={key}
+              className="grid grid-cols-[minmax(0,8rem)_1fr] gap-x-3 gap-y-0.5 text-xs"
+            >
+              <dt className="truncate font-mono font-medium text-muted-foreground" title={key}>
+                {key}
+              </dt>
+              <dd
+                className={cn(
+                  'min-w-0 break-words whitespace-pre-wrap text-foreground/80',
+                  !isScalarArg(value) && 'font-mono',
+                )}
+              >
+                {formatArgValue(value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
       )}
     </div>
   )
@@ -342,8 +413,8 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     }
 
     // ── requires-action: 승인 카드 ──
-    const toolName = args?.tool_name ?? t('toolCall')
-    const rawDescription = args?.description ?? args?.message
+    const toolName = resolveApprovalToolName(args?.tool_name, args?.tool_args) ?? t('toolCall')
+    const rawDescription = cleanApprovalDescription(args?.description ?? args?.message)
     const description = rawDescription ? redactSensitiveText(rawDescription) : undefined
     const toolArgs = args?.tool_args ? redactSensitiveRecord(args.tool_args) : undefined
 
@@ -386,7 +457,8 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
             {description && <p className="text-xs text-muted-foreground">{description}</p>}
           </div>
 
-          {/* Args preview */}
+          {/* Args preview — collapsed by default; the headline now names the
+              actual skill/tool, so expanding is only needed to inspect details. */}
           {toolArgs && Object.keys(toolArgs).length > 0 && <ArgsPreview args={toolArgs} />}
 
           {/* 거부 사유 입력 (거부 선택 시) */}

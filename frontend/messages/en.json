@@ -1286,7 +1286,7 @@
       "toolCall": "Tool Call",
       "processing": "Processing",
       "preparing": "Preparing",
-      "approvalRequired": "Approval Required",
+      "approvalRequired": "Tool Use Approval Required",
       "invalidJson": "Invalid Json",
       "resumeFailed": "Could not send the approval response. Try again.",
       "rejectConfirm": "Reject Confirm",

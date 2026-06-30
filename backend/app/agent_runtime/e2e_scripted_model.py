@@ -170,6 +170,23 @@ CHAT_RICH_OUTPUT_CONTENT = "\n".join(
         "```",
     )
 )
+DAILY_GREETING_MARKER = "E2E_DAILY_GREETING"
+# Warm, natural daily-assistant opener for the conversation-capture tour. Kept as a
+# dedicated marker so the bare fallback ("E2E scripted document model is ready.") stays
+# byte-identical — many specs poll on that exact sentinel for the marker-less turn.
+DAILY_GREETING_CONTENT = "\n".join(
+    (
+        "안녕하세요! 일상을 도와드리는 비서예요. 😊",
+        "",
+        "오늘은 이런 걸 함께 할 수 있어요:",
+        "",
+        "- 📅 일정 정리와 리마인더",
+        "- 🍳 식단·운동 루틴 추천",
+        "- 🔎 궁금한 정보 검색 요약",
+        "",
+        "무엇부터 시작해볼까요?",
+    )
+)
 HITL_APPROVAL_MARKER = "E2E_HITL_APPROVAL"
 HITL_MULTI_MARKER = "E2E_HITL_MULTI"
 # Two execute_in_skill calls in ONE AIMessage. langchain's HumanInTheLoopMiddleware
@@ -652,6 +669,10 @@ class E2EScriptedChatModel(BaseChatModel):
                 )
                 return ChatResult(generations=[ChatGeneration(message=message)])
 
+        if DAILY_GREETING_MARKER in human_text:
+            message = AIMessage(content=DAILY_GREETING_CONTENT)
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
         message = AIMessage(content="E2E scripted document model is ready.")
         return ChatResult(generations=[ChatGeneration(message=message)])
 
@@ -718,6 +739,8 @@ __all__ = [
     "CHAT_RICH_OUTPUT_CONTENT",
     "CHAT_RICH_OUTPUT_MARKER",
     "CHAT_RICH_OUTPUT_PROMPT",
+    "DAILY_GREETING_CONTENT",
+    "DAILY_GREETING_MARKER",
     "HITL_APPROVAL_MARKER",
     "HITL_MULTI_MARKER",
     "HITL_MULTI_TOOL_CALLS",

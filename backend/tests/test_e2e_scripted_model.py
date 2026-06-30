@@ -17,6 +17,8 @@ from app.agent_runtime.e2e_scripted_model import (
     ASK_USER_FRUIT_TOOL_CALL_ID,
     CHAT_RICH_OUTPUT_CONTENT,
     CHAT_RICH_OUTPUT_PROMPT,
+    DAILY_GREETING_CONTENT,
+    DAILY_GREETING_MARKER,
     HITL_APPROVAL_MARKER,
     HITL_MULTI_MARKER,
     HITL_MULTI_TOOL_CALLS,
@@ -365,6 +367,15 @@ def test_e2e_scripted_model_emits_rich_chat_output_fixture() -> None:
     assert "```ts" in str(result.content)
     assert "$$" in str(result.content)
     assert "![E2E rich output image](/moldy-mascot.webp)" in str(result.content)
+
+
+def test_e2e_scripted_model_emits_daily_greeting_fixture() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted")
+
+    result = model.invoke([HumanMessage(content=f"{DAILY_GREETING_MARKER} 안녕하세요!")])
+
+    assert result.content == DAILY_GREETING_CONTENT
+    assert result.tool_calls == []
 
 
 def test_e2e_scripted_model_emits_ask_user_tool_call() -> None:

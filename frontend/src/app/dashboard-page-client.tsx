@@ -217,7 +217,14 @@ export default function DashboardPage() {
 
                 <DropdownMenu>
                   <DropdownMenuTrigger
-                    render={<Button variant="outline" size="sm" className="h-9 gap-1.5" />}
+                    render={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 gap-1.5"
+                        data-testid="dashboard-sort-trigger"
+                      />
+                    }
                   >
                     <ArrowUpDownIcon className="size-3.5" />
                     <span className="text-xs">{SORT_LABELS[sortBy]}</span>

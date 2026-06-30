@@ -111,14 +111,11 @@ test.describe('Wave 7 — rich content captures', () => {
       await settle(page, 1_500)
       await capture(page, WAVE, '11-dashboard-sessions.png')
 
-      // Dashboard grid sort control — a dropdown trigger labeled with the current
-      // sort (최신순). Open it to reveal the menu (최신순 / 이름순 / 즐겨찾기).
-      const sortTrigger = page.getByRole('button', { name: /최신순|이름순|즐겨찾기/ }).first()
-      if ((await sortTrigger.count()) > 0) {
-        await sortTrigger.click().catch(() => {})
-      } else {
-        await page.getByText(/최신순/).first().click().catch(() => {})
-      }
+      // Dashboard grid sort control — a dropdown trigger (icon + current-sort
+      // label). Targeted by testid because the label is icon-adjacent inside a
+      // Base UI render-prop trigger, and once open the same strings appear as
+      // menuitems (so getByText/role-name was ambiguous and unreliable).
+      await page.getByTestId('dashboard-sort-trigger').click().catch(() => {})
       await page.getByRole('menuitem').first().waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {})
       await page.waitForTimeout(500)
       await capture(page, WAVE, '12-dashboard-sort.png')
@@ -158,50 +155,60 @@ test.describe('Wave 7 — rich content captures', () => {
       const cid = await createConversation(request, csrf, simpleAgent.id, '첨부 데모')
       await nav(page, `/agents/${simpleAgent.id}/conversations/${cid}`)
 
-      // Attach an image in the composer → capture the staged chip.
-      const [chooser] = await Promise.all([
-        page.waitForEvent('filechooser'),
-        page.getByRole('button', { name: '파일 첨부' }).click(),
-      ])
-      await chooser.setFiles({
-        name: 'membership-card.png',
-        mimeType: 'image/png',
-        buffer: Buffer.from(TINY_PNG_BASE64, 'base64'),
-      })
-      await page.getByText('membership-card.png').first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
-      await capture(page, WAVE, '14-attachment-composer.png')
+      // Mirror the proven chat-attachments-display flow with REAL awaits so the
+      // inline bubble actually renders before the screenshot (the old version
+      // swallowed every step with .catch and captured blind). Wrapped best-effort
+      // so a hiccup here never drops the downstream file-list capture.
+      try {
+        // Gate on composer hydration BEFORE touching it — the dedicated spec's key
+        // step; this also absorbs the chat route's one-time cold compile.
+        const composer = page.getByPlaceholder('메시지 입력...')
+        await composer.waitFor({ state: 'visible', timeout: 90_000 })
 
-      // Send → the inline attachment thumbnail appears on the user bubble once
-      // the run completes and the /files query refetches (message_id backfill).
-      const uploadDone = page
-        .waitForResponse(
+        // Attach an image in the composer → capture the staged chip.
+        const [chooser] = await Promise.all([
+          page.waitForEvent('filechooser'),
+          page.getByRole('button', { name: '파일 첨부' }).click(),
+        ])
+        await chooser.setFiles({
+          name: 'membership-card.png',
+          mimeType: 'image/png',
+          buffer: Buffer.from(TINY_PNG_BASE64, 'base64'),
+        })
+        await page.getByText('membership-card.png').first().waitFor({ state: 'visible', timeout: 10_000 })
+        await capture(page, WAVE, '14-attachment-composer.png')
+
+        // Send and ASSERT the upload 201 so we know the attachment was actually
+        // linked to the message (not silently dropped before the screenshot).
+        const uploadResponse = page.waitForResponse(
           (r) => r.url().includes('/api/uploads') && r.request().method() === 'POST',
           { timeout: 30_000 },
         )
-        .catch(() => null)
-      await page.getByPlaceholder('메시지 입력...').fill('이 회원증 이미지 확인해줘')
-      await page.getByRole('button', { name: /전송/ }).click().catch(() => {})
-      await uploadDone
-      // Match the proven chat-attachments-display flow: wait for the scripted
-      // reply, then the inline image (looked up by message id from /files).
-      await page
-        .getByText('E2E scripted document model is ready.')
-        .first()
-        .waitFor({ state: 'visible', timeout: 60_000 })
-        .catch(() => {})
-      // The inline thumbnail renders as an <img> inside the user bubble (loaded
-      // from /files after the message_id backfill). Wait for it, then settle.
-      const inlineImg = page.locator('[data-moldy-message-role="user"] img').last()
-      await inlineImg.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
-      await page.waitForTimeout(2_500)
-      await capture(page, WAVE, '15-attachment-bubble.png')
+        await composer.fill('이 회원증 이미지 확인해줘')
+        await page.getByRole('button', { name: /전송/ }).click()
+        const upload = await uploadResponse
+        if (upload.status() !== 201) throw new Error(`attachment upload failed: ${upload.status()}`)
 
-      // Click the inline attachment image → lightbox (image enlarge).
-      if ((await inlineImg.count()) > 0) {
-        await inlineImg.click().catch(() => {})
+        // Wait for the scripted reply, then the inline image by ALT TEXT — the
+        // proven selector (looked up by message id from /files after the
+        // message_id backfill), not a generic '[role=user] img'.
+        await page
+          .getByText('E2E scripted document model is ready.')
+          .first()
+          .waitFor({ state: 'visible', timeout: 60_000 })
+        const userMsg = page.locator('[data-moldy-message-role="user"]').last()
+        const inlineImg = userMsg.getByRole('img', { name: 'membership-card.png' })
+        await inlineImg.waitFor({ state: 'visible', timeout: 30_000 })
+        await page.waitForTimeout(800)
+        await capture(page, WAVE, '15-attachment-bubble.png')
+
+        // Click the inline thumbnail → full-screen lightbox (depends only on 15).
+        await inlineImg.click()
         await page.waitForTimeout(1_200)
         await capture(page, WAVE, '17-image-lightbox.png')
         await page.keyboard.press('Escape').catch(() => {})
+      } catch (error) {
+        console.warn(`[capture-tour] attachment bubble/lightbox failed: ${String(error)}`)
       }
 
       // Generate a real artifact (skill agent) so the Files (생성된 파일) list isn't empty.

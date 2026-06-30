@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { APIRequestContext, Page } from '@playwright/test'
+import type { APIRequestContext, Browser, Locator, Page } from '@playwright/test'
 import {
   API_BASE,
   apiGetJson,
@@ -21,10 +21,61 @@ import {
 export const CAPTURE_ROOT = path.join('..', 'output', 'captures')
 export const DESKTOP_VIEWPORT = { width: 1440, height: 960 } as const
 
+// Mirror playwright.config.ts: raw browser.newContext() does NOT inherit
+// use.baseURL, so the warm-up must reconstruct the dev-server origin itself.
+const WARMUP_FRONTEND_PORT = process.env.E2E_FRONTEND_PORT ?? '3000'
+const WARMUP_BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${WARMUP_FRONTEND_PORT}`
+
+/**
+ * Compile the heavy 'use client' chat conversation route ONCE, in its own context,
+ * so the first capture test that hits it isn't charged for the one-time Next dev
+ * cold compile (several minutes on a fresh server). Call from a test.beforeAll —
+ * but FIRST raise the hook budget with `test.setTimeout(...)`, because the config's
+ * default `timeout` (60s) is far shorter than a cold compile and would kill the
+ * hook. The params are placeholders: Next dev compiles the route module on first
+ * request regardless of whether the agent/conversation data resolves.
+ */
+export async function warmUpChatRoute(browser: Browser): Promise<void> {
+  if (process.env.E2E_CAPTURE_TOUR !== '1') return
+  const ctx = await browser.newContext({
+    storageState: './e2e/.auth/user.json',
+    baseURL: WARMUP_BASE_URL,
+  })
+  const page = await ctx.newPage()
+  try {
+    await page
+      .goto('/agents/warmup/conversations/warmup', {
+        waitUntil: 'domcontentloaded',
+        timeout: 280_000,
+      })
+      .catch(() => {})
+    await page.waitForTimeout(2_000)
+  } finally {
+    await ctx.close()
+  }
+}
+
 export async function capture(page: Page, wave: string, filename: string): Promise<void> {
   const dir = path.join(CAPTURE_ROOT, wave)
   await fs.mkdir(dir, { recursive: true })
   await page.screenshot({ path: path.join(dir, filename), fullPage: true })
+}
+
+/**
+ * Element-scoped capture. The chat thread lives inside a nested ``overflow-y-auto``
+ * viewport that auto-scrolls to the bottom, so ``fullPage`` page screenshots clip the
+ * top of a taller-than-viewport message. ``locator.screenshot()`` scrolls the element
+ * into view and grabs its full bounding box (captureBeyondViewport), so use this when
+ * the target is a single message bubble rather than the whole page.
+ */
+export async function captureLocator(
+  locator: Locator,
+  wave: string,
+  filename: string,
+): Promise<void> {
+  const dir = path.join(CAPTURE_ROOT, wave)
+  await fs.mkdir(dir, { recursive: true })
+  await locator.screenshot({ path: path.join(dir, filename) })
 }
 
 export async function scriptedModelId(request: APIRequestContext): Promise<string> {
@@ -106,9 +157,16 @@ export async function deleteAgents(
   }
 }
 
-/** Settle a navigation: network idle + a short paint delay so async lists render. */
+/**
+ * Settle a navigation: network idle + a short paint delay so async lists render.
+ * The networkidle wait is CAPPED — the chat conversation route holds a long-lived
+ * SSE/polling connection that never reaches networkidle, so an uncapped wait hangs
+ * until the test timeout. On quiet pages (dashboard/settings) idle is reached well
+ * under the cap; on streaming pages we give up after it and rely on the explicit
+ * element waits the callers already do (composer visible, stop-button hidden).
+ */
 export async function settle(page: Page, ms = 800): Promise<void> {
-  await page.waitForLoadState('networkidle').catch(() => {})
+  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {})
   await page.waitForTimeout(ms)
 }
 

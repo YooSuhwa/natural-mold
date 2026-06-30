@@ -205,6 +205,92 @@ describe('ApprovalCard', () => {
     expect(document.body.textContent).not.toContain('raw-secret-value')
   })
 
+  it('renders tool args as a readable key/value list, not a raw JSON dump', () => {
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'toolu-kv',
+          tool_name: 'write_file',
+          tool_args: { file_path: 'report.md', overwrite: true },
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn() }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('args'))
+
+    // Each arg name is a label; scalar values render plainly (no JSON quotes).
+    expect(screen.getByText('file_path')).toBeInTheDocument()
+    expect(screen.getByText('report.md')).toBeInTheDocument()
+    expect(screen.getByText('overwrite')).toBeInTheDocument()
+    expect(screen.getByText('true')).toBeInTheDocument()
+    // Not the old raw `JSON.stringify(args, null, 2)` dump.
+    expect(document.body.textContent).not.toContain('"file_path"')
+    expect(document.body.textContent).not.toContain('{\n')
+  })
+
+  it('drops the langchain boilerplate description (header/tool/args duplication)', () => {
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'toolu-boiler',
+          tool_name: 'execute_in_skill',
+          tool_args: { command: 'node build.cjs' },
+          description:
+            'Tool execution requires approval\n\nTool: execute_in_skill\nArgs: {"command": "node build.cjs"}',
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn() }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    // The auto-generated boilerplate (which just repeats the header/tool/args)
+    // is suppressed, but the tool name itself is still shown.
+    expect(document.body.textContent).not.toContain('Tool execution requires approval')
+    expect(document.body.textContent).not.toContain('Args: {')
+    expect(screen.getByText('execute_in_skill')).toBeInTheDocument()
+  })
+
+  it('names the skill in the headline instead of the generic execute_in_skill', () => {
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'toolu-skill',
+          tool_name: 'execute_in_skill',
+          tool_args: {
+            skill_directory: '/skills/docx-document',
+            command: 'node scripts/create_docx.cjs',
+          },
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn() }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    // Headline names the actual skill; the generic mechanism name is gone.
+    expect(screen.getByText('docx-document')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('execute_in_skill')
+  })
+
   it('restores redacted placeholders from raw args before sending edited approvals', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     const toolUi = ApprovalCard as unknown as ToolUiRender

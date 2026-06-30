@@ -158,7 +158,12 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
         </div>
       ) : null}
 
-      <Button variant="outline" size="sm" onClick={() => setShowForm(true)}>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="trigger-add-button"
+        onClick={() => setShowForm(true)}
+      >
         <PlusIcon className="size-4" />
         {t('trigger.addNew')}
       </Button>
