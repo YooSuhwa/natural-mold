@@ -16,6 +16,23 @@ export interface ChartCardProps {
   yLabel?: string
 }
 
+// Distinct, accessible categorical palette so a bar chart's categories are
+// visually separable (a single ``currentColor`` made every bar the same mint).
+const CHART_PALETTE = [
+  '#6366f1', // indigo
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#3b82f6', // blue
+  '#a855f7', // purple
+  '#ec4899', // pink
+  '#14b8a6', // teal
+] as const
+
+function seriesColor(index: number): string {
+  return CHART_PALETTE[index % CHART_PALETTE.length]
+}
+
 const VIEW_W = 480
 const VIEW_H = 180
 const PAD = { top: 10, right: 12, bottom: 26, left: 12 }
@@ -83,8 +100,8 @@ export function ChartCard({ chartType, series, title, xLabel, yLabel }: ChartCar
                   width={barWidth}
                   height={PAD.top + PLOT_H - y}
                   rx={2}
-                  fill="currentColor"
-                  opacity={0.85}
+                  fill={seriesColor(index)}
+                  opacity={0.9}
                 />
               )
             })
@@ -93,7 +110,7 @@ export function ChartCard({ chartType, series, title, xLabel, yLabel }: ChartCar
               <polyline
                 points={linePoints}
                 fill="none"
-                stroke="currentColor"
+                stroke={seriesColor(0)}
                 strokeWidth={2}
                 strokeLinejoin="round"
                 strokeLinecap="round"
@@ -104,7 +121,7 @@ export function ChartCard({ chartType, series, title, xLabel, yLabel }: ChartCar
                   cx={pointX(index, series.length)}
                   cy={valueY(point.value, max)}
                   r={3}
-                  fill="currentColor"
+                  fill={seriesColor(index)}
                 />
               ))}
             </>

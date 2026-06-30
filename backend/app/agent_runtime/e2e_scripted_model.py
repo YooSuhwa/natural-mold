@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Sequence
+from copy import deepcopy
 from typing import Any
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -320,6 +321,74 @@ ASK_USER_FRUIT_TOOL_ARGS = {
     "maxSelections": 1,
 }
 
+# Additional ask_user shape variants (capture matrix). Each marker → one
+# AIMessage that calls ``ask_user`` with a different payload shape so every
+# renderer (text input, multi-select option_list, multi-step question_flow) is
+# exercised. The follow-up turn (after the ToolMessage) streams ``final``.
+ASK_USER_VARIANTS: dict[str, dict[str, Any]] = {
+    "E2E_ASK_USER_TEXT": {
+        "preface": "어떤 톤으로 작성할까요?",
+        # mode omitted + no options → free-text input card (user-input-ui).
+        "args": {"question": "원하시는 글의 톤을 자유롭게 적어주세요. (예: 친근하게, 전문적으로)"},
+        "final": "E2E ask_user text input received.",
+    },
+    "E2E_ASK_USER_MULTI": {
+        "preface": "관심 있는 운동을 모두 골라주세요!",
+        "args": {
+            "mode": "option_list",
+            "title": "입력이 필요합니다",
+            "question": "관심 있는 운동을 모두 선택하세요 (복수 선택 가능)",
+            "options": [
+                {"id": "run", "label": "🏃 러닝"},
+                {"id": "swim", "label": "🏊 수영"},
+                {"id": "yoga", "label": "🧘 요가"},
+                {"id": "climb", "label": "🧗 클라이밍"},
+            ],
+            "minSelections": 1,
+            "maxSelections": 3,
+        },
+        "final": "E2E ask_user multi-select received.",
+    },
+    "E2E_ASK_USER_FLOW": {
+        "preface": "여행 취향을 몇 가지 여쭤볼게요.",
+        "args": {
+            "mode": "question_flow",
+            "title": "여행 선호 조사",
+            "questions": [
+                {
+                    "id": "dest",
+                    "label": "목적지",
+                    "question": "어디로 떠나고 싶으세요?",
+                    "type": "single_select",
+                    "options": ["국내", "아시아", "유럽"],
+                    "required": True,
+                },
+                {
+                    "id": "act",
+                    "label": "활동",
+                    "question": "하고 싶은 활동을 모두 고르세요",
+                    "type": "multi_select",
+                    "options": ["맛집 투어", "휴양", "액티비티", "쇼핑"],
+                },
+                {
+                    "id": "note",
+                    "label": "메모",
+                    "question": "추가로 원하는 점이 있다면 적어주세요",
+                    "type": "text",
+                },
+            ],
+        },
+        "final": "E2E ask_user question flow received.",
+    },
+}
+
+
+def _ask_user_variant(human_text: str) -> tuple[str, dict[str, Any]] | None:
+    for marker, variant in ASK_USER_VARIANTS.items():
+        if marker in human_text:
+            return marker, variant
+    return None
+
 
 def _is_rich_output_request(human_text: str) -> bool:
     if CHAT_RICH_OUTPUT_MARKER in human_text:
@@ -464,6 +533,10 @@ class E2EScriptedChatModel(BaseChatModel):
             if _is_ask_user_fruit_request(human_text):
                 message = AIMessage(content=ASK_USER_FRUIT_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
+            variant_done = _ask_user_variant(human_text)
+            if variant_done is not None:
+                message = AIMessage(content=variant_done[1]["final"])
+                return ChatResult(generations=[ChatGeneration(message=message)])
             if ARTIFACT_SLOW_FINAL_MARKER in human_text:
                 message = AIMessage(content="".join(ARTIFACT_SLOW_FINAL_PARTS))
                 return ChatResult(generations=[ChatGeneration(message=message)])
@@ -495,6 +568,23 @@ class E2EScriptedChatModel(BaseChatModel):
                         "id": ASK_USER_FRUIT_TOOL_CALL_ID,
                         "name": "ask_user",
                         "args": dict(ASK_USER_FRUIT_TOOL_ARGS),
+                    }
+                ],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        variant = _ask_user_variant(human_text)
+        if variant is not None:
+            marker, spec = variant
+            # deepcopy the args (nested options/questions lists) so a downstream
+            # in-place mutation can't corrupt the module-level variant spec.
+            message = AIMessage(
+                content=spec["preface"],
+                tool_calls=[
+                    {
+                        "id": f"call_{marker.lower()}",
+                        "name": "ask_user",
+                        "args": deepcopy(spec["args"]),
                     }
                 ],
             )
