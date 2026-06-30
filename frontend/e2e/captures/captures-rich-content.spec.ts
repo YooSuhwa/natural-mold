@@ -106,20 +106,19 @@ test.describe('Wave 7 — rich content captures', () => {
     })
     const agent = (await created.json()) as { id: string }
     try {
+      let lastCid = ''
       for (const title of ['멤버십 취소 문의', '수업 예약 도움', '크레딧 잔액 확인']) {
-        const cid = await createConversation(request, csrf, agent.id, title)
-        await nav(page, `/agents/${agent.id}/conversations/${cid}`)
-        await sendMessage(page, '안녕하세요, 도와주세요.')
-        await settleStream(page)
+        lastCid = await createConversation(request, csrf, agent.id, title)
       }
-      await nav(page, '/')
+      // Open a conversation → the sidebar shows the agent expanded with its full
+      // session list (the "agent opened, sessions visible" view).
+      await nav(page, `/agents/${agent.id}/conversations/${lastCid}`)
       await settle(page, 1_200)
-      // Expand the agent row in the sidebar to reveal its session list.
-      await page.getByText('핏라이프 멤버십 지원봇').first().click().catch(() => {})
-      await page.waitForTimeout(800)
       await capture(page, WAVE, '11-dashboard-sessions.png')
 
-      // Sort control on the agent grid (text label, opens a sort menu).
+      // Dashboard grid sort control (opens a sort menu: 최신순 / 이름순 …).
+      await nav(page, '/')
+      await settle(page, 1_000)
       const sort = page.getByText(/최신순|이름순/).first()
       if ((await sort.count()) > 0) {
         await sort.click().catch(() => {})
@@ -171,20 +170,27 @@ test.describe('Wave 7 — rich content captures', () => {
       await page.getByText('membership-card.png').first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
       await capture(page, WAVE, '14-attachment-composer.png')
 
-      // Send, then RELOAD: the v3 inline attachment render is data-driven (read
-      // path backfills message_attachments.message_id at finalize), so the inline
-      // thumbnail appears on the user bubble after a reload.
+      // Send → the inline attachment thumbnail appears on the user bubble once
+      // the run completes and the /files query refetches (message_id backfill).
+      const uploadDone = page
+        .waitForResponse(
+          (r) => r.url().includes('/api/uploads') && r.request().method() === 'POST',
+          { timeout: 30_000 },
+        )
+        .catch(() => null)
       await page.getByPlaceholder('메시지 입력...').fill('이 회원증 이미지 확인해줘')
       await page.getByRole('button', { name: /전송/ }).click().catch(() => {})
+      await uploadDone
       await settleStream(page)
-      await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {})
-      await settle(page, 1_500)
+      const userMsg = page.locator('[data-moldy-message-role="user"]').last()
+      const inlineImg = userMsg.getByRole('img', { name: 'membership-card.png' })
+      await inlineImg.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+      await page.waitForTimeout(500)
       await capture(page, WAVE, '15-attachment-bubble.png')
 
       // Click the inline attachment image → lightbox (image enlarge).
-      const inlineImg = page.locator('[data-moldy-message-id] img, img[alt*="membership"], img[src*="upload"]').first()
       if ((await inlineImg.count()) > 0) {
-        await inlineImg.click().catch(() => {})
+        await inlineImg.first().click().catch(() => {})
         await page.waitForTimeout(900)
         await capture(page, WAVE, '17-image-lightbox.png')
         await page.keyboard.press('Escape').catch(() => {})
