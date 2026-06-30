@@ -7,8 +7,10 @@ import {
   createConfiguredAgent,
   createConversation,
   createRichAgent,
+  deleteAgents,
   DESKTOP_VIEWPORT,
   scriptedModelId,
+  seedRealisticAgents,
   settle,
   TINY_PNG_BASE64,
 } from './_capture-helpers'
@@ -92,35 +94,25 @@ test.describe('Wave 7 — rich content captures', () => {
     }
   })
 
-  test('dashboard — agent expanded sessions + sort', async ({ page, request }) => {
-    test.setTimeout(420_000)
+  test('dashboard — agent list + sort menu', async ({ page, request }) => {
+    test.setTimeout(180_000)
     const csrf = await loginApi(request)
-    const modelId = await scriptedModelId(request)
-    const created = await request.post(`${API_BASE}/api/agents`, {
-      headers: csrf,
-      data: {
-        name: '핏라이프 멤버십 지원봇',
-        description: '헬스장 멤버십 문의·예약·취소 고객지원',
-        system_prompt: '고객지원 상담원입니다.',
-        model_id: modelId,
-      },
-    })
-    const agent = (await created.json()) as { id: string }
-    try {
-      let lastCid = ''
+    // Seed several agents + a few sessions (via API) so the grid + sidebar list
+    // look populated. NO conversation navigation (the chat route's cold compile
+    // was blowing the test budget) — the priority is the sort MENU.
+    const agentIds = await seedRealisticAgents(request, csrf)
+    if (agentIds[0]) {
       for (const title of ['멤버십 취소 문의', '수업 예약 도움', '크레딧 잔액 확인']) {
-        lastCid = await createConversation(request, csrf, agent.id, title)
+        await createConversation(request, csrf, agentIds[0], title)
       }
-      // Open a conversation → the sidebar shows the agent expanded with its full
-      // session list (the "agent opened, sessions visible" view).
-      await nav(page, `/agents/${agent.id}/conversations/${lastCid}`)
-      await settle(page, 1_200)
+    }
+    try {
+      await nav(page, '/')
+      await settle(page, 1_500)
       await capture(page, WAVE, '11-dashboard-sessions.png')
 
       // Dashboard grid sort control — a dropdown trigger labeled with the current
-      // sort (최신순). Click it to open the menu (최신순 / 이름순 / 즐겨찾기) and capture it open.
-      await nav(page, '/')
-      await settle(page, 1_000)
+      // sort (최신순). Open it to reveal the menu (최신순 / 이름순 / 즐겨찾기).
       const sortTrigger = page.getByRole('button', { name: /최신순|이름순|즐겨찾기/ }).first()
       if ((await sortTrigger.count()) > 0) {
         await sortTrigger.click().catch(() => {})
@@ -131,7 +123,7 @@ test.describe('Wave 7 — rich content captures', () => {
       await page.waitForTimeout(500)
       await capture(page, WAVE, '12-dashboard-sort.png')
     } finally {
-      await request.delete(`${API_BASE}/api/agents/${agent.id}`, { headers: csrf }).catch(() => {})
+      await deleteAgents(request, csrf, agentIds)
     }
   })
 
