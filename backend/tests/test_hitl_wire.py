@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -30,6 +30,14 @@ from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
+from app.routers.conversation_agent_protocol_resume import (
+    ResumePayload,
+    SubmittedInterruptResponse,
+)
+from app.routers.conversation_agent_protocol_resume_redaction import (
+    _restore_redacted_response,
+    restore_redacted_resume_payload,
+)
 from app.routers.conversation_messages import _is_pending_interrupt
 from app.schemas.conversation import Decision, ResumeRequest
 from tests.conftest import TEST_USER_ID, TestSession
@@ -515,3 +523,183 @@ class TestAskUserFallbackResumeParser:
         assert payload["mode"] == "question_flow"
         assert payload["title"] == "에이전트 설정 확인"
         assert payload["questions"][0]["id"] == "tone"
+
+
+# ---------------------------------------------------------------------------
+# E. edit-by-index — 백엔드가 pending action index로 edited_action.name을 채운다
+# ---------------------------------------------------------------------------
+
+
+class TestEditByIndexNameFill:
+    """프론트가 도구 이름을 몰라도(name 생략) 백엔드가 pending action을 index로
+    매칭해 ``edited_action.name``을 권위적으로 채운다. langchain
+    ``HumanInTheLoopMiddleware``는 decision↔action을 positional index로 매칭하고
+    ``edited_action["name"]``을 hard subscript로 읽기 때문이다.
+    """
+
+    def test_name_filled_for_edit_without_name(self):
+        response = {
+            "decisions": [{"type": "edit", "edited_action": {"args": {"command": "new"}}}]
+        }
+        raw_actions = [{"name": "execute_in_skill", "args": {"command": "old"}}]
+
+        restored = _restore_redacted_response(response, raw_actions)
+
+        edited = restored["decisions"][0]["edited_action"]
+        assert edited["name"] == "execute_in_skill"
+        assert edited["args"]["command"] == "new"
+
+    def test_name_overwritten_authoritatively(self):
+        # 프론트가 틀린 name(또는 stale)을 보내도 백엔드 index가 권위적.
+        response = {
+            "decisions": [
+                {
+                    "type": "edit",
+                    "edited_action": {"name": "WRONG", "args": {"command": "new"}},
+                }
+            ]
+        }
+        raw_actions = [{"name": "execute_in_skill", "args": {"command": "old"}}]
+
+        restored = _restore_redacted_response(response, raw_actions)
+
+        assert restored["decisions"][0]["edited_action"]["name"] == "execute_in_skill"
+
+    def test_multi_action_edit_names_filled_by_index(self):
+        response = {
+            "decisions": [
+                {"type": "edit", "edited_action": {"args": {"path": "a.md"}}},
+                {"type": "edit", "edited_action": {"args": {"to": "x@y"}}},
+            ]
+        }
+        raw_actions = [
+            {"name": "write_file", "args": {"path": "old.md"}},
+            {"name": "send_email", "args": {"to": "old@y"}},
+        ]
+
+        restored = _restore_redacted_response(response, raw_actions)
+
+        assert restored["decisions"][0]["edited_action"]["name"] == "write_file"
+        assert restored["decisions"][0]["edited_action"]["args"]["path"] == "a.md"
+        assert restored["decisions"][1]["edited_action"]["name"] == "send_email"
+        assert restored["decisions"][1]["edited_action"]["args"]["to"] == "x@y"
+
+    def test_redacted_secret_restored_and_name_filled(self):
+        # 시크릿 칸은 프론트에서 <redacted>로 잠겨 오고, 백엔드가 checkpoint
+        # 원본으로 복원하면서 동시에 name도 채운다.
+        response = {
+            "decisions": [
+                {
+                    "type": "edit",
+                    "edited_action": {
+                        "args": {"command": "node updated.cjs", "api_key": "<redacted>"}
+                    },
+                }
+            ]
+        }
+        raw_actions = [
+            {
+                "name": "execute_in_skill",
+                "args": {"command": "node create.cjs", "api_key": "raw-secret"},
+            }
+        ]
+
+        restored = _restore_redacted_response(response, raw_actions)
+
+        edited = restored["decisions"][0]["edited_action"]
+        assert edited["name"] == "execute_in_skill"
+        assert edited["args"]["command"] == "node updated.cjs"
+        assert edited["args"]["api_key"] == "raw-secret"
+
+    def test_non_edit_decisions_pass_through_unchanged(self):
+        response = {
+            "decisions": [
+                {"type": "approve"},
+                {"type": "reject", "message": "no"},
+            ]
+        }
+        raw_actions = [
+            {"name": "write_file", "args": {}},
+            {"name": "send_email", "args": {}},
+        ]
+
+        restored = _restore_redacted_response(response, raw_actions)
+
+        assert restored["decisions"] == [
+            {"type": "approve"},
+            {"type": "reject", "message": "no"},
+        ]
+
+    def test_name_falls_back_to_client_value_without_matching_raw_action(self):
+        # 방어: raw action이 없으면(매칭 실패) 기존 동작대로 프론트 name 유지.
+        response = {
+            "decisions": [
+                {"type": "edit", "edited_action": {"name": "client_name", "args": {"x": 1}}}
+            ]
+        }
+
+        restored = _restore_redacted_response(response, [])
+
+        assert restored["decisions"][0]["edited_action"]["name"] == "client_name"
+        assert restored["decisions"][0]["edited_action"]["args"]["x"] == 1
+
+
+class TestRestoreResumePayloadEditGate:
+    """``restore_redacted_resume_payload``의 early-return 게이트는 redacted 유무와
+    무관하게 edit decision이 있으면 index 해석 경로를 타야 한다(name 채우기 필요).
+    비-edit(approve/reject/respond) resume은 그대로 short-circuit.
+    """
+
+    @pytest.mark.asyncio
+    async def test_fills_name_for_edit_without_redacted_placeholder(self):
+        response = {
+            "decisions": [{"type": "edit", "edited_action": {"args": {"command": "new"}}}]
+        }
+        resume = ResumePayload(
+            input_payload={"intr-1": response},
+            interrupt_id="intr-1",
+            submitted=(SubmittedInterruptResponse("intr-1", (), response),),
+        )
+
+        with patch(
+            "app.routers.conversation_agent_protocol_resume_redaction"
+            "._raw_pending_actions_by_interrupt",
+            new=AsyncMock(
+                return_value={
+                    "intr-1": [{"name": "execute_in_skill", "args": {"command": "old"}}]
+                }
+            ),
+        ):
+            restored = await restore_redacted_resume_payload(
+                conversation=MagicMock(),
+                resume=resume,
+                pending_interrupts=[],
+            )
+
+        decision = restored["intr-1"]["decisions"][0]
+        assert decision["edited_action"]["name"] == "execute_in_skill"
+        assert decision["edited_action"]["args"]["command"] == "new"
+
+    @pytest.mark.asyncio
+    async def test_non_edit_resume_short_circuits_without_checkpointer(self):
+        response = {"decisions": [{"type": "approve"}]}
+        resume = ResumePayload(
+            input_payload={"intr-1": response},
+            interrupt_id="intr-1",
+            submitted=(SubmittedInterruptResponse("intr-1", (), response),),
+        )
+        raw_mock = AsyncMock(return_value={})
+
+        with patch(
+            "app.routers.conversation_agent_protocol_resume_redaction"
+            "._raw_pending_actions_by_interrupt",
+            new=raw_mock,
+        ):
+            restored = await restore_redacted_resume_payload(
+                conversation=MagicMock(),
+                resume=resume,
+                pending_interrupts=[],
+            )
+
+        assert restored == {"intr-1": response}
+        raw_mock.assert_not_called()
