@@ -47,6 +47,26 @@
 
 총 **46장** → output/captures/{wave1-flows,wave2-pages,wave3-dialogs,wave4-chat-states}/
 
+## Wave 6 — 코드/백엔드 개선 (사용자 피드백)
+- [x] **차트 색상**: chart-card.tsx 막대/라인을 구분 팔레트로(민트 단색 → indigo/emerald/amber/...). ✓
+- [ ] **ask_user 변형 4종**(scripted 픽스처 추가): ① 텍스트 입력(옵션 없음) ② 단일선택+기타(직접입력) ③ 다중선택(4개, maxSelections>1) ④ question_flow 멀티스텝. (기존: 단일선택 3개=fruit)
+- [ ] (보류/확인) 승인 카드 args가 너무 기술적(raw dict 노출) → approval-card 렌더 개선 여부 사용자 확인.
+
+## Wave 7 — 콘텐츠 있는/신규 캡처 (사용자 피드백)
+**리치 시드 선행**: 도구·스킬·MCP·트리거 붙은 에이전트 + 대화 여러 개 + 아티팩트(docx+이미지) + 첨부 + usage 데이터.
+- [ ] 에이전트 수정 — 내용 있는 상태 + 탭 전부(basic/tools/skills/mcp/subagents/triggers/memory/api/fallback) + **visual 수정**.
+- [ ] 대시보드 — 에이전트 펼침(세션 리스트 보이는 형태) + **정렬/그룹 변형**(세션단위·에이전트별·정렬옵션).
+- [ ] 사용량(usage) — 데이터 있는 상태.
+- [ ] 스케줄 — 트리거 등록된 상태 + 발생 시 에이전트 **느낌표(attention) 배지**.
+- [ ] 파일/아티팩트 리스트(이미지 포함) + **이미지 클릭 확대(lightbox)**.
+- [ ] 채팅 — 에이전트 이름 옆 hover/click **요약 팝업**.
+- [ ] 채팅 — **trace 화면** + trace에서 실제 대화 표현.
+- [ ] 채팅 — **첨부**: composer 표시 + 메시지 버블 표현.
+- [ ] 채팅 — **todo/플랜** (langgraph_v3 write_todos).
+- [ ] 채팅 — **웹검색 도구 펼친** 상태(출처 전개).
+- [ ] 채팅 — ask_user 변형 5종 캡처(Wave 6 픽스처 기반).
+- [ ] empty-state 채팅 / rich-markdown 상단(메시지 element 캡처).
+
 ## 남은 보정(선택)
 - 일상대화 hero 플로우: 첫 goto 콜드컴파일 + 멀티턴 누적이 240s 초과 → 타임아웃 상향 또는 사전 워밍 + 턴 축소.
 - 3개 다이얼로그(tool/schedule/api-key): 빈 상태 아이콘 CTA → testid/getByLabel로 정확 타겟.
