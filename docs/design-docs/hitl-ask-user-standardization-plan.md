@@ -1,818 +1,328 @@
-# HITL Ask User Standardization Implementation Plan
+# HITL Hardening Implementation Plan — robust `edit` + `allowed_decisions` gating
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** 이 문서 하나만 보고 처음부터 끝까지 구현할 수 있도록 작성했다. 모든 변경은 파일 경로 + 함수명 + 코드 스니펫 + 테스트 + 검증 커맨드를 포함한다. 단계는 체크박스(`- [ ]`)로 추적한다. 먼저 §2(현재 상태 — 이미 구현된 것)를 읽고, 절대 다시 만들지 말 것.
 
-**Goal:** DeepAgents 기반 메인 채팅에서 권한 승인 HiTL과 자연어 되묻기(`ask_user`)를 LangChain/DeepAgents 표준 interrupt 경로로 통일하고, 현재 wire/실행 순서 버그를 제거한다.
+**작성 기준:** 현재 소스코드(`/Users/chester/dev/ref/natural-mold-captures`, langchain 1.3.9, deepagents 0.6.9) 직접 대조. 이전 버전 문서(executor.py 빌드 사이트, 수동 `HumanInTheLoopMiddleware` append)는 **전면 폐기**한다.
 
-**Architecture:** 메인 채팅은 `create_deep_agent(interrupt_on=...)` 자동 주입 경로를 사용해 DeepAgents가 `HumanInTheLoopMiddleware`를 메인 에이전트와 subagent에 일관되게 적용하게 한다. `ask_user`는 LLM-visible tool로 유지하되 실제 대기는 `HumanInTheLoopMiddleware`의 `respond` decision으로 처리한다. Builder v3는 deterministic state machine이므로 기존 LangGraph native `interrupt()` 경로를 유지한다.
+**Goal:** 메인 채팅 HITL(human-in-the-loop)에서 **`edit`(수정 후 승인) 결정을 견고화**하고, **도구별 `allowed_decisions` 화이트리스트를 실제로 존중**하도록 만든다. 부차적으로 이미 구현된 multi-action wire / subagent 상속의 *남은 갭*과 ask_user 통합 결정을 정리한다.
 
-**Tech Stack:** FastAPI, LangChain 1.x, LangGraph 1.x, DeepAgents 0.6.x, React 19, assistant-ui, TanStack Query, Vitest, pytest.
+**Tech Stack:** FastAPI, LangChain 1.3.x (`HumanInTheLoopMiddleware`), LangGraph 1.x, DeepAgents 0.6.9 (`create_deep_agent(interrupt_on=...)`), React 19, assistant-ui, TanStack Query, Vitest, pytest.
 
 ---
 
-## 1. 배경
+## 1. 배경 — HITL 결정 4종
 
-ADR-012는 이미 `HumanInTheLoopMiddleware`와 `ask_user`의 책임을 분리했다.
+도구 실행 전 사용자 개입은 LangChain `HumanInTheLoopMiddleware`의 표준 interrupt 체계를 쓴다. 결정 타입은 4종:
 
-- `HumanInTheLoopMiddleware`: 도구 실행 전 사용자 결정을 받는 표준 HiTL 미들웨어.
-- 권한 승인: 위험 도구 실행 전에 `approve`, `edit`, `reject`를 받는 사용 사례.
-- `ask_user`: 요청이 모호할 때 에이전트가 사용자에게 자연어 질문을 던지는 도구.
-- `respond`: LangChain 표준 HiTL decision 중 하나로, 도구를 실제 실행하지 않고 사용자의 답변을 synthetic `ToolMessage`로 모델에 돌려준다.
+| type | 의미 | 추가 필드 |
+|---|---|---|
+| `approve` | 그대로 실행 | 없음 |
+| `edit` | **인자를 수정해서 실행** | `edited_action: {name, args}` |
+| `reject` | 실행 거부 | `message?` (사유) |
+| `respond` | 도구 실행 없이 사용자 답변을 모델에 반환 (ask_user 전용) | `message` |
 
-따라서 "권한 승인"과 "되묻기"는 사용자 경험상 다르지만, 런타임 wire는 같은 표준 interrupt 체계를 사용할 수 있다. DeepAgents에서 `ask_user`를 처리하는 정석은 `ask_user`를 일반 tool로 노출하고, `interrupt_on={"ask_user": {"allowed_decisions": ["respond"]}}`로 미들웨어가 tool 실행 전에 가로채게 하는 방식이다.
+도구별로 어떤 결정을 허용할지는 interrupt payload의 `review_configs[i].allowed_decisions`로 내려온다. 본 작업의 핵심은 **edit가 안정적으로 동작**하고 **카드가 allowed_decisions를 존중**하게 만드는 것이다.
 
-## 2. 현재 구현 상태
+---
 
-### 2.1 Backend
+## 2. 현재 상태 — 이미 구현된 것 (다시 만들지 말 것)
 
-현재 메인 채팅은 다음 파일에 구현되어 있다.
+이전 문서가 "구현해야 한다"고 적었던 항목 중 대부분은 **이미 구현·테스트 완료**다. 재작업 금지.
 
-- `backend/app/agent_runtime/executor.py`
-- `backend/app/agent_runtime/tools/ask_user.py`
-- `backend/app/agent_runtime/streaming.py`
-- `backend/app/routers/conversations.py`
-- `backend/app/schemas/conversation.py`
+### 2.1 ✅ Backend: top-level `interrupt_on` 경로 (subagent 상속 포함) — DONE
 
-현재 구조의 핵심 흐름:
+- **빌드 사이트가 이동했다.** `backend/app/agent_runtime/executor.py`는 이제 **re-export 파사드일 뿐**(파일 전체가 import 재노출). 실제 빌드는 `backend/app/agent_runtime/runtime_component_builder.py`.
+- `build_agent()` (`runtime_component_builder.py:83-97`)는 `create_deep_agent(..., interrupt_on=interrupt_on, ...)`로 **top-level 파라미터**를 넘긴다. **app 코드에 수동 `HumanInTheLoopMiddleware(` 인스턴스는 0개**(grep 확인).
+- 정책 계산: `_build_interrupt_on_policy()` (`runtime_component_builder.py:363-392`) = `_default_interrupt_on_from_tools()` (`:354-360`) + `middleware_configs`의 명시 `human_in_the_loop.params.interrupt_on` 병합 + `ask_user` 정책 `setdefault`.
+- **도구별 정책은 `backend/app/tools/risk.py`가 결정한다** (이 작업의 allowed_decisions 출처):
+  - `default_deepagents_interrupt_policy()` (`risk.py:271-276`): `write_file→[approve,reject]`, `edit_file→[approve,edit,reject]`, `execute→[approve,reject]`.
+  - `interrupt_policy_for_tool()` (`risk.py:279-283`): 도구 risk 메타데이터로 **명시 allowed_decisions** 방출(`{tool: True}` 아님).
+  - `_DEFAULT_APPROVAL_DECISIONS` (`risk.py:24-30`): WRITE_INTERNAL / EXTERNAL_MUTATION → `(approve, edit, reject)`; CODE_EXECUTION / UNKNOWN → `(approve, reject)`.
+  - `execute_in_skill_risk()` (`risk.py:260-268`): CODE_EXECUTION → **`(approve, reject)` — edit 없음**.
+  - MCP mutation (`risk.py:250-257`): `(approve, reject)`.
+  - `ask_user`: `{"allowed_decisions": ["respond"]}` (`runtime_component_builder.py:390-391`).
+- ask_user 순서 버그 FIXED: `ask_user_tool` / `execute_in_skill`은 정책 계산(`:690`) **전에** append(`:646`, `:688`).
+- **Subagent 상속**(`subagents.py:74-168`): 각 child가 자기 도구로 자기 `interrupt_on`을 계산해 `spec["interrupt_on"]`에 기록(`:162-163`). deepagents 0.6.9 `graph.py:663`이 spec 값 우선, 없으면 top-level 상속; auto `general-purpose` subagent는 top-level 상속(`graph.py:741-746`).
+- **Trigger 모드 차단**: `_build_interrupt_on_policy`가 None 반환(`:377-378`), ask_user 미주입(`:687-688`, `:737`), `trigger_executor.py:202-218`가 risky tool 자체를 사전 차단.
+- `middleware_registry.py`: `human_in_the_loop` ∈ `EXPLICITLY_INSTANTIATED_TYPES`(`:459-464`) → `build_middleware_instances` 우회(`runtime_component_builder.py:609-611`), 카탈로그엔 노출 유지.
+- 테스트: `tests/test_hitl_middleware.py`(top-level interrupt_on + `_hitl_instances == []` 가드), `tests/agent_runtime/test_subagents_runtime.py:184`, `tests/agent_runtime/test_langgraph_hitl_interrupts.py`.
 
-1. `executor.py`가 `middleware_configs`에서 `human_in_the_loop` 설정을 찾는다.
-2. 쓰기/실행 도구 이름 또는 명시 `interrupt_on` dict로 정책을 만든다.
-3. `HumanInTheLoopMiddleware(interrupt_on=...)`를 직접 생성해 `middleware` list에 넣는다.
-4. `build_agent(... interrupt_on=None ...)`로 DeepAgents 자동 주입을 끈다.
-5. `ask_user_tool`은 그 뒤에 `langchain_tools.append(ask_user_tool)`로 추가된다.
+### 2.2 ✅ Frontend: multi-action wire coordination — DONE
 
-이 순서 때문에 `ask_user` 표준 wrap이 실제로 적용되지 않는다. `executor.py`의 `ask_user` 등록 체크는 `ask_user_tool` 추가 전에 수행되므로, 기본 경로에서는 `interrupt_on`에 `ask_user`가 들어가지 않는다.
+- `frontend/src/lib/chat/standard-interrupt.ts`: `standardInterruptToToolCalls()` (`:126-153`, action_request → 합성 tool call, 메타 `metadataForAction` `:45-58`로 `hitl_action_index/total/interrupt_id/approval_id/allowed_decisions` 부착), `createHiTLDecisionCoordinator()` (`:213-244`, **N개 결정을 모아 인덱스 순서대로 한 번만 resume**, idempotent).
+- `reviewForAction()` (`:31-43`): review_config 없으면 fallback `allowed_decisions: ['approve','reject']`.
+- v3 경로 어댑터 `frontend/src/lib/chat/langgraph-runtime/hitl-interrupts.ts`(`standardInterruptToToolCalls` 재사용 `:10`, 정규화/projection), 스트림 훅 wiring `use-moldy-langgraph-stream.ts:2328-2358`(projection), coordinator map `:2562`, `registerDecision` `:2871-2897`(단일 액션 bypass `:2880-2883`, 멀티 coordinator `:2884-2894`), 동시-인터럽트 배칭 `respondAll` `:2756-2811`.
+- 카드 dispatch: `approval-card.tsx`의 `resumeDecision`이 `hitl_action_index` 있으면 `registerDecision` 우선, 없으면 `onResumeDecisions` fallback. `user-input-ui.tsx` 동일.
+- `hitl-context.ts:12-17`: `registerDecision` API.
+- 테스트: `standard-interrupt.test.ts`(coordinator 포함), `use-moldy-langgraph-stream.test.tsx`(멀티/동시 배칭), `langgraph-runtime/__tests__/hitl-interrupts.test.ts`.
 
-### 2.2 Frontend
+### 2.3 ✅ ask_user wire 정규화 — DONE (단, native interrupt 기반)
 
-현재 프론트엔드는 표준 decision 타입을 이미 갖고 있다.
+- ask_user는 LLM-visible tool이며 정책에 `[respond]`로 등록되지만, 실제 대기는 **tool body 내부 native `interrupt()`** (`backend/app/agent_runtime/tools/ask_user.py:152`)로 발생. `streaming._interrupt_to_standard_chunk`(`streaming.py:198-221`)가 native 페이로드를 표준 `respond` action으로 어댑트. resume 파싱 `_extract_respond_message`(`ask_user.py:62-77`)가 `{"decisions":[{"type":"respond","message":...}]}`와 bare string 모두 처리.
 
-- `frontend/src/lib/chat/decision-mappers.ts`
-- `frontend/src/components/chat/tool-ui/user-input-ui.tsx`
-- `frontend/src/components/chat/tool-ui/approval-card.tsx`
-- `frontend/src/lib/chat/use-chat-runtime.ts`
+### 2.4 ❌ 아직 없는 것 (= 본 작업 범위)
 
-하지만 일반 대화 페이지와 builder 페이지는 `useChatRuntime`의 `onStandardInterrupt`를 전달하지 않는다.
+1. **`edit` 견고화** — 프론트가 `tool_name` 모르면 하드 중단, raw JSON 텍스트박스, 시크릿 위치 의존 복원(아래 §3).
+2. **`allowed_decisions` 게이팅** — 카드가 값을 받지만 **버튼 표시에 안 씀**(잠재 버그). edit 불가 도구(`execute_in_skill` 등)에도 수정 버튼이 떠서, 누르면 미들웨어가 늦게 ValueError.
+3. (선택) **통합 "N건 대기" UX** — wire는 됐지만 시각적 묶음/「모두 승인」 없음.
+4. (선택/결정) **ask_user를 미들웨어 respond로 진짜 통합**할지 vs 현재 native+wire 정규화 유지·문서화할지.
+5. (선택) **부모 커스텀 HITL 정책의 linked subagent 전파** — 현재 child는 자기 `middleware_configs`만 읽어(`subagents.py:118`) 부모 override가 전파 안 됨.
 
-- `frontend/src/app/agents/[agentId]/conversations/[conversationId]/page.tsx`
-- `frontend/src/app/agents/new/conversational/page.tsx`
+---
 
-`useChatRuntime`은 표준 interrupt payload를 받을 수 있지만, 실제 화면에 `ask_user` 또는 승인 카드를 합성해 넣는 책임이 아직 닫혀 있지 않다.
+## 3. 문제 상세 — `edit`가 깨지는 지점 (현재 코드)
 
-## 3. 문제점
+`frontend/src/components/chat/tool-ui/approval-card.tsx` 기준.
 
-### 3.1 `ask_user`가 표준 middleware 경로로 감싸지지 않는다
-
-현재 `ask_user` tool은 `interrupt_on` 계산 후 추가된다. 따라서 `interrupt_on.setdefault("ask_user", {"allowed_decisions": ["respond"]})` 분기가 기본적으로 실행되지 않는다.
-
-결과:
-
-- 일반 채팅에서 `ask_user`는 LangChain middleware의 `respond` 경로가 아니라 tool body 내부의 native `interrupt()` 경로로 떨어질 수 있다.
-- resume router는 항상 `Command(resume={"decisions": [...]})` 형태를 보낸다.
-- native `interrupt()`는 raw resume 값을 받기 때문에 `ask_user.py`는 사용자의 답변이 아니라 `{"decisions": [{"type": "respond", "message": "..."}]}` 전체 dict를 `str(...)`로 모델에 반환할 수 있다.
-
-### 3.2 DeepAgents subagent 상속을 잃는다
-
-DeepAgents의 `create_deep_agent(interrupt_on=...)`는 내부적으로 메인 에이전트와 기본 `general-purpose` subagent에 `HumanInTheLoopMiddleware`를 주입한다.
-
-현재 Moldy는 `HumanInTheLoopMiddleware`를 직접 만들어 `middleware` list에 넣고 `interrupt_on=None`을 넘긴다. 이 방식은 메인 에이전트에는 적용되지만, DeepAgents가 기본 subagent에 같은 정책을 자동 상속시키는 경로를 사용하지 못한다.
-
-결과:
-
-- 메인 에이전트가 직접 위험 도구를 호출하면 승인 게이트가 걸린다.
-- 메인 에이전트가 `task`로 `general-purpose` subagent에 위임하고 subagent가 위험 도구를 호출하면 정책 누락 가능성이 생긴다.
-
-### 3.3 표준 interrupt payload가 UI로 완전히 연결되지 않았다
-
-`streaming.py`는 표준 `action_requests` / `review_configs` payload를 emit할 수 있다. 하지만 일반 대화 페이지는 `onStandardInterrupt`를 넘기지 않는다.
-
-결과:
-
-- 표준 middleware interrupt가 발생해도 UI가 승인/되묻기 카드를 확실하게 렌더링하지 못한다.
-- 기존 `UserInputUI`와 `ApprovalCard`는 있지만, 표준 payload 배열을 assistant-ui tool card로 합성하는 coordinator가 부족하다.
-- multi-action interrupt에서 카드별로 단일 decision을 즉시 resume하면 middleware가 기대하는 decision 개수와 맞지 않을 수 있다.
-
-### 3.4 native `ask_user` adapter shape이 표준과 어긋날 수 있다
-
-`streaming.py`의 native `ask_user` fallback adapter는 표준 `review_configs`의 키를 `action_name`으로 고정해야 한다. `tool_name` 같은 별도 키가 섞이면 frontend와 middleware mental model이 벌어진다.
-
-## 4. 목표
-
-- 메인 채팅의 `ask_user`는 항상 표준 `respond` decision으로 재개된다.
-- 위험 도구 승인과 `ask_user` 되묻기는 하나의 `interrupt_on` 정책으로 합쳐진다.
-- trigger/invoke 모드에서는 `ask_user` tool과 HiTL interrupt가 모두 비활성화된다.
-- DeepAgents의 top-level `interrupt_on`을 사용해 기본 subagent에도 HiTL 정책이 상속된다.
-- frontend는 표준 interrupt payload만으로 `ask_user` 카드와 승인 카드를 렌더링하고, multi-action decision을 한 번에 resume한다.
-- Builder v3의 native `interrupt()` 흐름은 변경하지 않는다.
-
-## 5. 비목표
-
-- Builder v3 graph를 `HumanInTheLoopMiddleware`로 바꾸지 않는다.
-- `ask_user` tool을 제거하지 않는다. 옵션 B는 이미 ADR-012에서 UX 손실 때문에 보류됐다.
-- 전체 middleware registry를 재설계하지 않는다.
-- DeepAgents permission sandbox나 `permissions` 옵션을 이번 작업 범위에 포함하지 않는다.
-
-## 6. 권장 설계
-
-### 6.1 Backend target flow
-
-메인 채팅의 빌드 순서는 아래처럼 정리한다.
-
-1. runtime tool, MCP tool, temporal tool, skill tool을 만든다.
-2. 대화형 모드라면 `ask_user_tool`을 tool list에 추가한다.
-3. `middleware_configs`에서 위험 도구 승인 정책을 만든다.
-4. 대화형 모드라면 `ask_user` respond 정책을 항상 merge한다.
-5. trigger 모드라면 `interrupt_on=None`으로 강제한다.
-6. `HumanInTheLoopMiddleware`를 직접 만들지 않고 `build_agent(... interrupt_on=interrupt_on ...)`으로 넘긴다.
-
-권장 helper:
-
-```python
-def _merge_interrupt_policy(
-    base: dict[str, Any] | None,
-    *,
-    include_ask_user: bool,
-) -> dict[str, Any] | None:
-    policy = dict(base or {})
-    if include_ask_user:
-        policy["ask_user"] = {"allowed_decisions": ["respond"]}
-    return policy or None
-```
-
-핵심은 `ask_user`가 위험 도구 승인 설정 유무와 무관하게 대화형 모드에서 표준 interrupt로 감싸져야 한다는 점이다.
-
-### 6.2 `ask_user.py` 역할
-
-정상 경로에서 `ask_user` tool body는 실행되지 않는다. middleware가 tool call 단계에서 interrupt를 발생시키고, `respond` decision을 synthetic `ToolMessage`로 만든다.
-
-그래도 방어적으로 native fallback은 남긴다. fallback은 raw string과 표준 `{"decisions": [...]}` resume payload를 모두 처리해야 한다.
-
-```python
-def _extract_respond_message(response: object) -> str:
-    if isinstance(response, dict):
-        decisions = response.get("decisions")
-        if isinstance(decisions, list) and decisions:
-            first = decisions[0]
-            if isinstance(first, dict) and first.get("type") == "respond":
-                message = first.get("message")
-                if isinstance(message, str):
-                    return message
-    return str(response)
-```
-
-### 6.3 Frontend target flow
-
-표준 interrupt payload:
-
+### 3.1 하드 중단 — `tool_name` 미상 시 edit 불가
+`toDecision('modified', resumeResponse, args?.tool_name)`(`:~118-133`, 호출 `:~360`):
 ```ts
-type StandardInterruptPayload = {
-  interrupt_id?: string
-  action_requests: Array<{
-    name: string
-    args: Record<string, unknown>
-    description?: string
-  }>
-  review_configs: Array<{
-    action_name: string
-    allowed_decisions: Array<'approve' | 'edit' | 'reject' | 'respond'>
-  }>
-}
+case 'modified':
+  if (!toolName) return null            // ← 하드 중단
+  return toEdit({ name: toolName, args: response.modified_args ?? {} })
 ```
+`null`이면 핸들러가 submit 전체를 중단하고 **잘못된 메시지** `invalidJson`을 띄운다(`:~361-367`). `tool_name`은 `standard-interrupt.ts:146`에서 `action.name`으로 채워지지만, 병합 경로에서 raw 모델 tool-call로부터 온 슬롯은 `tool_name`이 비어 edit만 실패한다(approve/reject는 정상).
 
-Frontend는 이 payload를 tool card로 합성한다.
+**근본 원인:** 프론트가 `edited_action.name`(도구 이름)을 **재구성해 보내야 한다**. langchain `human_in_the_loop.py:310-320`이 `edited_action["name"]`/`["args"]`를 hard subscript로 읽기 때문.
 
-- `ask_user` + `respond` only: `UserInputUI` 카드.
-- 그 외 도구: `ApprovalCard` 카드. 실제 tool 이름은 `args.tool_name`에 넣는다.
-- action이 여러 개면 decision coordinator가 모든 카드의 결정을 모은 뒤 `onResumeDecisions(decisions, displayText, interruptId)`를 한 번 호출한다.
+### 3.2 raw JSON 텍스트박스 — 문법 에러로 깨짐
+edit 진입 시 `editedArgs`에 `JSON.stringify(toolArgs, null, 2)`를 채우고 textarea로 편집(`:~480-495`, `:~515-527`). submit 시 `JSON.parse(editedArgs)`(`:~342-358`) — 중괄호/따옴표 하나만 틀려도 `invalidJson`.
 
-이 책임은 각 페이지보다 `useChatRuntime` 또는 별도 `standard-interrupt-coordinator`에 두는 것이 낫다. 일반 대화 페이지가 `onStandardInterrupt`를 매번 직접 구현하면 builder/assistant 흐름과 쉽게 갈라진다.
+### 3.3 시크릿(`<redacted>`) 위치 의존 복원 — 누출/유실
+`tool_args`는 **소스에서 이미 redact**됨(`standard-interrupt.ts:130` `redactSensitiveRecord`). 따라서 프론트 `restoreRedactedRecordPlaceholders(parsed, args?.tool_args)`(`:~56-80`, `:~347-350`)는 **프로덕션에서 no-op**(원본도 `<redacted>`라 되돌릴 값이 없음). 실제 복원은 백엔드가 checkpoint에서 한다. 더 나쁜 건: 프론트/백엔드 복원이 **key 이름·배열 index 위치 매칭**이라, 사용자가 `<redacted>` 키를 rename / 배열 reorder / 라인 삭제하면 시크릿이 **그대로 전송되거나 유실**된다(에러 없이).
+> ⚠️ 기존 테스트 `approval-card.test.tsx`의 "restores redacted placeholders…"는 `tool_args`에 **un-redacted** 값을 직접 주입해 통과 — 프로덕션에서 동작하지 않는 경로에 잘못된 안도감을 준다. 본 작업에서 이 테스트를 교체한다.
 
-## 7. 파일 구조
+### 3.4 `allowed_decisions` 잠재 버그
+`ApprovalArgs.allowed_decisions`(`:40`)는 채워지지만(`standard-interrupt.ts:150`) **렌더에서 안 읽힌다**. 버튼 블록(`:~500-562`)은 무조건 승인/수정/거부 3개를 그린다. `execute_in_skill`(allowed=`[approve,reject]`)에도 수정 버튼이 떠서, 누르면 v3 resume 경로가 검증 없이 raw 전달(`InputRespondEntry.response: Any`) → 미들웨어 `_process_decision`에서 ValueError(`human_in_the_loop.py:343-349`).
+
+---
+
+## 4. 권장 설계
+
+### 4.1 Edit-by-index (프론트가 도구 이름을 안 보낸다)
+- **백엔드가 인덱스로 도구 이름을 채운다.** langchain은 decision↔action을 **positional index**로 매칭하고(`human_in_the_loop.py:438,450-455`) tool-call `id`는 미들웨어가 매칭된 pending call에서 가져온다. 따라서 `edited_action.name`은 백엔드가 **이미 알고 있는** `action_requests[index].name`으로 채울 수 있다.
+- `conversation_agent_protocol_resume_redaction.py`가 **이미** 인터럽트별 원본 `{name,args}`를 인덱스로 재구성한다(`_raw_pending_actions_by_interrupt` `:69`, 매칭 `_restore_redacted_response` `:157`). 현재는 args만 복원하고 name은 프론트 값을 통과(`:184`). → name을 **권위적으로 덮어쓰기**.
+- **결과:** 프론트는 `edited_action.name`을 신뢰성 있게 만들 필요가 없어진다 → §3.1 하드 중단 제거.
+
+### 4.2 Field-based editor (raw JSON 대신 칸별 편집)
+- `ArgsPreview`의 key/value 목록(이미 존재)을 **편집 가능한 폼**으로 확장: 각 값은 입력 컨트롤, **시크릿 키(`isSensitiveDisplayKey`)는 read-only 잠금**(`<redacted>` 표시, 편집 불가).
+- submit 시 `JSON.parse` 없음 → §3.2 제거. 시크릿은 잠겨 rename/reorder 불가 → §3.3 누출/유실 제거. 프론트는 `restoreRedactedRecordPlaceholders` 불필요(백엔드가 복원 소유).
+
+### 4.3 allowed_decisions 게이팅 (프론트 only)
+- 카드가 받은 `allowed_decisions`대로 버튼 조건부 렌더. **빈/누락 시 기본 `[approve, reject]`**(edit 미포함 — `reviewForAction`의 fallback과 일치). 백엔드는 이미 올바른 값을 보내므로 **백엔드 변경 불필요**.
+
+---
+
+## 5. 파일 구조 (변경 대상)
 
 ### Backend
-
-- Modify: `backend/app/agent_runtime/executor.py`
-  - tool 생성 순서 조정
-  - `interrupt_on` 계산 helper 추가
-  - manual `HumanInTheLoopMiddleware` append 제거
-  - `build_agent(... interrupt_on=interrupt_on ...)` 사용
-
-- Modify: `backend/app/agent_runtime/middleware_registry.py`
-  - `human_in_the_loop`을 generic middleware builder에서 제외하는 정책은 유지
-  - "executor가 직접 인스턴스화한다"는 주석을 "executor가 top-level `interrupt_on`으로 변환한다"로 갱신
-
-- Modify: `backend/app/agent_runtime/tools/ask_user.py`
-  - native fallback resume payload 파싱
-  - docstring을 "정상 경로는 middleware respond" 중심으로 갱신
-
-- Modify: `backend/app/agent_runtime/streaming.py`
-  - native ask_user fallback adapter가 `review_configs[].action_name`을 사용하도록 고정
-  - 표준 payload 검증을 더 엄격하게 유지
-
-- Modify: `backend/tests/test_hitl_middleware.py`
-  - 기존 "manual middleware instance" 가드를 "DeepAgents interrupt_on param" 가드로 교체
-  - trigger mode `interrupt_on is None` 유지
-  - `ask_user`가 explicit HITL 설정 없이도 포함되는지 검증
-  - `human_in_the_loop` config가 generic middleware instance로 생성되지 않는지 검증
-
-- Modify: `backend/tests/test_hitl_wire.py`
-  - native ask_user adapter의 `action_name` 검증 추가
-  - fallback resume payload가 `respond.message`만 반환하는 테스트 추가
+- **Modify** `backend/app/routers/conversation_agent_protocol_resume_redaction.py`
+  - 모든 edit decision에 대해 action-by-index 해석 실행(현재 `<redacted>` 있을 때만 도는 early-return 완화)
+  - `edited_action["name"]`을 `raw_actions[index]["name"]`으로 권위적 설정
+- **Modify** `backend/app/routers/conversation_agent_protocol_commands.py`(선택)
+  - `_handle_input_respond_command`에서 각 decision.type을 pending `review_configs[index].allowed_decisions`와 교차검증(조기 거절). 또는 `conversation_agent_protocol_resume.py:validate_resume_payload`.
+- **Modify** `backend/tests/test_hitl_wire.py`
+  - v3 `responses`-keyed resume + name-fill + 멀티액션 edit index 정렬 테스트 추가
 
 ### Frontend
+- **Modify** `frontend/src/components/chat/tool-ui/approval-card.tsx`
+  - 버튼을 `allowed_decisions`로 게이팅
+  - edit: 하드 중단 제거 + field-based editor
+  - `restoreRedactedRecordPlaceholders` 제거(백엔드 복원 소유)
+- **Modify** `frontend/src/lib/types/index.ts` + `frontend/src/lib/chat/decision-mappers.ts`
+  - `Decision.edited_action.name`을 optional로(또는 name-less edit 허용)
+- **Modify** `frontend/src/components/chat/tool-ui/__tests__/approval-card.test.tsx`
+  - allowed_decisions 게이팅 / name 없는 edit / 시크릿 잠금 / field editor 테스트
 
-- Modify: `frontend/src/lib/chat/use-chat-runtime.ts`
-  - 표준 interrupt payload를 streaming message의 synthetic tool calls로 반영
-  - multi-action decision coordinator 연결
-  - `lastInterruptIdRef`를 resume 호출에 유지
+---
 
-- Create: `frontend/src/lib/chat/standard-interrupt.ts`
-  - 표준 interrupt payload를 UI tool call args로 변환하는 순수 함수
-  - action index와 `interrupt_id`를 안정적으로 포함
+## 6. 구현 작업 (Task by Task)
 
-- Modify: `frontend/src/lib/chat/hitl-context.tsx`
-  - 단일 decision 즉시 resume 외에 multi-action pending coordinator 지원
-  - 기존 builder 흐름과 충돌하지 않도록 optional API로 확장
+> 권장 순서: **Task 1(테스트 먼저) → 2(백엔드 edit-by-index) → 3(프론트 게이팅) → 4(프론트 edit UI) → 5(통합검증)**. 각 Task는 독립적으로 그린이 되도록 구성.
 
-- Modify: `frontend/src/components/chat/tool-ui/user-input-ui.tsx`
-  - coordinator가 있으면 action index에 decision을 기록
-  - coordinator가 없으면 기존 단일 `[toRespond(message)]` resume 유지
+### Task 1 — 백엔드 회귀 테스트를 먼저 추가한다 (TDD)
 
-- Modify: `frontend/src/components/chat/tool-ui/approval-card.tsx`
-  - coordinator가 있으면 action index에 decision을 기록
-  - coordinator가 없으면 기존 단일 decision resume 유지
+**Files:** `backend/tests/test_hitl_wire.py`
 
-- Modify: `frontend/src/lib/chat/tool-ui-registry.ts`
-  - `ApprovalCard`의 synthetic tool name과 표준 interrupt mapping을 문서화
+- [ ] **Step 1: v3 edit가 name 없이도 백엔드에서 채워지는 테스트(실패 예상).**
+  `conversation_agent_protocol_resume_redaction.py`의 복원 함수를 직접 호출해, pending action(`action_requests=[{name:"execute_in_skill", args:{command:"old"}}]`)이 있을 때 decision `{type:"edit", edited_action:{args:{command:"new"}}}`(name 없음, redacted 없음)를 넣으면 결과가 `edited_action.name == "execute_in_skill"`, `args.command == "new"`가 되도록 단언.
+  ```python
+  def test_edit_decision_name_filled_from_pending_action_by_index():
+      restored = restore_redacted_resume_payload(
+          input_payload={"intr-1": {"decisions": [
+              {"type": "edit", "edited_action": {"args": {"command": "new"}}}
+          ]}},
+          pending_actions_by_interrupt={"intr-1": [
+              {"name": "execute_in_skill", "args": {"command": "old"}}
+          ]},
+      )
+      d = restored["intr-1"]["decisions"][0]
+      assert d["edited_action"]["name"] == "execute_in_skill"
+      assert d["edited_action"]["args"]["command"] == "new"
+  ```
+  (실제 함수 시그니처/헬퍼 이름은 `conversation_agent_protocol_resume_redaction.py`를 열어 맞춘다 — `restore_redacted_resume_payload`(`:18`), `_raw_pending_actions_by_interrupt`(`:69`).)
 
-- Test: `frontend/src/lib/chat/__tests__/standard-interrupt.test.ts`
-  - ask_user mapping
-  - approval mapping
-  - multi-action ordering
+- [ ] **Step 2: 멀티액션 edit가 index로 정렬되는 테스트(실패 예상).** action 2개일 때 decision 2개의 edit name이 각각 `action_requests[0].name`, `[1].name`으로 채워지는지.
 
-- Test: `frontend/src/lib/chat/__tests__/hitl-coordinator.test.tsx`
-  - 모든 action 결정 전에는 resume하지 않음
-  - 모든 action 결정 후 decision 배열을 순서대로 resume
+- [ ] **Step 3: 실행해 실패 확인.**
+  ```bash
+  cd backend && uv run pytest tests/test_hitl_wire.py -q
+  ```
 
-## 8. 구현 작업
+### Task 2 — 백엔드: edit-by-index (name 채우기, 모든 edit에 적용)
 
-### Task 1: Backend regression tests를 먼저 갱신한다
+**Files:** `backend/app/routers/conversation_agent_protocol_resume_redaction.py`
 
-**Files:**
+- [ ] **Step 1: early-return 게이트 완화.** 현재 `restore_redacted_resume_payload`는 `_resume_contains_redacted_edit(...)`가 False면 raw를 그대로 반환(`:24` 부근). edit decision이 하나라도 있으면(redacted 유무 무관) 인덱스 해석 경로를 타도록 조건을 확장한다. (redacted 없는 일반 edit도 name 채우기가 필요.)
 
-- Modify: `backend/tests/test_hitl_middleware.py`
-- Modify: `backend/tests/test_hitl_wire.py`
+- [ ] **Step 2: name 권위적 설정.** `_restore_redacted_response`(`:157-190` 부근)의 edit 분기에서, `raw_actions[index]`가 있으면:
+  ```python
+  edited = dict(decision.get("edited_action") or {})
+  if index < len(raw_actions):
+      edited["name"] = raw_actions[index]["name"]          # 권위적: 프론트 name 무시
+      edited["args"] = restored_args                        # 기존 placeholder 복원 유지
+  restored_decisions.append({**dict(decision), "edited_action": edited})
+  ```
+  - `raw_actions[index]`가 없을 때(방어)는 기존 동작(프론트 값 유지) fallback.
+  - 기존 `<redacted>` placeholder 복원(`_restore_placeholders`)은 **그대로 유지**.
 
-- [ ] **Step 1: manual middleware instance 기대를 제거한다**
+- [ ] **Step 3: Task 1 테스트 통과 확인.**
+  ```bash
+  cd backend && uv run pytest tests/test_hitl_wire.py -q && uv run ruff check app tests
+  ```
 
-현재 테스트는 `HumanInTheLoopMiddleware` 인스턴스가 `middleware` list에 들어가는 것을 기대한다. 목표 구조에서는 이 기대가 틀렸다. `build_agent`의 `interrupt_on` 인자가 정책을 받는지 검증하도록 바꾼다.
+- [ ] **Step 4 (선택, 조기 거절): allowed_decisions 검증.** `conversation_agent_protocol_commands.py:_handle_input_respond_command`(또는 `conversation_agent_protocol_resume.py:validate_resume_payload` `:64`)에서, 각 decision.type이 해당 인터럽트의 `review_configs[index].allowed_decisions`에 없으면 422/구조화 에러로 조기 거절. (지금은 미검증이라 미들웨어 깊은 곳에서 ValueError.) 프론트 게이팅(Task 3)이 1차 방어이므로 이건 방어층.
 
-예상 assertion:
+### Task 3 — 프론트: `allowed_decisions` 버튼 게이팅
 
-```python
-build_kwargs = mock_build.call_args[1]
-assert build_kwargs["interrupt_on"] == {"send_email": True}
-assert not any(
-    isinstance(m, HumanInTheLoopMiddleware)
-    for m in (build_kwargs["middleware"] or [])
-)
-```
+**Files:** `frontend/src/components/chat/tool-ui/approval-card.tsx`, 테스트
 
-- [ ] **Step 2: explicit HITL 설정이 없어도 `ask_user`가 표준 정책에 들어가는 테스트를 추가한다**
+- [ ] **Step 1: allow-set 유도.** `!submitting` 분기 상단(`:~501`)에서 1회 계산:
+  ```ts
+  const allowed = new Set(args?.allowed_decisions ?? [])
+  const canApprove = allowed.size === 0 ? true : allowed.has('approve')
+  const canEdit = allowed.has('edit')                      // 기본(빈) 시 edit 숨김
+  const canReject = allowed.size === 0 ? true : allowed.has('reject')
+  ```
+  (빈/누락 → approve+reject만, edit 제외 — `reviewForAction` fallback과 동일 정책.)
 
-예상 assertion:
+- [ ] **Step 2: 각 버튼 그룹 가드.** 승인(`:~503-512`)은 `canApprove &&`, 수정(`:~515-538`)은 `canEdit &&`, 거부(`:~541-561`)는 `canReject &&`로 감싼다. reject-only(승인·수정 모두 불가)일 때 거부 confirm 2-step 유지.
 
-```python
-build_kwargs = mock_build.call_args[1]
-assert build_kwargs["interrupt_on"] == {
-    "ask_user": {"allowed_decisions": ["respond"]}
+- [ ] **Step 3: 테스트 추가.** `approval-card.test.tsx`:
+  - `allowed_decisions: ['approve','reject']` → 수정 버튼 없음(`queryByText('edit')` null).
+  - `['approve','edit','reject']` → 3개 모두.
+  - 누락/`[]` → approve+reject만(edit 숨김).
+  - reject-only → 거부만 + confirm 동작.
+  - 실행: `cd frontend && pnpm exec vitest run src/components/chat/tool-ui/__tests__/approval-card.test.tsx`
+
+### Task 4 — 프론트: 견고한 edit (하드 중단 제거 + field editor)
+
+**Files:** `approval-card.tsx`, `decision-mappers.ts`, `types/index.ts`, 테스트
+
+- [ ] **Step 1: 타입 완화.** `frontend/src/lib/types/index.ts`의 `Decision.edited_action`을 `{ name?: string; args: Record<string, unknown> }`로(name optional). `decision-mappers.ts`의 `toEdit`도 name 없이 호출 가능하게(또는 `toEditByIndex(args)` 추가).
+
+- [ ] **Step 2: 하드 중단 제거.** `toDecision('modified', ...)`(`approval-card.tsx:~126-129`)에서 `if (!toolName) return null` 삭제. name은 있으면 advisory로 첨부, 없으면 생략(백엔드가 index로 채움). 호출부(`:~360-367`)의 `if (!standardDecision)` abort도 edit에선 불필요.
+
+- [ ] **Step 3: field-based editor.** `ArgsPreview`(현재 key/value 목록)를 편집 모드 지원으로 확장하거나, 별도 `ArgsEditor` 컴포넌트 추가:
+  - state를 `editedArgs: string`(JSON) → `draft: Record<string, unknown>`(키별 값)로 교체. 초기값 = `args.tool_args`(redacted).
+  - 각 entry를 `<dt>{key}</dt><dd><input/></dd>`로. **`isSensitiveDisplayKey(key)`면 read-only 잠금**(`<redacted>` 표시, onChange 없음).
+  - scalar는 텍스트 input, 비-scalar(object/array)는 compact JSON 텍스트 input(파싱 실패 시 해당 칸만 에러 표시 — 전체 abort 금지).
+  - submit(`handleDecision('modified')`)은 `JSON.parse` 없이 `draft`를 직접 사용. `restoreRedactedRecordPlaceholders` 호출 제거(시크릿은 잠겨 변형 불가 → 백엔드가 복원).
+
+- [ ] **Step 4: 죽은 코드 정리.** `restoreRedactedPlaceholders`/`restoreRedactedRecordPlaceholders`(`approval-card.tsx:56-80`)가 더 이상 안 쓰이면 제거. `editedArgs`/`jsonError` state 제거.
+
+- [ ] **Step 5: 테스트 교체.**
+  - 기존 "restores redacted placeholders…" 테스트(`:~294-350`)를 **삭제/교체**: un-redacted 주입을 멈추고, "시크릿 키는 read-only이며 편집 불가, 비-시크릿 칸만 수정해 제출하면 `<redacted>`가 리터럴로 안 나가고 name 없이 edit decision이 간다"를 단언.
+  - **신규: name 없이 edit 동작**(§3.1 회귀). `tool_name` undefined로 렌더 → 한 칸 수정 → 제출 → `invalidJson` abort 없이 `{type:'edit', edited_action:{args:{...}}}`(name 없음/advisory) 전송 단언.
+  - "renders tool args as a readable key/value list"(`:~208-237`)는 편집 컨트롤 추가에 맞춰 갱신.
+  - 실행: `cd frontend && pnpm exec vitest run src/components/chat/tool-ui/__tests__/approval-card.test.tsx`
+
+### Task 5 — 통합 검증
+
+- [ ] **Step 1: 백엔드.**
+  ```bash
+  cd backend && uv run pytest tests/test_hitl_wire.py tests/test_hitl_middleware.py -q && uv run ruff check app tests
+  ```
+- [ ] **Step 2: 프론트.**
+  ```bash
+  cd frontend && pnpm exec tsc --noEmit && pnpm exec vitest run && pnpm lint
+  ```
+- [ ] **Step 3: 수동 시나리오.**
+  - `execute_in_skill` 승인 카드 → **수정 버튼 없음**(allowed=approve,reject), 승인/거부만 동작.
+  - `edit_file`/write 도구 승인 카드 → 수정 버튼 보임, 한 칸 수정 후 승인 → 모델이 수정된 인자로 실행.
+  - 시크릿(api_key 등) 있는 도구 → 시크릿 칸 잠김, 비-시크릿 칸만 수정 가능, 제출 시 시크릿 정상 유지(백엔드 복원).
+  - `tool_name`이 비는 슬롯에서도 edit이 `invalidJson` 없이 정상 제출.
+
+---
+
+## 7. (선택) 추가 워크스트림
+
+본 작업의 핵심(§6)과 독립. 필요 시 별도 PR.
+
+### 7.1 통합 "N건 대기" multi-action UX (프론트 only, 추가형)
+현재: N개 카드 각각 렌더 + resume만 내부 배칭(코디네이터 이미 존재). 남은 건 **시각적 묶음**.
+- `hitl_interrupt_id`로 같은 인터럽트의 카드를 그룹화하는 컨테이너(키: `args.hitl_interrupt_id`, 총수: `args.hitl_total_actions`). 현재 카드는 독립 tool-call 메시지로 방출되므로(`hitl-interrupts.ts:447-462`), 그룹 헤더("N건 대기")를 합성하거나 카드 묶음 래퍼가 필요.
+- "모두 승인/모두 제출" 버튼 → 각 미결 action에 대해 `hitl.registerDecision(i, 기본결정)` 호출(기본은 카드별 allowed_decisions). 기존 coordinator가 배칭하므로 **백엔드/coordinator 변경 불필요, 순수 추가 UI**.
+- i18n 키 신규(`chat.approval.pendingCount`, `chat.approval.approveAll`) — 현재 없음.
+- 신규 컴포넌트 테스트(`hitl-coordinator.test.tsx` 슬롯 비어 있음).
+
+### 7.2 부모 커스텀 HITL 정책의 linked subagent 전파 (백엔드)
+현재: auto general-purpose subagent는 top-level 상속하지만, **linked(선언형) subagent는 자기 `middleware_configs`만** 읽어(`subagents.py:118`) 부모의 커스텀 `human_in_the_loop` override가 전파 안 됨. (자기 도구 기반 정책은 정상 적용 — 안전 측면 갭은 아니고, "부모 커스텀 정책 일관성" 이슈.)
+- Fix point: `subagents.py:142-163` — 부모 정책/override를 child `components.interrupt_on`에 병합 후 `spec["interrupt_on"]` 설정.
+- 테스트: `tests/agent_runtime/test_subagents_runtime.py`에 부모 override 전파 케이스.
+
+### 7.3 (결정 필요) ask_user를 미들웨어 respond로 진짜 통합 vs 현행 유지
+현재: write/skill/MCP = `HumanInTheLoopMiddleware`, ask_user = native `interrupt()` — wire에서만 통합. 두 메커니즘 공존.
+- 옵션 A(권장, 저비용): **현행 유지 + 문서화.** ask_user는 native interrupt + `_interrupt_to_standard_chunk` 정규화로 충분히 동작. `runtime_component_builder.py:390-391`의 `interrupt_on["ask_user"]` 항목이 vestigial인지 확인 후, 유지(방어)할지 주석 명확화.
+- 옵션 B(고비용): ask_user를 미들웨어 respond 경로로 이전(`tools/ask_user.py:121-163` + 정책 + `streaming` 어댑터). 단일 메커니즘이지만 UX/회귀 위험. **착수 전 별도 결정.**
+
+---
+
+## 8. 결정 스키마 / wire 계약 (구현 참조)
+
+### Decision (프론트→백엔드, `HumanInTheLoopMiddleware` `HITLResponse.decisions[i]`와 1:1)
+```ts
+interface Decision {
+  type: 'approve' | 'edit' | 'reject' | 'respond'
+  edited_action?: { name?: string; args: Record<string, unknown> }  // ← 본 작업: name optional
+  message?: string  // respond 필수, reject 선택
 }
 ```
+- **edit 계약(langchain 1.3.9, `human_in_the_loop.py:310-320`):** 미들웨어는 `edited_action["name"]`/`["args"]`를 hard subscript로 읽고 tool-call `id`는 매칭된 pending call에서 가져온다. decision↔action 매칭은 **positional index**. → 백엔드가 name을 index로 채우면 프론트는 name 불필요.
 
-- [ ] **Step 3: trigger mode에서는 `ask_user`와 `interrupt_on`이 모두 빠지는 테스트를 추가한다**
-
-예상 assertion:
-
-```python
-build_kwargs = mock_build.call_args[1]
-tool_names = [t.name for t in mock_build.call_args.args[1]]
-assert "ask_user" not in tool_names
-assert build_kwargs["interrupt_on"] is None
-```
-
-- [ ] **Step 4: native ask_user adapter가 `action_name`을 쓰는지 검증한다**
-
-예상 assertion:
-
-```python
-review = chunk["review_configs"][0]
-assert review["action_name"] == "ask_user"
-assert "tool_name" not in review
-assert review["allowed_decisions"] == ["respond"]
-```
-
-- [ ] **Step 5: 테스트를 실행해 실패를 확인한다**
-
-Run:
-
-```bash
-cd backend
-uv run pytest tests/test_hitl_middleware.py tests/test_hitl_wire.py -q
-```
-
-Expected: 현재 구현에서는 `ask_user` 자동 정책, `interrupt_on` pass-through, `action_name` 검증 중 일부가 실패한다.
-
-### Task 2: `executor.py`를 DeepAgents top-level `interrupt_on` 경로로 바꾼다
-
-**Files:**
-
-- Modify: `backend/app/agent_runtime/executor.py`
-- Modify: `backend/app/agent_runtime/middleware_registry.py`
-
-- [ ] **Step 1: `HumanInTheLoopMiddleware` 직접 import/use를 제거한다**
-
-`executor.py`에서 아래 import를 제거한다.
-
-```python
-from langchain.agents.middleware import HumanInTheLoopMiddleware
-```
-
-- [ ] **Step 2: interrupt policy helper를 추가한다**
-
-권장 위치는 `_WRITE_TOOL_KEYWORDS` 아래다.
-
-```python
-def _infer_write_tool_interrupts(tools: list[BaseTool]) -> dict[str, Any] | None:
-    policy = {
-        t.name: True
-        for t in tools
-        if any(kw in t.name.lower() for kw in _WRITE_TOOL_KEYWORDS)
-    }
-    return policy or None
-
-
-def _build_interrupt_on_policy(
-    *,
-    middleware_configs: list[dict[str, Any]] | None,
-    tools: list[BaseTool],
-    include_ask_user: bool,
-    is_trigger_mode: bool,
-) -> dict[str, Any] | None:
-    if is_trigger_mode:
-        return None
-
-    interrupt_on: dict[str, Any] | None = None
-    for mw_config in middleware_configs or []:
-        if mw_config.get("type") != "human_in_the_loop":
-            continue
-        explicit = mw_config.get("params", {}).get("interrupt_on")
-        if isinstance(explicit, dict) and explicit:
-            interrupt_on = dict(explicit)
-        else:
-            interrupt_on = _infer_write_tool_interrupts(tools)
-        break
-
-    policy = dict(interrupt_on or {})
-    if include_ask_user:
-        policy["ask_user"] = {"allowed_decisions": ["respond"]}
-    return policy or None
-```
-
-- [ ] **Step 3: `ask_user_tool`을 policy 계산 전에 추가한다**
-
-현재 `ask_user_tool` 추가 블록을 `interrupt_on` 계산보다 앞으로 이동한다. skill `execute_in_skill`처럼 뒤늦게 추가되는 tool이 있으면 policy 계산 시점도 그 뒤로 옮긴다.
-
-원칙:
-
-```python
-if not is_trigger_mode:
-    langchain_tools.append(ask_user_tool)
-
-interrupt_on = _build_interrupt_on_policy(
-    middleware_configs=cfg.middleware_configs,
-    tools=langchain_tools,
-    include_ask_user=not is_trigger_mode,
-    is_trigger_mode=is_trigger_mode,
-)
-```
-
-- [ ] **Step 4: manual middleware append를 제거한다**
-
-아래 형태의 코드를 삭제한다.
-
-```python
-if interrupt_on:
-    middleware.append(HumanInTheLoopMiddleware(interrupt_on=interrupt_on))
-```
-
-- [ ] **Step 5: `build_agent`에 `interrupt_on`을 넘긴다**
-
-```python
-agent = build_agent(
-    model,
-    langchain_tools,
-    system_prompt,
-    middleware=middleware or None,
-    interrupt_on=interrupt_on,
-    checkpointer=get_checkpointer(),
-    backend=backend,
-    skills=skills_sources,
-    memory=memory_sources,
-    name=f"agent_{cfg.thread_id[:8]}",
-)
-```
-
-- [ ] **Step 6: `middleware_registry.py` 주석을 새 책임에 맞춘다**
-
-`EXPLICITLY_INSTANTIATED_TYPES` 이름을 유지할지 바꿀지는 구현자가 선택할 수 있다. 최소 변경으로 가려면 set은 그대로 두고 주석만 아래 의미로 바꾼다.
-
-```python
-# 본 set 의 항목은 ``build_middleware_instances`` 경로를 우회한다. executor 가
-# config 를 읽어 DeepAgents top-level ``interrupt_on`` 인자로 변환한다.
-# 직접 ``HumanInTheLoopMiddleware`` 인스턴스를 만들지 않는 이유는
-# ``create_deep_agent(interrupt_on=...)`` 경로가 기본 subagent 상속까지 처리하기 때문이다.
-```
-
-- [ ] **Step 7: backend tests를 실행한다**
-
-Run:
-
-```bash
-cd backend
-uv run pytest tests/test_hitl_middleware.py tests/test_hitl_wire.py -q
-```
-
-Expected: Task 1의 backend regression tests가 통과한다.
-
-### Task 3: `ask_user.py` fallback을 표준 resume payload와 호환되게 한다
-
-**Files:**
-
-- Modify: `backend/app/agent_runtime/tools/ask_user.py`
-- Modify: `backend/tests/test_hitl_wire.py`
-
-- [ ] **Step 1: fallback parser 단위 테스트를 추가한다**
-
-예상 테스트:
-
-```python
-from app.agent_runtime.tools.ask_user import _extract_respond_message
-
-
-def test_extract_respond_message_from_standard_resume_payload():
-    assert _extract_respond_message(
-        {"decisions": [{"type": "respond", "message": "옵션 A"}]}
-    ) == "옵션 A"
-
-
-def test_extract_respond_message_falls_back_to_string():
-    assert _extract_respond_message("옵션 B") == "옵션 B"
-```
-
-- [ ] **Step 2: parser를 구현하고 `ask_user` 반환값에 적용한다**
-
-```python
-response = interrupt(
-    {
-        "type": "ask_user",
-        "question": question,
-        "options": options or [],
-    }
-)
-return _extract_respond_message(response)
-```
-
-- [ ] **Step 3: 테스트를 실행한다**
-
-Run:
-
-```bash
-cd backend
-uv run pytest tests/test_hitl_wire.py -q
-```
-
-Expected: fallback parser 테스트와 기존 wire 테스트가 통과한다.
-
-### Task 4: `streaming.py` native adapter를 표준 shape로 고정한다
-
-**Files:**
-
-- Modify: `backend/app/agent_runtime/streaming.py`
-- Modify: `backend/tests/test_hitl_wire.py`
-
-- [ ] **Step 1: `_interrupt_to_standard_chunk`의 ask_user fallback을 점검한다**
-
-native fallback 결과는 아래 형태여야 한다.
-
-```python
-{
-    "interrupt_id": intr_id,
-    "action_requests": [
-        {
-            "name": "ask_user",
-            "args": {"question": question, "options": options},
-        }
-    ],
-    "review_configs": [
-        {
-            "action_name": "ask_user",
-            "allowed_decisions": ["respond"],
-        }
-    ],
+### 표준 interrupt payload (백엔드→프론트, SSE `interrupt` event)
+```ts
+type StandardInterruptPayload = {
+  interrupt_id: string          // = str(intr.ns) (namespace)
+  action_requests: Array<{ name: string; args: Record<string, unknown>; description?: string }>  // per-action id 없음 → index 참조
+  review_configs: Array<{ action_name: string; allowed_decisions: Array<'approve'|'edit'|'reject'|'respond'> }>
 }
 ```
+- **allowed_decisions 출처:** Moldy `risk.py` → `interrupt_on` 정책 → langchain이 `review_configs`로 echo. 도구별 값은 §2.1 참조(`execute_in_skill`=approve,reject / `edit_file`=approve,edit,reject 등).
+- **resume(v3):** `Command(resume={interrupt_id: {"decisions": [...]}})` — `conversation_agent_protocol_commands.py:_handle_input_respond_command`.
 
-- [ ] **Step 2: `tool_name` 또는 비표준 키가 있으면 제거한다**
-
-표준 payload에서는 `review_configs[].action_name`을 사용한다.
-
-- [ ] **Step 3: 테스트를 실행한다**
-
-Run:
-
-```bash
-cd backend
-uv run pytest tests/test_hitl_wire.py -q
-```
-
-Expected: 표준 chunk tests가 통과한다.
-
-### Task 5: Frontend standard interrupt mapping 순수 함수를 만든다
-
-**Files:**
-
-- Create: `frontend/src/lib/chat/standard-interrupt.ts`
-- Create: `frontend/src/lib/chat/__tests__/standard-interrupt.test.ts`
-
-- [ ] **Step 1: ask_user mapping 테스트를 작성한다**
-
-```ts
-import { describe, expect, it } from 'vitest'
-import { standardInterruptToToolCalls } from '../standard-interrupt'
-
-describe('standardInterruptToToolCalls', () => {
-  it('maps ask_user respond action to ask_user tool UI args', () => {
-    const calls = standardInterruptToToolCalls({
-      interrupt_id: 'intr-1',
-      action_requests: [
-        { name: 'ask_user', args: { question: '어느 쪽?', options: ['A', 'B'] } },
-      ],
-      review_configs: [
-        { action_name: 'ask_user', allowed_decisions: ['respond'] },
-      ],
-    })
-
-    expect(calls).toHaveLength(1)
-    expect(calls[0].name).toBe('ask_user')
-    expect(calls[0].args).toMatchObject({
-      question: '어느 쪽?',
-      options: ['A', 'B'],
-      approval_id: 'intr-1:0',
-      hitl_action_index: 0,
-      hitl_total_actions: 1,
-    })
-  })
-})
-```
-
-- [ ] **Step 2: approval mapping 테스트를 작성한다**
-
-```ts
-it('maps non-ask_user action to request_approval synthetic tool UI args', () => {
-  const calls = standardInterruptToToolCalls({
-    interrupt_id: 'intr-2',
-    action_requests: [
-      { name: 'send_email', args: { to: 'a@example.com' }, description: 'Send email' },
-    ],
-    review_configs: [
-      { action_name: 'send_email', allowed_decisions: ['approve', 'edit', 'reject'] },
-    ],
-  })
-
-  expect(calls[0].name).toBe('request_approval')
-  expect(calls[0].args).toMatchObject({
-    tool_name: 'send_email',
-    tool_args: { to: 'a@example.com' },
-    description: 'Send email',
-    allowed_decisions: ['approve', 'edit', 'reject'],
-    approval_id: 'intr-2:0',
-  })
-})
-```
-
-- [ ] **Step 3: mapping 함수를 구현한다**
-
-```ts
-import type { StandardInterruptPayload, ToolCallInfo } from '@/lib/types'
-
-export function standardInterruptToToolCalls(payload: StandardInterruptPayload): ToolCallInfo[] {
-  return payload.action_requests.map((request, index) => {
-    const review = payload.review_configs[index]
-    const baseArgs = {
-      ...request.args,
-      approval_id: `${payload.interrupt_id ?? 'interrupt'}:${index}`,
-      hitl_interrupt_id: payload.interrupt_id ?? null,
-      hitl_action_index: index,
-      hitl_total_actions: payload.action_requests.length,
-      allowed_decisions: review?.allowed_decisions ?? [],
-    }
-
-    const respondOnly =
-      request.name === 'ask_user' &&
-      review?.allowed_decisions.length === 1 &&
-      review.allowed_decisions[0] === 'respond'
-
-    if (respondOnly) {
-      return {
-        id: `hitl-${payload.interrupt_id ?? 'interrupt'}-${index}`,
-        name: 'ask_user',
-        args: baseArgs,
-      }
-    }
-
-    return {
-      id: `hitl-${payload.interrupt_id ?? 'interrupt'}-${index}`,
-      name: 'request_approval',
-      args: {
-        ...baseArgs,
-        tool_name: request.name,
-        tool_args: request.args,
-        description: request.description,
-      },
-    }
-  })
-}
-```
-
-- [ ] **Step 4: frontend 테스트를 실행한다**
-
-Run:
-
-```bash
-cd frontend
-pnpm test -- --run src/lib/chat/__tests__/standard-interrupt.test.ts
-```
-
-Expected: mapping tests가 통과한다.
-
-### Task 6: Frontend multi-action coordinator를 연결한다
-
-**Files:**
-
-- Modify: `frontend/src/lib/chat/hitl-context.tsx`
-- Modify: `frontend/src/lib/chat/use-chat-runtime.ts`
-- Modify: `frontend/src/components/chat/tool-ui/user-input-ui.tsx`
-- Modify: `frontend/src/components/chat/tool-ui/approval-card.tsx`
-- Create: `frontend/src/lib/chat/__tests__/hitl-coordinator.test.tsx`
-
-- [ ] **Step 1: context에 action decision 등록 API를 추가한다**
-
-기존 `onResumeDecisions`는 유지한다. 새 API는 optional로 둔다.
-
-```ts
-type RegisterHiTLDecision = (
-  actionIndex: number,
-  decision: Decision,
-  displayText?: string,
-) => Promise<void>
-```
-
-- [ ] **Step 2: `useChatRuntime`에서 interrupt 도달 시 pending coordinator를 초기화한다**
-
-`case 'interrupt'`에서 `standardInterruptToToolCalls(data)`를 호출하고, synthetic tool calls를 현재 streaming assistant message에 추가한다.
-
-중요 조건:
-
-- `data.action_requests.length === 1`이면 기존 단일 resume 흐름과 동일하게 동작해야 한다.
-- `data.action_requests.length > 1`이면 모든 action index의 decision이 들어올 때까지 resume하지 않는다.
-- resume 시 decision 배열 순서는 `action_requests` 순서와 같아야 한다.
-
-- [ ] **Step 3: `UserInputUI`와 `ApprovalCard`가 coordinator를 우선 사용하게 한다**
-
-카드 args에 `hitl_action_index`가 있으면:
-
-```ts
-await hitl?.registerDecision?.(hitlActionIndex, toRespond(message), displayText)
-```
-
-없으면 기존:
-
-```ts
-await hitl?.onResumeDecisions([toRespond(message)], displayText)
-```
-
-를 유지한다.
-
-- [ ] **Step 4: coordinator 테스트를 작성한다**
-
-검증:
-
-- action 2개 중 1개만 결정하면 `streamResumeDecisions`가 호출되지 않는다.
-- 2개 모두 결정하면 `streamResumeDecisions`가 한 번 호출된다.
-- decision 배열 순서는 action index 기준이다.
-- `interrupt_id`가 resume payload에 포함된다.
-
-- [ ] **Step 5: frontend 테스트를 실행한다**
-
-Run:
-
-```bash
-cd frontend
-pnpm test -- --run src/lib/chat/__tests__/standard-interrupt.test.ts src/lib/chat/__tests__/hitl-coordinator.test.tsx
-```
-
-Expected: standard interrupt mapping과 coordinator tests가 통과한다.
-
-### Task 7: 페이지 연결과 회귀 확인
-
-**Files:**
-
-- Modify: `frontend/src/app/agents/[agentId]/conversations/[conversationId]/page.tsx`
-- Modify: `frontend/src/app/agents/new/conversational/page.tsx`
-
-- [ ] **Step 1: 일반 채팅 페이지는 추가 `onStandardInterrupt` 구현 없이 동작하는지 확인한다**
-
-Task 6에서 `useChatRuntime` 내부가 표준 interrupt를 처리한다면 페이지 변경은 최소화한다.
-
-- [ ] **Step 2: Builder v3 페이지에서 기존 native 흐름이 깨지지 않는지 확인한다**
-
-Builder는 이미 자체 tool UI와 resume adapter를 사용한다. 이번 작업에서 Builder graph를 수정하지 않는다.
-
-- [ ] **Step 3: 전체 frontend 검증을 실행한다**
-
-Run:
-
-```bash
-cd frontend
-pnpm lint
-pnpm test -- --run
-pnpm build
-```
-
-Expected: lint, vitest, Next build가 통과한다.
-
-### Task 8: 통합 검증
-
-**Files:**
-
-- No direct code changes.
-
-- [ ] **Step 1: backend 전체 HiTL 관련 테스트를 실행한다**
-
-Run:
-
-```bash
-cd backend
-uv run pytest tests/test_hitl_middleware.py tests/test_hitl_wire.py tests/test_builder_resume_wire.py -q
-```
-
-Expected: 모든 테스트가 통과한다.
-
-- [ ] **Step 2: backend lint를 실행한다**
-
-Run:
-
-```bash
-cd backend
-uv run ruff check app tests
-```
-
-Expected: ruff 위반이 없다.
-
-- [ ] **Step 3: 수동 시나리오를 확인한다**
-
-확인 시나리오:
-
-- 일반 대화에서 모호한 요청을 보내 `ask_user` 카드가 뜬다.
-- 사용자가 답하면 backend resume payload가 `{"decisions": [{"type": "respond", "message": "..."}]}` 형태로 전송된다.
-- 모델이 사용자의 답변 내용을 그대로 이해하고 다음 응답을 이어간다.
-- 위험 도구가 설정된 agent에서 승인 카드가 뜬다.
-- `approve`, `reject`, `edit` decision이 각각 동작한다.
-- trigger 실행에서는 `ask_user`가 tool list에 없고 interrupt가 발생하지 않는다.
-- subagent가 위험 도구를 호출하는 시나리오에서 같은 approval 정책이 적용된다.
+---
 
 ## 9. 권장 커밋 순서
-
-1. `test(hitl): pin deepagents interrupt_on policy`
-2. `fix(runtime): route chat hitl through deepagents interrupt_on`
-3. `fix(runtime): normalize ask_user fallback resume payload`
-4. `feat(chat): map standard interrupts to hitl tool cards`
-5. `feat(chat): coordinate multi-action hitl decisions`
-6. `test(chat): cover ask_user and approval interrupt flows`
+1. `test(hitl): pin edit-by-index name-fill + multi-action edit ordering`
+2. `fix(hitl): backend fills edited_action.name from pending action by index`
+3. `fix(chat): gate approval-card buttons on allowed_decisions`
+4. `fix(chat): robust approval edit — field editor + name-less edit, drop client redaction restore`
+5. `test(chat): allowed_decisions gating + name-less edit + locked-secret`
+6. (선택) `feat(chat): unified N-pending multi-action approval UX`
 
 ## 10. 완료 기준
+- `execute_in_skill`(allowed=approve,reject) 카드에 **수정 버튼이 뜨지 않는다.**
+- `edit_file`/write 도구에서 수정 후 승인이 동작하고, **`tool_name`이 비어도 `invalidJson` 없이** 정상 제출된다.
+- 시크릿 키는 편집 카드에서 read-only, 제출 시 시크릿이 리터럴 `<redacted>`로 새지 않고 정상 유지된다(백엔드 복원).
+- 프론트는 `edited_action.name`을 재구성하지 않아도 백엔드가 index로 채운다.
+- `restoreRedactedRecordPlaceholders` 등 죽은 프론트 복원 코드가 제거된다.
+- 백엔드 `test_hitl_wire.py`/`test_hitl_middleware.py` 그린, 프론트 vitest/tsc/lint 그린.
+- 멀티액션 wire(§2.2)·subagent 상속(§2.1) 회귀 없음.
 
-- `build_agent`가 일반 채팅에서 `interrupt_on`을 받는다.
-- 일반 채팅에서 `HumanInTheLoopMiddleware` 직접 인스턴스가 `middleware` list에 추가되지 않는다.
-- `ask_user`는 explicit HITL middleware 설정이 없어도 `{"allowed_decisions": ["respond"]}` 정책에 포함된다.
-- trigger mode에서는 `ask_user`와 `interrupt_on`이 모두 비활성화된다.
-- 표준 interrupt payload만으로 `UserInputUI`와 `ApprovalCard`가 렌더링된다.
-- multi-action interrupt는 모든 decision을 모아 한 번만 resume한다.
-- native `ask_user` fallback은 `{"decisions": [...]}` dict를 모델에 그대로 노출하지 않는다.
-- Builder v3 회귀가 없다.
-
-## 11. 남은 결정 사항
-
-1. 위험 도구 승인 정책을 "HITL middleware가 설정된 agent에만" 적용할지, 아니면 특정 write keyword 도구에 product default로 항상 적용할지 결정해야 한다. 현재 권장안은 보수적으로 기존 behavior를 유지해 `human_in_the_loop` config가 있을 때만 위험 도구 자동 추출을 적용하고, `ask_user`만 일반 채팅에서 항상 표준 wrap한다.
-2. multi-action UI에서 각 카드를 개별 제출 버튼으로 둘지, 카드별 선택 후 하단의 "모두 제출" 버튼을 둘지 결정해야 한다. 구현 안정성은 coordinator + 자동 일괄 제출이 가장 낮은 변경량이다.
-3. subagent approval 상속은 unit test만으로 완전히 보장하기 어렵다. 가능하면 DeepAgents integration test 또는 mocked source-level regression guard를 추가한다.
+## 11. 리스크 / 주의
+- **edit-by-index의 백엔드 early-return 완화**(Task 2 Step 1): redacted 없는 일반 edit도 인덱스 해석 경로를 타게 되므로, 기존 비-edit/respond resume 경로에 영향 없는지 회귀 테스트로 가드(`test_hitl_wire.py` 기존 케이스 유지).
+- **field editor의 비-scalar 값**(중첩 object/array): 칸별 JSON 파싱 실패는 **해당 칸만** 에러 표시하고 전체 submit을 막지 않는다(§3.2 회귀 방지 의도 유지).
+- **allowed_decisions fallback**은 반드시 `[approve, reject]`(edit 제외). edit를 fallback에 넣으면 edit-불가 도구에 다시 노출된다.
+- approve/reject 경로(현재 정상)는 본 작업에서 동작 변경 없음 — 회귀 테스트로 확인.
+</content>
