@@ -115,39 +115,39 @@ test.describe('Wave 8 — builder + extras captures', () => {
     await page.getByText(/세션 #/).waitFor({ state: 'visible', timeout: 40_000 }).catch(() => {})
     await capture(page, WAVE, '10-builder-welcome.png')
 
-    const advanceLabels =
-      /다음|계속|제출|확인|선택 완료|완료|생성|만들기|저장|빌드|시작|승인|적용/
-    // Builder choice options are <button role="option"> (verified via diagnostics);
-    // selecting one enables the advance button. The phase advances after the LLM
-    // processes, so wait generously after each advance.
-    const optionSel = '[role="option"]'
-
-    // Progress through the builder, capturing each step/phase. Stop when no
-    // advance happens twice in a row.
+    // Verified via diagnostics: options are <button role="option">; selecting the
+    // LAST one (freshest card if regenerated) enables the EXACT 다음/완료 button.
+    // Must NOT match "재생성" (regenerate) — that loops the card forever.
     let dryRounds = 0
-    for (let step = 1; step <= 20 && dryRounds < 2; step += 1) {
+    for (let step = 1; step <= 16 && dryRounds < 3; step += 1) {
       await streamSettle(page, 60_000)
+      await page.waitForTimeout(1_200)
       await capture(page, WAVE, `11-builder-step-${String(step).padStart(2, '0')}.png`)
 
-      // Select the first option in the visible card, if any.
-      const option = page.locator(optionSel).first()
+      const option = page.locator('[role="option"]').last()
       if ((await option.count()) > 0 && (await option.isVisible().catch(() => false))) {
         await option.click().catch(() => {})
-        await page.waitForTimeout(600)
+        await page.waitForTimeout(700)
       }
 
-      const advance = page.getByRole('button', { name: advanceLabels }).last()
+      // Each phase's advance differs: the intent wizard uses 다음/완료; later
+      // phases (tool/middleware/prompt/image/save/build) use 승인하고 진행. Never
+      // 재생성 / 수정 요청.
+      const next = page
+        .getByRole('button', { name: /^(다음|완료|제출|확인|승인하고 진행|승인|진행|건너뛰기|시작하기)$/ })
+        .last()
       if (
-        (await advance.count()) > 0 &&
-        (await advance.isVisible().catch(() => false)) &&
-        (await advance.isEnabled().catch(() => false))
+        (await next.count()) > 0 &&
+        (await next.isVisible().catch(() => false)) &&
+        (await next.isEnabled().catch(() => false))
       ) {
-        await advance.click().catch(() => {})
+        await next.click().catch(() => {})
         dryRounds = 0
-        await page.waitForTimeout(2_500)
+        await page.waitForTimeout(3_000)
       } else {
+        // No actionable card — the phase is processing (real LLM). Wait and retry.
         dryRounds += 1
-        await page.waitForTimeout(2_000)
+        await page.waitForTimeout(4_000)
       }
     }
 
