@@ -216,6 +216,26 @@ function cleanApprovalDescription(raw: string | undefined): string | undefined {
   return prefix
 }
 
+// The headline should name the actual action being approved. `execute_in_skill`
+// is a generic mechanism (and redundant with the "도구 사용 승인" header), so show
+// the skill itself instead — derived from skill_directory ("/skills/docx-document"
+// → "docx-document") or an explicit skill arg.
+function resolveApprovalToolName(
+  toolName: string | undefined,
+  toolArgs: Record<string, unknown> | undefined,
+): string | undefined {
+  if (toolName === 'execute_in_skill' && toolArgs) {
+    const dir = toolArgs.skill_directory
+    if (typeof dir === 'string') {
+      const skill = dir.split('/').filter(Boolean).pop()
+      if (skill) return skill
+    }
+    const named = toolArgs.skill ?? toolArgs.skill_name
+    if (typeof named === 'string' && named.trim()) return named.trim()
+  }
+  return toolName
+}
+
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   const t = useTranslations('chat.approval')
   const [expanded, setExpanded] = useState(false)
@@ -393,7 +413,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     }
 
     // ── requires-action: 승인 카드 ──
-    const toolName = args?.tool_name ?? t('toolCall')
+    const toolName = resolveApprovalToolName(args?.tool_name, args?.tool_args) ?? t('toolCall')
     const rawDescription = cleanApprovalDescription(args?.description ?? args?.message)
     const description = rawDescription ? redactSensitiveText(rawDescription) : undefined
     const toolArgs = args?.tool_args ? redactSensitiveRecord(args.tool_args) : undefined
@@ -437,9 +457,8 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
             {description && <p className="text-xs text-muted-foreground">{description}</p>}
           </div>
 
-          {/* Args preview — collapsed by default; the title ("도구 사용 승인이
-              필요합니다") + tool name already convey what's being approved. Expand
-              to inspect the exact arguments. */}
+          {/* Args preview — collapsed by default; the headline now names the
+              actual skill/tool, so expanding is only needed to inspect details. */}
           {toolArgs && Object.keys(toolArgs).length > 0 && <ArgsPreview args={toolArgs} />}
 
           {/* 거부 사유 입력 (거부 선택 시) */}
