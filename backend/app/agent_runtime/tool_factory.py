@@ -311,12 +311,87 @@ def _build_e2e_scripted_search_tool() -> BaseTool:
     )
 
 
+# E2E-only generative-UI demo tool. Returns a JSON result carrying ``ui_type``
+# so ``ui_data_from_tool_result`` projects it into a ``moldy.ui_data`` event.
+# Parameterized by ``kind`` so each component type (Phase 1 demo_note, Phase 2
+# data_table/chart/stats/terminal) has a deterministic fixture. Registered only
+# when the scripted model is enabled (see ``runtime_component_builder``), so real
+# deployments never see it.
+E2E_UI_DATA_DEMO_TOOL_NAME = "e2e_ui_data_demo"
+E2E_UI_DATA_DEMO_TEXT = "E2E generative UI demo note."
+E2E_UI_DATA_DEMO_FIXTURES: dict[str, dict[str, Any]] = {
+    "demo_note": {"ui_type": "demo_note", "text": E2E_UI_DATA_DEMO_TEXT},
+    "data_table": {
+        "ui_type": "data_table",
+        "title": "E2E 데이터 테이블",
+        "searchable": True,
+        "columns": [
+            {"key": "name", "header": "이름"},
+            {"key": "role", "header": "역할"},
+            {"key": "score", "header": "점수"},
+        ],
+        "rows": [
+            {"name": "Alice", "role": "Engineer", "score": 92},
+            {"name": "Bob", "role": "Designer", "score": 88},
+            {"name": "Carol", "role": "PM", "score": 95},
+        ],
+    },
+    "chart": {
+        "ui_type": "chart",
+        "chartType": "bar",
+        "title": "E2E 주간 차트",
+        "yLabel": "건수",
+        "series": [
+            {"label": "Mon", "value": 12},
+            {"label": "Tue", "value": 19},
+            {"label": "Wed", "value": 7},
+            {"label": "Thu", "value": 22},
+            {"label": "Fri", "value": 15},
+        ],
+    },
+    "stats": {
+        "ui_type": "stats",
+        "items": [
+            {"label": "총 요청", "value": 1240, "delta": 12},
+            {"label": "성공률", "value": 98.6, "unit": "%", "delta": 2},
+            {"label": "평균 지연", "value": 320, "unit": "ms", "delta": -8},
+        ],
+    },
+    "terminal": {
+        "ui_type": "terminal",
+        "command": "pytest -q",
+        "exitCode": 0,
+        "lines": [
+            "============ test session starts ============",
+            "collected 3 items",
+            "tests/test_e2e.py ...                   [100%]",
+            "============= 3 passed in 0.42s =============",
+        ],
+    },
+}
+
+
+def _build_e2e_ui_data_demo_tool() -> BaseTool:
+    async def e2e_ui_data_demo(kind: str = "demo_note") -> str:
+        """Deterministic E2E generative-UI demo: returns a payload for ``kind``."""
+
+        payload = E2E_UI_DATA_DEMO_FIXTURES.get(kind, E2E_UI_DATA_DEMO_FIXTURES["demo_note"])
+        return json.dumps(payload, ensure_ascii=False)
+
+    return StructuredTool.from_function(
+        coroutine=e2e_ui_data_demo,
+        name=E2E_UI_DATA_DEMO_TOOL_NAME,
+        description="E2E-only generative UI demo tool returning a typed ui_data payload by kind.",
+    )
+
+
 _BUILTIN_BUILDERS: dict[str, Callable[[], BaseTool]] = {
     "builtin:web_search": _build_web_search_tool,
     "builtin:web_scraper": _build_web_scraper_tool,
     "builtin:current_datetime": _build_current_datetime_tool,
     "builtin:resolve_relative_date": _build_resolve_relative_date_tool,
     "builtin:e2e_scripted_search": _build_e2e_scripted_search_tool,
+    "builtin:e2e_ui_data_demo": _build_e2e_ui_data_demo_tool,
 }
 
 

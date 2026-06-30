@@ -176,6 +176,10 @@ def builtin_tool_risk(definition_key: str) -> ToolRiskMetadata:
         # e2e_scripted_model_enabled). READ_ONLY like the real web_search so the
         # search-group fixture streams to completion without a HITL interrupt.
         "builtin:e2e_scripted_search",
+        # E2E-only generative-UI demo tool (gated by e2e_scripted_model_enabled).
+        # READ_ONLY so the demo fixture streams to completion without a HITL
+        # interrupt (it only returns a JSON ui_data payload).
+        "builtin:e2e_ui_data_demo",
     }:
         return coerce_tool_risk(risk_metadata_dict(ToolRiskLevel.READ_ONLY))
     return coerce_tool_risk(

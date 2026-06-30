@@ -46,6 +46,7 @@ export function langChainMessageFingerprint(message: BaseMessage): string {
     readonly tool_call_id?: unknown
     readonly tool_calls?: unknown
     readonly usage_metadata?: unknown
+    readonly uiData?: unknown
   }
   return stableString({
     id: source.id,
@@ -59,6 +60,11 @@ export function langChainMessageFingerprint(message: BaseMessage): string {
     invalid_tool_calls: source.invalid_tool_calls,
     tool_call_id: source.tool_call_id,
     usage_metadata: source.usage_metadata,
+    // Generative UI data parts are injected post-conversion from this attached
+    // property; include it so a late ``moldy.ui_data`` arrival invalidates the
+    // memoized converter output (otherwise the data part never renders — the
+    // H4 fingerprint-drift hazard).
+    uiData: source.uiData,
   })
 }
 
