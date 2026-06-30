@@ -111,3 +111,99 @@ export async function settle(page: Page, ms = 800): Promise<void> {
   await page.waitForLoadState('networkidle').catch(() => {})
   await page.waitForTimeout(ms)
 }
+
+// ── Rich seed (wave 7) ──────────────────────────────────────────────────────
+
+export async function installDocxSkill(
+  request: APIRequestContext,
+  csrfHeaders: CsrfHeaders,
+): Promise<string | null> {
+  const items = await apiGetJson(
+    request,
+    `${API_BASE}/api/marketplace/items?resource_type=skill&source_kind=system_seed&limit=200`,
+  )
+  const list = Array.isArray(items) ? items : []
+  const docx = list.find((row) => isRecord(row) && row.slug === 'docx-document')
+  if (!isRecord(docx) || typeof docx.id !== 'string') return null
+  const installed = await apiPostJson(
+    request,
+    `${API_BASE}/api/marketplace/items/${docx.id}/install`,
+    csrfHeaders,
+    { install_mode: 'overwrite_existing' },
+  )
+  return isRecord(installed) && typeof installed.installed_skill_id === 'string'
+    ? installed.installed_skill_id
+    : null
+}
+
+export async function systemToolIds(request: APIRequestContext, limit: number): Promise<string[]> {
+  const tools = await apiGetJson(request, `${API_BASE}/api/tools`)
+  const list = Array.isArray(tools) ? tools : []
+  return list
+    .filter((row): row is Record<string, unknown> => isRecord(row) && typeof row.id === 'string')
+    .slice(0, limit)
+    .map((row) => row.id as string)
+}
+
+/** A fully-configured agent (tools + skill + subagent + trigger) so settings tabs aren't empty. */
+export async function createRichAgent(
+  request: APIRequestContext,
+  csrfHeaders: CsrfHeaders,
+): Promise<{ agentId: string; childId: string | null }> {
+  const modelId = await scriptedModelId(request)
+  const skillId = await installDocxSkill(request, csrfHeaders)
+  const toolIds = await systemToolIds(request, 3)
+  const child = await apiPostJson(request, `${API_BASE}/api/agents`, csrfHeaders, {
+    name: '예약 처리 보조',
+    description: '수업 예약/취소 전용 서브에이전트',
+    system_prompt: '예약과 취소만 전담합니다.',
+    model_id: modelId,
+  })
+  const childId = isRecord(child) && typeof child.id === 'string' ? child.id : null
+  const agent = await apiPostJson(request, `${API_BASE}/api/agents`, csrfHeaders, {
+    name: '핏라이프 멤버십 지원봇',
+    description: '헬스장 멤버십 문의·예약·취소를 처리하는 고객지원 에이전트',
+    system_prompt:
+      '당신은 핏라이프 피트니스의 고객지원 상담원입니다. 멤버십 크레딧 조회, 수업 예약, 멤버십 취소를 도와줍니다. 한 번에 하나씩, 친절하고 간결하게 응대하세요.',
+    model_id: modelId,
+    tool_ids: toolIds,
+    skill_ids: skillId ? [skillId] : [],
+    sub_agent_ids: childId ? [childId] : [],
+  })
+  if (!isRecord(agent) || typeof agent.id !== 'string') throw new Error('rich agent create failed')
+  return { agentId: agent.id, childId }
+}
+
+export async function addIntervalTrigger(
+  request: APIRequestContext,
+  csrfHeaders: CsrfHeaders,
+  agentId: string,
+  minutes: number,
+): Promise<void> {
+  await apiPostJson(request, `${API_BASE}/api/agents/${agentId}/triggers`, csrfHeaders, {
+    name: '매일 멤버십 리포트',
+    trigger_type: 'interval',
+    schedule_config: { interval_minutes: minutes },
+    input_message: '오늘의 멤버십 현황을 요약해줘.',
+  }).catch(() => {})
+}
+
+export async function createConversation(
+  request: APIRequestContext,
+  csrfHeaders: CsrfHeaders,
+  agentId: string,
+  title: string,
+): Promise<string> {
+  const convo = await apiPostJson(
+    request,
+    `${API_BASE}/api/agents/${agentId}/conversations`,
+    csrfHeaders,
+    { title },
+  )
+  if (!isRecord(convo) || typeof convo.id !== 'string') throw new Error('conversation create failed')
+  return convo.id
+}
+
+/** A tiny valid 1×1 PNG (red) for an image attachment / lightbox capture. */
+export const TINY_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
