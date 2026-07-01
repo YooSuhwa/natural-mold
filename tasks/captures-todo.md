@@ -88,3 +88,24 @@
 
 #### daily-conversation hero 추가 수정
 - ask_user **선택/재개**(`04-after-selection`)는 인터럽트 루프(20+ 재invoke)로 240s를 넘겨 제거 — wave4 HITL 캡쳐처럼 ask_user 카드(03)를 자연스러운 피날레로. 멀티턴 누적 초과는 `settle` 상한 + 워밍업으로 해소(240s → 11.6s).
+
+## Wave 10 — HITL 승인 결정 상태 (edit 견고화 + allowed_decisions 게이팅)
+
+브랜치 `feature/hitl-edit-hardening`의 HITL 변경(field editor + allowed_decisions 버튼 게이팅)을 화면으로 검증.
+기존 wave4는 카드 **초기 상태**(10-hitl-approval, 11-hitl-multi)만 — 결정(승인/거부/수정) 결과와 새 field editor 화면이 없었음.
+
+- 신규 spec: `e2e/captures/captures-hitl-decisions.spec.ts` (wave10-hitl-decisions). 단일 에이전트(docx skill + subagent)로 시나리오별 fresh 대화, best-effort.
+- 신규 백엔드 fixture: `E2E_HITL_EDIT` (e2e_scripted_model.py) — `edit_file` 호출 1건. execute_in_skill([approve,reject])와 달리 edit_file은 [approve,edit,reject] 정책이라 **수정 버튼 + field editor**가 뜬다. args에 시크릿 키(api_key) 포함 → 에디터의 read-only 잠금(`<redacted>`) 시연.
+- 캡쳐 방법: 카드(`data-testid="approval-action-N"`)는 element-scoped(captureLocator) — 마커 버블 제외. 결정 후 카드는 배지로 교체되어 testid가 사라지므로 배지/멀티는 full-page.
+
+8장 (`output/captures/wave10-hitl-decisions/`):
+- [ ] `01-single-card` — execute_in_skill 카드 (승인/거부만 = **게이팅: 수정 버튼 없음**)
+- [ ] `02-single-approved` — 승인 → 승인됨 배지
+- [ ] `03-single-rejected` — 거부 → 거부 확인 → 거부됨 배지
+- [ ] `04-edit-card` — edit_file 카드 (승인/**수정**/거부 = 게이팅 대비)
+- [ ] `05-edit-field-editor` — 수정 클릭 → **field editor**(칸별 편집 + api_key read-only 잠금)
+- [ ] `06-edit-approved` — 한 칸 수정 후 승인 → 수정 승인됨 배지
+- [ ] `07-multi-card` — 멀티(2× execute_in_skill) 카드
+- [ ] `08-multi-approved` — 둘 다 승인 → 승인됨 ×2
+
+실행: throwaway 스택(PG 5434) + fresh 포트(reuseExistingServer가 stale genui 코드를 재사용하지 않도록). `E2E_CAPTURE_TOUR=1 E2E_SCRIPTED_MODEL_ENABLED=true E2E_SEED_USER_ENABLED=true E2E_TEST_HELPERS_ENABLED=true RATE_LIMIT_ENABLED=false E2E_LIVE_CHAT_SURFACES=1`.
