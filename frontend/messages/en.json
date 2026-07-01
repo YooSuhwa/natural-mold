@@ -274,6 +274,7 @@
         "menu": {
           "rename": "Rename",
           "share": "Share",
+          "export": "Export",
           "pin": "Pin",
           "unpin": "Unpin",
           "delete": "Delete"
@@ -1204,6 +1205,26 @@
   },
   "chat": {
     "defaultAgentName": "Default Agent Name",
+    "export": {
+      "title": "Export conversation",
+      "description": "Save this conversation to a file.",
+      "loading": "Loading messages...",
+      "empty": "No messages to export.",
+      "hint": "Exporting {count} messages.",
+      "formatMarkdown": "Markdown (.md)",
+      "formatJson": "JSON (.json)",
+      "exportedAt": "Exported at",
+      "toolCalls": "Tool calls",
+      "attachments": "Attachments",
+      "role": {
+        "user": "User",
+        "assistant": "Assistant",
+        "tool": "Tool"
+      },
+      "toast": {
+        "exported": "Conversation exported"
+      }
+    },
     "toolGroup": {
       "count": "{count} calls",
       "sourceCount": "{count} sources",

@@ -274,6 +274,7 @@
         "menu": {
           "rename": "이름 변경",
           "share": "공유",
+          "export": "내보내기",
           "pin": "고정",
           "unpin": "고정 해제",
           "delete": "삭제"
@@ -1183,6 +1184,26 @@
   },
   "chat": {
     "defaultAgentName": "에이전트",
+    "export": {
+      "title": "대화 내보내기",
+      "description": "이 대화를 파일로 저장합니다.",
+      "loading": "메시지를 불러오는 중...",
+      "empty": "내보낼 메시지가 없습니다.",
+      "hint": "메시지 {count}개를 내보냅니다.",
+      "formatMarkdown": "Markdown (.md)",
+      "formatJson": "JSON (.json)",
+      "exportedAt": "내보낸 시각",
+      "toolCalls": "도구 호출",
+      "attachments": "첨부",
+      "role": {
+        "user": "사용자",
+        "assistant": "어시스턴트",
+        "tool": "도구"
+      },
+      "toast": {
+        "exported": "대화를 내보냈어요"
+      }
+    },
     "toolGroup": {
       "count": "{count}회",
       "sourceCount": "출처 {count}개",
