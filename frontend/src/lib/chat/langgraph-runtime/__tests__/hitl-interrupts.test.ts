@@ -634,3 +634,26 @@ describe('stripInterruptedRawToolCalls', () => {
     expect(ai.tool_calls ?? []).toHaveLength(0)
   })
 })
+
+describe('order-insensitive arg matching', () => {
+  it('resolves a payload when the completed tool result args are in a different key order', () => {
+    // sameArgs must be order-insensitive: the interrupt action args and the
+    // completed model tool_call args come from different serialization paths.
+    const payload: StandardInterruptPayload = {
+      interrupt_id: 'i',
+      action_requests: [{ name: 'send_email', args: { to: 'x@y', subject: 'hi' } }],
+      review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve'] }],
+    }
+    const messages = [
+      new AIMessage({
+        id: 'm',
+        content: '',
+        // same args, keys reversed
+        tool_calls: [{ id: 'call', name: 'send_email', args: { subject: 'hi', to: 'x@y' } }],
+      }),
+      new ToolMessage({ id: 't', content: 'sent', tool_call_id: 'call' }),
+    ]
+
+    expect(interruptPayloadResolvedByMessages(payload, messages)).toBe(true)
+  })
+})

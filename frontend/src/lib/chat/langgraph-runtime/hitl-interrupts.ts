@@ -222,7 +222,10 @@ function hasToolCallId(message: BaseMessage, ids: ReadonlySet<string>): boolean 
 }
 
 function sameArgs(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
+  // Order-insensitive: like interruptedActionKey, this compares args from two
+  // serialization paths (interrupt event vs message stream) whose key order can
+  // differ, so a plain JSON.stringify could miss an equal match.
+  return stableStringify(left) === stableStringify(right)
 }
 
 const HITL_METADATA_KEYS = new Set([
@@ -248,7 +251,7 @@ function equivalentToolArgs(
   left: Record<string, unknown>,
   right: Record<string, unknown>,
 ): boolean {
-  return JSON.stringify(stripHitLMetadata(left)) === JSON.stringify(stripHitLMetadata(right))
+  return stableStringify(stripHitLMetadata(left)) === stableStringify(stripHitLMetadata(right))
 }
 
 function mutableToolCalls(message: BaseMessage): MutableToolCall[] | null {
