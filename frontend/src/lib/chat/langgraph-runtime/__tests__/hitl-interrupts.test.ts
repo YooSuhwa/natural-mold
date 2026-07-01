@@ -5,8 +5,10 @@ import {
   appendInterruptToolCallMessages,
   appendResolvedInterruptToolCallMessages,
   interruptPayloadResolvedByMessages,
+  resolvedInterruptToolCallsFromDecisions,
   standardPayloadFromInterrupt,
   standardPayloadsFromInterrupts,
+  stripInterruptedRawToolCalls,
 } from '../hitl-interrupts'
 import type { StandardInterruptPayload } from '@/lib/types'
 
@@ -483,5 +485,101 @@ describe('interruptPayloadResolvedByMessages', () => {
     ]
 
     expect(activeInterruptPayloads([payload], messages, [])).toEqual([])
+  })
+})
+
+describe('stripInterruptedRawToolCalls', () => {
+  const payload: StandardInterruptPayload = {
+    interrupt_id: 'intr-1',
+    action_requests: [
+      {
+        name: 'execute_in_skill',
+        args: { skill_directory: '/skills/docx', command: 'node x.cjs' },
+      },
+    ],
+    review_configs: [{ action_name: 'execute_in_skill', allowed_decisions: ['approve', 'reject'] }],
+  }
+
+  it('drops the raw tool call an approval card represents + its orphaned result', () => {
+    const messages = [
+      new AIMessage({
+        id: 'm1',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_x',
+            name: 'execute_in_skill',
+            args: { skill_directory: '/skills/docx', command: 'node x.cjs' },
+          },
+        ],
+      }),
+      new ToolMessage({ id: 't1', content: 'OUTPUT', tool_call_id: 'call_x' }),
+    ]
+
+    // The empty AIMessage (only the interrupted call) and its result are removed.
+    expect(stripInterruptedRawToolCalls(messages, [payload], [])).toHaveLength(0)
+  })
+
+  it('keeps non-interrupt tool calls and unrelated messages', () => {
+    const messages = [
+      new HumanMessage({ id: 'h', content: 'hi' }),
+      new AIMessage({
+        id: 'm1',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_x',
+            name: 'execute_in_skill',
+            args: { skill_directory: '/skills/docx', command: 'node x.cjs' },
+          },
+          { id: 'call_dt', name: 'current_datetime', args: {} },
+        ],
+      }),
+    ]
+
+    const out = stripInterruptedRawToolCalls(messages, [payload], [])
+    const ai = out.find((message) => AIMessage.isInstance(message)) as AIMessage
+    expect(out).toHaveLength(2)
+    expect(ai.tool_calls?.map((toolCall) => toolCall.name)).toEqual(['current_datetime'])
+  })
+
+  it('strips a resolved interrupt via its original (unredacted) action, keeping text', () => {
+    const secretPayload: StandardInterruptPayload = {
+      interrupt_id: 'intr-2',
+      action_requests: [{ name: 'edit_file', args: { file_path: 'a.yaml', api_key: 'sk-real' } }],
+      review_configs: [
+        { action_name: 'edit_file', allowed_decisions: ['approve', 'edit', 'reject'] },
+      ],
+    }
+    const resolved = resolvedInterruptToolCallsFromDecisions(secretPayload, [{ type: 'approve' }])
+    const messages = [
+      new AIMessage({
+        id: 'm1',
+        content: '수정을 적용합니다',
+        tool_calls: [
+          { id: 'call_e', name: 'edit_file', args: { file_path: 'a.yaml', api_key: 'sk-real' } },
+        ],
+      }),
+    ]
+
+    const out = stripInterruptedRawToolCalls(messages, [], resolved)
+    const ai = out[0] as AIMessage
+    expect(out).toHaveLength(1)
+    expect(ai.tool_calls ?? []).toHaveLength(0)
+    expect(String(ai.content)).toContain('수정을 적용합니다')
+  })
+
+  it('is a no-op when there are no interrupts', () => {
+    const messages = [
+      new AIMessage({
+        id: 'm1',
+        content: '',
+        tool_calls: [{ id: 'c', name: 'execute_in_skill', args: {} }],
+      }),
+    ]
+
+    const out = stripInterruptedRawToolCalls(messages, [], [])
+    expect(out).toHaveLength(1)
+    expect((out[0] as AIMessage).tool_calls).toHaveLength(1)
   })
 })
