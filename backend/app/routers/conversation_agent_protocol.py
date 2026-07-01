@@ -56,7 +56,22 @@ def _run_metadata(run: object | None) -> dict[str, object] | None:
     status = getattr(run, "status", None)
     if run_id is None or not isinstance(status, str):
         return None
-    return {"id": str(run_id), "status": status}
+    metadata: dict[str, object] = {"id": str(run_id), "status": status}
+    if status == "failed":
+        error_code = getattr(run, "error_code", None)
+        if isinstance(error_code, str) and error_code:
+            metadata["error_code"] = error_code
+        # error_message는 stream_error(모델/provider 실패)일 때만 채팅 에러 버블에
+        # 노출한다. 이 값은 worker가 public_stream_error_message(블록리스트) + run
+        # credential 값 기반 마스킹을 거친다(_redact_run_error_message). runtime_error
+        # (스트림 바깥 인프라 예외)는 파일경로/DB호스트 등 내부 토폴로지가 섞일 수
+        # 있고 위 2단 마스킹으로도 안 가려지므로, 채팅 UI엔 프론트 폴백 문구만 보이게
+        # 하고 마스킹된 상세는 저장값(GET /runs/{id}, 운영/디버그)에만 둔다.
+        # stale/canceled의 내부 사유도 프론트가 자체 문구로 표시하므로 노출하지 않는다.
+        error_message = getattr(run, "error_message", None)
+        if error_code == "stream_error" and isinstance(error_message, str) and error_message:
+            metadata["error_message"] = error_message
+    return metadata
 
 
 def _active_thread_next_nodes(run: object | None) -> list[str]:

@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BaseMessage } from '@langchain/core/messages'
+import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
 import type { MessageMetadataMap, UseStreamReturn } from '@langchain/react'
 import type { AppendMessage } from '@assistant-ui/react'
 import { useCheckpointForkHandlers } from '../use-checkpoint-fork-handlers'
@@ -194,5 +194,42 @@ describe('useCheckpointForkHandlers abortable server checkpoint polling', () => 
 
     expect(settled).toBe(true)
     expect(stream.submit).not.toHaveBeenCalled()
+  })
+})
+
+describe('useCheckpointForkHandlers retry fork excludes synthetic notice bubbles (G2)', () => {
+  it('실패 notice 버블을 건너뛰고 마지막 user checkpoint에서 fork한다', async () => {
+    const stream = createStream()
+    const userId = 'user-1'
+    const failedBubbleId = 'moldy-failed-run-1'
+    const langChainMessages = [
+      new HumanMessage({
+        id: userId,
+        content: 'hi',
+        additional_kwargs: { metadata: { checkpoint_id: 'ck-user' } },
+      }),
+    ] as unknown as readonly BaseMessage[]
+
+    const { result } = renderHook(() =>
+      useCheckpointForkHandlers({
+        conversationId: 'conversation-1',
+        stream: stream as unknown as UseStreamReturn<Record<string, unknown>>,
+        // user 다음에 합성 실패 버블(assistant role, checkpoint 없음)이 온다.
+        visibleMessages: [
+          { id: userId, role: 'user' },
+          { id: failedBubbleId, role: 'assistant' },
+        ],
+        langChainMessages,
+      }),
+    )
+
+    await act(async () => {
+      await result.current.onReload(userId)
+    })
+
+    // 합성 notice를 필터하지 않으면 checkpointForReload가 그것을 재생성 대상
+    // assistant로 오인해 null → no-op(retry 버그)이 된다. 필터 덕에 checkpoint가
+    // 있는 마지막 user 턴에서 fork한다.
+    expect(stream.submit).toHaveBeenCalledWith(null, { forkFrom: 'ck-user' })
   })
 })

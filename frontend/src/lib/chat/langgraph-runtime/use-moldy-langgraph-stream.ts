@@ -62,6 +62,11 @@ import {
 } from './use-checkpoint-fork-handlers'
 import { useLangGraphUsageEffects } from './usage-events'
 import { convertMoldyLangChainMessage } from './langchain-message-conversion'
+import {
+  TERMINAL_NOTICE_METADATA_KEY,
+  isTerminalNoticeStatus,
+  type TerminalNoticeStatus,
+} from './terminal-notice'
 import type { RunActivity } from './activity-model'
 import { createHiTLDecisionCoordinator, type HiTLDecisionCoordinator } from '../standard-interrupt'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
@@ -97,7 +102,8 @@ interface UseMoldyLangGraphStreamOptions {
 
 interface ThreadRunNotice {
   readonly id: string
-  readonly status: 'canceled' | 'canceling' | 'stale'
+  readonly status: TerminalNoticeStatus
+  readonly errorMessage?: string
 }
 
 interface ThreadRunNoticeSnapshot {
@@ -254,8 +260,13 @@ function terminalRunNoticeFromThreadState(state: unknown): ThreadRunNotice | nul
   const id = run?.id
   const status = run?.status
   if (typeof id !== 'string') return null
-  if (status !== 'canceled' && status !== 'canceling' && status !== 'stale') return null
-  return { id, status }
+  if (!isTerminalNoticeStatus(status)) return null
+  const rawErrorMessage = run?.error_message
+  const errorMessage =
+    status === 'failed' && typeof rawErrorMessage === 'string' && rawErrorMessage.trim()
+      ? rawErrorMessage
+      : undefined
+  return errorMessage ? { id, status, errorMessage } : { id, status }
 }
 
 function messageMetadataFromThreadState(state: unknown): ServerMessageMetadataSnapshot {
@@ -511,7 +522,7 @@ function appendTerminalRunNotice(
       content: text,
       additional_kwargs: {
         metadata: {
-          moldy_terminal_notice: notice.status,
+          [TERMINAL_NOTICE_METADATA_KEY]: notice.status,
         },
       },
     }),
@@ -2384,7 +2395,11 @@ export function useMoldyLangGraphStream({
     messages: messagesWithUsage,
   })
   const terminalNoticeText =
-    threadRunNotice?.status === 'stale' ? tReconnect('stale') : tPage('canceled')
+    threadRunNotice?.status === 'stale'
+      ? tReconnect('stale')
+      : threadRunNotice?.status === 'failed'
+        ? (threadRunNotice.errorMessage ?? tPage('runFailed'))
+        : tPage('canceled')
   const messagesWithTerminalNotice = useMemo(
     () => appendTerminalRunNotice(messagesWithCompaction, threadRunNotice, terminalNoticeText),
     [messagesWithCompaction, terminalNoticeText, threadRunNotice],
@@ -2499,7 +2514,10 @@ export function useMoldyLangGraphStream({
   )
   useLangGraphMemoryEffects({ stream })
   const isRunning =
-    stream.isLoading && interruptPayloads.length === 0 && threadRunNotice?.status !== 'stale'
+    stream.isLoading &&
+    interruptPayloads.length === 0 &&
+    threadRunNotice?.status !== 'stale' &&
+    threadRunNotice?.status !== 'failed'
   const runtimeIsRunning =
     isRunning ||
     postRunHydrationPending ||

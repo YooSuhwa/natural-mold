@@ -143,3 +143,28 @@ def test_reset_restores_previous_state_no_leak() -> None:
     reset_run_secrets(token)
     # No leak across runs.
     assert get_run_secrets() is None
+
+
+def test_add_skill_secrets_unions_into_cfg_secret_values() -> None:
+    # cfg.secret_values는 worker의 error_message 마스킹이 ContextVar reset 후에도
+    # 읽는 소스다(_redact_run_error_message). lazy 스킬 credential이 여기 들어가지
+    # 않으면 에러 메시지 마스킹을 빠져나간다(2차 리뷰 gap).
+    from types import SimpleNamespace
+
+    from app.agent_runtime.runtime_component_builder import _add_skill_secrets_to_run
+
+    cfg = SimpleNamespace(secret_values=set())
+    skill_ctx = SimpleNamespace(
+        descriptors={
+            "s1": SimpleNamespace(
+                credential_bindings={
+                    "b1": SimpleNamespace(decrypted={"api_key": "skill-plaintext-secret-abcdef123"})
+                }
+            )
+        }
+    )
+
+    # ContextVar 미설정이어도 cfg union은 동작해야 한다(add_run_secrets는 no-op).
+    _add_skill_secrets_to_run(skill_ctx, cfg)
+
+    assert "skill-plaintext-secret-abcdef123" in cfg.secret_values

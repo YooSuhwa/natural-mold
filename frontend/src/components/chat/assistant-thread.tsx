@@ -44,6 +44,7 @@ import {
   ArrowUpFromLineIcon,
   PencilIcon,
   RotateCcwIcon,
+  AlertTriangleIcon,
   ThumbsUpIcon,
   ThumbsDownIcon,
   XIcon,
@@ -82,6 +83,7 @@ import { StreamingMessageLoadingIndicator } from '@/components/chat/assistant-me
 import { UserMessageAttachments } from '@/components/chat/message-attachments'
 import { CompactionSummary } from '@/components/chat/compaction-summary'
 import type { CompactionMarker } from '@/lib/chat/langgraph-runtime/compaction-events'
+import type { TerminalNoticeStatus } from '@/lib/chat/langgraph-runtime/terminal-notice'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
@@ -516,6 +518,27 @@ function RegenerateButton() {
   )
 }
 
+const RETRY_BUTTON_CLASS =
+  'inline-flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs font-medium underline-offset-2 transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-40'
+
+/** G2 — retry a failed run. Reuses ``ActionBarPrimitive.Reload`` so assistant-ui
+ * forwards the failed bubble's parent (the last user turn); ``checkpointForReload``
+ * then forks from that user checkpoint and re-runs. Lives inside the error bubble
+ * so it stays visible (the hover ``MessageMetaRow`` would hide it). */
+function RetryButton() {
+  const t = useTranslations('chat.message')
+  return (
+    <ActionBarPrimitive.Reload
+      className={RETRY_BUTTON_CLASS}
+      aria-label={t('retry')}
+      title={t('retry')}
+    >
+      <RotateCcwIcon className="size-3.5 shrink-0" />
+      <span>{t('retry')}</span>
+    </ActionBarPrimitive.Reload>
+  )
+}
+
 interface BranchMeta {
   branches?: string[]
   siblingCheckpointIds?: string[]
@@ -921,7 +944,16 @@ export function AssistantThread({
         } = useAssistantThreadDynamicContext()
         const messageId = useAuiState((s) => s.message?.id)
         const tChat = useTranslations('chat')
-        const metaRow = (
+        const terminalNotice = useAuiState(
+          (s) =>
+            (
+              s.message?.metadata as
+                | { custom?: { terminalNotice?: TerminalNoticeStatus } }
+                | undefined
+            )?.custom?.terminalNotice,
+        )
+        const isFailedNotice = terminalNotice === 'failed'
+        const metaRow = isFailedNotice ? null : (
           <MessageMetaRow>
             <BranchPicker />
             <CopyButton />
@@ -932,6 +964,9 @@ export function AssistantThread({
           </MessageMetaRow>
         )
         if (isBuilder) {
+          // NOTE(G2): 빌더 대화는 에러 retry 스코프 밖이다. failed notice에
+          // 도달해도 danger 에러 버블/RetryButton 없이 일반 빌더 메시지로
+          // 렌더되고 metaRow는 null이다(아래 isFailedNotice 버블은 non-builder 전용).
           return (
             <Suspense fallback={<BuilderMessageFallback />}>
               <BuilderAssistantMessage metaRow={metaRow} agentSubtitle={builderAgentSubtitle}>
@@ -965,9 +1000,21 @@ export function AssistantThread({
               publicAsset={agentImagePublicAsset}
             />
             <div className="min-w-0 flex-1">
-              <AssistantMessageParts />
-              <AssistantArtifactCards />
-              <AssistantCompactionMarker />
+              {isFailedNotice ? (
+                <div className="moldy-status-surface moldy-status-danger flex items-start gap-2 rounded-lg px-3 py-2.5 leading-normal">
+                  <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <AssistantMessageParts />
+                    <RetryButton />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <AssistantMessageParts />
+                  <AssistantArtifactCards />
+                  <AssistantCompactionMarker />
+                </>
+              )}
               {metaRow}
             </div>
           </div>

@@ -79,7 +79,7 @@ async def test_cancel_before_running_finalizes_run_as_canceled() -> None:
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(Any, object()),
+        cfg=cast(Any, SimpleNamespace(secret_values=set())),
         user=user,
         input_payload={"content": "x"},
         moldy_source="chat",
@@ -139,7 +139,7 @@ async def test_worker_skips_finalization_when_run_already_terminal() -> None:
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(Any, object()),
+        cfg=cast(Any, SimpleNamespace(secret_values=set())),
         user=user,
         input_payload={"content": "x"},
         moldy_source="chat",
@@ -249,7 +249,7 @@ async def test_backfill_runs_after_branch_activation(
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(Any, object()),
+        cfg=cast(Any, SimpleNamespace(secret_values=set())),
         user=user,
         input_payload={"content": "x"},
         moldy_source="regenerate",
@@ -313,3 +313,18 @@ async def test_chat_run_does_not_persist_latest_branch_leaf(
         conversation = await db.get(Conversation, conversation_id)
         assert conversation is not None
         assert conversation.active_branch_checkpoint_id is None
+
+
+def test_redact_run_error_message_masks_injected_secret() -> None:
+    # 예외 텍스트에 run credential 값이 echo되면 값 기반 마스킹으로 가려야 한다
+    # (블록리스트가 놓치는 bare token/URL-embedded 케이스 방어 — CLAUDE.md redaction).
+    secret = "sk-injected-secret-abcdef123456"
+    masked = conversation_run_worker._redact_run_error_message(
+        f"model call failed: token {secret} at https://gw/v1", {secret}
+    )
+    assert masked is not None
+    assert secret not in masked
+
+
+def test_redact_run_error_message_blank_returns_none() -> None:
+    assert conversation_run_worker._redact_run_error_message("   ", set()) is None
