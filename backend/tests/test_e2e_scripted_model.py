@@ -575,6 +575,28 @@ def test_e2e_scripted_model_still_reports_completion_on_successful_tool_result()
     assert "완료" in str(result.content)
 
 
+def test_e2e_scripted_model_tool_execution_error_is_not_treated_as_rejection() -> None:
+    # An APPROVED edit whose tool ran and failed also comes back as an error
+    # ToolMessage — but it is NOT a rejection and must not read as "취소".
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "edit_file"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content="문서 생성 도구를 사용해 승인 후 실행해줘"),
+            ToolMessage(
+                content="Error: file /conversations/deploy-config.yaml was not found",
+                tool_call_id="call_e2e_hitl_edit",
+                status="error",
+            ),
+        ]
+    )
+
+    assert result.content != HITL_REJECTED_ACK_CONTENT
+    assert "취소" not in str(result.content)
+
+
 def test_e2e_scripted_model_emits_grouped_tool_calls_for_tool_group_marker() -> None:
     # ONE AIMessage with N≥2 consecutive same-tool calls + 1 different tool, so the
     # frontend GroupedParts collapses the repeated tool into a single container while

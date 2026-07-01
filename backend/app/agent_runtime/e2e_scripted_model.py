@@ -494,6 +494,20 @@ def _document_tool_call(marker: str, tool_args: dict[str, str]) -> dict[str, Any
     }
 
 
+def _is_rejected_tool_message(message: ToolMessage) -> bool:
+    """A HITL rejection (not a tool execution error).
+
+    ``HumanInTheLoopMiddleware`` returns a rejected tool call as an error
+    ``ToolMessage`` whose content says the tool was rejected / not executed. A
+    tool that ran and failed is also an error ToolMessage, so match on the
+    rejection wording rather than status alone.
+    """
+    if getattr(message, "status", None) != "error":
+        return False
+    content = _message_text(message).lower()
+    return "rejected the tool call" in content or "was not executed" in content
+
+
 def _message_text(message: BaseMessage) -> str:
     content = message.content
     if isinstance(content, str):
@@ -568,9 +582,12 @@ class E2EScriptedChatModel(BaseChatModel):
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if messages and isinstance(messages[-1], ToolMessage):
-            # A rejected tool call comes back as a ToolMessage with status="error".
-            # Acknowledge the cancellation instead of claiming the tool completed.
-            if getattr(messages[-1], "status", None) == "error":
+            # A REJECTED tool call comes back as an error ToolMessage carrying a
+            # rejection notice. Distinguish it from a genuine tool EXECUTION error
+            # (e.g. an approved edit that ran and failed) by the message text, not
+            # just status="error" — otherwise an edit-approve whose tool errors
+            # would wrongly read as "취소했어요".
+            if _is_rejected_tool_message(messages[-1]):
                 message = AIMessage(content=HITL_REJECTED_ACK_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
             if _ui_data_marker_kind(human_text) is not None:
