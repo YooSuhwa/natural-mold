@@ -1225,6 +1225,13 @@
         "exported": "Conversation exported"
       }
     },
+    "search": {
+      "placeholder": "Search in conversation",
+      "count": "{position}/{total}",
+      "previous": "Previous match",
+      "next": "Next match",
+      "close": "Close search"
+    },
     "toolGroup": {
       "count": "{count} calls",
       "sourceCount": "{count} sources",

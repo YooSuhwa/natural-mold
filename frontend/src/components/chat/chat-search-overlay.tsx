@@ -1,0 +1,107 @@
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronDownIcon, ChevronUpIcon, SearchIcon, XIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+import { jumpToMessage } from '@/components/chat/right-rail/jump-to-message'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { collectMessageEntries, filterMatchingIds } from '@/lib/chat/chat-search'
+
+interface ChatSearchOverlayProps {
+  onClose: () => void
+}
+
+/**
+ * 대화 내 검색(G6) Ctrl+F 오버레이. DOM 앵커에서 텍스트를 수집해 클라이언트 필터
+ * 하고, 매치를 ``jumpToMessage``로 스크롤 + 하이라이트한다. Enter/Shift+Enter로
+ * 다음/이전, Esc로 닫는다.
+ */
+export function ChatSearchOverlay({ onClose }: ChatSearchOverlayProps) {
+  const t = useTranslations('chat.search')
+  const [query, setQuery] = useState('')
+  const [matchIds, setMatchIds] = useState<readonly string[]>([])
+  const [current, setCurrent] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  function handleChange(value: string) {
+    setQuery(value)
+    const ids = filterMatchingIds(collectMessageEntries(), value)
+    setMatchIds(ids)
+    setCurrent(0)
+    if (ids.length > 0) jumpToMessage(ids[0])
+  }
+
+  const go = useCallback(
+    (delta: number) => {
+      if (matchIds.length === 0) return
+      const next = (current + delta + matchIds.length) % matchIds.length
+      setCurrent(next)
+      jumpToMessage(matchIds[next])
+    },
+    [matchIds, current],
+  )
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      onClose()
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      go(event.shiftKey ? -1 : 1)
+    }
+  }
+
+  const hasQuery = query.trim().length > 0
+  const total = matchIds.length
+  const position = total === 0 ? 0 : current + 1
+
+  return (
+    <div
+      role="search"
+      className="moldy-popover sticky top-2 z-20 mx-auto flex w-full max-w-md items-center gap-1.5 rounded-lg px-3 py-1.5"
+    >
+      <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
+      <Input
+        ref={inputRef}
+        value={query}
+        onChange={(event) => handleChange(event.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={t('placeholder')}
+        aria-label={t('placeholder')}
+        className="h-8 flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+      />
+      {hasQuery ? (
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {t('count', { position, total })}
+        </span>
+      ) : null}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={() => go(-1)}
+        disabled={total === 0}
+        aria-label={t('previous')}
+      >
+        <ChevronUpIcon className="size-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={() => go(1)}
+        disabled={total === 0}
+        aria-label={t('next')}
+      >
+        <ChevronDownIcon className="size-4" />
+      </Button>
+      <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label={t('close')}>
+        <XIcon className="size-4" />
+      </Button>
+    </div>
+  )
+}

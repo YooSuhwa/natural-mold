@@ -6,6 +6,7 @@ import {
   Suspense,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -30,6 +31,7 @@ import { conversationsApi } from '@/lib/api/conversations'
 import { conversationKeys } from '@/lib/hooks/use-conversations'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { math } from '@streamdown/math'
+import { ChatSearchOverlay } from '@/components/chat/chat-search-overlay'
 import { buildMarkdownComponents } from '@/components/chat/markdown-components'
 import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-streaming-plugins'
 import 'katex/dist/katex.min.css'
@@ -1024,6 +1026,19 @@ export function AssistantThread({
     [],
   )
 
+  const [searchOpen, setSearchOpen] = useState(false)
+  // Cmd/Ctrl+F → 대화 내 검색 오버레이(G6). 브라우저 기본 찾기를 억제한다.
+  useEffect(() => {
+    function handleGlobalKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [])
+
   return (
     <AssistantThreadDynamicContext.Provider value={dynamicContextValue}>
       <ChatConversationContext.Provider value={conversationId ?? null}>
@@ -1032,6 +1047,7 @@ export function AssistantThread({
             className="min-h-0 flex-1 overflow-y-auto"
             onScroll={handleViewportScroll}
           >
+            {searchOpen ? <ChatSearchOverlay onClose={() => setSearchOpen(false)} /> : null}
             <AuiIf condition={(s) => s.thread.isEmpty}>
               {emptyContent ?? (
                 <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
