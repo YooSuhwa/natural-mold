@@ -582,4 +582,55 @@ describe('stripInterruptedRawToolCalls', () => {
     expect(out).toHaveLength(1)
     expect((out[0] as AIMessage).tool_calls).toHaveLength(1)
   })
+
+  it('matches the raw tool call regardless of arg key ORDER', () => {
+    // Interrupt action args and the raw model tool_call args come from different
+    // serialization paths; a plain JSON.stringify could differ by key order.
+    const messages = [
+      new AIMessage({
+        id: 'm1',
+        content: '',
+        tool_calls: [
+          // same args as `payload`, keys in the opposite order
+          {
+            id: 'call_x',
+            name: 'execute_in_skill',
+            args: { command: 'node x.cjs', skill_directory: '/skills/docx' },
+          },
+        ],
+      }),
+    ]
+
+    expect(stripInterruptedRawToolCalls(messages, [payload], [])).toHaveLength(0)
+  })
+
+  it('drops a block-array message with only tool_use blocks, keeps one with a text block', () => {
+    const toolBlocks = [
+      { type: 'tool_use', id: 'call_x', name: 'execute_in_skill', input: {} },
+    ] as unknown as AIMessage['content']
+    const textAndTool = [
+      { type: 'text', text: '문서를 생성합니다' },
+      { type: 'tool_use', id: 'call_y', name: 'execute_in_skill', input: {} },
+    ] as unknown as AIMessage['content']
+    const rawArgs = { skill_directory: '/skills/docx', command: 'node x.cjs' }
+    const messages = [
+      new AIMessage({
+        id: 'm1',
+        content: toolBlocks,
+        tool_calls: [{ id: 'call_x', name: 'execute_in_skill', args: rawArgs }],
+      }),
+      new AIMessage({
+        id: 'm2',
+        content: textAndTool,
+        tool_calls: [{ id: 'call_y', name: 'execute_in_skill', args: rawArgs }],
+      }),
+    ]
+
+    const out = stripInterruptedRawToolCalls(messages, [payload], [])
+    // m1 (only tool_use) dropped; m2 kept (has a text block) with its tool call stripped.
+    expect(out).toHaveLength(1)
+    const ai = out[0] as AIMessage
+    expect(ai.id).toBe('m2')
+    expect(ai.tool_calls ?? []).toHaveLength(0)
+  })
 })

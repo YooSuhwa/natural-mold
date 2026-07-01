@@ -180,9 +180,13 @@ def _restore_redacted_response(
         raw_name = raw_action.get("name") if isinstance(raw_action, Mapping) else None
         if isinstance(raw_name, str):
             restored_edited_action["name"] = raw_name
-        restored_decisions.append(
-            {**dict(decision), "edited_action": restored_edited_action}
-        )
+        # langchain reads ``edited_action["name"]`` as a hard subscript. The
+        # frontend may omit name (backend fills by index); if neither the pending
+        # action nor the client supplied one, fail closed rather than let the
+        # resume crash with a KeyError deep in the middleware.
+        if not isinstance(restored_edited_action.get("name"), str):
+            raise RedactedResumeArgsUnavailable()
+        restored_decisions.append({**dict(decision), "edited_action": restored_edited_action})
     return {**dict(response), "decisions": restored_decisions}
 
 

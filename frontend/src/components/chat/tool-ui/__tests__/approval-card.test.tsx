@@ -525,4 +525,48 @@ describe('ApprovalCard', () => {
       expect(registerDecision).toHaveBeenCalledWith(1, { type: 'approve' }, 'approved', 'intr')
     })
   })
+
+  it('does not let "모두 승인" override a card the user put into reject mode', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function Card({ index }: { index: number }) {
+      return toolUi.render({
+        args: {
+          approval_id: `intr:${index}`,
+          tool_name: 'execute_in_skill',
+          tool_args: { command: `cmd-${index}` },
+          hitl_action_index: index,
+          hitl_total_actions: 2,
+          hitl_interrupt_id: 'intr',
+          allowed_decisions: ['approve', 'reject'],
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <GroupedApprovalCard count={2}>
+          <Card index={0} />
+          <Card index={1} />
+        </GroupedApprovalCard>
+      </HiTLContext.Provider>,
+    )
+
+    // Card 0: enter reject mode (reason input open, not yet confirmed).
+    fireEvent.click(screen.getAllByText('reject')[0])
+    // Approve all.
+    fireEvent.click(screen.getByTestId('approval-approve-all-button'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(1, { type: 'approve' }, 'approved', 'intr')
+    })
+    // Card 0 (mid-reject) must NOT have been silently approved.
+    expect(registerDecision).not.toHaveBeenCalledWith(
+      0,
+      { type: 'approve' },
+      expect.anything(),
+      expect.anything(),
+    )
+  })
 })

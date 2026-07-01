@@ -35,6 +35,7 @@ from app.routers.conversation_agent_protocol_resume import (
     SubmittedInterruptResponse,
 )
 from app.routers.conversation_agent_protocol_resume_redaction import (
+    RedactedResumeArgsUnavailable,
     _restore_redacted_response,
     restore_redacted_resume_payload,
 )
@@ -538,9 +539,7 @@ class TestEditByIndexNameFill:
     """
 
     def test_name_filled_for_edit_without_name(self):
-        response = {
-            "decisions": [{"type": "edit", "edited_action": {"args": {"command": "new"}}}]
-        }
+        response = {"decisions": [{"type": "edit", "edited_action": {"args": {"command": "new"}}}]}
         raw_actions = [{"name": "execute_in_skill", "args": {"command": "old"}}]
 
         restored = _restore_redacted_response(response, raw_actions)
@@ -643,6 +642,15 @@ class TestEditByIndexNameFill:
         assert restored["decisions"][0]["edited_action"]["name"] == "client_name"
         assert restored["decisions"][0]["edited_action"]["args"]["x"] == 1
 
+    def test_name_less_edit_without_raw_action_fails_closed(self):
+        # 프론트가 name을 생략(백엔드가 index로 채움)했는데 매칭 raw action도 없으면,
+        # name 없는 edited_action은 langchain에서 hard subscript로 크래시하므로
+        # 통과시키지 말고 fail-closed 해야 한다.
+        response = {"decisions": [{"type": "edit", "edited_action": {"args": {"command": "new"}}}]}
+
+        with pytest.raises(RedactedResumeArgsUnavailable):
+            _restore_redacted_response(response, [])
+
 
 class TestRestoreResumePayloadEditGate:
     """``restore_redacted_resume_payload``의 early-return 게이트는 redacted 유무와
@@ -652,9 +660,7 @@ class TestRestoreResumePayloadEditGate:
 
     @pytest.mark.asyncio
     async def test_fills_name_for_edit_without_redacted_placeholder(self):
-        response = {
-            "decisions": [{"type": "edit", "edited_action": {"args": {"command": "new"}}}]
-        }
+        response = {"decisions": [{"type": "edit", "edited_action": {"args": {"command": "new"}}}]}
         resume = ResumePayload(
             input_payload={"intr-1": response},
             interrupt_id="intr-1",
@@ -665,9 +671,7 @@ class TestRestoreResumePayloadEditGate:
             "app.routers.conversation_agent_protocol_resume_redaction"
             "._raw_pending_actions_by_interrupt",
             new=AsyncMock(
-                return_value={
-                    "intr-1": [{"name": "execute_in_skill", "args": {"command": "old"}}]
-                }
+                return_value={"intr-1": [{"name": "execute_in_skill", "args": {"command": "old"}}]}
             ),
         ):
             restored = await restore_redacted_resume_payload(

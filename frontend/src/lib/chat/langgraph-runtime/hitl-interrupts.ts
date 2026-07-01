@@ -449,8 +449,23 @@ function interruptedAssistantMessage(payload: StandardInterruptPayload): BaseMes
   )
 }
 
+// Order-insensitive serialization — the interrupt action args and the raw model
+// tool_call args come from different serialization paths (interrupt event vs
+// message stream), so a plain JSON.stringify could differ by key order and miss
+// the match (leaving the redundant pill).
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    )
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
 function interruptedActionKey(name: string, args: Record<string, unknown>): string {
-  return `${name} ${JSON.stringify(args)}`
+  return `${name} ${stableStringify(args)}`
 }
 
 /**
@@ -494,7 +509,15 @@ function interruptedRawToolCallKeys(
 function messageHasText(message: BaseMessage): boolean {
   const content = message.content
   if (typeof content === 'string') return content.trim().length > 0
-  return Array.isArray(content) && content.length > 0
+  if (!Array.isArray(content)) return false
+  // A block-array message (real Anthropic/etc.) whose only blocks are tool_use
+  // renders as an empty bubble once its tool_calls are stripped — treat it as
+  // text-less so it gets dropped, keeping messages with real text/reasoning.
+  return content.some((block: unknown) => {
+    if (typeof block === 'string') return block.trim().length > 0
+    if (isRecord(block)) return block.type !== 'tool_use' && block.type !== 'tool_call'
+    return false
+  })
 }
 
 function withToolCalls(message: BaseMessage, toolCalls: readonly MutableToolCall[]): BaseMessage {

@@ -466,9 +466,10 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
       approvalId,
       initialTimeoutSeconds: args?.timeout_seconds,
       onExpire: handleExpire,
-      // Timer stays active in a group (per-card auto-expire preserved); the
-      // countdown badge just isn't rendered in compact mode.
-      active: isPending,
+      // In a group the countdown badge isn't rendered, so keeping the timer would
+      // silently auto-reject a card mid-decision. Disable per-card auto-expire in
+      // compact mode (the group has no visible deadline).
+      active: isPending && !grouped,
     })
 
     const onInteract = useMemo(() => extend, [extend])
@@ -484,16 +485,34 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const canEdit = allowedDecisions.has('edit')
     const canReject = allowedDecisions.size === 0 || allowedDecisions.has('reject')
 
-    // "모두 승인"을 위해 미결정 카드의 승인 콜백을 그룹 컨테이너에 등록. 결정되면
-    // (localResult) cleanup으로 해제되어 일괄 승인 대상에서 빠진다.
+    // "모두 승인"을 위해 미결정 카드의 승인 콜백을 그룹 컨테이너에 등록. 결정되거나
+    // (localResult) 사용자가 이미 거부/수정 흐름에 들어간 카드(decision/showEdit)는
+    // 등록에서 빠져, "모두 승인"이 진행 중인 거부·수정 의도를 덮어쓰지 않는다.
     useEffect(() => {
       const idx = args?.hitl_action_index
-      if (!grouped || !multi || typeof idx !== 'number' || !canApprove || localResult !== null) {
+      if (
+        !grouped ||
+        !multi ||
+        typeof idx !== 'number' ||
+        !canApprove ||
+        localResult !== null ||
+        decision !== null ||
+        showEdit
+      ) {
         return
       }
       multi.register(idx, () => void handleDecision('approved'))
       return () => multi.unregister(idx)
-    }, [grouped, multi, canApprove, localResult, args?.hitl_action_index, handleDecision])
+    }, [
+      grouped,
+      multi,
+      canApprove,
+      localResult,
+      decision,
+      showEdit,
+      args?.hitl_action_index,
+      handleDecision,
+    ])
 
     // ── 완료 상태 ──
     const visibleResult = result ?? localResult
