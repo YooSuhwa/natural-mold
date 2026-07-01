@@ -23,7 +23,7 @@ from app.agent_runtime.middleware_registry import (
     get_provider_middleware,
 )
 from app.agent_runtime.model_factory import create_chat_model
-from app.agent_runtime.run_secrets import add_run_secrets
+from app.agent_runtime.run_secrets import add_run_secrets, collect_secret_values
 from app.agent_runtime.runtime_config import _DATA_DIR, AgentConfig, RuntimeComponents
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.agent_runtime.skill_tool_dependencies import build_skill_dependency_tool_configs
@@ -392,18 +392,26 @@ def _build_interrupt_on_policy(
     return policy or None
 
 
-def _add_skill_secrets_to_run(skill_ctx: Any) -> None:
+def _add_skill_secrets_to_run(skill_ctx: Any, cfg: AgentConfig) -> None:
     """ADR-021 — union resolved skill credential plaintext into the run set.
 
     After ``resolve_runtime_credentials`` populates
     ``descriptor.credential_bindings[*].decrypted`` (``dict[str, str]``), feed
     those plaintext values to the run-scoped redaction set. ``add_run_secrets``
     is a no-op when the run ContextVar is unset.
+
+    Also union into ``cfg.secret_values`` — not just the ContextVar copy that
+    ``set_run_secrets`` installs. The run worker masks error_message *after* the
+    ContextVar is reset, reading ``cfg.secret_values`` (see
+    ``conversation_run_worker._redact_run_error_message``), so lazy skill
+    credentials must land there too or they'd escape error_message redaction.
     """
 
     for descriptor in getattr(skill_ctx, "descriptors", {}).values():
         for binding in getattr(descriptor, "credential_bindings", {}).values():
-            add_run_secrets(getattr(binding, "decrypted", None))
+            decrypted = getattr(binding, "decrypted", None)
+            add_run_secrets(decrypted)
+            cfg.secret_values.update(collect_secret_values(decrypted))
 
 
 def _selected_skill_slugs(agent_skills: list[dict[str, Any]] | None) -> list[str]:
@@ -636,7 +644,7 @@ async def _prepare_runtime_components(
             # the run-scoped redaction set (lazy path). No-op when the run
             # ContextVar is unset (DB-free tests, trigger mode). Works for the
             # parent run; subagents share the same in-place set object.
-            _add_skill_secrets_to_run(skill_ctx)
+            _add_skill_secrets_to_run(skill_ctx, cfg)
         skills_virtual_prefix = (
             f"/runtime/{cfg.thread_id}/agents/{cfg.agent_runtime_name}/skills/"
             if cfg.agent_runtime_name
