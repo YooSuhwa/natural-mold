@@ -70,6 +70,7 @@ import {
 } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
 import { ToolGroupContainer } from '@/components/chat/tool-ui/tool-group-container'
+import { GroupedApprovalCard } from '@/components/chat/tool-ui/grouped-approval-card'
 import { ContextWindowGauge } from '@/components/chat/context-window-gauge'
 import {
   groupAssistantParts,
@@ -279,6 +280,14 @@ export function renderGroupedAssistantPart({ part, children }: GroupedRenderInfo
     // 단일 tool-call도 그룹 노드로 감싸므로 여기서 임계값(N<2)을 처리한다.
     if (part.indices.length < 2) {
       return <div className="order-1">{children}</div>
+    }
+    // 승인 카드는 generic 그룹 컨테이너 대신 전용 "승인 대기 N건 + 모두 승인" 컨테이너로.
+    if (groupToolName(part) === 'request_approval') {
+      return (
+        <div className="order-1">
+          <GroupedApprovalCard count={part.indices.length}>{children}</GroupedApprovalCard>
+        </div>
+      )
     }
     // running→펼침/done→접힘은 key remount로 달성한다(CollapsiblePill은 uncontrolled).
     return (

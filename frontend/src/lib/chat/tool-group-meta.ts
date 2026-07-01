@@ -48,14 +48,12 @@ export function isSearchTool(toolName: string): boolean {
 }
 
 /**
- * 그룹핑에서 제외할 도구. HiTL/승인처럼 각 호출이 사용자와의 독립 상호작용이라
- * 하나로 뭉치면 안 되는 도구들. 나머지 일반 도구는 연속 N≥2면 그룹된다.
+ * 그룹핑에서 제외할 도구. ask_user류처럼 각 호출이 사용자와의 독립 상호작용이라
+ * 하나로 뭉치면 안 되는 도구들. `request_approval`은 예외로 그룹 대상이다 — 한
+ * 인터럽트의 N개 승인 카드를 하나의 "승인 대기 N건 + 모두 승인" 컨테이너로 묶기
+ * 위해서다(GroupedApprovalCard). 나머지 일반 도구는 연속 N≥2면 그룹된다.
  */
-const NON_GROUPABLE_TOOLS: ReadonlySet<string> = new Set([
-  'ask_user',
-  'ask_clarifying_question',
-  'request_approval',
-])
+const NON_GROUPABLE_TOOLS: ReadonlySet<string> = new Set(['ask_user', 'ask_clarifying_question'])
 
 /** 해당 도구를 그룹 컨테이너로 묶어도 되는지. */
 export function isGroupableTool(toolName: string): boolean {

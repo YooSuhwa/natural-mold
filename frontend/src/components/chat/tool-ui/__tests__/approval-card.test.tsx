@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { HiTLContext } from '@/lib/chat/hitl-context'
 import { ApprovalCard } from '../approval-card'
+import { GroupedApprovalCard } from '../grouped-approval-card'
 
 vi.mock('@assistant-ui/react', () => ({
   makeAssistantToolUI: (config: unknown) => config,
@@ -183,6 +184,7 @@ describe('ApprovalCard', () => {
             api_key: 'raw-secret-value',
             usage_metadata: { prompt_tokens: 12 },
           },
+          allowed_decisions: ['approve', 'edit', 'reject'],
         },
         status: { type: 'requires-action' },
       })
@@ -291,21 +293,29 @@ describe('ApprovalCard', () => {
     expect(document.body.textContent).not.toContain('execute_in_skill')
   })
 
-  it('restores redacted placeholders from raw args before sending edited approvals', async () => {
+  // Replaces the old "restores redacted placeholders" test, which injected an
+  // UN-redacted tool_args and asserted client-side restoration — a path that is
+  // a no-op in production (tool_args arrive already redacted) and gave false
+  // confidence. The real contract: the secret field is locked read-only and the
+  // card submits <redacted>; the BACKEND restores it from the checkpoint by
+  // index (covered by test_hitl_wire.py).
+  it('locks secret fields read-only and submits <redacted> for the backend to restore', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
       return toolUi.render({
         args: {
           approval_id: 'interrupt-approval:0',
-          tool_name: 'execute_in_skill',
+          tool_name: 'write_file',
+          // Production shape: tool_args arrive already redacted (key-based).
           tool_args: {
-            command: 'node scripts/create_docx.cjs',
-            api_key: 'raw-secret-value',
+            file_path: '/runtime/report.md',
+            api_key: '<redacted>',
           },
           hitl_action_index: 0,
           hitl_total_actions: 1,
           hitl_interrupt_id: 'interrupt-approval',
+          allowed_decisions: ['approve', 'edit', 'reject'],
         },
         status: { type: 'requires-action' },
       })
@@ -318,15 +328,15 @@ describe('ApprovalCard', () => {
     )
 
     fireEvent.click(screen.getByText('edit'))
-    expect(document.body.textContent).not.toContain('raw-secret-value')
 
-    fireEvent.change(screen.getByPlaceholderText('editArgsPlaceholder'), {
-      target: {
-        value: JSON.stringify({
-          command: 'node scripts/updated_docx.cjs',
-          api_key: '<redacted>',
-        }),
-      },
+    // Secret field is locked: disabled and masked as <redacted> — not editable.
+    const secretField = screen.getByLabelText('api_key') as HTMLInputElement
+    expect(secretField).toBeDisabled()
+    expect(secretField).toHaveValue('<redacted>')
+
+    // Only the non-secret field is editable; no raw JSON textarea.
+    fireEvent.change(screen.getByLabelText('file_path'), {
+      target: { value: '/runtime/updated.md' },
     })
     fireEvent.click(screen.getByText('editAndApprove'))
 
@@ -336,16 +346,227 @@ describe('ApprovalCard', () => {
         {
           type: 'edit',
           edited_action: {
-            name: 'execute_in_skill',
-            args: {
-              command: 'node scripts/updated_docx.cjs',
-              api_key: 'raw-secret-value',
-            },
+            name: 'write_file',
+            args: { file_path: '/runtime/updated.md', api_key: '<redacted>' },
           },
         },
         'editApproved',
         'interrupt-approval',
       )
     })
+  })
+
+  it('submits an edit without a tool name (backend fills it by index)', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          // No tool_name — a merged raw-model-call slot can arrive without it.
+          // Edit must still submit (no invalidJson abort); the backend fills
+          // edited_action.name by positional index.
+          approval_id: 'interrupt-approval:0',
+          tool_args: { command: 'node old.cjs' },
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+          hitl_interrupt_id: 'interrupt-approval',
+          allowed_decisions: ['approve', 'edit', 'reject'],
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('edit'))
+    fireEvent.change(screen.getByLabelText('command'), {
+      target: { value: 'node new.cjs' },
+    })
+    fireEvent.click(screen.getByText('editAndApprove'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        { type: 'edit', edited_action: { args: { command: 'node new.cjs' } } },
+        'editApproved',
+        'interrupt-approval',
+      )
+    })
+    expect(screen.queryByText('invalidJson')).toBeNull()
+  })
+
+  // ── allowed_decisions 버튼 게이팅 ──────────────────────────────────
+  function renderCard(args: Record<string, unknown>, hitl?: Record<string, unknown>) {
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: args as never,
+        status: { type: 'requires-action' },
+      })
+    }
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), ...hitl } as never}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+  }
+
+  it('hides the edit button when allowed_decisions excludes edit', () => {
+    renderCard({
+      approval_id: 'gate-1',
+      tool_name: 'execute_in_skill',
+      tool_args: { command: 'node build.cjs' },
+      allowed_decisions: ['approve', 'reject'],
+    })
+
+    expect(screen.getByText('approve')).toBeInTheDocument()
+    expect(screen.getByText('reject')).toBeInTheDocument()
+    expect(screen.queryByText('edit')).toBeNull()
+  })
+
+  it('shows approve, edit, and reject when all are allowed', () => {
+    renderCard({
+      approval_id: 'gate-2',
+      tool_name: 'write_file',
+      tool_args: { file_path: 'report.md' },
+      allowed_decisions: ['approve', 'edit', 'reject'],
+    })
+
+    expect(screen.getByText('approve')).toBeInTheDocument()
+    expect(screen.getByText('edit')).toBeInTheDocument()
+    expect(screen.getByText('reject')).toBeInTheDocument()
+  })
+
+  it('falls back to approve+reject (no edit) when allowed_decisions is missing', () => {
+    renderCard({
+      approval_id: 'gate-3',
+      tool_name: 'write_file',
+      tool_args: { file_path: 'report.md' },
+    })
+
+    expect(screen.getByText('approve')).toBeInTheDocument()
+    expect(screen.getByText('reject')).toBeInTheDocument()
+    expect(screen.queryByText('edit')).toBeNull()
+  })
+
+  it('shows only reject (with confirm) when allowed_decisions is reject-only', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    renderCard(
+      {
+        approval_id: 'gate-4:0',
+        tool_name: 'send_email',
+        tool_args: { to: 'x@y' },
+        hitl_action_index: 0,
+        hitl_total_actions: 1,
+        hitl_interrupt_id: 'gate-4',
+        allowed_decisions: ['reject'],
+      },
+      { registerDecision },
+    )
+
+    expect(screen.queryByText('approve')).toBeNull()
+    expect(screen.queryByText('edit')).toBeNull()
+    expect(screen.getByText('reject')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('reject'))
+    fireEvent.click(screen.getByText('rejectConfirm'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        { type: 'reject', message: undefined },
+        'rejected',
+        'gate-4',
+      )
+    })
+  })
+
+  // ── 멀티액션 그룹 카드 (모두 승인) ──────────────────────────────────
+  it('groups multi-action cards: compact rows + one "모두 승인" approves every action', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function Card({ index }: { index: number }) {
+      return toolUi.render({
+        args: {
+          approval_id: `intr:${index}`,
+          tool_name: 'execute_in_skill',
+          tool_args: { command: `cmd-${index}` },
+          hitl_action_index: index,
+          hitl_total_actions: 2,
+          hitl_interrupt_id: 'intr',
+          allowed_decisions: ['approve', 'reject'],
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <GroupedApprovalCard count={2}>
+          <Card index={0} />
+          <Card index={1} />
+        </GroupedApprovalCard>
+      </HiTLContext.Provider>,
+    )
+
+    // Compact cards drop their own "승인이 필요합니다" header; the group owns the
+    // count header + the single approve-all button.
+    expect(screen.queryByText('approvalRequired')).toBeNull()
+    expect(screen.getByText('approveAll')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('approval-approve-all-button'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(0, { type: 'approve' }, 'approved', 'intr')
+      expect(registerDecision).toHaveBeenCalledWith(1, { type: 'approve' }, 'approved', 'intr')
+    })
+  })
+
+  it('does not let "모두 승인" override a card the user put into reject mode', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function Card({ index }: { index: number }) {
+      return toolUi.render({
+        args: {
+          approval_id: `intr:${index}`,
+          tool_name: 'execute_in_skill',
+          tool_args: { command: `cmd-${index}` },
+          hitl_action_index: index,
+          hitl_total_actions: 2,
+          hitl_interrupt_id: 'intr',
+          allowed_decisions: ['approve', 'reject'],
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <GroupedApprovalCard count={2}>
+          <Card index={0} />
+          <Card index={1} />
+        </GroupedApprovalCard>
+      </HiTLContext.Provider>,
+    )
+
+    // Card 0: enter reject mode (reason input open, not yet confirmed).
+    fireEvent.click(screen.getAllByText('reject')[0])
+    // Approve all.
+    fireEvent.click(screen.getByTestId('approval-approve-all-button'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(1, { type: 'approve' }, 'approved', 'intr')
+    })
+    // Card 0 (mid-reject) must NOT have been silently approved.
+    expect(registerDecision).not.toHaveBeenCalledWith(
+      0,
+      { type: 'approve' },
+      expect.anything(),
+      expect.anything(),
+    )
   })
 })

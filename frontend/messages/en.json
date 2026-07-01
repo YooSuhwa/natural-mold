@@ -1300,7 +1300,11 @@
       "respondPlaceholder": "Respond Placeholder",
       "allActionsCompleted": "All Actions Completed",
       "confirmAll": "Confirm All",
-      "actionN": "Action {index} of {total}"
+      "actionN": "Action {index} of {total}",
+      "lockedSecretHint": "Secret values cannot be edited",
+      "invalidFieldValue": "Invalid value format",
+      "pendingCount": "{count} pending approvals",
+      "approveAll": "Approve all"
     },
     "userInput": {
       "placeholder": "Placeholder",

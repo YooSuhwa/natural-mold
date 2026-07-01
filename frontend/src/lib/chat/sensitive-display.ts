@@ -26,7 +26,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function isSensitiveDisplayKey(key: string): boolean {
+export function isSensitiveDisplayKey(key: string): boolean {
   return !SAFE_TOKEN_METRIC_KEYS.has(key) && SENSITIVE_KEY_PATTERN.test(key)
 }
 

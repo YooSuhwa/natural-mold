@@ -219,6 +219,31 @@ HITL_MULTI_TOOL_CALLS = (
         },
     },
 )
+# A rejected tool call returns to the model as a ToolMessage with status="error"
+# (HumanInTheLoopMiddleware). The scripted model must acknowledge the cancellation
+# instead of reusing the generic "완료" completion line — otherwise a rejected
+# approval reads as if the tool had run.
+HITL_REJECTED_ACK_CONTENT = (
+    "알겠습니다. 요청하신 도구 실행은 취소했어요. 다른 도움이 필요하면 말씀해 주세요."
+)
+HITL_EDIT_MARKER = "E2E_HITL_EDIT"
+# Single ``edit_file`` call. Unlike ``execute_in_skill`` (allowed_decisions
+# ``[approve, reject]``), ``edit_file`` carries the ``[approve, edit, reject]``
+# policy (``default_deepagents_interrupt_policy``), so its approval card shows the
+# 수정 button → the field-based editor. The args MIX editable fields with a
+# sensitive key (``api_key``) so the editor demonstrates the read-only secret
+# lock (``<redacted>``, restored by the backend by index). Capture-only: the run
+# is meant to pause on the card; the tool itself never needs to execute cleanly.
+HITL_EDIT_TOOL_CALL = {
+    "id": "call_e2e_hitl_edit",
+    "name": "edit_file",
+    "args": {
+        "file_path": "/conversations/deploy-config.yaml",
+        "old_string": "region: us-east-1",
+        "new_string": "region: ap-northeast-2",
+        "api_key": "sk-live-9d8f7a6b5c4e3210fedcba98",
+    },
+}
 TOOL_GROUP_MARKER = "E2E_TOOL_GROUP"
 # Generic tool-call grouping fixture. ONE AIMessage emits N≥2 *consecutive*
 # tool_calls of the SAME tool (``current_datetime`` ×3) plus ONE call of a
@@ -456,12 +481,31 @@ def _is_hitl_multi_request(human_text: str) -> bool:
     return HITL_MULTI_MARKER in human_text
 
 
+def _is_hitl_edit_request(human_text: str) -> bool:
+    # Explicit marker only — stalls the run on an edit-capable approval card.
+    return HITL_EDIT_MARKER in human_text
+
+
 def _document_tool_call(marker: str, tool_args: dict[str, str]) -> dict[str, Any]:
     return {
         "id": f"call_{marker.lower()}",
         "name": "execute_in_skill",
         "args": dict(tool_args),
     }
+
+
+def _is_rejected_tool_message(message: ToolMessage) -> bool:
+    """A HITL rejection (not a tool execution error).
+
+    ``HumanInTheLoopMiddleware`` returns a rejected tool call as an error
+    ``ToolMessage`` whose content says the tool was rejected / not executed. A
+    tool that ran and failed is also an error ToolMessage, so match on the
+    rejection wording rather than status alone.
+    """
+    if getattr(message, "status", None) != "error":
+        return False
+    content = _message_text(message).lower()
+    return "rejected the tool call" in content or "was not executed" in content
 
 
 def _message_text(message: BaseMessage) -> str:
@@ -538,6 +582,14 @@ class E2EScriptedChatModel(BaseChatModel):
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if messages and isinstance(messages[-1], ToolMessage):
+            # A REJECTED tool call comes back as an error ToolMessage carrying a
+            # rejection notice. Distinguish it from a genuine tool EXECUTION error
+            # (e.g. an approved edit that ran and failed) by the message text, not
+            # just status="error" — otherwise an edit-approve whose tool errors
+            # would wrongly read as "취소했어요".
+            if _is_rejected_tool_message(messages[-1]):
+                message = AIMessage(content=HITL_REJECTED_ACK_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
             if _ui_data_marker_kind(human_text) is not None:
                 message = AIMessage(content=UI_DATA_DEMO_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
@@ -615,6 +667,16 @@ class E2EScriptedChatModel(BaseChatModel):
                 # HITL_MULTI_TOOL_CALLS constant across runs — matching the
                 # dict(tool_args) copy in _document_tool_call.
                 tool_calls=[{**call, "args": dict(call["args"])} for call in HITL_MULTI_TOOL_CALLS],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if _is_hitl_edit_request(human_text):
+            # ONE edit_file call → an edit-capable approval card (수정 button +
+            # field editor). Fresh args dict so the module constant can't be
+            # mutated downstream.
+            message = AIMessage(
+                content="",
+                tool_calls=[{**HITL_EDIT_TOOL_CALL, "args": dict(HITL_EDIT_TOOL_CALL["args"])}],
             )
             return ChatResult(generations=[ChatGeneration(message=message)])
 
@@ -742,6 +804,9 @@ __all__ = [
     "DAILY_GREETING_CONTENT",
     "DAILY_GREETING_MARKER",
     "HITL_APPROVAL_MARKER",
+    "HITL_EDIT_MARKER",
+    "HITL_EDIT_TOOL_CALL",
+    "HITL_REJECTED_ACK_CONTENT",
     "HITL_MULTI_MARKER",
     "HITL_MULTI_TOOL_CALLS",
     "ASK_USER_FRUIT_FINAL_CONTENT",

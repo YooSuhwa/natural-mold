@@ -20,8 +20,11 @@ from app.agent_runtime.e2e_scripted_model import (
     DAILY_GREETING_CONTENT,
     DAILY_GREETING_MARKER,
     HITL_APPROVAL_MARKER,
+    HITL_EDIT_MARKER,
+    HITL_EDIT_TOOL_CALL,
     HITL_MULTI_MARKER,
     HITL_MULTI_TOOL_CALLS,
+    HITL_REJECTED_ACK_CONTENT,
     SCRIPTED_DOCUMENT_COMMANDS,
     SEARCH_GROUP_COUNT,
     SEARCH_GROUP_FINAL_CONTENT,
@@ -506,6 +509,92 @@ def test_e2e_scripted_model_returns_final_message_after_hitl_multi_tool_results(
 
     assert result.tool_calls == []
     assert "문서 파일 생성이 완료" in str(result.content)
+
+
+def test_e2e_scripted_model_emits_edit_file_tool_call_for_hitl_edit() -> None:
+    # Unlike execute_in_skill ([approve, reject]), edit_file carries the
+    # [approve, edit, reject] policy, so its approval card shows the 수정 button →
+    # the field editor. The args mix editable fields with a sensitive key so the
+    # editor demonstrates the locked-secret display.
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "edit_file"}]
+    )
+
+    result = model.invoke([HumanMessage(content=f"{HITL_EDIT_MARKER} 수정 승인 카드")])
+
+    assert [(call["id"], call["name"]) for call in result.tool_calls] == [
+        ("call_e2e_hitl_edit", "edit_file"),
+    ]
+    assert result.tool_calls[0]["args"] == HITL_EDIT_TOOL_CALL["args"]
+    # Carries a sensitive key so the field editor locks it read-only.
+    assert "api_key" in result.tool_calls[0]["args"]
+
+
+def test_e2e_scripted_model_acknowledges_rejection_instead_of_completion() -> None:
+    # A rejected tool call returns as a ToolMessage with status="error"
+    # (HumanInTheLoopMiddleware). The follow-up turn must acknowledge the
+    # cancellation, not reuse the generic "완료" completion line.
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content="문서 생성 도구를 사용해 승인 후 실행해줘"),
+            ToolMessage(
+                content=(
+                    "User rejected the tool call for `execute_in_skill`. The tool was not executed."
+                ),
+                tool_call_id="call_e2e_docx",
+                status="error",
+            ),
+        ]
+    )
+
+    assert result.content == HITL_REJECTED_ACK_CONTENT
+    assert "완료" not in str(result.content)
+
+
+def test_e2e_scripted_model_still_reports_completion_on_successful_tool_result() -> None:
+    # A successful (approved) tool result keeps the completion message.
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content="문서 생성 도구를 사용해 승인 후 실행해줘"),
+            ToolMessage(
+                content="OUTPUT_FILES: moldy-docx-demo.docx",
+                tool_call_id="call_e2e_docx",
+                status="success",
+            ),
+        ]
+    )
+
+    assert "완료" in str(result.content)
+
+
+def test_e2e_scripted_model_tool_execution_error_is_not_treated_as_rejection() -> None:
+    # An APPROVED edit whose tool ran and failed also comes back as an error
+    # ToolMessage — but it is NOT a rejection and must not read as "취소".
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "edit_file"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content="문서 생성 도구를 사용해 승인 후 실행해줘"),
+            ToolMessage(
+                content="Error: file /conversations/deploy-config.yaml was not found",
+                tool_call_id="call_e2e_hitl_edit",
+                status="error",
+            ),
+        ]
+    )
+
+    assert result.content != HITL_REJECTED_ACK_CONTENT
+    assert "취소" not in str(result.content)
 
 
 def test_e2e_scripted_model_emits_grouped_tool_calls_for_tool_group_marker() -> None:

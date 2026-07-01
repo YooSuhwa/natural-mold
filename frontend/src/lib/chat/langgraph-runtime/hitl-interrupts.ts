@@ -27,6 +27,9 @@ export interface ApprovalResult {
 export interface ResolvedInterruptToolCall {
   readonly toolCall: ToolCallInfo
   readonly result: ApprovalResult
+  /** Original action (unredacted name/args) — lets the raw-pill strip match the
+   * underlying model tool call even when the synthetic tool_args are redacted. */
+  readonly action?: ActionRequest
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -219,7 +222,10 @@ function hasToolCallId(message: BaseMessage, ids: ReadonlySet<string>): boolean 
 }
 
 function sameArgs(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
+  // Order-insensitive: like interruptedActionKey, this compares args from two
+  // serialization paths (interrupt event vs message stream) whose key order can
+  // differ, so a plain JSON.stringify could miss an equal match.
+  return stableStringify(left) === stableStringify(right)
 }
 
 const HITL_METADATA_KEYS = new Set([
@@ -245,7 +251,7 @@ function equivalentToolArgs(
   left: Record<string, unknown>,
   right: Record<string, unknown>,
 ): boolean {
-  return JSON.stringify(stripHitLMetadata(left)) === JSON.stringify(stripHitLMetadata(right))
+  return stableStringify(stripHitLMetadata(left)) === stableStringify(stripHitLMetadata(right))
 }
 
 function mutableToolCalls(message: BaseMessage): MutableToolCall[] | null {
@@ -419,7 +425,9 @@ export function resolvedInterruptToolCallsFromDecisions(
   return decisions.flatMap((decision, index) => {
     const toolCall = toolCalls[index]
     if (!toolCall) return []
-    return [{ toolCall, result: resultFromDecision(decision) }]
+    return [
+      { toolCall, result: resultFromDecision(decision), action: payload.action_requests[index] },
+    ]
   })
 }
 
@@ -442,6 +450,126 @@ function interruptedAssistantMessage(payload: StandardInterruptPayload): BaseMes
       },
     },
   )
+}
+
+// Order-insensitive serialization — the interrupt action args and the raw model
+// tool_call args come from different serialization paths (interrupt event vs
+// message stream), so a plain JSON.stringify could differ by key order and miss
+// the match (leaving the redundant pill).
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    )
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function interruptedActionKey(name: string, args: Record<string, unknown>): string {
+  return `${name} ${stableStringify(args)}`
+}
+
+/**
+ * Keys of the raw model tool calls that an approval card already represents —
+ * so the raw ``execute_in_skill``/etc. pill isn't rendered redundantly next to
+ * the card. Covers pending interrupts (their ``action_requests``) and resolved
+ * ones (the original tool_name/tool_args carried on the synthetic
+ * ``request_approval`` call). ``ask_user`` is excluded — it is the tool itself,
+ * hydrated in place rather than shown as a separate pill.
+ */
+function interruptedRawToolCallKeys(
+  payloads: readonly StandardInterruptPayload[],
+  resolved: readonly ResolvedInterruptToolCall[],
+): Set<string> {
+  const keys = new Set<string>()
+  for (const payload of payloads) {
+    for (const action of payload.action_requests) {
+      if (action.name === 'ask_user') continue
+      keys.add(interruptedActionKey(action.name, action.args))
+    }
+  }
+  for (const item of resolved) {
+    // Prefer the original action (unredacted) so a secret-bearing tool still
+    // matches its raw pill after resolution; fall back to the synthetic's
+    // tool_name/tool_args for older resolved entries without it.
+    if (item.action && item.action.name !== 'ask_user') {
+      keys.add(interruptedActionKey(item.action.name, item.action.args))
+      continue
+    }
+    const toolCall = item.toolCall
+    if (toolCall.name !== 'request_approval') continue
+    const toolName = toolCall.args.tool_name
+    const toolArgs = toolCall.args.tool_args
+    if (typeof toolName === 'string' && isRecord(toolArgs)) {
+      keys.add(interruptedActionKey(toolName, toolArgs))
+    }
+  }
+  return keys
+}
+
+function messageHasText(message: BaseMessage): boolean {
+  const content = message.content
+  if (typeof content === 'string') return content.trim().length > 0
+  if (!Array.isArray(content)) return false
+  // A block-array message (real Anthropic/etc.) whose only blocks are tool_use
+  // renders as an empty bubble once its tool_calls are stripped — treat it as
+  // text-less so it gets dropped, keeping messages with real text/reasoning.
+  return content.some((block: unknown) => {
+    if (typeof block === 'string') return block.trim().length > 0
+    if (isRecord(block)) return block.type !== 'tool_use' && block.type !== 'tool_call'
+    return false
+  })
+}
+
+function withToolCalls(message: BaseMessage, toolCalls: readonly MutableToolCall[]): BaseMessage {
+  return Object.assign(Object.create(Object.getPrototypeOf(message)) as BaseMessage, message, {
+    tool_calls: toolCalls,
+  })
+}
+
+/**
+ * Drop the raw model tool calls that an approval card already represents (and
+ * their now-orphaned tool results), so the approval card is the single element
+ * for that call instead of sitting next to a redundant, confusingly-statused
+ * ``execute_in_skill … 완료`` pill. Non-interrupt tool calls are untouched; with
+ * no interrupts (e.g. after reload) this is a no-op.
+ */
+export function stripInterruptedRawToolCalls(
+  messages: readonly BaseMessage[],
+  payloads: readonly StandardInterruptPayload[],
+  resolved: readonly ResolvedInterruptToolCall[],
+): BaseMessage[] {
+  const keys = interruptedRawToolCallKeys(payloads, resolved)
+  if (keys.size === 0) return [...messages]
+  const hiddenIds = new Set<string>()
+  const result: BaseMessage[] = []
+  for (const message of messages) {
+    if (AIMessage.isInstance(message)) {
+      const toolCalls = mutableToolCalls(message)
+      if (toolCalls && toolCalls.length > 0) {
+        const kept = toolCalls.filter((toolCall) => {
+          const hide = keys.has(interruptedActionKey(toolCall.name, toolCall.args))
+          if (hide && isString(toolCall.id)) hiddenIds.add(toolCall.id)
+          return !hide
+        })
+        if (kept.length !== toolCalls.length) {
+          if (kept.length === 0 && !messageHasText(message)) continue
+          result.push(withToolCalls(message, kept))
+          continue
+        }
+      }
+    } else if (
+      ToolMessage.isInstance(message) &&
+      isString(message.tool_call_id) &&
+      hiddenIds.has(message.tool_call_id)
+    ) {
+      continue
+    }
+    result.push(message)
+  }
+  return result
 }
 
 export function appendInterruptToolCallMessages(

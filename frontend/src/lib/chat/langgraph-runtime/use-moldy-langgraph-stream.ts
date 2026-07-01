@@ -40,6 +40,7 @@ import {
   appendResolvedInterruptToolCallMessages,
   resolvedInterruptToolCallsFromDecisions,
   standardPayloadsFromInterrupts,
+  stripInterruptedRawToolCalls,
   type LangGraphInterruptLike,
   type ResolvedInterruptToolCall,
 } from './hitl-interrupts'
@@ -2351,7 +2352,17 @@ export function useMoldyLangGraphStream({
     () =>
       dedupeLangChainMessagesById(
         appendResolvedInterruptToolCallMessages(
-          appendInterruptToolCallMessages(streamMessagesWithServerMetadata, interruptPayloads),
+          appendInterruptToolCallMessages(
+            // Hide the raw model tool-call pills that an approval card already
+            // represents, so the card is the single element (no redundant,
+            // confusingly-statused ``execute_in_skill … 완료`` pill next to it).
+            stripInterruptedRawToolCalls(
+              streamMessagesWithServerMetadata,
+              interruptPayloads,
+              resolvedInterrupts,
+            ),
+            interruptPayloads,
+          ),
           resolvedInterrupts,
         ),
       ),
