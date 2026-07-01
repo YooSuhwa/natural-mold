@@ -1281,7 +1281,9 @@
       "confirmAll": "전체 확정",
       "actionN": "액션 {index}/{total}",
       "lockedSecretHint": "보안 값은 수정할 수 없습니다",
-      "invalidFieldValue": "값 형식이 올바르지 않습니다"
+      "invalidFieldValue": "값 형식이 올바르지 않습니다",
+      "pendingCount": "승인 대기 {count}건",
+      "approveAll": "모두 승인"
     },
     "userInput": {
       "placeholder": "답변을 입력하세요…",

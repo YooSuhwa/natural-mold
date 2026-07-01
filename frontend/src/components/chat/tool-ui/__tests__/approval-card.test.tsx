@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { HiTLContext } from '@/lib/chat/hitl-context'
 import { ApprovalCard } from '../approval-card'
+import { GroupedApprovalCard } from '../grouped-approval-card'
 
 vi.mock('@assistant-ui/react', () => ({
   makeAssistantToolUI: (config: unknown) => config,
@@ -481,6 +482,47 @@ describe('ApprovalCard', () => {
         'rejected',
         'gate-4',
       )
+    })
+  })
+
+  // ── 멀티액션 그룹 카드 (모두 승인) ──────────────────────────────────
+  it('groups multi-action cards: compact rows + one "모두 승인" approves every action', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function Card({ index }: { index: number }) {
+      return toolUi.render({
+        args: {
+          approval_id: `intr:${index}`,
+          tool_name: 'execute_in_skill',
+          tool_args: { command: `cmd-${index}` },
+          hitl_action_index: index,
+          hitl_total_actions: 2,
+          hitl_interrupt_id: 'intr',
+          allowed_decisions: ['approve', 'reject'],
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <GroupedApprovalCard count={2}>
+          <Card index={0} />
+          <Card index={1} />
+        </GroupedApprovalCard>
+      </HiTLContext.Provider>,
+    )
+
+    // Compact cards drop their own "승인이 필요합니다" header; the group owns the
+    // count header + the single approve-all button.
+    expect(screen.queryByText('approvalRequired')).toBeNull()
+    expect(screen.getByText('approveAll')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('approval-approve-all-button'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(0, { type: 'approve' }, 'approved', 'intr')
+      expect(registerDecision).toHaveBeenCalledWith(1, { type: 'approve' }, 'approved', 'intr')
     })
   })
 })

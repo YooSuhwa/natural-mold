@@ -61,7 +61,13 @@ describe('groupAssistantParts (groupBy)', () => {
 
   it('그룹 제외 도구(ask_user 등)는 null이라 그룹되지 않는다', () => {
     expect(groupAssistantParts(toolCallPart('ask_user'))).toBeNull()
-    expect(groupAssistantParts(toolCallPart('request_approval'))).toBeNull()
+    expect(groupAssistantParts(toolCallPart('ask_clarifying_question'))).toBeNull()
+  })
+
+  it('request_approval은 예외로 그룹 대상 — 승인 그룹 컨테이너로 묶기 위함', () => {
+    expect(groupAssistantParts(toolCallPart('request_approval'))).toEqual([
+      'group-tool:request_approval',
+    ])
   })
 
   it('intra-message: 같은 도구는 같은 key, 다른 도구는 다른 key로 분리된다', () => {
@@ -116,5 +122,21 @@ describe('renderGroupedAssistantPart (group-tool node)', () => {
       <>{renderGroupedAssistantPart({ part: { type: 'indicator' }, children: null })}</>,
     )
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('승인 그룹 N≥2: generic 컨테이너 대신 "승인 대기 N건" + "모두 승인"으로 묶고 카드는 항상 보인다', () => {
+    renderGroupNode('request_approval', 2, false, <div data-testid="approval-leaf">card</div>)
+    expect(screen.getByText('승인 대기 2건')).toBeInTheDocument()
+    expect(screen.getByText('모두 승인')).toBeInTheDocument()
+    // 승인 카드는 접히지 않고 항상 렌더된다(사용자가 결정해야 하므로).
+    expect(screen.getByTestId('approval-leaf')).toBeInTheDocument()
+    // generic 그룹 라벨/개수 배지는 뜨지 않는다.
+    expect(screen.queryByText('2회')).not.toBeInTheDocument()
+  })
+
+  it('승인 그룹 N=1: 컨테이너 없이 단일 승인 카드 패스스루', () => {
+    renderGroupNode('request_approval', 1, false, <div data-testid="approval-leaf">card</div>)
+    expect(screen.getByTestId('approval-leaf')).toBeInTheDocument()
+    expect(screen.queryByText(/승인 대기/)).not.toBeInTheDocument()
   })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import {
   ShieldCheckIcon,
@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { toApprove, toEdit, toReject } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
+import { useMultiApproval } from './multi-approval-context'
 import {
   isSensitiveDisplayKey,
   redactSensitiveRecord,
@@ -378,6 +379,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const t = useTranslations('chat.approval')
     const styles = useDecisionStyles()
     const hitl = useHiTL()
+    const multi = useMultiApproval()
     const [decision, setDecision] = useState<Decision | null>(null)
     const [rejectReason, setRejectReason] = useState('')
     // 수정 모드 draft — field-based editor가 키별로 편집한다. raw JSON 텍스트
@@ -395,6 +397,9 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     // requires-action 상태일 때만 timer 활성
     const isPending =
       status.type !== 'complete' && status.type !== 'running' && result === undefined
+    // 그룹(멀티액션) 안에서 렌더될 때는 compact 모드 — 자체 헤더/카운트다운을 숨기고
+    // (그룹 컨테이너가 대신 보여준다) "모두 승인"을 위해 승인 콜백을 등록한다.
+    const grouped = Boolean(multi) && typeof args?.hitl_action_index === 'number'
 
     const resumeDecision = useCallback(
       async (standardDecision: StandardDecision, displayText?: string) => {
@@ -461,10 +466,34 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
       approvalId,
       initialTimeoutSeconds: args?.timeout_seconds,
       onExpire: handleExpire,
+      // Timer stays active in a group (per-card auto-expire preserved); the
+      // countdown badge just isn't rendered in compact mode.
       active: isPending,
     })
 
     const onInteract = useMemo(() => extend, [extend])
+
+    // 도구별 allowed_decisions 게이팅 — 카드가 받은 화이트리스트대로 버튼을 노출.
+    // 빈/누락이면 approve+reject만(edit 제외) — standard-interrupt의 reviewForAction
+    // fallback과 동일. execute_in_skill(approve,reject)엔 수정 버튼이 뜨지 않는다.
+    const allowedDecisions = useMemo(
+      () => new Set(args?.allowed_decisions ?? []),
+      [args?.allowed_decisions],
+    )
+    const canApprove = allowedDecisions.size === 0 || allowedDecisions.has('approve')
+    const canEdit = allowedDecisions.has('edit')
+    const canReject = allowedDecisions.size === 0 || allowedDecisions.has('reject')
+
+    // "모두 승인"을 위해 미결정 카드의 승인 콜백을 그룹 컨테이너에 등록. 결정되면
+    // (localResult) cleanup으로 해제되어 일괄 승인 대상에서 빠진다.
+    useEffect(() => {
+      const idx = args?.hitl_action_index
+      if (!grouped || !multi || typeof idx !== 'number' || !canApprove || localResult !== null) {
+        return
+      }
+      multi.register(idx, () => void handleDecision('approved'))
+      return () => multi.unregister(idx)
+    }, [grouped, multi, canApprove, localResult, args?.hitl_action_index, handleDecision])
 
     // ── 완료 상태 ──
     const visibleResult = result ?? localResult
@@ -488,29 +517,150 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const description = rawDescription ? redactSensitiveText(rawDescription) : undefined
     const toolArgs = args?.tool_args ? redactSensitiveRecord(args.tool_args) : undefined
 
-    // allowed_decisions 게이팅 — 카드가 받은 도구별 화이트리스트대로 버튼을 노출.
-    // 빈/누락이면 approve+reject만(edit 제외) — standard-interrupt의
-    // reviewForAction fallback과 동일 정책. 따라서 execute_in_skill처럼
-    // edit 불가 도구(allowed=[approve,reject])엔 수정 버튼이 뜨지 않는다.
-    const allowedDecisions = new Set(args?.allowed_decisions ?? [])
-    const canApprove = allowedDecisions.size === 0 || allowedDecisions.has('approve')
-    const canEdit = allowedDecisions.has('edit')
-    const canReject = allowedDecisions.size === 0 || allowedDecisions.has('reject')
+    // Per-action selector for multi-action HiTL interrupts: one approval card
+    // renders per action_request, scoped by its index so E2E can approve each
+    // independently and assert the total-action count.
+    const cardTestId =
+      typeof args?.hitl_action_index === 'number'
+        ? `approval-action-${args.hitl_action_index}`
+        : undefined
+    const totalActions =
+      typeof args?.hitl_total_actions === 'number' ? String(args.hitl_total_actions) : undefined
+
+    const body = (
+      <div className="space-y-3 p-4">
+        {/* Tool name + description */}
+        <div>
+          <div className="mb-1 flex items-center gap-1.5">
+            <WrenchIcon className="size-3 text-muted-foreground" />
+            <span className="text-xs font-semibold">{toolName}</span>
+          </div>
+          {description && <p className="text-xs text-muted-foreground">{description}</p>}
+        </div>
+
+        {/* Args preview — collapsed by default; the headline now names the
+              actual skill/tool, so expanding is only needed to inspect details. */}
+        {toolArgs && Object.keys(toolArgs).length > 0 && <ArgsPreview args={toolArgs} />}
+
+        {/* 거부 사유 입력 (거부 선택 시) */}
+        {decision === 'rejected' && !submitting && (
+          <textarea
+            value={rejectReason}
+            onChange={(e) => {
+              setRejectReason(e.target.value)
+              onInteract()
+            }}
+            onFocus={onInteract}
+            placeholder={t('rejectReasonPlaceholder')}
+            className="moldy-field-status moldy-status-danger w-full resize-none rounded-lg border bg-background px-3 py-2 text-xs outline-hidden placeholder:text-muted-foreground"
+            rows={2}
+          />
+        )}
+
+        {/* 수정 인자 입력 (수정 선택 시) — 칸별 field editor. 시크릿 키는
+              read-only 잠금, 비-scalar는 칸별 JSON. raw JSON textarea 아님. */}
+        {showEdit && !submitting && (
+          <ArgsEditor value={draft} onChange={setDraft} onInteract={onInteract} />
+        )}
+
+        {resumeError && <p className="mt-1 text-xs text-destructive">{resumeError}</p>}
+
+        {/* Action buttons */}
+        {!submitting ? (
+          <div className="flex items-center gap-2">
+            {/* 승인 */}
+            {canApprove && (
+              <button
+                type="button"
+                onClick={() => handleDecision('approved')}
+                data-testid="approval-approve-button"
+                data-variant="solid"
+                className="moldy-action-pill moldy-status-success"
+              >
+                <CheckIcon className="size-3" />
+                {t('approve')}
+              </button>
+            )}
+
+            {/* 수정 후 승인 — allowed_decisions에 edit이 있을 때만 노출 */}
+            {canEdit &&
+              (!showEdit ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEdit(true)
+                    setDraft({ ...(toolArgs ?? {}) })
+                  }}
+                  data-variant="outline"
+                  className="moldy-action-pill moldy-status-info"
+                >
+                  <PencilIcon className="size-3" />
+                  {t('edit')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleDecision('modified')}
+                  data-variant="solid"
+                  className="moldy-action-pill moldy-status-info"
+                >
+                  <PencilIcon className="size-3" />
+                  {t('editAndApprove')}
+                </button>
+              ))}
+
+            {/* 거부 */}
+            {canReject &&
+              (decision !== 'rejected' ? (
+                <button
+                  type="button"
+                  onClick={() => setDecision('rejected')}
+                  data-variant="outline"
+                  className="moldy-action-pill moldy-status-danger"
+                >
+                  <XIcon className="size-3" />
+                  {t('reject')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleDecision('rejected')}
+                  data-variant="solid"
+                  className="moldy-action-pill moldy-status-danger"
+                >
+                  <XIcon className="size-3" />
+                  {t('rejectConfirm')}
+                </button>
+              ))}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2Icon className="size-3 animate-spin" />
+            {t('processing')}
+          </div>
+        )}
+      </div>
+    )
+
+    // 그룹(멀티액션) 안: 헤더/카운트다운 없이 compact 블록. 그룹 컨테이너가
+    // "승인 대기 N건" 헤더와 단일 카운트다운, "모두 승인"을 소유한다.
+    if (grouped) {
+      return (
+        <div
+          data-testid={cardTestId}
+          data-hitl-total-actions={totalActions}
+          className="moldy-chat-card w-full"
+        >
+          {body}
+        </div>
+      )
+    }
 
     return (
       <div
         className="moldy-chat-card moldy-status-surface moldy-status-warn w-full"
-        // Per-action selector for multi-action HiTL interrupts: one approval card
-        // renders per action_request, scoped by its index so E2E can approve each
-        // independently and assert the total-action count.
-        data-testid={
-          typeof args?.hitl_action_index === 'number'
-            ? `approval-action-${args.hitl_action_index}`
-            : undefined
-        }
-        data-hitl-total-actions={
-          typeof args?.hitl_total_actions === 'number' ? String(args.hitl_total_actions) : undefined
-        }
+        data-testid={cardTestId}
+        data-hitl-total-actions={totalActions}
       >
         {/* Header */}
         <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
@@ -525,119 +675,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
             className="ml-auto"
           />
         </div>
-
-        <div className="space-y-3 p-4">
-          {/* Tool name + description */}
-          <div>
-            <div className="mb-1 flex items-center gap-1.5">
-              <WrenchIcon className="size-3 text-muted-foreground" />
-              <span className="text-xs font-semibold">{toolName}</span>
-            </div>
-            {description && <p className="text-xs text-muted-foreground">{description}</p>}
-          </div>
-
-          {/* Args preview — collapsed by default; the headline now names the
-              actual skill/tool, so expanding is only needed to inspect details. */}
-          {toolArgs && Object.keys(toolArgs).length > 0 && <ArgsPreview args={toolArgs} />}
-
-          {/* 거부 사유 입력 (거부 선택 시) */}
-          {decision === 'rejected' && !submitting && (
-            <textarea
-              value={rejectReason}
-              onChange={(e) => {
-                setRejectReason(e.target.value)
-                onInteract()
-              }}
-              onFocus={onInteract}
-              placeholder={t('rejectReasonPlaceholder')}
-              className="moldy-field-status moldy-status-danger w-full resize-none rounded-lg border bg-background px-3 py-2 text-xs outline-hidden placeholder:text-muted-foreground"
-              rows={2}
-            />
-          )}
-
-          {/* 수정 인자 입력 (수정 선택 시) — 칸별 field editor. 시크릿 키는
-              read-only 잠금, 비-scalar는 칸별 JSON. raw JSON textarea 아님. */}
-          {showEdit && !submitting && (
-            <ArgsEditor value={draft} onChange={setDraft} onInteract={onInteract} />
-          )}
-
-          {resumeError && <p className="mt-1 text-xs text-destructive">{resumeError}</p>}
-
-          {/* Action buttons */}
-          {!submitting ? (
-            <div className="flex items-center gap-2">
-              {/* 승인 */}
-              {canApprove && (
-                <button
-                  type="button"
-                  onClick={() => handleDecision('approved')}
-                  data-testid="approval-approve-button"
-                  data-variant="solid"
-                  className="moldy-action-pill moldy-status-success"
-                >
-                  <CheckIcon className="size-3" />
-                  {t('approve')}
-                </button>
-              )}
-
-              {/* 수정 후 승인 — allowed_decisions에 edit이 있을 때만 노출 */}
-              {canEdit &&
-                (!showEdit ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowEdit(true)
-                      setDraft({ ...(toolArgs ?? {}) })
-                    }}
-                    data-variant="outline"
-                    className="moldy-action-pill moldy-status-info"
-                  >
-                    <PencilIcon className="size-3" />
-                    {t('edit')}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleDecision('modified')}
-                    data-variant="solid"
-                    className="moldy-action-pill moldy-status-info"
-                  >
-                    <PencilIcon className="size-3" />
-                    {t('editAndApprove')}
-                  </button>
-                ))}
-
-              {/* 거부 */}
-              {canReject &&
-                (decision !== 'rejected' ? (
-                  <button
-                    type="button"
-                    onClick={() => setDecision('rejected')}
-                    data-variant="outline"
-                    className="moldy-action-pill moldy-status-danger"
-                  >
-                    <XIcon className="size-3" />
-                    {t('reject')}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleDecision('rejected')}
-                    data-variant="solid"
-                    className="moldy-action-pill moldy-status-danger"
-                  >
-                    <XIcon className="size-3" />
-                    {t('rejectConfirm')}
-                  </button>
-                ))}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2Icon className="size-3 animate-spin" />
-              {t('processing')}
-            </div>
-          )}
-        </div>
+        {body}
       </div>
     )
   },
