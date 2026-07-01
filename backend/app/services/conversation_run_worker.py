@@ -537,8 +537,11 @@ async def _run_conversation(
         error_code = "runtime_error"
         # 스트림 바깥 예외(credential 해석/checkpointer/DB 등)는 어떤 마스킹도
         # 거치지 않았다. public_stream_error_message(블록리스트) + 값 기반
-        # (cfg.secret_values) 2단 마스킹으로 원본 예외 문자열의 시크릿/내부 경로
-        # 노출을 막는다. 원본 예외는 서버 로그(logger.exception)에만 남는다.
+        # (cfg.secret_values) 2단 마스킹으로 주입된 credential 값 노출을 막는다.
+        # 단 파일경로/DB호스트 등 내부 토폴로지는 이 2단으로 가려지지 않으므로
+        # runtime_error의 error_message는 채팅 버블에 노출하지 않는다(_run_metadata가
+        # stream_error만 노출). 마스킹된 상세는 GET /runs/{id} 운영 경로에만 남고,
+        # 원본 예외는 서버 로그(logger.exception)에만 남는다.
         error_message = _redact_run_error_message(
             public_stream_error_message(exc), cfg.secret_values
         )

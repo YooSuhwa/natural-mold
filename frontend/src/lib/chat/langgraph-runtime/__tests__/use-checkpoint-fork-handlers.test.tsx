@@ -218,7 +218,7 @@ describe('useCheckpointForkHandlers retry fork excludes synthetic notice bubbles
         visibleMessages: [
           { id: userId, role: 'user' },
           { id: failedBubbleId, role: 'assistant' },
-        ] as never,
+        ],
         langChainMessages,
       }),
     )

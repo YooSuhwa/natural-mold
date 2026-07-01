@@ -29,6 +29,8 @@ interface UseCheckpointForkHandlersOptions<StateType extends object> {
 
 type VisibleMessageReference = Pick<ThreadMessage, 'id'> & {
   readonly sourceId?: string
+  // checkpointForReload의 isAssistantVisibleMessage가 role로 재생성 대상을 가른다.
+  readonly role?: unknown
 }
 
 type SubmitInput<StateType extends object> = Parameters<UseStreamReturn<StateType>['submit']>[0]

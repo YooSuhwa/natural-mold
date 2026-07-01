@@ -1038,6 +1038,10 @@ describe('useMoldyLangGraphStream', () => {
   })
 
   it('실패한 v3 런을 error_message가 담긴 어시스턴트 에러 알림으로 표시한다 (G2)', async () => {
+    // isLoading=true인 채로 failed notice가 도착해도 isRunning이 false여야 한다
+    // (threadRunNotice.status !== 'failed' 가드 회귀 방어). 가드가 없으면 isLoading이
+    // true라 isRunning이 true가 되어 아래 isRunning 단언이 실패한다.
+    mocks.stream.isLoading = true
     renderHook(
       () =>
         useMoldyLangGraphStream({
