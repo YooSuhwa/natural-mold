@@ -572,7 +572,10 @@ class E2EScriptedChatModel(BaseChatModel):
     ) -> ChatResult:
         human_text = self._latest_human_text(messages)
         if ERROR_MARKER in human_text:
-            raise RuntimeError("E2E scripted model error simulation")
+            # RateLimitError prefix triggers public_stream_error_message masking so
+            # the error bubble shows the production-representative provider failure
+            # message (and run.error_message stores that masked value).
+            raise RuntimeError("RateLimitError: E2E scripted model error simulation")
         if is_langgraph_v3_subagent_prompt(human_text):
             return ChatResult(
                 generations=[ChatGeneration(message=langgraph_v3_subagent_response(human_text))]
@@ -753,7 +756,10 @@ class E2EScriptedChatModel(BaseChatModel):
     ):
         human_text = self._latest_human_text(messages)
         if ERROR_MARKER in human_text:
-            raise RuntimeError("E2E scripted model error simulation")
+            # RateLimitError prefix triggers public_stream_error_message masking so
+            # the error bubble shows the production-representative provider failure
+            # message (and run.error_message stores that masked value).
+            raise RuntimeError("RateLimitError: E2E scripted model error simulation")
         if is_langgraph_v3_subagent_prompt(human_text):
             for part in langgraph_v3_subagent_parts(human_text):
                 if self.slow_stream_delay_seconds > 0:

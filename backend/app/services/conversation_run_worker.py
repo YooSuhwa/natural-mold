@@ -493,6 +493,12 @@ async def _run_conversation(
 
         if ctx.has_stream_error():
             final_status = "failed"
+            # 스트림 도중 실패는 예외로 전파되지 않고 error_sink에 기록된다
+            # (streaming.py). 이미 public_stream_error_message로 마스킹된 값이므로
+            # run.error_message에 저장해 채팅 에러 버블이 폴백 대신 구체적 원인을
+            # 보이게 한다(G2 retry). _run_metadata는 failed일 때만 이를 노출한다.
+            error_code = "stream_error"
+            error_message = (ctx.error_sink[0].message or "").strip()[:1000] or None
         elif has_interrupt_events(ctx.trace_sink):
             final_status = "interrupted"
             interrupt_id = interrupt_id_from_events(ctx.trace_sink)
