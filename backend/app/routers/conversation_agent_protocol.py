@@ -56,7 +56,19 @@ def _run_metadata(run: object | None) -> dict[str, object] | None:
     status = getattr(run, "status", None)
     if run_id is None or not isinstance(status, str):
         return None
-    return {"id": str(run_id), "status": status}
+    metadata: dict[str, object] = {"id": str(run_id), "status": status}
+    # 실패한 런에 한해 원인을 노출한다. error_message/error_code는 이미
+    # public_stream_error_message로 마스킹된 안전한 값(streaming.py)으로,
+    # 프론트 채팅 에러 버블이 retry 판단에 쓴다. stale/canceled의 내부 사유는
+    # 프론트가 자체 문구로 표시하므로 노출하지 않는다(계약 최소 변경).
+    if status == "failed":
+        error_message = getattr(run, "error_message", None)
+        if isinstance(error_message, str) and error_message:
+            metadata["error_message"] = error_message
+        error_code = getattr(run, "error_code", None)
+        if isinstance(error_code, str) and error_code:
+            metadata["error_code"] = error_code
+    return metadata
 
 
 def _active_thread_next_nodes(run: object | None) -> list[str]:

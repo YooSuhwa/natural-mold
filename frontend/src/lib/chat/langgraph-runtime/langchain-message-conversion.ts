@@ -7,6 +7,7 @@ import type { TokenUsageBreakdown } from '@/lib/types'
 import type { UIDataItem } from '@/lib/types/ui-data'
 import { MOLDY_UI_DATA_PART_NAME } from '@/lib/chat/data-ui-registry'
 import { compactionFromMessage, type CompactionMarker } from './compaction-events'
+import { terminalNoticeFromMessage, type TerminalNoticeStatus } from './terminal-notice'
 import { isRecord, usageFromMessage } from './usage-normalization'
 
 type ConvertedMessage = useExternalMessageConverter.Message
@@ -64,6 +65,29 @@ function attachCompactionMetadata(
   } as ConvertedMessage
 }
 
+function attachTerminalNoticeMetadata(
+  converted: ConvertedMessage,
+  notice: TerminalNoticeStatus | null,
+): ConvertedMessage {
+  if (!notice) return converted
+
+  const carrier = converted as MetadataCarrier
+  if (carrier.role === 'tool') return converted
+
+  const metadata = isRecord(carrier.metadata) ? carrier.metadata : {}
+  const custom = isRecord(metadata.custom) ? metadata.custom : {}
+  return {
+    ...converted,
+    metadata: {
+      ...metadata,
+      custom: {
+        ...custom,
+        terminalNotice: notice,
+      },
+    },
+  } as ConvertedMessage
+}
+
 function attachUIDataParts(
   converted: ConvertedMessage,
   uiData: readonly UIDataItem[] | null,
@@ -93,11 +117,15 @@ export function convertMoldyLangChainMessage(
 ): ConvertedMessageResult {
   const usage = usageFromMessage(message)
   const compaction = compactionFromMessage(message)
+  const terminalNotice = terminalNoticeFromMessage(message)
   const uiData = (message as BaseMessage & { uiData?: UIDataItem[] | null }).uiData ?? null
   const converted = convertLangChainBaseMessage(message, metadata)
   if (Array.isArray(converted)) {
     const withMeta = converted.map((item) =>
-      attachCompactionMetadata(attachUsageMetadata(item, usage), compaction),
+      attachTerminalNoticeMetadata(
+        attachCompactionMetadata(attachUsageMetadata(item, usage), compaction),
+        terminalNotice,
+      ),
     )
     // Inject the data part into the LAST assistant entry only — appending to
     // every assistant element would double-render the component if one source
@@ -110,7 +138,10 @@ export function convertMoldyLangChainMessage(
     ) as ConvertedMessageResult
   }
   return attachUIDataParts(
-    attachCompactionMetadata(attachUsageMetadata(converted, usage), compaction),
+    attachTerminalNoticeMetadata(
+      attachCompactionMetadata(attachUsageMetadata(converted, usage), compaction),
+      terminalNotice,
+    ),
     uiData,
   ) as ConvertedMessageResult
 }

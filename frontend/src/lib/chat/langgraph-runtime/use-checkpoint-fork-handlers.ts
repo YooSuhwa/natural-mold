@@ -13,6 +13,7 @@ import {
   type ServerCheckpointContext,
 } from './thread-state-checkpoints'
 import { sourceMessageIdFromThreadMessageId } from './message-list'
+import { isTerminalNoticeMessageId } from './terminal-notice'
 import { reportClientWarning } from '@/lib/logging/client-logger'
 
 const CHECKPOINT_CONTEXT_RETRY_INTERVAL_MS = 250
@@ -57,13 +58,21 @@ export function useCheckpointForkHandlers<StateType extends object>({
     () => checkpointByMessageIdFromMessages(langChainMessages),
     [langChainMessages],
   )
+  // 합성 terminal-notice 버블(실패/취소/stale)은 실제 assistant 턴이 아니므로
+  // checkpoint fork 대상 탐색에서 제외한다. 특히 실패 버블을 남겨두면
+  // checkpointForReload가 그것을 재생성 대상 assistant로 오인해 null로 끝나
+  // retry가 no-op이 된다(G2).
+  const forkVisibleMessages = useMemo(
+    () => visibleMessages.filter((message) => !isTerminalNoticeMessageId(message.id)),
+    [visibleMessages],
+  )
   const checkpointContext = useMemo(
     () => ({
-      visibleMessages,
+      visibleMessages: forkVisibleMessages,
       metadataByMessageId,
       checkpointByMessageId,
     }),
-    [visibleMessages, metadataByMessageId, checkpointByMessageId],
+    [forkVisibleMessages, metadataByMessageId, checkpointByMessageId],
   )
 
   // 서버 checkpoint 폴링(최대 10s)을 unmount/handler 재생성 시 취소한다.

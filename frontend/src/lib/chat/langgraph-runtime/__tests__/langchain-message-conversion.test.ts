@@ -1,6 +1,7 @@
 import { AIMessage } from '@langchain/core/messages'
 import { describe, expect, it } from 'vitest'
 import { convertMoldyLangChainMessage } from '../langchain-message-conversion'
+import { TERMINAL_NOTICE_METADATA_KEY } from '../terminal-notice'
 
 type ConvertedWithCustom = {
   readonly metadata?: {
@@ -148,5 +149,28 @@ describe('convertMoldyLangChainMessage', () => {
       moldyBranchPickerDisplayOnly: true,
       siblingCheckpointIds: ['pending-reload-0', 'pending-reload-1'],
     })
+  })
+
+  it('실패 terminal-notice 버블을 custom.terminalNotice로 승격한다 (G2)', () => {
+    const message = new AIMessage({
+      id: 'moldy-failed-run1',
+      content: 'model provider request failed',
+      additional_kwargs: {
+        metadata: { [TERMINAL_NOTICE_METADATA_KEY]: 'failed' },
+      },
+    })
+
+    const converted = convertMoldyLangChainMessage(message, converterMetadata())
+
+    expect(customMetadata(converted).terminalNotice).toBe('failed')
+  })
+
+  it('일반 어시스턴트 메시지에는 terminalNotice 플래그가 없다', () => {
+    const converted = convertMoldyLangChainMessage(
+      new AIMessage({ id: 'assistant-plain', content: 'hello' }),
+      converterMetadata(),
+    )
+
+    expect(customMetadata(converted).terminalNotice).toBeUndefined()
   })
 })

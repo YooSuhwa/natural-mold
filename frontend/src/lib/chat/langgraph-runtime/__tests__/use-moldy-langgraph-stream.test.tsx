@@ -1037,6 +1037,50 @@ describe('useMoldyLangGraphStream', () => {
     })
   })
 
+  it('실패한 v3 런을 error_message가 담긴 어시스턴트 에러 알림으로 표시한다 (G2)', async () => {
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-failed',
+          conversationId: 'conversation-failed',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    const transportOptions = mocks.createMoldyAgentTransport.mock.calls.at(-1)?.[2] as
+      | { onState?: (state: unknown) => void }
+      | undefined
+    act(() => {
+      transportOptions?.onState?.({
+        metadata: {
+          latest_run: {
+            id: 'run-failed',
+            status: 'failed',
+            error_message: '모델 제공자 요청이 실패했습니다.',
+          },
+        },
+      })
+    })
+
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { messages: readonly unknown[]; isRunning: boolean }
+        | undefined
+      expect(converterOptions?.isRunning).toBe(false)
+      expect(converterOptions?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'moldy-failed-run-failed',
+            content: '모델 제공자 요청이 실패했습니다.',
+            additional_kwargs: expect.objectContaining({
+              metadata: expect.objectContaining({ moldy_terminal_notice: 'failed' }),
+            }),
+          }),
+        ]),
+      )
+    })
+  })
+
   it('merges branch metadata from hydrated v3 state into stream messages', async () => {
     mocks.stream.messages = [new AIMessage({ id: 'assistant-branch', content: 'answer' })]
     renderHook(

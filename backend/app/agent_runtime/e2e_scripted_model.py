@@ -63,6 +63,10 @@ LANGGRAPH_V3_ARTIFACT_COMMAND = {
 }
 
 SLOW_STREAM_MARKER = "E2E_SLOW_STREAM"
+# G2 — 런을 강제로 실패시켜 채팅 에러 버블 + retry(fork 재실행) 경로를
+# E2E/capture로 검증한다. 예외는 LangGraph 스트림에서 잡혀 run.status="failed"로
+# 이어진다(streaming.py). scripted 모델 게이트라 프로덕션엔 존재하지 않는다.
+ERROR_MARKER = "E2E_ERROR"
 SLOW_STREAM_PARTS = (
     "E2E slow ",
     "stream ",
@@ -567,6 +571,8 @@ class E2EScriptedChatModel(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         human_text = self._latest_human_text(messages)
+        if ERROR_MARKER in human_text:
+            raise RuntimeError("E2E scripted model error simulation")
         if is_langgraph_v3_subagent_prompt(human_text):
             return ChatResult(
                 generations=[ChatGeneration(message=langgraph_v3_subagent_response(human_text))]
@@ -746,6 +752,8 @@ class E2EScriptedChatModel(BaseChatModel):
         **kwargs: Any,
     ):
         human_text = self._latest_human_text(messages)
+        if ERROR_MARKER in human_text:
+            raise RuntimeError("E2E scripted model error simulation")
         if is_langgraph_v3_subagent_prompt(human_text):
             for part in langgraph_v3_subagent_parts(human_text):
                 if self.slow_stream_delay_seconds > 0:

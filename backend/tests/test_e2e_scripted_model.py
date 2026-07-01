@@ -68,6 +68,23 @@ def test_e2e_scripted_model_emits_execute_in_skill_tool_call() -> None:
     ]
 
 
+def test_e2e_scripted_model_error_marker_raises_on_invoke() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted")
+
+    with pytest.raises(RuntimeError, match="error simulation"):
+        model.invoke([HumanMessage(content="E2E_ERROR 강제 실패 시나리오")])
+
+
+def test_e2e_scripted_model_error_marker_raises_on_stream() -> None:
+    model = E2EScriptedChatModel(
+        model="document-artifact-scripted",
+        slow_stream_delay_seconds=0,
+    )
+
+    with pytest.raises(RuntimeError, match="error simulation"):
+        list(model.stream([HumanMessage(content="E2E_ERROR")]))
+
+
 def test_e2e_scripted_model_uses_latest_human_message_marker() -> None:
     model = E2EScriptedChatModel(model="document-artifact-scripted")
 
