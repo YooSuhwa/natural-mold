@@ -964,6 +964,9 @@ export function AssistantThread({
           </MessageMetaRow>
         )
         if (isBuilder) {
+          // NOTE(G2): 빌더 대화는 에러 retry 스코프 밖이다. failed notice에
+          // 도달해도 danger 에러 버블/RetryButton 없이 일반 빌더 메시지로
+          // 렌더되고 metaRow는 null이다(아래 isFailedNotice 버블은 non-builder 전용).
           return (
             <Suspense fallback={<BuilderMessageFallback />}>
               <BuilderAssistantMessage metaRow={metaRow} agentSubtitle={builderAgentSubtitle}>

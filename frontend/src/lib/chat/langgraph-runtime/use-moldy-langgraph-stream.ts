@@ -2514,7 +2514,10 @@ export function useMoldyLangGraphStream({
   )
   useLangGraphMemoryEffects({ stream })
   const isRunning =
-    stream.isLoading && interruptPayloads.length === 0 && threadRunNotice?.status !== 'stale'
+    stream.isLoading &&
+    interruptPayloads.length === 0 &&
+    threadRunNotice?.status !== 'stale' &&
+    threadRunNotice?.status !== 'failed'
   const runtimeIsRunning =
     isRunning ||
     postRunHydrationPending ||

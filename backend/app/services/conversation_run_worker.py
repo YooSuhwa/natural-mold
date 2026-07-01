@@ -11,9 +11,12 @@ from typing import Any, Literal
 from app.agent_runtime import event_names
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.event_broker import BrokeredEvent
+from app.agent_runtime.protocol_redaction import REDACTED_SENSITIVE_FIELD
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.config import settings
 from app.dependencies import CurrentUser
+from app.marketplace.redaction import replace_secret_values
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service, thread_branch_service
@@ -276,6 +279,19 @@ async def _heartbeat_until_terminal(run_id: uuid.UUID) -> None:
                 return
 
 
+def _redact_run_error_message(text: str, secret_values: set[str]) -> str | None:
+    """실패 런의 error_message를 값 기반 마스킹 후 저장용으로 정리한다.
+
+    run에 주입된 credential 값이 예외 텍스트에 echo되는 케이스를 exact-substring
+    치환으로 가린다(ADR-021 / CLAUDE.md redaction 규칙). run-secret ContextVar는
+    스트림 종료 시 이미 reset되므로 cfg.secret_values를 명시적으로 넘긴다.
+    """
+    masked = replace_secret_values(
+        text, secret_values, placeholder=REDACTED_SENSITIVE_FIELD
+    ).strip()[:1000]
+    return masked or None
+
+
 async def _publish_error(ctx: StreamCtx, message: str) -> None:
     compat_seq = 0
     parsed_events: list[dict[str, Any]] = []
@@ -494,11 +510,14 @@ async def _run_conversation(
         if ctx.has_stream_error():
             final_status = "failed"
             # 스트림 도중 실패는 예외로 전파되지 않고 error_sink에 기록된다
-            # (streaming.py). 이미 public_stream_error_message로 마스킹된 값이므로
-            # run.error_message에 저장해 채팅 에러 버블이 폴백 대신 구체적 원인을
-            # 보이게 한다(G2 retry). _run_metadata는 failed일 때만 이를 노출한다.
+            # (streaming.py에서 public_stream_error_message로 1차 블록리스트 마스킹).
+            # run에 주입된 credential 값 기반 마스킹을 한 번 더 적용해 채팅 에러
+            # 버블이 폴백 대신 구체적 원인을 안전하게 보이게 한다(G2 retry).
+            # _run_metadata는 failed일 때만 이를 노출한다.
             error_code = "stream_error"
-            error_message = (ctx.error_sink[0].message or "").strip()[:1000] or None
+            error_message = _redact_run_error_message(
+                ctx.error_sink[0].message or "", cfg.secret_values
+            )
         elif has_interrupt_events(ctx.trace_sink):
             final_status = "interrupted"
             interrupt_id = interrupt_id_from_events(ctx.trace_sink)
@@ -516,7 +535,13 @@ async def _run_conversation(
         final_status = "failed"
         failure = exc
         error_code = "runtime_error"
-        error_message = str(exc)[:1000]
+        # 스트림 바깥 예외(credential 해석/checkpointer/DB 등)는 어떤 마스킹도
+        # 거치지 않았다. public_stream_error_message(블록리스트) + 값 기반
+        # (cfg.secret_values) 2단 마스킹으로 원본 예외 문자열의 시크릿/내부 경로
+        # 노출을 막는다. 원본 예외는 서버 로그(logger.exception)에만 남는다.
+        error_message = _redact_run_error_message(
+            public_stream_error_message(exc), cfg.secret_values
+        )
         logger.exception("conversation run worker failed run_id=%s", run_id)
         await _publish_error(ctx, "에이전트 실행 중 오류가 발생했습니다.")
     finally:

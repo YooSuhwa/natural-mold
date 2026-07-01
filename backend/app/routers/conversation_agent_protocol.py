@@ -57,10 +57,12 @@ def _run_metadata(run: object | None) -> dict[str, object] | None:
     if run_id is None or not isinstance(status, str):
         return None
     metadata: dict[str, object] = {"id": str(run_id), "status": status}
-    # 실패한 런에 한해 원인을 노출한다. error_message/error_code는 이미
-    # public_stream_error_message로 마스킹된 안전한 값(streaming.py)으로,
-    # 프론트 채팅 에러 버블이 retry 판단에 쓴다. stale/canceled의 내부 사유는
-    # 프론트가 자체 문구로 표시하므로 노출하지 않는다(계약 최소 변경).
+    # 실패한 런에 한해 원인을 노출한다. error_message는 worker가
+    # public_stream_error_message(블록리스트) + run credential 값 기반 마스킹을
+    # 거쳐 저장한 값이다(conversation_run_worker._redact_run_error_message —
+    # stream_error/runtime_error 두 경로 모두). 프론트 채팅 에러 버블이 retry
+    # 판단에 쓴다. stale/canceled의 내부 사유는 프론트가 자체 문구로 표시하므로
+    # 노출하지 않는다(계약 최소 변경).
     if status == "failed":
         error_message = getattr(run, "error_message", None)
         if isinstance(error_message, str) and error_message:
