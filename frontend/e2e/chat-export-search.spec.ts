@@ -31,11 +31,14 @@ test.describe('Chat export + in-conversation search (G5/G6)', () => {
       .last()
       .waitFor({ state: 'visible', timeout: 90_000 })
 
-    await sendMessage(page, '검색 대상 회의 메시지입니다')
-    // Wait for the scripted answer to settle (stop button appears then hides).
-    const stop = page.locator('[data-moldy-stop-button="true"]:visible').last()
-    await stop.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
-    await stop.waitFor({ state: 'hidden', timeout: 90_000 }).catch(() => {})
+    // Send multiple turns. "E2E" appears in both the user messages and the
+    // scripted assistant reply, so search matches user + LLM answers alike.
+    for (const text of ['E2E 회의 내용을 정리해줘', 'E2E 회의 안건도 알려줘']) {
+      await sendMessage(page, text)
+      const stop = page.locator('[data-moldy-stop-button="true"]:visible').last()
+      await stop.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+      await stop.waitFor({ state: 'hidden', timeout: 90_000 }).catch(() => {})
+    }
 
     // G5 — navigator session menu → 내보내기 → Markdown triggers a download.
     await page.getByRole('button', { name: '대화 메뉴' }).first().click()
@@ -50,8 +53,8 @@ test.describe('Chat export + in-conversation search (G5/G6)', () => {
     await page.keyboard.press('ControlOrMeta+f')
     const overlay = page.getByRole('search')
     await expect(overlay).toBeVisible({ timeout: 10_000 })
-    await overlay.getByRole('textbox').fill('회의')
-    // A match shows an "N/M" counter.
-    await expect(overlay.getByText(/\d+\/\d+/)).toBeVisible({ timeout: 10_000 })
+    await overlay.getByRole('textbox').fill('E2E')
+    // user 메시지 + assistant 응답 모두 "E2E"를 포함하므로 total이 넉넉히 2 이상.
+    await expect(overlay.getByText(/^\d+\/[2-9]\d*$/)).toBeVisible({ timeout: 10_000 })
   })
 })

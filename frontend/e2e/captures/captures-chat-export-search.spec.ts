@@ -61,8 +61,17 @@ test.describe('Chat export + search captures', () => {
 
     const conversationId = await freshConversation(request, csrfHeaders, agentId, '내보내기·검색 캡쳐')
     await gotoChat(page, agentId, conversationId)
-    await sendMessage(page, '오늘 회의 내용을 요약해줘')
-    await settleStream(page)
+    // 여러 턴을 보낸다. "E2E"는 user 메시지 + scripted assistant 응답
+    // ("E2E scripted document model is ready.") 양쪽에 있어 user/LLM 답변 모두
+    // 검색·하이라이트되는 것을 시연한다.
+    for (const text of [
+      'E2E 회의 내용을 요약해줘',
+      'E2E 회의 안건도 정리해줘',
+      'E2E 다음 회의 일정 알려줘',
+    ]) {
+      await sendMessage(page, text)
+      await settleStream(page)
+    }
 
     // G5 — navigator session menu (dropdown with the 내보내기 item) → export dialog.
     await page.getByRole('button', { name: '대화 메뉴' }).first().click()
@@ -84,7 +93,7 @@ test.describe('Chat export + search captures', () => {
     await page.keyboard.press('ControlOrMeta+f')
     const overlay = page.getByRole('search')
     await expect(overlay).toBeVisible({ timeout: 10_000 })
-    await overlay.getByRole('textbox').fill('회의')
+    await overlay.getByRole('textbox').fill('E2E')
     await page.waitForTimeout(600)
     await settle(page)
     await capture(page, WAVE, '02-search-overlay.png')
