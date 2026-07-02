@@ -23,7 +23,7 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ open, onOpenChange, conversationId, title }: ExportDialogProps) {
-  const t = useTranslations('chat.export')
+  const t = useTranslations('conversationExport')
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
       <DialogShell.Header
@@ -57,7 +57,7 @@ function ExportDialogBody({
   title?: string | null
   onDone: () => void
 }) {
-  const t = useTranslations('chat.export')
+  const t = useTranslations('conversationExport')
   const { data: envelope, isLoading } = useMessagesEnvelope(conversationId)
 
   const labels: ExportLabels = {

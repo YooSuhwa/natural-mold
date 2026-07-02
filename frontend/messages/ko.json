@@ -1161,6 +1161,26 @@
       "confirm": "삭제"
     }
   },
+  "conversationExport": {
+    "title": "대화 내보내기",
+    "description": "이 대화를 파일로 저장합니다.",
+    "loading": "메시지를 불러오는 중...",
+    "empty": "내보낼 메시지가 없습니다.",
+    "hint": "메시지 {count}개를 내보냅니다.",
+    "formatMarkdown": "Markdown (.md)",
+    "formatJson": "JSON (.json)",
+    "exportedAt": "내보낸 시각",
+    "toolCalls": "도구 호출",
+    "attachments": "첨부",
+    "role": {
+      "user": "사용자",
+      "assistant": "어시스턴트",
+      "tool": "도구"
+    },
+    "toast": {
+      "exported": "대화를 내보냈어요"
+    }
+  },
   "share": {
     "title": "대화 공유",
     "description": "누구나 링크로 이 대화를 읽기 전용으로 볼 수 있어요.",
@@ -1184,26 +1204,6 @@
   },
   "chat": {
     "defaultAgentName": "에이전트",
-    "export": {
-      "title": "대화 내보내기",
-      "description": "이 대화를 파일로 저장합니다.",
-      "loading": "메시지를 불러오는 중...",
-      "empty": "내보낼 메시지가 없습니다.",
-      "hint": "메시지 {count}개를 내보냅니다.",
-      "formatMarkdown": "Markdown (.md)",
-      "formatJson": "JSON (.json)",
-      "exportedAt": "내보낸 시각",
-      "toolCalls": "도구 호출",
-      "attachments": "첨부",
-      "role": {
-        "user": "사용자",
-        "assistant": "어시스턴트",
-        "tool": "도구"
-      },
-      "toast": {
-        "exported": "대화를 내보냈어요"
-      }
-    },
     "search": {
       "placeholder": "대화 내 검색",
       "count": "{position}/{total}",

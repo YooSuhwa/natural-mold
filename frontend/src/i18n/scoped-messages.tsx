@@ -8,6 +8,9 @@ export const ROOT_MESSAGE_NAMESPACES = [
   'appSettings',
   'auth',
   'common',
+  // ExportDialog is reachable from the chat navigator (root layout shell), like
+  // ShareDialog — so its messages live at the root, outside the chat page scope.
+  'conversationExport',
   'metadata',
   'nav',
   // `share` lives at the root because the ShareDialog is only reachable from the
