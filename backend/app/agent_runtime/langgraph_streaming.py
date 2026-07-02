@@ -211,6 +211,35 @@ def _compaction_event(
     )
 
 
+def _subagent_names_event(
+    *,
+    run_id: str,
+    thread_id: str,
+    seq: int,
+    display_names: Mapping[str, str],
+) -> StoredProtocolEvent:
+    """Emit the subagent runtime_name -> display_name map once at stream head.
+
+    The v3 path streams deepagents ``task`` tool calls whose ``subagent_type`` is
+    the runtime name (``agent_<8hex>``); the frontend SDK uses it verbatim as the
+    subagent card title. Rewriting the checkpoint-backed ``subagent_type`` would
+    corrupt execution + namespace binding + reload seeding, so we instead ship the
+    map as a ``custom`` side-channel event and let the frontend substitute a
+    human-readable name at the display layer only. Stable event id dedupes on
+    replay/reload (same contract as the compaction/memory/artifact side-effects).
+    """
+    stable_id = f"{run_id}:subagent_names"
+    return stored_custom_protocol_event(
+        run_id=run_id,
+        thread_id=thread_id,
+        seq=seq,
+        name=event_names.SUBAGENT_NAMES,
+        payload={"names": dict(display_names)},
+        event_id=stable_id,
+        id=stable_id,
+    )
+
+
 async def stream_agent_response_langgraph(
     agent: Any,
     input_: list[Any] | Command | dict[str, Any] | None,
@@ -225,6 +254,7 @@ async def stream_agent_response_langgraph(
     persist_callback: PersistCallback | None = None,
     run_id: str | None = None,
     artifact_recorder: ArtifactEventRecorder | None = None,
+    subagent_display_names: dict[str, str] | None = None,
 ) -> AsyncGenerator[str, None]:
     msg_id = run_id or str(uuid.uuid4())
     thread_id = _thread_id_from_config(config, msg_id)
@@ -317,6 +347,16 @@ async def stream_agent_response_langgraph(
                 event="running",
             )
         )
+        if subagent_display_names:
+            side_effect_seq += 1
+            yield await emit(
+                _subagent_names_event(
+                    run_id=msg_id,
+                    thread_id=thread_id,
+                    seq=side_effect_seq,
+                    display_names=subagent_display_names,
+                )
+            )
         try:
             stream = await _open_v3_stream(agent, actual_input, config)
         except (AttributeError, NotImplementedError):

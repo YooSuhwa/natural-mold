@@ -203,7 +203,9 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       await waitForArtifact(request, setup.conversationId, REPORT_FILE)
       await waitForArtifact(request, setup.conversationId, NOTES_FILE)
       await expectFinalTextVisible(page)
-      await expect(page.getByText(setup.childRuntimeName).first()).toBeVisible()
+      // G10: the live/replayed thread received the `moldy.subagent_names` map, so
+      // the subagent pill now shows the human-readable child agent name.
+      await expect(page.getByText(setup.childName).first()).toBeVisible()
       await capture(page, '03-completed-thread-with-subagent.png')
 
       await page.setViewportSize(MOBILE_VIEWPORT)
@@ -254,6 +256,10 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
         const publicPage = await anonymous.newPage()
         await publicPage.goto(`${FRONTEND}/shared/${stringField(share, 'share_token', 'share')}`)
         await expect(publicPage.getByText(FINAL_TEXT).first()).toBeVisible({ timeout: 20_000 })
+        // The public share view renders a static snapshot with no live stream, so
+        // the `moldy.subagent_names` side-channel never arrives (anonymous context,
+        // empty store) — the pill keeps the raw runtime name here. Tag display
+        // names on the share snapshot is out of G10-A scope.
         await expect(publicPage.getByText(setup.childRuntimeName).first()).toBeVisible()
         await capture(publicPage, '08-share-page-subagent-chip.png')
       } finally {

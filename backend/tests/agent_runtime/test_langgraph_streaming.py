@@ -96,6 +96,77 @@ async def test_langgraph_streaming_projects_usage_metadata_to_custom_event() -> 
 
 
 @pytest.mark.asyncio
+async def test_langgraph_streaming_emits_subagent_display_names_at_head() -> None:
+    raw_event = {
+        "type": "event",
+        "method": "messages",
+        "params": {"namespace": [], "data": {"chunk": "hi"}},
+        "seq": 1,
+        "event_id": "upstream-1",
+    }
+    agent = ProtocolAgent([raw_event])
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-names"}},
+            run_id="run-names",
+            subagent_display_names={"agent_12345678": "리서치 봇"},
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    # The display-name map rides a custom event right after ``running`` so the
+    # frontend has the runtime_name -> display_name mapping before any task pill.
+    assert [payload["method"] for payload in payloads] == [
+        "lifecycle",
+        "custom",
+        "messages",
+        "lifecycle",
+    ]
+    assert payloads[0]["params"]["data"] == {"event": "running"}
+    names_event = payloads[1]["params"]["data"]
+    assert names_event["name"] == "moldy.subagent_names"
+    assert names_event["payload"] == {"names": {"agent_12345678": "리서치 봇"}}
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_omits_subagent_names_when_absent() -> None:
+    raw_event = {
+        "type": "event",
+        "method": "messages",
+        "params": {"namespace": [], "data": {"chunk": "hi"}},
+        "seq": 1,
+        "event_id": "upstream-1",
+    }
+    agent = ProtocolAgent([raw_event])
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-none"}},
+            run_id="run-none",
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    assert [payload["method"] for payload in payloads] == [
+        "lifecycle",
+        "messages",
+        "lifecycle",
+    ]
+    assert all(
+        payload["params"]["data"].get("name") != "moldy.subagent_names"
+        for payload in payloads
+        if payload["method"] == "custom"
+    )
+
+
+@pytest.mark.asyncio
 async def test_langgraph_streaming_emits_protocol_sse_and_dual_writes() -> None:
     raw_event = {
         "type": "event",

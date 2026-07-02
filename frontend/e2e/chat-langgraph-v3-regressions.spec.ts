@@ -327,7 +327,13 @@ test.describe('LangGraph v3 regression coverage', () => {
   }) => {
     test.setTimeout(180_000)
     const setup = await setupLangGraphV3Agent(request)
-    const subagentChip = page.getByText(setup.childRuntimeName).first()
+    // G10: the subagent pill shows the human-readable child agent name, not the
+    // raw runtime name (`agent_<8hex>`). The backend ships a runtime_name ->
+    // display_name map over the `moldy.subagent_names` side-channel and the card
+    // substitutes it at the display layer; the SDK's raw `subagent_type` snapshot
+    // is untouched. This chip must stay the display name across live / reload /
+    // HITL resume / pure-hydration reload.
+    const subagentChip = page.getByText(setup.childName).first()
     // The delegated subagent's scoped final report. It renders inside the
     // subagent card body, so it is only visible when that card is expanded —
     // exactly the state the reload-hydration regression collapsed.

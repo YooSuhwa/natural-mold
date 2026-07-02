@@ -134,6 +134,7 @@ async def _stream_langgraph_with_secrets(
                 persist_callback=persist_callback,
                 run_id=run_id,
                 artifact_recorder=artifact_recorder,
+                subagent_display_names=cfg.subagent_display_names,
             ):
                 yield chunk
     except asyncio.CancelledError:
