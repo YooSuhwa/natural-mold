@@ -1186,6 +1186,7 @@
     "title": "Export conversation",
     "description": "Save this conversation to a file.",
     "loading": "Loading messages...",
+    "error": "Failed to load messages. Please try again.",
     "empty": "No messages to export.",
     "hint": "Exporting {count} messages.",
     "formatMarkdown": "Markdown (.md)",

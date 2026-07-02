@@ -1,39 +1,31 @@
 /**
  * 대화 내 검색 (G6). 렌더된 메시지의 DOM 앵커(``data-moldy-message-id``)에서
- * 텍스트를 수집해 클라이언트 필터한다 — v3 채팅의 메시지 소스(스트림/envelope)에
- * 무관하게 "화면에 보이는 텍스트"를 검색하고, 매치를 ``jumpToMessage``로 이동한다.
+ * 검색어 위치를 Range로 수집해 CSS Custom Highlight API로 하이라이트하고, 매치를
+ * ``jumpToMessage``로 이동한다. v3 채팅의 메시지 소스(스트림/envelope)에 무관하게
+ * "화면에 보이는 본문"을 검색한다. ``root``로 특정 thread viewport에 스코프한다.
  */
-
-export interface MessageSearchEntry {
-  readonly id: string
-  readonly text: string
-}
-
-/** DOM 순서(= 대화 순서)로 렌더된 메시지 엔트리를 수집한다. */
-export function collectMessageEntries(root: ParentNode = document): MessageSearchEntry[] {
-  const entries: MessageSearchEntry[] = []
-  root.querySelectorAll('[data-moldy-message-id]').forEach((el) => {
-    const id = el.getAttribute('data-moldy-message-id')
-    if (id) entries.push({ id, text: (el as HTMLElement).textContent ?? '' })
-  })
-  return entries
-}
-
-/** query에 매치되는 메시지 id 목록(대소문자 무시, DOM 순서 보존). 빈 query면 빈 배열. */
-export function filterMatchingIds(entries: readonly MessageSearchEntry[], query: string): string[] {
-  const normalized = query.trim().toLowerCase()
-  if (!normalized) return []
-  return entries
-    .filter((entry) => entry.text.toLowerCase().includes(normalized))
-    .map((entry) => entry.id)
-}
 
 const HIGHLIGHT_MATCH = 'moldy-search-match'
 const HIGHLIGHT_CURRENT = 'moldy-search-current'
 
+/** 메시지 본문이 아닌 텍스트는 검색에서 제외한다: 메타행(복사/편집/브랜치 피커/
+ *  타임스탬프/토큰 수)과 sr-only 라벨. 안 그러면 "복사"/"편집"이 모든 메시지를,
+ *  숫자가 메타를 매치시켜 카운트가 부풀고 보이지 않는 텍스트로 점프한다. */
+function isNonBodyText(node: Node): boolean {
+  const parent = node.parentElement
+  if (!parent) return false
+  return (
+    parent.closest('[data-moldy-message-meta-row="true"]') !== null ||
+    parent.closest('.sr-only') !== null
+  )
+}
+
 function matchRangesInElement(element: Element, needle: string): Range[] {
   const ranges: Range[] = []
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) =>
+      isNonBodyText(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+  })
   let node = walker.nextNode()
   while (node) {
     const lower = (node.textContent ?? '').toLowerCase()
@@ -52,7 +44,8 @@ function matchRangesInElement(element: Element, needle: string): Range[] {
 
 /**
  * 메시지 앵커 내부에서 query가 등장하는 각 위치의 Range를 messageId별로 수집한다
- * (대소문자 무시, 텍스트 노드 단위 — 마크다운 렌더로 분할된 노드는 개별 매치).
+ * (대소문자 무시, 텍스트 노드 단위 — 마크다운 렌더로 분할된 노드에 걸친 구문은 놓침).
+ * ``root``를 넘겨 해당 thread viewport로 스코프한다(설정 페이지의 이중 마운트 대비).
  * 반환 map의 key 집합 = 매치 메시지 id(DOM 순서).
  */
 export function collectMatchRanges(

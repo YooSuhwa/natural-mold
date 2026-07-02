@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { ChevronDownIcon, ChevronUpIcon, SearchIcon, XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { jumpToMessage } from '@/components/chat/right-rail/jump-to-message'
@@ -14,6 +14,10 @@ import {
 
 interface ChatSearchOverlayProps {
   onClose: () => void
+  /** 검색 스코프. 여러 thread가 마운트된 페이지(설정 fix/test 탭)에서 이 thread의
+   *  viewport로 한정한다. ref로 받아 렌더 중 .current 접근을 피한다(핸들러에서 읽음).
+   *  없으면 document 전역. */
+  searchRootRef?: RefObject<HTMLElement | null>
 }
 
 /**
@@ -21,7 +25,7 @@ interface ChatSearchOverlayProps {
  * 하고, 매치를 ``jumpToMessage``로 스크롤 + 하이라이트한다. Enter/Shift+Enter로
  * 다음/이전, Esc로 닫는다.
  */
-export function ChatSearchOverlay({ onClose }: ChatSearchOverlayProps) {
+export function ChatSearchOverlay({ onClose, searchRootRef }: ChatSearchOverlayProps) {
   const t = useTranslations('chat.search')
   const [query, setQuery] = useState('')
   const [matchIds, setMatchIds] = useState<readonly string[]>([])
@@ -37,7 +41,7 @@ export function ChatSearchOverlay({ onClose }: ChatSearchOverlayProps) {
 
   function handleChange(value: string) {
     setQuery(value)
-    const ranges = collectMatchRanges(value)
+    const ranges = collectMatchRanges(value, searchRootRef?.current ?? document)
     const ids = Array.from(ranges.keys())
     setMatchIds(ids)
     setRangeMap(ranges)
@@ -62,6 +66,8 @@ export function ChatSearchOverlay({ onClose }: ChatSearchOverlayProps) {
       event.preventDefault()
       onClose()
     } else if (event.key === 'Enter') {
+      // IME 조합 확정 Enter(한국어/CJK)는 이동을 트리거하지 않는다.
+      if (event.nativeEvent.isComposing) return
       event.preventDefault()
       go(event.shiftKey ? -1 : 1)
     }

@@ -1165,6 +1165,7 @@
     "title": "대화 내보내기",
     "description": "이 대화를 파일로 저장합니다.",
     "loading": "메시지를 불러오는 중...",
+    "error": "메시지를 불러오지 못했어요. 다시 시도해 주세요.",
     "empty": "내보낼 메시지가 없습니다.",
     "hint": "메시지 {count}개를 내보냅니다.",
     "formatMarkdown": "Markdown (.md)",

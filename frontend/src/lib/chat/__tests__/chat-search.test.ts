@@ -1,66 +1,43 @@
 import { describe, expect, it } from 'vitest'
-import {
-  collectMatchRanges,
-  collectMessageEntries,
-  filterMatchingIds,
-  type MessageSearchEntry,
-} from '../chat-search'
-
-const entries: MessageSearchEntry[] = [
-  { id: 'm1', text: '안녕하세요 반갑습니다' },
-  { id: 'm2', text: 'Hello World' },
-  { id: 'm3', text: '오늘 날씨가 좋네요' },
-]
-
-describe('filterMatchingIds', () => {
-  it('대소문자 무시하고 부분 매치 id를 DOM 순서로 반환한다', () => {
-    expect(filterMatchingIds(entries, 'hello')).toEqual(['m2'])
-    expect(filterMatchingIds(entries, 'WORLD')).toEqual(['m2'])
-    expect(filterMatchingIds(entries, '안녕')).toEqual(['m1'])
-  })
-
-  it('여러 매치를 순서대로 반환한다', () => {
-    const multi: MessageSearchEntry[] = [
-      { id: 'a', text: 'foo bar' },
-      { id: 'b', text: 'baz' },
-      { id: 'c', text: 'foo again' },
-    ]
-    expect(filterMatchingIds(multi, 'foo')).toEqual(['a', 'c'])
-  })
-
-  it('빈/공백 query는 빈 배열', () => {
-    expect(filterMatchingIds(entries, '')).toEqual([])
-    expect(filterMatchingIds(entries, '   ')).toEqual([])
-  })
-
-  it('매치 없으면 빈 배열', () => {
-    expect(filterMatchingIds(entries, 'zzz-none')).toEqual([])
-  })
-})
-
-describe('collectMessageEntries', () => {
-  it('data-moldy-message-id 앵커 텍스트를 DOM 순서로 수집한다', () => {
-    document.body.innerHTML = `
-      <div data-moldy-message-id="m1">첫 번째 메시지</div>
-      <div data-moldy-message-id="m2">두 번째 메시지</div>
-      <div>앵커 없는 노드</div>
-    `
-    const collected = collectMessageEntries()
-    expect(collected.map((entry) => entry.id)).toEqual(['m1', 'm2'])
-    expect(collected[0].text).toContain('첫 번째 메시지')
-  })
-})
+import { collectMatchRanges } from '../chat-search'
 
 describe('collectMatchRanges', () => {
-  it('매치 메시지별로 검색어 등장 Range를 수집한다', () => {
+  it('매치 메시지별로 검색어 등장 Range를 수집한다(대소문자 무시)', () => {
     document.body.innerHTML = `
       <div data-moldy-message-id="m1">회의 준비와 회의록</div>
-      <div data-moldy-message-id="m2">다른 내용</div>
+      <div data-moldy-message-id="m2">Hello WORLD</div>
+      <div>앵커 없는 노드</div>
     `
     const map = collectMatchRanges('회의')
     expect(Array.from(map.keys())).toEqual(['m1'])
     // "회의"가 한 텍스트 노드에 2번 등장 → Range 2개.
     expect(map.get('m1')?.length).toBe(2)
+    // 대소문자 무시.
+    expect(Array.from(collectMatchRanges('world').keys())).toEqual(['m2'])
+  })
+
+  it('메타행/sr-only 텍스트는 검색에서 제외한다', () => {
+    document.body.innerHTML = `
+      <div data-moldy-message-id="m1">
+        <div>본문 회의 내용</div>
+        <div data-moldy-message-meta-row="true">복사 편집 회의</div>
+        <span class="sr-only">회의 라벨</span>
+      </div>
+    `
+    const map = collectMatchRanges('회의')
+    // 본문의 "회의" 1개만 — 메타행/sr-only의 "회의"는 제외.
+    expect(map.get('m1')?.length).toBe(1)
+  })
+
+  it('root로 스코프하면 root 밖 메시지는 제외한다(설정 페이지 이중 마운트 대비)', () => {
+    document.body.innerHTML = `
+      <div id="scope"><div data-moldy-message-id="m1">회의 A</div></div>
+      <div data-moldy-message-id="m2">회의 B</div>
+    `
+    const scope = document.getElementById('scope')
+    expect(scope).not.toBeNull()
+    const map = collectMatchRanges('회의', scope as HTMLElement)
+    expect(Array.from(map.keys())).toEqual(['m1'])
   })
 
   it('빈/공백 query는 빈 map', () => {

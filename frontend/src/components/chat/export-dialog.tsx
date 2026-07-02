@@ -58,7 +58,7 @@ function ExportDialogBody({
   onDone: () => void
 }) {
   const t = useTranslations('conversationExport')
-  const { data: envelope, isLoading } = useMessagesEnvelope(conversationId)
+  const { data: envelope, isLoading, isError } = useMessagesEnvelope(conversationId)
 
   const labels: ExportLabels = {
     roleUser: t('role.user'),
@@ -104,6 +104,8 @@ function ExportDialogBody({
     <DialogShell.Body>
       {isLoading ? (
         <p className="text-sm text-muted-foreground">{t('loading')}</p>
+      ) : isError ? (
+        <p className="text-sm text-status-danger">{t('error')}</p>
       ) : messageCount === 0 ? (
         <p className="text-sm text-muted-foreground">{t('empty')}</p>
       ) : (
