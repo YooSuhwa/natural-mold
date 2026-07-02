@@ -6,7 +6,11 @@ import { useTranslations } from 'next-intl'
 import { jumpToMessage } from '@/components/chat/right-rail/jump-to-message'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { collectMessageEntries, filterMatchingIds } from '@/lib/chat/chat-search'
+import {
+  applySearchHighlights,
+  clearSearchHighlights,
+  collectMatchRanges,
+} from '@/lib/chat/chat-search'
 
 interface ChatSearchOverlayProps {
   onClose: () => void
@@ -21,19 +25,24 @@ export function ChatSearchOverlay({ onClose }: ChatSearchOverlayProps) {
   const t = useTranslations('chat.search')
   const [query, setQuery] = useState('')
   const [matchIds, setMatchIds] = useState<readonly string[]>([])
+  const [rangeMap, setRangeMap] = useState<ReadonlyMap<string, Range[]>>(() => new Map())
   const [current, setCurrent] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
     inputRef.current?.select()
+    return () => clearSearchHighlights()
   }, [])
 
   function handleChange(value: string) {
     setQuery(value)
-    const ids = filterMatchingIds(collectMessageEntries(), value)
+    const ranges = collectMatchRanges(value)
+    const ids = Array.from(ranges.keys())
     setMatchIds(ids)
+    setRangeMap(ranges)
     setCurrent(0)
+    applySearchHighlights(ranges, ids[0])
     if (ids.length > 0) jumpToMessage(ids[0])
   }
 
@@ -42,9 +51,10 @@ export function ChatSearchOverlay({ onClose }: ChatSearchOverlayProps) {
       if (matchIds.length === 0) return
       const next = (current + delta + matchIds.length) % matchIds.length
       setCurrent(next)
+      applySearchHighlights(rangeMap, matchIds[next])
       jumpToMessage(matchIds[next])
     },
-    [matchIds, current],
+    [matchIds, current, rangeMap],
   )
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {

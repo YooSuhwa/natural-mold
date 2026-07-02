@@ -989,6 +989,16 @@
     animation: moldy-jump-highlight 1.5s ease-out;
   }
 
+  /* G6 in-conversation search — inline match highlight (CSS Custom Highlight API). */
+  ::highlight(moldy-search-match) {
+    background-color: color-mix(in srgb, var(--status-warn) 28%, transparent);
+  }
+
+  ::highlight(moldy-search-current) {
+    background-color: var(--status-warn);
+    color: var(--background);
+  }
+
   .moldy-chat-card {
     overflow: hidden;
   }

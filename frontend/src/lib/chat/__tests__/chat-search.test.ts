@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { collectMessageEntries, filterMatchingIds, type MessageSearchEntry } from '../chat-search'
+import {
+  collectMatchRanges,
+  collectMessageEntries,
+  filterMatchingIds,
+  type MessageSearchEntry,
+} from '../chat-search'
 
 const entries: MessageSearchEntry[] = [
   { id: 'm1', text: '안녕하세요 반갑습니다' },
@@ -43,5 +48,24 @@ describe('collectMessageEntries', () => {
     const collected = collectMessageEntries()
     expect(collected.map((entry) => entry.id)).toEqual(['m1', 'm2'])
     expect(collected[0].text).toContain('첫 번째 메시지')
+  })
+})
+
+describe('collectMatchRanges', () => {
+  it('매치 메시지별로 검색어 등장 Range를 수집한다', () => {
+    document.body.innerHTML = `
+      <div data-moldy-message-id="m1">회의 준비와 회의록</div>
+      <div data-moldy-message-id="m2">다른 내용</div>
+    `
+    const map = collectMatchRanges('회의')
+    expect(Array.from(map.keys())).toEqual(['m1'])
+    // "회의"가 한 텍스트 노드에 2번 등장 → Range 2개.
+    expect(map.get('m1')?.length).toBe(2)
+  })
+
+  it('빈/공백 query는 빈 map', () => {
+    document.body.innerHTML = `<div data-moldy-message-id="m1">회의</div>`
+    expect(collectMatchRanges('').size).toBe(0)
+    expect(collectMatchRanges('   ').size).toBe(0)
   })
 })
