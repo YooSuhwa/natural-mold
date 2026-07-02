@@ -8,8 +8,10 @@ import {
 } from '@langchain/react'
 import type { BaseMessage } from '@langchain/core/messages'
 import { useTranslations } from 'next-intl'
+import { useAtomValue } from 'jotai'
 import { useSharedSubagentRuntime } from '@/lib/chat/langgraph-runtime/subagent-runtime'
 import type { SubagentPayload } from '@/lib/stores/chat-right-rail'
+import { chatSubagentNamesAtom, resolveSubagentDisplayName } from '@/lib/stores/chat-subagent-names'
 
 interface Props {
   payload: SubagentPayload
@@ -19,7 +21,11 @@ export function SubagentPanelContent({ payload }: Props) {
   const t = useTranslations('chat.rightRail')
   const runtime = useSharedSubagentRuntime(payload.conversationId)
   const subagent = runtime?.subagentsByToolCallId.get(payload.toolCallId) ?? null
-  const agentName = subagent?.name ?? payload.agentName
+  const subagentNames = useAtomValue(chatSubagentNamesAtom)
+  const agentName = resolveSubagentDisplayName(
+    payload.conversationId ? subagentNames[payload.conversationId] : undefined,
+    subagent?.name ?? payload.agentName,
+  )
   const input = subagent?.taskInput ?? payload.input
   const hasInput = Boolean(input && input.trim().length > 0)
   const hasRuntimeDetails = runtime !== null && subagent !== null

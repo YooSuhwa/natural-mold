@@ -36,6 +36,16 @@ COMPACTION: Final = "moldy.compaction"
 # ``{type, props}`` payload the frontend renders via an allowlist registry. Shares
 # the ``custom`` channel with FILE_EVENT; consumers disambiguate by custom name.
 UI_DATA_EVENT: Final = "moldy.ui_data"
+# Subagent display-name side-channel (chat-subagent-streaming-visibility-plan G10).
+# Emitted once at stream head as a ``custom`` protocol event
+# (``name="moldy.subagent_names"``) carrying ``{names: {runtime_name: display_name}}``.
+# The v3 path streams deepagents ``task`` tool calls whose ``subagent_type`` is the
+# runtime name (``agent_<8hex>``); the frontend SDK uses that verbatim as the card
+# title. Rather than rewrite the checkpoint-backed ``subagent_type`` (which drives
+# execution + namespace binding), we ship the runtime_name→display_name map so the
+# frontend can substitute a human-readable name at the display layer only. Stable
+# event id dedupes on replay/reload (same contract as COMPACTION).
+SUBAGENT_NAMES: Final = "moldy.subagent_names"
 MEMORY_PROPOSED: Final = "memory_proposed"
 MEMORY_SAVED: Final = "memory_saved"
 MEMORY_REJECTED: Final = "memory_rejected"

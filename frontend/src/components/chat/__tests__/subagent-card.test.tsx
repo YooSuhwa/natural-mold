@@ -1,7 +1,9 @@
 import { AIMessage } from '@langchain/core/messages'
+import { getDefaultStore } from 'jotai'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '../../../../tests/test-utils'
 import { SubagentCard } from '../subagent-card'
+import { chatSubagentNamesAtom } from '@/lib/stores/chat-subagent-names'
 
 const mocks = vi.hoisted(() => ({
   useMessages: vi.fn(),
@@ -54,6 +56,10 @@ function renderCard() {
 describe('SubagentCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Components read the display-name map from the default Jotai store (the test
+    // wrapper has no Provider). Reset it so cases without an injected mapping keep
+    // showing the raw runtime name.
+    getDefaultStore().set(chatSubagentNamesAtom, {})
     mocks.useSubagentSnapshot.mockReturnValue(researcherSnapshot)
     mocks.useSubagentStream.mockReturnValue(streamToken)
     mocks.useMessages.mockReturnValue([new AIMessage('세부 메시지')])
@@ -148,6 +154,17 @@ describe('SubagentCard', () => {
     expect(screen.queryByText('세부 메시지')).not.toBeInTheDocument()
     expect(mocks.useMessages).not.toHaveBeenCalled()
     expect(mocks.useToolCalls).not.toHaveBeenCalled()
+  })
+
+  it('substitutes the runtime name with the conversation display name when mapped', () => {
+    getDefaultStore().set(chatSubagentNamesAtom, {
+      'conversation-1': { researcher: '리서치 봇' },
+    })
+
+    renderCard()
+
+    expect(screen.getByText('리서치 봇')).toBeInTheDocument()
+    expect(screen.queryByText('researcher')).not.toBeInTheDocument()
   })
 
   it('keeps rail action buttons outside clickable subagent pill buttons', () => {

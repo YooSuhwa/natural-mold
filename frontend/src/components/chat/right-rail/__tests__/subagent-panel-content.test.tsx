@@ -1,7 +1,9 @@
 import { AIMessage } from '@langchain/core/messages'
+import { getDefaultStore } from 'jotai'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '../../../../../tests/test-utils'
 import { SubagentPanelContent } from '../subagent-panel-content'
+import { chatSubagentNamesAtom } from '@/lib/stores/chat-subagent-names'
 
 const mocks = vi.hoisted(() => ({
   useMessages: vi.fn(),
@@ -37,6 +39,9 @@ const subagentSnapshot = {
 describe('SubagentPanelContent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The panel reads the display-name map from the default Jotai store; reset it
+    // so cases without an injected mapping keep showing the raw runtime name.
+    getDefaultStore().set(chatSubagentNamesAtom, {})
     mocks.useSharedSubagentRuntime.mockReturnValue(null)
     mocks.useMessages.mockReturnValue([])
     mocks.useToolCalls.mockReturnValue([])
@@ -99,5 +104,30 @@ describe('SubagentPanelContent', () => {
     expect(screen.getByText('세부 메시지')).toBeInTheDocument()
     expect(screen.getByText('web_search')).toBeInTheDocument()
     expect(screen.getByText('조사 완료')).toBeInTheDocument()
+  })
+
+  it('substitutes the runtime name with the conversation display name when mapped', () => {
+    getDefaultStore().set(chatSubagentNamesAtom, {
+      'conversation-1': { researcher: '리서치 봇' },
+    })
+    mocks.useSharedSubagentRuntime.mockReturnValue({
+      conversationId: 'conversation-1',
+      stream: streamToken,
+      subagentsByToolCallId: new Map([['tc-task-1', subagentSnapshot]]),
+    })
+
+    render(
+      <SubagentPanelContent
+        payload={{
+          conversationId: 'conversation-1',
+          toolCallId: 'tc-task-1',
+          agentName: 'fallback',
+          input: 'fallback input',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('리서치 봇')).toBeInTheDocument()
+    expect(screen.queryByText('researcher')).not.toBeInTheDocument()
   })
 })

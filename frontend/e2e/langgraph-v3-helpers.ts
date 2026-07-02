@@ -22,6 +22,7 @@ export interface LangGraphV3Setup {
   readonly parentAgentId: string
   readonly childAgentId: string
   readonly childRuntimeName: string
+  readonly childName: string
   readonly conversationId: string
   readonly csrfHeaders: CsrfHeaders
 }
@@ -125,6 +126,7 @@ export async function setupLangGraphV3Agent(request: APIRequestContext): Promise
     parentAgentId: stringField(parent, 'id', 'parent agent'),
     childAgentId: stringField(child, 'id', 'child agent'),
     childRuntimeName: stringField(child, 'runtime_name', 'child agent'),
+    childName: stringField(child, 'name', 'child agent'),
     conversationId: stringField(conversation, 'id', 'conversation'),
     csrfHeaders,
   }

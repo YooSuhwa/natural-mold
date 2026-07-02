@@ -8,7 +8,7 @@ import {
 } from '@langchain/react'
 import type { BaseMessage } from '@langchain/core/messages'
 import { PanelRightOpenIcon } from 'lucide-react'
-import { useSetAtom } from 'jotai'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { CollapsiblePill, type PillStatus } from '@/components/chat/tool-ui/collapsible-pill'
 import { useChatConversationId } from '@/components/chat/conversation-context'
@@ -18,6 +18,7 @@ import {
   useSubagentStream,
 } from '@/lib/chat/langgraph-runtime/subagent-runtime'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import { chatSubagentNamesAtom, resolveSubagentDisplayName } from '@/lib/stores/chat-subagent-names'
 
 export interface SubagentCardFallback {
   readonly agentName: string
@@ -164,7 +165,12 @@ export function SubagentCard({ fallback, toolCallId, turnToolCallIds }: Subagent
   const subagent = useSubagentSnapshot(toolCallId)
   const inlinePolicy = useSubagentInlinePolicy(toolCallId, turnToolCallIds)
   const stream = useSubagentStream()
-  const agentName = subagent?.name ?? fallback.agentName
+  const subagentNames = useAtomValue(chatSubagentNamesAtom)
+  const rawAgentName = subagent?.name ?? fallback.agentName
+  const agentName = resolveSubagentDisplayName(
+    conversationId ? subagentNames[conversationId] : undefined,
+    rawAgentName,
+  )
   const input = subagent?.taskInput ?? fallback.input
   const status = subagent ? SNAPSHOT_STATUS[subagent.status] : fallback.status
   const canRenderScopedDetails =
