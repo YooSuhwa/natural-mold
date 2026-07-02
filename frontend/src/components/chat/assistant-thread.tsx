@@ -6,7 +6,9 @@ import {
   Suspense,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type UIEvent,
@@ -30,6 +32,7 @@ import { conversationsApi } from '@/lib/api/conversations'
 import { conversationKeys } from '@/lib/hooks/use-conversations'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { math } from '@streamdown/math'
+import { ChatSearchOverlay } from '@/components/chat/chat-search-overlay'
 import { buildMarkdownComponents } from '@/components/chat/markdown-components'
 import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-streaming-plugins'
 import 'katex/dist/katex.min.css'
@@ -1024,14 +1027,35 @@ export function AssistantThread({
     [],
   )
 
+  const [searchOpen, setSearchOpen] = useState(false)
+  const viewportRef = useRef<HTMLDivElement>(null)
+  // Cmd/Ctrl+F → 대화 내 검색 오버레이(G6). 브라우저 기본 찾기를 억제한다.
+  // 한 페이지에 여러 thread가 마운트될 수 있어(설정 페이지 fix/test 탭 keepMounted),
+  // 화면에 보이는(offsetParent !== null) thread만 반응하게 스코프한다.
+  useEffect(() => {
+    function handleGlobalKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+        if (viewportRef.current?.offsetParent == null) return
+        event.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [])
+
   return (
     <AssistantThreadDynamicContext.Provider value={dynamicContextValue}>
       <ChatConversationContext.Provider value={conversationId ?? null}>
         <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
           <ThreadPrimitive.Viewport
+            ref={viewportRef}
             className="min-h-0 flex-1 overflow-y-auto"
             onScroll={handleViewportScroll}
           >
+            {searchOpen ? (
+              <ChatSearchOverlay onClose={() => setSearchOpen(false)} searchRootRef={viewportRef} />
+            ) : null}
             <AuiIf condition={(s) => s.thread.isEmpty}>
               {emptyContent ?? (
                 <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">

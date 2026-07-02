@@ -274,6 +274,7 @@
         "menu": {
           "rename": "Rename",
           "share": "Share",
+          "export": "Export",
           "pin": "Pin",
           "unpin": "Unpin",
           "delete": "Delete"
@@ -1181,6 +1182,27 @@
       "confirm": "Delete"
     }
   },
+  "conversationExport": {
+    "title": "Export conversation",
+    "description": "Save this conversation to a file.",
+    "loading": "Loading messages...",
+    "error": "Failed to load messages. Please try again.",
+    "empty": "No messages to export.",
+    "hint": "Exporting {count} messages.",
+    "formatMarkdown": "Markdown (.md)",
+    "formatJson": "JSON (.json)",
+    "exportedAt": "Exported at",
+    "toolCalls": "Tool calls",
+    "attachments": "Attachments",
+    "role": {
+      "user": "User",
+      "assistant": "Assistant",
+      "tool": "Tool"
+    },
+    "toast": {
+      "exported": "Conversation exported"
+    }
+  },
   "share": {
     "title": "Share conversation",
     "description": "Anyone with the link can view this conversation read-only.",
@@ -1204,6 +1226,13 @@
   },
   "chat": {
     "defaultAgentName": "Default Agent Name",
+    "search": {
+      "placeholder": "Search in conversation",
+      "count": "{position}/{total}",
+      "previous": "Previous match",
+      "next": "Next match",
+      "close": "Close search"
+    },
     "toolGroup": {
       "count": "{count} calls",
       "sourceCount": "{count} sources",

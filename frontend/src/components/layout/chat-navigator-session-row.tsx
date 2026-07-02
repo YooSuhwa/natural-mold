@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useAtomValue } from 'jotai'
 import {
   CircleAlertIcon,
+  DownloadIcon,
   LoaderCircleIcon,
   MessageSquareIcon,
   MoreVerticalIcon,
@@ -156,6 +157,10 @@ export function ChatNavigatorSessionRow({
             <DropdownMenuItem onClick={() => actions.openShareDialog(conversation.id)}>
               <Share2Icon />
               {tActions('menu.share')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => actions.openExportDialog(conversation)}>
+              <DownloadIcon />
+              {tActions('menu.export')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => actions.togglePin(conversation)}>
               {conversation.is_pinned ? <PinOffIcon /> : <PinIcon />}

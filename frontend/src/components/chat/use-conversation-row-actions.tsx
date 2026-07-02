@@ -12,6 +12,7 @@ import {
 } from '@tanstack/react-query'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { DialogShell } from '@/components/shared/dialog-shell'
+import { ExportDialog } from '@/components/chat/export-dialog'
 import { ShareDialog } from '@/components/chat/share-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +28,7 @@ interface ConversationRowActionsOptions {
 export interface ConversationRowActions {
   isDeleting: boolean
   dialogs: ReactNode
+  openExportDialog: (conversation: Conversation) => void
   openRenameDialog: (conversation: Conversation) => void
   openShareDialog: (conversationId: string) => void
   requestDelete: (conversation: Conversation) => void
@@ -118,6 +120,7 @@ export function useConversationRowActions({
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [shareTarget, setShareTarget] = useState<string | null>(null)
+  const [exportTarget, setExportTarget] = useState<Conversation | null>(null)
 
   function togglePin(conversation: Conversation) {
     updateConversation.mutate({
@@ -155,6 +158,7 @@ export function useConversationRowActions({
   return {
     isDeleting: deleteConversation.isPending,
     openRenameDialog,
+    openExportDialog: setExportTarget,
     openShareDialog: setShareTarget,
     requestDelete: setDeleteTarget,
     togglePin,
@@ -201,6 +205,15 @@ export function useConversationRowActions({
             open={!!shareTarget}
             onOpenChange={(open) => !open && setShareTarget(null)}
             conversationId={shareTarget}
+          />
+        ) : null}
+
+        {exportTarget ? (
+          <ExportDialog
+            open={!!exportTarget}
+            onOpenChange={(open) => !open && setExportTarget(null)}
+            conversationId={exportTarget.id}
+            title={exportTarget.title}
           />
         ) : null}
       </>
