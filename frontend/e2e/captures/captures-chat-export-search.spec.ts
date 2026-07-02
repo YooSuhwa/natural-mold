@@ -64,9 +64,13 @@ test.describe('Chat export + search captures', () => {
     await sendMessage(page, '오늘 회의 내용을 요약해줘')
     await settleStream(page)
 
-    // G5 — navigator session menu → 내보내기 dialog.
+    // G5 — navigator session menu (dropdown with the 내보내기 item) → export dialog.
     await page.getByRole('button', { name: '대화 메뉴' }).first().click()
-    await page.getByRole('menuitem', { name: '내보내기' }).click()
+    const exportItem = page.getByRole('menuitem', { name: '내보내기' })
+    await expect(exportItem).toBeVisible({ timeout: 10_000 })
+    await settle(page)
+    await capture(page, WAVE, '00-export-menu.png')
+    await exportItem.click()
     await expect(page.getByRole('button', { name: 'Markdown (.md)' })).toBeVisible({
       timeout: 15_000,
     })
