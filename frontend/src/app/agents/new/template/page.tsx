@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowUpDownIcon,
+  BookOpenIcon,
   BotIcon,
   ChevronRightIcon,
   Loader2Icon,
@@ -82,7 +83,8 @@ export default function TemplateSelectionPage() {
         (tpl) =>
           tpl.name.toLowerCase().includes(q) ||
           (tpl.description ?? '').toLowerCase().includes(q) ||
-          (tpl.recommended_tools ?? []).some((tool) => tool.toLowerCase().includes(q)),
+          (tpl.recommended_tools ?? []).some((tool) => tool.toLowerCase().includes(q)) ||
+          (tpl.recommended_skill_slugs ?? []).some((skill) => skill.toLowerCase().includes(q)),
       )
     }
     return [...list].sort((a, b) => {
@@ -389,9 +391,12 @@ function TemplateCard({
   startLabel,
   toolsMoreFormatter,
 }: TemplateCardProps) {
-  const tools = template.recommended_tools ?? []
-  const visibleTools = tools.slice(0, 2)
-  const extraToolsCount = tools.length - visibleTools.length
+  const capabilities = [
+    ...(template.recommended_tools ?? []).map((name) => ({ kind: 'tool' as const, name })),
+    ...(template.recommended_skill_slugs ?? []).map((name) => ({ kind: 'skill' as const, name })),
+  ]
+  const visibleCapabilities = capabilities.slice(0, 2)
+  const extraCapabilityCount = capabilities.length - visibleCapabilities.length
   const tone = getResourceTone(template.category)
 
   const disabled = creatingLocked && !isCreating
@@ -421,16 +426,23 @@ function TemplateCard({
         {template.description ?? template.category}
       </ResourceListCard.Description>
 
-      {tools.length > 0 && (
+      {capabilities.length > 0 && (
         <ResourceListCard.MetaRow>
-          {visibleTools.map((tool) => (
-            <ResourceCardMeta key={tool} className="max-w-24 gap-1">
-              <WrenchIcon aria-hidden className="size-2.5 text-muted-foreground" />
-              <span className="truncate leading-none">{tool}</span>
+          {visibleCapabilities.map((capability) => (
+            <ResourceCardMeta
+              key={`${capability.kind}-${capability.name}`}
+              className="max-w-24 gap-1"
+            >
+              {capability.kind === 'skill' ? (
+                <BookOpenIcon aria-hidden className="size-2.5 text-muted-foreground" />
+              ) : (
+                <WrenchIcon aria-hidden className="size-2.5 text-muted-foreground" />
+              )}
+              <span className="truncate leading-none">{capability.name}</span>
             </ResourceCardMeta>
           ))}
-          {extraToolsCount > 0 && (
-            <ResourceCardMeta>{toolsMoreFormatter(extraToolsCount)}</ResourceCardMeta>
+          {extraCapabilityCount > 0 && (
+            <ResourceCardMeta>{toolsMoreFormatter(extraCapabilityCount)}</ResourceCardMeta>
           )}
         </ResourceListCard.MetaRow>
       )}

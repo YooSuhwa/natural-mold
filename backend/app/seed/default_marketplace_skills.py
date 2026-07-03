@@ -23,6 +23,7 @@ _DOCX_SKILL_DIR = _PACKAGE_ROOT / "docx-document"
 _XLSX_SKILL_DIR = _PACKAGE_ROOT / "xlsx-spreadsheet"
 _PPTX_SKILL_DIR = _PACKAGE_ROOT / "pptx-presentation"
 _PATENT_HWPX_SKILL_DIR = _PACKAGE_ROOT / "patent-hwpx-generator"
+_OPENWIKI_SKILL_DIR = _PACKAGE_ROOT / "openwiki"
 
 IMAGE_SKILL_REQUIREMENTS: list[dict[str, Any]] = [
     {
@@ -72,6 +73,18 @@ PATENT_HWPX_EXECUTION_PROFILE: dict[str, Any] = {
     "runners": ["python"],
     "requires_python": True,
     "timeout_seconds": 120,
+}
+
+OPENWIKI_EXECUTION_PROFILE: dict[str, Any] = {
+    "support_level": "ready_python",
+    "runners": ["python"],
+    "requires_python": True,
+    "requires_network": True,
+    "timeout_seconds": 420,
+    "notes": (
+        "Clones or refreshes the target git repository into the shared "
+        "workspaces directory before writing wiki pages."
+    ),
 }
 
 DOCUMENT_SKILL_SPECS: list[dict[str, Any]] = [
@@ -124,6 +137,20 @@ DOCUMENT_SKILL_SPECS: list[dict[str, Any]] = [
         "artifact_extensions": ["hwpx"],
         "execution_profile": PATENT_HWPX_EXECUTION_PROFILE,
         "release_notes": "Initial built-in Korean patent HWPX generation skill.",
+    },
+    {
+        "slug": "openwiki",
+        "name": "OpenWiki",
+        "description": (
+            "Generate and maintain an OpenWiki documentation site for a git repository."
+        ),
+        "skill_dir": _OPENWIKI_SKILL_DIR,
+        "categories": ["document", "development"],
+        "tags": ["wiki", "docs", "documentation", "git"],
+        "runtime": "python",
+        "artifact_extensions": ["md"],
+        "execution_profile": OPENWIKI_EXECUTION_PROFILE,
+        "release_notes": "Initial built-in OpenWiki documentation skill.",
     },
 ]
 
@@ -542,6 +569,7 @@ __all__ = [
     "IMAGE_SKILL_EXECUTION_PROFILE",
     "IMAGE_SKILL_REQUIREMENTS",
     "JS_DOCUMENT_EXECUTION_PROFILE",
+    "OPENWIKI_EXECUTION_PROFILE",
     "PATENT_HWPX_EXECUTION_PROFILE",
     "seed_default_marketplace_skills",
 ]

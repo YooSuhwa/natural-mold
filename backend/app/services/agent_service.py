@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, cast
 
@@ -19,6 +20,8 @@ from app.models.template import Template
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.agent import AgentCreate, AgentUpdate
 from app.services.agent_image_paths import build_agent_image_url
+
+logger = logging.getLogger(__name__)
 
 
 def _selectin_agent() -> list:
@@ -64,9 +67,7 @@ async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
         .outerjoin(last_used_subq, Agent.id == last_used_subq.c.agent_id)
         .where(Agent.user_id == user_id)
         .options(*_selectin_agent())
-        .order_by(
-            func.coalesce(last_used_subq.c.last_used_at, Agent.created_at).desc()
-        )
+        .order_by(func.coalesce(last_used_subq.c.last_used_at, Agent.created_at).desc())
     )
     rows = result.all()
     agents: list[Agent] = []
@@ -254,9 +255,7 @@ async def _validate_tool_ids_owned(
         )
 
 
-async def _validate_model_fallback_ids(
-    db: AsyncSession, fallback_ids: list[uuid.UUID]
-) -> None:
+async def _validate_model_fallback_ids(db: AsyncSession, fallback_ids: list[uuid.UUID]) -> None:
     """Every fallback id must reference a model row in the catalog.
 
     The catalog is shared across users (no per-user ownership), so we only
@@ -299,6 +298,85 @@ async def _validate_skill_ids_owned(
         )
 
 
+async def _install_template_skills(
+    db: AsyncSession, slugs: list[str], user_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """Install system marketplace skills referenced by a template (by slug).
+
+    Re-uses an existing installation when the user already has one
+    (``install_mode="reuse_or_update"``). Seed drift — a slug without a
+    published system item, or an installation whose skill row was deleted —
+    is skipped with a warning instead of failing agent creation: the agent
+    is still usable and the skill can be attached manually.
+    """
+
+    from app.dependencies import CurrentUser
+    from app.marketplace.install_service import install_item
+    from app.marketplace.schemas import InstallMarketplaceItemIn
+    from app.models.marketplace import MarketplaceItem
+    from app.models.skill import Skill
+    from app.models.user import User
+
+    user_row = await db.get(User, user_id)
+    if user_row is None:
+        return []
+    current_user = CurrentUser(
+        id=user_row.id,
+        email=user_row.email,
+        name=user_row.name,
+        is_super_user=bool(user_row.is_super_user),
+    )
+
+    skill_ids: list[uuid.UUID] = []
+    for slug in slugs:
+        item_id = (
+            await db.execute(
+                select(MarketplaceItem.id)
+                .where(MarketplaceItem.resource_type == "skill")
+                .where(MarketplaceItem.is_system.is_(True))
+                .where(MarketplaceItem.status == "published")
+                .where(
+                    or_(
+                        MarketplaceItem.slug == slug,
+                        MarketplaceItem.source_external_id == slug,
+                    )
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if item_id is None:
+            logger.warning(
+                "template skill slug %r has no published system marketplace item; skipping",
+                slug,
+            )
+            continue
+        try:
+            installation = await install_item(
+                db,
+                item_id=item_id,
+                user=current_user,
+                body=InstallMarketplaceItemIn(),
+            )
+        except HTTPException:
+            logger.warning("template skill %r auto-install failed; skipping", slug, exc_info=True)
+            continue
+        if installation.installed_skill_id is not None:
+            skill_ids.append(installation.installed_skill_id)
+
+    if not skill_ids:
+        return []
+    # A re-used installation can point at a skill the user has since deleted;
+    # attach only skill rows that still exist and belong to the user.
+    result = await db.execute(
+        select(Skill.id).where(Skill.id.in_(skill_ids), Skill.user_id == user_id)
+    )
+    valid = {row[0] for row in result.all()}
+    dangling = [str(s) for s in skill_ids if s not in valid]
+    if dangling:
+        logger.warning("template skill installations point at missing skills: %s", dangling)
+    return [s for s in skill_ids if s in valid]
+
+
 async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
     agent.is_favorite = not agent.is_favorite
     await db.flush()
@@ -333,23 +411,25 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         template_id=data.template_id,
     )
 
+    template: Template | None = None
+    if data.template_id:
+        template = await db.get(Template, data.template_id)
+
     # Collect tools to link
     tool_ids_to_link: list[uuid.UUID] = []
 
     if data.tool_ids:
         tool_ids_to_link.extend(data.tool_ids)
-    elif data.template_id:
+    elif template and template.recommended_tools:
         # Auto-link from template recommended tools (by name)
-        template = await db.get(Template, data.template_id)
-        if template and template.recommended_tools:
-            lower_names = [n.lower() for n in template.recommended_tools]
-            result = await db.execute(
-                select(Tool.id).where(
-                    or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
-                    func.lower(Tool.name).in_(lower_names),
-                )
+        lower_names = [n.lower() for n in template.recommended_tools]
+        result = await db.execute(
+            select(Tool.id).where(
+                or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
+                func.lower(Tool.name).in_(lower_names),
             )
-            tool_ids_to_link.extend(r[0] for r in result.all())
+        )
+        tool_ids_to_link.extend(r[0] for r in result.all())
 
     if tool_ids_to_link:
         await _validate_tool_ids_owned(db, tool_ids_to_link, user_id)
@@ -357,13 +437,21 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
 
     if data.mcp_tool_ids:
         await _validate_mcp_tool_ids_owned(db, data.mcp_tool_ids, user_id)
-        agent.mcp_tool_links = [
-            AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids
-        ]
+        agent.mcp_tool_links = [AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids]
 
     if data.skill_ids:
         await _validate_skill_ids_owned(db, data.skill_ids, user_id)
         agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
+    elif template and template.recommended_skill_slugs:
+        # Auto-install system marketplace skills referenced by the template,
+        # then attach them (mirrors the recommended_tools auto-link above).
+        auto_skill_ids = await _install_template_skills(
+            db,
+            [str(s) for s in template.recommended_skill_slugs],
+            user_id,
+        )
+        if auto_skill_ids:
+            agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in auto_skill_ids]
 
     if data.sub_agent_ids:
         await _validate_sub_agent_ids_owned(db, data.sub_agent_ids, user_id)
@@ -409,9 +497,7 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
     if data.model_fallback_ids is not None:
         await _validate_model_fallback_ids(db, data.model_fallback_ids)
         agent.model_fallback_list = (
-            [str(fid) for fid in data.model_fallback_ids]
-            if data.model_fallback_ids
-            else None
+            [str(fid) for fid in data.model_fallback_ids] if data.model_fallback_ids else None
         )
     if data.tool_ids is not None:
         await _validate_tool_ids_owned(db, data.tool_ids, agent.user_id)
@@ -423,9 +509,7 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
         await _validate_mcp_tool_ids_owned(db, data.mcp_tool_ids, agent.user_id)
         agent.mcp_tool_links.clear()
         await db.flush()
-        agent.mcp_tool_links = [
-            AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids
-        ]
+        agent.mcp_tool_links = [AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids]
     if data.skill_ids is not None:
         await _validate_skill_ids_owned(db, data.skill_ids, agent.user_id)
         agent.skill_links.clear()
