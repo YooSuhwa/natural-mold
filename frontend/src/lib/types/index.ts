@@ -168,6 +168,7 @@ export interface Template {
   category: string
   system_prompt: string
   recommended_tools: string[] | null
+  recommended_skill_slugs: string[] | null
   recommended_model_id: string | null
   usage_example: string | null
   created_at: string

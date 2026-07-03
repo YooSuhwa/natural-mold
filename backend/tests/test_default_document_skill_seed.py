@@ -18,6 +18,7 @@ from app.storage.paths import resolve_data_path
         ("xlsx-spreadsheet", "node", "xlsx"),
         ("pptx-presentation", "node", "pptx"),
         ("patent-hwpx-generator", "python", "hwpx"),
+        ("openwiki", "python", "md"),
     ],
 )
 async def test_seed_default_document_skills_create_system_items(

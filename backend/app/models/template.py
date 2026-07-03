@@ -18,6 +18,9 @@ class Template(Base):
     category: Mapped[str] = mapped_column(String(50), nullable=False)
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     recommended_tools: Mapped[list | None] = mapped_column(JSON)
+    # System marketplace skill slugs auto-installed + attached when an agent
+    # is created from this template (agent_service.create_agent).
+    recommended_skill_slugs: Mapped[list | None] = mapped_column(JSON)
     recommended_model_id: Mapped[uuid.UUID | None] = mapped_column()
     usage_example: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(

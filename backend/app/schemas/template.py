@@ -13,6 +13,7 @@ class TemplateResponse(BaseModel):
     category: str
     system_prompt: str
     recommended_tools: list[str] | None
+    recommended_skill_slugs: list[str] | None = None
     recommended_model_id: uuid.UUID | None
     usage_example: str | None
     created_at: datetime
