@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { artifactKeys, getArtifactTextContent } from '@/lib/api/artifacts'
 import type { ArtifactSummary, ArtifactTextContent } from '@/lib/types'
+import { ArtifactCodeBlock } from './artifact-code-block'
 import { getArtifactPreviewProvider } from './preview-registry'
 import { canShowArtifactSource } from './source-capabilities'
 
@@ -59,9 +60,7 @@ export function ArtifactPreview({
     }
     return (
       <div className="moldy-muted-panel max-h-96 overflow-auto p-3">
-        <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground">
-          {textQuery.data?.text ?? ''}
-        </pre>
+        <ArtifactCodeBlock text={textQuery.data?.text ?? ''} extension={artifact.extension} />
         {textQuery.data?.truncated ? (
           <p className="mt-3 text-xs text-muted-foreground">{t('truncated')}</p>
         ) : null}

@@ -1,5 +1,6 @@
 import { useTranslations } from 'next-intl'
 import type { ArtifactPreviewProvider, ArtifactPreviewProps } from '../preview-registry'
+import { ArtifactCodeBlock } from '../artifact-code-block'
 
 function CodePreview({ artifact, textContent, isLoadingText }: ArtifactPreviewProps) {
   const t = useTranslations('chat.rightRail.artifacts')
@@ -9,9 +10,9 @@ function CodePreview({ artifact, textContent, isLoadingText }: ArtifactPreviewPr
       <div className="border-b border-border/60 px-3 py-2 text-xs font-medium text-muted-foreground">
         {artifact.extension ?? t('code')}
       </div>
-      <pre className="max-h-[520px] overflow-auto p-3 text-xs leading-relaxed">
-        <code>{textContent?.text ?? ''}</code>
-      </pre>
+      <div className="max-h-[520px] overflow-auto p-3">
+        <ArtifactCodeBlock text={textContent?.text ?? ''} extension={artifact.extension} />
+      </div>
     </div>
   )
 }

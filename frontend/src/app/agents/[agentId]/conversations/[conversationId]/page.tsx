@@ -376,6 +376,15 @@ export default function ChatPage({
     return map
   }, [agent?.tools])
 
+  // MCP 도구명 → 서버 표시명. 도구 pill의 플러그 아이콘 + 서버 배지 근거.
+  const mcpServerNames = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {}
+    for (const mcpTool of agent?.mcp_tools ?? []) {
+      map[mcpTool.name] = mcpTool.server_name ?? 'MCP'
+    }
+    return map
+  }, [agent?.mcp_tools])
+
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
   const shouldSuppressEmptyContent =
     useLangGraphRuntime &&
@@ -416,29 +425,29 @@ export default function ChatPage({
             </div>
           </div>
         ) : (
-          <ToolIconProvider iconIds={toolIconIds}>
+          <ToolIconProvider iconIds={toolIconIds} mcpServers={mcpServerNames}>
             <ChatRuntimeSection
               activeConversationId={activeConversationId}
-            activeRun={envelope?.active_run ?? null}
-            agentId={agentId}
-            agentImageUrl={agent?.image_url}
-            agentName={agent?.name}
-            attachmentAdapter={moldyAttachmentAdapter}
-            emptyContent={renderedEmptyContent}
-            feedbackAdapter={feedbackAdapter}
-            latestRun={envelope?.latest_run ?? null}
-            messages={messages}
-            modelName={agent?.model?.display_name}
-            showContextGauge
-            contextWindow={agent?.model?.context_window ?? null}
-            onBeforeNewMessage={handleBeforeNewMessage}
-            onNewMessageAccepted={handleNewMessageAccepted}
-            onRuntimeStatusChange={handleRuntimeStatusChange}
-            onStreamEnd={onStreamEnd}
-            streamFn={streamFn}
-            totalCost={envelope?.total_estimated_cost}
-            useLangGraphRuntime={useLangGraphRuntime}
-            user={user}
+              activeRun={envelope?.active_run ?? null}
+              agentId={agentId}
+              agentImageUrl={agent?.image_url}
+              agentName={agent?.name}
+              attachmentAdapter={moldyAttachmentAdapter}
+              emptyContent={renderedEmptyContent}
+              feedbackAdapter={feedbackAdapter}
+              latestRun={envelope?.latest_run ?? null}
+              messages={messages}
+              modelName={agent?.model?.display_name}
+              showContextGauge
+              contextWindow={agent?.model?.context_window ?? null}
+              onBeforeNewMessage={handleBeforeNewMessage}
+              onNewMessageAccepted={handleNewMessageAccepted}
+              onRuntimeStatusChange={handleRuntimeStatusChange}
+              onStreamEnd={onStreamEnd}
+              streamFn={streamFn}
+              totalCost={envelope?.total_estimated_cost}
+              useLangGraphRuntime={useLangGraphRuntime}
+              user={user}
             />
           </ToolIconProvider>
         )}

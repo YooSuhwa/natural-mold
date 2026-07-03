@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useAtomValue } from 'jotai'
 import {
+  AlarmClockIcon,
   CircleAlertIcon,
   DownloadIcon,
   LoaderCircleIcon,
@@ -67,6 +68,9 @@ export function ChatNavigatorSessionRow({
   const needsAttention = !isRunning && isInterruptedRunStatus(runStatus)
   const href = `/agents/${conversation.agent_id}/conversations/${conversation.id}`
   const unreadCount = conversation.unread_count ?? 0
+  // 스케줄 트리거가 마지막으로 활동한 대화 — "밤샘 다이제스트" 배지.
+  // 주의: 목록 필터용 origin 컬럼(source, 항상 "ui")과 다른 필드다.
+  const isScheduleActivity = conversation.last_activity_source === 'schedule'
 
   function handleSessionClick() {
     if (isSidebarCollapsed) {
@@ -90,6 +94,17 @@ export function ChatNavigatorSessionRow({
       >
         {conversation.is_pinned ? (
           <PinIcon className="size-3 shrink-0 text-muted-foreground" />
+        ) : isScheduleActivity ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="inline-flex shrink-0 items-center" />}>
+              <AlarmClockIcon
+                className="size-3.5 shrink-0 text-status-info"
+                data-moldy-schedule-activity={conversation.id}
+              />
+              <span className="sr-only">{t('session.scheduleActivity')}</span>
+            </TooltipTrigger>
+            <TooltipContent side="top">{t('session.scheduleActivity')}</TooltipContent>
+          </Tooltip>
         ) : (
           <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
         )}

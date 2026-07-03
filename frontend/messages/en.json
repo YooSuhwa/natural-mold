@@ -265,6 +265,7 @@
       "session": {
         "fallbackTitle": "New conversation",
         "menu": "Conversation menu",
+        "scheduleActivity": "Updated by a scheduled run",
         "status": {
           "running": "Generating answer",
           "actionRequired": "User action required"
@@ -1226,6 +1227,10 @@
   },
   "chat": {
     "defaultAgentName": "Default Agent Name",
+    "emptyState": {
+      "canDo": "What this agent can do",
+      "moreCapabilities": "+{count} more"
+    },
     "search": {
       "placeholder": "Search in conversation",
       "count": "{position}/{total}",

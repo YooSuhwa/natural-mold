@@ -1,25 +1,15 @@
 'use client'
 
-import {
-  CheckCircle2Icon,
-  CircleDotIcon,
-  CircleIcon,
-  FileTextIcon,
-  ListChecksIcon,
-  type LucideIcon,
-} from 'lucide-react'
+import { FileTextIcon, ListChecksIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import {
   DeepAgentsStateFileList,
   type DeepAgentsStateFileActions,
 } from '@/components/chat/deepagents-state-file-list'
+import { completedTodoCount, TodosBody } from '@/components/chat/deepagents-todos'
 import { CollapsiblePill } from '@/components/chat/tool-ui/collapsible-pill'
 import { cn } from '@/lib/utils'
-import type {
-  DeepAgentsStateSnapshot,
-  DeepAgentTodo,
-  DeepAgentTodoStatus,
-} from '@/lib/chat/langgraph-runtime/deepagents-state'
+import type { DeepAgentsStateSnapshot } from '@/lib/chat/langgraph-runtime/deepagents-state'
 
 interface DeepAgentsStatePanelProps extends DeepAgentsStateFileActions {
   readonly state: DeepAgentsStateSnapshot
@@ -35,59 +25,6 @@ interface DeepAgentsStatePanelProps extends DeepAgentsStateFileActions {
    * stay live-only, so the indicator keeps rendering those.
    */
   readonly showTodos?: boolean
-}
-
-const STATUS_META: Record<
-  DeepAgentTodoStatus,
-  { readonly Icon: LucideIcon; readonly className: string }
-> = {
-  completed: { Icon: CheckCircle2Icon, className: 'text-status-success' },
-  in_progress: { Icon: CircleDotIcon, className: 'text-primary-strong' },
-  pending: { Icon: CircleIcon, className: 'text-muted-foreground' },
-}
-
-const TODO_GROUPS: readonly DeepAgentTodoStatus[] = ['in_progress', 'pending', 'completed']
-
-function completedCount(todos: readonly DeepAgentTodo[]): number {
-  return todos.filter((todo) => todo.status === 'completed').length
-}
-
-function TodoRow({ todo }: { readonly todo: DeepAgentTodo }) {
-  const t = useTranslations('chat.deepAgentsState.status')
-  const meta = STATUS_META[todo.status]
-  const Icon = meta.Icon
-  return (
-    <li className="flex min-w-0 items-start gap-2 py-1">
-      <Icon className={cn('mt-0.5 size-3.5 shrink-0', meta.className)} />
-      <span
-        className={cn(
-          'min-w-0 flex-1 text-xs leading-5',
-          todo.status === 'completed' && 'text-muted-foreground line-through',
-        )}
-      >
-        {todo.content}
-      </span>
-      <span className={cn('shrink-0 moldy-ui-micro', meta.className)}>{t(todo.status)}</span>
-    </li>
-  )
-}
-
-function TodosBody({ todos }: { readonly todos: readonly DeepAgentTodo[] }) {
-  return (
-    <div className="space-y-2">
-      {TODO_GROUPS.map((status) => {
-        const items = todos.filter((todo) => todo.status === status)
-        if (items.length === 0) return null
-        return (
-          <ol key={status} className="space-y-0.5">
-            {items.map((todo) => (
-              <TodoRow key={todo.id} todo={todo} />
-            ))}
-          </ol>
-        )
-      })}
-    </div>
-  )
 }
 
 export function DeepAgentsStatePanel({
@@ -117,7 +54,7 @@ export function DeepAgentsStatePanel({
           kind="thinking"
           title={t('tasks.title')}
           meta={t('tasks.progress', {
-            done: completedCount(state.todos),
+            done: completedTodoCount(state.todos),
             total: state.todos.length,
           })}
           leadingIcon={ListChecksIcon}
