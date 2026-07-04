@@ -1224,8 +1224,12 @@
         "webSearch": "웹 검색",
         "naverBlog": "네이버 블로그",
         "naverNews": "네이버 뉴스",
+        "naverImage": "네이버 이미지",
+        "naverShop": "네이버 쇼핑",
+        "naverLocal": "네이버 지역",
         "googleSearch": "구글 검색",
         "googleNews": "구글 뉴스",
+        "googleImage": "구글 이미지",
         "readFile": "파일 읽기",
         "writeFile": "파일 쓰기",
         "editFile": "파일 수정"
@@ -1523,7 +1527,10 @@
       "search": {
         "defaultTitle": "웹 검색",
         "running": "검색 중…",
-        "count": "{count}건"
+        "count": "{count}건",
+        "answer": "요약 답변",
+        "price": "최저 {price}원",
+        "thumbnailAlt": "검색 결과 썸네일"
       },
       "plan": {
         "title": "Plan",

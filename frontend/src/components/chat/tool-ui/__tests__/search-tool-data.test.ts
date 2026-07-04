@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { parseSearchResults } from '../search-tool-data'
+import {
+  looksLikeSearchResults,
+  parseSearchResults,
+  searchAnswerFromResult,
+} from '../search-tool-data'
 
 describe('parseSearchResults', () => {
   it('parses Tavily search response objects', () => {
@@ -41,5 +45,117 @@ describe('parseSearchResults', () => {
         content: 'Snippet',
       },
     ])
+  })
+
+  it('parses Naver items shape (link/description → url/snippet accessor 대상 필드)', () => {
+    expect(
+      parseSearchResults({
+        http_status: 200,
+        total: 1234,
+        items: [
+          {
+            title: '블로그 글',
+            link: 'https://blog.naver.example/1',
+            description: '본문 요약',
+            bloggername: '작성자',
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        title: '블로그 글',
+        link: 'https://blog.naver.example/1',
+        description: '본문 요약',
+      },
+    ])
+  })
+
+  it('parses Naver 쇼핑 items (lprice/mallName/image 썸네일)', () => {
+    expect(
+      parseSearchResults({
+        items: [
+          {
+            title: '기계식 키보드',
+            link: 'https://shopping.naver.example/1',
+            image: 'https://shopping-phinf.example/img.jpg',
+            lprice: '12900',
+            mallName: '몰이름',
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        title: '기계식 키보드',
+        link: 'https://shopping.naver.example/1',
+        thumbnail: 'https://shopping-phinf.example/img.jpg',
+        price: 12900,
+        mall_name: '몰이름',
+      },
+    ])
+  })
+
+  it('parses Google 이미지 items (image.thumbnailLink 썸네일)', () => {
+    expect(
+      parseSearchResults({
+        items: [
+          {
+            title: '이미지',
+            link: 'https://images.example/full.jpg',
+            image: { thumbnailLink: 'https://images.example/thumb.jpg' },
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        title: '이미지',
+        link: 'https://images.example/full.jpg',
+        thumbnail: 'https://images.example/thumb.jpg',
+      },
+    ])
+  })
+
+  it('unwraps MCP text-content 래퍼([{type:text, text:JSON}])', () => {
+    expect(
+      parseSearchResults([
+        {
+          type: 'text',
+          text: '{"results":[{"title":"MCP","url":"https://mcp.example"}]}',
+        },
+      ]),
+    ).toEqual([{ title: 'MCP', url: 'https://mcp.example' }])
+  })
+})
+
+describe('searchAnswerFromResult', () => {
+  it('Tavily answer 필드를 추출한다 (JSON 문자열 포함)', () => {
+    expect(searchAnswerFromResult({ answer: '요약', results: [] })).toBe('요약')
+    expect(searchAnswerFromResult('{"answer":"요약","results":[]}')).toBe('요약')
+  })
+
+  it('answer가 없거나 공백이면 null', () => {
+    expect(searchAnswerFromResult({ results: [] })).toBeNull()
+    expect(searchAnswerFromResult({ answer: '  ' })).toBeNull()
+    expect(searchAnswerFromResult('plain text')).toBeNull()
+  })
+})
+
+describe('looksLikeSearchResults', () => {
+  it('results|items 배열 + title + url|link면 true', () => {
+    expect(looksLikeSearchResults({ results: [{ title: 'A', url: 'https://a.example' }] })).toBe(
+      true,
+    )
+    expect(
+      looksLikeSearchResults(
+        '{"items":[{"title":"B","link":"https://b.example","description":"d"}]}',
+      ),
+    ).toBe(true)
+  })
+
+  it('title이나 url이 빠지면 false (보수적 판정)', () => {
+    expect(looksLikeSearchResults({ items: [{ title: 'no url' }] })).toBe(false)
+    expect(looksLikeSearchResults({ results: [{ url: 'https://no-title.example' }] })).toBe(false)
+    expect(looksLikeSearchResults({ total: 3 })).toBe(false)
+    expect(looksLikeSearchResults('plain text')).toBe(false)
+    expect(looksLikeSearchResults(null)).toBe(false)
   })
 })

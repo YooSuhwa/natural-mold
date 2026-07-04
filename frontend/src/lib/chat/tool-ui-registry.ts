@@ -3,14 +3,7 @@ import { PlanToolUI } from '@/components/chat/tool-ui/plan-tool-ui'
 import { UserInputUI } from '@/components/chat/tool-ui/user-input-ui'
 import { ApprovalCard } from '@/components/chat/tool-ui/approval-card'
 import { ClarifyingQuestionUI } from '@/components/chat/tool-ui/clarifying-question-ui'
-import {
-  WebSearchToolUI,
-  TavilySearchToolUI,
-  NaverBlogSearchToolUI,
-  NaverNewsSearchToolUI,
-  GoogleSearchToolUI,
-  GoogleNewsSearchToolUI,
-} from '@/components/chat/tool-ui/search-tool-ui'
+import { SEARCH_TOOL_UIS } from '@/components/chat/tool-ui/search-tool-ui'
 import {
   ReadFileToolUI,
   WriteFileToolUI,
@@ -45,12 +38,7 @@ export const ALL_TOOL_UI = [
   ProposeMemoryToolUI,
   SaveUserMemoryToolUI,
   SaveAgentMemoryToolUI,
-  TavilySearchToolUI,
-  WebSearchToolUI,
-  NaverBlogSearchToolUI,
-  NaverNewsSearchToolUI,
-  GoogleSearchToolUI,
-  GoogleNewsSearchToolUI,
+  ...SEARCH_TOOL_UIS,
   ReadFileToolUI,
   WriteFileToolUI,
   EditFileToolUI,
