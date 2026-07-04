@@ -46,6 +46,12 @@ UI_DATA_EVENT: Final = "moldy.ui_data"
 # frontend can substitute a human-readable name at the display layer only. Stable
 # event id dedupes on replay/reload (same contract as COMPACTION).
 SUBAGENT_NAMES: Final = "moldy.subagent_names"
+# Memory recall side-channel (W2-3). Emitted once at stream head as a ``custom``
+# protocol event (``name="moldy.memory_recalled"``) carrying
+# ``{memories: [{id, scope, content}]}`` — the long-term memory briefs injected
+# into this run's system prompt. Stable event id (``<run_id>:memory_recalled``)
+# dedupes on replay/reload (same contract as SUBAGENT_NAMES).
+MEMORY_RECALLED: Final = "moldy.memory_recalled"
 MEMORY_PROPOSED: Final = "memory_proposed"
 MEMORY_SAVED: Final = "memory_saved"
 MEMORY_REJECTED: Final = "memory_rejected"

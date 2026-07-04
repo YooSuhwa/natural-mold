@@ -231,7 +231,7 @@ async def test_prepare_agent_skips_memory_tools_when_trigger_writes_are_off(
     mock_build_memory_tools = MagicMock(return_value=[mock_memory_tool])
 
     monkeypatch.setattr(executor, "build_memory_tools", mock_build_memory_tools)
-    monkeypatch.setattr(executor, "_load_memory_prompt", AsyncMock(return_value=""))
+    monkeypatch.setattr(executor, "_load_memory_context", AsyncMock(return_value=("", [])))
     monkeypatch.setattr(
         executor,
         "_memory_write_policy_for_run",
@@ -1151,7 +1151,7 @@ async def test_execute_stream_injects_product_memory_tools_and_prompt(
 
     with (
         patch(
-            "app.agent_runtime.runtime_component_builder._load_memory_prompt",
+            "app.agent_runtime.runtime_component_builder._load_memory_context",
             new_callable=AsyncMock,
             create=True,
         ) as mock_memory_prompt,
@@ -1161,7 +1161,10 @@ async def test_execute_stream_injects_product_memory_tools_and_prompt(
             create=True,
         ) as mock_memory_write_policy,
     ):
-        mock_memory_prompt.return_value = "## Long-term Memory\n- The user prefers Korean."
+        mock_memory_prompt.return_value = (
+            "## Long-term Memory\n- The user prefers Korean.",
+            [{"id": "m1", "scope": "user", "content": "The user prefers Korean."}],
+        )
         mock_memory_write_policy.return_value = "ask"
         async for _ in execute_agent_stream(
             _cfg(
@@ -1193,7 +1196,7 @@ async def test_prepare_runtime_components_adds_memory_rules_without_memory_file(
     model = MagicMock()
     memory_tool = MagicMock()
     memory_tool.name = "save_user_memory"
-    load_memory_prompt = AsyncMock(return_value="SHOULD NOT LOAD")
+    load_memory_prompt = AsyncMock(return_value=("SHOULD NOT LOAD", []))
 
     monkeypatch.setattr(executor, "_build_model_candidates", lambda _cfg: [model])
     monkeypatch.setattr(executor, "_build_mcp_tools", AsyncMock(return_value=[]))
@@ -1204,7 +1207,7 @@ async def test_prepare_runtime_components_adds_memory_rules_without_memory_file(
         "_memory_write_policy_for_run",
         AsyncMock(return_value="ask"),
     )
-    monkeypatch.setattr(executor, "_load_memory_prompt", load_memory_prompt)
+    monkeypatch.setattr(executor, "_load_memory_context", load_memory_prompt)
 
     components = await executor._prepare_runtime_components(
         _cfg(

@@ -1679,6 +1679,12 @@
       "runningMeta": "{count}개 작업 중",
       "doneMeta": "{done}/{total} 완료"
     },
+    "memoryRecall": {
+      "title": "기억 참고",
+      "count": "{count}개",
+      "scopeUser": "사용자",
+      "scopeAgent": "에이전트"
+    },
     "deepAgentsState": {
       "tasks": {
         "title": "작업 목록",

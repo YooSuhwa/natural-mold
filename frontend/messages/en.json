@@ -1700,6 +1700,12 @@
       "runningMeta": "{count} working",
       "doneMeta": "{done}/{total} done"
     },
+    "memoryRecall": {
+      "title": "Memory recall",
+      "count": "{count} used",
+      "scopeUser": "User",
+      "scopeAgent": "Agent"
+    },
     "deepAgentsState": {
       "tasks": {
         "title": "Tasks",

@@ -133,6 +133,107 @@ async def test_langgraph_streaming_emits_subagent_display_names_at_head() -> Non
 
 
 @pytest.mark.asyncio
+async def test_langgraph_streaming_emits_memory_recalled_at_head() -> None:
+    raw_event = {
+        "type": "event",
+        "method": "messages",
+        "params": {"namespace": [], "data": {"chunk": "hi"}},
+        "seq": 1,
+        "event_id": "upstream-1",
+    }
+    agent = ProtocolAgent([raw_event])
+    briefs = [
+        {"id": "m1", "scope": "user", "content": "한국어로 답변 선호"},
+        {"id": "m2", "scope": "agent", "content": "보고서는 표로 정리"},
+    ]
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-memory"}},
+            run_id="run-memory",
+            recalled_memories=briefs,
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    # 회상 brief는 running 직후 custom 이벤트로 — 첫 토큰 전에 칩을 띄울 수 있다.
+    assert [payload["method"] for payload in payloads] == [
+        "lifecycle",
+        "custom",
+        "messages",
+        "lifecycle",
+    ]
+    recalled_event = payloads[1]["params"]["data"]
+    assert recalled_event["name"] == "moldy.memory_recalled"
+    assert recalled_event["payload"] == {"memories": briefs}
+    # replay/reload dedup — stable event id 계약 (subagent_names와 동일).
+    assert payloads[1]["event_id"] == "run-memory:memory_recalled"
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_orders_names_before_memory_recalled() -> None:
+    raw_event = {
+        "type": "event",
+        "method": "messages",
+        "params": {"namespace": [], "data": {"chunk": "hi"}},
+        "seq": 1,
+        "event_id": "upstream-1",
+    }
+    agent = ProtocolAgent([raw_event])
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-both"}},
+            run_id="run-both",
+            subagent_display_names={"agent_12345678": "리서치 봇"},
+            recalled_memories=[{"id": "m1", "scope": "user", "content": "메모"}],
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    custom_names = [
+        payload["params"]["data"]["name"] for payload in payloads if payload["method"] == "custom"
+    ]
+    assert custom_names == ["moldy.subagent_names", "moldy.memory_recalled"]
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_omits_memory_recalled_when_absent() -> None:
+    raw_event = {
+        "type": "event",
+        "method": "messages",
+        "params": {"namespace": [], "data": {"chunk": "hi"}},
+        "seq": 1,
+        "event_id": "upstream-1",
+    }
+    agent = ProtocolAgent([raw_event])
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-no-memory"}},
+            run_id="run-no-memory",
+            recalled_memories=[],
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    assert all(
+        payload["params"]["data"].get("name") != "moldy.memory_recalled"
+        for payload in payloads
+        if payload["method"] == "custom"
+    )
+
+
+@pytest.mark.asyncio
 async def test_langgraph_streaming_omits_subagent_names_when_absent() -> None:
     raw_event = {
         "type": "event",

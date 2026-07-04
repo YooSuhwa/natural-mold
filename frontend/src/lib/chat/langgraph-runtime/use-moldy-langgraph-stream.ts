@@ -46,6 +46,7 @@ import {
 } from './hitl-interrupts'
 import { useLangGraphMemoryEffects } from './memory-events'
 import { useLangGraphSubagentNamesEffects } from './subagent-names-events'
+import { useLangGraphMemoryRecallEffects } from './memory-recall-events'
 import { useLangGraphCompactionEffects } from './compaction-events'
 import {
   dedupeLangChainMessagesById,
@@ -2515,6 +2516,7 @@ export function useMoldyLangGraphStream({
   )
   useLangGraphMemoryEffects({ stream })
   useLangGraphSubagentNamesEffects({ stream, conversationId })
+  useLangGraphMemoryRecallEffects({ stream, conversationId })
   const isRunning =
     stream.isLoading &&
     interruptPayloads.length === 0 &&
