@@ -217,5 +217,12 @@ test.describe('Wave 1 scenario captures', () => {
       `[data-chat-session-href*="${missionConversationId}"]`,
     )
     await captureLocator(sessionRow, WAVE, '09-schedule-digest-row.png')
+
+    // ── 에필로그: 리로드 복원 — 미션 컨트롤은 thread state hydrate로 돌아온다 ──
+    await gotoChat(page, setup.parentAgentId, missionConversationId)
+    await expect(missionControl).toBeVisible({ timeout: 60_000 })
+    await expect(missionControl.getByText('1/3 완료')).toBeVisible({ timeout: 30_000 })
+    await settle(page)
+    await capture(page, WAVE, '10-mission-control-after-reload.png')
   })
 })
