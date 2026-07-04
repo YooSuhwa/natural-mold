@@ -33,6 +33,7 @@ import { conversationKeys } from '@/lib/hooks/use-conversations'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { math } from '@streamdown/math'
 import { ChatSearchOverlay } from '@/components/chat/chat-search-overlay'
+import { MissionControlBar } from '@/components/chat/mission-control-bar'
 import { buildMarkdownComponents } from '@/components/chat/markdown-components'
 import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-streaming-plugins'
 import 'katex/dist/katex.min.css'
@@ -195,6 +196,8 @@ function AssistantTextPart() {
       <StreamdownTextPrimitive
         plugins={STREAMDOWN_PLUGINS}
         remarkPlugins={CHAT_STREAMING_REMARK_PLUGINS}
+        // 생성 중에만 타이핑 캐럿 노출 — 완료된 메시지에는 붙지 않게 명시 게이팅.
+        caret={isRunning ? 'block' : undefined}
         // Components 타입(react-markdown)과 streamdown 내부 타입이 호환되지 않아
         // never로 우회 — 런타임 동작은 동일.
         components={components as never}
@@ -1048,6 +1051,11 @@ export function AssistantThread({
     <AssistantThreadDynamicContext.Provider value={dynamicContextValue}>
       <ChatConversationContext.Provider value={conversationId ?? null}>
         <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
+          {/* 미션 컨트롤 — 계획(todos)의 상시 체크리스트. Viewport 밖이라 런
+              종료·리로드에도 unmount되지 않는다. 빌더 변형은 자체 진행 UI가 있어 제외. */}
+          {!isBuilder && deepAgentsState && deepAgentsState.todos.length > 0 ? (
+            <MissionControlBar todos={deepAgentsState.todos} />
+          ) : null}
           <ThreadPrimitive.Viewport
             ref={viewportRef}
             className="min-h-0 flex-1 overflow-y-auto"

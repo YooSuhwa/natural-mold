@@ -28,6 +28,18 @@ class E2EConversationRunHeartbeatUpdate(BaseModel):
     heartbeat_age_seconds: int = 600
 
 
+class E2EConversationActivityUpdate(BaseModel):
+    """Simulate trigger activity — the schedule digest badge fixture.
+
+    Production sets ``last_activity_source="schedule"`` only through
+    ``trigger_service`` runs; E2E/captures use this shortcut instead of
+    standing up a real APScheduler trigger.
+    """
+
+    last_activity_source: Literal["user", "schedule"] = "schedule"
+    unread_count: int = 1
+
+
 def _utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
@@ -115,6 +127,28 @@ async def update_e2e_conversation_run_heartbeat(
     await db.commit()
     await db.refresh(run)
     return ConversationRunResponse.model_validate(run)
+
+
+@router.patch("/api/e2e/conversations/{conversation_id}/activity")
+async def update_e2e_conversation_activity(
+    conversation_id: uuid.UUID,
+    data: E2EConversationActivityUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+):
+    _require_e2e_user(user)
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
+    if conv is None:
+        raise conversation_not_found()
+    conv.last_activity_source = data.last_activity_source
+    conv.unread_count = max(data.unread_count, 0)
+    await db.commit()
+    return {
+        "id": str(conv.id),
+        "last_activity_source": conv.last_activity_source,
+        "unread_count": conv.unread_count,
+    }
 
 
 @router.post("/api/e2e/conversations/{conversation_id}/runs/stale-sweep")

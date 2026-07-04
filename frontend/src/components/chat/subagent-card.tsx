@@ -78,18 +78,42 @@ function scopedMessageKey(message: BaseMessage, subagentId: string, index: numbe
   return `${message.id ?? `${subagentId}-message`}:${index}`
 }
 
+const OUTPUT_SUMMARY_MAX_CHARS = 140
+
+/** 완료된 서브에이전트의 output 첫 의미 줄 — 접힌 pill에서도 결과가 보이게. */
+function outputSummaryLine(output: string): string {
+  const line = output
+    .split('\n')
+    .map((part) => part.trim())
+    .find(Boolean)
+  if (!line) return ''
+  return line.length > OUTPUT_SUMMARY_MAX_CHARS
+    ? `${line.slice(0, OUTPUT_SUMMARY_MAX_CHARS)}…`
+    : line
+}
+
 function SubagentHeaderMeta({
   input,
   namespace,
+  summary,
 }: {
   readonly input: string
   readonly namespace: readonly string[] | undefined
+  readonly summary?: string
 }) {
   const namespaceLabel = namespace?.join('/')
+  const lead = summary || input
   return (
     <span className="flex min-w-0 items-center gap-1 overflow-hidden">
-      {input ? <span className="truncate">{input}</span> : null}
-      {input && namespaceLabel ? <span aria-hidden>·</span> : null}
+      {lead ? (
+        <span
+          className={summary ? 'truncate text-foreground/80' : 'truncate'}
+          data-moldy-subagent-summary={summary ? 'true' : undefined}
+        >
+          {lead}
+        </span>
+      ) : null}
+      {lead && namespaceLabel ? <span aria-hidden>·</span> : null}
       {namespaceLabel ? <span className="shrink-0 font-mono">{namespaceLabel}</span> : null}
     </span>
   )
@@ -173,6 +197,8 @@ export function SubagentCard({ fallback, toolCallId, turnToolCallIds }: Subagent
   )
   const input = subagent?.taskInput ?? fallback.input
   const status = subagent ? SNAPSHOT_STATUS[subagent.status] : fallback.status
+  const outputSummary =
+    subagent?.status === 'complete' ? outputSummaryLine(formatUnknown(subagent.output)) : ''
   const canRenderScopedDetails =
     subagent !== null && stream !== null && inlinePolicy.canRenderInlineDetails
   const openRail = () =>
@@ -186,7 +212,13 @@ export function SubagentCard({ fallback, toolCallId, turnToolCallIds }: Subagent
       kind="subagent"
       status={status}
       title={agentName}
-      meta={<SubagentHeaderMeta input={input || t('invocation')} namespace={subagent?.namespace} />}
+      meta={
+        <SubagentHeaderMeta
+          input={input || t('invocation')}
+          namespace={subagent?.namespace}
+          summary={outputSummary}
+        />
+      }
       defaultExpanded={canRenderScopedDetails ? inlinePolicy.defaultExpanded : false}
       onClick={canRenderScopedDetails ? undefined : openRail}
       renderBody={

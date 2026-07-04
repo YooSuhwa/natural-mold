@@ -1,13 +1,13 @@
 'use client'
 
 import { useMemo } from 'react'
-import { PanelRightOpenIcon } from 'lucide-react'
+import { PanelRightOpenIcon, PlugIcon } from 'lucide-react'
 import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 import { useIsToolGroupChild } from './tool-group-child-context'
-import { useToolIcon } from './tool-icon-context'
+import { useMcpToolServer, useToolIcon } from './tool-icon-context'
 import { ChatImage } from '@/components/chat/chat-image'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
@@ -163,6 +163,7 @@ export function ToolFallbackPanel({
   const setRail = useSetAtom(chatRightRailAtom)
   const conversationId = useChatConversationId()
   const leadingIcon = useToolIcon(toolName)
+  const mcpServerName = useMcpToolServer(toolName)
   // 그룹 자식이면 도구명(그룹 헤더에 이미 있음) 대신 호출별 인자/결과 요약을 제목으로.
   const isGroupChild = useIsToolGroupChild()
   const pillTitle = (isGroupChild ? toolCallChildLabel(args, result) : null) ?? toolName
@@ -206,7 +207,26 @@ export function ToolFallbackPanel({
         leadingIcon={leadingIcon}
         status={pillStatusFromAssistantUi(status)}
         title={pillTitle}
-        meta={status === 'running' ? t('calling') : t('completed')}
+        meta={
+          mcpServerName ? (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span
+                className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-status-info/15 px-1.5 py-0.5 moldy-ui-micro font-medium text-status-info"
+                data-moldy-mcp-server={mcpServerName}
+              >
+                <PlugIcon className="size-2.5" aria-hidden />
+                <span className="max-w-24 truncate">{mcpServerName}</span>
+              </span>
+              <span className="truncate">
+                {status === 'running' ? t('calling') : t('completed')}
+              </span>
+            </span>
+          ) : status === 'running' ? (
+            t('calling')
+          ) : (
+            t('completed')
+          )
+        }
         trailing={trailing}
         renderBody={
           hasArgs || hasResult

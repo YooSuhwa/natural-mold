@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { ClockIcon, WrenchIcon } from 'lucide-react'
+import { ClockIcon, PlugIcon, SearchIcon, WrenchIcon } from 'lucide-react'
 import { getDomainIcon } from '@/components/shared/icon'
-import { ToolIconProvider, useToolIcon } from '../tool-icon-context'
+import { ToolIconProvider, useMcpToolServer, useToolIcon } from '../tool-icon-context'
 
-function wrapper(iconIds: Record<string, string>) {
+function wrapper(iconIds: Record<string, string>, mcpServers: Record<string, string> = {}) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return <ToolIconProvider iconIds={iconIds}>{children}</ToolIconProvider>
+    return (
+      <ToolIconProvider iconIds={iconIds} mcpServers={mcpServers}>
+        {children}
+      </ToolIconProvider>
+    )
   }
 }
 
@@ -30,5 +34,33 @@ describe('useToolIcon', () => {
       wrapper: wrapper({}),
     })
     expect(result.current).toBe(WrenchIcon)
+  })
+
+  it('MCP 도구는 플러그 아이콘으로 해석된다', () => {
+    const { result } = renderHook(() => useToolIcon('notion_search'), {
+      wrapper: wrapper({}, { notion_search: 'Notion' }),
+    })
+    expect(result.current).toBe(PlugIcon)
+  })
+
+  it('빌트인 고정 맵이 MCP 매핑보다 우선한다', () => {
+    const { result } = renderHook(() => useToolIcon('web_search'), {
+      wrapper: wrapper({}, { web_search: 'ShouldNotWin' }),
+    })
+    expect(result.current).toBe(SearchIcon)
+  })
+})
+
+describe('useMcpToolServer', () => {
+  it('MCP 도구면 서버 표시명, 아니면 null', () => {
+    const { result } = renderHook(
+      () => ({
+        mcp: useMcpToolServer('notion_search'),
+        plain: useMcpToolServer('unknown_tool'),
+      }),
+      { wrapper: wrapper({}, { notion_search: 'Notion' }) },
+    )
+    expect(result.current.mcp).toBe('Notion')
+    expect(result.current.plain).toBeNull()
   })
 })
