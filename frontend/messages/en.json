@@ -1687,6 +1687,12 @@
       "running": "{count} running",
       "failed": "{count} failed"
     },
+    "teamStrip": {
+      "title": "Team",
+      "chipLabel": "Open {name} details",
+      "runningMeta": "{count} working",
+      "doneMeta": "{done}/{total} done"
+    },
     "deepAgentsState": {
       "tasks": {
         "title": "Tasks",

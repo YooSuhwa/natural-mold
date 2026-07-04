@@ -1666,6 +1666,12 @@
       "running": "{count}개 진행 중",
       "failed": "{count}개 실패"
     },
+    "teamStrip": {
+      "title": "팀",
+      "chipLabel": "{name} 상세 보기",
+      "runningMeta": "{count}개 작업 중",
+      "doneMeta": "{done}/{total} 완료"
+    },
     "deepAgentsState": {
       "tasks": {
         "title": "작업 목록",

@@ -34,6 +34,7 @@ import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { math } from '@streamdown/math'
 import { ChatSearchOverlay } from '@/components/chat/chat-search-overlay'
 import { MissionControlBar } from '@/components/chat/mission-control-bar'
+import { SubagentTeamStrip } from '@/components/chat/subagent-team-strip'
 import { buildMarkdownComponents } from '@/components/chat/markdown-components'
 import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-streaming-plugins'
 import 'katex/dist/katex.min.css'
@@ -1056,6 +1057,9 @@ export function AssistantThread({
           {!isBuilder && deepAgentsState && deepAgentsState.todos.length > 0 ? (
             <MissionControlBar todos={deepAgentsState.todos} />
           ) : null}
+          {/* 팀 스트립 — 위임된 서브에이전트를 한 줄로 상시 표시. 스냅샷이
+              없으면 자체적으로 null을 반환한다. 빌더 변형은 제외. */}
+          {!isBuilder ? <SubagentTeamStrip /> : null}
           <ThreadPrimitive.Viewport
             ref={viewportRef}
             className="min-h-0 flex-1 overflow-y-auto"
