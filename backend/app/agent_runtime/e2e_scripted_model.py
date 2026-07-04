@@ -321,6 +321,30 @@ def _search_group_tool_calls() -> list[dict[str, Any]]:
     ]
 
 
+# W2-2 rich search card fixtures. ONE standalone ``tavily_search`` call (not a
+# group — grouping needs N≥2 consecutive same-tool calls) so the pill renders
+# expanded with result cards. ``E2E_SEARCH_RICH``'s query is curated in
+# ``tool_factory`` to return an ``answer`` (summary box) + content snippets;
+# ``E2E_SEARCH_SHOP``'s ``shop:`` prefix returns the Naver shopping ``items``
+# shape (thumbnail/lprice/mallName → 썸네일+가격 카드).
+SEARCH_RICH_MARKER = "E2E_SEARCH_RICH"
+SEARCH_RICH_QUERY = "agentic os 오버뷰"
+SEARCH_RICH_FINAL_CONTENT = "E2E rich search rendering complete."
+SEARCH_SHOP_MARKER = "E2E_SEARCH_SHOP"
+SEARCH_SHOP_QUERY = "shop:무선 키보드"
+SEARCH_SHOP_FINAL_CONTENT = "E2E shop search rendering complete."
+
+
+def _single_search_tool_call(marker: str, query: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": f"call_{marker.lower()}",
+            "name": SEARCH_GROUP_TOOL,
+            "args": {"query": query},
+        }
+    ]
+
+
 UI_DATA_DEMO_MARKER = "E2E_UI_DATA_DEMO"
 # Generative UI demo fixtures (chat-generative-ui-dev-plan §7.3). ONE AIMessage
 # calls the E2E-only ``e2e_ui_data_demo`` tool (with a ``kind`` arg) whose JSON
@@ -605,6 +629,12 @@ class E2EScriptedChatModel(BaseChatModel):
             if SEARCH_GROUP_MARKER in human_text:
                 message = AIMessage(content=SEARCH_GROUP_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
+            if SEARCH_RICH_MARKER in human_text:
+                message = AIMessage(content=SEARCH_RICH_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
+            if SEARCH_SHOP_MARKER in human_text:
+                message = AIMessage(content=SEARCH_SHOP_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
             if TOOL_GROUP_MARKER in human_text:
                 message = AIMessage(content=TOOL_GROUP_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
@@ -714,6 +744,20 @@ class E2EScriptedChatModel(BaseChatModel):
             # queries → distinct scripted result slices). Fresh dicts every call
             # so the downstream graph cannot mutate shared module state.
             message = AIMessage(content="", tool_calls=_search_group_tool_calls())
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if SEARCH_RICH_MARKER in human_text:
+            message = AIMessage(
+                content="",
+                tool_calls=_single_search_tool_call(SEARCH_RICH_MARKER, SEARCH_RICH_QUERY),
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if SEARCH_SHOP_MARKER in human_text:
+            message = AIMessage(
+                content="",
+                tool_calls=_single_search_tool_call(SEARCH_SHOP_MARKER, SEARCH_SHOP_QUERY),
+            )
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if TOOL_GROUP_MARKER in human_text:
@@ -837,6 +881,12 @@ __all__ = [
     "SEARCH_GROUP_QUERIES",
     "SEARCH_GROUP_SOURCE_COUNT",
     "SEARCH_GROUP_TOOL",
+    "SEARCH_RICH_FINAL_CONTENT",
+    "SEARCH_RICH_MARKER",
+    "SEARCH_RICH_QUERY",
+    "SEARCH_SHOP_FINAL_CONTENT",
+    "SEARCH_SHOP_MARKER",
+    "SEARCH_SHOP_QUERY",
     "SLOW_STREAM_MARKER",
     "TOKEN_USAGE_CONTENT",
     "TOKEN_USAGE_MARKER",

@@ -54,7 +54,8 @@ function TeamChip({
         'hover:bg-accent hover:text-foreground',
       )}
     >
-      {snapshot.depth > 0 ? (
+      {/* SDK depth는 root=0, 직접 위임=1 — 서브의 서브(≥2)만 중첩 마커. */}
+      {snapshot.depth > 1 ? (
         <span aria-hidden className="shrink-0 text-muted-foreground">
           ↳
         </span>

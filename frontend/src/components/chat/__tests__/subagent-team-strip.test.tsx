@@ -111,12 +111,12 @@ describe('SubagentTeamStrip', () => {
     })
   })
 
-  it('중첩 서브에이전트(depth>0)는 ↳ 마커를 붙인다', () => {
+  it('서브의 서브(depth≥2)만 ↳ 마커를 붙인다 — 직접 위임(depth 1)은 마커 없음', () => {
     snapshotsMock.current = [
-      snapshot({ id: 'c1', name: 'agent_parent' }),
-      snapshot({ id: 'c2', name: 'agent_child', parentId: 'c1', depth: 1 }),
+      snapshot({ id: 'c1', name: 'agent_parent', depth: 1 }),
+      snapshot({ id: 'c2', name: 'agent_child', parentId: 'c1', depth: 2 }),
     ]
     renderStrip()
-    expect(screen.getByText('↳')).toBeInTheDocument()
+    expect(screen.getAllByText('↳')).toHaveLength(1)
   })
 })
