@@ -321,6 +321,19 @@ def _search_group_tool_calls() -> list[dict[str, Any]]:
     ]
 
 
+# W2-6 memory lifecycle fixtures. ONE memory-tool call per turn; the tool's
+# policy branch decides the outcome — write_policy=auto → memory_saved (직접
+# 저장 pill), write_policy=ask → memory_proposed (제안 카드: 승인/수정/거부).
+# The spec flips the policy via PATCH /api/me/memory-settings between scenes.
+MEMORY_SAVE_MARKER = "E2E_MEMORY_SAVE"
+MEMORY_SAVE_CONTENT = "사용자는 결론 먼저, 표 중심의 보고서를 선호한다."
+MEMORY_SAVE_REASON = "사용자가 보고서 형식을 명시적으로 지정함"
+MEMORY_PROPOSE_MARKER = "E2E_MEMORY_PROPOSE"
+MEMORY_PROPOSE_CONTENT = "매주 월요일 아침에 주간 계획 브리핑을 받고 싶어한다."
+MEMORY_PROPOSE_REASON = "반복 일정 선호로 보임 — 저장 여부는 사용자 확인 필요"
+MEMORY_FINAL_CONTENT = "E2E memory tool run complete."
+
+
 # W2-2 rich search card fixtures. ONE standalone ``tavily_search`` call (not a
 # group — grouping needs N≥2 consecutive same-tool calls) so the pill renders
 # expanded with result cards. ``E2E_SEARCH_RICH``'s query is curated in
@@ -635,6 +648,9 @@ class E2EScriptedChatModel(BaseChatModel):
             if SEARCH_SHOP_MARKER in human_text:
                 message = AIMessage(content=SEARCH_SHOP_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
+            if MEMORY_SAVE_MARKER in human_text or MEMORY_PROPOSE_MARKER in human_text:
+                message = AIMessage(content=MEMORY_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
             if TOOL_GROUP_MARKER in human_text:
                 message = AIMessage(content=TOOL_GROUP_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
@@ -750,6 +766,39 @@ class E2EScriptedChatModel(BaseChatModel):
             message = AIMessage(
                 content="",
                 tool_calls=_single_search_tool_call(SEARCH_RICH_MARKER, SEARCH_RICH_QUERY),
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if MEMORY_SAVE_MARKER in human_text:
+            message = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call_e2e_memory_save",
+                        "name": "save_user_memory",
+                        "args": {
+                            "content": MEMORY_SAVE_CONTENT,
+                            "reason": MEMORY_SAVE_REASON,
+                        },
+                    }
+                ],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if MEMORY_PROPOSE_MARKER in human_text:
+            message = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call_e2e_memory_propose",
+                        "name": "propose_memory",
+                        "args": {
+                            "scope": "user",
+                            "content": MEMORY_PROPOSE_CONTENT,
+                            "reason": MEMORY_PROPOSE_REASON,
+                        },
+                    }
+                ],
             )
             return ChatResult(generations=[ChatGeneration(message=message)])
 
@@ -881,6 +930,11 @@ __all__ = [
     "SEARCH_GROUP_QUERIES",
     "SEARCH_GROUP_SOURCE_COUNT",
     "SEARCH_GROUP_TOOL",
+    "MEMORY_FINAL_CONTENT",
+    "MEMORY_PROPOSE_CONTENT",
+    "MEMORY_PROPOSE_MARKER",
+    "MEMORY_SAVE_CONTENT",
+    "MEMORY_SAVE_MARKER",
     "SEARCH_RICH_FINAL_CONTENT",
     "SEARCH_RICH_MARKER",
     "SEARCH_RICH_QUERY",
