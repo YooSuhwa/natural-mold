@@ -15,6 +15,26 @@ LANGGRAPH_V3_SLOW_SUBAGENT_MARKER: Final = "E2E_SUBAGENT_SLOW"
 LANGGRAPH_V3_TODOS_TOOL_CALL_ID: Final = "call_e2e_langgraph_v3_todos"
 LANGGRAPH_V3_SUBAGENT_TOOL_CALL_ID: Final = "call_e2e_langgraph_v3_subagent"
 LANGGRAPH_V3_DOCX_TOOL_CALL_ID: Final = "call_e2e_langgraph_v3_docx"
+LANGGRAPH_V3_CODE_ARTIFACT_REQUEST: Final = "code_artifact=true"
+LANGGRAPH_V3_WRITE_FILE_TOOL_CALL_ID: Final = "call_e2e_langgraph_v3_write_file"
+LANGGRAPH_V3_CODE_ARTIFACT_NAME: Final = "wave1_demo.py"
+LANGGRAPH_V3_CODE_ARTIFACT_CONTENT: Final = (
+    '"""Wave 1 demo artifact - syntax highlight check."""\n'
+    "\n"
+    "from dataclasses import dataclass\n"
+    "\n"
+    "\n"
+    "@dataclass\n"
+    "class Todo:\n"
+    "    content: str\n"
+    "    done: bool = False\n"
+    "\n"
+    "\n"
+    "def progress(todos: list[Todo]) -> str:\n"
+    "    done = sum(1 for todo in todos if todo.done)\n"
+    '    return f"{done}/{len(todos)} tasks complete"\n'
+)
+_CONVERSATION_DIR_RE: Final = re.compile(r"/conversations/([0-9a-f-]{36})/")
 LANGGRAPH_V3_SUBAGENT_RE: Final = re.compile(r"\bsubagent=(agent_[0-9a-f]{8})\b")
 LANGGRAPH_V3_FINAL_MESSAGE: Final = (
     "E2E LangGraph v3 validation complete: todos, subagent, artifact, usage, and replay are ready."
@@ -104,6 +124,29 @@ def langgraph_v3_message(
             ],
         )
 
+    if (
+        LANGGRAPH_V3_CODE_ARTIFACT_REQUEST in human_text
+        and LANGGRAPH_V3_WRITE_FILE_TOOL_CALL_ID not in seen
+        and _has_tool(bound_tool_names, "write_file")
+    ):
+        thread_id = _conversation_thread_id(messages)
+        if thread_id is not None:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": LANGGRAPH_V3_WRITE_FILE_TOOL_CALL_ID,
+                        "name": "write_file",
+                        "args": {
+                            "file_path": (
+                                f"/conversations/{thread_id}/{LANGGRAPH_V3_CODE_ARTIFACT_NAME}"
+                            ),
+                            "content": LANGGRAPH_V3_CODE_ARTIFACT_CONTENT,
+                        },
+                    }
+                ],
+            )
+
     if LANGGRAPH_V3_DOCX_TOOL_CALL_ID not in seen and _has_tool(
         bound_tool_names,
         "execute_in_skill",
@@ -135,6 +178,22 @@ def _has_tool(bound_tool_names: Sequence[str], name: str) -> bool:
 def _subagent_type(human_text: str) -> str:
     match = LANGGRAPH_V3_SUBAGENT_RE.search(human_text)
     return match.group(1) if match else "agent_00000000"
+
+
+def _conversation_thread_id(messages: Sequence[BaseMessage]) -> str | None:
+    """Extract the conversation thread id from the injected artifact-file prompt.
+
+    The runtime system prompt tells the model to write user-visible files under
+    ``/conversations/<thread_id>/`` — the scripted model reuses that instruction
+    so its ``write_file`` artifact lands on the real ingestion path.
+    """
+
+    for message in messages:
+        content = message.content if isinstance(message.content, str) else str(message.content)
+        match = _CONVERSATION_DIR_RE.search(content)
+        if match:
+            return match.group(1)
+    return None
 
 
 def _tool_message_ids(messages: Sequence[BaseMessage]) -> set[str]:

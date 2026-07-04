@@ -2,6 +2,11 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
+/* streamdown의 스트리밍 캐럿(caret prop)은 라이브러리 JS 안의 Tailwind arbitrary
+   variant 클래스로 렌더된다 — Tailwind v4는 node_modules를 스캔하지 않으므로
+   해당 유틸리티가 생성되도록 명시적으로 소스에 포함한다. */
+@source '../../node_modules/streamdown/dist';
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
