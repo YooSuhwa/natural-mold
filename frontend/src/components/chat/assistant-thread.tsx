@@ -57,12 +57,13 @@ import {
   FileIcon,
   FolderOpenIcon,
   ImageIcon,
+  WandSparklesIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CoinsIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
@@ -96,6 +97,11 @@ import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 import { formatCompactCount, formatDisplayUsd } from '@/lib/utils/display-format'
 import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
 import { ImeSafeComposerInput } from '@/components/chat/ime-safe-composer-input'
+import { ComposerGhostSuggestion } from '@/components/chat/composer-ghost-suggestion'
+import { useComposerHistory } from '@/components/chat/use-composer-history'
+import { useFollowupGhost } from '@/components/chat/use-followup-ghost'
+import { useFollowupSuggestion } from '@/components/chat/use-followup-suggestion'
+import { followupEnabledAtom } from '@/lib/stores/chat-followup'
 import {
   MessageEditComposerInput,
   MessageEditComposerRoot,
@@ -1178,11 +1184,22 @@ function ThreadComposer({
   const t = useTranslations('chat.input')
   const tMsg = useTranslations('chat.message')
   const tFiles = useTranslations('chat.files')
+  const tFollowup = useTranslations('chat.followup')
   const conversationId = useChatConversationId()
   const setRightRail = useSetAtom(chatRightRailAtom)
   // Run-complete → refetch /files so a just-sent attachment shows inline
   // without waiting for staleTime or a reload (message_id backfills at finalize).
   useInvalidateFilesOnRunComplete(conversationId)
+  // Follow-up 고스트 + ↑/↓ 입력 히스토리 — keydown은 ImeSafeComposerInput의
+  // onKeyDown(내부 Enter 처리보다 먼저, defaultPrevented 존중)으로 합성한다.
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  useFollowupSuggestion(conversationId)
+  const [followupEnabled, setFollowupEnabled] = useAtom(followupEnabledAtom)
+  const { ghostText, handleGhostKeyDown, acceptGhost } = useFollowupGhost(
+    conversationId,
+    composerTextareaRef,
+  )
+  const { handleHistoryKeyDown } = useComposerHistory(conversationId)
   const openFilesPanel = () => {
     if (!conversationId) return
     setRightRail({ mode: 'artifacts', artifacts: { conversationId, view: 'list' } })
@@ -1214,20 +1231,28 @@ function ThreadComposer({
         <ComposerPrimitive.Attachments>{() => <AttachmentChip />}</ComposerPrimitive.Attachments>
       )}
 
-      {/* Textarea */}
-      <ImeSafeComposerInput
-        autoFocus
-        autoFocusKey={focusKey}
-        placeholder={t('placeholder')}
-        submitMode="enter"
-        className={cn(
-          'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-hidden',
-          'placeholder:text-muted-foreground',
-          'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
-          compact ? 'min-h-10 max-h-32' : 'min-h-11 max-h-40',
-        )}
-        rows={1}
-      />
+      {/* Textarea + follow-up 고스트 오버레이 */}
+      <div className="relative">
+        <ImeSafeComposerInput
+          ref={composerTextareaRef}
+          autoFocus
+          autoFocusKey={focusKey}
+          placeholder={ghostText ? '' : t('placeholder')}
+          submitMode="enter"
+          onKeyDown={(event) => {
+            handleGhostKeyDown(event)
+            if (!event.defaultPrevented) handleHistoryKeyDown(event)
+          }}
+          className={cn(
+            'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-hidden',
+            'placeholder:text-muted-foreground',
+            'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+            compact ? 'min-h-10 max-h-32' : 'min-h-11 max-h-40',
+          )}
+          rows={1}
+        />
+        {ghostText ? <ComposerGhostSuggestion text={ghostText} onAccept={acceptGhost} /> : null}
+      </div>
 
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 px-2 py-1.5">
@@ -1257,6 +1282,22 @@ function ThreadComposer({
               onClick={openFilesPanel}
             >
               <FolderOpenIcon className="size-4" />
+            </Button>
+          )}
+          {/* Follow-up 제안 켜기/끄기 — OFF면 생성 호출 자체를 하지 않는다. */}
+          {conversationId && (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-pressed={followupEnabled}
+              data-moldy-followup-toggle={followupEnabled ? 'on' : 'off'}
+              className={followupEnabled ? 'text-primary-strong' : 'text-muted-foreground'}
+              aria-label={followupEnabled ? tFollowup('toggleOff') : tFollowup('toggleOn')}
+              title={followupEnabled ? tFollowup('toggleOff') : tFollowup('toggleOn')}
+              onClick={() => setFollowupEnabled((value) => !value)}
+            >
+              <WandSparklesIcon className="size-4" />
             </Button>
           )}
         </div>

@@ -1693,6 +1693,12 @@
       "scopeUser": "사용자",
       "scopeAgent": "에이전트"
     },
+    "followup": {
+      "hint": "→ 키로 입력",
+      "acceptLabel": "제안 입력: {text}",
+      "toggleOn": "후속 제안 켜기",
+      "toggleOff": "후속 제안 끄기"
+    },
     "deepAgentsState": {
       "tasks": {
         "title": "작업 목록",

@@ -9,6 +9,7 @@ from app.routers import (
     conversation_branches,
     conversation_crud,
     conversation_files,
+    conversation_followup,
     conversation_messages,
     conversation_runs,
     conversation_traces,
@@ -25,3 +26,4 @@ router.include_router(conversation_agent_protocol_sdk.router)
 router.include_router(conversation_messages.router)
 router.include_router(conversation_branches.router)
 router.include_router(conversation_files.router)
+router.include_router(conversation_followup.router)

@@ -1714,6 +1714,12 @@
       "scopeUser": "User",
       "scopeAgent": "Agent"
     },
+    "followup": {
+      "hint": "→ to fill",
+      "acceptLabel": "Fill suggestion: {text}",
+      "toggleOn": "Enable follow-up suggestions",
+      "toggleOff": "Disable follow-up suggestions"
+    },
     "deepAgentsState": {
       "tasks": {
         "title": "Tasks",
