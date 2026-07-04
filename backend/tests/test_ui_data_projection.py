@@ -155,3 +155,61 @@ def test_unknown_ui_type_fails_safe() -> None:
 
 def test_non_dict_json_returns_empty() -> None:
     assert project_demo(json.dumps([1, 2]), tool_call_id=None) == []
+
+
+# ---------------------------------------------------------------------------
+# W2-4 — transformer producers (execute_in_skill → terminal)
+# ---------------------------------------------------------------------------
+
+
+def test_execute_in_skill_projects_terminal_card() -> None:
+    payloads = ui_data_from_tool_result(
+        "execute_in_skill",
+        "Row count: 42\n집계 완료",
+        tool_call_id="call-skill-1",
+    )
+
+    assert payloads == [
+        {
+            "schema_version": 1,
+            "type": "terminal",
+            "message_id": None,
+            "run_id": None,
+            "tool_call_id": "call-skill-1",
+            "props": {"lines": "Row count: 42\n집계 완료"},
+        }
+    ]
+
+
+def test_execute_in_skill_strips_output_files_suffix() -> None:
+    result = "stdout 본문\n\nOUTPUT_FILES: report.md, chart.png"
+    payloads = ui_data_from_tool_result("execute_in_skill", result, tool_call_id="c")
+
+    assert payloads[0]["props"] == {"lines": "stdout 본문"}
+
+
+def test_execute_in_skill_empty_output_projects_nothing() -> None:
+    assert ui_data_from_tool_result("execute_in_skill", "", tool_call_id="c") == []
+    assert ui_data_from_tool_result("execute_in_skill", "   \n", tool_call_id="c") == []
+    # OUTPUT_FILES만 있고 stdout이 비면 카드도 없다 (파일 칩은 pill이 담당).
+    assert (
+        ui_data_from_tool_result("execute_in_skill", "\n\nOUTPUT_FILES: a.png", tool_call_id="c")
+        == []
+    )
+
+
+def test_execute_in_skill_truncates_huge_output() -> None:
+    huge = "x" * 10_000
+    payloads = ui_data_from_tool_result("execute_in_skill", huge, tool_call_id="c")
+
+    lines = payloads[0]["props"]["lines"]
+    assert len(lines) < 10_000
+    assert lines.endswith("…[truncated]")
+
+
+def test_transformer_active_without_demo_flag() -> None:
+    # 실도구 transformer는 demo 게이트와 무관하게 항상 동작한다.
+    payloads = ui_data_from_tool_result(
+        "execute_in_skill", "ok", tool_call_id="c", demo_enabled=False
+    )
+    assert payloads[0]["type"] == "terminal"

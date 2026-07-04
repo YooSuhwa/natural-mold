@@ -47,9 +47,12 @@ async def test_langgraph_streaming_emits_file_event_after_artifact_tool_result()
     payloads = [sse_payload(chunk) for chunk in chunks]
     assert recorder.prepared is True
     assert recorder.calls == [("execute_in_skill", "call-1")]
+    # W2-4 — execute_in_skill 결과는 file_event에 더해 terminal ui_data
+    # custom 이벤트도 투영된다 (UI_DATA_TOOL_TRANSFORMERS).
     assert [payload["method"] for payload in payloads] == [
         "lifecycle",
         "tools",
+        "custom",
         "custom",
         "lifecycle",
     ]
@@ -61,6 +64,12 @@ async def test_langgraph_streaming_emits_file_event_after_artifact_tool_result()
             "path": "report.md",
         },
     }
+    ui_data = payloads[3]["params"]["data"]
+    # side-effect 관례상 custom name은 무접두 "ui_data" (프론트가 양형 정규화).
+    assert ui_data["name"] == "ui_data"
+    assert ui_data["payload"]["type"] == "terminal"
+    assert ui_data["payload"]["props"] == {"lines": "done"}
+    assert ui_data["payload"]["tool_call_id"] == "call-1"
 
 
 @pytest.mark.asyncio

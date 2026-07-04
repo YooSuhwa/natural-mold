@@ -1553,6 +1553,14 @@
         "price": "From ₩{price}",
         "thumbnailAlt": "Search result thumbnail"
       },
+      "skillExecution": {
+        "fallbackTitle": "Skill run",
+        "running": "Running…",
+        "completed": "Done",
+        "files": "{count} files",
+        "command": "Command",
+        "outputFiles": "Output files"
+      },
       "plan": {
         "title": "Plan",
         "completed": "Done",

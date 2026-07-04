@@ -1532,6 +1532,14 @@
         "price": "최저 {price}원",
         "thumbnailAlt": "검색 결과 썸네일"
       },
+      "skillExecution": {
+        "fallbackTitle": "스킬 실행",
+        "running": "실행 중…",
+        "completed": "완료",
+        "files": "파일 {count}개",
+        "command": "커맨드",
+        "outputFiles": "출력 파일"
+      },
       "plan": {
         "title": "Plan",
         "completed": "완료",

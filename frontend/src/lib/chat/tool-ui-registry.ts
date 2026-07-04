@@ -21,6 +21,7 @@ import {
   DraftApprovalToolUI,
 } from '@/components/chat/tool-ui/draft-config-ui'
 import { SubAgentToolUI } from '@/components/chat/tool-ui/sub-agent-ui'
+import { SkillExecutionToolUI } from '@/components/chat/tool-ui/skill-execution-ui'
 import {
   ProposeMemoryToolUI,
   SaveAgentMemoryToolUI,
@@ -35,6 +36,7 @@ export const ALL_TOOL_UI = [
   ClarifyingQuestionUI,
   PlanToolUI,
   SubAgentToolUI,
+  SkillExecutionToolUI,
   ProposeMemoryToolUI,
   SaveUserMemoryToolUI,
   SaveAgentMemoryToolUI,
