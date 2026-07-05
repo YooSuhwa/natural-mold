@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { useAuiState } from '@assistant-ui/react'
-import { conversationsApi } from '@/lib/api/conversations'
+import { useFollowupSuggestionMutation } from '@/lib/hooks/use-conversations'
 import { followupEnabledAtom, setConversationFollowupAtom } from '@/lib/stores/chat-followup'
 import { reportClientError } from '@/lib/logging/client-logger'
 
@@ -21,6 +21,8 @@ export function useFollowupSuggestion(conversationId: string | null): void {
   const setFollowup = useSetAtom(setConversationFollowupAtom)
   const isRunning = useAuiState((s) => s.thread.isRunning)
   const prevRunning = useRef(isRunning)
+  // TanStack v5의 mutateAsync는 참조 안정 — effect 의존성으로 안전하다.
+  const { mutateAsync: fetchSuggestion } = useFollowupSuggestionMutation()
 
   useEffect(() => {
     const wasRunning = prevRunning.current
@@ -36,8 +38,7 @@ export function useFollowupSuggestion(conversationId: string | null): void {
     if (!wasRunning || isRunning || !enabled) return
 
     let cancelled = false
-    conversationsApi
-      .followupSuggestion(conversationId)
+    fetchSuggestion(conversationId)
       .then((response) => {
         if (cancelled) return
         setFollowup({ conversationId, suggestion: response.suggestion ?? null })
@@ -48,5 +49,5 @@ export function useFollowupSuggestion(conversationId: string | null): void {
     return () => {
       cancelled = true
     }
-  }, [conversationId, enabled, isRunning, setFollowup])
+  }, [conversationId, enabled, fetchSuggestion, isRunning, setFollowup])
 }

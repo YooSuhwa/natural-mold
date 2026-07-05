@@ -290,3 +290,13 @@ export function useMarkConversationRead(agentId: string) {
     },
   })
 }
+
+/**
+ * Follow-up 고스트 제안 1개 생성 (런 종료 시 1회 호출). 생성 불가 시
+ * suggestion=null — 고스트를 숨기면 된다.
+ */
+export function useFollowupSuggestionMutation() {
+  return useMutation({
+    mutationFn: (conversationId: string) => conversationsApi.followupSuggestion(conversationId),
+  })
+}
