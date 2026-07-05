@@ -1245,8 +1245,12 @@
         "webSearch": "Web search",
         "naverBlog": "Naver blog",
         "naverNews": "Naver news",
+        "naverImage": "Naver images",
+        "naverShop": "Naver shopping",
+        "naverLocal": "Naver local",
         "googleSearch": "Google search",
         "googleNews": "Google news",
+        "googleImage": "Google images",
         "readFile": "Read file",
         "writeFile": "Write file",
         "editFile": "Edit file"
@@ -1544,7 +1548,18 @@
       "search": {
         "defaultTitle": "Default Title",
         "running": "Running",
-        "count": "{count} results"
+        "count": "{count} results",
+        "answer": "Answer",
+        "price": "From ₩{price}",
+        "thumbnailAlt": "Search result thumbnail"
+      },
+      "skillExecution": {
+        "fallbackTitle": "Skill run",
+        "running": "Running…",
+        "completed": "Done",
+        "files": "{count} files",
+        "command": "Command",
+        "outputFiles": "Output files"
       },
       "plan": {
         "title": "Plan",
@@ -1686,6 +1701,25 @@
       "progressLabel": "Sub-agent progress",
       "running": "{count} running",
       "failed": "{count} failed"
+    },
+    "teamStrip": {
+      "title": "Team",
+      "chipLabel": "Open {name} details",
+      "runningMeta": "{count} working",
+      "doneMeta": "{done}/{total} done"
+    },
+    "memoryRecall": {
+      "title": "Memory recall",
+      "count": "{count} used",
+      "scopeUser": "User",
+      "scopeAgent": "Agent",
+      "hiddenContent": "Content hidden"
+    },
+    "followup": {
+      "hint": "→ to fill",
+      "acceptLabel": "Fill suggestion: {text}",
+      "toggleOn": "Enable follow-up suggestions",
+      "toggleOff": "Disable follow-up suggestions"
     },
     "deepAgentsState": {
       "tasks": {

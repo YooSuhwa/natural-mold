@@ -77,8 +77,9 @@ test.describe('Chat streaming render integrity', () => {
 
       // The execute_in_skill tool pauses on an approval card (the "called X" box).
       await expect(page.getByText('승인이 필요합니다').last()).toBeVisible({ timeout: 30_000 })
-      // The tool name is shown in the card.
-      await expect(page.getByText('execute_in_skill').last()).toBeVisible({ timeout: 15_000 })
+      // The card headline names the SKILL being approved (resolveApprovalToolName
+      // rewrites the generic execute_in_skill to the skill_directory basename).
+      await expect(page.getByText('docx-document').last()).toBeVisible({ timeout: 15_000 })
       // Exactly ONE approval card — no duplicate / stacked cards.
       await expect(approveButton).toHaveCount(1)
 
@@ -329,9 +330,10 @@ test.describe('Chat streaming render integrity', () => {
       const prompt = 'E2E_HITL_MULTI 멀티 승인 카드 무결성'
       await sendMessage(page, prompt)
 
-      // One AIMessage with two execute_in_skill calls → ONE interrupt → exactly TWO
-      // approval cards (no duplicate / stacked / collapsed-into-one).
-      await expect(page.getByText('승인이 필요합니다').first()).toBeVisible({ timeout: 30_000 })
+      // One AIMessage with two execute_in_skill calls → ONE interrupt → TWO compact
+      // approval cards inside ONE grouped container ("승인 대기 2건" + 모두 승인).
+      // The grouped container replaces the standalone "승인이 필요합니다" headline.
+      await expect(page.getByText('승인 대기 2건').first()).toBeVisible({ timeout: 30_000 })
       await expect(cards).toHaveCount(2, { timeout: 15_000 })
       await expect(approveButtons).toHaveCount(2)
 
@@ -344,13 +346,13 @@ test.describe('Chat streaming render integrity', () => {
         'data-hitl-total-actions',
         '2',
       )
-      // exact: true → match only the tool-name chip, not the description paragraph
-      // ("…Tool: execute_in_skill…") which also contains the tool name.
+      // exact: true → match only the tool-name chip. The chip shows the resolved
+      // SKILL name (docx-document), not the generic execute_in_skill mechanism.
       await expect(
-        page.getByTestId('approval-action-0').getByText('execute_in_skill', { exact: true }),
+        page.getByTestId('approval-action-0').getByText('docx-document', { exact: true }),
       ).toBeVisible()
       await expect(
-        page.getByTestId('approval-action-1').getByText('execute_in_skill', { exact: true }),
+        page.getByTestId('approval-action-1').getByText('docx-document', { exact: true }),
       ).toBeVisible()
       await expect(userBubbles).toHaveCount(1, { timeout: 15_000 })
 

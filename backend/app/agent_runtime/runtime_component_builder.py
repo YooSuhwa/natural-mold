@@ -440,10 +440,37 @@ def _parse_uuid(value: str | None) -> _uuid.UUID | None:
         return None
 
 
-async def _load_memory_prompt(cfg: AgentConfig) -> str:
+# 회상 칩 payload에 싣는 기억 내용 미리보기 상한 — 전문은 memory 설정 화면에서
+# 확인하고, 스트림 이벤트에는 식별 가능한 한 줄만 싣는다.
+_RECALLED_MEMORY_PREVIEW_CHARS = 200
+
+
+def _recalled_memory_briefs(records: list[Any]) -> list[dict[str, Any]]:
+    briefs: list[dict[str, Any]] = []
+    for record in records:
+        content = str(record.content or "").strip()
+        if len(content) > _RECALLED_MEMORY_PREVIEW_CHARS:
+            content = content[:_RECALLED_MEMORY_PREVIEW_CHARS] + "…"
+        briefs.append(
+            {
+                "id": str(record.id),
+                "scope": record.scope,
+                "content": content,
+            }
+        )
+    return briefs
+
+
+async def _load_memory_context(cfg: AgentConfig) -> tuple[str, list[dict[str, Any]]]:
+    """Load the long-term memory prompt block plus recall briefs.
+
+    Returns ``(prompt, briefs)`` — ``briefs`` feed the ``moldy.memory_recalled``
+    stream-head event so the chat can show which memories informed this run.
+    """
+
     user_uuid = _parse_uuid(cfg.user_id)
     if user_uuid is None:
-        return ""
+        return "", []
     agent_uuid = _parse_uuid(cfg.agent_id)
     try:
         from app.database import async_session as _async_session_factory
@@ -456,17 +483,18 @@ async def _load_memory_prompt(cfg: AgentConfig) -> str:
                 agent_id=agent_uuid,
             )
             if not policy.read_enabled:
-                return ""
+                return "", []
             records = await memory_service.list_runtime_memory_records(
                 db,
                 user_id=user_uuid,
                 agent_id=agent_uuid,
                 allowed_scopes=policy.allowed_scopes,
             )
-            return memory_service.render_memory_prompt(records)
+            prompt = memory_service.render_memory_prompt(records)
+            return prompt, _recalled_memory_briefs(records) if prompt else []
     except Exception:  # noqa: BLE001 — memory is helpful context, not a hard runtime dependency
         logger.warning("memory prompt load failed", exc_info=True)
-        return ""
+        return "", []
 
 
 async def _memory_write_policy_for_run(cfg: AgentConfig, *, is_trigger_mode: bool) -> str:
@@ -680,9 +708,13 @@ async def _prepare_runtime_components(
         system_prompt += "\n\n" + _memory_tool_instruction_prompt()
 
     if include_agent_memory_file:
-        memory_prompt = await _load_memory_prompt(cfg)
+        memory_prompt, recalled_memories = await _load_memory_context(cfg)
         if memory_prompt:
             system_prompt += "\n\n" + memory_prompt
+        if recalled_memories:
+            # 러너가 stream head에서 moldy.memory_recalled 이벤트로 방출한다.
+            # (subagent_display_names와 같은 cfg-경유 계약.)
+            cfg.recalled_memories = recalled_memories
 
     permissions = build_filesystem_permissions(
         thread_id=cfg.thread_id,

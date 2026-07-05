@@ -91,4 +91,13 @@ export const conversationsApi = {
       method: 'POST',
       body: JSON.stringify({ checkpoint_id: checkpointId }),
     }),
+  /**
+   * Follow-up 고스트 제안 1개 생성 — 런 종료 시 호출. system LLM 미설정 등
+   * 어떤 이유로든 생성 불가면 suggestion=null(고스트 미표시).
+   */
+  followupSuggestion: (conversationId: string) =>
+    apiFetch<{ suggestion: string | null }>(
+      `/api/conversations/${conversationId}/followup-suggestion`,
+      { method: 'POST' },
+    ),
 }

@@ -261,6 +261,60 @@ _E2E_SCRIPTED_SEARCH_RESULTS: dict[str, tuple[dict[str, str], ...]] = {
         },
     ),
 }
+# W2-2 rich-card fixtures — a curated query that also returns a Tavily-style
+# ``answer`` (summary box), and a ``shop:`` query prefix that returns the Naver
+# shopping ``items`` shape (thumbnail/lprice/mallName). Thumbnails point at
+# frontend public assets so captures render without external network access.
+_E2E_SCRIPTED_SEARCH_ANSWERS: dict[str, str] = {
+    "agentic os 오버뷰": (
+        "에이전틱 OS는 LLM 에이전트가 도구·스킬·메모리를 조합해 스스로 작업을 "
+        "계획하고 실행하는 실행 환경을 뜻합니다. 핵심 구성요소는 오케스트레이터, "
+        "도구 레지스트리, 장기 기억입니다."
+    ),
+}
+_E2E_SCRIPTED_SEARCH_RICH_RESULTS: dict[str, tuple[dict[str, str], ...]] = {
+    "agentic os 오버뷰": (
+        {
+            "title": "Agentic OS 아키텍처 개요",
+            "url": "https://docs.moldy.example/agentic-os",
+            "content": "오케스트레이터·도구 레지스트리·장기 기억으로 구성된 실행 환경 소개.",
+        },
+        {
+            "title": "딥에이전트 실전 가이드",
+            "url": "https://blog.moldy.example/deep-agents",
+            "content": "create_deep_agent 기반 멀티에이전트 구성 사례와 운영 팁.",
+        },
+        {
+            "title": "LangGraph 체크포인터 설계",
+            "url": "https://engineering.moldy.example/checkpointer",
+            "content": "AsyncPostgresSaver로 스레드 상태를 영속화하는 패턴.",
+        },
+    ),
+}
+_E2E_SCRIPTED_SHOP_ITEMS: tuple[dict[str, str], ...] = (
+    {
+        "title": "무선 기계식 키보드 K1",
+        "link": "https://shopping.example/k1",
+        "thumbnail": "/logo.webp",
+        "lprice": "89000",
+        "mallName": "몰디스토어",
+    },
+    {
+        "title": "저소음 무선 키보드 슬림",
+        "link": "https://shopping.example/slim",
+        "thumbnail": "/moldy-mascot.webp",
+        "lprice": "42900",
+        "mallName": "키보드샵",
+    },
+    {
+        "title": "블루투스 멀티페어링 키보드",
+        "link": "https://shopping.example/multi",
+        "thumbnail": "/dashboard-mascot.webp",
+        "lprice": "156000",
+        "mallName": "오피스몰",
+    },
+)
+
 # Domain pool for queries that aren't one of the curated keys above. Lets any
 # E2E fixture (e.g. a second search group with fresh queries) get a deterministic
 # multi-domain result without adding a curated entry. Curated keys keep their
@@ -301,8 +355,26 @@ def _build_e2e_scripted_search_tool() -> BaseTool:
     async def tavily_search(query: str) -> str:
         """Deterministic E2E search: returns scripted multi-domain results."""
 
-        results = _e2e_scripted_search_slice(query)
-        return json.dumps({"query": query, "results": results}, ensure_ascii=False)
+        stripped = query.strip()
+        # ``shop:`` prefix → Naver shopping ``items`` shape (W2-2 rich-card fixture).
+        if stripped.startswith("shop:"):
+            return json.dumps(
+                {
+                    "query": query,
+                    "total": len(_E2E_SCRIPTED_SHOP_ITEMS),
+                    "items": [dict(item) for item in _E2E_SCRIPTED_SHOP_ITEMS],
+                },
+                ensure_ascii=False,
+            )
+        rich = _E2E_SCRIPTED_SEARCH_RICH_RESULTS.get(stripped)
+        results = (
+            [dict(item) for item in rich] if rich is not None else _e2e_scripted_search_slice(query)
+        )
+        payload: dict[str, Any] = {"query": query, "results": results}
+        answer = _E2E_SCRIPTED_SEARCH_ANSWERS.get(stripped)
+        if answer:
+            payload["answer"] = answer
+        return json.dumps(payload, ensure_ascii=False)
 
     return StructuredTool.from_function(
         coroutine=tavily_search,

@@ -72,6 +72,10 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
   },
   invalidateConversationNavigators: (...args: unknown[]) =>
     mockInvalidateConversationNavigators(...args),
+  // W2-7 follow-up 고스트 — 페이지 테스트에선 제안 fetch를 no-op으로.
+  useFollowupSuggestionMutation: () => ({
+    mutateAsync: async () => ({ suggestion: null }),
+  }),
   useMessages: (...args: unknown[]) => mockUseMessages(...args),
   useMessagesEnvelope: (...args: unknown[]) => {
     const result = mockUseMessages(...args)

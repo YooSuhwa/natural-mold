@@ -240,6 +240,32 @@ def _subagent_names_event(
     )
 
 
+def _memory_recalled_event(
+    *,
+    run_id: str,
+    thread_id: str,
+    seq: int,
+    memories: list[dict[str, Any]],
+) -> StoredProtocolEvent:
+    """Emit the recalled long-term memory briefs once at stream head (W2-3).
+
+    The component builder injects up to N memory records into the system
+    prompt silently; this side-channel makes the recall visible so the chat
+    can render a "기억 N개 참고" chip. Stable event id dedupes on
+    replay/reload (same contract as ``_subagent_names_event``).
+    """
+    stable_id = f"{run_id}:memory_recalled"
+    return stored_custom_protocol_event(
+        run_id=run_id,
+        thread_id=thread_id,
+        seq=seq,
+        name=event_names.MEMORY_RECALLED,
+        payload={"memories": memories},
+        event_id=stable_id,
+        id=stable_id,
+    )
+
+
 async def stream_agent_response_langgraph(
     agent: Any,
     input_: list[Any] | Command | dict[str, Any] | None,
@@ -255,6 +281,7 @@ async def stream_agent_response_langgraph(
     run_id: str | None = None,
     artifact_recorder: ArtifactEventRecorder | None = None,
     subagent_display_names: dict[str, str] | None = None,
+    recalled_memories: list[dict[str, Any]] | None = None,
 ) -> AsyncGenerator[str, None]:
     msg_id = run_id or str(uuid.uuid4())
     thread_id = _thread_id_from_config(config, msg_id)
@@ -355,6 +382,16 @@ async def stream_agent_response_langgraph(
                     thread_id=thread_id,
                     seq=side_effect_seq,
                     display_names=subagent_display_names,
+                )
+            )
+        if recalled_memories:
+            side_effect_seq += 1
+            yield await emit(
+                _memory_recalled_event(
+                    run_id=msg_id,
+                    thread_id=thread_id,
+                    seq=side_effect_seq,
+                    memories=recalled_memories,
                 )
             )
         try:

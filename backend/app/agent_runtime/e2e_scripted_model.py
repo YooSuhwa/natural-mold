@@ -321,6 +321,43 @@ def _search_group_tool_calls() -> list[dict[str, Any]]:
     ]
 
 
+# W2-6 memory lifecycle fixtures. ONE memory-tool call per turn; the tool's
+# policy branch decides the outcome — write_policy=auto → memory_saved (직접
+# 저장 pill), write_policy=ask → memory_proposed (제안 카드: 승인/수정/거부).
+# The spec flips the policy via PATCH /api/me/memory-settings between scenes.
+MEMORY_SAVE_MARKER = "E2E_MEMORY_SAVE"
+MEMORY_SAVE_CONTENT = "사용자는 결론 먼저, 표 중심의 보고서를 선호한다."
+MEMORY_SAVE_REASON = "사용자가 보고서 형식을 명시적으로 지정함"
+MEMORY_PROPOSE_MARKER = "E2E_MEMORY_PROPOSE"
+MEMORY_PROPOSE_CONTENT = "매주 월요일 아침에 주간 계획 브리핑을 받고 싶어한다."
+MEMORY_PROPOSE_REASON = "반복 일정 선호로 보임 — 저장 여부는 사용자 확인 필요"
+MEMORY_FINAL_CONTENT = "E2E memory tool run complete."
+
+
+# W2-2 rich search card fixtures. ONE standalone ``tavily_search`` call (not a
+# group — grouping needs N≥2 consecutive same-tool calls) so the pill renders
+# expanded with result cards. ``E2E_SEARCH_RICH``'s query is curated in
+# ``tool_factory`` to return an ``answer`` (summary box) + content snippets;
+# ``E2E_SEARCH_SHOP``'s ``shop:`` prefix returns the Naver shopping ``items``
+# shape (thumbnail/lprice/mallName → 썸네일+가격 카드).
+SEARCH_RICH_MARKER = "E2E_SEARCH_RICH"
+SEARCH_RICH_QUERY = "agentic os 오버뷰"
+SEARCH_RICH_FINAL_CONTENT = "E2E rich search rendering complete."
+SEARCH_SHOP_MARKER = "E2E_SEARCH_SHOP"
+SEARCH_SHOP_QUERY = "shop:무선 키보드"
+SEARCH_SHOP_FINAL_CONTENT = "E2E shop search rendering complete."
+
+
+def _single_search_tool_call(marker: str, query: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": f"call_{marker.lower()}",
+            "name": SEARCH_GROUP_TOOL,
+            "args": {"query": query},
+        }
+    ]
+
+
 UI_DATA_DEMO_MARKER = "E2E_UI_DATA_DEMO"
 # Generative UI demo fixtures (chat-generative-ui-dev-plan §7.3). ONE AIMessage
 # calls the E2E-only ``e2e_ui_data_demo`` tool (with a ``kind`` arg) whose JSON
@@ -605,6 +642,15 @@ class E2EScriptedChatModel(BaseChatModel):
             if SEARCH_GROUP_MARKER in human_text:
                 message = AIMessage(content=SEARCH_GROUP_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
+            if SEARCH_RICH_MARKER in human_text:
+                message = AIMessage(content=SEARCH_RICH_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
+            if SEARCH_SHOP_MARKER in human_text:
+                message = AIMessage(content=SEARCH_SHOP_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
+            if MEMORY_SAVE_MARKER in human_text or MEMORY_PROPOSE_MARKER in human_text:
+                message = AIMessage(content=MEMORY_FINAL_CONTENT)
+                return ChatResult(generations=[ChatGeneration(message=message)])
             if TOOL_GROUP_MARKER in human_text:
                 message = AIMessage(content=TOOL_GROUP_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
@@ -714,6 +760,53 @@ class E2EScriptedChatModel(BaseChatModel):
             # queries → distinct scripted result slices). Fresh dicts every call
             # so the downstream graph cannot mutate shared module state.
             message = AIMessage(content="", tool_calls=_search_group_tool_calls())
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if SEARCH_RICH_MARKER in human_text:
+            message = AIMessage(
+                content="",
+                tool_calls=_single_search_tool_call(SEARCH_RICH_MARKER, SEARCH_RICH_QUERY),
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if MEMORY_SAVE_MARKER in human_text:
+            message = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call_e2e_memory_save",
+                        "name": "save_user_memory",
+                        "args": {
+                            "content": MEMORY_SAVE_CONTENT,
+                            "reason": MEMORY_SAVE_REASON,
+                        },
+                    }
+                ],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if MEMORY_PROPOSE_MARKER in human_text:
+            message = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call_e2e_memory_propose",
+                        "name": "propose_memory",
+                        "args": {
+                            "scope": "user",
+                            "content": MEMORY_PROPOSE_CONTENT,
+                            "reason": MEMORY_PROPOSE_REASON,
+                        },
+                    }
+                ],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        if SEARCH_SHOP_MARKER in human_text:
+            message = AIMessage(
+                content="",
+                tool_calls=_single_search_tool_call(SEARCH_SHOP_MARKER, SEARCH_SHOP_QUERY),
+            )
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if TOOL_GROUP_MARKER in human_text:
@@ -837,6 +930,17 @@ __all__ = [
     "SEARCH_GROUP_QUERIES",
     "SEARCH_GROUP_SOURCE_COUNT",
     "SEARCH_GROUP_TOOL",
+    "MEMORY_FINAL_CONTENT",
+    "MEMORY_PROPOSE_CONTENT",
+    "MEMORY_PROPOSE_MARKER",
+    "MEMORY_SAVE_CONTENT",
+    "MEMORY_SAVE_MARKER",
+    "SEARCH_RICH_FINAL_CONTENT",
+    "SEARCH_RICH_MARKER",
+    "SEARCH_RICH_QUERY",
+    "SEARCH_SHOP_FINAL_CONTENT",
+    "SEARCH_SHOP_MARKER",
+    "SEARCH_SHOP_QUERY",
     "SLOW_STREAM_MARKER",
     "TOKEN_USAGE_CONTENT",
     "TOKEN_USAGE_MARKER",

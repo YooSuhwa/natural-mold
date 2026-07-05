@@ -34,6 +34,8 @@ import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { math } from '@streamdown/math'
 import { ChatSearchOverlay } from '@/components/chat/chat-search-overlay'
 import { MissionControlBar } from '@/components/chat/mission-control-bar'
+import { SubagentTeamStrip } from '@/components/chat/subagent-team-strip'
+import { MemoryRecallChip } from '@/components/chat/memory-recall-chip'
 import { buildMarkdownComponents } from '@/components/chat/markdown-components'
 import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-streaming-plugins'
 import 'katex/dist/katex.min.css'
@@ -55,12 +57,13 @@ import {
   FileIcon,
   FolderOpenIcon,
   ImageIcon,
+  WandSparklesIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CoinsIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
@@ -94,6 +97,11 @@ import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 import { formatCompactCount, formatDisplayUsd } from '@/lib/utils/display-format'
 import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
 import { ImeSafeComposerInput } from '@/components/chat/ime-safe-composer-input'
+import { ComposerGhostSuggestion } from '@/components/chat/composer-ghost-suggestion'
+import { useComposerHistory } from '@/components/chat/use-composer-history'
+import { useFollowupGhost } from '@/components/chat/use-followup-ghost'
+import { useFollowupSuggestion } from '@/components/chat/use-followup-suggestion'
+import { followupEnabledAtom } from '@/lib/stores/chat-followup'
 import {
   MessageEditComposerInput,
   MessageEditComposerRoot,
@@ -1056,6 +1064,12 @@ export function AssistantThread({
           {!isBuilder && deepAgentsState && deepAgentsState.todos.length > 0 ? (
             <MissionControlBar todos={deepAgentsState.todos} />
           ) : null}
+          {/* 팀 스트립 — 위임된 서브에이전트를 한 줄로 상시 표시. 스냅샷이
+              없으면 자체적으로 null을 반환한다. 빌더 변형은 제외. */}
+          {!isBuilder ? <SubagentTeamStrip /> : null}
+          {/* 기억 회상 칩 — 이번 런의 프롬프트에 주입된 장기 기억. 회상이
+              없으면 자체적으로 null을 반환한다. */}
+          {!isBuilder ? <MemoryRecallChip /> : null}
           <ThreadPrimitive.Viewport
             ref={viewportRef}
             className="min-h-0 flex-1 overflow-y-auto"
@@ -1170,11 +1184,26 @@ function ThreadComposer({
   const t = useTranslations('chat.input')
   const tMsg = useTranslations('chat.message')
   const tFiles = useTranslations('chat.files')
+  const tFollowup = useTranslations('chat.followup')
   const conversationId = useChatConversationId()
   const setRightRail = useSetAtom(chatRightRailAtom)
   // Run-complete → refetch /files so a just-sent attachment shows inline
   // without waiting for staleTime or a reload (message_id backfills at finalize).
   useInvalidateFilesOnRunComplete(conversationId)
+  // Follow-up 고스트 + ↑/↓ 입력 히스토리 — keydown은 ImeSafeComposerInput의
+  // onKeyDown(내부 Enter 처리보다 먼저, defaultPrevented 존중)으로 합성한다.
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  useFollowupSuggestion(conversationId)
+  const [followupEnabled, setFollowupEnabled] = useAtom(followupEnabledAtom)
+  const { ghostText, handleGhostKeyDown, acceptGhost } = useFollowupGhost(
+    conversationId,
+    composerTextareaRef,
+  )
+  const { handleHistoryKeyDown } = useComposerHistory(conversationId)
+  // 한글 IME 조합 중에는 composer.text 동기화가 지연되어(ImeSafeComposerInput의
+  // composition 가드) 고스트가 조합 글자 위에 겹쳐 보인다 — 조합 동안 숨긴다.
+  const [composing, setComposing] = useState(false)
+  const ghostVisible = Boolean(ghostText) && !composing
   const openFilesPanel = () => {
     if (!conversationId) return
     setRightRail({ mode: 'artifacts', artifacts: { conversationId, view: 'list' } })
@@ -1206,20 +1235,32 @@ function ThreadComposer({
         <ComposerPrimitive.Attachments>{() => <AttachmentChip />}</ComposerPrimitive.Attachments>
       )}
 
-      {/* Textarea */}
-      <ImeSafeComposerInput
-        autoFocus
-        autoFocusKey={focusKey}
-        placeholder={t('placeholder')}
-        submitMode="enter"
-        className={cn(
-          'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-hidden',
-          'placeholder:text-muted-foreground',
-          'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
-          compact ? 'min-h-10 max-h-32' : 'min-h-11 max-h-40',
-        )}
-        rows={1}
-      />
+      {/* Textarea + follow-up 고스트 오버레이 */}
+      <div className="relative">
+        <ImeSafeComposerInput
+          ref={composerTextareaRef}
+          autoFocus
+          autoFocusKey={focusKey}
+          placeholder={ghostVisible ? '' : t('placeholder')}
+          submitMode="enter"
+          onKeyDown={(event) => {
+            handleGhostKeyDown(event)
+            if (!event.defaultPrevented) handleHistoryKeyDown(event)
+          }}
+          onCompositionStart={() => setComposing(true)}
+          onCompositionEnd={() => setComposing(false)}
+          className={cn(
+            'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-hidden',
+            'placeholder:text-muted-foreground',
+            'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+            compact ? 'min-h-10 max-h-32' : 'min-h-11 max-h-40',
+          )}
+          rows={1}
+        />
+        {ghostVisible && ghostText ? (
+          <ComposerGhostSuggestion text={ghostText} onAccept={acceptGhost} />
+        ) : null}
+      </div>
 
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 px-2 py-1.5">
@@ -1249,6 +1290,22 @@ function ThreadComposer({
               onClick={openFilesPanel}
             >
               <FolderOpenIcon className="size-4" />
+            </Button>
+          )}
+          {/* Follow-up 제안 켜기/끄기 — OFF면 생성 호출 자체를 하지 않는다. */}
+          {conversationId && (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-pressed={followupEnabled}
+              data-moldy-followup-toggle={followupEnabled ? 'on' : 'off'}
+              className={followupEnabled ? 'text-primary-strong' : 'text-muted-foreground'}
+              aria-label={followupEnabled ? tFollowup('toggleOff') : tFollowup('toggleOn')}
+              title={followupEnabled ? tFollowup('toggleOff') : tFollowup('toggleOn')}
+              onClick={() => setFollowupEnabled((value) => !value)}
+            >
+              <WandSparklesIcon className="size-4" />
             </Button>
           )}
         </div>

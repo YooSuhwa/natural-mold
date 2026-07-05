@@ -14,6 +14,16 @@
 const TOOL_LABEL_KEYS: Readonly<Record<string, string>> = {
   tavily_search: 'webSearch',
   web_search: 'webSearch',
+  // registry definition_key — 런타임 도구 이름의 실제 폴백값 (tool_factory).
+  naver_search_blog: 'naverBlog',
+  naver_search_news: 'naverNews',
+  naver_search_image: 'naverImage',
+  naver_search_shop: 'naverShop',
+  naver_search_local: 'naverLocal',
+  google_search_web: 'googleSearch',
+  google_search_image: 'googleImage',
+  google_search_news: 'googleNews',
+  // 과거 하드코딩 이름 — fixture/스냅샷 호환용.
   naver_blog_search: 'naverBlog',
   naver_news_search: 'naverNews',
   google_search: 'googleSearch',
@@ -36,6 +46,14 @@ export function toolGroupLabelKey(toolName: string): string | null {
 const SEARCH_TOOLS: ReadonlySet<string> = new Set([
   'tavily_search',
   'web_search',
+  'naver_search_blog',
+  'naver_search_news',
+  'naver_search_image',
+  'naver_search_shop',
+  'naver_search_local',
+  'google_search_web',
+  'google_search_image',
+  'google_search_news',
   'naver_blog_search',
   'naver_news_search',
   'google_search',

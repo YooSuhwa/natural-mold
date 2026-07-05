@@ -57,6 +57,12 @@ class AgentConfig:
     agent_runtime_name: str | None = None
     subagents_config: list[dict[str, Any]] | None = None
     subagent_display_names: dict[str, str] | None = None
+    # W2-3 memory recall visibility — briefs of the long-term memory records
+    # injected into this run's system prompt. Populated by the component
+    # builder (``_load_memory_context``) during prepare, then shipped once per
+    # run as the ``moldy.memory_recalled`` stream-head event (same contract as
+    # ``subagent_display_names``). ``None``/empty → no event.
+    recalled_memories: list[dict[str, Any]] | None = None
     # Optional ordered fallback chain. Each entry is
     # ``{"provider": str, "model_name": str, "base_url": str | None,
     #   "model_id": str | None}`` and is tried in order when the primary

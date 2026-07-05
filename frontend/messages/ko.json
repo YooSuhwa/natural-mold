@@ -1224,8 +1224,12 @@
         "webSearch": "웹 검색",
         "naverBlog": "네이버 블로그",
         "naverNews": "네이버 뉴스",
+        "naverImage": "네이버 이미지",
+        "naverShop": "네이버 쇼핑",
+        "naverLocal": "네이버 지역",
         "googleSearch": "구글 검색",
         "googleNews": "구글 뉴스",
+        "googleImage": "구글 이미지",
         "readFile": "파일 읽기",
         "writeFile": "파일 쓰기",
         "editFile": "파일 수정"
@@ -1523,7 +1527,18 @@
       "search": {
         "defaultTitle": "웹 검색",
         "running": "검색 중…",
-        "count": "{count}건"
+        "count": "{count}건",
+        "answer": "요약 답변",
+        "price": "최저 {price}원",
+        "thumbnailAlt": "검색 결과 썸네일"
+      },
+      "skillExecution": {
+        "fallbackTitle": "스킬 실행",
+        "running": "실행 중…",
+        "completed": "완료",
+        "files": "파일 {count}개",
+        "command": "커맨드",
+        "outputFiles": "출력 파일"
       },
       "plan": {
         "title": "Plan",
@@ -1665,6 +1680,25 @@
       "progressLabel": "서브 에이전트 진행률",
       "running": "{count}개 진행 중",
       "failed": "{count}개 실패"
+    },
+    "teamStrip": {
+      "title": "팀",
+      "chipLabel": "{name} 상세 보기",
+      "runningMeta": "{count}개 작업 중",
+      "doneMeta": "{done}/{total} 완료"
+    },
+    "memoryRecall": {
+      "title": "기억 참고",
+      "count": "{count}개",
+      "scopeUser": "사용자",
+      "scopeAgent": "에이전트",
+      "hiddenContent": "내용 비공개"
+    },
+    "followup": {
+      "hint": "→ 키로 입력",
+      "acceptLabel": "제안 입력: {text}",
+      "toggleOn": "후속 제안 켜기",
+      "toggleOff": "후속 제안 끄기"
     },
     "deepAgentsState": {
       "tasks": {
