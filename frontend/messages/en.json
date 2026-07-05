@@ -1712,7 +1712,8 @@
       "title": "Memory recall",
       "count": "{count} used",
       "scopeUser": "User",
-      "scopeAgent": "Agent"
+      "scopeAgent": "Agent",
+      "hiddenContent": "Content hidden"
     },
     "followup": {
       "hint": "→ to fill",

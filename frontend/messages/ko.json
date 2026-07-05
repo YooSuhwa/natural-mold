@@ -1691,7 +1691,8 @@
       "title": "기억 참고",
       "count": "{count}개",
       "scopeUser": "사용자",
-      "scopeAgent": "에이전트"
+      "scopeAgent": "에이전트",
+      "hiddenContent": "내용 비공개"
     },
     "followup": {
       "hint": "→ 키로 입력",

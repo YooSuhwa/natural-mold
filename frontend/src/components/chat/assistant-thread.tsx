@@ -1200,6 +1200,10 @@ function ThreadComposer({
     composerTextareaRef,
   )
   const { handleHistoryKeyDown } = useComposerHistory(conversationId)
+  // 한글 IME 조합 중에는 composer.text 동기화가 지연되어(ImeSafeComposerInput의
+  // composition 가드) 고스트가 조합 글자 위에 겹쳐 보인다 — 조합 동안 숨긴다.
+  const [composing, setComposing] = useState(false)
+  const ghostVisible = Boolean(ghostText) && !composing
   const openFilesPanel = () => {
     if (!conversationId) return
     setRightRail({ mode: 'artifacts', artifacts: { conversationId, view: 'list' } })
@@ -1237,12 +1241,14 @@ function ThreadComposer({
           ref={composerTextareaRef}
           autoFocus
           autoFocusKey={focusKey}
-          placeholder={ghostText ? '' : t('placeholder')}
+          placeholder={ghostVisible ? '' : t('placeholder')}
           submitMode="enter"
           onKeyDown={(event) => {
             handleGhostKeyDown(event)
             if (!event.defaultPrevented) handleHistoryKeyDown(event)
           }}
+          onCompositionStart={() => setComposing(true)}
+          onCompositionEnd={() => setComposing(false)}
           className={cn(
             'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-hidden',
             'placeholder:text-muted-foreground',
@@ -1251,7 +1257,9 @@ function ThreadComposer({
           )}
           rows={1}
         />
-        {ghostText ? <ComposerGhostSuggestion text={ghostText} onAccept={acceptGhost} /> : null}
+        {ghostVisible && ghostText ? (
+          <ComposerGhostSuggestion text={ghostText} onAccept={acceptGhost} />
+        ) : null}
       </div>
 
       {/* Toolbar */}

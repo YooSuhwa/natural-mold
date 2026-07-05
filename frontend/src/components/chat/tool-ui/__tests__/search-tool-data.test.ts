@@ -159,3 +159,21 @@ describe('looksLikeSearchResults', () => {
     expect(looksLikeSearchResults(null)).toBe(false)
   })
 })
+
+describe('URL sanitize (신뢰 경계 밖 도구 결과)', () => {
+  it('javascript: 등 비 http(s) 스킴 링크를 차단한다', async () => {
+    const { searchItemUrl, sanitizeExternalUrl } = await import('../search-tool-data')
+    expect(searchItemUrl({ url: 'javascript:alert(1)' })).toBeUndefined()
+    expect(searchItemUrl({ link: 'data:text/html,<script>1</script>' })).toBeUndefined()
+    expect(searchItemUrl({ url: 'https://ok.example/a' })).toBe('https://ok.example/a')
+    expect(sanitizeExternalUrl('  http://ok.example ')).toBe('http://ok.example')
+  })
+
+  it('썸네일은 http(s) + 로컬 상대경로만 허용한다 (protocol-relative 차단)', async () => {
+    const { sanitizeThumbnailUrl } = await import('../search-tool-data')
+    expect(sanitizeThumbnailUrl('https://img.example/a.jpg')).toBe('https://img.example/a.jpg')
+    expect(sanitizeThumbnailUrl('/logo.webp')).toBe('/logo.webp')
+    expect(sanitizeThumbnailUrl('//evil.example/a.jpg')).toBeUndefined()
+    expect(sanitizeThumbnailUrl('javascript:alert(1)')).toBeUndefined()
+  })
+})

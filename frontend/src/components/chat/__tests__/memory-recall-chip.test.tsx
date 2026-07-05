@@ -12,6 +12,12 @@ vi.mock('next-intl', () => ({
     params ? `${key}(${Object.values(params).join('/')})` : key,
 }))
 
+const memoriesQueryMock = vi.hoisted(() => ({ current: { data: undefined as unknown } }))
+
+vi.mock('@/lib/hooks/use-memory', () => ({
+  useMemories: () => memoriesQueryMock.current,
+}))
+
 function renderChip(store = createStore(), conversationId: string | null = 'conv-1') {
   function Wrapper({ children }: { children: ReactNode }) {
     return (
@@ -38,6 +44,26 @@ describe('MemoryRecallChip', () => {
     })
     const { container } = renderChip(store)
     expect(container.querySelector('[data-moldy-memory-recall]')).toBeNull()
+  })
+
+  it('리로드(redacted) brief는 메모리 API 조인으로 내용을 복원한다', async () => {
+    const user = userEvent.setup()
+    memoriesQueryMock.current = {
+      data: [{ id: 'm1', scope: 'user', content: '한국어로 답변 선호' }],
+    }
+    const store = createStore()
+    store.set(chatMemoryRecallAtom, {
+      'conv-1': [
+        { id: 'm1', scope: 'user', content: '<redacted>' },
+        { id: 'm-deleted', scope: 'agent', content: '<redacted>' },
+      ],
+    })
+    renderChip(store)
+    await user.click(screen.getByText('title'))
+    // 조인 성공 → 원문 복원. 삭제된 기억은 hiddenContent 폴백.
+    expect(screen.getByText('한국어로 답변 선호')).toBeInTheDocument()
+    expect(screen.getByText('hiddenContent')).toBeInTheDocument()
+    expect(screen.queryByText('<redacted>')).not.toBeInTheDocument()
   })
 
   it('회상 개수 메타를 보여주고 펼치면 scope 배지 + 내용을 보여준다', async () => {

@@ -7,6 +7,7 @@ import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 import { useIsToolGroupChild } from './tool-group-child-context'
 import {
   parseSearchResults,
+  sanitizeThumbnailUrl,
   searchAnswerFromResult,
   searchItemSnippet,
   searchItemUrl,
@@ -30,6 +31,7 @@ interface SearchArgs {
 function SearchResultCard({ item }: { item: SearchResultItem }) {
   const t = useTranslations('chat.toolCall.search')
   const url = searchItemUrl(item)
+  const thumbnail = sanitizeThumbnailUrl(item.thumbnail)
   const title = item.title
   const snippet = searchItemSnippet(item)
 
@@ -47,12 +49,12 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
   return (
     <div className="rounded-lg border border-border/40 bg-background p-2 transition-colors hover:bg-accent/50">
       <div className="flex items-start gap-2">
-        {item.thumbnail ? (
+        {thumbnail ? (
           // 검색 API 썸네일은 임의 원격 도메인이라 next/image 대신 일반 img를
-          // lazy 로드로 사용한다.
+          // lazy 로드로 사용한다. (스킴은 sanitizeThumbnailUrl로 제한.)
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={item.thumbnail}
+            src={thumbnail}
             alt={title ?? t('thumbnailAlt')}
             loading="lazy"
             referrerPolicy="no-referrer"

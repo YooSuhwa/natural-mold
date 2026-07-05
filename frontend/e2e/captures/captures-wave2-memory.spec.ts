@@ -215,6 +215,14 @@ test.describe('Wave 2 memory lifecycle captures', () => {
       await expect(recallChip.getByText(SAVE_CONTENT).first()).toBeVisible({ timeout: 10_000 })
       await settle(page)
       await capture(page, WAVE, '06-memory-recall-full-circle.png')
+
+      // 리로드 — 영속 이벤트는 기억 내용이 <redacted>로 마스킹되고(공유 안전
+      // 계약), 소유자 화면은 메모리 API 조인으로 내용을 복원해야 한다.
+      await gotoChat(page, setup.parentAgentId, recallConversationId)
+      await expect(recallChip).toBeVisible({ timeout: 60_000 })
+      await recallChip.getByText('기억 참고').click()
+      await expect(recallChip.getByText(SAVE_CONTENT).first()).toBeVisible({ timeout: 15_000 })
+      await expect(recallChip.getByText('<redacted>')).toHaveCount(0)
     } finally {
       // 정리 — 정책 기본값(ask) 복원 + 기억/제안 잔여물 제거로 spec 간 결합 차단.
       await setWritePolicy(request, csrfHeaders, 'ask')

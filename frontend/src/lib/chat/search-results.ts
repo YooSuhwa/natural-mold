@@ -163,8 +163,27 @@ export function looksLikeSearchResults(raw: unknown): boolean {
   return hasTitle && hasUrl
 }
 
+/**
+ * 도구 결과에서 온 URL은 신뢰 경계 밖(MCP/외부 API)이다 — `<a href>`로
+ * 렌더하기 전에 http(s)만 허용해 `javascript:` 류 스킴 주입을 차단한다.
+ */
+export function sanitizeExternalUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined
+  const trimmed = url.trim()
+  return /^https?:\/\//i.test(trimmed) ? trimmed : undefined
+}
+
+/** 썸네일은 원격 http(s) 외에 로컬(상대 경로) 에셋도 허용한다. */
+export function sanitizeThumbnailUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined
+  const trimmed = url.trim()
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed
+  return undefined
+}
+
 export function searchItemUrl(item: SearchResultItem): string | undefined {
-  return item.url ?? item.link
+  return sanitizeExternalUrl(item.url ?? item.link)
 }
 
 export function searchItemSnippet(item: SearchResultItem): string | undefined {

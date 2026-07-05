@@ -348,12 +348,31 @@ def _redact_tool_event(data: Any) -> Any:
     return safe
 
 
+# W2-3 회상 이벤트 — 영속/공유 표면에는 기억 내용을 남기지 않는다. 프론트는
+# 리로드 시 brief의 id로 메모리 API에서 내용을 재조회한다 (memory-tool-ui의
+# useMemoryProposal 재조회와 동일 계약).
+_MEMORY_RECALLED_NAMES: Final = frozenset({"moldy.memory_recalled", "memory_recalled"})
+
+
 def _redact_custom_event(data: Any) -> Any:
     if not isinstance(data, Mapping):
         return data
     name = _text(data.get("name") or data.get("channel"))
     payload = data.get("payload")
-    if name not in MEMORY_EVENT_NAMES or not isinstance(payload, Mapping):
+    if not isinstance(payload, Mapping):
+        return data
+    if name in _MEMORY_RECALLED_NAMES:
+        memories = payload.get("memories")
+        if not isinstance(memories, list):
+            return data
+        safe_memories = [
+            {**dict(brief), "content": REDACTED_MEMORY_FIELD}
+            if isinstance(brief, Mapping) and "content" in brief
+            else brief
+            for brief in memories
+        ]
+        return {**dict(data), "payload": {**dict(payload), "memories": safe_memories}}
+    if name not in MEMORY_EVENT_NAMES:
         return data
     return {**dict(data), "payload": _redact_memory_mapping(payload)}
 

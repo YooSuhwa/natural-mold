@@ -2,6 +2,8 @@ export {
   domainFromUrl,
   looksLikeSearchResults,
   parseSearchResults,
+  sanitizeExternalUrl,
+  sanitizeThumbnailUrl,
   searchAnswerFromResult,
   searchItemSnippet,
   searchItemUrl,
