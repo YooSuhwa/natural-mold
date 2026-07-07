@@ -12,7 +12,19 @@ class ShieldedAsyncSession(AsyncSession):
         await close_session_shielded(self)
 
 
-engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True)
+# Pool knobs apply only to postgresql URLs — sqlite's NullPool/StaticPool
+# rejects them (dev/test envs may point DATABASE_URL at sqlite).
+_pool_kwargs: dict[str, int] = (
+    {
+        "pool_size": settings.db_pool_size,
+        "max_overflow": settings.db_max_overflow,
+        "pool_timeout": settings.db_pool_timeout,
+        "pool_recycle": settings.db_pool_recycle,
+    }
+    if settings.database_url.startswith("postgresql")
+    else {}
+)
+engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True, **_pool_kwargs)
 async_session = async_sessionmaker(engine, class_=ShieldedAsyncSession, expire_on_commit=False)
 
 
