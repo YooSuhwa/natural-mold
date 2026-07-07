@@ -31,7 +31,7 @@ import uuid
 from typing import Any
 
 from langchain_core.tools import StructuredTool
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
@@ -87,7 +87,7 @@ def build_write_tools(
 
             result = await session.execute(
                 select(Tool).where(
-                    or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
+                    Tool.visible_to(user_id),
                     func.lower(Tool.name).in_(lower_names),
                 )
             )
@@ -296,16 +296,12 @@ def build_write_tools(
                 name_by_id = {row.id: row.name for row in result.all()}
 
             # 3차 append (검증 통과한 것만)
-            next_pos = (
-                max((link.position for link in agent.sub_agent_links), default=-1) + 1
-            )
+            next_pos = max((link.position for link in agent.sub_agent_links), default=-1) + 1
             for sid, raw_id in candidates.items():
                 if sid not in name_by_id:
                     skipped.append(f"{raw_id}(찾을 수 없음)")
                     continue
-                agent.sub_agent_links.append(
-                    AgentSubAgentLink(sub_agent_id=sid, position=next_pos)
-                )
+                agent.sub_agent_links.append(AgentSubAgentLink(sub_agent_id=sid, position=next_pos))
                 existing_ids.add(sid)
                 added.append(name_by_id[sid])
                 next_pos += 1
@@ -404,8 +400,9 @@ def build_write_tools(
 
             added = [s.name for s in found_skills]
             found_lower = {s.name.lower() for s in found_skills}
-            missing = [n for n in skill_names if n.lower() not in found_lower
-                       and n.lower() not in existing]
+            missing = [
+                n for n in skill_names if n.lower() not in found_lower and n.lower() not in existing
+            ]
             msg = f"스킬 추가 완료: {', '.join(added)}"
             if missing:
                 msg += f" | 미존재 건너뜀: {', '.join(missing)}"
@@ -774,8 +771,7 @@ def build_write_tools(
             except ValueError as exc:
                 return f"스케줄 설정이 올바르지 않습니다: {exc}"
             return (
-                f"스케줄 생성 완료 (ID: {trigger.id}, "
-                f"다음 실행: {trigger.next_run_at or '미정'})"
+                f"스케줄 생성 완료 (ID: {trigger.id}, 다음 실행: {trigger.next_run_at or '미정'})"
             )
 
     # ------ 15. update_cron_schedule ------

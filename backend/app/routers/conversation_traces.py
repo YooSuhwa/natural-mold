@@ -3,12 +3,15 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.error_codes import conversation_not_found
+from app.error_codes import (
+    conversation_not_found,
+    trace_not_found,
+)
 from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
 from app.observability.langfuse import is_langfuse_enabled
@@ -107,7 +110,7 @@ async def get_debug_trace_detail(
         None,
     )
     if record is None:
-        raise HTTPException(status_code=404, detail="Trace not found")
+        raise trace_not_found()
 
     run_statuses = await _run_status_by_message_event_id(db, [record])
     summary, spans, raw, fallback_reason = await trace_debug_service.build_debug_detail(

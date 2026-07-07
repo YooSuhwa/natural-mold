@@ -48,11 +48,7 @@ async def _resolve_model_id(
         return model.id
 
     agent_spec = spec.get("agent") if isinstance(spec.get("agent"), dict) else {}
-    model_spec = (
-        agent_spec.get("model")
-        if isinstance(agent_spec.get("model"), dict)
-        else {}
-    )
+    model_spec = agent_spec.get("model") if isinstance(agent_spec.get("model"), dict) else {}
     model_id = await _resolve_model_descriptor(db, model_spec=model_spec)
     if model_id is not None:
         return model_id
@@ -189,11 +185,7 @@ def _credential_requirements(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if isinstance(setup.get("required_credentials"), list)
         else []
     )
-    return {
-        str(row.get("key")): row
-        for row in rows
-        if isinstance(row, dict) and row.get("key")
-    }
+    return {str(row.get("key")): row for row in rows if isinstance(row, dict) and row.get("key")}
 
 
 def _coerce_uuid_bindings(values: dict[str, Any] | None) -> dict[str, uuid.UUID]:
@@ -244,9 +236,7 @@ async def _validate_credential_bindings(
             raise marketplace_credential_required(f"invalid credential binding: {key}")
         expected_definition = requirement.get("definition_key")
         if expected_definition and credential.definition_key != expected_definition:
-            raise marketplace_credential_required(
-                f"credential definition mismatch: {key}"
-            )
+            raise marketplace_credential_required(f"credential definition mismatch: {key}")
         validated[key] = credential.id
     return validated
 
@@ -291,11 +281,13 @@ async def _resolve_tool_ids(
             await db.execute(
                 select(Tool)
                 .where(Tool.definition_key.in_(definition_keys))
-                .where(or_(Tool.user_id == user_id, Tool.user_id.is_(None)))
+                .where(Tool.visible_to(user_id))
                 .where(Tool.enabled.is_(True))
                 .order_by(Tool.user_id.is_not(None).desc(), Tool.name.asc())
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
     tool_ids: list[uuid.UUID] = []
@@ -363,9 +355,7 @@ async def _resolve_tool_ids(
             [
                 tool
                 for tool in scoped
-                if tool.user_id == user_id
-                and tool.name == name
-                and tool.credential_id is None
+                if tool.user_id == user_id and tool.name == name and tool.credential_id is None
             ],
             expected_parameters,
         )
@@ -421,11 +411,9 @@ async def _resolve_skill_ids(
     candidates: list[Skill] = []
     if filters:
         candidates = list(
-            (
-                await db.execute(
-                    select(Skill).where(Skill.user_id == user_id).where(or_(*filters))
-                )
-            ).scalars().all()
+            (await db.execute(select(Skill).where(Skill.user_id == user_id).where(or_(*filters))))
+            .scalars()
+            .all()
         )
 
     skill_ids: list[uuid.UUID] = []
@@ -481,10 +469,8 @@ def _mcp_server_matches_spec(server: McpServer, server_spec: dict[str, Any]) -> 
         and _same_optional_text(server.url, server_spec.get("url"))
         and _same_optional_text(server.command, server_spec.get("command"))
         and _normalized_list(server.args) == _normalized_list(server_spec.get("args"))
-        and _normalized_mapping(server.env_vars)
-        == _normalized_mapping(server_spec.get("env_vars"))
-        and _normalized_mapping(server.headers)
-        == _normalized_mapping(server_spec.get("headers"))
+        and _normalized_mapping(server.env_vars) == _normalized_mapping(server_spec.get("env_vars"))
+        and _normalized_mapping(server.headers) == _normalized_mapping(server_spec.get("headers"))
     )
 
 
@@ -508,13 +494,17 @@ async def _find_or_create_mcp_server(
     if body.dependency_strategy != "always_new":
         empty_credential_server: McpServer | None = None
         candidates = (
-            await db.execute(
-                select(McpServer).where(
-                    McpServer.user_id == user_id,
-                    McpServer.name == name,
+            (
+                await db.execute(
+                    select(McpServer).where(
+                        McpServer.user_id == user_id,
+                        McpServer.name == name,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for candidate in candidates:
             if not _mcp_server_matches_spec(candidate, server_spec):
                 continue
@@ -588,9 +578,7 @@ async def _resolve_mcp_tool_ids(
             raise marketplace_invalid_package(f"missing MCP server dependency: {name}")
         tool = (
             await db.execute(
-                select(McpTool)
-                .where(McpTool.server_id == server.id, McpTool.name == name)
-                .limit(1)
+                select(McpTool).where(McpTool.server_id == server.id, McpTool.name == name).limit(1)
             )
         ).scalar_one_or_none()
         if tool is None:
@@ -623,11 +611,7 @@ async def _resolve_sub_agent_ids(
     blueprint references land instead of extending it.
     """
 
-    rows = (
-        capabilities.get("subagents")
-        if isinstance(capabilities.get("subagents"), list)
-        else []
-    )
+    rows = capabilities.get("subagents") if isinstance(capabilities.get("subagents"), list) else []
     sorted_rows = sorted(
         rows,
         key=lambda row: int(row.get("position") or 0) if isinstance(row, dict) else 0,
@@ -645,12 +629,16 @@ async def _resolve_sub_agent_ids(
 
     # Single IN query (anti-N+1); first row per name is the most recent.
     agents = (
-        await db.execute(
-            select(Agent)
-            .where(Agent.user_id == user_id, Agent.name.in_(set(names)))
-            .order_by(Agent.updated_at.desc())
+        (
+            await db.execute(
+                select(Agent)
+                .where(Agent.user_id == user_id, Agent.name.in_(set(names)))
+                .order_by(Agent.updated_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     by_name: dict[str, Agent] = {}
     for agent in agents:
         by_name.setdefault(agent.name, agent)

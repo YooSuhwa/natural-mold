@@ -19,6 +19,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.error_codes import (
+    credential_not_found,
+    mcp_server_not_found,
+    model_not_found,
+)
 from app.models.credential import Credential
 from app.models.health_check_history import HealthCheckHistory
 from app.models.mcp_server import McpServer
@@ -93,12 +98,16 @@ async def _latest_for(
         .subquery()
     )
     rows = (
-        await db.execute(
-            select(HealthCheckHistory)
-            .join(ranked, HealthCheckHistory.id == ranked.c.id)
-            .where(ranked.c.rn == 1)
+        (
+            await db.execute(
+                select(HealthCheckHistory)
+                .join(ranked, HealthCheckHistory.id == ranked.c.id)
+                .where(ranked.c.rn == 1)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {row.target_id: row for row in rows}
 
 
@@ -147,12 +156,10 @@ async def list_mcp_health(
     user: CurrentUser = Depends(get_current_user),
 ):
     servers = (
-        await db.execute(select(McpServer).where(McpServer.user_id == user.id))
-    ).scalars().all()
+        (await db.execute(select(McpServer).where(McpServer.user_id == user.id))).scalars().all()
+    )
     latest = await _latest_for(db, "mcp_server", [s.id for s in servers])
-    return [
-        _summary_from("mcp_server", s.id, s.name, latest.get(s.id)) for s in servers
-    ]
+    return [_summary_from("mcp_server", s.id, s.name, latest.get(s.id)) for s in servers]
 
 
 @router.get("/history", response_model=list[HealthHistoryEntry])
@@ -164,16 +171,20 @@ async def get_history(
     _: CurrentUser = Depends(get_current_user),
 ):
     rows = (
-        await db.execute(
-            select(HealthCheckHistory)
-            .where(
-                HealthCheckHistory.target_kind == target_kind,
-                HealthCheckHistory.target_id == target_id,
+        (
+            await db.execute(
+                select(HealthCheckHistory)
+                .where(
+                    HealthCheckHistory.target_kind == target_kind,
+                    HealthCheckHistory.target_id == target_id,
+                )
+                .order_by(HealthCheckHistory.checked_at.desc())
+                .limit(limit)
             )
-            .order_by(HealthCheckHistory.checked_at.desc())
-            .limit(limit)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return rows
 
 
@@ -197,15 +208,11 @@ async def check_now(
     if target_kind == "model":
         model = await db.get(Model, target_id)
         if model is None:
-            raise HTTPException(status_code=404, detail="model not found")
-        credential = await resolve_credential_for_model(
-            db, model, credential_id, user.id
-        )
+            raise model_not_found()
+        credential = await resolve_credential_for_model(db, model, credential_id, user.id)
         if credential is None:
             if credential_id is not None:
-                raise HTTPException(
-                    status_code=404, detail="credential not found"
-                )
+                raise HTTPException(status_code=404, detail="credential not found")
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -213,9 +220,7 @@ async def check_now(
                     "model's default_credential_id."
                 ),
             )
-        history = await health_check_service.check_model(
-            db, model=model, credential=credential
-        )
+        history = await health_check_service.check_model(db, model=model, credential=credential)
     else:
         # MCP servers carry their own credential reference; fall back to
         # the manual lookup we used before.
@@ -223,10 +228,10 @@ async def check_now(
         if credential_id is not None:
             credential = await db.get(Credential, credential_id)
             if credential is None or credential.user_id != user.id:
-                raise HTTPException(status_code=404, detail="credential not found")
+                raise credential_not_found()
         server = await db.get(McpServer, target_id)
         if server is None or server.user_id != user.id:
-            raise HTTPException(status_code=404, detail="mcp server not found")
+            raise mcp_server_not_found()
         history = await health_check_service.check_mcp_server(
             db, server=server, credential=credential
         )
