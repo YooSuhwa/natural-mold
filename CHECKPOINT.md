@@ -27,12 +27,13 @@
 - 노트: start v2가 improve 시드까지 배선(원본→워크스페이스 복사, symlink 금지). 어댑터는 `inputs/` 제외·바이너리 skip·역할 매핑 정본을 `skill_draft_workspace.role_for_path`로 이동(스냅샷 로더 위임). GC는 세션 상태 기준(active/confirming 무기한 보존) + orphan 디렉토리 mtime 폴백. `draft_workspace_path` 파라미터의 런타임 배선(AgentConfig 스레딩)은 M3.
 
 ## M3: 런타임 분기 + validate/generate_evals + 이벤트
-- [ ] `_prepare_runtime_components` 분기: prompt.md 교체, 도구 세트 교체, 드래프트 마운트, System LLM 재해석(`resolve_system_model('text_primary')`)
-- [ ] `validate_skill`/`generate_evals` 도구
-- [ ] `moldy.skill_draft`(stream-head stable-id) + `moldy.skill_validation`(tool projection) — event_names + `_redact_custom_event` 등록 필수
+- [x] `_prepare_runtime_components` 분기: prompt.md 교체, 도구 세트 교체, 드래프트 마운트, System LLM 재해석(`resolve_system_model('text_primary')`)
+- [x] `validate_skill`/`generate_evals` 도구
+- [x] `moldy.skill_draft`(stream-head stable-id) + `moldy.skill_validation`(tool projection) — event_names + `_redact_custom_event` 등록 필수
 - 검증: `cd backend && uv run pytest -q -k "skill_builder or skill_draft"` + 수동: 실 대화에서 SKILL.md 점진 편집(edit_file) 확인
 - done-when: 도구/이벤트/redaction 테스트 그린, 멀티턴 점진 편집 육안 확인
-- 상태: pending
+- 상태: done (2026-07-08) — 대상 113 그린, 전체 2578 그린. **수동 멀티턴 편집 육안 확인은 미수행(로컬 서버 필요)** — M6 E2E scripted 시퀀스로 대체 검증 예정, 실 LLM 육안 확인은 사용자 확인 필요.
+- 구현 노트: System LLM 재해석은 `resolve_agent_context`의 `_resolve_skill_builder_agent_context` 분기에서(prepare는 cfg 값 사용). 세션은 conversation_id 역참조 + user 필터(enumeration-safe 404). 첨부→inputs 복사는 run.start 커맨드(`conversation_agent_protocol_commands`)에서 링크 직후 트리거. skill_validation projection은 `skill_validation_projection.py`(memory_event_projection 패턴) — finalize_skill(M5)도 같은 매처로 잡힘. redaction은 요약-전용 페이로드 계약의 명시 pass-through 등록.
 
 ## M4: test_skill_draft + HITL 세션 동의
 - [ ] `test_skill_draft`: fabricated descriptor(DB row 불요) → 기존 샌드박스 정책 전체 상속

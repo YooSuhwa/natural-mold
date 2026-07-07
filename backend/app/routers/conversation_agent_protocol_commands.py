@@ -141,6 +141,17 @@ async def _handle_run_start_command(
             user_id=user.id,
             attachment_ids=attachment_ids,
         )
+        if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
+            # 빌더 챗 (AD-2/§6-3): 이번 턴 첨부를 드래프트 워크스페이스
+            # ``inputs/``로 **복사**한다 — uploads 마운트 금지.
+            from app.services import skill_draft_workspace
+
+            await skill_draft_workspace.copy_conversation_attachments_to_inputs(
+                db,
+                storage_path=cfg.draft_workspace_path,
+                attachment_ids=attachment_ids,
+                user_id=user.id,
+            )
     await db.commit()
 
     await start_run(

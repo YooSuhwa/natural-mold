@@ -353,6 +353,15 @@ def _redact_tool_event(data: Any) -> Any:
 # useMemoryProposal 재조회와 동일 계약).
 _MEMORY_RECALLED_NAMES: Final = frozenset({"moldy.memory_recalled", "memory_recalled"})
 
+# 스킬 빌더 레일 이벤트 (AD-5) — 의도적 pass-through 등록. 페이로드 계약이
+# 요약 전용이다: skill_draft는 경로/크기/변경 수만, skill_validation은
+# code/severity/message/path 이슈만 (SecretFinding은 값 없이 path+kind).
+# 파일 내용·시크릿 값은 이벤트에 실리지 않는다(§6-7). 계약이 바뀌어 내용이
+# 실리게 되면 여기서 마스킹을 추가해야 한다 (이름 기반 매처 등록 규칙).
+_SKILL_BUILDER_PASSTHROUGH_NAMES: Final = frozenset(
+    {"moldy.skill_draft", "skill_draft", "moldy.skill_validation", "skill_validation"}
+)
+
 
 def _redact_custom_event(data: Any) -> Any:
     if not isinstance(data, Mapping):
@@ -360,6 +369,8 @@ def _redact_custom_event(data: Any) -> Any:
     name = _text(data.get("name") or data.get("channel"))
     payload = data.get("payload")
     if not isinstance(payload, Mapping):
+        return data
+    if name in _SKILL_BUILDER_PASSTHROUGH_NAMES:
         return data
     if name in _MEMORY_RECALLED_NAMES:
         memories = payload.get("memories")

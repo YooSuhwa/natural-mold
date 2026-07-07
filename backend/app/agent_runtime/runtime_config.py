@@ -63,6 +63,18 @@ class AgentConfig:
     # run as the ``moldy.memory_recalled`` stream-head event (same contract as
     # ``subagent_display_names``). ``None``/empty → no event.
     recalled_memories: list[dict[str, Any]] | None = None
+    # 스킬 스튜디오 phase 1 (AD-1/AD-2/AD-5) — ``standard`` 이외 값이면
+    # ``_prepare_runtime_components`` 가 전용 분기(빌더 프롬프트/도구/드래프트
+    # 마운트)를 탄다. ``resolve_agent_context`` 가 Agent.runtime_profile 에서
+    # 판독해 채운다.
+    runtime_profile: str = "standard"
+    # 빌더 세션 컨텍스트 — conversation_id 역참조로 해석된 세션 식별자와
+    # ADR-018 상대 워크스페이스 경로. 도구 클로저/권한 마운트가 사용한다.
+    skill_builder_session_id: str | None = None
+    draft_workspace_path: str | None = None
+    # AD-5 ``moldy.skill_draft`` stream-head 페이로드 (recalled_memories 계약).
+    # 파일 내용은 싣지 않는다 — 요약(경로/크기/변경 수)만 (§6-7).
+    skill_draft_brief: dict[str, Any] | None = None
     # Optional ordered fallback chain. Each entry is
     # ``{"provider": str, "model_name": str, "base_url": str | None,
     #   "model_id": str | None}`` and is tried in order when the primary

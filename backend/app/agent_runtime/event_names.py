@@ -52,6 +52,13 @@ SUBAGENT_NAMES: Final = "moldy.subagent_names"
 # into this run's system prompt. Stable event id (``<run_id>:memory_recalled``)
 # dedupes on replay/reload (same contract as SUBAGENT_NAMES).
 MEMORY_RECALLED: Final = "moldy.memory_recalled"
+# Skill builder chat rail (스킬 스튜디오 phase 1, AD-5). Two ``custom`` events:
+# ``moldy.skill_draft`` — stream-head 1회, stable id ``<run_id>:skill_draft``,
+# 드래프트 상태 요약(세션 id/모드/slug/파일 경로·크기/변경 수 — 파일 내용 금지).
+# ``moldy.skill_validation`` — ``validate_skill``/``finalize_skill`` 도구 결과
+# projection (memory_event_projection 패턴), 기존 validation_result 스키마 그대로.
+SKILL_DRAFT: Final = "moldy.skill_draft"
+SKILL_VALIDATION: Final = "moldy.skill_validation"
 MEMORY_PROPOSED: Final = "memory_proposed"
 MEMORY_SAVED: Final = "memory_saved"
 MEMORY_REJECTED: Final = "memory_rejected"

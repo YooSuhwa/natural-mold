@@ -164,6 +164,74 @@ def load_draft_files(storage_path: str) -> list[SkillDraftFile]:
     return files
 
 
+async def copy_conversation_attachments_to_inputs(
+    db: AsyncSession,
+    *,
+    storage_path: str,
+    attachment_ids: Sequence[uuid.UUID],
+    user_id: uuid.UUID,
+) -> list[str]:
+    """run 시작 시 방금 링크된 첨부를 ``inputs/``로 복사한다 (소유권 필터 포함)."""
+
+    if not attachment_ids:
+        return []
+    from app.models.message_attachment import MessageAttachment
+
+    result = await db.execute(
+        select(MessageAttachment).where(
+            MessageAttachment.id.in_(list(attachment_ids)),
+            MessageAttachment.user_id == user_id,
+        )
+    )
+    return copy_attachments_to_inputs(storage_path, list(result.scalars()))
+
+
+def build_skill_draft_brief(session: SkillBuilderSession) -> dict[str, object]:
+    """``moldy.skill_draft`` stream-head 페이로드 (AD-5).
+
+    요약만 싣는다 — 세션 id/모드/slug/파일 경로·크기/base 대비 변경 수.
+    파일 **내용**은 절대 싣지 않는다 (§6-7; 내용은 도구 결과/FS 읽기로만).
+    """
+
+    files = (
+        load_draft_files(session.draft_workspace_path)
+        if session.draft_workspace_path
+        else []
+    )
+    base_files: dict[str, str] = {}
+    base_snapshot = session.base_snapshot or {}
+    for raw in base_snapshot.get("files") or []:
+        if isinstance(raw, dict) and isinstance(raw.get("path"), str):
+            base_files[raw["path"]] = str(raw.get("content") or "")
+
+    current_paths = {f.path for f in files}
+    changed = sum(
+        1 for f in files if f.path not in base_files or base_files[f.path] != f.content
+    )
+    deleted = len(set(base_files) - current_paths)
+
+    slug: str | None = None
+    skill_md = next((f for f in files if f.path == "SKILL.md"), None)
+    if skill_md is not None:
+        from app.skills.inspector import SkillMetadataError, parse_skill_md
+
+        try:
+            parsed = parse_skill_md(skill_md.content, require_metadata=True)
+            raw_slug = parsed["metadata"].get("name")
+            slug = str(raw_slug) if raw_slug else None
+        except SkillMetadataError:
+            slug = None
+
+    return {
+        "session_id": str(session.id),
+        "mode": session.mode,
+        "slug": slug,
+        "file_count": len(files),
+        "files": [{"path": f.path, "size": len(f.content)} for f in files[:100]],
+        "changed_count": changed + deleted,
+    }
+
+
 async def gc_stale_draft_workspaces(
     db: AsyncSession, *, retention_hours: int
 ) -> int:

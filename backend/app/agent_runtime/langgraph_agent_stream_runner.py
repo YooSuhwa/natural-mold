@@ -138,6 +138,9 @@ async def _stream_langgraph_with_secrets(
                 # W2-3 — _prepare_agent(위)가 회상된 memory brief를 cfg에
                 # 채워두면 stream head에서 moldy.memory_recalled로 방출된다.
                 recalled_memories=cfg.recalled_memories,
+                # AD-5 — resolve_agent_context가 드래프트 요약을 cfg에 채우면
+                # stream head에서 moldy.skill_draft로 방출된다 (동일 계약).
+                skill_draft_brief=cfg.skill_draft_brief,
             ):
                 yield chunk
     except asyncio.CancelledError:
