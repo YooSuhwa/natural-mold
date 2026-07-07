@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
@@ -28,7 +27,6 @@ from app.routers.skill_builder_support import (
 )
 from app.schemas.skill import SkillResponse
 from app.schemas.skill_builder import (
-    SkillBuilderMessageRequest,
     SkillBuilderMode,
     SkillBuilderSessionResponse,
     SkillBuilderStartRequest,
@@ -38,7 +36,6 @@ from app.schemas.skill_builder import (
 from app.services import (
     chat_service,
     skill_builder_service,
-    skill_builder_workflow,
     skill_draft_workspace,
 )
 from app.services.skill_builder_errors import (
@@ -52,12 +49,6 @@ from app.skills import service as skill_service
 from app.skills.validator import validate_draft_package
 
 router = APIRouter(prefix="/api/skill-builder", tags=["skill-builder"])
-
-_SSE_HEADERS = {
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
-    "X-Accel-Buffering": "no",
-}
 
 
 def _session_response(
@@ -103,9 +94,7 @@ async def start_skill_builder(
         raise system_llm_not_configured() from exc
     # source="draft" — 첫 메시지 전송 시 promote되는 기존 draft 계약 재사용.
     # 네비게이터 노출은 runtime_profile 필터가 promote 이후에도 차단한다.
-    conversation = await chat_service.create_conversation(
-        db, agent.id, source="draft"
-    )
+    conversation = await chat_service.create_conversation(db, agent.id, source="draft")
     workspace_path = skill_draft_workspace.create_workspace(session.id)
     if session.source_skill_id is not None:
         # improve 모드 — 원본 스킬 파일을 워크스페이스로 복사(시드).
@@ -146,54 +135,6 @@ async def get_skill_builder_session(
     session = await get_session_or_404(db, session_id=session_id, user=user)
     agent_id = await skill_builder_service.resolve_session_agent_id(db, session)
     return _session_response(session, agent_id=agent_id)
-
-
-@router.post("/{session_id}/messages")
-async def post_skill_builder_message(
-    session_id: uuid.UUID,
-    payload: SkillBuilderMessageRequest,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-    _csrf: None = Depends(verify_csrf),
-) -> StreamingResponse:
-    await require_system_llm(db, user=user, request=request)
-    session = await get_session_or_404(db, session_id=session_id, user=user)
-    events = await skill_builder_workflow.run_skill_builder_message_workflow(
-        db,
-        session=session,
-        user_id=user.id,
-        content=payload.content,
-    )
-    return StreamingResponse(
-        skill_builder_workflow.stream_skill_builder_events(events),
-        media_type="text/event-stream",
-        headers=_SSE_HEADERS,
-    )
-
-
-@router.post("/{session_id}/messages/resume")
-async def resume_skill_builder_message(
-    session_id: uuid.UUID,
-    payload: SkillBuilderMessageRequest,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-    _csrf: None = Depends(verify_csrf),
-) -> StreamingResponse:
-    await require_system_llm(db, user=user, request=request)
-    session = await get_session_or_404(db, session_id=session_id, user=user)
-    events = await skill_builder_workflow.run_skill_builder_message_workflow(
-        db,
-        session=session,
-        user_id=user.id,
-        content=payload.content,
-    )
-    return StreamingResponse(
-        skill_builder_workflow.stream_skill_builder_events(events),
-        media_type="text/event-stream",
-        headers=_SSE_HEADERS,
-    )
 
 
 @router.post("/{session_id}/validate", response_model=SkillBuilderSessionResponse)

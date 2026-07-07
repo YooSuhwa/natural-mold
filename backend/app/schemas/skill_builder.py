@@ -48,12 +48,6 @@ class SkillBuilderStartRequest(BaseModel):
         return self
 
 
-class SkillBuilderMessageRequest(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    content: str = Field(..., min_length=1, max_length=8000)
-
-
 class SkillDraftFile(BaseModel):
     model_config = ConfigDict(frozen=True)
 

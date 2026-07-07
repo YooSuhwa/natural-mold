@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
 
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.streaming import format_sse
 from app.dependencies import CurrentUser
 from app.error_codes import session_not_found, system_llm_not_configured
 from app.models.skill import Skill
@@ -122,7 +120,3 @@ async def record_secret_scan_blocked_if_needed(
         outcome="denied",
         **secret_metadata,
     )
-
-
-async def single_event_stream(event: str, data: dict[str, str]) -> AsyncIterator[str]:
-    yield format_sse(event, data)
