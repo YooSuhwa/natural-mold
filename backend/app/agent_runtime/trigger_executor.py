@@ -83,10 +83,28 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
     trigger_uuid = uuid.UUID(trigger_id)
 
     async with async_session() as db:
-        trigger = await db.get(AgentTrigger, trigger_uuid)
+        # SEC-3 duplicate guard: lock the trigger row so concurrent entries
+        # (scheduled fire vs user run-now, which bypasses APScheduler's
+        # max_instances) serialise, then claim by checking for an in-flight
+        # run before creating ours. FOR UPDATE is a no-op on SQLite (tests
+        # exercise the check itself); on Postgres it closes the
+        # check-then-insert race — start_trigger_run's commit releases the
+        # lock, so the loser re-reads after the winner's run row is visible.
+        trigger = (
+            await db.execute(
+                select(AgentTrigger).where(AgentTrigger.id == trigger_uuid).with_for_update()
+            )
+        ).scalar_one_or_none()
         if not trigger:
             logger.info("Trigger %s skipped (not found)", trigger_id)
             return
+
+        in_flight = await trigger_service.find_in_flight_run(db, trigger_uuid)
+        if in_flight is not None:
+            logger.info("Trigger %s skipped (run %s already in flight)", trigger_id, in_flight.id)
+            if force:
+                raise trigger_service.TriggerRunInFlightError(in_flight.id)
+            return None
 
         run = await trigger_service.start_trigger_run(
             db,

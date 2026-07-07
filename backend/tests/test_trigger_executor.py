@@ -614,3 +614,97 @@ async def test_execute_trigger_passes_user_message():
 
     # args: (cfg: AgentConfig, messages_history: list)
     assert captured_args[1] == [{"role": "user", "content": "뉴스 검색해줘"}]
+
+
+# ---------------------------------------------------------------------------
+# SEC-3 — in-flight duplicate guard
+# ---------------------------------------------------------------------------
+
+
+async def _insert_running_run(
+    trigger_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    *,
+    started_at=None,
+) -> uuid.UUID:
+    """Seed an in-flight (status=running) run row for the trigger."""
+    from app.models.agent_trigger_run import AgentTriggerRun
+
+    async with TestSession() as db:
+        run = AgentTriggerRun(
+            trigger_id=trigger_id,
+            agent_id=agent_id,
+            user_id=TEST_USER_ID,
+            input_message="in flight",
+            status="running",
+        )
+        if started_at is not None:
+            run.started_at = started_at
+        db.add(run)
+        await db.commit()
+        return run.id
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_skips_when_run_in_flight():
+    """A scheduled fire must not double-run while a run is in flight."""
+    trigger_id, agent_id = await _seed_full_setup()
+    in_flight_id = await _insert_running_run(trigger_id, agent_id)
+
+    with patch("app.agent_runtime.trigger_executor.async_session", TestSession):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        result = await execute_trigger(str(trigger_id))
+
+    assert result is None
+    async with TestSession() as db:
+        from app.models.agent_trigger_run import AgentTriggerRun
+
+        rows = (
+            (
+                await db.execute(
+                    select(AgentTriggerRun).where(AgentTriggerRun.trigger_id == trigger_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [row.id for row in rows] == [in_flight_id]  # no second run created
+
+
+@pytest.mark.asyncio
+async def test_run_now_returns_conflict_when_run_in_flight(client):
+    """run-now (which bypasses APScheduler dedup) must 409 instead of double-running."""
+    trigger_id, agent_id = await _seed_full_setup()
+    await _insert_running_run(trigger_id, agent_id)
+
+    with patch("app.agent_runtime.trigger_executor.async_session", TestSession):
+        resp = await client.post(f"/api/triggers/{trigger_id}/run-now")
+
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_ignores_stale_running_run():
+    """A crashed run stuck in 'running' past the staleness bound must not block."""
+    from datetime import UTC, datetime
+
+    from app.services.trigger_service import TRIGGER_RUN_STALE_AFTER
+
+    trigger_id, agent_id = await _seed_full_setup()
+    stale_started = datetime.now(UTC).replace(tzinfo=None) - TRIGGER_RUN_STALE_AFTER * 2
+    await _insert_running_run(trigger_id, agent_id, started_at=stale_started)
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="ok",
+        ),
+        patch("app.agent_runtime.trigger_executor.async_session", TestSession),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        run = await execute_trigger(str(trigger_id))
+
+    assert run is not None
+    assert run.status == "success"
