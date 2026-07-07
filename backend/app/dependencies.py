@@ -22,6 +22,7 @@ from app.auth.jwt import InvalidTokenError, decode_token
 from app.config import settings
 from app.database import async_session, close_session_shielded
 from app.exceptions import AppError
+from app.models.conversation import Conversation
 from app.services import user_service
 
 logger = logging.getLogger(__name__)
@@ -146,6 +147,32 @@ async def require_super_user(
     if not user.is_super_user:
         raise AppError(code="forbidden", message="권한이 없습니다", status=403)
     return user
+
+
+async def owned_conversation(
+    conversation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> Conversation:
+    """Resolve a path ``conversation_id`` to the caller's own conversation.
+
+    Collapses the ``get_owned_conversation`` + ``if is None: raise`` block
+    duplicated across ~13 conversation routers (BE-D1). Returning 404 for a
+    foreign owner (never 403) keeps the enumeration-oracle contract in one
+    place (rules/security.md). Use as ``conv: Conversation =
+    Depends(owned_conversation)`` when the handler needs the row, or
+    ``dependencies=[Depends(owned_conversation)]`` for a pure ownership gate.
+    """
+
+    # Function-local: chat_service pulls in the runtime/model graph, importing
+    # it at module load would cycle back through dependencies.
+    from app.error_codes import conversation_not_found
+    from app.services import chat_service
+
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
+    if conv is None:
+        raise conversation_not_found()
+    return conv
 
 
 # ---------------------------------------------------------------------------
