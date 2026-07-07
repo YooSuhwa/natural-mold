@@ -14,7 +14,7 @@ class AgentTrigger(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
@@ -25,9 +25,7 @@ class AgentTrigger(Base):
     )  # "interval" | "cron" | "one_time"
     schedule_config: Mapped[dict] = mapped_column(JSON, nullable=False)
     input_message: Mapped[str] = mapped_column(Text, nullable=False)
-    timezone: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="Asia/Seoul"
-    )
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Asia/Seoul")
     conversation_policy: Mapped[str] = mapped_column(
         String(40), nullable=False, default="schedule_thread"
     )
