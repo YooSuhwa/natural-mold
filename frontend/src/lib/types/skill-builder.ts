@@ -164,6 +164,11 @@ export type SkillBuilderSession = {
   readonly eval_result?: Readonly<Record<string, JsonValue>> | null
   readonly trigger_eval_result?: Readonly<Record<string, JsonValue>> | null
   readonly finalized_skill_id?: string | null
+  // v2 (빌더 챗): 히든 에이전트의 진짜 conversation. agent_id는 대화 역참조로
+  // 백엔드 라우터가 채운다 — /skills/builder/[sessionId]가 ChatRuntimeSection
+  // 마운트에 사용.
+  readonly conversation_id?: string | null
+  readonly agent_id?: string | null
   readonly error_message?: string | null
   readonly created_at: string
   readonly updated_at: string

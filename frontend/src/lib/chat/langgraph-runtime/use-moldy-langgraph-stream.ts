@@ -46,6 +46,7 @@ import {
 } from './hitl-interrupts'
 import { useLangGraphMemoryEffects } from './memory-events'
 import { useLangGraphSubagentNamesEffects } from './subagent-names-events'
+import { useLangGraphSkillBuilderEffects } from './skill-builder-events'
 import { useLangGraphMemoryRecallEffects } from './memory-recall-events'
 import { useLangGraphCompactionEffects } from './compaction-events'
 import {
@@ -2517,6 +2518,8 @@ export function useMoldyLangGraphStream({
   useLangGraphMemoryEffects({ stream })
   useLangGraphSubagentNamesEffects({ stream, conversationId })
   useLangGraphMemoryRecallEffects({ stream, conversationId })
+  // 스킬 빌더 챗 검증 레일 (AD-5) — moldy.skill_draft/skill_validation 소비.
+  useLangGraphSkillBuilderEffects({ stream, conversationId })
   const isRunning =
     stream.isLoading &&
     interruptPayloads.length === 0 &&

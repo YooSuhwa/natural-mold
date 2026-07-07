@@ -2784,6 +2784,35 @@
       "credentialUpdated": "Skill credential updated.",
       "credentialCleared": "Skill credential disconnected.",
       "credentialUpdateFailed": "Failed to update credential."
+    },
+    "builderChat": {
+      "title": "Skill Builder",
+      "backToSkills": "Back to skills",
+      "modeCreate": "New skill",
+      "modeImprove": "Improve",
+      "emptyTitle": "Build a skill through conversation",
+      "emptyHint": "Describe the skill you want and the agent will edit the draft files incrementally. Attach example files to try the draft before saving.",
+      "sessionUnavailableTitle": "Builder session unavailable",
+      "sessionUnavailableHint": "The session expired or its conversation was cleaned up. Start a new builder session from the skills page.",
+      "railTitle": "Draft status",
+      "filesTitle": "Draft files",
+      "filesEmpty": "No draft files yet.",
+      "changedCount": "{count} changed",
+      "completedTitle": "Skill saved",
+      "openSkill": "Open skill",
+      "startFailed": "Failed to start the builder session.",
+      "status": {
+        "active": "Active",
+        "collecting": "Collecting",
+        "drafting": "Drafting",
+        "review": "Review",
+        "confirming": "Confirming",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "abandoned": "Abandoned"
+      },
+      "improveDefaultRequest": "I want to improve this existing skill."
     }
   },
   "marketplace": {

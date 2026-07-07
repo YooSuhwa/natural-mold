@@ -2784,6 +2784,35 @@
       "credentialUpdated": "스킬 자격증명이 업데이트되었습니다",
       "credentialCleared": "스킬 자격증명 연결을 해제했습니다",
       "credentialUpdateFailed": "자격증명 업데이트에 실패했습니다"
+    },
+    "builderChat": {
+      "title": "스킬 빌더",
+      "backToSkills": "스킬 목록으로",
+      "modeCreate": "새 스킬",
+      "modeImprove": "개선",
+      "emptyTitle": "대화로 스킬을 만들어 보세요",
+      "emptyHint": "만들고 싶은 스킬을 설명하면 에이전트가 드래프트 파일을 점진적으로 편집합니다. 예시 파일을 첨부해 저장 전에 바로 시험할 수도 있습니다.",
+      "sessionUnavailableTitle": "빌더 세션을 열 수 없습니다",
+      "sessionUnavailableHint": "세션이 만료되었거나 대화가 정리되었습니다. 스킬 목록에서 새 빌더 세션을 시작해 주세요.",
+      "railTitle": "드래프트 상태",
+      "filesTitle": "드래프트 파일",
+      "filesEmpty": "아직 드래프트 파일이 없습니다.",
+      "changedCount": "{count}개 변경",
+      "completedTitle": "스킬이 저장되었습니다",
+      "openSkill": "스킬 열기",
+      "startFailed": "빌더 세션을 시작하지 못했습니다.",
+      "status": {
+        "active": "진행 중",
+        "collecting": "수집 중",
+        "drafting": "작성 중",
+        "review": "검토",
+        "confirming": "확정 중",
+        "completed": "완료",
+        "failed": "실패",
+        "cancelled": "취소됨",
+        "abandoned": "중단됨"
+      },
+      "improveDefaultRequest": "기존 스킬을 개선하고 싶어요."
     }
   },
   "marketplace": {

@@ -1,8 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { BookOpen, Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -16,6 +18,7 @@ import {
 } from '@/components/shared/resource-layout'
 import { Skeleton } from '@/components/ui/skeleton'
 import { coerceSkillDetailTab, type SkillDetailTab } from '@/components/skill/skill-detail-tabs'
+import { useStartSkillBuilder } from '@/lib/hooks/use-skill-builder'
 import { useSkills } from '@/lib/hooks/use-skills'
 import {
   ALL_SKILL_FILTER,
@@ -59,12 +62,10 @@ function replaceDetailUrl(skillId: string | null, tab: SkillDetailTab) {
 
 export function SkillsPageClient() {
   const t = useTranslations('skill')
+  const router = useRouter()
+  const startBuilder = useStartSkillBuilder()
   const [createOpen, setCreateOpen] = useState(false)
   const [createTab, setCreateTab] = useState<CreateTab>('chat')
-  const [builderOpen, setBuilderOpen] = useState(false)
-  const [builderMode, setBuilderMode] = useState<BuilderMode>('create')
-  const [builderSourceSkillId, setBuilderSourceSkillId] = useState<string | null>(null)
-  const [builderInitialRequest, setBuilderInitialRequest] = useState('')
   const [activeTab, setActiveTab] = useState<SkillTab>(ALL_SKILL_FILTER)
   const [stateFilter, setStateFilter] = useState<SkillStateFilter>(ALL_SKILL_FILTER)
   const [search, setSearch] = useState('')
@@ -101,18 +102,33 @@ export function SkillsPageClient() {
     replaceDetailUrl(id, tab)
   }
 
+  // 빌더 챗 (스킬 스튜디오 phase 1) — start v2로 세션+대화+워크스페이스를
+  // 만들고 전용 라우트로 이동한다. 구 SkillBuilderDialog는 제거됨.
+  async function startBuilderSession(payload: {
+    mode: BuilderMode
+    user_request: string
+    source_skill_id?: string
+  }) {
+    try {
+      const session = await startBuilder.mutateAsync(payload)
+      setCreateOpen(false)
+      setDetailId(null)
+      router.push(`/skills/builder/${session.id}`)
+    } catch {
+      toast.error(t('builderChat.startFailed'))
+    }
+  }
+
   function openBuilderCreate(request: string) {
-    setBuilderMode('create')
-    setBuilderSourceSkillId(null)
-    setBuilderInitialRequest(request)
-    setBuilderOpen(true)
+    void startBuilderSession({ mode: 'create', user_request: request })
   }
 
   function openBuilderImprove(skillId: string) {
-    setBuilderMode('improve')
-    setBuilderSourceSkillId(skillId)
-    setBuilderInitialRequest('')
-    setBuilderOpen(true)
+    void startBuilderSession({
+      mode: 'improve',
+      user_request: t('builderChat.improveDefaultRequest'),
+      source_skill_id: skillId,
+    })
   }
 
   const data = useMemo(() => skills ?? [], [skills])
@@ -245,15 +261,10 @@ export function SkillsPageClient() {
       <SkillPageDialogs
         createOpen={createOpen}
         createTab={createTab}
-        builderOpen={builderOpen}
-        builderMode={builderMode}
-        builderSourceSkillId={builderSourceSkillId}
-        builderInitialRequest={builderInitialRequest}
         detailId={detailId}
         detailTab={detailTab}
         publishSkill={publishSkill}
         onCreateOpenChange={setCreateOpen}
-        onBuilderOpenChange={setBuilderOpen}
         onCreated={(id, tab = 'content') => openDetail(id, tab)}
         onStartChat={openBuilderCreate}
         onDetailTabChange={(tab) => {
