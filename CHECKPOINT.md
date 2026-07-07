@@ -1,124 +1,60 @@
-# CHECKPOINT — Marketplace Resources Phase 1
+# CHECKPOINT — 스킬 스튜디오 Phase 1: 스킬 빌더 챗
 
-**Project Owner**: 사티아 (Satya)
-**Branch**: `worktree-marketplace-resources`
-**Source docs**: `docs/marketplace-resources-prd.md` v0.2, `docs/marketplace-resources-spec.md` v0.1
-**Handoff order (Spec §19)**: A → B → D → E → C → F → G
+> 이전 내용(마켓플레이스 Phase 1)은 완료·머지되어 교체함 (ADR-017 출시 완료).
 
----
+스펙: `docs/design-docs/skill-studio-phase1-builder-chat-spec.md` (커밋 5f730cd6)
+브랜치: `feature/skill-builder-chat` (worktree `.claude/worktrees/feature+skill-builder-chat`)
+원칙: 마일스톤 완료마다 커밋. push 검증 시 `SKILL_EVALUATION_ENABLED=true`.
 
-## 핵심 결정사항 (PRD/Spec에서 확정)
-
-| 항목 | 결정 | 출처 |
-|------|------|------|
-| 마켓플레이스 범위 | Agent / MCP / Skill (Tool 비목표) | PRD §3 |
-| Phase 1 범위 | Skill marketplace + selected-skill mount + credential injection + k-skill importer | PRD §14 |
-| Alembic 분할 | m40~m43 슬라이스별 마이그레이션 | Spec §3.1 |
-| Agent-Skill override | `agent_skills.config` JSON | Spec §0.1 |
-| Runtime mount | per-thread `copytree` 데이터 격리 | Spec §0.1, §9 |
-| k-skill source | GitHub `NomaDamas/k-skill` clone | Spec §0.1 |
-| Public publish | published vs listed 분리 (super_user `is_listed` 토글) | Spec §0.1 |
-| Visibility | private/restricted/public/unlisted/system | PRD §7 |
-| Credential | Cipher V2 재사용 + 신규 8개 definition (`srt_account` 등) | PRD §8 |
-
----
-
-## M1: 사일로 셋업 (S0~S2)
-- [ ] S0 (피차이): docs/design-docs/adr-017-marketplace-resources.md + ARCHITECTURE.md marketplace 섹션
-- [ ] S1 (베조스): tasks/deletion-analysis.md — runtime broad mount/env 빈 구멍/packager secret scan 부재 식별
-- [ ] S2 (피차이): 모듈 경계/ORM 파일 계약/Pydantic 스키마 contracts
-- 검증: `test -f docs/design-docs/adr-017-marketplace-resources.md && test -f tasks/deletion-analysis.md && grep -q marketplace docs/ARCHITECTURE.md`
-- done-when: 아키텍처 명문화 + 삭제 분석 + 모듈 경계
+## M1: 히든 빌더 에이전트 + 세션 v2
+- [ ] 마이그레이션 2종: `agents.runtime_profile`(default 'standard'), `skill_builder_sessions`에 `conversation_id` FK + `draft_workspace_path` (+`tool_consents` JSON)
+- [ ] **노출 표면 전수 grep**: 에이전트 목록/요약/대시보드/일일 집계/네비게이터에서 `runtime_profile!='standard'` 제외 (스펙 §11-1 확정)
+- [ ] `PUT/DELETE /api/agents/{id}` → 비표준 profile은 404 (enumeration-safe)
+- [ ] 히든 에이전트 lazy-seed + start v2 엔드포인트 (세션+워크스페이스+draft conversation 생성)
+- 검증: `cd backend && uv run pytest -q -k "runtime_profile or skill_builder" && uv run ruff check .`
+- done-when: seed/필터/404 가드/start v2 테스트 그린
 - 상태: pending
 
-## M2: Slice A — 데이터 + Read Catalog
-- [ ] 젠슨: m40_marketplace_tables.py (5개 + circular FK)
-- [ ] 젠슨: m41_skills_marketplace_columns.py (12개 컬럼 + backfill)
-- [ ] 젠슨: m42_agent_skills_config.py
-- [ ] 젠슨: m43_skill_credential_bindings.py
-- [ ] 젠슨: app/models/marketplace.py (ORM)
-- [ ] 젠슨: app/marketplace/{access,schemas,origin_service,service}.py + routers/marketplace.py
-- [ ] 젠슨: 기존 /api/skills 응답에 origin_summary + publication_summary 추가
-- 검증: `cd backend && uv run ruff check . && uv run pytest tests/test_marketplace_*.py -v && uv run alembic upgrade head && uv run alembic downgrade -4 && uv run alembic upgrade head`
-- done-when: 마이그레이션 reversible, 접근 매트릭스 통과, 기존 skill 회귀 통과
+## M2: 드래프트 워크스페이스 + 권한
+- [ ] `app/services/skill_draft_workspace.py`: 생성/시드(improve 복사)/첨부→`inputs/` 복사/dir→SkillDraftFile 어댑터/GC(세션 상태 기준)
+- [ ] `filesystem_permissions.py`: 세션 드래프트 allow → `/skill-drafts/**` deny → **`/uploads` deny(기존 구멍 수리, 별도 커밋)**
+- [ ] scheduler GC 잡 등록 (leader-only, `skill_draft_gc_retention_hours` 설정)
+- 검증: `cd backend && uv run pytest -q -k "draft_workspace or filesystem_permissions"`
+- done-when: 워크스페이스/권한(sibling deny 포함)/GC 테스트 그린
 - 상태: pending
 
-## M3: Slice D — Credential Definitions + Binding
-- [ ] 젠슨: app/credentials/definitions/{srt_account,ktx_account,foresttrip_account,kipris_plus_api,dart_api,odsay_api,coupang_partners,k_skill_proxy}.py
-- [ ] 젠슨: app/marketplace/credential_requirements.py (env injection plan)
-- [ ] 젠슨: routers/skills.py에 credential-bindings 엔드포인트 추가
-- 검증: `cd backend && uv run pytest tests/test_credential_definitions.py tests/test_skill_bindings.py -v`
-- done-when: owner/definition_key 검증, needs_setup 응답 정확
+## M3: 런타임 분기 + validate/generate_evals + 이벤트
+- [ ] `_prepare_runtime_components` 분기: prompt.md 교체, 도구 세트 교체, 드래프트 마운트, System LLM 재해석(`resolve_system_model('text_primary')`)
+- [ ] `validate_skill`/`generate_evals` 도구
+- [ ] `moldy.skill_draft`(stream-head stable-id) + `moldy.skill_validation`(tool projection) — event_names + `_redact_custom_event` 등록 필수
+- 검증: `cd backend && uv run pytest -q -k "skill_builder or skill_draft"` + 수동: 실 대화에서 SKILL.md 점진 편집(edit_file) 확인
+- done-when: 도구/이벤트/redaction 테스트 그린, 멀티턴 점진 편집 육안 확인
 - 상태: pending
 
-## M4: Slice B — Install
-- [ ] 젠슨: app/marketplace/install_service.py
-- [ ] 젠슨: POST install + update + DELETE installation
-- [ ] 젠슨: install_mode 처리
-- 검증: `cd backend && uv run pytest tests/test_marketplace_install.py -v`
-- done-when: 설치가 user-owned skills 생성, installation source 추적
+## M4: test_skill_draft + HITL 세션 동의
+- [ ] `test_skill_draft`: fabricated descriptor(DB row 불요) → 기존 샌드박스 정책 전체 상속
+- [ ] 백엔드: `input.respond`의 `scope:"session"` → 동의 기록 + 표준 approve 변환 (비표준 type 미들웨어 도달 금지)
+- [ ] 정책: 동의 시 policy 제외, `requires_network` 드래프트는 동의 불가
+- [ ] 프론트: approval-card "이 세션에서 계속 허용" 옵션(review_configs 플래그 조건부)
+- 검증: backend pytest + `cd frontend && pnpm vitest run` (transport mock 일괄 갱신 확인)
+- done-when: 동의 플로우 테스트 그린 (1회차 카드→동의→2회차 무카드)
 - 상태: pending
 
-## M5: Slice E — Runtime Mount + Credential Injection (보안 critical)
-- [ ] 젠슨: executor.py:build_agent 패치 (per-thread copytree)
-- [ ] 젠슨: _create_skill_execute_tool 시그니처 변경 + env injection
-- [ ] 젠슨: app/marketplace/redaction.py + streaming.py/tool result/exception에 적용
-- [ ] 젠슨: fail-fast missing credential
-- [ ] 젠슨: stale runtime root cleanup
-- 검증: `cd backend && uv run pytest tests/test_runtime_isolation.py tests/test_credential_injection.py tests/test_redaction.py -v`
-- done-when: 미선택 skill 차단, mapped env만 노출, log/SSE redacted
+## M5: finalize_skill + 감사
+- [ ] finalize: 검증 재실행→secret scan→claim→zip(synthetic Skill)→create/replace+리비전. 생성/개선/`SOURCE_SKILL_CHANGED`/slug 충돌 전 케이스
+- [ ] 감사 이벤트(confirm_create/apply_improvement/skill_revision.create/secret_scan_blocked/apply_conflict) + 완료 딥링크 페이로드
+- 검증: `cd backend && uv run pytest -q -k "finalize or skill_builder_confirm"`
+- done-when: finalize 전 케이스 + 감사 테스트 그린
 - 상태: pending
 
-## M6: Slice C — Publish + Secret Scan
-- [ ] 젠슨: app/marketplace/secret_scan.py + publish_service.py
-- [ ] 젠슨: POST from-skill / versions/from-skill / ACL / disable 라우터
-- [ ] 젠슨: routers/skills.py:upload에 secret_scan 적용 (회귀 가드)
-- 검증: `cd backend && uv run pytest tests/test_publish.py tests/test_secret_scan.py -v`
-- done-when: secret 거부, immutable version, ACL 강제
+## M6: 프론트 라우트/레일 + 구경로 제거 + E2E
+- [ ] `/skills/builder/[sessionId]` 라우트 (ChatRuntimeSection 마운트) + 진입점 교체(create 탭/improve 버튼)
+- [ ] 검증 레일(훅+아톰+기존 패널 재사용) + i18n
+- [ ] 구경로 제거: SkillBuilderDialog/stream-skill-builder-message/workflow 가짜 SSE/one-pass graph/가짜 평가
+- [ ] E2E `E2E_SKILL_BUILDER` 마커 + 리로드 replay + 캡처 투어(스펙 §2 증빙)
+- 검증: `cd frontend && pnpm build && pnpm vitest run` + E2E throwaway 스택(fresh ports) + `cd backend && uv run pytest`
+- done-when: 스펙 §2 성공 기준 6건 전부 충족, 전체 스위트 그린
 - 상태: pending
 
-## M7: Slice F — k-skill Importer
-- [ ] 젠슨: app/marketplace/k_skill_importer.py + k_skill_requirements.py (curated map)
-- [ ] 젠슨: app/scripts/sync_k_skill.py CLI
-- [ ] 젠슨: app/config.py에 k_skill_* 4개 settings
-- 검증: dry-run 실행 + `uv run pytest tests/test_k_skill_importer.py -v`
-- done-when: idempotent sync, 단일 실패가 전체 중단 안 함
-- 상태: pending
-
-## M8: Slice G — Frontend Marketplace UI
-- [ ] 팀쿡: docs/design-docs/marketplace-ui-spec.md
-- [ ] 저커버그: /marketplace 페이지 + install/publish wizard
-- [ ] 저커버그: lib/api/marketplace.ts + hooks
-- [ ] 저커버그: /skills, /mcp-servers에 origin/publication badge
-- 검증: `cd frontend && pnpm build && pnpm lint`
-- done-when: 빌드 통과 + 카드 CTA 동작
-- 상태: pending
-
-## M9: 통합 검증 + HANDOFF
-- [ ] 베조스: E2E (PRD §10.1~10.7) + permission matrix + runtime isolation + secret safety
-- [ ] 베조스: tasks/lessons.md + docs/QUALITY_SCORE.md
-- [ ] 사티아: HANDOFF.md + docs/ARCHITECTURE.md 정리
-- 검증: `cd backend && uv run pytest -v && cd ../frontend && pnpm build && pnpm lint`
-- done-when: Phase 1 출시 게이트(PRD §13) 8개 PASS
-- 상태: pending
-
----
-
-## 마일스톤 의존 그래프
-
-```
-M1 ─ M2 ─┬─ M3 ─┐
-         └─ M4 ─┴── M5 ── M6 ── M7 ── M8 ── M9
-```
-
-**병렬 가능**: M3/M4는 M2 완료 후 병렬. M8(frontend)은 M5/M6 완료 후 backend stable 상태에서.
-**Critical Path**: M1 → M2 → M4 → M5 → M9
-
----
-
-## 컨텍스트 가드
-
-- 슬라이스 시작 전 progress.txt 반드시 읽기
-- verify 통과 없이 완료 마킹 금지 (Ralph: 검증 없이 완료 없음)
-- 3회 실패 → 사티아에게 ESCALATION
-- 컨텍스트 오염 신호 → progress.txt 덤프 → 리스폰
+## 마일스톤 의존
+M1 → M2 → M3 → {M4, M5 병렬 가능} → M6
