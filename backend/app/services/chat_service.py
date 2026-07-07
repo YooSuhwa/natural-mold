@@ -565,7 +565,16 @@ async def collect_conversation_secret_values(
         logger.debug("secret-collect fallback chain skipped for %s", conversation.id, exc_info=True)
 
     try:
-        tools_config = await build_tools_config(agent, db=db, conversation_id=str(conversation.id))
+        # db=None on purpose (BE-P3): with a session, the MCP branch calls
+        # resolve_mcp_auth per tool — a SELECT … FOR UPDATE (row lock!) plus
+        # potential OAuth refresh WRITE per credential, on a GET-polled path.
+        # The light branch decrypts the credential rows already eager-loaded
+        # by _agent_runtime_load_options above, which is exactly what secret
+        # collection needs (mask what's stored; the live run path collects
+        # refreshed tokens itself).
+        tools_config = await build_tools_config(
+            agent, db=None, conversation_id=str(conversation.id)
+        )
         for tool_config in tools_config or []:
             if not isinstance(tool_config, dict):
                 continue
