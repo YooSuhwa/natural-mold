@@ -112,6 +112,52 @@ def test_scoped_filesystem_permissions_only_allow_current_runtime_surfaces() -> 
     assert _check_fs_permission(permissions, "write", "/uploads/deadbeef.png") == "deny"
 
 
+def test_draft_workspace_mount_allows_session_and_denies_siblings() -> None:
+    """스킬 빌더 드래프트 마운트 (스펙 AD-2): 세션 allow → sibling deny 순서."""
+
+    from deepagents.middleware.filesystem import _check_fs_permission
+
+    from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
+
+    permissions = build_filesystem_permissions(
+        thread_id="thread-a",
+        agent_id="agent-a",
+        user_id="user-a",
+        selected_skill_slugs=[],
+        draft_workspace_path="skill-drafts/session-1",
+    )
+
+    # 자기 세션 워크스페이스는 read+write 가능 (write_file/edit_file 편집 표면).
+    assert _check_fs_permission(permissions, "read", "/skill-drafts/session-1/SKILL.md") == "allow"
+    assert _check_fs_permission(permissions, "write", "/skill-drafts/session-1/SKILL.md") == "allow"
+    assert (
+        _check_fs_permission(permissions, "write", "/skill-drafts/session-1/references/a.md")
+        == "allow"
+    )
+    # 타 세션 워크스페이스는 완전 차단 (sibling deny).
+    assert _check_fs_permission(permissions, "read", "/skill-drafts/session-2/SKILL.md") == "deny"
+    assert _check_fs_permission(permissions, "write", "/skill-drafts/session-2/SKILL.md") == "deny"
+    assert _check_fs_permission(permissions, "read", "/skill-drafts") == "deny"
+
+
+def test_no_draft_mount_denies_entire_skill_drafts_tree() -> None:
+    """드래프트 마운트가 없는 일반 런에서도 /skill-drafts 전체가 deny."""
+
+    from deepagents.middleware.filesystem import _check_fs_permission
+
+    from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
+
+    permissions = build_filesystem_permissions(
+        thread_id="thread-a",
+        agent_id="agent-a",
+        user_id="user-a",
+        selected_skill_slugs=[],
+    )
+
+    assert _check_fs_permission(permissions, "read", "/skill-drafts/session-1/SKILL.md") == "deny"
+    assert _check_fs_permission(permissions, "write", "/skill-drafts/session-1/SKILL.md") == "deny"
+
+
 def test_filesystem_permissions_can_scope_skills_by_agent_runtime_name() -> None:
     from deepagents.middleware.filesystem import _check_fs_permission
 

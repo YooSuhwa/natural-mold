@@ -48,6 +48,7 @@ from app.services.skill_builder_errors import (
 )
 from app.services.skill_builder_hidden_agent import get_or_create_skill_builder_agent
 from app.services.system_credential_resolver import SystemModelNotConfiguredError
+from app.skills import service as skill_service
 from app.skills.validator import validate_draft_package
 
 router = APIRouter(prefix="/api/skill-builder", tags=["skill-builder"])
@@ -106,6 +107,14 @@ async def start_skill_builder(
         db, agent.id, source="draft"
     )
     workspace_path = skill_draft_workspace.create_workspace(session.id)
+    if session.source_skill_id is not None:
+        # improve 모드 — 원본 스킬 파일을 워크스페이스로 복사(시드).
+        # 소유권은 create_session이 이미 검증했다.
+        source_skill = await skill_service.get_skill(db, session.source_skill_id, user.id)
+        if source_skill is not None:
+            workspace_path = skill_draft_workspace.seed_workspace_from_skill(
+                source_skill, session.id
+            )
     await skill_builder_service.attach_chat_runtime(
         db,
         session,

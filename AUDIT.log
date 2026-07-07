@@ -159,3 +159,4 @@
 [2026-06-12T01:01:13] system SUBAGENT_START unnamed
 [2026-07-07T23:51] claude MILESTONE_START M1 히든 빌더 에이전트 + 세션 v2
 [2026-07-07T23:51] claude MILESTONE_DONE M1 — m67/m68, 노출표면 8곳 필터, PUT/DELETE 404, lazy-seed+start v2. pytest 대상 102·전체 2552 그린, ruff 클린
+[2026-07-08T00:08] claude MILESTONE_DONE M2 — 워크스페이스 서비스(시드/첨부/어댑터/GC), 드래프트 마운트 권한(sibling deny), /uploads 수리(별도 커밋 1abdbe5a), GC 크론. 대상 121·전체 2566 그린

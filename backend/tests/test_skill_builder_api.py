@@ -182,6 +182,10 @@ async def test_start_improve_session_snapshots_owned_skill(
     assert body["source_skill_id"] == str(skill.id)
     assert body["base_content_hash"] == skill.content_hash
     assert body["base_snapshot"]["files"][0]["path"] == "SKILL.md"
+    # v2: improve 시드 — 원본 스킬 파일이 워크스페이스로 복사된다.
+    seeded = tmp_path / "skill-drafts" / body["id"] / "SKILL.md"
+    assert seeded.is_file()
+    assert seeded.read_text() == _skill_content()
 
 
 async def test_start_improve_unowned_skill_returns_404(

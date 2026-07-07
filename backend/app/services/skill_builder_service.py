@@ -239,19 +239,11 @@ async def _get_owned_skill(
 
 
 def _role_for_path(path: str) -> str:
-    if path == "SKILL.md":
-        return "skill"
-    if path.startswith("scripts/"):
-        return "script"
-    if path.startswith("references/"):
-        return "reference"
-    if path.startswith("assets/"):
-        return "asset"
-    if path.startswith("agents/"):
-        return "metadata"
-    if path.startswith("evals/"):
-        return "eval"
-    return "asset"
+    # 정본은 skill_draft_workspace.role_for_path — 드래프트 어댑터와 스냅샷
+    # 로더가 같은 role 규칙을 쓰도록 위임한다 (지연 import: 모듈 로드 순환 방지).
+    from app.services.skill_draft_workspace import role_for_path
+
+    return role_for_path(path)
 
 
 def _now() -> datetime:

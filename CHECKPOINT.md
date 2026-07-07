@@ -18,12 +18,13 @@
 - 노트: 빌더 conversation은 source="draft" — 메시지 0개로 draft GC 리텐션 경과 시 삭제될 수 있음(session.conversation_id SET NULL). M6 프론트에서 null 처리 or 재생성 검토(Phase 1.5 후보).
 
 ## M2: 드래프트 워크스페이스 + 권한
-- [ ] `app/services/skill_draft_workspace.py`: 생성/시드(improve 복사)/첨부→`inputs/` 복사/dir→SkillDraftFile 어댑터/GC(세션 상태 기준)
-- [ ] `filesystem_permissions.py`: 세션 드래프트 allow → `/skill-drafts/**` deny → **`/uploads` deny(기존 구멍 수리, 별도 커밋)**
-- [ ] scheduler GC 잡 등록 (leader-only, `skill_draft_gc_retention_hours` 설정)
+- [x] `app/services/skill_draft_workspace.py`: 생성/시드(improve 복사)/첨부→`inputs/` 복사/dir→SkillDraftFile 어댑터/GC(세션 상태 기준)
+- [x] `filesystem_permissions.py`: 세션 드래프트 allow → `/skill-drafts/**` deny → **`/uploads` deny(기존 구멍 수리, 별도 커밋 1abdbe5a)**
+- [x] scheduler GC 잡 등록 (leader-only, `skill_draft_gc_retention_hours` 설정)
 - 검증: `cd backend && uv run pytest -q -k "draft_workspace or filesystem_permissions"`
 - done-when: 워크스페이스/권한(sibling deny 포함)/GC 테스트 그린
-- 상태: pending
+- 상태: done (2026-07-08) — 대상 121 그린, 전체 2566 그린, ruff 클린
+- 노트: start v2가 improve 시드까지 배선(원본→워크스페이스 복사, symlink 금지). 어댑터는 `inputs/` 제외·바이너리 skip·역할 매핑 정본을 `skill_draft_workspace.role_for_path`로 이동(스냅샷 로더 위임). GC는 세션 상태 기준(active/confirming 무기한 보존) + orphan 디렉토리 mtime 폴백. `draft_workspace_path` 파라미터의 런타임 배선(AgentConfig 스레딩)은 M3.
 
 ## M3: 런타임 분기 + validate/generate_evals + 이벤트
 - [ ] `_prepare_runtime_components` 분기: prompt.md 교체, 도구 세트 교체, 드래프트 마운트, System LLM 재해석(`resolve_system_model('text_primary')`)
