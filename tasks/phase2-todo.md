@@ -9,7 +9,7 @@
 - [ ] BE-S7: `credentials/oauth_service.py` 신설 — routers/credentials.py의 OAuth ~286줄(`_prepare_mcp_oauth_data` :491, `_persist_credential_payload` :574, `_gc_oauth_states` :584, `oauth2_auth_start` :617, `oauth2_callback` :708) 이동. `start_oauth(db,*,user,credential_id)`/`handle_callback(db,*,code,state)` 시그니처. mcp_oauth_client=저수준 HTTP, oauth_service=DB 오케스트레이션 역할 정리
 - [x] BE-D2 ✅ def12f1b: raw `HTTPException(404|403)` 24곳 → error_codes 팩토리 치환 (credentials.py:110,247,422,735 / models.py:282,324,110 / mcp.py:99,357,365 / tools.py:73 / health.py:226,229 등). 미존재 팩토리만 소량 추가. 프론트 detail 문자열 의존 여부 grep 확인
 - [ ] BE-D1: conversation 계열 소유권 3줄 블록 30곳 → `Depends(owned_conversation)` (dependencies.py 팩토리, 404 단일 응답 봉인) → 검증 후 agents 6곳 `owned_agent` 확산
-- [ ] BE-D4: system-or-owned 술어 7곳 → `Tool.visible_to(user_id)` 모델 헬퍼 (제네릭 load_owned 금지)
+- [x] BE-D4 ✅ 6ee572aa: system-or-owned 술어 7곳 → `Tool.visible_to(user_id)` 모델 헬퍼 (제네릭 load_owned 금지)
 - [x] (S) ✅ 15b24557 integration 워커 테스트 2s 타임아웃 완화 (tests/integration/test_conversation_run_lifecycle.py — CI 플레이크)
 
 검증: 항목별 `uv run pytest tests/test_<도메인>*.py` + 최종 `SKILL_EVALUATION_ENABLED=true uv run --with pytest-xdist pytest -q -n 4` + ruff + 수정 파일 pyright. PR은 main 대상.
