@@ -21,18 +21,20 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
-      - run: uv sync --frozen
+      # --all-extras: ruff lives in [project.optional-dependencies].dev,
+      # not in the default dev dependency-group.
+      - run: uv sync --frozen --all-extras
       - run: uv run ruff check .
       # Test suite runs on aiosqlite in-memory — no Postgres service needed.
       - run: uv run --with pytest-xdist pytest -q -n 4
 
   # pyright reports ~968 pre-existing errors (basic mode) as of 2026-07, so
-  # this job is observability-only until the backlog is burned down — flip
-  # continue-on-error off once `uv run pyright` is clean. Tracked in
-  # docs/refactoring-plan-2026-07.md (IX-1).
+  # this job is observability-only (always green, error count in the log)
+  # until the backlog is burned down — drop the `|| true` once
+  # `uv run pyright` is clean. Tracked in docs/refactoring-plan-2026-07.md
+  # (IX-1).
   backend-typecheck:
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: backend
@@ -42,8 +44,9 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
-      - run: uv sync --frozen
-      - run: uv run pyright
+      - run: uv sync --frozen --all-extras
+      - name: pyright (non-blocking backlog)
+        run: uv run pyright || true
 
   frontend:
     runs-on: ubuntu-latest
