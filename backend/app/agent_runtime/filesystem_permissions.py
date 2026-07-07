@@ -76,6 +76,10 @@ def build_filesystem_permissions(
             _protected_tree("/agents"),
             _protected_tree("/runtime"),
             _protected_tree("/conversations"),
+            # data/uploads holds every user's chat attachment blobs. Unmatched
+            # paths default to allow, so without this rule any agent could
+            # ``ls``/``read_file`` other users' uploads (cross-user exposure).
+            _protected_tree("/uploads"),
             FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
         ]
     )

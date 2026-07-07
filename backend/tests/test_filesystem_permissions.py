@@ -106,6 +106,10 @@ def test_scoped_filesystem_permissions_only_allow_current_runtime_surfaces() -> 
     assert _check_fs_permission(permissions, "write", "/conversations/thread-a/new.txt") == "allow"
     assert _check_fs_permission(permissions, "read", "/conversations/thread-b/output.txt") == "deny"
     assert _check_fs_permission(permissions, "write", "/tmp/invisible.txt") == "deny"
+    # data/uploads = 모든 사용자의 첨부 blob — 기본-allow 구멍 봉쇄 (스펙 §6-2).
+    assert _check_fs_permission(permissions, "read", "/uploads/deadbeef.png") == "deny"
+    assert _check_fs_permission(permissions, "read", "/uploads") == "deny"
+    assert _check_fs_permission(permissions, "write", "/uploads/deadbeef.png") == "deny"
 
 
 def test_filesystem_permissions_can_scope_skills_by_agent_runtime_name() -> None:
