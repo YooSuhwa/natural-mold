@@ -74,16 +74,6 @@ test.describe('skill builder chat', () => {
       }
     }
 
-    // 캡처 투어 (스펙 §2-6) — 각 성공 기준의 시각 증빙. PNG는 gitignore.
-    let captureIndex = 0
-    const capture = async (name: string) => {
-      captureIndex += 1
-      await page.screenshot({
-        path: `output/captures/skill-builder-chat/${String(captureIndex).padStart(2, '0')}-${name}.png`,
-        fullPage: false,
-      })
-    }
-
     // 승인 resume은 일시적 전송 실패 시 카드가 재시도 문구를 띄운다 —
     // hitl-approval.spec의 재시도 계약과 동일하게 한 번 더 누른다.
     const approveWithRetry = async () => {
@@ -99,15 +89,11 @@ test.describe('skill builder chat', () => {
       }
     }
 
-    await capture('entry-empty-builder')
-
     // 1) 점진 편집 — write_file 2건이 승인 카드 없이 실행된다 (AD-3 과승인 방지).
     await sendMessage(`E2E_SKILL_BUILDER_WRITE /skill-drafts/${sessionId}`)
     await expect(page.getByText('드래프트 파일을 작성했습니다').last()).toBeVisible({
       timeout: 45_000,
     })
-
-    await capture('draft-written')
 
     // 2) 검증 — 다음 런 stream head의 moldy.skill_draft가 레일 파일 목록을 채운다.
     await sendMessage('E2E_SKILL_BUILDER_VALIDATE')
@@ -118,15 +104,12 @@ test.describe('skill builder chat', () => {
     await expect(rail.getByTestId('builder-draft-files')).toBeVisible({ timeout: 30_000 })
     await expect(rail.getByText('SKILL.md').first()).toBeVisible()
 
-    await capture('validate-rail')
-
     // 3) 드래프트 시험 — CODE_EXECUTION 승인 카드 + 세션 동의 체크.
     await sendMessage('E2E_SKILL_BUILDER_TEST run=1')
     await expect(page.getByText('승인이 필요합니다').last()).toBeVisible({ timeout: 45_000 })
     const consent = page.getByTestId('approval-session-consent').last()
     await expect(consent).toBeVisible()
     await consent.check()
-    await capture('test-approval-card-consent')
     await approveWithRetry()
     await expect(page.getByText('드래프트 시험 실행이 끝났습니다').last()).toBeVisible({
       timeout: 60_000,
@@ -139,8 +122,6 @@ test.describe('skill builder chat', () => {
     })
     await expect(page.getByText('승인이 필요합니다')).toHaveCount(0)
 
-    await capture('retest-no-card')
-
     // 5) finalize — 항상 승인 카드, 세션 동의 옵션은 없다. 직전 resolved 카드와
     // 연속 request_approval로 묶여 그룹 컨테이너("승인 대기 N건")로 렌더될 수
     // 있으므로 헤더 대신 finalize_skill 카드 자체를 기다린다.
@@ -150,7 +131,6 @@ test.describe('skill builder chat', () => {
     await approveWithRetry()
     await expect(page.getByText('스킬을 저장했습니다').last()).toBeVisible({ timeout: 60_000 })
     await expect(page.getByTestId('builder-completed-banner')).toBeVisible({ timeout: 30_000 })
-    await capture('finalized-completed-rail')
 
     // 6) 진짜 skills row + 세션 completed (스펙 §2-3).
     const skills = (await (
@@ -169,7 +149,6 @@ test.describe('skill builder chat', () => {
     await expect(page.getByTestId('builder-draft-files')).toBeVisible({ timeout: 30_000 })
     await expect(page.getByTestId('builder-completed-banner')).toBeVisible({ timeout: 30_000 })
     await expect(page.locator('body')).not.toContainText('<redacted>')
-    await capture('reload-replay-restored')
 
     // 대화가 히든 에이전트 소유라 네비게이터/에이전트 목록에 새지 않는다 (§2 리스크).
     const agents = (await (await request.get(`${API}/api/agents`)).json()) as { id: string }[]

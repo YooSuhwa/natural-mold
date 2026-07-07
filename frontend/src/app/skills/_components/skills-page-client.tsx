@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { BookOpen, Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
@@ -77,18 +77,18 @@ export function SkillsPageClient() {
     return Object.keys(params).length > 0 ? params : undefined
   }, [activeTab, normalizedSearch])
   const { data: skills, isLoading } = useSkills(skillQueryParams)
-  // Deep-link from /marketplace Open button: `/skills?detailId=...`.
-  // useState lazy initializer runs once at mount (post-hydration on client,
-  // safely returns null during SSR/prerender). Avoids effect+setState pattern
-  // that the react-hooks/set-state-in-effect rule rejects.
-  const [detailId, setDetailId] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null
-    return new URLSearchParams(window.location.search).get('detailId')
-  })
-  const [detailTab, setDetailTab] = useState<SkillDetailTab>(() => {
-    if (typeof window === 'undefined') return 'content'
-    return coerceSkillDetailTab(new URLSearchParams(window.location.search).get('tab'))
-  })
+  // Deep-link (`/skills?detailId=...`) — /marketplace Open 버튼, 빌더 챗 레일의
+  // "스킬 열기" 링크. 초기값은 반드시 useSearchParams(라우터 상태)에서 읽어야
+  // 한다: 클라이언트 네비게이션 중에는 컴포넌트가 window.location 갱신 **전에**
+  // 마운트될 수 있어 location 기반 초기화는 딥링크를 놓친다(빌더 레일 링크에서
+  // 실제 재현). useState lazy initializer 유지 — 이후에는 로컬 상태가 소스
+  // (URL 동기화는 replaceDetailUrl의 history.replaceState). effect+setState
+  // 패턴(react-hooks/set-state-in-effect 거부)은 계속 회피한다.
+  const searchParams = useSearchParams()
+  const [detailId, setDetailId] = useState<string | null>(() => searchParams.get('detailId'))
+  const [detailTab, setDetailTab] = useState<SkillDetailTab>(() =>
+    coerceSkillDetailTab(searchParams.get('tab')),
+  )
   const [publishSkill, setPublishSkill] = useState<Skill | null>(null)
 
   function openCreate(tab: CreateTab) {
