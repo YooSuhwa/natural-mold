@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -145,9 +145,7 @@ def _serialize_trigger(
 async def get_owned_agent(
     db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
 ) -> Agent | None:
-    result = await db.execute(
-        select(Agent).where(Agent.id == agent_id, Agent.user_id == user_id)
-    )
+    result = await db.execute(select(Agent).where(Agent.id == agent_id, Agent.user_id == user_id))
     return result.scalar_one_or_none()
 
 
@@ -383,6 +381,37 @@ async def refresh_next_run_at(db: AsyncSession, trigger: AgentTrigger) -> None:
     await db.refresh(trigger)
 
 
+# Runs stuck in "running" beyond this bound (crashed process, kill -9) stop
+# counting as an in-flight claim so they can't block the trigger forever.
+# A trigger run is a single agent invoke — normally minutes, not an hour.
+TRIGGER_RUN_STALE_AFTER = timedelta(hours=1)
+
+
+class TriggerRunInFlightError(Exception):
+    """A run for this trigger is already in flight (SEC-3 duplicate guard)."""
+
+    def __init__(self, run_id: uuid.UUID) -> None:
+        self.run_id = run_id
+        super().__init__(f"trigger run {run_id} already in flight")
+
+
+async def find_in_flight_run(db: AsyncSession, trigger_id: uuid.UUID) -> AgentTriggerRun | None:
+    """Newest non-stale ``running`` run for the trigger, if any."""
+
+    cutoff = _now() - TRIGGER_RUN_STALE_AFTER
+    result = await db.execute(
+        select(AgentTriggerRun)
+        .where(
+            AgentTriggerRun.trigger_id == trigger_id,
+            AgentTriggerRun.status == "running",
+            AgentTriggerRun.started_at >= cutoff,
+        )
+        .order_by(AgentTriggerRun.started_at.desc())
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
 async def start_trigger_run(
     db: AsyncSession,
     trigger: AgentTrigger,
@@ -403,9 +432,7 @@ async def start_trigger_run(
     return run
 
 
-async def resolve_schedule_conversation(
-    db: AsyncSession, trigger: AgentTrigger
-) -> Conversation:
+async def resolve_schedule_conversation(db: AsyncSession, trigger: AgentTrigger) -> Conversation:
     conversation: Conversation | None = None
 
     if trigger.conversation_policy == "selected_conversation" and trigger.target_conversation_id:

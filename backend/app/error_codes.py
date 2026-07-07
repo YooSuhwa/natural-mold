@@ -211,6 +211,13 @@ def session_already_claimed() -> ConflictError:
     )
 
 
+def trigger_already_running() -> ConflictError:
+    return ConflictError(
+        "TRIGGER_ALREADY_RUNNING",
+        "이미 실행 중인 스케줄입니다. 실행이 끝난 뒤 다시 시도하세요",
+    )
+
+
 def session_confirming() -> ConflictError:
     return ConflictError(
         "SESSION_CONFIRMING",

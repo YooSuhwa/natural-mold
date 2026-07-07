@@ -127,6 +127,10 @@ pythonVersion = "3.12"
 typeCheckingMode = "basic"
 venvPath = "."
 venv = ".venv"
+# data/ is runtime content (installed skill packages, uploads, marketplace
+# snapshots) — third-party scripts that vary per machine and must not gate
+# type checking. alembic migrations are generated boilerplate.
+exclude = ["data", ".venv", "alembic/versions"]
 
 [dependency-groups]
 dev = [
