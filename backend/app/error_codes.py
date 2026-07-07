@@ -114,6 +114,30 @@ def resume_not_found() -> NotFoundError:
     return NotFoundError("RESUME_NOT_FOUND", "재개할 스트림을 찾을 수 없습니다")
 
 
+def trace_not_found() -> NotFoundError:
+    return NotFoundError("TRACE_NOT_FOUND", "트레이스를 찾을 수 없습니다")
+
+
+def mcp_server_not_found() -> NotFoundError:
+    return NotFoundError("MCP_SERVER_NOT_FOUND", "MCP 서버를 찾을 수 없습니다")
+
+
+def system_credential_not_found() -> NotFoundError:
+    return NotFoundError("SYSTEM_CREDENTIAL_NOT_FOUND", "시스템 자격증명을 찾을 수 없습니다")
+
+
+def unknown_credential_definition(key: str) -> NotFoundError:
+    return NotFoundError("UNKNOWN_CREDENTIAL_DEFINITION", f"알 수 없는 자격증명 유형입니다: {key}")
+
+
+def unknown_tool_definition(key: str) -> NotFoundError:
+    return NotFoundError("UNKNOWN_TOOL_DEFINITION", f"알 수 없는 도구 유형입니다: {key}")
+
+
+def unknown_registry_entry(key: str) -> NotFoundError:
+    return NotFoundError("UNKNOWN_REGISTRY_ENTRY", f"알 수 없는 레지스트리 항목입니다: {key}")
+
+
 # ---------------------------------------------------------------------------
 # ValidationError (422)
 # ---------------------------------------------------------------------------
@@ -197,6 +221,14 @@ def marketplace_manage_forbidden() -> ForbiddenError:
     is not its owner / super_user. 403 rather than 404 because the
     existence is already visible (item appeared in the catalog)."""
     return ForbiddenError("MARKETPLACE_MANAGE_FORBIDDEN", "관리 권한이 없습니다")
+
+
+def super_user_required() -> ForbiddenError:
+    return ForbiddenError("SUPER_USER_REQUIRED", "운영자 권한이 필요합니다")
+
+
+def credential_forbidden() -> ForbiddenError:
+    return ForbiddenError("FORBIDDEN", "권한이 없습니다")
 
 
 # ---------------------------------------------------------------------------

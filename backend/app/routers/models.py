@@ -30,7 +30,11 @@ from app.dependencies import (
     require_super_user,
     verify_csrf,
 )
-from app.error_codes import model_not_found
+from app.error_codes import (
+    credential_not_found,
+    model_not_found,
+    super_user_required,
+)
 from app.models.agent import Agent
 from app.models.credential import Credential
 from app.models.model import Model
@@ -107,7 +111,7 @@ async def list_models(
     user: CurrentUser = Depends(get_current_user),
 ):
     if include_hidden and not user.is_super_user:
-        raise HTTPException(status_code=403, detail="super_user required")
+        raise super_user_required()
     return await model_service.list_models(db, include_hidden=include_hidden)
 
 
@@ -279,7 +283,7 @@ async def _load_owned_credential(
 ) -> Credential:
     cred = await credential_service.get_for_user(db, credential_id, user_id)
     if cred is None:
-        raise HTTPException(status_code=404, detail="credential not found")
+        raise credential_not_found()
     return cred
 
 
@@ -321,7 +325,7 @@ async def test_registered_model(
         # working while still giving a useful 422 when the user simply has
         # no default bound.
         if credential_id is not None:
-            raise HTTPException(status_code=404, detail="credential not found")
+            raise credential_not_found()
         raise HTTPException(
             status_code=422,
             detail=(

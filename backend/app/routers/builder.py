@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import (
     agent_creation_failed,
+    image_not_found,
     no_draft_config,
     session_confirming,
     session_not_found,
@@ -52,6 +53,7 @@ class BuilderResumeRequest(BaseModel):
     display_text: str | None = Field(None, max_length=200)
     # SSE interrupt 이벤트의 interrupt_id (stale 카드로 응답 시 차단용)
     interrupt_id: str | None = Field(None, max_length=200)
+
 
 logger = logging.getLogger(__name__)
 
@@ -226,10 +228,10 @@ async def serve_builder_image(
 
     session = await builder_service.get_session(db, session_id, user.id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise session_not_found()
 
     path = resolve_local_path(str(session_id), filename)
     if not path:
-        raise HTTPException(status_code=404, detail="Image not found")
+        raise image_not_found()
 
     return FileResponse(path)

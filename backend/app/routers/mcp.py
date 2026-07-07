@@ -11,6 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials.validation import require_user_credential
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.error_codes import (
+    credential_not_found,
+    mcp_server_not_found,
+    unknown_registry_entry,
+)
 from app.mcp import discovery
 from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import connect_and_list
@@ -96,7 +101,7 @@ async def _load_owned(db: AsyncSession, server_id: uuid.UUID, user_id: uuid.UUID
         )
     ).scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=404, detail="mcp server not found")
+        raise mcp_server_not_found()
     return row
 
 
@@ -354,7 +359,7 @@ async def probe_mcp_server(
         )
         if auth.error:
             if auth.status == "credential_not_found":
-                raise HTTPException(status_code=404, detail="credential not found")
+                raise credential_not_found()
             return {
                 "success": False,
                 "server_info": {},
@@ -362,7 +367,7 @@ async def probe_mcp_server(
                 "error": auth.error,
             }
         if auth.credentials is None:
-            raise HTTPException(status_code=404, detail="credential not found")
+            raise credential_not_found()
         credentials = auth.credentials
         headers = auth.headers
 
@@ -821,5 +826,5 @@ async def list_registry_entries() -> list[McpRegistryEntry]:
 async def get_registry_entry(key: str) -> McpRegistryEntry:
     entry = mcp_registry_service.get_registry_entry(key)
     if entry is None:
-        raise HTTPException(status_code=404, detail=f"unknown registry entry '{key}'")
+        raise unknown_registry_entry(key)
     return McpRegistryEntry(**entry)
