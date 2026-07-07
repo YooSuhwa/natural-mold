@@ -1342,7 +1342,8 @@
       "lockedSecretHint": "Secret values cannot be edited",
       "invalidFieldValue": "Invalid value format",
       "pendingCount": "{count} pending approvals",
-      "approveAll": "Approve all"
+      "approveAll": "Approve all",
+      "allowForSession": "Allow for the rest of this session"
     },
     "userInput": {
       "placeholder": "Placeholder",

@@ -225,6 +225,20 @@ async def _resolve_skill_builder_agent_context(
         session.draft_workspace_path = skill_draft_workspace.create_workspace(session.id)
         await db.flush()
 
+    # AD-4 — 세션 동의를 정책 제외 목록으로 스레딩. 드래프트가 지금
+    # ``requires_network`` 상태면 기록된 동의가 있어도 무시한다 (동의 이후
+    # 드래프트가 네트워크 요구로 바뀌었을 수 있음 — 매 resolve 재검증).
+    from app.agent_runtime.skill_builder.tools import SESSION_CONSENT_ELIGIBLE_TOOLS
+
+    consented_tools: list[str] = []
+    consent_offer_tools: list[str] = []
+    if not skill_draft_workspace.draft_requires_network(session.draft_workspace_path):
+        consented_tools = sorted(
+            name for name in (session.tool_consents or {}) if name in SESSION_CONSENT_ELIGIBLE_TOOLS
+        )
+        # 아직 동의되지 않은 eligible 도구 → 승인 카드에 동의 옵션 노출.
+        consent_offer_tools = sorted(SESSION_CONSENT_ELIGIBLE_TOOLS - set(consented_tools))
+
     identity = resolve_agent_run_identity(
         agent_id=agent.id,
         agent_owner_user_id=agent.user_id,
@@ -257,6 +271,8 @@ async def _resolve_skill_builder_agent_context(
         skill_builder_session_id=str(session.id),
         draft_workspace_path=session.draft_workspace_path,
         skill_draft_brief=skill_draft_workspace.build_skill_draft_brief(session),
+        skill_builder_consented_tools=consented_tools or None,
+        skill_builder_consent_offer_tools=consent_offer_tools or None,
     )
     cfg.secret_values.update(collect_cfg_secret_values(cfg))
     return cfg

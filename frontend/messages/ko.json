@@ -528,13 +528,34 @@
     "creation": {
       "header": "에이전트 만들기",
       "progress": "빌드 진행 상황",
-      "phase1": { "label": "프로젝트 초기화", "description": "빌드 환경 설정" },
-      "phase2": { "label": "의도 분석", "description": "요청 심층 분석" },
-      "phase3": { "label": "도구 추천", "description": "최적 도구 선정" },
-      "phase4": { "label": "미들웨어 추천", "description": "안정성 계층 구성" },
-      "phase5": { "label": "프롬프트 생성", "description": "시스템 프롬프트 작성" },
-      "phase6": { "label": "설정 저장", "description": "최종 구성 생성" },
-      "phase7": { "label": "에이전트 빌드", "description": "에이전트 인스턴스화" },
+      "phase1": {
+        "label": "프로젝트 초기화",
+        "description": "빌드 환경 설정"
+      },
+      "phase2": {
+        "label": "의도 분석",
+        "description": "요청 심층 분석"
+      },
+      "phase3": {
+        "label": "도구 추천",
+        "description": "최적 도구 선정"
+      },
+      "phase4": {
+        "label": "미들웨어 추천",
+        "description": "안정성 계층 구성"
+      },
+      "phase5": {
+        "label": "프롬프트 생성",
+        "description": "시스템 프롬프트 작성"
+      },
+      "phase6": {
+        "label": "설정 저장",
+        "description": "최종 구성 생성"
+      },
+      "phase7": {
+        "label": "에이전트 빌드",
+        "description": "에이전트 인스턴스화"
+      },
       "status": {
         "completed": "완료",
         "active": "진행중",
@@ -1321,7 +1342,8 @@
       "lockedSecretHint": "보안 값은 수정할 수 없습니다",
       "invalidFieldValue": "값 형식이 올바르지 않습니다",
       "pendingCount": "승인 대기 {count}건",
-      "approveAll": "모두 승인"
+      "approveAll": "모두 승인",
+      "allowForSession": "이 세션에서 계속 허용"
     },
     "userInput": {
       "placeholder": "답변을 입력하세요…",

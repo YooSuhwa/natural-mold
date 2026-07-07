@@ -468,6 +468,12 @@ export type DecisionType = 'approve' | 'edit' | 'reject' | 'respond'
 export interface ReviewConfig {
   action_name: string
   allowed_decisions: DecisionType[]
+  /**
+   * 스킬 빌더 챗 AD-4 — 승인 카드에 "이 세션에서 계속 허용" 옵션을 노출할지.
+   * 백엔드 wire 계층이 주입한다 (requires_network 드래프트/이미 동의된 도구는
+   * 미주입). langchain ReviewConfig에는 없는 Moldy 확장 필드.
+   */
+  session_consent_eligible?: boolean
 }
 
 /** SSE `interrupt` event payload — `HITLRequest` + correlation `interrupt_id`. */
@@ -491,6 +497,12 @@ export interface Decision {
   edited_action?: { name?: string; args: Record<string, unknown> }
   /** type='respond' 시 필수, type='reject' 시 선택. */
   message?: string
+  /**
+   * 스킬 빌더 챗 AD-4 — "이 세션에서 계속 허용" 동의. type='approve'에만 의미.
+   * 백엔드 커맨드 핸들러가 세션에 기록한 뒤 이 키를 벗겨 표준 approve만
+   * 미들웨어로 내려보낸다 (비표준 decision 필드는 langchain 검증을 깨뜨림).
+   */
+  scope?: 'session'
 }
 
 /** POST `/conversations/:id/messages/resume` 표준 body. */

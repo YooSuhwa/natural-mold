@@ -13,6 +13,8 @@ interface ToolUiMetadata {
   hitl_interrupt_id: string
   hitl_action_index: number
   hitl_total_actions: number
+  /** 스킬 빌더 AD-4 — "이 세션에서 계속 허용" 옵션 노출 (review_configs 플래그). */
+  session_consent_eligible?: boolean
 }
 
 type ResumeDecisions = (
@@ -27,6 +29,7 @@ const HITL_METADATA_KEYS = new Set([
   'hitl_interrupt_id',
   'hitl_action_index',
   'hitl_total_actions',
+  'session_consent_eligible',
 ])
 function reviewForAction(
   action: ActionRequest,
@@ -54,6 +57,7 @@ function metadataForAction(
     hitl_interrupt_id: payload.interrupt_id,
     hitl_action_index: index,
     hitl_total_actions: payload.action_requests.length,
+    ...(reviewConfig.session_consent_eligible ? { session_consent_eligible: true } : {}),
   }
 }
 

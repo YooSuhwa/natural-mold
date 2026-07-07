@@ -141,6 +141,8 @@ async def _stream_langgraph_with_secrets(
                 # AD-5 — resolve_agent_context가 드래프트 요약을 cfg에 채우면
                 # stream head에서 moldy.skill_draft로 방출된다 (동일 계약).
                 skill_draft_brief=cfg.skill_draft_brief,
+                # AD-4 — 인터럽트 review_configs에 세션 동의 옵션 플래그 주석.
+                session_consent_tools=cfg.skill_builder_consent_offer_tools,
             ):
                 yield chunk
     except asyncio.CancelledError:

@@ -36,13 +36,14 @@
 - 구현 노트: System LLM 재해석은 `resolve_agent_context`의 `_resolve_skill_builder_agent_context` 분기에서(prepare는 cfg 값 사용). 세션은 conversation_id 역참조 + user 필터(enumeration-safe 404). 첨부→inputs 복사는 run.start 커맨드(`conversation_agent_protocol_commands`)에서 링크 직후 트리거. skill_validation projection은 `skill_validation_projection.py`(memory_event_projection 패턴) — finalize_skill(M5)도 같은 매처로 잡힘. redaction은 요약-전용 페이로드 계약의 명시 pass-through 등록.
 
 ## M4: test_skill_draft + HITL 세션 동의
-- [ ] `test_skill_draft`: fabricated descriptor(DB row 불요) → 기존 샌드박스 정책 전체 상속
-- [ ] 백엔드: `input.respond`의 `scope:"session"` → 동의 기록 + 표준 approve 변환 (비표준 type 미들웨어 도달 금지)
-- [ ] 정책: 동의 시 policy 제외, `requires_network` 드래프트는 동의 불가
-- [ ] 프론트: approval-card "이 세션에서 계속 허용" 옵션(review_configs 플래그 조건부)
+- [x] `test_skill_draft`: fabricated descriptor(DB row 불요) → 기존 샌드박스 정책 전체 상속
+- [x] 백엔드: `input.respond`의 `scope:"session"` → 동의 기록 + 표준 approve 변환 (비표준 type 미들웨어 도달 금지)
+- [x] 정책: 동의 시 policy 제외, `requires_network` 드래프트는 동의 불가
+- [x] 프론트: approval-card "이 세션에서 계속 허용" 옵션(review_configs 플래그 조건부)
 - 검증: backend pytest + `cd frontend && pnpm vitest run` (transport mock 일괄 갱신 확인)
 - done-when: 동의 플로우 테스트 그린 (1회차 카드→동의→2회차 무카드)
-- 상태: pending
+- 상태: done (2026-07-08) — backend 2589 그린, vitest 1234 그린, tsc/eslint 클린
+- 구현 노트: fabricated descriptor는 slug를 프론트매터에서 엄격 새니타이즈(traversal 방어), `agent_runtime_name=None`으로 non-agent 런타임 루트 강제(run_eval_skill_command slug 경로 일치), thread_id=`skill-draft-<sid>`(mtime 기반 runtime-root GC가 자동 청소). audit_kind `skill_builder.draft_test` 추가. 동의는 `conversation_agent_protocol_consent.py`가 resume 핸들러에서 **resolve_agent_context 이전**에 기록(AD-4 타이밍 — 동의 직후 resume부터 즉시 효력). requires_network는 기록/적용 양쪽 재검증. `session_consent_eligible` 플래그는 langchain ReviewConfig가 여분 키를 안 만들므로 wire 계층(`_annotate_session_consent_eligibility`)에서 주입 — **리로드(state 하이드레이션) 인터럽트에는 플래그 없음**(라이브 전용, v1 한계; 승인 자체는 가능). AD-3 과승인 방지로 빌더 분기의 write_file/edit_file 승인 카드 제외(M3 커밋의 기본 정책 잔재 수리).
 
 ## M5: finalize_skill + 감사
 - [ ] finalize: 검증 재실행→secret scan→claim→zip(synthetic Skill)→create/replace+리비전. 생성/개선/`SOURCE_SKILL_CHANGED`/slug 충돌 전 케이스

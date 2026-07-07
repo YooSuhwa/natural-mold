@@ -29,6 +29,32 @@ describe('standardPayloadFromInterrupt', () => {
     })
   })
 
+  it('세션 동의 플래그(session_consent_eligible)를 review_config에 보존한다', () => {
+    // 스킬 빌더 AD-4 — 백엔드 wire가 주입한 플래그가 파서에서 유실되면
+    // 승인 카드의 "이 세션에서 계속 허용" 옵션이 렌더되지 않는다.
+    const payload = standardPayloadFromInterrupt({
+      id: 'intr-consent',
+      value: {
+        action_requests: [{ name: 'test_skill_draft', args: { command: 'python scripts/run.py' } }],
+        review_configs: [
+          {
+            action_name: 'test_skill_draft',
+            allowed_decisions: ['approve', 'reject'],
+            session_consent_eligible: true,
+          },
+        ],
+      },
+    })
+
+    expect(payload?.review_configs).toEqual([
+      {
+        action_name: 'test_skill_draft',
+        allowed_decisions: ['approve', 'reject'],
+        session_consent_eligible: true,
+      },
+    ])
+  })
+
   it('normalizes camelCase HITL interrupt values from LangGraph React', () => {
     const payload = standardPayloadFromInterrupt({
       id: 'intr-camel',

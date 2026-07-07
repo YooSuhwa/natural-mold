@@ -16,6 +16,9 @@ from app.routers.conversation_agent_protocol_attachments import (
     attachment_ids_from_protocol_input,
     input_without_protocol_attachments,
 )
+from app.routers.conversation_agent_protocol_consent import (
+    apply_session_consent_decisions,
+)
 from app.routers.conversation_agent_protocol_contracts import (
     AgentCommandRequest,
     command_error,
@@ -242,7 +245,6 @@ async def _handle_input_respond_command(
             message="input.respond requires interrupt_id or responses[0].interrupt_id",
         )
 
-    cfg = await resolve_agent_context(db, conversation.id, user)
     parent_run = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation.id,
@@ -263,6 +265,17 @@ async def _handle_input_respond_command(
             code=validation_error.code,
             message=validation_error.message,
         )
+    # AD-4 — ``scope:"session"`` 동의를 세션에 기록하고 decision에서 비표준
+    # 키를 제거한다. **resolve_agent_context 이전**이어야 이번 resume의 에이전트
+    # 재빌드부터 동의가 즉시 효력을 갖는다 (모든 resume은 재빌드).
+    consented_tools = await apply_session_consent_decisions(
+        db,
+        conversation_id=conversation.id,
+        user_id=user.id,
+        resume=resume,
+        pending_interrupts=interrupts_from_tasks(tasks),
+    )
+    cfg = await resolve_agent_context(db, conversation.id, user)
     try:
         input_payload = await restore_redacted_resume_payload(
             conversation=conversation,
@@ -285,7 +298,11 @@ async def _handle_input_respond_command(
         action="conversation.message_resume",
         conversation_id=conversation.id,
         agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
-        metadata={"source": "langgraph_protocol", "interrupt_id": run_interrupt_id},
+        metadata={
+            "source": "langgraph_protocol",
+            "interrupt_id": run_interrupt_id,
+            **({"consented_tools": consented_tools} if consented_tools else {}),
+        },
     )
 
     try:

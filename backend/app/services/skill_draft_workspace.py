@@ -164,6 +164,30 @@ def load_draft_files(storage_path: str) -> list[SkillDraftFile]:
     return files
 
 
+def draft_execution_profile(storage_path: str) -> dict[str, object]:
+    """드래프트의 execution_profile (``agents/moldy.yaml`` 기준, 없으면 {})."""
+
+    files = load_draft_files(storage_path)
+    by_path = {f.path: f for f in files}
+    from app.skills.moldy_metadata import (
+        execution_profile_from_metadata,
+        load_moldy_metadata,
+    )
+
+    metadata, _issues = load_moldy_metadata(by_path)
+    return dict(execution_profile_from_metadata(metadata))
+
+
+def draft_requires_network(storage_path: str) -> bool:
+    """세션 동의 가능성 게이트 (AD-4 경계) — 현재 드래프트 상태를 매번 재평가.
+
+    동의가 기록된 뒤 드래프트가 ``requires_network: true``로 바뀔 수 있으므로,
+    동의 기록 시점과 정책 적용 시점 **양쪽**에서 이 함수를 확인해야 한다.
+    """
+
+    return bool(draft_execution_profile(storage_path).get("requires_network"))
+
+
 async def copy_conversation_attachments_to_inputs(
     db: AsyncSession,
     *,
@@ -193,11 +217,7 @@ def build_skill_draft_brief(session: SkillBuilderSession) -> dict[str, object]:
     파일 **내용**은 절대 싣지 않는다 (§6-7; 내용은 도구 결과/FS 읽기로만).
     """
 
-    files = (
-        load_draft_files(session.draft_workspace_path)
-        if session.draft_workspace_path
-        else []
-    )
+    files = load_draft_files(session.draft_workspace_path) if session.draft_workspace_path else []
     base_files: dict[str, str] = {}
     base_snapshot = session.base_snapshot or {}
     for raw in base_snapshot.get("files") or []:
@@ -205,9 +225,7 @@ def build_skill_draft_brief(session: SkillBuilderSession) -> dict[str, object]:
             base_files[raw["path"]] = str(raw.get("content") or "")
 
     current_paths = {f.path for f in files}
-    changed = sum(
-        1 for f in files if f.path not in base_files or base_files[f.path] != f.content
-    )
+    changed = sum(1 for f in files if f.path not in base_files or base_files[f.path] != f.content)
     deleted = len(set(base_files) - current_paths)
 
     slug: str | None = None
@@ -232,9 +250,7 @@ def build_skill_draft_brief(session: SkillBuilderSession) -> dict[str, object]:
     }
 
 
-async def gc_stale_draft_workspaces(
-    db: AsyncSession, *, retention_hours: int
-) -> int:
+async def gc_stale_draft_workspaces(db: AsyncSession, *, retention_hours: int) -> int:
     """완료/포기된 세션의 워크스페이스와 세션 없는 orphan 디렉토리를 정리한다.
 
     mtime이 아니라 **세션 상태 기준** (스펙 AD-2): ``active``/``confirming``

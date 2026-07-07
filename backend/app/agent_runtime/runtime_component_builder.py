@@ -587,9 +587,7 @@ async def _prepare_skill_builder_components(
     """
 
     workspace_path = cfg.draft_workspace_path or ""
-    system_prompt = _system_prompt_with_temporal_context(
-        load_skill_builder_prompt(workspace_path)
-    )
+    system_prompt = _system_prompt_with_temporal_context(load_skill_builder_prompt(workspace_path))
     model_candidates = _build_model_candidates(cfg)
     model = model_candidates[0]
 
@@ -602,6 +600,10 @@ async def _prepare_skill_builder_components(
                 session_id=cfg.skill_builder_session_id,
                 workspace_path=workspace_path,
                 session_factory=_session_factory,
+                user_id=cfg.user_id,
+                agent_id=cfg.agent_id,
+                credential_subject_user_id=cfg.credential_subject_user_id,
+                include_sandbox=True,
             )
         )
     _append_temporal_tools(langchain_tools)
@@ -632,6 +634,19 @@ async def _prepare_skill_builder_components(
         include_ask_user=any(t.name == "ask_user" for t in langchain_tools),
         is_trigger_mode=is_trigger_mode,
     )
+    if interrupt_on:
+        # AD-3 과승인 방지 — 드래프트 점진 편집이 빌더의 핵심 UX이고 파일
+        # 도구는 M2 권한으로 워크스페이스에 스코프되어 있으므로, deepagents
+        # 기본 정책의 write_file/edit_file 승인 카드는 제외한다.
+        for fs_tool_name in ("write_file", "edit_file"):
+            interrupt_on.pop(fs_tool_name, None)
+        # AD-4 세션 동의 — 동의된 도구는 정책에서 제외 (finalize_skill 불가,
+        # requires_network 재검증은 resolve_agent_context 가 수행).
+        from app.agent_runtime.skill_builder.tools import SESSION_CONSENT_ELIGIBLE_TOOLS
+
+        for consented in cfg.skill_builder_consented_tools or []:
+            if consented in SESSION_CONSENT_ELIGIBLE_TOOLS:
+                interrupt_on.pop(consented, None)
 
     return RuntimeComponents(
         model_candidates=model_candidates,
@@ -643,7 +658,7 @@ async def _prepare_skill_builder_components(
         backend=backend,
         memory_sources=None,
         permissions=permissions,
-        interrupt_on=interrupt_on,
+        interrupt_on=interrupt_on or None,
     )
 
 

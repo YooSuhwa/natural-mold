@@ -74,6 +74,24 @@ async def attach_chat_runtime(
     return session
 
 
+async def record_tool_consents(
+    db: AsyncSession,
+    session: SkillBuilderSession,
+    *,
+    tool_names: list[str],
+) -> SkillBuilderSession:
+    """AD-4 스코프드 동의 기록 — 도구명 → 동의 메타데이터 (세션 단위)."""
+
+    consents = dict(session.tool_consents or {})
+    granted_at = datetime.now(UTC).isoformat()
+    for name in tool_names:
+        consents[name] = {"scope": "session", "granted_at": granted_at}
+    session.tool_consents = consents
+    session.updated_at = _now()
+    await db.flush()
+    return session
+
+
 async def resolve_session_agent_id(
     db: AsyncSession,
     session: SkillBuilderSession,
