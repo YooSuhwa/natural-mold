@@ -51,7 +51,6 @@ async def get_conversation_file(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-
     resolved = await resolve_conversation_file(
         Path(settings.conversation_output_dir),
         conversation_id,

@@ -65,7 +65,6 @@ async def list_debug_traces(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
     run_statuses = await _run_status_by_message_event_id(db, records)
     langfuse_enabled = is_langfuse_enabled()
@@ -96,7 +95,6 @@ async def get_debug_trace_detail(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
     record = next(
         (item for item in records if trace_id in {item.external_trace_id, item.assistant_msg_id}),
