@@ -69,7 +69,7 @@ async def _load_owned(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) 
             select(Tool).where(
                 Tool.id == tool_id,
                 # Either owned by the current user or a system-owned (NULL) tool.
-                (Tool.user_id == user_id) | (Tool.user_id.is_(None)),
+                Tool.visible_to(user_id),
             )
         )
     ).scalar_one_or_none()
@@ -104,7 +104,7 @@ async def list_tools(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[ToolInstanceResponse]:
-    stmt = select(Tool).where((Tool.user_id == user.id) | (Tool.user_id.is_(None)))
+    stmt = select(Tool).where(Tool.visible_to(user.id))
     if definition_key is not None:
         stmt = stmt.where(Tool.definition_key == definition_key)
     if enabled is not None:

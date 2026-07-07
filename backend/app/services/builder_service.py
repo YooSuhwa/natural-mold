@@ -8,7 +8,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -292,7 +292,7 @@ async def _resolve_tools(
 
     tool_result = await db.execute(
         select(Tool).where(
-            or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
+            Tool.visible_to(user_id),
             func.lower(Tool.name).in_(lower_names),
         )
     )
