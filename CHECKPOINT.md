@@ -7,13 +7,15 @@
 원칙: 마일스톤 완료마다 커밋. push 검증 시 `SKILL_EVALUATION_ENABLED=true`.
 
 ## M1: 히든 빌더 에이전트 + 세션 v2
-- [ ] 마이그레이션 2종: `agents.runtime_profile`(default 'standard'), `skill_builder_sessions`에 `conversation_id` FK + `draft_workspace_path` (+`tool_consents` JSON)
-- [ ] **노출 표면 전수 grep**: 에이전트 목록/요약/대시보드/일일 집계/네비게이터에서 `runtime_profile!='standard'` 제외 (스펙 §11-1 확정)
-- [ ] `PUT/DELETE /api/agents/{id}` → 비표준 profile은 404 (enumeration-safe)
-- [ ] 히든 에이전트 lazy-seed + start v2 엔드포인트 (세션+워크스페이스+draft conversation 생성)
+- [x] 마이그레이션 2종: `agents.runtime_profile`(default 'standard', m67), `skill_builder_sessions`에 `conversation_id` FK + `draft_workspace_path` (+`tool_consents` JSON) (m68)
+- [x] **노출 표면 전수 grep**: 에이전트 목록/요약/대시보드/일일 집계/네비게이터에서 `runtime_profile!='standard'` 제외 (스펙 §11-1 확정)
+- [x] `PUT/DELETE /api/agents/{id}` → 비표준 profile은 404 (enumeration-safe)
+- [x] 히든 에이전트 lazy-seed + start v2 엔드포인트 (세션+워크스페이스+draft conversation 생성)
 - 검증: `cd backend && uv run pytest -q -k "runtime_profile or skill_builder" && uv run ruff check .`
 - done-when: seed/필터/404 가드/start v2 테스트 그린
-- 상태: pending
+- 상태: done (2026-07-07) — 대상 102 그린, 전체 2552 그린(SKILL_EVALUATION_ENABLED=true), ruff 클린
+- §11-1 확정 표면(전수 grep): `agent_service.list_agents`/`list_agent_summaries`(+user_agent_ids 서브쿼리), `chat_service.list_global_conversations_page`(네비게이터 — 핵심 경로), `usage_service.get_usage_summary` by_agent, `usage_aggregate.get_daily_spend` agent/model축, `agent_api.list_deployment_candidates`, `read_tools.list_available_subagents`, `agent_service._validate_sub_agent_ids_owned`(서브에이전트 연결 차단). 사용자 총합(DailySpendUser)은 히든 비용 포함(실비용). GET 단건은 빌더 챗 서피스용으로 개방.
+- 노트: 빌더 conversation은 source="draft" — 메시지 0개로 draft GC 리텐션 경과 시 삭제될 수 있음(session.conversation_id SET NULL). M6 프론트에서 null 처리 or 재생성 검토(Phase 1.5 후보).
 
 ## M2: 드래프트 워크스페이스 + 권한
 - [ ] `app/services/skill_draft_workspace.py`: 생성/시드(improve 복사)/첨부→`inputs/` 복사/dir→SkillDraftFile 어댑터/GC(세션 상태 기준)

@@ -13,6 +13,7 @@ from app.error_codes import (
     skill_builder_session_not_ready,
     skill_builder_source_conflict,
     skill_not_found,
+    system_llm_not_configured,
 )
 from app.routers.skill_builder_audit import (
     confirm_audit_metadata,
@@ -34,12 +35,19 @@ from app.schemas.skill_builder import (
     SkillBuilderStatus,
     SkillDraftPackage,
 )
-from app.services import skill_builder_service, skill_builder_workflow
+from app.services import (
+    chat_service,
+    skill_builder_service,
+    skill_builder_workflow,
+    skill_draft_workspace,
+)
 from app.services.skill_builder_errors import (
     SkillBuilderConflictError,
     SkillBuilderSourceSkillNotFound,
     SkillBuilderValidationError,
 )
+from app.services.skill_builder_hidden_agent import get_or_create_skill_builder_agent
+from app.services.system_credential_resolver import SystemModelNotConfiguredError
 from app.skills.validator import validate_draft_package
 
 router = APIRouter(prefix="/api/skill-builder", tags=["skill-builder"])
@@ -51,6 +59,16 @@ _SSE_HEADERS = {
 }
 
 
+def _session_response(
+    session: object, *, agent_id: uuid.UUID | None
+) -> SkillBuilderSessionResponse:
+    response = SkillBuilderSessionResponse.model_validate(session)
+    if agent_id is not None:
+        # ``agent_id``는 ORM 속성이 아니라 대화 역참조 파생값 — 검증 후 주입.
+        response = response.model_copy(update={"agent_id": agent_id})
+    return response
+
+
 @router.post("", response_model=SkillBuilderSessionResponse, status_code=201)
 async def start_skill_builder(
     data: SkillBuilderStartRequest,
@@ -59,6 +77,13 @@ async def start_skill_builder(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillBuilderSessionResponse:
+    """빌더 챗 세션 시작 (v2, 스펙 AD-6).
+
+    히든 빌더 에이전트 lazy-seed → 세션 row → 드래프트 워크스페이스 →
+    draft conversation을 만들고 ``{session, agent_id, conversation_id}``를
+    반환한다. 프론트는 이 값으로 ``/skills/builder/[sessionId]``에 진입한다.
+    """
+
     await require_system_llm(db, user=user, request=request)
     try:
         session = await skill_builder_service.create_session(
@@ -70,6 +95,23 @@ async def start_skill_builder(
         )
     except SkillBuilderSourceSkillNotFound as exc:
         raise skill_not_found() from exc
+    try:
+        agent = await get_or_create_skill_builder_agent(db, user.id)
+    except SystemModelNotConfiguredError as exc:
+        # 모델 카탈로그가 비어 seed용 FK를 채울 수 없는 경우 — 게이트와 동일 계약.
+        raise system_llm_not_configured() from exc
+    # source="draft" — 첫 메시지 전송 시 promote되는 기존 draft 계약 재사용.
+    # 네비게이터 노출은 runtime_profile 필터가 promote 이후에도 차단한다.
+    conversation = await chat_service.create_conversation(
+        db, agent.id, source="draft"
+    )
+    workspace_path = skill_draft_workspace.create_workspace(session.id)
+    await skill_builder_service.attach_chat_runtime(
+        db,
+        session,
+        conversation_id=conversation.id,
+        draft_workspace_path=workspace_path,
+    )
     await record_builder_audit(
         db,
         user=user,
@@ -78,10 +120,12 @@ async def start_skill_builder(
         session_id=session.id,
         mode=data.mode.value,
         source_skill_id=data.source_skill_id,
+        conversation_id=str(conversation.id),
+        agent_id=str(agent.id),
     )
     await db.commit()
     await db.refresh(session)
-    return SkillBuilderSessionResponse.model_validate(session)
+    return _session_response(session, agent_id=agent.id)
 
 
 @router.get("/{session_id}", response_model=SkillBuilderSessionResponse)
@@ -91,7 +135,8 @@ async def get_skill_builder_session(
     user: CurrentUser = Depends(get_current_user),
 ) -> SkillBuilderSessionResponse:
     session = await get_session_or_404(db, session_id=session_id, user=user)
-    return SkillBuilderSessionResponse.model_validate(session)
+    agent_id = await skill_builder_service.resolve_session_agent_id(db, session)
+    return _session_response(session, agent_id=agent_id)
 
 
 @router.post("/{session_id}/messages")

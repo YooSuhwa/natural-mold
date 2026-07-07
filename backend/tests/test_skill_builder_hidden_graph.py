@@ -13,12 +13,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.skill_builder.deep_agent_worker import SandboxedDeepAgentDraftWorker
 from app.agent_runtime.skill_builder.graph import JsonChatDraftWorker, run_skill_builder_graph
-from app.credentials import service as credential_service
-from app.models.system_llm_setting import SystemLlmSetting
+from app.config import settings
+from tests.skill_builder_test_helpers import configure_system_llm as _configure_system_llm
 
 pytestmark = pytest.mark.asyncio
 
 BASE = "/api/skill-builder"
+
+
+@pytest.fixture(autouse=True)
+def _tmp_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """start v2가 드래프트 워크스페이스를 디스크에 만들므로 data_root 격리."""
+
+    monkeypatch.setattr(settings, "data_root", str(tmp_path))
 
 
 def _draft_json(*, slug: str = "fake-notes") -> str:
@@ -44,25 +51,6 @@ def _draft_json(*, slug: str = "fake-notes") -> str:
             "execution_profile": {"requires_network": False},
         }
     )
-
-
-async def _configure_system_llm(db: AsyncSession) -> None:
-    credential = await credential_service.create(
-        db,
-        user_id=None,
-        definition_key="openai",
-        name="builder-key",
-        data={"api_key": "sk-test"},
-        is_system=True,
-    )
-    db.add(
-        SystemLlmSetting(
-            role="text_primary",
-            credential_id=credential.id,
-            model_name="gpt-5.4",
-        )
-    )
-    await db.commit()
 
 
 def _events(text: str) -> list[tuple[str, dict[str, object]]]:

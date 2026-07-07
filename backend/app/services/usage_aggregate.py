@@ -18,7 +18,7 @@ from typing import Any, Literal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.daily_spend_agent import DailySpendAgent
 from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
@@ -135,8 +135,12 @@ async def get_daily_spend(
     if target_kind == "user":
         query = query.where(DailySpendUser.user_id == user_id)
     elif target_kind == "agent":
+        # 히든 런타임 에이전트(runtime_profile != 'standard')는 일일 집계
+        # 표면에서 제외한다 — target축은 에이전트 행 자체가 노출되고, date축도
+        # 동일 필터로 축 간 정합을 유지한다 (CHECKPOINT M1 §노출 표면).
         query = query.join(Agent, Agent.id == DailySpendAgent.agent_id).where(
-            Agent.user_id == user_id
+            Agent.user_id == user_id,
+            Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
         )
     elif target_kind == "model":
         # Only count rows the user contributed to. We re-filter via the
@@ -154,6 +158,7 @@ async def get_daily_spend(
             .join(Agent, Agent.id == DailySpendAgent.agent_id)
             .where(
                 Agent.user_id == user_id,
+                Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
                 DailySpendAgent.date >= from_date,
                 DailySpendAgent.date <= to_date,
             )
@@ -177,6 +182,7 @@ async def get_daily_spend(
                 .join(Agent, Agent.id == DailySpendAgent.agent_id)
                 .where(
                     Agent.user_id == user_id,
+                    Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
                     DailySpendAgent.date >= from_date,
                     DailySpendAgent.date <= to_date,
                 )

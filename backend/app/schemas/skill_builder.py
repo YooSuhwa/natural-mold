@@ -18,6 +18,10 @@ class SkillBuilderMode(StrEnum):
 
 
 class SkillBuilderStatus(StrEnum):
+    # v2 상태 기계: active → confirming → completed (+abandoned = GC 대상).
+    ACTIVE = "active"
+    ABANDONED = "abandoned"
+    # 구 one-pass 플로우 레거시 값 — 기존 row 호환용.
     COLLECTING = "collecting"
     DRAFTING = "drafting"
     REVIEW = "review"
@@ -97,6 +101,10 @@ class SkillBuilderSessionResponse(BaseModel):
     eval_result: dict[str, JsonValue] | None = None
     trigger_eval_result: dict[str, JsonValue] | None = None
     finalized_skill_id: uuid.UUID | None = None
+    # v2 (빌더 챗): 빌더 대화/히든 에이전트 식별자. conversation_id는 세션
+    # 컬럼에서, agent_id는 대화 역참조로 라우터가 채운다 (ORM 속성 아님).
+    conversation_id: uuid.UUID | None = None
+    agent_id: uuid.UUID | None = None
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime

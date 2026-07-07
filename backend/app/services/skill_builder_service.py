@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.conversation import Conversation
 from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillBuilderMode, SkillBuilderStatus
@@ -17,6 +18,7 @@ from app.services.skill_builder_errors import (
     SkillBuilderValidationError,
 )
 from app.skills import service as skill_service
+from app.storage.paths import ensure_relative
 
 
 async def create_session(
@@ -53,6 +55,37 @@ async def create_session(
     db.add(session)
     await db.flush()
     return session
+
+
+async def attach_chat_runtime(
+    db: AsyncSession,
+    session: SkillBuilderSession,
+    *,
+    conversation_id: uuid.UUID,
+    draft_workspace_path: str,
+) -> SkillBuilderSession:
+    """v2 시작 플로우 — 빌더 대화/워크스페이스를 붙이고 상태를 ACTIVE로 올린다."""
+
+    session.conversation_id = conversation_id
+    session.draft_workspace_path = ensure_relative(draft_workspace_path)
+    session.status = SkillBuilderStatus.ACTIVE.value
+    session.updated_at = _now()
+    await db.flush()
+    return session
+
+
+async def resolve_session_agent_id(
+    db: AsyncSession,
+    session: SkillBuilderSession,
+) -> uuid.UUID | None:
+    """빌더 대화의 히든 에이전트 id (대화 미연결/삭제 시 None)."""
+
+    if session.conversation_id is None:
+        return None
+    result = await db.execute(
+        select(Conversation.agent_id).where(Conversation.id == session.conversation_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def get_session(

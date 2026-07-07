@@ -33,7 +33,7 @@ from app.credentials import service as credential_service
 from app.exceptions import ValidationError
 from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import build_headers
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation import Conversation
 from app.models.mcp_server import McpServer
@@ -774,7 +774,13 @@ async def list_global_conversations_page(
     query = (
         select(Conversation)
         .join(Agent, Conversation.agent_id == Agent.id)
-        .where(Agent.user_id == user_id, Conversation.source == "ui")
+        .where(
+            Agent.user_id == user_id,
+            # 히든 런타임 에이전트(스킬 빌더 등)의 대화는 네비게이터/최근 대화에
+            # 노출하지 않는다 — 빌더 라우트가 전용 진입점이다.
+            Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+            Conversation.source == "ui",
+        )
         .options(contains_eager(Conversation.agent))
     )
 

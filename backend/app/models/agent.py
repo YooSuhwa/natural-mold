@@ -16,6 +16,17 @@ from app.models.tool import AgentToolLink
 if TYPE_CHECKING:
     from app.models.agent_subagent import AgentSubAgentLink
 
+# Runtime profile (skill-studio phase 1, AD-1). ``standard`` rows are normal
+# user agents; anything else is a hidden per-user runtime row that must be
+# excluded from every user-facing enumeration surface (list/summary/usage/
+# navigator/...) and rejected (404) by PUT/DELETE.
+AGENT_RUNTIME_PROFILE_STANDARD = "standard"
+AGENT_RUNTIME_PROFILE_SKILL_BUILDER = "skill_builder"
+AGENT_RUNTIME_PROFILES = (
+    AGENT_RUNTIME_PROFILE_STANDARD,
+    AGENT_RUNTIME_PROFILE_SKILL_BUILDER,
+)
+
 
 class Agent(Base):
     __tablename__ = "agents"
@@ -41,6 +52,12 @@ class Agent(Base):
         ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    runtime_profile: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=AGENT_RUNTIME_PROFILE_STANDARD,
+        server_default=AGENT_RUNTIME_PROFILE_STANDARD,
+    )
     is_favorite: Mapped[bool] = mapped_column(default=False, nullable=False)
     model_params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     middleware_configs: Mapped[list[dict[str, Any]] | None] = mapped_column(

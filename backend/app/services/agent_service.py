@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.agent_runtime.identity import make_agent_runtime_name, validate_identity_mode
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
@@ -65,7 +65,11 @@ async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
     result = await db.execute(
         select(Agent, last_used_subq.c.last_used_at, last_used_subq.c.unread_count)
         .outerjoin(last_used_subq, Agent.id == last_used_subq.c.agent_id)
-        .where(Agent.user_id == user_id)
+        .where(
+            Agent.user_id == user_id,
+            # Hidden runtime rows (skill builder 등) never surface in lists.
+            Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+        )
         .options(*_selectin_agent())
         .order_by(func.coalesce(last_used_subq.c.last_used_at, Agent.created_at).desc())
     )
@@ -84,7 +88,14 @@ async def list_agent_summaries(db: AsyncSession, user_id: uuid.UUID) -> list[dic
 
     from app.models.conversation import Conversation
 
-    user_agent_ids = select(Agent.id).where(Agent.user_id == user_id).subquery()
+    user_agent_ids = (
+        select(Agent.id)
+        .where(
+            Agent.user_id == user_id,
+            Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+        )
+        .subquery()
+    )
 
     conversation_summary = (
         select(
@@ -134,7 +145,10 @@ async def list_agent_summaries(db: AsyncSession, user_id: uuid.UUID) -> list[dic
         .outerjoin(conversation_summary, Agent.id == conversation_summary.c.agent_id)
         .outerjoin(tool_summary, Agent.id == tool_summary.c.agent_id)
         .outerjoin(mcp_tool_summary, Agent.id == mcp_tool_summary.c.agent_id)
-        .where(Agent.user_id == user_id)
+        .where(
+            Agent.user_id == user_id,
+            Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+        )
         .order_by(func.coalesce(conversation_summary.c.last_used_at, Agent.created_at).desc())
     )
 
@@ -202,6 +216,8 @@ async def _validate_sub_agent_ids_owned(
         select(Agent.id).where(
             Agent.id.in_(sub_agent_ids),
             Agent.user_id == user_id,
+            # Hidden runtime rows can't be attached as sub-agents.
+            Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
         )
     )
     valid = {row[0] for row in result.all()}

@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
 from app.database import async_session as async_session_factory
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
 from app.models.skill import Skill
@@ -162,7 +162,10 @@ def build_read_tools(
         async with async_session_factory() as session:
             result = await session.execute(
                 select(Agent.id, Agent.name, Agent.description, Agent.model_id).where(
-                    Agent.user_id == user_id, Agent.id != agent_id
+                    Agent.user_id == user_id,
+                    Agent.id != agent_id,
+                    # 히든 런타임 에이전트는 서브에이전트 후보에서 제외.
+                    Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
                 )
             )
             rows = result.all()

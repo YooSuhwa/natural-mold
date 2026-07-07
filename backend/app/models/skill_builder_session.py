@@ -17,7 +17,11 @@ type JsonScalar = str | int | float | bool | None
 type JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
 SKILL_BUILDER_MODES = ("create", "improve")
+# v2 상태 기계(스킬 스튜디오 phase 1): active → confirming → completed, 이탈은
+# abandoned(GC 대상). collecting/drafting/review/failed/cancelled는 구 one-pass
+# 플로우의 레거시 값 — 기존 row 호환을 위해 유지한다.
 SKILL_BUILDER_STATUSES = (
+    "active",
     "collecting",
     "drafting",
     "review",
@@ -25,6 +29,7 @@ SKILL_BUILDER_STATUSES = (
     "completed",
     "failed",
     "cancelled",
+    "abandoned",
 )
 
 
@@ -38,6 +43,7 @@ class SkillBuilderSession(Base):
         Index("ix_skill_builder_sessions_user_updated", "user_id", "updated_at"),
         Index("ix_skill_builder_sessions_finalized_skill", "finalized_skill_id"),
         Index("ix_skill_builder_sessions_source_skill", "source_skill_id"),
+        Index("ix_skill_builder_sessions_conversation", "conversation_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -86,6 +92,16 @@ class SkillBuilderSession(Base):
         ForeignKey("skills.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # v2 (스킬 빌더 챗): 빌더 대화 = 히든 에이전트의 진짜 conversation.
+    # 대화가 지워져도 세션은 살아남도록 SET NULL.
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # ADR-018 상대경로 — data_root 기준 (예: ``skill-drafts/<session_id>``).
+    draft_workspace_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # AD-4 스코프드 동의: 도구명 → 동의 메타데이터 (M4에서 기록).
+    tool_consents: Mapped[dict[str, JsonValue] | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
