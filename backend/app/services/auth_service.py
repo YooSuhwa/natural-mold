@@ -8,6 +8,7 @@ one place.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -66,9 +67,7 @@ def user_agent(request: Request) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-async def register(
-    db: AsyncSession, payload: RegisterRequest, request: Request
-) -> User:
+async def register(db: AsyncSession, payload: RegisterRequest, request: Request) -> User:
     """Create a new user + auto-promote the first signup to super_user."""
 
     if await user_service.email_exists(db, payload.email):
@@ -81,7 +80,9 @@ async def register(
     user = await user_service.create_user(
         db,
         email=payload.email,
-        password_hash=hash_password(payload.password),
+        # bcrypt cost-12 (~250ms) would freeze every coroutine on the event
+        # loop — offload to a worker thread. Same for the verify calls below.
+        password_hash=await asyncio.to_thread(hash_password, payload.password),
         name=payload.profile_display_name,
         display_name=payload.profile_display_name,
         is_super_user=promote,
@@ -96,9 +97,7 @@ async def register(
 # ---------------------------------------------------------------------------
 
 
-async def authenticate(
-    db: AsyncSession, *, email: str, password: str
-) -> User:
+async def authenticate(db: AsyncSession, *, email: str, password: str) -> User:
     """Verify credentials and bump login bookkeeping.
 
     Raises ``AppError`` with the appropriate status:
@@ -110,7 +109,7 @@ async def authenticate(
 
     user = await user_service.get_by_email(db, email)
     if user is None:
-        verify_password(password, _DUMMY_PASSWORD_HASH)
+        await asyncio.to_thread(verify_password, password, _DUMMY_PASSWORD_HASH)
         raise AppError(
             code="invalid_credentials",
             message="이메일 또는 비밀번호가 올바르지 않습니다",
@@ -128,7 +127,7 @@ async def authenticate(
             message="로그인 시도가 많아 계정이 잠겼습니다. 잠시 후 다시 시도하세요",
             status=423,
         )
-    if not verify_password(password, user.hashed_password):
+    if not await asyncio.to_thread(verify_password, password, user.hashed_password):
         await user_service.record_login_failure(db, user)
         # Persist the bumped counter BEFORE raising — FastAPI's
         # session-per-request dependency rolls the transaction back on
@@ -148,17 +147,13 @@ async def authenticate(
 # ---------------------------------------------------------------------------
 
 
-async def issue_tokens(
-    db: AsyncSession, user: User, request: Request
-) -> tuple[str, str, str]:
+async def issue_tokens(db: AsyncSession, user: User, request: Request) -> tuple[str, str, str]:
     """Mint access/refresh/csrf and persist the refresh hash.
 
     Returns ``(access, refresh, csrf)`` for the cookie helper.
     """
 
-    access, _refresh_row, refresh, csrf = await _issue_tokens_with_row(
-        db, user, request
-    )
+    access, _refresh_row, refresh, csrf = await _issue_tokens_with_row(db, user, request)
     return access, refresh, csrf
 
 
@@ -175,9 +170,7 @@ async def _issue_tokens_with_row(
     refresh, _jti, refresh_hash = create_refresh_token(user.id)
     csrf = create_csrf_token(user.id)
 
-    expires_at = datetime.now(UTC) + timedelta(
-        days=settings.refresh_token_expire_days
-    )
+    expires_at = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
     row = RefreshToken(
         user_id=user.id,
         token_hash=refresh_hash,
@@ -207,9 +200,7 @@ def _aware(dt: datetime) -> datetime:
 
 
 def _invalid_refresh() -> AppError:
-    return AppError(
-        code="invalid_refresh", message="세션이 만료되었습니다", status=401
-    )
+    return AppError(code="invalid_refresh", message="세션이 만료되었습니다", status=401)
 
 
 async def _find_race_chain_head(
@@ -243,9 +234,7 @@ async def _find_race_chain_head(
     if (row.user_agent or "") != (user_agent(request) or ""):
         return None
     replacement = (
-        await db.execute(
-            select(RefreshToken).where(RefreshToken.id == row.replaced_by_id)
-        )
+        await db.execute(select(RefreshToken).where(RefreshToken.id == row.replaced_by_id))
     ).scalar_one_or_none()
     if replacement is None or replacement.revoked_at is not None:
         return None
@@ -254,9 +243,7 @@ async def _find_race_chain_head(
     return replacement
 
 
-async def _load_active_user_or_401(
-    db: AsyncSession, user_id: uuid.UUID
-) -> User:
+async def _load_active_user_or_401(db: AsyncSession, user_id: uuid.UUID) -> User:
     user = await user_service.get_by_id(db, user_id)
     if user is None or not user.is_active:
         raise _invalid_refresh()
@@ -278,9 +265,7 @@ async def _perform_rotation(
     (see :func:`rotate_refresh` chain-walk loop).
     """
 
-    access, new_row, new_refresh, csrf = await _issue_tokens_with_row(
-        db, user, request
-    )
+    access, new_row, new_refresh, csrf = await _issue_tokens_with_row(db, user, request)
     old_row.revoked_at = now
     old_row.replaced_by_id = new_row.id
     return access, new_refresh, csrf
@@ -338,9 +323,7 @@ async def rotate_refresh(
     # common single-iteration path. Subsequent chain hops re-lock by id.
     locked = (
         await db.execute(
-            _lock_select(
-                select(RefreshToken).where(RefreshToken.token_hash == digest), db
-            )
+            _lock_select(select(RefreshToken).where(RefreshToken.token_hash == digest), db)
         )
     ).scalar_one_or_none()
     if locked is None:
@@ -358,9 +341,7 @@ async def rotate_refresh(
             if _aware(locked.expires_at) <= now:
                 raise _invalid_refresh()
             user = await _load_active_user_or_401(db, user_id)
-            access, new_refresh, csrf = await _perform_rotation(
-                db, locked, user, request, now
-            )
+            access, new_refresh, csrf = await _perform_rotation(db, locked, user, request, now)
             return access, new_refresh, csrf, user
 
         chain_head = await _find_race_chain_head(db, locked, request, now)
@@ -384,9 +365,7 @@ async def rotate_refresh(
         # may also have decided to chain-rotate from it.
         relocked = (
             await db.execute(
-                _lock_select(
-                    select(RefreshToken).where(RefreshToken.id == chain_head.id), db
-                )
+                _lock_select(select(RefreshToken).where(RefreshToken.id == chain_head.id), db)
             )
         ).scalar_one_or_none()
         if relocked is None:
