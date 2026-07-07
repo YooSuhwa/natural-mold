@@ -2812,7 +2812,49 @@
         "cancelled": "Cancelled",
         "abandoned": "Abandoned"
       },
-      "improveDefaultRequest": "I want to improve this existing skill."
+      "improveDefaultRequest": "I want to improve this existing skill.",
+      "helperCreate": "Chat fills in the package and validation as you go",
+      "helperImprove": "The conversation updates SKILL.md and the eval set in real time",
+      "viewSource": "View source",
+      "closeSource": "View status",
+      "sourceTitle": "Draft source",
+      "sourceBack": "Back to status",
+      "railSubtitleCreate": "New skill draft · fills in as you chat",
+      "railSubtitleImprove": "Source v{version} · re-validated live as you chat",
+      "railSubtitleImproveNoVersion": "Source skill · re-validated live as you chat",
+      "tryHint": "Try with an example — “Test it on this example”",
+      "tryHintPrefill": "Test the draft on this example: ",
+      "headPill": {
+        "pending": "In review",
+        "pass": "Passing",
+        "warn": "{count} warnings",
+        "error": "{count} errors"
+      },
+      "tone": {
+        "pending": "Not validated",
+        "pass": "Pass",
+        "good": "Good",
+        "warn": "Warning",
+        "error": "Error"
+      },
+      "statusRow": {
+        "frontmatter": "Portable frontmatter",
+        "moldyMetadata": "Standard / Moldy field separation",
+        "trigger": "Description trigger clarity",
+        "secrets": "Secret scan",
+        "runtimeCompat": "Runtime compatibility",
+        "credentials": "Credentials required",
+        "sandbox": "Sandbox execution",
+        "evaluation": "Evaluation"
+      },
+      "statusValue": {
+        "none": "None",
+        "credentialCount": "{count} required",
+        "scriptsPresent": "Has scripts",
+        "noScripts": "No scripts",
+        "evalsReady": "Cases ready",
+        "evalsPending": "Not evaluated"
+      }
     }
   },
   "marketplace": {

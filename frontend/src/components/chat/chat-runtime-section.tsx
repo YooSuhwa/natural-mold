@@ -33,6 +33,7 @@ type ThreadRenderProps = Pick<
   AssistantThreadProps,
   | 'agentImageUrl'
   | 'agentName'
+  | 'composerHint'
   | 'conversationId'
   | 'contextWindow'
   | 'emptyContent'
@@ -48,6 +49,8 @@ export interface ChatRuntimeSectionProps {
   readonly agentImageUrl?: string | null
   readonly agentName?: string
   readonly attachmentAdapter?: AttachmentAdapter
+  /** Composer 위 커스텀 힌트 (스킬 빌더 "예시로 시험" 등). */
+  readonly composerHint?: ReactNode
   readonly emptyContent: ReactNode
   readonly feedbackAdapter?: FeedbackAdapter
   readonly latestRun: ConversationRun | null
@@ -74,6 +77,7 @@ export function ChatRuntimeSection({
   agentImageUrl,
   agentName,
   attachmentAdapter,
+  composerHint,
   emptyContent,
   feedbackAdapter,
   latestRun,
@@ -94,6 +98,7 @@ export function ChatRuntimeSection({
     () => ({
       agentImageUrl,
       agentName,
+      composerHint,
       conversationId: activeConversationId ?? undefined,
       contextWindow,
       emptyContent,
@@ -105,6 +110,7 @@ export function ChatRuntimeSection({
       activeConversationId,
       agentImageUrl,
       agentName,
+      composerHint,
       contextWindow,
       emptyContent,
       modelName,

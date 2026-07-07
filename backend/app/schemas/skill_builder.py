@@ -57,6 +57,32 @@ class SkillDraftFile(BaseModel):
     role: Literal["skill", "script", "reference", "asset", "metadata", "eval"] = "skill"
 
 
+class SkillBuilderFileEntry(BaseModel):
+    """드래프트 워크스페이스 파일 요약 (레일 소스 뷰, M7) — 내용 없음."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    size: int
+    role: str
+
+
+class SkillBuilderFilesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    files: list[SkillBuilderFileEntry]
+
+
+class SkillBuilderFileContentResponse(BaseModel):
+    """드래프트 파일 내용 (소유자 전용 조회 — 레일 소스 뷰어)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    role: str
+    content: str
+
+
 class SkillDraftPackage(BaseModel):
     model_config = ConfigDict(frozen=True)
 

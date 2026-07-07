@@ -36,6 +36,7 @@ function draftEvent(overrides: Record<string, unknown> = {}) {
             { path: 'references/guide.md', size: 40 },
           ],
           changed_count: 2,
+          credential_requirement_count: 1,
           ...overrides,
         },
       },
@@ -74,6 +75,7 @@ describe('protocolSkillDraftBrief', () => {
         { path: 'references/guide.md', size: 40 },
       ],
       changed_count: 2,
+      credential_requirement_count: 1,
     })
   })
 

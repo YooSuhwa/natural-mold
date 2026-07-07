@@ -103,6 +103,18 @@ test.describe('skill builder chat', () => {
     const rail = page.getByTestId('skill-builder-rail')
     await expect(rail.getByTestId('builder-draft-files')).toBeVisible({ timeout: 30_000 })
     await expect(rail.getByText('SKILL.md').first()).toBeVisible()
+    // M7 상태 카드 — 검증 이벤트가 행 톤 + 런타임 호환 칩을 채운다.
+    await expect(rail.getByTestId('builder-status-rows')).toBeVisible({ timeout: 15_000 })
+    await expect(rail.getByTestId('builder-runtime-chips')).toBeVisible({ timeout: 15_000 })
+
+    // 2b) 소스 보기 — 파일 API 기반 읽기 전용 뷰어 (M7).
+    await page.getByTestId('builder-open-source').click()
+    await expect(rail.getByTestId('builder-source-pane')).toBeVisible({ timeout: 15_000 })
+    await expect(rail.getByTestId('builder-source-viewer')).toContainText('e2e-notes', {
+      timeout: 30_000,
+    })
+    await page.getByTestId('builder-open-source').click()
+    await expect(rail.getByTestId('builder-status-rows')).toBeVisible({ timeout: 15_000 })
 
     // 3) 드래프트 시험 — CODE_EXECUTION 승인 카드 + 세션 동의 체크.
     await sendMessage('E2E_SKILL_BUILDER_TEST run=1')

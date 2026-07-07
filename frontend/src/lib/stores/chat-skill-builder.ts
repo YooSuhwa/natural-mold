@@ -21,6 +21,8 @@ export interface SkillDraftBrief {
   readonly file_count: number
   readonly files: readonly SkillDraftBriefFile[]
   readonly changed_count: number
+  /** 드래프트 moldy.yaml의 credential 요구 수 (상태 카드 행, M7). */
+  readonly credential_requirement_count: number
 }
 
 export interface SkillValidationSnapshot {

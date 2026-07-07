@@ -333,6 +333,15 @@ def build_skill_draft_brief(session: SkillBuilderSession) -> dict[str, object]:
         except SkillMetadataError:
             slug = None
 
+    # 검증 레일 상태 카드용 요약 (M7 — 목업 "Credential 필요 여부" 행).
+    from app.skills.moldy_metadata import (
+        credential_requirements_from_metadata,
+        load_moldy_metadata,
+    )
+
+    metadata, _issues = load_moldy_metadata({f.path: f for f in files})
+    credential_requirement_count = len(credential_requirements_from_metadata(metadata))
+
     return {
         "session_id": str(session.id),
         "mode": session.mode,
@@ -340,6 +349,7 @@ def build_skill_draft_brief(session: SkillBuilderSession) -> dict[str, object]:
         "file_count": len(files),
         "files": [{"path": f.path, "size": len(f.content)} for f in files[:100]],
         "changed_count": changed + deleted,
+        "credential_requirement_count": credential_requirement_count,
     }
 
 

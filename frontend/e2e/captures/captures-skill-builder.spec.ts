@@ -80,6 +80,12 @@ test.describe('스킬 빌더 챗 — 전 화면 캡처 투어', () => {
     await settle(page)
     await capture(page, WAVE, '03-builder-entry.png')
 
+    // ── 3b. try-hint 클릭 → 컴포저 프리필 (M7 목업 차용) ────────────────
+    await page.getByTestId('builder-try-hint').click()
+    await expect(composer).not.toHaveValue('')
+    await settle(page, 300)
+    await capture(page, WAVE, '03b-try-hint-prefill.png')
+
     // ── 4. 점진 편집 (write_file — 승인 카드 없음, AD-3) ────────────────
     await sendMessage(`E2E_SKILL_BUILDER_WRITE /skill-drafts/${sessionId}`)
     await expect(page.getByText('드래프트 파일을 작성했습니다').last()).toBeVisible({
@@ -95,8 +101,22 @@ test.describe('스킬 빌더 챗 — 전 화면 캡처 투어', () => {
     })
     const rail = page.getByTestId('skill-builder-rail')
     await expect(rail.getByTestId('builder-draft-files')).toBeVisible({ timeout: 30_000 })
+    // M7 상태 카드 — 검증 행 + 런타임 호환 칩이 실데이터로 채워진다.
+    await expect(rail.getByTestId('builder-status-rows')).toBeVisible({ timeout: 15_000 })
+    await expect(rail.getByTestId('builder-runtime-chips')).toBeVisible({ timeout: 15_000 })
     await settle(page)
     await capture(page, WAVE, '05-validate-rail.png')
+
+    // ── 5b. 소스 보기 — 레일이 파일 트리 + 읽기 전용 뷰어로 전환 (M7) ──
+    await page.getByTestId('builder-open-source').click()
+    await expect(rail.getByTestId('builder-source-pane')).toBeVisible({ timeout: 15_000 })
+    await expect(rail.getByTestId('builder-source-viewer')).toContainText('e2e-notes', {
+      timeout: 30_000,
+    })
+    await settle(page)
+    await capture(page, WAVE, '05b-source-pane.png')
+    await page.getByTestId('builder-open-source').click()
+    await expect(rail.getByTestId('builder-status-rows')).toBeVisible({ timeout: 15_000 })
 
     // ── 6. 시험 승인 카드 + "이 세션에서 계속 허용" ────────────────────
     await sendMessage('E2E_SKILL_BUILDER_TEST run=1')

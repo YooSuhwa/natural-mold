@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
@@ -11,6 +11,7 @@ from app.error_codes import (
     session_confirming,
     skill_builder_session_not_ready,
     skill_builder_source_conflict,
+    skill_file_not_found,
     skill_not_found,
     system_llm_not_configured,
 )
@@ -27,6 +28,9 @@ from app.routers.skill_builder_support import (
 )
 from app.schemas.skill import SkillResponse
 from app.schemas.skill_builder import (
+    SkillBuilderFileContentResponse,
+    SkillBuilderFileEntry,
+    SkillBuilderFilesResponse,
     SkillBuilderMode,
     SkillBuilderSessionResponse,
     SkillBuilderStartRequest,
@@ -135,6 +139,57 @@ async def get_skill_builder_session(
     session = await get_session_or_404(db, session_id=session_id, user=user)
     agent_id = await skill_builder_service.resolve_session_agent_id(db, session)
     return _session_response(session, agent_id=agent_id)
+
+
+@router.get("/{session_id}/files", response_model=SkillBuilderFilesResponse)
+async def list_skill_builder_files(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> SkillBuilderFilesResponse:
+    """드래프트 워크스페이스 파일 목록 (레일 소스 뷰, M7).
+
+    어댑터(``load_draft_files``) 경유라 ``inputs/`` 제외·바이너리 skip이
+    자동 적용되고, 디스크 경로를 직접 다루지 않아 traversal 표면이 없다.
+    """
+
+    session = await get_session_or_404(db, session_id=session_id, user=user)
+    if not session.draft_workspace_path:
+        return SkillBuilderFilesResponse(files=[])
+    files = skill_draft_workspace.load_draft_files(session.draft_workspace_path)
+    return SkillBuilderFilesResponse(
+        files=[
+            SkillBuilderFileEntry(
+                path=file.path,
+                size=len(file.content.encode("utf-8")),
+                role=file.role,
+            )
+            for file in files
+        ]
+    )
+
+
+@router.get("/{session_id}/files/content", response_model=SkillBuilderFileContentResponse)
+async def get_skill_builder_file_content(
+    session_id: uuid.UUID,
+    path: str = Query(..., min_length=1, max_length=500),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> SkillBuilderFileContentResponse:
+    """드래프트 파일 내용 조회 (소유자 전용, 레일 소스 뷰어).
+
+    요청 path는 어댑터가 열거한 정규화 경로와 **정확 일치**해야 한다 —
+    디스크 resolve가 없으므로 ``../`` 류 traversal은 매칭 실패(404)로 끝난다.
+    """
+
+    session = await get_session_or_404(db, session_id=session_id, user=user)
+    if not session.draft_workspace_path:
+        raise skill_file_not_found()
+    files = skill_draft_workspace.load_draft_files(session.draft_workspace_path)
+    match = next((file for file in files if file.path == path), None)
+    if match is None:
+        raise skill_file_not_found()
+    return SkillBuilderFileContentResponse(path=match.path, role=match.role, content=match.content)
 
 
 @router.post("/{session_id}/validate", response_model=SkillBuilderSessionResponse)

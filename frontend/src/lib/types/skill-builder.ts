@@ -62,6 +62,23 @@ export type SkillBuilderStartRequest = {
   readonly source_skill_id?: string | null
 }
 
+/** 드래프트 워크스페이스 파일 요약 (레일 소스 뷰, M7) — 내용 없음. */
+export type SkillBuilderFileEntry = {
+  readonly path: string
+  readonly size: number
+  readonly role: string
+}
+
+export type SkillBuilderFilesResponse = {
+  readonly files: readonly SkillBuilderFileEntry[]
+}
+
+export type SkillBuilderFileContent = {
+  readonly path: string
+  readonly role: string
+  readonly content: string
+}
+
 export type SkillBuilderSession = {
   readonly id: string
   readonly user_id: string

@@ -9,6 +9,9 @@ import type { SkillBuilderStartRequest, SkillDraftPackage } from '@/lib/types/sk
 export const skillBuilderKeys = {
   all: ['skill-builder'] as const,
   detail: (sessionId: string | null | undefined) => ['skill-builder', sessionId] as const,
+  files: (sessionId: string | null | undefined) => ['skill-builder', sessionId, 'files'] as const,
+  fileContent: (sessionId: string | null | undefined, path: string | null) =>
+    ['skill-builder', sessionId, 'files', path] as const,
 }
 
 export function useSkillBuilderSession(sessionId: string | null | undefined) {
@@ -16,6 +19,25 @@ export function useSkillBuilderSession(sessionId: string | null | undefined) {
     queryKey: skillBuilderKeys.detail(sessionId),
     queryFn: () => skillBuilderApi.get(requireQueryId(sessionId, 'sessionId')),
     enabled: !!sessionId,
+  })
+}
+
+export function useSkillBuilderFiles(sessionId: string | null | undefined) {
+  return useQuery({
+    queryKey: skillBuilderKeys.files(sessionId),
+    queryFn: () => skillBuilderApi.files(requireQueryId(sessionId, 'sessionId')),
+    enabled: !!sessionId,
+  })
+}
+
+export function useSkillBuilderFileContent(
+  sessionId: string | null | undefined,
+  path: string | null,
+) {
+  return useQuery({
+    queryKey: skillBuilderKeys.fileContent(sessionId, path),
+    queryFn: () => skillBuilderApi.fileContent(requireQueryId(sessionId, 'sessionId'), path ?? ''),
+    enabled: !!sessionId && !!path,
   })
 }
 

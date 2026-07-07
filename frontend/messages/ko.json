@@ -2812,7 +2812,49 @@
         "cancelled": "취소됨",
         "abandoned": "중단됨"
       },
-      "improveDefaultRequest": "기존 스킬을 개선하고 싶어요."
+      "improveDefaultRequest": "기존 스킬을 개선하고 싶어요.",
+      "helperCreate": "대화로 만들면 패키지·검증이 채워집니다",
+      "helperImprove": "대화 내용이 SKILL.md·평가 세트에 실시간 반영됩니다",
+      "viewSource": "소스 보기",
+      "closeSource": "상태 보기",
+      "sourceTitle": "드래프트 소스",
+      "sourceBack": "상태로 돌아가기",
+      "railSubtitleCreate": "새 스킬 초안 · 대화하면 채워집니다",
+      "railSubtitleImprove": "원본 v{version} · 대화하면 실시간 재검사",
+      "railSubtitleImproveNoVersion": "원본 스킬 · 대화하면 실시간 재검사",
+      "tryHint": "예시로 시험 — “이 예시로 시험해줘”",
+      "tryHintPrefill": "이 예시로 시험해줘: ",
+      "headPill": {
+        "pending": "검토 중",
+        "pass": "통과",
+        "warn": "주의 {count}",
+        "error": "오류 {count}"
+      },
+      "tone": {
+        "pending": "검증 전",
+        "pass": "통과",
+        "good": "양호",
+        "warn": "주의",
+        "error": "오류"
+      },
+      "statusRow": {
+        "frontmatter": "Portable frontmatter",
+        "moldyMetadata": "표준 / Moldy 전용 필드 분리",
+        "trigger": "description 트리거 명확성",
+        "secrets": "시크릿 검사",
+        "runtimeCompat": "런타임 호환",
+        "credentials": "Credential 필요 여부",
+        "sandbox": "샌드박스 실행",
+        "evaluation": "평가"
+      },
+      "statusValue": {
+        "none": "없음",
+        "credentialCount": "{count}개 필요",
+        "scriptsPresent": "scripts 있음",
+        "noScripts": "scripts 없음",
+        "evalsReady": "케이스 준비됨",
+        "evalsPending": "평가 전"
+      }
     }
   },
   "marketplace": {

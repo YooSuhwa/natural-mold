@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon, HammerIcon } from 'lucide-react'
+import { ArrowLeftIcon, FolderOpenIcon, HammerIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { ChatRuntimeSection } from '@/components/chat/chat-runtime-section'
@@ -16,7 +16,8 @@ import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { conversationKeys, useMessagesEnvelope } from '@/lib/hooks/use-conversations'
 import { skillBuilderKeys, useSkillBuilderSession } from '@/lib/hooks/use-skill-builder'
 import type { Message, SSEEvent } from '@/lib/types'
-import { SkillBuilderRail } from './skill-builder-rail'
+import { SkillBuilderRail, type RailMode } from './skill-builder-rail'
+import { SkillBuilderTryHint } from './skill-builder-try-hint'
 
 const EMPTY_MESSAGES: Message[] = []
 
@@ -33,6 +34,7 @@ export function SkillBuilderChatClient({ sessionId }: { readonly sessionId: stri
   const queryClient = useQueryClient()
   const { data: user } = useSession()
   const { data: session, isLoading, isError } = useSkillBuilderSession(sessionId)
+  const [railMode, setRailMode] = useState<RailMode>('status')
 
   const conversationId = session?.conversation_id ?? null
   const agentId = session?.agent_id ?? null
@@ -45,6 +47,7 @@ export function SkillBuilderChatClient({ sessionId }: { readonly sessionId: stri
       queryClient.invalidateQueries({ queryKey: conversationKeys.messages(conversationId) })
     }
     queryClient.invalidateQueries({ queryKey: skillBuilderKeys.detail(sessionId) })
+    queryClient.invalidateQueries({ queryKey: skillBuilderKeys.files(sessionId) })
     queryClient.invalidateQueries({ queryKey: ['skills'] })
   }, [conversationId, queryClient, sessionId])
 
@@ -100,14 +103,32 @@ export function SkillBuilderChatClient({ sessionId }: { readonly sessionId: stri
           >
             <ArrowLeftIcon className="size-4" />
           </Link>
-          <HammerIcon className="size-4 text-muted-foreground" />
-          <h1 className="text-sm font-semibold">{t('title')}</h1>
-          <Badge variant="outline">
+          <HammerIcon className="size-4 shrink-0 text-muted-foreground" />
+          <h1 className="shrink-0 text-sm font-semibold">{t('title')}</h1>
+          <Badge variant="outline" className="shrink-0">
             {session.mode === 'improve' ? t('modeImprove') : t('modeCreate')}
           </Badge>
-          <Badge variant="secondary" className="ml-auto" data-testid="builder-session-status">
-            {t(`status.${session.status}` as Parameters<typeof t>[0])}
-          </Badge>
+          {/* 목업 헤더 헬퍼 — 모드별 안내 문구 */}
+          <span className="hidden min-w-0 truncate text-xs text-muted-foreground lg:inline">
+            {session.mode === 'improve' ? t('helperImprove') : t('helperCreate')}
+          </span>
+          <span className="ml-auto flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              data-testid="builder-open-source"
+              onClick={() => setRailMode(railMode === 'source' ? 'status' : 'source')}
+              className={cn(
+                buttonVariants({ variant: 'outline', size: 'sm' }),
+                'hidden md:inline-flex',
+              )}
+            >
+              <FolderOpenIcon className="size-3.5" />
+              {railMode === 'source' ? t('closeSource') : t('viewSource')}
+            </button>
+            <Badge variant="secondary" data-testid="builder-session-status">
+              {t(`status.${session.status}` as Parameters<typeof t>[0])}
+            </Badge>
+          </span>
         </header>
 
         <ChatRuntimeSection
@@ -116,6 +137,7 @@ export function SkillBuilderChatClient({ sessionId }: { readonly sessionId: stri
           agentId={agentId}
           agentName={t('title')}
           attachmentAdapter={moldyAttachmentAdapter}
+          composerHint={<SkillBuilderTryHint />}
           emptyContent={emptyContent}
           latestRun={envelope?.latest_run ?? null}
           messages={messages}
@@ -127,7 +149,12 @@ export function SkillBuilderChatClient({ sessionId }: { readonly sessionId: stri
         />
       </section>
 
-      <SkillBuilderRail conversationId={conversationId} session={session} />
+      <SkillBuilderRail
+        conversationId={conversationId}
+        session={session}
+        mode={railMode}
+        onModeChange={setRailMode}
+      />
     </div>
   )
 }

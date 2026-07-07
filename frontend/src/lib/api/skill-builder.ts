@@ -1,6 +1,8 @@
 import { apiFetch } from './client'
 import type { Skill } from '@/lib/types/skill'
 import type {
+  SkillBuilderFileContent,
+  SkillBuilderFilesResponse,
   SkillBuilderSession,
   SkillBuilderStartRequest,
   SkillDraftPackage,
@@ -25,4 +27,12 @@ export const skillBuilderApi = {
     apiFetch<Skill>(`/api/skill-builder/${sessionId}/confirm`, {
       method: 'POST',
     }),
+
+  files: (sessionId: string) =>
+    apiFetch<SkillBuilderFilesResponse>(`/api/skill-builder/${sessionId}/files`),
+
+  fileContent: (sessionId: string, path: string) =>
+    apiFetch<SkillBuilderFileContent>(
+      `/api/skill-builder/${sessionId}/files/content?path=${encodeURIComponent(path)}`,
+    ),
 }

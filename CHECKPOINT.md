@@ -68,5 +68,19 @@
   - E2E 재실행법: `docker run -d --name moldy-sbchat-pg -p 5436:5432 ... postgres:16-alpine` → alembic head → `E2E_FRONTEND_PORT=3310 E2E_BACKEND_PORT=8310 DATABASE_URL(_SYNC)=...5436... RATE_LIMIT_ENABLED=false E2E_TEST_HELPERS_ENABLED=true E2E_LLM_*='' pnpm exec playwright test e2e/skill-builder-chat.spec.ts`
 - 남은 백로그(Phase 1.5+): improve 충돌 후 re-seed, 바이너리 패키지 finalize(디스크 zip), 리로드 인터럽트의 세션 동의 플래그(라이브 전용), draft GC로 conversation 소실 시 재생성, create 탭 최초 요청의 자동 첫 메시지화.
 
+## M7: 빌더 뷰 디자인 정합 (목업 차용)
+- [x] 목업 실효성 감사 (`~/Downloads/Web-Prototype_skill/skill-studio.html` builder view 대조)
+- [x] 백엔드: `GET /{sid}/files`(어댑터 기반 목록) + `GET /{sid}/files/content?path=`(정확 일치 — traversal=404) + brief에 `credential_requirement_count`
+- [x] 프론트: 상태 카드 레일(검증 행+런타임 칩+메타 행), 소스 뷰어(레일 모드 전환), 헤더 헬퍼, try-hint(컴포저 프리필)
+- [x] E2E/캡처 확장: 기능 spec에 상태카드·소스뷰어 단언, 캡처 03b(try-hint)/05b(소스 뷰어) 추가 → 17장
+- 검증: backend 2597 / vitest 1237 / tsc·eslint·pnpm build 그린, 디자인 가드 12=베이스 동일(신규 위반 0), E2E 기능+캡처 투어 그린(throwaway 5436/3310/8310)
+- done-when: 목업 차용 요소가 실데이터로 렌더 + 캡처 육안 대조 통과
+- 상태: done (2026-07-08)
+- **목업 감사 결정 (차용/각색/기각)**:
+  - 차용: 검증 상태 카드(행별 통과/주의/오류 — 실제 검증기 이슈 코드 매핑: SKILL_MD_*/INVALID_PATH→frontmatter, MOLDY_METADATA/CREDENTIAL_REQUIREMENT→메타 분리, WEAK_TRIGGER/SCAFFOLDING→트리거(통과 시 'good' 톤), SECRET_DETECTED→시크릿), 런타임 호환 칩(compatibility.py TARGETS 3종 실데이터), 헤더 헬퍼 문구, composer 위 try-hint(dashed pill — 클릭 시 시험 요청 프리필), Credential/샌드박스/평가 메타 행
+  - 각색: 소스 "탭"(목업 5탭 IA는 Phase 2) → **레일 모드 전환**(상태 보기 ↔ 소스 보기, 저장 전 드래프트라 새 파일 API 필요), 목업 "5/5 통과" 고정 카운트 → pending/pass/warn/error 헤드 필, mint #009966 → Moldy 토큰(--primary/--status-*)
+  - 기각: 가짜 평가 숫자(86%→89%), composer 하드코딩 모델명/게이지/비용(이미 실데이터 존재), 자유 텍스트 안 chip-row(ask_user 소유), 목업 사이드냅(지식/데이터소스/테스트/배포 — Phase 1 범위 밖)
+- 구현 노트: 파일 API는 디스크 트래버설 표면 없이 어댑터 경로 목록과 **정확 일치**만 허용(`skill_file_not_found()` 재사용, inputs/·바이너리 제외 어댑터 계약 그대로). 레일 파일 목록은 라이브 brief 우선 + 파일 API 폴백(진입 직후/improve 시드의 빈 레일 해소 — 캡처 13에서 육안 검증). improve 부제는 base_skill_version 없으면 버전 표기 생략(railSubtitleImproveNoVersion — finalize 스킬은 frontmatter version 없으면 None). 파생 로직은 `skill-builder-rail-model.ts` 순수 함수로 분리(+단위 테스트 16). 스트림 종료 시 files 쿼리 invalidate.
+
 ## 마일스톤 의존
-M1 → M2 → M3 → {M4, M5 병렬 가능} → M6
+M1 → M2 → M3 → {M4, M5 병렬 가능} → M6 → M7

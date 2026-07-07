@@ -87,6 +87,10 @@ export function protocolSkillDraftBrief(event: ProtocolCustomEvent): SkillDraftB
     file_count: typeof payload.file_count === 'number' ? payload.file_count : 0,
     files: parseBriefFiles(payload.files),
     changed_count: typeof payload.changed_count === 'number' ? payload.changed_count : 0,
+    credential_requirement_count:
+      typeof payload.credential_requirement_count === 'number'
+        ? payload.credential_requirement_count
+        : 0,
   }
 }
 
