@@ -37,9 +37,9 @@
 
 | ID | 제목 | 카테고리 | 공수 |
 |----|------|----------|:---:|
-| BE-P1 | `GET /messages` 폴링 N+1 (interrupt 하이드레이션) | 성능 | M |
-| BE-P3 | 폴링 경로 MCP credential `FOR UPDATE` N+1 | 성능 | S~M |
-| BE-P5 | SSE 이벤트당 중복 비용 4종 (redaction 2회 등) | 성능 | M |
+| BE-P1 | ✅ `GET /messages` 폴링 N+1 (interrupt 하이드레이션) — Phase 1 완료 | 성능 | M |
+| BE-P3 | ✅ 폴링 경로 MCP credential `FOR UPDATE` N+1 — Phase 1 완료 | 성능 | S~M |
+| BE-P5 | 🔶 SSE 이벤트당 중복 비용 — (a) json.dumps·(c) 시크릿 정렬 완료, (b) 이중 redaction·(d) id 재로드·(e) inline flush 잔여 | 성능 | M |
 | BE-P2 | `GET /messages` 무제한 로드 → keyset 페이지네이션 | 성능 | L |
 | BE-S2 | MCP/tools/models 서비스 레이어 신설 (라우터 raw DB 제거) | 구조 | M |
 | BE-S7 | credentials 라우터 OAuth 로직 → oauth_service | 구조 | M |
@@ -56,8 +56,8 @@
 
 | ID | 제목 | 카테고리 | 공수 |
 |----|------|----------|:---:|
-| BE-P6 | FK 인덱스 5건 누락 (token_usages 등) — 마이그레이션 1개 | 성능 | S |
-| BE-P7 | checkpointer 풀 10 + 엔진 풀 기본값 → 설정 노출·상향 | 성능 | S~M |
+| BE-P6 | ✅ FK 인덱스 5건 (M67) — Phase 1 완료 | 성능 | S |
+| BE-P7 | ✅ checkpointer 풀 2/20 + 엔진 풀 설정 노출 — Phase 1 완료 | 성능 | S~M |
 | BE-P8 | health_check_history 무한 증가 (retention dead code) | 성능 | S |
 | BE-P9 | MCP health 폴링 직렬 → 병렬화+backoff | 성능 | M |
 | BE-P10 | 마켓 MCP 설치 툴당 SELECT N+1 | 성능 | S |

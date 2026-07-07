@@ -470,12 +470,21 @@ async def _hydrate_pending_interrupt_tool_calls(
         .where(MessageEvent.conversation_id == conversation_id)
         .order_by(MessageEvent.created_at)
     )
-    for record in result.scalars().all():
+    # BE-P1: this runs on every GET /messages poll — filter to qualifying
+    # records first, then load all their chunks in ONE batched query instead
+    # of one query per MessageEvent row (was 1+N on long conversations).
+    records = [
+        record
+        for record in result.scalars().all()
+        if any(mid in response_by_id for mid in (record.linked_message_ids or []))
+    ]
+    if not records:
+        return
+    events_by_record = await trace_storage.load_events_many(db, records)
+    for record in records:
         linked_ids = record.linked_message_ids or []
         target_responses = [response_by_id[mid] for mid in linked_ids if mid in response_by_id]
-        if not target_responses:
-            continue
-        events = await trace_storage.load_events(db, record)
+        events = events_by_record.get(record.id, [])
         payload = _latest_interrupt_payload(events)
         if payload is None:
             continue
@@ -565,7 +574,16 @@ async def collect_conversation_secret_values(
         logger.debug("secret-collect fallback chain skipped for %s", conversation.id, exc_info=True)
 
     try:
-        tools_config = await build_tools_config(agent, db=db, conversation_id=str(conversation.id))
+        # db=None on purpose (BE-P3): with a session, the MCP branch calls
+        # resolve_mcp_auth per tool — a SELECT … FOR UPDATE (row lock!) plus
+        # potential OAuth refresh WRITE per credential, on a GET-polled path.
+        # The light branch decrypts the credential rows already eager-loaded
+        # by _agent_runtime_load_options above, which is exactly what secret
+        # collection needs (mask what's stored; the live run path collects
+        # refreshed tokens itself).
+        tools_config = await build_tools_config(
+            agent, db=None, conversation_id=str(conversation.id)
+        )
         for tool_config in tools_config or []:
             if not isinstance(tool_config, dict):
                 continue

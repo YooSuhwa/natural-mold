@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -160,6 +161,19 @@ async def _load_existing_event_ids(db: AsyncSession, record: MessageEvent) -> se
     return ids
 
 
+def _dedupe_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for event in events:
+        event_id = event.get("id")
+        if isinstance(event_id, str) and event_id:
+            if event_id in seen:
+                continue
+            seen.add(event_id)
+        merged.append(event)
+    return merged
+
+
 async def load_events(db: AsyncSession, record: MessageEvent) -> list[dict[str, Any]]:
     """Return legacy row events plus append-only chunk events, deduped by id."""
 
@@ -171,17 +185,36 @@ async def load_events(db: AsyncSession, record: MessageEvent) -> list[dict[str, 
     )
     for chunk_events in result.scalars().all():
         events.extend(chunk_events or [])
+    return _dedupe_events(events)
 
-    seen: set[str] = set()
-    merged: list[dict[str, Any]] = []
-    for event in events:
-        event_id = event.get("id")
-        if isinstance(event_id, str) and event_id:
-            if event_id in seen:
-                continue
-            seen.add(event_id)
-        merged.append(event)
-    return merged
+
+async def load_events_many(
+    db: AsyncSession, records: Sequence[MessageEvent]
+) -> dict[uuid.UUID, list[dict[str, Any]]]:
+    """Batch variant of :func:`load_events` — one IN query for every record.
+
+    The poll-path interrupt hydration previously called ``load_events`` per
+    MessageEvent row (BE-P1: 1+N queries per GET /messages on long
+    conversations). The global (seq_start, created_at) ordering preserves each
+    record's own chunk order, so per-record extend matches the single-record
+    path exactly.
+    """
+
+    by_record: dict[uuid.UUID, list[dict[str, Any]]] = {
+        record.id: list(record.events or []) for record in records
+    }
+    if not by_record:
+        return {}
+    result = await db.execute(
+        select(MessageEventChunk.message_event_id, MessageEventChunk.events)
+        .where(MessageEventChunk.message_event_id.in_(by_record.keys()))
+        .order_by(MessageEventChunk.seq_start, MessageEventChunk.created_at)
+    )
+    for message_event_id, chunk_events in result.all():
+        bucket = by_record.get(message_event_id)
+        if bucket is not None:
+            bucket.extend(chunk_events or [])
+    return {record_id: _dedupe_events(events) for record_id, events in by_record.items()}
 
 
 async def finalize_turn(

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Mapping, Sequence
 from typing import Any, Final, NotRequired, TypedDict
 
@@ -47,11 +46,36 @@ class ProtocolInterrupt(TypedDict):
     ns: list[str]
 
 
+_JSON_SCALARS = (str, int, float, bool, type(None))
+
+
+def _ensure_jsonable(value: Any) -> None:
+    """Raise TypeError unless ``value`` is a JSON-compatible tree.
+
+    BE-P5: this used to be a full ``json.dumps`` whose output was discarded —
+    per event, so a ``values`` event re-encoded the entire graph state just to
+    validate it. The recursive type walk keeps the early-failure contract
+    (bad payloads still raise HERE, not later inside the DB flush) without
+    building the encoded string.
+    """
+
+    if isinstance(value, _JSON_SCALARS):
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, _JSON_SCALARS):
+                raise TypeError("protocol event data must be JSON serializable")
+            _ensure_jsonable(item)
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _ensure_jsonable(item)
+        return
+    raise TypeError("protocol event data must be JSON serializable")
+
+
 def _jsonable(value: Any) -> Any:
-    try:
-        json.dumps(value, ensure_ascii=False)
-    except (TypeError, ValueError) as exc:
-        raise TypeError("protocol event data must be JSON serializable") from exc
+    _ensure_jsonable(value)
     return value
 
 
