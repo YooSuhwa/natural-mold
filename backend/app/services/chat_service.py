@@ -470,12 +470,21 @@ async def _hydrate_pending_interrupt_tool_calls(
         .where(MessageEvent.conversation_id == conversation_id)
         .order_by(MessageEvent.created_at)
     )
-    for record in result.scalars().all():
+    # BE-P1: this runs on every GET /messages poll — filter to qualifying
+    # records first, then load all their chunks in ONE batched query instead
+    # of one query per MessageEvent row (was 1+N on long conversations).
+    records = [
+        record
+        for record in result.scalars().all()
+        if any(mid in response_by_id for mid in (record.linked_message_ids or []))
+    ]
+    if not records:
+        return
+    events_by_record = await trace_storage.load_events_many(db, records)
+    for record in records:
         linked_ids = record.linked_message_ids or []
         target_responses = [response_by_id[mid] for mid in linked_ids if mid in response_by_id]
-        if not target_responses:
-            continue
-        events = await trace_storage.load_events(db, record)
+        events = events_by_record.get(record.id, [])
         payload = _latest_interrupt_payload(events)
         if payload is None:
             continue
