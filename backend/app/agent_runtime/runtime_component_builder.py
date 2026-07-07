@@ -603,7 +603,7 @@ async def _prepare_skill_builder_components(
                 user_id=cfg.user_id,
                 agent_id=cfg.agent_id,
                 credential_subject_user_id=cfg.credential_subject_user_id,
-                include_sandbox=True,
+                include_runtime_tools=True,
             )
         )
     _append_temporal_tools(langchain_tools)

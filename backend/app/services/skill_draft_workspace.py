@@ -28,6 +28,7 @@ from app.storage.paths import ensure_relative, resolve_data_path
 if TYPE_CHECKING:
     from app.models.message_attachment import MessageAttachment
     from app.models.skill import Skill
+    from app.schemas.skill_builder import SkillDraftPackage
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,98 @@ def load_draft_files(storage_path: str) -> list[SkillDraftFile]:
             )
         )
     return files
+
+
+DRAFT_FALLBACK_SLUG = "draft"
+_SAFE_SLUG_RE_STR = r"[a-z0-9][a-z0-9_-]{0,63}"
+
+
+def draft_slug(files: Sequence[SkillDraftFile]) -> str:
+    """SKILL.md 프론트매터 ``name`` → 새니타이즈된 slug (실패 시 'draft').
+
+    LLM 저작 값이라 엄격히 새니타이즈한다 — 샌드박스 materialize가
+    ``runtime_root / slug``로 복사하므로 경로 성분이 섞이면 traversal.
+    """
+
+    import re
+
+    skill_md = next((f for f in files if f.path == "SKILL.md"), None)
+    if skill_md is None:
+        return DRAFT_FALLBACK_SLUG
+    from app.skills.inspector import SkillMetadataError, parse_skill_md
+
+    try:
+        parsed = parse_skill_md(skill_md.content, require_metadata=True)
+    except SkillMetadataError:
+        return DRAFT_FALLBACK_SLUG
+    raw = str(parsed["metadata"].get("name") or "").strip().lower()
+    match = re.fullmatch(_SAFE_SLUG_RE_STR, raw)
+    return match.group(0) if match else DRAFT_FALLBACK_SLUG
+
+
+def build_draft_package(storage_path: str) -> SkillDraftPackage:
+    """워크스페이스 디렉토리 → ``SkillDraftPackage`` (finalize 입력, M5).
+
+    name/description은 SKILL.md 프론트매터, credential_requirements/
+    execution_profile은 ``agents/moldy.yaml``에서 파생한다. 파싱 실패 시
+    자리표시자를 채워 confirm의 패키지 검증이 정확한 이슈를 보고하게 한다.
+    """
+
+    from app.schemas.skill_builder import SkillDraftPackage
+    from app.skills.inspector import SkillMetadataError, parse_skill_md
+    from app.skills.moldy_metadata import (
+        credential_requirements_from_metadata,
+        execution_profile_from_metadata,
+        load_moldy_metadata,
+    )
+
+    files = load_draft_files(storage_path)
+    name = "Draft Skill"
+    description = "(missing SKILL.md description)"
+    skill_md = next((f for f in files if f.path == "SKILL.md"), None)
+    if skill_md is not None:
+        try:
+            parsed = parse_skill_md(skill_md.content, require_metadata=True)
+            metadata = parsed["metadata"]
+            name = str(metadata.get("name") or name)
+            description = str(metadata.get("description") or description)
+        except SkillMetadataError:
+            pass
+
+    moldy_metadata, _issues = load_moldy_metadata({f.path: f for f in files})
+    return SkillDraftPackage(
+        name=name[:160],
+        slug=draft_slug(files),
+        description=description[:1000],
+        files=files,
+        credential_requirements=[
+            dict(item) for item in credential_requirements_from_metadata(moldy_metadata)
+        ],
+        execution_profile=dict(execution_profile_from_metadata(moldy_metadata)),
+    )
+
+
+def binary_package_files(storage_path: str) -> list[str]:
+    """패키지 콘텐츠(비-``inputs/``) 중 바이너리 파일 경로 목록.
+
+    finalize는 text-only 어댑터를 zip 소스로 쓰므로 바이너리는 조용히
+    누락된다 — improve 시드 원본에 바이너리 asset이 있으면 fail-closed로
+    안내하기 위한 탐지 (Phase 1.5: 디스크 기반 zip으로 해제).
+    """
+
+    root = resolve_workspace_dir(storage_path)
+    if not root.is_dir():
+        return []
+    found: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if relative.split("/", 1)[0] == INPUTS_DIR:
+            continue
+        if b"\x00" in path.read_bytes()[:_MAX_ADAPTER_FILE_BYTES]:
+            found.append(relative)
+    return found
 
 
 def draft_execution_profile(storage_path: str) -> dict[str, object]:

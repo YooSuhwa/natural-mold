@@ -162,3 +162,4 @@
 [2026-07-08T00:08] claude MILESTONE_DONE M2 — 워크스페이스 서비스(시드/첨부/어댑터/GC), 드래프트 마운트 권한(sibling deny), /uploads 수리(별도 커밋 1abdbe5a), GC 크론. 대상 121·전체 2566 그린
 [2026-07-08T00:29] claude MILESTONE_DONE M3 — 런타임 분기(prompt/도구/마운트/System LLM 재해석), validate_skill/generate_evals, moldy.skill_draft+skill_validation 이벤트+redaction 등록. 대상 113·전체 2578 그린. 수동 육안확인은 M6 E2E로 대체 예정
 [2026-07-08T00:58] claude MILESTONE_DONE M4 — test_skill_draft(샌드박스 상속+CODE_EXECUTION risk), 세션 동의(scope:session 기록→표준 approve 변환, requires_network 불가, 정책 제외), 승인 카드 동의 옵션(wire 플래그). backend 2589·vitest 1234 그린
+[2026-07-08T01:08] claude MILESTONE_DONE M5 — finalize_skill(v1 confirm 플로우 재사용: create/improve/SOURCE_SKILL_CHANGED/slug충돌/secret scan/바이너리 가드/멱등) + 감사 5종 + 딥링크. 대상 27·전체 2597 그린

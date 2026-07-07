@@ -46,11 +46,12 @@
 - 구현 노트: fabricated descriptor는 slug를 프론트매터에서 엄격 새니타이즈(traversal 방어), `agent_runtime_name=None`으로 non-agent 런타임 루트 강제(run_eval_skill_command slug 경로 일치), thread_id=`skill-draft-<sid>`(mtime 기반 runtime-root GC가 자동 청소). audit_kind `skill_builder.draft_test` 추가. 동의는 `conversation_agent_protocol_consent.py`가 resume 핸들러에서 **resolve_agent_context 이전**에 기록(AD-4 타이밍 — 동의 직후 resume부터 즉시 효력). requires_network는 기록/적용 양쪽 재검증. `session_consent_eligible` 플래그는 langchain ReviewConfig가 여분 키를 안 만들므로 wire 계층(`_annotate_session_consent_eligibility`)에서 주입 — **리로드(state 하이드레이션) 인터럽트에는 플래그 없음**(라이브 전용, v1 한계; 승인 자체는 가능). AD-3 과승인 방지로 빌더 분기의 write_file/edit_file 승인 카드 제외(M3 커밋의 기본 정책 잔재 수리).
 
 ## M5: finalize_skill + 감사
-- [ ] finalize: 검증 재실행→secret scan→claim→zip(synthetic Skill)→create/replace+리비전. 생성/개선/`SOURCE_SKILL_CHANGED`/slug 충돌 전 케이스
-- [ ] 감사 이벤트(confirm_create/apply_improvement/skill_revision.create/secret_scan_blocked/apply_conflict) + 완료 딥링크 페이로드
+- [x] finalize: 검증 재실행→secret scan→claim→zip→create/replace+리비전. 생성/개선/`SOURCE_SKILL_CHANGED`/slug 충돌 전 케이스
+- [x] 감사 이벤트(confirm_create/apply_improvement/skill_revision.create/secret_scan_blocked/apply_conflict) + 완료 딥링크 페이로드
 - 검증: `cd backend && uv run pytest -q -k "finalize or skill_builder_confirm"`
 - done-when: finalize 전 케이스 + 감사 테스트 그린
-- 상태: pending
+- 상태: done (2026-07-08) — 대상 27 그린, 전체 2597 그린, ruff 클린
+- 구현 노트: 스펙의 synthetic-Skill zip 대신 **v1 confirm 플로우 최대 재사용** — 워크스페이스→SkillDraftPackage(`build_draft_package`)→`save_draft_package`(REVIEW)→`claim_for_confirming`→`confirm_builder_session`(검증 재실행+secret scan+create/improve+리비전+eval 수거 전부 상속). 대신 어댑터가 text-only라 **바이너리 패키지 파일은 fail-closed**(`BINARY_FILES_UNSUPPORTED` — improve 시드 원본의 asset 조용한 누락 방지, Phase 1.5에서 디스크 기반 zip으로 해제). finalize_skill 도구는 WRITE_INTERNAL/approve·reject/trigger_safe=False — 항상 승인 카드, SESSION_CONSENT_ELIGIBLE_TOOLS 비포함. 멱등(completed 세션 재호출 시 기존 skill 반환). 감사는 도구 경로용 서비스(`skill_builder_finalize`)에서 v1 어휘 그대로 기록(request=None).
 
 ## M6: 프론트 라우트/레일 + 구경로 제거 + E2E
 - [ ] `/skills/builder/[sessionId]` 라우트 (ChatRuntimeSection 마운트) + 진입점 교체(create 탭/improve 버튼)

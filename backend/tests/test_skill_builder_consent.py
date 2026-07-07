@@ -332,7 +332,7 @@ def _sandbox_tools(session: SkillBuilderSession):
         user_id=str(TEST_USER_ID),
         agent_id=None,
         credential_subject_user_id=str(TEST_USER_ID),
-        include_sandbox=True,
+        include_runtime_tools=True,
     )
 
 
