@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable, Sequence
 from copy import deepcopy
@@ -248,6 +249,98 @@ HITL_EDIT_TOOL_CALL = {
         "api_key": "sk-live-9d8f7a6b5c4e3210fedcba98",
     },
 }
+# --- 스킬 빌더 챗 (skill-studio phase 1, M6 E2E) -----------------------------
+# 결정론 시퀀스: WRITE(드래프트 파일 2개 write_file — 빌더 분기는 파일 도구
+# 승인 카드를 제외하므로 즉시 실행) → VALIDATE(validate_skill) →
+# TEST(test_skill_draft, CODE_EXECUTION 승인 카드 + "이 세션에서 계속 허용") →
+# RETEST(동의 후 무카드 — args가 달라야 승인 카드 pill-strip 키와 충돌하지
+# 않는다, HITL_MULTI의 distinct-output 선례) → FINALIZE(finalize_skill, 항상
+# 승인 카드). WRITE 메시지는 마커 뒤에 워크스페이스 가상 경로를 실어 보낸다
+# (scripted model은 세션 id를 알 수 없다).
+SKILL_BUILDER_WRITE_MARKER = "E2E_SKILL_BUILDER_WRITE"
+SKILL_BUILDER_VALIDATE_MARKER = "E2E_SKILL_BUILDER_VALIDATE"
+SKILL_BUILDER_TEST_MARKER = "E2E_SKILL_BUILDER_TEST"
+SKILL_BUILDER_RETEST_MARKER = "E2E_SKILL_BUILDER_RETEST"
+SKILL_BUILDER_FINALIZE_MARKER = "E2E_SKILL_BUILDER_FINALIZE"
+_SKILL_DRAFT_PATH_RE = re.compile(r"/skill-drafts/[0-9a-fA-F-]{36}")
+SKILL_BUILDER_SANDBOX_OUTPUT = "E2E_DRAFT_SANDBOX_OK"
+SKILL_BUILDER_SKILL_MD = (
+    "---\n"
+    "name: e2e-notes\n"
+    'description: "Use when summarizing meeting notes into action items for the E2E tour."\n'
+    "---\n\n"
+    "Use when summarizing meeting notes. Run scripts/hello.py to verify the sandbox.\n"
+)
+SKILL_BUILDER_SCRIPT = f"print('{SKILL_BUILDER_SANDBOX_OUTPUT}')\n"
+SKILL_BUILDER_TEST_COMMAND = "python scripts/hello.py"
+SKILL_BUILDER_RETEST_COMMAND = "python scripts/hello.py --again"
+SKILL_BUILDER_WRITE_FINAL = "드래프트 파일을 작성했습니다. SKILL.md와 스크립트를 확인해 주세요."
+SKILL_BUILDER_VALIDATE_FINAL = "드래프트 검증을 실행했습니다. 오른쪽 레일에서 결과를 확인하세요."
+SKILL_BUILDER_TEST_FINAL = "드래프트 시험 실행이 끝났습니다."
+SKILL_BUILDER_FINALIZE_FINAL = "스킬을 저장했습니다. 스킬 목록에서 확인할 수 있어요."
+
+
+def _skill_builder_write_tool_calls(workspace: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "call_e2e_sb_write_skill_md",
+            "name": "write_file",
+            "args": {"file_path": f"{workspace}/SKILL.md", "content": SKILL_BUILDER_SKILL_MD},
+        },
+        {
+            "id": "call_e2e_sb_write_script",
+            "name": "write_file",
+            "args": {
+                "file_path": f"{workspace}/scripts/hello.py",
+                "content": SKILL_BUILDER_SCRIPT,
+            },
+        },
+    ]
+
+
+def _skill_builder_tool_calls(human_text: str) -> list[dict[str, Any]] | None:
+    """마커 → 이번 턴에 방출할 tool_calls (아니면 None)."""
+
+    if SKILL_BUILDER_WRITE_MARKER in human_text:
+        match = _SKILL_DRAFT_PATH_RE.search(human_text)
+        if match is None:
+            return None
+        return _skill_builder_write_tool_calls(match.group(0))
+    if SKILL_BUILDER_RETEST_MARKER in human_text:
+        return [
+            {
+                "id": "call_e2e_sb_retest",
+                "name": "test_skill_draft",
+                "args": {"command": SKILL_BUILDER_RETEST_COMMAND},
+            }
+        ]
+    if SKILL_BUILDER_TEST_MARKER in human_text:
+        return [
+            {
+                "id": "call_e2e_sb_test",
+                "name": "test_skill_draft",
+                "args": {"command": SKILL_BUILDER_TEST_COMMAND},
+            }
+        ]
+    if SKILL_BUILDER_VALIDATE_MARKER in human_text:
+        return [{"id": "call_e2e_sb_validate", "name": "validate_skill", "args": {}}]
+    if SKILL_BUILDER_FINALIZE_MARKER in human_text:
+        return [{"id": "call_e2e_sb_finalize", "name": "finalize_skill", "args": {}}]
+    return None
+
+
+def _skill_builder_final_content(human_text: str) -> str | None:
+    if SKILL_BUILDER_WRITE_MARKER in human_text:
+        return SKILL_BUILDER_WRITE_FINAL
+    if SKILL_BUILDER_VALIDATE_MARKER in human_text:
+        return SKILL_BUILDER_VALIDATE_FINAL
+    if SKILL_BUILDER_RETEST_MARKER in human_text or SKILL_BUILDER_TEST_MARKER in human_text:
+        return SKILL_BUILDER_TEST_FINAL
+    if SKILL_BUILDER_FINALIZE_MARKER in human_text:
+        return SKILL_BUILDER_FINALIZE_FINAL
+    return None
+
+
 TOOL_GROUP_MARKER = "E2E_TOOL_GROUP"
 # Generic tool-call grouping fixture. ONE AIMessage emits N≥2 *consecutive*
 # tool_calls of the SAME tool (``current_datetime`` ×3) plus ONE call of a
@@ -636,6 +729,10 @@ class E2EScriptedChatModel(BaseChatModel):
             if _is_rejected_tool_message(messages[-1]):
                 message = AIMessage(content=HITL_REJECTED_ACK_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
+            skill_builder_final = _skill_builder_final_content(human_text)
+            if skill_builder_final is not None:
+                message = AIMessage(content=skill_builder_final)
+                return ChatResult(generations=[ChatGeneration(message=message)])
             if _ui_data_marker_kind(human_text) is not None:
                 message = AIMessage(content=UI_DATA_DEMO_FINAL_CONTENT)
                 return ChatResult(generations=[ChatGeneration(message=message)])
@@ -712,6 +809,11 @@ class E2EScriptedChatModel(BaseChatModel):
                     }
                 ],
             )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+        skill_builder_calls = _skill_builder_tool_calls(human_text)
+        if skill_builder_calls is not None:
+            message = AIMessage(content="", tool_calls=skill_builder_calls)
             return ChatResult(generations=[ChatGeneration(message=message)])
 
         if _is_hitl_multi_request(human_text):
@@ -903,6 +1005,12 @@ class E2EScriptedChatModel(BaseChatModel):
 
 
 __all__ = [
+    "SKILL_BUILDER_FINALIZE_MARKER",
+    "SKILL_BUILDER_RETEST_MARKER",
+    "SKILL_BUILDER_SANDBOX_OUTPUT",
+    "SKILL_BUILDER_TEST_MARKER",
+    "SKILL_BUILDER_VALIDATE_MARKER",
+    "SKILL_BUILDER_WRITE_MARKER",
     "E2EScriptedChatModel",
     "ARTIFACT_SLOW_FINAL_MARKER",
     "CHAT_RICH_OUTPUT_CONTENT",

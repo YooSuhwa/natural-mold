@@ -54,13 +54,19 @@
 - 구현 노트: 스펙의 synthetic-Skill zip 대신 **v1 confirm 플로우 최대 재사용** — 워크스페이스→SkillDraftPackage(`build_draft_package`)→`save_draft_package`(REVIEW)→`claim_for_confirming`→`confirm_builder_session`(검증 재실행+secret scan+create/improve+리비전+eval 수거 전부 상속). 대신 어댑터가 text-only라 **바이너리 패키지 파일은 fail-closed**(`BINARY_FILES_UNSUPPORTED` — improve 시드 원본의 asset 조용한 누락 방지, Phase 1.5에서 디스크 기반 zip으로 해제). finalize_skill 도구는 WRITE_INTERNAL/approve·reject/trigger_safe=False — 항상 승인 카드, SESSION_CONSENT_ELIGIBLE_TOOLS 비포함. 멱등(completed 세션 재호출 시 기존 skill 반환). 감사는 도구 경로용 서비스(`skill_builder_finalize`)에서 v1 어휘 그대로 기록(request=None).
 
 ## M6: 프론트 라우트/레일 + 구경로 제거 + E2E
-- [ ] `/skills/builder/[sessionId]` 라우트 (ChatRuntimeSection 마운트) + 진입점 교체(create 탭/improve 버튼)
-- [ ] 검증 레일(훅+아톰+기존 패널 재사용) + i18n
-- [ ] 구경로 제거: SkillBuilderDialog/stream-skill-builder-message/workflow 가짜 SSE/one-pass graph/가짜 평가
-- [ ] E2E `E2E_SKILL_BUILDER` 마커 + 리로드 replay + 캡처 투어(스펙 §2 증빙)
+- [x] `/skills/builder/[sessionId]` 라우트 (ChatRuntimeSection 마운트) + 진입점 교체(create 탭/improve 버튼)
+- [x] 검증 레일(훅+아톰+기존 패널 재사용) + i18n
+- [x] 구경로 제거: SkillBuilderDialog/stream-skill-builder-message/workflow 가짜 SSE/one-pass graph/가짜 평가
+- [x] E2E `E2E_SKILL_BUILDER_*` 마커 + 리로드 replay + 캡처 투어(스펙 §2 증빙)
 - 검증: `cd frontend && pnpm build && pnpm vitest run` + E2E throwaway 스택(fresh ports) + `cd backend && uv run pytest`
 - done-when: 스펙 §2 성공 기준 6건 전부 충족, 전체 스위트 그린
-- 상태: pending
+- 상태: done (2026-07-08) — backend 2592 / vitest 1229 / tsc·eslint·pnpm build 그린, E2E `skill-builder-chat.spec.ts` 그린(21s) + 캡처 7장(`frontend/output/captures/skill-builder-chat/`, gitignore)
+- 구현 노트(M6-3):
+  - 마커는 5개로 분해: `E2E_SKILL_BUILDER_{WRITE,VALIDATE,TEST,RETEST,FINALIZE}` — WRITE 메시지에 워크스페이스 가상 경로를 실어 보낸다(scripted model은 세션 id를 모름). RETEST는 args가 달라야 승인 카드 pill-strip 키와 충돌하지 않는다(HITL_MULTI distinct-output 선례).
+  - **E2E system LLM**: `seed_e2e_scripted_model`이 text_primary 미설정 시 scripted 모델로 시드(기설정은 불변). `.env`의 `E2E_LLM_*`이 있으면 실 LiteLLM이 이기므로 **E2E 실행 시 `E2E_LLM_BASE_URL='' E2E_LLM_API_KEY='' E2E_LLM_MODEL=''`로 비워야** 결정론.
+  - E2E 함정 2건: ① 런 직후 Enter 전송이 무시될 수 있어 sendMessage 헬퍼(빈 값 확인+전송 버튼 폴백), ② 승인 resume 일시 실패 시 카드 재시도(hitl-approval.spec 계약). ③ finalize 카드는 직전 resolved 카드와 연속 request_approval 그룹("승인 대기 N건")으로 렌더될 수 있어 헤더 대신 finalize_skill 텍스트로 대기.
+  - E2E 재실행법: `docker run -d --name moldy-sbchat-pg -p 5436:5432 ... postgres:16-alpine` → alembic head → `E2E_FRONTEND_PORT=3310 E2E_BACKEND_PORT=8310 DATABASE_URL(_SYNC)=...5436... RATE_LIMIT_ENABLED=false E2E_TEST_HELPERS_ENABLED=true E2E_LLM_*='' pnpm exec playwright test e2e/skill-builder-chat.spec.ts`
+- 남은 백로그(Phase 1.5+): improve 충돌 후 re-seed, 바이너리 패키지 finalize(디스크 zip), 리로드 인터럽트의 세션 동의 플래그(라이브 전용), draft GC로 conversation 소실 시 재생성, create 탭 최초 요청의 자동 첫 메시지화.
 
 ## 마일스톤 의존
 M1 → M2 → M3 → {M4, M5 병렬 가능} → M6
