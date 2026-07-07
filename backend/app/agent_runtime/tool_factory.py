@@ -33,6 +33,7 @@ from app.agent_runtime.temporal import (
     parse_reference_datetime,
     resolve_relative_date_expression,
 )
+from app.agent_runtime.url_guard import BlockedUrlError, ensure_url_allowed
 from app.config import settings
 from app.hooks import HookContext, HookResult, hooks
 from app.http_ssl import get_outbound_ssl_context
@@ -145,6 +146,47 @@ def _build_web_search_tool() -> BaseTool:
     )
 
 
+# SEC-1 SSRF guard bounds for the web scraper: agent-supplied URLs are
+# validated per redirect hop, and the body download is capped so a hostile
+# page can't balloon memory before the 4000-char output truncation.
+_SCRAPE_MAX_REDIRECTS = 5
+_SCRAPE_MAX_BODY_BYTES = 2 * 1024 * 1024
+
+
+async def _fetch_scrape_response(client: httpx.AsyncClient, url: str) -> tuple[str, bytes, str]:
+    """GET ``url`` with per-hop SSRF validation and a bounded body read.
+
+    Redirects are followed manually (the shared client's follow_redirects
+    would hop to unvalidated targets). Returns (final_url, body, encoding).
+    """
+
+    target = url
+    for _ in range(_SCRAPE_MAX_REDIRECTS + 1):
+        await ensure_url_allowed(target)
+        async with client.stream("GET", target, follow_redirects=False) as resp:
+            if resp.is_redirect:
+                location = resp.headers.get("location")
+                if not location:
+                    raise httpx.HTTPStatusError(
+                        "redirect without Location", request=resp.request, response=resp
+                    )
+                target = str(httpx.URL(target).join(location))
+                continue
+            resp.raise_for_status()
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in resp.aiter_bytes():
+                remaining = _SCRAPE_MAX_BODY_BYTES - total
+                if len(chunk) >= remaining:
+                    chunks.append(chunk[:remaining])
+                    total += remaining
+                    break
+                chunks.append(chunk)
+                total += len(chunk)
+            return target, b"".join(chunks), resp.encoding or "utf-8"
+    raise BlockedUrlError(f"too many redirects (>{_SCRAPE_MAX_REDIRECTS})")
+
+
 def _build_web_scraper_tool() -> BaseTool:
     async def scrape_url(url: str) -> str:
         """웹 페이지의 텍스트 내용을 가져옵니다."""
@@ -156,12 +198,14 @@ def _build_web_scraper_tool() -> BaseTool:
 
         try:
             client = get_tool_http_client()
-            resp = await client.get(url)
-            resp.raise_for_status()
+            _final_url, body, encoding = await _fetch_scrape_response(client, url)
+        except BlockedUrlError as exc:
+            logger.warning("web_scraper blocked URL %r: %s", url, exc)
+            return f"Error: 허용되지 않는 주소입니다 — {exc}"
         except httpx.HTTPError as exc:
             return f"Error: 페이지를 가져올 수 없습니다 — {exc}"
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(body.decode(encoding, errors="replace"), "html.parser")
         for tag in soup(["script", "style", "nav", "footer", "header"]):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)
