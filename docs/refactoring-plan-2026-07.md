@@ -26,12 +26,12 @@
 
 | ID | 제목 | 카테고리 | 공수 |
 |----|------|----------|:---:|
-| SEC-1 | web_scraper SSRF 미수정 (§3 참고) | 보안 | S~M |
-| SEC-2 | rotate_credentials no-progress 무한루프 잔존 | 신뢰성 | S |
-| SEC-3 | 트리거 run-now 경로 중복실행 가드 부재 | 신뢰성 | S~M |
-| BE-P4 | bcrypt가 이벤트 루프 250ms 블로킹 → `asyncio.to_thread` | 성능 | S |
-| FE-D1 | 채팅/공유/대시보드 라우트 에러 바운더리 전무 | 신뢰성 | M |
-| IX-1 | CI 파이프라인 부재 (pyright는 현재 통과 상태 — 즉시 게이트 가능) | DevX | M |
+| SEC-1 | ✅ web_scraper SSRF 미수정 (§3 참고) — Phase 0 완료 | 보안 | S~M |
+| SEC-2 | ✅ rotate_credentials no-progress 무한루프 잔존 — Phase 0 완료 | 신뢰성 | S |
+| SEC-3 | ✅ 트리거 run-now 경로 중복실행 가드 부재 — Phase 0 완료 | 신뢰성 | S~M |
+| BE-P4 | ✅ bcrypt가 이벤트 루프 250ms 블로킹 → `asyncio.to_thread` — Phase 0 완료 | 성능 | S |
+| FE-D1 | ✅ 채팅/공유/대시보드 라우트 에러 바운더리 전무 — Phase 0 완료 | 신뢰성 | M |
+| IX-1 | ✅ CI 파이프라인 부재 — Phase 0 완료 (pyright는 968 기존 에러로 non-blocking 잡) | DevX | M |
 
 ### P1 — 임팩트 최대 (1~2 스프린트)
 
@@ -118,7 +118,7 @@
 
 의존 관계와 리스크를 고려한 순서. 각 Phase는 독립 브랜치/PR 묶음으로 진행하고, Phase 간 순서는 지키되 Phase 내부는 병렬 가능.
 
-- **Phase 0 — 안전망 (1주)**: SEC-1·2·3 + BE-P4 + FE-D1 + IX-1(CI). CI가 먼저 서야 이후 모든 리팩토링 PR이 자동 검증된다. pyright는 현재 exit 0(통과)이므로 바로 게이트에 넣을 수 있음.
+- **Phase 0 — 안전망 (1주)**: SEC-1·2·3 + BE-P4 + FE-D1 + IX-1(CI). CI가 먼저 서야 이후 모든 리팩토링 PR이 자동 검증된다. 주의: 전체 pyright는 968개 기존 에러(초기 "통과" 판단은 파이프라인 exit 코드 착오) — ruff+pytest만 하드 게이트, pyright는 non-blocking 잡.
 - **Phase 1 — hot path 성능 (1~2주)**: BE-P1 → BE-P3 → BE-P5 → BE-P6 → BE-P7 + Quick Wins 일괄. 전부 소규모 diff라 회귀 리스크 낮고 체감 효과 즉시.
 - **Phase 2 — 레이어링·경계 (2주)**: BE-S2 → BE-S7 → BE-D1 → BE-D2 → BE-D4. "명확한 정답"류라 리뷰 부담 적음. 이때 트랜잭션 정책(서비스 flush / 라우터 commit)을 전역 결정.
 - **Phase 3 — 갓 모듈 분해 (2~3주)**: BE-S1 → BE-S3 → FE-S2 → FE-S3 → FE-S4 → BE-S5. 전부 facade 기반 순수 이동 전략이라 기능 변화 0을 유지. 병행: FE-P1(컨텍스트 분리).
@@ -1049,7 +1049,7 @@
 ### [IX-1] CI 파이프라인 완전 부재 — 모든 게이트가 로컬 수동 실행에 의존
 - **우선순위 제안**: **P0** — 이 문서의 모든 리팩토링 PR이 CI 없이는 "전체 그린" 보장을 사람 손에 의존하게 됨. 리팩토링 착수 전 최우선.
 - **카테고리**: DevX
-- **증거**: `.github/workflows/` 디렉토리 없음(직접 확인). `.pre-commit-config.yaml`도 없음. 반면 게이트로 쓸 도구는 전부 준비됨: ruff(설정 존재), **pyright(현재 `uv run pyright` exit 0 — 즉시 통과)**, pytest 2,500+, vitest 1,183+, eslint 커스텀 가드(`lint:design-system`, `lint:a11y`, `lint:i18n`, `lint:frontend-architecture`).
+- **증거**: `.github/workflows/` 디렉토리 없음(직접 확인). `.pre-commit-config.yaml`도 없음. 반면 게이트로 쓸 도구는 전부 준비됨: ruff(설정 존재), pyright(전체 968 기존 에러 — non-blocking 잡으로 시작, 신규/수정 파일은 파일 단위 클린 유지), pytest 2,500+, vitest 1,183+, eslint 커스텀 가드(`lint:design-system`, `lint:a11y`, `lint:i18n`, `lint:frontend-architecture`).
 - **문제점**: 브랜치/PR마다 사람이 전체 스위트를 돌려야 하고, 잊으면 회귀가 main에 도달. CLAUDE.md 메모리에도 "머지 전 vitest 전체 그린 확인" 실패 사례가 기록돼 있음.
 - **리팩토링 방안**:
   1. `.github/workflows/ci.yml` 신설 — backend/frontend 2-job 분리, path filter로 무관 변경 스킵:
@@ -1340,7 +1340,7 @@
 ```bash
 # 백엔드 (backend/)
 uv run ruff check .                          # 린트
-uv run pyright                               # 타입체크 (현재 통과 상태 — 유지할 것)
+uv run pyright                               # 타입체크 — 전체 968 기존 에러: 수정 파일 단위로만 게이트, CI는 non-blocking
 uv run --with pytest-xdist pytest -q -n 4    # 전체 테스트 (aiosqlite, DB 불필요)
 uv run pytest -m integration                 # live PG 필요 시 (docker compose up -d postgres 선행)
 
