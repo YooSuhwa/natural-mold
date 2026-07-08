@@ -60,8 +60,9 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
     }, [result])
 
     const question = parsed?.question ?? args?.question ?? ''
+    // parsed는 도구 결과 JSON — options가 배열이 아닌 shape도 방어한다.
     const options =
-      parsed?.options ??
+      (Array.isArray(parsed?.options) ? parsed.options : undefined) ??
       ([args?.option_1, args?.option_2, args?.option_3, directInputLabel].filter(
         Boolean,
       ) as string[])

@@ -82,5 +82,19 @@
   - 기각: 가짜 평가 숫자(86%→89%), composer 하드코딩 모델명/게이지/비용(이미 실데이터 존재), 자유 텍스트 안 chip-row(ask_user 소유), 목업 사이드냅(지식/데이터소스/테스트/배포 — Phase 1 범위 밖)
 - 구현 노트: 파일 API는 디스크 트래버설 표면 없이 어댑터 경로 목록과 **정확 일치**만 허용(`skill_file_not_found()` 재사용, inputs/·바이너리 제외 어댑터 계약 그대로). 레일 파일 목록은 라이브 brief 우선 + 파일 API 폴백(진입 직후/improve 시드의 빈 레일 해소 — 캡처 13에서 육안 검증). improve 부제는 base_skill_version 없으면 버전 표기 생략(railSubtitleImproveNoVersion — finalize 스킬은 frontmatter version 없으면 None). 파생 로직은 `skill-builder-rail-model.ts` 순수 함수로 분리(+단위 테스트 16). 스트림 종료 시 files 쿼리 invalidate.
 
+## M8: 채팅 결함 근본 수정 + 실 LLM 검증
+- [x] M8-1 런 직후 Enter 드롭: `postRunHydrationPending`(런 종료 후 서버 상태 재조정)이 컴포저 런타임 `isRunning` 게이트에 OR — 하이드레이션 창에서 Enter가 조용히 드롭(전송 버튼은 Playwright auto-wait로만 통과해 보였음). 게이트에서 제외 — 메시지 연속성은 별도 `streamStateIsSettling`(sticky 레이어)이 유지. E2E sendMessage 폴백 제거(Enter 단독이 회귀 가드)
+- [x] M8-2 승인 resume 일시 실패: 인터럽트 SSE는 스트림 중 즉시 flush되지만 run "interrupted" 커밋은 `finalize_trace` 뒤 — 그 창에서 승인하면 RESUME_NOT_FOUND. ① 인터럽트 런은 상태 전이를 trace 영속화보다 먼저 커밋(양방향 순서 회귀 테스트), ② resume 핸들러가 활성 run의 전이를 최대 2s 대기(run이 아예 없으면 즉시 실패 — fast-fail 테스트). E2E approveWithRetry 제거 + hitl-approval.spec 재시도 허용 제거(재시도 문구=회귀)
+- [x] M8-3 "승인 대기 N건" 허수: 그룹 키가 도구명뿐이라 다른 인터럽트의 resolved+pending request_approval이 coalesce — 키에 `hitl_interrupt_id` suffix(`group-tool:request_approval:<id>`), 렌더는 `groupToolName`으로 도구명 복원. 캡처 09에서 단독 카드 확인 + E2E no-group 단언
+- [x] M8-4 실 LLM 검증: LiteLLM(text_primary, `seed_e2e_llm`이 scripted 뒤에 덮음) 실구동 — 요청→초안(4파일: SKILL.md/추출규칙 ref/openai.yaml/evals 3케이스)→검증→인라인 시험(승인 카드→날짜 해석 포함 표 출력)→finalize(승인→저장·배너·딥링크) **전 플로우 통과(2.6분)**. 프롬프트 품질 양호 — 튜닝 불필요 판정
+- [x] M8-4 수확 — **실 LLM 전용 크래시 3건 수정**: 스트리밍 부분 JSON args 무가드 배열 연산 (`write_todos` todos.filter → 채팅 전체 에러 바운더리 다운, `ask_user` questions/options .map, clarifying 카드 parsed.options). scripted 모델은 완성 args만 방출해 기존 E2E 전부 그린인 채 놓침. 방어 정규화 + red→green 회귀 4건(`partial-streaming-args.test.tsx`)
+- 검증: backend 2601(ruff 클린) / vitest 1245 / tsc·eslint·build 그린. E2E 기능 3/3(--retries=0) + hitl-approval + 캡처 투어 그린. red→green 검증: M8-1 유닛, M8-2 워커 순서·bounded wait, M8-4 가드
+- 상태: done (2026-07-08) — 커밋 764180bc(M8-1~3) + 후속 커밋(M8-4 가드)
+- **백로그(라이브 resume 뷰 전용 표시 결함 — 영속/리로드는 깨끗함을 DB·리로드 프로브로 확정)**:
+  - 실 LLM finalize 턴에서 사용자 버블 중복 렌더(라이브만, run/이벤트/리로드엔 1개)
+  - 실 LLM finalize 후 raw `finalize_skill` pill이 빨간 ✗로 잔존(성공인데 모순 표시; 리로드는 초록 ✓ — stripInterruptedRawToolCalls의 라이브 real-LLM resume 경로 미스)
+  - 승인 배지 위치: resolved synthetic 메시지가 대화 말미에 append되어 원 위치가 아닌 곳에 적층(scripted 캡처 10에서도 동일 — 기존 동작)
+  - E2E 인프라: dev 서버 콜드 런에서 컴포저 remount 순간 press가 끼면 Enter 1회 유실 가능(격리 3/3 통과 — 인프라 flake 분류, prod 빌드 무관)
+
 ## 마일스톤 의존
-M1 → M2 → M3 → {M4, M5 병렬 가능} → M6 → M7
+M1 → M2 → M3 → {M4, M5 병렬 가능} → M6 → M7 → M8

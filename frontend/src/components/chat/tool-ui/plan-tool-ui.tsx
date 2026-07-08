@@ -54,9 +54,24 @@ export const PlanToolUI = makeAssistantToolUI<WriteTodosArgs, string>({
   render: ({ args, status }) => <PlanToolView args={args} statusType={status.type} />,
 })
 
+// 스트리밍 중 tool-call args는 부분 JSON으로 도착한다 — `todos`가 배열이 되기
+// 전(문자열/객체 조각)에도 렌더가 호출되므로 Array.isArray + item shape 가드가
+// 없으면 실 LLM 경로에서 렌더 크래시가 난다 (M8-4에서 발견, scripted 모델은
+// 완성 args만 방출해 재현 불가).
+function normalizeTodoItems(args: WriteTodosArgs | undefined): TodoItem[] {
+  const raw = args?.todos ?? args?.items
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (item): item is TodoItem =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof (item as { content?: unknown }).content === 'string',
+  )
+}
+
 function PlanToolView({ args, statusType }: { args: WriteTodosArgs; statusType: string }) {
   const t = useTranslations('chat.toolCall.plan')
-  const items = args?.todos ?? args?.items ?? []
+  const items = normalizeTodoItems(args)
   const isRunning = statusType === 'running'
   const completed = items.filter((it) => it.status === 'completed').length
   const meta = isRunning
@@ -69,7 +84,8 @@ function PlanToolView({ args, statusType }: { args: WriteTodosArgs; statusType: 
     items.length > 0 ? (
       <div>
         {items.map((item, i) => {
-          const s = STATUS_MAP[item.status ?? 'pending']
+          // 부분 스트리밍 args의 status는 'in_prog' 같은 조각일 수 있다.
+          const s = STATUS_MAP[item.status ?? 'pending'] ?? STATUS_MAP.pending
           const isLast = i === items.length - 1
           return (
             <div key={i} className="flex items-start gap-2">
