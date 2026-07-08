@@ -281,7 +281,7 @@ async def _resolve_tool_ids(
             await db.execute(
                 select(Tool)
                 .where(Tool.definition_key.in_(definition_keys))
-                .where(or_(Tool.user_id == user_id, Tool.user_id.is_(None)))
+                .where(Tool.visible_to(user_id))
                 .where(Tool.enabled.is_(True))
                 .order_by(Tool.user_id.is_not(None).desc(), Tool.name.asc())
             )

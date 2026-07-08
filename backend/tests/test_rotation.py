@@ -6,6 +6,7 @@ async helper directly so we don't need a running scheduler.
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import uuid
 from unittest.mock import patch
@@ -46,9 +47,7 @@ def _restore_keys():
 
 
 @pytest.mark.asyncio
-async def test_rotation_re_encrypts_all_stale_rows(
-    _user: None, _restore_keys: None
-) -> None:
+async def test_rotation_re_encrypts_all_stale_rows(_user: None, _restore_keys: None) -> None:
     """Encrypt N rows with key A, swap active to key B, run rotation, expect
     every row's ``key_id`` to match B and an audit log per row."""
 
@@ -89,19 +88,21 @@ async def test_rotation_re_encrypts_all_stale_rows(
             assert row.key_id == active_b_id
 
         log_rows = (
-            await db.execute(
-                select(CredentialAuditLog).where(CredentialAuditLog.action == "rotate")
+            (
+                await db.execute(
+                    select(CredentialAuditLog).where(CredentialAuditLog.action == "rotate")
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(log_rows) == len(created)
         for log in log_rows:
             assert log.log_metadata == {"key_id": active_b_id}
 
 
 @pytest.mark.asyncio
-async def test_rotation_is_noop_when_already_active(
-    _user: None, _restore_keys: None
-) -> None:
+async def test_rotation_is_noop_when_already_active(_user: None, _restore_keys: None) -> None:
     """Re-running rotation when every row is already on the active key yields
     zero work and writes no audit log."""
 
@@ -125,8 +126,59 @@ async def test_rotation_is_noop_when_already_active(
 
     async with TestSession() as db:
         log_rows = (
-            await db.execute(
-                select(CredentialAuditLog).where(CredentialAuditLog.action == "rotate")
+            (
+                await db.execute(
+                    select(CredentialAuditLog).where(CredentialAuditLog.action == "rotate")
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert log_rows == []
+
+
+@pytest.mark.asyncio
+async def test_rotation_terminates_when_rows_keep_failing(_user: None, _restore_keys: None) -> None:
+    """A full batch of persistently failing rows must not spin the loop
+    forever: failed ids are excluded from the next fetch, so the job
+    finishes (rotated=0) and leaves the rows for the next scheduled run.
+
+    Batch is patched to 2 with 3 failing rows so the pre-fix code path
+    (re-fetching the same full batch endlessly) would hang; wait_for turns
+    a regression into a test failure instead of a hung suite.
+    """
+
+    key_a = secrets.token_hex(32)
+    key_b = secrets.token_hex(32)
+    _swap_keys(key_a)
+
+    async with TestSession() as db:
+        for idx in range(3):
+            await credential_service.create(
+                db,
+                user_id=TEST_USER_ID,
+                definition_key="openai",
+                name=f"fail-{idx}",
+                data={"api_key": f"sk-{idx}"},
+            )
+        await db.commit()
+
+    _swap_keys(key_b, key_a)
+
+    async def _always_fail(db: AsyncSession, cred: Credential) -> None:
+        raise RuntimeError("decrypt failed")
+
+    with (
+        patch("app.scheduler.async_session", TestSession),
+        patch("app.scheduler._ROTATION_BATCH", 2),
+        patch.object(credential_service, "re_encrypt_with_active_key", _always_fail),
+    ):
+        rotated = await asyncio.wait_for(rotate_credentials_to_active_key(), timeout=10)
+
+    assert rotated == 0
+
+    # Rows stay on the stale key — untouched, retried next run.
+    async with TestSession() as db:
+        rows = (await db.execute(select(Credential))).scalars().all()
+        active_id = key_provider.get_active_key_id()
+        assert all(row.key_id != active_id for row in rows)

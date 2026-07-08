@@ -14,8 +14,18 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://moldy:moldy@localhost:5432/moldy"
     database_url_sync: str = "postgresql://moldy:moldy@localhost:5432/moldy"
-    checkpointer_pool_min_size: int = 1
-    checkpointer_pool_max_size: int = 10
+    # LangGraph checkpointer pool (psycopg AsyncConnectionPool) is shared by
+    # every stream write AND read poll — max 10 serialized unrelated requests
+    # under concurrent slow runs (documented in CLAUDE.md), so warm 2 / cap 20.
+    checkpointer_pool_min_size: int = 2
+    checkpointer_pool_max_size: int = 20
+    # SQLAlchemy engine pool (BE-P7). Library defaults were 5+10 with no
+    # recycle; managed Postgres drops idle connections, so recycle at 30min.
+    # Applied only for postgresql URLs (sqlite pools reject these knobs).
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    db_pool_timeout: int = 30
+    db_pool_recycle: int = 1800
 
     # LLM API Keys
     openai_api_key: str = ""

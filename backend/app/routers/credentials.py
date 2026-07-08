@@ -46,6 +46,12 @@ from app.dependencies import (
     require_super_user,
     verify_csrf,
 )
+from app.error_codes import (
+    credential_forbidden,
+    credential_not_found,
+    system_credential_not_found,
+    unknown_credential_definition,
+)
 from app.models.credential import Credential
 from app.models.credential_oauth_state import CredentialOAuthState
 from app.schemas.credential import (
@@ -107,7 +113,7 @@ def _request_meta(request: Request) -> tuple[str | None, str | None]:
 async def _load_owned(db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID) -> Credential:
     cred = await credential_service.get_for_user(db, credential_id, user_id)
     if cred is None:
-        raise HTTPException(status_code=404, detail="credential not found")
+        raise credential_not_found()
     return cred
 
 
@@ -136,7 +142,7 @@ async def list_credential_types() -> list[CredentialDefinitionSchema]:
 async def get_credential_type(key: str) -> CredentialDefinitionSchema:
     definition = registry.get(key)
     if definition is None:
-        raise HTTPException(status_code=404, detail=f"unknown definition '{key}'")
+        raise unknown_credential_definition(key)
     return CredentialDefinitionSchema(**definition.serialize())
 
 
@@ -244,7 +250,7 @@ async def delete_credential(
 async def _load_system(db: AsyncSession, credential_id: uuid.UUID) -> Credential:
     cred = await credential_service.get_system(db, credential_id)
     if cred is None:
-        raise HTTPException(status_code=404, detail="system credential not found")
+        raise system_credential_not_found()
     return cred
 
 
@@ -419,7 +425,7 @@ async def discover_models(
         # owns system credentials, so allow discovery against them here.
         cred = await credential_service.get_system(db, credential_id)
     if cred is None:
-        raise HTTPException(status_code=404, detail="credential not found")
+        raise credential_not_found()
     try:
         results = await model_discovery.discover_from_credential(db, cred)
     except ValueError as exc:
@@ -732,12 +738,12 @@ async def oauth2_callback(
     result = await db.execute(select(Credential).where(Credential.id == credential_id))
     cred = result.scalar_one_or_none()
     if cred is None:
-        raise HTTPException(status_code=404, detail="credential not found")
+        raise credential_not_found()
     # Verify the credential belongs to the user who started the OAuth flow.
     # Prevents a scenario where an attacker with a known state token could
     # complete another user's OAuth flow and update their credential.
     if cred.user_id != pending.user_id:
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise credential_forbidden()
     definition = registry.get(cred.definition_key)
     if definition is None or definition.pre_authentication is None:
         raise HTTPException(

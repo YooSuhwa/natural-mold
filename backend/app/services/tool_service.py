@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.mcp_server import McpServer
@@ -31,7 +31,7 @@ async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[s
 
     tool_rows = await db.execute(
         select(Tool.id, Tool.name, Tool.description, Tool.definition_key).where(
-            or_(Tool.user_id == user_id, Tool.user_id.is_(None))
+            Tool.visible_to(user_id)
         )
     )
     items: list[dict[str, Any]] = [
@@ -71,9 +71,7 @@ async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[s
     )
 
     skill_rows = await db.execute(
-        select(Skill.id, Skill.name, Skill.description, Skill.slug).where(
-            Skill.user_id == user_id
-        )
+        select(Skill.id, Skill.name, Skill.description, Skill.slug).where(Skill.user_id == user_id)
     )
     items.extend(
         {

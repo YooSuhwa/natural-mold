@@ -26,7 +26,7 @@ class MessageAttachment(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True, index=True
     )
     # Backed by LangGraph checkpoint id (no FK). Nullable until the user
     # actually sends the message that references this upload.

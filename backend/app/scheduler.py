@@ -231,24 +231,38 @@ async def rotate_credentials_to_active_key() -> int:
 
     active_key_id = get_active_key_id()
     rotated = 0
+    # Rows that failed re-encryption keep their stale key_id, so without an
+    # exclusion a batch of >=_ROTATION_BATCH persistent failures would be
+    # re-fetched forever (the len(rows) < batch guard never trips). Excluding
+    # failed ids guarantees progress: every iteration either rotates a row
+    # (drops out via key_id) or marks it failed (drops out via notin_).
+    failed_ids: set[uuid.UUID] = set()
 
     while True:
         async with async_session() as db:
-            result = await db.execute(
-                select(Credential).where(Credential.key_id != active_key_id).limit(_ROTATION_BATCH)
-            )
+            stmt = select(Credential).where(Credential.key_id != active_key_id)
+            if failed_ids:
+                stmt = stmt.where(Credential.id.notin_(failed_ids))
+            result = await db.execute(stmt.limit(_ROTATION_BATCH))
             rows = list(result.scalars().all())
             if not rows:
-                return rotated
+                break
             for cred in rows:
                 try:
                     await credential_service.re_encrypt_with_active_key(db, cred)
                     rotated += 1
                 except Exception:  # noqa: BLE001 — keep rotation moving
+                    failed_ids.add(cred.id)
                     logger.exception("credential %s rotation failed; will retry next run", cred.id)
             await db.commit()
         if len(rows) < _ROTATION_BATCH:
-            return rotated
+            break
+    if failed_ids:
+        logger.warning(
+            "credential rotation finished with %d failed rows; they will be retried next run",
+            len(failed_ids),
+        )
+    return rotated
 
 
 def _register_cron_job(

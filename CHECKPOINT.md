@@ -7,7 +7,7 @@
 원칙: 마일스톤 완료마다 커밋. push 검증 시 `SKILL_EVALUATION_ENABLED=true`.
 
 ## M1: 히든 빌더 에이전트 + 세션 v2
-- [x] 마이그레이션 2종: `agents.runtime_profile`(default 'standard', m67), `skill_builder_sessions`에 `conversation_id` FK + `draft_workspace_path` (+`tool_consents` JSON) (m68)
+- [x] 마이그레이션 2종: `agents.runtime_profile`(default 'standard', m68 — 머지 시 main의 m67_hotpath 위로 재번호), `skill_builder_sessions`에 `conversation_id` FK + `draft_workspace_path` (+`tool_consents` JSON) (m69)
 - [x] **노출 표면 전수 grep**: 에이전트 목록/요약/대시보드/일일 집계/네비게이터에서 `runtime_profile!='standard'` 제외 (스펙 §11-1 확정)
 - [x] `PUT/DELETE /api/agents/{id}` → 비표준 profile은 404 (enumeration-safe)
 - [x] 히든 에이전트 lazy-seed + start v2 엔드포인트 (세션+워크스페이스+draft conversation 생성)

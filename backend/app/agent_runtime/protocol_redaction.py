@@ -7,7 +7,7 @@ from typing import Any, Final
 
 from app.agent_runtime.memory_event_projection import MEMORY_EVENT_NAMES, MEMORY_TOOL_NAMES
 from app.agent_runtime.run_secrets import get_run_secrets
-from app.marketplace.redaction import replace_secret_values
+from app.marketplace.redaction import prepare_secret_values, replace_prepared_secret_values
 
 REDACTED_MEMORY_FIELD: Final = "<redacted>"
 REDACTED_SENSITIVE_FIELD: Final = "<redacted>"
@@ -226,7 +226,9 @@ def _mask_known_values(data: Any, secret_values: Iterable[str] | None) -> Any:
 
     if not secret_values:
         return data
-    secrets = tuple(secret_values)
+    # BE-P5: filter + length-desc sort once per pass — the recursion below
+    # hits every string node, and per-node re-sorting dominated event CPU.
+    secrets = prepare_secret_values(secret_values)
     if not secrets:
         return data
     return _mask_values_recursive(data, secrets)
@@ -244,7 +246,7 @@ def _mask_values_recursive(data: Any, secrets: tuple[str, ...]) -> Any:
         # secrets as sibling keys are rare.
         return {
             (
-                replace_secret_values(key, secrets, placeholder=REDACTED_SENSITIVE_FIELD)
+                replace_prepared_secret_values(key, secrets, placeholder=REDACTED_SENSITIVE_FIELD)
                 if isinstance(key, str)
                 else key
             ): _mask_values_recursive(value, secrets)
@@ -253,7 +255,7 @@ def _mask_values_recursive(data: Any, secrets: tuple[str, ...]) -> Any:
     if isinstance(data, Sequence) and not isinstance(data, str | bytes | bytearray):
         return [_mask_values_recursive(item, secrets) for item in data]
     if isinstance(data, str):
-        return replace_secret_values(data, secrets, placeholder=REDACTED_SENSITIVE_FIELD)
+        return replace_prepared_secret_values(data, secrets, placeholder=REDACTED_SENSITIVE_FIELD)
     return data
 
 

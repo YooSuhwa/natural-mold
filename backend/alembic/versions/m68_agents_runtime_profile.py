@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "m67_agents_runtime_profile"
-down_revision = "m66_template_skill_slugs"
+revision = "m68_agents_runtime_profile"
+down_revision = "m67_hotpath_fk_indexes"
 branch_labels = None
 depends_on = None
 

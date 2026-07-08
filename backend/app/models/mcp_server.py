@@ -42,7 +42,7 @@ class McpServer(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
     name: Mapped[str] = mapped_column(String(150), nullable=False)
@@ -72,9 +72,7 @@ class McpServer(Base):
         "Credential", lazy="select", foreign_keys="[McpServer.credential_id]"
     )
 
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default=_Status.UNKNOWN
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=_Status.UNKNOWN)
     last_pinged_at: Mapped[datetime | None] = mapped_column(nullable=True)
     last_tool_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

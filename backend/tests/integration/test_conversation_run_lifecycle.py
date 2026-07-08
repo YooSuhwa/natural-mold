@@ -59,7 +59,10 @@ async def _wait_for_run_status(
     run_id: str,
     status: str,
     *,
-    timeout_seconds: float = 2.0,
+    # 2s flaked on CI (2-core runner + xdist -n 4 starves the background
+    # worker task — PR #280 first run). The poll returns as soon as the
+    # status lands, so a generous deadline costs nothing when healthy.
+    timeout_seconds: float = 15.0,
 ) -> ConversationRun:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds

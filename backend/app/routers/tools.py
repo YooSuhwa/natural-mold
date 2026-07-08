@@ -21,6 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials.validation import require_user_credential
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.error_codes import (
+    tool_not_found,
+    unknown_tool_definition,
+)
 from app.models.tool import Tool
 from app.schemas.tool import (
     ToolCreate,
@@ -65,12 +69,12 @@ async def _load_owned(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) 
             select(Tool).where(
                 Tool.id == tool_id,
                 # Either owned by the current user or a system-owned (NULL) tool.
-                (Tool.user_id == user_id) | (Tool.user_id.is_(None)),
+                Tool.visible_to(user_id),
             )
         )
     ).scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=404, detail="tool not found")
+        raise tool_not_found()
     return row
 
 
@@ -86,7 +90,7 @@ async def list_tool_types() -> list[ToolDefinitionSchema]:
 async def get_tool_type(key: str) -> ToolDefinitionSchema:
     definition = tool_registry.get(key)
     if definition is None:
-        raise HTTPException(status_code=404, detail=f"unknown definition '{key}'")
+        raise unknown_tool_definition(key)
     return ToolDefinitionSchema(**definition.serialize())
 
 
@@ -100,7 +104,7 @@ async def list_tools(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[ToolInstanceResponse]:
-    stmt = select(Tool).where((Tool.user_id == user.id) | (Tool.user_id.is_(None)))
+    stmt = select(Tool).where(Tool.visible_to(user.id))
     if definition_key is not None:
         stmt = stmt.where(Tool.definition_key == definition_key)
     if enabled is not None:

@@ -30,17 +30,17 @@ def _load_module(filename: str) -> ModuleType:
 
 
 def test_m67_revision_chain() -> None:
-    mod = _load_module("m67_agents_runtime_profile.py")
-    assert mod.revision == "m67_agents_runtime_profile"
-    assert mod.down_revision == "m66_template_skill_slugs"
+    mod = _load_module("m68_agents_runtime_profile.py")
+    assert mod.revision == "m68_agents_runtime_profile"
+    assert mod.down_revision == "m67_hotpath_fk_indexes"
     assert callable(mod.upgrade)
     assert callable(mod.downgrade)
 
 
 def test_m68_revision_chain() -> None:
-    mod = _load_module("m68_skill_builder_sessions_v2.py")
-    assert mod.revision == "m68_skill_builder_sessions_v2"
-    assert mod.down_revision == "m67_agents_runtime_profile"
+    mod = _load_module("m69_skill_builder_sessions_v2.py")
+    assert mod.revision == "m69_skill_builder_sessions_v2"
+    assert mod.down_revision == "m68_agents_runtime_profile"
     assert callable(mod.upgrade)
     assert callable(mod.downgrade)
 
@@ -53,13 +53,11 @@ async def test_m67_upgrade_downgrade_roundtrip_sqlite() -> None:
 
     from alembic import op as alembic_op
 
-    mod = _load_module("m67_agents_runtime_profile.py")
+    mod = _load_module("m68_agents_runtime_profile.py")
     engine = create_engine("sqlite://")
     try:
         with engine.connect() as conn:
-            conn.exec_driver_sql(
-                "CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT)"
-            )
+            conn.exec_driver_sql("CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT)")
             conn.exec_driver_sql("INSERT INTO agents (id, name) VALUES ('a1', 'A')")
 
             ctx = MigrationContext.configure(conn)
@@ -89,38 +87,30 @@ async def test_m68_upgrade_downgrade_roundtrip_sqlite() -> None:
 
     from alembic import op as alembic_op
 
-    mod = _load_module("m68_skill_builder_sessions_v2.py")
+    mod = _load_module("m69_skill_builder_sessions_v2.py")
     engine = create_engine("sqlite://")
     try:
         with engine.connect() as conn:
             conn.exec_driver_sql("CREATE TABLE conversations (id TEXT PRIMARY KEY)")
-            conn.exec_driver_sql(
-                "CREATE TABLE skill_builder_sessions (id TEXT PRIMARY KEY)"
-            )
+            conn.exec_driver_sql("CREATE TABLE skill_builder_sessions (id TEXT PRIMARY KEY)")
 
             ctx = MigrationContext.configure(conn)
             alembic_op._proxy = Operations(ctx)
 
             mod.upgrade()
             inspector = inspect(conn)
-            columns = {
-                c["name"] for c in inspector.get_columns("skill_builder_sessions")
-            }
+            columns = {c["name"] for c in inspector.get_columns("skill_builder_sessions")}
             assert {
                 "conversation_id",
                 "draft_workspace_path",
                 "tool_consents",
             } <= columns
-            indexes = {
-                i["name"] for i in inspector.get_indexes("skill_builder_sessions")
-            }
+            indexes = {i["name"] for i in inspector.get_indexes("skill_builder_sessions")}
             assert "ix_skill_builder_sessions_conversation" in indexes
 
             mod.downgrade()
             inspector = inspect(conn)
-            columns = {
-                c["name"] for c in inspector.get_columns("skill_builder_sessions")
-            }
+            columns = {c["name"] for c in inspector.get_columns("skill_builder_sessions")}
             assert "conversation_id" not in columns
             assert "draft_workspace_path" not in columns
             assert "tool_consents" not in columns

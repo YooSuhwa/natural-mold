@@ -15,10 +15,10 @@ class TokenUsage(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     agent_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
     )
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False)

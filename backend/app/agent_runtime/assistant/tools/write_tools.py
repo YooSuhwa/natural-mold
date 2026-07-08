@@ -31,7 +31,7 @@ import uuid
 from typing import Any
 
 from langchain_core.tools import StructuredTool
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
@@ -87,7 +87,7 @@ def build_write_tools(
 
             result = await session.execute(
                 select(Tool).where(
-                    or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
+                    Tool.visible_to(user_id),
                     func.lower(Tool.name).in_(lower_names),
                 )
             )

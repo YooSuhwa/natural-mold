@@ -11,6 +11,7 @@ from app.error_codes import (
     agent_not_found,
     invalid_schedule_config,
     invalid_trigger_type,
+    trigger_already_running,
     trigger_not_found,
 )
 from app.models.agent_trigger import AgentTrigger
@@ -168,7 +169,10 @@ async def run_trigger_now(
 
     from app.agent_runtime.trigger_executor import execute_trigger
 
-    run = await execute_trigger(str(trigger_id), force=True)
+    try:
+        run = await execute_trigger(str(trigger_id), force=True)
+    except trigger_service.TriggerRunInFlightError:
+        raise trigger_already_running() from None
     if run is None:
         raise trigger_not_found()
     await _record_trigger_audit(

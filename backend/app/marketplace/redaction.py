@@ -69,12 +69,39 @@ def replace_secret_values(
 
     if not text or not secret_values:
         return text
+    return replace_prepared_secret_values(
+        text, prepare_secret_values(secret_values), placeholder=placeholder
+    )
 
+
+def prepare_secret_values(secret_values: Iterable[str] | None) -> tuple[str, ...]:
+    """Filter + length-desc sort ONCE for a whole redaction pass (BE-P5).
+
+    ``replace_secret_values`` rebuilds the unique set and re-sorts per call;
+    recursive walkers hitting every string node of an event payload should
+    prepare once and use :func:`replace_prepared_secret_values` per node.
+    """
+
+    if not secret_values:
+        return ()
     unique = {
         value for value in secret_values if isinstance(value, str) and len(value) >= _MIN_REDACT_LEN
     }
+    return tuple(sorted(unique, key=len, reverse=True))
+
+
+def replace_prepared_secret_values(
+    text: str,
+    prepared: tuple[str, ...],
+    *,
+    placeholder: str,
+) -> str:
+    """Exact-substring replace using a :func:`prepare_secret_values` result."""
+
+    if not text or not prepared:
+        return text
     out = text
-    for value in sorted(unique, key=len, reverse=True):
+    for value in prepared:
         if value in out:
             out = out.replace(value, placeholder)
     return out
@@ -146,7 +173,9 @@ def redact_keys(payload: Any) -> Any:
 
 __all__ = [
     "is_sensitive_key",
+    "prepare_secret_values",
     "redact_credential_values",
     "redact_keys",
+    "replace_prepared_secret_values",
     "replace_secret_values",
 ]

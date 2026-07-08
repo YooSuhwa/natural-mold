@@ -55,8 +55,8 @@ class TestErrorHandlers:
         body = response.json()
         assert body == {
             "error": {
-                "code": "HTTP_404",
-                "message": "tool not found",
+                "code": "TOOL_NOT_FOUND",
+                "message": "도구를 찾을 수 없습니다",
             }
         }
 
