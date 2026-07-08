@@ -149,22 +149,18 @@ async def list_skill_builder_files(
 ) -> SkillBuilderFilesResponse:
     """드래프트 워크스페이스 파일 목록 (레일 소스 뷰, M7).
 
-    어댑터(``load_draft_files``) 경유라 ``inputs/`` 제외·바이너리 skip이
-    자동 적용되고, 디스크 경로를 직접 다루지 않아 traversal 표면이 없다.
+    어댑터와 동일 필터(``inputs/`` 제외·바이너리 skip)의 stat 기반 열거라
+    워크스페이스 전체 바이트를 읽지 않고(R2 perf), 디스크 경로를 직접
+    다루지 않아 traversal 표면이 없다.
     """
 
     session = await get_session_or_404(db, session_id=session_id, user=user)
     if not session.draft_workspace_path:
         return SkillBuilderFilesResponse(files=[])
-    files = skill_draft_workspace.load_draft_files(session.draft_workspace_path)
+    entries = skill_draft_workspace.list_draft_file_entries(session.draft_workspace_path)
     return SkillBuilderFilesResponse(
         files=[
-            SkillBuilderFileEntry(
-                path=file.path,
-                size=len(file.content.encode("utf-8")),
-                role=file.role,
-            )
-            for file in files
+            SkillBuilderFileEntry(path=path, size=size, role=role) for path, size, role in entries
         ]
     )
 
@@ -185,8 +181,7 @@ async def get_skill_builder_file_content(
     session = await get_session_or_404(db, session_id=session_id, user=user)
     if not session.draft_workspace_path:
         raise skill_file_not_found()
-    files = skill_draft_workspace.load_draft_files(session.draft_workspace_path)
-    match = next((file for file in files if file.path == path), None)
+    match = skill_draft_workspace.load_draft_file_content(session.draft_workspace_path, path)
     if match is None:
         raise skill_file_not_found()
     return SkillBuilderFileContentResponse(path=match.path, role=match.role, content=match.content)

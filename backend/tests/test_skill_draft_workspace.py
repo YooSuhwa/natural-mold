@@ -37,11 +37,15 @@ async def _make_session(
     status: str,
     age_hours: int,
     with_workspace: bool = True,
+    with_conversation: bool = False,
 ) -> SkillBuilderSession:
     session = SkillBuilderSession(
         user_id=TEST_USER_ID,
         user_request="test",
         status=status,
+        # 실제 v2 플로우는 start에서 대화를 attach한다 — conversation 없는 오래된
+        # 세션은 dead로 간주되어 abandoned 전이 대상 (R2). aiosqlite는 FK 미강제.
+        conversation_id=uuid.uuid4() if with_conversation else None,
     )
     db.add(session)
     await db.flush()
@@ -205,11 +209,13 @@ async def test_load_draft_files_missing_dir_returns_empty() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_gc_preserves_active_and_recent_sessions(
-    db: AsyncSession, tmp_path: Path
-) -> None:
-    active_old = await _make_session(db, status="active", age_hours=999)
-    confirming_old = await _make_session(db, status="confirming", age_hours=999)
+async def test_gc_preserves_active_and_recent_sessions(db: AsyncSession, tmp_path: Path) -> None:
+    # 리텐션(24h)은 지났지만 abandon 지평(14d) 안쪽 + 대화가 살아 있는 세션 —
+    # 재개 가능하므로 보존된다 (AD-2, R2 이후 보존은 abandon 지평까지).
+    active_old = await _make_session(db, status="active", age_hours=48, with_conversation=True)
+    confirming_old = await _make_session(
+        db, status="confirming", age_hours=48, with_conversation=True
+    )
     completed_recent = await _make_session(db, status="completed", age_hours=1)
 
     removed = await workspace.gc_stale_draft_workspaces(db, retention_hours=24)
@@ -220,12 +226,10 @@ async def test_gc_preserves_active_and_recent_sessions(
         assert workspace.resolve_workspace_dir(session.draft_workspace_path).is_dir()
 
 
-async def test_gc_removes_stale_completed_and_abandoned(
-    db: AsyncSession, tmp_path: Path
-) -> None:
+async def test_gc_removes_stale_completed_and_abandoned(db: AsyncSession, tmp_path: Path) -> None:
     completed_old = await _make_session(db, status="completed", age_hours=48)
     abandoned_old = await _make_session(db, status="abandoned", age_hours=48)
-    active_old = await _make_session(db, status="active", age_hours=48)
+    active_old = await _make_session(db, status="active", age_hours=48, with_conversation=True)
 
     removed = await workspace.gc_stale_draft_workspaces(db, retention_hours=24)
 
@@ -239,9 +243,7 @@ async def test_gc_removes_stale_completed_and_abandoned(
     assert remaining == {str(active_old.id)}
 
 
-async def test_gc_removes_orphan_dirs_without_session_row(
-    db: AsyncSession, tmp_path: Path
-) -> None:
+async def test_gc_removes_orphan_dirs_without_session_row(db: AsyncSession, tmp_path: Path) -> None:
     import os
 
     orphan_id = uuid.uuid4()
@@ -263,3 +265,38 @@ async def test_gc_removes_orphan_dirs_without_session_row(
 async def test_gc_rejects_non_positive_retention(db: AsyncSession) -> None:
     with pytest.raises(ValueError, match="retention_hours"):
         await workspace.gc_stale_draft_workspaces(db, retention_hours=0)
+
+
+async def test_gc_marks_dead_sessions_abandoned(db: AsyncSession, tmp_path: Path) -> None:
+    """R2 회귀: 대화가 소실된(conversation_id NULL) 비완료 세션은 리텐션 경과 시
+    abandoned로 전이된다 — 전이 경로가 없으면 GC_DELETABLE_STATUSES의 abandoned가
+    죽은 규칙이 되어 이탈 세션 워크스페이스가 영구 누수한다."""
+
+    dead = await _make_session(db, status="active", age_hours=48, with_conversation=False)
+    fresh = await _make_session(db, status="active", age_hours=1, with_conversation=False)
+
+    await workspace.gc_stale_draft_workspaces(db, retention_hours=24)
+
+    await db.refresh(dead)
+    await db.refresh(fresh)
+    assert dead.status == "abandoned"
+    # 방금 만든(attach 전 창) 세션은 보존.
+    assert fresh.status == "active"
+    # 전이 시 updated_at이 갱신되므로 이번 패스에선 워크스페이스가 남고,
+    # 다음 리텐션 경과 후 회수된다 (2단계 회수).
+    assert dead.draft_workspace_path is not None
+
+
+async def test_gc_marks_long_idle_sessions_abandoned(db: AsyncSession, tmp_path: Path) -> None:
+    """R2 회귀: 대화가 살아 있어도 skill_draft_abandon_days(기본 14일) 미활동이면
+    abandoned로 전이해 무기한 누수를 막는다."""
+
+    idle = await _make_session(db, status="active", age_hours=15 * 24, with_conversation=True)
+    within = await _make_session(db, status="active", age_hours=13 * 24, with_conversation=True)
+
+    await workspace.gc_stale_draft_workspaces(db, retention_hours=24)
+
+    await db.refresh(idle)
+    await db.refresh(within)
+    assert idle.status == "abandoned"
+    assert within.status == "active"

@@ -90,11 +90,18 @@
 - [x] M8-4 수확 — **실 LLM 전용 크래시 3건 수정**: 스트리밍 부분 JSON args 무가드 배열 연산 (`write_todos` todos.filter → 채팅 전체 에러 바운더리 다운, `ask_user` questions/options .map, clarifying 카드 parsed.options). scripted 모델은 완성 args만 방출해 기존 E2E 전부 그린인 채 놓침. 방어 정규화 + red→green 회귀 4건(`partial-streaming-args.test.tsx`)
 - 검증: backend 2601(ruff 클린) / vitest 1245 / tsc·eslint·build 그린. E2E 기능 3/3(--retries=0) + hitl-approval + 캡처 투어 그린. red→green 검증: M8-1 유닛, M8-2 워커 순서·bounded wait, M8-4 가드
 - 상태: done (2026-07-08) — 커밋 764180bc(M8-1~3) + 후속 커밋(M8-4 가드)
-- **백로그(라이브 resume 뷰 전용 표시 결함 — 영속/리로드는 깨끗함을 DB·리로드 프로브로 확정, /review에서 원인 확정)**:
-  - 사용자 버블 중복(라이브만): **onNew가 post-run 하이드레이션 폴을 종료하지 않는 비대칭이 원인** — onCancel은 `hydrationCanceledRef`+`wasLoadingRef` 리셋, onEdit/onReload는 effect 의존성 재실행으로 폴 취소되는데 onNew만 `clearServerHydrationState()`뿐이라 직전 런의 in-flight 폴이 `handleThreadState(replaceMessages:true)`로 stale 스냅샷을 재주입하며 낙관 버블과 레이스(`use-moldy-langgraph-stream.ts` onNew ↔ 2434-2493 폴링). M8-1이 하이드레이션 창의 전송을 열면서 잠재 레이스가 노출됨. 수정: onNew도 onCancel과 동일하게 폴 종료 + in-flight `.then`을 ref로 가드
-  - raw `finalize_skill` pill 빨간 ✗ 잔존(라이브만): 유력 원인 — 인터럽트가 메시지로 resolved 판정되어 active 목록에서 빠진 뒤엔 strip 키가 `resolvedInterrupts` 기록에만 의존하는데, `rememberResolvedInterrupt`가 `allInterruptPayloadsById` miss 시 조기 return하여 기록 실패 → strip no-op(`hitl-interrupts.ts:487-514` ↔ stream 2776-2790). 결정 시점 payload 캡처로 기록을 확정하는 방향
+- **백로그 → R(리뷰 수정)에서 해소**: 사용자 버블 중복(onNew 하이드레이션 폴 미종료)과 raw `finalize_skill` pill 빨간 ✗ 잔존(resolved 기록의 payload 재조회 miss) 모두 R1/R3에서 수정, 실 LLM 투어로 픽셀 검증 완료(pill-check-live.png — 버블 1개·pill 0개). 잔여:
   - 승인 배지 위치: resolved synthetic 메시지가 대화 말미에 append되어 원 위치가 아닌 곳에 적층(scripted 캡처 10에서도 동일 — 기존 동작)
-  - E2E 인프라: dev 서버 콜드 런에서 컴포저 remount 순간 press가 끼면 Enter 1회 유실 가능(격리 3/3 통과 — 인프라 flake 분류, prod 빌드 무관)
+  - E2E 인프라: dev 서버 콜드 런에서 컴포저 remount 순간 press가 끼면 Enter 1회 유실 가능(격리·웜 반복 통과 — 인프라 flake 분류, prod 빌드 무관)
+
+## R: /review 발견 일괄 수정 (High 1 + Medium 5 + Low 8 + 테스트 공백)
+- [x] R1(High) onNew 하이드레이션 폴 종료: onCancel과 동일한 ref 리셋 + `settlePostRunHydration()` + in-flight `.then/.catch` ref 가드 — 하이드레이션 창 전송 시 stale 스냅샷 재주입/버블 중복 해소. red→green 유닛 + 실 LLM 픽셀 검증
+- [x] R2(백엔드): ① 트리거 경로 히든 필터 + `_map_trigger_validation`에 agent-not-found 404 매핑(스케줄 오류로 삼키던 기존 결함도 수리) ② `abandoned` 전이 wire — dead 세션(conversation NULL)+리텐션, 장기 idle(`skill_draft_abandon_days`=14) 2규칙, AD-2 보존 정책을 "abandon 지평 내 보존"으로 갱신 ③ 파일 API stat 기반 전환(`list_draft_file_entries`/`load_draft_file_content` — 8KB sniff, 전체 바이트 미독) ④ finalize 도구 경로 CONFIRMING 게이트(REST와 동일; conflict 시 REVIEW 복귀 확인) ⑤ 세션↔대화 조회 limit(1) ×2 ⑥ test_skill_draft 턴-내 requires_network fail-closed(동의 활성+network flip 시 거부) ⑦ favorite/image 뮤테이션 히든 가드 ⑧ 블루프린트 이름 해석+write_tools add_subagent 히든 필터 ⑨ 빌더 런 /conversations 권한 제외(아티팩트 라이브러리 노출 차단) ⑩ 드래프트 allow "skill-drafts/ 하위" 불변식(위반 시 ValueError) ⑪ bounded wait 후 `db.refresh`(identity-map stale)
+- [x] R3(프론트): ① 상태행 "기타 검사 N건" 폴백 + moldyMetadata 버킷 확장(CREDENTIAL_ENV_/UNKNOWN_CREDENTIAL_/NETWORK_PROFILE_MISSING/MOLDY_ONLY_FRONTMATTER) — 헤드/상세 모순 해소 ② 고아 제거(preview-insights/preview-model 423줄 + `skill.builderDialog` ko/en 41키×2) ③ `skillQueryKeys.all` 팩토리 ④ `rememberResolvedInterrupt` 결정 시점 payload 캡처(respond 후 재조회 miss 방어) — 실 LLM으로 raw pill 부재 검증
+- [x] R4(테스트): `E2E_SKILL_BUILDER_FINALIZE_CONFLICT` 마커 + 충돌 E2E(원본 외부 수정→finalize→에이전트 설명→세션 미완료·원본 hash 무손상 — §2-3 에러 경로), 리로드 replay에 트랜스크립트 버블 복원 단언(§2-5)
+- 검증: backend 2607+ / vitest 1247 / tsc·eslint·i18n·디자인 가드(12=베이스)·build 그린. E2E 기능 2케이스 웜 4/4(--retries=0) + hitl-approval. 실 LLM 단축 투어(버블 1개·pill 0개) 통과. 신규 회귀 테스트 ~10건(red→green: R1 유닛, 권한 2, 트리거, GC 2, consent fail-closed)
+- 상태: done (2026-07-08)
+- 함정 노트: throwaway DB를 실 LLM 투어와 공유하면 `seed_e2e_llm`이 text_primary를 LiteLLM으로 영속시켜 이후 scripted E2E가 조용히 실 모델로 돈다(마커 무시, 첫 턴부터 어긋남) — **scripted 검증 전 DB 재생성 필수**
 
 ## 마일스톤 의존
 M1 → M2 → M3 → {M4, M5 병렬 가능} → M6 → M7 → M8

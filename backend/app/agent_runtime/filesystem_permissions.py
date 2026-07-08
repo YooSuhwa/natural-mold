@@ -59,13 +59,17 @@ def build_filesystem_permissions(
             )
         )
 
-    permissions.append(
-        FilesystemPermission(
-            operations=["read", "write"],
-            paths=_path_and_descendants(f"/conversations/{thread_id}"),
-            mode="allow",
+    # 빌더(드래프트 마운트) 런은 conversation 트리에 쓸 이유가 없다 — 부여하면
+    # user-visible 파일이 아티팩트로 인덱싱되어 히든 에이전트 이름이 라이브러리에
+    # 노출될 수 있다. 드래프트 워크스페이스가 유일한 쓰기 표면이다.
+    if not draft_workspace_path:
+        permissions.append(
+            FilesystemPermission(
+                operations=["read", "write"],
+                paths=_path_and_descendants(f"/conversations/{thread_id}"),
+                mode="allow",
+            )
         )
-    )
 
     if agent_id:
         permissions.append(
@@ -77,10 +81,18 @@ def build_filesystem_permissions(
         )
 
     if draft_workspace_path:
+        stripped = draft_workspace_path.strip("/")
+        # 불변식 가드: 빈 문자열이면 _path_and_descendants가 "/**" allow를
+        # 만들어 first-match-wins로 전체 FS가 열린다. 서버 생성 경로라 위반은
+        # 버그이므로 fail-closed.
+        if not stripped or not stripped.startswith("skill-drafts/"):
+            raise ValueError(
+                f"draft_workspace_path must live under skill-drafts/: {draft_workspace_path!r}"
+            )
         permissions.append(
             FilesystemPermission(
                 operations=["read", "write"],
-                paths=_path_and_descendants(f"/{draft_workspace_path.strip('/')}"),
+                paths=_path_and_descendants(f"/{stripped}"),
                 mode="allow",
             )
         )

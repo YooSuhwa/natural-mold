@@ -534,6 +534,56 @@ describe('useMoldyLangGraphStream', () => {
     expect(runtimeOptions.isRunning).toBe(false)
   })
 
+  it('onNew cancels in-flight post-run hydration polling (R1)', async () => {
+    // 하이드레이션 창에서 새 메시지를 보내면 직전 런의 in-flight 폴은 즉시
+    // 종료되어야 한다 — 살아 있으면 늦게 resolve된 stale 서버 스냅샷이
+    // replaceMessages로 재주입되어 낙관 사용자 버블과 중복 렌더된다.
+    let resolveState: (value: unknown) => void = () => {}
+    const stateCalls = () =>
+      mocks.apiFetch.mock.calls.filter(([path]) => String(path).endsWith('/state')).length
+    mocks.apiFetch.mockImplementation((path: unknown) => {
+      if (String(path).endsWith('/state')) {
+        return new Promise((resolve) => {
+          resolveState = resolve
+        })
+      }
+      return Promise.resolve({ metadata: {}, values: { messages: [] } })
+    })
+    mocks.stream.isLoading = false
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hydrate-new',
+          conversationId: 'conversation-hydrate-new',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    await act(async () => {})
+    mocks.stream.isLoading = true
+    // 스트림에 assistant 메시지를 남겨 하이드레이션 준비 판정이 재시도를 타게 한다.
+    mocks.stream.messages = [new AIMessage({ id: 'assistant-live-1', content: '응답' })]
+    rerender()
+    await act(async () => {})
+    mocks.stream.isLoading = false
+    rerender()
+    await waitFor(() => expect(stateCalls()).toBe(1))
+
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onNew: (message: { content: { type: string; text: string }[] }) => Promise<void>
+    }
+    await act(async () => {
+      await runtimeOptions.onNew({ content: [{ type: 'text', text: '다음 질문' }] })
+    })
+    // 늦게 도착한 폴 응답은 드롭 — 재시도 폴링(150ms 간격)이 없어야 한다.
+    await act(async () => {
+      resolveState({ metadata: {}, values: { messages: [] } })
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 350))
+    })
+    expect(stateCalls()).toBe(1)
+  })
+
   it('does not start post-run hydration polling when the user cancels the run', async () => {
     mocks.stream.isLoading = false
     const { rerender } = renderHook(

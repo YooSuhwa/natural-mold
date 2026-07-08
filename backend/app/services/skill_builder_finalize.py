@@ -68,6 +68,13 @@ async def finalize_draft_session(
     if not session.draft_workspace_path:
         return _error("DRAFT_WORKSPACE_MISSING", "draft workspace is not attached")
 
+    # REST /confirm과 동일한 상태 게이트(R2) — save_draft_package가 상태를
+    # 무조건 REVIEW로 리셋하므로, 게이트 없이 동시 finalize B의 save가 A의
+    # CONFIRMING claim을 되돌려 이중 confirm이 가능해진다 (run 뮤텍스로
+    # 완화되나 도구 경로 자체도 닫는다).
+    if session.status == SkillBuilderStatus.CONFIRMING.value:
+        return _error("SESSION_CONFIRMING", "another finalize is already in progress")
+
     binaries = workspace.binary_package_files(session.draft_workspace_path)
     if binaries:
         # text-only 어댑터가 zip 소스라 바이너리는 조용히 누락된다 — improve

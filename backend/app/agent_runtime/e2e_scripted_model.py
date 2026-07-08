@@ -262,6 +262,8 @@ SKILL_BUILDER_VALIDATE_MARKER = "E2E_SKILL_BUILDER_VALIDATE"
 SKILL_BUILDER_TEST_MARKER = "E2E_SKILL_BUILDER_TEST"
 SKILL_BUILDER_RETEST_MARKER = "E2E_SKILL_BUILDER_RETEST"
 SKILL_BUILDER_FINALIZE_MARKER = "E2E_SKILL_BUILDER_FINALIZE"
+# CONFLICT는 FINALIZE를 부분 문자열로 포함 — 매처에서 반드시 먼저 검사(RETEST 선례).
+SKILL_BUILDER_FINALIZE_CONFLICT_MARKER = "E2E_SKILL_BUILDER_FINALIZE_CONFLICT"
 _SKILL_DRAFT_PATH_RE = re.compile(r"/skill-drafts/[0-9a-fA-F-]{36}")
 SKILL_BUILDER_SANDBOX_OUTPUT = "E2E_DRAFT_SANDBOX_OK"
 SKILL_BUILDER_SKILL_MD = (
@@ -278,6 +280,10 @@ SKILL_BUILDER_WRITE_FINAL = "드래프트 파일을 작성했습니다. SKILL.md
 SKILL_BUILDER_VALIDATE_FINAL = "드래프트 검증을 실행했습니다. 오른쪽 레일에서 결과를 확인하세요."
 SKILL_BUILDER_TEST_FINAL = "드래프트 시험 실행이 끝났습니다."
 SKILL_BUILDER_FINALIZE_FINAL = "스킬을 저장했습니다. 스킬 목록에서 확인할 수 있어요."
+SKILL_BUILDER_FINALIZE_CONFLICT_FINAL = (
+    "원본 스킬이 세션 시작 후 변경되어 저장하지 못했습니다. "
+    "최신 버전에서 개선 세션을 다시 시작해 주세요."
+)
 
 
 def _skill_builder_write_tool_calls(workspace: str) -> list[dict[str, Any]]:
@@ -324,6 +330,8 @@ def _skill_builder_tool_calls(human_text: str) -> list[dict[str, Any]] | None:
         ]
     if SKILL_BUILDER_VALIDATE_MARKER in human_text:
         return [{"id": "call_e2e_sb_validate", "name": "validate_skill", "args": {}}]
+    if SKILL_BUILDER_FINALIZE_CONFLICT_MARKER in human_text:
+        return [{"id": "call_e2e_sb_finalize_conflict", "name": "finalize_skill", "args": {}}]
     if SKILL_BUILDER_FINALIZE_MARKER in human_text:
         return [{"id": "call_e2e_sb_finalize", "name": "finalize_skill", "args": {}}]
     return None
@@ -336,6 +344,10 @@ def _skill_builder_final_content(human_text: str) -> str | None:
         return SKILL_BUILDER_VALIDATE_FINAL
     if SKILL_BUILDER_RETEST_MARKER in human_text or SKILL_BUILDER_TEST_MARKER in human_text:
         return SKILL_BUILDER_TEST_FINAL
+    if SKILL_BUILDER_FINALIZE_CONFLICT_MARKER in human_text:
+        # 도구가 SOURCE_SKILL_CHANGED를 반환한 뒤 "에이전트가 사용자에게 설명"
+        # 하는 §2-3 계약의 결정론 재현.
+        return SKILL_BUILDER_FINALIZE_CONFLICT_FINAL
     if SKILL_BUILDER_FINALIZE_MARKER in human_text:
         return SKILL_BUILDER_FINALIZE_FINAL
     return None

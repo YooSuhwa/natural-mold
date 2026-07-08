@@ -379,3 +379,42 @@ async def test_test_skill_draft_carries_code_execution_risk(db: AsyncSession) ->
     assert risk.risk_level.value == "code_execution"
     assert list(risk.allowed_decisions) == ["approve", "reject"]
     assert risk.trigger_safe is False
+
+
+async def test_test_skill_draft_fails_closed_on_intraturn_network_flip(
+    db: AsyncSession,
+) -> None:
+    """R2 회귀: 세션 동의는 run 시작 시 non-network 드래프트에만 적용되는데,
+    같은 턴에서 에이전트가 agents/moldy.yaml에 requires_network를 추가하면
+    승인 카드 없이 네트워크 샌드박스가 열린다 — 도구가 실행 시점 프로필을
+    재검증해 fail-closed로 거부해야 한다."""
+
+    session = await _make_session(db)
+    root = workspace.resolve_workspace_dir(session.draft_workspace_path or "")
+    (root / "scripts").mkdir()
+    (root / "scripts" / "hello.py").write_text("print('X')\n", encoding="utf-8")
+    # 동의 활성(consented_tools) 상태에서 턴 내 network flip 재현.
+    (root / "agents").mkdir(exist_ok=True)
+    (root / "agents" / "moldy.yaml").write_text(_NETWORK_MOLDY_YAML, encoding="utf-8")
+
+    tools = build_skill_builder_tools(
+        session_id=str(session.id),
+        workspace_path=session.draft_workspace_path or "",
+        session_factory=TestSession,
+        user_id=str(TEST_USER_ID),
+        agent_id=None,
+        credential_subject_user_id=str(TEST_USER_ID),
+        include_runtime_tools=True,
+        consented_tools=["test_skill_draft"],
+    )
+    tool = next(t for t in tools if t.name == "test_skill_draft")
+
+    result = await tool.ainvoke({"command": "python scripts/hello.py"})
+
+    assert result.startswith("Error")
+    assert "network" in result
+    # 동의 없이(승인 카드 경유) 실행되는 경로는 그대로 실행된다.
+    tools_no_consent = _sandbox_tools(session)
+    tool_no_consent = next(t for t in tools_no_consent if t.name == "test_skill_draft")
+    ok = await tool_no_consent.ainvoke({"command": "python scripts/hello.py"})
+    assert "X" in ok

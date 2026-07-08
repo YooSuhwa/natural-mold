@@ -247,6 +247,7 @@ async def toggle_favorite(
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
         raise agent_not_found()
+    _require_standard_profile(agent)
     updated = await agent_service.toggle_favorite(db, agent)
     await audit_service.record_event(
         db,
@@ -309,6 +310,7 @@ async def generate_agent_image(
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
         raise agent_not_found()
+    _require_standard_profile(agent)
     try:
         image_url = await image_service.generate_agent_image(db, agent)
     except ValueError as e:

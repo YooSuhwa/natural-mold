@@ -373,3 +373,51 @@ def test_agent_scoped_filesystem_permissions_require_user_identity() -> None:
             user_id=None,
             selected_skill_slugs=[],
         )
+
+
+def test_builder_run_denies_conversation_tree_writes() -> None:
+    """R2 회귀: 드래프트 마운트 런은 /conversations 쓰기 권한을 받지 않는다 —
+    부여하면 히든 빌더 에이전트의 산출물이 아티팩트로 인덱싱되어 라이브러리에
+    노출될 수 있다. 일반 런의 conversation allow는 그대로 유지."""
+
+    from deepagents.middleware.filesystem import _check_fs_permission
+
+    from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
+
+    builder = build_filesystem_permissions(
+        thread_id="thread-b",
+        agent_id="agent-b",
+        user_id="user-b",
+        selected_skill_slugs=[],
+        draft_workspace_path="skill-drafts/session-9",
+    )
+    assert _check_fs_permission(builder, "write", "/conversations/thread-b/out.md") == "deny"
+    assert _check_fs_permission(builder, "read", "/conversations/thread-b/out.md") == "deny"
+
+    standard = build_filesystem_permissions(
+        thread_id="thread-b",
+        agent_id="agent-b",
+        user_id="user-b",
+        selected_skill_slugs=[],
+    )
+    assert _check_fs_permission(standard, "write", "/conversations/thread-b/out.md") == "allow"
+
+
+def test_malformed_draft_workspace_path_fails_closed() -> None:
+    """R2 회귀: strip 후 빈 경로나 skill-drafts/ 밖 경로는 ValueError —
+    빈 문자열이 통과하면 `/**` allow가 전체 FS를 연다 (불변식 가드)."""
+
+    import pytest as _pytest
+
+    from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
+
+    # 빈 문자열은 falsy라 마운트 자체가 생략된다(안전) — raise 대상 아님.
+    for bad in ("/", "uploads/evil", "skill-drafts"):
+        with _pytest.raises(ValueError):
+            build_filesystem_permissions(
+                thread_id="thread-c",
+                agent_id="agent-c",
+                user_id="user-c",
+                selected_skill_slugs=[],
+                draft_workspace_path=bad,
+            )

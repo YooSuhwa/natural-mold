@@ -166,3 +166,4 @@
 [2026-07-08T02:03] claude MILESTONE_DONE M6 — 라우트/레일/진입점 교체(M6-1), 구경로 제거(M6-2), E2E 마커+스펙+캡처 7장(M6-3). 전체 스위트 그린 + E2E 21s 그린. 스펙 §2 성공 기준 6건 충족
 [2026-07-08T08:41] claude MILESTONE_DONE M7 빌더 뷰 디자인 정합 — 목업 감사(차용/각색/기각) + 파일 API + 상태카드 레일/소스 뷰어/try-hint. backend 2597, vitest 1237, E2E 기능+캡처 17장 그린
 [2026-07-08T10:45] claude MILESTONE_DONE M8 — 채팅 결함 3건 근본수정(Enter 드롭 게이트/resume 레이스 전이순서+bounded wait/그룹키 인터럽트 경계) + 실 LLM 전 플로우 검증 통과(2.6분) + 실 LLM 전용 부분-args 크래시 3건 수정. backend 2601/vitest 1245/E2E 그린
+[2026-07-08T13:20] claude MILESTONE_DONE R — /review 발견 전량 수정(High 1·Medium 5·Low 8·테스트 공백 3). 실 LLM 픽셀 검증(버블 중복·빨간✗ pill 해소). backend 2607/vitest 1247/E2E 웜 4/4 그린

@@ -13,10 +13,12 @@ import type { SkillBuilderFileEntry } from '@/lib/types/skill-builder'
 export type StatusTone = 'pass' | 'good' | 'warn' | 'error' | 'pending' | 'none'
 
 export interface StatusRow {
-  readonly key: 'frontmatter' | 'moldyMetadata' | 'trigger' | 'secrets'
+  readonly key: 'frontmatter' | 'moldyMetadata' | 'trigger' | 'secrets' | 'other'
   readonly tone: StatusTone
   /** 이슈에서 온 부가 설명 (첫 이슈 메시지). */
   readonly detail: string | null
+  /** 'other' 행 전용 — 미분류 이슈 개수 (라벨 보간). */
+  readonly count?: number
 }
 
 export interface HeadState {
@@ -92,11 +94,23 @@ export function deriveStatusRows(validation: unknown): StatusRow[] {
     issues.filter((issue) => prefixes.some((prefix) => issue.code.startsWith(prefix)))
 
   const frontmatter = byPrefix(['SKILL_MD_', 'INVALID_PATH'])
-  const moldyMetadata = byPrefix(['MOLDY_METADATA', 'CREDENTIAL_REQUIREMENT'])
+  const moldyMetadata = byPrefix([
+    'MOLDY_METADATA',
+    'MOLDY_ONLY_FRONTMATTER',
+    'CREDENTIAL_REQUIREMENT',
+    'CREDENTIAL_ENV_',
+    'UNKNOWN_CREDENTIAL_',
+    'NETWORK_PROFILE_MISSING',
+  ])
   const trigger = byPrefix(['WEAK_TRIGGER_DESCRIPTION', 'SCAFFOLDING_MARKER'])
   const secrets = byPrefix(['SECRET_DETECTED'])
+  // 폴백 행(R3): 헤드 pill은 전체 error/warning 카운트를 쓰는데 상세 행이
+  // 부분집합만 매핑하면 "오류 1 / 상세 전부 통과" 모순이 생긴다 — 위 버킷에
+  // 안 잡힌 유의미(비-info) 이슈는 "기타 검사 N건"으로 노출한다.
+  const bucketed = new Set([...frontmatter, ...moldyMetadata, ...trigger, ...secrets])
+  const other = issues.filter((issue) => !bucketed.has(issue) && issue.severity !== 'info')
 
-  return [
+  const rows: StatusRow[] = [
     { key: 'frontmatter', tone: rowTone(frontmatter, 'pass'), detail: firstMessage(frontmatter) },
     {
       key: 'moldyMetadata',
@@ -107,6 +121,15 @@ export function deriveStatusRows(validation: unknown): StatusRow[] {
     { key: 'trigger', tone: rowTone(trigger, 'good'), detail: firstMessage(trigger) },
     { key: 'secrets', tone: rowTone(secrets, 'pass'), detail: firstMessage(secrets) },
   ]
+  if (other.length > 0) {
+    rows.push({
+      key: 'other',
+      tone: rowTone(other, 'pass'),
+      detail: firstMessage(other),
+      count: other.length,
+    })
+  }
+  return rows
 }
 
 export interface RailFileEntry {

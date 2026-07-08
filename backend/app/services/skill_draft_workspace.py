@@ -18,9 +18,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillDraftFile
 from app.storage.paths import ensure_relative, resolve_data_path
@@ -163,6 +164,68 @@ def load_draft_files(storage_path: str) -> list[SkillDraftFile]:
             )
         )
     return files
+
+
+_BINARY_SNIFF_BYTES = 8192
+
+
+def _iter_draft_paths(storage_path: str):
+    """어댑터와 동일한 필터(inputs/ 제외·symlink 제외·바이너리 sniff skip)로
+    (relative_path, disk_path)를 순회한다 — **내용을 전부 읽지 않는다**.
+
+    파일 목록/단건 조회 API가 워크스페이스 전체 바이트를 매 요청 적재하지
+    않도록(R2 perf) 바이너리 판정은 앞 8KB sniff로 제한한다. 전량 판정이
+    필요한 validate/finalize 경로는 기존 ``load_draft_files``를 그대로 쓴다.
+    """
+
+    root = resolve_workspace_dir(storage_path)
+    if not root.is_dir():
+        return
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if relative.split("/", 1)[0] == INPUTS_DIR:
+            continue
+        try:
+            with path.open("rb") as handle:
+                sniff = handle.read(_BINARY_SNIFF_BYTES)
+        except OSError:
+            continue
+        if b"\x00" in sniff:
+            continue
+        yield relative, path
+
+
+def list_draft_file_entries(storage_path: str) -> list[tuple[str, int, str]]:
+    """파일 목록 메타데이터 — (path, size, role). ``st_size`` 기반(내용 미독)."""
+
+    entries: list[tuple[str, int, str]] = []
+    for relative, path in _iter_draft_paths(storage_path):
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        entries.append((relative, min(size, _MAX_ADAPTER_FILE_BYTES), role_for_path(relative)))
+    return entries
+
+
+def load_draft_file_content(storage_path: str, relative_path: str) -> SkillDraftFile | None:
+    """단일 파일 내용 — 요청 경로가 열거 경로와 **정확 일치**할 때만 그 파일만
+    읽는다 (traversal은 매칭 실패 = None, 어댑터 계약과 동일)."""
+
+    for relative, path in _iter_draft_paths(storage_path):
+        if relative != relative_path:
+            continue
+        raw = path.read_bytes()[:_MAX_ADAPTER_FILE_BYTES]
+        if b"\x00" in raw:
+            return None
+        return SkillDraftFile(
+            path=relative,
+            content=raw.decode("utf-8", errors="replace"),
+            role=role_for_path(relative),
+        )
+    return None
 
 
 DRAFT_FALLBACK_SLUG = "draft"
@@ -357,7 +420,10 @@ async def gc_stale_draft_workspaces(db: AsyncSession, *, retention_hours: int) -
     """완료/포기된 세션의 워크스페이스와 세션 없는 orphan 디렉토리를 정리한다.
 
     mtime이 아니라 **세션 상태 기준** (스펙 AD-2): ``active``/``confirming``
-    세션은 아무리 오래돼도 보존한다 (브라우저를 닫았다 며칠 뒤 돌아와도 재개).
+    세션은 abandon 지평(``skill_draft_abandon_days``, 기본 14일) 안에서는
+    보존한다 (브라우저를 닫았다 며칠 뒤 돌아와도 재개). 대화가 소실됐거나
+    지평을 넘긴 비완료 세션은 ``abandoned``로 전이해 다음 패스에서 회수한다
+    (R2 — 전이 경로가 없으면 이탈 세션이 영구 누수).
     ``completed``/``abandoned``만 ``updated_at``이 리텐션을 지나면 삭제하고
     ``draft_workspace_path``를 비운다. 세션 row가 없는 디렉토리(커밋 실패
     잔재 등)는 디렉토리 mtime 기준으로 삭제한다. 커밋까지 수행(크론 호출용).
@@ -368,6 +434,8 @@ async def gc_stale_draft_workspaces(db: AsyncSession, *, retention_hours: int) -
 
     cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=retention_hours)
     removed = 0
+
+    await _mark_dead_sessions_abandoned(db, cutoff=cutoff)
 
     result = await db.execute(
         select(SkillBuilderSession).where(
@@ -388,6 +456,50 @@ async def gc_stale_draft_workspaces(db: AsyncSession, *, retention_hours: int) -
     if removed:
         logger.info("skill draft workspace GC removed %d workspace(s)", removed)
     return removed
+
+
+async def _mark_dead_sessions_abandoned(db: AsyncSession, *, cutoff: datetime) -> int:
+    """죽은/이탈 v2 세션을 ``abandoned``로 전이해 상태 GC의 회수 대상으로 만든다.
+
+    ``abandoned``는 선언만 되고 전이 경로가 없으면 GC_DELETABLE_STATUSES 절반이
+    죽은 규칙이 된다(R2 리뷰) — 여기가 유일한 전이 지점이다. 두 부류만 전이:
+
+    1. **죽은 세션** — draft-conversation GC가 대화를 지워 ``conversation_id``가
+       SET NULL로 끊긴 비완료 세션(재개 불가). 같은 리텐션 cutoff 적용
+       (생성 직후 attach 전 창 보호).
+    2. **장기 이탈 세션** — 대화는 남아 있으나 ``skill_draft_abandon_days``
+       (기본 14일) 동안 미활동인 비완료 세션. 활성 세션 보존 원칙(AD-2)은
+       유지하되 무기한 누수만 막는다.
+
+    v1 레거시 행(워크스페이스 없음)은 건드리지 않도록
+    ``draft_workspace_path IS NOT NULL``로 스코프를 좁힌다.
+    """
+
+    terminal = ("completed", "abandoned")
+    abandon_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+        days=max(1, settings.skill_draft_abandon_days)
+    )
+    result = await db.execute(
+        select(SkillBuilderSession).where(
+            SkillBuilderSession.status.not_in(terminal),
+            SkillBuilderSession.draft_workspace_path.is_not(None),
+            or_(
+                and_(
+                    SkillBuilderSession.conversation_id.is_(None),
+                    SkillBuilderSession.updated_at < cutoff,
+                ),
+                SkillBuilderSession.updated_at < abandon_cutoff,
+            ),
+        )
+    )
+    marked = 0
+    for session in result.scalars():
+        session.status = "abandoned"
+        marked += 1
+    if marked:
+        await db.flush()
+        logger.info("skill draft GC marked %d dead/stale session(s) abandoned", marked)
+    return marked
 
 
 async def _gc_orphan_workspace_dirs(db: AsyncSession, *, cutoff: datetime) -> int:

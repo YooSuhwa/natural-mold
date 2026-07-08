@@ -159,7 +159,9 @@ function StatusPane({
             title={row.detail ?? undefined}
             className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-background px-3 py-2 text-xs"
           >
-            <span className="text-foreground/80">{t(`statusRow.${row.key}`)}</span>
+            <span className="text-foreground/80">
+              {t(`statusRow.${row.key}`, { count: row.count ?? 0 })}
+            </span>
             <ToneStatus tone={row.tone} />
           </div>
         ))}

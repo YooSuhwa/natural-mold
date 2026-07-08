@@ -75,6 +75,53 @@ describe('deriveStatusRows', () => {
     const byKey = Object.fromEntries(rows.map((row) => [row.key, row]))
     expect(byKey.trigger.tone).toBe('good')
     expect(byKey.frontmatter.tone).toBe('pass')
+    // 미분류 이슈가 없으면 폴백 행도 없다.
+    expect(byKey.other).toBeUndefined()
+  })
+
+  it('버킷 밖 이슈는 "기타 검사" 폴백 행으로 노출된다 (R3 — 헤드/상세 모순 방지)', () => {
+    const rows = deriveStatusRows({
+      valid: false,
+      error_count: 1,
+      warning_count: 1,
+      issues: [
+        {
+          code: 'UNSUPPORTED_SCRIPT_EXTENSION',
+          severity: 'error',
+          message: 'Only .py scripts are supported.',
+          path: 'scripts/run.sh',
+        },
+        {
+          code: 'UNMENTIONED_REFERENCES',
+          severity: 'warning',
+          message: 'references/x.md is never mentioned.',
+          path: 'references/x.md',
+        },
+        { code: 'SOME_INFO_ONLY', severity: 'info', message: 'ignore me', path: null },
+      ],
+    })
+    const byKey = Object.fromEntries(rows.map((row) => [row.key, row]))
+    expect(byKey.other).toBeDefined()
+    expect(byKey.other.tone).toBe('error')
+    expect(byKey.other.count).toBe(2) // info는 제외
+    expect(byKey.other.detail).toContain('Only .py')
+    // NETWORK_PROFILE_MISSING/CREDENTIAL_ENV_*는 moldyMetadata 버킷으로 흡수된다.
+    const networkRows = deriveStatusRows({
+      valid: false,
+      error_count: 1,
+      warning_count: 0,
+      issues: [
+        {
+          code: 'NETWORK_PROFILE_MISSING',
+          severity: 'error',
+          message: 'network profile missing',
+          path: 'agents/moldy.yaml',
+        },
+      ],
+    })
+    const networkByKey = Object.fromEntries(networkRows.map((row) => [row.key, row]))
+    expect(networkByKey.moldyMetadata.tone).toBe('error')
+    expect(networkByKey.other).toBeUndefined()
   })
 })
 

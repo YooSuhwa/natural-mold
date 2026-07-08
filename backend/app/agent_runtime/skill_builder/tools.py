@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 from pathlib import Path
 from types import SimpleNamespace
@@ -90,6 +90,7 @@ def build_skill_builder_tools(
     agent_id: str | None = None,
     credential_subject_user_id: str | None = None,
     include_runtime_tools: bool = False,
+    consented_tools: Sequence[str] | None = None,
 ) -> list[BaseTool]:
     """빌더 세션에 바인딩된 도구 리스트.
 
@@ -181,6 +182,18 @@ def build_skill_builder_tools(
         from app.config import settings
         from app.marketplace.skill_runtime import build_skill_runtime_context
 
+        # 세션 동의 fail-closed 재검증(R2): 동의는 run 시작 시 "requires_network가
+        # 아닌 드래프트"에만 적용되는데, 같은 턴 안에서 에이전트가
+        # agents/moldy.yaml에 requires_network를 추가하면 승인 카드 없이 네트워크
+        # 샌드박스가 열린다 — 실행 시점에 프로필을 다시 읽어 차단한다.
+        if "test_skill_draft" in (consented_tools or ()) and (
+            skill_draft_workspace.draft_requires_network(workspace_path)
+        ):
+            return (
+                "Error: the draft now requires network access (agents/moldy.yaml), "
+                "which cannot run under a session consent. Ask the user to run the "
+                "test again so it goes through an explicit approval card."
+            )
         files = skill_draft_workspace.load_draft_files(workspace_path)
         slug = skill_draft_workspace.draft_slug(files)
         execution_profile = skill_draft_workspace.draft_execution_profile(workspace_path)

@@ -153,6 +153,12 @@ test.describe('skill builder chat', () => {
     await expect(page.getByTestId('builder-draft-files')).toBeVisible({ timeout: 30_000 })
     await expect(page.getByTestId('builder-completed-banner')).toBeVisible({ timeout: 30_000 })
     await expect(page.locator('body')).not.toContainText('<redacted>')
+    // R4: 멀티턴 대화 이력이 checkpointer에서 복원된다 (§2-5 — 레일만이 아니라
+    // 트랜스크립트 버블도). 사용자 마커 메시지와 최종 응답 텍스트로 단언.
+    await expect(page.getByText('E2E_SKILL_BUILDER_VALIDATE').first()).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(page.getByText('스킬을 저장했습니다').first()).toBeVisible({ timeout: 30_000 })
 
     // 대화가 히든 에이전트 소유라 네비게이터/에이전트 목록에 새지 않는다 (§2 리스크).
     const agents = (await (await request.get(`${API}/api/agents`)).json()) as { id: string }[]
@@ -163,5 +169,71 @@ test.describe('skill builder chat', () => {
     expect(agents.map((a) => a.id)).not.toContain(
       (await (await request.get(`${API}/api/skill-builder/${sessionId}`)).json()).agent_id,
     )
+  })
+
+  test('finalize conflict — source skill changed mid-session, agent explains (§2-3)', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(180_000)
+    // CSRF 토큰은 요청 컨텍스트(쿠키)와 짝이라, 이 테스트의 request 컨텍스트로
+    // 다시 로그인해 새 토큰을 받는다 (beforeAll 토큰은 그 컨텍스트 전용).
+    const csrfLocal = await login(request)
+    // 1) 원본 텍스트 스킬 생성 → improve 세션 시작 → 원본을 밖에서 수정해
+    //    content_hash를 어긋나게 만든다 (SOURCE_SKILL_CHANGED 재현).
+    const skillRes = await request.post(`${API}/api/skills`, {
+      headers: csrfLocal,
+      data: {
+        name: `e2e-conflict-${Date.now()}`,
+        content: '---\nname: e2e-conflict\ndescription: "Use when testing conflicts."\n---\n\noriginal\n',
+      },
+    })
+    expect(skillRes.ok(), `create skill → ${skillRes.status()}`).toBeTruthy()
+    const skill = (await skillRes.json()) as { id: string; version: string | null }
+
+    const sessionRes = await request.post(`${API}/api/skill-builder`, {
+      headers: csrfLocal,
+      data: { mode: 'improve', user_request: '이 스킬 개선해줘', source_skill_id: skill.id },
+    })
+    expect(sessionRes.ok(), `improve start → ${sessionRes.status()}`).toBeTruthy()
+    const improveSession = (await sessionRes.json()) as { id: string }
+
+    const putRes = await request.put(`${API}/api/skills/${skill.id}/content`, {
+      headers: csrfLocal,
+      data: {
+        content: '---\nname: e2e-conflict\ndescription: "Use when testing conflicts."\n---\n\nchanged outside the session\n',
+      },
+    })
+    expect(putRes.ok(), `mutate source → ${putRes.status()}`).toBeTruthy()
+    const mutatedHash = ((await putRes.json()) as { content_hash: string }).content_hash
+
+    // 2) finalize 시도 → 승인 카드 → 승인 → 도구가 SOURCE_SKILL_CHANGED 반환 →
+    //    에이전트가 사용자에게 설명한다 (§2-3 계약의 결정론 재현).
+    await page.goto(`/skills/builder/${improveSession.id}`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 120_000,
+    })
+    const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
+    await expect(composer).toBeVisible({ timeout: 60_000 })
+    await composer.fill('E2E_SKILL_BUILDER_FINALIZE_CONFLICT')
+    await composer.press('Enter')
+    await expect(composer).toHaveValue('', { timeout: 10_000 })
+    await expect(page.getByText('finalize_skill').last()).toBeVisible({ timeout: 45_000 })
+    await page.getByTestId('approval-approve-button').last().click()
+    await expect(page.getByText('원본 스킬이 세션 시작 후 변경되어').last()).toBeVisible({
+      timeout: 60_000,
+    })
+
+    // 3) 세션은 완료되지 않고, 원본 스킬도 세션이 덮어쓰지 않았다.
+    const after = (await (
+      await request.get(`${API}/api/skill-builder/${improveSession.id}`)
+    ).json()) as { status: string; finalized_skill_id: string | null }
+    expect(after.status).not.toBe('completed')
+    expect(after.finalized_skill_id).toBeNull()
+    // 세션이 원본을 덮어쓰지 않았다 — 밖에서 수정한 hash가 그대로여야 한다.
+    const skillAfter = (await (await request.get(`${API}/api/skills/${skill.id}`)).json()) as {
+      content_hash: string
+    }
+    expect(skillAfter.content_hash).toBe(mutatedHash)
   })
 })

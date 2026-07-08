@@ -2528,86 +2528,6 @@
         "passed": "Evaluation passed"
       }
     },
-    "builderDialog": {
-      "titleCreate": "Build Skill by Chat",
-      "titleImprove": "Improve Skill by Chat",
-      "descriptionCreate": "Describe the job you need and Moldy will draft a package skill with validation results.",
-      "descriptionImprove": "Start from the existing skill, review the proposed changes, and apply only after confirmation.",
-      "chatTitle": "Builder chat",
-      "requestLabel": "Request",
-      "requestPlaceholder": "Example: Create a skill that extracts owners, tasks, and due dates from meeting notes.",
-      "requestImprovePlaceholder": "Example: Make due-date extraction stricter and more reliable.",
-      "requestRequired": "Enter a request first.",
-      "startCreate": "Start chat",
-      "startImprove": "Draft improvement",
-      "startFailed": "Failed to start Skill Builder.",
-      "confirmFailed": "Failed to apply the skill.",
-      "previewTitle": "Skill preview",
-      "previewEmpty": "Draft files and validation status will appear here after you send a request.",
-      "filesTitle": "Files",
-      "filesEmpty": "No files have been generated yet.",
-      "validationTitle": "Validation",
-      "compatibilityTitle": "Compatibility",
-      "changelogTitle": "Change summary",
-      "evalTitle": "Evaluation",
-      "fileDiffTitle": "File change summary",
-      "originalFileCount": "{count} original",
-      "proposedFileCount": "{count} proposed",
-      "addedCount": "{count} added",
-      "changedCount": "{count} changed",
-      "deletedCount": "{count} deleted",
-      "validationEmpty": "No validation issues.",
-      "passRateMetric": "Pass rate {value}%",
-      "meanScoreMetric": "Mean score {value}",
-      "deltaMetric": "Delta {value}",
-      "cancel": "Close",
-      "confirmCreate": "Save as skill",
-      "confirmImprove": "Apply improvement",
-      "fileChange": {
-        "added": "Added",
-        "changed": "Changed",
-        "deleted": "Deleted"
-      },
-      "validationSeverity": {
-        "error": "Error",
-        "warning": "Warning",
-        "info": "Info"
-      },
-      "status": {
-        "collecting": "Collecting",
-        "drafting": "Drafting",
-        "review": "Ready for review",
-        "confirming": "Applying",
-        "completed": "Completed",
-        "failed": "Failed",
-        "cancelled": "Cancelled"
-      },
-      "fileRole": {
-        "skill": "Skill",
-        "script": "Script",
-        "reference": "Reference",
-        "asset": "Asset",
-        "metadata": "Metadata",
-        "eval": "Evaluation"
-      },
-      "systemLlm": {
-        "title": "System LLM setup is required",
-        "description": "Text creation and package upload are still available.",
-        "userDescription": "The Skill Builder model needs administrator setup. Text creation and package upload are still available.",
-        "adminDescription": "Skill Builder uses the text_primary system model. Connect a model and system credential in System LLM Settings. Text creation and package upload are still available until setup is complete.",
-        "settingsAction": "Open System LLM Settings"
-      },
-      "conflict": {
-        "title": "Skill changed",
-        "description": "The source skill changed after this improvement session started.",
-        "reloadLatest": "Reload latest and reapply",
-        "discard": "Discard session"
-      },
-      "toast": {
-        "created": "Skill created.",
-        "improved": "Skill improvement applied."
-      }
-    },
     "compatibility": {
       "title": "Portable compatibility",
       "empty": "No compatibility result yet.",
@@ -2845,7 +2765,8 @@
         "runtimeCompat": "Runtime compatibility",
         "credentials": "Credentials required",
         "sandbox": "Sandbox execution",
-        "evaluation": "Evaluation"
+        "evaluation": "Evaluation",
+        "other": "Other checks ({count})"
       },
       "statusValue": {
         "none": "None",

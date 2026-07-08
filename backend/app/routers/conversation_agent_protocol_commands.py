@@ -287,6 +287,11 @@ async def _handle_input_respond_command(
         parent_run = await _wait_for_interrupted_parent_run(
             db, conversation_id=conversation.id, user_id=user.id
         )
+        if parent_run is not None:
+            # 워커 전이는 별도 세션 커밋이라, 대기 초반에 identity map에 적재된
+            # 인스턴스는 status/interrupt_id가 stale일 수 있다(R2) — PK는 정확하나
+            # 이후 필드를 읽는 코드가 오동작하지 않게 새로고침한다.
+            await db.refresh(parent_run)
     if parent_run is None:
         return command_error(
             command,

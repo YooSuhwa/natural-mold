@@ -38,7 +38,7 @@ from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
 from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
 from app.database import async_session as async_session_factory
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
 from app.models.mcp_server import McpServer
@@ -291,21 +291,19 @@ def build_write_tools(
                     select(Agent.id, Agent.name).where(
                         Agent.id.in_(candidates.keys()),
                         Agent.user_id == user_id,
+                        # 히든 런타임 에이전트는 서브에이전트 결선 불가.
+                        Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
                     )
                 )
                 name_by_id = {row.id: row.name for row in result.all()}
 
             # 3차 append (검증 통과한 것만)
-            next_pos = (
-                max((link.position for link in agent.sub_agent_links), default=-1) + 1
-            )
+            next_pos = max((link.position for link in agent.sub_agent_links), default=-1) + 1
             for sid, raw_id in candidates.items():
                 if sid not in name_by_id:
                     skipped.append(f"{raw_id}(찾을 수 없음)")
                     continue
-                agent.sub_agent_links.append(
-                    AgentSubAgentLink(sub_agent_id=sid, position=next_pos)
-                )
+                agent.sub_agent_links.append(AgentSubAgentLink(sub_agent_id=sid, position=next_pos))
                 existing_ids.add(sid)
                 added.append(name_by_id[sid])
                 next_pos += 1
@@ -404,8 +402,9 @@ def build_write_tools(
 
             added = [s.name for s in found_skills]
             found_lower = {s.name.lower() for s in found_skills}
-            missing = [n for n in skill_names if n.lower() not in found_lower
-                       and n.lower() not in existing]
+            missing = [
+                n for n in skill_names if n.lower() not in found_lower and n.lower() not in existing
+            ]
             msg = f"스킬 추가 완료: {', '.join(added)}"
             if missing:
                 msg += f" | 미존재 건너뜀: {', '.join(missing)}"
@@ -774,8 +773,7 @@ def build_write_tools(
             except ValueError as exc:
                 return f"스케줄 설정이 올바르지 않습니다: {exc}"
             return (
-                f"스케줄 생성 완료 (ID: {trigger.id}, "
-                f"다음 실행: {trigger.next_run_at or '미정'})"
+                f"스케줄 생성 완료 (ID: {trigger.id}, 다음 실행: {trigger.next_run_at or '미정'})"
             )
 
     # ------ 15. update_cron_schedule ------

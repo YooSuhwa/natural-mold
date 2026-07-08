@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/lib/auth/session'
+import { skillQueryKeys } from '@/lib/query-keys/skills'
 import { cn } from '@/lib/utils'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { conversationKeys, useMessagesEnvelope } from '@/lib/hooks/use-conversations'
@@ -48,7 +49,7 @@ export function SkillBuilderChatClient({ sessionId }: { readonly sessionId: stri
     }
     queryClient.invalidateQueries({ queryKey: skillBuilderKeys.detail(sessionId) })
     queryClient.invalidateQueries({ queryKey: skillBuilderKeys.files(sessionId) })
-    queryClient.invalidateQueries({ queryKey: ['skills'] })
+    queryClient.invalidateQueries({ queryKey: skillQueryKeys.all })
   }, [conversationId, queryClient, sessionId])
 
   // React Compiler가 자동 메모이즈 — 수동 useMemo는 컴파일러 추론과 충돌한다.

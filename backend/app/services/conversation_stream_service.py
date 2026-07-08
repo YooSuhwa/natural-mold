@@ -209,10 +209,15 @@ async def _resolve_skill_builder_agent_context(
         raise system_llm_not_configured() from exc
 
     result = await db.execute(
-        select(SkillBuilderSession).where(
+        select(SkillBuilderSession)
+        .where(
             SkillBuilderSession.conversation_id == conv.id,
             SkillBuilderSession.user_id == user.id,
         )
+        # 세션↔대화 1:1은 DB 제약이 아니라 관례다 — 방어적으로 최신 1건만
+        # 취해 MultipleResultsFound 500을 차단한다 (R2).
+        .order_by(SkillBuilderSession.created_at.desc())
+        .limit(1)
     )
     session = result.scalar_one_or_none()
     if session is None:

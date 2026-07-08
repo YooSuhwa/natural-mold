@@ -604,6 +604,7 @@ async def _prepare_skill_builder_components(
                 agent_id=cfg.agent_id,
                 credential_subject_user_id=cfg.credential_subject_user_id,
                 include_runtime_tools=True,
+                consented_tools=cfg.skill_builder_consented_tools,
             )
         )
     _append_temporal_tools(langchain_tools)
