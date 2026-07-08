@@ -315,3 +315,29 @@ async def test_finalize_releases_claim_on_source_skill_not_found(
     # 재시도는 CONFIRMING 게이트에 막히지 않고 같은 오류를 다시 보고한다(self-heal).
     second = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
     assert second["error_code"] == "SOURCE_SKILL_NOT_FOUND"
+
+
+async def test_finalize_releases_claim_when_cancelled(
+    client: AsyncClient, db: AsyncSession, monkeypatch
+) -> None:
+    """3차 리뷰 회귀: 런 취소(CancelledError)는 BaseException이라 도구/서비스의
+    Exception 캐치를 모두 통과한다 — claim 해제가 shield로 완료되지 않으면
+    CONFIRMING이 abandon 지평까지 잠긴다."""
+
+    import asyncio as _asyncio
+
+    from app.services import skill_builder_service as sbs
+    from app.services.skill_builder_finalize import finalize_draft_session
+
+    session, _source = await _start_improve_session(client, db)
+
+    async def cancelled_confirm(*_args, **_kwargs):
+        raise _asyncio.CancelledError()
+
+    monkeypatch.setattr(sbs, "confirm_session", cancelled_confirm)
+
+    with pytest.raises(_asyncio.CancelledError):
+        await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+
+    await db.refresh(session)
+    assert session.status == "review"  # 잠금이 풀려 재시도 가능해야 한다.

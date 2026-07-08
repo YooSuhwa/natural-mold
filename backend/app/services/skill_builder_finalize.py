@@ -10,12 +10,16 @@ scan + 생성/개선 + 리비전 + eval 수거). 감사 어휘도 v1 계승
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import uuid
 from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import async_session
 from app.dependencies import CurrentUser
 from app.models.skill_builder_session import SkillBuilderSession
 from app.models.user import User
@@ -142,9 +146,17 @@ async def finalize_draft_session(
         await db.rollback()
         await _release_confirming_claim(db, session_id, user_id)
         return _error("SOURCE_SKILL_NOT_FOUND", "source skill not found")
+    except asyncio.CancelledError:
+        # 런 취소(stop)는 BaseException이라 아래 Exception 캐치와 도구 경로의
+        # 광역 catch를 모두 통과한다 — claim 해제만은 shield로 완료시키고
+        # 재전파해 CONFIRMING 잠금 잔존을 막는다 (자체 세션이라 요청 세션
+        # teardown과 무관하게 끝까지 커밋된다).
+        with contextlib.suppress(Exception):
+            await asyncio.shield(_release_confirming_claim(db, session_id, user_id))
+        raise
     except Exception:
-        # 예기치 못한 실패(transient DB 오류, 워커 중단 등)도 claim을 해제해
-        # 세션이 거짓 "다른 finalize 진행 중" 상태에 갇히지 않게 한다.
+        # 예기치 못한 실패(transient DB 오류 등)도 claim을 해제해 세션이
+        # 거짓 "다른 finalize 진행 중" 상태에 갇히지 않게 한다.
         await db.rollback()
         await _release_confirming_claim(db, session_id, user_id)
         raise
@@ -193,15 +205,27 @@ def _success(session: SkillBuilderSession, skill: Any) -> dict[str, Any]:
 
 
 async def _release_confirming_claim(
-    db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
+    _db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
 ) -> None:
-    """post-claim 실패 시 CONFIRMING → REVIEW 복귀 (best-effort self-heal)."""
+    """post-claim 실패 시 CONFIRMING → REVIEW 복귀 (best-effort self-heal).
+
+    자체 세션을 연다 — 취소(shield) 경로에서 요청 세션이 teardown돼도 복귀
+    커밋이 완료되고, 조건부 UPDATE(claim과 대칭)라 원자적이다. 호출자 세션은
+    rollback 상태 그대로 둔다.
+    """
 
     try:
-        session = await skill_builder_service.get_session(db, session_id, user_id)
-        if session is not None and session.status == SkillBuilderStatus.CONFIRMING.value:
-            session.status = SkillBuilderStatus.REVIEW.value
-            await db.commit()
+        async with async_session() as fresh:
+            await fresh.execute(
+                update(SkillBuilderSession)
+                .where(
+                    SkillBuilderSession.id == session_id,
+                    SkillBuilderSession.user_id == user_id,
+                    SkillBuilderSession.status == SkillBuilderStatus.CONFIRMING.value,
+                )
+                .values(status=SkillBuilderStatus.REVIEW.value)
+            )
+            await fresh.commit()
     except Exception:
         logger.exception("failed to release confirming claim session=%s", session_id)
 
