@@ -61,32 +61,23 @@ test.describe('skill builder chat', () => {
     const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
     await expect(composer).toBeVisible({ timeout: 60_000 })
 
-    // Enter 전송은 런 직후 잠깐 무시될 수 있다(컴포저 상태 전이) — 전송 실패 시
-    // 전송 버튼 클릭으로 폴백하고, 비워졌는지로 실제 전송을 확인한다.
+    // M8-1 회귀 가드: 런 직후에도 Enter 전송이 즉시 동작해야 한다
+    // (post-run 하이드레이션이 컴포저를 잠그던 결함의 근본 수정 검증 —
+    // 폴백 없이 Enter만으로 값이 비워져야 한다).
     const sendMessage = async (text: string) => {
       await composer.fill(text)
       await composer.press('Enter')
-      try {
-        await expect(composer).toHaveValue('', { timeout: 3_000 })
-      } catch {
-        await page.getByRole('button', { name: '전송' }).last().click()
-        await expect(composer).toHaveValue('', { timeout: 10_000 })
-      }
+      await expect(composer).toHaveValue('', { timeout: 10_000 })
     }
 
-    // 승인 resume은 일시적 전송 실패 시 카드가 재시도 문구를 띄운다 —
-    // hitl-approval.spec의 재시도 계약과 동일하게 한 번 더 누른다.
-    const approveWithRetry = async () => {
+    // M8-2 회귀 가드: 백엔드가 인터럽트 전이를 trace보다 먼저 커밋하고 resume
+    // 핸들러가 전이를 짧게 기다리므로, 승인은 재시도 없이 한 번에 수락되어야
+    // 한다 (재시도 문구가 뜨면 레이스 회귀).
+    const approve = async () => {
       await page.getByTestId('approval-approve-button').last().click()
-      const retryPrompt = page
-        .getByText('승인 응답을 전송하지 못했습니다. 다시 시도하세요.')
-        .last()
-      try {
-        await expect(retryPrompt).toBeVisible({ timeout: 5_000 })
-        await page.getByTestId('approval-approve-button').last().click()
-      } catch {
-        // 재시도 문구가 안 떴으면 첫 승인 전송이 수락된 것.
-      }
+      await expect(
+        page.getByText('승인 응답을 전송하지 못했습니다. 다시 시도하세요.'),
+      ).toHaveCount(0)
     }
 
     // 1) 점진 편집 — write_file 2건이 승인 카드 없이 실행된다 (AD-3 과승인 방지).
@@ -122,7 +113,7 @@ test.describe('skill builder chat', () => {
     const consent = page.getByTestId('approval-session-consent').last()
     await expect(consent).toBeVisible()
     await consent.check()
-    await approveWithRetry()
+    await approve()
     await expect(page.getByText('드래프트 시험 실행이 끝났습니다').last()).toBeVisible({
       timeout: 60_000,
     })
@@ -134,13 +125,14 @@ test.describe('skill builder chat', () => {
     })
     await expect(page.getByText('승인이 필요합니다')).toHaveCount(0)
 
-    // 5) finalize — 항상 승인 카드, 세션 동의 옵션은 없다. 직전 resolved 카드와
-    // 연속 request_approval로 묶여 그룹 컨테이너("승인 대기 N건")로 렌더될 수
-    // 있으므로 헤더 대신 finalize_skill 카드 자체를 기다린다.
+    // 5) finalize — 항상 승인 카드, 세션 동의 옵션은 없다.
     await sendMessage('E2E_SKILL_BUILDER_FINALIZE')
     await expect(page.getByText('finalize_skill').last()).toBeVisible({ timeout: 45_000 })
     await expect(page.getByTestId('approval-session-consent')).toHaveCount(0)
-    await approveWithRetry()
+    // M8-3 회귀 가드: 직전 resolved 카드(test_skill_draft)와 인터럽트가 다르므로
+    // 그룹 컨테이너("승인 대기 N건")로 묶이지 않고 단독 카드로 렌더되어야 한다.
+    await expect(page.getByText(/승인 대기 \d+건/)).toHaveCount(0)
+    await approve()
     await expect(page.getByText('스킬을 저장했습니다').last()).toBeVisible({ timeout: 60_000 })
     await expect(page.getByTestId('builder-completed-banner')).toBeVisible({ timeout: 30_000 })
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 
 import pytest
@@ -14,6 +15,7 @@ from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
+from app.services import conversation_run_service
 from tests.conftest import TEST_USER_ID
 
 
@@ -645,3 +647,111 @@ async def test_run_start_command_strips_trailing_assistant_for_regenerate(
     run = await db.get(ConversationRun, uuid.UUID(response.json()["result"]["run_id"]))
     assert run is not None
     assert run.source == "regenerate"
+
+
+@pytest.mark.asyncio
+async def test_input_respond_waits_for_parent_run_interrupt_transition(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M8-2 regression: 인터럽트 승인 카드는 스트림 도중 이미 렌더되지만 부모
+    run의 "interrupted" 전이 커밋은 워커 finalize 단계라, 전이 전에 도착한
+    resume은 즉시 RESUME_NOT_FOUND로 튕겼다. 핸들러는 활성 run이 전이를 마칠
+    때까지 짧게 기다렸다가 성공해야 한다."""
+
+    conversation = await _seed_protocol_conversation(db)
+    parent_run = ConversationRun(
+        conversation_id=conversation.id,
+        agent_id=conversation.agent_id,
+        user_id=TEST_USER_ID,
+        source="chat",
+        status="running",
+        is_active=True,
+    )
+    db.add(parent_run)
+    await db.commit()
+    run_id = parent_run.id
+
+    # 핸들러의 대기 루프 3번째 조회 직전에 워커 전이를 시뮬레이트 — 핸들러가
+    # 받은 세션(db_)으로 실제 행을 갱신해 이후 real 조회가 그 행을 찾게 한다.
+    real_latest = conversation_run_service.get_latest_interrupted_run
+    calls = {"n": 0}
+
+    async def transition_before_third_lookup(db_: AsyncSession, **kwargs: object):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            run = await db_.get(ConversationRun, run_id)
+            assert run is not None
+            run.status = "interrupted"
+            run.is_active = False
+            run.interrupt_id = "intr-wait"
+            await db_.commit()
+        return await real_latest(db_, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        conversation_run_service,
+        "get_latest_interrupted_run",
+        transition_before_third_lookup,
+    )
+
+    started = {}
+
+    async def fake_start_conversation_run(**kwargs):
+        started.update(kwargs)
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fake_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": "resume-wait-1",
+            "method": "input.respond",
+            "params": {
+                "namespace": [],
+                "interrupt_id": "intr-wait",
+                "response": {"decisions": [{"type": "approve"}]},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "success", payload
+    assert started["moldy_source"] == "resume"
+    assert calls["n"] >= 3
+
+
+@pytest.mark.asyncio
+async def test_input_respond_fails_fast_without_any_run(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """대조군: 활성 run도 인터럽트 run도 없으면(진짜 not-found) 대기 없이 즉시
+    RESUME_NOT_FOUND — bounded wait가 사용자 오류 경로에 지연을 더하면 안 된다."""
+
+    conversation = await _seed_protocol_conversation(db)
+
+    begun = time.monotonic()
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": "resume-none-1",
+            "method": "input.respond",
+            "params": {
+                "namespace": [],
+                "interrupt_id": "intr-none",
+                "response": {"decisions": [{"type": "approve"}]},
+            },
+        },
+    )
+    elapsed = time.monotonic() - begun
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "error"
+    assert payload["error"]["code"] == "RESUME_NOT_FOUND"
+    assert elapsed < 1.0, elapsed

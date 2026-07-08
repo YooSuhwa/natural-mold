@@ -2525,11 +2525,11 @@ export function useMoldyLangGraphStream({
     interruptPayloads.length === 0 &&
     threadRunNotice?.status !== 'stale' &&
     threadRunNotice?.status !== 'failed'
-  const runtimeIsRunning =
-    isRunning ||
-    postRunHydrationPending ||
-    pendingEditRender !== null ||
-    pendingReloadRender !== null
+  // postRunHydrationPending은 여기서 제외 — 런 종료(stream.isLoading=false) 후
+  // 서버 상태 하이드레이션은 백그라운드 재조정일 뿐이라 컴포저 전송(Enter)을
+  // 막으면 안 된다(M8-1: 런 직후 Enter 드롭). 메시지 연속성은 별도 플래그
+  // streamStateIsSettling(sticky/fallback 레이어)이 독립적으로 유지한다.
+  const runtimeIsRunning = isRunning || pendingEditRender !== null || pendingReloadRender !== null
   const convertedMessages = useExternalMessageConverter({
     callback: conversionCallback,
     messages: conversionSourceMessages,

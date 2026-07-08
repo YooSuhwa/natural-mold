@@ -498,6 +498,42 @@ describe('useMoldyLangGraphStream', () => {
     })
   })
 
+  it('keeps the composer runtime idle while post-run hydration is pending (M8-1)', async () => {
+    // 런 종료 직후 서버 상태 하이드레이션(최대 10s 폴링)이 도는 동안에도
+    // assistant-ui 런타임 isRunning은 false여야 한다 — true면 컴포저 Enter가
+    // 하이드레이션 창에서 조용히 드롭된다(전송 버튼은 auto-wait로만 통과).
+    mocks.apiFetch.mockImplementation((path: unknown) =>
+      String(path).endsWith('/state')
+        ? new Promise(() => {}) // 하이드레이션 pending 고정
+        : Promise.resolve({ metadata: {}, values: { messages: [] } }),
+    )
+    mocks.stream.isLoading = false
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hydrate-idle',
+          conversationId: 'conversation-hydrate-idle',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    await act(async () => {})
+    mocks.stream.isLoading = true
+    rerender()
+    await act(async () => {})
+    // Run completes -> hydration polling starts and stays pending.
+    mocks.stream.isLoading = false
+    rerender()
+    await waitFor(() => {
+      expect(mocks.apiFetch.mock.calls.some(([path]) => String(path).endsWith('/state'))).toBe(true)
+    })
+    await act(async () => {})
+
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      isRunning: boolean
+    }
+    expect(runtimeOptions.isRunning).toBe(false)
+  })
+
   it('does not start post-run hydration polling when the user cancels the run', async () => {
     mocks.stream.isLoading = false
     const { rerender } = renderHook(

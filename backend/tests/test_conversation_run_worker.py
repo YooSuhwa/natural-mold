@@ -328,3 +328,151 @@ def test_redact_run_error_message_masks_injected_secret() -> None:
 
 def test_redact_run_error_message_blank_returns_none() -> None:
     assert conversation_run_worker._redact_run_error_message("   ", set()) is None
+
+
+@pytest.mark.asyncio
+async def test_interrupted_run_transitions_before_trace_finalization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M8-2 regression: 인터럽트 런은 상태 전이("interrupted" 커밋)가
+    finalize_trace(느린 message_events 영속화)보다 먼저 실행되어야 한다.
+    승인 카드는 스트림 도중 이미 클라이언트에 flush되므로, 전이가 trace 뒤로
+    밀리면 그 사이 도착한 resume이 부모 run을 못 찾아 RESUME_NOT_FOUND로
+    튕긴다. (헬퍼 각각은 올바르고 이 순서만이 계약이다 — backfill 순서 테스트와
+    같은 방식.)"""
+
+    conversation_id = await seed_conversation_with_agent()
+    async with TestSession() as db:
+        conv = await db.get(Conversation, conversation_id)
+        assert conv is not None
+        run = await conversation_run_service.create_run(
+            db,
+            conversation_id=conversation_id,
+            agent_id=conv.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            input_preview="interrupt ordering",
+        )
+        await db.commit()
+        run_id = run.id
+
+    call_order: list[str] = []
+
+    async def fake_finalize_trace(*_args: Any, **_kwargs: Any) -> None:
+        call_order.append("finalize_trace")
+
+    async def fake_transition(*_args: Any, **_kwargs: Any) -> None:
+        call_order.append("transition")
+        return None
+
+    async def fake_activate(**_kwargs: Any) -> None:
+        call_order.append("activate")
+
+    monkeypatch.setattr(
+        conversation_run_worker.stream_service, "finalize_trace", fake_finalize_trace
+    )
+    monkeypatch.setattr(conversation_run_worker, "_transition", fake_transition)
+    monkeypatch.setattr(
+        conversation_run_worker, "_activate_latest_branch_leaf_if_needed", fake_activate
+    )
+    monkeypatch.setattr(conversation_run_worker, "has_interrupt_events", lambda _sink: True)
+    monkeypatch.setattr(
+        conversation_run_worker, "interrupt_id_from_events", lambda _sink: "intr-order"
+    )
+
+    async def empty_stream(*_args: Any, **_kwargs: Any) -> AsyncGenerator[str, None]:
+        if False:  # pragma: no cover - async generator 형태 유지
+            yield ""
+
+    user = CurrentUser(
+        id=TEST_USER_ID,
+        email="test@test.com",
+        name="Test User",
+        is_super_user=True,
+    )
+    registry = conversation_run_worker.RunTaskRegistry(worker_instance_id="intr-order-worker")
+    await conversation_run_worker.start_conversation_run(
+        run_id=run_id,
+        conversation_id=conversation_id,
+        cfg=cast(Any, SimpleNamespace(secret_values=set(), agent_id=None)),
+        user=user,
+        input_payload={"content": "x"},
+        moldy_source="chat",
+        executor_fn=empty_stream,
+        registry=registry,
+    )
+    task = registry.get(run_id)
+    assert task is not None
+    await task
+
+    assert call_order == ["transition", "activate", "finalize_trace"], call_order
+
+
+@pytest.mark.asyncio
+async def test_completed_run_keeps_trace_before_transition_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """대조군: 인터럽트가 아닌(완료) 런은 기존 순서 유지 — trace 완결 후 terminal
+    전이. M8-2 재정렬이 completed/failed 경로를 건드리지 않았음을 고정한다."""
+
+    conversation_id = await seed_conversation_with_agent()
+    async with TestSession() as db:
+        conv = await db.get(Conversation, conversation_id)
+        assert conv is not None
+        run = await conversation_run_service.create_run(
+            db,
+            conversation_id=conversation_id,
+            agent_id=conv.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            input_preview="completed ordering",
+        )
+        await db.commit()
+        run_id = run.id
+
+    call_order: list[str] = []
+
+    async def fake_finalize_trace(*_args: Any, **_kwargs: Any) -> None:
+        call_order.append("finalize_trace")
+
+    async def fake_transition(*_args: Any, **_kwargs: Any) -> None:
+        call_order.append("transition")
+        return None
+
+    async def fake_activate(**_kwargs: Any) -> None:
+        call_order.append("activate")
+
+    monkeypatch.setattr(
+        conversation_run_worker.stream_service, "finalize_trace", fake_finalize_trace
+    )
+    monkeypatch.setattr(conversation_run_worker, "_transition", fake_transition)
+    monkeypatch.setattr(
+        conversation_run_worker, "_activate_latest_branch_leaf_if_needed", fake_activate
+    )
+
+    async def empty_stream(*_args: Any, **_kwargs: Any) -> AsyncGenerator[str, None]:
+        if False:  # pragma: no cover - async generator 형태 유지
+            yield ""
+
+    user = CurrentUser(
+        id=TEST_USER_ID,
+        email="test@test.com",
+        name="Test User",
+        is_super_user=True,
+    )
+    registry = conversation_run_worker.RunTaskRegistry(worker_instance_id="done-order-worker")
+    await conversation_run_worker.start_conversation_run(
+        run_id=run_id,
+        conversation_id=conversation_id,
+        cfg=cast(Any, SimpleNamespace(secret_values=set(), agent_id=None)),
+        user=user,
+        input_payload={"content": "x"},
+        moldy_source="chat",
+        executor_fn=empty_stream,
+        registry=registry,
+    )
+    task = registry.get(run_id)
+    assert task is not None
+    await task
+
+    assert call_order == ["finalize_trace", "transition", "activate"], call_order

@@ -31,28 +31,18 @@ test.describe('스킬 빌더 챗 — 전 화면 캡처 투어', () => {
 
     const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
 
-    // 런 직후 Enter가 무시될 수 있어 전송 버튼 폴백 (skill-builder-chat.spec 계약).
+    // M8-1 이후 Enter 전송은 런 직후에도 즉시 동작한다 (skill-builder-chat.spec 계약).
     const sendMessage = async (text: string) => {
       await composer.fill(text)
       await composer.press('Enter')
-      try {
-        await expect(composer).toHaveValue('', { timeout: 3_000 })
-      } catch {
-        await page.getByRole('button', { name: '전송' }).last().click()
-        await expect(composer).toHaveValue('', { timeout: 10_000 })
-      }
+      await expect(composer).toHaveValue('', { timeout: 10_000 })
     }
-    const approveWithRetry = async () => {
+    // M8-2 이후 승인은 재시도 없이 한 번에 수락된다 (skill-builder-chat.spec 계약).
+    const approve = async () => {
       await page.getByTestId('approval-approve-button').last().click()
-      const retryPrompt = page
-        .getByText('승인 응답을 전송하지 못했습니다. 다시 시도하세요.')
-        .last()
-      try {
-        await expect(retryPrompt).toBeVisible({ timeout: 5_000 })
-        await page.getByTestId('approval-approve-button').last().click()
-      } catch {
-        // 첫 승인 전송이 수락됨.
-      }
+      await expect(
+        page.getByText('승인 응답을 전송하지 못했습니다. 다시 시도하세요.'),
+      ).toHaveCount(0)
     }
 
     // ── 1. 진입점: 스킬 목록 ────────────────────────────────────────────
@@ -128,7 +118,7 @@ test.describe('스킬 빌더 챗 — 전 화면 캡처 투어', () => {
     await capture(page, WAVE, '06-test-approval-consent.png')
 
     // ── 7. 승인 → 샌드박스 실행 완료 ───────────────────────────────────
-    await approveWithRetry()
+    await approve()
     await expect(page.getByText('드래프트 시험 실행이 끝났습니다').last()).toBeVisible({
       timeout: 60_000,
     })
@@ -152,7 +142,7 @@ test.describe('스킬 빌더 챗 — 전 화면 캡처 투어', () => {
     await capture(page, WAVE, '09-finalize-card.png')
 
     // ── 10. 승인 → 완료 배너 + 딥링크 ─────────────────────────────────
-    await approveWithRetry()
+    await approve()
     await expect(page.getByText('스킬을 저장했습니다').last()).toBeVisible({ timeout: 60_000 })
     await expect(page.getByTestId('builder-completed-banner')).toBeVisible({ timeout: 30_000 })
     await settle(page)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -50,6 +52,37 @@ from app.services.conversation_stream_service import resolve_agent_context
 
 StartConversationRun = Callable[..., Awaitable[Any]]
 AgentStreamExecutor = Callable[..., Any]
+
+# M8-2 — 인터럽트 SSE 이벤트는 스트림 도중 즉시 클라이언트에 flush되지만,
+# 부모 run의 "interrupted" 상태 커밋은 워커 finalize 단계다. 카드가 보이자마자
+# 승인하면 전이 전에 resume이 도착할 수 있어, 활성 run이 전이를 마칠 때까지
+# 짧게 기다린다 (활성 run이 아예 없으면 진짜 not-found — 즉시 포기).
+_RESUME_INTERRUPT_WAIT_TIMEOUT_S = 2.0
+_RESUME_INTERRUPT_WAIT_INTERVAL_S = 0.05
+
+
+async def _wait_for_interrupted_parent_run(
+    db: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> Any:
+    deadline = time.monotonic() + _RESUME_INTERRUPT_WAIT_TIMEOUT_S
+    while True:
+        active = await conversation_run_service.get_active_run(
+            db, conversation_id=conversation_id, user_id=user_id
+        )
+        if active is None or time.monotonic() >= deadline:
+            # 전이 직후 창일 수 있으니 마지막으로 한 번 더 조회하고 포기한다.
+            return await conversation_run_service.get_latest_interrupted_run(
+                db, conversation_id=conversation_id, user_id=user_id
+            )
+        await asyncio.sleep(_RESUME_INTERRUPT_WAIT_INTERVAL_S)
+        run = await conversation_run_service.get_latest_interrupted_run(
+            db, conversation_id=conversation_id, user_id=user_id
+        )
+        if run is not None:
+            return run
 
 
 async def _handle_run_start_command(
@@ -250,6 +283,10 @@ async def _handle_input_respond_command(
         conversation_id=conversation.id,
         user_id=user.id,
     )
+    if parent_run is None:
+        parent_run = await _wait_for_interrupted_parent_run(
+            db, conversation_id=conversation.id, user_id=user.id
+        )
     if parent_run is None:
         return command_error(
             command,
