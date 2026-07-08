@@ -90,9 +90,9 @@
 - [x] M8-4 수확 — **실 LLM 전용 크래시 3건 수정**: 스트리밍 부분 JSON args 무가드 배열 연산 (`write_todos` todos.filter → 채팅 전체 에러 바운더리 다운, `ask_user` questions/options .map, clarifying 카드 parsed.options). scripted 모델은 완성 args만 방출해 기존 E2E 전부 그린인 채 놓침. 방어 정규화 + red→green 회귀 4건(`partial-streaming-args.test.tsx`)
 - 검증: backend 2601(ruff 클린) / vitest 1245 / tsc·eslint·build 그린. E2E 기능 3/3(--retries=0) + hitl-approval + 캡처 투어 그린. red→green 검증: M8-1 유닛, M8-2 워커 순서·bounded wait, M8-4 가드
 - 상태: done (2026-07-08) — 커밋 764180bc(M8-1~3) + 후속 커밋(M8-4 가드)
-- **백로그(라이브 resume 뷰 전용 표시 결함 — 영속/리로드는 깨끗함을 DB·리로드 프로브로 확정)**:
-  - 실 LLM finalize 턴에서 사용자 버블 중복 렌더(라이브만, run/이벤트/리로드엔 1개)
-  - 실 LLM finalize 후 raw `finalize_skill` pill이 빨간 ✗로 잔존(성공인데 모순 표시; 리로드는 초록 ✓ — stripInterruptedRawToolCalls의 라이브 real-LLM resume 경로 미스)
+- **백로그(라이브 resume 뷰 전용 표시 결함 — 영속/리로드는 깨끗함을 DB·리로드 프로브로 확정, /review에서 원인 확정)**:
+  - 사용자 버블 중복(라이브만): **onNew가 post-run 하이드레이션 폴을 종료하지 않는 비대칭이 원인** — onCancel은 `hydrationCanceledRef`+`wasLoadingRef` 리셋, onEdit/onReload는 effect 의존성 재실행으로 폴 취소되는데 onNew만 `clearServerHydrationState()`뿐이라 직전 런의 in-flight 폴이 `handleThreadState(replaceMessages:true)`로 stale 스냅샷을 재주입하며 낙관 버블과 레이스(`use-moldy-langgraph-stream.ts` onNew ↔ 2434-2493 폴링). M8-1이 하이드레이션 창의 전송을 열면서 잠재 레이스가 노출됨. 수정: onNew도 onCancel과 동일하게 폴 종료 + in-flight `.then`을 ref로 가드
+  - raw `finalize_skill` pill 빨간 ✗ 잔존(라이브만): 유력 원인 — 인터럽트가 메시지로 resolved 판정되어 active 목록에서 빠진 뒤엔 strip 키가 `resolvedInterrupts` 기록에만 의존하는데, `rememberResolvedInterrupt`가 `allInterruptPayloadsById` miss 시 조기 return하여 기록 실패 → strip no-op(`hitl-interrupts.ts:487-514` ↔ stream 2776-2790). 결정 시점 payload 캡처로 기록을 확정하는 방향
   - 승인 배지 위치: resolved synthetic 메시지가 대화 말미에 append되어 원 위치가 아닌 곳에 적층(scripted 캡처 10에서도 동일 — 기존 동작)
   - E2E 인프라: dev 서버 콜드 런에서 컴포저 remount 순간 press가 끼면 Enter 1회 유실 가능(격리 3/3 통과 — 인프라 flake 분류, prod 빌드 무관)
 
