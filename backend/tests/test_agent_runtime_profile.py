@@ -61,9 +61,7 @@ async def test_default_runtime_profile_is_standard(db: AsyncSession) -> None:
     assert hidden.runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER
 
 
-async def test_agent_list_and_summary_exclude_hidden(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_agent_list_and_summary_exclude_hidden(client: AsyncClient, db: AsyncSession) -> None:
     standard, hidden = await _seed_agents(db)
 
     listed = await client.get("/api/agents")
@@ -91,9 +89,7 @@ async def test_get_single_hidden_agent_still_readable(
     assert response.json()["id"] == str(hidden.id)
 
 
-async def test_put_delete_hidden_agent_return_404(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_put_delete_hidden_agent_return_404(client: AsyncClient, db: AsyncSession) -> None:
     standard, hidden = await _seed_agents(db)
 
     put = await client.put(f"/api/agents/{hidden.id}", json={"name": "tampered"})
@@ -162,12 +158,8 @@ async def test_daily_spend_agent_axis_excludes_hidden(db: AsyncSession) -> None:
     day = date(2026, 7, 1)
     db.add_all(
         [
-            DailySpendAgent(
-                date=day, agent_id=standard.id, total_tokens_in=10, total_tokens_out=5
-            ),
-            DailySpendAgent(
-                date=day, agent_id=hidden.id, total_tokens_in=100, total_tokens_out=50
-            ),
+            DailySpendAgent(date=day, agent_id=standard.id, total_tokens_in=10, total_tokens_out=5),
+            DailySpendAgent(date=day, agent_id=hidden.id, total_tokens_in=100, total_tokens_out=50),
         ]
     )
     await db.commit()
@@ -198,9 +190,7 @@ async def test_daily_spend_agent_axis_excludes_hidden(db: AsyncSession) -> None:
     assert date_rows[0]["total_tokens_in"] == 10
 
 
-async def test_deployment_candidates_exclude_hidden(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_deployment_candidates_exclude_hidden(client: AsyncClient, db: AsyncSession) -> None:
     standard, hidden = await _seed_agents(db)
 
     response = await client.get("/api/agent-api/deployment-candidates")
@@ -210,9 +200,7 @@ async def test_deployment_candidates_exclude_hidden(
     assert str(hidden.id) not in candidate_ids
 
 
-async def test_hidden_agent_rejected_as_sub_agent(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_hidden_agent_rejected_as_sub_agent(client: AsyncClient, db: AsyncSession) -> None:
     standard, hidden = await _seed_agents(db)
 
     response = await client.put(
@@ -252,3 +240,56 @@ async def test_hidden_agent_absent_from_assistant_subagent_listing(
     ids = {item["id"] for item in items}
     assert str(other.id) in ids
     assert str(hidden.id) not in ids
+
+
+async def test_hidden_agent_favorite_and_image_mutations_return_404(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    """R 재검 회귀: PUT/DELETE 외 뮤테이션(favorite/image)도 히든 에이전트에는
+    enumeration-safe 404 — UUID를 알아도 변조 불가."""
+
+    _standard, hidden = await _seed_agents(db)
+
+    favorite = await client.patch(f"/api/agents/{hidden.id}/favorite")
+    assert favorite.status_code == 404
+
+    image = await client.post(f"/api/agents/{hidden.id}/image")
+    assert image.status_code == 404
+
+
+async def test_hidden_agent_excluded_from_blueprint_name_resolution(
+    db: AsyncSession,
+) -> None:
+    """R 재검 회귀: 블루프린트의 이름 기반 서브에이전트 해석이 히든 에이전트와
+    이름이 충돌해도 히든을 결선하지 않는다."""
+
+    import pytest as _pytest
+
+    from app.exceptions import ValidationError
+    from app.services.agent_blueprint_service import _resolve_sub_agent_ids
+
+    standard, hidden = await _seed_agents(db)
+    # 히든과 같은 이름의 표준 에이전트가 없으면 "missing dependency"로
+    # fail-closed — 히든을 조용히 결선하는 것보다 명시적 실패가 맞다.
+    with _pytest.raises(ValidationError):
+        await _resolve_sub_agent_ids(
+            db,
+            capabilities={"subagents": [{"name": hidden.name, "position": 0}]},
+            user_id=TEST_USER_ID,
+        )
+
+    # 같은 이름의 표준 에이전트가 있으면 그쪽이 선택된다.
+    twin = Agent(
+        user_id=TEST_USER_ID,
+        name=hidden.name,
+        system_prompt="standard twin",
+        model_id=standard.model_id,
+    )
+    db.add(twin)
+    await db.commit()
+    resolved_twin = await _resolve_sub_agent_ids(
+        db,
+        capabilities={"subagents": [{"name": hidden.name, "position": 0}]},
+        user_id=TEST_USER_ID,
+    )
+    assert resolved_twin == [twin.id]

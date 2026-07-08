@@ -176,6 +176,11 @@ def _iter_draft_paths(storage_path: str):
     파일 목록/단건 조회 API가 워크스페이스 전체 바이트를 매 요청 적재하지
     않도록(R2 perf) 바이너리 판정은 앞 8KB sniff로 제한한다. 전량 판정이
     필요한 validate/finalize 경로는 기존 ``load_draft_files``를 그대로 쓴다.
+
+    계약 주의: 널바이트가 8KB 뒤에 처음 나오는 병적 파일은 여기(목록)엔 뜨지만
+    ``load_draft_file_content``(전량 재판정)는 None→404, validate/패키지에서도
+    제외된다 — 모두 fail-closed 방향의 의도된 발산이다. 최종 저장은 finalize의
+    ``binary_package_files`` fail-closed가 명시적 오류로 막는다.
     """
 
     root = resolve_workspace_dir(storage_path)
@@ -475,21 +480,26 @@ async def _mark_dead_sessions_abandoned(db: AsyncSession, *, cutoff: datetime) -
     ``draft_workspace_path IS NOT NULL``로 스코프를 좁힌다.
     """
 
-    terminal = ("completed", "abandoned")
-    abandon_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
-        days=max(1, settings.skill_draft_abandon_days)
+    # 의미상 "재-마킹 금지" = 삭제 가능 상태와 동일 집합 — divergence 방지 재사용.
+    terminal = GC_DELETABLE_STATUSES
+    dead_clause = and_(
+        SkillBuilderSession.conversation_id.is_(None),
+        SkillBuilderSession.updated_at < cutoff,
     )
+    # abandon_days <= 0 은 idle 규칙 비활성(대화가 살아 있으면 무기한 보존) —
+    # max(1)로 강제하면 운영자가 0(끄기)을 의도했을 때 1일로 둔갑한다.
+    if settings.skill_draft_abandon_days > 0:
+        abandon_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+            days=settings.skill_draft_abandon_days
+        )
+        stale_clause = or_(dead_clause, SkillBuilderSession.updated_at < abandon_cutoff)
+    else:
+        stale_clause = dead_clause
     result = await db.execute(
         select(SkillBuilderSession).where(
             SkillBuilderSession.status.not_in(terminal),
             SkillBuilderSession.draft_workspace_path.is_not(None),
-            or_(
-                and_(
-                    SkillBuilderSession.conversation_id.is_(None),
-                    SkillBuilderSession.updated_at < cutoff,
-                ),
-                SkillBuilderSession.updated_at < abandon_cutoff,
-            ),
+            stale_clause,
         )
     )
     marked = 0

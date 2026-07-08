@@ -136,8 +136,18 @@ async def finalize_draft_session(
             "validation_result": exc.result,
         }
     except SkillBuilderSourceSkillNotFound:
+        # claim이 CONFIRMING을 독립 커밋한 뒤의 실패 — conflict/validation 경로와
+        # 대칭으로 REVIEW로 되돌려야 재시도가 self-heal된다(rollback만으로는 이미
+        # 커밋된 CONFIRMING을 못 되돌려 CONFIRMING 게이트가 재시도를 영구 차단).
         await db.rollback()
+        await _release_confirming_claim(db, session_id, user_id)
         return _error("SOURCE_SKILL_NOT_FOUND", "source skill not found")
+    except Exception:
+        # 예기치 못한 실패(transient DB 오류, 워커 중단 등)도 claim을 해제해
+        # 세션이 거짓 "다른 finalize 진행 중" 상태에 갇히지 않게 한다.
+        await db.rollback()
+        await _release_confirming_claim(db, session_id, user_id)
+        raise
 
     await _record_audit(
         db,
@@ -180,6 +190,20 @@ def _success(session: SkillBuilderSession, skill: Any) -> dict[str, Any]:
         "deeplink": SKILL_DETAIL_DEEPLINK.format(skill_id=skill.id),
         "validation_result": session.validation_result,
     }
+
+
+async def _release_confirming_claim(
+    db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
+) -> None:
+    """post-claim 실패 시 CONFIRMING → REVIEW 복귀 (best-effort self-heal)."""
+
+    try:
+        session = await skill_builder_service.get_session(db, session_id, user_id)
+        if session is not None and session.status == SkillBuilderStatus.CONFIRMING.value:
+            session.status = SkillBuilderStatus.REVIEW.value
+            await db.commit()
+    except Exception:
+        logger.exception("failed to release confirming claim session=%s", session_id)
 
 
 def _error(code: str, message: str) -> dict[str, Any]:

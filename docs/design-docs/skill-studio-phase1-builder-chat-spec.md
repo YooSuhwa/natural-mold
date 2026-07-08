@@ -88,7 +88,7 @@
 - deepagents `write()`는 기존 파일 덮어쓰기를 거부(`filesystem.py:486-488`) → 수정은 `edit_file`. 빌더 프롬프트에 명시.
 - 개선(improve) 모드: 세션 시작 시 원본 스킬 파일을 워크스페이스로 **복사**(스킬 마운트의 copytree 선례 — `skill_runtime.py:181-213`, symlink 금지) + `base_content_hash` 기록(기존 충돌 모델 계승).
 - 첨부: run 시작 시 대화에 연결된 업로드(`message_attachments.storage_path`, 파일은 `data/uploads/<uuid><ext>` — `uploads.py:135`)를 `<workspace>/inputs/<원본파일명>`으로 **복사**. G1 갭(첨부가 모델에 전달 안 됨)의 빌더 스코프 해결 — uploads 전체 마운트는 금지(§6).
-- GC: `cleanup_stale_runtime_roots` 스켈레톤 복제(`skill_runtime.py:381-418` + `scheduler.py:679-725` 등록 패턴)하되 **mtime이 아니라 세션 상태 기준**(active/confirming 세션은 보존, `completed`/`abandoned`만 리텐션 경과 시 삭제). 설정: `skill_draft_gc_retention_hours`(pydantic-settings, `config.py:75` 스타일).
+- GC: `cleanup_stale_runtime_roots` 스켈레톤 복제(`skill_runtime.py:381-418` + `scheduler.py:679-725` 등록 패턴)하되 **mtime이 아니라 세션 상태 기준**(active/confirming 세션은 abandon 지평 내 보존, `completed`/`abandoned`만 리텐션 경과 시 삭제). 설정: `skill_draft_gc_retention_hours`. (R 갱신) 대화가 소실된 세션(리텐션 경과)과 `skill_draft_abandon_days`(기본 14일) 미활동 세션은 `abandoned`로 전이해 2단계로 회수한다 — 전이 경로 없는 abandoned는 죽은 GC 규칙이었음(/review 발견).
 
 ### AD-3. 도구 세트 (코드 빌드, 5종 + FS 기본)
 

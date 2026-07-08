@@ -300,3 +300,20 @@ async def test_gc_marks_long_idle_sessions_abandoned(db: AsyncSession, tmp_path:
     await db.refresh(within)
     assert idle.status == "abandoned"
     assert within.status == "active"
+
+
+async def test_gc_abandon_days_zero_disables_idle_rule(
+    db: AsyncSession, tmp_path: Path, monkeypatch
+) -> None:
+    """R 후속: skill_draft_abandon_days<=0은 idle 규칙 비활성(무기한 보존) —
+    max(1)로 강제하면 운영자의 '끄기'(0)가 1일로 둔갑한다."""
+
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "skill_draft_abandon_days", 0)
+    idle = await _make_session(db, status="active", age_hours=100 * 24, with_conversation=True)
+
+    await workspace.gc_stale_draft_workspaces(db, retention_hours=24)
+
+    await db.refresh(idle)
+    assert idle.status == "active"

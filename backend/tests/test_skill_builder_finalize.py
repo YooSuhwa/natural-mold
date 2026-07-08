@@ -286,3 +286,32 @@ async def test_finalize_tool_requires_approval_and_never_session_consent() -> No
     assert interrupt_on["finalize_skill"] == {"allowed_decisions": ["approve", "reject"]}
     assert "test_skill_draft" not in interrupt_on
     assert "finalize_skill" not in SESSION_CONSENT_ELIGIBLE_TOOLS
+
+
+async def test_finalize_releases_claim_on_source_skill_not_found(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    """R 후속 회귀(재검 발견): claim이 CONFIRMING을 독립 커밋한 뒤
+    SOURCE_SKILL_NOT_FOUND로 실패하면 REVIEW로 복귀해야 한다 — 안 그러면
+    CONFIRMING 게이트가 재시도를 "다른 finalize 진행 중"이라는 거짓 메시지로
+    abandon 지평(14일)까지 영구 차단한다."""
+
+    from app.services.skill_builder_finalize import finalize_draft_session
+    from app.skills import service as skill_service
+
+    session, source = await _start_improve_session(client, db)
+    assert session.draft_workspace_path is not None
+
+    # 세션이 참조하는 원본 스킬을 삭제해 post-claim 실패를 재현.
+    await skill_service.delete_skill(db, source)
+    await db.commit()
+
+    first = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    assert first["error_code"] == "SOURCE_SKILL_NOT_FOUND"
+
+    await db.refresh(session)
+    assert session.status == "review"  # CONFIRMING 잠금이 풀려 있어야 한다.
+
+    # 재시도는 CONFIRMING 게이트에 막히지 않고 같은 오류를 다시 보고한다(self-heal).
+    second = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    assert second["error_code"] == "SOURCE_SKILL_NOT_FOUND"
