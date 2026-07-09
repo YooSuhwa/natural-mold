@@ -11,6 +11,7 @@
     "build": "pnpm prepare:assets && next build --webpack",
     "start": "next start",
     "lint": "eslint",
+    "lint:all": "pnpm lint && pnpm lint:i18n && pnpm lint:design-system && pnpm lint:frontend-architecture && pnpm lint:a11y && pnpm lint:type-safety && pnpm lint:e2e-hygiene",
     "lint:a11y": "node scripts/check-jsx-a11y.mjs",
     "lint:type-safety": "node scripts/check-type-safety.mjs",
     "lint:e2e-hygiene": "node scripts/check-e2e-hygiene.mjs",

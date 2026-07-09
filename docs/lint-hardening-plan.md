@@ -36,7 +36,23 @@
   3. lint-staged에 변경 파일 대상 가드 추가(전체 스캔이 무거우면 `check-static-i18n.mjs`처럼 빠른 것만 staged, 나머지는 CI 전담).
   4. **주의**: 6개 가드가 현재 그린인지 먼저 확인(`pnpm lint:*` 각각). baseline 경고가 있는 가드(jsx-a11y는 `jsx-a11y-baseline.json`)는 baseline 초과만 실패하도록 이미 설계됨 — 그대로 CI에 넣으면 됨.
 - **검증**: 의도적으로 i18n 키를 한쪽만 추가한 커밋이 CI에서 빨간불이 되는지.
-- **공수**: S
+- **공수**: ~~S~~ → **M** (아래 실측으로 상향)
+
+### A 실측 (2026-07-08) — 연결 전 트리아지가 선행 필요
+
+각 가드를 개별 실행한 결과, **6개 중 4개가 이미 위반 상태**다(강제 안 한 결과 위반이 축적됨 — A가 필요한 이유의 실증). 주의: `pnpm run <g> | tail`의 종료코드는 tail의 것이라 항상 0으로 보인다(pyright 백로그 때와 동일 함정) — 반드시 `pnpm run <g> >/dev/null 2>&1; echo $?`로 확인.
+
+| 가드 | 상태 | 위반 | 트리아지 판단 |
+|------|------|:---:|---------------|
+| `lint` (eslint) | ✅ | — | — |
+| `lint:frontend-architecture` | ✅ | — | — |
+| `lint:i18n` | ❌ | 3 | 전부 `global-error.tsx`(FE-D1에서 신규) — i18n 프로바이더 밖이라 정적 영문 불가피 → **가드 SKIP_FILE_PATTERNS에 예외 등록** |
+| `lint:type-safety` | ❌ | 2 | `chat-route-replacement.test.ts`의 `@ts-expect-error`(SSR window 제거 시뮬) — 정당 → **테스트 예외 또는 이유-주석 허용** |
+| `lint:e2e-hygiene` | ❌ | 12 | 전부 `e2e/captures/`의 `waitForTimeout`(스크린샷 투어라 고정 대기 실용적) → **captures 디렉토리 예외 또는 대기 조건화** |
+| `lint:a11y` | ❌ | 신규 3 + baseline 해소 2 | approval-card/artifact-panel 컨트롤 라벨 — **실제 수정**(FE-D2와 연동) + baseline 갱신 |
+| `lint:design-system` | ❌ | 팔레트/svg/arbitrary 다수 + card 경고 18 | data-ui(chart/stats/terminal-card)의 `text-emerald-*`·inline-svg(FE-D4), message-attachments/approval-card arbitrary-layout — **실제 토큰화 수정 또는 문서화된 예외 등록** |
+
+**착수 방식**: (1) 정당한 예외 3개(i18n/type-safety/e2e-hygiene)를 각 가드에 등록해 그린화 → 그 3개를 먼저 CI 연결. (2) a11y·design-system은 실제 컴포넌트 수정(FE-D2·FE-D4와 연동)이라 별도 커밋/PR로 그린화 후 연결. **한 번에 6개를 CI에 넣지 말 것** — 빨간 가드를 CI에 넣으면 이후 모든 PR이 막힌다. `frontend/package.json`에 `lint:all` 집계 스크립트는 미리 추가해 뒀다(가드가 다 그린이 된 뒤 CI가 이걸 호출).
 
 ---
 
