@@ -7,9 +7,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation
 from app.error_codes import (
-    conversation_not_found,
     trace_not_found,
 )
 from app.models.conversation_run import ConversationRun
@@ -20,7 +19,7 @@ from app.schemas.conversation import (
     DebugTraceListResponse,
     TurnTraceResponse,
 )
-from app.services import chat_service, trace_debug_service, trace_storage
+from app.services import trace_debug_service, trace_storage
 
 router = APIRouter(tags=["conversations"])
 
@@ -46,31 +45,26 @@ async def _run_status_by_message_event_id(
 @router.get(
     "/api/conversations/{conversation_id}/traces",
     response_model=list[TurnTraceResponse],
+    dependencies=[Depends(owned_conversation)],
 )
 async def list_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if not conv:
-        raise conversation_not_found()
     return await trace_storage.get_traces_for_conversation(db, conversation_id)
 
 
 @router.get(
     "/api/conversations/{conversation_id}/debug/traces",
     response_model=DebugTraceListResponse,
+    dependencies=[Depends(owned_conversation)],
 )
 async def list_debug_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if not conv:
-        raise conversation_not_found()
-
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
     run_statuses = await _run_status_by_message_event_id(db, records)
     langfuse_enabled = is_langfuse_enabled()
@@ -93,6 +87,7 @@ async def list_debug_traces(
 @router.get(
     "/api/conversations/{conversation_id}/debug/traces/{trace_id}",
     response_model=DebugTraceDetailResponse,
+    dependencies=[Depends(owned_conversation)],
 )
 async def get_debug_trace_detail(
     conversation_id: uuid.UUID,
@@ -100,10 +95,6 @@ async def get_debug_trace_detail(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if not conv:
-        raise conversation_not_found()
-
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
     record = next(
         (item for item in records if trace_id in {item.external_trace_id, item.assistant_msg_id}),

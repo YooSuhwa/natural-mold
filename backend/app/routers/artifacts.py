@@ -6,15 +6,15 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
-from app.error_codes import conversation_not_found, file_not_found
+from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
+from app.error_codes import file_not_found
 from app.schemas.artifact import (
     ArtifactFavoriteUpdate,
     ArtifactLibraryPage,
     ArtifactLibraryStats,
     ArtifactSummary,
 )
-from app.services import artifact_service, chat_service
+from app.services import artifact_service
 from app.services.artifact_service import ArtifactNotFoundError, is_text_preview_artifact
 
 router = APIRouter(tags=["artifacts"])
@@ -23,15 +23,13 @@ router = APIRouter(tags=["artifacts"])
 @router.get(
     "/api/conversations/{conversation_id}/artifacts",
     response_model=list[ArtifactSummary],
+    dependencies=[Depends(owned_conversation)],
 )
 async def list_conversation_artifacts(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     return await artifact_service.list_conversation_artifacts(
         db,
         user_id=user.id,
@@ -42,6 +40,7 @@ async def list_conversation_artifacts(
 @router.get(
     "/api/conversations/{conversation_id}/artifacts/{artifact_id}",
     response_model=ArtifactSummary,
+    dependencies=[Depends(owned_conversation)],
 )
 async def get_conversation_artifact(
     conversation_id: uuid.UUID,
@@ -49,9 +48,6 @@ async def get_conversation_artifact(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     try:
         return await artifact_service.get_conversation_artifact_summary(
             db,
@@ -63,16 +59,16 @@ async def get_conversation_artifact(
         raise file_not_found() from exc
 
 
-@router.get("/api/conversations/{conversation_id}/artifacts/{artifact_id}/content")
+@router.get(
+    "/api/conversations/{conversation_id}/artifacts/{artifact_id}/content",
+    dependencies=[Depends(owned_conversation)],
+)
 async def get_conversation_artifact_content(
     conversation_id: uuid.UUID,
     artifact_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     try:
         summary = await artifact_service.get_conversation_artifact_summary(
             db,
@@ -102,16 +98,16 @@ async def get_conversation_artifact_content(
         raise file_not_found() from exc
 
 
-@router.get("/api/conversations/{conversation_id}/artifacts/{artifact_id}/download")
+@router.get(
+    "/api/conversations/{conversation_id}/artifacts/{artifact_id}/download",
+    dependencies=[Depends(owned_conversation)],
+)
 async def download_conversation_artifact(
     conversation_id: uuid.UUID,
     artifact_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     try:
         artifact, _version, path = await artifact_service.get_artifact_download_path(
             db,
@@ -138,6 +134,7 @@ async def download_conversation_artifact(
 @router.delete(
     "/api/conversations/{conversation_id}/artifacts/{artifact_id}",
     status_code=204,
+    dependencies=[Depends(owned_conversation)],
 )
 async def delete_conversation_artifact(
     conversation_id: uuid.UUID,
@@ -146,9 +143,6 @@ async def delete_conversation_artifact(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     try:
         await artifact_service.delete_artifact(
             db,
