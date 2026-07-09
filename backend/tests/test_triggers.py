@@ -381,3 +381,31 @@ async def test_list_tools_includes_user_and_system(client: AsyncClient):
     names = {t["name"] for t in resp.json()}
     assert "System Tool" in names
     assert "User Tool" in names
+
+
+@pytest.mark.asyncio
+async def test_create_trigger_rejects_hidden_runtime_agent(client: AsyncClient, db):
+    """R2 회귀: 히든 런타임 에이전트(skill builder)는 트리거 대상이 될 수 없다 —
+    트리거 실행은 빌더 분기·System LLM 재해석을 우회해 placeholder 프롬프트를
+    표준 에이전트로 스케줄 실행하게 된다. 세션 응답에 agent_id가 노출되므로
+    UUID를 아는 것만으로 결선이 가능하면 히든 불변식이 깨진다."""
+
+    from app.services.skill_builder_hidden_agent import get_or_create_skill_builder_agent
+    from tests.conftest import TEST_USER_ID
+    from tests.skill_builder_test_helpers import configure_system_llm
+
+    await configure_system_llm(db)
+    agent = await get_or_create_skill_builder_agent(db, user_id=TEST_USER_ID)
+    await db.commit()
+
+    trigger_resp = await client.post(
+        f"/api/agents/{agent.id}/triggers",
+        json={
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 10},
+            "input_message": "run",
+        },
+    )
+
+    assert trigger_resp.status_code == 404
+    assert "AGENT_NOT_FOUND" in trigger_resp.text

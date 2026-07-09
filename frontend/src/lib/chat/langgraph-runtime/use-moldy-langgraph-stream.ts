@@ -46,6 +46,7 @@ import {
 } from './hitl-interrupts'
 import { useLangGraphMemoryEffects } from './memory-events'
 import { useLangGraphSubagentNamesEffects } from './subagent-names-events'
+import { useLangGraphSkillBuilderEffects } from './skill-builder-events'
 import { useLangGraphMemoryRecallEffects } from './memory-recall-events'
 import { useLangGraphCompactionEffects } from './compaction-events'
 import {
@@ -76,7 +77,7 @@ import {
   chatCancelInFlightAtom,
   pendingEditBranchPickerSuppressionAtom,
 } from '@/lib/stores/chat-store'
-import type { Decision, Message as MoldyMessage } from '@/lib/types'
+import type { Decision, Message as MoldyMessage, StandardInterruptPayload } from '@/lib/types'
 
 type ConvertedMessage = ReturnType<typeof useExternalMessageConverter>[number]
 type VisibleMessageWithId = {
@@ -2459,7 +2460,10 @@ export function useMoldyLangGraphStream({
     const hydrateCompletedRun = (): void => {
       void loadServerThreadState(conversationId)
         .then((state: ThreadStateResponse) => {
-          if (cancelled) return
+          // hydrationCanceledRef: onNew/onCancel이 effect cleanup 밖(in-flight
+          // promise)에서 폴을 끊는 동기 신호 — 늦게 resolve된 응답이 stale
+          // 스냅샷을 재주입하지 않게 드롭한다(R1).
+          if (cancelled || hydrationCanceledRef.current) return
           const stateMessages = messagesFromThreadState(state)
           if (
             stateMessages &&
@@ -2473,7 +2477,7 @@ export function useMoldyLangGraphStream({
           retryHydrationOrSettle()
         })
         .catch(() => {
-          if (cancelled) return
+          if (cancelled || hydrationCanceledRef.current) return
           retryHydrationOrSettle()
         })
     }
@@ -2517,16 +2521,18 @@ export function useMoldyLangGraphStream({
   useLangGraphMemoryEffects({ stream })
   useLangGraphSubagentNamesEffects({ stream, conversationId })
   useLangGraphMemoryRecallEffects({ stream, conversationId })
+  // 스킬 빌더 챗 검증 레일 (AD-5) — moldy.skill_draft/skill_validation 소비.
+  useLangGraphSkillBuilderEffects({ stream, conversationId })
   const isRunning =
     stream.isLoading &&
     interruptPayloads.length === 0 &&
     threadRunNotice?.status !== 'stale' &&
     threadRunNotice?.status !== 'failed'
-  const runtimeIsRunning =
-    isRunning ||
-    postRunHydrationPending ||
-    pendingEditRender !== null ||
-    pendingReloadRender !== null
+  // postRunHydrationPending은 여기서 제외 — 런 종료(stream.isLoading=false) 후
+  // 서버 상태 하이드레이션은 백그라운드 재조정일 뿐이라 컴포저 전송(Enter)을
+  // 막으면 안 된다(M8-1: 런 직후 Enter 드롭). 메시지 연속성은 별도 플래그
+  // streamStateIsSettling(sticky/fallback 레이어)이 독립적으로 유지한다.
+  const runtimeIsRunning = isRunning || pendingEditRender !== null || pendingReloadRender !== null
   const convertedMessages = useExternalMessageConverter({
     callback: conversionCallback,
     messages: conversionSourceMessages,
@@ -2644,6 +2650,14 @@ export function useMoldyLangGraphStream({
         return
       }
       onBeforeSubmit?.()
+      // 직전 런의 post-run 하이드레이션 폴을 즉시 종료(R1) — onCancel과 동일
+      // 계약. refs는 동기라 이 제출로 stream.isLoading이 true가 되기 전 창에서
+      // in-flight 폴이 handleThreadState(replaceMessages)로 stale 스냅샷을
+      // 재주입해 낙관(pending-submit) 사용자 버블과 중복 렌더되는 레이스를
+      // 막는다. 늦게 resolve되는 폴은 hydrateCompletedRun의 ref 가드가 드롭.
+      hydrationCanceledRef.current = true
+      wasLoadingRef.current = false
+      settlePostRunHydration()
       setThreadRunNotice(null)
       clearServerHydrationState()
       setPendingBranchPickerSuppression(null)
@@ -2678,6 +2692,7 @@ export function useMoldyLangGraphStream({
       setPendingEditRender,
       setPendingReloadRender,
       setThreadRunNotice,
+      settlePostRunHydration,
       submitNew,
     ],
   )
@@ -2771,9 +2786,16 @@ export function useMoldyLangGraphStream({
   )
 
   const rememberResolvedInterrupt = useCallback(
-    (interruptId: string | null, decisions: readonly Decision[]) => {
+    (
+      interruptId: string | null,
+      decisions: readonly Decision[],
+      capturedPayload?: StandardInterruptPayload,
+    ) => {
       if (!interruptId) return
-      const payload = allInterruptPayloadsById.get(interruptId)
+      // respond 이후에는 인터럽트가 stream.interrupts에서 이미 사라져 map 재조회가
+      // miss날 수 있다(R3 — 그러면 resolved 기록이 빠져 strip 키가 죽고 raw
+      // finalize pill이 모순 상태로 재부상). 결정 시점에 캡처한 payload를 우선한다.
+      const payload = capturedPayload ?? allInterruptPayloadsById.get(interruptId)
       if (!payload) return
       const resolved = resolvedInterruptToolCallsFromDecisions(payload, decisions)
       if (resolved.length === 0) return
@@ -2809,19 +2831,21 @@ export function useMoldyLangGraphStream({
           await stream.respond({ decisions }, options)
           await refreshThreadLifecycleStream(stream)
           pendingInterruptDecisionsRef.current.delete(activeId)
-          rememberResolvedInterrupt(activeId, decisions)
+          rememberResolvedInterrupt(activeId, decisions, payload)
           return true
         }
 
         const responsesById: Record<string, { decisions: Decision[] }> = {}
+        const payloadsAtDecision = new Map<string, StandardInterruptPayload | undefined>()
         for (const [activeId, decisions] of decisionsById) {
           responsesById[activeId] = { decisions }
+          payloadsAtDecision.set(activeId, allInterruptPayloadsById.get(activeId))
         }
         await stream.respondAll(responsesById)
         await refreshThreadLifecycleStream(stream)
         for (const [activeId, decisions] of decisionsById) {
           pendingInterruptDecisionsRef.current.delete(activeId)
-          rememberResolvedInterrupt(activeId, decisions)
+          rememberResolvedInterrupt(activeId, decisions, payloadsAtDecision.get(activeId))
         }
         return true
       } finally {
@@ -2881,7 +2905,7 @@ export function useMoldyLangGraphStream({
           : { interruptId: targetId }
         await stream.respond(response, options)
         await refreshThreadLifecycleStream(stream)
-        rememberResolvedInterrupt(targetId, decisions)
+        rememberResolvedInterrupt(targetId, decisions, payload)
         return
       }
       await stream.respond(response)

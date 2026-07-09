@@ -240,6 +240,58 @@ def _subagent_names_event(
     )
 
 
+def _annotate_session_consent_eligibility(
+    input_event: StoredProtocolEvent,
+    consent_tools: list[str],
+) -> None:
+    """AD-4 — 인터럽트 wire의 review_configs에 세션 동의 가능 플래그를 주석한다.
+
+    langchain ``ReviewConfig`` 는 ``action_name``/``allowed_decisions`` 만
+    만들므로(여분 키 미보존), 우리 wire 계층에서 주입한다. 승인 카드가 이
+    플래그를 보고 "이 세션에서 계속 허용" 옵션을 조건부 렌더한다. dict를
+    in-place 수정 — persist 경로에도 같은 페이로드가 실려 replay가 유지된다.
+    """
+
+    data = input_event.get("data")
+    if not isinstance(data, dict):
+        return
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        return
+    review_configs = payload.get("review_configs")
+    if not isinstance(review_configs, list):
+        return
+    eligible = set(consent_tools)
+    for config in review_configs:
+        if isinstance(config, dict) and config.get("action_name") in eligible:
+            config["session_consent_eligible"] = True
+
+
+def _skill_draft_event(
+    *,
+    run_id: str,
+    thread_id: str,
+    seq: int,
+    brief: dict[str, Any],
+) -> StoredProtocolEvent:
+    """Emit the skill-builder draft summary once at stream head (AD-5).
+
+    Payload는 요약만 싣는다(세션 id/모드/slug/파일 경로·크기/변경 수) — 파일
+    내용은 도구 결과/FS 읽기로만 흐른다(§6-7). Stable event id dedupes on
+    replay/reload (same contract as ``_memory_recalled_event``).
+    """
+    stable_id = f"{run_id}:skill_draft"
+    return stored_custom_protocol_event(
+        run_id=run_id,
+        thread_id=thread_id,
+        seq=seq,
+        name=event_names.SKILL_DRAFT,
+        payload=brief,
+        event_id=stable_id,
+        id=stable_id,
+    )
+
+
 def _memory_recalled_event(
     *,
     run_id: str,
@@ -282,6 +334,8 @@ async def stream_agent_response_langgraph(
     artifact_recorder: ArtifactEventRecorder | None = None,
     subagent_display_names: dict[str, str] | None = None,
     recalled_memories: list[dict[str, Any]] | None = None,
+    skill_draft_brief: dict[str, Any] | None = None,
+    session_consent_tools: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     msg_id = run_id or str(uuid.uuid4())
     thread_id = _thread_id_from_config(config, msg_id)
@@ -360,6 +414,8 @@ async def stream_agent_response_langgraph(
             event,
             first_seq=max_emitted_seq + 1,
         ):
+            if session_consent_tools:
+                _annotate_session_consent_eligibility(input_event, session_consent_tools)
             chunks.append(await emit(input_event))
         return chunks
 
@@ -392,6 +448,16 @@ async def stream_agent_response_langgraph(
                     thread_id=thread_id,
                     seq=side_effect_seq,
                     memories=recalled_memories,
+                )
+            )
+        if skill_draft_brief:
+            side_effect_seq += 1
+            yield await emit(
+                _skill_draft_event(
+                    run_id=msg_id,
+                    thread_id=thread_id,
+                    seq=side_effect_seq,
+                    brief=skill_draft_brief,
                 )
             )
         try:

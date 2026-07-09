@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -15,6 +17,9 @@ from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_attachments import (
     attachment_ids_from_protocol_input,
     input_without_protocol_attachments,
+)
+from app.routers.conversation_agent_protocol_consent import (
+    apply_session_consent_decisions,
 )
 from app.routers.conversation_agent_protocol_contracts import (
     AgentCommandRequest,
@@ -47,6 +52,37 @@ from app.services.conversation_stream_service import resolve_agent_context
 
 StartConversationRun = Callable[..., Awaitable[Any]]
 AgentStreamExecutor = Callable[..., Any]
+
+# M8-2 — 인터럽트 SSE 이벤트는 스트림 도중 즉시 클라이언트에 flush되지만,
+# 부모 run의 "interrupted" 상태 커밋은 워커 finalize 단계다. 카드가 보이자마자
+# 승인하면 전이 전에 resume이 도착할 수 있어, 활성 run이 전이를 마칠 때까지
+# 짧게 기다린다 (활성 run이 아예 없으면 진짜 not-found — 즉시 포기).
+_RESUME_INTERRUPT_WAIT_TIMEOUT_S = 2.0
+_RESUME_INTERRUPT_WAIT_INTERVAL_S = 0.05
+
+
+async def _wait_for_interrupted_parent_run(
+    db: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> Any:
+    deadline = time.monotonic() + _RESUME_INTERRUPT_WAIT_TIMEOUT_S
+    while True:
+        active = await conversation_run_service.get_active_run(
+            db, conversation_id=conversation_id, user_id=user_id
+        )
+        if active is None or time.monotonic() >= deadline:
+            # 전이 직후 창일 수 있으니 마지막으로 한 번 더 조회하고 포기한다.
+            return await conversation_run_service.get_latest_interrupted_run(
+                db, conversation_id=conversation_id, user_id=user_id
+            )
+        await asyncio.sleep(_RESUME_INTERRUPT_WAIT_INTERVAL_S)
+        run = await conversation_run_service.get_latest_interrupted_run(
+            db, conversation_id=conversation_id, user_id=user_id
+        )
+        if run is not None:
+            return run
 
 
 async def _handle_run_start_command(
@@ -141,6 +177,17 @@ async def _handle_run_start_command(
             user_id=user.id,
             attachment_ids=attachment_ids,
         )
+        if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
+            # 빌더 챗 (AD-2/§6-3): 이번 턴 첨부를 드래프트 워크스페이스
+            # ``inputs/``로 **복사**한다 — uploads 마운트 금지.
+            from app.services import skill_draft_workspace
+
+            await skill_draft_workspace.copy_conversation_attachments_to_inputs(
+                db,
+                storage_path=cfg.draft_workspace_path,
+                attachment_ids=attachment_ids,
+                user_id=user.id,
+            )
     await db.commit()
 
     await start_run(
@@ -231,12 +278,20 @@ async def _handle_input_respond_command(
             message="input.respond requires interrupt_id or responses[0].interrupt_id",
         )
 
-    cfg = await resolve_agent_context(db, conversation.id, user)
     parent_run = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation.id,
         user_id=user.id,
     )
+    if parent_run is None:
+        parent_run = await _wait_for_interrupted_parent_run(
+            db, conversation_id=conversation.id, user_id=user.id
+        )
+        if parent_run is not None:
+            # 워커 전이는 별도 세션 커밋이라, 대기 초반에 identity map에 적재된
+            # 인스턴스는 status/interrupt_id가 stale일 수 있다(R2) — PK는 정확하나
+            # 이후 필드를 읽는 코드가 오동작하지 않게 새로고침한다.
+            await db.refresh(parent_run)
     if parent_run is None:
         return command_error(
             command,
@@ -252,6 +307,17 @@ async def _handle_input_respond_command(
             code=validation_error.code,
             message=validation_error.message,
         )
+    # AD-4 — ``scope:"session"`` 동의를 세션에 기록하고 decision에서 비표준
+    # 키를 제거한다. **resolve_agent_context 이전**이어야 이번 resume의 에이전트
+    # 재빌드부터 동의가 즉시 효력을 갖는다 (모든 resume은 재빌드).
+    consented_tools = await apply_session_consent_decisions(
+        db,
+        conversation_id=conversation.id,
+        user_id=user.id,
+        resume=resume,
+        pending_interrupts=interrupts_from_tasks(tasks),
+    )
+    cfg = await resolve_agent_context(db, conversation.id, user)
     try:
         input_payload = await restore_redacted_resume_payload(
             conversation=conversation,
@@ -274,7 +340,11 @@ async def _handle_input_respond_command(
         action="conversation.message_resume",
         conversation_id=conversation.id,
         agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
-        metadata={"source": "langgraph_protocol", "interrupt_id": run_interrupt_id},
+        metadata={
+            "source": "langgraph_protocol",
+            "interrupt_id": run_interrupt_id,
+            **({"consented_tools": consented_tools} if consented_tools else {}),
+        },
     )
 
     try:

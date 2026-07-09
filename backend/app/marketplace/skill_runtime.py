@@ -48,7 +48,12 @@ from typing import TYPE_CHECKING, Any, Literal
 from app.storage.paths import resolve_data_path
 
 logger = logging.getLogger(__name__)
-type SkillExecutionAuditKind = Literal["execute_in_skill", "skill_evaluation"]
+type SkillExecutionAuditKind = Literal[
+    "execute_in_skill",
+    "skill_evaluation",
+    # 스킬 빌더 챗의 저장 전 드래프트 시험 실행 (스펙 4.3).
+    "skill_builder.draft_test",
+]
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

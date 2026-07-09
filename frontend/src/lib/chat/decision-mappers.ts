@@ -9,8 +9,10 @@
 import type { Decision } from '@/lib/types'
 import type { UserInputOption, UserInputQuestion } from '@/lib/types'
 
-export function toApprove(): Decision {
-  return { type: 'approve' }
+export function toApprove(options?: { sessionScope?: boolean }): Decision {
+  // 스킬 빌더 AD-4 — "이 세션에서 계속 허용" 선택 시 scope:'session' 첨부.
+  // 백엔드가 동의를 기록한 뒤 이 키를 벗겨 표준 approve만 미들웨어로 보낸다.
+  return options?.sessionScope ? { type: 'approve', scope: 'session' } : { type: 'approve' }
 }
 
 export function toReject(message?: string): Decision {

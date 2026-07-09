@@ -12,7 +12,7 @@ from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import agent_not_found, image_not_found
 from app.exceptions import ExternalServiceError, ValidationError
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.schemas.agent import (
     AgentBrief,
     AgentCreate,
@@ -36,6 +36,16 @@ middleware_router = APIRouter(tags=["middlewares"])
 def _sub_agent_image_url(sub: Agent) -> str | None:
     """Compute image_url for a sub-agent (mirrors _agent_to_response logic)."""
     return build_agent_image_url(sub.id, updated_at=sub.updated_at, image_path=sub.image_path)
+
+
+def _require_standard_profile(agent: Agent) -> None:
+    """히든 런타임 에이전트(skill builder 등)는 변조 불가 — enumeration-safe 404.
+
+    404로 통일해 존재 여부 oracle을 만들지 않는다 (없음/숨김 응답 동일).
+    GET 단건은 빌더 챗 서피스가 에이전트 메타를 읽어야 하므로 막지 않는다.
+    """
+    if agent.runtime_profile != AGENT_RUNTIME_PROFILE_STANDARD:
+        raise agent_not_found()
 
 
 def _tool_icon_id(definition_key: str) -> str | None:
@@ -200,6 +210,7 @@ async def update_agent(
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
         raise agent_not_found()
+    _require_standard_profile(agent)
     updated = await agent_service.update_agent(db, agent, data)
     changed_fields = sorted(data.model_fields_set - {"system_prompt"})
     await audit_service.record_event(
@@ -236,6 +247,7 @@ async def toggle_favorite(
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
         raise agent_not_found()
+    _require_standard_profile(agent)
     updated = await agent_service.toggle_favorite(db, agent)
     await audit_service.record_event(
         db,
@@ -268,6 +280,7 @@ async def delete_agent(
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
         raise agent_not_found()
+    _require_standard_profile(agent)
     await audit_service.record_event(
         db,
         actor_type="user",
@@ -297,6 +310,7 @@ async def generate_agent_image(
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
         raise agent_not_found()
+    _require_standard_profile(agent)
     try:
         image_url = await image_service.generate_agent_image(db, agent)
     except ValueError as e:

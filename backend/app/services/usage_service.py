@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.token_usage import TokenUsage
 
 
@@ -81,7 +81,12 @@ async def get_usage_summary(
             ).label("estimated_cost"),
         )
         .join(Agent, DailySpendAgent.agent_id == Agent.id)
-        .where(Agent.user_id == user_id)
+        .where(
+            Agent.user_id == user_id,
+            # 히든 런타임 에이전트는 per-agent breakdown에서 제외. 사용자 총합
+            # (DailySpendUser)에는 그대로 포함된다 — 비용은 실제 발생분이다.
+            Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+        )
         .group_by(DailySpendAgent.agent_id, Agent.name)
     )
     by_agent_result = await db.execute(by_agent_query)

@@ -43,6 +43,8 @@ interface ApprovalArgs {
   hitl_total_actions?: number
   hitl_interrupt_id?: string | null
   allowed_decisions?: StandardDecision['type'][]
+  /** 스킬 빌더 AD-4 — "이 세션에서 계속 허용" 옵션 노출 (review_configs 플래그) */
+  session_consent_eligible?: boolean
 }
 
 type Decision = 'approved' | 'modified' | 'rejected'
@@ -98,10 +100,11 @@ function toDecision(
   d: Decision,
   response: ApprovalResult,
   toolName: string | undefined,
+  options?: { sessionScope?: boolean },
 ): StandardDecision {
   switch (d) {
     case 'approved':
-      return toApprove()
+      return toApprove(options)
     case 'modified':
       // edited_action.name은 백엔드가 pending action을 positional index로 매칭해
       // 권위적으로 채운다. 도구 이름을 알면 advisory로 첨부하고, 모르면 생략한다
@@ -389,6 +392,9 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const [submitting, setSubmitting] = useState(false)
     const [resumeError, setResumeError] = useState<string | null>(null)
     const [localResult, setLocalResult] = useState<ApprovalResult | null>(null)
+    // 스킬 빌더 AD-4 — "이 세션에서 계속 허용" 체크 상태. review_configs 플래그
+    // (session_consent_eligible)가 있을 때만 렌더/전송된다.
+    const [consentSession, setConsentSession] = useState(false)
 
     // 카드 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
     const fallbackIdRef = useRef<string>(`approval-${Math.random().toString(36).slice(2)}`)
@@ -439,7 +445,9 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
           resumeResponse.modified_args = draft
         }
 
-        const standardDecision = toDecision(d, resumeResponse, args?.tool_name)
+        const standardDecision = toDecision(d, resumeResponse, args?.tool_name, {
+          sessionScope: args?.session_consent_eligible === true && consentSession,
+        })
         try {
           await resumeDecision(standardDecision, styles[d].label)
         } catch {
@@ -452,7 +460,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
         setLocalResult(response)
         setSubmitting(false)
       },
-      [addResult, rejectReason, draft, t, styles, args, resumeDecision],
+      [addResult, rejectReason, draft, t, styles, args, resumeDecision, consentSession],
     )
 
     // 만료 시 자동 reject — handleDecision 변동에 영향받지 않도록 ref로 보관
@@ -583,6 +591,25 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
         )}
 
         {resumeError && <p className="mt-1 text-xs text-destructive">{resumeError}</p>}
+
+        {/* 세션 동의 옵션 (스킬 빌더 AD-4) — review_configs 플래그 조건부.
+              체크 후 승인하면 decisions에 scope:'session'이 첨부되어 이 세션의
+              같은 도구는 이후 승인 카드 없이 실행된다. */}
+        {args?.session_consent_eligible === true && canApprove && !submitting && (
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={consentSession}
+              onChange={(e) => {
+                setConsentSession(e.target.checked)
+                onInteract()
+              }}
+              data-testid="approval-session-consent"
+              className="size-3.5 accent-primary"
+            />
+            {t('allowForSession')}
+          </label>
+        )}
 
         {/* Action buttons */}
         {!submitting ? (

@@ -186,15 +186,16 @@ function CompletedBadge({ result }: { result: unknown }) {
   )
 }
 
-/** string[] → {label}[] 변환 */
+/** string[] → {label}[] 변환. 스트리밍 부분 args에선 배열이 아닐 수 있어
+ * Array.isArray로 가드한다 (문자열 조각은 length>0을 통과해 map에서 크래시). */
 function normalizeOptions(options?: Array<string | UserInputOption>): UserInputQuestion['options'] {
-  if (!options || options.length === 0) return undefined
+  if (!Array.isArray(options) || options.length === 0) return undefined
   return options.map((o) => (typeof o === 'string' ? { label: o } : o))
 }
 
 /** args에서 질문 배열 정규화 */
 function normalizeQuestions(args: AskUserArgs): UserInputQuestion[] {
-  if (args.questions && args.questions.length > 0) {
+  if (Array.isArray(args.questions) && args.questions.length > 0) {
     return args.questions.map((q) => ({
       ...q,
       question: q.question ?? q.label ?? q.id ?? '',

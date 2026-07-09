@@ -10,13 +10,13 @@ type PortableCompatibilityPanelProps = {
   readonly dense?: boolean
 }
 
-type TargetStatus = 'pass' | 'warning' | 'error' | 'unknown'
+export type TargetStatus = 'pass' | 'warning' | 'error' | 'unknown'
 
 type IssueView = {
   readonly message: string
 }
 
-type TargetView = {
+export type TargetView = {
   readonly key: string
   readonly status: TargetStatus
   readonly issues: readonly IssueView[]
@@ -96,7 +96,9 @@ function parseTarget(key: string, value: unknown): TargetView {
   }
 }
 
-function parseTargets(result: PortableCompatibilityPanelProps['result']): readonly TargetView[] {
+export function parseTargets(
+  result: PortableCompatibilityPanelProps['result'],
+): readonly TargetView[] {
   if (!isRecord(result)) {
     return []
   }
@@ -107,7 +109,10 @@ function parseTargets(result: PortableCompatibilityPanelProps['result']): readon
   return Object.entries(targets).map(([key, value]) => parseTarget(key, value))
 }
 
-function targetLabel(key: string, t: ReturnType<typeof useTranslations<'skill.compatibility'>>) {
+export function targetLabel(
+  key: string,
+  t: ReturnType<typeof useTranslations<'skill.compatibility'>>,
+) {
   switch (key) {
     case 'openai_codex':
       return t('target.openaiCodex')

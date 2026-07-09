@@ -20,12 +20,12 @@ vi.mock('@assistant-ui/react', async () => {
 
 const { groupAssistantParts, renderGroupedAssistantPart } = await import('../assistant-thread')
 
-function toolCallPart(toolName: string): PartState {
+function toolCallPart(toolName: string, args: Record<string, unknown> = {}): PartState {
   return {
     type: 'tool-call',
     toolName,
     toolCallId: `tc-${toolName}`,
-    args: {},
+    args,
     status: { type: 'complete' },
   } as unknown as PartState
 }
@@ -68,6 +68,22 @@ describe('groupAssistantParts (groupBy)', () => {
     expect(groupAssistantParts(toolCallPart('request_approval'))).toEqual([
       'group-tool:request_approval',
     ])
+  })
+
+  it('request_approval은 인터럽트 경계로 분리 — 다른 hitl_interrupt_id는 다른 key (M8-3)', () => {
+    // 직전 인터럽트(resolved)와 새 인터럽트(pending)가 인접해도 coalesce되어
+    // "승인 대기 2건" 허수 카운트가 뜨지 않도록 key에 interrupt id를 넣는다.
+    const resolvedA = toolCallPart('request_approval', { hitl_interrupt_id: 'int-a' })
+    const pendingB = toolCallPart('request_approval', { hitl_interrupt_id: 'int-b' })
+    expect(groupAssistantParts(resolvedA)).toEqual(['group-tool:request_approval:int-a'])
+    expect(groupAssistantParts(pendingB)).toEqual(['group-tool:request_approval:int-b'])
+    expect(groupAssistantParts(resolvedA)?.[0]).not.toBe(groupAssistantParts(pendingB)?.[0])
+  })
+
+  it('같은 hitl_interrupt_id의 멀티액션 request_approval은 같은 key로 묶인다', () => {
+    const first = toolCallPart('request_approval', { hitl_interrupt_id: 'int-a' })
+    const second = toolCallPart('request_approval', { hitl_interrupt_id: 'int-a' })
+    expect(groupAssistantParts(first)).toEqual(groupAssistantParts(second))
   })
 
   it('intra-message: 같은 도구는 같은 key, 다른 도구는 다른 key로 분리된다', () => {
@@ -138,5 +154,13 @@ describe('renderGroupedAssistantPart (group-tool node)', () => {
     renderGroupNode('request_approval', 1, false, <div data-testid="approval-leaf">card</div>)
     expect(screen.getByTestId('approval-leaf')).toBeInTheDocument()
     expect(screen.queryByText(/승인 대기/)).not.toBeInTheDocument()
+  })
+
+  it('인터럽트-suffix 그룹 노드도 승인 컨테이너로 렌더된다 (M8-3 키 인코딩)', () => {
+    // groupBy가 `request_approval:<interruptId>`로 키를 세분화해도 render 경로는
+    // groupToolName으로 도구명을 복원해 전용 승인 컨테이너를 유지해야 한다.
+    renderGroupNode('request_approval:int-b', 2, false, <div data-testid="approval-leaf">card</div>)
+    expect(screen.getByText('승인 대기 2건')).toBeInTheDocument()
+    expect(screen.getByTestId('approval-leaf')).toBeInTheDocument()
   })
 })

@@ -83,6 +83,17 @@ class Settings(BaseSettings):
     # are BOTH older than the retention window AND have no recorded messages.
     draft_conversation_gc_cron: str = "15 * * * *"
     draft_conversation_gc_retention_hours: int = 24
+    # Skill draft workspace GC (APScheduler crontab; default: hourly :45).
+    # ``data/skill-drafts/<session_id>/`` dirs are deleted by SESSION STATE,
+    # not mtime (spec AD-2): active/confirming sessions are preserved
+    # indefinitely (resumable after browser close); only completed/abandoned
+    # sessions past the retention window are swept. Orphan dirs without a
+    # session row (crashed start flows) fall back to mtime.
+    skill_draft_gc_cron: str = "45 * * * *"
+    skill_draft_gc_retention_hours: int = 24
+    # 비완료 v2 빌더 세션(워크스페이스 보유)이 이 일수 동안 미활동이면 abandoned로
+    # 전이해 워크스페이스를 회수한다 — 없으면 이탈 세션이 영구 누수한다 (R2).
+    skill_draft_abandon_days: int = 14
     # Orphan attachment GC (APScheduler crontab; default: hourly :30).
     # ``POST /api/uploads`` creates ``message_attachments`` rows with
     # ``message_id IS NULL``; turn finalize stamps the message id once the

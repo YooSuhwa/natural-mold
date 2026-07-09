@@ -62,84 +62,22 @@ export type SkillBuilderStartRequest = {
   readonly source_skill_id?: string | null
 }
 
-export type SkillBuilderMessageRequest = {
-  readonly content: string
+/** 드래프트 워크스페이스 파일 요약 (레일 소스 뷰, M7) — 내용 없음. */
+export type SkillBuilderFileEntry = {
+  readonly path: string
+  readonly size: number
+  readonly role: string
 }
 
-export type SkillBuilderStreamEventType =
-  | 'message_start'
-  | 'builder_status'
-  | 'builder_activity'
-  | 'draft_package'
-  | 'validation_result'
-  | 'compatibility_result'
-  | 'changelog_draft'
-  | 'eval_result'
-  | 'content_delta'
-  | 'message_end'
-  | 'error'
+export type SkillBuilderFilesResponse = {
+  readonly files: readonly SkillBuilderFileEntry[]
+}
 
-export type SkillBuilderStatusPayload = Readonly<Record<string, JsonValue>>
-export type SkillBuilderActivityPayload = Readonly<Record<string, JsonValue>>
-export type SkillBuilderDraftEventPayload = Readonly<Record<string, JsonValue>>
-export type SkillBuilderMessagePayload = Readonly<Record<string, JsonValue>>
-
-export type SkillBuilderStreamEvent =
-  | {
-      readonly event: 'message_start'
-      readonly data: SkillBuilderMessagePayload
-      readonly id?: string
-    }
-  | {
-      readonly event: 'builder_status'
-      readonly data: SkillBuilderStatusPayload
-      readonly id?: string
-    }
-  | {
-      readonly event: 'builder_activity'
-      readonly data: SkillBuilderActivityPayload
-      readonly id?: string
-    }
-  | {
-      readonly event: 'draft_package'
-      readonly data: SkillBuilderDraftEventPayload
-      readonly id?: string
-    }
-  | {
-      readonly event: 'validation_result'
-      readonly data: Readonly<Record<string, JsonValue>>
-      readonly id?: string
-    }
-  | {
-      readonly event: 'compatibility_result'
-      readonly data: Readonly<Record<string, JsonValue>>
-      readonly id?: string
-    }
-  | {
-      readonly event: 'changelog_draft'
-      readonly data: Readonly<Record<string, JsonValue>>
-      readonly id?: string
-    }
-  | {
-      readonly event: 'eval_result'
-      readonly data: Readonly<Record<string, JsonValue>>
-      readonly id?: string
-    }
-  | {
-      readonly event: 'content_delta'
-      readonly data: SkillBuilderMessagePayload
-      readonly id?: string
-    }
-  | {
-      readonly event: 'message_end'
-      readonly data: SkillBuilderMessagePayload
-      readonly id?: string
-    }
-  | {
-      readonly event: 'error'
-      readonly data: SkillBuilderMessagePayload
-      readonly id?: string
-    }
+export type SkillBuilderFileContent = {
+  readonly path: string
+  readonly role: string
+  readonly content: string
+}
 
 export type SkillBuilderSession = {
   readonly id: string
@@ -164,6 +102,11 @@ export type SkillBuilderSession = {
   readonly eval_result?: Readonly<Record<string, JsonValue>> | null
   readonly trigger_eval_result?: Readonly<Record<string, JsonValue>> | null
   readonly finalized_skill_id?: string | null
+  // v2 (빌더 챗): 히든 에이전트의 진짜 conversation. agent_id는 대화 역참조로
+  // 백엔드 라우터가 채운다 — /skills/builder/[sessionId]가 ChatRuntimeSection
+  // 마운트에 사용.
+  readonly conversation_id?: string | null
+  readonly agent_id?: string | null
   readonly error_message?: string | null
   readonly created_at: string
   readonly updated_at: string

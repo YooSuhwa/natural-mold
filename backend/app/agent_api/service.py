@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.agent_api.security import generate_api_key
 from app.agent_runtime.identity import AGENT_IDENTITY_FIXED
 from app.exceptions import NotFoundError, ValidationError
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_api import AgentApiKey, AgentApiKeyDeployment, AgentDeployment
 from app.schemas.agent_api import (
     AgentApiKeyCreate,
@@ -88,7 +88,13 @@ async def list_deployment_candidates(
     db: AsyncSession, user_id: uuid.UUID
 ) -> list[AgentDeploymentCandidateResponse]:
     agents_result = await db.execute(
-        select(Agent).where(Agent.user_id == user_id).order_by(Agent.name.asc())
+        select(Agent)
+        .where(
+            Agent.user_id == user_id,
+            # 히든 런타임 에이전트는 API 배포 후보에서 제외.
+            Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+        )
+        .order_by(Agent.name.asc())
     )
     agents = list(agents_result.scalars().all())
     deployments_result = await db.execute(

@@ -14,16 +14,33 @@ import { isGroupableTool } from '@/lib/chat/tool-group-meta'
 
 export const GROUP_TOOL_PREFIX = 'group-tool:'
 
+const APPROVAL_TOOL = 'request_approval'
+
+/**
+ * request_approval은 인터럽트 경계로 그룹을 나눈다 — 그룹 컨테이너는 "한
+ * 인터럽트의 N개 액션" 묶음인데(GroupedApprovalCard 계약), 키가 도구명뿐이면
+ * 직전 인터럽트의 resolved 카드와 새 인터럽트의 pending 카드가 인접 시 하나로
+ * coalesce되어 "승인 대기 2건" 같은 허수 카운트가 뜬다 (M8-3).
+ */
+function approvalInterruptSuffix(part: PartState): string {
+  if (part.type !== 'tool-call' || part.toolName !== APPROVAL_TOOL) return ''
+  const id = (part.args as Record<string, unknown> | undefined)?.hitl_interrupt_id
+  return typeof id === 'string' && id ? `:${id}` : ''
+}
+
 /**
  * groupBy: tool-call이고 그룹 대상이면 `group-tool:<toolName>` 단일 경로, 아니면 null.
  * key에 toolName을 포함해 "연속 같은 도구"만 합쳐지고, 인접한 다른 도구는 분리된다.
+ * request_approval은 `group-tool:request_approval:<interruptId>`로 세분화된다.
  *
  * 모듈 레벨 const로 둬서 assistant-ui 내부 메모화(identity 기반)가 매 토큰마다
  * 깨지지 않게 한다 — 매 render에서 새 함수를 만들면 streaming 표시가 불안정해진다.
  */
 export function groupAssistantParts(part: PartState): readonly [`group-${string}`] | null {
   if (part.type === 'tool-call' && isGroupableTool(part.toolName)) {
-    return [`${GROUP_TOOL_PREFIX}${part.toolName}` as `group-${string}`]
+    return [
+      `${GROUP_TOOL_PREFIX}${part.toolName}${approvalInterruptSuffix(part)}` as `group-${string}`,
+    ]
   }
   return null
 }
@@ -48,5 +65,8 @@ export function isGroupToolNode(part: { readonly type: string }): part is GroupT
 
 /** group-tool 노드의 type에서 원래 toolName을 복원. */
 export function groupToolName(node: GroupToolNode): string {
-  return node.type.slice(GROUP_TOOL_PREFIX.length)
+  const raw = node.type.slice(GROUP_TOOL_PREFIX.length)
+  // request_approval은 `request_approval:<interruptId>`로 인코딩 — 도구명만 복원.
+  if (raw.startsWith(`${APPROVAL_TOOL}:`)) return APPROVAL_TOOL
+  return raw
 }

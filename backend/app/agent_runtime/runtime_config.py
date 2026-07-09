@@ -63,6 +63,29 @@ class AgentConfig:
     # run as the ``moldy.memory_recalled`` stream-head event (same contract as
     # ``subagent_display_names``). ``None``/empty → no event.
     recalled_memories: list[dict[str, Any]] | None = None
+    # 스킬 스튜디오 phase 1 (AD-1/AD-2/AD-5) — ``standard`` 이외 값이면
+    # ``_prepare_runtime_components`` 가 전용 분기(빌더 프롬프트/도구/드래프트
+    # 마운트)를 탄다. ``resolve_agent_context`` 가 Agent.runtime_profile 에서
+    # 판독해 채운다.
+    runtime_profile: str = "standard"
+    # 빌더 세션 컨텍스트 — conversation_id 역참조로 해석된 세션 식별자와
+    # ADR-018 상대 워크스페이스 경로. 도구 클로저/권한 마운트가 사용한다.
+    skill_builder_session_id: str | None = None
+    draft_workspace_path: str | None = None
+    # AD-5 ``moldy.skill_draft`` stream-head 페이로드 (recalled_memories 계약).
+    # 파일 내용은 싣지 않는다 — 요약(경로/크기/변경 수)만 (§6-7).
+    skill_draft_brief: dict[str, Any] | None = None
+    # AD-4 스코프드 동의 — 이 세션에서 승인 카드 없이 실행이 허용된 도구명.
+    # ``resolve_agent_context`` 가 session.tool_consents 를 읽어 **현재 드래프트의
+    # requires_network 상태로 재검증한 뒤** 채운다. prepare 분기가 interrupt
+    # 정책에서 제외한다. finalize_skill 은 절대 포함되지 않는다.
+    skill_builder_consented_tools: list[str] | None = None
+    # AD-4 — 승인 카드에 "이 세션에서 계속 허용" 옵션을 노출할 도구명.
+    # eligible − consented − (requires_network 드래프트면 전부 제외).
+    # 러너가 인터럽트 wire의 review_configs에 ``session_consent_eligible``
+    # 플래그로 주석한다 (langchain ReviewConfig는 여분 키를 보존하지 않으므로
+    # 우리 wire 계층에서 주입).
+    skill_builder_consent_offer_tools: list[str] | None = None
     # Optional ordered fallback chain. Each entry is
     # ``{"provider": str, "model_name": str, "base_url": str | None,
     #   "model_id": str | None}`` and is tried in order when the primary

@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.conversation import Conversation
 from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillBuilderMode, SkillBuilderStatus
@@ -17,6 +18,7 @@ from app.services.skill_builder_errors import (
     SkillBuilderValidationError,
 )
 from app.skills import service as skill_service
+from app.storage.paths import ensure_relative
 
 
 async def create_session(
@@ -53,6 +55,55 @@ async def create_session(
     db.add(session)
     await db.flush()
     return session
+
+
+async def attach_chat_runtime(
+    db: AsyncSession,
+    session: SkillBuilderSession,
+    *,
+    conversation_id: uuid.UUID,
+    draft_workspace_path: str,
+) -> SkillBuilderSession:
+    """v2 시작 플로우 — 빌더 대화/워크스페이스를 붙이고 상태를 ACTIVE로 올린다."""
+
+    session.conversation_id = conversation_id
+    session.draft_workspace_path = ensure_relative(draft_workspace_path)
+    session.status = SkillBuilderStatus.ACTIVE.value
+    session.updated_at = _now()
+    await db.flush()
+    return session
+
+
+async def record_tool_consents(
+    db: AsyncSession,
+    session: SkillBuilderSession,
+    *,
+    tool_names: list[str],
+) -> SkillBuilderSession:
+    """AD-4 스코프드 동의 기록 — 도구명 → 동의 메타데이터 (세션 단위)."""
+
+    consents = dict(session.tool_consents or {})
+    granted_at = datetime.now(UTC).isoformat()
+    for name in tool_names:
+        consents[name] = {"scope": "session", "granted_at": granted_at}
+    session.tool_consents = consents
+    session.updated_at = _now()
+    await db.flush()
+    return session
+
+
+async def resolve_session_agent_id(
+    db: AsyncSession,
+    session: SkillBuilderSession,
+) -> uuid.UUID | None:
+    """빌더 대화의 히든 에이전트 id (대화 미연결/삭제 시 None)."""
+
+    if session.conversation_id is None:
+        return None
+    result = await db.execute(
+        select(Conversation.agent_id).where(Conversation.id == session.conversation_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def get_session(
@@ -206,19 +257,11 @@ async def _get_owned_skill(
 
 
 def _role_for_path(path: str) -> str:
-    if path == "SKILL.md":
-        return "skill"
-    if path.startswith("scripts/"):
-        return "script"
-    if path.startswith("references/"):
-        return "reference"
-    if path.startswith("assets/"):
-        return "asset"
-    if path.startswith("agents/"):
-        return "metadata"
-    if path.startswith("evals/"):
-        return "eval"
-    return "asset"
+    # 정본은 skill_draft_workspace.role_for_path — 드래프트 어댑터와 스냅샷
+    # 로더가 같은 role 규칙을 쓰도록 위임한다 (지연 import: 모듈 로드 순환 방지).
+    from app.services.skill_draft_workspace import role_for_path
+
+    return role_for_path(path)
 
 
 def _now() -> datetime:

@@ -485,6 +485,62 @@ describe('ApprovalCard', () => {
     })
   })
 
+  // ── 세션 동의 옵션 (스킬 빌더 AD-4) ─────────────────────────────────
+  it('세션 동의 옵션은 review_configs 플래그가 있을 때만 렌더된다', () => {
+    renderCard({
+      approval_id: 'consent-0',
+      tool_name: 'test_skill_draft',
+      tool_args: { command: 'python scripts/run.py' },
+      allowed_decisions: ['approve', 'reject'],
+    })
+    expect(screen.queryByTestId('approval-session-consent')).toBeNull()
+  })
+
+  it('동의 체크 후 승인하면 decision에 scope:session이 첨부된다', async () => {
+    const onResumeDecisions = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    renderCard(
+      {
+        approval_id: 'consent-1',
+        tool_name: 'test_skill_draft',
+        tool_args: { command: 'python scripts/run.py' },
+        allowed_decisions: ['approve', 'reject'],
+        session_consent_eligible: true,
+      },
+      { onResumeDecisions },
+    )
+
+    fireEvent.click(screen.getByTestId('approval-session-consent'))
+    fireEvent.click(screen.getByText('approve'))
+
+    await waitFor(() => {
+      expect(onResumeDecisions).toHaveBeenCalledWith(
+        [{ type: 'approve', scope: 'session' }],
+        'approved',
+      )
+    })
+  })
+
+  it('동의 체크 없이 승인하면 표준 approve만 전송된다', async () => {
+    const onResumeDecisions = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    renderCard(
+      {
+        approval_id: 'consent-2',
+        tool_name: 'test_skill_draft',
+        tool_args: { command: 'python scripts/run.py' },
+        allowed_decisions: ['approve', 'reject'],
+        session_consent_eligible: true,
+      },
+      { onResumeDecisions },
+    )
+
+    expect(screen.getByText('allowForSession')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('approve'))
+
+    await waitFor(() => {
+      expect(onResumeDecisions).toHaveBeenCalledWith([{ type: 'approve' }], 'approved')
+    })
+  })
+
   // ── 멀티액션 그룹 카드 (모두 승인) ──────────────────────────────────
   it('groups multi-action cards: compact rows + one "모두 승인" approves every action', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)

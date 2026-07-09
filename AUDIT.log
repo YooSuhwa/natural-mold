@@ -157,3 +157,15 @@
 [2026-06-12T00:45:06] system SUBAGENT_START unnamed
 [2026-06-12T00:45:23] system SUBAGENT_START unnamed
 [2026-06-12T01:01:13] system SUBAGENT_START unnamed
+[2026-07-07T23:51] claude MILESTONE_START M1 히든 빌더 에이전트 + 세션 v2
+[2026-07-07T23:51] claude MILESTONE_DONE M1 — m67/m68, 노출표면 8곳 필터, PUT/DELETE 404, lazy-seed+start v2. pytest 대상 102·전체 2552 그린, ruff 클린
+[2026-07-08T00:08] claude MILESTONE_DONE M2 — 워크스페이스 서비스(시드/첨부/어댑터/GC), 드래프트 마운트 권한(sibling deny), /uploads 수리(별도 커밋 1abdbe5a), GC 크론. 대상 121·전체 2566 그린
+[2026-07-08T00:29] claude MILESTONE_DONE M3 — 런타임 분기(prompt/도구/마운트/System LLM 재해석), validate_skill/generate_evals, moldy.skill_draft+skill_validation 이벤트+redaction 등록. 대상 113·전체 2578 그린. 수동 육안확인은 M6 E2E로 대체 예정
+[2026-07-08T00:58] claude MILESTONE_DONE M4 — test_skill_draft(샌드박스 상속+CODE_EXECUTION risk), 세션 동의(scope:session 기록→표준 approve 변환, requires_network 불가, 정책 제외), 승인 카드 동의 옵션(wire 플래그). backend 2589·vitest 1234 그린
+[2026-07-08T01:08] claude MILESTONE_DONE M5 — finalize_skill(v1 confirm 플로우 재사용: create/improve/SOURCE_SKILL_CHANGED/slug충돌/secret scan/바이너리 가드/멱등) + 감사 5종 + 딥링크. 대상 27·전체 2597 그린
+[2026-07-08T02:03] claude MILESTONE_DONE M6 — 라우트/레일/진입점 교체(M6-1), 구경로 제거(M6-2), E2E 마커+스펙+캡처 7장(M6-3). 전체 스위트 그린 + E2E 21s 그린. 스펙 §2 성공 기준 6건 충족
+[2026-07-08T08:41] claude MILESTONE_DONE M7 빌더 뷰 디자인 정합 — 목업 감사(차용/각색/기각) + 파일 API + 상태카드 레일/소스 뷰어/try-hint. backend 2597, vitest 1237, E2E 기능+캡처 17장 그린
+[2026-07-08T10:45] claude MILESTONE_DONE M8 — 채팅 결함 3건 근본수정(Enter 드롭 게이트/resume 레이스 전이순서+bounded wait/그룹키 인터럽트 경계) + 실 LLM 전 플로우 검증 통과(2.6분) + 실 LLM 전용 부분-args 크래시 3건 수정. backend 2601/vitest 1245/E2E 그린
+[2026-07-08T13:20] claude MILESTONE_DONE R — /review 발견 전량 수정(High 1·Medium 5·Low 8·테스트 공백 3). 실 LLM 픽셀 검증(버블 중복·빨간✗ pill 해소). backend 2607/vitest 1247/E2E 웜 4/4 그린
+[2026-07-09T09:30] claude MERGE origin/main(리팩토링 P0-2, 25커밋) — 충돌 1건(blueprint 히든 필터 유지), m67/m68→m68/m69 재부모화(단일 head 검증). backend 2634/vitest 1247/E2E 그린
+[2026-07-09T10:05] claude MERGE origin/main(9커밋 — owned_conversation 게이트, 문서) 충돌 0. backend 2634/vitest 1247/E2E 3/3 그린

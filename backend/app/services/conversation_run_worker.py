@@ -553,21 +553,7 @@ async def _run_conversation(
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
 
-        if finalize_needed:
-            try:
-                await stream_service.finalize_trace(
-                    conversation_id,
-                    ctx.run_id,
-                    ctx.trace_sink,
-                    ctx.msg_id_sink,
-                    ctx.langfuse_sink,
-                    success=final_status == "completed",
-                    status=_trace_status_for_run(final_status),
-                    run_status=final_status,
-                )
-            except Exception:
-                logger.exception("conversation run trace finalization failed run_id=%s", run_id)
-
+        async def _finalize_run_status() -> None:
             try:
                 final_run = await _transition(
                     run_id,
@@ -591,6 +577,32 @@ async def _run_conversation(
                 )
             except Exception:
                 logger.exception("conversation run status finalization failed run_id=%s", run_id)
+
+        if finalize_needed:
+            # 인터럽트 런은 상태 전이를 trace 영속화보다 먼저 커밋한다(M8-2) —
+            # 승인 카드는 스트림 도중 이미 클라이언트에 flush되어 있어, 느린
+            # finalize_trace 뒤에 전이하면 그 사이 도착한 resume이 부모 run을
+            # 못 찾아(RESUME_NOT_FOUND) 튕긴다. 그 외 상태는 기존 순서 유지
+            # (trace 완결 후 terminal 전이).
+            if final_status == "interrupted":
+                await _finalize_run_status()
+
+            try:
+                await stream_service.finalize_trace(
+                    conversation_id,
+                    ctx.run_id,
+                    ctx.trace_sink,
+                    ctx.msg_id_sink,
+                    ctx.langfuse_sink,
+                    success=final_status == "completed",
+                    status=_trace_status_for_run(final_status),
+                    run_status=final_status,
+                )
+            except Exception:
+                logger.exception("conversation run trace finalization failed run_id=%s", run_id)
+
+            if final_status != "interrupted":
+                await _finalize_run_status()
 
             if attachment_ids:
                 # M1 — stamp this send's uploads with the user message id the read

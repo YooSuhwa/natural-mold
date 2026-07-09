@@ -803,6 +803,9 @@ export interface AssistantThreadProps {
   builderModelLabel?: string
   /** variant='builder' 시 Assistant 메시지 이름줄 보조 라벨. 기본 `에이전트 빌더`. */
   builderAgentSubtitle?: string
+  /** Composer 바로 위에 렌더할 커스텀 힌트 (스킬 빌더 "예시로 시험" 등).
+   *  AssistantRuntimeProvider 안에서 마운트되므로 useComposerRuntime 사용 가능. */
+  composerHint?: React.ReactNode
 }
 
 interface AssistantThreadDynamicContextValue {
@@ -848,6 +851,7 @@ export function AssistantThread({
   variant = 'default',
   builderModelLabel,
   builderAgentSubtitle,
+  composerHint,
 }: AssistantThreadProps) {
   const tPage = useTranslations('chat.page')
   const isBuilder = variant === 'builder'
@@ -1125,6 +1129,7 @@ export function AssistantThread({
             </Suspense>
           ) : (
             <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+              {composerHint}
               <ThreadComposer
                 modelName={modelName}
                 showTokenBar={showTokenBar}

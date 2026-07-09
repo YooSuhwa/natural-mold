@@ -25,6 +25,8 @@ from app.agent_runtime.middleware_registry import (
 from app.agent_runtime.model_factory import create_chat_model
 from app.agent_runtime.run_secrets import add_run_secrets, collect_secret_values
 from app.agent_runtime.runtime_config import _DATA_DIR, AgentConfig, RuntimeComponents
+from app.agent_runtime.skill_builder.chat_prompt import load_skill_builder_prompt
+from app.agent_runtime.skill_builder.tools import build_skill_builder_tools
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.agent_runtime.skill_tool_dependencies import build_skill_dependency_tool_configs
 from app.agent_runtime.temporal import build_temporal_context_prompt
@@ -568,6 +570,99 @@ def _artifact_file_instruction_prompt(thread_id: str) -> str:
     )
 
 
+async def _prepare_skill_builder_components(
+    cfg: AgentConfig,
+    *,
+    is_trigger_mode: bool,
+    include_ask_user: bool,
+) -> RuntimeComponents:
+    """``runtime_profile='skill_builder'`` 전용 분기 (스펙 AD-3).
+
+    표준 경로와의 차이: 코드 정의 프롬프트(``skill_builder/prompt.md``)로 교체,
+    ``tools_config`` 루프·``execute_in_skill``·memory 도구·subagents·스킬 마운트
+    전부 생략, 빌더 도구(validate_skill/generate_evals) append, 드래프트
+    워크스페이스를 쓰기 가능 마운트. ``ask_user``/temporal 도구는 유지(명료화
+    질문). 모델은 ``resolve_agent_context`` 가 이미 System LLM(text_primary)로
+    재해석해 cfg에 채워 둔 값을 그대로 쓴다 (ADR-019).
+    """
+
+    workspace_path = cfg.draft_workspace_path or ""
+    system_prompt = _system_prompt_with_temporal_context(load_skill_builder_prompt(workspace_path))
+    model_candidates = _build_model_candidates(cfg)
+    model = model_candidates[0]
+
+    langchain_tools: list[BaseTool] = []
+    if cfg.skill_builder_session_id and workspace_path:
+        from app.database import async_session as _session_factory
+
+        langchain_tools.extend(
+            build_skill_builder_tools(
+                session_id=cfg.skill_builder_session_id,
+                workspace_path=workspace_path,
+                session_factory=_session_factory,
+                user_id=cfg.user_id,
+                agent_id=cfg.agent_id,
+                credential_subject_user_id=cfg.credential_subject_user_id,
+                include_runtime_tools=True,
+                consented_tools=cfg.skill_builder_consented_tools,
+            )
+        )
+    _append_temporal_tools(langchain_tools)
+
+    middleware = _build_default_reliability_middleware(
+        model_candidates,
+        configured_types=set(),
+    )
+    middleware += get_provider_middleware(cfg.provider)
+
+    backend = FilesystemBackend(root_dir=str(_DATA_DIR), virtual_mode=True)
+    permissions = build_filesystem_permissions(
+        thread_id=cfg.thread_id,
+        agent_id=cfg.agent_id,
+        user_id=cfg.user_id,
+        selected_skill_slugs=[],
+        agent_runtime_name=cfg.agent_runtime_name,
+        draft_workspace_path=workspace_path or None,
+    )
+
+    if include_ask_user and not is_trigger_mode:
+        system_prompt += "\n\n" + _interactive_tool_instruction_prompt()
+        langchain_tools.append(ask_user_tool)
+
+    interrupt_on = _build_interrupt_on_policy(
+        None,
+        langchain_tools,
+        include_ask_user=any(t.name == "ask_user" for t in langchain_tools),
+        is_trigger_mode=is_trigger_mode,
+    )
+    if interrupt_on:
+        # AD-3 과승인 방지 — 드래프트 점진 편집이 빌더의 핵심 UX이고 파일
+        # 도구는 M2 권한으로 워크스페이스에 스코프되어 있으므로, deepagents
+        # 기본 정책의 write_file/edit_file 승인 카드는 제외한다.
+        for fs_tool_name in ("write_file", "edit_file"):
+            interrupt_on.pop(fs_tool_name, None)
+        # AD-4 세션 동의 — 동의된 도구는 정책에서 제외 (finalize_skill 불가,
+        # requires_network 재검증은 resolve_agent_context 가 수행).
+        from app.agent_runtime.skill_builder.tools import SESSION_CONSENT_ELIGIBLE_TOOLS
+
+        for consented in cfg.skill_builder_consented_tools or []:
+            if consented in SESSION_CONSENT_ELIGIBLE_TOOLS:
+                interrupt_on.pop(consented, None)
+
+    return RuntimeComponents(
+        model_candidates=model_candidates,
+        model=model,
+        tools=langchain_tools,
+        middleware=middleware,
+        system_prompt=system_prompt,
+        skills_sources=None,
+        backend=backend,
+        memory_sources=None,
+        permissions=permissions,
+        interrupt_on=interrupt_on or None,
+    )
+
+
 async def _prepare_runtime_components(
     cfg: AgentConfig,
     *,
@@ -577,6 +672,13 @@ async def _prepare_runtime_components(
     timings: dict[str, int] | None = None,
 ) -> RuntimeComponents:
     """Build reusable Deep Agents runtime pieces for a parent or child agent."""
+
+    if cfg.runtime_profile == "skill_builder":
+        return await _prepare_skill_builder_components(
+            cfg,
+            is_trigger_mode=is_trigger_mode,
+            include_ask_user=include_ask_user,
+        )
 
     last_mark = time.perf_counter()
 

@@ -18,6 +18,10 @@ class SkillBuilderMode(StrEnum):
 
 
 class SkillBuilderStatus(StrEnum):
+    # v2 상태 기계: active → confirming → completed (+abandoned = GC 대상).
+    ACTIVE = "active"
+    ABANDONED = "abandoned"
+    # 구 one-pass 플로우 레거시 값 — 기존 row 호환용.
     COLLECTING = "collecting"
     DRAFTING = "drafting"
     REVIEW = "review"
@@ -44,12 +48,6 @@ class SkillBuilderStartRequest(BaseModel):
         return self
 
 
-class SkillBuilderMessageRequest(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    content: str = Field(..., min_length=1, max_length=8000)
-
-
 class SkillDraftFile(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -57,6 +55,32 @@ class SkillDraftFile(BaseModel):
     content: str
     media_type: str = "text/plain"
     role: Literal["skill", "script", "reference", "asset", "metadata", "eval"] = "skill"
+
+
+class SkillBuilderFileEntry(BaseModel):
+    """드래프트 워크스페이스 파일 요약 (레일 소스 뷰, M7) — 내용 없음."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    size: int
+    role: str
+
+
+class SkillBuilderFilesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    files: list[SkillBuilderFileEntry]
+
+
+class SkillBuilderFileContentResponse(BaseModel):
+    """드래프트 파일 내용 (소유자 전용 조회 — 레일 소스 뷰어)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    role: str
+    content: str
 
 
 class SkillDraftPackage(BaseModel):
@@ -97,6 +121,10 @@ class SkillBuilderSessionResponse(BaseModel):
     eval_result: dict[str, JsonValue] | None = None
     trigger_eval_result: dict[str, JsonValue] | None = None
     finalized_skill_id: uuid.UUID | None = None
+    # v2 (빌더 챗): 빌더 대화/히든 에이전트 식별자. conversation_id는 세션
+    # 컬럼에서, agent_id는 대화 역참조로 라우터가 채운다 (ORM 속성 아님).
+    conversation_id: uuid.UUID | None = None
+    agent_id: uuid.UUID | None = None
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime

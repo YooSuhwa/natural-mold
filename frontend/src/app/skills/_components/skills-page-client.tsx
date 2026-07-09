@@ -1,8 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { BookOpen, Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -16,6 +18,7 @@ import {
 } from '@/components/shared/resource-layout'
 import { Skeleton } from '@/components/ui/skeleton'
 import { coerceSkillDetailTab, type SkillDetailTab } from '@/components/skill/skill-detail-tabs'
+import { useStartSkillBuilder } from '@/lib/hooks/use-skill-builder'
 import { useSkills } from '@/lib/hooks/use-skills'
 import {
   ALL_SKILL_FILTER,
@@ -59,12 +62,10 @@ function replaceDetailUrl(skillId: string | null, tab: SkillDetailTab) {
 
 export function SkillsPageClient() {
   const t = useTranslations('skill')
+  const router = useRouter()
+  const startBuilder = useStartSkillBuilder()
   const [createOpen, setCreateOpen] = useState(false)
   const [createTab, setCreateTab] = useState<CreateTab>('chat')
-  const [builderOpen, setBuilderOpen] = useState(false)
-  const [builderMode, setBuilderMode] = useState<BuilderMode>('create')
-  const [builderSourceSkillId, setBuilderSourceSkillId] = useState<string | null>(null)
-  const [builderInitialRequest, setBuilderInitialRequest] = useState('')
   const [activeTab, setActiveTab] = useState<SkillTab>(ALL_SKILL_FILTER)
   const [stateFilter, setStateFilter] = useState<SkillStateFilter>(ALL_SKILL_FILTER)
   const [search, setSearch] = useState('')
@@ -76,18 +77,18 @@ export function SkillsPageClient() {
     return Object.keys(params).length > 0 ? params : undefined
   }, [activeTab, normalizedSearch])
   const { data: skills, isLoading } = useSkills(skillQueryParams)
-  // Deep-link from /marketplace Open button: `/skills?detailId=...`.
-  // useState lazy initializer runs once at mount (post-hydration on client,
-  // safely returns null during SSR/prerender). Avoids effect+setState pattern
-  // that the react-hooks/set-state-in-effect rule rejects.
-  const [detailId, setDetailId] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null
-    return new URLSearchParams(window.location.search).get('detailId')
-  })
-  const [detailTab, setDetailTab] = useState<SkillDetailTab>(() => {
-    if (typeof window === 'undefined') return 'content'
-    return coerceSkillDetailTab(new URLSearchParams(window.location.search).get('tab'))
-  })
+  // Deep-link (`/skills?detailId=...`) — /marketplace Open 버튼, 빌더 챗 레일의
+  // "스킬 열기" 링크. 초기값은 반드시 useSearchParams(라우터 상태)에서 읽어야
+  // 한다: 클라이언트 네비게이션 중에는 컴포넌트가 window.location 갱신 **전에**
+  // 마운트될 수 있어 location 기반 초기화는 딥링크를 놓친다(빌더 레일 링크에서
+  // 실제 재현). useState lazy initializer 유지 — 이후에는 로컬 상태가 소스
+  // (URL 동기화는 replaceDetailUrl의 history.replaceState). effect+setState
+  // 패턴(react-hooks/set-state-in-effect 거부)은 계속 회피한다.
+  const searchParams = useSearchParams()
+  const [detailId, setDetailId] = useState<string | null>(() => searchParams.get('detailId'))
+  const [detailTab, setDetailTab] = useState<SkillDetailTab>(() =>
+    coerceSkillDetailTab(searchParams.get('tab')),
+  )
   const [publishSkill, setPublishSkill] = useState<Skill | null>(null)
 
   function openCreate(tab: CreateTab) {
@@ -101,18 +102,33 @@ export function SkillsPageClient() {
     replaceDetailUrl(id, tab)
   }
 
+  // 빌더 챗 (스킬 스튜디오 phase 1) — start v2로 세션+대화+워크스페이스를
+  // 만들고 전용 라우트로 이동한다. 구 SkillBuilderDialog는 제거됨.
+  async function startBuilderSession(payload: {
+    mode: BuilderMode
+    user_request: string
+    source_skill_id?: string
+  }) {
+    try {
+      const session = await startBuilder.mutateAsync(payload)
+      setCreateOpen(false)
+      setDetailId(null)
+      router.push(`/skills/builder/${session.id}`)
+    } catch {
+      toast.error(t('builderChat.startFailed'))
+    }
+  }
+
   function openBuilderCreate(request: string) {
-    setBuilderMode('create')
-    setBuilderSourceSkillId(null)
-    setBuilderInitialRequest(request)
-    setBuilderOpen(true)
+    void startBuilderSession({ mode: 'create', user_request: request })
   }
 
   function openBuilderImprove(skillId: string) {
-    setBuilderMode('improve')
-    setBuilderSourceSkillId(skillId)
-    setBuilderInitialRequest('')
-    setBuilderOpen(true)
+    void startBuilderSession({
+      mode: 'improve',
+      user_request: t('builderChat.improveDefaultRequest'),
+      source_skill_id: skillId,
+    })
   }
 
   const data = useMemo(() => skills ?? [], [skills])
@@ -245,15 +261,10 @@ export function SkillsPageClient() {
       <SkillPageDialogs
         createOpen={createOpen}
         createTab={createTab}
-        builderOpen={builderOpen}
-        builderMode={builderMode}
-        builderSourceSkillId={builderSourceSkillId}
-        builderInitialRequest={builderInitialRequest}
         detailId={detailId}
         detailTab={detailTab}
         publishSkill={publishSkill}
         onCreateOpenChange={setCreateOpen}
-        onBuilderOpenChange={setBuilderOpen}
         onCreated={(id, tab = 'content') => openDetail(id, tab)}
         onStartChat={openBuilderCreate}
         onDetailTabChange={(tab) => {

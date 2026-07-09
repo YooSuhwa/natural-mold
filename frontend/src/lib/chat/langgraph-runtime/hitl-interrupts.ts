@@ -88,7 +88,11 @@ function parseReviewConfig(value: unknown): ReviewConfig | null {
     .map((item) => decisionType(item))
     .filter((item): item is DecisionType => item !== null)
   if (allowed.length === 0) return null
-  return { action_name: actionName, allowed_decisions: allowed }
+  // 스킬 빌더 AD-4 — 백엔드 wire가 주입한 세션 동의 플래그를 보존한다.
+  const sessionConsent = value.session_consent_eligible === true
+  return sessionConsent
+    ? { action_name: actionName, allowed_decisions: allowed, session_consent_eligible: true }
+    : { action_name: actionName, allowed_decisions: allowed }
 }
 
 function actionRequests(value: Record<string, unknown>): ActionRequest[] | null {
@@ -234,6 +238,7 @@ const HITL_METADATA_KEYS = new Set([
   'hitl_interrupt_id',
   'hitl_action_index',
   'hitl_total_actions',
+  'session_consent_eligible',
 ])
 
 type MutableToolCall = {

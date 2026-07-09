@@ -4,8 +4,12 @@ import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
+from app.agent_runtime import event_names
 from app.agent_runtime.memory_event_projection import memory_event_from_tool_result
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_custom_protocol_event
+from app.agent_runtime.skill_validation_projection import (
+    skill_validation_event_from_tool_result,
+)
 from app.agent_runtime.ui_data_projection import ui_data_from_tool_result
 from app.config import settings
 
@@ -193,6 +197,45 @@ def _collect_ui_data_events(
     return emitted, seq
 
 
+def _skill_validation_protocol_event(
+    source_event: StoredProtocolEvent,
+    *,
+    payload: dict[str, Any],
+    seq: int,
+) -> StoredProtocolEvent:
+    event_id = f"{source_event['id']}:skill_validation"
+    return stored_custom_protocol_event(
+        run_id=source_event["run_id"],
+        thread_id=source_event["thread_id"],
+        seq=seq,
+        name=event_names.SKILL_VALIDATION,
+        payload=payload,
+        namespace=source_event["namespace"],
+        event_id=event_id,
+        id=event_id,
+        timestamp=source_event["timestamp"],
+    )
+
+
+def _collect_skill_validation_event(
+    source_event: StoredProtocolEvent,
+    *,
+    tool_name: str,
+    output: str | None,
+    next_seq: int,
+) -> tuple[StoredProtocolEvent | None, int]:
+    if output is None:
+        return None, next_seq
+    payload = skill_validation_event_from_tool_result(tool_name, output)
+    if payload is None:
+        return None, next_seq
+    seq = next_seq + 1
+    return (
+        _skill_validation_protocol_event(source_event, payload=payload, seq=seq),
+        seq,
+    )
+
+
 def _collect_memory_event(
     source_event: StoredProtocolEvent,
     *,
@@ -261,5 +304,14 @@ async def collect_protocol_side_effect_events(
         next_seq=seq,
     )
     emitted.extend(ui_data_events)
+
+    skill_validation_event, seq = _collect_skill_validation_event(
+        event,
+        tool_name=tool_name,
+        output=output,
+        next_seq=seq,
+    )
+    if skill_validation_event is not None:
+        emitted.append(skill_validation_event)
 
     return emitted, seq

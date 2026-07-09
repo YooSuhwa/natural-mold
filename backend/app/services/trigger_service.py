@@ -9,7 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
@@ -156,6 +156,11 @@ async def _ensure_agent_fixed_for_trigger(
 ) -> Agent:
     agent = await get_owned_agent(db, agent_id, user_id)
     if agent is None:
+        raise ValueError("agent not found")
+    # 히든 런타임 에이전트(skill builder 등)는 트리거 대상 불가 — 트리거 실행은
+    # 빌더 분기·System LLM 재해석을 타지 않아 placeholder 프롬프트가 표준
+    # 에이전트로 스케줄 실행된다. not-found와 동일 응답(enumeration-safe).
+    if agent.runtime_profile != AGENT_RUNTIME_PROFILE_STANDARD:
         raise ValueError("agent not found")
     if agent.identity_mode != "fixed":
         raise ValueError(REQUIRES_FIXED_IDENTITY_MESSAGE)

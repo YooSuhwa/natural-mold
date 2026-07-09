@@ -480,6 +480,45 @@ def register_draft_conversation_gc_job() -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Skill draft workspace GC (스킬 스튜디오 phase 1, AD-2)
+# ---------------------------------------------------------------------------
+
+SKILL_DRAFT_GC_JOB_ID = "skill_draft_workspace_gc"
+
+
+async def skill_draft_gc_run() -> int:
+    """Sweep ``data/skill-drafts/`` workspaces by session state.
+
+    active/confirming sessions keep their workspace indefinitely; only
+    completed/abandoned sessions past the retention window (plus orphan
+    dirs without a session row) are removed. Wrapped so a transient
+    failure doesn't disable the cron.
+    """
+
+    from app.services import skill_draft_workspace
+
+    async with async_session() as db:
+        try:
+            return await skill_draft_workspace.gc_stale_draft_workspaces(
+                db, retention_hours=settings.skill_draft_gc_retention_hours
+            )
+        except Exception:  # noqa: BLE001 — keep cron alive
+            logger.exception("skill draft workspace GC failed; will retry next run")
+            return 0
+
+
+def register_skill_draft_gc_job() -> None:
+    _register_cron_job(
+        job_id=SKILL_DRAFT_GC_JOB_ID,
+        func=skill_draft_gc_run,
+        cron_expr=settings.skill_draft_gc_cron,
+        cron_setting_name="skill_draft_gc_cron",
+        log_label="skill draft workspace GC",
+        log_extra=f" (retention={settings.skill_draft_gc_retention_hours}h)",
+    )
+
+
 ORPHAN_ATTACHMENT_GC_JOB_ID = "orphan_attachment_gc"
 
 

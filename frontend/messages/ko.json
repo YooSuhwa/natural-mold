@@ -528,13 +528,34 @@
     "creation": {
       "header": "에이전트 만들기",
       "progress": "빌드 진행 상황",
-      "phase1": { "label": "프로젝트 초기화", "description": "빌드 환경 설정" },
-      "phase2": { "label": "의도 분석", "description": "요청 심층 분석" },
-      "phase3": { "label": "도구 추천", "description": "최적 도구 선정" },
-      "phase4": { "label": "미들웨어 추천", "description": "안정성 계층 구성" },
-      "phase5": { "label": "프롬프트 생성", "description": "시스템 프롬프트 작성" },
-      "phase6": { "label": "설정 저장", "description": "최종 구성 생성" },
-      "phase7": { "label": "에이전트 빌드", "description": "에이전트 인스턴스화" },
+      "phase1": {
+        "label": "프로젝트 초기화",
+        "description": "빌드 환경 설정"
+      },
+      "phase2": {
+        "label": "의도 분석",
+        "description": "요청 심층 분석"
+      },
+      "phase3": {
+        "label": "도구 추천",
+        "description": "최적 도구 선정"
+      },
+      "phase4": {
+        "label": "미들웨어 추천",
+        "description": "안정성 계층 구성"
+      },
+      "phase5": {
+        "label": "프롬프트 생성",
+        "description": "시스템 프롬프트 작성"
+      },
+      "phase6": {
+        "label": "설정 저장",
+        "description": "최종 구성 생성"
+      },
+      "phase7": {
+        "label": "에이전트 빌드",
+        "description": "에이전트 인스턴스화"
+      },
       "status": {
         "completed": "완료",
         "active": "진행중",
@@ -1321,7 +1342,8 @@
       "lockedSecretHint": "보안 값은 수정할 수 없습니다",
       "invalidFieldValue": "값 형식이 올바르지 않습니다",
       "pendingCount": "승인 대기 {count}건",
-      "approveAll": "모두 승인"
+      "approveAll": "모두 승인",
+      "allowForSession": "이 세션에서 계속 허용"
     },
     "userInput": {
       "placeholder": "답변을 입력하세요…",
@@ -2506,86 +2528,6 @@
         "passed": "평가 통과"
       }
     },
-    "builderDialog": {
-      "titleCreate": "대화로 스킬 만들기",
-      "titleImprove": "대화로 스킬 개선",
-      "descriptionCreate": "필요한 목적을 말하면 패키지 스킬 초안을 만들고 검증 결과를 함께 보여줍니다.",
-      "descriptionImprove": "기존 스킬을 바탕으로 개선안을 만들고, 적용 전 변경 내용을 확인합니다.",
-      "chatTitle": "빌더 대화",
-      "requestLabel": "요청",
-      "requestPlaceholder": "예: 회의록에서 담당자, 할 일, 마감일을 뽑는 스킬을 만들어줘",
-      "requestImprovePlaceholder": "예: 마감일 추출 규칙을 더 엄격하게 개선해줘",
-      "requestRequired": "요청 내용을 입력하세요",
-      "startCreate": "대화 시작",
-      "startImprove": "개선안 만들기",
-      "startFailed": "스킬 빌더를 시작하지 못했습니다",
-      "confirmFailed": "스킬 적용에 실패했습니다",
-      "previewTitle": "스킬 미리보기",
-      "previewEmpty": "요청을 보내면 초안 파일과 검증 상태가 여기에 표시됩니다.",
-      "filesTitle": "파일",
-      "filesEmpty": "아직 생성된 파일이 없습니다.",
-      "validationTitle": "검증 결과",
-      "compatibilityTitle": "호환성",
-      "changelogTitle": "변경 요약",
-      "evalTitle": "평가",
-      "fileDiffTitle": "파일 변경 요약",
-      "originalFileCount": "원본 {count}개",
-      "proposedFileCount": "개선안 {count}개",
-      "addedCount": "추가 {count}",
-      "changedCount": "수정 {count}",
-      "deletedCount": "삭제 {count}",
-      "validationEmpty": "검증 이슈가 없습니다.",
-      "passRateMetric": "통과율 {value}%",
-      "meanScoreMetric": "평균 점수 {value}",
-      "deltaMetric": "변화 {value}",
-      "cancel": "닫기",
-      "confirmCreate": "스킬로 저장",
-      "confirmImprove": "개선 적용",
-      "fileChange": {
-        "added": "추가",
-        "changed": "수정",
-        "deleted": "삭제"
-      },
-      "validationSeverity": {
-        "error": "오류",
-        "warning": "주의",
-        "info": "정보"
-      },
-      "status": {
-        "collecting": "정보 수집",
-        "drafting": "초안 작성",
-        "review": "검토 가능",
-        "confirming": "적용 중",
-        "completed": "완료",
-        "failed": "실패",
-        "cancelled": "취소됨"
-      },
-      "fileRole": {
-        "skill": "스킬",
-        "script": "스크립트",
-        "reference": "참고자료",
-        "asset": "에셋",
-        "metadata": "메타데이터",
-        "eval": "평가"
-      },
-      "systemLlm": {
-        "title": "시스템 LLM 설정이 필요합니다",
-        "description": "텍스트 또는 패키지 업로드는 계속 사용할 수 있습니다.",
-        "userDescription": "스킬 빌더 모델 설정이 필요합니다. 관리자에게 설정을 요청하세요. 텍스트 또는 패키지 업로드는 계속 사용할 수 있습니다.",
-        "adminDescription": "스킬 빌더는 text_primary 시스템 모델을 사용합니다. System LLM 설정에서 모델과 시스템 자격증명을 연결하세요. 설정 전에도 텍스트 또는 패키지 업로드는 계속 사용할 수 있습니다.",
-        "settingsAction": "System LLM 설정 열기"
-      },
-      "conflict": {
-        "title": "스킬이 변경되었습니다",
-        "description": "이 개선 세션을 시작한 뒤 원본 스킬이 변경되었습니다.",
-        "reloadLatest": "최신 기준으로 다시 만들기",
-        "discard": "세션 버리기"
-      },
-      "toast": {
-        "created": "스킬이 생성되었습니다",
-        "improved": "스킬 개선이 적용되었습니다"
-      }
-    },
     "compatibility": {
       "title": "공용 호환성",
       "empty": "호환성 결과가 아직 없습니다.",
@@ -2762,6 +2704,78 @@
       "credentialUpdated": "스킬 자격증명이 업데이트되었습니다",
       "credentialCleared": "스킬 자격증명 연결을 해제했습니다",
       "credentialUpdateFailed": "자격증명 업데이트에 실패했습니다"
+    },
+    "builderChat": {
+      "title": "스킬 빌더",
+      "backToSkills": "스킬 목록으로",
+      "modeCreate": "새 스킬",
+      "modeImprove": "개선",
+      "emptyTitle": "대화로 스킬을 만들어 보세요",
+      "emptyHint": "만들고 싶은 스킬을 설명하면 에이전트가 드래프트 파일을 점진적으로 편집합니다. 예시 파일을 첨부해 저장 전에 바로 시험할 수도 있습니다.",
+      "sessionUnavailableTitle": "빌더 세션을 열 수 없습니다",
+      "sessionUnavailableHint": "세션이 만료되었거나 대화가 정리되었습니다. 스킬 목록에서 새 빌더 세션을 시작해 주세요.",
+      "railTitle": "드래프트 상태",
+      "filesTitle": "드래프트 파일",
+      "filesEmpty": "아직 드래프트 파일이 없습니다.",
+      "changedCount": "{count}개 변경",
+      "completedTitle": "스킬이 저장되었습니다",
+      "openSkill": "스킬 열기",
+      "startFailed": "빌더 세션을 시작하지 못했습니다.",
+      "status": {
+        "active": "진행 중",
+        "collecting": "수집 중",
+        "drafting": "작성 중",
+        "review": "검토",
+        "confirming": "확정 중",
+        "completed": "완료",
+        "failed": "실패",
+        "cancelled": "취소됨",
+        "abandoned": "중단됨"
+      },
+      "improveDefaultRequest": "기존 스킬을 개선하고 싶어요.",
+      "helperCreate": "대화로 만들면 패키지·검증이 채워집니다",
+      "helperImprove": "대화 내용이 SKILL.md·평가 세트에 실시간 반영됩니다",
+      "viewSource": "소스 보기",
+      "closeSource": "상태 보기",
+      "sourceTitle": "드래프트 소스",
+      "sourceBack": "상태로 돌아가기",
+      "railSubtitleCreate": "새 스킬 초안 · 대화하면 채워집니다",
+      "railSubtitleImprove": "원본 v{version} · 대화하면 실시간 재검사",
+      "railSubtitleImproveNoVersion": "원본 스킬 · 대화하면 실시간 재검사",
+      "tryHint": "예시로 시험 — “이 예시로 시험해줘”",
+      "tryHintPrefill": "이 예시로 시험해줘: ",
+      "headPill": {
+        "pending": "검토 중",
+        "pass": "통과",
+        "warn": "주의 {count}",
+        "error": "오류 {count}"
+      },
+      "tone": {
+        "pending": "검증 전",
+        "pass": "통과",
+        "good": "양호",
+        "warn": "주의",
+        "error": "오류"
+      },
+      "statusRow": {
+        "frontmatter": "Portable frontmatter",
+        "moldyMetadata": "표준 / Moldy 전용 필드 분리",
+        "trigger": "description 트리거 명확성",
+        "secrets": "시크릿 검사",
+        "runtimeCompat": "런타임 호환",
+        "credentials": "Credential 필요 여부",
+        "sandbox": "샌드박스 실행",
+        "evaluation": "평가",
+        "other": "기타 검사 {count}건"
+      },
+      "statusValue": {
+        "none": "없음",
+        "credentialCount": "{count}개 필요",
+        "scriptsPresent": "scripts 있음",
+        "noScripts": "scripts 없음",
+        "evalsReady": "케이스 준비됨",
+        "evalsPending": "평가 전"
+      }
     }
   },
   "marketplace": {

@@ -9,36 +9,24 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.config import settings
 from app.models.audit_event import AuditEvent
 from app.models.skill_builder_session import SkillBuilderSession
-from app.models.system_llm_setting import SystemLlmSetting
 from app.services import skill_builder_service, skill_revision_service
 from app.skills import service as skill_service
 from tests.conftest import TEST_USER_ID
+from tests.skill_builder_test_helpers import configure_system_llm as _configure_system_llm
 
 pytestmark = pytest.mark.asyncio
 
 BASE = "/api/skill-builder"
 
 
-async def _configure_system_llm(db: AsyncSession) -> None:
-    credential = await credential_service.create(
-        db,
-        user_id=None,
-        definition_key="openai",
-        name="builder-key",
-        data={"api_key": "sk-test"},
-        is_system=True,
-    )
-    db.add(
-        SystemLlmSetting(
-            role="text_primary",
-            credential_id=credential.id,
-            model_name="gpt-5.4",
-        )
-    )
-    await db.commit()
+@pytest.fixture(autouse=True)
+def _tmp_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """start v2가 드래프트 워크스페이스를 디스크에 만들므로 data_root 격리."""
+
+    monkeypatch.setattr(settings, "data_root", str(tmp_path))
 
 
 def _skill_content(name: str = "notes", body: str = "Use when summarizing notes.") -> str:

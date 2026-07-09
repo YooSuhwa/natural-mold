@@ -17,7 +17,7 @@ from app.error_codes import (
     model_not_found,
 )
 from app.marketplace.schemas import CreateAgentFromBlueprintIn
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_blueprint import AgentBlueprint
 from app.models.credential import Credential
 from app.models.mcp_server import McpServer
@@ -632,7 +632,13 @@ async def _resolve_sub_agent_ids(
         (
             await db.execute(
                 select(Agent)
-                .where(Agent.user_id == user_id, Agent.name.in_(set(names)))
+                .where(
+                    Agent.user_id == user_id,
+                    Agent.name.in_(set(names)),
+                    # 히든 런타임 에이전트("스킬 빌더" 등)가 이름 충돌로 일반
+                    # 에이전트의 서브에이전트로 조용히 결선되는 것을 차단.
+                    Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+                )
                 .order_by(Agent.updated_at.desc())
             )
         )
