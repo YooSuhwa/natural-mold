@@ -18,6 +18,29 @@
 
 ---
 
+## 진행 현황 (Progress) — 2026-07-09 갱신
+
+머지된 PR 기준 실제 진행 상태. 세부 항목별 완료 표시는 아래 §1 매트릭스의 각 행에 반영.
+
+| PR | 묶음 | 완료 항목 | 상태 |
+|----|------|-----------|------|
+| #279 | Phase 0 안전망 | SEC-1, SEC-2, SEC-3, BE-P4, FE-D1, IX-1 + 마스터 계획 문서 | ✅ 머지 |
+| #279 | pyright 번다운 A | data/ exclude(970→627) + `docs/pyright-burndown-plan.md` | ✅ 머지 |
+| #280 | Phase 1 hot path | BE-P1, BE-P3, BE-P6, BE-P7, **BE-P5 부분**((a)(c) 완료) | ✅ 머지 |
+| #281 | Phase 2 중복정리 | **BE-D2**(에러 팩토리), **BE-D4**(visibility 술어), CI 통합테스트 분리 | ✅ 머지 |
+| #282 | Phase 2 소유권 | **BE-D1 부분**(owned_conversation 의존성 + 10/30 라우터: artifacts·files·traces) | ✅ 머지 |
+| #283 | 린트 하드닝 계획 | `docs/lint-hardening-plan.md` + lint:all 스크립트 | 🔶 열림 |
+
+**부분완료 잔여** (재개 지점):
+- **BE-P5**: (b) 이중 redaction, (d) seen_event_ids, (e) inline flush — redaction 의미론·flush 순서 얽힘, 별도 PR
+- **BE-D1**: 나머지 20곳 — conv 객체 재사용 라우터(branches/crud/messages)는 `conv: Conversation = Depends(...)` 주입 방식으로 핸들러별 검증; run_cancel/ag_ui/runs/followup 게이트는 mutation 순서 확인; `conversation_agent_protocol_runtime`은 헬퍼라 제외
+
+**미착수 P1** (다음 우선): BE-P2(메시지 페이지네이션·FE연동), BE-S2(MCP/tools/models 서비스레이어), BE-S7(OAuth 분리), BE-S1(chat_service 분해), BE-S3(install_service 분해), FE-S1(런타임 수렴), FE-S2(2941줄 훅), FE-P1(컨텍스트 churn), FE-P2(가상화). **미착수 P2/P3**: §1 매트릭스에서 ✅/🔶 없는 행 전부.
+
+**별도 트랙**: pyright 번다운 B/C/D(`docs/pyright-burndown-plan.md`), 린트 하드닝 A~G(`docs/lint-hardening-plan.md`).
+
+---
+
 ## 1. 통합 우선순위 매트릭스
 
 우선순위 정의 — **P0**: 보안·신뢰성, 이번 주 내 착수. **P1**: 사용자 체감/개발 속도에 직접 효과, 1~2 스프린트. **P2**: 데이터 증가·기능 추가에 따라 악화되는 부채. **P3**: 여유 시. 공수 — S(반나절), M(1~2일), L(3일+).
@@ -45,8 +68,8 @@
 | BE-S7 | credentials 라우터 OAuth 로직 → oauth_service | 구조 | M |
 | BE-S1 | chat_service.py 8-클러스터 분해 | 구조 | L |
 | BE-S3 | install_service.py 3-타입 분해 | 구조 | L |
-| BE-D1 | 소유권 조회+404 패턴 30곳 → Depends 의존성 | 중복 | M |
-| BE-D2 | raw HTTPException 24곳 → error_codes 팩토리 통일 | 중복 | S~M |
+| BE-D1 | 🔶 소유권 조회+404 패턴 30곳 → Depends 의존성 — #282 부분(10/30: artifacts·files·traces), 20곳 잔여 | 중복 | M |
+| BE-D2 | ✅ raw HTTPException 21곳 → error_codes 팩토리 통일 — #281 완료 (system_llm_settings는 byte-identical 계약이라 제외) | 중복 | S~M |
 | FE-S1 | 채팅 런타임 이중화(legacy/v3) 수렴 1단계 | 구조 | M~L |
 | FE-S2 | use-moldy-langgraph-stream.ts(2,941줄) 분해 | 구조 | L |
 | FE-P1 | 스트리밍 중 컨텍스트 churn → 전체 메시지 리렌더 | 성능 | M |
@@ -70,7 +93,7 @@
 | BE-S9 | scheduler.py 잡 로직 → 도메인 서비스 이관 | 구조 | M |
 | BE-S10 | runtime_component_builder.py 5-관심사 분해 | 구조 | M |
 | BE-D3 | audit record_event self-action 래퍼 | 중복 | M |
-| BE-D4 | `_load_owned` 6종 + system-or-owned 술어 7곳 통일 | 중복 | S~M |
+| BE-D4 | ✅ system-or-owned 술어 8곳 → Tool.visible_to — #281 완료 (`_load_owned` 통합은 BE-D1과 함께 잔여) | 중복 | S~M |
 | BE-D7 | 테스트 Model/Agent 팩토리 픽스처 도입 | 중복 | M~L |
 | FE-S3 | assistant-thread.tsx(1,458줄) 분해 | 구조 | M |
 | FE-S4 | approval-card 분해 + 승인 훅 2계열 통합 | 구조 | M |
