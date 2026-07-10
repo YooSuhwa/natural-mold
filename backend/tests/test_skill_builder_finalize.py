@@ -1,8 +1,8 @@
 """finalize_skill 오케스트레이션 (M5, 스펙 AD-3).
 
-생성/개선/SOURCE_SKILL_CHANGED/secret scan 차단/slug 충돌/바이너리 가드/멱등 +
-감사 이벤트(confirm_create/apply_improvement/apply_conflict/secret_scan_blocked/
-skill_revision.create) + 완료 딥링크 페이로드.
+생성/개선/SOURCE_SKILL_CHANGED/secret scan 차단/slug 충돌/바이너리 asset 포함
+(Phase 1.5 디스크 zip)/멱등 + 감사 이벤트(confirm_create/apply_improvement/
+apply_conflict/secret_scan_blocked/skill_revision.create) + 완료 딥링크 페이로드.
 """
 
 from __future__ import annotations
@@ -148,16 +148,53 @@ async def test_finalize_blocks_secret_bearing_draft(db: AsyncSession) -> None:
     assert await db.scalar(select(Skill.id)) is None
 
 
-async def test_finalize_rejects_binary_package_files(db: AsyncSession) -> None:
+PNG_BYTES = b"\x89PNG\x00\x00binary"
+
+
+async def test_finalize_create_includes_binary_asset(db: AsyncSession) -> None:
+    """Phase 1.5 — 디스크 기반 zip이 text 어댑터를 우회해 바이너리를 보존한다."""
+
+    from app.storage.paths import resolve_data_path
+
     session = await _make_create_session(db)
     root = workspace.resolve_workspace_dir(session.draft_workspace_path or "")
     (root / "assets").mkdir()
-    (root / "assets" / "logo.png").write_bytes(b"\x89PNG\x00\x00binary")
+    (root / "assets" / "logo.png").write_bytes(PNG_BYTES)
+    # inputs/(시험 입력)는 패키지 콘텐츠가 아니다 — export 제외 확인용.
+    (root / "inputs").mkdir()
+    (root / "inputs" / "example.csv").write_text("a,b\n", encoding="utf-8")
 
     result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
 
-    assert result["error_code"] == "BINARY_FILES_UNSUPPORTED"
-    assert "assets/logo.png" in result["message"]
+    assert "error_code" not in result, result
+    skill = await db.get(Skill, uuid.UUID(result["skill_id"]))
+    assert skill is not None
+    stored_root = resolve_data_path(skill.storage_path or "")
+    assert (stored_root / "assets" / "logo.png").read_bytes() == PNG_BYTES
+    assert not (stored_root / "inputs").exists()
+
+
+async def test_finalize_returns_package_invalid_and_releases_claim(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """zip 추출 가드(크기 상한) 실패는 PACKAGE_INVALID로 사유를 전하고 claim을
+    풀어 재시도가 self-heal되어야 한다 (SOURCE_SKILL_NOT_FOUND 경로와 대칭)."""
+
+    session = await _make_create_session(db)
+    root = workspace.resolve_workspace_dir(session.draft_workspace_path or "")
+    (root / "assets").mkdir()
+    (root / "assets" / "big.bin").write_bytes(b"\x00" * 4096)
+    monkeypatch.setattr(settings, "skill_max_package_bytes", 1024)
+
+    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+
+    assert result["error_code"] == "PACKAGE_INVALID"
+    await db.refresh(session)
+    assert session.status == "review"  # CONFIRMING 잠금이 풀려 있어야 한다.
+
+    # 재시도는 CONFIRMING 게이트에 막히지 않는다.
+    second = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    assert second["error_code"] == "PACKAGE_INVALID"
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +259,57 @@ async def test_finalize_improve_replaces_storage_and_creates_revision(
     assert revision is not None
     assert revision.operation == "builder_improvement"
     assert "skill_builder.apply_improvement" in await _audit_actions(db)
+
+
+async def test_finalize_improve_preserves_seeded_binary_asset(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    """improve 시드 원본의 바이너리 asset이 finalize 후에도 보존된다 (Phase 1.5).
+
+    브리핑 검증 시나리오 — asset(이미지) 있는 package 스킬을 시드한 뒤 텍스트만
+    고쳐 확정해도 디스크 기반 zip이 asset을 그대로 싣는다.
+    """
+
+    import io
+    import zipfile
+
+    from app.skills import service as skill_service
+    from app.storage.paths import resolve_data_path
+
+    await configure_system_llm(db)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("notes/SKILL.md", _skill_md())
+        zf.writestr("notes/assets/logo.png", PNG_BYTES)
+    source = await skill_service.create_package_skill(
+        db, user_id=TEST_USER_ID, zip_bytes=buffer.getvalue()
+    )
+    await db.commit()
+
+    start = await client.post(
+        BASE,
+        json={
+            "mode": "improve",
+            "source_skill_id": str(source.id),
+            "user_request": "더 정확하게",
+        },
+    )
+    assert start.status_code == 201, start.text
+    session = await db.get(SkillBuilderSession, uuid.UUID(start.json()["id"]))
+    assert session is not None
+    root = workspace.resolve_workspace_dir(session.draft_workspace_path or "")
+    assert (root / "assets" / "logo.png").read_bytes() == PNG_BYTES  # 시드 확인
+    (root / "SKILL.md").write_text(
+        _skill_md(body="Use when summarizing meeting notes. Improved."),
+        encoding="utf-8",
+    )
+
+    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+
+    assert "error_code" not in result, result
+    await db.refresh(source)
+    stored_root = resolve_data_path(source.storage_path or "")
+    assert (stored_root / "assets" / "logo.png").read_bytes() == PNG_BYTES
 
 
 async def test_finalize_improve_conflicts_when_source_changed(

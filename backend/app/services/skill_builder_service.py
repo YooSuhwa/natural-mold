@@ -206,8 +206,11 @@ async def confirm_session(
     session: SkillBuilderSession,
     *,
     user_id: uuid.UUID,
+    zip_from_workspace: bool = False,
 ) -> Skill:
-    return await confirm_builder_session(db, session, user_id=user_id)
+    return await confirm_builder_session(
+        db, session, user_id=user_id, zip_from_workspace=zip_from_workspace
+    )
 
 
 async def load_skill_snapshot(skill: Skill) -> dict[str, Any]:
