@@ -15,6 +15,12 @@ const SKIP_PATH_PARTS = new Set([
   'test-results',
 ])
 
+// Screenshot tours deliberately pause on fixed delays so animations/streams
+// settle before each capture — waiting on a DOM condition would freeze the
+// exact frame the tour is trying to show. The other hygiene rules
+// (focused-test, unreviewed-skip, forced-action) still apply there.
+const FIXED_TIMEOUT_EXEMPT_RE = /^e2e\/captures\//
+
 function normalizePath(filePath) {
   return filePath.split(path.sep).join('/')
 }
@@ -152,7 +158,7 @@ function findE2eHygieneIssues(source, filePath) {
           )
         }
 
-        if (name === 'waitForTimeout') {
+        if (name === 'waitForTimeout' && !FIXED_TIMEOUT_EXEMPT_RE.test(filePath)) {
           issues.push(
             issue(
               sourceFile,
