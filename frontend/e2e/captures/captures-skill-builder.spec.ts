@@ -67,6 +67,10 @@ test.describe('스킬 빌더 챗 — 전 화면 캡처 투어', () => {
     const sessionId = new URL(page.url()).pathname.split('/').pop() as string
     await expect(page.getByTestId('skill-builder-rail')).toBeVisible({ timeout: 60_000 })
     await expect(composer).toBeVisible({ timeout: 60_000 })
+    // Phase 1.5 — 다이얼로그 요청이 자동 첫 메시지로 발화된다. 응답 완료 후 캡처.
+    await expect(page.getByText('E2E scripted document model is ready.').last()).toBeVisible({
+      timeout: 60_000,
+    })
     await settle(page)
     await capture(page, WAVE, '03-builder-entry.png')
 
@@ -170,6 +174,10 @@ test.describe('스킬 빌더 챗 — 전 화면 캡처 투어', () => {
     await page.waitForURL(/\/skills\/builder\/[0-9a-f-]{36}/, { timeout: 120_000 })
     await expect(page.getByTestId('skill-builder-rail')).toBeVisible({ timeout: 60_000 })
     await expect(page.getByText('개선', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
+    // Phase 1.5 — improve 기본 요청("기존 스킬을 개선하고 싶어요.")도 자동 발화.
+    await expect(page.getByText('E2E scripted document model is ready.').last()).toBeVisible({
+      timeout: 60_000,
+    })
     await settle(page)
     await capture(page, WAVE, '13-improve-entry.png')
 

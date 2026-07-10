@@ -17,6 +17,7 @@ import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { conversationKeys, useMessagesEnvelope } from '@/lib/hooks/use-conversations'
 import { skillBuilderKeys, useSkillBuilderSession } from '@/lib/hooks/use-skill-builder'
 import type { Message, SSEEvent } from '@/lib/types'
+import { SkillBuilderAutoRequest, resolveAutoFirstMessage } from './skill-builder-auto-request'
 import { SkillBuilderRail, type RailMode } from './skill-builder-rail'
 import { SkillBuilderTryHint } from './skill-builder-try-hint'
 
@@ -41,6 +42,9 @@ export function SkillBuilderChatClient({ sessionId }: { readonly sessionId: stri
   const agentId = session?.agent_id ?? null
   const { data: envelope } = useMessagesEnvelope(conversationId ?? '', Boolean(conversationId))
   const messages = envelope?.messages ?? EMPTY_MESSAGES
+  // Phase 1.5 — 다이얼로그의 user_request를 첫 진입 시 자동 전송 (리로드/기존
+  // run 이력에는 발화하지 않는 서버 진실 가드).
+  const autoRequestText = resolveAutoFirstMessage(session, envelope)
 
   const handleStreamEnd = useCallback(() => {
     // finalize/validate가 세션 상태·skills 목록을 바꿀 수 있다 — 런 종료 시 재조회.
@@ -138,7 +142,12 @@ export function SkillBuilderChatClient({ sessionId }: { readonly sessionId: stri
           agentId={agentId}
           agentName={t('title')}
           attachmentAdapter={moldyAttachmentAdapter}
-          composerHint={<SkillBuilderTryHint />}
+          composerHint={
+            <>
+              <SkillBuilderAutoRequest text={autoRequestText} />
+              <SkillBuilderTryHint />
+            </>
+          }
           emptyContent={emptyContent}
           latestRun={envelope?.latest_run ?? null}
           messages={messages}
