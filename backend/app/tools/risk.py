@@ -225,7 +225,7 @@ def _looks_like_read_only_mcp_tool(name: str, description: str | None) -> bool:
 def _trusted_mcp_config_read_only(config: dict[str, Any] | None, fallback_name: str) -> bool:
     if not _trusted_mcp_config_url(config):
         return False
-    assert config is not None
+    assert config is not None  # noqa: S101 — implied by _trusted_mcp_config_url (type narrowing)
     name = str(config.get("mcp_tool_name") or config.get("name") or fallback_name)
     description = config.get("description")
     desc = description if isinstance(description, str) else None

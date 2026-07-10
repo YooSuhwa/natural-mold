@@ -106,6 +106,7 @@ select = [
   "B",              # bugbear (common bug patterns)
   "SIM",            # simplify (unnecessary complexity)
   "ASYNC",          # async anti-patterns
+  "S",              # bandit security rules (SSRF, subprocess, hardcoded secrets, ...)
 ]
 ignore = [
   "B008",           # Depends() in function defaults — idiomatic FastAPI
@@ -118,6 +119,13 @@ ignore = [
 "app/routers/skills.py" = ["ASYNC240"]            # sync pathlib for file serving (trivial I/O)
 "app/routers/uploads.py" = ["ASYNC240"]           # sync pathlib for upload write/read (bounded I/O)
 "app/services/skill_service.py" = ["ASYNC240"]    # sync pathlib for ZIP extraction (bounded I/O)
+# S101 assert = pytest idiom; S105/S106/S107 fixture passwords; S108 tmp paths in
+# fixtures; S603 trusted subprocess in test harness — none run in production.
+"tests/*" = ["S101", "S105", "S106", "S107", "S108", "S603"]
+# Migrations interpolate internal constants (table names, WHERE fragments) into
+# SQL with values bound via params (S608); preflight checks deliberately skip
+# missing tables (S112). Operator-run, no untrusted input.
+"alembic/versions/*" = ["S608", "S112"]
 
 [tool.ruff.format]
 quote-style = "double"

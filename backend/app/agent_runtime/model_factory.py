@@ -715,7 +715,7 @@ async def create_chat_model_with_fallback(
                 raise
 
     # 3) Everything failed — re-raise the most recent error.
-    assert last_error is not None
+    assert last_error is not None  # noqa: S101 — fallback-loop invariant (type narrowing)
     raise last_error
 
 

@@ -43,7 +43,7 @@ def _data_root(outputs_dir: Path) -> Path:
 
 def _git_head(workspace: Path) -> str | None:
     result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
+        ["git", "rev-parse", "HEAD"],  # noqa: S607 — fixed args; git via PATH
         cwd=str(workspace),
         capture_output=True,
         text=True,

@@ -205,14 +205,12 @@ class DailySpendUpdateQueue:
     async def _loop(self) -> None:
         """Drain the queue in batches until ``stop`` is requested."""
 
-        assert self._queue is not None
+        assert self._queue is not None  # noqa: S101 — start() creates the queue before _loop (type narrowing)
         while not self._stopping.is_set():
             entries: list[SpendEntry] = []
             try:
                 # Wait for at least one entry, bounded by the flush interval.
-                first = await asyncio.wait_for(
-                    self._queue.get(), timeout=self._flush_interval
-                )
+                first = await asyncio.wait_for(self._queue.get(), timeout=self._flush_interval)
                 entries.append(first)
             except TimeoutError:
                 continue
@@ -257,17 +255,11 @@ class DailySpendUpdateQueue:
 
         for entry in entries:
             cost = _coerce_cost(entry.cost_usd)
-            self._accumulate(
-                user_buckets, (entry.date, entry.user_id), entry, cost
-            )
+            self._accumulate(user_buckets, (entry.date, entry.user_id), entry, cost)
             if entry.agent_id is not None:
-                self._accumulate(
-                    agent_buckets, (entry.date, entry.agent_id), entry, cost
-                )
+                self._accumulate(agent_buckets, (entry.date, entry.agent_id), entry, cost)
             if entry.model_id is not None:
-                self._accumulate(
-                    model_buckets, (entry.date, entry.model_id), entry, cost
-                )
+                self._accumulate(model_buckets, (entry.date, entry.model_id), entry, cost)
 
         async with self._session_factory() as db:
             try:
@@ -374,18 +366,10 @@ class DailySpendUpdateQueue:
 
             stmt = pg_insert(table_cls).values(rows)
             update_cols = {
-                "total_tokens_in": (
-                    table_cls.total_tokens_in + stmt.excluded.total_tokens_in
-                ),
-                "total_tokens_out": (
-                    table_cls.total_tokens_out + stmt.excluded.total_tokens_out
-                ),
-                "total_cost_usd": (
-                    table_cls.total_cost_usd + stmt.excluded.total_cost_usd
-                ),
-                "request_count": (
-                    table_cls.request_count + stmt.excluded.request_count
-                ),
+                "total_tokens_in": (table_cls.total_tokens_in + stmt.excluded.total_tokens_in),
+                "total_tokens_out": (table_cls.total_tokens_out + stmt.excluded.total_tokens_out),
+                "total_cost_usd": (table_cls.total_cost_usd + stmt.excluded.total_cost_usd),
+                "request_count": (table_cls.request_count + stmt.excluded.request_count),
                 "updated_at": stmt.excluded.updated_at,
             }
             stmt = stmt.on_conflict_do_update(
@@ -398,18 +382,10 @@ class DailySpendUpdateQueue:
 
             stmt = sqlite_insert(table_cls).values(rows)
             update_cols = {
-                "total_tokens_in": (
-                    table_cls.total_tokens_in + stmt.excluded.total_tokens_in
-                ),
-                "total_tokens_out": (
-                    table_cls.total_tokens_out + stmt.excluded.total_tokens_out
-                ),
-                "total_cost_usd": (
-                    table_cls.total_cost_usd + stmt.excluded.total_cost_usd
-                ),
-                "request_count": (
-                    table_cls.request_count + stmt.excluded.request_count
-                ),
+                "total_tokens_in": (table_cls.total_tokens_in + stmt.excluded.total_tokens_in),
+                "total_tokens_out": (table_cls.total_tokens_out + stmt.excluded.total_tokens_out),
+                "total_cost_usd": (table_cls.total_cost_usd + stmt.excluded.total_cost_usd),
+                "request_count": (table_cls.request_count + stmt.excluded.request_count),
                 "updated_at": stmt.excluded.updated_at,
             }
             stmt = stmt.on_conflict_do_update(

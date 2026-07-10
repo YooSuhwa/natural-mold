@@ -115,7 +115,7 @@ async def update_catalog(*, fetch: bool = True) -> dict[str, Any]:
     # picks up the new catalog without a process restart.
     try:
         from app.services import model_metadata
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110 — best-effort cache reset; import fails only mid-shutdown
         pass
     else:
         model_metadata.reset_catalog_cache()

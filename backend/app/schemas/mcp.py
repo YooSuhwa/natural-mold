@@ -11,12 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.mcp_server import STATUSES, TRANSPORTS
 
 Transport = Literal["stdio", "sse", "streamable_http"]
-Status = Literal[
-    "unknown", "connected", "auth_needed", "unreachable", "disabled"
-]
+Status = Literal["unknown", "connected", "auth_needed", "unreachable", "disabled"]
 
-assert set(TRANSPORTS) == {"stdio", "sse", "streamable_http"}
-assert set(STATUSES) == {
+assert set(TRANSPORTS) == {"stdio", "sse", "streamable_http"}  # noqa: S101 — import-time consistency check
+assert set(STATUSES) == {  # noqa: S101 — import-time consistency check
     "unknown",
     "connected",
     "auth_needed",

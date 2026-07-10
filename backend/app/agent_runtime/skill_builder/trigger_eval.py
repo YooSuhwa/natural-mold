@@ -83,7 +83,7 @@ def generate_trigger_examples(*, name: str, description: str, intent: str) -> li
 def deterministic_split(examples: list[TriggerExample], *, seed: int = SEED) -> TriggerSplit:
     positives = [example for example in examples if example.should_trigger]
     negatives = [example for example in examples if not example.should_trigger]
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # noqa: S311 — deterministic eval split, not cryptographic
     rng.shuffle(positives)
     rng.shuffle(negatives)
     test = [positives[0], negatives[0]]

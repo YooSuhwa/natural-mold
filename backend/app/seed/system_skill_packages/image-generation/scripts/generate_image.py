@@ -20,9 +20,7 @@ OPENROUTER_DEFAULT_MODEL = "openai/gpt-5.4-image-2"
 DEFAULT_PROVIDER = "openai-compatible"
 DEFAULT_TIMEOUT_SECONDS = 360.0
 
-_DATA_URL_RE = re.compile(
-    r"data:(image/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)"
-)
+_DATA_URL_RE = re.compile(r"data:(image/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)")
 _RAW_BASE64_RE = re.compile(r"\b([A-Za-z0-9+/]{32,}={0,2})\b")
 _TRAVEL_HINT_RE = re.compile(r"(여행|관광|투어).*(가이드|가이드맵|지도|맵)")
 _ENGLISH_TRAVEL_HINT_RE = re.compile(
@@ -181,6 +179,11 @@ class OpenAICompatibleAdapter(ImageAdapter):
             raise SkillError(
                 "MISSING_CONFIG",
                 "IMAGE_API_BASE_URL is not set. Bind an OpenAI-compatible credential.",
+            )
+        if not base_url.lower().startswith(("http://", "https://")):
+            raise SkillError(
+                "MISSING_CONFIG",
+                f"IMAGE_API_BASE_URL must be an http(s) URL (got scheme of: {base_url[:80]}).",
             )
         self.base_url = base_url.rstrip("/")
         self.api_key = os.environ.get("IMAGE_API_KEY", "").strip()
@@ -373,10 +376,14 @@ def _post_json(
     deadline = time.monotonic() + timeout
 
     for attempt in range(1, attempts + 1):
-        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        # S310 suppressed: http(s)-only is guarded at IMAGE_API_BASE_URL load
+        # (adapter __init__), so file:// and custom schemes can't reach here.
+        req = urllib.request.Request(  # noqa: S310
+            url, data=body, headers=headers, method="POST"
+        )
         remaining_timeout = max(1.0, deadline - time.monotonic())
         try:
-            with urllib.request.urlopen(req, timeout=remaining_timeout) as res:
+            with urllib.request.urlopen(req, timeout=remaining_timeout) as res:  # noqa: S310
                 raw = res.read()
             break
         except urllib.error.HTTPError as exc:
@@ -414,18 +421,14 @@ def _post_json(
                     "TRANSIENT_API_ERROR",
                     _format_timeout_error(reason, attempts=attempt),
                 ) from exc
-            raise SkillError(
-                "NETWORK_ERROR", f"Image API request failed: {exc.reason}"
-            ) from exc
+            raise SkillError("NETWORK_ERROR", f"Image API request failed: {exc.reason}") from exc
     else:
         raise SkillError("NETWORK_ERROR", "Image API request failed before sending.")
 
     try:
         decoded = json.loads(raw.decode("utf-8"))
     except json.JSONDecodeError as exc:
-        raise SkillError(
-            "INVALID_RESPONSE", f"Image API returned non-JSON: {exc}"
-        ) from exc
+        raise SkillError("INVALID_RESPONSE", f"Image API returned non-JSON: {exc}") from exc
     if not isinstance(decoded, dict):
         raise SkillError("INVALID_RESPONSE", "Image API returned a non-object response.")
     return decoded
@@ -442,17 +445,13 @@ def _read_http_error_detail(exc: urllib.error.HTTPError) -> str:
         return ""
 
 
-def _format_http_error(
-    exc: urllib.error.HTTPError, *, detail: str, attempts: int
-) -> str:
+def _format_http_error(exc: urllib.error.HTTPError, *, detail: str, attempts: int) -> str:
     reason = str(exc.reason or "").strip()
     status = f"HTTP {exc.code}" + (f" {reason}" if reason else "")
     retry_note = f" after {attempts} attempts" if attempts > 1 else ""
     message = f"Image API returned {status}{retry_note}."
     if exc.code in _TRANSIENT_HTTP_STATUS_CODES:
-        message += (
-            " The configured image endpoint is busy, unavailable, or timing out."
-        )
+        message += " The configured image endpoint is busy, unavailable, or timing out."
     summary = _summarize_error_detail(detail)
     if summary:
         message += f" Detail: {summary}"

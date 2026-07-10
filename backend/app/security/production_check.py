@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Origins permitted in dev defaults — production must replace these.
 # Includes the IPv6 loopback (``::1``) and any-iface (``::``) variants so
 # they aren't accidentally treated as legitimate prod origins.
-_LOCAL_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "::"}
+_LOCAL_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "::"}  # noqa: S104 — denylist for detecting bad prod config, not a bind
 
 
 def _is_local_only(origins: list[str]) -> bool:
@@ -35,10 +35,7 @@ def _is_local_only(origins: list[str]) -> bool:
 
     if not origins:
         return True
-    return all(
-        (urlsplit(o).hostname or "").lower() in _LOCAL_ORIGIN_HOSTS
-        for o in origins
-    )
+    return all((urlsplit(o).hostname or "").lower() in _LOCAL_ORIGIN_HOSTS for o in origins)
 
 
 def collect_production_warnings(settings: Settings) -> list[str]:
@@ -62,8 +59,7 @@ def collect_production_warnings(settings: Settings) -> list[str]:
 
     if not settings.cookie_secure:
         issues.append(
-            "COOKIE_SECURE=false. Set true so browsers refuse to send "
-            "auth cookies over plain HTTP."
+            "COOKIE_SECURE=false. Set true so browsers refuse to send auth cookies over plain HTTP."
         )
 
     if settings.allow_first_user_as_admin:

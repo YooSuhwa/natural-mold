@@ -9,8 +9,8 @@ from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 LANGGRAPH_V3_MARKER: Final = "E2E_LANGGRAPH_V3"
 LANGGRAPH_V3_SUBAGENT_MARKER: Final = "E2E_SUBAGENT"
 LANGGRAPH_V3_SLOW_SUBAGENT_REQUEST: Final = "slow_subagent=true"
-LANGGRAPH_V3_SECRET_TOOL_ARGS_REQUEST: Final = "secret_tool_arg=true"
-LANGGRAPH_V3_SECRET_TOOL_ARG_VALUE: Final = "moldy-e2e-secret-token-should-not-persist"
+LANGGRAPH_V3_SECRET_TOOL_ARGS_REQUEST: Final = "secret_tool_arg=true"  # noqa: S105 — E2E scripted-model marker, not a secret
+LANGGRAPH_V3_SECRET_TOOL_ARG_VALUE: Final = "moldy-e2e-secret-token-should-not-persist"  # noqa: S105 — E2E redaction probe value, not a secret
 LANGGRAPH_V3_SLOW_SUBAGENT_MARKER: Final = "E2E_SUBAGENT_SLOW"
 LANGGRAPH_V3_TODOS_TOOL_CALL_ID: Final = "call_e2e_langgraph_v3_todos"
 LANGGRAPH_V3_SUBAGENT_TOOL_CALL_ID: Final = "call_e2e_langgraph_v3_subagent"

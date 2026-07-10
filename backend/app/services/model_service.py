@@ -117,7 +117,7 @@ def serialize_model(model: Model, *, agent_count: int = 0) -> dict:
         rankings = enriched.get("rankings")
         if rankings:
             payload["rankings"] = rankings
-    except Exception:  # noqa: BLE001 — enrichment is best-effort
+    except Exception:  # noqa: BLE001, S110 — enrichment is best-effort
         pass
     return payload
 

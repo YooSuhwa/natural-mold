@@ -411,7 +411,7 @@ def register_health_check_job() -> None:
 # Refresh-token GC (ADR-016 §4.2)
 # ---------------------------------------------------------------------------
 
-REFRESH_TOKEN_GC_JOB_ID = "refresh_token_gc"
+REFRESH_TOKEN_GC_JOB_ID = "refresh_token_gc"  # noqa: S105 — scheduler job id, not a secret
 
 
 async def refresh_token_gc_run() -> int:

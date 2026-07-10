@@ -282,7 +282,7 @@ class ImportAction(StrEnum):
     NEW_VERSION = "new_version"
     METADATA_UPDATE = "metadata_update"
     CREATED = "created"
-    FAILED_SECRET_SCAN = "failed_secret_scan"
+    FAILED_SECRET_SCAN = "failed_secret_scan"  # noqa: S105 — sync status constant, not a secret
     FAILED_VALIDATION = "failed_validation"
     SKIPPED = "skipped"
 

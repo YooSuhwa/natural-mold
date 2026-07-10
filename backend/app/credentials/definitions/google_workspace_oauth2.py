@@ -11,7 +11,7 @@ from app.credentials.authenticate import GenericAuth
 from app.credentials.domain import CredentialDefinition
 from app.credentials.field import FieldDef, FieldKind
 
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 — OAuth endpoint URL, not a secret
 
 
 async def _refresh(credentials: dict[str, Any]) -> dict[str, Any]:
@@ -70,9 +70,7 @@ definition = CredentialDefinition(
             kind=FieldKind.PASSWORD,
             required=True,
             type_options={"password": True, "expirable": False},
-            description=(
-                "Long-lived refresh token issued via the OAuth2 consent flow."
-            ),
+            description=("Long-lived refresh token issued via the OAuth2 consent flow."),
         ),
         FieldDef(
             name="access_token",

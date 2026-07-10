@@ -26,7 +26,7 @@ def _load_schema() -> dict[str, Any]:
     if _schema_cache is None:
         with _SCHEMA_PATH.open(encoding="utf-8") as f:
             _schema_cache = json.load(f)
-    assert _schema_cache is not None
+    assert _schema_cache is not None  # noqa: S101 — set in the branch above (type narrowing)
     return _schema_cache
 
 
