@@ -32,8 +32,7 @@
     "frontend/**/*.{ts,tsx}": [
       "pnpm --dir frontend lint:i18n",
       "pnpm --dir frontend lint:type-safety",
-      "pnpm --dir frontend lint:e2e-hygiene",
-      "pnpm --dir frontend lint:frontend-architecture"
+      "pnpm --dir frontend lint:e2e-hygiene"
     ]
   }
 }

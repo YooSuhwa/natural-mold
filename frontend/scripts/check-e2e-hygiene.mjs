@@ -115,7 +115,7 @@ function skipNeedsReview(callExpression) {
   return !secondArg || !hasNonEmptyStringLiteral(secondArg)
 }
 
-function findE2eHygieneIssues(source, filePath) {
+export function findE2eHygieneIssues(source, filePath) {
   const sourceFile = ts.createSourceFile(
     filePath,
     source,

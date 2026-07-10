@@ -71,13 +71,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: .
       - run: pnpm lint
-      # Custom guards (docs/lint-hardening-plan.md §A) — only the green ones
-      # are wired as hard gates. lint:a11y and lint:design-system still carry
-      # real violations that need component fixes (tracked as A-2 / FE-D2 /
-      # FE-D4); wire them here once they are green.
+      # Custom guards (docs/lint-hardening-plan.md §A) — only guards whose
+      # ENFORCING mode is green are wired. Not wired yet: lint:a11y and
+      # lint:design-system carry real violations needing component fixes
+      # (A-2 / FE-D2 / FE-D4), and lint:frontend-architecture's non-strict
+      # mode always exits 0 (no gate value) while its strict mode is red
+      # (3 blocking issues) — wire the strict variant once those are fixed.
       - run: pnpm lint:i18n
       - run: pnpm lint:type-safety
       - run: pnpm lint:e2e-hygiene
-      - run: pnpm lint:frontend-architecture
       - run: pnpm exec vitest run
       - run: pnpm build

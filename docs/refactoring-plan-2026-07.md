@@ -30,7 +30,7 @@
 | #281 | Phase 2 중복정리 | **BE-D2**(에러 팩토리), **BE-D4**(visibility 술어), CI 통합테스트 분리 | ✅ 머지 |
 | #282 | Phase 2 소유권 | **BE-D1 부분**(owned_conversation 의존성 + 10/30 라우터: artifacts·files·traces) | ✅ 머지 |
 | #283 | 린트 하드닝 계획 | `docs/lint-hardening-plan.md` + lint:all 스크립트 | ✅ 머지 |
-| #287 | 린트 A-1 | 가드 예외 3건 등록 + 그린 가드 5개 CI·pre-commit 연결 (a11y·design-system은 A-2 잔여) | ✅ 머지 |
+| #287 | 린트 A-1 | 가드 예외 3건 등록(+회귀 테스트) + 그린 가드 4개 CI·pre-commit 연결 (a11y·design-system·frontend-architecture strict는 A-2 잔여) | ✅ 머지 |
 
 **부분완료 잔여** (재개 지점):
 - **BE-P5**: (b) 이중 redaction, (d) seen_event_ids, (e) inline flush — redaction 의미론·flush 순서 얽힘, 별도 PR
@@ -146,7 +146,7 @@
 > 완료하면 이 목록에서 해당 줄에 ✅와 PR 번호를 남겨 다음 세션이 이어받게 할 것.
 
 **Stage 0 — 자동 게이트 먼저 (이후 모든 작업이 자동 검증받음. 최대 레버리지)**
-1. ✅ **린트 A-1** — PR #287. 재측정(i18n 3·type-safety 2·e2e-hygiene 40 = 전부 정당) → 예외 3건 등록 + 네거티브 픽스처 검증 → 그린 가드 5개(lint·i18n·type-safety·e2e-hygiene·frontend-architecture)를 CI 개별 스텝 + lint-staged에 연결. a11y(신규4+해소2)·design-system(12)은 A-2 잔여(FE-D2·FE-D4 연동).
+1. ✅ **린트 A-1** — PR #287. 재측정(i18n 3·type-safety 2·e2e-hygiene 40 = 전부 정당) → 예외 3건 등록 + 예외별 회귀 테스트 → 그린 가드 4개(lint·i18n·type-safety·e2e-hygiene)를 CI 개별 스텝 + lint-staged에 연결. **frontend-architecture는 2차 리뷰에서 거짓 그린 판명**(비-strict 항상 exit 0, strict는 blocking 3건 레드) → a11y(신규4+해소2)·design-system(12)과 함께 A-2 잔여(FE-D2·FE-D4 연동 + strict blocking 수정).
 2. **린트 C** — `docs/lint-hardening-plan.md` C. ruff 보안 룰 `S` 켜고 43건 트리아지(SSRF/시크릿/subprocess 수정, 오탐 ignore).
 3. **린트 F·G** — ruff `PGH`(억제 부채) + integration 마커 자동부여(conftest 훅).
 4. **린트 E** — 저노이즈 ruff 룰 `DTZ,C4,SLF,RET,PTH,PT,N` 배치 + 트리아지.

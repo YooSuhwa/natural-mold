@@ -89,7 +89,7 @@ async function collectFiles(rootDir) {
   return out
 }
 
-function findTypeSafetyIssues(source, filePath) {
+export function findTypeSafetyIssues(source, filePath) {
   const sourceFile = ts.createSourceFile(
     filePath,
     source,
