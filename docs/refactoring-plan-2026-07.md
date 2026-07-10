@@ -139,6 +139,58 @@
 
 ## 2. 권장 실행 로드맵 (Phase)
 
+### ▶ 현 시점 실행 순서 (2026-07-10, 미완료만) — 새 세션은 여기부터
+
+> **사용법**: `/clear` 후 새 세션에서 **"이 문서 실행 순서에서 다음 미완료 항목 진행해줘"** 한 문장이면 된다. 항목을 콕 집으려면 아래 번호의 프롬프트를 그대로 복붙. 공통 규칙: worktree에서 origin/main 기준 새 브랜치, 한 PR = 한 항목, 기능 변화 0(순수 이동은 facade), 검증 그린 후 PR. (백엔드 검증 = `ruff` + `pytest -n 4 --ignore=tests/integration` + `pytest tests/integration` 직렬, 푸시 시 `SKILL_EVALUATION_ENABLED=true`. pyright는 전체 968 백로그라 수정 파일 단위로만.)
+> 완료하면 이 목록에서 해당 줄에 ✅와 PR 번호를 남겨 다음 세션이 이어받게 할 것.
+
+**Stage 0 — 자동 게이트 먼저 (이후 모든 작업이 자동 검증받음. 최대 레버리지)**
+1. **린트 A-1** — `docs/lint-hardening-plan.md` A. 프론트 커스텀 가드 6개 위반 **재측정**(#285로 바뀌었을 수 있음) → 정당한 예외(i18n global-error, type-safety 테스트, e2e captures) 등록해 그린화 → 그 가드들을 CI·pre-commit에 연결. (design-system·a11y는 실제 수정이라 A-2로 분리)
+2. **린트 C** — `docs/lint-hardening-plan.md` C. ruff 보안 룰 `S` 켜고 43건 트리아지(SSRF/시크릿/subprocess 수정, 오탐 ignore).
+3. **린트 F·G** — ruff `PGH`(억제 부채) + integration 마커 자동부여(conftest 훅).
+4. **린트 E** — 저노이즈 ruff 룰 `DTZ,C4,SLF,RET,PTH,PT,N` 배치 + 트리아지.
+
+**Stage 1 — 부분완료 마무리**
+5. **BE-D1 나머지** — conv 객체 재사용 라우터(branches/crud/messages 등)를 `conv: Conversation = Depends(owned_conversation)` 주입 방식으로. §6 [BE-D1] 참고.
+6. **BE-P5 나머지** — (b) 이중 redaction, (d) run-scoped seen_event_ids, (e) inline flush → create_task. §5 [BE-P5] 참고.
+
+**Stage 2 — 레이어링·경계 (명확한 정답)**
+7. **BE-S7** — credentials 라우터 OAuth → oauth_service. §4 [BE-S7].
+8. **BE-S2** — MCP/tools/models 서비스 레이어 신설. §4 [BE-S2]. (트랜잭션 정책 = 서비스 flush/라우터 commit 전역 결정)
+9. **BE-D3** — audit self-action 래퍼. §6 [BE-D3].
+10. **BE-D7** — 테스트 Model/Agent 팩토리 픽스처. §6 [BE-D7].
+
+**Stage 3 — 갓 모듈 분해 (facade 순수 이동, 하나씩)**
+11. **BE-S1** — chat_service.py 8-클러스터 분해. §4 [BE-S1]. (#285로 1,810줄, 스킬빌더 코드도 포함)
+12. **BE-S3** — install_service.py 3-타입 분해. §4 [BE-S3].
+13. **BE-S5 · BE-S8 · BE-S9 · BE-S10** — write_tools / artifact_service / scheduler / runtime_component_builder (각각 별도 PR).
+
+**Stage 4 — 프론트 대형**
+14. **FE-P1** — 스트리밍 컨텍스트 churn(전체 메시지 리렌더). §8 [FE-P1]. (독립적·성능 임팩트 커서 프론트 먼저)
+15. **FE-S2** — use-moldy-langgraph-stream.ts(2,941줄) 분해. §7 [FE-S2].
+16. **FE-S3 · FE-S4** — assistant-thread / approval-card 분해.
+17. **FE-S1** — 채팅 런타임 이중화 수렴. §7 [FE-S1]. (설계 난제라 프론트 익숙해진 뒤)
+
+**Stage 5 — 구조 난제 + 페이지네이션**
+18. **BE-S4** — services↔agent_runtime 의존 역전(함수-로컬 import 155곳 근본). §4 [BE-S4].
+19. **BE-P2** — 메시지 keyset 페이지네이션(FE 연동). §5 [BE-P2].
+20. **BE-S6** — 디렉토리 컨벤션 ADR + 서브패키징. §4 [BE-S6].
+
+**Stage 6 — 백로그 (P2/P3 quick win, 병렬 가능)**
+- 백엔드 성능: BE-P8·P9·P10·P11·P12·P13 / 프론트 성능: FE-P2(가상화)·P3·P4·P5·P6·P7
+- 디자인·a11y: FE-D2~D7 + 린트 A-2(design-system·a11y 가드 연결) / 중복: BE-D5·D6·D8 · FE-S5~S10
+- 인프라: IX-3(docker)·IX-5(구조화 로깅)·IX-4(squash)
+
+**Stage 7 — 타입 게이트 (대형, 마지막)**
+21. **pyright 번다운** — `docs/pyright-burndown-plan.md` B→C → D(CI `|| true` 제거, 하드 게이트).
+22. **린트 D·B** — pyright standard 승격 + 백엔드 커스텀 가드(raw HTTPException 금지 스크립트).
+
+**순서 근거**: Stage 0을 먼저 = 이후 20여 PR이 자동 검증(이번 리팩토링 세션 최대 교훈). BE-S2가 BE-S9의 선행, 갓모듈(3)은 레이어 정리(2) 후 안전. BE-S4는 여러 갓모듈의 함수-로컬 import 냄새 근본이라 분해 후 마무리. 타입게이트(7)는 968 번다운 선행이라 맨 뒤.
+
+---
+
+### 초기 분석 로드맵 (2026-07-07, 참고용)
+
 의존 관계와 리스크를 고려한 순서. 각 Phase는 독립 브랜치/PR 묶음으로 진행하고, Phase 간 순서는 지키되 Phase 내부는 병렬 가능.
 
 - **Phase 0 — 안전망 (1주)**: SEC-1·2·3 + BE-P4 + FE-D1 + IX-1(CI). CI가 먼저 서야 이후 모든 리팩토링 PR이 자동 검증된다. 주의: 전체 pyright는 968개 기존 에러(초기 "통과" 판단은 파이프라인 exit 코드 착오) — ruff+pytest만 하드 게이트, pyright는 non-blocking 잡.
