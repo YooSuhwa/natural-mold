@@ -14,7 +14,7 @@ import logging
 import shutil
 import tempfile
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -323,7 +323,9 @@ def build_workspace_zip_bytes(storage_path: str, *, slug: str) -> bytes:
     )
 
 
-def binary_secret_scan_issues(storage_path: str) -> list[dict[str, Any]]:
+def binary_secret_scan_issues(
+    storage_path: str, *, known_paths: Collection[str]
+) -> list[dict[str, Any]]:
     """text 어댑터가 skip한(=검증 스캔에 실리지 않은) 파일의 secret scan.
 
     finalize의 시크릿 스캔은 ``validate_draft_package``가 어댑터 파일을
@@ -332,16 +334,22 @@ def binary_secret_scan_issues(storage_path: str) -> list[dict[str, Any]]:
     zip에 실리는 범위(``inputs/``·``evals/`` 제외)에서 어댑터 밖 파일만
     tempdir로 복사해 ``scan_package``(파일명 패턴 + bytes 정규식)를 재적용한다.
     반환 shape는 validator의 SECRET_DETECTED issue와 동일.
+
+    비용 계약(R2 리뷰): ``known_paths``는 호출자가 이미 메모리에 있는 어댑터
+    결과(``draft.files``)에서 파생해 넘긴다 — 여기서 ``load_draft_files``를
+    재호출하면 워크스페이스 full-read가 중복된다. 복사도 content 스캐너가
+    읽는 head(``_MAX_CONTENT_SCAN_BYTES``)까지만 — 대용량 asset 전량 복사
+    금지. 디스크 순회+IO이므로 async 호출자는 스레드로 오프로드할 것.
     """
 
     root = resolve_workspace_dir(storage_path)
     if not root.is_dir():
         return []
-    from app.marketplace.secret_scan import scan_package
+    from app.marketplace.secret_scan import _MAX_CONTENT_SCAN_BYTES, scan_package
     from app.skills.package_builder import EXCLUDED_EXPORT_DIRS
 
-    known_paths = {f.path for f in load_draft_files(storage_path)}
     excluded = set(EXCLUDED_EXPORT_DIRS) | {INPUTS_DIR}
+    known = set(known_paths)
     issues: list[dict[str, Any]] = []
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_root = Path(temp_dir)
@@ -350,11 +358,14 @@ def binary_secret_scan_issues(storage_path: str) -> list[dict[str, Any]]:
             if not path.is_file() or path.is_symlink():
                 continue
             relative = path.relative_to(root).as_posix()
-            if relative.split("/", 1)[0] in excluded or relative in known_paths:
+            if relative.split("/", 1)[0] in excluded or relative in known:
                 continue
             target = temp_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(path, target)
+            # head-only 복사 — filename 스캐너는 이름만, content 스캐너는 head만
+            # 읽으므로(secret_scan._check_content) 그 이상 복사는 낭비다.
+            with path.open("rb") as source, target.open("wb") as sink:
+                sink.write(source.read(_MAX_CONTENT_SCAN_BYTES))
             copied = True
         if not copied:
             return []

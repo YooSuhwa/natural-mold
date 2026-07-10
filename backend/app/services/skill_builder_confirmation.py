@@ -54,17 +54,26 @@ def _draft_zip_bytes(
     return build_skill_zip_bytes(slug=slug, files=draft.files)
 
 
-def _merge_workspace_binary_secret_issues(
+async def _merge_workspace_binary_secret_issues(
     validation_result: dict[str, Any],
     storage_path: str,
+    *,
+    known_paths: set[str],
 ) -> None:
     """디스크 zip에는 실리지만 text 어댑터 스캔엔 안 잡히는 파일(널바이트 등)의
     secret 검출을 검증 결과에 합류시킨다 — 기존 게이트 계약(SECRET_DETECTED,
-    ``secret_scan_blocked`` 감사)이 그대로 작동한다 (Phase 1.5 리뷰 갭)."""
+    ``secret_scan_blocked`` 감사)이 그대로 작동한다 (Phase 1.5 리뷰 갭).
+
+    스캔은 디스크 순회+IO라 zip 빌드와 대칭으로 스레드에서 돌린다.
+    ``known_paths``는 이미 메모리에 있는 ``draft.files``에서 파생 — 워크스페이스
+    full-read를 중복하지 않는다 (R2 리뷰).
+    """
 
     from app.services import skill_draft_workspace as workspace
 
-    extra = workspace.binary_secret_scan_issues(storage_path)
+    extra = await anyio.to_thread.run_sync(
+        partial(workspace.binary_secret_scan_issues, storage_path, known_paths=known_paths)
+    )
     if not extra:
         return
     validation_result["issues"] = [*(validation_result.get("issues") or []), *extra]
@@ -88,7 +97,11 @@ async def confirm_builder_session(
     if zip_from_workspace and session.draft_workspace_path:
         # 디스크 zip 경로는 어댑터 밖 파일도 실리므로 스캔 커버리지를 zip 소스에
         # 맞춘다 — 널바이트 파일로 secret scan을 우회하는 갭 차단.
-        _merge_workspace_binary_secret_issues(validation_result, session.draft_workspace_path)
+        await _merge_workspace_binary_secret_issues(
+            validation_result,
+            session.draft_workspace_path,
+            known_paths={f.path for f in draft.files},
+        )
     if validation_result["error_count"] > 0:
         session.validation_result = validation_result
         session.status = SkillBuilderStatus.REVIEW.value
