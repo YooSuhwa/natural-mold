@@ -21,6 +21,11 @@
 
 ## A. 커스텀 가드가 CI·pre-commit 어디에도 연결 안 됨 — 🔴 P0
 
+> **A-1 ✅ 완료 (2026-07-10, PR #287)**: 재측정 후 정당한 예외 3건 등록(i18n `global-error.tsx` SKIP / type-safety 테스트 한정 이유-주석 `@ts-expect-error` 허용 / e2e-hygiene `e2e/captures/` fixed-timeout만 면제) + 예외별 네거티브 회귀 테스트(`tests/unit/lint/guard-exemptions.test.ts`, i18n 테스트에 형제 파일 단언) → **그린 가드 4개(lint·i18n·type-safety·e2e-hygiene)**를 CI 개별 스텝 + lint-staged(`frontend/**/*.{ts,tsx}`)에 연결.
+> **⚠️ 재분류 (PR #287 2차 리뷰)**: `lint:frontend-architecture`는 아래 실측 표의 ✅가 **거짓 그린** — 비-strict 모드는 위반 48건에도 **항상 exit 0**(게이트 값 없음)이고, 강제인 `--strict`는 **blocking 3건으로 레드**. 따라서 A-2로 이동: strict blocking 해소(또는 strictBaseline 검토 등록) 후 `lint:frontend-architecture:strict`를 CI에 연결. 재현: `node scripts/check-frontend-architecture.mjs --strict; echo $?`.
+> **A-2 잔여**: a11y(신규 4 + baseline 해소 2)·design-system(12 + 카드 경고 19)은 실제 컴포넌트 수정(FE-D2·FE-D4 연동), frontend-architecture는 strict blocking 3건 수정 후 연결. 전부 그린이 되면 CI를 `lint:all` 호출로 교체(단, lint:all의 frontend-architecture도 strict로 교체 필요).
+> **lint-staged 주의**: 가드는 staged 파일 인자를 무시하고 트리 전체를 스캔한다 — untracked 위반 파일이 있으면 무관한 커밋도 막힐 수 있다(CI가 백스톱이므로 fail-open은 아님). 기존 `frontend/src/**` 엔트리(prettier/eslint --fix)와 병렬 실행되므로 드문 read-write race로 flaky 실패가 가능 — 반복되면 `.husky/pre-commit`을 `npx lint-staged --concurrent false`로.
+
 - **증거**:
   - `frontend/scripts/`에 커스텀 가드 6개 존재(`check-static-i18n.mjs`가 한국어/영어 메시지 정합을 검사하는 바로 그 스크립트).
   - `.github/workflows/ci.yml` frontend 잡: `pnpm lint`(=`eslint`) + `vitest run` + `build`. 커스텀 가드 호출 **0회**.
@@ -45,7 +50,7 @@
 | 가드 | 상태 | 위반 | 트리아지 판단 |
 |------|------|:---:|---------------|
 | `lint` (eslint) | ✅ | — | — |
-| `lint:frontend-architecture` | ✅ | — | — |
+| `lint:frontend-architecture` | ⚠️ 거짓 그린 | strict 3 | 비-strict는 항상 exit 0(게이트 아님), 강제 모드는 `--strict`뿐 → strict blocking 3건 해소 후 strict를 연결 (위 재분류 노트) |
 | `lint:i18n` | ❌ | 3 | 전부 `global-error.tsx`(FE-D1에서 신규) — i18n 프로바이더 밖이라 정적 영문 불가피 → **가드 SKIP_FILE_PATTERNS에 예외 등록** |
 | `lint:type-safety` | ❌ | 2 | `chat-route-replacement.test.ts`의 `@ts-expect-error`(SSR window 제거 시뮬) — 정당 → **테스트 예외 또는 이유-주석 허용** |
 | `lint:e2e-hygiene` | ❌ | 12 | 전부 `e2e/captures/`의 `waitForTimeout`(스크린샷 투어라 고정 대기 실용적) → **captures 디렉토리 예외 또는 대기 조건화** |

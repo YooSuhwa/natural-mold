@@ -19,6 +19,25 @@ const SKIP_PATH_PARTS = new Set([
 
 const TS_SUPPRESSION_RE = /@ts-(?:ignore|expect-error|nocheck)\b/g
 
+// Tests may need @ts-expect-error to simulate states the types forbid on
+// purpose (e.g. deleting window for an SSR path). Allow it there only when a
+// reason is written next to the directive; @ts-ignore/@ts-nocheck and
+// production code stay banned.
+const TEST_FILE_RE = /(?:\.(?:test|spec)\.[cm]?tsx?$|(?:^|\/)__tests__\/)/
+const MIN_SUPPRESSION_REASON_LENGTH = 3
+
+function isAllowedTestSuppression(filePath, source, matchIndex, matchText) {
+  if (!matchText.includes('expect-error')) return false
+  if (!TEST_FILE_RE.test(filePath)) return false
+  const lineEnd = source.indexOf('\n', matchIndex)
+  const rest = source.slice(
+    matchIndex + matchText.length,
+    lineEnd === -1 ? undefined : lineEnd,
+  )
+  const reason = rest.replace(/^[\s:—-]+/, '').trim()
+  return reason.length >= MIN_SUPPRESSION_REASON_LENGTH
+}
+
 function normalizePath(filePath) {
   return filePath.split(path.sep).join('/')
 }
@@ -70,7 +89,7 @@ async function collectFiles(rootDir) {
   return out
 }
 
-function findTypeSafetyIssues(source, filePath) {
+export function findTypeSafetyIssues(source, filePath) {
   const sourceFile = ts.createSourceFile(
     filePath,
     source,
@@ -82,6 +101,7 @@ function findTypeSafetyIssues(source, filePath) {
 
   for (const match of source.matchAll(TS_SUPPRESSION_RE)) {
     const index = match.index ?? 0
+    if (isAllowedTestSuppression(filePath, source, index, match[0])) continue
     const { line, column } = lineInfo(sourceFile, index)
     issues.push({
       filePath,

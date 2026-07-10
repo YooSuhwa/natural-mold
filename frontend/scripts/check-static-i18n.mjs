@@ -37,6 +37,9 @@ const SKIP_FILE_PATTERNS = [
   /(^|\/)src\/lib\/types\//,
   /(^|\/)src\/lib\/api\//,
   /(^|\/)src\/lib\/constants\//,
+  // global-error replaces the crashed root layout, so the next-intl provider
+  // is not mounted — its copy must stay static (see the file's own comment).
+  /(^|\/)src\/app\/global-error\.tsx$/,
 ]
 
 function normalizePath(filePath) {

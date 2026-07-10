@@ -59,6 +59,11 @@ describe('static i18n text scanner', () => {
     expect(shouldScanPath('src/components/example/example.test.tsx')).toBe(false)
     expect(shouldScanPath('messages/ko.json')).toBe(false)
     expect(shouldScanPath('src/lib/types/index.ts')).toBe(false)
+    // global-error renders outside the next-intl provider (crashed root layout).
+    expect(shouldScanPath('src/app/global-error.tsx')).toBe(false)
+    // The exemption is exact — sibling error boundaries stay scanned.
+    expect(shouldScanPath('src/app/error.tsx')).toBe(true)
+    expect(shouldScanPath('src/app/agents/error.tsx')).toBe(true)
   })
 
   it('does not flag comments as static UI text', () => {

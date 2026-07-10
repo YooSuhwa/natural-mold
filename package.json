@@ -28,6 +28,11 @@
     "frontend/src/**/*.{ts,tsx}": [
       "prettier --write",
       "frontend/node_modules/.bin/eslint --config frontend/eslint.config.mjs --fix"
+    ],
+    "frontend/**/*.{ts,tsx}": [
+      "pnpm --dir frontend lint:i18n",
+      "pnpm --dir frontend lint:type-safety",
+      "pnpm --dir frontend lint:e2e-hygiene"
     ]
   }
 }
