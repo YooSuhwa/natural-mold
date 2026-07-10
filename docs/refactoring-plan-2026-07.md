@@ -147,7 +147,7 @@
 
 **Stage 0 — 자동 게이트 먼저 (이후 모든 작업이 자동 검증받음. 최대 레버리지)**
 1. ✅ **린트 A-1** — PR #287. 재측정(i18n 3·type-safety 2·e2e-hygiene 40 = 전부 정당) → 예외 3건 등록 + 예외별 회귀 테스트 → 그린 가드 4개(lint·i18n·type-safety·e2e-hygiene)를 CI 개별 스텝 + lint-staged에 연결. **frontend-architecture는 2차 리뷰에서 거짓 그린 판명**(비-strict 항상 exit 0, strict는 blocking 3건 레드) → a11y(신규4+해소2)·design-system(12)과 함께 A-2 잔여(FE-D2·FE-D4 연동 + strict blocking 수정).
-2. **린트 C** — `docs/lint-hardening-plan.md` C. ruff 보안 룰 `S` 켜고 43건 트리아지(SSRF/시크릿/subprocess 수정, 오탐 ignore).
+2. ✅ **린트 C** — PR #288. `S` 룰 활성 + 51건(app 43 + scripts/alembic 8) 트리아지. 실수정 2: openwiki sync_repo.py(LLM 제공 --repo-url/--ref 옵션 주입·ext::/file:// transport 차단 + 테스트 22케이스), generate_image.py(S310 scheme 가드). 나머지 오탐 inline noqa + tests/·alembic/ per-file-ignores. 게이트 회귀 테스트(빨간불 주입 + 예외 non-blanket 네거티브) 동봉.
 3. **린트 F·G** — ruff `PGH`(억제 부채) + integration 마커 자동부여(conftest 훅).
 4. **린트 E** — 저노이즈 ruff 룰 `DTZ,C4,SLF,RET,PTH,PT,N` 배치 + 트리아지.
 
