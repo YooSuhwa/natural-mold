@@ -103,5 +103,12 @@
 - 상태: done (2026-07-08)
 - 함정 노트: throwaway DB를 실 LLM 투어와 공유하면 `seed_e2e_llm`이 text_primary를 LiteLLM으로 영속시켜 이후 scripted E2E가 조용히 실 모델로 돈다(마커 무시, 첫 턴부터 어긋남) — **scripted 검증 전 DB 재생성 필수**
 
+## P1.5: Phase 1.5 후속 2건 (브랜치 `feature/skill-builder-phase1.5`, origin/main 56c3faf3 기준)
+- [x] P1.5-A 자동 첫 메시지: 다이얼로그 `user_request`가 빌더 첫 진입 시 자동 발화 — `skill-builder-auto-request.tsx`(composerHint 슬롯, thread append) + `resolveAutoFirstMessage` 서버 진실 가드(active + envelope 해결 + 대화 0건 + run 이력 없음). create/improve 공통. TS `SkillBuilderStatus`에 v2 상태(`active`/`abandoned`) 보강
+- [x] P1.5-B 바이너리 finalize: `BINARY_FILES_UNSUPPORTED` fail-closed 해제 — finalize 도구 경로가 `zip_from_workspace=True`로 **디스크 기반 zip**(`build_skill_zip_bytes_from_dir` — inputs/·evals/ 제외, symlink skip)을 사용해 바이너리 asset 보존. REST `/confirm`은 게시된 draft_package 계약 유지(플래그 기본 false). packager 가드 실패는 `PACKAGE_INVALID` + claim 해제(self-heal)
+- 검증: backend 2640(SKILL_EVALUATION_ENABLED=true) / vitest 1256 / tsc·eslint 그린 + E2E skill-builder-chat.spec(자동 발화·리로드 중복 0건 단언 추가)
+- 상태: done (2026-07-10)
+- 백로그(잔여): 레일 소스 뷰 파일 목록에 바이너리 asset 미표시(표시 계층 fail-closed 유지 — 필요 시 목록만 노출+내용 404), improve 충돌 re-seed, 리로드 동의 플래그, dead 세션 대화 재생성
+
 ## 마일스톤 의존
-M1 → M2 → M3 → {M4, M5 병렬 가능} → M6 → M7 → M8
+M1 → M2 → M3 → {M4, M5 병렬 가능} → M6 → M7 → M8 → P1.5
