@@ -21,6 +21,9 @@
 
 ## A. 커스텀 가드가 CI·pre-commit 어디에도 연결 안 됨 — 🔴 P0
 
+> **A-1 ✅ 완료 (2026-07-10, PR #287)**: 재측정 후 정당한 예외 3건 등록(i18n `global-error.tsx` SKIP / type-safety 테스트 한정 이유-주석 `@ts-expect-error` 허용 / e2e-hygiene `e2e/captures/` fixed-timeout만 면제, 네거티브 픽스처로 과개방 없음 검증) → 그린 가드 5개(lint·i18n·type-safety·e2e-hygiene·frontend-architecture)를 CI 개별 스텝 + lint-staged(`frontend/**/*.{ts,tsx}`)에 연결.
+> **A-2 잔여**: a11y(신규 4 + baseline 해소 2)·design-system(12 + 카드 경고 19)은 실제 컴포넌트 수정(FE-D2·FE-D4 연동)으로 그린화 후 CI 연결. 그때 CI를 `lint:all` 호출로 교체.
+
 - **증거**:
   - `frontend/scripts/`에 커스텀 가드 6개 존재(`check-static-i18n.mjs`가 한국어/영어 메시지 정합을 검사하는 바로 그 스크립트).
   - `.github/workflows/ci.yml` frontend 잡: `pnpm lint`(=`eslint`) + `vitest run` + `build`. 커스텀 가드 호출 **0회**.
