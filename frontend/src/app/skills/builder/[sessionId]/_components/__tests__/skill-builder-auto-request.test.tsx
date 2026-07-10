@@ -84,4 +84,16 @@ describe('SkillBuilderAutoRequest', () => {
     render(<SkillBuilderAutoRequest text="스킬 만들어줘" />)
     expect(appendMock).not.toHaveBeenCalled()
   })
+
+  it('thread가 나중에 빈 상태로 전이되면(가드 해제) 그때 1회 발화한다', () => {
+    // 프로덕션의 실제 트리거 경로 — isThreadEmpty가 초기 false(하이드레이션 전)
+    // 에서 true(thread ready & empty)로 바뀌는 순간 effect가 재실행되어 발화.
+    mockThreadEmpty = false
+    const { rerender } = render(<SkillBuilderAutoRequest text="스킬 만들어줘" />)
+    expect(appendMock).not.toHaveBeenCalled()
+
+    mockThreadEmpty = true
+    rerender(<SkillBuilderAutoRequest text="스킬 만들어줘" />)
+    expect(appendMock).toHaveBeenCalledTimes(1)
+  })
 })

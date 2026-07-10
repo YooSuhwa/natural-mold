@@ -61,7 +61,11 @@ test.describe('스킬 빌더 Phase 1.5 — 자동 첫 메시지 + 바이너리 f
     await page.waitForURL(/\/skills\/builder\/[0-9a-f-]{36}/, { timeout: 120_000 })
     const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
     await expect(composer).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText(CREATE_REQUEST).first()).toBeVisible({ timeout: 45_000 })
+    // emptyContent 힌트 패널의 user_request echo와 구분되게 메시지 버블로 스코프.
+    const autoSentBubble = page
+      .locator('[data-moldy-message-id]')
+      .filter({ hasText: CREATE_REQUEST })
+    await expect(autoSentBubble.first()).toBeVisible({ timeout: 45_000 })
     await expect(page.getByText(SCRIPTED_REPLY).last()).toBeVisible({ timeout: 45_000 })
     await expect(composer).toHaveValue('') // 사용자는 아무것도 입력하지 않았다
     await settle(page)
@@ -71,7 +75,7 @@ test.describe('스킬 빌더 Phase 1.5 — 자동 첫 메시지 + 바이너리 f
     await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(page.getByText(SCRIPTED_REPLY).first()).toBeVisible({ timeout: 60_000 })
     await settle(page, 1_500) // 재발화가 있었다면 이 사이 낙관 버블이 생긴다
-    await expect(page.getByText(CREATE_REQUEST)).toHaveCount(1)
+    await expect(autoSentBubble).toHaveCount(1)
     await capture(page, WAVE, '03-reload-no-duplicate.png')
   })
 
@@ -102,7 +106,9 @@ test.describe('스킬 빌더 Phase 1.5 — 자동 첫 메시지 + 바이너리 f
       waitUntil: 'domcontentloaded',
       timeout: 120_000,
     })
-    await expect(page.getByText(IMPROVE_REQUEST).first()).toBeVisible({ timeout: 45_000 })
+    await expect(
+      page.locator('[data-moldy-message-id]').filter({ hasText: IMPROVE_REQUEST }).first(),
+    ).toBeVisible({ timeout: 45_000 })
     await expect(page.getByText(SCRIPTED_REPLY).last()).toBeVisible({ timeout: 45_000 })
     await settle(page)
     await capture(page, WAVE, '04-improve-auto-first-message.png')

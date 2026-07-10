@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import logging
 import shutil
+import tempfile
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -320,6 +321,54 @@ def build_workspace_zip_bytes(storage_path: str, *, slug: str) -> bytes:
         root=resolve_workspace_dir(storage_path),
         exclude_top_dirs=(INPUTS_DIR,),
     )
+
+
+def binary_secret_scan_issues(storage_path: str) -> list[dict[str, Any]]:
+    """text 어댑터가 skip한(=검증 스캔에 실리지 않은) 파일의 secret scan.
+
+    finalize의 시크릿 스캔은 ``validate_draft_package``가 어댑터 파일을
+    tempdir로 재구성해 돈다 — 널바이트를 앞에 붙인 파일은 어댑터가 skip해
+    스캔을 우회한 채 디스크 기반 zip에는 그대로 실린다(Phase 1.5 리뷰 갭).
+    zip에 실리는 범위(``inputs/``·``evals/`` 제외)에서 어댑터 밖 파일만
+    tempdir로 복사해 ``scan_package``(파일명 패턴 + bytes 정규식)를 재적용한다.
+    반환 shape는 validator의 SECRET_DETECTED issue와 동일.
+    """
+
+    root = resolve_workspace_dir(storage_path)
+    if not root.is_dir():
+        return []
+    from app.marketplace.secret_scan import scan_package
+    from app.skills.package_builder import EXCLUDED_EXPORT_DIRS
+
+    known_paths = {f.path for f in load_draft_files(storage_path)}
+    excluded = set(EXCLUDED_EXPORT_DIRS) | {INPUTS_DIR}
+    issues: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        copied = False
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.is_symlink():
+                continue
+            relative = path.relative_to(root).as_posix()
+            if relative.split("/", 1)[0] in excluded or relative in known_paths:
+                continue
+            target = temp_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, target)
+            copied = True
+        if not copied:
+            return []
+        for finding in scan_package(temp_root):
+            issues.append(
+                {
+                    "code": "SECRET_DETECTED",
+                    "severity": "error",
+                    "path": finding.path,
+                    "message": f"Potential secret detected by {finding.kind} scanner.",
+                    "finding_kind": finding.kind,
+                }
+            )
+    return issues
 
 
 def draft_execution_profile(storage_path: str) -> dict[str, object]:

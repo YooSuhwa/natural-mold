@@ -174,6 +174,24 @@ async def test_finalize_create_includes_binary_asset(db: AsyncSession) -> None:
     assert not (stored_root / "inputs").exists()
 
 
+async def test_finalize_blocks_secret_smuggled_in_null_byte_file(db: AsyncSession) -> None:
+    """널바이트를 앞에 붙인 파일은 text 어댑터(검증 스캔 소스)에서 빠지지만
+    디스크 zip에는 실린다 — 워크스페이스 보조 스캔이 갭을 닫아야 한다
+    (Phase 1.5 리뷰)."""
+
+    session = await _make_create_session(db)
+    root = workspace.resolve_workspace_dir(session.draft_workspace_path or "")
+    (root / "config.txt").write_bytes(b"\x00export AWS_SECRET_ACCESS_KEY=abc123\n")
+
+    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+
+    assert result["error_code"] == "VALIDATION_FAILED"
+    codes = {issue["code"] for issue in result["validation_result"]["issues"]}
+    assert "SECRET_DETECTED" in codes
+    assert "skill_builder.secret_scan_blocked" in await _audit_actions(db)
+    assert await db.scalar(select(Skill.id)) is None
+
+
 async def test_finalize_returns_package_invalid_and_releases_claim(
     db: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

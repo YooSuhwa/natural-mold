@@ -108,7 +108,8 @@
 - [x] P1.5-B 바이너리 finalize: `BINARY_FILES_UNSUPPORTED` fail-closed 해제 — finalize 도구 경로가 `zip_from_workspace=True`로 **디스크 기반 zip**(`build_skill_zip_bytes_from_dir` — inputs/·evals/ 제외, symlink skip)을 사용해 바이너리 asset 보존. REST `/confirm`은 게시된 draft_package 계약 유지(플래그 기본 false). packager 가드 실패는 `PACKAGE_INVALID` + claim 해제(self-heal)
 - 검증: backend 2640(SKILL_EVALUATION_ENABLED=true) / vitest 1256 / tsc·eslint 그린 + E2E skill-builder-chat.spec(자동 발화·리로드 중복 0건 단언 추가)
 - 상태: done (2026-07-10)
-- 백로그(잔여): 레일 소스 뷰 파일 목록에 바이너리 asset 미표시(표시 계층 fail-closed 유지 — 필요 시 목록만 노출+내용 404), improve 충돌 re-seed, 리로드 동의 플래그, dead 세션 대화 재생성
+- [x] P1.5-R 리뷰 수정(적대 리뷰 2에이전트): ① zip 빌드 fail-fast 크기 가드(순회 중 st_size 누적 — 추출 가드는 메모리 적재 후라 늦음) + `anyio.to_thread` 오프로드 ② 널바이트 파일 secret scan 우회 갭 차단(`binary_secret_scan_issues` — 어댑터 밖 파일 보조 스캔, SECRET_DETECTED/감사 계약 동일) ③ E2E 자동발화 단언을 `[data-moldy-message-id]` 버블 스코프로(emptyContent echo 토톨로지 제거) ④ 디렉토리 symlink·fail-fast·스머글 회귀 테스트 3종 + vitest 가드해제 전이 케이스
+- 백로그(잔여): 레일 소스 뷰 파일 목록에 바이너리 asset 미표시(표시 계층 fail-closed 유지 — 필요 시 목록만 노출+내용 404), improve 충돌 re-seed, 리로드 동의 플래그, dead 세션 대화 재생성, 리로드-중-첫POST 극소 창의 2차 자동발화 시도(서버 unique active run 제약이 409로 거부해 실중복은 불가 — 서버측 first-message idempotency로 수렴 가능)
 
 ## 마일스톤 의존
 M1 → M2 → M3 → {M4, M5 병렬 가능} → M6 → M7 → M8 → P1.5

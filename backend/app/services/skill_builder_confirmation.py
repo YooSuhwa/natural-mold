@@ -54,6 +54,24 @@ def _draft_zip_bytes(
     return build_skill_zip_bytes(slug=slug, files=draft.files)
 
 
+def _merge_workspace_binary_secret_issues(
+    validation_result: dict[str, Any],
+    storage_path: str,
+) -> None:
+    """디스크 zip에는 실리지만 text 어댑터 스캔엔 안 잡히는 파일(널바이트 등)의
+    secret 검출을 검증 결과에 합류시킨다 — 기존 게이트 계약(SECRET_DETECTED,
+    ``secret_scan_blocked`` 감사)이 그대로 작동한다 (Phase 1.5 리뷰 갭)."""
+
+    from app.services import skill_draft_workspace as workspace
+
+    extra = workspace.binary_secret_scan_issues(storage_path)
+    if not extra:
+        return
+    validation_result["issues"] = [*(validation_result.get("issues") or []), *extra]
+    validation_result["error_count"] = int(validation_result.get("error_count") or 0) + len(extra)
+    validation_result["valid"] = False
+
+
 async def confirm_builder_session(
     db: AsyncSession,
     session: SkillBuilderSession,
@@ -67,6 +85,10 @@ async def confirm_builder_session(
         credential_requirements=draft.credential_requirements,
         execution_profile=draft.execution_profile,
     )
+    if zip_from_workspace and session.draft_workspace_path:
+        # 디스크 zip 경로는 어댑터 밖 파일도 실리므로 스캔 커버리지를 zip 소스에
+        # 맞춘다 — 널바이트 파일로 secret scan을 우회하는 갭 차단.
+        _merge_workspace_binary_secret_issues(validation_result, session.draft_workspace_path)
     if validation_result["error_count"] > 0:
         session.validation_result = validation_result
         session.status = SkillBuilderStatus.REVIEW.value
@@ -132,7 +154,11 @@ async def _confirm_create(
         provided=session.changelog_draft,
     )
     slug = await unique_skill_slug(db, user_id=user_id, requested=draft.slug)
-    zip_bytes = _draft_zip_bytes(session, draft, slug=slug, zip_from_workspace=zip_from_workspace)
+    # zip 빌드는 디스크 순회 + 압축이라 이벤트 루프에서 돌리지 않는다
+    # (improve의 replace_skill_storage 오프로드와 대칭).
+    zip_bytes = await anyio.to_thread.run_sync(
+        partial(_draft_zip_bytes, session, draft, slug=slug, zip_from_workspace=zip_from_workspace)
+    )
     skill = await skill_service.create_package_skill(
         db,
         user_id=user_id,
@@ -193,7 +219,9 @@ async def _confirm_improve(
         requested=draft.slug,
         exclude_skill_id=skill.id,
     )
-    zip_bytes = _draft_zip_bytes(session, draft, slug=slug, zip_from_workspace=zip_from_workspace)
+    zip_bytes = await anyio.to_thread.run_sync(
+        partial(_draft_zip_bytes, session, draft, slug=slug, zip_from_workspace=zip_from_workspace)
+    )
     replacement = await anyio.to_thread.run_sync(
         partial(
             replace_skill_storage,

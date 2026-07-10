@@ -63,9 +63,12 @@ test.describe('skill builder chat', () => {
 
     // 0) Phase 1.5 — 다이얼로그의 user_request가 자동 첫 메시지로 발화된다
     //    (사용자가 다시 입력하지 않음). scripted 폴백 응답까지 완료 대기.
-    await expect(page.getByText('E2E 회의록 스킬을 만들어줘').first()).toBeVisible({
-      timeout: 45_000,
-    })
+    //    주의: page-wide getByText는 emptyContent 힌트 패널의 user_request
+    //    echo에도 매칭돼 토톨로지가 된다 — 메시지 버블로 스코프를 좁힌다.
+    const autoSentBubble = page
+      .locator('[data-moldy-message-id]')
+      .filter({ hasText: 'E2E 회의록 스킬을 만들어줘' })
+    await expect(autoSentBubble.first()).toBeVisible({ timeout: 45_000 })
     await expect(page.getByText('E2E scripted document model is ready.').last()).toBeVisible({
       timeout: 45_000,
     })
@@ -169,8 +172,8 @@ test.describe('skill builder chat', () => {
     })
     await expect(page.getByText('스킬을 저장했습니다').first()).toBeVisible({ timeout: 30_000 })
     // Phase 1.5 재전송 가드 — 리로드 시 자동 첫 메시지가 중복 발화되지 않는다
-    // (대화 이력/run 이력 존재 시 no-op). 트랜스크립트에 정확히 1건.
-    await expect(page.getByText('E2E 회의록 스킬을 만들어줘')).toHaveCount(1)
+    // (대화 이력/run 이력 존재 시 no-op). 트랜스크립트 버블 기준 정확히 1건.
+    await expect(autoSentBubble).toHaveCount(1)
 
     // 대화가 히든 에이전트 소유라 네비게이터/에이전트 목록에 새지 않는다 (§2 리스크).
     const agents = (await (await request.get(`${API}/api/agents`)).json()) as { id: string }[]
@@ -228,7 +231,10 @@ test.describe('skill builder chat', () => {
     const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
     await expect(composer).toBeVisible({ timeout: 60_000 })
     // Phase 1.5 — improve 세션도 user_request가 자동 발화된다. 완료 후 진행.
-    await expect(page.getByText('이 스킬 개선해줘').first()).toBeVisible({ timeout: 45_000 })
+    // (emptyContent echo와 구분되게 메시지 버블로 스코프.)
+    await expect(
+      page.locator('[data-moldy-message-id]').filter({ hasText: '이 스킬 개선해줘' }).first(),
+    ).toBeVisible({ timeout: 45_000 })
     await expect(page.getByText('E2E scripted document model is ready.').last()).toBeVisible({
       timeout: 45_000,
     })

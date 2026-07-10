@@ -5,7 +5,9 @@ import zipfile
 from collections.abc import Collection, Sequence
 from pathlib import Path, PurePosixPath
 
+from app.config import settings
 from app.schemas.skill_builder import SkillDraftFile
+from app.skills.packager import PackageError
 from app.skills.service import slugify
 
 EXCLUDED_EXPORT_DIRS = frozenset({"evals"})
@@ -57,6 +59,11 @@ def build_skill_zip_bytes_from_dir(
     zip 소스로 써서 바이너리를 보존한다. symlink는 제외하고 경로는
     ``normalize_draft_path``로 방어한다. 최종 안전판은 어차피
     ``extract_package``의 zip-slip/symlink/size 가드가 다시 검증한다.
+
+    크기 상한은 순회 중 ``st_size`` 누적으로 **읽기 전에** 검사한다 —
+    ``extract_package``의 가드는 zip을 이미 메모리에 다 만든 뒤라, 여기서
+    fail-fast하지 않으면 초대형 워크스페이스가 상한에 걸리기 전에 메모리를
+    무제한 점유한다.
     """
 
     folder = slugify(slug)
@@ -64,12 +71,19 @@ def build_skill_zip_bytes_from_dir(
     if not include_evals:
         excluded |= EXCLUDED_EXPORT_DIRS
     entries: dict[str, Path] = {}
+    total_bytes = 0
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.is_symlink():
             continue
         rel_path = normalize_draft_path(path.relative_to(root).as_posix())
         if rel_path.split("/", 1)[0] in excluded:
             continue
+        total_bytes += path.stat().st_size
+        if total_bytes > settings.skill_max_package_bytes:
+            raise PackageError(
+                f"package too large: {total_bytes} bytes so far "
+                f"(max {settings.skill_max_package_bytes})"
+            )
         entries[rel_path] = path
     if "SKILL.md" not in entries:
         raise ValueError("draft package must include SKILL.md")
