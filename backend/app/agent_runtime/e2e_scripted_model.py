@@ -702,7 +702,7 @@ class E2EScriptedChatModel(BaseChatModel):
                 names.append(str(tool.__name__))
             elif hasattr(tool, "name") and isinstance(tool.name, str):
                 names.append(tool.name)
-        clone._bound_tool_names = tuple(names)
+        clone._bound_tool_names = tuple(names)  # noqa: SLF001 — clone is our own class
         return clone
 
     def _generate(

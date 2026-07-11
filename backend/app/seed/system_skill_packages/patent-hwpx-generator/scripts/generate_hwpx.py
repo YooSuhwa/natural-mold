@@ -223,13 +223,12 @@ def modify_part1(xml_content: str, data: dict[str, Any]) -> str:
         xml_content,
         count=1,
     )
-    xml_content = re.sub(
+    return re.sub(
         r"(신  고  인    ).*?( \(인\))",
         rf"\g<1>{inventors[0]['kor']}\2",
         xml_content,
         count=1,
     )
-    return xml_content
 
 
 def modify_part2_title(xml_content: str, data: dict[str, Any]) -> str:

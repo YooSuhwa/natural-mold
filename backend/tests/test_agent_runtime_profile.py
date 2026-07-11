@@ -263,15 +263,13 @@ async def test_hidden_agent_excluded_from_blueprint_name_resolution(
     """R 재검 회귀: 블루프린트의 이름 기반 서브에이전트 해석이 히든 에이전트와
     이름이 충돌해도 히든을 결선하지 않는다."""
 
-    import pytest as _pytest
-
     from app.exceptions import ValidationError
     from app.services.agent_blueprint_service import _resolve_sub_agent_ids
 
     standard, hidden = await _seed_agents(db)
     # 히든과 같은 이름의 표준 에이전트가 없으면 "missing dependency"로
     # fail-closed — 히든을 조용히 결선하는 것보다 명시적 실패가 맞다.
-    with _pytest.raises(ValidationError):
+    with pytest.raises(ValidationError):
         await _resolve_sub_agent_ids(
             db,
             capabilities={"subagents": [{"name": hidden.name, "position": 0}]},

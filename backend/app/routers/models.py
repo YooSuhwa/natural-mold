@@ -272,7 +272,7 @@ async def delete_model(
     )
     await db.delete(model)
     await db.commit()
-    return None
+    return
 
 
 # -- Test surface ------------------------------------------------------------

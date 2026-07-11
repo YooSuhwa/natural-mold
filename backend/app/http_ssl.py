@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import ssl
 from functools import lru_cache
+from pathlib import Path
 
 import certifi
 
@@ -13,11 +14,11 @@ def _existing_cert_paths() -> list[str]:
     paths: list[str] = []
     for env_key in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"):
         path = os.environ.get(env_key)
-        if path and os.path.exists(path) and path not in paths:
+        if path and Path(path).exists() and path not in paths:
             paths.append(path)
 
-    hc_cert = os.path.expanduser("~/.ssl/HC_SSL.pem")
-    if os.path.exists(hc_cert) and hc_cert not in paths:
+    hc_cert = str(Path("~/.ssl/HC_SSL.pem").expanduser())
+    if Path(hc_cert).exists() and hc_cert not in paths:
         paths.append(hc_cert)
     return paths
 

@@ -77,8 +77,8 @@ async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
     agents: list[Agent] = []
     for agent, last_used, unread_count in rows:
         # Stash on the ORM instance — picked up by ``_agent_to_response``.
-        agent._last_used_at = last_used
-        agent._unread_count = int(unread_count or 0)
+        agent._last_used_at = last_used  # noqa: SLF001 — deliberate stash, read by _agent_to_response
+        agent._unread_count = int(unread_count or 0)  # noqa: SLF001
         agents.append(agent)
     return agents
 
@@ -197,7 +197,7 @@ async def get_agent(db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -
         )
     )
     agent_with_unread = cast(Any, agent)
-    agent_with_unread._unread_count = int(unread_result.scalar_one() or 0)
+    agent_with_unread._unread_count = int(unread_result.scalar_one() or 0)  # noqa: SLF001 — deliberate stash
     return agent
 
 

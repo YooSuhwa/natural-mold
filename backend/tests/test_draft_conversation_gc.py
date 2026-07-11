@@ -98,7 +98,7 @@ async def test_gc_returns_zero_when_nothing_to_collect(db: AsyncSession) -> None
 
 @pytest.mark.asyncio
 async def test_gc_negative_retention_rejected(db: AsyncSession) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="retention_hours must be >= 1"):
         await gc_orphan_draft_conversations(db, retention_hours=-1)
 
 
@@ -115,7 +115,7 @@ async def test_gc_zero_retention_rejected_and_spares_just_created_draft(
     await db.commit()
     fresh_draft_id = fresh_draft.id
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="retention_hours must be >= 1"):
         await gc_orphan_draft_conversations(db, retention_hours=0)
 
     remaining = {row.id for row in (await db.execute(select(Conversation))).scalars().all()}

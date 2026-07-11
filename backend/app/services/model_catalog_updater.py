@@ -71,8 +71,7 @@ def build_from_disk() -> dict[str, Any]:
     snapshots = loaders.load_all_snapshots()
     providers = _read_json(_providers_path())
     curated = load_curated()
-    catalog = merge.build_catalog(snapshots, providers, curated)
-    return catalog
+    return merge.build_catalog(snapshots, providers, curated)
 
 
 async def update_catalog(*, fetch: bool = True) -> dict[str, Any]:

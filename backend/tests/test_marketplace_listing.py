@@ -146,7 +146,7 @@ async def seeded(
         if isinstance(v, MarketplaceItem):
             db_session.add(v)
     await db_session.commit()
-    yield items
+    return items
 
 
 @pytest.fixture
@@ -223,9 +223,7 @@ class TestDefaultListing:
         Confirms the early-return branch in ``_base_catalog_query`` keeps
         the moderation surface complete without forcing ``?is_listed=false``."""
 
-        async with await _client_for_user(
-            _user(SUPER_ID, is_super=True)
-        ) as client:
+        async with await _client_for_user(_user(SUPER_ID, is_super=True)) as client:
             resp = await client.get("/api/marketplace/items")
         assert resp.status_code == 200
         slugs = {row["slug"] for row in resp.json()}
@@ -306,15 +304,12 @@ class TestIsListedFilter:
         """
 
         async with await _client_for_user(_user(REGULAR_ID)) as client:
-            resp = await client.get(
-                "/api/marketplace/items?is_listed=true"
-            )
+            resp = await client.get("/api/marketplace/items?is_listed=true")
         assert resp.status_code == 200
         slugs = {row["slug"] for row in resp.json()}
         # Only public-listed has is_listed=True in the seed set.
         assert slugs == {"public-listed"}, (
-            f"?is_listed=true must intersect with the visibility scope; "
-            f"got {slugs}"
+            f"?is_listed=true must intersect with the visibility scope; got {slugs}"
         )
 
     @pytest.mark.asyncio
@@ -328,12 +323,8 @@ class TestIsListedFilter:
         still excluded from list responses (direct-link semantics).
         """
 
-        async with await _client_for_user(
-            _user(SUPER_ID, is_super=True)
-        ) as client:
-            resp = await client.get(
-                "/api/marketplace/items?is_listed=false"
-            )
+        async with await _client_for_user(_user(SUPER_ID, is_super=True)) as client:
+            resp = await client.get("/api/marketplace/items?is_listed=false")
         assert resp.status_code == 200
         slugs = {row["slug"] for row in resp.json()}
 
@@ -353,9 +344,7 @@ class TestIsListedFilter:
         own unlisted items (owner clause stays active)."""
 
         async with await _client_for_user(_user(REGULAR_ID)) as client:
-            resp = await client.get(
-                "/api/marketplace/items?is_listed=false"
-            )
+            resp = await client.get("/api/marketplace/items?is_listed=false")
         assert resp.status_code == 200
         slugs = {row["slug"] for row in resp.json()}
         # Owner's own private+unlisted are surfaced — owner clause bypass
@@ -383,12 +372,8 @@ class TestVisibilityFilter:
         assert isinstance(target, MarketplaceItem)  # type narrow
 
         async with await _client_for_user(_user(REGULAR_ID)) as client:
-            list_resp = await client.get(
-                "/api/marketplace/items?visibility=unlisted"
-            )
-            detail_resp = await client.get(
-                f"/api/marketplace/items/{target.id}"
-            )
+            list_resp = await client.get("/api/marketplace/items?visibility=unlisted")
+            detail_resp = await client.get(f"/api/marketplace/items/{target.id}")
 
         assert list_resp.status_code == 200
         # No unlisted-visibility item should leak into the list, even
@@ -405,9 +390,7 @@ class TestVisibilityFilter:
         self, seeded: dict[str, MarketplaceItem | uuid.UUID]
     ) -> None:
         async with await _client_for_user(_user(REGULAR_ID)) as client:
-            resp = await client.get(
-                "/api/marketplace/items?visibility=system"
-            )
+            resp = await client.get("/api/marketplace/items?visibility=system")
         assert resp.status_code == 200
         slugs = {row["slug"] for row in resp.json()}
         assert "system-item" in slugs
@@ -435,9 +418,7 @@ class TestCatalogDefaultView:
         toggled to listed appear by default."""
 
         async with await _client_for_user(_user(REGULAR_ID)) as client:
-            resp = await client.get(
-                "/api/marketplace/items?visibility=public&is_listed=true"
-            )
+            resp = await client.get("/api/marketplace/items?visibility=public&is_listed=true")
         assert resp.status_code == 200
         slugs = {row["slug"] for row in resp.json()}
         assert slugs == {"public-listed"}, (

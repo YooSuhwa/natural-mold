@@ -84,9 +84,7 @@ async def test_gc_deletes_only_old_unsent_uploads(db: AsyncSession, tmp_path: Pa
     deleted = await gc_orphan_attachments(db, retention_hours=24)
     assert deleted == 1
 
-    remaining = {
-        row.id for row in (await db.execute(select(MessageAttachment))).scalars().all()
-    }
+    remaining = {row.id for row in (await db.execute(select(MessageAttachment))).scalars().all()}
     assert orphan_id not in remaining
     assert survivor_ids <= remaining
 
@@ -109,7 +107,7 @@ async def test_gc_returns_zero_when_nothing_to_collect(db: AsyncSession, tmp_pat
 
 @pytest.mark.asyncio
 async def test_gc_negative_retention_rejected(db: AsyncSession) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="retention_hours must be >= 1"):
         await gc_orphan_attachments(db, retention_hours=-1)
 
 
@@ -128,11 +126,9 @@ async def test_gc_zero_retention_rejected_and_spares_just_staged_upload(
     await db.commit()
     fresh_id, fresh_file = fresh.id, Path(fresh.storage_path)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="retention_hours must be >= 1"):
         await gc_orphan_attachments(db, retention_hours=0)
 
-    remaining = {
-        row.id for row in (await db.execute(select(MessageAttachment))).scalars().all()
-    }
+    remaining = {row.id for row in (await db.execute(select(MessageAttachment))).scalars().all()}
     assert fresh_id in remaining
     assert _exists(fresh_file)

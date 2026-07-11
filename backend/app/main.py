@@ -9,18 +9,19 @@ import ssl
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 # 사내 프록시 SSL 인증서 — certifi CA + HC_SSL.pem 결합 번들 생성
-_hc_cert = os.path.expanduser("~/.ssl/HC_SSL.pem")
-if os.path.exists(_hc_cert):
+_hc_cert = Path("~/.ssl/HC_SSL.pem").expanduser()
+if _hc_cert.exists():
     import tempfile
 
     import certifi
 
     _combined = tempfile.NamedTemporaryFile(suffix=".pem", delete=False)
-    with open(certifi.where(), "rb") as f:
+    with Path(certifi.where()).open("rb") as f:
         _combined.write(f.read())
-    with open(_hc_cert, "rb") as f:
+    with _hc_cert.open("rb") as f:
         _combined.write(b"\n")
         _combined.write(f.read())
     _combined.close()
@@ -28,7 +29,9 @@ if os.path.exists(_hc_cert):
     os.environ["SSL_CERT_FILE"] = _combined.name
     os.environ["REQUESTS_CA_BUNDLE"] = _combined.name
     ssl_ctx = ssl.create_default_context(cafile=_combined.name)
-    ssl._create_default_https_context = lambda: ssl_ctx
+    # Intentional stdlib monkey-patch so every default HTTPS context picks
+    # up the combined corporate bundle.
+    ssl._create_default_https_context = lambda: ssl_ctx  # noqa: SLF001
 
 import logging
 

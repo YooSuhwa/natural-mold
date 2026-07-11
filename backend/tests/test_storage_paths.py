@@ -30,7 +30,7 @@ def test_resolve_absolute_passes_through(tmp_path, monkeypatch):
 
 def test_resolve_empty_raises(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "data_root", str(tmp_path))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="empty storage_path"):
         resolve_data_path("")
 
 
@@ -44,5 +44,5 @@ def test_ensure_relative_rejects_absolute():
 
 
 def test_ensure_relative_rejects_empty():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="empty storage_path"):
         ensure_relative("")

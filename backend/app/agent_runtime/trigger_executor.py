@@ -97,7 +97,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
         ).scalar_one_or_none()
         if not trigger:
             logger.info("Trigger %s skipped (not found)", trigger_id)
-            return
+            return None
 
         in_flight = await trigger_service.find_in_flight_run(db, trigger_uuid)
         if in_flight is not None:

@@ -62,9 +62,7 @@ async def test_get_returns_three_unconfigured_roles(client: AsyncClient) -> None
 # --------------------------------------------------------------------------- #
 
 
-async def test_put_selects_llm_credential(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_put_selects_llm_credential(client: AsyncClient, db: AsyncSession) -> None:
     cred_id = await _make_system_credential(
         db, definition_key="openai", data={"api_key": "sk-test"}
     )
@@ -101,9 +99,7 @@ async def test_put_openai_compatible_exposes_base_url(
     assert body["configured"] is True
 
 
-async def test_put_clear_resets_slot(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_put_clear_resets_slot(client: AsyncClient, db: AsyncSession) -> None:
     cred_id = await _make_system_credential(
         db, definition_key="anthropic", data={"api_key": "sk-a"}
     )
@@ -127,9 +123,7 @@ async def test_put_clear_resets_slot(
 
 
 async def test_put_unknown_role_404(client: AsyncClient) -> None:
-    resp = await client.put(
-        f"{BASE}/bogus", json={"credential_id": None, "model_name": None}
-    )
+    resp = await client.put(f"{BASE}/bogus", json={"credential_id": None, "model_name": None})
     assert resp.status_code == 404
 
 
@@ -142,9 +136,7 @@ async def test_put_nonexistent_credential_404(client: AsyncClient) -> None:
     assert "system LLM credential" in resp.json()["error"]["message"]
 
 
-async def test_put_non_llm_credential_422(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_put_non_llm_credential_422(client: AsyncClient, db: AsyncSession) -> None:
     cred_id = await _make_system_credential(
         db,
         definition_key="naver_search",
@@ -159,9 +151,7 @@ async def test_put_non_llm_credential_422(
     assert "system LLM credential" in resp.json()["error"]["message"]
 
 
-async def test_put_user_credential_rejected(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_put_user_credential_rejected(client: AsyncClient, db: AsyncSession) -> None:
     # A non-system (user) credential must not be selectable as a system slot.
     cred = await credential_service.create(
         db,
@@ -216,11 +206,7 @@ async def test_resolve_raises_when_model_name_missing(db: AsyncSession) -> None:
     cred_id = await _make_system_credential(
         db, definition_key="anthropic", data={"api_key": "sk-a"}
     )
-    db.add(
-        SystemLlmSetting(
-            role="image", credential_id=cred_id, model_name=None
-        )
-    )
+    db.add(SystemLlmSetting(role="image", credential_id=cred_id, model_name=None))
     await db.commit()
     with pytest.raises(SystemModelNotConfiguredError):
         await resolve_system_model(db, "image")
@@ -269,9 +255,7 @@ async def test_image_base_url_raises_for_unknown_provider_without_base_url() -> 
         resolve_image_base_url,
     )
 
-    resolved = ResolvedSystemModel(
-        provider="anthropic", model_name="m", api_key="k", base_url=None
-    )
+    resolved = ResolvedSystemModel(provider="anthropic", model_name="m", api_key="k", base_url=None)
     with pytest.raises(ValueError, match="base_url"):
         resolve_image_base_url(resolved)
 
@@ -415,8 +399,8 @@ async def test_credential_delete_sets_slot_null() -> None:
         async with eng.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-        Session = async_sessionmaker(eng, expire_on_commit=False)
-        async with Session() as db:
+        session_factory = async_sessionmaker(eng, expire_on_commit=False)
+        async with session_factory() as db:
             cred = await credential_service.create(
                 db,
                 user_id=None,
@@ -438,18 +422,14 @@ async def test_credential_delete_sets_slot_null() -> None:
             await db.commit()
 
             cred_row = (
-                await db.execute(
-                    select(Credential).where(Credential.id == cred_id)
-                )
+                await db.execute(select(Credential).where(Credential.id == cred_id))
             ).scalar_one()
             await db.delete(cred_row)
             await db.commit()
 
             setting = (
                 await db.execute(
-                    select(SystemLlmSetting).where(
-                        SystemLlmSetting.role == "text_primary"
-                    )
+                    select(SystemLlmSetting).where(SystemLlmSetting.role == "text_primary")
                 )
             ).scalar_one()
             # Slot still exists, but credential reference is cleared.

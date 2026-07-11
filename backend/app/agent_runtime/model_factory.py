@@ -21,11 +21,11 @@ import hashlib
 import inspect
 import json
 import logging
-import os
 import ssl
 import uuid
 from collections import OrderedDict
 from collections.abc import Awaitable, Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import certifi
@@ -238,14 +238,14 @@ def clear_model_cache() -> None:
 # CRL/AKI 같은 deep-validation 이슈를 우회할 수 있다.
 #
 # ``HC_SSL.pem`` (사내 프록시 인증서) 가 존재하면 추가 trust로 결합한다.
-_hc_cert = os.path.expanduser("~/.ssl/HC_SSL.pem")
+_hc_cert = Path("~/.ssl/HC_SSL.pem").expanduser()
 try:
     import truststore
 
     _ssl_ctx: ssl.SSLContext = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 except ImportError:  # pragma: no cover — runtime dep, but defensive
     _ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-if os.path.exists(_hc_cert):
+if _hc_cert.exists():
     _ssl_ctx.load_verify_locations(_hc_cert)
 
 

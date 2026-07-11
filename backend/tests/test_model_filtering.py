@@ -13,7 +13,7 @@ from app.services.model_filtering import (
 
 
 @pytest.mark.parametrize(
-    "url,expected",
+    ("url", "expected"),
     [
         (None, False),
         ("", False),

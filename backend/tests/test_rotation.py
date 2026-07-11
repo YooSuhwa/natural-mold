@@ -47,7 +47,8 @@ def _restore_keys():
 
 
 @pytest.mark.asyncio
-async def test_rotation_re_encrypts_all_stale_rows(_user: None, _restore_keys: None) -> None:
+@pytest.mark.usefixtures("_user", "_restore_keys")
+async def test_rotation_re_encrypts_all_stale_rows() -> None:
     """Encrypt N rows with key A, swap active to key B, run rotation, expect
     every row's ``key_id`` to match B and an audit log per row."""
 
@@ -102,7 +103,8 @@ async def test_rotation_re_encrypts_all_stale_rows(_user: None, _restore_keys: N
 
 
 @pytest.mark.asyncio
-async def test_rotation_is_noop_when_already_active(_user: None, _restore_keys: None) -> None:
+@pytest.mark.usefixtures("_user", "_restore_keys")
+async def test_rotation_is_noop_when_already_active() -> None:
     """Re-running rotation when every row is already on the active key yields
     zero work and writes no audit log."""
 
@@ -138,7 +140,8 @@ async def test_rotation_is_noop_when_already_active(_user: None, _restore_keys: 
 
 
 @pytest.mark.asyncio
-async def test_rotation_terminates_when_rows_keep_failing(_user: None, _restore_keys: None) -> None:
+@pytest.mark.usefixtures("_user", "_restore_keys")
+async def test_rotation_terminates_when_rows_keep_failing() -> None:
     """A full batch of persistently failing rows must not spin the loop
     forever: failed ids are excluded from the next fetch, so the job
     finishes (rotated=0) and leaves the rows for the next scheduled run.
