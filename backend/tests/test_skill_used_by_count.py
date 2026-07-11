@@ -51,7 +51,7 @@ def _agent(user_id: uuid.UUID, *, runtime_profile: str | None = None) -> Agent:
 
 async def _make_skill(db: AsyncSession, tmp_path: Path) -> Skill:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        return await skill_service.create_text_skill(
             db,
             user_id=TEST_USER_ID,
             name="Notes",
@@ -59,7 +59,6 @@ async def _make_skill(db: AsyncSession, tmp_path: Path) -> Skill:
             description="Use when summarizing notes.",
             content=_skill_content(),
         )
-    return skill
 
 
 async def test_list_and_detail_return_live_link_count(

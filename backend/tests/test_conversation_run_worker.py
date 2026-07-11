@@ -363,7 +363,7 @@ async def test_interrupted_run_transitions_before_trace_finalization(
 
     async def fake_transition(*_args: Any, **_kwargs: Any) -> None:
         call_order.append("transition")
-        return None
+        return
 
     async def fake_activate(**_kwargs: Any) -> None:
         call_order.append("activate")
@@ -437,7 +437,7 @@ async def test_completed_run_keeps_trace_before_transition_order(
 
     async def fake_transition(*_args: Any, **_kwargs: Any) -> None:
         call_order.append("transition")
-        return None
+        return
 
     async def fake_activate(**_kwargs: Any) -> None:
         call_order.append("activate")

@@ -25,8 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.message_utils import parse_msg_id
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
-from app.error_codes import conversation_not_found, share_not_found
+from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
+from app.error_codes import share_not_found
+from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
 from app.rate_limit import limiter
 from app.schemas.artifact import ArtifactSummary
@@ -58,16 +59,6 @@ router = APIRouter(tags=["shares"])
 # ---------------------------------------------------------------------------
 # Owner endpoints
 # ---------------------------------------------------------------------------
-
-
-async def _require_owned_conversation(
-    db: AsyncSession, conversation_id: uuid.UUID, user: CurrentUser
-):
-    """Same 404-on-foreign-owner contract as ``chat_service.get_owned_conversation``."""
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
-    return conv
 
 
 def _public_artifact_summary(summary: ArtifactSummary, share_token: str) -> ArtifactSummary:
@@ -188,6 +179,7 @@ async def _get_public_share_visible_artifact(
 @router.get(
     "/api/conversations/{conversation_id}/share",
     response_model=ShareLinkResponse | None,
+    dependencies=[Depends(owned_conversation)],
 )
 async def get_active_share(
     conversation_id: uuid.UUID,
@@ -195,7 +187,6 @@ async def get_active_share(
     user: CurrentUser = Depends(get_current_user),
 ) -> ShareLinkResponse | None:
     """Return the active share link, or ``None`` when the conversation is private."""
-    await _require_owned_conversation(db, conversation_id, user)
     link = await share_service.get_active_share_for_conversation(db, conversation_id)
     if link is None:
         return None
@@ -212,9 +203,9 @@ async def create_share(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    conv: Conversation = Depends(owned_conversation),
 ) -> ShareLinkResponse:
     """Make the conversation public. Returns the existing token if already shared."""
-    conv = await _require_owned_conversation(db, conversation_id, user)
     link = await share_service.create_or_get_active_share(db, conv, user.id)
     await audit_service.record_event(
         db,
@@ -249,9 +240,9 @@ async def revoke_share(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    conv: Conversation = Depends(owned_conversation),
 ) -> None:
     """Revoke any active share link for the conversation. Idempotent."""
-    conv = await _require_owned_conversation(db, conversation_id, user)
     revoked_tokens = await share_service.revoke_share(db, conversation_id)
     await audit_service.record_event(
         db,
@@ -304,9 +295,7 @@ async def get_public_share(
     if cached is not None:
         return cached
 
-    messages = await chat_service.list_messages_from_checkpointer(
-        db, conversation, user_id=None
-    )
+    messages = await chat_service.list_messages_from_checkpointer(db, conversation, user_id=None)
     # W6: turn별 SSE event trace를 함께 노출 → 공개 페이지에서 도구/Skill
     # 칩 렌더용. trace가 없는(W5 이전에 만든) 대화는 빈 list로 응답.
     traces = _filter_public_share_traces(
@@ -358,9 +347,7 @@ async def get_public_share_messages(
     if cached is not None:
         return cached
 
-    messages = await chat_service.list_messages_from_checkpointer(
-        db, conversation, user_id=None
-    )
+    messages = await chat_service.list_messages_from_checkpointer(db, conversation, user_id=None)
     envelope = MessagesEnvelope(
         messages=messages,
         active_tip_message_id=None,

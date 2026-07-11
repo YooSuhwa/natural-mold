@@ -123,6 +123,8 @@
 
 ## E. 저노이즈 ruff 룰 배치 추가 — 🟡 P2
 
+> **E ✅ 완료 (2026-07-11, PR #291)**: 7룰 전부 활성. 아래 실측 66건은 `app/` 한정이었고 전체는 **373건**(tests/ 308 — SLF001 178·PT 77·DTZ 19가 대부분). 트리아지: 실수정 ~48 + 전역 ignore `N818`(도메인 스타일 예외명) + per-file `app/**`=PT(FastAPI `test_*` 엔드포인트 오탐), `tests/*`+=`SLF001,DTZ,PT017,PT018,N801,N815` + inline noqa 14(이유 포함). 게이트 회귀 테스트 `tests/test_lint_low_noise_rules.py`(§C 패턴 — 빨간불 주입 + 예외 rule-scoped 네거티브). DTZ의 "예외는 ignore"는 tests/ per-file + `usage_aggregate.date.today()` noqa로 반영.
+
 지금 켜도 부담 적은 것들(합계 ~66건). 한 PR에 묶어 트리아지.
 
 | 룰 | 건수 | 효과 |
@@ -143,6 +145,8 @@
 
 ## F. 억제(suppression) 부채 가시화 — 🟡 P2
 
+> **F ✅ 완료 (2026-07-11, PR #290)**: `PGH` select 추가. 실측 위반 0(기존 109/76건은 총 개수 — bare 억제는 이미 없음)이라 순수 예방 게이트. PGH004 주입 빨간불 확인 + 게이트 회귀 테스트(`tests/test_lint_security_rules.py` — tests/의 S 예외가 PGH를 안 덮음 고정). type-ignore 이유 주석(조치 2)·개수 상한(조치 3)은 미채택(pyright 번다운 트랙과 중복).
+
 - **증거**: `# noqa` **109건**, `# type: ignore` **76건**. 억제 자체는 정상이나 이유 없이 늘어남.
 - **조치**:
   1. ruff `PGH` 룰(`PGH004` bare-noqa 금지 등) 추가 → 모든 noqa에 코드+이유 강제.
@@ -154,12 +158,16 @@
 
 ## G. integration 테스트 마커 미강제 — 🟡 P2 (이번 CI 실패의 근본)
 
+> **G ✅ 완료 (2026-07-11, PR #290, 리뷰에서 exit code 정정)**: `tests/integration/conftest.py` 자동 마커 훅(경로 기반, `item.path.is_relative_to`). 마커 부여 후 plain `pytest tests/integration`은 전량 deselect → **exit 5**(NO_TESTS_COLLECTED, dir-scoped CI 스텝은 시끄럽게 red) — 최초 "exit 0" 실측은 `cmd | tail; echo $?` 파이프가 exit code를 삼킨 착시(§A의 pyright 오판과 동일 함정). **조용한** 거짓 그린은 full-suite `pytest tests/`에서 형제 테스트 통과가 deselection을 exit 0으로 가리는 변종. CI 직렬 스텝을 `-m integration` 명시 선택으로 수정(후행 `-m`이 addopts override — argparse last-wins), m9는 `INTEGRATION_DATABASE_URL` self-skip이라 선택돼도 안전(29 passed + 1 skipped). 회귀 테스트 `tests/test_integration_marker_hook.py`(마커 커버리지 + exit 5 deselection 계약 고정). **알려진 사각지대(pre-existing, 후속)**: `tests/test_trace_storage.py::test_message_event_cascade_delete_with_conversation`은 integration 마커인데 디렉토리 밖 — 병렬 스텝(마커 deselect)·직렬 스텝(경로 제한) 어디서도 안 돌며, aiosqlite에선 fail·live PG 주입 인프라 없음 → m9 패턴으로 tests/integration/ 이관 필요.
+
 - **증거**: PR #280·#282 CI가 `test_conversation_run_lifecycle`·`test_stream_resume`의 xdist 스타베이션으로 실패. 원인은 이 파일들에 `@pytest.mark.integration`이 **없어서**(`test_m9_pg_roundtrip`만 마커 보유) 병렬 스위트에 섞인 것. CI 스텝 분리(`--ignore=tests/integration` + 직렬)로 급한 불은 껐음.
-- **조치**: `tests/integration/conftest.py`에 자동 마커 훅으로 원천 차단:
+- **조치**: `tests/integration/conftest.py`에 자동 마커 훅으로 원천 차단 (실구현은 deprecated `item.fspath` 대신 `item.path.is_relative_to(디렉토리)` 사용 — substring 오탐 없음):
   ```python
+  _INTEGRATION_DIR = Path(__file__).resolve().parent
+
   def pytest_collection_modifyitems(items):
       for item in items:
-          if "tests/integration/" in str(item.fspath):
+          if item.path.is_relative_to(_INTEGRATION_DIR):
               item.add_marker(pytest.mark.integration)
   ```
   단, 현재 CI는 `--ignore=tests/integration`로 통합을 통째 제외하고 직렬 스텝에서 별도 실행 중이므로, 마커 자동부여 시 직렬 스텝의 `addopts '-m not integration'`과 상호작용 확인 필요(직렬 스텝은 `-m ''` 또는 `-m 'integration or not integration'`로 실행하도록 조정).

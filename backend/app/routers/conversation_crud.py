@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.error_codes import agent_not_found, conversation_not_found
 from app.models.conversation import Conversation
 from app.schemas.conversation import (
@@ -243,10 +243,8 @@ async def update_conversation(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    conv: Conversation = Depends(owned_conversation),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if not conv:
-        raise conversation_not_found()
     updated = await chat_service.update_conversation(db, conv, data)
     await record_conversation_audit(
         db,
@@ -272,10 +270,8 @@ async def mark_conversation_read(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    conv: Conversation = Depends(owned_conversation),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if not conv:
-        raise conversation_not_found()
     updated = await chat_service.mark_conversation_read(db, conv)
     await record_conversation_audit(
         db,
@@ -297,10 +293,8 @@ async def delete_conversation(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    conv: Conversation = Depends(owned_conversation),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if not conv:
-        raise conversation_not_found()
     await record_conversation_audit(
         db,
         user=user,

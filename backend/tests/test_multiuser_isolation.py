@@ -54,9 +54,7 @@ class _Session:
         return {"X-CSRF-Token": self.csrf}
 
 
-async def _register(
-    client: AsyncClient, *, email: str, super_first: bool = False
-) -> _Session:
+async def _register(client: AsyncClient, *, email: str, super_first: bool = False) -> _Session:
     """Register a fresh user. ``super_first=True`` lets the first user be admin."""
 
     settings.allow_first_user_as_admin = super_first
@@ -138,9 +136,7 @@ async def test_user_b_cannot_modify_user_a_agent(raw_client: AsyncClient):
     )
     assert upd.status_code == 404
 
-    delete = await raw_client.delete(
-        f"/api/agents/{agent_id}", headers=b.headers()
-    )
+    delete = await raw_client.delete(f"/api/agents/{agent_id}", headers=b.headers())
     assert delete.status_code == 404
 
 
@@ -330,7 +326,82 @@ async def test_user_b_cannot_modify_user_a_conversation(raw_client: AsyncClient)
         headers=b.headers(),
     )
     assert upd.status_code == 404
-    delete = await raw_client.delete(
-        f"/api/conversations/{conv_id}", headers=b.headers()
-    )
+    delete = await raw_client.delete(f"/api/conversations/{conv_id}", headers=b.headers())
     assert delete.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_user_b_cannot_touch_user_a_conversation_surfaces(raw_client: AsyncClient):
+    """BE-D1 gate matrix — every ``owned_conversation``-guarded route → 404 for B.
+
+    Locks the routes converted in PR #292 (runs/active, runs/{id}, share,
+    followup, read, switch-branch) so dropping the dependency from a route
+    decorator/signature regresses loudly instead of opening an IDOR.
+    """
+
+    from app.models.conversation import Conversation
+
+    model_id = await _seed_default_model()
+    a = await _register(raw_client, email="conv-a@test.com")
+    b = await _register(raw_client, email="conv-b@test.com")
+    agent_id = await _make_agent(raw_client, a, model_id)
+
+    async with TestSession() as db:
+        conv = Conversation(id=uuid.uuid4(), agent_id=uuid.UUID(agent_id), title="t")
+        db.add(conv)
+        await db.commit()
+        conv_id = str(conv.id)
+
+    run_id = "00000000-0000-0000-0000-0000000000aa"
+
+    _apply(raw_client, a)
+    owner_resp = await raw_client.get(f"/api/conversations/{conv_id}/runs/active")
+    assert owner_resp.status_code == 200  # sanity: gate passes for the owner
+
+    _apply(raw_client, b)
+    get_cases = [
+        f"/api/conversations/{conv_id}/runs/active",
+        f"/api/conversations/{conv_id}/runs/{run_id}",
+        f"/api/conversations/{conv_id}/runs/{run_id}/stream",
+        f"/api/conversations/{conv_id}/runs/{run_id}/ag-ui-stream",
+        f"/api/conversations/{conv_id}/share",
+        f"/api/conversations/{conv_id}/messages",
+    ]
+    for url in get_cases:
+        resp = await raw_client.get(url)
+        assert resp.status_code == 404, url
+        assert resp.json()["error"]["code"] == "CONVERSATION_NOT_FOUND", url
+
+    post_cases = [
+        (f"/api/conversations/{conv_id}/followup-suggestion", None),
+        (f"/api/conversations/{conv_id}/read", None),
+        (
+            f"/api/conversations/{conv_id}/messages/switch-branch",
+            {"checkpoint_id": "cp-1"},
+        ),
+    ]
+    for url, payload in post_cases:
+        resp = await raw_client.post(url, json=payload, headers=b.headers())
+        assert resp.status_code == 404, url
+        assert resp.json()["error"]["code"] == "CONVERSATION_NOT_FOUND", url
+
+    # 의도된 계약 (PR #292): 소유권 게이트가 body 검증보다 먼저 실행되므로,
+    # 미소유 대화 + invalid body 는 422 가 아니라 404 다 — 미소유 리소스에
+    # validation oracle 을 노출하지 않는다. (Depends 전환의 내재적 순서:
+    # sub-dependency → body 검증. 구 인라인 체크 시절에는 422 가 먼저였다.)
+    invalid_body = await raw_client.patch(
+        f"/api/conversations/{conv_id}",
+        json={"title": 12345},
+        headers=b.headers(),
+    )
+    assert invalid_body.status_code == 404
+    assert invalid_body.json()["error"]["code"] == "CONVERSATION_NOT_FOUND"
+
+    # artifacts DELETE — #282 전환분 중 유일한 mutation 게이트 (R2에서
+    # decorator → 파라미터 위치로 정렬). 게이트 자체가 빠지면 여기서 잡는다.
+    artifact_delete = await raw_client.delete(
+        f"/api/conversations/{conv_id}/artifacts/{uuid.uuid4()}",
+        headers=b.headers(),
+    )
+    assert artifact_delete.status_code == 404
+    assert artifact_delete.json()["error"]["code"] == "CONVERSATION_NOT_FOUND"

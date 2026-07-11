@@ -168,9 +168,9 @@ async def test_patch_model_updates_pricing(client: AsyncClient, db: AsyncSession
     body = response.json()
     assert body["supports_reasoning"] is True
     # Decimal round-trips through whatever JSON form FastAPI picks.
-    from decimal import Decimal as _D
+    from decimal import Decimal
 
-    assert _D(str(body["cost_per_input_token"])) == _D("0.0000025")
+    assert Decimal(str(body["cost_per_input_token"])) == Decimal("0.0000025")
 
 
 @pytest.mark.asyncio

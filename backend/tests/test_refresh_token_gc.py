@@ -35,17 +35,11 @@ async def test_gc_deletes_rows_past_retention_only() -> None:
         old_revoked = await make_refresh_token(
             db, user.id, expires_at=now - timedelta(days=10), revoked=True
         )
-        old_active = await make_refresh_token(
-            db, user.id, expires_at=now - timedelta(days=10)
-        )
+        old_active = await make_refresh_token(db, user.id, expires_at=now - timedelta(days=10))
         # Just inside retention (12h past expiry) — should survive.
-        recent_expired = await make_refresh_token(
-            db, user.id, expires_at=now - timedelta(hours=12)
-        )
+        recent_expired = await make_refresh_token(db, user.id, expires_at=now - timedelta(hours=12))
         # Still valid — never touch.
-        future = await make_refresh_token(
-            db, user.id, expires_at=now + timedelta(days=15)
-        )
+        future = await make_refresh_token(db, user.id, expires_at=now + timedelta(days=15))
         await db.commit()
         old_revoked_id = old_revoked.id
         old_active_id = old_active.id
@@ -57,10 +51,7 @@ async def test_gc_deletes_rows_past_retention_only() -> None:
         assert deleted == 2
 
     async with TestSession() as db:
-        remaining = {
-            r.id
-            for r in (await db.execute(select(RefreshToken))).scalars().all()
-        }
+        remaining = {r.id for r in (await db.execute(select(RefreshToken))).scalars().all()}
         assert old_revoked_id not in remaining
         assert old_active_id not in remaining
         assert recent_id in remaining
@@ -84,7 +75,7 @@ async def test_gc_zero_retention_deletes_anything_expired() -> None:
 @pytest.mark.asyncio
 async def test_gc_negative_retention_rejected() -> None:
     async with TestSession() as db:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="retention_days must be >= 0"):
             await gc_expired_refresh_tokens(db, retention_days=-1)
 
 
@@ -92,9 +83,7 @@ async def test_gc_negative_retention_rejected() -> None:
 async def test_gc_returns_zero_when_nothing_to_delete() -> None:
     async with TestSession() as db:
         user = await make_user(db)
-        await make_refresh_token(
-            db, user.id, expires_at=datetime.now(UTC) + timedelta(days=30)
-        )
+        await make_refresh_token(db, user.id, expires_at=datetime.now(UTC) + timedelta(days=30))
         await db.commit()
 
     async with TestSession() as db:
@@ -114,9 +103,7 @@ async def test_gc_handles_chain_links_via_set_null() -> None:
         old = await make_refresh_token(
             db, user.id, expires_at=now - timedelta(days=10), revoked=True
         )
-        survivor = await make_refresh_token(
-            db, user.id, expires_at=now + timedelta(days=30)
-        )
+        survivor = await make_refresh_token(db, user.id, expires_at=now + timedelta(days=30))
         survivor.replaced_by_id = old.id  # downstream points UP the chain
         await db.commit()
         survivor_id = survivor.id
@@ -127,9 +114,7 @@ async def test_gc_handles_chain_links_via_set_null() -> None:
 
     async with TestSession() as db:
         row = (
-            await db.execute(
-                select(RefreshToken).where(RefreshToken.id == survivor_id)
-            )
+            await db.execute(select(RefreshToken).where(RefreshToken.id == survivor_id))
         ).scalar_one()
         # SQLite test path doesn't enforce the FK, so this assertion is
         # opportunistic — Postgres production path is exercised by the

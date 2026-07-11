@@ -13,13 +13,13 @@ from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.streaming import format_sse
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.error_codes import (
     agent_not_found,
-    conversation_not_found,
     resume_interrupt_pending,
     resume_not_found,
 )
+from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
 from app.schemas.conversation import MessageCreate, MessagesEnvelope, ResumeRequest
 from app.schemas.conversation_run import ConversationRunResponse
@@ -138,10 +138,8 @@ async def list_messages(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    conv: Conversation = Depends(owned_conversation),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if not conv:
-        raise conversation_not_found()
     active_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation_id,

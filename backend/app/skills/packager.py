@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import io
-import os
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -69,7 +68,7 @@ def _validate_member(member: zipfile.ZipInfo, dest: Path) -> None:
 
     if _is_symlink(member):
         raise PackageError(f"symlink not allowed: {member.filename!r}")
-    if os.path.isabs(member.filename):
+    if Path(member.filename).is_absolute():
         raise PackageError(f"absolute path not allowed: {member.filename!r}")
     if "\x00" in member.filename:
         raise PackageError(f"null byte in entry name: {member.filename!r}")

@@ -21,15 +21,15 @@ from app.tools.risk import ToolRiskLevel, default_deepagents_interrupt_policy, r
 
 
 def _cfg(**overrides) -> AgentConfig:
-    defaults: dict[str, object] = dict(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=[],
-        thread_id="t-1",
-    )
+    defaults: dict[str, object] = {
+        "provider": "openai",
+        "model_name": "gpt-4o",
+        "api_key": None,
+        "base_url": None,
+        "system_prompt": "Hi",
+        "tools_config": [],
+        "thread_id": "t-1",
+    }
     defaults.update(overrides)
     return AgentConfig(**defaults)  # type: ignore[arg-type]
 
@@ -133,9 +133,7 @@ async def test_hitl_middleware_not_injected_in_trigger_mode(
     mock_factory.return_value = fake_tool
 
     mock_agent = MagicMock()
-    mock_agent.ainvoke = AsyncMock(
-        return_value={"messages": [MagicMock(content="ok", type="ai")]}
-    )
+    mock_agent.ainvoke = AsyncMock(return_value={"messages": [MagicMock(content="ok", type="ai")]})
     mock_build.return_value = mock_agent
 
     await execute_agent_invoke(
@@ -205,9 +203,7 @@ async def test_hitl_middleware_per_tool_policy_applied(
     async for _ in execute_agent_stream(
         _cfg(
             tools_config=[{"definition_key": "builtin:delete_record", "name": "delete_record"}],
-            middleware_configs=[
-                {"type": "human_in_the_loop", "params": {"interrupt_on": policy}}
-            ],
+            middleware_configs=[{"type": "human_in_the_loop", "params": {"interrupt_on": policy}}],
         ),
         [],
     ):
@@ -283,11 +279,7 @@ async def test_hitl_middleware_auto_extraction_from_risk_metadata(
 
     build_kwargs = mock_build.call_args[1]
     assert build_kwargs["interrupt_on"] == _expected_policy(
-        extra={
-            "create_calendar_event": {
-                "allowed_decisions": ["approve", "edit", "reject"]
-            }
-        }
+        extra={"create_calendar_event": {"allowed_decisions": ["approve", "edit", "reject"]}}
     )
     assert _hitl_instances(build_kwargs["middleware"]) == []
 

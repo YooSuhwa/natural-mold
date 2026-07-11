@@ -40,14 +40,13 @@ async def _make_credential(
     name: str,
     definition_key: str = "openai",
 ) -> Credential:
-    cred = await credential_service.create(
+    return await credential_service.create(
         db,
         user_id=user_id,
         definition_key=definition_key,
         name=name,
         data={"api_key": f"sk-{name}"},
     )
-    return cred
 
 
 def _make_model(*, default_credential_id: uuid.UUID | None = None) -> Model:
@@ -106,9 +105,7 @@ async def test_resolver_rejects_other_users_explicit(db: AsyncSession) -> None:
     default_cred = await _make_credential(db, TEST_USER_ID, name="my-default")
     model = _make_model(default_credential_id=default_cred.id)
 
-    result = await resolve_credential_for_model(
-        db, model, other_cred.id, TEST_USER_ID
-    )
+    result = await resolve_credential_for_model(db, model, other_cred.id, TEST_USER_ID)
     # Explicit-but-invalid does NOT silently fall through to default — the
     # mismatch usually indicates stale UI state and we want it surfaced.
     assert result is None

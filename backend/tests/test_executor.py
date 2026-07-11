@@ -28,15 +28,15 @@ def _expected_interrupt_policy() -> dict:
 
 def _cfg(**overrides) -> AgentConfig:
     """테스트용 AgentConfig 기본값 생성."""
-    defaults: dict[str, object] = dict(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=[],
-        thread_id="t-1",
-    )
+    defaults: dict[str, object] = {
+        "provider": "openai",
+        "model_name": "gpt-4o",
+        "api_key": None,
+        "base_url": None,
+        "system_prompt": "Hi",
+        "tools_config": [],
+        "thread_id": "t-1",
+    }
     defaults.update(overrides)
     return AgentConfig(**defaults)  # type: ignore[arg-type]
 

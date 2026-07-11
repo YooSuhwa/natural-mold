@@ -457,30 +457,55 @@ def build_artifact_recorder(
 def build_persist_callback(
     conversation_id: uuid.UUID, run_id: str
 ) -> Callable[[list[dict[str, Any]]], Awaitable[None]]:
+    # BE-P5(d): run-scoped persisted-event-id 캐시. append_events 는 partial
+    # flush 마다 누적 chunk 전체 id 를 재 SELECT 했다(긴 턴에서 O(T²/64)).
+    # 첫 flush 에서 DB 시드 후 증분 유지한다. 불변식: 캐시 ⊆ DB — commit
+    # 성공분만 반영하고, 실패 시 None 으로 리셋해 재시도 chunk 가 DB 재로드
+    # 경로로 dedup 되게 한다 (캐시가 DB 를 앞서면 재시도 이벤트가 유실된다).
+    seen_event_ids: set[str] | None = None
+
     async def _callback(events_chunk: list[dict[str, Any]]) -> None:
+        nonlocal seen_event_ids
         if not events_chunk:
             return
-        async with async_session() as session:
-            await trace_storage.append_events(
-                session,
-                conversation_id=conversation_id,
-                assistant_msg_id=run_id,
-                events_chunk=events_chunk,
-                status="streaming",
-            )
-            last_id = events_chunk[-1].get("id")
-            if isinstance(last_id, str) and last_id:
-                try:
-                    run_uuid = uuid.UUID(run_id)
-                except ValueError:
-                    run_uuid = None
-                if run_uuid is not None:
-                    run = await session.get(ConversationRun, run_uuid)
-                    if run is not None:
-                        run.last_event_id = last_id
-                        if run.is_active:
-                            run.heartbeat_at = utc_now_naive()
-            await session.commit()
+        try:
+            async with async_session() as session:
+                if seen_event_ids is None:
+                    seen_event_ids = await trace_storage.load_persisted_event_ids(
+                        session, assistant_msg_id=run_id
+                    )
+                known = seen_event_ids
+                await trace_storage.append_events(
+                    session,
+                    conversation_id=conversation_id,
+                    assistant_msg_id=run_id,
+                    events_chunk=events_chunk,
+                    status="streaming",
+                    known_event_ids=known,
+                )
+                last_id = events_chunk[-1].get("id")
+                if isinstance(last_id, str) and last_id:
+                    try:
+                        run_uuid = uuid.UUID(run_id)
+                    except ValueError:
+                        run_uuid = None
+                    if run_uuid is not None:
+                        run = await session.get(ConversationRun, run_uuid)
+                        if run is not None:
+                            run.last_event_id = last_id
+                            if run.is_active:
+                                run.heartbeat_at = utc_now_naive()
+                await session.commit()
+        except Exception:
+            seen_event_ids = None
+            raise
+        # commit 성공 후에만 캐시 갱신 — chunk id 는 known 과의 차집합이
+        # 곧 방금 persist 된 id 셋이므로 그대로 합류한다 (idempotent).
+        known.update(
+            event_id
+            for evt in events_chunk
+            if isinstance(event_id := evt.get("id"), str) and event_id
+        )
 
     return _callback
 

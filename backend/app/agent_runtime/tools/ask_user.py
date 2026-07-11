@@ -39,8 +39,8 @@ class AskUserInput(BaseModel):
     mode: Literal["question_flow", "option_list"] | None = None
     title: str | None = None
     questions: list[AskUserQuestion] | None = None
-    minSelections: int | None = Field(default=None, ge=0)
-    maxSelections: int | None = Field(default=None, ge=1)
+    minSelections: int | None = Field(default=None, ge=0)  # noqa: N815 — tool schema wire contract
+    maxSelections: int | None = Field(default=None, ge=1)  # noqa: N815 — tool schema wire contract
 
     @model_validator(mode="after")
     def _validate_shape(self) -> "AskUserInput":
@@ -94,8 +94,8 @@ def _build_interrupt_payload(
     mode: Literal["question_flow", "option_list"] | None,
     title: str | None,
     questions: list[AskUserQuestion] | None,
-    minSelections: int | None,
-    maxSelections: int | None,
+    minSelections: int | None,  # noqa: N803 — mirrors tool schema wire contract
+    maxSelections: int | None,  # noqa: N803 — mirrors tool schema wire contract
 ) -> dict[str, Any]:
     if mode is None:
         return {
@@ -125,8 +125,8 @@ def ask_user(
     mode: Literal["question_flow", "option_list"] | None = None,
     title: str | None = None,
     questions: list[AskUserQuestion] | None = None,
-    minSelections: int | None = None,
-    maxSelections: int | None = None,
+    minSelections: int | None = None,  # noqa: N803 — mirrors tool schema wire contract
+    maxSelections: int | None = None,  # noqa: N803 — mirrors tool schema wire contract
 ) -> str:
     """사용자에게 질문하고 응답을 기다립니다.
 

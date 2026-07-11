@@ -17,7 +17,7 @@ from app.services.model_catalog import loaders
 
 @pytest.mark.asyncio
 async def test_fetch_source_unknown_name_raises() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="unknown source name"):
         await loaders.fetch_source("totally-fake-source", "https://example.com")
 
 

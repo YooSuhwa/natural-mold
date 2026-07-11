@@ -1212,7 +1212,7 @@ async def update_installation(
 
     if body.strategy == "install_new_copy":
         # Re-enter the install path with ``new_copy`` semantics.
-        new_install = await install_item(
+        return await install_item(
             db,
             item_id=item.id,
             user=user,
@@ -1222,7 +1222,6 @@ async def update_installation(
                 install_missing_credentials="needs_setup",
             ),
         )
-        return new_install
 
     if installation.resource_type == "mcp":
         return await _overwrite_mcp_installation(
