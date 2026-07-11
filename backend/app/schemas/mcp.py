@@ -199,7 +199,7 @@ class McpImportEntry(BaseModel):
 class McpImportRequest(BaseModel):
     """Body for ``POST /api/mcp-servers/import``."""
 
-    mcpServers: dict[str, McpImportEntry] = Field(default_factory=dict)
+    mcpServers: dict[str, McpImportEntry] = Field(default_factory=dict)  # noqa: N815 — Claude Desktop JSON shape
     overwrite: bool = False
 
 
@@ -230,7 +230,7 @@ class McpExportEntry(BaseModel):
 
 
 class McpExportResponse(BaseModel):
-    mcpServers: dict[str, McpExportEntry] = Field(default_factory=dict)
+    mcpServers: dict[str, McpExportEntry] = Field(default_factory=dict)  # noqa: N815 — Claude Desktop JSON shape
 
 
 class McpServerCreateFromRegistry(BaseModel):

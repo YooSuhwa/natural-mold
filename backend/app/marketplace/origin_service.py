@@ -67,9 +67,7 @@ _ORIGIN_LABELS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def derive_origin_summary_for_skill(
-    skill: Skill, user: CurrentUser
-) -> ResourceOriginSummaryOut:
+def derive_origin_summary_for_skill(skill: Skill, user: CurrentUser) -> ResourceOriginSummaryOut:
     """Decide origin ``kind`` from skill lineage + current user identity.
 
     Priority order (Spec §7.5 + module-contracts.md §3.2):
@@ -102,10 +100,7 @@ def derive_origin_summary_for_skill(
         # ``shared_with_me``; the marketplace catalog already gates by
         # visibility, so leaks here are limited to label text.
         kind = "shared_with_me"
-    elif (
-        skill.origin_user_id == user.id
-        and skill.source_marketplace_item_id is not None
-    ):
+    elif skill.origin_user_id == user.id and skill.source_marketplace_item_id is not None:
         kind = "imported_by_me"
     else:
         kind = "created_by_me"
@@ -142,11 +137,7 @@ def _derive_publication_state(
         if item.visibility == "restricted":
             return "published_restricted"
         if item.visibility == "public":
-            return (
-                "published_public_listed"
-                if item.is_listed
-                else "published_public_unlisted"
-            )
+            return "published_public_listed" if item.is_listed else "published_public_unlisted"
         if item.visibility == "unlisted":
             return "published_unlisted"
     # Deprecated etc. fall back to draft semantics for the summary.
@@ -206,23 +197,31 @@ async def bulk_derive_publication_summaries_for_skills(
         return {}
 
     links = (
-        await db.execute(
-            select(MarketplacePublicationLink).where(
-                MarketplacePublicationLink.source_skill_id.in_(skill_ids)
+        (
+            await db.execute(
+                select(MarketplacePublicationLink).where(
+                    MarketplacePublicationLink.source_skill_id.in_(skill_ids)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     by_skill = {link.source_skill_id: link for link in links if link.source_skill_id}
     item_ids = [link.item_id for link in links]
     items_by_id: dict[uuid.UUID, MarketplaceItem] = {}
     if item_ids:
         items = (
-            await db.execute(
-                select(MarketplaceItem)
-                .where(MarketplaceItem.id.in_(item_ids))
-                .options(selectinload(MarketplaceItem.latest_version))
+            (
+                await db.execute(
+                    select(MarketplaceItem)
+                    .where(MarketplaceItem.id.in_(item_ids))
+                    .options(selectinload(MarketplaceItem.latest_version))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         items_by_id = {item.id: item for item in items}
 
     acl_counts: dict[uuid.UUID, int] = {}
@@ -287,15 +286,13 @@ async def derive_installation_summary(
         installed_resource_id = installation.installed_skill_id
     elif installation.resource_type == "agent":
         installed_resource_id = (
-            installation.installed_agent_blueprint_id
-            or installation.installed_agent_id
+            installation.installed_agent_blueprint_id or installation.installed_agent_id
         )
     elif installation.resource_type == "mcp":
         installed_resource_id = installation.installed_mcp_server_id
 
     update_available = (
-        item.latest_version_id is not None
-        and installation.version_id != item.latest_version_id
+        item.latest_version_id is not None and installation.version_id != item.latest_version_id
     )
 
     dirty = bool(installation.is_dirty)
@@ -376,9 +373,7 @@ def _required_credential_requirements(
     return [
         requirement
         for requirement in (version.credential_requirements or [])
-        if isinstance(requirement, dict)
-        and requirement.get("required")
-        and requirement.get("key")
+        if isinstance(requirement, dict) and requirement.get("required") and requirement.get("key")
     ]
 
 
@@ -465,9 +460,7 @@ async def _agent_blueprint_installation_state(
     else:
         from app.models.agent_blueprint import AgentBlueprint
 
-        blueprint = await db.get(
-            AgentBlueprint, installation.installed_agent_blueprint_id
-        )
+        blueprint = await db.get(AgentBlueprint, installation.installed_agent_blueprint_id)
     if blueprint is None:
         return True, False
 
@@ -548,22 +541,28 @@ async def _load_installation_prefetch(
     prefetch = _InstallationPrefetch()
     if version_ids:
         rows = (
-            await db.execute(
-                select(MarketplaceVersion).where(MarketplaceVersion.id.in_(version_ids))
+            (
+                await db.execute(
+                    select(MarketplaceVersion).where(MarketplaceVersion.id.in_(version_ids))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         prefetch.versions = {row.id: row for row in rows}
     if server_ids:
         rows = (
-            await db.execute(select(McpServer).where(McpServer.id.in_(server_ids)))
-        ).scalars().all()
+            (await db.execute(select(McpServer).where(McpServer.id.in_(server_ids))))
+            .scalars()
+            .all()
+        )
         prefetch.servers = {row.id: row for row in rows}
     if blueprint_ids:
         rows = (
-            await db.execute(
-                select(AgentBlueprint).where(AgentBlueprint.id.in_(blueprint_ids))
-            )
-        ).scalars().all()
+            (await db.execute(select(AgentBlueprint).where(AgentBlueprint.id.in_(blueprint_ids))))
+            .scalars()
+            .all()
+        )
         prefetch.blueprints = {row.id: row for row in rows}
 
     credential_ids: set[uuid.UUID] = set()
@@ -578,8 +577,10 @@ async def _load_installation_prefetch(
                 continue
     if credential_ids:
         rows = (
-            await db.execute(select(Credential).where(Credential.id.in_(credential_ids)))
-        ).scalars().all()
+            (await db.execute(select(Credential).where(Credential.id.in_(credential_ids))))
+            .scalars()
+            .all()
+        )
         prefetch.credentials = {row.id: row for row in rows}
     return prefetch
 
@@ -596,13 +597,17 @@ async def bulk_derive_installation_summaries(
     if not items_by_id:
         return {}
     installations = (
-        await db.execute(
-            select(MarketplaceInstallation).where(
-                MarketplaceInstallation.item_id.in_(items_by_id),
-                MarketplaceInstallation.user_id == user_id,
+        (
+            await db.execute(
+                select(MarketplaceInstallation).where(
+                    MarketplaceInstallation.item_id.in_(items_by_id),
+                    MarketplaceInstallation.user_id == user_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     skill_ids = [
         installation.installed_skill_id
@@ -613,16 +618,13 @@ async def bulk_derive_installation_summaries(
     if skill_ids:
         from app.models.skill import Skill
 
-        skills = (
-            await db.execute(select(Skill).where(Skill.id.in_(skill_ids)))
-        ).scalars().all()
+        skills = (await db.execute(select(Skill).where(Skill.id.in_(skill_ids)))).scalars().all()
         skills_by_id = {skill.id: skill for skill in skills}
 
     prefetch = await _load_installation_prefetch(db, installations)
 
     summaries = {
-        item_id: MarketplaceInstallationSummary(installed=False)
-        for item_id in items_by_id
+        item_id: MarketplaceInstallationSummary(installed=False) for item_id in items_by_id
     }
     for installation in installations:
         item = items_by_id[installation.item_id]
@@ -680,15 +682,17 @@ async def bulk_derive_skill_installation_summaries(
     if not skills_by_id:
         return {}
     rows = (
-        await db.execute(
-            select(MarketplaceInstallation).where(
-                MarketplaceInstallation.installed_skill_id.in_(skills_by_id)
+        (
+            await db.execute(
+                select(MarketplaceInstallation).where(
+                    MarketplaceInstallation.installed_skill_id.in_(skills_by_id)
+                )
             )
         )
-    ).scalars().all()
-    summaries: dict[uuid.UUID, MarketplaceInstallationSummary | None] = {
-        skill_id: None for skill_id in skills_by_id
-    }
+        .scalars()
+        .all()
+    )
+    summaries: dict[uuid.UUID, MarketplaceInstallationSummary | None] = dict.fromkeys(skills_by_id)
     for row in rows:
         if row.installed_skill_id is None:
             continue
@@ -758,9 +762,7 @@ def derive_credential_summary(
     )
 
 
-async def mark_installation_dirty(
-    db: AsyncSession, *, installed_skill_id: uuid.UUID
-) -> None:
+async def mark_installation_dirty(db: AsyncSession, *, installed_skill_id: uuid.UUID) -> None:
     """Flag an installation as dirty after content edit.
 
     Best-effort — no error if the resource isn't a marketplace install.

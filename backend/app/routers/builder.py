@@ -68,8 +68,7 @@ async def start_build(
     _csrf: None = Depends(verify_csrf),
 ):
     """빌드 세션을 시작한다."""
-    session = await builder_service.create_session(db, user.id, data.user_request)
-    return session
+    return await builder_service.create_session(db, user.id, data.user_request)
 
 
 @router.get("/{session_id}", response_model=BuilderSessionResponse)

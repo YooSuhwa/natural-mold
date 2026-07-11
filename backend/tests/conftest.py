@@ -162,7 +162,7 @@ async def _bypass_verify_csrf() -> None:
     (see below) to exercise the real CSRF + JWT path.
     """
 
-    return None
+    return
 
 
 @pytest.fixture(scope="session")

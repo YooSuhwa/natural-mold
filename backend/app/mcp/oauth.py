@@ -28,8 +28,7 @@ async def ensure_fresh_token(credential: Credential) -> dict[str, Any]:
         return data
 
     definition = registry.require(credential.definition_key)
-    refreshed = await refresh_oauth_token(definition, data)
-    return refreshed
+    return await refresh_oauth_token(definition, data)
 
 
 __all__ = ["ensure_fresh_token"]

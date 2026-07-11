@@ -857,16 +857,14 @@ async def _summaries_from_artifacts(
             agent_rows = await db.execute(
                 select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids))
             )
-            agent_names = {agent_id: name for agent_id, name in agent_rows.all()}
+            agent_names = dict(agent_rows.tuples().all())
         if conversation_ids:
             conversation_rows = await db.execute(
                 select(Conversation.id, Conversation.title).where(
                     Conversation.id.in_(conversation_ids)
                 )
             )
-            conversation_titles = {
-                conversation_id: title for conversation_id, title in conversation_rows.all()
-            }
+            conversation_titles = dict(conversation_rows.tuples().all())
 
     summaries: list[ArtifactSummary] = []
     for artifact in artifacts:

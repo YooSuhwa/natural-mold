@@ -170,7 +170,7 @@ async def get_history(
     db: AsyncSession = Depends(get_db),
     _: CurrentUser = Depends(get_current_user),
 ):
-    rows = (
+    return (
         (
             await db.execute(
                 select(HealthCheckHistory)
@@ -185,7 +185,6 @@ async def get_history(
         .scalars()
         .all()
     )
-    return rows
 
 
 @router.post("/check", response_model=HealthHistoryEntry)

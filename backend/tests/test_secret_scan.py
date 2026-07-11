@@ -18,7 +18,6 @@ tweak surfaces immediately at unit-test granularity.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -113,9 +112,7 @@ class TestFilenamePatterns:
         findings = _findings_for(tmp_path)
         kinds = {f.kind for f in findings}
         paths = {f.path for f in findings}
-        assert "filename" in kinds, (
-            f"filename {filename!r} not flagged — pattern table miss"
-        )
+        assert "filename" in kinds, f"filename {filename!r} not flagged — pattern table miss"
         assert filename in paths
 
     @pytest.mark.parametrize(
@@ -138,18 +135,14 @@ class TestFilenamePatterns:
 
         _layout(tmp_path, {filename: "ok"})
         findings = _findings_for(tmp_path)
-        flagged = any(
-            f.kind == "filename" and f.path == filename for f in findings
-        )
+        flagged = any(f.kind == "filename" and f.path == filename for f in findings)
         if filename.startswith("token"):
             # Documented over-block: the operator gets a clear error
             # ("rename tokenizer.py before publishing") rather than a
             # silent leak.
             assert flagged
         else:
-            assert not flagged, (
-                f"legitimate filename {filename!r} blocked — over-broad regex"
-            )
+            assert not flagged, f"legitimate filename {filename!r} blocked — over-broad regex"
 
 
 # ===========================================================================
@@ -167,15 +160,11 @@ class TestContentPatterns:
             b"key=sk-12345678901234567890\n",
         ],
     )
-    def test_sk_pattern_blocks_real_keys(
-        self, tmp_path: Path, payload: bytes
-    ) -> None:
+    def test_sk_pattern_blocks_real_keys(self, tmp_path: Path, payload: bytes) -> None:
         _layout(tmp_path, {"scripts/example.py": payload})
         findings = _findings_for(tmp_path)
         assert any(
-            f.kind == "content"
-            and r"\bsk-" in f.pattern
-            and f.path == "scripts/example.py"
+            f.kind == "content" and r"\bsk-" in f.pattern and f.path == "scripts/example.py"
             for f in findings
         ), f"sk- key not flagged in {payload!r}"
 
@@ -199,27 +188,14 @@ class TestContentPatterns:
 
         _layout(tmp_path, {"docs/usage.md": payload})
         findings = _findings_for(tmp_path)
-        sk_hits = [
-            f
-            for f in findings
-            if f.kind == "content" and r"\bsk-" in f.pattern
-        ]
-        assert not sk_hits, (
-            f"false positive on placeholder payload {payload!r}: {sk_hits}"
-        )
+        sk_hits = [f for f in findings if f.kind == "content" and r"\bsk-" in f.pattern]
+        assert not sk_hits, f"false positive on placeholder payload {payload!r}: {sk_hits}"
 
     def test_pem_private_key_blocked(self, tmp_path: Path) -> None:
-        body = (
-            "-----BEGIN RSA PRIVATE KEY-----\n"
-            "MIIEowIBAAKCAQEA…\n"
-            "-----END RSA PRIVATE KEY-----\n"
-        )
+        body = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA…\n-----END RSA PRIVATE KEY-----\n"
         _layout(tmp_path, {"keys/key.txt": body})
         findings = _findings_for(tmp_path)
-        assert any(
-            f.kind == "content" and "PRIVATE KEY" in f.pattern
-            for f in findings
-        )
+        assert any(f.kind == "content" and "PRIVATE KEY" in f.pattern for f in findings)
 
     @pytest.mark.parametrize(
         "key_label",
@@ -240,13 +216,9 @@ class TestContentPatterns:
         body = f"-----{key_label}-----\nMIICabc…\n-----END {key_label[6:]}-----\n"
         _layout(tmp_path, {"snippet.md": body})
         findings = _findings_for(tmp_path)
-        assert any(f.kind == "content" for f in findings), (
-            f"PEM variant {key_label!r} not detected"
-        )
+        assert any(f.kind == "content" for f in findings), f"PEM variant {key_label!r} not detected"
 
-    def test_aws_secret_access_key_env_export_blocked(
-        self, tmp_path: Path
-    ) -> None:
+    def test_aws_secret_access_key_env_export_blocked(self, tmp_path: Path) -> None:
         _layout(
             tmp_path,
             {
@@ -254,25 +226,17 @@ class TestContentPatterns:
             },
         )
         findings = _findings_for(tmp_path)
-        assert any(
-            "AWS_SECRET_ACCESS_KEY" in f.pattern for f in findings
-        )
+        assert any("AWS_SECRET_ACCESS_KEY" in f.pattern for f in findings)
 
-    def test_google_application_credentials_blocked(
-        self, tmp_path: Path
-    ) -> None:
+    def test_google_application_credentials_blocked(self, tmp_path: Path) -> None:
         _layout(
             tmp_path,
             {
-                "config.sh": (
-                    "GOOGLE_APPLICATION_CREDENTIALS=/etc/gcp/key.json\n"
-                ),
+                "config.sh": ("GOOGLE_APPLICATION_CREDENTIALS=/etc/gcp/key.json\n"),
             },
         )
         findings = _findings_for(tmp_path)
-        assert any(
-            "GOOGLE_APPLICATION_CREDENTIALS" in f.pattern for f in findings
-        )
+        assert any("GOOGLE_APPLICATION_CREDENTIALS" in f.pattern for f in findings)
 
     def test_github_personal_access_token_blocked(self, tmp_path: Path) -> None:
         _layout(
@@ -313,9 +277,9 @@ class TestContentPatterns:
     ) -> None:
         _layout(tmp_path, {"config/env.sh": payload})
         findings = _findings_for(tmp_path)
-        assert any(
-            f.kind == "content" and needle in f.pattern for f in findings
-        ), f"new pattern {needle!r} did not flag {payload!r}"
+        assert any(f.kind == "content" and needle in f.pattern for f in findings), (
+            f"new pattern {needle!r} did not flag {payload!r}"
+        )
 
     def test_new_patterns_allow_placeholders(self, tmp_path: Path) -> None:
         """Interpolation placeholders must still pass the new query-string
@@ -352,10 +316,9 @@ class TestGuards:
         )
         findings = _findings_for(tmp_path)
         # No content finding — extension is in `_BINARY_EXTENSIONS`.
-        assert not any(
-            f.kind == "content" and f.path == "assets/diagram.png"
-            for f in findings
-        ), "binary file scanned for content — wastes IO + false positives"
+        assert not any(f.kind == "content" and f.path == "assets/diagram.png" for f in findings), (
+            "binary file scanned for content — wastes IO + false positives"
+        )
 
     def test_large_file_only_scans_head(self, tmp_path: Path) -> None:
         """``_MAX_CONTENT_SCAN_BYTES`` (256 KB) — the scanner reads only
@@ -373,9 +336,7 @@ class TestGuards:
         _layout(tmp_path, {"scripts/big.py": filler + secret})
         findings = _findings_for(tmp_path)
         # Secret past cap → not detected.
-        assert not any(
-            "GOOGLE_APPLICATION_CREDENTIALS" in f.pattern for f in findings
-        ), (
+        assert not any("GOOGLE_APPLICATION_CREDENTIALS" in f.pattern for f in findings), (
             "scanner read past 256 KB cap — performance guard broken"
         )
 
@@ -384,8 +345,7 @@ class TestGuards:
         _layout(tmp_path, {"scripts/small.py": secret + filler})
         findings2 = _findings_for(tmp_path)
         assert any(
-            "GOOGLE_APPLICATION_CREDENTIALS" in f.pattern
-            and f.path == "scripts/small.py"
+            "GOOGLE_APPLICATION_CREDENTIALS" in f.pattern and f.path == "scripts/small.py"
             for f in findings2
         )
 
@@ -463,24 +423,17 @@ class TestScanPackageWalk:
         _layout(tmp_path, {"key.txt": body})
         findings = _findings_for(tmp_path)
         # Exactly one finding for the PEM pattern on key.txt — not two.
-        pem_hits = [
-            f
-            for f in findings
-            if f.kind == "content" and "PRIVATE KEY" in f.pattern
-        ]
+        pem_hits = [f for f in findings if f.kind == "content" and "PRIVATE KEY" in f.pattern]
         assert len(pem_hits) == 1, (
             f"PEM dedup failed — {len(pem_hits)} hits for same (path, pattern)"
         )
 
-    def test_different_patterns_same_file_both_reported(
-        self, tmp_path: Path
-    ) -> None:
+    def test_different_patterns_same_file_both_reported(self, tmp_path: Path) -> None:
         """Different patterns matching the same file → separate findings
         (Spec §13.1: 'so the user knows *why* it's blocked')."""
 
         body = (
-            "OPENAI_API_KEY=sk-realkey-1234567890abcdefghij\n"
-            "AWS_SECRET_ACCESS_KEY=AKIA1234567890\n"
+            "OPENAI_API_KEY=sk-realkey-1234567890abcdefghij\nAWS_SECRET_ACCESS_KEY=AKIA1234567890\n"
         )
         _layout(tmp_path, {"scripts/leak.py": body})
         findings = _findings_for(tmp_path)
@@ -524,13 +477,9 @@ class TestSecretFindingShape:
         # Even if pytest ran on Windows (hypothetical), the finding path
         # must NOT contain backslashes.
         for finding in findings:
-            assert "\\" not in finding.path, (
-                f"non-POSIX path leaked into finding: {finding.path!r}"
-            )
+            assert "\\" not in finding.path, f"non-POSIX path leaked into finding: {finding.path!r}"
 
-    def test_finding_carries_pattern_for_operator_message(
-        self, tmp_path: Path
-    ) -> None:
+    def test_finding_carries_pattern_for_operator_message(self, tmp_path: Path) -> None:
         """Operator-facing error mentions the pattern so the user knows
         why a file was blocked. Pin: ``finding.pattern`` is non-empty
         and matches the canonical regex source."""
@@ -573,7 +522,7 @@ class TestSecretScanModuleSurface:
         findings = scan_package(rel_root)
         assert findings
         # Relative input shouldn't leak the cwd into the result paths.
-        assert all(not os.path.isabs(f.path) for f in findings)
+        assert all(not Path(f.path).is_absolute() for f in findings)
 
 
 # ===========================================================================

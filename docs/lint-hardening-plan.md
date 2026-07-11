@@ -123,6 +123,8 @@
 
 ## E. 저노이즈 ruff 룰 배치 추가 — 🟡 P2
 
+> **E ✅ 완료 (2026-07-11, PR #291)**: 7룰 전부 활성. 아래 실측 66건은 `app/` 한정이었고 전체는 **373건**(tests/ 308 — SLF001 178·PT 77·DTZ 19가 대부분). 트리아지: 실수정 ~48 + 전역 ignore `N818`(도메인 스타일 예외명) + per-file `app/**`=PT(FastAPI `test_*` 엔드포인트 오탐), `tests/*`+=`SLF001,DTZ,PT017,PT018,N801,N815` + inline noqa 14(이유 포함). 게이트 회귀 테스트 `tests/test_lint_low_noise_rules.py`(§C 패턴 — 빨간불 주입 + 예외 rule-scoped 네거티브). DTZ의 "예외는 ignore"는 tests/ per-file + `usage_aggregate.date.today()` noqa로 반영.
+
 지금 켜도 부담 적은 것들(합계 ~66건). 한 PR에 묶어 트리아지.
 
 | 룰 | 건수 | 효과 |

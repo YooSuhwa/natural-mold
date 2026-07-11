@@ -407,13 +407,11 @@ def test_malformed_draft_workspace_path_fails_closed() -> None:
     """R2 회귀: strip 후 빈 경로나 skill-drafts/ 밖 경로는 ValueError —
     빈 문자열이 통과하면 `/**` allow가 전체 FS를 연다 (불변식 가드)."""
 
-    import pytest as _pytest
-
     from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
 
     # 빈 문자열은 falsy라 마운트 자체가 생략된다(안전) — raise 대상 아님.
     for bad in ("/", "uploads/evil", "skill-drafts"):
-        with _pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="must live under skill-drafts/"):
             build_filesystem_permissions(
                 thread_id="thread-c",
                 agent_id="agent-c",

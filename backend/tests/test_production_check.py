@@ -46,7 +46,7 @@ def test_clean_production_settings_pass() -> None:
 
 
 @pytest.mark.parametrize(
-    "override, fragment",
+    ("override", "fragment"),
     [
         ({"jwt_secret": ""}, "JWT_SECRET"),
         ({"jwt_secret": "short"}, "JWT_SECRET"),
@@ -58,9 +58,7 @@ def test_clean_production_settings_pass() -> None:
         ({"encryption_keys": ""}, "ENCRYPTION_KEYS"),
     ],
 )
-def test_each_insecure_default_is_flagged(
-    override: dict[str, object], fragment: str
-) -> None:
+def test_each_insecure_default_is_flagged(override: dict[str, object], fragment: str) -> None:
     issues = collect_production_warnings(_make(**override))
     assert any(fragment in msg for msg in issues), issues
 
@@ -85,9 +83,7 @@ def test_dev_mode_logs_but_does_not_raise(caplog: pytest.LogCaptureFixture) -> N
 def test_mixed_local_and_real_origins_pass() -> None:
     """Localhost alongside a real origin is OK — common staging case."""
 
-    settings = _make(
-        cors_allowed_origins="https://app.example.com,http://localhost:3000"
-    )
+    settings = _make(cors_allowed_origins="https://app.example.com,http://localhost:3000")
     issues = collect_production_warnings(settings)
     assert not any("CORS" in msg for msg in issues), issues
 

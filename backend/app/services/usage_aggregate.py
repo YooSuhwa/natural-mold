@@ -39,7 +39,7 @@ def _resolve_window(
 ) -> tuple[date_type, date_type]:
     """Default the window to ``today - 30`` → ``today`` and clamp."""
 
-    today = date_type.today()
+    today = date_type.today()  # noqa: DTZ011 — dashboard window in server-local calendar days
     if to_date is None:
         to_date = today
     if from_date is None:

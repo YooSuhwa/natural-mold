@@ -108,9 +108,20 @@ select = [
   "ASYNC",          # async anti-patterns
   "S",              # bandit security rules (SSRF, subprocess, hardcoded secrets, ...)
   "PGH",            # pygrep hooks — bans blanket `# noqa` / `# type: ignore` (code required)
+  "DTZ",            # naive datetime construction (project policy: UTC-naive, exceptions noqa'd)
+  "C4",             # unnecessary comprehensions / collection calls
+  "SLF",            # private member access across objects
+  "RET",            # return anti-patterns (needless assign/else/None)
+  "PTH",            # os.path → pathlib
+  "PT",             # pytest style (fixtures, parametrize, raises)
+  "N",              # PEP8 naming
 ]
 ignore = [
   "B008",           # Depends() in function defaults — idiomatic FastAPI
+  # Codebase-wide exception naming is domain-style without the Error suffix
+  # (SkillRevisionNotFound, EvalRunCancelled, SkillEvaluationQueueFull, ...).
+  # Renaming 18 established classes is churn without safety value.
+  "N818",
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -120,9 +131,25 @@ ignore = [
 "app/routers/skills.py" = ["ASYNC240"]            # sync pathlib for file serving (trivial I/O)
 "app/routers/uploads.py" = ["ASYNC240"]           # sync pathlib for upload write/read (bounded I/O)
 "app/services/skill_service.py" = ["ASYNC240"]    # sync pathlib for ZIP extraction (bounded I/O)
+# PT is pytest style — in app/ it only false-positives on FastAPI endpoints
+# named test_* (test_connection, test_credential, ...), which are not tests.
+"app/**" = ["PT"]
+# Vendored seed skill packages are content-hashed byte-for-byte by the
+# marketplace seeder (default_marketplace_skills._content_hash) — ANY edit,
+# including a lint fix or a noqa comment, bumps the published version and
+# flags every install as "update available". Never lint-fix these files.
+"app/seed/system_skill_packages/**" = ["RET504"]
 # S101 assert = pytest idiom; S105/S106/S107 fixture passwords; S108 tmp paths in
 # fixtures; S603 trusted subprocess in test harness — none run in production.
-"tests/*" = ["S101", "S105", "S106", "S107", "S108", "S603"]
+# SLF001 poking privates is standard test practice; DTZ naive datetimes in
+# fixtures match the project's UTC-naive column policy; PT017/PT018 are
+# style-contested (pytest introspection already shows which clause failed);
+# N801 scenario class names (TestScenario_10_1_...) and N815 mixedCase mock
+# fields mirror external wire contracts (serverInfo, inputSchema).
+"tests/*" = [
+  "S101", "S105", "S106", "S107", "S108", "S603",
+  "SLF001", "DTZ", "PT017", "PT018", "N801", "N815",
+]
 # Migrations interpolate internal constants (table names, WHERE fragments) into
 # SQL with values bound via params (S608); preflight checks deliberately skip
 # missing tables (S112). Operator-run, no untrusted input.

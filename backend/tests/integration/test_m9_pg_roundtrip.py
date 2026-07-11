@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
@@ -54,9 +55,8 @@ def pg_engine():
 
 @pytest.fixture
 def alembic_config():
-    here = os.path.dirname(__file__)
-    backend_root = os.path.abspath(os.path.join(here, "..", ".."))
-    cfg = Config(os.path.join(backend_root, "alembic.ini"))
+    backend_root = Path(__file__).resolve().parent.parent.parent
+    cfg = Config(str(backend_root / "alembic.ini"))
     dsn = os.environ[PG_DSN_ENV]
     cfg.set_main_option("sqlalchemy.url", dsn)
     return cfg
