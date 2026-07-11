@@ -38,6 +38,7 @@ def sync_repo() -> ModuleType:
     [
         "https://github.com/langchain-ai/openwiki.git",
         "http://internal.example/repo.git",
+        "HTTPS://Github.com/Org/Repo.git",  # scheme is case-insensitive (RFC 3986)
     ],
 )
 def test_valid_repo_urls_pass(sync_repo: ModuleType, url: str) -> None:
@@ -53,6 +54,7 @@ def test_valid_repo_urls_pass(sync_repo: ModuleType, url: str) -> None:
         "file:///etc/passwd",  # local file read
         "git@github.com:a/b.git",  # ssh — no keys in the skill sandbox
         "https://host/repo with space",
+        "https://host/re\x00po",  # embedded NUL — clean-fail instead of subprocess ValueError
         "",
     ],
 )

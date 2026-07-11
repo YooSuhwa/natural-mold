@@ -65,7 +65,7 @@ def _validate_repo_url(repo_url: str) -> None:
     ``file://``) could execute commands or read local files.
     """
 
-    if not re.fullmatch(r"https?://\S+", repo_url):
+    if "\x00" in repo_url or not re.fullmatch(r"https?://\S+", repo_url, re.IGNORECASE):
         _fail(f"only http(s) repository URLs are supported: {repo_url[:200]}")
 
 
