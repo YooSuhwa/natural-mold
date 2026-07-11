@@ -13,6 +13,12 @@ Failure modes this pins:
 
 Runs pytest in collect-only mode as a subprocess so the assertion sees the
 same config (addopts, conftest chain) as the real CI steps.
+
+Cost note: the three subprocesses add ~11s to the suite. That is pytest
+bootstrap overhead (~3.4s each), not conftest imports — measured that
+``--confcutdir=tests/integration`` does not reduce total time (collection
+itself is <0.1s) — so there is no cheap optimization; the fidelity of
+running the real config is worth the cost.
 """
 
 from __future__ import annotations

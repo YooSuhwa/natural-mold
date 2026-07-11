@@ -71,8 +71,9 @@ def test_tests_exemption_is_not_a_blanket_disable() -> None:
 
 def test_blanket_noqa_is_rejected_everywhere() -> None:
     # PGH004 (plan item F): a code-less blanket suppression comment must
-    # fail — even in tests/, which only exempts specific S rules. (Spelling
-    # the directive out here would trip ruff's noqa parser on this line.)
+    # fail — even in tests/, which only exempts specific S rules. The probe
+    # lives in the string below; ruff's noqa parser ignores string literals
+    # but does scan *comments*, so don't quote the directive in this one.
     for path in ("app/_lint_probe.py", "tests/_lint_probe.py"):
         result = _ruff_check(path, "import os  # noqa\n")
         assert result.returncode != 0, f"{path}: {result.stdout}"
