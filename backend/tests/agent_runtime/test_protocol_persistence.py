@@ -248,31 +248,48 @@ def test_persistable_wire_protocol_event_compacts_values_snapshot() -> None:
     }
 
 
-def test_persistable_wire_protocol_event_matches_full_variant() -> None:
-    """full 변형(raw 입력)과 wire 변형(wire 입력)은 같은 persisted 형태를
-    만든다 — 두 구현이 갈라지면 hot path 만 계약을 잃는 회귀를 잡는다."""
-    events = [
-        stored_protocol_event(
-            run_id="run-eq",
-            thread_id="thread-eq",
-            seq=1,
-            method="tools",
-            data={"name": "http_request", "args": {"api_key": "SECRET_VALUE", "query": "safe"}},
-        ),
-        stored_custom_protocol_event(
-            run_id="run-eq",
-            thread_id="thread-eq",
-            seq=2,
-            name="memory_saved",
-            payload={"id": "m1", "content": "private", "reason": "why"},
-        ),
-        stored_protocol_event(
-            run_id="run-eq",
-            thread_id="thread-eq",
-            seq=3,
-            method="values",
-            data={"messages": [{"id": "msg-1", "type": "ai", "content": "text"}], "todos": []},
-        ),
-    ]
-    for event in events:
-        assert persistable_wire_protocol_event(_as_wire(event)) == persistable_protocol_event(event)
+def test_persistable_variants_agree_on_explicit_expected_shapes() -> None:
+    """full(raw 입력)·wire(wire 입력) 변형 둘 다 **명시적 기대값**과 일치한다.
+
+    두 함수 출력을 서로 비교하면 full 이 wire 에 위임하는 현 구조에서
+    tautology(X == X)가 되어 mutation 에도 green 을 유지한다(2차 리뷰에서
+    실증). 독립 오라클(수기 기대값)로 양쪽을 각각 고정해, 위임이 풀리거나
+    한쪽이 재구현되어도 계약 이탈을 잡는다."""
+    tools_event = stored_protocol_event(
+        run_id="run-eq",
+        thread_id="thread-eq",
+        seq=1,
+        method="tools",
+        data={"name": "http_request", "args": {"api_key": "SECRET_VALUE", "query": "safe"}},
+    )
+    expected_tools_data = {
+        "name": "http_request",
+        "args": {"api_key": "<redacted>", "query": "safe"},
+    }
+
+    memory_event = stored_custom_protocol_event(
+        run_id="run-eq",
+        thread_id="thread-eq",
+        seq=2,
+        name="memory_saved",
+        payload={"id": "m1", "content": "private", "reason": "why"},
+    )
+    expected_memory_payload = {"id": "m1", "content": "<redacted>", "reason": "<redacted>"}
+
+    values_event = stored_protocol_event(
+        run_id="run-eq",
+        thread_id="thread-eq",
+        seq=3,
+        method="values",
+        data={"messages": [{"id": "msg-1", "type": "ai", "content": "text"}], "todos": []},
+    )
+    expected_values_data = {"messages": [{"id": "msg-1", "type": "ai"}], "todos": []}
+
+    variants = {
+        "full": persistable_protocol_event,
+        "wire": lambda event: persistable_wire_protocol_event(_as_wire(event)),
+    }
+    for name, variant in variants.items():
+        assert variant(tools_event)["data"] == expected_tools_data, name
+        assert variant(memory_event)["data"]["payload"] == expected_memory_payload, name
+        assert variant(values_event)["data"] == expected_values_data, name
