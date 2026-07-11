@@ -36,6 +36,7 @@ from app.services.skill_builder_errors import (
     SkillBuilderValidationError,
 )
 from app.services.skill_revision_audit import record_revision_create_audit
+from app.skills.packager import PackageError
 
 logger = logging.getLogger(__name__)
 
@@ -79,16 +80,8 @@ async def finalize_draft_session(
     if session.status == SkillBuilderStatus.CONFIRMING.value:
         return _error("SESSION_CONFIRMING", "another finalize is already in progress")
 
-    binaries = workspace.binary_package_files(session.draft_workspace_path)
-    if binaries:
-        # text-only 어댑터가 zip 소스라 바이너리는 조용히 누락된다 — improve
-        # 시드 원본의 asset 손실을 막기 위해 fail-closed (Phase 1.5 백로그).
-        return _error(
-            "BINARY_FILES_UNSUPPORTED",
-            "binary package files are not supported by builder-chat finalize yet: "
-            + ", ".join(binaries[:10]),
-        )
-
+    # 바이너리 asset은 confirm 단계의 디스크 기반 zip(build_workspace_zip_bytes)이
+    # 그대로 싣는다 (Phase 1.5) — draft_package(text 어댑터)는 검증/메타데이터용.
     draft = workspace.build_draft_package(session.draft_workspace_path)
     await skill_builder_service.save_draft_package(db, session, draft=draft.model_dump(mode="json"))
     await db.commit()
@@ -103,7 +96,12 @@ async def finalize_draft_session(
 
     actor = await _actor_for(db, user_id)
     try:
-        skill = await skill_builder_service.confirm_session(db, session, user_id=user_id)
+        # zip_from_workspace=True — 빌더 챗 경로는 워크스페이스 디스크가 source of
+        # truth라 바이너리 asset을 포함한 zip을 만든다 (Phase 1.5). REST /confirm은
+        # 게시된 draft_package 계약을 유지하므로 이 플래그를 켜지 않는다.
+        skill = await skill_builder_service.confirm_session(
+            db, session, user_id=user_id, zip_from_workspace=True
+        )
     except SkillBuilderConflictError as exc:
         await _record_audit(
             db,
@@ -146,6 +144,13 @@ async def finalize_draft_session(
         await db.rollback()
         await _release_confirming_claim(db, session_id, user_id)
         return _error("SOURCE_SKILL_NOT_FOUND", "source skill not found")
+    except PackageError as exc:
+        # zip 추출 가드(크기/파일 수/경로 방어) 실패 — 바이너리 asset이 실리며
+        # 패키지 상한 초과가 현실화됐다(Phase 1.5). 위 경로들과 대칭으로 claim을
+        # 풀어 에이전트가 파일을 줄인 뒤 재시도할 수 있게 사유를 그대로 전한다.
+        await db.rollback()
+        await _release_confirming_claim(db, session_id, user_id)
+        return _error("PACKAGE_INVALID", str(exc))
     except asyncio.CancelledError:
         # 런 취소(stop)는 BaseException이라 아래 Exception 캐치와 도구 경로의
         # 광역 catch를 모두 통과한다 — claim 해제만은 shield로 완료시키고

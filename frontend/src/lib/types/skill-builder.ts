@@ -3,6 +3,10 @@ import type { JsonValue } from './json'
 export type SkillBuilderMode = 'create' | 'improve'
 
 export type SkillBuilderStatus =
+  // v2 상태 기계 (빌더 챗): active → confirming → completed (+abandoned = GC 대상)
+  | 'active'
+  | 'abandoned'
+  // 구 one-pass 플로우 레거시 값 — 기존 row 호환용
   | 'collecting'
   | 'drafting'
   | 'review'
