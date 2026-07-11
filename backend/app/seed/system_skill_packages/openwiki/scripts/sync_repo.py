@@ -65,7 +65,9 @@ def _validate_repo_url(repo_url: str) -> None:
     ``file://``) could execute commands or read local files.
     """
 
-    if "\x00" in repo_url or not re.fullmatch(r"https?://\S+", repo_url, re.IGNORECASE):
+    # re.ASCII keeps IGNORECASE to ASCII case pairs — without it, Unicode
+    # case folding lets lookalike schemes through (e.g. "httpſ://", U+017F).
+    if "\x00" in repo_url or not re.fullmatch(r"https?://\S+", repo_url, re.IGNORECASE | re.ASCII):
         _fail(f"only http(s) repository URLs are supported: {repo_url[:200]}")
 
 

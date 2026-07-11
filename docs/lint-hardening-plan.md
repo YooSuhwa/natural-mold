@@ -86,6 +86,8 @@
 
 ## C. ruff 보안 룰(S) off — SSRF를 자동 검출 가능 — 🟠 P1
 
+> **C ✅ 완료 (2026-07-11, PR #288)**: `S` select 추가 + 51건(app 43 + scripts/alembic 8) 전수 트리아지. 실수정 2건 — openwiki `sync_repo.py`(LLM 제공 `--repo-url`/`--ref` 검증: http(s)-only·옵션 주입 거부·`git clone --` 구분자, 테스트 24케이스) / `generate_image.py`(`IMAGE_API_BASE_URL` scheme 가드 후 S310 억제). 오탐은 inline noqa+이유, `tests/*`(S101·S105-108·S603)·`alembic/versions/*`(S608·S112) per-file-ignores. 게이트 회귀 테스트 `tests/test_lint_security_rules.py`(위반 주입 빨간불 + 예외 non-blanket 네거티브, `--stdin-filename`으로 픽스처 자기-검출 회피). 2에이전트 리뷰 2라운드 통과(Critical/High/Medium 0).
+
 - **증거**: `--select S`로 **43건**. 내역:
 
   | 룰 | 건수 | 의미 |

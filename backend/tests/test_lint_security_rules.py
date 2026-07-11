@@ -19,12 +19,17 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
-RUFF = shutil.which("ruff")
+# Prefer the project venv's ruff (CI installs it via `uv sync --all-extras`)
+# so the test measures the same pinned version the CI gate runs; fall back
+# to PATH for local venvs synced without the dev extra.
+_VENV_RUFF = Path(sys.executable).parent / "ruff"
+RUFF = str(_VENV_RUFF) if _VENV_RUFF.exists() else shutil.which("ruff")
 
 pytestmark = pytest.mark.skipif(
     RUFF is None, reason="ruff binary not on PATH (install the dev extra)"

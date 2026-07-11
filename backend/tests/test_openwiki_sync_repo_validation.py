@@ -55,6 +55,7 @@ def test_valid_repo_urls_pass(sync_repo: ModuleType, url: str) -> None:
         "git@github.com:a/b.git",  # ssh — no keys in the skill sandbox
         "https://host/repo with space",
         "https://host/re\x00po",  # embedded NUL — clean-fail instead of subprocess ValueError
+        "httpſ://host/repo",  # U+017F case-folds to "s" without re.ASCII
         "",
     ],
 )
