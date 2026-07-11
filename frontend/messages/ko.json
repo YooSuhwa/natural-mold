@@ -2825,7 +2825,8 @@
         "rowDelete": "삭제",
         "affectedAgents": "영향받는 에이전트: {names}",
         "moreNames": "외 {count}개",
-        "affectedAgentsLoading": "영향받는 에이전트 확인 중…"
+        "affectedAgentsLoading": "영향받는 에이전트 확인 중…",
+        "affectedAgentsError": "영향받는 에이전트 목록을 불러오지 못했습니다 — 연결 수만 표시합니다."
       },
       "versions": {
         "diffTitle": "SKILL.md diff",

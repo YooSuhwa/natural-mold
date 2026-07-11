@@ -118,7 +118,13 @@ export function SkillListTable({
       toast.success(list('deleteSuccess', { count: deletedCount }))
     }
     if (failures.length > 0) {
-      toast.error(list('deletePartialFailure', { names: failures.join(', ') }))
+      // 실패 이름도 확인 다이얼로그와 같은 상한 — 세션 만료 등으로 전건 실패 시
+      // 무상한 토스트가 화면을 덮는다 (R6).
+      toast.error(
+        list('deletePartialFailure', {
+          names: formatNameList(failures, (count) => list('moreNames', { count })),
+        }),
+      )
     }
   }
 
@@ -128,11 +134,16 @@ export function SkillListTable({
     (count) => list('moreNames', { count }),
   )
   // AD-4.1 — 영향받는 에이전트 이름은 신규 API 없이 에이전트 목록에서 역도출.
-  // 삭제 확인이 열릴 때만 fetch — 무조건 fetch는 /skills 방문마다 무거운
-  // 에이전트 전체 직렬화를 부른다(사이드바는 useAgentSummaries라 캐시 공유
-  // 없음, R5). 로딩 중엔 자리 지킴 문구로 다이얼로그 텍스트 리플로를 막는다.
-  const { data: agents, isLoading: agentsLoading } = useAgents({
-    enabled: pendingDeleteIds.length > 0,
+  // 삭제 확인이 열려 있고 **연결 카운트가 있을 때만** fetch — 무조건 fetch는
+  // /skills 방문마다(R5), 연결 0 삭제마다(R6) 무거운 에이전트 전체 직렬화를
+  // 부른다(사이드바는 useAgentSummaries라 캐시 공유 없음). 로딩 중엔 자리
+  // 지킴 문구로 다이얼로그 텍스트 리플로를 막는다.
+  const {
+    data: agents,
+    isLoading: agentsLoading,
+    isError: agentsError,
+  } = useAgents({
+    enabled: pendingDeleteIds.length > 0 && connectedTotal > 0,
   })
   const pendingIdSet = new Set(pendingDeleteIds)
   const affectedAgentNames =
@@ -270,15 +281,20 @@ export function SkillListTable({
                   names: pendingNames,
                   connected: connectedTotal,
                 }),
+                // 조회 실패를 침묵 소실로 두지 않는다 — 연결 카운트만 보이고
+                // 이름 공개(AD-4.1)가 사라지면 사용자는 실패를 모른 채 파괴적
+                // 확정을 누른다 (R6).
                 agentsLoading
                   ? list('affectedAgentsLoading')
-                  : affectedAgentNames.length > 0
-                    ? list('affectedAgents', {
-                        names: formatNameList(affectedAgentNames, (count) =>
-                          list('moreNames', { count }),
-                        ),
-                      })
-                    : null,
+                  : agentsError
+                    ? list('affectedAgentsError')
+                    : affectedAgentNames.length > 0
+                      ? list('affectedAgents', {
+                          names: formatNameList(affectedAgentNames, (count) =>
+                            list('moreNames', { count }),
+                          ),
+                        })
+                      : null,
               ]
                 .filter(Boolean)
                 .join('\n')

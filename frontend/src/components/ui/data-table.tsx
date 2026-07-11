@@ -163,6 +163,27 @@ export function DataTable<T>({
     ] as ColumnDef<T, unknown>[]
   }, [columns, enableRowSelection, t])
 
+  // 행 id 파생의 단일 소스 — table(getRowId)·prune·notify가 같은 규칙을 써야
+  // id 공간이 갈리지 않는다. index 폴백은 filtered/data에서 서로 다른 행을
+  // 가리킬 수 있으므로(잠복 계약 파손) 선택 사용 시 dev 경고로 막는다 (R6).
+  const resolveRowId = useMemo(() => {
+    if (getRowId) return getRowId
+    return (row: T, index: number) => {
+      const r = row as unknown as { id?: string }
+      return r.id ?? String(index)
+    }
+  }, [getRowId])
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    enableRowSelection &&
+    !getRowId &&
+    data.some((row) => (row as unknown as { id?: string }).id === undefined)
+  ) {
+    console.warn(
+      'DataTable: enableRowSelection with id-less rows needs an explicit getRowId — index fallback ids diverge between the searched view and the full data.',
+    )
+  }
+
   const table = useReactTable({
     data: filtered,
     columns: tableColumns,
@@ -171,12 +192,7 @@ export function DataTable<T>({
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     enableRowSelection,
-    getRowId: getRowId
-      ? (row, index) => getRowId(row, index)
-      : (row, index) => {
-          const r = row as unknown as { id?: string }
-          return r.id ?? String(index)
-        },
+    getRowId: resolveRowId,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -234,13 +250,7 @@ export function DataTable<T>({
   // (models 벌크 테스트)과 "숨은 선택 행 이름 열거" 계약이 죽는다.
   useEffect(() => {
     if (!enableRowSelection || loading) return
-    const validIds = new Set(
-      data.map((row, index) => {
-        if (getRowId) return getRowId(row, index)
-        const r = row as unknown as { id?: string }
-        return r.id ?? String(index)
-      }),
-    )
+    const validIds = new Set(data.map((row, index) => resolveRowId(row, index)))
     const staleKeys = Object.keys(rowSelection).filter((key) => !validIds.has(key))
     if (staleKeys.length === 0) return
     setRowSelection((previous) => {
@@ -248,23 +258,35 @@ export function DataTable<T>({
       for (const key of staleKeys) delete next[key]
       return next
     })
-    // rowSelection/data/loading이 유효성 입력의 전부 — setter·getRowId는 안정적이다.
+    // rowSelection/data/loading이 유효성 입력의 전부 — setter·resolveRowId는 안정적이다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowSelection, data, loading, enableRowSelection])
 
   const lastSelectionSignature = useRef('')
   useEffect(() => {
-    // loading 중 스킵 — 플리커의 빈 row model로 부모에 []를 통지하면 벌크 바가
-    // 깜빡이며 사라졌다 재등장한다 (R5). 로딩이 끝나면 filtered 변화로 재실행.
+    // loading 중 스킵 — 플리커의 빈 data로 부모에 []를 통지하면 벌크 바가
+    // 깜빡이며 사라졌다 재등장한다 (R5). 로딩이 끝나면 data 변화로 재실행.
     if (!enableRowSelection || !onRowSelectionChange || loading) return
-    const selectedRows = table.getSelectedRowModel().rows
-    const signature = selectedRows.map((r) => r.id).join('\u0000')
+    // payload는 검색-스코프 row model이 아니라 **data prop 전체**에서 도출한다 —
+    // row model 기준이면 내부 검색으로 가린 선택이 부모 상태에서 조용히 빠져,
+    // prune이 보존한 선택과 부모가 실행하는 대상이 발산한다(models "Test
+    // Selected" 과소보고 + AD-5 숨은 이름 열거 불가, R6).
+    const selectedIds: string[] = []
+    const selectedRows: T[] = []
+    data.forEach((row, index) => {
+      const id = resolveRowId(row, index)
+      if (rowSelection[id]) {
+        selectedIds.push(id)
+        selectedRows.push(row)
+      }
+    })
+    const signature = selectedIds.join('\u0000')
     if (signature === lastSelectionSignature.current) return
     lastSelectionSignature.current = signature
-    onRowSelectionChange(selectedRows.map((r) => r.original))
-    // We depend on rowSelection + filtered (the inputs of the row model) — table is stable.
+    onRowSelectionChange(selectedRows)
+    // rowSelection/data/loading이 payload 입력의 전부 — resolveRowId는 안정적이다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowSelection, filtered, loading, enableRowSelection])
+  }, [rowSelection, data, loading, enableRowSelection])
 
   return (
     <div className="space-y-3">

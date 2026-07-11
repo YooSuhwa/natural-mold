@@ -146,6 +146,34 @@ describe('DataTable', () => {
     expect(onStateChange).not.toHaveBeenCalled()
   })
 
+  it('내부 검색으로 가려진 선택 행도 부모 통지 payload에 유지된다 (R6)', async () => {
+    const rows = [
+      { id: '1', name: '첫 번째' },
+      { id: '2', name: '두 번째' },
+    ]
+    const onSelectionChange = vi.fn()
+    render(
+      <DataTable
+        columns={columns}
+        data={rows}
+        searchable
+        enableRowSelection
+        rowSelectionState={{ '1': true }}
+        onRowSelectionStateChange={vi.fn()}
+        onRowSelectionChange={onSelectionChange}
+      />,
+    )
+    expect(onSelectionChange).toHaveBeenLastCalledWith([rows[0]])
+    const callsBeforeSearch = onSelectionChange.mock.calls.length
+
+    // 선택 행을 가리는 검색 — payload가 검색-스코프 row model 기준이면 여기서
+    // []로 재통지돼 부모 상태(벌크 대상)와 체크박스가 발산한다.
+    await userEvent.type(screen.getByPlaceholderText('검색...'), '두')
+
+    expect(onSelectionChange).toHaveBeenCalledTimes(callsBeforeSearch)
+    expect(onSelectionChange).toHaveBeenLastCalledWith([rows[0]])
+  })
+
   it('컬럼 필터로 줄어든 표는 범위 밖 페이지에 좌초하지 않는다', async () => {
     interface TypedRow extends Row {
       type: string

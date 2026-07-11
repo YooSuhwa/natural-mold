@@ -99,10 +99,12 @@ async def list_skill_revision_files(
 async def get_skill_revision_file_content(
     skill_id: uuid.UUID,
     revision_id: uuid.UUID,
-    # zip 열거 경로는 길이 무제한(패키저는 바이트만 캡) — 촘촘한 상한은 목록엔
-    # 있는데 내용은 422로 못 여는 파일을 만든다. 정확 일치 조회라 보안상 길이
-    # 캡이 불필요하므로 여유 상한만 둔다 (R5).
-    path: str = Query(..., min_length=1, max_length=4096),
+    # 상한은 목록 필터와 같은 상수를 공유한다 — 비대칭이면 목록엔 있는데
+    # 내용은 422로 못 여는 파일이 생긴다 (R5/R6). 정확 일치 조회라 보안상
+    # 길이 캡은 불필요, DoS 위생 상한만 둔다.
+    path: str = Query(
+        ..., min_length=1, max_length=skill_revision_service.MAX_REVISION_FILE_PATH_CHARS
+    ),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> SkillRevisionFileContentResponse:

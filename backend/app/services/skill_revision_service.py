@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import uuid
 import zipfile
+import zlib
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -20,14 +21,20 @@ from app.services.skill_locks import lock_skill_for_mutation
 from app.services.skill_revision_storage import write_skill_revision_snapshot
 from app.skills import service as skill_service
 from app.skills.display_limits import DISPLAY_TEXT_SNIFF_BYTES, MAX_DISPLAY_TEXT_BYTES
+from app.skills.inspector import parse_skill_md
 from app.skills.moldy_metadata import (
     credential_requirements_from_metadata,
     execution_profile_from_metadata,
     parse_moldy_metadata_content,
 )
 from app.skills.package_metadata import refresh_package_metadata, sync_frontmatter
-from app.skills.packager import extract_package
+from app.skills.packager import PackageError, extract_package
 from app.storage.paths import resolve_data_path
+
+# 리비전 파일 path 상한 — content 엔드포인트 Query 바운드와 목록 필터가 공유한다
+# (zip 엔트리 이름은 65,535바이트까지 가능; 비대칭이면 목록엔 있는데 못 여는
+# 파일이 생긴다, R6).
+MAX_REVISION_FILE_PATH_CHARS = 4096
 
 
 async def create_revision_for_skill(
@@ -142,8 +149,15 @@ async def rollback_to_revision(
     if skill.kind == "text":
         try:
             content = await anyio.to_thread.run_sync(_read_skill_md, zip_bytes)
-        except (zipfile.BadZipFile, KeyError) as exc:
+        except (zipfile.BadZipFile, zlib.error, KeyError) as exc:
             raise SkillRevisionSnapshotMissing("revision snapshot is unreadable") from exc
+        try:
+            # update_text_content도 write 전에 같은 파싱을 돌리지만, 여기서
+            # 선검증해야 "스냅샷 불가" 부류(레거시 frontmatter 등)가 형제
+            # 케이스(유실/손상)와 같은 409로 수렴한다 — 500 비대칭 방지 (R6).
+            parse_skill_md(content, require_metadata=True)
+        except ValueError as exc:
+            raise SkillRevisionSnapshotMissing("revision snapshot SKILL.md is invalid") from exc
         await skill_service.update_text_content(db, skill=skill, content=content)
     else:
         if not skill.storage_path:
@@ -220,13 +234,22 @@ def _list_revision_files_sync(object_key: str) -> list[tuple[str, int, bool]] | 
         # 유실뿐 아니라 손상(중단된 쓰기 등)도 pruned와 동일 계약 — 500 금지 (R5).
         return None
     entries: list[tuple[str, int, bool]] = []
-    with archive:
-        for info in archive.infolist():
-            if info.is_dir():
-                continue
-            with archive.open(info) as handle:
-                sniff = handle.read(DISPLAY_TEXT_SNIFF_BYTES)
-            entries.append((info.filename, info.file_size, b"\x00" in sniff))
+    try:
+        with archive:
+            for info in archive.infolist():
+                if info.is_dir():
+                    continue
+                # content 엔드포인트 path 상한과 대칭 — 목록에는 있는데 열 수 없는
+                # 엔트리를 만들지 않는다 (R6).
+                if len(info.filename) > MAX_REVISION_FILE_PATH_CHARS:
+                    continue
+                with archive.open(info) as handle:
+                    sniff = handle.read(DISPLAY_TEXT_SNIFF_BYTES)
+                entries.append((info.filename, info.file_size, b"\x00" in sniff))
+    except (zipfile.BadZipFile, zlib.error):
+        # central directory는 멀쩡한데 멤버 바이트가 손상(Bad CRC 등) — open 시점
+        # 검사를 통과한 손상도 같은 계약으로 (R6).
+        return None
     entries.sort(key=lambda entry: entry[0])
     return entries
 
@@ -244,8 +267,12 @@ def _load_revision_file_content_sync(object_key: str, relative_path: str) -> str
         if info.is_dir():
             return None
         # 헤더의 file_size를 믿지 않고 스트림을 상한+1까지 읽어 검증한다.
-        with archive.open(info) as handle:
-            raw = handle.read(MAX_DISPLAY_TEXT_BYTES + 1)
+        # 멤버 바이트 손상(Bad CRC/zlib)은 open이 아니라 read에서 터진다 (R6).
+        try:
+            with archive.open(info) as handle:
+                raw = handle.read(MAX_DISPLAY_TEXT_BYTES + 1)
+        except (zipfile.BadZipFile, zlib.error):
+            return None
         if len(raw) > MAX_DISPLAY_TEXT_BYTES or b"\x00" in raw:
             return None
         return raw.decode("utf-8", errors="replace")
@@ -303,8 +330,15 @@ def _validate_package_snapshot(zip_bytes: bytes) -> None:
     try:
         with zipfile.ZipFile(BytesIO(zip_bytes)) as archive:
             names = set(archive.namelist())
-    except zipfile.BadZipFile as exc:
+            # central directory가 멀쩡해도 멤버 바이트가 손상(bitrot/부분 쓰기)일
+            # 수 있다 — testzip으로 CRC 전수 검사해야 extract 단계 500을 막는다 (R6).
+            corrupt_member = archive.testzip()
+    except (zipfile.BadZipFile, zlib.error) as exc:
         raise SkillRevisionSnapshotMissing("revision snapshot zip is corrupt") from exc
+    if corrupt_member is not None:
+        raise SkillRevisionSnapshotMissing(
+            f"revision snapshot member is corrupt: {corrupt_member!r}"
+        )
     if "SKILL.md" not in names:
         raise SkillRevisionSnapshotMissing("revision snapshot is missing SKILL.md")
 
@@ -313,7 +347,12 @@ def _replace_package_files(storage_path: str, zip_bytes: bytes) -> None:
     root = resolve_data_path(storage_path)
     with TemporaryDirectory() as temp_dir:
         extracted = Path(temp_dir) / "skill"
-        extract_package(zip_bytes, extracted)
+        try:
+            # 추출은 tempdir에서 rmtree **이전** — 여기서의 거부(zip-slip/symlink/
+            # 널바이트, PackageError)는 무변이이므로 409 계약으로 수렴시킨다 (R6).
+            extract_package(zip_bytes, extracted)
+        except PackageError as exc:
+            raise SkillRevisionSnapshotMissing("revision snapshot package is invalid") from exc
         if root.exists():
             shutil.rmtree(root)
         shutil.copytree(extracted, root)

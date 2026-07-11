@@ -138,20 +138,11 @@ function DiffLines({
 }) {
   const t = useTranslations('skill.studio.versions')
   // 부모 리렌더(rollback pending 등)마다 diff를 재계산하지 않는다.
-  const lines = useMemo(() => {
-    // O(ND) Myers를 돌리기 전의 싼 사전 검사 — diff 라인 수는 max(입력 라인)
-    // 이상이므로 한쪽 입력만으로 상한 초과가 확정이면 diff 자체를 건너뛴다.
-    // 사후 검사만으로는 2MB 병적 입력에서 placeholder를 정하기도 전에
-    // 메인 스레드가 수 초 얼어붙는다 (R5).
-    if (
-      countInputLines(parentText) > MAX_DIFF_LINES ||
-      countInputLines(currentText) > MAX_DIFF_LINES
-    ) {
-      return null
-    }
-    return computeRevisionDiffLines(parentText, currentText)
-  }, [parentText, currentText])
-  if (lines === null || lines.length > MAX_DIFF_LINES) {
+  const lines = useMemo(
+    () => computeCappedRevisionDiffLines(parentText, currentText),
+    [parentText, currentText],
+  )
+  if (lines === null) {
     return <DiffPlaceholder message={t('diffTooLarge')} />
   }
   if (!hasRevisionDiffChanges(lines)) {
@@ -189,6 +180,31 @@ export function countInputLines(text: string): number {
     if (text.charCodeAt(i) === 10) count += 1
   }
   return count
+}
+
+/**
+ * 상한이 걸린 diff 계산 — null = 너무 커서 diff 생략(placeholder 유도).
+ *
+ * 순서가 계약이다 (R6): ① 동일 텍스트는 크기와 무관하게 "변경 없음"(빈 배열)
+ * — 사전 검사가 먼저면 6천 라인 무변경 롤백 리비전이 "변경이 너무 큼"으로
+ * 오표기된다. ② O(ND) Myers 이전의 싼 라인 수 사전 검사 — diff 출력은
+ * max(입력 라인) 이상이므로 한쪽 입력만으로 초과 확정이면 건너뛴다(사후
+ * 검사만으로는 2MB 병적 입력에서 placeholder를 정하기 전에 메인 스레드가
+ * 얼어붙는다, R5). ③ 사후 검사 — 입력은 상한 내지만 출력이 초과하는 경우.
+ */
+export function computeCappedRevisionDiffLines(
+  parentText: string,
+  currentText: string,
+): readonly RevisionDiffLine[] | null {
+  if (parentText === currentText) return []
+  if (
+    countInputLines(parentText) > MAX_DIFF_LINES ||
+    countInputLines(currentText) > MAX_DIFF_LINES
+  ) {
+    return null
+  }
+  const lines = computeRevisionDiffLines(parentText, currentText)
+  return lines.length > MAX_DIFF_LINES ? null : lines
 }
 
 function DiffPlaceholder({ message }: { readonly message: string }) {

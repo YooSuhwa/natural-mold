@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { countInputLines } from '../skill-revision-diff-card'
+import { computeCappedRevisionDiffLines, countInputLines } from '../skill-revision-diff-card'
 import { computeRevisionDiffLines, hasRevisionDiffChanges } from '../skill-revision-diff-lines'
 
 describe('computeRevisionDiffLines', () => {
@@ -75,5 +75,28 @@ describe('countInputLines (diff 사전 검사, R5)', () => {
     const start = performance.now()
     expect(countInputLines(huge)).toBe(200_001)
     expect(performance.now() - start).toBeLessThan(200)
+  })
+})
+
+describe('computeCappedRevisionDiffLines (검사 순서 계약, R6)', () => {
+  it('동일 텍스트는 상한 초과 크기여도 "변경 없음"(빈 배열)이다 — tooLarge 오표기 금지', () => {
+    // 6천 라인 무변경 롤백 리비전 — 사전 검사가 먼저면 "변경이 너무 큼"으로
+    // 거짓 표기된다.
+    const huge = 'line\n'.repeat(6_000)
+    expect(computeCappedRevisionDiffLines(huge, huge)).toEqual([])
+  })
+
+  it('한쪽 입력이 상한을 넘고 내용이 다르면 diff 없이 null(placeholder)', () => {
+    const huge = 'line\n'.repeat(6_000)
+    expect(computeCappedRevisionDiffLines(huge, 'other\n')).toBeNull()
+    expect(computeCappedRevisionDiffLines('other\n', huge)).toBeNull()
+  })
+
+  it('상한 내 변경은 정상 diff 라인을 반환한다', () => {
+    const lines = computeCappedRevisionDiffLines('a\n', 'b\n')
+    expect(lines).toEqual([
+      { type: 'removed', text: 'a' },
+      { type: 'added', text: 'b' },
+    ])
   })
 })

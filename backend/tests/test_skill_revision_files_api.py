@@ -275,6 +275,73 @@ async def test_corrupt_snapshot_zip_treated_as_unavailable_not_500(
     assert rollback.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
 
 
+def _corrupt_member_bytes(path: Path) -> None:
+    """central directory는 살리고 첫 멤버의 압축 데이터만 손상 — open은 성공하고
+    read(CRC/zlib)에서 터지는 부류를 조립한다 (R6)."""
+
+    data = bytearray(path.read_bytes())
+    # local header 30B + filename('SKILL.md'=8B) 이후가 압축 스트림.
+    for offset in range(40, 46):
+        data[offset] ^= 0xFF
+    path.write_bytes(bytes(data))
+
+
+async def test_member_level_corruption_treated_as_unavailable_not_500(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """멤버 바이트 손상(Bad CRC/zlib) — open 검사를 통과해도 유실과 동일 계약 (R6)."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    _corrupt_member_bytes(Path(settings.data_root) / revision.object_key)
+
+    files = await client.get(f"/api/skills/{skill.id}/revisions/{revision.id}/files")
+    assert files.status_code == 200, files.text
+    assert files.json() == {"snapshot_pruned": True, "files": []}
+
+    content = await client.get(
+        f"/api/skills/{skill.id}/revisions/{revision.id}/files/content",
+        params={"path": "SKILL.md"},
+    )
+    assert content.status_code == 404
+
+    rollback = await client.post(f"/api/skills/{skill.id}/revisions/{revision.id}/rollback")
+    assert rollback.status_code == 409, rollback.text
+    assert rollback.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
+
+
+async def test_snapshot_invalid_frontmatter_rollback_conflict_not_500(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """frontmatter 계약 이전의 레거시 SKILL.md 스냅샷 rollback — 형제 케이스
+    (유실/손상/SKILL.md 부재)와 같은 409로 수렴, 디스크 무변경 (R6)."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    _rewrite_snapshot(revision, {"SKILL.md": b"no frontmatter at all"})
+
+    rollback = await client.post(f"/api/skills/{skill.id}/revisions/{revision.id}/rollback")
+    assert rollback.status_code == 409, rollback.text
+    assert rollback.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
+
+
+async def test_overlong_entry_path_excluded_from_files_list(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """content Query 상한(4096)을 넘는 엔트리는 목록에서도 제외 — 목록엔 있는데
+    못 여는 파일 비대칭을 상수 공유로 닫는다 (R6)."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    overlong = "/".join(["deep"] * 900) + "/leaf.md"  # 4500자+
+    assert len(overlong) > 4096
+    _rewrite_snapshot(revision, {"SKILL.md": b"ok", overlong: b"unreachable"})
+
+    files = await client.get(f"/api/skills/{skill.id}/revisions/{revision.id}/files")
+    assert files.status_code == 200, files.text
+    assert [entry["path"] for entry in files.json()["files"]] == ["SKILL.md"]
+
+
 async def test_snapshot_without_skill_md_rollback_conflict_not_500(
     client: AsyncClient,
     db: AsyncSession,

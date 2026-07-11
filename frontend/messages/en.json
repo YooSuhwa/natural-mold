@@ -2825,7 +2825,8 @@
         "rowDelete": "Delete",
         "affectedAgents": "Affected agents: {names}",
         "moreNames": "and {count, plural, one {# more} other {# more}}",
-        "affectedAgentsLoading": "Checking affected agents…"
+        "affectedAgentsLoading": "Checking affected agents…",
+        "affectedAgentsError": "Could not load the affected agents — only the link count is shown."
       },
       "versions": {
         "diffTitle": "SKILL.md diff",
