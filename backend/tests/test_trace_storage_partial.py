@@ -142,17 +142,19 @@ async def test_append_events_stores_payload_in_append_only_chunks() -> None:
 
     async with TestSession() as db:
         row = (
-            await db.execute(
-                select(MessageEvent).where(MessageEvent.assistant_msg_id == msg_id)
-            )
+            await db.execute(select(MessageEvent).where(MessageEvent.assistant_msg_id == msg_id))
         ).scalar_one()
         chunks = (
-            await db.execute(
-                select(MessageEventChunk)
-                .where(MessageEventChunk.message_event_id == row.id)
-                .order_by(MessageEventChunk.seq_start)
+            (
+                await db.execute(
+                    select(MessageEventChunk)
+                    .where(MessageEventChunk.message_event_id == row.id)
+                    .order_by(MessageEventChunk.seq_start)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         assert row.events == []
         assert [chunk.seq_start for chunk in chunks] == [1, 3]
@@ -358,9 +360,7 @@ async def test_record_turn_sets_status_completed() -> None:
     ]
 
     async with TestSession() as db:
-        record = await trace_storage.record_turn(
-            db, conversation_id=conv_id, events=events
-        )
+        record = await trace_storage.record_turn(db, conversation_id=conv_id, events=events)
         await db.commit()
         assert record is not None
         assert record.status == "completed"
@@ -429,3 +429,72 @@ async def test_append_events_sets_updated_at_on_insert_and_update() -> None:
         assert record is not None
         assert record.updated_at is not None
         assert len(await trace_storage.load_events(db, record)) == 2
+
+
+# --------------------------------------------------------------------------
+# BE-P5(d) — known_event_ids 캐시 경로 + load_persisted_event_ids 시드
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_append_events_known_ids_dedups_without_db_reload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """known_event_ids 가 주어지면 누적 chunk 재 SELECT 없이 dedup 한다."""
+    conv_id = await _seed_conversation()
+    msg_id = "msg-known-ids"
+
+    async with TestSession() as db:
+        await trace_storage.append_events(
+            db,
+            conversation_id=conv_id,
+            assistant_msg_id=msg_id,
+            events_chunk=_chunk(msg_id, 1, 3),
+        )
+        await db.commit()
+
+    async def _explode(*_args: object, **_kwargs: object) -> set[str]:
+        raise AssertionError("known_event_ids 경로는 DB 재로드를 하면 안 된다")
+
+    monkeypatch.setattr(trace_storage, "_load_existing_event_ids", _explode)
+
+    async with TestSession() as db:
+        # id 3 은 중복(캐시 기준 필터), 4-5 만 신규로 insert 되어야 한다.
+        await trace_storage.append_events(
+            db,
+            conversation_id=conv_id,
+            assistant_msg_id=msg_id,
+            events_chunk=_chunk(msg_id, 3, 3),
+            known_event_ids={f"{msg_id}-{i}" for i in range(1, 4)},
+        )
+        await db.commit()
+
+    monkeypatch.undo()
+    async with TestSession() as db:
+        fetched = await trace_storage.get_trace_by_msg_id(db, msg_id)
+        assert fetched is not None
+        ids = [event["id"] for event in fetched.events]
+        assert ids == [f"{msg_id}-{i}" for i in range(1, 6)]
+
+
+@pytest.mark.asyncio
+async def test_load_persisted_event_ids_seeds_from_chunks() -> None:
+    conv_id = await _seed_conversation()
+    msg_id = "msg-seed-ids"
+
+    async with TestSession() as db:
+        assert await trace_storage.load_persisted_event_ids(db, assistant_msg_id=msg_id) == set()
+
+    for start in (1, 4):
+        async with TestSession() as db:
+            await trace_storage.append_events(
+                db,
+                conversation_id=conv_id,
+                assistant_msg_id=msg_id,
+                events_chunk=_chunk(msg_id, start, 3),
+            )
+            await db.commit()
+
+    async with TestSession() as db:
+        seeded = await trace_storage.load_persisted_event_ids(db, assistant_msg_id=msg_id)
+        assert seeded == {f"{msg_id}-{i}" for i in range(1, 7)}

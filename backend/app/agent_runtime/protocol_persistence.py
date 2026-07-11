@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent
-from app.agent_runtime.protocol_redaction import redact_protocol_data
+from app.agent_runtime.protocol_redaction import redact_memory_content, redact_protocol_data
 
 COMPACT_STATE_METHODS: Final = frozenset({"values", "updates"})
 PERSISTED_STATE_KEYS: Final = frozenset(
@@ -13,14 +13,44 @@ PERSISTED_STATE_KEYS: Final = frozenset(
 
 
 def persistable_protocol_event(event: StoredProtocolEvent) -> dict[str, Any]:
-    payload = dict(event)
-    if event["method"] in COMPACT_STATE_METHODS:
+    """Persisted shape from a RAW (un-redacted) event — safe default.
+
+    Runs the full value/key redaction itself. Callers that already hold the
+    wire-redacted event (the streaming ``emit`` hot path) should use
+    :func:`persistable_wire_protocol_event` instead of paying the recursive
+    redaction pass a second time (BE-P5(b)).
+    """
+
+    redacted: StoredProtocolEvent = {
+        **event,
+        "data": redact_protocol_data(event["method"], event["data"], redact_memory=False),
+    }
+    return persistable_wire_protocol_event(redacted)
+
+
+def persistable_wire_protocol_event(wire_event: StoredProtocolEvent) -> dict[str, Any]:
+    """Persisted shape from an already wire-redacted event (BE-P5(b) hot path).
+
+    PRECONDITION: ``wire_event["data"]`` has been through
+    ``redact_protocol_data(method, data, redact_memory=False)`` — i.e. value
+    masking and sensitive-key redaction are done. This only adds the two
+    persist-specific deltas on top of the wire view:
+
+    1. ``values``/``updates`` state snapshots are compacted to message refs.
+    2. Memory content is masked (persisted/shared surfaces must not carry
+       memory bodies; the live wire keeps them — W2-3 contract).
+
+    Never feed a raw event here — its secrets would persist in plaintext.
+    """
+
+    payload = dict(wire_event)
+    if wire_event["method"] in COMPACT_STATE_METHODS:
         payload["data"] = _compact_state_snapshot(
-            event["data"],
-            checkpoint_id=event["checkpoint_id"],
-            checkpoint_ns=event["checkpoint_ns"],
+            wire_event["data"],
+            checkpoint_id=wire_event["checkpoint_id"],
+            checkpoint_ns=wire_event["checkpoint_ns"],
         )
-    payload["data"] = redact_protocol_data(event["method"], payload["data"])
+    payload["data"] = redact_memory_content(wire_event["method"], payload["data"])
     return payload
 
 
