@@ -9,22 +9,20 @@ Endpoints:
 - ``PATCH  /api/tools/{id}``                 update
 - ``DELETE /api/tools/{id}``                 delete
 - ``POST   /api/tools/{id}/run``             execute the tool with optional runtime args
+
+DB access and side effects live in :mod:`app.services.tool_service` (BE-S2);
+this router keeps schema conversion, ``Depends`` guards, and commits.
 """
 
 from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials.validation import require_user_credential
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
-from app.error_codes import (
-    tool_not_found,
-    unknown_tool_definition,
-)
+from app.error_codes import unknown_tool_definition
 from app.models.tool import Tool
 from app.schemas.tool import (
     ToolCreate,
@@ -34,9 +32,8 @@ from app.schemas.tool import (
     ToolRunRequest,
     ToolRunResponse,
 )
-from app.services import audit_service
+from app.services import tool_service
 from app.tools.registry import registry as tool_registry
-from app.tools.runner import run_tool
 
 router = APIRouter(tags=["tools"])
 
@@ -61,21 +58,6 @@ def _to_response(tool: Tool) -> ToolInstanceResponse:
         created_at=tool.created_at,
         updated_at=tool.updated_at,
     )
-
-
-async def _load_owned(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -> Tool:
-    row = (
-        await db.execute(
-            select(Tool).where(
-                Tool.id == tool_id,
-                # Either owned by the current user or a system-owned (NULL) tool.
-                Tool.visible_to(user_id),
-            )
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        raise tool_not_found()
-    return row
 
 
 # -- Catalog -----------------------------------------------------------------
@@ -104,12 +86,9 @@ async def list_tools(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[ToolInstanceResponse]:
-    stmt = select(Tool).where(Tool.visible_to(user.id))
-    if definition_key is not None:
-        stmt = stmt.where(Tool.definition_key == definition_key)
-    if enabled is not None:
-        stmt = stmt.where(Tool.enabled == enabled)
-    rows = (await db.execute(stmt.order_by(Tool.created_at.desc()))).scalars().all()
+    rows = await tool_service.list_tools(
+        db, user.id, definition_key=definition_key, enabled=enabled
+    )
     return [_to_response(r) for r in rows]
 
 
@@ -121,40 +100,16 @@ async def create_tool(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> ToolInstanceResponse:
-    if tool_registry.get(payload.definition_key) is None:
-        raise HTTPException(
-            status_code=400, detail=f"unknown definition '{payload.definition_key}'"
-        )
-    await require_user_credential(db, credential_id=payload.credential_id, user_id=user.id)
-
-    tool = Tool(
-        user_id=user.id,
-        definition_key=payload.definition_key,
-        name=payload.name,
-        description=payload.description,
-        parameters=payload.parameters,
-        credential_id=payload.credential_id,
-        enabled=payload.enabled,
-    )
-    db.add(tool)
+    tool = await tool_service.create_tool(db, user_id=user.id, data=payload)
     await db.commit()
     await db.refresh(tool)
-    await audit_service.record_event(
+    await tool_service.record_tool_audit(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
-        action="tool.create",
-        target_type="tool",
-        target_id=tool.id,
-        target_name_snapshot=tool.name,
-        target_owner_user_id=user.id,
-        outcome="success",
+        user=user,
         request=request,
+        action="tool.create",
+        tool=tool,
         metadata={
-            "definition_key": tool.definition_key,
             "parameter_keys": sorted((tool.parameters or {}).keys()),
             "credential_id": str(tool.credential_id) if tool.credential_id else None,
         },
@@ -169,7 +124,7 @@ async def get_tool(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> ToolInstanceResponse:
-    return _to_response(await _load_owned(db, tool_id, user.id))
+    return _to_response(await tool_service.load_owned(db, tool_id, user.id))
 
 
 @crud_router.patch("/{tool_id}", response_model=ToolInstanceResponse)
@@ -181,36 +136,17 @@ async def update_tool(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> ToolInstanceResponse:
-    tool = await _load_owned(db, tool_id, user.id)
-    if payload.name is not None:
-        tool.name = payload.name
-    if payload.description is not None:
-        tool.description = payload.description
-    if payload.parameters is not None:
-        tool.parameters = payload.parameters
-    if payload.credential_id is not None or "credential_id" in payload.model_fields_set:
-        await require_user_credential(db, credential_id=payload.credential_id, user_id=user.id)
-        tool.credential_id = payload.credential_id
-    if payload.enabled is not None:
-        tool.enabled = payload.enabled
+    tool = await tool_service.load_owned(db, tool_id, user.id)
+    await tool_service.update_tool(db, tool=tool, user_id=user.id, data=payload)
     await db.commit()
     await db.refresh(tool)
-    await audit_service.record_event(
+    await tool_service.record_tool_audit(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
-        action="tool.update",
-        target_type="tool",
-        target_id=tool.id,
-        target_name_snapshot=tool.name,
-        target_owner_user_id=user.id,
-        outcome="success",
+        user=user,
         request=request,
+        action="tool.update",
+        tool=tool,
         metadata={
-            "definition_key": tool.definition_key,
             "changed_fields": sorted(payload.model_fields_set),
             "credential_changed": "credential_id" in payload.model_fields_set,
         },
@@ -227,24 +163,15 @@ async def delete_tool(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> None:
-    tool = await _load_owned(db, tool_id, user.id)
-    await audit_service.record_event(
+    tool = await tool_service.load_owned(db, tool_id, user.id)
+    await tool_service.record_tool_audit(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
-        action="tool.delete",
-        target_type="tool",
-        target_id=tool.id,
-        target_name_snapshot=tool.name,
-        target_owner_user_id=user.id,
-        outcome="success",
+        user=user,
         request=request,
-        metadata={"definition_key": tool.definition_key},
+        action="tool.delete",
+        tool=tool,
     )
-    await db.delete(tool)
+    await tool_service.delete_tool(db, tool=tool)
     await db.commit()
 
 
@@ -260,37 +187,19 @@ async def run_tool_endpoint(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> ToolRunResponse:
-    tool = await _load_owned(db, tool_id, user.id)
+    tool = await tool_service.load_owned(db, tool_id, user.id)
     runtime_args = payload.runtime_args if payload else {}
-    result = await run_tool(
-        db=db,
-        tool=tool,
-        registry=tool_registry,
-        runtime_args=runtime_args,
-    )
-    if result.success:
-        from datetime import UTC
-        from datetime import datetime as _dt
-
-        tool.last_used_at = _dt.now(UTC).replace(tzinfo=None)
-    await audit_service.record_event(
+    result = await tool_service.run_tool_instance(db, tool=tool, runtime_args=runtime_args)
+    await tool_service.record_tool_audit(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user=user,
+        request=request,
         action="tool.run",
-        target_type="tool",
-        target_id=tool.id,
-        target_name_snapshot=tool.name,
-        target_owner_user_id=user.id,
+        tool=tool,
         outcome="success" if result.success else "failure",
         reason_code=None if result.success else "tool_run_failed",
         reason_message=result.error,
-        request=request,
         metadata={
-            "definition_key": tool.definition_key,
             "runtime_arg_keys": sorted((runtime_args or {}).keys()),
             "duration_ms": result.duration_ms,
             "http_status": result.http_status,
