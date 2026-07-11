@@ -119,7 +119,7 @@ async def rollback_to_revision(
 ) -> SkillRevision:
     if skill.user_id != user_id or revision.skill_id != skill.id:
         raise SkillRevisionNotFound("revision not found")
-    if _snapshot_pruned(revision):
+    if snapshot_pruned(revision):
         raise SkillRevisionRollbackUnsupported("revision snapshot was pruned")
     skill = await lock_skill_for_mutation(db, skill=skill)
     parent_revision_id = skill.current_revision_id
@@ -156,8 +156,65 @@ async def _next_revision_number(db: AsyncSession, skill_id: uuid.UUID) -> int:
     return int(current) + 1
 
 
-def _snapshot_pruned(revision: SkillRevision) -> bool:
+def snapshot_pruned(revision: SkillRevision) -> bool:
     return bool((revision.metadata_json or {}).get("snapshot_pruned"))
+
+
+# 스냅샷 zip에서 파일을 읽는 표시-계층 상한 — 드래프트 워크스페이스 어댑터의
+# 2MB/8KB 계약(skill_draft_workspace)과 동일한 fail-closed 방향.
+_REVISION_FILE_SNIFF_BYTES = 8192
+_MAX_REVISION_FILE_BYTES = 2 * 1024 * 1024
+
+
+async def list_revision_files(revision: SkillRevision) -> list[tuple[str, int, bool]]:
+    """리비전 스냅샷 zip의 파일 목록 — (path, size, is_binary).
+
+    디스크 추출 없이 central directory + head sniff만 읽는다(zip-slip 표면
+    없음). pruned 스냅샷은 호출 전에 ``snapshot_pruned``로 걸러야 한다.
+    """
+
+    return await anyio.to_thread.run_sync(_list_revision_files_sync, revision.object_key)
+
+
+async def load_revision_file_content(revision: SkillRevision, relative_path: str) -> str | None:
+    """리비전 스냅샷의 단일 파일 텍스트 — 열거 경로와 **정확 일치**할 때만.
+
+    traversal은 매칭 실패(None→404)로 끝난다. 바이너리(널바이트)·2MB 초과는
+    None — 표시 계층 fail-closed(드래프트 레일 뷰어와 동일 계약).
+    """
+
+    return await anyio.to_thread.run_sync(
+        _load_revision_file_content_sync, revision.object_key, relative_path
+    )
+
+
+def _list_revision_files_sync(object_key: str) -> list[tuple[str, int, bool]]:
+    zip_bytes = _read_revision_bytes(object_key)
+    entries: list[tuple[str, int, bool]] = []
+    with zipfile.ZipFile(BytesIO(zip_bytes)) as archive:
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            with archive.open(info) as handle:
+                sniff = handle.read(_REVISION_FILE_SNIFF_BYTES)
+            entries.append((info.filename, info.file_size, b"\x00" in sniff))
+    entries.sort(key=lambda entry: entry[0])
+    return entries
+
+
+def _load_revision_file_content_sync(object_key: str, relative_path: str) -> str | None:
+    zip_bytes = _read_revision_bytes(object_key)
+    with zipfile.ZipFile(BytesIO(zip_bytes)) as archive:
+        for info in archive.infolist():
+            if info.is_dir() or info.filename != relative_path:
+                continue
+            # 헤더의 file_size를 믿지 않고 스트림을 상한+1까지 읽어 검증한다.
+            with archive.open(info) as handle:
+                raw = handle.read(_MAX_REVISION_FILE_BYTES + 1)
+            if len(raw) > _MAX_REVISION_FILE_BYTES or b"\x00" in raw:
+                return None
+            return raw.decode("utf-8", errors="replace")
+    return None
 
 
 def _sync_moldy_runtime_columns(skill: Skill) -> None:

@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import desc, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation import Conversation
@@ -118,6 +118,40 @@ async def get_session(
         )
     )
     return result.scalar_one_or_none()
+
+
+async def list_sessions(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    skill_id: uuid.UUID | None = None,
+    status: str | None = None,
+    limit: int = 20,
+) -> list[SkillBuilderSession]:
+    """사용자의 빌더 세션 목록 (스튜디오 빌더 탭/인덱스, Phase 2).
+
+    ``skill_id``는 improve 원본(``source_skill_id``)과 create 산출물
+    (``finalized_skill_id``) 양쪽에 매칭한다 — "이 스킬의 빌더 이력"을
+    한 질의로 잡기 위함(인덱스 양쪽 존재).
+    """
+
+    stmt = (
+        select(SkillBuilderSession)
+        .where(SkillBuilderSession.user_id == user_id)
+        .order_by(desc(SkillBuilderSession.updated_at))
+        .limit(limit)
+    )
+    if skill_id is not None:
+        stmt = stmt.where(
+            or_(
+                SkillBuilderSession.source_skill_id == skill_id,
+                SkillBuilderSession.finalized_skill_id == skill_id,
+            )
+        )
+    if status is not None:
+        stmt = stmt.where(SkillBuilderSession.status == status)
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 async def append_message(
@@ -280,6 +314,7 @@ __all__ = [
     "confirm_session",
     "create_session",
     "get_session",
+    "list_sessions",
     "load_skill_snapshot",
     "save_draft_package",
     "save_trigger_eval_result",

@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
-from app.error_codes import skill_not_found, skill_revision_not_found
+from app.error_codes import skill_file_not_found, skill_not_found, skill_revision_not_found
 from app.models.skill import Skill
+from app.models.skill_revision import SkillRevision
 from app.schemas.skill import SkillResponse
 from app.schemas.skill_revision import (
     SkillRevisionDetail,
+    SkillRevisionFileContentResponse,
+    SkillRevisionFileEntry,
+    SkillRevisionFilesResponse,
     SkillRevisionSummary,
     SkillRollbackResponse,
 )
@@ -48,6 +52,59 @@ async def get_skill_revision(
     if revision is None:
         raise skill_revision_not_found()
     return SkillRevisionDetail.model_validate(revision)
+
+
+@router.get("/{revision_id}/files", response_model=SkillRevisionFilesResponse)
+async def list_skill_revision_files(
+    skill_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> SkillRevisionFilesResponse:
+    """리비전 스냅샷 zip의 파일 목록 (버전 diff/소스 보기, Phase 2).
+
+    디스크 추출 없이 zip 메타데이터 + head sniff만 읽는다. pruned 스냅샷은
+    파일을 제공할 수 없음을 명시 플래그로 반환한다.
+    """
+
+    revision = await _load_revision_or_404(
+        db, skill_id=skill_id, revision_id=revision_id, user=user
+    )
+    if skill_revision_service.snapshot_pruned(revision):
+        return SkillRevisionFilesResponse(snapshot_pruned=True, files=[])
+    entries = await skill_revision_service.list_revision_files(revision)
+    return SkillRevisionFilesResponse(
+        snapshot_pruned=False,
+        files=[
+            SkillRevisionFileEntry(path=path, size=size, is_binary=is_binary)
+            for path, size, is_binary in entries
+        ],
+    )
+
+
+@router.get("/{revision_id}/files/content", response_model=SkillRevisionFileContentResponse)
+async def get_skill_revision_file_content(
+    skill_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    path: str = Query(..., min_length=1, max_length=500),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> SkillRevisionFileContentResponse:
+    """리비전 스냅샷의 단일 파일 텍스트 (소유자 전용).
+
+    요청 path는 zip 열거 경로와 **정확 일치**해야 한다 — traversal은 매칭
+    실패(404)로 끝난다. 바이너리·2MB 초과·pruned도 404(fail-closed).
+    """
+
+    revision = await _load_revision_or_404(
+        db, skill_id=skill_id, revision_id=revision_id, user=user
+    )
+    if skill_revision_service.snapshot_pruned(revision):
+        raise skill_file_not_found()
+    content = await skill_revision_service.load_revision_file_content(revision, path)
+    if content is None:
+        raise skill_file_not_found()
+    return SkillRevisionFileContentResponse(path=path, content=content)
 
 
 @router.post("/{revision_id}/rollback", response_model=SkillRollbackResponse)
@@ -110,6 +167,25 @@ async def _load_skill_or_404(
     if skill is None:
         raise skill_not_found()
     return skill
+
+
+async def _load_revision_or_404(
+    db: AsyncSession,
+    *,
+    skill_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    user: CurrentUser,
+) -> SkillRevision:
+    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    revision = await skill_revision_service.get_revision(
+        db,
+        skill=skill,
+        user_id=user.id,
+        revision_id=revision_id,
+    )
+    if revision is None:
+        raise skill_revision_not_found()
+    return revision
 
 
 async def _record_revision_rollback_audit(

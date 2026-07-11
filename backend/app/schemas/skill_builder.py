@@ -99,6 +99,22 @@ class SkillDraftPackage(BaseModel):
     benchmark: dict[str, JsonValue] | None = None
 
 
+class SkillBuilderSessionBrief(BaseModel):
+    """세션 목록용 경량 응답 — draft/snapshot 등 무거운 JSON 컬럼 제외."""
+
+    model_config = ConfigDict(from_attributes=True, frozen=True)
+
+    id: uuid.UUID
+    mode: SkillBuilderMode
+    status: SkillBuilderStatus
+    user_request: str
+    source_skill_id: uuid.UUID | None = None
+    finalized_skill_id: uuid.UUID | None = None
+    conversation_id: uuid.UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class SkillBuilderSessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 

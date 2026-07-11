@@ -14,12 +14,11 @@
 - 상태: done (2026-07-11)
 
 ## M1: 백엔드 3종 (집계 / 리비전 파일 / 세션 목록)
-- [ ] used_by_count 실집계: `skill_response_enrichment.py` 배치 함수(단일 GROUP BY, user + `runtime_profile=='standard'` 필터) → `skill_router_support.py` serialize 주입 + `models/skill.py` stale 주석 갱신
-- [ ] 리비전 파일 API: `GET .../revisions/{rid}/files` + `.../files/content?path=` (정확 일치, 8KB sniff, 2MB cap, pruned 명시 응답, 404 통일)
-- [ ] 빌더 세션 목록: `GET /api/skill-builder?skill_id=&status=&limit=` (user 스코프, source OR finalized 매칭, updated_at desc)
-- 검증: `cd backend && uv run pytest -q -k "skill" && uv run ruff check .`
-- done-when: 신규 테스트(링크 0/N·타유저·히든 제외 / 소유권·바이너리·pruned·경로 404 / 스코프·매칭·정렬) 그린
-- 상태: pending
+- [x] used_by_count 실집계: `skill_response_enrichment.agent_link_counts_by_skill`(단일 GROUP BY, user + `runtime_profile=='standard'` 필터) → `skill_router_support.py` serialize 주입 + `models/skill.py` stale 주석 갱신 (컬럼은 항상 0 유지 — 회귀 단언 포함)
+- [x] 리비전 파일 API: `GET .../revisions/{rid}/files`(zip 메타+8KB sniff, is_binary 마킹) + `.../files/content?path=`(정확 일치, 2MB 상한은 헤더 아닌 스트림 검증, pruned 명시 응답, 404 통일). `SkillRevisionDetail`에 `parent_revision_id`/`restored_from_revision_id` 노출(M4 diff 기준)
+- [x] 빌더 세션 목록: `GET /api/skill-builder?skill_id=&status=&limit=` — `SkillBuilderSessionBrief` 경량 응답, source OR finalized 매칭, updated_at desc, limit 1..100
+- 검증: 신규 테스트 13개 + 전체 2681 그린(SKILL_EVALUATION_ENABLED=true), ruff 클린. env-false 기인 기존 실패 2건은 env로 확인
+- 상태: done (2026-07-11)
 
 ## M2a: 스튜디오 셸 + 신규 라우트 + 탭 이식 + 설정 탭 (다이얼로그 병존 착지)
 - [ ] `SkillStudioShell`(클라이언트: useParams+usePathname 파생, 6탭, 컨텍스트 바+스킬 스위처, `flex min-h-0 flex-1 flex-col`) + `app/skills/layout.tsx` 삽입

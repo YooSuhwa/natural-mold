@@ -36,6 +36,8 @@ class SkillRevisionSummary(BaseModel):
 
 
 class SkillRevisionDetail(SkillRevisionSummary):
+    parent_revision_id: uuid.UUID | None = None
+    restored_from_revision_id: uuid.UUID | None = None
     changed_files: list[JsonValue] | None = None
     changelog_items: list[JsonValue] | None = None
     compatibility_result: dict[str, JsonValue] | None = None
@@ -48,3 +50,27 @@ class SkillRollbackResponse(BaseModel):
 
     skill: SkillResponse
     revision: SkillRevisionSummary
+
+
+class SkillRevisionFileEntry(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    size: int
+    # 앞 8KB sniff에 널바이트가 있는 파일 — 내용 조회는 404(fail-closed).
+    is_binary: bool
+
+
+class SkillRevisionFilesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    # 리텐션이 스냅샷을 정리한 리비전 — 파일 목록/내용을 제공할 수 없다.
+    snapshot_pruned: bool
+    files: list[SkillRevisionFileEntry]
+
+
+class SkillRevisionFileContentResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    content: str

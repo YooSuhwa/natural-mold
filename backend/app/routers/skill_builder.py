@@ -32,6 +32,7 @@ from app.schemas.skill_builder import (
     SkillBuilderFileEntry,
     SkillBuilderFilesResponse,
     SkillBuilderMode,
+    SkillBuilderSessionBrief,
     SkillBuilderSessionResponse,
     SkillBuilderStartRequest,
     SkillBuilderStatus,
@@ -128,6 +129,30 @@ async def start_skill_builder(
     await db.commit()
     await db.refresh(session)
     return _session_response(session, agent_id=agent.id)
+
+
+@router.get("", response_model=list[SkillBuilderSessionBrief])
+async def list_skill_builder_sessions(
+    skill_id: uuid.UUID | None = Query(None),
+    status: SkillBuilderStatus | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> list[SkillBuilderSessionBrief]:
+    """사용자의 빌더 세션 목록 (스튜디오 빌더 탭/인덱스, Phase 2).
+
+    ``skill_id``는 improve 원본과 create 산출물(finalized) 양쪽에 매칭 —
+    "이 스킬의 빌더 이력"을 한 번에 조회한다. updated_at 내림차순.
+    """
+
+    sessions = await skill_builder_service.list_sessions(
+        db,
+        user_id=user.id,
+        skill_id=skill_id,
+        status=status.value if status is not None else None,
+        limit=limit,
+    )
+    return [SkillBuilderSessionBrief.model_validate(session) for session in sessions]
 
 
 @router.get("/{session_id}", response_model=SkillBuilderSessionResponse)

@@ -15,7 +15,10 @@ from app.models.skill import Skill
 from app.models.skill_revision import SkillRevision
 from app.schemas.skill import SkillResponse
 from app.services import audit_service, skill_revision_audit
-from app.services.skill_response_enrichment import build_skill_quality_map
+from app.services.skill_response_enrichment import (
+    agent_link_counts_by_skill,
+    build_skill_quality_map,
+)
 
 
 async def record_skill_audit(
@@ -59,6 +62,8 @@ async def serialize_skill(db: AsyncSession, skill: Skill, user: CurrentUser) -> 
     if quality is not None:
         response.latest_evaluation_summary = quality.latest_evaluation_summary
         response.health = quality.health
+    link_counts = await agent_link_counts_by_skill(db, user_id=user.id, skill_ids=[skill.id])
+    response.used_by_count = link_counts.get(skill.id, 0)
     response.origin_summary = origin
     response.publication_summary = publication
     response.installation = await _derive_installation(db, skill)
@@ -73,6 +78,9 @@ async def serialize_skills(
     publications = await origin_service.bulk_derive_publication_summaries_for_skills(db, skills)
     installations = await origin_service.bulk_derive_skill_installation_summaries(db, skills)
     quality_by_skill = await build_skill_quality_map(db, user=user, skills=skills)
+    link_counts = await agent_link_counts_by_skill(
+        db, user_id=user.id, skill_ids=[skill.id for skill in skills]
+    )
     responses: list[SkillResponse] = []
     for skill in skills:
         response = SkillResponse.model_validate(skill)
@@ -80,6 +88,7 @@ async def serialize_skills(
         if quality is not None:
             response.latest_evaluation_summary = quality.latest_evaluation_summary
             response.health = quality.health
+        response.used_by_count = link_counts.get(skill.id, 0)
         response.origin_summary = origin_service.derive_origin_summary_for_skill(skill, user)
         response.publication_summary = publications.get(
             skill.id,
