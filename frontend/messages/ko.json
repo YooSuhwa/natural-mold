@@ -2549,7 +2549,6 @@
     },
     "detailDialog": {
       "loading": "스킬 불러오는 중…",
-      "unsupported": "지원하지 않는 스킬 종류입니다.",
       "close": "닫기",
       "save": "저장",
       "saved": "저장되었습니다",
@@ -2587,7 +2586,6 @@
       "binaryFile": "바이너리 파일",
       "binaryUnavailable": "이 파일 형식은 편집기 미리보기를 사용할 수 없습니다.",
       "download": "다운로드",
-      "improveByChat": "대화로 개선",
       "credentialsEmpty": "이 스킬에는 필요한 자격증명이 없습니다.",
       "tabs": {
         "content": "내용",
@@ -2668,7 +2666,6 @@
         "files": "{count}개 파일",
         "changelog": "변경 요약",
         "changedFiles": "변경된 파일",
-        "compatibility": "호환성 결과",
         "evaluationSnapshot": "평가 스냅샷",
         "noItems": "기록된 항목이 없습니다.",
         "notRecorded": "아직 기록되지 않았습니다.",

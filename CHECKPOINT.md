@@ -54,12 +54,12 @@
 - 상태: done (2026-07-11)
 
 ## M5: 고아 스윕 + 스튜디오 E2E/캡처 + 문서
-- [ ] 고아 스윕: `getVisibleSkillDetailTabs`(+테스트), `skill.detailDialog` **개별 고아 키만**(네임스페이스 통삭제 금지 — 이식 탭 15개 파일 공유), `coerceSkillDetailTab`은 유지
-- [ ] 스튜디오 E2E spec(표/벌크/탭 내비/스위처/diff/레거시 redirect) + 캡처 투어
-- [ ] 문서: phase2 스펙 체크오프, phase1 스펙 §10 참조 갱신
-- 검증: backend 전체 pytest + `pnpm vitest run && pnpm build && pnpm lint && pnpm lint:i18n && pnpm lint:design-system && pnpm lint:a11y && pnpm lint:frontend-architecture` + E2E throwaway 스택(fresh 포트, `E2E_LLM_*=''`, `E2E_SEED_USER_ENABLED=true`)
-- done-when: 스펙 §2 성공 기준 6건 전부
-- 상태: pending
+- [x] 고아 스윕: `skill-detail-tabs.tsx`+테스트 **통삭제**(coerceSkillDetailTab 포함 — redirect는 `_lib`의 `legacyDetailTabToStudioTab`이 담당하므로 소비자 0), `skill.detailDialog` 고아 키 3건만 제거(unsupported/improveByChat/history.compatibility — 142키 전수 스캔), 스테일 E2E 2종 추가 삭제(skill-builder-create/readiness — origin/main부터 레드, Phase 1 제거된 다이얼로그 UI 전용)
+- [x] 스튜디오 E2E `skill-studio.spec.ts` 3케이스(표 행 내비+탭 비활성/스위처 탭 유지/빌더 인덱스) + 캡처 투어 `captures-skill-studio.spec.ts` 7장(목록/벌크/소스/버전 diff/리비전 뷰어/설정/빌더 인덱스 — 라이브 스택 통과)
+- [x] 문서: phase1 스펙 §10 출시 표기
+- 백로그 추가: System LLM 미설정 안내 E2E 재작성(현 SkillCreateDialog 계약 기준 — 삭제된 readiness spec의 커버리지 공백)
+- 검증: backend 2681(SKILL_EVALUATION_ENABLED=true)+ruff / vitest 1269 / build / eslint 0에러 / i18n 그린. 라이브 스택(5437/3410/8410): skill-builder-chat 2 + captures-phase15 3 + captures-skill-studio 1(7장) 통과. mock 모드: skill-studio 3·history·export·eval-actions 2·management 2·state-filters 그린. design-system·a11y 레드는 베이스 기존(stash 대조), architecture 보고-전용 +2는 기존 exportUrl 직수입 클래스와 동일(주석 검토 완료)
+- 상태: done (2026-07-11)
 
 ## 마일스톤 의존
 M0 → M1 → M2a → M2b → M3 → M4 → M5. 이후 /review 적대 리뷰 → PR.

@@ -2549,7 +2549,6 @@
     },
     "detailDialog": {
       "loading": "Loading",
-      "unsupported": "Unsupported",
       "close": "Close",
       "save": "Save",
       "saved": "Saved",
@@ -2587,7 +2586,6 @@
       "binaryFile": "Binary File",
       "binaryUnavailable": "Binary Unavailable",
       "download": "Download",
-      "improveByChat": "Improve by chat",
       "credentialsEmpty": "This skill does not require credentials.",
       "tabs": {
         "content": "Content",
@@ -2668,7 +2666,6 @@
         "files": "{count} files",
         "changelog": "Changelog",
         "changedFiles": "Changed files",
-        "compatibility": "Compatibility result",
         "evaluationSnapshot": "Evaluation snapshot",
         "noItems": "No items recorded.",
         "notRecorded": "Not recorded yet.",
