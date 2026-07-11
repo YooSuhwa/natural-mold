@@ -35,6 +35,19 @@ describe('computeRevisionDiffLines', () => {
     ])
   })
 
+  it('CRLF↔LF 개행 차이는 변경으로 세지 않는다 (stripTrailingCr)', () => {
+    const lines = computeRevisionDiffLines('a\r\nb\r\n', 'a\nb\n')
+
+    expect(hasRevisionDiffChanges(lines)).toBe(false)
+  })
+
+  it('말미 개행 유무만 다른 파일은 마지막 라인을 유령 변경으로 만들지 않는다', () => {
+    // jsdiff는 'b'와 'b\n'을 같은 라인으로 취급(newline 차이는 변경 아님).
+    const lines = computeRevisionDiffLines('a\nb', 'a\nb\n')
+
+    expect(hasRevisionDiffChanges(lines)).toBe(false)
+  })
+
   it('멀티라인 chunk를 개별 라인으로 분해하고 말미 개행을 라인으로 세지 않는다', () => {
     const lines = computeRevisionDiffLines('x\n', 'x\ny\nz\n')
 

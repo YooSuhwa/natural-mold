@@ -2822,7 +2822,8 @@
         "rowMenuAria": "More actions for {name}",
         "rowViewSource": "View source",
         "rowExport": "Export .skill",
-        "rowDelete": "Delete"
+        "rowDelete": "Delete",
+        "affectedAgents": "Affected agents: {names}"
       },
       "versions": {
         "diffTitle": "SKILL.md diff",
@@ -2840,7 +2841,8 @@
         "revisionFilesAria": "Revision file list",
         "binaryFile": "Binary",
         "noTextFiles": "No text files to display.",
-        "fileUnavailable": "Cannot read this file."
+        "fileUnavailable": "Cannot read this file.",
+        "diffTooLarge": "The change is too large to render as a diff — use the source view."
       }
     }
   },

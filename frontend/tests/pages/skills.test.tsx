@@ -19,6 +19,18 @@ vi.mock('@/components/skill/skill-create-dialog', () => ({
   },
 }))
 
+vi.mock('@/lib/hooks/use-agents', () => ({
+  useAgents: () => ({
+    data: [
+      {
+        id: 'agent-1',
+        name: '회의 비서',
+        skills: [{ id: 'skill-1', name: 'Korea Weather' }],
+      },
+    ],
+  }),
+}))
+
 vi.mock('@/components/marketplace/publish-wizard', () => ({
   PublishWizard: () => null,
 }))
@@ -93,7 +105,7 @@ describe('SkillsPage', () => {
     expect(screen.getByRole('columnheader', { name: /스킬/ })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: /에이전트/ })).toBeInTheDocument()
     expect(screen.getByText('Korea Weather')).toBeInTheDocument()
-    expect(screen.getByText('korea-weather')).toBeInTheDocument()
+    expect(screen.getByText(/korea-weather · v0\.1\.0/)).toBeInTheDocument()
     // 연결 카운트 실데이터 (M1)
     expect(screen.getByText('2개 에이전트')).toBeInTheDocument()
   })
@@ -103,6 +115,21 @@ describe('SkillsPage', () => {
 
     expect(screen.getByText('검증됨')).toBeInTheDocument()
     expect(screen.getByText('평가 92%')).toBeInTheDocument()
+  })
+
+  it("'선택 해제'가 controlled 선택(rowSelection+selected)을 함께 리셋한다", async () => {
+    const user = userEvent.setup()
+    render(<SkillsPageClient />)
+
+    // 행 단위 체크박스 경로(프로젝트 규칙 — 헤더 전체선택만 쓰면 행 클릭
+    // 전파 클래스를 못 잡는다).
+    await user.click(screen.getByRole('checkbox', { name: '행 선택' }))
+    expect(screen.getByTestId('skill-bulk-bar')).toHaveTextContent('1개 선택됨')
+
+    await user.click(screen.getByRole('button', { name: '선택 해제' }))
+
+    expect(screen.queryByTestId('skill-bulk-bar')).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '행 선택' })).not.toBeChecked()
   })
 
   it('행 선택 시 벌크 바가 뜨고 일괄 삭제 확인에 이름을 열거한다', async () => {
@@ -121,6 +148,8 @@ describe('SkillsPage', () => {
     const dialog = screen.getByRole('alertdialog')
     expect(dialog).toHaveTextContent('Korea Weather')
     expect(dialog).toHaveTextContent('연결된 에이전트 2개')
+    // AD-4.1 — 영향받는 에이전트 이름 역도출 표시.
+    expect(dialog).toHaveTextContent('영향받는 에이전트: 회의 비서')
 
     await user.click(within(dialog).getByRole('button', { name: '삭제' }))
 

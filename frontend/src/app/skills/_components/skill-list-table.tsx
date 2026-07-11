@@ -22,6 +22,7 @@ import {
 import { SkillEvaluationSummaryBadge } from '@/components/skill/skill-evaluation-summary-badge'
 import { SkillHealthBadge } from '@/components/skill/skill-health-badge'
 import { skillsApi } from '@/lib/api/skills'
+import { useAgents } from '@/lib/hooks/use-agents'
 import { useDeleteSkill } from '@/lib/hooks/use-skills'
 import { formatDisplayDate } from '@/lib/utils/display-format'
 import type { Skill } from '@/lib/types/skill'
@@ -66,6 +67,12 @@ export function SkillListTable({
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([])
   const [deleting, setDeleting] = useState(false)
   const pendingSkills = skills.filter((skill) => pendingDeleteIds.includes(skill.id))
+  // 다이얼로그가 파생-close된 뒤(대상이 refetch로 전부 소실) 잔존 id가 남으면
+  // 해당 스킬이 목록에 재등장할 때 파괴적 다이얼로그가 저절로 재오픈된다 —
+  // guarded render-time 리셋으로 정리(패키지 에디터 selectedPath 선례).
+  if (pendingDeleteIds.length > 0 && pendingSkills.length === 0 && !deleting) {
+    setPendingDeleteIds([])
+  }
 
   function resetSelection() {
     setRowSelection({})
@@ -103,6 +110,16 @@ export function SkillListTable({
 
   const connectedTotal = pendingSkills.reduce((sum, skill) => sum + skill.used_by_count, 0)
   const pendingNames = pendingSkills.map((skill) => skill.name).join(', ')
+  // AD-4.1 — 영향받는 에이전트 이름은 신규 API 없이 에이전트 목록에서 역도출.
+  // (사이드바가 같은 캐시를 쓰므로 대부분 웜 캐시 히트)
+  const { data: agents } = useAgents()
+  const pendingIdSet = new Set(pendingDeleteIds)
+  const affectedAgentNames =
+    connectedTotal > 0
+      ? (agents ?? [])
+          .filter((agent) => agent.skills?.some((brief) => pendingIdSet.has(brief.id)))
+          .map((agent) => agent.name)
+      : []
 
   const columns: ColumnDef<Skill, unknown>[] = [
     {
@@ -113,6 +130,7 @@ export function SkillListTable({
           <p className="truncate text-sm font-medium">{row.original.name}</p>
           <p className="moldy-ui-micro truncate font-mono text-muted-foreground">
             {row.original.slug}
+            {row.original.version ? ` · v${row.original.version}` : ''}
           </p>
         </div>
       ),
@@ -142,7 +160,8 @@ export function SkillListTable({
     {
       id: 'evaluation',
       header: t('columns.evaluation'),
-      enableSorting: false,
+      // 목업 계약(통과율 정렬) — 요약 pass_rate 기준, 미평가는 최하단.
+      accessorFn: (skill) => skill.latest_evaluation_summary?.pass_rate ?? -1,
       cell: ({ row }) => (
         <SkillEvaluationSummaryBadge summary={row.original.latest_evaluation_summary} />
       ),
@@ -225,10 +244,17 @@ export function SkillListTable({
         title={list('bulkDeleteTitle', { count: pendingSkills.length })}
         description={
           connectedTotal > 0
-            ? list('bulkDeleteDescriptionConnected', {
-                names: pendingNames,
-                connected: connectedTotal,
-              })
+            ? [
+                list('bulkDeleteDescriptionConnected', {
+                  names: pendingNames,
+                  connected: connectedTotal,
+                }),
+                affectedAgentNames.length > 0
+                  ? list('affectedAgents', { names: affectedAgentNames.join(', ') })
+                  : null,
+              ]
+                .filter(Boolean)
+                .join('\n')
             : list('bulkDeleteDescription', { names: pendingNames })
         }
         confirmLabel={list('deleteSelected')}

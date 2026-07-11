@@ -80,6 +80,7 @@ async def list_revisions(
     *,
     skill: Skill,
     user_id: uuid.UUID,
+    limit: int = 100,
 ) -> list[SkillRevision]:
     if skill.user_id != user_id:
         return []
@@ -87,6 +88,7 @@ async def list_revisions(
         select(SkillRevision)
         .where(SkillRevision.skill_id == skill.id, SkillRevision.user_id == user_id)
         .order_by(desc(SkillRevision.revision_number))
+        .limit(limit)
     )
     return list(result.scalars().all())
 

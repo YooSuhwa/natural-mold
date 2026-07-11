@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
-from app.error_codes import skill_file_not_found, skill_not_found, skill_revision_not_found
+from app.error_codes import (
+    skill_file_not_found,
+    skill_not_found,
+    skill_revision_not_found,
+    skill_revision_snapshot_unavailable,
+)
 from app.models.skill import Skill
 from app.models.skill_revision import SkillRevision
 from app.routers.skill_router_support import serialize_skill
@@ -27,11 +32,16 @@ router = APIRouter(prefix="/api/skills/{skill_id}/revisions", tags=["skill-revis
 @router.get("", response_model=list[SkillRevisionSummary])
 async def list_skill_revisions(
     skill_id: uuid.UUID,
+    limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[SkillRevisionSummary]:
+    # 리비전 목록 — 최신순 상한(형제 세션 목록과 동일한 bounded 계약).
+    # 저장/롤백마다 리비전이 늘므로 무제한 반환은 수백 행 응답·DOM으로 자란다.
     skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
-    revisions = await skill_revision_service.list_revisions(db, skill=skill, user_id=user.id)
+    revisions = await skill_revision_service.list_revisions(
+        db, skill=skill, user_id=user.id, limit=limit
+    )
     return [SkillRevisionSummary.model_validate(revision) for revision in revisions]
 
 
@@ -128,13 +138,21 @@ async def rollback_skill_revision(
     )
     if revision is None:
         raise skill_revision_not_found()
-    restored = await skill_revision_service.rollback_to_revision(
-        db,
-        skill=skill,
-        user_id=user.id,
-        revision=revision,
-        changelog_summary=f"Rolled back to revision {revision.revision_number}.",
-    )
+    try:
+        restored = await skill_revision_service.rollback_to_revision(
+            db,
+            skill=skill,
+            user_id=user.id,
+            revision=revision,
+            changelog_summary=f"Rolled back to revision {revision.revision_number}.",
+        )
+    except (
+        skill_revision_service.SkillRevisionRollbackUnsupported,
+        FileNotFoundError,
+    ) as exc:
+        # pruned 플래그·zip 유실 모두 files API와 동일한 "스냅샷 불가" 계약으로
+        # 정규화 — unhandled 500이면 같은 패널의 diff placeholder와 비대칭이다.
+        raise skill_revision_snapshot_unavailable() from exc
     await skill_revision_audit.record_revision_create_audit(
         db,
         user=user,

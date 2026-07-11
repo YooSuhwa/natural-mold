@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import Link from 'next/link'
 import { FileCode2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -18,6 +19,10 @@ import {
 } from './skill-revision-diff-lines'
 
 const SKILL_MD = 'SKILL.md'
+
+// diff 계산/렌더 상한 — 2MB 상한의 병적 입력에서 Myers diff + 라인당 DOM이
+// 메인 스레드를 잡는 것을 막는다(초과 시 placeholder, 소스 뷰어로 유도).
+const MAX_DIFF_LINES = 5000
 
 /**
  * 선택 리비전 vs parent 리비전의 SKILL.md 라인 diff (Phase 2 목업 ver-diff).
@@ -110,9 +115,27 @@ function DiffBody({
     return <DiffPlaceholder message={t('parentUnavailable')} />
   }
 
-  const lines = computeRevisionDiffLines(parentText, currentText)
+  return <DiffLines parentText={parentText} currentText={currentText} />
+}
+
+function DiffLines({
+  parentText,
+  currentText,
+}: {
+  readonly parentText: string
+  readonly currentText: string
+}) {
+  const t = useTranslations('skill.studio.versions')
+  // 부모 리렌더(rollback pending 등)마다 diff를 재계산하지 않는다.
+  const lines = useMemo(
+    () => computeRevisionDiffLines(parentText, currentText),
+    [parentText, currentText],
+  )
   if (!hasRevisionDiffChanges(lines)) {
     return <DiffPlaceholder message={t('noChanges')} />
+  }
+  if (lines.length > MAX_DIFF_LINES) {
+    return <DiffPlaceholder message={t('diffTooLarge')} />
   }
 
   return (

@@ -2822,7 +2822,8 @@
         "rowMenuAria": "{name} 추가 작업",
         "rowViewSource": "소스 보기",
         "rowExport": ".skill 내보내기",
-        "rowDelete": "삭제"
+        "rowDelete": "삭제",
+        "affectedAgents": "영향받는 에이전트: {names}"
       },
       "versions": {
         "diffTitle": "SKILL.md diff",
@@ -2840,7 +2841,8 @@
         "revisionFilesAria": "리비전 파일 목록",
         "binaryFile": "바이너리",
         "noTextFiles": "표시할 텍스트 파일이 없습니다.",
-        "fileUnavailable": "이 파일의 내용을 읽을 수 없습니다."
+        "fileUnavailable": "이 파일의 내용을 읽을 수 없습니다.",
+        "diffTooLarge": "변경이 너무 커서 diff를 표시할 수 없습니다 — 소스 보기를 이용하세요."
       }
     }
   },

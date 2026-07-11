@@ -48,12 +48,16 @@ const builderBrief = {
 }
 
 async function mockStudioApis(page: import('@playwright/test').Page) {
+  const sessionListRequests: Array<string | null> = []
   await page.route('**/api/skill-builder**', (route) => {
     const url = new URL(route.request().url())
     if (route.request().method() === 'GET' && url.pathname === '/api/skill-builder') {
       const scoped = url.searchParams.get('skill_id')
+      sessionListRequests.push(scoped)
+      // 무스코프 요청에는 다른 픽스처 — 스코핑 회귀가 세션 이력 단언으로
+      // 위장 통과하는 토톨로지를 차단한다.
       return route.fulfill({
-        json: scoped && scoped !== alpha.id ? [] : [builderBrief],
+        json: scoped === alpha.id ? [builderBrief] : [],
       })
     }
     return route.fulfill({ status: 404, json: { detail: url.pathname } })
@@ -87,6 +91,7 @@ async function mockStudioApis(page: import('@playwright/test').Page) {
     }
     return route.fulfill({ status: 404, json: { detail: pathName } })
   })
+  return { sessionListRequests }
 }
 
 test.describe('Skill studio IA', () => {
@@ -132,7 +137,7 @@ test.describe('Skill studio IA', () => {
   })
 
   test('builder tab lands on the scoped builder index with session history', async ({ page }) => {
-    await mockStudioApis(page)
+    const { sessionListRequests } = await mockStudioApis(page)
 
     await page.goto('/skills/skill-alpha/source')
     await page.getByTestId('studio-tab-builder').click()
@@ -145,8 +150,11 @@ test.describe('Skill studio IA', () => {
     await expect(page.getByRole('button', { name: /Alpha Notes 개선 시작/ })).toBeVisible()
     const sessionList = page.getByTestId('builder-session-list')
     await expect(sessionList).toContainText('Alpha Notes를 개선해줘')
-    await expect(
-      sessionList.getByRole('link').first(),
-    ).toHaveAttribute('href', `/skills/builder/${builderBrief.id}`)
+    await expect(sessionList.getByRole('link').first()).toHaveAttribute(
+      'href',
+      `/skills/builder/${builderBrief.id}`,
+    )
+    // 목록 요청 자체가 skill_id로 스코프됐는지 — mock 픽스처 분기와 이중 방어.
+    expect(sessionListRequests).toContain(alpha.id)
   })
 })

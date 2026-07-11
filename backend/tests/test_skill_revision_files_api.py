@@ -187,6 +187,70 @@ async def test_pruned_snapshot_explicit_and_content_404(
     assert content.status_code == 404
 
 
+async def test_binary_sniff_boundary_contract(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """8KB sniff 비대칭 계약 고정 — 첫 널바이트가 8KB 뒤인 파일은 목록엔
+    텍스트(is_binary=False)로 뜨지만 content는 전량 검사로 404(fail-closed).
+    누가 content 검사를 head-sniff로 '일관화'하면 이 테스트가 레드가 된다."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    late_null = b"a" * 9000 + b"\x00" + b"b" * 10
+    _rewrite_snapshot(revision, {"late-null.md": late_null})
+
+    files = await client.get(f"/api/skills/{skill.id}/revisions/{revision.id}/files")
+    assert files.status_code == 200, files.text
+    entry = files.json()["files"][0]
+    assert entry["path"] == "late-null.md"
+    assert entry["is_binary"] is False  # head 8KB에는 널바이트 없음
+
+    content = await client.get(
+        f"/api/skills/{skill.id}/revisions/{revision.id}/files/content",
+        params={"path": "late-null.md"},
+    )
+    assert content.status_code == 404  # 전량 검사는 fail-closed
+
+
+async def test_exact_display_cap_is_served(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """정확히 2MB인 파일은 200 — 상한 비교가 >에서 >=로 회귀하면 레드."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    _rewrite_snapshot(revision, {"exact.md": b"a" * (2 * 1024 * 1024)})
+
+    content = await client.get(
+        f"/api/skills/{skill.id}/revisions/{revision.id}/files/content",
+        params={"path": "exact.md"},
+    )
+    assert content.status_code == 200, content.text
+    assert len(content.json()["content"]) == 2 * 1024 * 1024
+
+
+async def test_rollback_pruned_snapshot_conflict_not_500(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """pruned/zip 유실 리비전 rollback은 409 명시 응답 — files/content와 대칭."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    revision.metadata_json = {"snapshot_pruned": True}
+    await db.commit()
+
+    pruned = await client.post(f"/api/skills/{skill.id}/revisions/{revision.id}/rollback")
+    assert pruned.status_code == 409, pruned.text
+    assert pruned.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
+
+    revision.metadata_json = {}
+    await db.commit()
+    (Path(settings.data_root) / revision.object_key).unlink()
+
+    missing = await client.post(f"/api/skills/{skill.id}/revisions/{revision.id}/rollback")
+    assert missing.status_code == 409, missing.text
+
+
 async def test_foreign_skill_revision_files_404(
     client: AsyncClient,
     db: AsyncSession,

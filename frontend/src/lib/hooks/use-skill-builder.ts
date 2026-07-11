@@ -83,9 +83,16 @@ export function useBuilderSessionLauncher() {
   const startBuilder = useStartSkillBuilder()
 
   async function launch(payload: SkillBuilderStartRequest): Promise<boolean> {
+    // 중앙 이중 제출 가드 — 진입점별 disabled와 무관하게 세션 중복 생성을 차단.
+    if (startBuilder.isPending) return false
+    const originHref = window.location.pathname + window.location.search
     try {
       const session = await startBuilder.mutateAsync(payload)
-      router.push(`/skills/builder/${session.id}`)
+      // start가 느릴 때 사용자가 이미 다른 화면으로 이동했다면 강제 내비로
+      // 편집 컨텍스트를 탈취하지 않는다 — 세션은 빌더 인덱스 이력에 남는다.
+      if (window.location.pathname + window.location.search === originHref) {
+        router.push(`/skills/builder/${session.id}`)
+      }
       return true
     } catch {
       toast.error(t('startFailed'))

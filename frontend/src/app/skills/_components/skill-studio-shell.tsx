@@ -62,6 +62,11 @@ export function SkillStudioShell() {
   }
 
   function handleSwitchSkill(skill: Skill) {
+    // 활성 탭 유지(§2.2) — 빌더 탭에서는 대상 스킬 스코프의 빌더 인덱스로.
+    if (context.activeTab === 'builder') {
+      router.push(skillStudioTabHref('builder', skill.id) ?? '/skills/builder')
+      return
+    }
     const tab = isSkillScopedStudioTab(context.activeTab) ? context.activeTab : 'source'
     router.push(`/skills/${skill.id}/${tab}`)
   }

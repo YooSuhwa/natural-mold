@@ -181,8 +181,22 @@ export function DataTable<T>({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    // 데이터 갱신(refetch/삭제)마다 1페이지로 튕기지 않는다 — controlled
+    // selection을 도입한 사유("정렬·페이지 유지")와 동일 계약. 범위 밖으로
+    // 밀려난 pageIndex는 아래 effect가 마지막 페이지로 클램프한다.
+    autoResetPageIndex: false,
     initialState: { pagination: { pageSize } },
   })
+
+  useEffect(() => {
+    const pageCount = table.getPageCount()
+    const pageIndex = table.getState().pagination.pageIndex
+    if (pageIndex > 0 && pageIndex >= pageCount) {
+      table.setPageIndex(Math.max(0, pageCount - 1))
+    }
+    // filtered가 pagination 입력의 전부 — table 인스턴스는 안정적이다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, pageSize])
 
   // Notify parent when the selection changes. We map back to the source rows
   // so callers receive the original objects (not table-wrapper rows).
@@ -196,6 +210,33 @@ export function DataTable<T>({
   // is id-based: same ids with refreshed row objects do NOT re-notify — treat
   // the callback payload as "which rows", and derive fresh objects from your
   // current data at action time (store ids, not object snapshots).
+  // 반쪽 controlled 결합은 조용히 죽는다 — 개발 모드에서 즉시 경고.
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    (rowSelectionState === undefined) !== (onRowSelectionStateChange === undefined)
+  ) {
+    console.warn(
+      'DataTable: rowSelectionState and onRowSelectionStateChange must be passed together.',
+    )
+  }
+
+  // 데이터에서 빠진 행(외부 검색/필터/삭제)의 선택 키를 정리한다 — 남겨두면
+  // 사용자가 "모두 해제"한 뒤 필터를 풀 때 유령 선택이 부활해 벌크 대상으로
+  // 재등장한다. 정리 후 아래 통지 effect가 시그니처 변화로 부모에 반영한다.
+  useEffect(() => {
+    if (!enableRowSelection) return
+    const validIds = new Set(table.getCoreRowModel().rows.map((row) => row.id))
+    const staleKeys = Object.keys(rowSelection).filter((key) => !validIds.has(key))
+    if (staleKeys.length === 0) return
+    setRowSelection((previous) => {
+      const next = { ...previous }
+      for (const key of staleKeys) delete next[key]
+      return next
+    })
+    // rowSelection/filtered가 유효성 입력의 전부 — table·setter는 안정적이다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowSelection, filtered, enableRowSelection])
+
   const lastSelectionSignature = useRef('')
   useEffect(() => {
     if (!enableRowSelection || !onRowSelectionChange) return
