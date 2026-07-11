@@ -113,3 +113,20 @@ def test_tests_exemption_is_not_a_blanket_disable() -> None:
         result = _ruff_check("tests/_lint_probe.py", code)
         assert result.returncode != 0, f"{rule}: {result.stdout}"
         assert rule in result.stdout, f"{rule}: {result.stdout}"
+
+
+# Vendored seed skill packages are content-hashed byte-for-byte by the
+# marketplace seeder, so lint findings there are exempted instead of fixed.
+_SEED_PKG_PROBE = "app/seed/system_skill_packages/_pkg/scripts/_lint_probe.py"
+
+
+def test_seed_package_exemption_silences_ret504() -> None:
+    result = _ruff_check(_SEED_PKG_PROBE, NEEDLESS_ASSIGN)
+    assert "RET504" not in result.stdout, result.stdout
+
+
+def test_seed_package_exemption_is_not_a_blanket_disable() -> None:
+    # The exemption must stay pinned to RET504 — sibling batch rules red.
+    result = _ruff_check(_SEED_PKG_PROBE, OS_PATH_EXISTS)
+    assert result.returncode != 0, result.stdout
+    assert "PTH110" in result.stdout, result.stdout
