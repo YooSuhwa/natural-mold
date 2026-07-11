@@ -517,3 +517,11 @@ O(N×mutations). 모듈 단위 **공유 옵저버 1개 + 구독자 Set + rAF 코
 `ArtifactSummary.linked_message_ids`를 노출만 하고 레일 jump가 여전히
 `assistant_msg_id`(run id)를 써서 버블 앵커와 영영 불일치 → 항상 비활성. 노출/배관/
 **실제 소비**가 다 됐는지 끝까지 추적할 것.
+
+**13. 검증 판단에 쓰는 exit code는 절대 파이프라인 뒤에서 읽지 말 것.**
+`cmd | tail -2; echo $?`의 `$?`는 **tail의 exit code**(항상 0)다. PR #290에서
+"pytest 전량 deselect = exit 0 거짓 그린"이라고 5개 문서/주석에 박았는데 실측은
+exit 5(red)였고, 리뷰에서야 잡혔다 — 같은 세션에서 이 함정을 **두 번** 밟았다
+(CLAUDE.md CI·게이트 규칙 ①에 이미 있는 함정). exit code가 필요한 확인은
+`cmd > /dev/null 2>&1; echo $?` 형태로 파이프 없이 분리 실행하고, 회귀 테스트로
+고정할 때도 subprocess의 returncode를 직접 단언할 것.

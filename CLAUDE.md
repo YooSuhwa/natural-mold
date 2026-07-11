@@ -168,8 +168,14 @@ pnpm dev
 cd backend
 uv run pytest               # 전체 테스트 (aiosqlite in-memory, DB 불필요)
 uv run pytest tests/test_agents.py  # 개별 파일
+uv run pytest tests/integration -m integration  # integration (직렬 전용, -m 필수)
 uv run ruff check .         # 린트
 ```
+
+`tests/integration/`은 conftest가 `integration` 마커를 자동 부여하고 기본
+addopts(`-m 'not integration'`)가 제외하므로, **개별 파일 실행에도 `-m
+integration`이 필수**다 — 없으면 전량 deselect되어 "no tests collected"(exit 5)로
+끝난다.
 
 빠른 전체 테스트가 필요하면 기본 설정을 바꾸지 않고 pytest-xdist를 임시로
 사용한다. 저사양/CI에서는 `-n 4`부터 시작하고, 고사양 로컬에서는 `-n 8`까지
