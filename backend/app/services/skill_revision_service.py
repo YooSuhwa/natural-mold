@@ -10,6 +10,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import anyio
+import yaml
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -149,14 +150,19 @@ async def rollback_to_revision(
     if skill.kind == "text":
         try:
             content = await anyio.to_thread.run_sync(_read_skill_md, zip_bytes)
-        except (zipfile.BadZipFile, zlib.error, KeyError) as exc:
+        except (zipfile.BadZipFile, zlib.error, KeyError, UnicodeDecodeError) as exc:
+            # UnicodeDecodeError: CRC는 멀쩡한데 비 UTF-8 바이트인 스냅샷 —
+            # decode는 zip read가 아니라 여기서 터진다 (R7).
             raise SkillRevisionSnapshotMissing("revision snapshot is unreadable") from exc
         try:
             # update_text_content도 write 전에 같은 파싱을 돌리지만, 여기서
             # 선검증해야 "스냅샷 불가" 부류(레거시 frontmatter 등)가 형제
             # 케이스(유실/손상)와 같은 409로 수렴한다 — 500 비대칭 방지 (R6).
+            # yaml.YAMLError: frontmatter.loads의 파서 오류는 ValueError 계열이
+            # 아니다(SkillMetadataError만 ValueError) — 깨진 YAML frontmatter가
+            # frontmatter 부재와 다른 응답이 되면 안 된다 (R7).
             parse_skill_md(content, require_metadata=True)
-        except ValueError as exc:
+        except (ValueError, yaml.YAMLError) as exc:
             raise SkillRevisionSnapshotMissing("revision snapshot SKILL.md is invalid") from exc
         await skill_service.update_text_content(db, skill=skill, content=content)
     else:
@@ -333,14 +339,22 @@ def _validate_package_snapshot(zip_bytes: bytes) -> None:
             # central directory가 멀쩡해도 멤버 바이트가 손상(bitrot/부분 쓰기)일
             # 수 있다 — testzip으로 CRC 전수 검사해야 extract 단계 500을 막는다 (R6).
             corrupt_member = archive.testzip()
+            skill_md = archive.read("SKILL.md") if "SKILL.md" in names else None
     except (zipfile.BadZipFile, zlib.error) as exc:
         raise SkillRevisionSnapshotMissing("revision snapshot zip is corrupt") from exc
     if corrupt_member is not None:
         raise SkillRevisionSnapshotMissing(
             f"revision snapshot member is corrupt: {corrupt_member!r}"
         )
-    if "SKILL.md" not in names:
+    if skill_md is None:
         raise SkillRevisionSnapshotMissing("revision snapshot is missing SKILL.md")
+    try:
+        # 파싱 가능성까지 변이 전에 검증 — extract_package 내부 파싱의 YAML
+        # 파서 오류는 PackageError가 아니라서(SkillMetadataError만 래핑) 여기서
+        # 걸러야 frontmatter 부재 형제와 같은 409로 수렴한다 (R7).
+        parse_skill_md(skill_md, require_metadata=True)
+    except (ValueError, yaml.YAMLError) as exc:
+        raise SkillRevisionSnapshotMissing("revision snapshot SKILL.md is invalid") from exc
 
 
 def _replace_package_files(storage_path: str, zip_bytes: bytes) -> None:
@@ -350,8 +364,10 @@ def _replace_package_files(storage_path: str, zip_bytes: bytes) -> None:
         try:
             # 추출은 tempdir에서 rmtree **이전** — 여기서의 거부(zip-slip/symlink/
             # 널바이트, PackageError)는 무변이이므로 409 계약으로 수렴시킨다 (R6).
+            # yaml.YAMLError: extract 내부 SKILL.md 파싱은 SkillMetadataError만
+            # PackageError로 래핑한다 — validate가 선검증하지만 belt-and-braces (R7).
             extract_package(zip_bytes, extracted)
-        except PackageError as exc:
+        except (PackageError, yaml.YAMLError) as exc:
             raise SkillRevisionSnapshotMissing("revision snapshot package is invalid") from exc
         if root.exists():
             shutil.rmtree(root)

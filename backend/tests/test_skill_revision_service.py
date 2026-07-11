@@ -355,6 +355,48 @@ async def test_rollback_package_zip_slip_snapshot_fails_before_mutation(
 
 
 @pytest.mark.asyncio
+async def test_rollback_package_malformed_yaml_fails_before_mutation(
+    db: AsyncSession,
+    tmp_path,
+) -> None:
+    """패키지 스냅샷의 깨진 YAML frontmatter — extract_package 내부 파싱은
+    SkillMetadataError만 PackageError로 래핑하므로 validate 선검증 없이는
+    500으로 샜다. 무변이 SnapshotMissing으로 수렴 (R7)."""
+
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        skill = await skill_service.create_package_skill(
+            db,
+            user_id=TEST_USER_ID,
+            zip_bytes=_zip_bytes(
+                {
+                    "SKILL.md": _skill_content("revision-package"),
+                    "scripts/run.py": "print('v1')\n",
+                }
+            ),
+        )
+        first = await skill_revision_service.create_revision_for_skill(
+            db,
+            skill=skill,
+            user_id=TEST_USER_ID,
+            operation="create",
+        )
+        snapshot_path = tmp_path / first.object_key
+        with zipfile.ZipFile(snapshot_path, "w") as archive:
+            archive.writestr("SKILL.md", "---\nname: [unclosed\n---\nbody\n")
+            archive.writestr("scripts/run.py", "print('v0')\n")
+
+        with pytest.raises(skill_revision_service.SkillRevisionSnapshotMissing):
+            await skill_revision_service.rollback_to_revision(
+                db,
+                skill=skill,
+                user_id=TEST_USER_ID,
+                revision=first,
+            )
+        # 디스크 무변경.
+        assert skill_service.get_file_bytes(skill, "scripts/run.py") == b"print('v1')\n"
+
+
+@pytest.mark.asyncio
 async def test_rollback_package_bumps_last_modified_at(
     db: AsyncSession,
     tmp_path,

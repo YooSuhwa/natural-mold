@@ -196,7 +196,10 @@ export function computeCappedRevisionDiffLines(
   parentText: string,
   currentText: string,
 ): readonly RevisionDiffLine[] | null {
-  if (parentText === currentText) return []
+  // 동일성은 diff 옵션(stripTrailingCr/ignoreNewlineAtEof)과 같은 정규화로
+  // 판정한다 — 바이트 비교만 하면 CRLF 스냅샷 vs LF 리비전(옵션이 노린 바로
+  // 그 입력 클래스)이 상한 초과 시 "변경 없음" 대신 "너무 큼"으로 오표기 (R7).
+  if (normalizeForIdentity(parentText) === normalizeForIdentity(currentText)) return []
   if (
     countInputLines(parentText) > MAX_DIFF_LINES ||
     countInputLines(currentText) > MAX_DIFF_LINES
@@ -205,6 +208,12 @@ export function computeCappedRevisionDiffLines(
   }
   const lines = computeRevisionDiffLines(parentText, currentText)
   return lines.length > MAX_DIFF_LINES ? null : lines
+}
+
+/** diff 옵션과 동치인 동일성 정규화 — CRLF→LF + 말미 개행 1개 무시. */
+function normalizeForIdentity(text: string): string {
+  const unified = text.includes('\r\n') ? text.split('\r\n').join('\n') : text
+  return unified.endsWith('\n') ? unified.slice(0, -1) : unified
 }
 
 function DiffPlaceholder({ message }: { readonly message: string }) {

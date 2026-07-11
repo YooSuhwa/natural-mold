@@ -174,6 +174,33 @@ describe('DataTable', () => {
     expect(onSelectionChange).toHaveBeenLastCalledWith([rows[0]])
   })
 
+  it('id 없는 행도 검색 중 선택이 올바른 행을 통지한다 — 객체 참조 Map id 공간 (R7)', async () => {
+    // id 필드가 없는 행: index 폴백 id가 filtered/data에서 갈리면 검색 중
+    // 체크한 행(C)이 아니라 data[0](A)이 payload에 실린다.
+    interface Anon {
+      name: string
+    }
+    const rows: Anon[] = [{ name: 'A행' }, { name: 'B행' }, { name: 'C행' }]
+    const onSelectionChange = vi.fn()
+    const anonColumns: ColumnDef<Anon>[] = [
+      { accessorKey: 'name', header: '이름', cell: ({ row }) => row.original.name },
+    ]
+    render(
+      <DataTable
+        columns={anonColumns}
+        data={rows}
+        searchable
+        enableRowSelection
+        onRowSelectionChange={onSelectionChange}
+      />,
+    )
+
+    await userEvent.type(screen.getByPlaceholderText('검색...'), 'C행')
+    await userEvent.click(screen.getByRole('checkbox', { name: '행 선택' }))
+
+    expect(onSelectionChange).toHaveBeenLastCalledWith([rows[2]])
+  })
+
   it('컬럼 필터로 줄어든 표는 범위 밖 페이지에 좌초하지 않는다', async () => {
     interface TypedRow extends Row {
       type: string

@@ -165,7 +165,9 @@ export function DataTable<T>({
 
   // 행 id 파생의 단일 소스 — table(getRowId)·prune·notify가 같은 규칙을 써야
   // id 공간이 갈리지 않는다. index 폴백은 filtered/data에서 서로 다른 행을
-  // 가리킬 수 있으므로(잠복 계약 파손) 선택 사용 시 dev 경고로 막는다 (R6).
+  // 가리키므로, **data 기준으로 배정한 id를 객체 참조 Map으로 고정**해 table이
+  // filtered의 같은 객체를 받아도 동일 id를 얻게 한다(진짜 단일 id 공간, R7).
+  // index 폴백 자체는 데이터 재정렬에 여전히 불안정 — dev 경고 유지.
   const resolveRowId = useMemo(() => {
     if (getRowId) return getRowId
     return (row: T, index: number) => {
@@ -173,6 +175,12 @@ export function DataTable<T>({
       return r.id ?? String(index)
     }
   }, [getRowId])
+  const rowIdByObject = useMemo(() => {
+    const map = new Map<T, string>()
+    data.forEach((row, index) => map.set(row, resolveRowId(row, index)))
+    return map
+  }, [data, resolveRowId])
+  const rowIdOf = (row: T, index: number) => rowIdByObject.get(row) ?? resolveRowId(row, index)
   if (
     process.env.NODE_ENV !== 'production' &&
     enableRowSelection &&
@@ -180,7 +188,7 @@ export function DataTable<T>({
     data.some((row) => (row as unknown as { id?: string }).id === undefined)
   ) {
     console.warn(
-      'DataTable: enableRowSelection with id-less rows needs an explicit getRowId — index fallback ids diverge between the searched view and the full data.',
+      'DataTable: enableRowSelection with id-less rows needs an explicit getRowId — index fallback ids are unstable when the data reorders.',
     )
   }
 
@@ -192,7 +200,8 @@ export function DataTable<T>({
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     enableRowSelection,
-    getRowId: resolveRowId,
+    // filtered의 행은 data와 같은 객체 참조 — Map 조회로 data-기준 id를 반환.
+    getRowId: rowIdOf,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -250,7 +259,7 @@ export function DataTable<T>({
   // (models 벌크 테스트)과 "숨은 선택 행 이름 열거" 계약이 죽는다.
   useEffect(() => {
     if (!enableRowSelection || loading) return
-    const validIds = new Set(data.map((row, index) => resolveRowId(row, index)))
+    const validIds = new Set(data.map((row, index) => rowIdOf(row, index)))
     const staleKeys = Object.keys(rowSelection).filter((key) => !validIds.has(key))
     if (staleKeys.length === 0) return
     setRowSelection((previous) => {
@@ -258,7 +267,7 @@ export function DataTable<T>({
       for (const key of staleKeys) delete next[key]
       return next
     })
-    // rowSelection/data/loading이 유효성 입력의 전부 — setter·resolveRowId는 안정적이다.
+    // rowSelection/data/loading이 유효성 입력의 전부 — setter·rowIdOf는 렌더 클로저.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowSelection, data, loading, enableRowSelection])
 
@@ -274,7 +283,7 @@ export function DataTable<T>({
     const selectedIds: string[] = []
     const selectedRows: T[] = []
     data.forEach((row, index) => {
-      const id = resolveRowId(row, index)
+      const id = rowIdOf(row, index)
       if (rowSelection[id]) {
         selectedIds.push(id)
         selectedRows.push(row)
@@ -284,7 +293,7 @@ export function DataTable<T>({
     if (signature === lastSelectionSignature.current) return
     lastSelectionSignature.current = signature
     onRowSelectionChange(selectedRows)
-    // rowSelection/data/loading이 payload 입력의 전부 — resolveRowId는 안정적이다.
+    // rowSelection/data/loading이 payload 입력의 전부 — rowIdOf는 렌더 클로저.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowSelection, data, loading, enableRowSelection])
 

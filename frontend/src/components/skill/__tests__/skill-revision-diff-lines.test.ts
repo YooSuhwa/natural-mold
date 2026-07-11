@@ -99,4 +99,11 @@ describe('computeCappedRevisionDiffLines (검사 순서 계약, R6)', () => {
       { type: 'added', text: 'b' },
     ])
   })
+
+  it('CRLF↔LF·말미 개행만 다른 상한 초과 쌍도 "변경 없음"이다 — 옵션이 노린 입력 클래스 (R7)', () => {
+    const lf = 'line\n'.repeat(6_000)
+    const crlf = 'line\r\n'.repeat(6_000)
+    expect(computeCappedRevisionDiffLines(crlf, lf)).toEqual([])
+    expect(computeCappedRevisionDiffLines(lf, lf.slice(0, -1))).toEqual([])
+  })
 })

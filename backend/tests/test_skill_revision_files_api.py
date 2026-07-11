@@ -325,6 +325,36 @@ async def test_snapshot_invalid_frontmatter_rollback_conflict_not_500(
     assert rollback.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
 
 
+async def test_snapshot_malformed_yaml_rollback_conflict_not_500(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """깨진 YAML frontmatter — frontmatter.loads의 ParserError는 ValueError
+    계열이 아니라서 frontmatter 부재(409)와 응답이 갈라졌었다 (R7)."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    _rewrite_snapshot(revision, {"SKILL.md": b"---\nname: [unclosed\n---\nbody\n"})
+
+    rollback = await client.post(f"/api/skills/{skill.id}/revisions/{revision.id}/rollback")
+    assert rollback.status_code == 409, rollback.text
+    assert rollback.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
+
+
+async def test_snapshot_non_utf8_rollback_conflict_not_500(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """CRC는 멀쩡한 비 UTF-8 SKILL.md — decode는 zip read 밖에서 터지므로
+    별도 처리 없으면 500 (읽기 API는 errors='replace'로 서빙하는 비대칭, R7)."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    _rewrite_snapshot(revision, {"SKILL.md": b"\xff\xfe not utf-8 bytes"})
+
+    rollback = await client.post(f"/api/skills/{skill.id}/revisions/{revision.id}/rollback")
+    assert rollback.status_code == 409, rollback.text
+    assert rollback.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
+
+
 async def test_overlong_entry_path_excluded_from_files_list(
     client: AsyncClient,
     db: AsyncSession,
