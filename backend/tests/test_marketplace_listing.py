@@ -94,7 +94,7 @@ def _make_item(
 @pytest.fixture
 async def seeded(
     db_session: AsyncSession,
-) -> AsyncGenerator[dict[str, MarketplaceItem | uuid.UUID], None]:
+) -> dict[str, MarketplaceItem | uuid.UUID]:
     """Seed a fixed catalog covering the listed/unlisted matrix.
 
     Owner is ``SEED_OWNER_ID`` so the regular-user (``REGULAR_ID``) and
