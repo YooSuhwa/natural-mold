@@ -15,18 +15,12 @@ async def record_revision_create_audit(
     request: Request,
     revision: SkillRevision,
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="skill_revision.create",
         target_type="skill_revision",
         target_id=revision.id,
-        target_owner_user_id=user.id,
-        outcome="success",
         request=request,
         metadata={
             "skill_id": str(revision.skill_id),

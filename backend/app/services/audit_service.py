@@ -13,6 +13,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
+from app.dependencies import CurrentUser
 from app.models.audit_event import AuditEvent
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,50 @@ async def record_event(
     return row
 
 
+async def record_self_event(
+    db: AsyncSession,
+    user: CurrentUser,
+    *,
+    action: str,
+    target_type: str,
+    target_id: str | uuid.UUID | None = None,
+    target_name: str | None = None,
+    outcome: AuditOutcome | str = "success",
+    reason_code: str | None = None,
+    reason_message: str | None = None,
+    request: Request | None = None,
+    run_id: str | uuid.UUID | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> AuditEvent:
+    """Self-action convenience wrapper — actor == owner == target owner.
+
+    Absorbs the seven identity kwargs every self-owned mutation repeats
+    (BE-D3). Anything where the actor differs from the resource owner
+    (operator actions on system resources, marketplace installs of another
+    user's item, ...) must keep calling :func:`record_event` explicitly.
+    """
+
+    return await record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        target_name_snapshot=target_name,
+        target_owner_user_id=user.id,
+        outcome=outcome,
+        reason_code=reason_code,
+        reason_message=reason_message,
+        request=request,
+        run_id=run_id,
+        metadata=metadata,
+    )
+
+
 async def record_event_best_effort(**kwargs: Any) -> None:
     try:
         async with async_session() as db:
@@ -213,9 +258,7 @@ async def list_events(
 
     safe_limit = min(max(limit, 1), 100)
     result = await db.execute(
-        stmt.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(
-            safe_limit + 1
-        )
+        stmt.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(safe_limit + 1)
     )
     rows = list(result.scalars().all())
     items = rows[:safe_limit]

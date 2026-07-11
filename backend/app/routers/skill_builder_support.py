@@ -76,17 +76,12 @@ async def record_builder_audit(
     source_skill_id: uuid.UUID | None = None,
     **metadata: object,
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action=action,
         target_type="skill_builder_session",
         target_id=session_id,
-        target_owner_user_id=user.id,
         outcome=outcome,
         request=request,
         metadata={

@@ -27,19 +27,13 @@ async def record_skill_audit(
     skill: Skill,
     metadata: dict[str, object] | None = None,
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action=action,
         target_type="skill",
         target_id=skill.id,
-        target_name_snapshot=skill.name,
-        target_owner_user_id=user.id,
-        outcome="success",
+        target_name=skill.name,
         request=request,
         metadata={
             "kind": skill.kind,

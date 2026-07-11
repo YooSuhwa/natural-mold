@@ -207,19 +207,13 @@ async def create_share(
 ) -> ShareLinkResponse:
     """Make the conversation public. Returns the existing token if already shared."""
     link = await share_service.create_or_get_active_share(db, conv, user.id)
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="conversation.share_create",
         target_type="conversation",
         target_id=conversation_id,
-        target_name_snapshot=conv.title,
-        target_owner_user_id=user.id,
-        outcome="success",
+        target_name=conv.title,
         request=request,
         metadata={
             "share_id": str(link.id),
@@ -244,19 +238,13 @@ async def revoke_share(
 ) -> None:
     """Revoke any active share link for the conversation. Idempotent."""
     revoked_tokens = await share_service.revoke_share(db, conversation_id)
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="conversation.share_revoke",
         target_type="conversation",
         target_id=conversation_id,
-        target_name_snapshot=conv.title,
-        target_owner_user_id=user.id,
-        outcome="success",
+        target_name=conv.title,
         request=request,
         metadata={"revoked_count": len(revoked_tokens)},
     )

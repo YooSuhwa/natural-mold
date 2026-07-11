@@ -147,18 +147,13 @@ async def record_tool_audit(
     reason_message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action=action,
         target_type="tool",
         target_id=tool.id,
-        target_name_snapshot=tool.name,
-        target_owner_user_id=user.id,
+        target_name=tool.name,
         outcome=outcome,
         reason_code=reason_code,
         reason_message=reason_message,

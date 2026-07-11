@@ -381,18 +381,13 @@ async def record_server_audit(
     reason_message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action=action,
         target_type="mcp_server",
         target_id=server.id,
-        target_name_snapshot=server.name,
-        target_owner_user_id=user.id,
+        target_name=server.name,
         outcome=outcome,
         reason_code=reason_code,
         reason_message=reason_message,
@@ -414,17 +409,12 @@ async def record_probe_audit(
     credential_bound: bool,
     result: dict[str, Any],
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="mcp_server.probe",
         target_type="mcp_server_probe",
-        target_name_snapshot=registry_key,
-        target_owner_user_id=user.id,
+        target_name=registry_key,
         outcome="success" if result.get("success") else "failure",
         reason_code=None if result.get("success") else "mcp_probe_failed",
         reason_message=result.get("error"),
@@ -453,16 +443,11 @@ async def record_import_audit(
     import_outcome = (
         "failure" if result.errors and result.created == 0 and result.updated == 0 else "success"
     )
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="mcp_server.import",
         target_type="mcp_server",
-        target_owner_user_id=user.id,
         outcome=import_outcome,
         reason_code="mcp_import_errors" if result.errors else None,
         request=request,
