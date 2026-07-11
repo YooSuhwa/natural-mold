@@ -126,8 +126,8 @@ ARTIFACT_SLOW_FINAL_PARTS = (
     "completed ",
     "after generated file.",
 )
-TOKEN_USAGE_MARKER = "E2E_TOKEN_USAGE_STREAM"
-TOKEN_USAGE_CONTENT = "E2E token usage isolated conversation response."
+TOKEN_USAGE_MARKER = "E2E_TOKEN_USAGE_STREAM"  # noqa: S105 — E2E marker, not a secret
+TOKEN_USAGE_CONTENT = "E2E token usage isolated conversation response."  # noqa: S105 — E2E fixture text, not a secret
 TOKEN_USAGE_METADATA = {
     "input_tokens": 30,
     "output_tokens": 12,

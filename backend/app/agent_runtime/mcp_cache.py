@@ -117,7 +117,7 @@ class MCPToolWithRetry(BaseTool):
                 last_error = exc
                 if attempt + 1 < self._max_retries and self._retry_delay > 0:
                     await asyncio.sleep(self._retry_delay)
-        assert last_error is not None
+        assert last_error is not None  # noqa: S101 — retry-loop invariant (type narrowing)
         return f"[MCP Tool Error] {self.name}: {type(last_error).__name__}: {last_error}"
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:

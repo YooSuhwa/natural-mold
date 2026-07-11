@@ -137,7 +137,7 @@ K_SKILL_REQUIREMENT_MAP: dict[str, list[dict[str, Any]]] = {
             label="SRT 계정",
             description="SRT 예매에 사용할 회원 자격증명.",
             env_user="KSKILL_SRT_ID",
-            env_pass="KSKILL_SRT_PASSWORD",
+            env_pass="KSKILL_SRT_PASSWORD",  # noqa: S106 — env var *name*, not a value
         ),
     ],
     "ktx-booking": [
@@ -147,7 +147,7 @@ K_SKILL_REQUIREMENT_MAP: dict[str, list[dict[str, Any]]] = {
             label="KTX (Korail) 계정",
             description="KTX 예매에 사용할 Korail 회원 자격증명.",
             env_user="KSKILL_KTX_ID",
-            env_pass="KSKILL_KTX_PASSWORD",
+            env_pass="KSKILL_KTX_PASSWORD",  # noqa: S106 — env var *name*, not a value
         ),
     ],
     "foresttrip-vacancy": [
@@ -157,7 +157,7 @@ K_SKILL_REQUIREMENT_MAP: dict[str, list[dict[str, Any]]] = {
             label="숲나들e 계정",
             description="국립휴양림 예약 조회용 회원 자격증명.",
             env_user="KSKILL_FORESTTRIP_ID",
-            env_pass="KSKILL_FORESTTRIP_PASSWORD",
+            env_pass="KSKILL_FORESTTRIP_PASSWORD",  # noqa: S106 — env var *name*, not a value
         ),
     ],
     # Public-data APIs

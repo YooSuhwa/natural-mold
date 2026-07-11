@@ -20,7 +20,7 @@ class FieldKind(StrEnum):
     """
 
     STRING = "string"
-    PASSWORD = "password"
+    PASSWORD = "password"  # noqa: S105 — field-kind enum value, not a secret
     NUMBER = "number"
     SELECT = "select"
     MULTILINE = "multiline"

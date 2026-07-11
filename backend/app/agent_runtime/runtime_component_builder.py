@@ -214,7 +214,7 @@ def _build_model_candidates(cfg: AgentConfig) -> list[BaseChatModel]:
 
     if candidates:
         return candidates
-    assert last_error is not None
+    assert last_error is not None  # noqa: S101 — loop invariant (type narrowing)
     raise last_error
 
 
@@ -730,7 +730,7 @@ async def _prepare_runtime_components(
     memory_tools_enabled = cfg.user_id is not None and memory_write_policy != "off"
     if memory_tools_enabled:
         memory_user_id = cfg.user_id
-        assert memory_user_id is not None
+        assert memory_user_id is not None  # noqa: S101 — guarded by memory_tools_enabled (type narrowing)
         langchain_tools.extend(
             build_memory_tools(
                 user_id=memory_user_id,

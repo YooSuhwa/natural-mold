@@ -57,9 +57,30 @@ def _sanitize_slug(value: str) -> str:
     return slug
 
 
+def _validate_repo_url(repo_url: str) -> None:
+    """Reject non-http(s) transports and option-injection payloads.
+
+    The URL comes from the agent (LLM), so a leading ``-`` could smuggle
+    git options (``--upload-pack=...``) and exotic transports (``ext::``,
+    ``file://``) could execute commands or read local files.
+    """
+
+    # re.ASCII keeps IGNORECASE to ASCII case pairs — without it, Unicode
+    # case folding lets lookalike schemes through (e.g. "httpſ://", U+017F).
+    if "\x00" in repo_url or not re.fullmatch(r"https?://\S+", repo_url, re.IGNORECASE | re.ASCII):
+        _fail(f"only http(s) repository URLs are supported: {repo_url[:200]}")
+
+
+def _validate_ref(ref: str | None) -> None:
+    if ref is None:
+        return
+    if ref.startswith("-") or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref):
+        _fail(f"invalid git ref: {ref[:200]}")
+
+
 def _git(args: list[str], *, cwd: Path | None, timeout: int) -> str:
-    result = subprocess.run(
-        ["git", *args],
+    result = subprocess.run(  # noqa: S603 — list args, no shell; url/ref validated in main()
+        ["git", *args],  # noqa: S607 — git resolved via PATH; no fixed install path in sandbox
         cwd=str(cwd) if cwd else None,
         capture_output=True,
         text=True,
@@ -75,8 +96,8 @@ def _git(args: list[str], *, cwd: Path | None, timeout: int) -> str:
 def _commit_exists(workspace: Path, sha: str) -> bool:
     if not re.fullmatch(r"[0-9a-f]{7,40}", sha or ""):
         return False
-    probe = subprocess.run(
-        ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+    probe = subprocess.run(  # noqa: S603 — list args, no shell; sha regex-validated above
+        ["git", "cat-file", "-e", f"{sha}^{{commit}}"],  # noqa: S607 — git via PATH
         cwd=str(workspace),
         capture_output=True,
         timeout=LOG_TIMEOUT_SECONDS,
@@ -108,7 +129,7 @@ def _sync(workspace: Path, repo_url: str, ref: str | None, depth: int) -> None:
     clone = ["clone", f"--depth={depth}"]
     if ref:
         clone += ["--branch", ref]
-    clone += [repo_url, str(workspace)]
+    clone += ["--", repo_url, str(workspace)]
     _git(clone, cwd=None, timeout=GIT_TIMEOUT_SECONDS)
 
 
@@ -138,6 +159,9 @@ def main() -> None:
     parser.add_argument("--workspace", default=None, help="workspace directory name override")
     parser.add_argument("--depth", type=int, default=CLONE_DEPTH_DEFAULT)
     args = parser.parse_args()
+
+    _validate_repo_url(args.repo_url)
+    _validate_ref(args.ref)
 
     data_root = _data_root()
     slug = _sanitize_slug(args.workspace) if args.workspace else _slug_from_url(args.repo_url)

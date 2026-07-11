@@ -55,7 +55,7 @@ def _load_catalog() -> dict[str, Any]:
                         _CATALOG_PATH,
                     )
                     _catalog = {}
-    assert _catalog is not None
+    assert _catalog is not None  # noqa: S101 — set in the branch above (type narrowing)
     return _catalog
 
 

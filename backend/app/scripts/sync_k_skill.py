@@ -49,16 +49,16 @@ def _git_resolve_head(repo_dir: Path) -> str:
 
     try:
         out = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=repo_dir, text=True
+            ["git", "rev-parse", "HEAD"],  # noqa: S607 — git via PATH
+            cwd=repo_dir,
+            text=True,
         )
         return out.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         return ""
 
 
-def ensure_upstream_checkout(
-    *, url: str, ref: str, sync_dir: Path
-) -> tuple[bool, str]:
+def ensure_upstream_checkout(*, url: str, ref: str, sync_dir: Path) -> tuple[bool, str]:
     """Clone or update the local mirror of the upstream repo.
 
     Returns ``(ok, commit_sha)``. ``ok=False`` means the operator must
@@ -82,8 +82,8 @@ def ensure_upstream_checkout(
         if sync_dir.exists():
             shutil.rmtree(sync_dir, ignore_errors=True)
         try:
-            subprocess.check_call(
-                [
+            subprocess.check_call(  # noqa: S603 — operator CLI; url from settings, ref from argv
+                [  # noqa: S607 — git via PATH
                     "git",
                     "clone",
                     "--depth=1",
@@ -99,11 +99,12 @@ def ensure_upstream_checkout(
 
     # Existing checkout — fetch the requested ref, hard-reset to it.
     try:
-        subprocess.check_call(["git", "fetch", "origin", ref], cwd=sync_dir)
-        subprocess.check_call(
-            ["git", "checkout", "-B", ref, f"origin/{ref}"], cwd=sync_dir
+        subprocess.check_call(["git", "fetch", "origin", ref], cwd=sync_dir)  # noqa: S603, S607 — operator CLI; git via PATH
+        subprocess.check_call(  # noqa: S603 — operator CLI; ref from argv
+            ["git", "checkout", "-B", ref, f"origin/{ref}"],  # noqa: S607 — git via PATH
+            cwd=sync_dir,
         )
-        subprocess.check_call(["git", "reset", "--hard", f"origin/{ref}"], cwd=sync_dir)
+        subprocess.check_call(["git", "reset", "--hard", f"origin/{ref}"], cwd=sync_dir)  # noqa: S603, S607 — operator CLI; git via PATH
     except subprocess.CalledProcessError:
         return False, ""
     return True, _git_resolve_head(sync_dir)

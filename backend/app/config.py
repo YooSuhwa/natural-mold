@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     # Deletes ``refresh_tokens`` rows whose ``expires_at`` is older than the
     # retention window — keeps replay history available for that window so
     # a barely-expired hash still classifies correctly. ADR-016 §4.2.
-    refresh_token_gc_cron: str = "0 5 * * *"
+    refresh_token_gc_cron: str = "0 5 * * *"  # noqa: S105 — cron schedule; field name merely contains "token"
     refresh_token_gc_retention_days: int = 1
     # Orphan draft-conversation GC (APScheduler crontab; default: hourly :15).
     # ``POST .../conversations/draft`` creates ``source="draft"`` rows that only
@@ -249,7 +249,7 @@ class Settings(BaseSettings):
     # tests and production are not affected unless env explicitly opts in.
     e2e_seed_user_enabled: bool = False
     e2e_user_email: str = "playwright-e2e@moldy.dev"
-    e2e_user_password: str = "correct horse battery staple 42"
+    e2e_user_password: str = "correct horse battery staple 42"  # noqa: S105 — local E2E seed account; inert unless e2e_seed_user_enabled
     e2e_user_name: str = "E2E User"
     e2e_scripted_model_enabled: bool = False
     e2e_test_helpers_enabled: bool = False

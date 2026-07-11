@@ -71,9 +71,7 @@ class MigrationStats:
 
 
 async def _fetch_user(db: AsyncSession, user_id: uuid.UUID) -> User | None:
-    return (
-        await db.execute(select(User).where(User.id == user_id))
-    ).scalar_one_or_none()
+    return (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
 
 
 async def _validate(
@@ -87,9 +85,7 @@ async def _validate(
 
     target_row = await _fetch_user(db, target)
     if target_row is None:
-        raise SystemExit(
-            f"target user {target} not found — register the real user first"
-        )
+        raise SystemExit(f"target user {target} not found — register the real user first")
     if not target_row.is_super_user:
         # Warning only — operators may legitimately migrate to a non-admin in
         # weird recovery cases. Still highlight loudly.
@@ -100,9 +96,7 @@ async def _validate(
 
     source_row = await _fetch_user(db, source)
     if source_row is None:
-        logger.info(
-            "source user %s does not exist — nothing to migrate. Exiting.", source
-        )
+        logger.info("source user %s does not exist — nothing to migrate. Exiting.", source)
         raise SystemExit(0)
 
 
@@ -115,33 +109,25 @@ async def _reassign(
 ) -> list[MigrationStats]:
     stats: list[MigrationStats] = []
     for table, column, extra in _REASSIGN_TABLES:
-        count_sql = (
-            f"SELECT COUNT(*) FROM {table} WHERE {column} = :source{extra}"
-        )
-        n = (
-            await db.execute(text(count_sql).bindparams(source=source))
-        ).scalar_one()
+        count_sql = f"SELECT COUNT(*) FROM {table} WHERE {column} = :source{extra}"  # noqa: S608 — identifiers from internal _REASSIGN_TABLES; values bound
+        n = (await db.execute(text(count_sql).bindparams(source=source))).scalar_one()
         stats.append(MigrationStats(table=table, rows_changed=int(n)))
 
         if dry_run or n == 0:
             continue
 
         update_sql = (
-            f"UPDATE {table} SET {column} = :target "
+            f"UPDATE {table} SET {column} = :target "  # noqa: S608 — identifiers from internal _REASSIGN_TABLES; values bound
             f"WHERE {column} = :source{extra}"
         )
-        await db.execute(
-            text(update_sql).bindparams(source=source, target=target)
-        )
+        await db.execute(text(update_sql).bindparams(source=source, target=target))
     return stats
 
 
 async def _delete_source(db: AsyncSession, source: uuid.UUID) -> int:
     """Final ``DELETE FROM users`` — runs only when ``--delete-source``."""
 
-    result = await db.execute(
-        text("DELETE FROM users WHERE id = :id").bindparams(id=source)
-    )
+    result = await db.execute(text("DELETE FROM users WHERE id = :id").bindparams(id=source))
     return int(getattr(result, "rowcount", 0) or 0)
 
 
@@ -209,8 +195,7 @@ async def _run(args: argparse.Namespace) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Reassign rows owned by the legacy mock user to a real "
-            "authenticated user. ADR-016 §6."
+            "Reassign rows owned by the legacy mock user to a real authenticated user. ADR-016 §6."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -226,10 +211,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source-user-id",
         default=str(DEFAULT_SOURCE_UUID),
-        help=(
-            "UUID of the legacy mock user "
-            f"(default: {DEFAULT_SOURCE_UUID})."
-        ),
+        help=(f"UUID of the legacy mock user (default: {DEFAULT_SOURCE_UUID})."),
     )
     parser.add_argument(
         "--dry-run",
