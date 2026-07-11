@@ -33,10 +33,7 @@ export function SkillBuilderIndexClient() {
   const [createOpen, setCreateOpen] = useState(false)
 
   // 세션 시작/라우팅/실패 토스트는 공유 launcher가 소유한다 (리뷰 R).
-  async function startCreate(request: string) {
-    const started = await launcher.startCreate(request)
-    if (started) setCreateOpen(false)
-  }
+  // 다이얼로그는 onStartChat 직후 스스로 닫힌다.
 
   const items = sessions ?? []
 
@@ -107,7 +104,7 @@ export function SkillBuilderIndexClient() {
           setCreateOpen(false)
           router.push(`/skills/${id}/source`)
         }}
-        onStartChat={(request) => void startCreate(request)}
+        onStartChat={(request) => void launcher.startCreate(request)}
       />
     </div>
   )

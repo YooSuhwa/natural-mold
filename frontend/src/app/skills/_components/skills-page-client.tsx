@@ -68,9 +68,9 @@ export function SkillsPageClient() {
   }
 
   // 빌더 챗 진입 — 세션 시작/라우팅/실패 토스트는 공유 launcher가 소유한다.
-  async function openBuilderCreate(request: string) {
-    const started = await launcher.startCreate(request)
-    if (started) setCreateOpen(false)
+  // 다이얼로그는 onStartChat 직후 스스로 닫히므로 여기서 닫기를 관리하지 않는다.
+  function openBuilderCreate(request: string) {
+    void launcher.startCreate(request)
   }
 
   // 목록 표의 행 "수정" — 목업 계약대로 improve 빌더 세션을 바로 시작한다.
@@ -188,6 +188,7 @@ export function SkillsPageClient() {
                 isLoading={isLoading}
                 emptyTitle={t('empty.filtered')}
                 onImprove={openBuilderImprove}
+                improvePending={launcher.pending}
                 onPublish={setPublishSkill}
               />
             </ResourcePanel.Body>

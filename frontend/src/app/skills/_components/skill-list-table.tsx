@@ -43,6 +43,7 @@ export function SkillListTable({
   isLoading,
   emptyTitle,
   onImprove,
+  improvePending,
   onPublish,
 }: {
   /** 부모의 useMemo 결과를 그대로 받는다 — 새 identity를 만들면 선택 통지 effect가 재순환한다. */
@@ -50,6 +51,8 @@ export function SkillListTable({
   readonly isLoading: boolean
   readonly emptyTitle: string
   readonly onImprove: (skillId: string) => void
+  /** 빌더 세션 시작 중 — 행 "수정" 이중 클릭이 세션을 중복 생성하지 않게 막는다. */
+  readonly improvePending: boolean
   readonly onPublish: (skill: Skill) => void
 }) {
   const t = useTranslations('skill')
@@ -58,8 +61,11 @@ export function SkillListTable({
   const removeSkill = useDeleteSkill()
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [selected, setSelected] = useState<Skill[]>([])
-  const [pendingDelete, setPendingDelete] = useState<Skill[]>([])
+  // 삭제 대상은 **id만** 저장하고 실행/표시 시점에 현재 목록에서 파생한다 —
+  // 선택 스냅샷 객체는 refetch 후 stale해질 수 있다(DataTable 통지는 id 기반).
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([])
   const [deleting, setDeleting] = useState(false)
+  const pendingSkills = skills.filter((skill) => pendingDeleteIds.includes(skill.id))
 
   function resetSelection() {
     setRowSelection({})
@@ -67,11 +73,11 @@ export function SkillListTable({
   }
 
   async function executeDelete() {
-    if (pendingDelete.length === 0) return
+    if (pendingSkills.length === 0) return
     setDeleting(true)
     const failures: string[] = []
     // 순차 삭제 — 기존 단건 DELETE 재사용, 부분 실패는 이름으로 보고 (AD-5).
-    for (const skill of pendingDelete) {
+    for (const skill of pendingSkills) {
       try {
         await removeSkill.mutateAsync(skill.id)
       } catch {
@@ -79,9 +85,9 @@ export function SkillListTable({
       }
     }
     setDeleting(false)
-    setPendingDelete([])
+    setPendingDeleteIds([])
     resetSelection()
-    const deletedCount = pendingDelete.length - failures.length
+    const deletedCount = pendingSkills.length - failures.length
     if (deletedCount > 0) {
       toast.success(list('deleteSuccess', { count: deletedCount }))
     }
@@ -90,8 +96,8 @@ export function SkillListTable({
     }
   }
 
-  const connectedTotal = pendingDelete.reduce((sum, skill) => sum + skill.used_by_count, 0)
-  const pendingNames = pendingDelete.map((skill) => skill.name).join(', ')
+  const connectedTotal = pendingSkills.reduce((sum, skill) => sum + skill.used_by_count, 0)
+  const pendingNames = pendingSkills.map((skill) => skill.name).join(', ')
 
   const columns: ColumnDef<Skill, unknown>[] = [
     {
@@ -162,8 +168,9 @@ export function SkillListTable({
         <SkillRowActions
           skill={row.original}
           onImprove={onImprove}
+          improvePending={improvePending}
           onPublish={onPublish}
-          onDelete={(skill) => setPendingDelete([skill])}
+          onDelete={(skill) => setPendingDeleteIds([skill.id])}
         />
       ),
     },
@@ -192,7 +199,7 @@ export function SkillListTable({
                 type="button"
                 variant="destructive"
                 size="sm"
-                onClick={() => setPendingDelete(selected)}
+                onClick={() => setPendingDeleteIds(selected.map((skill) => skill.id))}
               >
                 <Trash2 className="size-3.5" />
                 {list('deleteSelected')}
@@ -206,11 +213,11 @@ export function SkillListTable({
       />
 
       <DeleteConfirmDialog
-        open={pendingDelete.length > 0}
+        open={pendingDeleteIds.length > 0}
         onOpenChange={(open) => {
-          if (!open && !deleting) setPendingDelete([])
+          if (!open && !deleting) setPendingDeleteIds([])
         }}
-        title={list('bulkDeleteTitle', { count: pendingDelete.length })}
+        title={list('bulkDeleteTitle', { count: pendingSkills.length })}
         description={
           connectedTotal > 0
             ? list('bulkDeleteDescriptionConnected', {
@@ -230,11 +237,13 @@ export function SkillListTable({
 function SkillRowActions({
   skill,
   onImprove,
+  improvePending,
   onPublish,
   onDelete,
 }: {
   readonly skill: Skill
   readonly onImprove: (skillId: string) => void
+  readonly improvePending: boolean
   readonly onPublish: (skill: Skill) => void
   readonly onDelete: (skill: Skill) => void
 }) {
@@ -250,6 +259,7 @@ function SkillRowActions({
         type="button"
         variant="outline"
         size="sm"
+        disabled={improvePending}
         onClick={(event) => {
           event.stopPropagation()
           onImprove(skill.id)

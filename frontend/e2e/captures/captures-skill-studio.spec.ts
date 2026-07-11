@@ -254,6 +254,8 @@ test.describe('Skill studio captures', () => {
       // ── 19. 개선 시작 → 빌더 챗(시드 워크스페이스 + 자동 발화) ──────────
       await page.getByRole('button', { name: /회의록 액션 아이템 개선 시작/ }).click()
       await page.waitForURL(/\/skills\/builder\/[0-9a-f-]{36}/, { timeout: 60_000 })
+      const improveSessionId = page.url().match(/builder\/([0-9a-f-]{36})/)?.[1] ?? ''
+      expect(improveSessionId).not.toBe('')
       await expect(page.getByTestId('skill-builder-rail')).toBeVisible({ timeout: 60_000 })
       // improve 시드 — 원본 SKILL.md가 드래프트 파일 목록에 보인다.
       await expect(page.getByTestId('skill-builder-rail')).toContainText('SKILL.md', {
@@ -265,11 +267,14 @@ test.describe('Skill studio captures', () => {
       })
       await shot(page, '19-improve-builder-chat.png')
 
-      // ── 20. 빌더 인덱스 — 방금 세션이 이력에 반영(list invalidate) ──────
+      // ── 20. 빌더 인덱스 — **방금 만든 세션**이 이력에 반영(list invalidate).
+      // 재실행 잔존 세션으로도 통과하는 토톨로지를 막기 위해 세션 id로 스코프.
       await page.goto('/skills/builder', { waitUntil: 'domcontentloaded' })
-      await expect(page.getByTestId('builder-session-list')).toContainText('개선', {
-        timeout: 30_000,
-      })
+      await expect(
+        page
+          .getByTestId('builder-session-list')
+          .locator(`a[href="/skills/builder/${improveSessionId}"]`),
+      ).toBeVisible({ timeout: 30_000 })
       await shot(page, '20-builder-index-history.png')
     } finally {
       if (agentId) {
