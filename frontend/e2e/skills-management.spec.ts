@@ -87,8 +87,16 @@ test.describe('Skills page', () => {
     await page.goto('/skills')
     await expect(page.getByText('Bulk Target A')).toBeVisible()
 
-    // 전체 선택 → 벌크 바 → 확인 다이얼로그(이름 열거 + 연결 경고) → 일괄 삭제.
-    await page.getByRole('checkbox', { name: '모든 행 선택' }).check()
+    // 행 체크박스로 선택(전체선택 아님) — 체크 클릭이 행 내비게이션으로
+    // 새면 안 된다(리뷰 R에서 발견된 실버그의 회귀 가드).
+    for (const name of ['Bulk Target A', 'Bulk Target B']) {
+      await page
+        .getByRole('row')
+        .filter({ hasText: name })
+        .getByRole('checkbox', { name: '행 선택' })
+        .check()
+    }
+    await expect(page).toHaveURL(/\/skills$/)
     await expect(page.getByTestId('skill-bulk-bar')).toContainText('2개 선택됨')
     await page.getByTestId('skill-bulk-bar').getByRole('button', { name: '삭제' }).click()
 
