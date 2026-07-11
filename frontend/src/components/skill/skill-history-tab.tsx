@@ -30,7 +30,8 @@ export function SkillHistoryTab({
 }: {
   readonly children: SkillDetailTabRender
   readonly skillId: string
-  readonly onClose: () => void
+  /** 다이얼로그 전용 닫기 — 풀페이지 스튜디오에서는 생략(footer 없음). */
+  readonly onClose?: () => void
 }) {
   const t = useTranslations('skill.detailDialog.history')
   const common = useTranslations('skill.detailDialog')
@@ -138,13 +139,11 @@ export function SkillHistoryTab({
         )}
       </>
     ),
-    footer: (
-      <>
-        <Button variant="outline" onClick={onClose}>
-          {common('close')}
-        </Button>
-      </>
-    ),
+    footer: onClose ? (
+      <Button variant="outline" onClick={onClose}>
+        {common('close')}
+      </Button>
+    ) : null,
     overlay: (
       <DeleteConfirmDialog
         open={rollbackRevision !== null}

@@ -18,11 +18,15 @@ export function TextSkillEditor({
   skillId,
   onClose,
   showCredentials = true,
+  showDangerZone = true,
 }: {
   readonly children: SkillDetailTabRender
   readonly skillId: string
-  readonly onClose: () => void
+  /** 다이얼로그 전용 닫기 — 풀페이지 스튜디오에서는 생략. */
+  readonly onClose?: () => void
   readonly showCredentials?: boolean
+  /** 스킬 삭제 액션 — 스튜디오에서는 설정 탭이 소유하므로 false. */
+  readonly showDangerZone?: boolean
 }) {
   const t = useTranslations('skill.detailDialog')
   const { data: textContent } = useSkillContent(skillId, true)
@@ -50,7 +54,7 @@ export function TextSkillEditor({
     try {
       await remove.mutateAsync(skillId)
       toast.success(t('deleted'))
-      onClose()
+      onClose?.()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('deleteFailed'))
     }
@@ -70,29 +74,33 @@ export function TextSkillEditor({
     ),
     footer: (
       <>
-        {confirming ? (
-          <div className="flex-1">
-            <DeleteConfirmInline
-              entity={t('skillEntity')}
-              onCancel={() => setConfirming(false)}
-              onConfirm={handleDelete}
-              pending={remove.isPending}
-            />
-          </div>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mr-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setConfirming(true)}
-          >
-            <Trash2 className="size-3.5" />
-            {t('deleteSkill')}
+        {showDangerZone ? (
+          confirming ? (
+            <div className="flex-1">
+              <DeleteConfirmInline
+                entity={t('skillEntity')}
+                onCancel={() => setConfirming(false)}
+                onConfirm={handleDelete}
+                pending={remove.isPending}
+              />
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mr-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setConfirming(true)}
+            >
+              <Trash2 className="size-3.5" />
+              {t('deleteSkill')}
+            </Button>
+          )
+        ) : null}
+        {onClose ? (
+          <Button variant="outline" onClick={onClose}>
+            {t('close')}
           </Button>
-        )}
-        <Button variant="outline" onClick={onClose}>
-          {t('close')}
-        </Button>
+        ) : null}
         <Button onClick={handleSave} disabled={update.isPending}>
           {update.isPending ? (
             <Loader2 className="size-4 animate-spin" />

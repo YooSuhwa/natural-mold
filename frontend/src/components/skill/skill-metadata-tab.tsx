@@ -19,7 +19,8 @@ export function SkillMetadataTab({
 }: {
   readonly children: SkillDetailTabRender
   readonly skill: Skill
-  readonly onClose: () => void
+  /** 다이얼로그 전용 닫기 — 풀페이지 스튜디오에서는 생략(저장 버튼만). */
+  readonly onClose?: () => void
 }) {
   const t = useTranslations('skill.detailDialog')
   const metadata = useTranslations('skill.detailDialog.metadata')
@@ -74,9 +75,11 @@ export function SkillMetadataTab({
     ),
     footer: (
       <>
-        <Button variant="outline" onClick={onClose}>
-          {t('close')}
-        </Button>
+        {onClose ? (
+          <Button variant="outline" onClick={onClose}>
+            {t('close')}
+          </Button>
+        ) : null}
         <Button onClick={handleSave} disabled={!canSave || update.isPending}>
           {update.isPending ? (
             <Loader2 className="size-4 animate-spin" />

@@ -26,11 +26,15 @@ export function PackageSkillEditor({
   skillId,
   onClose,
   showCredentials = true,
+  showDangerZone = true,
 }: {
   readonly children: SkillDetailTabRender
   readonly skillId: string
-  readonly onClose: () => void
+  /** 다이얼로그 전용 닫기 — 풀페이지 스튜디오에서는 생략. */
+  readonly onClose?: () => void
   readonly showCredentials?: boolean
+  /** 삭제/내보내기 — 스튜디오에서는 설정 탭이 소유하므로 false. */
+  readonly showDangerZone?: boolean
 }) {
   const t = useTranslations('skill.detailDialog')
   const { data: skill } = useSkill(skillId)
@@ -172,7 +176,7 @@ export function PackageSkillEditor({
     try {
       await removeSkill.mutateAsync(skillId)
       toast.success(t('deleted'))
-      onClose()
+      onClose?.()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('deleteFailed'))
     }
@@ -233,6 +237,7 @@ export function PackageSkillEditor({
         onConfirmDelete={handleDeleteSkill}
         onClose={onClose}
         onSave={handleSave}
+        showDangerZone={showDangerZone}
       />
     ),
   })

@@ -4,6 +4,8 @@ import type {
   SkillBuilderFileContent,
   SkillBuilderFilesResponse,
   SkillBuilderSession,
+  SkillBuilderSessionBrief,
+  SkillBuilderSessionListParams,
   SkillBuilderStartRequest,
   SkillDraftPackage,
 } from '@/lib/types/skill-builder'
@@ -14,6 +16,15 @@ export const skillBuilderApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  list: (params?: SkillBuilderSessionListParams) => {
+    const query = new URLSearchParams()
+    if (params?.skill_id) query.set('skill_id', params.skill_id)
+    if (params?.status) query.set('status', params.status)
+    if (params?.limit) query.set('limit', String(params.limit))
+    const suffix = query.size > 0 ? `?${query.toString()}` : ''
+    return apiFetch<SkillBuilderSessionBrief[]>(`/api/skill-builder${suffix}`)
+  },
 
   get: (sessionId: string) => apiFetch<SkillBuilderSession>(`/api/skill-builder/${sessionId}`),
 

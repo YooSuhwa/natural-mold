@@ -4,14 +4,28 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { skillBuilderApi } from '@/lib/api/skill-builder'
 import { skillQueryKeys } from '@/lib/query-keys/skills'
 import { requireQueryId } from './query-id'
-import type { SkillBuilderStartRequest, SkillDraftPackage } from '@/lib/types/skill-builder'
+import type {
+  SkillBuilderSessionListParams,
+  SkillBuilderStartRequest,
+  SkillDraftPackage,
+} from '@/lib/types/skill-builder'
 
 export const skillBuilderKeys = {
   all: ['skill-builder'] as const,
+  list: (params?: SkillBuilderSessionListParams) =>
+    ['skill-builder', 'list', params ?? {}] as const,
   detail: (sessionId: string | null | undefined) => ['skill-builder', sessionId] as const,
   files: (sessionId: string | null | undefined) => ['skill-builder', sessionId, 'files'] as const,
   fileContent: (sessionId: string | null | undefined, path: string | null) =>
     ['skill-builder', sessionId, 'files', path] as const,
+}
+
+export function useSkillBuilderSessions(params?: SkillBuilderSessionListParams) {
+  return useQuery({
+    queryKey: skillBuilderKeys.list(params),
+    queryFn: () => skillBuilderApi.list(params),
+    staleTime: 15_000,
+  })
 }
 
 export function useSkillBuilderSession(sessionId: string | null | undefined) {

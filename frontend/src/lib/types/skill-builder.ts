@@ -66,6 +66,25 @@ export type SkillBuilderStartRequest = {
   readonly source_skill_id?: string | null
 }
 
+/** 세션 목록용 경량 응답 — draft/snapshot 등 무거운 컬럼 없음 (Phase 2). */
+export type SkillBuilderSessionBrief = {
+  readonly id: string
+  readonly mode: SkillBuilderMode
+  readonly status: SkillBuilderStatus
+  readonly user_request: string
+  readonly source_skill_id?: string | null
+  readonly finalized_skill_id?: string | null
+  readonly conversation_id?: string | null
+  readonly created_at: string
+  readonly updated_at: string
+}
+
+export type SkillBuilderSessionListParams = {
+  readonly skill_id?: string
+  readonly status?: SkillBuilderStatus
+  readonly limit?: number
+}
+
 /** 드래프트 워크스페이스 파일 요약 (레일 소스 뷰, M7) — 내용 없음. */
 export type SkillBuilderFileEntry = {
   readonly path: string

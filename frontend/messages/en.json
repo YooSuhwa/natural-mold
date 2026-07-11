@@ -2776,6 +2776,48 @@
         "evalsReady": "Cases ready",
         "evalsPending": "Not evaluated"
       }
+    },
+    "studio": {
+      "tabsAria": "Skill studio views",
+      "tabs": {
+        "list": "List",
+        "builder": "Builder",
+        "evaluation": "Evaluation",
+        "versions": "Versions",
+        "source": "Source",
+        "settings": "Settings"
+      },
+      "contextBar": {
+        "currentSkill": "Working on",
+        "newDraft": "New skill draft",
+        "passRate": "Pass rate",
+        "passRateValue": "{percent}%",
+        "connectedAgents": "Connected agents",
+        "switchSkill": "Switch to another skill",
+        "noOtherSkills": "No other skills",
+        "improve": "Improve via chat"
+      },
+      "skillUnavailableTitle": "Skill not found",
+      "skillUnavailableHint": "This skill was deleted or you don't have access to it.",
+      "backToList": "Back to skills",
+      "builderIndex": {
+        "title": "Skill Builder",
+        "hint": "Sessions where you built or improved skills via chat.",
+        "scopedHint": "Builder sessions for {name}.",
+        "startCreate": "Create via chat",
+        "improveSkill": "Improve {name}",
+        "emptyTitle": "No builder sessions yet",
+        "emptyHint": "Start a chat to build a skill and sessions will appear here.",
+        "updatedAt": "Updated {time}"
+      },
+      "settings": {
+        "metadataTitle": "Metadata",
+        "credentialsTitle": "Credential bindings",
+        "actionsTitle": "Publish · Export · Delete",
+        "deleteHint": "Connected to {count} agents — deleting also removes those links.",
+        "deleteTitle": "Delete {name}",
+        "deleteDescription": "This also removes links from {count} connected agents and cannot be undone."
+      }
     }
   },
   "marketplace": {
@@ -3951,7 +3993,11 @@
     "visualSettings": "Visual Settings",
     "conversational": "Build by Chat",
     "manual": "Build Manually",
-    "template": "Template"
+    "template": "Template",
+    "skillEvaluation": "Evaluation",
+    "skillVersions": "Versions",
+    "skillSource": "Source",
+    "skillBuilder": "Builder"
   },
   "connections": {
     "pageTitle": "Page title",

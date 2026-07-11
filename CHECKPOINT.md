@@ -21,12 +21,13 @@
 - 상태: done (2026-07-11)
 
 ## M2a: 스튜디오 셸 + 신규 라우트 + 탭 이식 + 설정 탭 (다이얼로그 병존 착지)
-- [ ] `SkillStudioShell`(클라이언트: useParams+usePathname 파생, 6탭, 컨텍스트 바+스킬 스위처, `flex min-h-0 flex-1 flex-col`) + `app/skills/layout.tsx` 삽입
-- [ ] `/skills/[skillId]/{evaluation,versions,source,settings}` + `[skillId]`→source redirect + `/skills/builder` 인덱스
-- [ ] 페이지용 탭 셸 렌더러(4슬롯, overlay 필수) + 평가/버전/소스 이식 + 설정 탭(바인딩+메타데이터+게시/내보내기/삭제 — 에디터에서 추출)
-- [ ] breadcrumb 라벨 + 스킬명 리졸버, i18n `skill.studio.*` (ko 정본 + en 미러)
-- 검증: `pnpm vitest run && pnpm build && pnpm lint && pnpm lint:i18n && pnpm lint:design-system && pnpm lint:a11y` + E2E `skill-builder-chat.spec.ts` 무수정 통과(회귀 게이트)
-- 상태: pending
+- [x] `SkillStudioShell`(usePathname 파생 — 순수 헬퍼 `_lib/skill-studio-tabs.ts`, 6탭, 컨텍스트 바+스킬 스위처+개선 버튼, flex min-h-0 체인) + `app/skills/layout.tsx` 삽입
+- [x] `/skills/[skillId]/{evaluation,versions,source,settings}` + `[skillId]`→source redirect + `/skills/builder` 인덱스(세션 목록+시작 CTA, `useSkillBuilderSessions` 신규)
+- [x] 페이지용 탭 셸 렌더러(`renderSkillStudioTabShell`, 4슬롯 overlay 포함) + 평가/버전/소스 이식 + 설정 탭(`skill-settings-sections.tsx` — 메타데이터는 SkillMetadataTab 렌더 프롭 재사용)
+- [x] 기존 탭 컴포넌트 페이지 모드: `onClose?` 선택화(history/metadata/text/package) + `showDangerZone`(삭제/내보내기를 설정 탭으로)
+- [x] breadcrumb: 탭 세그먼트 라벨 4종(nav.skill*) + `SkillName` 리졸버 + 빌더 세션 uuid skip, i18n `skill.studio.*` ko/en
+- 검증: vitest 1274 / tsc / build(신규 라우트 6종 등록) / eslint·i18n 그린. design-system·a11y 레드는 **베이스 기존**(stash 대조 검증 — approval-card/artifact-panel 드리프트, 내 diff 밖). 신규 위반 0(settings 내보내기 앵커 aria-label, package-footer 베이스라인 라인이동 2건만 갱신). E2E `skill-builder-chat.spec.ts` 무수정 2/2(18.9s, throwaway 5437/3410/8410)
+- 상태: done (2026-07-11)
 
 ## M2b: 레거시 절체 + 다이얼로그 제거
 - [ ] `app/skills/page.tsx` 서버 redirect (`coerceSkillDetailTab` 재사용, content→source / credentials·metadata→settings / history→versions)
