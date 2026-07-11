@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -220,6 +221,56 @@ async def test_oauth_callback_consumes_state_and_stores_token(
     assert payload.get("code_verifier") is None
     state_row = (await db.execute(select(CredentialOAuthState))).scalar_one()
     assert state_row.consumed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_rejects_cross_user_state(
+    db: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """A state token started by user A must not complete against user B's
+    credential — the callback is unauthenticated, so this ownership check is
+    the only thing stopping a stolen state from rewriting another user's
+    credential (oauth_service.handle_callback)."""
+
+    other_user_id = uuid.uuid4()
+    db.add(User(id=other_user_id, email="other@test.com", name="Other", is_super_user=False))
+    cred = await credential_service.create(
+        db,
+        user_id=other_user_id,
+        definition_key="mcp_oauth2",
+        name="Atlassian",
+        data={
+            "access_token_url": "https://id.example/token",
+            "client_id": "cid",
+            "authentication": "none",
+        },
+    )
+    raw_state = "cross-user-state"
+    db.add(
+        CredentialOAuthState(
+            state_hash=hashlib.sha256(raw_state.encode()).hexdigest(),
+            credential_id=cred.id,
+            user_id=TEST_USER_ID,
+            redirect_uri="http://test/api/oauth2-credential/callback",
+            code_verifier="verifier",
+            origin="credential",
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
+        )
+    )
+    await db.commit()
+    original_blob = cred.data_encrypted
+
+    response = await client.get(
+        "/api/oauth2-credential/callback",
+        params={"code": "code-1", "state": raw_state},
+    )
+
+    assert response.status_code == 403
+    state_row = (await db.execute(select(CredentialOAuthState))).scalar_one()
+    assert state_row.consumed_at is None
+    await db.refresh(cred)
+    assert cred.data_encrypted == original_blob
 
 
 @pytest.mark.asyncio
