@@ -340,6 +340,54 @@ async def test_other_user_cannot_access(client: AsyncClient, db: AsyncSession) -
     assert "Other's Tool" not in names
 
 
+# -- Run endpoint --------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_endpoint_stamps_last_used_at(
+    client: AsyncClient, db: AsyncSession, monkeypatch
+) -> None:
+    """POST /api/tools/{id}/run 성공 시 last_used_at 스탬프 계약 잠금.
+
+    스탬프는 tool_service.run_tool_instance에 있는데(Stage 2에서 라우터로부터
+    이동) 엔드포인트 경유 테스트가 없어 제거 mutation이 미검출이었다
+    (적대 리뷰 실증). 실패 run은 스탬프가 찍히지 않아야 한다.
+    """
+
+    from app.tools.runner import ToolRunResult
+
+    tool = Tool(
+        user_id=TEST_USER_ID,
+        definition_key="http_request",
+        name="Stamp Me",
+        parameters={"method": "GET", "url": "https://api.example.com/ping"},
+    )
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+    assert tool.last_used_at is None
+
+    async def _fail(**_: object) -> ToolRunResult:
+        return ToolRunResult(success=False, error="boom")
+
+    monkeypatch.setattr("app.services.tool_service.run_tool", _fail)
+    failed = await client.post(f"/api/tools/{tool.id}/run")
+    assert failed.status_code == 200
+    assert failed.json()["success"] is False
+    await db.refresh(tool)
+    assert tool.last_used_at is None
+
+    async def _ok(**_: object) -> ToolRunResult:
+        return ToolRunResult(success=True, result={"ok": True}, http_status=200)
+
+    monkeypatch.setattr("app.services.tool_service.run_tool", _ok)
+    succeeded = await client.post(f"/api/tools/{tool.id}/run")
+    assert succeeded.status_code == 200
+    assert succeeded.json()["success"] is True
+    await db.refresh(tool)
+    assert tool.last_used_at is not None
+
+
 # -- Runner: HTTP Request ----------------------------------------------------
 
 

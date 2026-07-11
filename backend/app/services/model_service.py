@@ -167,6 +167,9 @@ async def create_model(db: AsyncSession, *, data: ModelCreate) -> Model:
     try:
         await db.flush()
     except IntegrityError as exc:
+        # Session-wide rollback: callers must not stack earlier pending
+        # changes on this session before calling (single-mutation requests
+        # only) — wrap in begin_nested() if that ever changes.
         await db.rollback()
         raise HTTPException(
             status_code=409,
@@ -193,6 +196,8 @@ async def update_model(db: AsyncSession, *, model: Model, data: ModelUpdate) -> 
     try:
         await db.flush()
     except IntegrityError as exc:
+        # Session-wide rollback — same single-mutation caller contract as
+        # create_model above.
         await db.rollback()
         raise HTTPException(
             status_code=409,

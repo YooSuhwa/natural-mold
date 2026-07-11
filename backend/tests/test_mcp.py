@@ -193,6 +193,43 @@ async def test_patch_mcp_server(client: AsyncClient, db: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_patch_mcp_server_rejects_inconsistent_payload(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    """update 경로의 transport/url/command 정합성 검증 계약 잠금.
+
+    create 경로만 잠겨 있으면 mcp_service.update_server의
+    validate_payload_consistency를 제거해도 전 테스트가 그린이었다
+    (Stage 2 적대 리뷰 mutation 실증) — 비정합 config가 조용히 저장되면
+    런타임 MCP 연결 실패로 이어진다.
+    """
+
+    create = await client.post(
+        "/api/mcp-servers",
+        json={
+            "name": "consistent",
+            "transport": "streamable_http",
+            "url": "https://mcp.example.com",
+        },
+    )
+    assert create.status_code == 201
+    sid = create.json()["id"]
+
+    # streamable_http인데 url을 지우는 PATCH → 422
+    drop_url = await client.patch(f"/api/mcp-servers/{sid}", json={"url": None})
+    assert drop_url.status_code == 422
+
+    # transport를 stdio로 바꾸면서 command 미제공 → 422
+    to_stdio = await client.patch(f"/api/mcp-servers/{sid}", json={"transport": "stdio"})
+    assert to_stdio.status_code == 422
+
+    # 원본 row는 비정합 값으로 오염되지 않았어야 한다.
+    row = (await db.execute(select(McpServer).where(McpServer.id == uuid.UUID(sid)))).scalar_one()
+    assert row.transport == "streamable_http"
+    assert row.url == "https://mcp.example.com"
+
+
+@pytest.mark.asyncio
 async def test_delete_mcp_server_cascades_tools(client: AsyncClient, db: AsyncSession) -> None:
     server = McpServer(
         user_id=TEST_USER_ID,
@@ -614,6 +651,34 @@ async def test_export_mcp_servers_omits_secrets(client: AsyncClient, db: AsyncSe
     # credential_id is exposed; the secret payload itself is never serialized.
     assert entry["credential_id"] == str(cred.id)
     assert "SECRET" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_export_mcp_servers_sorted_by_name(client: AsyncClient, db: AsyncSession) -> None:
+    """export의 이름순 정렬 계약(list_servers order_by_name=True) 잠금 —
+    단일 서버 픽스처로는 정렬 분기가 실행만 되고 단언되지 않았다."""
+
+    db.add_all(
+        [
+            McpServer(
+                user_id=TEST_USER_ID,
+                name="zeta",
+                transport="streamable_http",
+                url="https://z.example.com",
+            ),
+            McpServer(
+                user_id=TEST_USER_ID,
+                name="alpha",
+                transport="streamable_http",
+                url="https://a.example.com",
+            ),
+        ]
+    )
+    await db.commit()
+
+    response = await client.get("/api/mcp-servers/export")
+    assert response.status_code == 200
+    assert list(response.json()["mcpServers"].keys()) == ["alpha", "zeta"]
 
 
 # -- Health polling job ------------------------------------------------------

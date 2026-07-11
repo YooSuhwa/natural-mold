@@ -154,7 +154,11 @@ async def persist_credential_payload(
 
 
 async def gc_oauth_states(db: AsyncSession, *, now: datetime) -> None:
-    """Delete expired or consumed OAuth states. Reusable from scheduler GC."""
+    """Delete expired or consumed OAuth states.
+
+    Currently invoked opportunistically from ``start_oauth`` only; public so
+    a scheduler GC job can adopt it without reaching into router internals.
+    """
 
     await db.execute(
         delete(CredentialOAuthState).where(

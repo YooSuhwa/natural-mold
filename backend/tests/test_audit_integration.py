@@ -275,6 +275,109 @@ async def test_mcp_server_mutations_write_audit_without_headers(
 
 
 @pytest.mark.asyncio
+async def test_mcp_probe_writes_audit_with_outcome(client, db: AsyncSession, monkeypatch) -> None:
+    """probe 감사의 action/outcome/reason_code/metadata 계약 잠금.
+
+    Stage 2 적대 리뷰 mutation 실증: action 이름을 변조해도 기존 테스트가
+    전부 그린이었다 — 감사는 규정준수 표면이라 outcome 반전이 조용히
+    통과하면 안 된다. 라우터는 connect_and_list를 이름으로 import하므로
+    app.routers.mcp 경로를 패치한다.
+    """
+
+    async def _stub_ok(**_) -> dict:
+        return {"success": True, "server_info": {"name": "x"}, "tools": [{"name": "echo"}]}
+
+    monkeypatch.setattr("app.routers.mcp.connect_and_list", _stub_ok)
+    ok = await client.post(
+        "/api/mcp-servers/probe",
+        json={"transport": "streamable_http", "url": "https://mcp.example.com"},
+    )
+    assert ok.status_code == 200, ok.text
+
+    async def _stub_fail(**_) -> dict:
+        return {"success": False, "server_info": {}, "tools": [], "error": "boom"}
+
+    monkeypatch.setattr("app.routers.mcp.connect_and_list", _stub_fail)
+    fail = await client.post(
+        "/api/mcp-servers/probe",
+        json={"transport": "streamable_http", "url": "https://mcp.example.com"},
+    )
+    assert fail.status_code == 200, fail.text
+
+    rows = (
+        (
+            await db.execute(
+                select(AuditEvent)
+                .where(AuditEvent.action == "mcp_server.probe")
+                .order_by(AuditEvent.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 2
+    ok_row, fail_row = rows
+    assert ok_row.target_type == "mcp_server_probe"
+    assert ok_row.outcome == "success"
+    assert ok_row.reason_code is None
+    assert ok_row.event_metadata["transport"] == "streamable_http"
+    assert ok_row.event_metadata["tool_count"] == 1
+    assert fail_row.outcome == "failure"
+    assert fail_row.reason_code == "mcp_probe_failed"
+    assert fail_row.reason_message == "boom"
+    assert fail_row.event_metadata["tool_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_mcp_import_writes_audit_with_error_metadata(client, db: AsyncSession) -> None:
+    """import 감사의 부분 실패(success + reason_code)/전량 실패(failure) 판정 잠금."""
+
+    partial = await client.post(
+        "/api/mcp-servers/import",
+        json={
+            "mcpServers": {
+                "good": {"transport": "streamable_http", "url": "https://a.example"},
+                "bad": {"transport": "streamable_http"},
+            }
+        },
+    )
+    assert partial.status_code == 200, partial.text
+    body = partial.json()
+    assert body["created"] == 1
+    assert len(body["errors"]) == 1
+
+    all_fail = await client.post(
+        "/api/mcp-servers/import",
+        json={"mcpServers": {"bad2": {"transport": "streamable_http"}}},
+    )
+    assert all_fail.status_code == 200, all_fail.text
+
+    rows = (
+        (
+            await db.execute(
+                select(AuditEvent)
+                .where(AuditEvent.action == "mcp_server.import")
+                .order_by(AuditEvent.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 2
+    partial_row, all_fail_row = rows
+    # 일부라도 created/updated가 있으면 success + mcp_import_errors reason
+    assert partial_row.outcome == "success"
+    assert partial_row.reason_code == "mcp_import_errors"
+    assert partial_row.event_metadata["created"] == 1
+    assert partial_row.event_metadata["error_count"] == 1
+    assert partial_row.event_metadata["entry_count"] == 2
+    assert partial_row.event_metadata["overwrite"] is False
+    # 전량 실패면 failure
+    assert all_fail_row.outcome == "failure"
+    assert all_fail_row.reason_code == "mcp_import_errors"
+
+
+@pytest.mark.asyncio
 async def test_skill_mutations_write_audit_without_content(
     client,
     db: AsyncSession,
