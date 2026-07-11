@@ -11,16 +11,14 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.models.user import User
-from tests.conftest import TestSession
+from tests.conftest import TestSession, register_session
 
 
 async def _fresh_user(email: str) -> User:
     """Re-read the User row in a brand-new session (avoids identity-map staleness)."""
 
     async with TestSession() as fresh:
-        return (
-            await fresh.execute(select(User).where(User.email == email))
-        ).scalar_one()
+        return (await fresh.execute(select(User).where(User.email == email))).scalar_one()
 
 
 async def _register(
@@ -29,18 +27,15 @@ async def _register(
     email: str = "login@test.com",
     password: str = "correct horse",
 ) -> None:
-    saved = settings.allow_first_user_as_admin
-    settings.allow_first_user_as_admin = False
-    try:
-        resp = await client.post(
-            "/api/auth/register",
-            json={"email": email, "password": password, "name": "Login User"},
-        )
-    finally:
-        settings.allow_first_user_as_admin = saved
-    assert resp.status_code == 201
-    # Drop the cookies the register set so login is the next clean request.
-    client.cookies.clear()
+    # clear_cookies: drop the cookies register set so login is the next
+    # clean request.
+    await register_session(
+        client,
+        email=email,
+        password=password,
+        name="Login User",
+        clear_cookies=True,
+    )
 
 
 @pytest.mark.asyncio

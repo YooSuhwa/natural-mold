@@ -18,7 +18,7 @@ from sqlalchemy import select
 from app.auth.jwt import hash_refresh_token
 from app.config import settings
 from app.models.refresh_token import RefreshToken
-from tests.conftest import TestSession
+from tests.conftest import TestSession, register_session
 
 
 async def _register_and_login(
@@ -28,15 +28,8 @@ async def _register_and_login(
 ) -> str:
     """Register a fresh user. Returns the issued refresh JWT."""
 
-    settings.allow_first_user_as_admin = False
-    headers = {"user-agent": user_agent} if user_agent else None
-    resp = await client.post(
-        "/api/auth/register",
-        json={"email": email, "password": "correct horse", "name": "RT User"},
-        headers=headers,
-    )
-    assert resp.status_code == 201, resp.text
-    refresh = resp.cookies[settings.cookie_name_refresh]
+    sess = await register_session(client, email=email, name="RT User", user_agent=user_agent)
+    refresh = sess.cookies[settings.cookie_name_refresh]
     assert refresh
     return refresh
 
@@ -83,9 +76,7 @@ async def test_refresh_rotates_and_revokes_previous(raw_client: AsyncClient):
     async with TestSession() as db:
         old = (
             await db.execute(
-                select(RefreshToken).where(
-                    RefreshToken.token_hash == hash_refresh_token(rt)
-                )
+                select(RefreshToken).where(RefreshToken.token_hash == hash_refresh_token(rt))
             )
         ).scalar_one_or_none()
         assert old is not None
@@ -94,9 +85,7 @@ async def test_refresh_rotates_and_revokes_previous(raw_client: AsyncClient):
         # The new refresh row is active.
         new_row = (
             await db.execute(
-                select(RefreshToken).where(
-                    RefreshToken.token_hash == hash_refresh_token(new_rt)
-                )
+                select(RefreshToken).where(RefreshToken.token_hash == hash_refresh_token(new_rt))
             )
         ).scalar_one_or_none()
         assert new_row is not None
@@ -168,9 +157,7 @@ async def test_refresh_expired_returns_401(raw_client: AsyncClient):
     async with TestSession() as db:
         row = (
             await db.execute(
-                select(RefreshToken).where(
-                    RefreshToken.token_hash == hash_refresh_token(rt)
-                )
+                select(RefreshToken).where(RefreshToken.token_hash == hash_refresh_token(rt))
             )
         ).scalar_one()
         row.expires_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1)
@@ -218,9 +205,9 @@ async def test_refresh_race_within_grace_window_chains_instead_of_replay(
         assert by_hash[hash_refresh_token(rt_a)].revoked_at is not None
         head = by_hash[hash_refresh_token(rt_b)]
         assert head.revoked_at is None
-        assert by_hash[hash_refresh_token(rt)].replaced_by_id == by_hash[
-            hash_refresh_token(rt_a)
-        ].id
+        assert (
+            by_hash[hash_refresh_token(rt)].replaced_by_id == by_hash[hash_refresh_token(rt_a)].id
+        )
         assert by_hash[hash_refresh_token(rt_a)].replaced_by_id == head.id
 
 
@@ -265,15 +252,11 @@ async def test_refresh_race_outside_grace_window_is_replay(raw_client: AsyncClie
     async with TestSession() as db:
         old = (
             await db.execute(
-                select(RefreshToken).where(
-                    RefreshToken.token_hash == hash_refresh_token(rt)
-                )
+                select(RefreshToken).where(RefreshToken.token_hash == hash_refresh_token(rt))
             )
         ).scalar_one()
         old.revoked_at = (
-            datetime.now(UTC) - timedelta(
-                seconds=settings.refresh_rotation_grace_seconds + 30
-            )
+            datetime.now(UTC) - timedelta(seconds=settings.refresh_rotation_grace_seconds + 30)
         ).replace(tzinfo=None)
         await db.commit()
 
@@ -299,9 +282,7 @@ async def test_refresh_replay_after_replacement_revoked_is_replay(
     async with TestSession() as db:
         head = (
             await db.execute(
-                select(RefreshToken).where(
-                    RefreshToken.token_hash == hash_refresh_token(rt_a)
-                )
+                select(RefreshToken).where(RefreshToken.token_hash == hash_refresh_token(rt_a))
             )
         ).scalar_one()
         head.revoked_at = datetime.now(UTC).replace(tzinfo=None)
@@ -313,7 +294,8 @@ async def test_refresh_replay_after_replacement_revoked_is_replay(
 
 @pytest.mark.asyncio
 async def test_refresh_chain_walk_aborts_at_depth_limit(
-    raw_client: AsyncClient, monkeypatch: pytest.MonkeyPatch,
+    raw_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """Pathological loop: ``_find_race_chain_head`` repeatedly returns a row
     that ``_lock_row`` then sees as revoked — without the depth bound the
@@ -331,9 +313,7 @@ async def test_refresh_chain_walk_aborts_at_depth_limit(
     async with TestSession() as db:
         original = (
             await db.execute(
-                select(RefreshToken).where(
-                    RefreshToken.token_hash == hash_refresh_token(rt)
-                )
+                select(RefreshToken).where(RefreshToken.token_hash == hash_refresh_token(rt))
             )
         ).scalar_one()
         original_id = original.id
@@ -343,9 +323,7 @@ async def test_refresh_chain_walk_aborts_at_depth_limit(
     async def _always_return_original(db, row, request, now):
         return await db.get(RefreshToken, original_id)
 
-    monkeypatch.setattr(
-        auth_service, "_find_race_chain_head", _always_return_original
-    )
+    monkeypatch.setattr(auth_service, "_find_race_chain_head", _always_return_original)
 
     response = await _post_refresh(raw_client, rt, headers=headers)
     assert response.status_code == 401

@@ -14,23 +14,18 @@ from httpx import AsyncClient
 
 from app.auth.jwt import create_csrf_token
 from app.config import settings
+from tests.conftest import register_session
 
 
 async def _login(client: AsyncClient, email: str = "csrf@test.com") -> dict[str, str]:
     """Register + login. Returns ``{"csrf": ..., "rt": ..., "at": ...}`` cookies."""
 
-    settings.allow_first_user_as_admin = False
-    reg = await client.post(
-        "/api/auth/register",
-        json={"email": email, "password": "correct horse", "name": "CSRF"},
-    )
-    assert reg.status_code == 201
-    csrf = reg.json()["csrf_token"]
+    sess = await register_session(client, email=email, name="CSRF")
     return {
-        "csrf": csrf,
-        "csrf_cookie": reg.cookies[settings.cookie_name_csrf],
-        "at": reg.cookies[settings.cookie_name_access],
-        "rt": reg.cookies[settings.cookie_name_refresh],
+        "csrf": sess.csrf,
+        "csrf_cookie": sess.cookies[settings.cookie_name_csrf],
+        "at": sess.cookies[settings.cookie_name_access],
+        "rt": sess.cookies[settings.cookie_name_refresh],
     }
 
 

@@ -17,9 +17,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.config import settings
 from app.models.model import Model
-from tests.conftest import TestSession
+from tests.conftest import AuthSession, TestSession, register_session
 
 # ---------------------------------------------------------------------------
 # Test infrastructure
@@ -45,41 +44,27 @@ async def _seed_default_model() -> str:
         return str(m.id)
 
 
-class _Session:
-    def __init__(self, csrf: str, cookies: dict[str, str]):
-        self.csrf = csrf
-        self.cookies = cookies
-
-    def headers(self) -> dict[str, str]:
-        return {"X-CSRF-Token": self.csrf}
+# ``AuthSession``/``register_session`` (tests/conftest.py) carry the shared
+# register + cookie/CSRF bundle; ``_Session`` was the local ancestor.
+_Session = AuthSession
 
 
-async def _register(client: AsyncClient, *, email: str, super_first: bool = False) -> _Session:
+async def _register(client: AsyncClient, *, email: str, super_first: bool = False) -> AuthSession:
     """Register a fresh user. ``super_first=True`` lets the first user be admin."""
 
-    settings.allow_first_user_as_admin = super_first
-    resp = await client.post(
-        "/api/auth/register",
-        json={"email": email, "password": "correct horse", "name": email[:5]},
+    return await register_session(
+        client,
+        email=email,
+        name=email[:5],
+        super_first=super_first,
+        clear_cookies=True,
     )
-    assert resp.status_code == 201, resp.text
-    sess = _Session(
-        csrf=resp.json()["csrf_token"],
-        cookies={
-            settings.cookie_name_access: resp.cookies[settings.cookie_name_access],
-            settings.cookie_name_csrf: resp.cookies[settings.cookie_name_csrf],
-        },
-    )
-    client.cookies.clear()
-    return sess
 
 
-def _apply(client: AsyncClient, sess: _Session) -> None:
+def _apply(client: AsyncClient, sess: AuthSession) -> None:
     """Replace the client's cookies with this session's. Idempotent."""
 
-    client.cookies.clear()
-    for k, v in sess.cookies.items():
-        client.cookies.set(k, v)
+    sess.apply(client)
 
 
 # ---------------------------------------------------------------------------

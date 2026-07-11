@@ -6,27 +6,16 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
 from app.models.conversation import Conversation
-from app.models.model import Model
-from app.models.user import User
-from tests.conftest import TEST_USER_ID
+from tests.conftest import seed_agent
 
 
 async def _seed_agent(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
-    user = User(id=TEST_USER_ID, email="test@test.com", name="Test User")
-    db.add(user)
-    model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
-    db.add(model)
-    await db.flush()
-    agent = Agent(
-        user_id=TEST_USER_ID,
+    _user, _model, agent = await seed_agent(
+        db,
         name="Memory Agent",
         system_prompt="You remember useful preferences.",
-        model_id=model.id,
     )
-    db.add(agent)
-    await db.flush()
     conversation = Conversation(agent_id=agent.id, title="Memory Test")
     db.add(conversation)
     await db.commit()
