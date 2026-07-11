@@ -18,8 +18,6 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
@@ -35,61 +33,19 @@ from app.error_codes import (
     model_not_found,
     super_user_required,
 )
-from app.models.agent import Agent
 from app.models.credential import Credential
-from app.models.model import Model
 from app.schemas.model import (
     ModelCreate,
     ModelTestPreviewRequest,
     ModelTestResponse,
     ModelUpdate,
 )
-from app.services import audit_service, model_service
+from app.services import model_service
 from app.services.credential_resolver import resolve_credential_for_model
 from app.services.model_service import serialize_model
 from app.services.model_test import run_model_test
 
 router = APIRouter(prefix="/api/models", tags=["models"])
-
-
-def _model_metadata(model: Model) -> dict[str, object]:
-    return {
-        "provider": model.provider,
-        "model_name": model.model_name,
-        "display_name": model.display_name,
-        "source": model.source,
-        "is_default": model.is_default,
-        "is_visible": model.is_visible,
-        "has_base_url": bool(model.base_url),
-        "default_credential_bound": model.default_credential_id is not None,
-    }
-
-
-async def _record_model_audit(
-    db: AsyncSession,
-    *,
-    user: CurrentUser,
-    request: Request,
-    action: str,
-    model: Model,
-    metadata: dict[str, object] | None = None,
-) -> None:
-    await audit_service.record_event(
-        db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
-        action=action,
-        target_type="model",
-        target_id=model.id,
-        target_name_snapshot=model.display_name or model.model_name,
-        target_owner_user_id=None,
-        outcome="success",
-        request=request,
-        metadata={**_model_metadata(model), **(metadata or {})},
-    )
 
 
 # Single source of truth for the model wire shape lives in
@@ -143,46 +99,10 @@ async def create_model(
     can collapse "already registered" into a friendly toast.
     """
 
-    if payload.is_default and not payload.is_visible:
-        raise HTTPException(
-            status_code=422,
-            detail="cannot mark a hidden model as default",
-        )
-
-    model = Model(
-        provider=payload.provider,
-        model_name=payload.model_name,
-        display_name=payload.display_name,
-        base_url=payload.base_url,
-        is_default=payload.is_default,
-        is_visible=payload.is_visible,
-        cost_per_input_token=payload.cost_per_input_token,
-        cost_per_output_token=payload.cost_per_output_token,
-        context_window=payload.context_window,
-        max_output_tokens=payload.max_output_tokens,
-        input_modalities=payload.input_modalities,
-        output_modalities=payload.output_modalities,
-        supports_vision=payload.supports_vision,
-        supports_function_calling=payload.supports_function_calling,
-        supports_reasoning=payload.supports_reasoning,
-        source=payload.source,
-        default_credential_id=payload.default_credential_id,
-    )
-    db.add(model)
-    try:
-        await db.flush()
-    except IntegrityError as exc:
-        await db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail=(f"model '{payload.provider}:{payload.model_name}' already exists"),
-        ) from exc
-
-    # Pre-existing duplicate detection beyond the unique-index path: an explicit
-    # SELECT before INSERT would race; we let the DB win and translate above.
+    model = await model_service.create_model(db, data=payload)
     await db.commit()
     await db.refresh(model)
-    await _record_model_audit(
+    await model_service.record_model_audit(
         db,
         user=user,
         request=request,
@@ -206,36 +126,16 @@ async def update_model(
     if not model:
         raise model_not_found()
 
-    updated = payload.model_dump(exclude_unset=True)
-    # is_default 와 is_visible 의 최종 조합이 모순(기본인데 숨김)이면 거부.
-    final_default = updated.get("is_default", model.is_default)
-    final_visible = updated.get("is_visible", model.is_visible)
-    if final_default and not final_visible:
-        raise HTTPException(
-            status_code=422,
-            detail="cannot mark a hidden model as default",
-        )
-    for key, value in updated.items():
-        setattr(model, key, value)
-
-    try:
-        await db.flush()
-    except IntegrityError as exc:
-        await db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="model update would violate the (provider, model_name) uniqueness",
-        ) from exc
-
+    changed_fields = await model_service.update_model(db, model=model, data=payload)
     await db.commit()
     await db.refresh(model)
-    await _record_model_audit(
+    await model_service.record_model_audit(
         db,
         user=user,
         request=request,
         action="model.update",
         model=model,
-        metadata={"changed_fields": sorted(updated.keys())},
+        metadata={"changed_fields": changed_fields},
     )
     await db.commit()
     return serialize_model(model)
@@ -253,24 +153,15 @@ async def delete_model(
     if not model:
         raise model_not_found()
 
-    # Refuse if any agent currently points at this model — the FK is non-null
-    # and the user almost never wants the cascade.
-    in_use = await db.execute(select(func.count(Agent.id)).where(Agent.model_id == model_id))
-    count = in_use.scalar_one() or 0
-    if count > 0:
-        raise HTTPException(
-            status_code=409,
-            detail=f"model is used by {count} agent(s); rebind them before deleting",
-        )
-
-    await _record_model_audit(
+    await model_service.ensure_model_unused(db, model_id)
+    await model_service.record_model_audit(
         db,
         user=user,
         request=request,
         action="model.delete",
         model=model,
     )
-    await db.delete(model)
+    await model_service.delete_model(db, model=model)
     await db.commit()
     return
 
