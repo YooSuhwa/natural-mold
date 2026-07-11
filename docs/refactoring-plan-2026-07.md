@@ -142,7 +142,7 @@
 
 ### ▶ 현 시점 실행 순서 (2026-07-10, 미완료만) — 새 세션은 여기부터
 
-> **사용법**: `/clear` 후 새 세션에서 **"이 문서 실행 순서에서 다음 미완료 항목 진행해줘"** 한 문장이면 된다. 항목을 콕 집으려면 아래 번호의 프롬프트를 그대로 복붙. 공통 규칙: worktree에서 origin/main 기준 새 브랜치, 한 PR = 한 항목, 기능 변화 0(순수 이동은 facade), 검증 그린 후 PR. (백엔드 검증 = `ruff` + `pytest -n 4 --ignore=tests/integration` + `pytest tests/integration` 직렬, 푸시 시 `SKILL_EVALUATION_ENABLED=true`. pyright는 전체 968 백로그라 수정 파일 단위로만.)
+> **사용법**: `/clear` 후 새 세션에서 **"이 문서 실행 순서에서 다음 미완료 항목 진행해줘"** 한 문장이면 된다. 항목을 콕 집으려면 아래 번호의 프롬프트를 그대로 복붙. 공통 규칙: worktree에서 origin/main 기준 새 브랜치, 한 PR = 한 항목, 기능 변화 0(순수 이동은 facade), 검증 그린 후 PR. (백엔드 검증 = `ruff` + `pytest -n 4 --ignore=tests/integration` + `pytest tests/integration -m integration` 직렬(마커 자동부여 후 `-m integration` 필수 — 없으면 전량 deselect돼 exit 0 거짓 그린), 푸시 시 `SKILL_EVALUATION_ENABLED=true`. pyright는 전체 968 백로그라 수정 파일 단위로만.)
 > 완료하면 이 목록에서 해당 줄에 ✅와 PR 번호를 남겨 다음 세션이 이어받게 할 것.
 
 **Stage 0 — 자동 게이트 먼저 (이후 모든 작업이 자동 검증받음. 최대 레버리지)**

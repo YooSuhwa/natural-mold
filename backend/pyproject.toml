@@ -107,6 +107,7 @@ select = [
   "SIM",            # simplify (unnecessary complexity)
   "ASYNC",          # async anti-patterns
   "S",              # bandit security rules (SSRF, subprocess, hardcoded secrets, ...)
+  "PGH",            # pygrep hooks — bans blanket `# noqa` / `# type: ignore` (code required)
 ]
 ignore = [
   "B008",           # Depends() in function defaults — idiomatic FastAPI

@@ -29,10 +29,15 @@ jobs:
       # tests/integration/ drives background run workers via asyncio timing;
       # under xdist -n 4 on a 2-core runner those tasks starve and the poll
       # times out (flaky). Run the parallel suite without them, then the
-      # integration ones serially. (test_m9_pg_roundtrip carries the
-      # `integration` marker, so addopts `-m 'not integration'` still skips it.)
+      # integration ones serially. tests/integration/conftest.py auto-applies
+      # the `integration` marker to the whole directory, so the serial step
+      # must select it explicitly — the trailing `-m` overrides the addopts
+      # `-m 'not integration'` filter; without it everything is deselected
+      # and pytest exits 0 (false green, pinned by
+      # tests/test_integration_marker_hook.py). test_m9_pg_roundtrip
+      # self-skips unless INTEGRATION_DATABASE_URL points at a live Postgres.
       - run: uv run --with pytest-xdist pytest -q -n 4 --ignore=tests/integration
-      - run: uv run pytest -q tests/integration
+      - run: uv run pytest -q tests/integration -m integration
 
   # pyright reports ~968 pre-existing errors (basic mode) as of 2026-07, so
   # this job is observability-only (always green, error count in the log)
