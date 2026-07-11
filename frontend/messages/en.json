@@ -2838,6 +2838,24 @@
         "rowViewSource": "View source",
         "rowExport": "Export .skill",
         "rowDelete": "Delete"
+      },
+      "versions": {
+        "diffTitle": "SKILL.md diff",
+        "initialRevision": "Initial revision",
+        "prunedPlaceholder": "This snapshot was pruned — contents are unavailable.",
+        "diffUnavailable": "Cannot read SKILL.md for this revision.",
+        "parentUnavailable": "The previous revision snapshot is unavailable for comparison.",
+        "noChanges": "No SKILL.md changes",
+        "viewRevisionSource": "View source at this version",
+        "revisionSourceLabel": "Revision {number} source",
+        "revisionSourceLoading": "Loading revision…",
+        "readOnly": "Read-only",
+        "backToVersions": "Back to versions",
+        "backToCurrent": "View current version",
+        "revisionFilesAria": "Revision file list",
+        "binaryFile": "Binary",
+        "noTextFiles": "No text files to display.",
+        "fileUnavailable": "Cannot read this file."
       }
     }
   },

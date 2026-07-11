@@ -2838,6 +2838,24 @@
         "rowViewSource": "소스 보기",
         "rowExport": ".skill 내보내기",
         "rowDelete": "삭제"
+      },
+      "versions": {
+        "diffTitle": "SKILL.md diff",
+        "initialRevision": "최초 리비전",
+        "prunedPlaceholder": "스냅샷이 정리되어(pruned) 내용을 표시할 수 없습니다.",
+        "diffUnavailable": "이 리비전의 SKILL.md를 읽을 수 없습니다.",
+        "parentUnavailable": "이전 리비전 스냅샷이 없어 비교할 수 없습니다.",
+        "noChanges": "SKILL.md 변경 없음",
+        "viewRevisionSource": "이 버전 소스 보기",
+        "revisionSourceLabel": "리비전 {number} 소스",
+        "revisionSourceLoading": "리비전 불러오는 중…",
+        "readOnly": "읽기 전용",
+        "backToVersions": "버전 관리로",
+        "backToCurrent": "현재 버전 보기",
+        "revisionFilesAria": "리비전 파일 목록",
+        "binaryFile": "바이너리",
+        "noTextFiles": "표시할 텍스트 파일이 없습니다.",
+        "fileUnavailable": "이 파일의 내용을 읽을 수 없습니다."
       }
     }
   },

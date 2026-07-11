@@ -17,6 +17,7 @@ import type { Skill } from '@/lib/types/skill'
 
 import type { SkillScopedStudioTab } from '../../_lib/skill-studio-tabs'
 import { renderSkillStudioTabShell } from './skill-studio-tab-shell'
+import { SkillRevisionSourceViewer } from './skill-revision-source-viewer'
 import { SkillSettingsSections } from './skill-settings-sections'
 
 /**
@@ -26,9 +27,12 @@ import { SkillSettingsSections } from './skill-settings-sections'
 export function SkillTabPageClient({
   skillId,
   tab,
+  revisionId = null,
 }: {
   readonly skillId: string
   readonly tab: SkillScopedStudioTab
+  /** 소스 탭 전용 — 리비전 read-only 모드 (`?revision=`). */
+  readonly revisionId?: string | null
 }) {
   const t = useTranslations('skill.studio')
   const { data: skill, isLoading, isError } = useSkill(skillId)
@@ -63,7 +67,7 @@ export function SkillTabPageClient({
   return (
     <div className="moldy-app-surface flex min-h-0 flex-1 overflow-hidden p-3">
       <div className="moldy-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <SkillTabBody skill={skill} tab={tab} />
+        <SkillTabBody skill={skill} tab={tab} revisionId={revisionId} />
       </div>
     </div>
   )
@@ -72,9 +76,11 @@ export function SkillTabPageClient({
 function SkillTabBody({
   skill,
   tab,
+  revisionId,
 }: {
   readonly skill: Skill
   readonly tab: SkillScopedStudioTab
+  readonly revisionId: string | null
 }) {
   const router = useRouter()
 
@@ -99,6 +105,10 @@ function SkillTabBody({
       body: <SkillSettingsSections skill={skill} />,
       footer: null,
     })
+  }
+  // source + ?revision= — 리비전 스냅샷 read-only 뷰어 (M4).
+  if (revisionId) {
+    return <SkillRevisionSourceViewer skillId={skill.id} revisionId={revisionId} />
   }
   // source — 저장(=리비전 생성)은 유지, 삭제/내보내기/자격증명은 설정 탭 소유 (D1/D2).
   if (skill.kind === 'text') {

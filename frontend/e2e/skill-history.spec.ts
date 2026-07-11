@@ -85,6 +85,7 @@ const revisions = [revisionOne, revisionThree, revisionTwo]
 const revisionDetails = {
   'rev-1': {
     ...revisionOne,
+    parent_revision_id: null,
     changed_files: [],
     changelog_items: [],
     compatibility_result: null,
@@ -93,6 +94,7 @@ const revisionDetails = {
   },
   'rev-2': {
     ...revisionTwo,
+    parent_revision_id: 'rev-1',
     changed_files: [{ path: 'SKILL.md', status: 'modified' }],
     changelog_items: [{ title: '날씨 응답 톤 수정', path: 'SKILL.md' }],
     compatibility_result: { targets: { openai_codex: { status: 'ok' } } },
@@ -101,12 +103,20 @@ const revisionDetails = {
   },
   'rev-3': {
     ...revisionThree,
+    parent_revision_id: 'rev-2',
     changed_files: [{ path: 'references/weather.md', status: 'added' }],
     changelog_items: [{ title: '지역별 요약 규칙 추가', path: 'references/weather.md' }],
     compatibility_result: { targets: { openai_codex: { status: 'ok' } } },
     evaluation_summary: { status: 'completed', mean_score: 0.92 },
     metadata_json: {},
   },
+}
+
+// M4 — 리비전 스냅샷 파일 API(diff/read-only 소스) 픽스처.
+const revisionSkillMd: Record<string, string> = {
+  'rev-1': '---\nname: weather\n---\n\n요약 규칙 v1\n',
+  'rev-2': '---\nname: weather\n---\n\n요약 규칙 v2\n',
+  'rev-3': '---\nname: weather\n---\n\n요약 규칙 v3\n지역별 요약 추가\n',
 }
 
 function getRevisionDetail(revisionId: string) {
@@ -138,6 +148,29 @@ test.describe('Skill history tab', () => {
       if (method === 'GET' && pathName === '/api/skills/skill-history/revisions') {
         return route.fulfill({ json: revisions })
       }
+      // M4 — 리비전 파일 목록/내용 (detail 매처보다 먼저: 경로 prefix가 겹친다).
+      const filesMatch = pathName.match(
+        /^\/api\/skills\/skill-history\/revisions\/(rev-\d)\/files$/,
+      )
+      if (method === 'GET' && filesMatch) {
+        const body = revisionSkillMd[filesMatch[1]]
+        return route.fulfill({
+          json: {
+            snapshot_pruned: false,
+            files: [{ path: 'SKILL.md', size: body?.length ?? 0, is_binary: false }],
+          },
+        })
+      }
+      const contentMatch = pathName.match(
+        /^\/api\/skills\/skill-history\/revisions\/(rev-\d)\/files\/content$/,
+      )
+      if (method === 'GET' && contentMatch) {
+        const body = revisionSkillMd[contentMatch[1]]
+        if (body && url.searchParams.get('path') === 'SKILL.md') {
+          return route.fulfill({ json: { path: 'SKILL.md', content: body } })
+        }
+        return route.fulfill({ status: 404, json: { detail: 'file not found' } })
+      }
       if (method === 'GET' && pathName.startsWith('/api/skills/skill-history/revisions/')) {
         const revisionId = pathName.split('/').at(-1) ?? ''
         const detail = getRevisionDetail(revisionId)
@@ -166,6 +199,21 @@ test.describe('Skill history tab', () => {
     await expect(page.getByText('OpenAI/Codex')).toBeVisible()
     // 스튜디오 컨텍스트 바의 "통과율 N%"와 substring 충돌 — exact 매칭.
     await expect(page.getByText('통과', { exact: true })).toBeVisible()
+
+    // ── M4: SKILL.md diff (rev-2 vs parent rev-1) ──────────────────────
+    const diffCard = page.getByTestId('revision-diff-card')
+    await expect(diffCard).toBeVisible()
+    await expect(diffCard).toContainText('- 요약 규칙 v1')
+    await expect(diffCard).toContainText('+ 요약 규칙 v2')
+
+    // ── M4: 이 버전 소스 보기 → read-only 리비전 뷰어 ──────────────────
+    await diffCard.getByRole('link', { name: '이 버전 소스 보기' }).click()
+    await page.waitForURL(/\/skills\/skill-history\/source\?revision=rev-2/)
+    await expect(page.getByText('리비전 2 소스')).toBeVisible()
+    await expect(page.getByText('읽기 전용')).toBeVisible()
+    await expect(page.getByText('요약 규칙 v2')).toBeVisible()
+    // 편집 UI가 없어야 한다 (read-only 계약).
+    await expect(page.getByRole('button', { name: '파일 저장' })).toBeHidden()
 
     const captureDir = path.resolve(process.cwd(), '../output/e2e-captures/20260615-skill-history')
     await mkdir(captureDir, { recursive: true })

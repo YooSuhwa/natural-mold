@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SkillHistoryDetailPanel } from './skill-history-detail-panel'
+import { SkillRevisionDiffCard } from './skill-revision-diff-card'
 import {
   useRollbackSkillRevision,
   useSkillRevision,
@@ -127,14 +128,23 @@ export function SkillHistoryTab({
                 </article>
               ))}
             </div>
-            <SkillHistoryDetailPanel
-              revision={selectedRevision}
-              detail={selectedDetail}
-              currentRevisionId={currentRevisionId}
-              isLoading={isDetailLoading}
-              rollbackPending={rollback.isPending}
-              onRequestRollback={setRollbackRevision}
-            />
+            <div className="space-y-3">
+              <SkillHistoryDetailPanel
+                revision={selectedRevision}
+                detail={selectedDetail}
+                currentRevisionId={currentRevisionId}
+                isLoading={isDetailLoading}
+                rollbackPending={rollback.isPending}
+                onRequestRollback={setRollbackRevision}
+              />
+              {selectedRevision ? (
+                <SkillRevisionDiffCard
+                  skillId={skillId}
+                  revision={selectedRevision}
+                  detail={selectedDetail}
+                />
+              ) : null}
+            </div>
           </div>
         )}
       </>

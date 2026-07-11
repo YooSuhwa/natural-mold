@@ -47,11 +47,11 @@
 - 상태: done (2026-07-11)
 
 ## M4: 버전 diff + 리비전 소스 보기
-- [ ] jsdiff 의존성 + SKILL.md 라인 diff 렌더러(`--status-success/danger` 토큰만)
-- [ ] versions 페이지 diff 카드(선택 rev vs parent, 최초/pruned placeholder)
-- [ ] "이 버전 소스 보기" → `/skills/{id}/source?revision={rid}` read-only 모드
-- 검증: diff util vitest + skill-history E2E 확장
-- 상태: pending
+- [x] jsdiff(`diff`) 의존성 + 순수 diff 유틸(`skill-revision-diff-lines.ts`, 유닛 4) + `SkillRevisionDiffCard`(색상은 기존 `moldy-status-{success,danger} moldy-status-soft` 시맨틱 클래스 — 신규 CSS 0)
+- [x] SkillHistoryTab 우측 컬럼에 diff 카드(선택 rev vs `parent_revision_id`; 최초=전체 추가+배지, pruned/404/parent 유실=placeholder). 프론트 타입·API·훅(files/fileContent, staleTime Infinity+retry:false) 추가
+- [x] "이 버전 소스 보기" → `/skills/{id}/source?revision={rid}` — `SkillRevisionSourceViewer`(파일 목록+read-only 뷰어, 바이너리 비활성 표기, pruned placeholder, 버전 관리/현재 버전 복귀)
+- 검증: vitest 1274 / tsc / build / i18n 그린, skill-history E2E 확장(diff 라인 + read-only 뷰어 + 저장 버튼 부재 단언) 통과
+- 상태: done (2026-07-11)
 
 ## M5: 고아 스윕 + 스튜디오 E2E/캡처 + 문서
 - [ ] 고아 스윕: `getVisibleSkillDetailTabs`(+테스트), `skill.detailDialog` **개별 고아 키만**(네임스페이스 통삭제 금지 — 이식 탭 15개 파일 공유), `coerceSkillDetailTab`은 유지

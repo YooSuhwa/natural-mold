@@ -15,6 +15,9 @@ vi.mock('@/lib/hooks/use-skill-revisions', () => ({
   useSkillRevisions: (...args: readonly unknown[]) => mockUseSkillRevisions(...args),
   useSkillRevision: (...args: readonly unknown[]) => mockUseSkillRevision(...args),
   useRollbackSkillRevision: (...args: readonly unknown[]) => mockUseRollbackSkillRevision(...args),
+  // M4 diff 카드 — 이 테스트의 관심사가 아니라 로딩 상태로 고정.
+  useSkillRevisionFiles: () => ({ data: undefined, isLoading: true, isError: false }),
+  useSkillRevisionFileContent: () => ({ data: undefined, isLoading: true, isError: false }),
 }))
 
 function buildRevision(overrides: Partial<SkillRevisionSummary>): SkillRevisionSummary {

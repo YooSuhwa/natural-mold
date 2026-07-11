@@ -24,6 +24,8 @@ export type SkillRevisionSummary = {
 }
 
 export type SkillRevisionDetail = SkillRevisionSummary & {
+  readonly parent_revision_id?: string | null
+  readonly restored_from_revision_id?: string | null
   readonly changed_files?: readonly JsonValue[] | null
   readonly changelog_items?: readonly JsonValue[] | null
   readonly compatibility_result?: Readonly<Record<string, JsonValue>> | null
@@ -34,4 +36,23 @@ export type SkillRevisionDetail = SkillRevisionSummary & {
 export type SkillRollbackResponse = {
   readonly skill: Skill
   readonly revision: SkillRevisionSummary
+}
+
+/** 리비전 스냅샷 파일 목록 (Phase 2 — 버전 diff/소스 보기). */
+export type SkillRevisionFileEntry = {
+  readonly path: string
+  readonly size: number
+  /** 앞 8KB sniff에 널바이트 — 내용 조회는 404(fail-closed). */
+  readonly is_binary: boolean
+}
+
+export type SkillRevisionFilesResponse = {
+  /** 리텐션이 스냅샷을 정리한 리비전 — 파일 목록/내용 없음. */
+  readonly snapshot_pruned: boolean
+  readonly files: readonly SkillRevisionFileEntry[]
+}
+
+export type SkillRevisionFileContent = {
+  readonly path: string
+  readonly content: string
 }
