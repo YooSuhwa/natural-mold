@@ -396,3 +396,12 @@ async def test_user_b_cannot_touch_user_a_conversation_surfaces(raw_client: Asyn
     )
     assert invalid_body.status_code == 404
     assert invalid_body.json()["error"]["code"] == "CONVERSATION_NOT_FOUND"
+
+    # artifacts DELETE — #282 전환분 중 유일한 mutation 게이트 (R2에서
+    # decorator → 파라미터 위치로 정렬). 게이트 자체가 빠지면 여기서 잡는다.
+    artifact_delete = await raw_client.delete(
+        f"/api/conversations/{conv_id}/artifacts/{uuid.uuid4()}",
+        headers=b.headers(),
+    )
+    assert artifact_delete.status_code == 404
+    assert artifact_delete.json()["error"]["code"] == "CONVERSATION_NOT_FOUND"
