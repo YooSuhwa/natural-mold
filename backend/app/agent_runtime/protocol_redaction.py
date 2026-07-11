@@ -205,11 +205,25 @@ def redact_protocol_data(
     masked = _mask_known_values(data, secret_values)
 
     redacted = _redact_sensitive_keys(masked)
-    if redact_memory and method == "tools":
-        return _redact_tool_event(redacted)
-    if redact_memory and method == "custom":
-        return _redact_custom_event(redacted)
+    if redact_memory:
+        return redact_memory_content(method, redacted)
     return redacted
+
+
+def redact_memory_content(method: str, data: Any) -> Any:
+    """Memory-only redaction layer — mask memory content, nothing else (W2-3).
+
+    Cheap by design (name-matched, shallow copies): the persistence path calls
+    this on data that already went through the full wire-pass redaction
+    (``redact_protocol_data(..., redact_memory=False)``), so re-running the
+    per-node value/key recursion would only duplicate work (BE-P5(b)).
+    """
+
+    if method == "tools":
+        return _redact_tool_event(data)
+    if method == "custom":
+        return _redact_custom_event(data)
+    return data
 
 
 def _mask_known_values(data: Any, secret_values: Iterable[str] | None) -> Any:

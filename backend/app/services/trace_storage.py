@@ -63,6 +63,7 @@ async def append_events(
     assistant_msg_id: str,
     events_chunk: list[dict[str, Any]],
     status: TraceStatus = "streaming",
+    known_event_ids: set[str] | None = None,
 ) -> MessageEvent | None:
     """Partial flush — append event payload into chunk rows for the turn.
 
@@ -77,6 +78,11 @@ async def append_events(
     - ``status`` 는 caller가 명시. 기본 'streaming'.
     - ``updated_at`` 은 model의 ``onupdate=now()`` 가 자동 갱신
       (INSERT 시도 server_default 적용).
+    - ``known_event_ids`` (BE-P5(d)): caller 가 유지하는 run-scoped persisted
+      event id 셋. 주어지면 flush 마다 누적 chunk 전체를 재 SELECT 하던
+      O(T²/64) 재로드를 건너뛴다. **DB 상태와 일치해야 한다** — caller 는
+      commit 성공분만 셋에 반영하고, 실패 시 다음 flush 를 재로드 경로(None)
+      로 보내야 유실이 없다 (:func:`load_persisted_event_ids` 로 시드).
 
     Caller commits the session.
 
@@ -106,7 +112,11 @@ async def append_events(
         db.add(record)
         await db.flush()
 
-    existing_ids = await _load_existing_event_ids(db, record)
+    existing_ids = (
+        known_event_ids
+        if known_event_ids is not None
+        else await _load_existing_event_ids(db, record)
+    )
     new_events = [
         evt
         for evt in events_chunk
@@ -143,6 +153,23 @@ async def append_events(
     record.status = status
     # ``onupdate=`` 가 ORM flush 시 updated_at을 갱신.
     return record
+
+
+async def load_persisted_event_ids(db: AsyncSession, *, assistant_msg_id: str) -> set[str]:
+    """BE-P5(d) 시드 — run 의 기존 persisted event id 전체를 1회 로드.
+
+    ``build_persist_callback`` 이 첫 flush 에서 캐시를 시드할 때 쓴다. row 가
+    아직 없으면(신규 run) 빈 셋. row 가 이미 있으면(같은 run_id 재개 등)
+    legacy ``events`` + 모든 chunk 의 id 를 합쳐 정확한 dedup 기준을 준다.
+    """
+
+    existing = await db.execute(
+        select(MessageEvent).where(MessageEvent.assistant_msg_id == assistant_msg_id)
+    )
+    record = existing.scalar_one_or_none()
+    if record is None:
+        return set()
+    return await _load_existing_event_ids(db, record)
 
 
 async def _load_existing_event_ids(db: AsyncSession, record: MessageEvent) -> set[str]:

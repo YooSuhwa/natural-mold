@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import time
@@ -32,7 +33,7 @@ from app.agent_runtime.protocol_events import (
     stored_protocol_event,
     to_protocol_wire_event,
 )
-from app.agent_runtime.protocol_persistence import persistable_protocol_event
+from app.agent_runtime.protocol_persistence import persistable_wire_protocol_event
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.protocol_side_effects import (
     collect_protocol_side_effect_events,
@@ -50,6 +51,11 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 _FLUSH_BATCH_SIZE = 32
 _FLUSH_INTERVAL_SECONDS = 2.0
+# 실패 chunk 복원으로 buffer 가 자랄 수 있는 상한 (legacy streaming.py 의
+# _MAX_RETRY_BUFFER_EVENTS 와 동일 값). 평균 200B × 5000 = ~1MB. DB 영속
+# 장애로 한 turn 의 모든 partial flush 가 실패해도 OOM 보호. 초과 시
+# oldest 부터 drop + log (정상 turn 길이 0~수백 events 가정 시 도달은 이상 신호).
+_MAX_RETRY_BUFFER_EVENTS = 5000
 
 
 def _thread_id_from_config(config: Mapping[str, Any], run_id: str) -> str:
@@ -360,23 +366,53 @@ async def stream_agent_response_langgraph(
     stream_started_at = time.monotonic()
     first_token_at: float | None = None
 
-    async def flush_persist_buffer(*, force: bool = False) -> None:
-        nonlocal last_persist_flush_at, persist_buffer
-        if persist_callback is None or not persist_buffer:
+    background_persist_tasks: set[asyncio.Task[None]] = set()
+
+    async def _persist_chunk(events: list[dict[str, Any]]) -> None:
+        """Background flush body — swallow exceptions so a DB hiccup doesn't
+        kill the live stream. 실패한 chunk는 buffer **앞**에 복원해 이벤트
+        순서를 보존한 채 다음 threshold flush / finally 최종 flush에서
+        재시도한다 (기존 inline flush와 동일 재시도 의미론)."""
+        nonlocal persist_buffer
+        if persist_callback is None:
             return
-        elapsed = time.monotonic() - last_persist_flush_at
-        should_wait_for_batch = len(persist_buffer) < _FLUSH_BATCH_SIZE
-        should_wait_for_interval = elapsed < _FLUSH_INTERVAL_SECONDS
-        if not force and should_wait_for_batch and should_wait_for_interval:
-            return
-        events = persist_buffer
-        persist_buffer = []
-        last_persist_flush_at = time.monotonic()
         try:
             await persist_callback(events)
         except Exception:
             persist_buffer = [*events, *persist_buffer]
             logger.exception("protocol stream persist_callback failed (run_id=%s)", msg_id)
+            if len(persist_buffer) > _MAX_RETRY_BUFFER_EVENTS:
+                overflow = len(persist_buffer) - _MAX_RETRY_BUFFER_EVENTS
+                del persist_buffer[:overflow]
+                logger.warning(
+                    "persist buffer overflow (run_id=%s) — dropped %d oldest "
+                    "events to stay under cap=%d",
+                    msg_id,
+                    overflow,
+                    _MAX_RETRY_BUFFER_EVENTS,
+                )
+
+    def schedule_persist_flush() -> None:
+        """BE-P5(e): fire-and-forget partial flush — 기존 inline ``await`` 는
+        32 events/2초마다 DB 라운드트립 동안 토큰 방출을 블로킹했다. legacy
+        ``streaming.py`` 의 create_task 패턴을 따르되 in-flight 한도는 1:
+        run 내 flush 를 직렬화해 chunk ``seq_start`` 단조성과 run-scoped
+        seen-event-id 캐시(BE-P5(d))의 무경합을 보장한다. in-flight 중에는
+        buffer 가 계속 쌓이고 다음 emit / finally 에서 재검사된다."""
+        nonlocal last_persist_flush_at, persist_buffer
+        if persist_callback is None or not persist_buffer or background_persist_tasks:
+            return
+        elapsed = time.monotonic() - last_persist_flush_at
+        should_wait_for_batch = len(persist_buffer) < _FLUSH_BATCH_SIZE
+        should_wait_for_interval = elapsed < _FLUSH_INTERVAL_SECONDS
+        if should_wait_for_batch and should_wait_for_interval:
+            return
+        events = persist_buffer
+        persist_buffer = []
+        last_persist_flush_at = time.monotonic()
+        task = asyncio.create_task(_persist_chunk(events))
+        background_persist_tasks.add(task)
+        task.add_done_callback(background_persist_tasks.discard)
 
     async def emit(event: StoredProtocolEvent) -> str:
         nonlocal input_requested_emitted, max_emitted_seq
@@ -399,13 +435,19 @@ async def stream_agent_response_langgraph(
         }
         event_dict = dict(wire_event)
         emitted.append(event_dict)
-        persistable_event = persistable_protocol_event(event_to_emit)
+        # BE-P5(b): persist 는 wire 1회 redaction 결과를 재사용하고 compact +
+        # memory 마스킹만 얹는다 (이벤트당 전체 재귀 redaction 2회 → 1회).
+        # 비-memory·비-compact 이벤트는 persistable/wire/emitted/broker 가 같은
+        # data 객체를 공유한다 — legacy 와 동일한 "emit 이후 누구도 mutate 하지
+        # 않는다" 불변식에 의존. egress 변환을 새로 넣는다면 in-place 수정 금지
+        # (copy 후 수정), 아니면 persist 된 DB row 까지 오염된다.
+        persistable_event = persistable_wire_protocol_event(wire_event)
         persist_buffer.append(persistable_event)
         if trace_sink is not None:
             trace_sink.append(persistable_event)
         if broker is not None:
             broker.publish_nowait(_broker_event(wire_event))
-        await flush_persist_buffer()
+        schedule_persist_flush()
         return format_protocol_sse(wire_event)
 
     async def emit_canonical_interrupts(event: StoredProtocolEvent) -> list[str]:
@@ -663,6 +705,23 @@ async def stream_agent_response_langgraph(
             _error_event(run_id=msg_id, thread_id=thread_id, seq=max_emitted_seq + 1, exc=exc)
         )
     finally:
-        await flush_persist_buffer(force=True)
+        # BE-P5(e) — background flush join → 최종 flush → broker close. 무조건
+        # 실행 (정상 종료 / 예외 / 클라이언트 disconnect 시 generator aclose()
+        # 모두). 순서가 중요: (1) in-flight task join — 실패 chunk 가 buffer
+        # 앞에 복원되어 잔여분이 확정된다. (2) 잔여 buffer 를 마지막으로 직접
+        # flush — 여기서도 실패하면 그때만 영구 손실 (log).
+        if background_persist_tasks:
+            await asyncio.gather(*background_persist_tasks, return_exceptions=True)
+        if persist_callback is not None and persist_buffer:
+            final_events = persist_buffer
+            persist_buffer = []
+            try:
+                await persist_callback(final_events)
+            except Exception:
+                logger.exception(
+                    "final flush persist_callback failed (run_id=%s) — %d events permanently lost",
+                    msg_id,
+                    len(final_events),
+                )
         if broker is not None:
             broker.close()

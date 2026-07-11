@@ -174,6 +174,126 @@ async def test_langgraph_streaming_emits_memory_recalled_at_head() -> None:
 
 
 @pytest.mark.asyncio
+async def test_langgraph_streaming_persists_masked_memory_but_streams_content() -> None:
+    """BE-P5(b) 회귀 가드 — persist 가 wire redaction 결과를 재사용해도 W2-3
+    계약은 유지된다: live wire 에는 기억 내용이 흐르고, message_events 로
+    가는 persist 버퍼에는 ``<redacted>`` 만 남는다."""
+    agent = ProtocolAgent([])
+    persisted: list[list[dict[str, Any]]] = []
+
+    async def persist(events: list[dict[str, Any]]) -> None:
+        persisted.append(events)
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-memory-persist"}},
+            persist_callback=persist,
+            run_id="run-memory-persist",
+            recalled_memories=[{"id": "m1", "scope": "user", "content": "한국어로 답변 선호"}],
+        )
+    ]
+
+    assert "한국어로 답변 선호" in "".join(chunks)
+    stored = [event for batch in persisted for event in batch]
+    recalled = [
+        event
+        for event in stored
+        if event["method"] == "custom" and event["data"].get("name") == "moldy.memory_recalled"
+    ]
+    assert len(recalled) == 1
+    assert recalled[0]["data"]["payload"]["memories"] == [
+        {"id": "m1", "scope": "user", "content": "<redacted>"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_failed_partial_flush_recovers_in_order() -> None:
+    """BE-P5(e) — fire-and-forget partial flush 실패가 스트림을 죽이지 않고,
+    실패한 chunk 는 buffer 앞에 복원되어 이후/최종 flush 에서 순서 그대로
+    재시도된다 (유실 0, 중복 0, seq 단조)."""
+    raw_events = [
+        {
+            "type": "event",
+            "method": "messages",
+            "params": {"namespace": [], "data": {"chunk": f"tok-{i}"}},
+            "seq": i + 1,
+            "event_id": f"upstream-{i + 1}",
+        }
+        for i in range(40)  # _FLUSH_BATCH_SIZE(32) 초과 → 스트림 중 flush 발생
+    ]
+    agent = ProtocolAgent(raw_events)
+    successful: list[list[dict[str, Any]]] = []
+    fail_first = {"armed": True}
+
+    async def persist(events: list[dict[str, Any]]) -> None:
+        if fail_first["armed"]:
+            fail_first["armed"] = False
+            raise RuntimeError("transient DB failure")
+        successful.append(events)
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-flush-retry"}},
+            persist_callback=persist,
+            run_id="run-flush-retry",
+        )
+    ]
+
+    assert fail_first["armed"] is False, "첫 flush 실패 경로가 실제로 실행돼야 한다"
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    assert payloads[-1]["method"] == "lifecycle"
+    assert payloads[-1]["params"]["data"] == {"event": "completed"}
+
+    stored = [event for batch in successful for event in batch]
+    stored_ids = [event["id"] for event in stored]
+    assert len(stored_ids) == len(set(stored_ids)), "재시도로 인한 중복 persist 금지"
+    assert len(stored) == len(chunks), "실패 chunk 포함 모든 이벤트가 결국 persist 된다"
+    seqs = [event["seq"] for event in stored]
+    assert seqs == sorted(seqs), "실패 chunk 는 buffer 앞에 복원되어 순서를 보존한다"
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_survives_total_persist_failure() -> None:
+    """persist 가 끝까지 실패해도 라이브 SSE 스트림은 완주한다 — DB 장애가
+    사용자 응답을 막지 않고, 유실은 log 로만 남는다 (legacy 와 동일 계약)."""
+    raw_events = [
+        {
+            "type": "event",
+            "method": "messages",
+            "params": {"namespace": [], "data": {"chunk": f"tok-{i}"}},
+            "seq": i + 1,
+            "event_id": f"upstream-{i + 1}",
+        }
+        for i in range(40)
+    ]
+    agent = ProtocolAgent(raw_events)
+
+    async def persist(_events: list[dict[str, Any]]) -> None:
+        raise RuntimeError("persistent DB outage")
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-flush-outage"}},
+            persist_callback=persist,
+            run_id="run-flush-outage",
+        )
+    ]
+
+    payloads = [sse_payload(chunk) for chunk in chunks]
+    assert len(payloads) == 42  # lifecycle running + 40 messages + lifecycle completed
+    assert payloads[-1]["params"]["data"] == {"event": "completed"}
+
+
+@pytest.mark.asyncio
 async def test_langgraph_streaming_orders_names_before_memory_recalled() -> None:
     raw_event = {
         "type": "event",
