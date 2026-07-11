@@ -106,4 +106,16 @@ describe('computeCappedRevisionDiffLines (검사 순서 계약, R6)', () => {
     expect(computeCappedRevisionDiffLines(crlf, lf)).toEqual([])
     expect(computeCappedRevisionDiffLines(lf, lf.slice(0, -1))).toEqual([])
   })
+
+  it("''↔'\\n'과 '\\n\\n'↔'\\n'은 실제 변경이다 — 정규화가 합치면 거짓 무변경 (R8)", () => {
+    // ''(0줄) vs '\n'(빈 줄 1개): jsdiff 기준 추가된 빈 줄 — strip 정규화가
+    // 둘 다 ''로 만들어 "변경 없음"으로 오표기했다.
+    const emptyVsNewline = computeCappedRevisionDiffLines('', '\n')
+    expect(emptyVsNewline).not.toBeNull()
+    expect(emptyVsNewline).not.toEqual([])
+    // '\n\n' vs '\n': 빈 줄 하나 제거 — strip 1회 정규화의 잔여 합침 클래스.
+    const doubleVsSingle = computeCappedRevisionDiffLines('\n\n', '\n')
+    expect(doubleVsSingle).not.toBeNull()
+    expect(doubleVsSingle).not.toEqual([])
+  })
 })

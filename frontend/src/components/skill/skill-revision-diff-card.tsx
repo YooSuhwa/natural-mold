@@ -199,7 +199,16 @@ export function computeCappedRevisionDiffLines(
   // 동일성은 diff 옵션(stripTrailingCr/ignoreNewlineAtEof)과 같은 정규화로
   // 판정한다 — 바이트 비교만 하면 CRLF 스냅샷 vs LF 리비전(옵션이 노린 바로
   // 그 입력 클래스)이 상한 초과 시 "변경 없음" 대신 "너무 큼"으로 오표기 (R7).
-  if (normalizeForIdentity(parentText) === normalizeForIdentity(currentText)) return []
+  if (parentText === currentText) return []
+  // 빈 문자열은 정규화 비교에서 제외 — ''(0줄)와 '\n'(빈 줄 1개)는 jsdiff
+  // 기준 실제 변경인데 정규화가 둘을 합쳐 거짓 "변경 없음"을 만들었다 (R8).
+  if (
+    parentText !== '' &&
+    currentText !== '' &&
+    normalizeForIdentity(parentText) === normalizeForIdentity(currentText)
+  ) {
+    return []
+  }
   if (
     countInputLines(parentText) > MAX_DIFF_LINES ||
     countInputLines(currentText) > MAX_DIFF_LINES
@@ -210,10 +219,12 @@ export function computeCappedRevisionDiffLines(
   return lines.length > MAX_DIFF_LINES ? null : lines
 }
 
-/** diff 옵션과 동치인 동일성 정규화 — CRLF→LF + 말미 개행 1개 무시. */
+/** diff 옵션과 동치인 동일성 정규화 — CRLF→LF + 말미 개행 보장(ensure).
+ * strip 방식은 '\n\n' vs '\n'을 합쳐 거짓 "변경 없음"을 만든다 — 개행을
+ * 지우는 대신 채워야 ignoreNewlineAtEof("말미 개행 유무만 무시")와 동치 (R8). */
 function normalizeForIdentity(text: string): string {
   const unified = text.includes('\r\n') ? text.split('\r\n').join('\n') : text
-  return unified.endsWith('\n') ? unified.slice(0, -1) : unified
+  return unified.endsWith('\n') ? unified : `${unified}\n`
 }
 
 function DiffPlaceholder({ message }: { readonly message: string }) {

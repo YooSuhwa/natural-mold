@@ -340,6 +340,25 @@ async def test_snapshot_malformed_yaml_rollback_conflict_not_500(
     assert rollback.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
 
 
+async def test_snapshot_non_string_yaml_key_rollback_conflict_not_500(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """non-string 최상위 YAML 키(`on:`) — frontmatter의 Post(**kw)가 TypeError를
+    던져 (ValueError, YAMLError) tuple을 통과하던 클래스. parse_skill_md leaf
+    정규화로 형제와 같은 409 (R8)."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    _rewrite_snapshot(
+        revision,
+        {"SKILL.md": b"---\non: pushed\nname: x\ndescription: y\n---\nbody\n"},
+    )
+
+    rollback = await client.post(f"/api/skills/{skill.id}/revisions/{revision.id}/rollback")
+    assert rollback.status_code == 409, rollback.text
+    assert rollback.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
+
+
 async def test_snapshot_non_utf8_rollback_conflict_not_500(
     client: AsyncClient,
     db: AsyncSession,

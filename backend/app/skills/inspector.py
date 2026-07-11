@@ -52,8 +52,17 @@ def parse_skill_md(
 
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
-    post = frontmatter.loads(raw)
-    metadata = dict(post.metadata or {})
+    try:
+        post = frontmatter.loads(raw)
+        metadata = dict(post.metadata or {})
+    except Exception as exc:
+        # 하위 파서의 예외 표면은 열거 불가다: yaml.YAMLError(파서 오류)뿐
+        # 아니라 non-string 최상위 키(`on:`/날짜/정수)는 Post(**metadata)에서
+        # TypeError, 깊은 중첩은 RecursionError를 던진다 — 소비자들이 예외
+        # tuple 열거로 따라잡으려다 rollback 409/500 비대칭이 3라운드 연속
+        # 재발했다(R7~R8). leaf에서 계약 타입(SkillMetadataError=ValueError)
+        # 으로 정규화한다. 좁은 래핑이라 프로그래밍 오류 은폐 표면도 작다.
+        raise SkillMetadataError(f"invalid SKILL.md frontmatter: {exc}") from exc
     if require_metadata:
         validate_skill_metadata(metadata)
     return {"metadata": metadata, "body": post.content or ""}
