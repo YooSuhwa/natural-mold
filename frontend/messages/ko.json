@@ -2401,7 +2401,9 @@
       "origin": "출처",
       "marketplace": "마켓플레이스",
       "agents": "에이전트",
-      "updatedAt": "수정일"
+      "updatedAt": "수정일",
+      "status": "상태",
+      "evaluation": "평가"
     },
     "filters": {
       "kind": "종류"
@@ -2817,6 +2819,25 @@
         "deleteHint": "연결된 에이전트 {count}개 — 삭제하면 연결이 함께 제거됩니다.",
         "deleteTitle": "{name} 삭제",
         "deleteDescription": "연결된 에이전트 {count}개의 연결이 함께 제거되며 되돌릴 수 없습니다."
+      },
+      "list": {
+        "uploadPackage": "패키지 업로드",
+        "selectedCount": "{count}개 선택됨",
+        "deleteSelected": "삭제",
+        "clearSelection": "선택 해제",
+        "bulkDeleteTitle": "스킬 {count}개 삭제",
+        "bulkDeleteDescription": "{names} — 삭제하면 되돌릴 수 없습니다.",
+        "bulkDeleteDescriptionConnected": "{names} — 연결된 에이전트 {connected}개의 연결이 함께 제거되며 되돌릴 수 없습니다.",
+        "deleteSuccess": "스킬 {count}개를 삭제했습니다",
+        "deletePartialFailure": "삭제 실패: {names}",
+        "rowImprove": "수정",
+        "rowImproveAria": "{name} 대화로 개선",
+        "rowEvaluation": "평가",
+        "rowVersions": "버전",
+        "rowMenuAria": "{name} 추가 작업",
+        "rowViewSource": "소스 보기",
+        "rowExport": ".skill 내보내기",
+        "rowDelete": "삭제"
       }
     }
   },

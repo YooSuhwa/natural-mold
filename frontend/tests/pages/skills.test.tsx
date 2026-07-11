@@ -1,13 +1,15 @@
-import { render, screen, userEvent } from '../test-utils'
+import { render, screen, userEvent, within } from '../test-utils'
 // Phase 2: page.tsx는 async 서버 redirect 래퍼 — UI는 클라이언트 컴포넌트를 직접 렌더.
 import { SkillsPageClient } from '@/app/skills/_components/skills-page-client'
 import type { Skill } from '@/lib/types/skill'
 
 const mockUseSkills = vi.fn()
 const mockCreateDialog = vi.fn()
+const mockDeleteSkill = vi.fn()
 
 vi.mock('@/lib/hooks/use-skills', () => ({
   useSkills: (...args: unknown[]) => mockUseSkills(...args),
+  useDeleteSkill: () => ({ mutateAsync: mockDeleteSkill, isPending: false }),
 }))
 
 vi.mock('@/components/skill/skill-create-dialog', () => ({
@@ -82,31 +84,47 @@ describe('SkillsPage', () => {
     mockUseSkills.mockReturnValue({ data: [skill], isLoading: false })
   })
 
-  it('uses a unified tabbed card panel without the old table chrome', () => {
+  it('스튜디오 목록을 표(DataTable)로 렌더한다 — Phase 2', () => {
     render(<SkillsPageClient />)
 
     expect(screen.getByRole('tab', { name: '전체 1개' })).toBeInTheDocument()
     expect(screen.getByPlaceholderText('스킬 검색')).toBeInTheDocument()
-    expect(screen.queryByRole('columnheader', { name: '스킬' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('columnheader', { name: '자격증명' })).not.toBeInTheDocument()
-    expect(screen.getByText('한국 날씨를 조회합니다.')).toBeInTheDocument()
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /스킬/ })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /에이전트/ })).toBeInTheDocument()
+    expect(screen.getByText('Korea Weather')).toBeInTheDocument()
     expect(screen.getByText('korea-weather')).toBeInTheDocument()
+    // 연결 카운트 실데이터 (M1)
+    expect(screen.getByText('2개 에이전트')).toBeInTheDocument()
   })
 
-  it('shows skill health and latest evaluation summary on cards', () => {
+  it('표 행에 상태·평가 요약 배지를 보여준다', () => {
     render(<SkillsPageClient />)
 
     expect(screen.getByText('검증됨')).toBeInTheDocument()
     expect(screen.getByText('평가 92%')).toBeInTheDocument()
   })
 
-  it('renders skills as catalog-style cards by default', () => {
+  it('행 선택 시 벌크 바가 뜨고 일괄 삭제 확인에 이름을 열거한다', async () => {
+    const user = userEvent.setup()
+    mockDeleteSkill.mockResolvedValue(undefined)
     render(<SkillsPageClient />)
 
-    const card = screen.getByText('Korea Weather').closest('article')
-    expect(card).toHaveClass('moldy-resource-card')
-    expect(card?.className).toMatch(/\bmoldy-tone-card-violet\b/)
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('skill-bulk-bar')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: '모든 행 선택' }))
+
+    expect(screen.getByTestId('skill-bulk-bar')).toHaveTextContent('1개 선택됨')
+
+    await user.click(within(screen.getByTestId('skill-bulk-bar')).getByRole('button', { name: '삭제' }))
+
+    // 확인 다이얼로그 — 검색으로 숨은 선택 행 방어를 위해 대상 이름을 명시한다.
+    const dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent('Korea Weather')
+    expect(dialog).toHaveTextContent('연결된 에이전트 2개')
+
+    await user.click(within(dialog).getByRole('button', { name: '삭제' }))
+
+    expect(mockDeleteSkill).toHaveBeenCalledWith('skill-1')
   })
 
   it('filters skills from the shared tab row', async () => {

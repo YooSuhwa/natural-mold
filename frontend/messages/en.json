@@ -2401,7 +2401,9 @@
       "origin": "Origin",
       "marketplace": "Marketplace",
       "agents": "Agents",
-      "updatedAt": "Updated At"
+      "updatedAt": "Updated At",
+      "status": "Status",
+      "evaluation": "Evaluation"
     },
     "filters": {
       "kind": "Kind"
@@ -2817,6 +2819,25 @@
         "deleteHint": "Connected to {count} agents — deleting also removes those links.",
         "deleteTitle": "Delete {name}",
         "deleteDescription": "This also removes links from {count} connected agents and cannot be undone."
+      },
+      "list": {
+        "uploadPackage": "Upload package",
+        "selectedCount": "{count} selected",
+        "deleteSelected": "Delete",
+        "clearSelection": "Clear selection",
+        "bulkDeleteTitle": "Delete {count} skills",
+        "bulkDeleteDescription": "{names} — this cannot be undone.",
+        "bulkDeleteDescriptionConnected": "{names} — this also removes links from {connected} connected agents and cannot be undone.",
+        "deleteSuccess": "Deleted {count} skills",
+        "deletePartialFailure": "Failed to delete: {names}",
+        "rowImprove": "Edit",
+        "rowImproveAria": "Improve {name} via chat",
+        "rowEvaluation": "Evaluate",
+        "rowVersions": "Versions",
+        "rowMenuAria": "More actions for {name}",
+        "rowViewSource": "View source",
+        "rowExport": "Export .skill",
+        "rowDelete": "Delete"
       }
     }
   },

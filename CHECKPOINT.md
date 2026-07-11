@@ -39,12 +39,12 @@
 - 상태: done (2026-07-11)
 
 ## M3: 목록 표 + 벌크 삭제
-- [ ] DataTable 전환(models 페이지 선례) — 컬럼: 이름+slug/종류/상태/평가/연결(실카운트)/수정일/행 액션(수정→improve·평가·버전 + 메뉴: 소스·내보내기·삭제)
-- [ ] 기존 툴바 유지(kind 탭+상태 칩+검색 → 필터 배열 주입, `searchable=false`)
-- [ ] `enableRowSelection` + 벌크 바(toolbar 슬롯) + **key remount 리셋** + 이름 열거 확인 + 연결 카운트 경고 + 순차 삭제/부분 실패 토스트
-- [ ] 고아 i18n 키 재활용(`skill.columns`/`skill.deleteConfirm`), 벌크 E2E 신규
-- 검증: vitest + `pnpm lint:design-system` + 벌크 E2E
-- 상태: pending
+- [x] `skill-list-table.tsx` DataTable 전환 — 컬럼: 이름+slug/종류/상태(HealthBadge)/평가(SummaryBadge)/연결(실카운트)/수정일/행 액션(수정→improve·평가·버전 + 메뉴: 소스·게시·내보내기·삭제). 헤더에 "패키지 업로드" 버튼 추가(목업). SkillCard 고아 삭제
+- [x] 기존 툴바 유지(kind 탭+상태 칩+검색 → 필터 배열 주입, `searchable=false`), 행 클릭→소스 탭
+- [x] `enableRowSelection`(첫 도입) + 벌크 바(toolbar 슬롯, testid skill-bulk-bar) + **tableEpoch key remount 리셋** + 확인 다이얼로그 이름 열거+연결 경고 + 순차 삭제/부분 실패 토스트
+- [x] `skill.columns` 재활용(+status/evaluation 신규), `skill.studio.list.*` i18n, 유닛(벌크 플로우 포함 6) + 벌크 E2E 신규(skills-management.spec — 선택→확인→삭제→리셋 단언)
+- 검증: vitest 1270 / tsc / eslint(내 파일 클린) / i18n / a11y·design-system 신규 위반 0 / E2E skills-management 2·skill-state-filters 1 그린
+- 상태: done (2026-07-11)
 
 ## M4: 버전 diff + 리비전 소스 보기
 - [ ] jsdiff 의존성 + SKILL.md 라인 diff 렌더러(`--status-success/danger` 토큰만)

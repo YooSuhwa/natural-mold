@@ -11,12 +11,10 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { SearchInput } from '@/components/shared/search-input'
 import {
   CountedLineTabs,
-  ResourceGrid,
   ResourcePage,
   ResourcePanel,
   ResourceToolbar,
 } from '@/components/shared/resource-layout'
-import { Skeleton } from '@/components/ui/skeleton'
 import { useStartSkillBuilder } from '@/lib/hooks/use-skill-builder'
 import { useSkills } from '@/lib/hooks/use-skills'
 import {
@@ -26,9 +24,8 @@ import {
   type SkillKindFilter,
   type SkillStateFilter,
 } from '@/lib/skill-state-filters'
-import { formatDisplayDate } from '@/lib/utils/display-format'
 import type { Skill, SkillKind } from '@/lib/types/skill'
-import { SkillCard } from './skill-card'
+import { SkillListTable } from './skill-list-table'
 import { SkillPageDialogs } from './skill-page-dialogs'
 import { SkillStateFilterChips } from './skill-state-filter-chips'
 
@@ -40,11 +37,6 @@ const SKILL_TABS: readonly SkillTab[] = [ALL_SKILL_FILTER, 'text', 'package']
 
 function isSkillTab(value: string): value is SkillTab {
   return value === ALL_SKILL_FILTER || value === 'text' || value === 'package'
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return ''
-  return formatDisplayDate(value, { fallback: '' })
 }
 
 export function SkillsPageClient() {
@@ -97,6 +89,15 @@ export function SkillsPageClient() {
     void startBuilderSession({ mode: 'create', user_request: request })
   }
 
+  // 목록 표의 행 "수정" — 목업 계약대로 improve 빌더 세션을 바로 시작한다.
+  function openBuilderImprove(skillId: string) {
+    void startBuilderSession({
+      mode: 'improve',
+      user_request: t('builderChat.improveDefaultRequest'),
+      source_skill_id: skillId,
+    })
+  }
+
   const data = useMemo(() => skills ?? [], [skills])
 
   const filteredSkills = useMemo(() => {
@@ -136,17 +137,21 @@ export function SkillsPageClient() {
   }))
 
   const isInitialEmpty = !isLoading && data.length === 0
-  const isFilteredEmpty = !isLoading && data.length > 0 && filteredSkills.length === 0
 
   return (
     <ResourcePage
       title={t('title')}
       description={t('description')}
       action={
-        <Button onClick={() => openCreate('chat')}>
-          <Plus className="size-4" />
-          {t('new')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => openCreate('package')}>
+            {t('studio.list.uploadPackage')}
+          </Button>
+          <Button onClick={() => openCreate('chat')}>
+            <Plus className="size-4" />
+            {t('new')}
+          </Button>
+        </div>
       }
     >
       <ResourcePanel>
@@ -194,31 +199,13 @@ export function SkillsPageClient() {
             </ResourcePanel.Toolbar>
 
             <ResourcePanel.Body className="bg-background/30">
-              {isLoading ? (
-                <ResourceGrid minColumnWidth={300}>
-                  {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="moldy-skeleton-card h-48" />
-                  ))}
-                </ResourceGrid>
-              ) : isFilteredEmpty ? (
-                <EmptyState title={t('empty.filtered')} className="bg-card/50" />
-              ) : (
-                <ResourceGrid minColumnWidth={300}>
-                  {filteredSkills.map((skill) => (
-                    <SkillCard
-                      key={skill.id}
-                      skill={skill}
-                      kindLabel={t(`typeFilter.${skill.kind}`)}
-                      agentsLabel={t('agentsCount', { count: skill.used_by_count })}
-                      updatedLabel={formatDate(skill.updated_at)}
-                      actionLabel={t('actions.manage')}
-                      publishLabel={t('actions.publish')}
-                      onOpen={openDetail}
-                      onPublish={setPublishSkill}
-                    />
-                  ))}
-                </ResourceGrid>
-              )}
+              <SkillListTable
+                skills={filteredSkills}
+                isLoading={isLoading}
+                emptyTitle={t('empty.filtered')}
+                onImprove={openBuilderImprove}
+                onPublish={setPublishSkill}
+              />
             </ResourcePanel.Body>
           </>
         )}
