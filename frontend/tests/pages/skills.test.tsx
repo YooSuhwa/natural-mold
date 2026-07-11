@@ -1,5 +1,6 @@
 import { render, screen, userEvent } from '../test-utils'
-import SkillsPage from '@/app/skills/page'
+// Phase 2: page.tsx는 async 서버 redirect 래퍼 — UI는 클라이언트 컴포넌트를 직접 렌더.
+import { SkillsPageClient } from '@/app/skills/_components/skills-page-client'
 import type { Skill } from '@/lib/types/skill'
 
 const mockUseSkills = vi.fn()
@@ -14,14 +15,6 @@ vi.mock('@/components/skill/skill-create-dialog', () => ({
     mockCreateDialog(props)
     return props.open ? <div data-testid="skill-create-dialog">{props.initialTab}</div> : null
   },
-}))
-
-vi.mock('@/components/skill/skill-detail-dialog', () => ({
-  SkillDetailDialog: () => null,
-}))
-
-vi.mock('@/components/skill/skill-builder-dialog', () => ({
-  SkillBuilderDialog: () => null,
 }))
 
 vi.mock('@/components/marketplace/publish-wizard', () => ({
@@ -90,7 +83,7 @@ describe('SkillsPage', () => {
   })
 
   it('uses a unified tabbed card panel without the old table chrome', () => {
-    render(<SkillsPage />)
+    render(<SkillsPageClient />)
 
     expect(screen.getByRole('tab', { name: '전체 1개' })).toBeInTheDocument()
     expect(screen.getByPlaceholderText('스킬 검색')).toBeInTheDocument()
@@ -101,14 +94,14 @@ describe('SkillsPage', () => {
   })
 
   it('shows skill health and latest evaluation summary on cards', () => {
-    render(<SkillsPage />)
+    render(<SkillsPageClient />)
 
     expect(screen.getByText('검증됨')).toBeInTheDocument()
     expect(screen.getByText('평가 92%')).toBeInTheDocument()
   })
 
   it('renders skills as catalog-style cards by default', () => {
-    render(<SkillsPage />)
+    render(<SkillsPageClient />)
 
     const card = screen.getByText('Korea Weather').closest('article')
     expect(card).toHaveClass('moldy-resource-card')
@@ -118,7 +111,7 @@ describe('SkillsPage', () => {
 
   it('filters skills from the shared tab row', async () => {
     const user = userEvent.setup()
-    render(<SkillsPage />)
+    render(<SkillsPageClient />)
 
     await user.click(screen.getByRole('tab', { name: /패키지/ }))
 
@@ -176,7 +169,7 @@ describe('SkillsPage', () => {
       isLoading: false,
     })
 
-    render(<SkillsPage />)
+    render(<SkillsPageClient />)
 
     expect(screen.getByRole('button', { name: '자격증명 필요 1개' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '재평가 필요 1개' })).toBeInTheDocument()
@@ -199,7 +192,7 @@ describe('SkillsPage', () => {
 
   it('opens the create dialog on the conversational tab from the primary CTA', async () => {
     const user = userEvent.setup()
-    render(<SkillsPage />)
+    render(<SkillsPageClient />)
 
     await user.click(screen.getByRole('button', { name: '대화로 만들기' }))
 

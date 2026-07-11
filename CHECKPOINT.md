@@ -30,12 +30,13 @@
 - 상태: done (2026-07-11)
 
 ## M2b: 레거시 절체 + 다이얼로그 제거
-- [ ] `app/skills/page.tsx` 서버 redirect (`coerceSkillDetailTab` 재사용, content→source / credentials·metadata→settings / history→versions)
-- [ ] 콜사이트 4곳: marketplace-card / install-wizard / skill-builder-rail / 백엔드 `SKILL_DETAIL_DEEPLINK`(+finalize pytest)
-- [ ] skills-page-client의 detailId state/`replaceDetailUrl` 제거, SkillDetailDialog 제거(Create/Publish 다이얼로그 유지)
-- [ ] E2E 8곳 갱신 (waitForURL 정규식 포함: captures 2종)
-- 검증: 해당 E2E spec 개별 실행 + `uv run pytest tests/test_skill_builder_finalize.py`
-- 상태: pending
+- [x] `app/skills/page.tsx` 서버 redirect — `legacyDetailTabToStudioTab`(content→source / credentials·metadata→settings / history→versions), 영구 안전망
+- [x] 콜사이트 4곳: marketplace-card / install-wizard / skill-builder-rail(→`/skills/{id}/source`) / 백엔드 `SKILL_DETAIL_DEEPLINK`(+finalize pytest 13 그린)
+- [x] skills-page-client의 detailId state/`replaceDetailUrl`/`openBuilderImprove`(컨텍스트 바로 이관) 제거, SkillDetailDialog+테스트 삭제(Create/Publish 유지), `tests/pages/skills.test.tsx`를 클라이언트 컴포넌트 렌더로 전환(async 서버 페이지는 RTL 불가)
+- [x] E2E 갱신: skill-history(레거시 redirect 검증 포함)·skill-export(설정 탭)·skill-evaluation-actions ×2(자격증명 연결→설정 탭 이동) + captures 2종 waitForURL(`/skills/[^/]+/source`). **스테일 스펙 2종 삭제**(skill-builder-preview/conflict — origin/main에서도 레드, Phase 1 제거된 다이얼로그 UI 테스트; 충돌 커버리지는 skill-builder-chat.spec §2-3이 대체)
+- 노트: skill-builder-create/readiness.spec도 origin/main부터 레드(구 다이얼로그 참조, detailId 무관) — M2b 범위 밖, M5 스윕에서 삭제/재작성 판단
+- 검증: vitest 1270 / tsc / eslint / i18n / build 그린 + 갱신 E2E 6/6(mock 모드) + finalize pytest
+- 상태: done (2026-07-11)
 
 ## M3: 목록 표 + 벌크 삭제
 - [ ] DataTable 전환(models 페이지 선례) — 컬럼: 이름+slug/종류/상태/평가/연결(실카운트)/수정일/행 액션(수정→improve·평가·버전 + 메뉴: 소스·내보내기·삭제)

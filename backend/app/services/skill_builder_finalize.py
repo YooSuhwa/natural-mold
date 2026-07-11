@@ -40,7 +40,9 @@ from app.skills.packager import PackageError
 
 logger = logging.getLogger(__name__)
 
-SKILL_DETAIL_DEEPLINK = "/skills?detailId={skill_id}"
+# Phase 2 스튜디오 라우트 — 레거시 `?detailId=`는 프론트 서버 redirect가 흡수하지만
+# 새 페이로드는 정식 라우트를 직접 가리킨다.
+SKILL_DETAIL_DEEPLINK = "/skills/{skill_id}/source"
 
 
 async def finalize_draft_session(

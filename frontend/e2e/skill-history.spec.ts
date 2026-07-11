@@ -149,9 +149,10 @@ test.describe('Skill history tab', () => {
       return route.fulfill({ status: 404, json: { detail: pathName } })
     })
 
+    // Phase 2 스튜디오 — 레거시 딥링크가 버전 탭 라우트로 redirect되는 것까지 검증.
     await page.goto('/skills?detailId=skill-history&tab=history')
-    await expect(page.getByRole('dialog', { name: /Korea Weather/ })).toBeVisible()
-    await page.getByRole('tab', { name: /이력/ }).click()
+    await page.waitForURL(/\/skills\/skill-history\/versions/)
+    await expect(page.getByTestId('studio-context-bar')).toContainText('Korea Weather')
     await expect(page.getByRole('heading', { name: '리비전 3', exact: true })).toBeVisible()
     await expect(page.getByText('현재 버전', { exact: true }).first()).toBeVisible()
     await expect(page.getByText(/빌더 개선/)).toBeVisible()
@@ -163,7 +164,8 @@ test.describe('Skill history tab', () => {
     await expect(page.getByText('날씨 응답 톤 수정 · SKILL.md')).toBeVisible()
     await expect(page.getByText('공용 호환성')).toBeVisible()
     await expect(page.getByText('OpenAI/Codex')).toBeVisible()
-    await expect(page.getByText('통과')).toBeVisible()
+    // 스튜디오 컨텍스트 바의 "통과율 N%"와 substring 충돌 — exact 매칭.
+    await expect(page.getByText('통과', { exact: true })).toBeVisible()
 
     const captureDir = path.resolve(process.cwd(), '../output/e2e-captures/20260615-skill-history')
     await mkdir(captureDir, { recursive: true })

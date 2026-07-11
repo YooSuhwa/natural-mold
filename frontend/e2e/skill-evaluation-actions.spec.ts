@@ -199,8 +199,10 @@ test.describe('Skill evaluation actions', () => {
       return route.fulfill({ status: 404, json: { detail: pathName } })
     })
 
+    // Phase 2 스튜디오 — 레거시 딥링크가 평가 탭 라우트로 redirect되는 것까지 검증.
     await page.goto('/skills?detailId=skill-visual&tab=evaluation')
-    await expect(page.getByRole('dialog', { name: /Korea Weather/ })).toBeVisible()
+    await page.waitForURL(/\/skills\/skill-visual\/evaluation/)
+    await expect(page.getByTestId('studio-context-bar')).toContainText('Korea Weather')
     await expect(page.getByRole('button', { name: '핵심 평가 평가 취소' })).toBeVisible()
     await expect(page.getByRole('button', { name: '회귀 평가 평가 다시 실행' })).toBeVisible()
 
@@ -272,15 +274,14 @@ test.describe('Skill evaluation actions', () => {
     })
 
     await page.goto('/skills?detailId=skill-needs-credentials&tab=evaluation')
-    await expect(page.getByRole('dialog', { name: /Korea Weather/ })).toBeVisible()
+    await page.waitForURL(/\/skills\/skill-needs-credentials\/evaluation/)
     await expect(page.getByRole('button', { name: '회귀 평가 자격증명 연결' })).toBeVisible()
 
     await page.getByRole('button', { name: '회귀 평가 자격증명 연결' }).click()
 
-    await expect(page.getByRole('tab', { name: /자격증명/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
+    // 스튜디오에서 자격증명 연결은 설정 탭으로 이동한다 (D1).
+    await page.waitForURL(/\/skills\/skill-needs-credentials\/settings/)
+    await expect(page.getByTestId('studio-tab-settings')).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByText('필수 자격증명 1개 미연결')).toBeVisible()
     await expect(page.getByText('weather_api')).toBeVisible()
     await expect.poll(() => estimateRequested).toBe(false)

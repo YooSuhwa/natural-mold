@@ -82,7 +82,7 @@ async def test_finalize_create_produces_skill_revision_and_deeplink(
 
     assert "error_code" not in result, result
     assert result["slug"] == "notes"
-    assert result["deeplink"] == f"/skills?detailId={result['skill_id']}"
+    assert result["deeplink"] == f"/skills/{result['skill_id']}/source"
     assert result["validation_result"]["valid"] is True
 
     skill = await db.get(Skill, uuid.UUID(result["skill_id"]))
