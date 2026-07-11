@@ -384,3 +384,15 @@ async def test_user_b_cannot_touch_user_a_conversation_surfaces(raw_client: Asyn
         resp = await raw_client.post(url, json=payload, headers=b.headers())
         assert resp.status_code == 404, url
         assert resp.json()["error"]["code"] == "CONVERSATION_NOT_FOUND", url
+
+    # 의도된 계약 (PR #292): 소유권 게이트가 body 검증보다 먼저 실행되므로,
+    # 미소유 대화 + invalid body 는 422 가 아니라 404 다 — 미소유 리소스에
+    # validation oracle 을 노출하지 않는다. (Depends 전환의 내재적 순서:
+    # sub-dependency → body 검증. 구 인라인 체크 시절에는 422 가 먼저였다.)
+    invalid_body = await raw_client.patch(
+        f"/api/conversations/{conv_id}",
+        json={"title": 12345},
+        headers=b.headers(),
+    )
+    assert invalid_body.status_code == 404
+    assert invalid_body.json()["error"]["code"] == "CONVERSATION_NOT_FOUND"
