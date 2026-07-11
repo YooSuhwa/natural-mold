@@ -656,23 +656,30 @@ async def test_export_mcp_servers_omits_secrets(client: AsyncClient, db: AsyncSe
 @pytest.mark.asyncio
 async def test_export_mcp_servers_sorted_by_name(client: AsyncClient, db: AsyncSession) -> None:
     """export의 이름순 정렬 계약(list_servers order_by_name=True) 잠금 —
-    단일 서버 픽스처로는 정렬 분기가 실행만 되고 단언되지 않았다."""
+    단일 서버 픽스처로는 정렬 분기가 실행만 되고 단언되지 않았다.
 
-    db.add_all(
-        [
-            McpServer(
-                user_id=TEST_USER_ID,
-                name="zeta",
-                transport="streamable_http",
-                url="https://z.example.com",
-            ),
-            McpServer(
-                user_id=TEST_USER_ID,
-                name="alpha",
-                transport="streamable_http",
-                url="https://a.example.com",
-            ),
-        ]
+    이름 오름차순(alpha 먼저)을 생성 시간 오름차순과 일부러 어긋나게
+    만들어야 한다 — alpha를 먼저 만들면 기본 정렬(created_at desc)이
+    [zeta, alpha]가 되어 이름순 [alpha, zeta]와 구별된다. 반대로 zeta를
+    먼저 만들면 두 정렬이 우연히 일치해 mutation이 그린으로 통과한다
+    (fresh-eyes 리뷰에서 실증된 거짓 자물쇠)."""
+
+    db.add(
+        McpServer(
+            user_id=TEST_USER_ID,
+            name="alpha",
+            transport="streamable_http",
+            url="https://a.example.com",
+        )
+    )
+    await db.flush()
+    db.add(
+        McpServer(
+            user_id=TEST_USER_ID,
+            name="zeta",
+            transport="streamable_http",
+            url="https://z.example.com",
+        )
     )
     await db.commit()
 

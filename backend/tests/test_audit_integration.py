@@ -305,18 +305,15 @@ async def test_mcp_probe_writes_audit_with_outcome(client, db: AsyncSession, mon
     assert fail.status_code == 200, fail.text
 
     rows = (
-        (
-            await db.execute(
-                select(AuditEvent)
-                .where(AuditEvent.action == "mcp_server.probe")
-                .order_by(AuditEvent.created_at)
-            )
-        )
+        (await db.execute(select(AuditEvent).where(AuditEvent.action == "mcp_server.probe")))
         .scalars()
         .all()
     )
     assert len(rows) == 2
-    ok_row, fail_row = rows
+    # created_at 정렬 대신 outcome으로 행을 식별 — 같은 테스트 안의 연속
+    # 요청은 타임스탬프 tie로 정렬이 비결정일 수 있다.
+    by_outcome = {row.outcome: row for row in rows}
+    ok_row, fail_row = by_outcome["success"], by_outcome["failure"]
     assert ok_row.target_type == "mcp_server_probe"
     assert ok_row.outcome == "success"
     assert ok_row.reason_code is None
@@ -353,18 +350,13 @@ async def test_mcp_import_writes_audit_with_error_metadata(client, db: AsyncSess
     assert all_fail.status_code == 200, all_fail.text
 
     rows = (
-        (
-            await db.execute(
-                select(AuditEvent)
-                .where(AuditEvent.action == "mcp_server.import")
-                .order_by(AuditEvent.created_at)
-            )
-        )
+        (await db.execute(select(AuditEvent).where(AuditEvent.action == "mcp_server.import")))
         .scalars()
         .all()
     )
     assert len(rows) == 2
-    partial_row, all_fail_row = rows
+    by_outcome = {row.outcome: row for row in rows}
+    partial_row, all_fail_row = by_outcome["success"], by_outcome["failure"]
     # 일부라도 created/updated가 있으면 success + mcp_import_errors reason
     assert partial_row.outcome == "success"
     assert partial_row.reason_code == "mcp_import_errors"
