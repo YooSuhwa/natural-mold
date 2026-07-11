@@ -33,7 +33,7 @@
 | #287 | 린트 A-1 | 가드 예외 3건 등록(+회귀 테스트) + 그린 가드 4개 CI·pre-commit 연결 (a11y·design-system·frontend-architecture strict는 A-2 잔여) | ✅ 머지 |
 
 **부분완료 잔여** (재개 지점):
-- **BE-P5**: (b) 이중 redaction, (d) seen_event_ids, (e) inline flush — redaction 의미론·flush 순서 얽힘, 별도 PR
+- ~~**BE-P5**: (b) 이중 redaction, (d) seen_event_ids, (e) inline flush~~ → **PR #294로 완료** (상세는 실행 순서 6번)
 - ~~**BE-D1**: 나머지 20곳~~ → **PR #292로 완료** (18곳 전환 + run_cancel/stream_resume 의도적 보존 2곳 문서화; 상세는 실행 순서 5번)
 
 **미착수 P1** (다음 우선): BE-P2(메시지 페이지네이션·FE연동), BE-S2(MCP/tools/models 서비스레이어), BE-S7(OAuth 분리), BE-S1(chat_service 분해), BE-S3(install_service 분해), FE-S1(런타임 수렴), FE-S2(2941줄 훅), FE-P1(컨텍스트 churn), FE-P2(가상화). **미착수 P2/P3**: §1 매트릭스에서 ✅/🔶 없는 행 전부.
@@ -63,7 +63,7 @@
 |----|------|----------|:---:|
 | BE-P1 | ✅ `GET /messages` 폴링 N+1 (interrupt 하이드레이션) — Phase 1 완료 | 성능 | M |
 | BE-P3 | ✅ 폴링 경로 MCP credential `FOR UPDATE` N+1 — Phase 1 완료 | 성능 | S~M |
-| BE-P5 | 🔶 SSE 이벤트당 중복 비용 — (a) json.dumps·(c) 시크릿 정렬 완료, (b) 이중 redaction·(d) id 재로드·(e) inline flush 잔여 | 성능 | M |
+| BE-P5 | ✅ SSE 이벤트당 중복 비용 — (a)(c) PR #280, (b)(d)(e) PR #294 완료 | 성능 | M |
 | BE-P2 | `GET /messages` 무제한 로드 → keyset 페이지네이션 | 성능 | L |
 | BE-S2 | MCP/tools/models 서비스 레이어 신설 (라우터 raw DB 제거) | 구조 | M |
 | BE-S7 | credentials 라우터 OAuth 로직 → oauth_service | 구조 | M |
@@ -153,7 +153,7 @@
 
 **Stage 1 — 부분완료 마무리**
 5. ✅ **BE-D1 나머지** — PR #292. 잔여 18곳(8파일) 전환: conv 재사용 라우터(branches 2·crud 3·messages list·followup·shares create/revoke·e2e 4)는 conv 주입 — **`verify_csrf` 뒤 파라미터 위치**로 CSRF 403→404 순서 보존(decorator dependencies는 param 의존성보다 먼저 돌아 게이트를 decorator에 얹으면 순서가 뒤집힘, e2e heartbeat에 주석 실증). GET 게이트 5곳(runs 3·ag_ui·shares get)은 decorator `dependencies=[...]`. 의도적 보존 3: run_cancel 헬퍼(두 라우트가 conversation_id/thread_id 다른 path param 공유), messages stream_resume(`resume_not_found` 별도 계약+reject 로깅), crud get_conversation_detail(agent eager-load 별도 getter). shares 로컬 `_require_owned_conversation` 삭제. agents.py `owned_agent` 확산(6곳)은 §6 방안 2단계의 선택 후속으로 남김.
-6. **BE-P5 나머지** — (b) 이중 redaction, (d) run-scoped seen_event_ids, (e) inline flush → create_task. §5 [BE-P5] 참고.
+6. ✅ **BE-P5 나머지** — PR #294. (b) persist가 wire 1회 redaction 재사용(`persistable_wire_protocol_event` = compact + memory 마스킹만; W2-3 계약은 `redact_memory_content` 분리로 유지, full/wire 변형 등가성 테스트로 잠금). (d) `build_persist_callback`에 run-scoped seen_event_ids 캐시 — 첫 flush 1회 시드(`load_persisted_event_ids`) 후 증분, **불변식 캐시 ⊆ DB**(commit 성공분만 반영, 실패 시 리셋 재시드; 캐시가 DB를 앞서면 재시도 이벤트가 dedup으로 유실). (e) v3 emit의 inline `await` flush → `asyncio.create_task` fire-and-forget — in-flight 한도 **1**(legacy는 4)로 run 내 직렬화해 chunk seq_start 단조 + (d) 캐시 무경합, 실패 chunk는 buffer **앞** 복원으로 순서 보존 + 5000 events 캡(legacy 패리티), finally에서 task join → 최종 flush.
 
 **Stage 2 — 레이어링·경계 (명확한 정답)**
 7. **BE-S7** — credentials 라우터 OAuth → oauth_service. §4 [BE-S7].
