@@ -73,7 +73,12 @@ export function SkillListTable({
   }
 
   async function executeDelete() {
-    if (pendingSkills.length === 0) return
+    if (pendingSkills.length === 0) {
+      // 다이얼로그 오픈 중 refetch로 대상이 전부 사라진 경우 — 잔존 id를
+      // 정리해 닫는다(안 그러면 확인 버튼이 무반응인 dead-end).
+      setPendingDeleteIds([])
+      return
+    }
     setDeleting(true)
     const failures: string[] = []
     // 순차 삭제 — 기존 단건 DELETE 재사용, 부분 실패는 이름으로 보고 (AD-5).
@@ -213,7 +218,7 @@ export function SkillListTable({
       />
 
       <DeleteConfirmDialog
-        open={pendingDeleteIds.length > 0}
+        open={pendingSkills.length > 0}
         onOpenChange={(open) => {
           if (!open && !deleting) setPendingDeleteIds([])
         }}
