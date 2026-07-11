@@ -143,6 +143,8 @@
 
 ## F. 억제(suppression) 부채 가시화 — 🟡 P2
 
+> **F ✅ 완료 (2026-07-11, PR #290)**: `PGH` select 추가. 실측 위반 0(기존 109/76건은 총 개수 — bare 억제는 이미 없음)이라 순수 예방 게이트. PGH004 주입 빨간불 확인 + 게이트 회귀 테스트(`tests/test_lint_security_rules.py` — tests/의 S 예외가 PGH를 안 덮음 고정). type-ignore 이유 주석(조치 2)·개수 상한(조치 3)은 미채택(pyright 번다운 트랙과 중복).
+
 - **증거**: `# noqa` **109건**, `# type: ignore` **76건**. 억제 자체는 정상이나 이유 없이 늘어남.
 - **조치**:
   1. ruff `PGH` 룰(`PGH004` bare-noqa 금지 등) 추가 → 모든 noqa에 코드+이유 강제.
@@ -153,6 +155,8 @@
 ---
 
 ## G. integration 테스트 마커 미강제 — 🟡 P2 (이번 CI 실패의 근본)
+
+> **G ✅ 완료 (2026-07-11, PR #290)**: `tests/integration/conftest.py` 자동 마커 훅(경로 기반, `item.path.is_relative_to`). 아래 경고했던 상호작용이 실측 확인됨 — 마커 부여 후 plain `pytest tests/integration`은 **전량 deselect + exit 0**(실행 모드; collect-only만 exit 5) = 조용한 거짓 그린. CI 직렬 스텝을 `-m integration` 명시 선택으로 수정(후행 `-m`이 addopts override), m9는 `INTEGRATION_DATABASE_URL` self-skip이라 선택돼도 안전(29 passed + 1 skipped). 회귀 테스트 `tests/test_integration_marker_hook.py`(마커 커버리지 + deselection 고정).
 
 - **증거**: PR #280·#282 CI가 `test_conversation_run_lifecycle`·`test_stream_resume`의 xdist 스타베이션으로 실패. 원인은 이 파일들에 `@pytest.mark.integration`이 **없어서**(`test_m9_pg_roundtrip`만 마커 보유) 병렬 스위트에 섞인 것. CI 스텝 분리(`--ignore=tests/integration` + 직렬)로 급한 불은 껐음.
 - **조치**: `tests/integration/conftest.py`에 자동 마커 훅으로 원천 차단:
