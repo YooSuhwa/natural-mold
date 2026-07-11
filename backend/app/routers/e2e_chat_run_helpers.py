@@ -9,10 +9,11 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.error_codes import conversation_not_found
+from app.models.conversation import Conversation
 from app.schemas.conversation_run import ConversationRunResponse
-from app.services import chat_service, conversation_run_service
+from app.services import conversation_run_service
 
 router = APIRouter(tags=["e2e"])
 
@@ -59,11 +60,9 @@ async def create_e2e_conversation_run(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    conv: Conversation = Depends(owned_conversation),
 ):
     _require_e2e_user(user)
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conv.id,
@@ -109,11 +108,11 @@ async def update_e2e_conversation_run_heartbeat(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    # 게이트 전용이지만 decorator dependencies 는 verify_csrf 보다 먼저 돌아
+    # CSRF 403 → 404 순서가 뒤집히므로 파라미터 위치(_csrf 뒤)로 순서를 보존한다.
+    _conv: Conversation = Depends(owned_conversation),
 ):
     _require_e2e_user(user)
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,
@@ -136,11 +135,9 @@ async def update_e2e_conversation_activity(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    conv: Conversation = Depends(owned_conversation),
 ):
     _require_e2e_user(user)
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     conv.last_activity_source = data.last_activity_source
     conv.unread_count = max(data.unread_count, 0)
     await db.commit()
@@ -157,11 +154,9 @@ async def sweep_e2e_stale_conversation_runs(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    conv: Conversation = Depends(owned_conversation),
 ):
     _require_e2e_user(user)
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     marked = await conversation_run_service.mark_stale_active_runs(
         db,
         stale_before=_utc_now_naive() - timedelta(seconds=settings.chat_run_stale_after_seconds),

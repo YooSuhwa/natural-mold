@@ -17,12 +17,12 @@ from app.agent_runtime.ag_ui_adapter import (
 )
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
-from app.dependencies import CurrentUser, get_current_user, get_db
-from app.error_codes import conversation_not_found, resume_not_found
+from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation
+from app.error_codes import resume_not_found
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun
 from app.models.message_event import MessageEvent
 from app.routers.conversation_runs import _retryable_attach_error, _run_is_stale
-from app.services import chat_service, conversation_run_service, trace_storage
+from app.services import conversation_run_service, trace_storage
 from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_stream_service import sse_response
 
@@ -115,7 +115,10 @@ def _headers(run_id: str, mode: str) -> dict[str, str]:
     }
 
 
-@router.get("/api/conversations/{conversation_id}/runs/{run_id}/ag-ui-stream")
+@router.get(
+    "/api/conversations/{conversation_id}/runs/{run_id}/ag-ui-stream",
+    dependencies=[Depends(owned_conversation)],
+)
 async def stream_conversation_run_ag_ui(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
@@ -126,10 +129,6 @@ async def stream_conversation_run_ag_ui(
     user: CurrentUser = Depends(get_current_user),
 ) -> StreamingResponse:
     after_id = last_event_id or last_event_id_header
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
-
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,

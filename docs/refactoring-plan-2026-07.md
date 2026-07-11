@@ -34,7 +34,7 @@
 
 **부분완료 잔여** (재개 지점):
 - **BE-P5**: (b) 이중 redaction, (d) seen_event_ids, (e) inline flush — redaction 의미론·flush 순서 얽힘, 별도 PR
-- **BE-D1**: 나머지 20곳 — conv 객체 재사용 라우터(branches/crud/messages)는 `conv: Conversation = Depends(...)` 주입 방식으로 핸들러별 검증; run_cancel/ag_ui/runs/followup 게이트는 mutation 순서 확인; `conversation_agent_protocol_runtime`은 헬퍼라 제외
+- ~~**BE-D1**: 나머지 20곳~~ → **PR #292로 완료** (18곳 전환 + run_cancel/stream_resume 의도적 보존 2곳 문서화; 상세는 실행 순서 5번)
 
 **미착수 P1** (다음 우선): BE-P2(메시지 페이지네이션·FE연동), BE-S2(MCP/tools/models 서비스레이어), BE-S7(OAuth 분리), BE-S1(chat_service 분해), BE-S3(install_service 분해), FE-S1(런타임 수렴), FE-S2(2941줄 훅), FE-P1(컨텍스트 churn), FE-P2(가상화). **미착수 P2/P3**: §1 매트릭스에서 ✅/🔶 없는 행 전부.
 
@@ -69,7 +69,7 @@
 | BE-S7 | credentials 라우터 OAuth 로직 → oauth_service | 구조 | M |
 | BE-S1 | chat_service.py 8-클러스터 분해 | 구조 | L |
 | BE-S3 | install_service.py 3-타입 분해 | 구조 | L |
-| BE-D1 | 🔶 소유권 조회+404 패턴 30곳 → Depends 의존성 — #282 부분(10/30: artifacts·files·traces), 20곳 잔여 | 중복 | M |
+| BE-D1 | ✅ 소유권 조회+404 패턴 30곳 → Depends 의존성 — #282(10곳) + #292(잔여 18곳 + 보존 2곳 문서화) 완료. agents `owned_agent` 확산은 선택 후속 | 중복 | M |
 | BE-D2 | ✅ raw HTTPException 21곳 → error_codes 팩토리 통일 — #281 완료 (system_llm_settings는 byte-identical 계약이라 제외) | 중복 | S~M |
 | FE-S1 | 채팅 런타임 이중화(legacy/v3) 수렴 1단계 | 구조 | M~L |
 | FE-S2 | use-moldy-langgraph-stream.ts(2,941줄) 분해 | 구조 | L |
@@ -152,7 +152,7 @@
 4. ✅ **린트 E** — PR #291. 7룰 배치 활성 + 373건 트리아지(문서 실측 66건은 app/ 한정 — tests/ 308건이 실제 대부분). 실수정 ~48(RET 인라인·PTH pathlib(부팅 SSL 경로 포함)·PT011 match=·PT019 usefixtures·PT013/PT006/N806/N814), 전역 ignore N818(도메인 스타일 예외명 18건), per-file `app/**`=PT(라우터 `test_*` 엔드포인트 오탐 17건)·`tests/*`+=SLF001/DTZ/PT017/PT018/N801/N815(관용구·wire mock 267건), inline noqa 14(ssl 패치·ORM stash·tool schema camelCase·로컬 날짜 — 전부 이유 포함). 게이트 회귀 테스트 `test_lint_low_noise_rules.py`(빨간불 + 예외 rule-scoped 증명). 함정 2회 실증: C416 unsafe fix(`dict(rows.all())`)가 pyright 타입 회귀 유발 → `.tuples()`로 해결 / 커밋 훅 재포맷(113→354 insertions) 후 noqa anchor 재확인 필수였음(유지됨).
 
 **Stage 1 — 부분완료 마무리**
-5. **BE-D1 나머지** — conv 객체 재사용 라우터(branches/crud/messages 등)를 `conv: Conversation = Depends(owned_conversation)` 주입 방식으로. §6 [BE-D1] 참고.
+5. ✅ **BE-D1 나머지** — PR #292. 잔여 18곳(8파일) 전환: conv 재사용 라우터(branches 2·crud 3·messages list·followup·shares create/revoke·e2e 4)는 conv 주입 — **`verify_csrf` 뒤 파라미터 위치**로 CSRF 403→404 순서 보존(decorator dependencies는 param 의존성보다 먼저 돌아 게이트를 decorator에 얹으면 순서가 뒤집힘, e2e heartbeat에 주석 실증). GET 게이트 5곳(runs 3·ag_ui·shares get)은 decorator `dependencies=[...]`. 의도적 보존 3: run_cancel 헬퍼(두 라우트가 conversation_id/thread_id 다른 path param 공유), messages stream_resume(`resume_not_found` 별도 계약+reject 로깅), crud get_conversation_detail(agent eager-load 별도 getter). shares 로컬 `_require_owned_conversation` 삭제. agents.py `owned_agent` 확산(6곳)은 §6 방안 2단계의 선택 후속으로 남김.
 6. **BE-P5 나머지** — (b) 이중 redaction, (d) run-scoped seen_event_ids, (e) inline flush → create_task. §5 [BE-P5] 참고.
 
 **Stage 2 — 레이어링·경계 (명확한 정답)**

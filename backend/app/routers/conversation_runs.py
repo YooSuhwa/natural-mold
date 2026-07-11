@@ -14,8 +14,8 @@ from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.streaming import format_sse
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
-from app.error_codes import conversation_not_found, resume_not_found
+from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
+from app.error_codes import resume_not_found
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun, utc_now_naive
 from app.models.message_event import MessageEvent
 from app.routers.conversation_run_cancel import (
@@ -23,7 +23,7 @@ from app.routers.conversation_run_cancel import (
     wait_for_run_terminal,
 )
 from app.schemas.conversation_run import ConversationRunResponse
-from app.services import chat_service, conversation_run_service, trace_storage
+from app.services import conversation_run_service, trace_storage
 from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_stream_service import sse_response
 
@@ -101,15 +101,13 @@ def _retryable_attach_error() -> HTTPException:
 @router.get(
     "/api/conversations/{conversation_id}/runs/active",
     response_model=ConversationRunResponse | None,
+    dependencies=[Depends(owned_conversation)],
 )
 async def get_active_conversation_run(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     run = await conversation_run_service.get_active_run(
         db,
         conversation_id=conversation_id,
@@ -118,7 +116,10 @@ async def get_active_conversation_run(
     return ConversationRunResponse.model_validate(run) if run is not None else None
 
 
-@router.get("/api/conversations/{conversation_id}/runs/{run_id}/stream")
+@router.get(
+    "/api/conversations/{conversation_id}/runs/{run_id}/stream",
+    dependencies=[Depends(owned_conversation)],
+)
 async def stream_conversation_run(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
@@ -129,10 +130,6 @@ async def stream_conversation_run(
     user: CurrentUser = Depends(get_current_user),
 ) -> StreamingResponse:
     after_id = last_event_id or last_event_id_header
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
-
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,
@@ -242,6 +239,7 @@ async def cancel_langgraph_sdk_run(
 @router.get(
     "/api/conversations/{conversation_id}/runs/{run_id}",
     response_model=ConversationRunResponse,
+    dependencies=[Depends(owned_conversation)],
 )
 async def get_conversation_run(
     conversation_id: uuid.UUID,
@@ -249,9 +247,6 @@ async def get_conversation_run(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if conv is None:
-        raise conversation_not_found()
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,

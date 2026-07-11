@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.error_codes import file_not_found
+from app.models.conversation import Conversation
 from app.schemas.artifact import (
     ArtifactFavoriteUpdate,
     ArtifactLibraryPage,
@@ -134,7 +135,6 @@ async def download_conversation_artifact(
 @router.delete(
     "/api/conversations/{conversation_id}/artifacts/{artifact_id}",
     status_code=204,
-    dependencies=[Depends(owned_conversation)],
 )
 async def delete_conversation_artifact(
     conversation_id: uuid.UUID,
@@ -142,6 +142,9 @@ async def delete_conversation_artifact(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    # 게이트 전용이지만 decorator dependencies 는 verify_csrf 보다 먼저 돌아
+    # CSRF 403 → 404 순서가 뒤집히므로 파라미터 위치(_csrf 뒤)로 순서를 보존한다.
+    _conv: Conversation = Depends(owned_conversation),
 ):
     try:
         await artifact_service.delete_artifact(

@@ -5,8 +5,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.error_codes import conversation_not_found
+from app.models.conversation import Conversation
 from app.routers.conversation_messages import _broker_resume_generator
 from app.schemas.conversation import (
     EditMessageRequest,
@@ -111,13 +112,10 @@ async def regenerate_message(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    conv: Conversation = Depends(owned_conversation),
 ):
     from app.agent_runtime.checkpointer import get_checkpointer
     from app.services.thread_branch_service import _collect_checkpoints  # noqa: PLC2701
-
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if not conv:
-        raise conversation_not_found()
 
     checkpointer = get_checkpointer()
     checkpoints = await _collect_checkpoints(checkpointer, str(conversation_id))
@@ -220,10 +218,8 @@ async def switch_branch(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    conv: Conversation = Depends(owned_conversation),
 ):
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
-    if not conv:
-        raise conversation_not_found()
     from app.agent_runtime.checkpointer import get_checkpointer
     from app.services.thread_branch_service import checkpoint_exists
 
@@ -239,11 +235,9 @@ async def switch_branch(
 
     from sqlalchemy import update as _update
 
-    from app.models.conversation import Conversation as _Conv
-
     await db.execute(
-        _update(_Conv)
-        .where(_Conv.id == conversation_id)
+        _update(Conversation)
+        .where(Conversation.id == conversation_id)
         .values(active_branch_checkpoint_id=data.checkpoint_id)
     )
     await record_conversation_audit(
