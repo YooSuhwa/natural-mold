@@ -61,8 +61,17 @@
 - 검증: backend 2681(SKILL_EVALUATION_ENABLED=true)+ruff / vitest 1269 / build / eslint 0에러 / i18n 그린. 라이브 스택(5437/3410/8410): skill-builder-chat 2 + captures-phase15 3 + captures-skill-studio 1(7장) 통과. mock 모드: skill-studio 3·history·export·eval-actions 2·management 2·state-filters 그린. design-system·a11y 레드는 베이스 기존(stash 대조), architecture 보고-전용 +2는 기존 exportUrl 직수입 클래스와 동일(주석 검토 완료)
 - 상태: done (2026-07-11)
 
+## R: /code-review 적대 리뷰 (8앵글) 발견 일괄 수정
+- [x] **High/UX**: ① 셸이 빌더 인덱스 `?skillId=` 스코프 미인식(스킬 탭 4개 disabled 오표기+"새 스킬 초안" 오표기) → useSearchParams 보충+layout Suspense+E2E 회귀 단언 ② DataTable 선택 통지 effect가 부모 데이터 축소를 못 봄 → `filtered` dep + **row-id 시그니처 가드**(불안정 data identity 소비자의 무한 루프 방지 — 수정 중 실제 "Maximum update depth" 재현·해소, filteredSkills 스프레드도 useMemo 내부로) ③ tableEpoch remount 밴드에이드 → DataTable **controlled rowSelection** 추가(정렬/페이지 유지 리셋)
+- [x] **백엔드**: ④ 리비전 zip 유실 시 500 → pruned 계약(FileNotFoundError→None→명시 응답, +테스트) ⑤ zip 전체 적재 → ZipFile(path) 랜덤 액세스 + getinfo O(1) ⑥ 세션 목록이 abandoned(GC·대화 SET NULL) 노출 → 기본 제외(+테스트) ⑦ confirm×2/rollback 응답 bare model_validate → serialize_skill 수렴(used_by_count 이중 진실 봉합)
+- [x] **회귀 복원(제거 동작 감사)**: ⑧ Origin/PublicationBadge를 목록 상태 컬럼+설정 탭에 복원 ⑨ canPublish 가드 복원(행 메뉴·설정 — 게시된 스킬 재게시 진입 차단) ⑩ 패키지 요약(size·version·연결) 푸터 상시 표시 복원 ⑪ 소스 에디터 저장 플로우 유닛 테스트 신설(다이얼로그 테스트 삭제 공백)
+- [x] **정리/중복**: ⑫ 빌더 세션 시작 3중 복제 → `useBuilderSessionLauncher` 단일화 ⑬ 죽은 다이얼로그 모드(onClose/showDangerZone/showCredentials + 삭제 UI) 전면 제거, skill-detail-tab-shell을 타입 전용으로 축소 ⑭ SkillCredentialsTab 고아 삭제 + i18n 고아 키 스윕(detailDialog.tabs 5종/loading/close/skillEntity/packageEntity, actions.manage) ⑮ 표시 상한 정본 `app/skills/display_limits.py`(워크스페이스·리비전 lockstep) ⑯ start/confirm 뮤테이션이 세션 목록 키 invalidate ⑰ URLSearchParams.size 호환(toString) ⑱ useSkill staleTime 30s ⑲ 스위처 useSkills를 팝업 마운트 시로 지연 ⑳ 리비전 뷰어 key={revisionId}(back/forward 상태 리셋) ㉑ 행 액션 stopPropagation을 개별 요소로(a11y), stale 베이스라인 2건 제거
+- 리포트-온리(수정 보류·백로그): 파일 목록+뷰어 3중 사본 공용화(빌더 레일·리비전 뷰어·패키지 트리), SettingsSectionCard 재사용(nested-card 경고 트레이드오프), columns useMemo(부모 콜백 불안정), serialize_skill 단건 경로 스칼라 서브쿼리화, 셸 pathname 파서 ↔ useSelectedLayoutSegments, System LLM 미설정 안내 재작성, content path max_length 비대칭(병적 입력)
+- 검증: backend 2683+ruff / vitest 1272 / tsc / build / i18n / a11y·design 신규 위반 0 / mock E2E 10 / 라이브 게이트 3(빌더 챗 2 + 캡처 투어 7장)
+- 상태: done (2026-07-11)
+
 ## 마일스톤 의존
-M0 → M1 → M2a → M2b → M3 → M4 → M5. 이후 /review 적대 리뷰 → PR.
+M0 → M1 → M2a → M2b → M3 → M4 → M5 → R. 이후 PR.
 
 ---
 

@@ -132,7 +132,9 @@ async def list_sessions(
 
     ``skill_id``는 improve 원본(``source_skill_id``)과 create 산출물
     (``finalized_skill_id``) 양쪽에 매칭한다 — "이 스킬의 빌더 이력"을
-    한 질의로 잡기 위함(인덱스 양쪽 존재).
+    한 질의로 잡기 위함(인덱스 양쪽 존재). 상태 필터가 없으면 GC 대상인
+    ``abandoned``를 기본 제외한다 — 대화가 SET NULL로 끊겨 재개 불가한
+    세션을 클릭 가능한 행으로 노출하지 않기 위함(명시 status로는 조회 가능).
     """
 
     stmt = (
@@ -150,6 +152,8 @@ async def list_sessions(
         )
     if status is not None:
         stmt = stmt.where(SkillBuilderSession.status == status)
+    else:
+        stmt = stmt.where(SkillBuilderSession.status != SkillBuilderStatus.ABANDONED.value)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 

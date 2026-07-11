@@ -22,8 +22,11 @@ export const skillBuilderApi = {
     if (params?.skill_id) query.set('skill_id', params.skill_id)
     if (params?.status) query.set('status', params.status)
     if (params?.limit) query.set('limit', String(params.limit))
-    const suffix = query.size > 0 ? `?${query.toString()}` : ''
-    return apiFetch<SkillBuilderSessionBrief[]>(`/api/skill-builder${suffix}`)
+    // URLSearchParams.size는 2023+ API(Safari<17 undefined) — 문자열 길이로 판정.
+    const encoded = query.toString()
+    return apiFetch<SkillBuilderSessionBrief[]>(
+      encoded ? `/api/skill-builder?${encoded}` : '/api/skill-builder',
+    )
   },
 
   get: (sessionId: string) => apiFetch<SkillBuilderSession>(`/api/skill-builder/${sessionId}`),

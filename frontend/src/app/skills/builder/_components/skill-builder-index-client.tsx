@@ -5,14 +5,13 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { HammerIcon, Plus, Sparkles } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/shared/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
-import { useSkillBuilderSessions, useStartSkillBuilder } from '@/lib/hooks/use-skill-builder'
+import { useBuilderSessionLauncher, useSkillBuilderSessions } from '@/lib/hooks/use-skill-builder'
 import { useSkill } from '@/lib/hooks/use-skills'
 import { formatDisplayDateTime } from '@/lib/utils/display-format'
 import type { SkillBuilderSessionBrief } from '@/lib/types/skill-builder'
@@ -23,7 +22,6 @@ import type { SkillBuilderSessionBrief } from '@/lib/types/skill-builder'
  */
 export function SkillBuilderIndexClient() {
   const t = useTranslations('skill.studio.builderIndex')
-  const builderChat = useTranslations('skill.builderChat')
   const router = useRouter()
   const searchParams = useSearchParams()
   const skillId = searchParams.get('skillId')
@@ -31,21 +29,13 @@ export function SkillBuilderIndexClient() {
   const { data: sessions, isLoading } = useSkillBuilderSessions(
     skillId ? { skill_id: skillId } : undefined,
   )
-  const startBuilder = useStartSkillBuilder()
+  const launcher = useBuilderSessionLauncher()
   const [createOpen, setCreateOpen] = useState(false)
 
-  async function startSession(payload: {
-    mode: 'create' | 'improve'
-    user_request: string
-    source_skill_id?: string
-  }) {
-    try {
-      const session = await startBuilder.mutateAsync(payload)
-      setCreateOpen(false)
-      router.push(`/skills/builder/${session.id}`)
-    } catch {
-      toast.error(builderChat('startFailed'))
-    }
+  // 세션 시작/라우팅/실패 토스트는 공유 launcher가 소유한다 (리뷰 R).
+  async function startCreate(request: string) {
+    const started = await launcher.startCreate(request)
+    if (started) setCreateOpen(false)
   }
 
   const items = sessions ?? []
@@ -65,14 +55,8 @@ export function SkillBuilderIndexClient() {
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={startBuilder.isPending}
-                onClick={() =>
-                  startSession({
-                    mode: 'improve',
-                    user_request: builderChat('improveDefaultRequest'),
-                    source_skill_id: skill.id,
-                  })
-                }
+                disabled={launcher.pending}
+                onClick={() => void launcher.startImprove(skill.id)}
               >
                 <Sparkles className="size-3.5" />
                 {t('improveSkill', { name: skill.name })}
@@ -123,7 +107,7 @@ export function SkillBuilderIndexClient() {
           setCreateOpen(false)
           router.push(`/skills/${id}/source`)
         }}
-        onStartChat={(request) => startSession({ mode: 'create', user_request: request })}
+        onStartChat={(request) => void startCreate(request)}
       />
     </div>
   )

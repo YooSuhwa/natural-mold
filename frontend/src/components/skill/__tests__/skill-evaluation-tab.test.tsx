@@ -73,7 +73,7 @@ describe('SkillEvaluationTab', () => {
   it('renders without owning the dialog body or footer', () => {
     mockUseSkillEvaluationSets.mockReturnValue({ data: [], isLoading: false })
 
-    const result = render(<SkillEvaluationTab skillId="skill-1" onClose={vi.fn()} />)
+    const result = render(<SkillEvaluationTab skillId="skill-1" />)
 
     expect(result.container.querySelector('.moldy-dialog-body')).not.toBeInTheDocument()
     expect(result.container.querySelector('.moldy-dialog-footer')).not.toBeInTheDocument()
@@ -98,7 +98,7 @@ describe('SkillEvaluationTab', () => {
       isLoading: false,
     })
 
-    render(<SkillEvaluationTab skillId="skill-1" onClose={vi.fn()} />)
+    render(<SkillEvaluationTab skillId="skill-1" />)
 
     await user.click(screen.getByRole('button', { name: '품질 평가 평가 취소' }))
 
@@ -123,7 +123,7 @@ describe('SkillEvaluationTab', () => {
       isLoading: false,
     })
 
-    render(<SkillEvaluationTab skillId="skill-1" onClose={vi.fn()} />)
+    render(<SkillEvaluationTab skillId="skill-1" />)
 
     expect(screen.getByText('생성된 품질 평가')).toBeInTheDocument()
     expect(screen.getByText('Builder가 만든 평가 세트입니다.')).toBeInTheDocument()
@@ -157,7 +157,7 @@ describe('SkillEvaluationTab', () => {
       isLoading: false,
     })
 
-    render(<SkillEvaluationTab skillId="skill-1" onClose={vi.fn()} />)
+    render(<SkillEvaluationTab skillId="skill-1" />)
 
     await user.click(screen.getByRole('button', { name: '품질 평가 평가 다시 실행' }))
 
@@ -195,7 +195,6 @@ describe('SkillEvaluationTab', () => {
     render(
       <SkillEvaluationTab
         skillId="skill-1"
-        onClose={vi.fn()}
         needsCredentialSetup
         onOpenCredentials={openCredentials}
       />,
@@ -259,9 +258,7 @@ describe('SkillEvaluationTab', () => {
       isLoading: false,
     })
 
-    render(
-      <SkillEvaluationTab skillId="skill-1" skillContentHash="hash-current" onClose={vi.fn()} />,
-    )
+    render(<SkillEvaluationTab skillId="skill-1" skillContentHash="hash-current" />)
 
     expect(screen.getAllByText('재평가 필요')).toHaveLength(2)
     expect(screen.getByText('실행 이력')).toBeInTheDocument()

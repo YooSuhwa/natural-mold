@@ -7,8 +7,7 @@ import type { SkillDetailTabSlots } from '@/components/skill/skill-detail-tab-sh
 
 /**
  * 스킬 탭 컴포넌트(4슬롯 렌더 프롭 계약)를 풀페이지 스튜디오 레이아웃으로
- * 렌더한다 — 다이얼로그의 `renderSkillDetailTabShell`(DialogShell 매핑)과
- * 동일 슬롯, 다른 프레임. overlay 슬롯은 롤백 확인 다이얼로그 등이 실리므로
+ * 렌더한다 — 유일한 런타임 렌더러(구 DialogShell 매핑은 다이얼로그와 함께 제거). overlay 슬롯은 롤백 확인 다이얼로그 등이 실리므로
  * 반드시 렌더한다 (Phase 2 스펙 AD-3).
  */
 export function renderSkillStudioTabShell(slots: SkillDetailTabSlots): ReactNode {

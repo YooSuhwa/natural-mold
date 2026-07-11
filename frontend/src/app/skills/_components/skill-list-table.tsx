@@ -2,12 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { Download, MoreHorizontal, Trash2, UploadCloud } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
+import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
+import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DataTable } from '@/components/ui/data-table'
@@ -24,12 +26,17 @@ import { useDeleteSkill } from '@/lib/hooks/use-skills'
 import { formatDisplayDate } from '@/lib/utils/display-format'
 import type { Skill } from '@/lib/types/skill'
 
+/** 구 SkillCard와 동일한 게시 가드 — 이미 게시된 스킬에는 게시 진입점을 숨긴다. */
+function canPublishSkill(skill: Skill): boolean {
+  return !skill.publication_summary?.state || skill.publication_summary.state === 'not_published'
+}
+
 /**
  * 스킬 목록 표 (Phase 2 목업 skill-table) — DataTable rowSelection의 첫 도입.
  *
- * 함정 대응(스펙 AD-5): rowSelection은 DataTable 내부 state라 외부 리셋 수단이
- * 없다 → 벌크 삭제/선택 해제 후 `tableEpoch` key remount로 초기화한다. 검색으로
- * 숨겨진 선택 행이 남을 수 있어 확인 다이얼로그에 대상 이름을 열거한다.
+ * 선택 상태는 controlled(rowSelectionState)로 소유해 벌크 삭제/선택 해제 시
+ * remount 없이 리셋한다(정렬·페이지 유지). 검색으로 숨겨진 선택 행이 남을 수
+ * 있어 확인 다이얼로그에 대상 이름을 열거한다 (스펙 AD-5).
  */
 export function SkillListTable({
   skills,
@@ -38,7 +45,8 @@ export function SkillListTable({
   onImprove,
   onPublish,
 }: {
-  readonly skills: readonly Skill[]
+  /** 부모의 useMemo 결과를 그대로 받는다 — 새 identity를 만들면 선택 통지 effect가 재순환한다. */
+  readonly skills: Skill[]
   readonly isLoading: boolean
   readonly emptyTitle: string
   readonly onImprove: (skillId: string) => void
@@ -48,14 +56,14 @@ export function SkillListTable({
   const list = useTranslations('skill.studio.list')
   const router = useRouter()
   const removeSkill = useDeleteSkill()
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [selected, setSelected] = useState<Skill[]>([])
   const [pendingDelete, setPendingDelete] = useState<Skill[]>([])
   const [deleting, setDeleting] = useState(false)
-  const [tableEpoch, setTableEpoch] = useState(0)
 
   function resetSelection() {
+    setRowSelection({})
     setSelected([])
-    setTableEpoch((epoch) => epoch + 1)
   }
 
   async function executeDelete() {
@@ -111,7 +119,14 @@ export function SkillListTable({
       id: 'status',
       header: t('columns.status'),
       enableSorting: false,
-      cell: ({ row }) => <SkillHealthBadge health={row.original.health} />,
+      cell: ({ row }) => (
+        // 게시/출처 배지는 구 카드에서 이관 — 목록에서 게시 상태를 잃지 않는다.
+        <div className="flex flex-wrap items-center gap-1">
+          <SkillHealthBadge health={row.original.health} />
+          <OriginBadge summary={row.original.origin_summary} />
+          <PublicationBadge summary={row.original.publication_summary} />
+        </div>
+      ),
     },
     {
       id: 'evaluation',
@@ -157,12 +172,13 @@ export function SkillListTable({
   return (
     <>
       <DataTable
-        key={`skill-table-${tableEpoch}`}
         columns={columns}
-        data={[...skills]}
+        data={skills}
         loading={isLoading}
         pageSize={20}
         enableRowSelection
+        rowSelectionState={rowSelection}
+        onRowSelectionStateChange={setRowSelection}
         onRowSelectionChange={setSelected}
         onRowClick={(skill) => router.push(`/skills/${skill.id}/source`)}
         emptyTitle={emptyTitle}
@@ -226,17 +242,18 @@ function SkillRowActions({
   const list = useTranslations('skill.studio.list')
   const router = useRouter()
 
+  // 행 클릭(소스 이동)과 겹치지 않게 각 인터랙티브 요소에서 전파를 끊는다
+  // (DataTable 체크박스 컬럼과 동일 선례 — 정적 wrapper 핸들러는 a11y 위반).
   return (
-    // 행 클릭(소스 이동)과 셀 액션이 겹치지 않게 전파를 끊는다.
-    <div
-      className="flex items-center justify-end gap-1"
-      onClick={(event) => event.stopPropagation()}
-    >
+    <div className="flex items-center justify-end gap-1">
       <Button
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => onImprove(skill.id)}
+        onClick={(event) => {
+          event.stopPropagation()
+          onImprove(skill.id)
+        }}
         aria-label={list('rowImproveAria', { name: skill.name })}
       >
         {list('rowImprove')}
@@ -245,7 +262,10 @@ function SkillRowActions({
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => router.push(`/skills/${skill.id}/evaluation`)}
+        onClick={(event) => {
+          event.stopPropagation()
+          router.push(`/skills/${skill.id}/evaluation`)
+        }}
       >
         {list('rowEvaluation')}
       </Button>
@@ -253,7 +273,10 @@ function SkillRowActions({
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => router.push(`/skills/${skill.id}/versions`)}
+        onClick={(event) => {
+          event.stopPropagation()
+          router.push(`/skills/${skill.id}/versions`)
+        }}
       >
         {list('rowVersions')}
       </Button>
@@ -261,6 +284,7 @@ function SkillRowActions({
         <DropdownMenuTrigger
           aria-label={list('rowMenuAria', { name: skill.name })}
           className="inline-flex size-8 items-center justify-center rounded-md hover:bg-muted"
+          onClick={(event) => event.stopPropagation()}
         >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
@@ -268,10 +292,12 @@ function SkillRowActions({
           <DropdownMenuItem onClick={() => router.push(`/skills/${skill.id}/source`)}>
             {list('rowViewSource')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onPublish(skill)}>
-            <UploadCloud className="size-4" />
-            {t('actions.publish')}
-          </DropdownMenuItem>
+          {canPublishSkill(skill) ? (
+            <DropdownMenuItem onClick={() => onPublish(skill)}>
+              <UploadCloud className="size-4" />
+              {t('actions.publish')}
+            </DropdownMenuItem>
+          ) : null}
           {skill.kind === 'package' ? (
             <DropdownMenuItem
               render={

@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BookOpen, Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -15,7 +14,7 @@ import {
   ResourcePanel,
   ResourceToolbar,
 } from '@/components/shared/resource-layout'
-import { useStartSkillBuilder } from '@/lib/hooks/use-skill-builder'
+import { useBuilderSessionLauncher } from '@/lib/hooks/use-skill-builder'
 import { useSkills } from '@/lib/hooks/use-skills'
 import {
   ALL_SKILL_FILTER,
@@ -30,7 +29,6 @@ import { SkillPageDialogs } from './skill-page-dialogs'
 import { SkillStateFilterChips } from './skill-state-filter-chips'
 
 type CreateTab = 'chat' | 'text' | 'package'
-type BuilderMode = 'create' | 'improve'
 type SkillTab = SkillKindFilter
 
 const SKILL_TABS: readonly SkillTab[] = [ALL_SKILL_FILTER, 'text', 'package']
@@ -42,7 +40,7 @@ function isSkillTab(value: string): value is SkillTab {
 export function SkillsPageClient() {
   const t = useTranslations('skill')
   const router = useRouter()
-  const startBuilder = useStartSkillBuilder()
+  const launcher = useBuilderSessionLauncher()
   const [createOpen, setCreateOpen] = useState(false)
   const [createTab, setCreateTab] = useState<CreateTab>('chat')
   const [activeTab, setActiveTab] = useState<SkillTab>(ALL_SKILL_FILTER)
@@ -69,43 +67,29 @@ export function SkillsPageClient() {
     router.push(`/skills/${id}/source`)
   }
 
-  // 빌더 챗 (스킬 스튜디오 phase 1) — start v2로 세션+대화+워크스페이스를
-  // 만들고 전용 라우트로 이동한다. 구 SkillBuilderDialog는 제거됨.
-  async function startBuilderSession(payload: {
-    mode: BuilderMode
-    user_request: string
-    source_skill_id?: string
-  }) {
-    try {
-      const session = await startBuilder.mutateAsync(payload)
-      setCreateOpen(false)
-      router.push(`/skills/builder/${session.id}`)
-    } catch {
-      toast.error(t('builderChat.startFailed'))
-    }
-  }
-
-  function openBuilderCreate(request: string) {
-    void startBuilderSession({ mode: 'create', user_request: request })
+  // 빌더 챗 진입 — 세션 시작/라우팅/실패 토스트는 공유 launcher가 소유한다.
+  async function openBuilderCreate(request: string) {
+    const started = await launcher.startCreate(request)
+    if (started) setCreateOpen(false)
   }
 
   // 목록 표의 행 "수정" — 목업 계약대로 improve 빌더 세션을 바로 시작한다.
   function openBuilderImprove(skillId: string) {
-    void startBuilderSession({
-      mode: 'improve',
-      user_request: t('builderChat.improveDefaultRequest'),
-      source_skill_id: skillId,
-    })
+    void launcher.startImprove(skillId)
   }
 
   const data = useMemo(() => skills ?? [], [skills])
 
   const filteredSkills = useMemo(() => {
-    return filterSkillList(data, {
-      kind: activeTab,
-      state: stateFilter,
-      query: normalizedSearch,
-    })
+    // 스프레드는 useMemo 안에서 1회 — 렌더마다 새 identity를 만들면
+    // DataTable 선택 통지 effect가 재순환한다 (리뷰 R).
+    return [
+      ...filterSkillList(data, {
+        kind: activeTab,
+        state: stateFilter,
+        query: normalizedSearch,
+      }),
+    ]
   }, [activeTab, data, normalizedSearch, stateFilter])
 
   function countSkills(tab: SkillTab): number {

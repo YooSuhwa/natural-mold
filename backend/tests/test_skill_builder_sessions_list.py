@@ -116,6 +116,26 @@ async def test_status_filter_and_validation(
     assert bad_limit.status_code == 422
 
 
+async def test_abandoned_sessions_hidden_by_default(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """GC 대상 abandoned 세션은 기본 목록에서 제외 — 명시 status로만 조회 (리뷰 R)."""
+
+    active = _session(status="active")
+    abandoned = _session(status="abandoned")
+    db.add_all([active, abandoned])
+    await db.commit()
+
+    default_list = await client.get(BASE)
+    assert default_list.status_code == 200, default_list.text
+    assert [row["id"] for row in default_list.json()] == [str(active.id)]
+
+    explicit = await client.get(BASE, params={"status": "abandoned"})
+    assert explicit.status_code == 200, explicit.text
+    assert [row["id"] for row in explicit.json()] == [str(abandoned.id)]
+
+
 async def test_limit_caps_results(
     client: AsyncClient,
     db: AsyncSession,

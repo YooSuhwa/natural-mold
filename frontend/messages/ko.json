@@ -2409,8 +2409,7 @@
       "kind": "종류"
     },
     "actions": {
-      "publish": "공개하기",
-      "manage": "관리"
+      "publish": "공개하기"
     },
     "typeFilter": {
       "all": "전체",
@@ -2548,16 +2547,12 @@
       }
     },
     "detailDialog": {
-      "loading": "스킬 불러오는 중…",
-      "close": "닫기",
       "save": "저장",
       "saved": "저장되었습니다",
       "saveFailed": "저장에 실패했습니다",
       "deleted": "스킬이 삭제되었습니다",
       "deleteFailed": "삭제에 실패했습니다",
       "deleteSkill": "스킬 삭제",
-      "skillEntity": "스킬",
-      "packageEntity": "스킬 전체 패키지",
       "fileEntity": "파일",
       "loadFailed": "불러오기에 실패했습니다: {message}",
       "discardConfirm": "{path}의 저장하지 않은 변경사항을 버릴까요?\n\n확인을 누르면 버리고, 취소를 누르면 계속 편집합니다.",
@@ -2587,13 +2582,6 @@
       "binaryUnavailable": "이 파일 형식은 편집기 미리보기를 사용할 수 없습니다.",
       "download": "다운로드",
       "credentialsEmpty": "이 스킬에는 필요한 자격증명이 없습니다.",
-      "tabs": {
-        "content": "내용",
-        "credentials": "자격증명",
-        "evaluation": "평가",
-        "history": "이력",
-        "metadata": "메타데이터"
-      },
       "evaluation": {
         "emptyTitle": "아직 평가 세트가 없습니다",
         "emptyDescription": "대화형 빌더나 평가 탭에서 기준을 만들면 여기서 다시 실행할 수 있습니다.",

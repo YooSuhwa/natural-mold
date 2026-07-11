@@ -26,6 +26,7 @@ from app.routers.skill_builder_support import (
     record_secret_scan_blocked_if_needed,
     require_system_llm,
 )
+from app.routers.skill_router_support import serialize_skill
 from app.schemas.skill import SkillResponse
 from app.schemas.skill_builder import (
     SkillBuilderFileContentResponse,
@@ -266,7 +267,9 @@ async def confirm_skill_builder_session(
     session = await get_session_or_404(db, session_id=session_id, user=user)
     existing = await completed_skill(db, session=session, user=user)
     if existing is not None:
-        return SkillResponse.model_validate(existing)
+        # bare model_validate는 used_by_count(항상 0 컬럼)·health 등 enrichment를
+        # 건너뛴다 — 다른 SkillResponse 경로와 동일하게 serializer를 경유한다.
+        return await serialize_skill(db, existing, user)
     if session.status == SkillBuilderStatus.CONFIRMING.value:
         raise session_confirming()
     if session.status != SkillBuilderStatus.REVIEW.value:
@@ -325,7 +328,7 @@ async def confirm_skill_builder_session(
     )
     await db.commit()
     await db.refresh(skill)
-    return SkillResponse.model_validate(skill)
+    return await serialize_skill(db, skill, user)
 
 
 def _confirm_action(mode: str) -> str:

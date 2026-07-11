@@ -148,6 +148,26 @@ async def test_oversize_entry_content_blocked(
     assert blocked.status_code == 404
 
 
+async def test_missing_snapshot_zip_treated_as_pruned_not_500(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """pruned 플래그 없이 zip만 유실된 스냅샷 — 500 대신 pruned 계약 (리뷰 R)."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    (Path(settings.data_root) / revision.object_key).unlink()
+
+    files = await client.get(f"/api/skills/{skill.id}/revisions/{revision.id}/files")
+    assert files.status_code == 200, files.text
+    assert files.json() == {"snapshot_pruned": True, "files": []}
+
+    content = await client.get(
+        f"/api/skills/{skill.id}/revisions/{revision.id}/files/content",
+        params={"path": "SKILL.md"},
+    )
+    assert content.status_code == 404
+
+
 async def test_pruned_snapshot_explicit_and_content_404(
     client: AsyncClient,
     db: AsyncSession,

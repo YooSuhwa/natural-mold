@@ -9,7 +9,7 @@ from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import skill_file_not_found, skill_not_found, skill_revision_not_found
 from app.models.skill import Skill
 from app.models.skill_revision import SkillRevision
-from app.schemas.skill import SkillResponse
+from app.routers.skill_router_support import serialize_skill
 from app.schemas.skill_revision import (
     SkillRevisionDetail,
     SkillRevisionFileContentResponse,
@@ -73,6 +73,9 @@ async def list_skill_revision_files(
     if skill_revision_service.snapshot_pruned(revision):
         return SkillRevisionFilesResponse(snapshot_pruned=True, files=[])
     entries = await skill_revision_service.list_revision_files(revision)
+    if entries is None:
+        # pruned 플래그 없이 zip만 유실된 스냅샷 — 500 대신 pruned와 동일 계약.
+        return SkillRevisionFilesResponse(snapshot_pruned=True, files=[])
     return SkillRevisionFilesResponse(
         snapshot_pruned=False,
         files=[
@@ -152,7 +155,8 @@ async def rollback_skill_revision(
     await db.refresh(skill)
     await db.refresh(restored)
     return SkillRollbackResponse(
-        skill=SkillResponse.model_validate(skill),
+        # bare model_validate 대신 serializer — used_by_count/health enrichment 정렬.
+        skill=await serialize_skill(db, skill, user),
         revision=SkillRevisionSummary.model_validate(restored),
     )
 

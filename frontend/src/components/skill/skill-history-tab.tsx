@@ -27,15 +27,11 @@ function sortRevisionsNewestFirst(
 export function SkillHistoryTab({
   children,
   skillId,
-  onClose,
 }: {
   readonly children: SkillDetailTabRender
   readonly skillId: string
-  /** 다이얼로그 전용 닫기 — 풀페이지 스튜디오에서는 생략(footer 없음). */
-  readonly onClose?: () => void
 }) {
   const t = useTranslations('skill.detailDialog.history')
-  const common = useTranslations('skill.detailDialog')
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null)
   const [rollbackRevision, setRollbackRevision] = useState<SkillRevisionSummary | null>(null)
   const { data: revisions, isLoading } = useSkillRevisions(skillId)
@@ -149,11 +145,7 @@ export function SkillHistoryTab({
         )}
       </>
     ),
-    footer: onClose ? (
-      <Button variant="outline" onClick={onClose}>
-        {common('close')}
-      </Button>
-    ) : null,
+    footer: null,
     overlay: (
       <DeleteConfirmDialog
         open={rollbackRevision !== null}

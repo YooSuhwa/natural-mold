@@ -2409,8 +2409,7 @@
       "kind": "Kind"
     },
     "actions": {
-      "publish": "Publish",
-      "manage": "Manage"
+      "publish": "Publish"
     },
     "typeFilter": {
       "all": "All",
@@ -2548,16 +2547,12 @@
       }
     },
     "detailDialog": {
-      "loading": "Loading",
-      "close": "Close",
       "save": "Save",
       "saved": "Saved",
       "saveFailed": "Save failed",
       "deleted": "Deleted",
       "deleteFailed": "Delete failed",
       "deleteSkill": "Delete Skill",
-      "skillEntity": "Skills",
-      "packageEntity": "Package Entity",
       "fileEntity": "File Entity",
       "loadFailed": "Failed to load: {message}",
       "discardConfirm": "Discard changes to {path}?",
@@ -2587,13 +2582,6 @@
       "binaryUnavailable": "Binary Unavailable",
       "download": "Download",
       "credentialsEmpty": "This skill does not require credentials.",
-      "tabs": {
-        "content": "Content",
-        "credentials": "Credentials",
-        "evaluation": "Evaluation",
-        "history": "History",
-        "metadata": "Metadata"
-      },
       "evaluation": {
         "emptyTitle": "No evaluation set yet",
         "emptyDescription": "When the builder or Evaluation tab creates criteria, you can rerun them here.",

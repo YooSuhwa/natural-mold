@@ -42,13 +42,6 @@
     "message": "Anchors must have content and the content must be accessible by a screen reader."
   },
   {
-    "filePath": "src/components/skill/skill-detail-package-footer.tsx",
-    "line": 80,
-    "column": 43,
-    "ruleId": "jsx-a11y/anchor-has-content",
-    "message": "Anchors must have content and the content must be accessible by a screen reader."
-  },
-  {
     "filePath": "src/components/chat/chat-image.tsx",
     "line": 49,
     "column": 9,
@@ -227,13 +220,6 @@
     "filePath": "src/components/skill/skill-create-tabs.tsx",
     "line": 179,
     "column": 9,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
-    "filePath": "src/components/skill/skill-detail-package-footer.tsx",
-    "line": 80,
-    "column": 43,
     "ruleId": "jsx-a11y/control-has-associated-label",
     "message": "A control must be associated with a text label."
   },

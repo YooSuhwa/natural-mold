@@ -1,9 +1,8 @@
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ChevronsUpDown, Sparkles } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,7 +15,7 @@ import {
 import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
 import { Tabs } from '@/components/ui/tabs'
 import { SkillSummaryStrip } from '@/components/skill/skill-summary-strip'
-import { useSkillBuilderSession, useStartSkillBuilder } from '@/lib/hooks/use-skill-builder'
+import { useBuilderSessionLauncher, useSkillBuilderSession } from '@/lib/hooks/use-skill-builder'
 import { useSkill, useSkills } from '@/lib/hooks/use-skills'
 import type { Skill } from '@/lib/types/skill'
 
@@ -37,17 +36,23 @@ import {
  */
 export function SkillStudioShell() {
   const t = useTranslations('skill.studio')
-  const builderChat = useTranslations('skill.builderChat')
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const context = deriveSkillStudioContext(pathname)
   const { data: builderSession } = useSkillBuilderSession(context.sessionId)
   const builderSkillId = context.sessionId
     ? (builderSession?.source_skill_id ?? builderSession?.finalized_skill_id ?? null)
     : null
-  const contextSkillId = context.skillId ?? builderSkillId
+  // 빌더 인덱스(/skills/builder?skillId=)의 스코프 스킬 — pathname에는 없어
+  // 쿼리에서 보충한다. 놓치면 스킬 스코프 탭 4개가 disabled로 오표기된다(리뷰 R).
+  const builderIndexSkillId =
+    context.activeTab === 'builder' && context.sessionId === null
+      ? searchParams.get('skillId')
+      : null
+  const contextSkillId = context.skillId ?? builderSkillId ?? builderIndexSkillId
   const { data: contextSkill } = useSkill(contextSkillId)
-  const startBuilder = useStartSkillBuilder()
+  const launcher = useBuilderSessionLauncher()
 
   function handleTabChange(value: string) {
     const tab = value as SkillStudioTab
@@ -61,18 +66,9 @@ export function SkillStudioShell() {
     router.push(`/skills/${skill.id}/${tab}`)
   }
 
-  async function handleImprove() {
+  function handleImprove() {
     if (!contextSkillId) return
-    try {
-      const session = await startBuilder.mutateAsync({
-        mode: 'improve',
-        user_request: builderChat('improveDefaultRequest'),
-        source_skill_id: contextSkillId,
-      })
-      router.push(`/skills/builder/${session.id}`)
-    } catch {
-      toast.error(builderChat('startFailed'))
-    }
+    void launcher.startImprove(contextSkillId)
   }
 
   const showContextBar = context.activeTab !== 'list'
@@ -103,7 +99,7 @@ export function SkillStudioShell() {
         <SkillStudioContextBar
           skill={contextSkill ?? null}
           isBuilderDraft={context.activeTab === 'builder' && !contextSkillId}
-          improvePending={startBuilder.isPending}
+          improvePending={launcher.pending}
           showImprove={context.activeTab !== 'builder' && Boolean(contextSkillId)}
           onSwitchSkill={handleSwitchSkill}
           onImprove={handleImprove}
@@ -191,8 +187,6 @@ function SkillSwitcher({
   readonly onSwitchSkill: (skill: Skill) => void
 }) {
   const t = useTranslations('skill.studio.contextBar')
-  const { data: skills } = useSkills()
-  const candidates = (skills ?? []).filter((candidate) => candidate.id !== skill.id)
 
   return (
     <DropdownMenu>
@@ -208,19 +202,38 @@ function SkillSwitcher({
         <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
-        {candidates.length === 0 ? (
-          <DropdownMenuItem disabled>{t('noOtherSkills')}</DropdownMenuItem>
-        ) : (
-          candidates.map((candidate) => (
-            <DropdownMenuItem key={candidate.id} onClick={() => onSwitchSkill(candidate)}>
-              <span className="truncate">{candidate.name}</span>
-              <span className="moldy-ui-micro ml-auto font-mono text-muted-foreground">
-                {candidate.slug}
-              </span>
-            </DropdownMenuItem>
-          ))
-        )}
+        {/* useSkills는 팝업이 열려 content가 마운트될 때만 구독 — 셸이 모든
+            스킬 라우트에서 전체 목록(+enrichment)을 상시 fetch하지 않게 한다. */}
+        <SkillSwitcherItems currentSkillId={skill.id} onSwitchSkill={onSwitchSkill} />
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+function SkillSwitcherItems({
+  currentSkillId,
+  onSwitchSkill,
+}: {
+  readonly currentSkillId: string
+  readonly onSwitchSkill: (skill: Skill) => void
+}) {
+  const t = useTranslations('skill.studio.contextBar')
+  const { data: skills } = useSkills()
+  const candidates = (skills ?? []).filter((candidate) => candidate.id !== currentSkillId)
+
+  if (candidates.length === 0) {
+    return <DropdownMenuItem disabled>{t('noOtherSkills')}</DropdownMenuItem>
+  }
+  return (
+    <>
+      {candidates.map((candidate) => (
+        <DropdownMenuItem key={candidate.id} onClick={() => onSwitchSkill(candidate)}>
+          <span className="truncate">{candidate.name}</span>
+          <span className="moldy-ui-micro ml-auto font-mono text-muted-foreground">
+            {candidate.slug}
+          </span>
+        </DropdownMenuItem>
+      ))}
+    </>
   )
 }

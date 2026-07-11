@@ -108,19 +108,12 @@ function SkillTabBody({
   }
   // source + ?revision= — 리비전 스냅샷 read-only 뷰어 (M4).
   if (revisionId) {
-    return <SkillRevisionSourceViewer skillId={skill.id} revisionId={revisionId} />
+    // key — 같은 위치에서 ?revision=만 바뀔 때(back/forward) selectedPath 상태 리셋.
+    return <SkillRevisionSourceViewer key={revisionId} skillId={skill.id} revisionId={revisionId} />
   }
   // source — 저장(=리비전 생성)은 유지, 삭제/내보내기/자격증명은 설정 탭 소유 (D1/D2).
   if (skill.kind === 'text') {
-    return (
-      <TextSkillEditor skillId={skill.id} showCredentials={false} showDangerZone={false}>
-        {renderSkillStudioTabShell}
-      </TextSkillEditor>
-    )
+    return <TextSkillEditor skillId={skill.id}>{renderSkillStudioTabShell}</TextSkillEditor>
   }
-  return (
-    <PackageSkillEditor skillId={skill.id} showCredentials={false} showDangerZone={false}>
-      {renderSkillStudioTabShell}
-    </PackageSkillEditor>
-  )
+  return <PackageSkillEditor skillId={skill.id}>{renderSkillStudioTabShell}</PackageSkillEditor>
 }

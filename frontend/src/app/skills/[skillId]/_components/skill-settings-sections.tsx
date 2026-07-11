@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
+import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { Button } from '@/components/ui/button'
 import { PublishWizard } from '@/components/marketplace/publish-wizard'
 import { SkillCredentialBindingsPanel } from '@/components/skill/skill-credential-bindings-panel'
@@ -58,10 +59,16 @@ export function SkillSettingsSections({ skill }: { readonly skill: Skill }) {
 
       <SettingsSection title={t('actionsTitle')}>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => setPublishOpen(true)}>
-            <UploadCloud className="size-4" />
-            {actions('publish')}
-          </Button>
+          {/* 구 SkillCard의 canPublish 가드 이관 — 이미 게시된 스킬은 상태 배지만. */}
+          {!skill.publication_summary?.state ||
+          skill.publication_summary.state === 'not_published' ? (
+            <Button type="button" variant="outline" onClick={() => setPublishOpen(true)}>
+              <UploadCloud className="size-4" />
+              {actions('publish')}
+            </Button>
+          ) : (
+            <PublicationBadge summary={skill.publication_summary} />
+          )}
           {skill.kind === 'package' ? (
             <Button
               variant="outline"
