@@ -140,7 +140,9 @@ async def list_sessions(
     stmt = (
         select(SkillBuilderSession)
         .where(SkillBuilderSession.user_id == user_id)
-        .order_by(desc(SkillBuilderSession.updated_at))
+        # updated_at은 트랜잭션/초 단위로 동률이 나므로 id 보조 정렬로 절단
+        # 경계 행의 플랩을 막는다 (R5).
+        .order_by(desc(SkillBuilderSession.updated_at), desc(SkillBuilderSession.id))
         .limit(limit)
     )
     if skill_id is not None:

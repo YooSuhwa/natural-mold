@@ -23,6 +23,8 @@ function renderTestSlots(slots: SkillDetailTabSlots) {
 const mockUpdateContent = vi.fn()
 const mockSetFile = vi.fn()
 const mockDeleteFile = vi.fn()
+// 서버 콘텐츠 변화(롤백 등) 시뮬레이션용 가변 홀더 — 렌더마다 최신 값을 읽는다.
+const textContentHolder = { content: '# 원본 본문' }
 
 vi.mock('@/lib/hooks/use-skills', () => ({
   useSkill: () => ({
@@ -35,7 +37,7 @@ vi.mock('@/lib/hooks/use-skills', () => ({
       content_hash: 'hash-1',
     },
   }),
-  useSkillContent: () => ({ data: { content: '# 원본 본문' } }),
+  useSkillContent: () => ({ data: { content: textContentHolder.content } }),
   useUpdateSkillContent: () => ({ mutateAsync: mockUpdateContent, isPending: false }),
   useSkillFiles: () => ({
     data: [
@@ -60,6 +62,7 @@ vi.mock('../use-skill-file-remote-cache', () => ({
 describe('TextSkillEditor (소스 탭)', () => {
   beforeEach(() => {
     mockUpdateContent.mockReset().mockResolvedValue(undefined)
+    textContentHolder.content = '# 원본 본문'
   })
 
   it('본문을 수정하고 저장하면 PUT 페이로드에 편집 내용이 실린다', async () => {
@@ -77,6 +80,36 @@ describe('TextSkillEditor (소스 탭)', () => {
       id: 'skill-1',
       data: { content: '# 수정된 본문' },
     })
+  })
+
+  it('서버 콘텐츠가 바뀌면(롤백 후 refetch) 에디터를 재시드한다 — R5', () => {
+    const { rerender } = render(
+      <TextSkillEditor skillId="skill-1">{renderTestSlots}</TextSkillEditor>,
+    )
+    expect(screen.getByRole('textbox')).toHaveValue('# 원본 본문')
+
+    // 버전 탭 롤백 → content 쿼리 refetch가 새 본문으로 착지.
+    textContentHolder.content = '# 롤백된 본문'
+    rerender(<TextSkillEditor skillId="skill-1">{renderTestSlots}</TextSkillEditor>)
+
+    // hydrate-once였다면 stale '# 원본 본문'이 잠겨 저장 시 롤백을 되돌린다.
+    expect(screen.getByRole('textbox')).toHaveValue('# 롤백된 본문')
+  })
+
+  it('dirty draft는 서버 콘텐츠 변화가 착지해도 덮이지 않는다', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <TextSkillEditor skillId="skill-1">{renderTestSlots}</TextSkillEditor>,
+    )
+
+    const textarea = screen.getByRole('textbox')
+    await user.clear(textarea)
+    await user.type(textarea, '# 편집 중')
+
+    textContentHolder.content = '# 백그라운드 갱신'
+    rerender(<TextSkillEditor skillId="skill-1">{renderTestSlots}</TextSkillEditor>)
+
+    expect(screen.getByRole('textbox')).toHaveValue('# 편집 중')
   })
 })
 

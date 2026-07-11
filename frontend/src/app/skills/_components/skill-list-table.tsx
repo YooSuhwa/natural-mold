@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { SkillEvaluationSummaryBadge } from '@/components/skill/skill-evaluation-summary-badge'
 import { SkillHealthBadge } from '@/components/skill/skill-health-badge'
+import { ApiError } from '@/lib/api/errors'
 import { skillsApi } from '@/lib/api/skills'
 import { useAgents } from '@/lib/hooks/use-agents'
 import { useDeleteSkill } from '@/lib/hooks/use-skills'
@@ -30,6 +31,15 @@ import type { Skill } from '@/lib/types/skill'
 /** 구 SkillCard와 동일한 게시 가드 — 이미 게시된 스킬에는 게시 진입점을 숨긴다. */
 function canPublishSkill(skill: Skill): boolean {
   return !skill.publication_summary?.state || skill.publication_summary.state === 'not_published'
+}
+
+/** 확인 다이얼로그 이름 열거 상한 — 무제한 열거는 max-w-xs 다이얼로그에서
+ * 수백 줄로 자라 확인/취소 버튼이 화면 밖으로 잘린다 (R5). */
+const NAME_LIST_CAP = 8
+
+function formatNameList(names: readonly string[], more: (count: number) => string): string {
+  if (names.length <= NAME_LIST_CAP) return names.join(', ')
+  return `${names.slice(0, NAME_LIST_CAP).join(', ')} ${more(names.length - NAME_LIST_CAP)}`
 }
 
 /**
@@ -92,8 +102,12 @@ export function SkillListTable({
     for (const skill of pendingSkills) {
       try {
         await removeSkill.mutateAsync(skill.id)
-      } catch {
-        failures.push(skill.name)
+      } catch (error) {
+        // 404 = 멱등 성공 — 다른 탭/플로우에서 이미 삭제된 대상. 실패로 세면
+        // 결과는 요청대로인데 "삭제 실패" 토스트가 오발한다 (규칙 ④, R5).
+        if (!(error instanceof ApiError && error.status === 404)) {
+          failures.push(skill.name)
+        }
       }
     }
     setDeleting(false)
@@ -109,10 +123,17 @@ export function SkillListTable({
   }
 
   const connectedTotal = pendingSkills.reduce((sum, skill) => sum + skill.used_by_count, 0)
-  const pendingNames = pendingSkills.map((skill) => skill.name).join(', ')
+  const pendingNames = formatNameList(
+    pendingSkills.map((skill) => skill.name),
+    (count) => list('moreNames', { count }),
+  )
   // AD-4.1 — 영향받는 에이전트 이름은 신규 API 없이 에이전트 목록에서 역도출.
-  // (사이드바가 같은 캐시를 쓰므로 대부분 웜 캐시 히트)
-  const { data: agents } = useAgents()
+  // 삭제 확인이 열릴 때만 fetch — 무조건 fetch는 /skills 방문마다 무거운
+  // 에이전트 전체 직렬화를 부른다(사이드바는 useAgentSummaries라 캐시 공유
+  // 없음, R5). 로딩 중엔 자리 지킴 문구로 다이얼로그 텍스트 리플로를 막는다.
+  const { data: agents, isLoading: agentsLoading } = useAgents({
+    enabled: pendingDeleteIds.length > 0,
+  })
   const pendingIdSet = new Set(pendingDeleteIds)
   const affectedAgentNames =
     connectedTotal > 0
@@ -249,9 +270,15 @@ export function SkillListTable({
                   names: pendingNames,
                   connected: connectedTotal,
                 }),
-                affectedAgentNames.length > 0
-                  ? list('affectedAgents', { names: affectedAgentNames.join(', ') })
-                  : null,
+                agentsLoading
+                  ? list('affectedAgentsLoading')
+                  : affectedAgentNames.length > 0
+                    ? list('affectedAgents', {
+                        names: formatNameList(affectedAgentNames, (count) =>
+                          list('moreNames', { count }),
+                        ),
+                      })
+                    : null,
               ]
                 .filter(Boolean)
                 .join('\n')

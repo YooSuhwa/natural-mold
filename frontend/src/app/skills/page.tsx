@@ -15,9 +15,16 @@ export default async function SkillsPage({
 }) {
   const params = await searchParams
   const detailId = typeof params.detailId === 'string' ? params.detailId : null
-  if (detailId) {
+  // encodeURIComponent는 dot-segment(`.`/`..`)를 안 이스케이프해서
+  // `?detailId=..`가 `/skills/../source` → 브라우저 정규화로 /skills 밖으로
+  // 탈출한다 (R5). 단일 세그먼트 문자 집합 + dot-segment 명시 거부만 통과
+  // (UUID 강제는 비 UUID 픽스처를 쓰는 mock E2E 계약을 깬다). 비정상 값은
+  // 목록으로 수렴.
+  if (detailId && SAFE_DETAIL_ID.test(detailId)) {
     const tab = typeof params.tab === 'string' ? params.tab : null
     redirect(`/skills/${encodeURIComponent(detailId)}/${legacyDetailTabToStudioTab(tab)}`)
   }
   return <SkillsPageClient />
 }
+
+const SAFE_DETAIL_ID = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/

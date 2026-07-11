@@ -99,7 +99,10 @@ async def list_skill_revision_files(
 async def get_skill_revision_file_content(
     skill_id: uuid.UUID,
     revision_id: uuid.UUID,
-    path: str = Query(..., min_length=1, max_length=500),
+    # zip 열거 경로는 길이 무제한(패키저는 바이트만 캡) — 촘촘한 상한은 목록엔
+    # 있는데 내용은 422로 못 여는 파일을 만든다. 정확 일치 조회라 보안상 길이
+    # 캡이 불필요하므로 여유 상한만 둔다 (R5).
+    path: str = Query(..., min_length=1, max_length=4096),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> SkillRevisionFileContentResponse:
@@ -148,10 +151,12 @@ async def rollback_skill_revision(
         )
     except (
         skill_revision_service.SkillRevisionRollbackUnsupported,
-        FileNotFoundError,
+        skill_revision_service.SkillRevisionSnapshotMissing,
     ) as exc:
-        # pruned 플래그·zip 유실 모두 files API와 동일한 "스냅샷 불가" 계약으로
-        # 정규화 — unhandled 500이면 같은 패널의 diff placeholder와 비대칭이다.
+        # pruned 플래그·zip 유실/손상 모두 files API와 동일한 "스냅샷 불가"
+        # 계약으로 정규화. 단 SnapshotMissing은 서비스가 **변이 전**에만
+        # 던진다 — 변이 후 FileNotFoundError까지 409로 뭉개면 부분 변이가
+        # "아무 일 없었음" 응답 뒤에 숨는다 (R5, validate-then-mutate).
         raise skill_revision_snapshot_unavailable() from exc
     await skill_revision_audit.record_revision_create_audit(
         db,

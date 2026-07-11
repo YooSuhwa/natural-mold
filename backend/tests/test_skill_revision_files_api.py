@@ -251,6 +251,68 @@ async def test_rollback_pruned_snapshot_conflict_not_500(
     assert missing.status_code == 409, missing.text
 
 
+async def test_corrupt_snapshot_zip_treated_as_unavailable_not_500(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """중단된 쓰기 등으로 손상된 zip — 유실과 동일 계약(500 금지, R5)."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    (Path(settings.data_root) / revision.object_key).write_bytes(b"not-a-zip")
+
+    files = await client.get(f"/api/skills/{skill.id}/revisions/{revision.id}/files")
+    assert files.status_code == 200, files.text
+    assert files.json() == {"snapshot_pruned": True, "files": []}
+
+    content = await client.get(
+        f"/api/skills/{skill.id}/revisions/{revision.id}/files/content",
+        params={"path": "SKILL.md"},
+    )
+    assert content.status_code == 404
+
+    rollback = await client.post(f"/api/skills/{skill.id}/revisions/{revision.id}/rollback")
+    assert rollback.status_code == 409, rollback.text
+    assert rollback.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
+
+
+async def test_snapshot_without_skill_md_rollback_conflict_not_500(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """SKILL.md 없는 스냅샷 rollback — 변이 전 검증으로 409 (R5)."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    _rewrite_snapshot(revision, {"notes.md": b"no skill md"})
+
+    rollback = await client.post(f"/api/skills/{skill.id}/revisions/{revision.id}/rollback")
+    assert rollback.status_code == 409, rollback.text
+    assert rollback.json()["error"]["code"] == "SKILL_REVISION_SNAPSHOT_UNAVAILABLE"
+
+
+async def test_long_entry_path_content_served(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """500자 초과 중첩 경로도 목록과 대칭으로 서빙된다 — 목록엔 있는데
+    content는 422로 못 여는 비대칭 방지 (R5)."""
+
+    skill, revision = await _make_skill_with_revision(db)
+    long_path = "/".join(["deep"] * 130) + "/leaf.md"  # 650자+
+    assert len(long_path) > 500
+    _rewrite_snapshot(revision, {long_path: b"deep content"})
+
+    files = await client.get(f"/api/skills/{skill.id}/revisions/{revision.id}/files")
+    assert files.status_code == 200, files.text
+    assert files.json()["files"][0]["path"] == long_path
+
+    content = await client.get(
+        f"/api/skills/{skill.id}/revisions/{revision.id}/files/content",
+        params={"path": long_path},
+    )
+    assert content.status_code == 200, content.text
+    assert content.json()["content"] == "deep content"
+
+
 async def test_foreign_skill_revision_files_404(
     client: AsyncClient,
     db: AsyncSession,

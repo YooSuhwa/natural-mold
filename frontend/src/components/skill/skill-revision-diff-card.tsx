@@ -43,8 +43,19 @@ export function SkillRevisionDiffCard({
   const t = useTranslations('skill.studio.versions')
   const pruned = Boolean(detail?.metadata_json?.snapshot_pruned)
   const parentRevisionId = detail?.parent_revision_id ?? null
-  const current = useSkillRevisionFileContent(skillId, pruned ? null : revision.id, SKILL_MD)
-  const parent = useSkillRevisionFileContent(skillId, pruned ? null : parentRevisionId, SKILL_MD)
+  // detail이 로드되기 전에는 pruned가 미확정(false로 보임) — 그대로 fetch하면
+  // pruned 리비전 선택마다 확정 404 요청이 placeholder보다 먼저 나간다 (R5).
+  const contentEnabled = Boolean(detail) && !pruned
+  const current = useSkillRevisionFileContent(
+    skillId,
+    contentEnabled ? revision.id : null,
+    SKILL_MD,
+  )
+  const parent = useSkillRevisionFileContent(
+    skillId,
+    contentEnabled ? parentRevisionId : null,
+    SKILL_MD,
+  )
 
   return (
     <section
@@ -127,15 +138,24 @@ function DiffLines({
 }) {
   const t = useTranslations('skill.studio.versions')
   // 부모 리렌더(rollback pending 등)마다 diff를 재계산하지 않는다.
-  const lines = useMemo(
-    () => computeRevisionDiffLines(parentText, currentText),
-    [parentText, currentText],
-  )
+  const lines = useMemo(() => {
+    // O(ND) Myers를 돌리기 전의 싼 사전 검사 — diff 라인 수는 max(입력 라인)
+    // 이상이므로 한쪽 입력만으로 상한 초과가 확정이면 diff 자체를 건너뛴다.
+    // 사후 검사만으로는 2MB 병적 입력에서 placeholder를 정하기도 전에
+    // 메인 스레드가 수 초 얼어붙는다 (R5).
+    if (
+      countInputLines(parentText) > MAX_DIFF_LINES ||
+      countInputLines(currentText) > MAX_DIFF_LINES
+    ) {
+      return null
+    }
+    return computeRevisionDiffLines(parentText, currentText)
+  }, [parentText, currentText])
+  if (lines === null || lines.length > MAX_DIFF_LINES) {
+    return <DiffPlaceholder message={t('diffTooLarge')} />
+  }
   if (!hasRevisionDiffChanges(lines)) {
     return <DiffPlaceholder message={t('noChanges')} />
-  }
-  if (lines.length > MAX_DIFF_LINES) {
-    return <DiffPlaceholder message={t('diffTooLarge')} />
   }
 
   return (
@@ -160,6 +180,15 @@ function DiffLineRow({ line }: { readonly line: RevisionDiffLine }) {
       {marker} {line.text}
     </div>
   )
+}
+
+/** 할당 없는 라인 수 세기 — 사전 검사 자체가 병적 입력에서 비싸지 않게. */
+export function countInputLines(text: string): number {
+  let count = 1
+  for (let i = 0; i < text.length; i += 1) {
+    if (text.charCodeAt(i) === 10) count += 1
+  }
+  return count
 }
 
 function DiffPlaceholder({ message }: { readonly message: string }) {

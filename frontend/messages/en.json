@@ -2388,7 +2388,7 @@
     "description": "Create and manage reusable instructions and executable skill packages.",
     "new": "Build by chat",
     "count": "{count}",
-    "agentsCount": "{count} agents",
+    "agentsCount": "{count, plural, one {# agent} other {# agents}}",
     "searchPlaceholder": "Search skills",
     "viewMode": {
       "label": "Label",
@@ -2569,7 +2569,7 @@
       "create": "Create",
       "cancel": "Cancel",
       "unsavedCount": "{count} unsaved",
-      "usedBy": "Used by {count}",
+      "usedBy": "{bytes}b · v{version} · used by {count}",
       "exportPackage": "Export .skill",
       "saveFile": "Save File",
       "pickFile": "Pick File",
@@ -2810,10 +2810,10 @@
         "selectedCount": "{count} selected",
         "deleteSelected": "Delete",
         "clearSelection": "Clear selection",
-        "bulkDeleteTitle": "Delete {count} skills",
+        "bulkDeleteTitle": "Delete {count, plural, one {# skill} other {# skills}}",
         "bulkDeleteDescription": "{names} — this cannot be undone.",
-        "bulkDeleteDescriptionConnected": "{names} — this also removes links from {connected} connected agents and cannot be undone.",
-        "deleteSuccess": "Deleted {count} skills",
+        "bulkDeleteDescriptionConnected": "{names} — this also removes links from {connected, plural, one {# connected agent} other {# connected agents}} and cannot be undone.",
+        "deleteSuccess": "Deleted {count, plural, one {# skill} other {# skills}}",
         "deletePartialFailure": "Failed to delete: {names}",
         "rowImprove": "Edit",
         "rowImproveAria": "Improve {name} via chat",
@@ -2823,7 +2823,9 @@
         "rowViewSource": "View source",
         "rowExport": "Export .skill",
         "rowDelete": "Delete",
-        "affectedAgents": "Affected agents: {names}"
+        "affectedAgents": "Affected agents: {names}",
+        "moreNames": "and {count, plural, one {# more} other {# more}}",
+        "affectedAgentsLoading": "Checking affected agents…"
       },
       "versions": {
         "diffTitle": "SKILL.md diff",
@@ -2842,7 +2844,8 @@
         "binaryFile": "Binary",
         "noTextFiles": "No text files to display.",
         "fileUnavailable": "Cannot read this file.",
-        "diffTooLarge": "The change is too large to render as a diff — use the source view."
+        "diffTooLarge": "The change is too large to render as a diff — use the source view.",
+        "revisionSourceError": "Could not load this revision. Check that the link is valid."
       }
     }
   },

@@ -192,6 +192,7 @@ function SkillSwitcher({
   readonly onSwitchSkill: (skill: Skill) => void
 }) {
   const t = useTranslations('skill.studio.contextBar')
+  const skillT = useTranslations('skill')
 
   return (
     <DropdownMenu>
@@ -202,7 +203,9 @@ function SkillSwitcher({
       >
         <span className="truncate">{skill.name}</span>
         <Badge variant="secondary" className="moldy-ui-micro shrink-0">
-          {skill.kind}
+          {/* raw enum('package'/'text')이 한국어 카피 옆에 노출되지 않게 목록
+              표와 같은 typeFilter 키로 번역한다 (R5). */}
+          {skillT(`typeFilter.${skill.kind}`)}
         </Badge>
         <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>

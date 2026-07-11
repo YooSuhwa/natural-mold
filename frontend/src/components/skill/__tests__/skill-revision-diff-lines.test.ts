@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { countInputLines } from '../skill-revision-diff-card'
 import { computeRevisionDiffLines, hasRevisionDiffChanges } from '../skill-revision-diff-lines'
 
 describe('computeRevisionDiffLines', () => {
@@ -56,5 +57,23 @@ describe('computeRevisionDiffLines', () => {
       { type: 'added', text: 'y' },
       { type: 'added', text: 'z' },
     ])
+  })
+})
+
+describe('countInputLines (diff 사전 검사, R5)', () => {
+  // O(ND) Myers 이전의 싼 상한 검사 — diff 출력 라인 수는 max(입력 라인) 이상
+  // 이므로 한쪽 입력만으로 상한 초과가 확정이면 diff를 건너뛴다.
+  it('개행 기준 라인 수를 할당 없이 센다', () => {
+    expect(countInputLines('')).toBe(1)
+    expect(countInputLines('a')).toBe(1)
+    expect(countInputLines('a\nb')).toBe(2)
+    expect(countInputLines('a\nb\n')).toBe(3)
+  })
+
+  it('병적 입력(수만 라인)도 즉시 계수한다', () => {
+    const huge = 'x\n'.repeat(200_000)
+    const start = performance.now()
+    expect(countInputLines(huge)).toBe(200_001)
+    expect(performance.now() - start).toBeLessThan(200)
   })
 })

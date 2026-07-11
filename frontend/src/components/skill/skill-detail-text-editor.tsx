@@ -26,11 +26,18 @@ export function TextSkillEditor({
   const { data: textContent } = useSkillContent(skillId, true)
   const update = useUpdateSkillContent()
   const [editor, setEditor] = useState('')
-  const [hydrated, setHydrated] = useState(false)
+  const [seeded, setSeeded] = useState<string | undefined>(undefined)
 
-  if (!hydrated && textContent?.content !== undefined) {
-    setHydrated(true)
-    setEditor(textContent.content)
+  // 서버 콘텐츠가 바뀌면(예: 버전 탭 롤백 후 stale 캐시 → refetch 착지)
+  // 재시드한다 — hydrate-once는 롤백 전 캐시를 잠가 "롤백이 안 먹은" 화면과
+  // 저장 시 롤백을 되돌리는 새 리비전을 만든다 (R5). 단 dirty draft는 보호:
+  // 사용자가 마지막 시드에서 벗어났다면 편집 내용을 덮지 않는다.
+  if (textContent?.content !== undefined && textContent.content !== seeded) {
+    const previousSeed = seeded
+    setSeeded(textContent.content)
+    if (previousSeed === undefined || editor === previousSeed) {
+      setEditor(textContent.content)
+    }
   }
 
   async function handleSave() {

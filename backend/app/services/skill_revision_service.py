@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import uuid
 import zipfile
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -80,16 +81,24 @@ async def list_revisions(
     *,
     skill: Skill,
     user_id: uuid.UUID,
-    limit: int = 100,
+    limit: int | None = 100,
 ) -> list[SkillRevision]:
+    """리비전 목록 (최신순).
+
+    ``limit=None``은 전수 열거 — retention prune처럼 의미상 무제한 순회가
+    필요한 소비자용이다. 기본 100 창만 보면 창 밖(>100번째) 리비전이 영구히
+    prune 대상에서 빠져 스냅샷 디스크가 새는 잠복 계약 파손이 된다 (R5).
+    """
     if skill.user_id != user_id:
         return []
-    result = await db.execute(
+    stmt = (
         select(SkillRevision)
         .where(SkillRevision.skill_id == skill.id, SkillRevision.user_id == user_id)
         .order_by(desc(SkillRevision.revision_number))
-        .limit(limit)
     )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    result = await db.execute(stmt)
     return list(result.scalars().all())
 
 
@@ -126,17 +135,32 @@ async def rollback_to_revision(
         raise SkillRevisionRollbackUnsupported("revision snapshot was pruned")
     skill = await lock_skill_for_mutation(db, skill=skill)
     parent_revision_id = skill.current_revision_id
-    zip_bytes = await anyio.to_thread.run_sync(_read_revision_bytes, revision.object_key)
+    try:
+        zip_bytes = await anyio.to_thread.run_sync(_read_revision_bytes, revision.object_key)
+    except FileNotFoundError as exc:
+        raise SkillRevisionSnapshotMissing("revision snapshot file is missing") from exc
     if skill.kind == "text":
-        content = await anyio.to_thread.run_sync(_read_skill_md, zip_bytes)
+        try:
+            content = await anyio.to_thread.run_sync(_read_skill_md, zip_bytes)
+        except (zipfile.BadZipFile, KeyError) as exc:
+            raise SkillRevisionSnapshotMissing("revision snapshot is unreadable") from exc
         await skill_service.update_text_content(db, skill=skill, content=content)
     else:
         if not skill.storage_path:
             raise SkillRevisionRollbackUnsupported("package skill has no storage path")
+        # validate-then-mutate: 파괴적 교체(rmtree) 전에 zip 무결성과 SKILL.md
+        # 존재를 검증한다. 교체 후 실패하면 디스크는 이미 바뀌었는데 DB만
+        # 롤백되는 발산이 남으므로, "스냅샷 불가" 부류는 전부 여기서 걸러
+        # 무변경 409로 끝낸다 (R5).
+        await anyio.to_thread.run_sync(_validate_package_snapshot, zip_bytes)
         await anyio.to_thread.run_sync(_replace_package_files, skill.storage_path, zip_bytes)
         refresh_package_metadata(skill)
         sync_frontmatter(skill, skill_service.get_file_bytes(skill, "SKILL.md"))
         _sync_moldy_runtime_columns(skill)
+        # 형제 패키지 변이(file_service.set_skill_file)와 동일하게 수정 시각을
+        # 갱신 — 목록 정렬(last_modified_at desc)·UI 타임스탬프 정합 (R5).
+        # naive UTC — 컬럼/형제 _now()와 동일 규약.
+        skill.last_modified_at = datetime.now(UTC).replace(tzinfo=None)
         await db.flush()
     return await create_revision_for_skill(
         db,
@@ -192,7 +216,8 @@ async def load_revision_file_content(revision: SkillRevision, relative_path: str
 def _list_revision_files_sync(object_key: str) -> list[tuple[str, int, bool]] | None:
     try:
         archive = zipfile.ZipFile(_revision_snapshot_path(object_key))
-    except FileNotFoundError:
+    except (FileNotFoundError, zipfile.BadZipFile):
+        # 유실뿐 아니라 손상(중단된 쓰기 등)도 pruned와 동일 계약 — 500 금지 (R5).
         return None
     entries: list[tuple[str, int, bool]] = []
     with archive:
@@ -209,7 +234,7 @@ def _list_revision_files_sync(object_key: str) -> list[tuple[str, int, bool]] | 
 def _load_revision_file_content_sync(object_key: str, relative_path: str) -> str | None:
     try:
         archive = zipfile.ZipFile(_revision_snapshot_path(object_key))
-    except FileNotFoundError:
+    except (FileNotFoundError, zipfile.BadZipFile):
         return None
     with archive:
         try:
@@ -248,6 +273,15 @@ class SkillRevisionRollbackUnsupported(RuntimeError):
     pass
 
 
+class SkillRevisionSnapshotMissing(RuntimeError):
+    """스냅샷 유실/손상 — 디스크 **무변경** 상태에서만 발생해야 한다.
+
+    라우터는 이 예외(+RollbackUnsupported)만 409로 매핑한다. 변이 이후의
+    FileNotFoundError를 409로 뭉개면 "아무 일 없었음" 응답 뒤에 부분 변이가
+    숨는다 (R5).
+    """
+
+
 def _revision_snapshot_path(object_key: str) -> Path:
     path = (Path(settings.data_root) / object_key).resolve()
     root = Path(settings.data_root).resolve()
@@ -263,6 +297,16 @@ def _read_revision_bytes(object_key: str) -> bytes:
 def _read_skill_md(zip_bytes: bytes) -> str:
     with zipfile.ZipFile(BytesIO(zip_bytes)) as archive:
         return archive.read("SKILL.md").decode("utf-8")
+
+
+def _validate_package_snapshot(zip_bytes: bytes) -> None:
+    try:
+        with zipfile.ZipFile(BytesIO(zip_bytes)) as archive:
+            names = set(archive.namelist())
+    except zipfile.BadZipFile as exc:
+        raise SkillRevisionSnapshotMissing("revision snapshot zip is corrupt") from exc
+    if "SKILL.md" not in names:
+        raise SkillRevisionSnapshotMissing("revision snapshot is missing SKILL.md")
 
 
 def _replace_package_files(storage_path: str, zip_bytes: bytes) -> None:

@@ -2823,7 +2823,9 @@
         "rowViewSource": "소스 보기",
         "rowExport": ".skill 내보내기",
         "rowDelete": "삭제",
-        "affectedAgents": "영향받는 에이전트: {names}"
+        "affectedAgents": "영향받는 에이전트: {names}",
+        "moreNames": "외 {count}개",
+        "affectedAgentsLoading": "영향받는 에이전트 확인 중…"
       },
       "versions": {
         "diffTitle": "SKILL.md diff",
@@ -2842,7 +2844,8 @@
         "binaryFile": "바이너리",
         "noTextFiles": "표시할 텍스트 파일이 없습니다.",
         "fileUnavailable": "이 파일의 내용을 읽을 수 없습니다.",
-        "diffTooLarge": "변경이 너무 커서 diff를 표시할 수 없습니다 — 소스 보기를 이용하세요."
+        "diffTooLarge": "변경이 너무 커서 diff를 표시할 수 없습니다 — 소스 보기를 이용하세요.",
+        "revisionSourceError": "리비전을 불러오지 못했습니다. 링크가 올바른지 확인하세요."
       }
     }
   },

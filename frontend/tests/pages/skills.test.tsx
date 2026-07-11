@@ -35,6 +35,15 @@ vi.mock('@/components/marketplace/publish-wizard', () => ({
   PublishWizard: () => null,
 }))
 
+const mockToastSuccess = vi.fn()
+const mockToastError = vi.fn()
+vi.mock('sonner', () => ({
+  toast: {
+    success: (...args: unknown[]) => mockToastSuccess(...args),
+    error: (...args: unknown[]) => mockToastError(...args),
+  },
+}))
+
 const skill: Skill = {
   id: 'skill-1',
   name: 'Korea Weather',
@@ -154,6 +163,25 @@ describe('SkillsPage', () => {
     await user.click(within(dialog).getByRole('button', { name: '삭제' }))
 
     expect(mockDeleteSkill).toHaveBeenCalledWith('skill-1')
+  })
+
+  it('벌크 삭제의 404는 멱등 성공 — 실패 토스트를 오발하지 않는다 (R5 규칙 ④)', async () => {
+    const { ApiError } = await import('@/lib/api/errors')
+    const user = userEvent.setup()
+    mockToastSuccess.mockClear()
+    mockToastError.mockClear()
+    // 다른 탭에서 이미 삭제된 대상 — 백엔드는 404를 돌려준다.
+    mockDeleteSkill.mockRejectedValue(new ApiError(404, 'SKILL_NOT_FOUND', 'not found'))
+    render(<SkillsPageClient />)
+
+    await user.click(screen.getByRole('checkbox', { name: '모든 행 선택' }))
+    await user.click(
+      within(screen.getByTestId('skill-bulk-bar')).getByRole('button', { name: '삭제' }),
+    )
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '삭제' }))
+
+    expect(mockToastError).not.toHaveBeenCalled()
+    expect(mockToastSuccess).toHaveBeenCalled()
   })
 
   it('filters skills from the shared tab row', async () => {

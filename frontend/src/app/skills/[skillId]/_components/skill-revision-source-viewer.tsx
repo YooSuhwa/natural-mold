@@ -32,8 +32,12 @@ export function SkillRevisionSourceViewer({
   readonly revisionId: string
 }) {
   const t = useTranslations('skill.studio.versions')
-  const { data: detail } = useSkillRevision(skillId, revisionId)
-  const { data: filesResponse, isLoading } = useSkillRevisionFiles(skillId, revisionId)
+  const { data: detail, isError: detailError } = useSkillRevision(skillId, revisionId)
+  const {
+    data: filesResponse,
+    isLoading,
+    isError: filesError,
+  } = useSkillRevisionFiles(skillId, revisionId)
   const files = filesResponse?.files ?? []
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const defaultPath =
@@ -54,7 +58,9 @@ export function SkillRevisionSourceViewer({
         <History className="size-3.5" />
         {detail
           ? t('revisionSourceLabel', { number: detail.revision_number })
-          : t('revisionSourceLoading')}
+          : detailError
+            ? t('revisionSourceError')
+            : t('revisionSourceLoading')}
         <Badge variant="secondary" className="moldy-ui-micro">
           {t('readOnly')}
         </Badge>
@@ -77,6 +83,19 @@ export function SkillRevisionSourceViewer({
   if (isLoading) {
     return renderSkillStudioTabShell({
       body: <Skeleton className="h-48 w-full rounded-lg" />,
+      footer,
+    })
+  }
+
+  // 에러(존재하지 않는/타인 리비전, 비 UUID 422 등)는 빈 스냅샷처럼 위장하지
+  // 않는다 — 'noTextFiles' 빈 상태로 렌더되면 정상 빈 스냅샷과 구분 불가 (R5).
+  if (filesError || detailError) {
+    return renderSkillStudioTabShell({
+      body: (
+        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          {t('revisionSourceError')}
+        </div>
+      ),
       footer,
     })
   }

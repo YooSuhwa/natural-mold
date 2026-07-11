@@ -189,14 +189,19 @@ export function DataTable<T>({
   })
 
   useEffect(() => {
+    // 로딩 플리커(쿼리 키 변경 → data가 잠시 []) 중에 클램프하면 0페이지로
+    // 리셋돼 autoResetPageIndex:false의 목적(페이지 유지)이 자기모순이 된다 (R5).
+    if (loading) return
     const pageCount = table.getPageCount()
     const pageIndex = table.getState().pagination.pageIndex
     if (pageIndex > 0 && pageIndex >= pageCount) {
       table.setPageIndex(Math.max(0, pageCount - 1))
     }
-    // filtered가 pagination 입력의 전부 — table 인스턴스는 안정적이다.
+    // filtered·columnFilters가 pagination 입력의 전부 — table 인스턴스는
+    // 안정적이다. columnFilters 누락 시 FilterDef 셀렉트로 줄어든 표가
+    // 범위 밖 페이지에 좌초한다(빈 바디 + 페이지네이션 숨김, R5).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, pageSize])
+  }, [filtered, pageSize, columnFilters, loading])
 
   // Notify parent when the selection changes. We map back to the source rows
   // so callers receive the original objects (not table-wrapper rows).
@@ -220,12 +225,22 @@ export function DataTable<T>({
     )
   }
 
-  // 데이터에서 빠진 행(외부 검색/필터/삭제)의 선택 키를 정리한다 — 남겨두면
+  // 데이터에서 빠진 행(외부 필터/삭제)의 선택 키를 정리한다 — 남겨두면
   // 사용자가 "모두 해제"한 뒤 필터를 풀 때 유령 선택이 부활해 벌크 대상으로
   // 재등장한다. 정리 후 아래 통지 effect가 시그니처 변화로 부모에 반영한다.
+  // 두 가드(R5): ① loading 중 스킵 — 쿼리 키 변경으로 data가 잠시 []가 되는
+  // 플리커에서 전체 선택이 전멸한다. ② 유효성 기준은 **data prop 전체**다 —
+  // 내부 검색으로 가려진 행(filtered 밖)까지 지우면 검색을 오가며 쌓은 선택
+  // (models 벌크 테스트)과 "숨은 선택 행 이름 열거" 계약이 죽는다.
   useEffect(() => {
-    if (!enableRowSelection) return
-    const validIds = new Set(table.getCoreRowModel().rows.map((row) => row.id))
+    if (!enableRowSelection || loading) return
+    const validIds = new Set(
+      data.map((row, index) => {
+        if (getRowId) return getRowId(row, index)
+        const r = row as unknown as { id?: string }
+        return r.id ?? String(index)
+      }),
+    )
     const staleKeys = Object.keys(rowSelection).filter((key) => !validIds.has(key))
     if (staleKeys.length === 0) return
     setRowSelection((previous) => {
@@ -233,13 +248,15 @@ export function DataTable<T>({
       for (const key of staleKeys) delete next[key]
       return next
     })
-    // rowSelection/filtered가 유효성 입력의 전부 — table·setter는 안정적이다.
+    // rowSelection/data/loading이 유효성 입력의 전부 — setter·getRowId는 안정적이다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowSelection, filtered, enableRowSelection])
+  }, [rowSelection, data, loading, enableRowSelection])
 
   const lastSelectionSignature = useRef('')
   useEffect(() => {
-    if (!enableRowSelection || !onRowSelectionChange) return
+    // loading 중 스킵 — 플리커의 빈 row model로 부모에 []를 통지하면 벌크 바가
+    // 깜빡이며 사라졌다 재등장한다 (R5). 로딩이 끝나면 filtered 변화로 재실행.
+    if (!enableRowSelection || !onRowSelectionChange || loading) return
     const selectedRows = table.getSelectedRowModel().rows
     const signature = selectedRows.map((r) => r.id).join('\u0000')
     if (signature === lastSelectionSignature.current) return
@@ -247,7 +264,7 @@ export function DataTable<T>({
     onRowSelectionChange(selectedRows.map((r) => r.original))
     // We depend on rowSelection + filtered (the inputs of the row model) — table is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowSelection, filtered, enableRowSelection])
+  }, [rowSelection, filtered, loading, enableRowSelection])
 
   return (
     <div className="space-y-3">
