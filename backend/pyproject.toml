@@ -134,6 +134,11 @@ ignore = [
 # PT is pytest style — in app/ it only false-positives on FastAPI endpoints
 # named test_* (test_connection, test_credential, ...), which are not tests.
 "app/**" = ["PT"]
+# Vendored seed skill packages are content-hashed byte-for-byte by the
+# marketplace seeder (default_marketplace_skills._content_hash) — ANY edit,
+# including a lint fix or a noqa comment, bumps the published version and
+# flags every install as "update available". Never lint-fix these files.
+"app/seed/system_skill_packages/**" = ["RET504"]
 # S101 assert = pytest idiom; S105/S106/S107 fixture passwords; S108 tmp paths in
 # fixtures; S603 trusted subprocess in test harness — none run in production.
 # SLF001 poking privates is standard test practice; DTZ naive datetimes in

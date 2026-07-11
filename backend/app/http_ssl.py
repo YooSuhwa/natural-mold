@@ -17,7 +17,7 @@ def _existing_cert_paths() -> list[str]:
         if path and Path(path).exists() and path not in paths:
             paths.append(path)
 
-    hc_cert = str(Path("~/.ssl/HC_SSL.pem").expanduser())
+    hc_cert = os.path.expanduser("~/.ssl/HC_SSL.pem")  # noqa: PTH111 — Path.expanduser crashes on unresolvable $HOME
     if Path(hc_cert).exists() and hc_cert not in paths:
         paths.append(hc_cert)
     return paths

@@ -21,6 +21,7 @@ import hashlib
 import inspect
 import json
 import logging
+import os
 import ssl
 import uuid
 from collections import OrderedDict
@@ -238,7 +239,7 @@ def clear_model_cache() -> None:
 # CRL/AKI 같은 deep-validation 이슈를 우회할 수 있다.
 #
 # ``HC_SSL.pem`` (사내 프록시 인증서) 가 존재하면 추가 trust로 결합한다.
-_hc_cert = Path("~/.ssl/HC_SSL.pem").expanduser()
+_hc_cert = Path(os.path.expanduser("~/.ssl/HC_SSL.pem"))  # noqa: PTH111 — Path.expanduser crashes on unresolvable $HOME
 try:
     import truststore
 

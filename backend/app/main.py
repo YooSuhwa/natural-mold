@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 # 사내 프록시 SSL 인증서 — certifi CA + HC_SSL.pem 결합 번들 생성
-_hc_cert = Path("~/.ssl/HC_SSL.pem").expanduser()
+_hc_cert = Path(os.path.expanduser("~/.ssl/HC_SSL.pem"))  # noqa: PTH111 — Path.expanduser crashes on unresolvable $HOME
 if _hc_cert.exists():
     import tempfile
 
