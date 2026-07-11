@@ -32,10 +32,13 @@ jobs:
       # integration ones serially. tests/integration/conftest.py auto-applies
       # the `integration` marker to the whole directory, so the serial step
       # must select it explicitly — the trailing `-m` overrides the addopts
-      # `-m 'not integration'` filter; without it everything is deselected
-      # and pytest exits 0 (false green, pinned by
-      # tests/test_integration_marker_hook.py). test_m9_pg_roundtrip
-      # self-skips unless INTEGRATION_DATABASE_URL points at a live Postgres.
+      # `-m 'not integration'` filter. Without it everything is deselected
+      # and this dir-scoped step fails loudly (exit 5, NO_TESTS_COLLECTED);
+      # the *silent* variant is a full-suite `pytest tests/` run, where
+      # passing sibling tests mask the deselection with exit 0. Both
+      # contracts are pinned by tests/test_integration_marker_hook.py.
+      # test_m9_pg_roundtrip self-skips unless INTEGRATION_DATABASE_URL
+      # points at a live Postgres.
       - run: uv run --with pytest-xdist pytest -q -n 4 --ignore=tests/integration
       - run: uv run pytest -q tests/integration -m integration
 

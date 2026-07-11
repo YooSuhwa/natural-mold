@@ -12,8 +12,10 @@ serial runner MUST select it explicitly::
 
     uv run pytest -q tests/integration -m integration
 
-(the trailing ``-m`` overrides addopts; plain ``pytest tests/integration``
-deselects everything and exits 0 — a false green, guarded by
+(the trailing ``-m`` overrides addopts. Plain ``pytest tests/integration``
+deselects everything and exits 5 — loud in a dir-scoped CI step; the silent
+failure mode is a full-suite ``pytest tests/`` run, where passing sibling
+tests mask the deselection with exit 0. Guarded by
 ``tests/test_integration_marker_hook.py``.)
 """
 

@@ -142,13 +142,13 @@
 
 ### ▶ 현 시점 실행 순서 (2026-07-10, 미완료만) — 새 세션은 여기부터
 
-> **사용법**: `/clear` 후 새 세션에서 **"이 문서 실행 순서에서 다음 미완료 항목 진행해줘"** 한 문장이면 된다. 항목을 콕 집으려면 아래 번호의 프롬프트를 그대로 복붙. 공통 규칙: worktree에서 origin/main 기준 새 브랜치, 한 PR = 한 항목, 기능 변화 0(순수 이동은 facade), 검증 그린 후 PR. (백엔드 검증 = `ruff` + `pytest -n 4 --ignore=tests/integration` + `pytest tests/integration -m integration` 직렬(마커 자동부여 후 `-m integration` 필수 — 없으면 전량 deselect돼 exit 0 거짓 그린), 푸시 시 `SKILL_EVALUATION_ENABLED=true`. pyright는 전체 968 백로그라 수정 파일 단위로만.)
+> **사용법**: `/clear` 후 새 세션에서 **"이 문서 실행 순서에서 다음 미완료 항목 진행해줘"** 한 문장이면 된다. 항목을 콕 집으려면 아래 번호의 프롬프트를 그대로 복붙. 공통 규칙: worktree에서 origin/main 기준 새 브랜치, 한 PR = 한 항목, 기능 변화 0(순수 이동은 facade), 검증 그린 후 PR. (백엔드 검증 = `ruff` + `pytest -n 4 --ignore=tests/integration` + `pytest tests/integration -m integration` 직렬(마커 자동부여 후 `-m integration` 필수 — 없으면 전량 deselect: dir-scoped는 exit 5 red, `pytest tests/` 전체 실행에선 조용히 제외됨), 푸시 시 `SKILL_EVALUATION_ENABLED=true`. pyright는 전체 968 백로그라 수정 파일 단위로만.)
 > 완료하면 이 목록에서 해당 줄에 ✅와 PR 번호를 남겨 다음 세션이 이어받게 할 것.
 
 **Stage 0 — 자동 게이트 먼저 (이후 모든 작업이 자동 검증받음. 최대 레버리지)**
 1. ✅ **린트 A-1** — PR #287. 재측정(i18n 3·type-safety 2·e2e-hygiene 40 = 전부 정당) → 예외 3건 등록 + 예외별 회귀 테스트 → 그린 가드 4개(lint·i18n·type-safety·e2e-hygiene)를 CI 개별 스텝 + lint-staged에 연결. **frontend-architecture는 2차 리뷰에서 거짓 그린 판명**(비-strict 항상 exit 0, strict는 blocking 3건 레드) → a11y(신규4+해소2)·design-system(12)과 함께 A-2 잔여(FE-D2·FE-D4 연동 + strict blocking 수정).
 2. ✅ **린트 C** — PR #288. `S` 룰 활성 + 51건(app 43 + scripts/alembic 8) 트리아지. 실수정 2: openwiki sync_repo.py(LLM 제공 --repo-url/--ref 옵션 주입·ext::/file:// transport 차단 + 테스트 22케이스), generate_image.py(S310 scheme 가드). 나머지 오탐 inline noqa + tests/·alembic/ per-file-ignores. 게이트 회귀 테스트(빨간불 주입 + 예외 non-blanket 네거티브) 동봉.
-3. ✅ **린트 F·G** — PR #290. F: `PGH` 활성(현 트리 위반 0 — 순수 예방 게이트, bare noqa/blanket type-ignore 금지) + 게이트 회귀 테스트. G: `tests/integration/conftest.py` 자동 마커 훅 + **CI 직렬 스텝 `-m integration` 필수**(마커 부여 후 plain `pytest tests/integration`은 전량 deselect + exit 0 거짓 그린 — 실측) + 커버리지/deselection 회귀 테스트. m9는 self-skip이라 안전. pre-push의 plain `pytest tests/`에서 integration이 빠지는 건 의도(CI 직렬이 게이트).
+3. ✅ **린트 F·G** — PR #290. F: `PGH` 활성(현 트리 위반 0 — 순수 예방 게이트, bare noqa/blanket type-ignore 금지) + 게이트 회귀 테스트. G: `tests/integration/conftest.py` 자동 마커 훅 + **CI 직렬 스텝 `-m integration` 필수**(마커 부여 후 plain `pytest tests/integration`은 전량 deselect → exit 5 red; 조용한 변종은 full-suite `pytest tests/`에서 형제 테스트 통과가 exit 0으로 가리는 경우 — 리뷰에서 exit code 정정, 최초 실측이 `| tail` 파이프 함정이었음) + 커버리지/deselection 회귀 테스트. m9는 self-skip이라 안전. pre-push의 plain `pytest tests/`에서 integration이 빠지는 건 의도(CI 직렬이 게이트). **알려진 사각지대(pre-existing)**: `tests/test_trace_storage.py`의 integration 마커 테스트 1건은 디렉토리 밖이라 어느 CI 스텝에서도 안 돌고, aiosqlite에선 실행 시 실패 + live PG 주입 인프라도 없는 죽은 테스트 — m9 패턴(INTEGRATION_DATABASE_URL)으로 tests/integration/ 이관이 후속 과제.
 4. **린트 E** — 저노이즈 ruff 룰 `DTZ,C4,SLF,RET,PTH,PT,N` 배치 + 트리아지.
 
 **Stage 1 — 부분완료 마무리**

@@ -1,13 +1,15 @@
 """Regression guard for the auto-applied ``integration`` marker (plan item G).
 
-Two failure modes this pins (both are silent — pytest exits 0 on full
-deselection, so CI would stay green while running nothing):
+Failure modes this pins:
 
 * the ``tests/integration/conftest.py`` hook stops applying the marker →
   timing-sensitive tests silently rejoin the xdist parallel suite (the
-  PR #280/#282 flake class comes back), and
-* the serial CI step's ``-m integration`` selects zero tests → the whole
-  integration suite silently stops running.
+  PR #280/#282 flake class comes back — no red, just flakes), and
+* the deselection contract drifts: a dir-scoped plain run must deselect
+  everything and exit 5 (NO_TESTS_COLLECTED — loud in CI), while the truly
+  silent variant is a full-suite ``pytest tests/`` run where passing sibling
+  tests mask the deselection with exit 0. The CI serial step therefore
+  selects ``-m integration`` explicitly.
 
 Runs pytest in collect-only mode as a subprocess so the assertion sees the
 same config (addopts, conftest chain) as the real CI steps.
@@ -53,15 +55,15 @@ def test_every_integration_test_gets_the_marker_auto_applied() -> None:
     assert n_marked > 1, marked.stdout
 
 
-def test_serial_selection_is_not_a_silent_false_green() -> None:
-    # Without `-m integration` the addopts filter deselects everything and
-    # pytest still exits 0 — this is exactly what the CI serial step must NOT
-    # rely on. Pin the deselection so a future addopts change that silently
-    # re-enables parallel collection of these tests gets noticed.
+def test_plain_serial_invocation_collects_nothing_and_is_loud() -> None:
+    # Without `-m integration` the addopts filter deselects the whole
+    # directory and pytest exits 5 (NO_TESTS_COLLECTED) — a dir-scoped CI
+    # step would fail loudly, which is why the serial step carries the
+    # explicit `-m`. Pin both halves of the contract: zero collection AND
+    # the non-zero exit (measured without a pipeline — `cmd | tail` eats
+    # the exit code).
     plain = _collect_only("tests/integration")
-    # Full deselection: collect-only exits 5 (no tests collected) while a
-    # real run exits 0 — which is exactly why the false green is silent.
-    assert plain.returncode in (0, 5), plain.stdout + plain.stderr
+    assert plain.returncode == 5, plain.stdout + plain.stderr
     assert _collected_count(plain.stdout) == 0, (
         "default addopts should deselect tests/integration entirely; "
         "if this fails, revisit the CI serial step and xdist split"
