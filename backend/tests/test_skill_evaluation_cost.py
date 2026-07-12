@@ -85,6 +85,23 @@ async def test_run_timeout_scales_with_case_count() -> None:
     )
 
 
+async def test_run_timeout_never_below_floor_on_misconfig(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """review R5 — a misconfigured ceiling < floor must NOT starve a run below
+    the configured base timeout (ceiling is clamped to >= floor).
+    """
+
+    from app.config import settings
+    from app.services.skill_evaluation_service import effective_run_timeout_seconds
+
+    monkeypatch.setattr(settings, "skill_evaluation_run_timeout_seconds", 3600)
+    monkeypatch.setattr(settings, "skill_evaluation_run_timeout_max_seconds", 1800)
+
+    # Even a 1-case run must get at least the 3600s floor, not the 1800 ceiling.
+    assert effective_run_timeout_seconds(1, uses_baseline_comparison=True) >= 3600
+
+
 async def test_estimate_timeout_seconds_reflects_scaled_run_timeout() -> None:
     estimate = estimate_run(_evaluation_set([{"input": "x"}] * 10))
     from app.config import settings

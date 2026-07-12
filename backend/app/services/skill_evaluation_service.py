@@ -206,9 +206,13 @@ def effective_run_timeout_seconds(case_count: int, *, uses_baseline_comparison: 
     """
 
     arms_per_case = 3 if uses_baseline_comparison else 2
+    floor = settings.skill_evaluation_run_timeout_seconds
     workload = case_count * arms_per_case * settings.skill_evaluation_case_timeout_seconds
-    floored = max(settings.skill_evaluation_run_timeout_seconds, workload)
-    return min(settings.skill_evaluation_run_timeout_max_seconds, floored)
+    # Clamp the ceiling to be at least the floor so a misconfigured
+    # ``_max_seconds < run_timeout_seconds`` can't yield a timeout BELOW the
+    # configured base.
+    ceiling = max(floor, settings.skill_evaluation_run_timeout_max_seconds)
+    return min(ceiling, max(floor, workload))
 
 
 def estimate_run(
