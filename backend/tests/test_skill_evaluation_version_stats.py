@@ -86,15 +86,25 @@ async def test_version_stats_groups_and_orders(
     eval_set = await _seed_set(db, skill.id)
     base = _now() - timedelta(days=3)
 
-    # v1: two completed runs (0.5 → 0.7), one failed run (ignored).
+    # Fixture designed so the expected output order matches NEITHER insertion
+    # order NOR version-string order — only the intended sort(last_run_at asc).
+    # Three groups; the two 1.0.0 groups differ ONLY by content_hash, proving
+    # grouping is by (version, hash), not version alone.
+    #
+    #   group A: 1.0.0 / hash-v1  → last run at base+3h  (LATEST)
+    #   group B: 1.0.0 / hash-alt → last run at base+1h
+    #   group C: 1.1.0 / hash-v2  → last run at base     (EARLIEST)
+    #
+    # Insert in the reverse of the expected output ([A, B, C]) so insertion
+    # order is a decoy.
     db.add(
-        _run(
+        _run(  # A: two completed runs (0.5 → 0.7) + one failed (ignored)
             skill_id=skill.id,
             set_id=eval_set.id,
             version="1.0.0",
             content_hash="hash-v1",
             pass_rate=0.5,
-            created_at=base,
+            created_at=base + timedelta(hours=2),
         )
     )
     db.add(
@@ -104,7 +114,7 @@ async def test_version_stats_groups_and_orders(
             version="1.0.0",
             content_hash="hash-v1",
             pass_rate=0.7,
-            created_at=base + timedelta(hours=1),
+            created_at=base + timedelta(hours=3),
             benchmark={"pass_rate_delta": 0.4, "measured": True},
         )
     )
@@ -115,19 +125,28 @@ async def test_version_stats_groups_and_orders(
             version="1.0.0",
             content_hash="hash-v1",
             pass_rate=None,
-            created_at=base + timedelta(hours=2),
+            created_at=base + timedelta(hours=4),
             status="failed",
         )
     )
-    # v2: one completed run, later — should come last (chronological).
     db.add(
-        _run(
+        _run(  # B: same version 1.0.0 but a DIFFERENT content hash
+            skill_id=skill.id,
+            set_id=eval_set.id,
+            version="1.0.0",
+            content_hash="hash-alt",
+            pass_rate=0.9,
+            created_at=base + timedelta(hours=1),
+        )
+    )
+    db.add(
+        _run(  # C: 1.1.0, earliest last run → must sort FIRST
             skill_id=skill.id,
             set_id=eval_set.id,
             version="1.1.0",
             content_hash="hash-v2",
             pass_rate=1.0,
-            created_at=base + timedelta(days=1),
+            created_at=base,
             benchmark={"pass_rate_delta": 0.6, "measured": True},
         )
     )
@@ -137,19 +156,28 @@ async def test_version_stats_groups_and_orders(
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert [item["skill_version"] for item in body] == ["1.0.0", "1.1.0"]
+    # Ordered by each group's last_run_at ascending (C, B, A) — NOT version
+    # string order (which would put both 1.0.0 groups before 1.1.0).
+    assert [(item["skill_version"], item["content_hash"]) for item in body] == [
+        ("1.1.0", "hash-v2"),
+        ("1.0.0", "hash-alt"),
+        ("1.0.0", "hash-v1"),
+    ]
 
-    v1 = body[0]
-    assert v1["content_hash"] == "hash-v1"
-    assert v1["run_count"] == 2  # failed run excluded
-    assert v1["latest_pass_rate"] == 0.7
-    assert v1["avg_pass_rate"] == pytest.approx(0.6)
-    assert v1["latest_pass_rate_delta"] == pytest.approx(0.4)
-    assert v1["latest_measured"] is True
+    a = body[2]  # 1.0.0 / hash-v1
+    assert a["run_count"] == 2  # failed run excluded
+    assert a["latest_pass_rate"] == 0.7
+    assert a["avg_pass_rate"] == pytest.approx(0.6)
+    assert a["latest_pass_rate_delta"] == pytest.approx(0.4)
+    assert a["latest_measured"] is True
 
-    v2 = body[1]
-    assert v2["run_count"] == 1
-    assert v2["latest_pass_rate"] == 1.0
+    b = body[1]  # 1.0.0 / hash-alt — separate group despite same version
+    assert b["run_count"] == 1
+    assert b["latest_pass_rate"] == 0.9
+
+    c = body[0]  # 1.1.0
+    assert c["run_count"] == 1
+    assert c["latest_pass_rate"] == 1.0
 
 
 async def test_version_stats_empty_and_unknown_skill(

@@ -69,7 +69,14 @@ async def test_llm_evaluator_grades_cases_with_system_model(
 async def test_worker_persists_llm_evaluation_result(
     db: AsyncSession,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.services import skill_usage_service
+    from tests.conftest import TestSession
+
+    # The ledger write happens in its own session after the run commits.
+    monkeypatch.setattr(skill_usage_service, "async_session", TestSession)
+
     run = await _create_llm_run(db, tmp_path)
     evaluator = LlmSkillEvaluationEvaluator.for_model(_fake_model(), model_name="fake-eval-model")
     worker = SkillEvaluationWorker(evaluator=evaluator)
@@ -88,14 +95,17 @@ async def test_worker_persists_llm_evaluation_result(
     assert completed.case_results is not None
     assert completed.case_results[0]["baseline_status"] == "failed"
 
-    # Phase 3 §5.1 — measured usage rollup persists on the run and the
-    # skill-axis ledger gets one evaluation_run event. FakeListChatModel
-    # reports no usage_metadata, so tokens stay 0 and cost stays unknown.
-    # llm-2 makes 3 calls for the single case: with-arm, without-arm, grader.
+    # Phase 3 §5.1 — measured usage rollup persists on the run in-transaction.
+    # FakeListChatModel reports no usage_metadata, so tokens stay 0 and cost
+    # stays unknown. llm-2 makes 3 calls for the single case (with/without/grader).
     assert completed.usage is not None
     assert completed.usage["measured"] is True
     assert completed.usage["model_calls"] == 3
     assert completed.usage["cost_usd"] is None
+
+    # The skill-axis ledger event is written after commit in its own session
+    # (cancellation there can't roll back the completed run).
+    await worker._record_usage_ledger_after_commit(completed)  # noqa: SLF001 — test seam
 
     from sqlalchemy import select
 
@@ -142,12 +152,17 @@ async def test_llm_evaluator_sanitizes_non_finite_scores(
 
     assert result.case_results is not None
     assert result.case_results[0]["score"] == 0.0
-    # Non-finite baseline collapses to "unknown", not a fake 0.0 measurement
-    # (llm-2 feeds raw grader rows straight into the v2 schema normalizer).
+    # Non-finite score sanitizes to None, and a non-finite/absent status is
+    # coerced to a DEFINITE 'failed' (inf/nan is not a pass) so the benchmark
+    # and summary normalizers can't disagree (review R4). baseline_status is no
+    # longer left None — it's a definite failed, consistently counted.
     assert result.case_results[0]["baseline_score"] is None
-    assert result.case_results[0]["baseline_status"] is None
+    assert result.case_results[0]["baseline_status"] == "failed"
     assert result.case_results[0]["status"] == "failed"
     assert result.benchmark is not None
+    # No self-contradiction: both read the case as failed (0% with-skill).
+    assert result.summary["pass_rate"] == 0.0
+    assert result.benchmark["with_skill_pass_rate"] == 0.0
     json.dumps(result.summary, allow_nan=False)
     json.dumps(result.benchmark, allow_nan=False)
     json.dumps(result.case_results, allow_nan=False)

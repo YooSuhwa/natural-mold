@@ -184,10 +184,14 @@ def _estimated_case_tokens(evaluation_set: SkillEvaluationSet) -> int:
             value = case.get(field)
             if value is None:
                 continue
-            # Structured (dict/list) inputs are json.dumps-serialized into the
-            # arm prompt, so count their serialized length too — a str-only
-            # heuristic would report near-zero cost for structured eval sets.
-            chars += len(value) if isinstance(value, str) else len(json.dumps(value))
+            # Structured (dict/list) inputs are serialized into the arm prompt,
+            # so count their serialized length too — a str-only heuristic reports
+            # near-zero cost for structured eval sets. Match the runtime encoding
+            # (ensure_ascii=False, like with_arm_user_content) so Korean glyphs
+            # count as 1 char, not the 6 of an escaped \uXXXX over-estimate.
+            chars += (
+                len(value) if isinstance(value, str) else len(json.dumps(value, ensure_ascii=False))
+            )
     return chars // _ESTIMATE_CHARS_PER_TOKEN
 
 

@@ -38,8 +38,8 @@ from app.services.skill_evaluation_worker_state import (
 from app.services.skill_evaluation_worker_types import (
     SkillEvaluationEvaluator,
     SkillEvaluationExecutionError,
-    SkillEvaluationResult,
 )
+from app.services.skill_usage_service import record_evaluation_usage_nonfatal
 
 logger = logging.getLogger(__name__)
 type SkillEvaluationSessionFactory = async_sessionmaker[AsyncSession]
@@ -195,53 +195,30 @@ class SkillEvaluationWorker:
                 return run
             raise SkillEvaluationExecutionError(f"run completion conflicted: {run.status}")
         await record_completed_audit(db, run, result)
-        await self._record_usage_ledger(db, run, result)
         await db.flush()
+        # NOTE: the skill-axis usage ledger is written AFTER the outer commit
+        # (see _record_usage_ledger_after_commit) so a cancellation during the
+        # ledger write can never roll back this already-completed run.
         return run
 
     @staticmethod
-    async def _record_usage_ledger(
-        db: AsyncSession,
-        run: SkillEvaluationRun,
-        result: SkillEvaluationResult,
-    ) -> None:
-        """Append the skill-axis usage event for a completed run (Phase 3 §5.1).
+    async def _record_usage_ledger_after_commit(run: SkillEvaluationRun) -> None:
+        """Best-effort skill-axis usage event for a COMMITTED completed run.
 
-        Nested savepoint + broad except: accounting must never fail (or roll
-        back) the run completion that was just flushed.
+        Runs in its own session after the completion is durable — the run's FK
+        target already exists, and CancelledError here can't unwind the run.
         """
 
-        usage = result.usage
-        if not isinstance(usage, dict):
+        usage = run.usage
+        if run.status != "completed" or not isinstance(usage, dict):
             return
-        try:
-            from decimal import Decimal
-
-            from app.services.skill_usage_service import record_evaluation_usage
-
-            raw_cost = usage.get("cost_usd")
-            cost = (
-                Decimal(str(raw_cost))
-                if isinstance(raw_cost, int | float) and not isinstance(raw_cost, bool)
-                else None
-            )
-            async with db.begin_nested():
-                await record_evaluation_usage(
-                    db,
-                    skill_id=run.skill_id,
-                    user_id=run.user_id,
-                    evaluation_run_id=run.id,
-                    model_name=run.runner_model,
-                    tokens_in=int(usage.get("tokens_in") or 0),
-                    tokens_out=int(usage.get("tokens_out") or 0),
-                    cost_usd=cost,
-                )
-        except Exception:  # noqa: BLE001 — ledger write must not fail the run
-            logger.warning(
-                "skill evaluation usage ledger write failed run_id=%s",
-                run.id,
-                exc_info=True,
-            )
+        await record_evaluation_usage_nonfatal(
+            skill_id=run.skill_id,
+            user_id=run.user_id,
+            evaluation_run_id=run.id,
+            model_name=run.runner_model,
+            usage=usage,
+        )
 
     async def mark_interrupted_runs(self, db: AsyncSession) -> int:
         result = await db.execute(
@@ -288,14 +265,19 @@ class SkillEvaluationWorker:
         await self._execute_run_with_session(run_id)
 
     async def _execute_run_with_session(self, run_id: uuid.UUID) -> None:
+        run: SkillEvaluationRun | None = None
         async with self._session_factory() as db:
             try:
-                await self.run_once(db, run_id)
+                run = await self.run_once(db, run_id)
             except SkillEvaluationExecutionError as exc:
                 await db.rollback()
                 logger.warning("skill evaluation run skipped run_id=%s error=%s", run_id, exc)
                 return
             await db.commit()
+        # Ledger write is deferred to AFTER the durable commit above so a late
+        # cancellation can't roll back the completed run (Phase 3 §5.1).
+        if run is not None:
+            await self._record_usage_ledger_after_commit(run)
 
 
 skill_evaluation_worker = SkillEvaluationWorker()

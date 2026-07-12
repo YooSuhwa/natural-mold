@@ -32,6 +32,10 @@ class SkillUsageEvent(Base):
     __table_args__ = (
         Index("ix_skill_usage_events_skill_created", "skill_id", "created_at"),
         Index("ix_skill_usage_events_evaluation_run", "evaluation_run_id"),
+        # Referential-action FK columns — indexed so user (CASCADE) and
+        # conversation (SET NULL) deletion don't full-scan this ledger.
+        Index("ix_skill_usage_events_user", "user_id"),
+        Index("ix_skill_usage_events_conversation", "conversation_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

@@ -264,10 +264,49 @@ async def test_malformed_grader_answer_isolates_to_one_case(
 
     assert len(result.case_results) == 2
     assert result.case_results[0]["status"] == "passed"
-    assert result.case_results[1]["status"] in ("failed", "error")
+    assert result.case_results[1]["status"] == "failed"  # error coerced to failed
     # Benchmark and summary agree: 1/2 passed (no self-contradiction).
     assert result.summary["pass_rate"] == 0.5
     assert result.benchmark["with_skill_pass_rate"] == 0.5
+
+
+async def test_non_pass_status_with_high_score_is_consistent(
+    db: AsyncSession, tmp_path: Path
+) -> None:
+    """review R4 — a grader returning a non-{passed,failed} status WITH a high
+    score must not read as 100% in the benchmark and 0% in the summary. The
+    leaf coercion (score>=0.5 → passed) makes both normalizers agree.
+    """
+
+    run = await _create_run(db, tmp_path)  # baseline ON (default)
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        context = await build_context(db, run)
+
+    # Grader returns status='inconclusive' (not passed/failed) with score 0.9,
+    # and OMITS baseline_status entirely — both are the divergence triggers.
+    weird_grader = json.dumps(
+        {
+            "case_index": 0,
+            "status": "inconclusive",
+            "score": 0.9,
+            "baseline_score": 0.1,  # no baseline_status key
+            "grader_feedback": "unusual",
+            "evidence": "e",
+        }
+    )
+    model = FakeUsageChatModel(responses=["with", "without", weird_grader])
+    evaluator = LlmSkillEvaluationEvaluator.for_model(model, model_name="fake-ab-model")
+
+    result = await evaluator.evaluate(db, context)
+
+    # score 0.9 → passed; benchmark and summary must BOTH read it as passed.
+    assert result.case_results[0]["status"] == "passed"
+    assert result.summary["pass_rate"] == 1.0
+    assert result.benchmark["with_skill_pass_rate"] == 1.0
+    # baseline_status was absent → coerced by baseline_score 0.1 → failed,
+    # counted consistently (denominator 1, not dropped).
+    assert result.case_results[0]["baseline_status"] == "failed"
+    assert result.benchmark["without_skill_pass_rate"] == 0.0
 
 
 async def test_scripted_model_answers_eval_arm_prompts() -> None:

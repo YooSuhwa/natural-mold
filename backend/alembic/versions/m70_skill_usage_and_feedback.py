@@ -59,6 +59,18 @@ def upgrade() -> None:
         "skill_usage_events",
         ["evaluation_run_id"],
     )
+    # Index the referential-action FK columns so account (user CASCADE) and
+    # conversation (SET NULL) deletion don't full-scan this growing ledger.
+    op.create_index(
+        "ix_skill_usage_events_user",
+        "skill_usage_events",
+        ["user_id"],
+    )
+    op.create_index(
+        "ix_skill_usage_events_conversation",
+        "skill_usage_events",
+        ["conversation_id"],
+    )
 
     op.add_column("skill_evaluation_runs", sa.Column("usage", sa.JSON(), nullable=True))
 
@@ -103,6 +115,8 @@ def downgrade() -> None:
     op.drop_table("skill_evaluation_case_feedbacks")
     op.drop_table("skill_feedbacks")
     op.drop_column("skill_evaluation_runs", "usage")
+    op.drop_index("ix_skill_usage_events_conversation", table_name="skill_usage_events")
+    op.drop_index("ix_skill_usage_events_user", table_name="skill_usage_events")
     op.drop_index("ix_skill_usage_events_evaluation_run", table_name="skill_usage_events")
     op.drop_index("ix_skill_usage_events_skill_created", table_name="skill_usage_events")
     op.drop_table("skill_usage_events")

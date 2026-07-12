@@ -77,6 +77,8 @@ async def test_m70_upgrade_downgrade_roundtrip_sqlite() -> None:
             usage_indexes = {index["name"] for index in inspector.get_indexes("skill_usage_events")}
             assert "ix_skill_usage_events_skill_created" in usage_indexes
             assert "ix_skill_usage_events_evaluation_run" in usage_indexes
+            assert "ix_skill_usage_events_user" in usage_indexes
+            assert "ix_skill_usage_events_conversation" in usage_indexes
 
             feedback_uniques = {
                 constraint["name"]
