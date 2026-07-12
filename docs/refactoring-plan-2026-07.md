@@ -37,8 +37,9 @@
 - ~~**BE-D1**: 나머지 20곳~~ → **PR #292로 완료** (18곳 전환 + run_cancel/stream_resume 의도적 보존 2곳 문서화; 상세는 실행 순서 5번)
 
 - ~~**Stage 2 전체** (BE-S7·BE-S2·BE-D3·BE-D7)~~ → **PR #295로 완료** (상세는 실행 순서 7–10번)
+- ~~**Stage 3 전체** (BE-S1·BE-S3·BE-S5·BE-S8·BE-S9·BE-S10)~~ → **PR #296으로 완료** (상세는 실행 순서 11–13번)
 
-**미착수 P1** (다음 우선): BE-P2(메시지 페이지네이션·FE연동), BE-S1(chat_service 분해), BE-S3(install_service 분해), FE-S1(런타임 수렴), FE-S2(2941줄 훅), FE-P1(컨텍스트 churn), FE-P2(가상화). **미착수 P2/P3**: §1 매트릭스에서 ✅/🔶 없는 행 전부.
+**미착수 P1** (다음 우선): BE-P2(메시지 페이지네이션·FE연동), FE-S1(런타임 수렴), FE-S2(2941줄 훅), FE-P1(컨텍스트 churn), FE-P2(가상화). **미착수 P2/P3**: §1 매트릭스에서 ✅/🔶 없는 행 전부.
 
 **별도 트랙**: pyright 번다운 B/C/D(`docs/pyright-burndown-plan.md`), 린트 하드닝 A~G(`docs/lint-hardening-plan.md`).
 
@@ -163,10 +164,10 @@
 9. ✅ **BE-D3** — PR #295. `audit_service.record_self_event`가 self-action 신원 kwargs 7개 흡수, 18곳 치환(actor≠owner는 record_event 유지). 리뷰 반영: finalize 누락 사이트 + 신원 컬럼 리터럴 기대값 계약 테스트(위임 tautology 회피).
 10. ✅ **BE-D7** — PR #295. conftest `make_model`/`make_agent`/`seed_agent(db)->(user,model,agent)` + `AuthSession`/`register_session`(auth 5파일 shim 전환, 시그니처 보존). ORM 팩토리는 대표 2파일 채택, 나머지는 가드레일대로 점진 이관. 참고: Model에 (provider,model_name) unique 제약 없음(ORM 레벨) — seed 반복 호출 안전.
 
-**Stage 3 — 갓 모듈 분해 (facade 순수 이동, 하나씩)**
-11. **BE-S1** — chat_service.py 8-클러스터 분해. §4 [BE-S1]. (#285로 1,810줄, 스킬빌더 코드도 포함)
-12. **BE-S3** — install_service.py 3-타입 분해. §4 [BE-S3].
-13. **BE-S5 · BE-S8 · BE-S9 · BE-S10** — write_tools / artifact_service / scheduler / runtime_component_builder (각각 별도 PR).
+**Stage 3 — 갓 모듈 분해 (facade 순수 이동, 하나씩)** — ✅ **전체 PR #296** (한 PR, 항목별 커밋 + 항목별 적대 리뷰 6회, 차단 발견 0)
+11. ✅ **BE-S1** — PR #296. chat_service.py 1810→104줄 facade, `app/services/chat/` 7모듈(interrupts/secrets/conversations/messages/usage/attachments/runtime_context). 함수-로컬 import 4곳 의도 유지(1 import-order 순환 + 3 테스트 monkeypatch call-time lookup — 승격하면 patch 우회로 기능 변화).
+12. ✅ **BE-S3** — PR #296. install_service.py 1365→400줄 facade+디스패처, `app/marketplace/install/`(common/snapshot/bindings/skill/mcp/agent_blueprint). 비-이동 seam 2곳(install_item skill 분기·update skill tail 추출)은 문장 단위 AST 동일 검증. `_payload_skill_kind`는 snapshot↔skill 순환 회피로 common 배치.
+13. ✅ **BE-S5 · BE-S8 · BE-S9 · BE-S10** — PR #296 (사용자 지시로 한 PR에 묶음). BE-S5: write_tools 1091줄 → 패키지 4그룹 빌더 + `WriteToolContext`(도구 23개 schema 바이트 동일, `async_session_factory` patch 표면은 call-time 주입으로 보존). BE-S8: artifact_service 1035→137줄 facade, `artifacts/`(recorder/library/content/summary/errors) — recorder의 `_sha256_file`은 call-time facade import(테스트 patch 관찰 경로). BE-S9: scheduler 인라인 잡 4건 → credentials/rotation·mcp_service·conversation_run_service·skill_runtime, **동명 wrapper 잔존 필수**(영속 SQLAlchemyJobStore가 module:qualname 직렬화 + 테스트가 `app.scheduler.async_session`/`_ROTATION_BATCH` patch — wrapper가 call-time 전역 읽어 DI). BE-S10: runtime_component_builder 930→600줄, `agent_runtime/runtime/`(models/reliability/interrupts/prompts/memory_context) — `create_chat_model`만 models에서 call-time builder import(12종 patch 표면 중 유일 위험). memory_context 인자 주입은 BE-S4(Stage 5)로 이연.
 
 **Stage 4 — 프론트 대형**
 14. **FE-P1** — 스트리밍 컨텍스트 churn(전체 메시지 리렌더). §8 [FE-P1]. (독립적·성능 임팩트 커서 프론트 먼저)
