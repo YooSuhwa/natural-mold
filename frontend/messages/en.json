@@ -2388,7 +2388,7 @@
     "description": "Create and manage reusable instructions and executable skill packages.",
     "new": "Build by chat",
     "count": "{count}",
-    "agentsCount": "{count} agents",
+    "agentsCount": "{count, plural, one {# agent} other {# agents}}",
     "searchPlaceholder": "Search skills",
     "viewMode": {
       "label": "Label",
@@ -2401,14 +2401,15 @@
       "origin": "Origin",
       "marketplace": "Marketplace",
       "agents": "Agents",
-      "updatedAt": "Updated At"
+      "updatedAt": "Updated At",
+      "status": "Status",
+      "evaluation": "Evaluation"
     },
     "filters": {
       "kind": "Kind"
     },
     "actions": {
-      "publish": "Publish",
-      "manage": "Manage"
+      "publish": "Publish"
     },
     "typeFilter": {
       "all": "All",
@@ -2546,17 +2547,12 @@
       }
     },
     "detailDialog": {
-      "loading": "Loading",
-      "unsupported": "Unsupported",
-      "close": "Close",
       "save": "Save",
       "saved": "Saved",
       "saveFailed": "Save failed",
       "deleted": "Deleted",
       "deleteFailed": "Delete failed",
       "deleteSkill": "Delete Skill",
-      "skillEntity": "Skills",
-      "packageEntity": "Package Entity",
       "fileEntity": "File Entity",
       "loadFailed": "Failed to load: {message}",
       "discardConfirm": "Discard changes to {path}?",
@@ -2573,7 +2569,7 @@
       "create": "Create",
       "cancel": "Cancel",
       "unsavedCount": "{count} unsaved",
-      "usedBy": "Used by {count}",
+      "usedBy": "{bytes}b · v{version} · used by {count}",
       "exportPackage": "Export .skill",
       "saveFile": "Save File",
       "pickFile": "Pick File",
@@ -2585,15 +2581,7 @@
       "binaryFile": "Binary File",
       "binaryUnavailable": "Binary Unavailable",
       "download": "Download",
-      "improveByChat": "Improve by chat",
       "credentialsEmpty": "This skill does not require credentials.",
-      "tabs": {
-        "content": "Content",
-        "credentials": "Credentials",
-        "evaluation": "Evaluation",
-        "history": "History",
-        "metadata": "Metadata"
-      },
       "evaluation": {
         "emptyTitle": "No evaluation set yet",
         "emptyDescription": "When the builder or Evaluation tab creates criteria, you can rerun them here.",
@@ -2666,7 +2654,6 @@
         "files": "{count} files",
         "changelog": "Changelog",
         "changedFiles": "Changed files",
-        "compatibility": "Compatibility result",
         "evaluationSnapshot": "Evaluation snapshot",
         "noItems": "No items recorded.",
         "notRecorded": "Not recorded yet.",
@@ -2775,6 +2762,91 @@
         "noScripts": "No scripts",
         "evalsReady": "Cases ready",
         "evalsPending": "Not evaluated"
+      }
+    },
+    "studio": {
+      "tabsAria": "Skill studio views",
+      "tabs": {
+        "list": "List",
+        "builder": "Builder",
+        "evaluation": "Evaluation",
+        "versions": "Versions",
+        "source": "Source",
+        "settings": "Settings"
+      },
+      "contextBar": {
+        "currentSkill": "Working on",
+        "newDraft": "New skill draft",
+        "passRate": "Pass rate",
+        "passRateValue": "{percent}%",
+        "connectedAgents": "Connected agents",
+        "switchSkill": "Switch to another skill",
+        "noOtherSkills": "No other skills",
+        "improve": "Improve via chat"
+      },
+      "skillUnavailableTitle": "Skill not found",
+      "skillUnavailableHint": "This skill was deleted or you don't have access to it.",
+      "backToList": "Back to skills",
+      "builderIndex": {
+        "title": "Skill Builder",
+        "hint": "Sessions where you built or improved skills via chat.",
+        "scopedHint": "Builder sessions for {name}.",
+        "startCreate": "Create via chat",
+        "improveSkill": "Improve {name}",
+        "emptyTitle": "No builder sessions yet",
+        "emptyHint": "Start a chat to build a skill and sessions will appear here.",
+        "updatedAt": "Updated {time}"
+      },
+      "settings": {
+        "metadataTitle": "Metadata",
+        "credentialsTitle": "Credential bindings",
+        "actionsTitle": "Publish · Export · Delete",
+        "deleteHint": "Connected to {count} agents — deleting also removes those links.",
+        "deleteTitle": "Delete {name}",
+        "deleteDescription": "This also removes links from {count} connected agents and cannot be undone."
+      },
+      "list": {
+        "uploadPackage": "Upload package",
+        "selectedCount": "{count} selected",
+        "deleteSelected": "Delete",
+        "clearSelection": "Clear selection",
+        "bulkDeleteTitle": "Delete {count, plural, one {# skill} other {# skills}}",
+        "bulkDeleteDescription": "{names} — this cannot be undone.",
+        "bulkDeleteDescriptionConnected": "{names} — this also removes links from {connected, plural, one {# connected agent} other {# connected agents}} and cannot be undone.",
+        "deleteSuccess": "Deleted {count, plural, one {# skill} other {# skills}}",
+        "deletePartialFailure": "Failed to delete: {names}",
+        "rowImprove": "Edit",
+        "rowImproveAria": "Improve {name} via chat",
+        "rowEvaluation": "Evaluate",
+        "rowVersions": "Versions",
+        "rowMenuAria": "More actions for {name}",
+        "rowViewSource": "View source",
+        "rowExport": "Export .skill",
+        "rowDelete": "Delete",
+        "affectedAgents": "Affected agents: {names}",
+        "moreNames": "and {count, plural, one {# more} other {# more}}",
+        "affectedAgentsLoading": "Checking affected agents…",
+        "affectedAgentsError": "Could not load the affected agents — only the link count is shown."
+      },
+      "versions": {
+        "diffTitle": "SKILL.md diff",
+        "initialRevision": "Initial revision",
+        "prunedPlaceholder": "This snapshot was pruned — contents are unavailable.",
+        "diffUnavailable": "Cannot read SKILL.md for this revision.",
+        "parentUnavailable": "The previous revision snapshot is unavailable for comparison.",
+        "noChanges": "No SKILL.md changes",
+        "viewRevisionSource": "View source at this version",
+        "revisionSourceLabel": "Revision {number} source",
+        "revisionSourceLoading": "Loading revision…",
+        "readOnly": "Read-only",
+        "backToVersions": "Back to versions",
+        "backToCurrent": "View current version",
+        "revisionFilesAria": "Revision file list",
+        "binaryFile": "Binary",
+        "noTextFiles": "No text files to display.",
+        "fileUnavailable": "Cannot read this file.",
+        "diffTooLarge": "The change is too large to render as a diff — use the source view.",
+        "revisionSourceError": "Could not load this revision. Check that the link is valid."
       }
     }
   },
@@ -3951,7 +4023,11 @@
     "visualSettings": "Visual Settings",
     "conversational": "Build by Chat",
     "manual": "Build Manually",
-    "template": "Template"
+    "template": "Template",
+    "skillEvaluation": "Evaluation",
+    "skillVersions": "Versions",
+    "skillSource": "Source",
+    "skillBuilder": "Builder"
   },
   "connections": {
     "pageTitle": "Page title",

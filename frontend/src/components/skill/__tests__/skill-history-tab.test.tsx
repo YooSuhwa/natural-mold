@@ -3,7 +3,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, userEvent, within } from '../../../../tests/test-utils'
 import type { SkillRevisionDetail, SkillRevisionSummary } from '@/lib/types/skill-revision'
 
-import { renderSkillDetailTabShell } from '../skill-detail-tab-shell'
+import type { SkillDetailTabSlots } from '../skill-detail-tab-shell'
+
+// 구 DialogShell 렌더러 삭제(Phase 2) — 테스트는 슬롯을 평면 렌더한다.
+function renderTestSlots(slots: SkillDetailTabSlots) {
+  return (
+    <>
+      {slots.sidebar}
+      {slots.body}
+      {slots.footer}
+      {slots.overlay}
+    </>
+  )
+}
 import { SkillHistoryTab } from '../skill-history-tab'
 
 const mockUseSkillRevisions = vi.fn()
@@ -15,6 +27,9 @@ vi.mock('@/lib/hooks/use-skill-revisions', () => ({
   useSkillRevisions: (...args: readonly unknown[]) => mockUseSkillRevisions(...args),
   useSkillRevision: (...args: readonly unknown[]) => mockUseSkillRevision(...args),
   useRollbackSkillRevision: (...args: readonly unknown[]) => mockUseRollbackSkillRevision(...args),
+  // M4 diff 카드 — 이 테스트의 관심사가 아니라 로딩 상태로 고정.
+  useSkillRevisionFiles: () => ({ data: undefined, isLoading: true, isError: false }),
+  useSkillRevisionFileContent: () => ({ data: undefined, isLoading: true, isError: false }),
 }))
 
 function buildRevision(overrides: Partial<SkillRevisionSummary>): SkillRevisionSummary {
@@ -90,11 +105,7 @@ describe('SkillHistoryTab', () => {
       isLoading: false,
     })
 
-    render(
-      <SkillHistoryTab skillId="skill-1" onClose={vi.fn()}>
-        {renderSkillDetailTabShell}
-      </SkillHistoryTab>,
-    )
+    render(<SkillHistoryTab skillId="skill-1">{renderTestSlots}</SkillHistoryTab>)
 
     const revisions = screen.getAllByRole('article')
     expect(within(revisions[0]).getByText('리비전 3')).toBeInTheDocument()
@@ -143,11 +154,7 @@ describe('SkillHistoryTab', () => {
       }),
     )
 
-    render(
-      <SkillHistoryTab skillId="skill-1" onClose={vi.fn()}>
-        {renderSkillDetailTabShell}
-      </SkillHistoryTab>,
-    )
+    render(<SkillHistoryTab skillId="skill-1">{renderTestSlots}</SkillHistoryTab>)
 
     expect(screen.getByText('리비전 3 상세')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '리비전 3 되돌리기' })).toBeDisabled()
@@ -188,11 +195,7 @@ describe('SkillHistoryTab', () => {
       }),
     )
 
-    render(
-      <SkillHistoryTab skillId="skill-1" onClose={vi.fn()}>
-        {renderSkillDetailTabShell}
-      </SkillHistoryTab>,
-    )
+    render(<SkillHistoryTab skillId="skill-1">{renderTestSlots}</SkillHistoryTab>)
 
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: '리비전 1 보기' }))
@@ -213,11 +216,7 @@ describe('SkillHistoryTab', () => {
   it('keeps the legacy empty state for skills without revisions', () => {
     mockUseSkillRevisions.mockReturnValue({ data: [], isLoading: false })
 
-    render(
-      <SkillHistoryTab skillId="skill-1" onClose={vi.fn()}>
-        {renderSkillDetailTabShell}
-      </SkillHistoryTab>,
-    )
+    render(<SkillHistoryTab skillId="skill-1">{renderTestSlots}</SkillHistoryTab>)
 
     expect(screen.getByText('현재 버전부터 이력이 쌓입니다.')).toBeInTheDocument()
   })

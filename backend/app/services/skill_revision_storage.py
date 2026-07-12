@@ -57,10 +57,18 @@ async def _snapshot_files(skill: Skill) -> list[tuple[str, bytes]]:
 
 
 def _write_zip(path: Path, files: list[tuple[str, bytes]]) -> None:
+    # 원자적 쓰기: 최종 경로에 직접 쓰다 중단(크래시/디스크 풀)되면 손상 zip이
+    # 남아 이후 모든 열람이 BadZipFile로 터진다 — 같은 디렉토리 tmp에 쓰고
+    # rename 스왑한다 (R5; Path.replace == os.replace 원자성).
     path.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for rel_path, content in sorted(files):
-            archive.writestr(rel_path, content)
+    tmp_path = path.with_suffix(".zip.tmp")
+    try:
+        with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for rel_path, content in sorted(files):
+                archive.writestr(rel_path, content)
+        tmp_path.replace(path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def _file_size(path: Path) -> int:

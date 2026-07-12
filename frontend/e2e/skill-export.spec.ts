@@ -75,8 +75,9 @@ test.describe('Skill package export', () => {
       return route.fulfill({ status: 404, json: { detail: pathName } })
     })
 
-    await page.goto(`/skills?detailId=${packageSkill.id}`)
-    await expect(page.getByRole('dialog', { name: /Portable Export/ })).toBeVisible()
+    // Phase 2 스튜디오 — 내보내기는 설정 탭이 소유한다 (D1).
+    await page.goto(`/skills/${packageSkill.id}/settings`)
+    await expect(page.getByTestId('studio-context-bar')).toContainText('Portable Export')
 
     const exportAction = page.getByRole('button', { name: '.skill 내보내기' })
     await expect(exportAction).toHaveAttribute(

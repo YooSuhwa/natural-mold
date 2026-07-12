@@ -1,40 +1,43 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, Save, Trash2 } from 'lucide-react'
+import { Loader2, Save } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
-import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { useDeleteSkill, useSkillContent, useUpdateSkillContent } from '@/lib/hooks/use-skills'
+import { useSkillContent, useUpdateSkillContent } from '@/lib/hooks/use-skills'
 
-import { SkillCredentialBindingsPanel } from './skill-credential-bindings-panel'
 import type { SkillDetailTabRender } from './skill-detail-tab-shell'
 
+/**
+ * 소스 탭(텍스트) 에디터 — 저장(=리비전)만 소유한다. 삭제/자격증명은
+ * 스튜디오 설정 탭 소관 (Phase 2 D1).
+ */
 export function TextSkillEditor({
   children,
   skillId,
-  onClose,
-  showCredentials = true,
 }: {
   readonly children: SkillDetailTabRender
   readonly skillId: string
-  readonly onClose: () => void
-  readonly showCredentials?: boolean
 }) {
   const t = useTranslations('skill.detailDialog')
   const { data: textContent } = useSkillContent(skillId, true)
   const update = useUpdateSkillContent()
-  const remove = useDeleteSkill()
   const [editor, setEditor] = useState('')
-  const [hydrated, setHydrated] = useState(false)
-  const [confirming, setConfirming] = useState(false)
+  const [seeded, setSeeded] = useState<string | undefined>(undefined)
 
-  if (!hydrated && textContent?.content !== undefined) {
-    setHydrated(true)
-    setEditor(textContent.content)
+  // 서버 콘텐츠가 바뀌면(예: 버전 탭 롤백 후 stale 캐시 → refetch 착지)
+  // 재시드한다 — hydrate-once는 롤백 전 캐시를 잠가 "롤백이 안 먹은" 화면과
+  // 저장 시 롤백을 되돌리는 새 리비전을 만든다 (R5). 단 dirty draft는 보호:
+  // 사용자가 마지막 시드에서 벗어났다면 편집 내용을 덮지 않는다.
+  if (textContent?.content !== undefined && textContent.content !== seeded) {
+    const previousSeed = seeded
+    setSeeded(textContent.content)
+    if (previousSeed === undefined || editor === previousSeed) {
+      setEditor(textContent.content)
+    }
   }
 
   async function handleSave() {
@@ -46,20 +49,9 @@ export function TextSkillEditor({
     }
   }
 
-  async function handleDelete() {
-    try {
-      await remove.mutateAsync(skillId)
-      toast.success(t('deleted'))
-      onClose()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('deleteFailed'))
-    }
-  }
-
   return children({
     body: (
       <>
-        {showCredentials ? <SkillCredentialBindingsPanel skillId={skillId} /> : null}
         <Textarea
           value={editor}
           rows={20}
@@ -70,29 +62,6 @@ export function TextSkillEditor({
     ),
     footer: (
       <>
-        {confirming ? (
-          <div className="flex-1">
-            <DeleteConfirmInline
-              entity={t('skillEntity')}
-              onCancel={() => setConfirming(false)}
-              onConfirm={handleDelete}
-              pending={remove.isPending}
-            />
-          </div>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mr-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setConfirming(true)}
-          >
-            <Trash2 className="size-3.5" />
-            {t('deleteSkill')}
-          </Button>
-        )}
-        <Button variant="outline" onClick={onClose}>
-          {t('close')}
-        </Button>
         <Button onClick={handleSave} disabled={update.isPending}>
           {update.isPending ? (
             <Loader2 className="size-4 animate-spin" />

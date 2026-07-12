@@ -3,13 +3,14 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser
 from app.marketplace import credential_requirements
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.marketplace import SkillCredentialBinding
-from app.models.skill import Skill
+from app.models.skill import AgentSkillLink, Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.schemas.skill import SkillHealthSummary, SkillLatestEvaluationSummary
 from app.services.skill_health_service import calculate_skill_health
@@ -46,6 +47,34 @@ async def build_skill_quality_map(
             ),
         )
     return summaries
+
+
+async def agent_link_counts_by_skill(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    skill_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, int]:
+    """스킬별 연결 에이전트 수 — 단일 GROUP BY 역집계.
+
+    ``Skill.used_by_count`` 컬럼은 쓰기 동기화가 없어(생성 시 0 고정) 신뢰할
+    수 없다 — 직렬화 시점에 이 집계로 덮어쓴다. 히든 에이전트
+    (``runtime_profile != 'standard'``)는 다른 모든 표면과 동일하게 제외.
+    """
+
+    if not skill_ids:
+        return {}
+    result = await db.execute(
+        select(AgentSkillLink.skill_id, func.count())
+        .join(Agent, Agent.id == AgentSkillLink.agent_id)
+        .where(
+            Agent.user_id == user_id,
+            Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+            AgentSkillLink.skill_id.in_(skill_ids),
+        )
+        .group_by(AgentSkillLink.skill_id)
+    )
+    return {skill_id: int(count) for skill_id, count in result.all()}
 
 
 async def _missing_required_keys_by_skill(

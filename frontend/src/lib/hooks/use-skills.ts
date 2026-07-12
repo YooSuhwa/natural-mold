@@ -23,6 +23,10 @@ export function useSkill(id: string | null | undefined) {
     queryKey: skillQueryKeys.detail(id),
     queryFn: () => skillsApi.get(requiredQueryValue(id, 'skill id')),
     enabled: !!id,
+    // 스튜디오는 같은 detail을 셸·breadcrumb·탭 페이지 3곳이 구독하고 탭
+    // 전환마다 remount한다 — staleTime 0이면 전환마다 enrichment 재조회.
+    // 뮤테이션은 invalidate로 갱신하므로 목록(useSkills)과 동일 상한이 안전.
+    staleTime: 30_000,
   })
 }
 

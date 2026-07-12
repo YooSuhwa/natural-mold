@@ -1,24 +1,20 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { BookOpen, Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/shared/empty-state'
 import { SearchInput } from '@/components/shared/search-input'
 import {
   CountedLineTabs,
-  ResourceGrid,
   ResourcePage,
   ResourcePanel,
   ResourceToolbar,
 } from '@/components/shared/resource-layout'
-import { Skeleton } from '@/components/ui/skeleton'
-import { coerceSkillDetailTab, type SkillDetailTab } from '@/components/skill/skill-detail-tabs'
-import { useStartSkillBuilder } from '@/lib/hooks/use-skill-builder'
+import { useBuilderSessionLauncher } from '@/lib/hooks/use-skill-builder'
 import { useSkills } from '@/lib/hooks/use-skills'
 import {
   ALL_SKILL_FILTER,
@@ -27,14 +23,12 @@ import {
   type SkillKindFilter,
   type SkillStateFilter,
 } from '@/lib/skill-state-filters'
-import { formatDisplayDate } from '@/lib/utils/display-format'
 import type { Skill, SkillKind } from '@/lib/types/skill'
-import { SkillCard } from './skill-card'
+import { SkillListTable } from './skill-list-table'
 import { SkillPageDialogs } from './skill-page-dialogs'
 import { SkillStateFilterChips } from './skill-state-filter-chips'
 
 type CreateTab = 'chat' | 'text' | 'package'
-type BuilderMode = 'create' | 'improve'
 type SkillTab = SkillKindFilter
 
 const SKILL_TABS: readonly SkillTab[] = [ALL_SKILL_FILTER, 'text', 'package']
@@ -43,27 +37,10 @@ function isSkillTab(value: string): value is SkillTab {
   return value === ALL_SKILL_FILTER || value === 'text' || value === 'package'
 }
 
-function formatDate(value: string | null): string {
-  if (!value) return ''
-  return formatDisplayDate(value, { fallback: '' })
-}
-
-function replaceDetailUrl(skillId: string | null, tab: SkillDetailTab) {
-  if (typeof window === 'undefined') return
-  if (!skillId) {
-    window.history.replaceState(null, '', '/skills')
-    return
-  }
-  const params = new URLSearchParams()
-  params.set('detailId', skillId)
-  if (tab !== 'content') params.set('tab', tab)
-  window.history.replaceState(null, '', `/skills?${params.toString()}`)
-}
-
 export function SkillsPageClient() {
   const t = useTranslations('skill')
   const router = useRouter()
-  const startBuilder = useStartSkillBuilder()
+  const launcher = useBuilderSessionLauncher()
   const [createOpen, setCreateOpen] = useState(false)
   const [createTab, setCreateTab] = useState<CreateTab>('chat')
   const [activeTab, setActiveTab] = useState<SkillTab>(ALL_SKILL_FILTER)
@@ -77,18 +54,6 @@ export function SkillsPageClient() {
     return Object.keys(params).length > 0 ? params : undefined
   }, [activeTab, normalizedSearch])
   const { data: skills, isLoading } = useSkills(skillQueryParams)
-  // Deep-link (`/skills?detailId=...`) — /marketplace Open 버튼, 빌더 챗 레일의
-  // "스킬 열기" 링크. 초기값은 반드시 useSearchParams(라우터 상태)에서 읽어야
-  // 한다: 클라이언트 네비게이션 중에는 컴포넌트가 window.location 갱신 **전에**
-  // 마운트될 수 있어 location 기반 초기화는 딥링크를 놓친다(빌더 레일 링크에서
-  // 실제 재현). useState lazy initializer 유지 — 이후에는 로컬 상태가 소스
-  // (URL 동기화는 replaceDetailUrl의 history.replaceState). effect+setState
-  // 패턴(react-hooks/set-state-in-effect 거부)은 계속 회피한다.
-  const searchParams = useSearchParams()
-  const [detailId, setDetailId] = useState<string | null>(() => searchParams.get('detailId'))
-  const [detailTab, setDetailTab] = useState<SkillDetailTab>(() =>
-    coerceSkillDetailTab(searchParams.get('tab')),
-  )
   const [publishSkill, setPublishSkill] = useState<Skill | null>(null)
 
   function openCreate(tab: CreateTab) {
@@ -96,49 +61,35 @@ export function SkillsPageClient() {
     setCreateOpen(true)
   }
 
-  function openDetail(id: string, tab: SkillDetailTab = 'content') {
-    setDetailId(id)
-    setDetailTab(tab)
-    replaceDetailUrl(id, tab)
+  // 상세는 다이얼로그가 아니라 스튜디오 라우트 — 레거시 `?detailId=` 진입은
+  // page.tsx 서버 redirect가 흡수한다 (Phase 2).
+  function openDetail(id: string) {
+    router.push(`/skills/${id}/source`)
   }
 
-  // 빌더 챗 (스킬 스튜디오 phase 1) — start v2로 세션+대화+워크스페이스를
-  // 만들고 전용 라우트로 이동한다. 구 SkillBuilderDialog는 제거됨.
-  async function startBuilderSession(payload: {
-    mode: BuilderMode
-    user_request: string
-    source_skill_id?: string
-  }) {
-    try {
-      const session = await startBuilder.mutateAsync(payload)
-      setCreateOpen(false)
-      setDetailId(null)
-      router.push(`/skills/builder/${session.id}`)
-    } catch {
-      toast.error(t('builderChat.startFailed'))
-    }
-  }
-
+  // 빌더 챗 진입 — 세션 시작/라우팅/실패 토스트는 공유 launcher가 소유한다.
+  // 다이얼로그는 onStartChat 직후 스스로 닫히므로 여기서 닫기를 관리하지 않는다.
   function openBuilderCreate(request: string) {
-    void startBuilderSession({ mode: 'create', user_request: request })
+    void launcher.startCreate(request)
   }
 
+  // 목록 표의 행 "수정" — 목업 계약대로 improve 빌더 세션을 바로 시작한다.
   function openBuilderImprove(skillId: string) {
-    void startBuilderSession({
-      mode: 'improve',
-      user_request: t('builderChat.improveDefaultRequest'),
-      source_skill_id: skillId,
-    })
+    void launcher.startImprove(skillId)
   }
 
   const data = useMemo(() => skills ?? [], [skills])
 
   const filteredSkills = useMemo(() => {
-    return filterSkillList(data, {
-      kind: activeTab,
-      state: stateFilter,
-      query: normalizedSearch,
-    })
+    // 스프레드는 useMemo 안에서 1회 — 렌더마다 새 identity를 만들면
+    // DataTable 선택 통지 effect가 재순환한다 (리뷰 R).
+    return [
+      ...filterSkillList(data, {
+        kind: activeTab,
+        state: stateFilter,
+        query: normalizedSearch,
+      }),
+    ]
   }, [activeTab, data, normalizedSearch, stateFilter])
 
   function countSkills(tab: SkillTab): number {
@@ -170,17 +121,21 @@ export function SkillsPageClient() {
   }))
 
   const isInitialEmpty = !isLoading && data.length === 0
-  const isFilteredEmpty = !isLoading && data.length > 0 && filteredSkills.length === 0
 
   return (
     <ResourcePage
       title={t('title')}
       description={t('description')}
       action={
-        <Button onClick={() => openCreate('chat')}>
-          <Plus className="size-4" />
-          {t('new')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => openCreate('package')}>
+            {t('studio.list.uploadPackage')}
+          </Button>
+          <Button onClick={() => openCreate('chat')}>
+            <Plus className="size-4" />
+            {t('new')}
+          </Button>
+        </div>
       }
     >
       <ResourcePanel>
@@ -228,31 +183,14 @@ export function SkillsPageClient() {
             </ResourcePanel.Toolbar>
 
             <ResourcePanel.Body className="bg-background/30">
-              {isLoading ? (
-                <ResourceGrid minColumnWidth={300}>
-                  {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="moldy-skeleton-card h-48" />
-                  ))}
-                </ResourceGrid>
-              ) : isFilteredEmpty ? (
-                <EmptyState title={t('empty.filtered')} className="bg-card/50" />
-              ) : (
-                <ResourceGrid minColumnWidth={300}>
-                  {filteredSkills.map((skill) => (
-                    <SkillCard
-                      key={skill.id}
-                      skill={skill}
-                      kindLabel={t(`typeFilter.${skill.kind}`)}
-                      agentsLabel={t('agentsCount', { count: skill.used_by_count })}
-                      updatedLabel={formatDate(skill.updated_at)}
-                      actionLabel={t('actions.manage')}
-                      publishLabel={t('actions.publish')}
-                      onOpen={openDetail}
-                      onPublish={setPublishSkill}
-                    />
-                  ))}
-                </ResourceGrid>
-              )}
+              <SkillListTable
+                skills={filteredSkills}
+                isLoading={isLoading}
+                emptyTitle={t('empty.filtered')}
+                onImprove={openBuilderImprove}
+                improvePending={launcher.pending}
+                onPublish={setPublishSkill}
+              />
             </ResourcePanel.Body>
           </>
         )}
@@ -261,23 +199,10 @@ export function SkillsPageClient() {
       <SkillPageDialogs
         createOpen={createOpen}
         createTab={createTab}
-        detailId={detailId}
-        detailTab={detailTab}
         publishSkill={publishSkill}
         onCreateOpenChange={setCreateOpen}
-        onCreated={(id, tab = 'content') => openDetail(id, tab)}
+        onCreated={(id) => openDetail(id)}
         onStartChat={openBuilderCreate}
-        onDetailTabChange={(tab) => {
-          setDetailTab(tab)
-          replaceDetailUrl(detailId, tab)
-        }}
-        onImprove={openBuilderImprove}
-        onDetailOpenChange={(open) => {
-          if (open) return
-          setDetailId(null)
-          setDetailTab('content')
-          replaceDetailUrl(null, 'content')
-        }}
         onPublishOpenChange={(open) => !open && setPublishSkill(null)}
       />
     </ResourcePage>

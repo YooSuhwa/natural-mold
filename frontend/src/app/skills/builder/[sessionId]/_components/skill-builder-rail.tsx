@@ -144,7 +144,7 @@ function StatusPane({
           <CheckCircle2Icon className="moldy-status-icon size-4" />
           <span className="flex-1 text-sm">{t('completedTitle')}</span>
           <Link
-            href={`/skills?detailId=${session.finalized_skill_id}`}
+            href={`/skills/${session.finalized_skill_id}/source`}
             className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
           >
             {t('openSkill')}

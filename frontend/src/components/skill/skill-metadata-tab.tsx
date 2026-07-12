@@ -15,11 +15,9 @@ import type { SkillDetailTabRender } from './skill-detail-tab-shell'
 export function SkillMetadataTab({
   children,
   skill,
-  onClose,
 }: {
   readonly children: SkillDetailTabRender
   readonly skill: Skill
-  readonly onClose: () => void
 }) {
   const t = useTranslations('skill.detailDialog')
   const metadata = useTranslations('skill.detailDialog.metadata')
@@ -74,9 +72,6 @@ export function SkillMetadataTab({
     ),
     footer: (
       <>
-        <Button variant="outline" onClick={onClose}>
-          {t('close')}
-        </Button>
         <Button onClick={handleSave} disabled={!canSave || update.isPending}>
           {update.isPending ? (
             <Loader2 className="size-4 animate-spin" />

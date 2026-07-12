@@ -160,9 +160,9 @@ test.describe('스킬 빌더 챗 — 전 화면 캡처 투어', () => {
     await settle(page)
     await capture(page, WAVE, '11-reload-replay.png')
 
-    // ── 12. 딥링크 → 생성된 스킬 상세 다이얼로그 ───────────────────────
+    // ── 12. 딥링크 → 생성된 스킬 소스 탭 (Phase 2 스튜디오) ────────────
     await page.getByRole('link', { name: '스킬 열기' }).click()
-    await page.waitForURL(/\/skills\?detailId=/, { timeout: 60_000 })
+    await page.waitForURL(/\/skills\/[^/]+\/source/, { timeout: 60_000 })
     await expect(page.getByRole('button', { name: '대화로 개선' })).toBeVisible({
       timeout: 30_000,
     })

@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillDraftFile
+from app.skills.display_limits import DISPLAY_TEXT_SNIFF_BYTES, MAX_DISPLAY_TEXT_BYTES
 from app.storage.paths import ensure_relative, resolve_data_path
 
 if TYPE_CHECKING:
@@ -44,7 +45,8 @@ INPUTS_DIR = "inputs"
 GC_DELETABLE_STATUSES = ("completed", "abandoned")
 
 # 어댑터가 파일 하나에서 읽는 최대 바이트 — 검증 입력 폭주 방어.
-_MAX_ADAPTER_FILE_BYTES = 2 * 1024 * 1024
+# 표시-계층 상한 정본은 app.skills.display_limits — 리비전 뷰어와 lockstep.
+_MAX_ADAPTER_FILE_BYTES = MAX_DISPLAY_TEXT_BYTES
 
 
 def workspace_storage_path(session_id: uuid.UUID) -> str:
@@ -169,7 +171,7 @@ def load_draft_files(storage_path: str) -> list[SkillDraftFile]:
     return files
 
 
-_BINARY_SNIFF_BYTES = 8192
+_BINARY_SNIFF_BYTES = DISPLAY_TEXT_SNIFF_BYTES
 
 
 def _iter_draft_paths(storage_path: str):

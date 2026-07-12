@@ -88,9 +88,7 @@ class Skill(Base):
 
     # SHA-256 of the canonical body (text: file bytes; package: SKILL.md bytes).
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    size_bytes: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     # Optional version tag — package skills read it from SKILL.md frontmatter,
     # text skills accept a user-supplied label.
@@ -99,8 +97,10 @@ class Skill(Base):
     # Frontmatter / package metadata cache (e.g. ``{"name", "version", "files"}``).
     package_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
 
-    # Cached count of agents currently linked to this skill (kept in sync by
-    # service writes; rebuildable from agent_skills).
+    # Legacy column — no write path keeps it in sync (always 0 on disk).
+    # API responses override it at serialization time with a live
+    # agent_skills aggregate (skill_response_enrichment.agent_link_counts_by_skill).
+    # Dropping the column requires a migration; deferred.
     used_by_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )

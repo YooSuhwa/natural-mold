@@ -133,7 +133,7 @@ function getInstalledResourceHref(
           item.installation.installed_resource_id)
 
   if (!resourceId) return null
-  if (item.resource_type === 'skill') return `/skills?detailId=${resourceId}`
+  if (item.resource_type === 'skill') return `/skills/${resourceId}/source`
   if (item.resource_type === 'mcp') return `/mcp-servers?detailId=${resourceId}`
   return `/agents/new/template?blueprintId=${resourceId}`
 }

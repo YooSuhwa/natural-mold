@@ -4,9 +4,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
-import { skillsApi } from '@/lib/api/skills'
 import {
-  useDeleteSkill,
   useDeleteSkillFile,
   useSetSkillFile,
   useSkill,
@@ -14,7 +12,6 @@ import {
 } from '@/lib/hooks/use-skills'
 
 import { FileEditorPane } from './skill-file-editor-pane'
-import { SkillCredentialBindingsPanel } from './skill-credential-bindings-panel'
 import { isTextFile } from './skill-detail-file-utils'
 import { SkillDetailPackageFooter } from './skill-detail-package-footer'
 import { SkillDetailPackageSidebar } from './skill-detail-package-sidebar'
@@ -24,24 +21,18 @@ import { useSkillFileRemoteCache } from './use-skill-file-remote-cache'
 export function PackageSkillEditor({
   children,
   skillId,
-  onClose,
-  showCredentials = true,
 }: {
   readonly children: SkillDetailTabRender
   readonly skillId: string
-  readonly onClose: () => void
-  readonly showCredentials?: boolean
 }) {
   const t = useTranslations('skill.detailDialog')
   const { data: skill } = useSkill(skillId)
   const { data: files } = useSkillFiles(skillId)
   const setFile = useSetSkillFile(skillId)
   const deleteFile = useDeleteSkillFile(skillId)
-  const removeSkill = useDeleteSkill()
   const fileEntries = useMemo(() => (files ?? []).filter((file) => !file.is_dir), [files])
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Map<string, string>>(new Map())
-  const [confirmingSkillDelete, setConfirmingSkillDelete] = useState(false)
   const [confirmingFileDelete, setConfirmingFileDelete] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newPath, setNewPath] = useState('')
@@ -168,16 +159,6 @@ export function PackageSkillEditor({
     }
   }
 
-  async function handleDeleteSkill() {
-    try {
-      await removeSkill.mutateAsync(skillId)
-      toast.success(t('deleted'))
-      onClose()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('deleteFailed'))
-    }
-  }
-
   return children({
     sidebar: (
       <SkillDetailPackageSidebar
@@ -200,7 +181,6 @@ export function PackageSkillEditor({
     sidebarClassName: 'w-64',
     body: (
       <>
-        {showCredentials ? <SkillCredentialBindingsPanel skillId={skillId} /> : null}
         <FileEditorPane
           skillId={skillId}
           selectedPath={selectedPath}
@@ -220,18 +200,11 @@ export function PackageSkillEditor({
     bodyClassName: 'flex flex-col gap-3 py-4',
     footer: (
       <SkillDetailPackageFooter
-        confirmingDelete={confirmingSkillDelete}
-        deletePending={removeSkill.isPending}
         savePending={setFile.isPending}
         saveDisabled={!currentDirty || setFile.isPending}
-        exportHref={skillsApi.exportUrl(skillId)}
         sizeBytes={skill?.size_bytes ?? 0}
         version={skill?.version ?? null}
         usedByCount={skill?.used_by_count ?? 0}
-        onAskDelete={() => setConfirmingSkillDelete(true)}
-        onCancelDelete={() => setConfirmingSkillDelete(false)}
-        onConfirmDelete={handleDeleteSkill}
-        onClose={onClose}
         onSave={handleSave}
       />
     ),

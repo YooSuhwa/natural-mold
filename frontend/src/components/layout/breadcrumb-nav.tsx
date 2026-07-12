@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useConversationPages } from '@/lib/hooks/use-conversations'
 import { useMarketplaceItem } from '@/lib/hooks/use-marketplace'
+import { useSkill } from '@/lib/hooks/use-skills'
 
 const ROUTE_LABELS: Record<string, string> = {
   tools: 'nav.tools',
@@ -24,6 +25,11 @@ const ROUTE_LABELS: Record<string, string> = {
   'system-credentials': 'nav.systemCredentials',
   'system-llm': 'nav.systemLlm',
   skills: 'nav.skills',
+  // 스킬 스튜디오 탭 세그먼트 (Phase 2) — settings는 기존 라벨 재사용.
+  evaluation: 'nav.skillEvaluation',
+  versions: 'nav.skillVersions',
+  source: 'nav.skillSource',
+  builder: 'nav.skillBuilder',
   new: 'nav.createAgent',
   'visual-settings': 'nav.visualSettings',
   conversational: 'nav.conversational',
@@ -54,6 +60,11 @@ function ConversationTitle({
   return <>{conv?.title ?? conversationId}</>
 }
 
+function SkillName({ id }: { id: string }) {
+  const { data: skill } = useSkill(id)
+  return <>{skill?.name ?? id}</>
+}
+
 function MarketplaceItemName({ id }: { id: string }) {
   // 404 / 401 시 hook 이 ApiError 를 throw 하므로 breadcrumb 가 빈 ID 로 떨어지면
   // ``id`` fallback. detail page 에서 동일 query 가 이미 cache 되어 있어 추가
@@ -80,6 +91,7 @@ export function BreadcrumbNav() {
     isAgentId: boolean
     isConvId: boolean
     isMarketplaceItemId: boolean
+    isSkillId: boolean
   }[] = []
 
   for (let i = 0; i < segments.length; i++) {
@@ -94,18 +106,21 @@ export function BreadcrumbNav() {
 
     // Skip segments without real pages
     if (SKIP_SEGMENTS.has(segment)) continue
+    // 빌더 세션 uuid는 자체 라벨이 없다 — '빌더' 크럼(인덱스 링크)까지만 표시.
+    if (isId && i > 0 && segments[i - 1] === 'builder') continue
 
     const isLast = i === segments.length - 1
     const isAgentId = isId && i > 0 && segments[i - 1] === 'agents'
     const isConvId = isId && i > 0 && segments[i - 1] === 'conversations'
     const isMarketplaceItemId = isId && i > 0 && segments[i - 1] === 'marketplace'
+    const isSkillId = isId && i > 0 && segments[i - 1] === 'skills'
 
     let label = segment
     if (!isId && ROUTE_LABELS[segment]) {
       label = t(ROUTE_LABELS[segment])
     }
 
-    crumbs.push({ label, href, isLast, isAgentId, isConvId, isMarketplaceItemId })
+    crumbs.push({ label, href, isLast, isAgentId, isConvId, isMarketplaceItemId, isSkillId })
   }
 
   return (
@@ -124,6 +139,8 @@ export function BreadcrumbNav() {
           <ConversationTitle agentId={agentId} conversationId={crumb.label} />
         ) : crumb.isMarketplaceItemId ? (
           <MarketplaceItemName id={crumb.label} />
+        ) : crumb.isSkillId ? (
+          <SkillName id={crumb.label} />
         ) : (
           crumb.label
         )

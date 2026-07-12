@@ -1,9 +1,10 @@
-'use client'
-
 import type { ReactNode } from 'react'
 
-import { DialogShell } from '@/components/shared/dialog-shell'
-
+/**
+ * 스킬 탭 컴포넌트의 4슬롯 렌더 프롭 계약 — 유일한 런타임 렌더러는 스튜디오의
+ * `renderSkillStudioTabShell`(app/skills/[skillId]/_components)이다. 구
+ * DialogShell 렌더러는 상세 다이얼로그와 함께 제거됐다 (Phase 2).
+ */
 export type SkillDetailTabSlots = {
   readonly body: ReactNode
   readonly bodyClassName?: string
@@ -14,26 +15,3 @@ export type SkillDetailTabSlots = {
 }
 
 export type SkillDetailTabRender = (slots: SkillDetailTabSlots) => ReactNode
-
-export function SkillDetailTabShell({ slots }: { readonly slots: SkillDetailTabSlots }) {
-  return (
-    <>
-      {slots.sidebar ? (
-        <DialogShell.Split>
-          <DialogShell.Sidebar className={slots.sidebarClassName}>
-            {slots.sidebar}
-          </DialogShell.Sidebar>
-          <DialogShell.Body className={slots.bodyClassName}>{slots.body}</DialogShell.Body>
-        </DialogShell.Split>
-      ) : (
-        <DialogShell.Body className={slots.bodyClassName}>{slots.body}</DialogShell.Body>
-      )}
-      <DialogShell.Footer>{slots.footer}</DialogShell.Footer>
-      {slots.overlay ?? null}
-    </>
-  )
-}
-
-export function renderSkillDetailTabShell(slots: SkillDetailTabSlots): ReactNode {
-  return <SkillDetailTabShell slots={slots} />
-}

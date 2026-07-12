@@ -14,7 +14,6 @@ import { SkillEvaluationSetCard } from './skill-evaluation-set-card'
 type SkillEvaluationTabProps = {
   readonly currentSkillContentHash?: string | null
   readonly needsCredentialSetup?: boolean
-  readonly onClose?: () => void
   readonly onOpenCredentials?: () => void
   readonly skillContentHash?: string | null
   readonly skillId: string

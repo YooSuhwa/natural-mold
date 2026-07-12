@@ -194,9 +194,9 @@ test.describe('스킬 빌더 Phase 1.5 — 자동 첫 메시지 + 바이너리 f
     const storedBytes = await fs.readFile(stored)
     expect(storedBytes.equals(pngBytes)).toBe(true)
 
-    // ── 7. 완료 딥링크 → 생성된 package 스킬 상세 ──────────────────────
+    // ── 7. 완료 딥링크 → 생성된 package 스킬 소스 탭 ───────────────────
     await page.getByRole('link', { name: '스킬 열기' }).click()
-    await page.waitForURL(/\/skills\?detailId=/, { timeout: 60_000 })
+    await page.waitForURL(/\/skills\/[^/]+\/source/, { timeout: 60_000 })
     await expect(page.getByRole('button', { name: '대화로 개선' })).toBeVisible({
       timeout: 30_000,
     })

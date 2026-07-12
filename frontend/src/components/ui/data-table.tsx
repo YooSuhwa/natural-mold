@@ -1,6 +1,6 @@
 'use client'
 
-import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   type ColumnDef,
@@ -68,6 +68,16 @@ export interface DataTableProps<T> {
    */
   enableRowSelection?: boolean
   onRowSelectionChange?: (rows: T[]) => void
+  /**
+   * Controlled selection state. Pass together with
+   * `onRowSelectionStateChange` when the parent needs to reset/own the
+   * selection (e.g. clear after a bulk action) without remounting the table —
+   * a key-remount would also wipe sorting and the page index.
+   */
+  rowSelectionState?: RowSelectionState
+  onRowSelectionStateChange?: (
+    updater: RowSelectionState | ((previous: RowSelectionState) => RowSelectionState),
+  ) => void
   /** Stable row identifier for selection state. Defaults to `row.id`. */
   getRowId?: (row: T, index: number) => string
   /**
@@ -92,6 +102,8 @@ export function DataTable<T>({
   emptyAction,
   enableRowSelection = false,
   onRowSelectionChange,
+  rowSelectionState,
+  onRowSelectionStateChange,
   getRowId,
   toolbar,
 }: DataTableProps<T>) {
@@ -100,7 +112,9 @@ export function DataTable<T>({
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [search, setSearch] = useState('')
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+  const [internalRowSelection, setInternalRowSelection] = useState<RowSelectionState>({})
+  const rowSelection = rowSelectionState ?? internalRowSelection
+  const setRowSelection = onRowSelectionStateChange ?? setInternalRowSelection
   const deferredSearch = useDeferredValue(search)
   const normalizedSearch = useMemo(() => deferredSearch.trim().toLowerCase(), [deferredSearch])
 
@@ -149,6 +163,35 @@ export function DataTable<T>({
     ] as ColumnDef<T, unknown>[]
   }, [columns, enableRowSelection, t])
 
+  // 행 id 파생의 단일 소스 — table(getRowId)·prune·notify가 같은 규칙을 써야
+  // id 공간이 갈리지 않는다. index 폴백은 filtered/data에서 서로 다른 행을
+  // 가리키므로, **data 기준으로 배정한 id를 객체 참조 Map으로 고정**해 table이
+  // filtered의 같은 객체를 받아도 동일 id를 얻게 한다(진짜 단일 id 공간, R7).
+  // index 폴백 자체는 데이터 재정렬에 여전히 불안정 — dev 경고 유지.
+  const resolveRowId = useMemo(() => {
+    if (getRowId) return getRowId
+    return (row: T, index: number) => {
+      const r = row as unknown as { id?: string }
+      return r.id ?? String(index)
+    }
+  }, [getRowId])
+  const rowIdByObject = useMemo(() => {
+    const map = new Map<T, string>()
+    data.forEach((row, index) => map.set(row, resolveRowId(row, index)))
+    return map
+  }, [data, resolveRowId])
+  const rowIdOf = (row: T, index: number) => rowIdByObject.get(row) ?? resolveRowId(row, index)
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    enableRowSelection &&
+    !getRowId &&
+    data.some((row) => (row as unknown as { id?: string }).id === undefined)
+  ) {
+    console.warn(
+      'DataTable: enableRowSelection with id-less rows needs an explicit getRowId — index fallback ids are unstable when the data reorders.',
+    )
+  }
+
   const table = useReactTable({
     data: filtered,
     columns: tableColumns,
@@ -157,28 +200,102 @@ export function DataTable<T>({
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     enableRowSelection,
-    getRowId: getRowId
-      ? (row, index) => getRowId(row, index)
-      : (row, index) => {
-          const r = row as unknown as { id?: string }
-          return r.id ?? String(index)
-        },
+    // filtered의 행은 data와 같은 객체 참조 — Map 조회로 data-기준 id를 반환.
+    getRowId: rowIdOf,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    // 데이터 갱신(refetch/삭제)마다 1페이지로 튕기지 않는다 — controlled
+    // selection을 도입한 사유("정렬·페이지 유지")와 동일 계약. 범위 밖으로
+    // 밀려난 pageIndex는 아래 effect가 마지막 페이지로 클램프한다.
+    autoResetPageIndex: false,
     initialState: { pagination: { pageSize } },
   })
 
+  useEffect(() => {
+    // 로딩 플리커(쿼리 키 변경 → data가 잠시 []) 중에 클램프하면 0페이지로
+    // 리셋돼 autoResetPageIndex:false의 목적(페이지 유지)이 자기모순이 된다 (R5).
+    if (loading) return
+    const pageCount = table.getPageCount()
+    const pageIndex = table.getState().pagination.pageIndex
+    if (pageIndex > 0 && pageIndex >= pageCount) {
+      table.setPageIndex(Math.max(0, pageCount - 1))
+    }
+    // filtered·columnFilters가 pagination 입력의 전부 — table 인스턴스는
+    // 안정적이다. columnFilters 누락 시 FilterDef 셀렉트로 줄어든 표가
+    // 범위 밖 페이지에 좌초한다(빈 바디 + 페이지네이션 숨김, R5).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, pageSize, columnFilters, loading])
+
   // Notify parent when the selection changes. We map back to the source rows
   // so callers receive the original objects (not table-wrapper rows).
+  // `filtered` is a dep on purpose: when the parent swaps/shrinks `data`
+  // (external search/filter), selected keys can point at rows no longer in
+  // the model — without re-running, the parent would keep a stale selection
+  // (bulk bar count/targets diverge from visible checkboxes).
+  // The row-id signature guard makes the effect convergent: parents that pass
+  // unstable `data` identities would otherwise loop (notify → parent setState
+  // → new data → notify …, "Maximum update depth exceeded"). NOTE the guard
+  // is id-based: same ids with refreshed row objects do NOT re-notify — treat
+  // the callback payload as "which rows", and derive fresh objects from your
+  // current data at action time (store ids, not object snapshots).
+  // 반쪽 controlled 결합은 조용히 죽는다 — 개발 모드에서 즉시 경고.
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    (rowSelectionState === undefined) !== (onRowSelectionStateChange === undefined)
+  ) {
+    console.warn(
+      'DataTable: rowSelectionState and onRowSelectionStateChange must be passed together.',
+    )
+  }
+
+  // 데이터에서 빠진 행(외부 필터/삭제)의 선택 키를 정리한다 — 남겨두면
+  // 사용자가 "모두 해제"한 뒤 필터를 풀 때 유령 선택이 부활해 벌크 대상으로
+  // 재등장한다. 정리 후 아래 통지 effect가 시그니처 변화로 부모에 반영한다.
+  // 두 가드(R5): ① loading 중 스킵 — 쿼리 키 변경으로 data가 잠시 []가 되는
+  // 플리커에서 전체 선택이 전멸한다. ② 유효성 기준은 **data prop 전체**다 —
+  // 내부 검색으로 가려진 행(filtered 밖)까지 지우면 검색을 오가며 쌓은 선택
+  // (models 벌크 테스트)과 "숨은 선택 행 이름 열거" 계약이 죽는다.
   useEffect(() => {
-    if (!enableRowSelection || !onRowSelectionChange) return
-    const selectedRows = table.getSelectedRowModel().rows.map((r) => r.original)
-    onRowSelectionChange(selectedRows)
-    // We depend on rowSelection (the actual key map) — table is stable.
+    if (!enableRowSelection || loading) return
+    const validIds = new Set(data.map((row, index) => rowIdOf(row, index)))
+    const staleKeys = Object.keys(rowSelection).filter((key) => !validIds.has(key))
+    if (staleKeys.length === 0) return
+    setRowSelection((previous) => {
+      const next = { ...previous }
+      for (const key of staleKeys) delete next[key]
+      return next
+    })
+    // rowSelection/data/loading이 유효성 입력의 전부 — setter·rowIdOf는 렌더 클로저.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowSelection, enableRowSelection])
+  }, [rowSelection, data, loading, enableRowSelection])
+
+  const lastSelectionSignature = useRef('')
+  useEffect(() => {
+    // loading 중 스킵 — 플리커의 빈 data로 부모에 []를 통지하면 벌크 바가
+    // 깜빡이며 사라졌다 재등장한다 (R5). 로딩이 끝나면 data 변화로 재실행.
+    if (!enableRowSelection || !onRowSelectionChange || loading) return
+    // payload는 검색-스코프 row model이 아니라 **data prop 전체**에서 도출한다 —
+    // row model 기준이면 내부 검색으로 가린 선택이 부모 상태에서 조용히 빠져,
+    // prune이 보존한 선택과 부모가 실행하는 대상이 발산한다(models "Test
+    // Selected" 과소보고 + AD-5 숨은 이름 열거 불가, R6).
+    const selectedIds: string[] = []
+    const selectedRows: T[] = []
+    data.forEach((row, index) => {
+      const id = rowIdOf(row, index)
+      if (rowSelection[id]) {
+        selectedIds.push(id)
+        selectedRows.push(row)
+      }
+    })
+    const signature = selectedIds.join('\u0000')
+    if (signature === lastSelectionSignature.current) return
+    lastSelectionSignature.current = signature
+    onRowSelectionChange(selectedRows)
+    // rowSelection/data/loading이 payload 입력의 전부 — rowIdOf는 렌더 클로저.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowSelection, data, loading, enableRowSelection])
 
   return (
     <div className="space-y-3">
@@ -263,7 +380,28 @@ export function DataTable<T>({
                   key={row.id}
                   data-clickable={onRowClick ? '' : undefined}
                   className={onRowClick ? 'cursor-pointer' : undefined}
-                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                  onClick={
+                    onRowClick
+                      ? (event) => {
+                          // 셀 안의 인터랙티브 요소(체크박스/버튼/메뉴/링크)
+                          // 클릭은 행 내비게이션으로 승격하지 않는다 — 일부
+                          // 프리미티브는 자식에서 클릭이 시작돼 셀 단위
+                          // stopPropagation만으로는 새지 않는다고 보장 못 한다.
+                          const target = event.target as HTMLElement
+                          if (
+                            target.closest(
+                              'button, a, input, select, textarea, label, ' +
+                                '[role="checkbox"], [role="switch"], [role="combobox"], ' +
+                                '[role="menu"], [role="menuitem"], [role="menuitemcheckbox"], ' +
+                                '[role="option"]',
+                            )
+                          ) {
+                            return
+                          }
+                          onRowClick(row.original)
+                        }
+                      : undefined
+                  }
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>

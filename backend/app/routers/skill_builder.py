@@ -26,12 +26,14 @@ from app.routers.skill_builder_support import (
     record_secret_scan_blocked_if_needed,
     require_system_llm,
 )
+from app.routers.skill_router_support import serialize_skill
 from app.schemas.skill import SkillResponse
 from app.schemas.skill_builder import (
     SkillBuilderFileContentResponse,
     SkillBuilderFileEntry,
     SkillBuilderFilesResponse,
     SkillBuilderMode,
+    SkillBuilderSessionBrief,
     SkillBuilderSessionResponse,
     SkillBuilderStartRequest,
     SkillBuilderStatus,
@@ -128,6 +130,30 @@ async def start_skill_builder(
     await db.commit()
     await db.refresh(session)
     return _session_response(session, agent_id=agent.id)
+
+
+@router.get("", response_model=list[SkillBuilderSessionBrief])
+async def list_skill_builder_sessions(
+    skill_id: uuid.UUID | None = Query(None),
+    status: SkillBuilderStatus | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> list[SkillBuilderSessionBrief]:
+    """사용자의 빌더 세션 목록 (스튜디오 빌더 탭/인덱스, Phase 2).
+
+    ``skill_id``는 improve 원본과 create 산출물(finalized) 양쪽에 매칭 —
+    "이 스킬의 빌더 이력"을 한 번에 조회한다. updated_at 내림차순.
+    """
+
+    sessions = await skill_builder_service.list_sessions(
+        db,
+        user_id=user.id,
+        skill_id=skill_id,
+        status=status.value if status is not None else None,
+        limit=limit,
+    )
+    return [SkillBuilderSessionBrief.model_validate(session) for session in sessions]
 
 
 @router.get("/{session_id}", response_model=SkillBuilderSessionResponse)
@@ -241,7 +267,9 @@ async def confirm_skill_builder_session(
     session = await get_session_or_404(db, session_id=session_id, user=user)
     existing = await completed_skill(db, session=session, user=user)
     if existing is not None:
-        return SkillResponse.model_validate(existing)
+        # bare model_validate는 used_by_count(항상 0 컬럼)·health 등 enrichment를
+        # 건너뛴다 — 다른 SkillResponse 경로와 동일하게 serializer를 경유한다.
+        return await serialize_skill(db, existing, user)
     if session.status == SkillBuilderStatus.CONFIRMING.value:
         raise session_confirming()
     if session.status != SkillBuilderStatus.REVIEW.value:
@@ -300,7 +328,7 @@ async def confirm_skill_builder_session(
     )
     await db.commit()
     await db.refresh(skill)
-    return SkillResponse.model_validate(skill)
+    return await serialize_skill(db, skill, user)
 
 
 def _confirm_action(mode: str) -> str:

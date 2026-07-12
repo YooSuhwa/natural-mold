@@ -2401,14 +2401,15 @@
       "origin": "출처",
       "marketplace": "마켓플레이스",
       "agents": "에이전트",
-      "updatedAt": "수정일"
+      "updatedAt": "수정일",
+      "status": "상태",
+      "evaluation": "평가"
     },
     "filters": {
       "kind": "종류"
     },
     "actions": {
-      "publish": "공개하기",
-      "manage": "관리"
+      "publish": "공개하기"
     },
     "typeFilter": {
       "all": "전체",
@@ -2546,17 +2547,12 @@
       }
     },
     "detailDialog": {
-      "loading": "스킬 불러오는 중…",
-      "unsupported": "지원하지 않는 스킬 종류입니다.",
-      "close": "닫기",
       "save": "저장",
       "saved": "저장되었습니다",
       "saveFailed": "저장에 실패했습니다",
       "deleted": "스킬이 삭제되었습니다",
       "deleteFailed": "삭제에 실패했습니다",
       "deleteSkill": "스킬 삭제",
-      "skillEntity": "스킬",
-      "packageEntity": "스킬 전체 패키지",
       "fileEntity": "파일",
       "loadFailed": "불러오기에 실패했습니다: {message}",
       "discardConfirm": "{path}의 저장하지 않은 변경사항을 버릴까요?\n\n확인을 누르면 버리고, 취소를 누르면 계속 편집합니다.",
@@ -2585,15 +2581,7 @@
       "binaryFile": "바이너리 파일",
       "binaryUnavailable": "이 파일 형식은 편집기 미리보기를 사용할 수 없습니다.",
       "download": "다운로드",
-      "improveByChat": "대화로 개선",
       "credentialsEmpty": "이 스킬에는 필요한 자격증명이 없습니다.",
-      "tabs": {
-        "content": "내용",
-        "credentials": "자격증명",
-        "evaluation": "평가",
-        "history": "이력",
-        "metadata": "메타데이터"
-      },
       "evaluation": {
         "emptyTitle": "아직 평가 세트가 없습니다",
         "emptyDescription": "대화형 빌더나 평가 탭에서 기준을 만들면 여기서 다시 실행할 수 있습니다.",
@@ -2666,7 +2654,6 @@
         "files": "{count}개 파일",
         "changelog": "변경 요약",
         "changedFiles": "변경된 파일",
-        "compatibility": "호환성 결과",
         "evaluationSnapshot": "평가 스냅샷",
         "noItems": "기록된 항목이 없습니다.",
         "notRecorded": "아직 기록되지 않았습니다.",
@@ -2775,6 +2762,91 @@
         "noScripts": "scripts 없음",
         "evalsReady": "케이스 준비됨",
         "evalsPending": "평가 전"
+      }
+    },
+    "studio": {
+      "tabsAria": "스킬 스튜디오 화면",
+      "tabs": {
+        "list": "목록",
+        "builder": "빌더",
+        "evaluation": "평가",
+        "versions": "버전 관리",
+        "source": "소스",
+        "settings": "설정"
+      },
+      "contextBar": {
+        "currentSkill": "현재 작업 중인 스킬",
+        "newDraft": "새 스킬 초안",
+        "passRate": "통과율",
+        "passRateValue": "{percent}%",
+        "connectedAgents": "연결 에이전트",
+        "switchSkill": "다른 스킬로 전환",
+        "noOtherSkills": "다른 스킬이 없습니다",
+        "improve": "대화로 개선"
+      },
+      "skillUnavailableTitle": "스킬을 찾을 수 없습니다",
+      "skillUnavailableHint": "삭제되었거나 접근 권한이 없는 스킬입니다.",
+      "backToList": "스킬 목록으로",
+      "builderIndex": {
+        "title": "스킬 빌더",
+        "hint": "대화로 스킬을 만들고 개선한 세션 이력입니다.",
+        "scopedHint": "{name} 스킬의 빌더 세션 이력입니다.",
+        "startCreate": "대화로 만들기",
+        "improveSkill": "{name} 개선 시작",
+        "emptyTitle": "아직 빌더 세션이 없습니다",
+        "emptyHint": "대화로 스킬을 만들면 세션 이력이 여기에 쌓입니다.",
+        "updatedAt": "{time} 수정"
+      },
+      "settings": {
+        "metadataTitle": "메타데이터",
+        "credentialsTitle": "자격증명 바인딩",
+        "actionsTitle": "게시 · 내보내기 · 삭제",
+        "deleteHint": "연결된 에이전트 {count}개 — 삭제하면 연결이 함께 제거됩니다.",
+        "deleteTitle": "{name} 삭제",
+        "deleteDescription": "연결된 에이전트 {count}개의 연결이 함께 제거되며 되돌릴 수 없습니다."
+      },
+      "list": {
+        "uploadPackage": "패키지 업로드",
+        "selectedCount": "{count}개 선택됨",
+        "deleteSelected": "삭제",
+        "clearSelection": "선택 해제",
+        "bulkDeleteTitle": "스킬 {count}개 삭제",
+        "bulkDeleteDescription": "{names} — 삭제하면 되돌릴 수 없습니다.",
+        "bulkDeleteDescriptionConnected": "{names} — 연결된 에이전트 {connected}개의 연결이 함께 제거되며 되돌릴 수 없습니다.",
+        "deleteSuccess": "스킬 {count}개를 삭제했습니다",
+        "deletePartialFailure": "삭제 실패: {names}",
+        "rowImprove": "수정",
+        "rowImproveAria": "{name} 대화로 개선",
+        "rowEvaluation": "평가",
+        "rowVersions": "버전",
+        "rowMenuAria": "{name} 추가 작업",
+        "rowViewSource": "소스 보기",
+        "rowExport": ".skill 내보내기",
+        "rowDelete": "삭제",
+        "affectedAgents": "영향받는 에이전트: {names}",
+        "moreNames": "외 {count}개",
+        "affectedAgentsLoading": "영향받는 에이전트 확인 중…",
+        "affectedAgentsError": "영향받는 에이전트 목록을 불러오지 못했습니다 — 연결 수만 표시합니다."
+      },
+      "versions": {
+        "diffTitle": "SKILL.md diff",
+        "initialRevision": "최초 리비전",
+        "prunedPlaceholder": "스냅샷이 정리되어(pruned) 내용을 표시할 수 없습니다.",
+        "diffUnavailable": "이 리비전의 SKILL.md를 읽을 수 없습니다.",
+        "parentUnavailable": "이전 리비전 스냅샷이 없어 비교할 수 없습니다.",
+        "noChanges": "SKILL.md 변경 없음",
+        "viewRevisionSource": "이 버전 소스 보기",
+        "revisionSourceLabel": "리비전 {number} 소스",
+        "revisionSourceLoading": "리비전 불러오는 중…",
+        "readOnly": "읽기 전용",
+        "backToVersions": "버전 관리로",
+        "backToCurrent": "현재 버전 보기",
+        "revisionFilesAria": "리비전 파일 목록",
+        "binaryFile": "바이너리",
+        "noTextFiles": "표시할 텍스트 파일이 없습니다.",
+        "fileUnavailable": "이 파일의 내용을 읽을 수 없습니다.",
+        "diffTooLarge": "변경이 너무 커서 diff를 표시할 수 없습니다 — 소스 보기를 이용하세요.",
+        "revisionSourceError": "리비전을 불러오지 못했습니다. 링크가 올바른지 확인하세요."
       }
     }
   },
@@ -3951,7 +4023,11 @@
     "visualSettings": "비주얼 설정",
     "conversational": "대화로 만들기",
     "manual": "직접 만들기",
-    "template": "템플릿"
+    "template": "템플릿",
+    "skillEvaluation": "평가",
+    "skillVersions": "버전 관리",
+    "skillSource": "소스",
+    "skillBuilder": "빌더"
   },
   "connections": {
     "pageTitle": "연결 관리",

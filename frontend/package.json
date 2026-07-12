@@ -57,6 +57,7 @@
     "classnames": "^2.5.1",
     "clsx": "^2.1.1",
     "csv-parse": "^6.2.1",
+    "diff": "^9.0.0",
     "docx-preview": "0.3.7",
     "jotai": "^2.19.0",
     "jszip": "^3.10.1",

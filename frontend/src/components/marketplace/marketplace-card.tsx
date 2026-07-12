@@ -93,7 +93,7 @@ export function getPrimaryCtaHref(item: MarketplaceItem, cta: PrimaryCta): strin
   if (cta.disabled) return null
   if (cta.kind === 'open' && item.installation.installed_resource_id) {
     if (item.resource_type === 'skill') {
-      return `/skills?detailId=${item.installation.installed_resource_id}`
+      return `/skills/${item.installation.installed_resource_id}/source`
     }
     if (item.resource_type === 'mcp') {
       return `/mcp-servers?detailId=${item.installation.installed_resource_id}`

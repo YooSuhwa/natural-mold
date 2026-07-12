@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SkillHistoryDetailPanel } from './skill-history-detail-panel'
+import { SkillRevisionDiffCard } from './skill-revision-diff-card'
 import {
   useRollbackSkillRevision,
   useSkillRevision,
@@ -26,14 +27,11 @@ function sortRevisionsNewestFirst(
 export function SkillHistoryTab({
   children,
   skillId,
-  onClose,
 }: {
   readonly children: SkillDetailTabRender
   readonly skillId: string
-  readonly onClose: () => void
 }) {
   const t = useTranslations('skill.detailDialog.history')
-  const common = useTranslations('skill.detailDialog')
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null)
   const [rollbackRevision, setRollbackRevision] = useState<SkillRevisionSummary | null>(null)
   const { data: revisions, isLoading } = useSkillRevisions(skillId)
@@ -126,25 +124,28 @@ export function SkillHistoryTab({
                 </article>
               ))}
             </div>
-            <SkillHistoryDetailPanel
-              revision={selectedRevision}
-              detail={selectedDetail}
-              currentRevisionId={currentRevisionId}
-              isLoading={isDetailLoading}
-              rollbackPending={rollback.isPending}
-              onRequestRollback={setRollbackRevision}
-            />
+            <div className="space-y-3">
+              <SkillHistoryDetailPanel
+                revision={selectedRevision}
+                detail={selectedDetail}
+                currentRevisionId={currentRevisionId}
+                isLoading={isDetailLoading}
+                rollbackPending={rollback.isPending}
+                onRequestRollback={setRollbackRevision}
+              />
+              {selectedRevision ? (
+                <SkillRevisionDiffCard
+                  skillId={skillId}
+                  revision={selectedRevision}
+                  detail={selectedDetail}
+                />
+              ) : null}
+            </div>
           </div>
         )}
       </>
     ),
-    footer: (
-      <>
-        <Button variant="outline" onClick={onClose}>
-          {common('close')}
-        </Button>
-      </>
-    ),
+    footer: null,
     overlay: (
       <DeleteConfirmDialog
         open={rollbackRevision !== null}

@@ -4,6 +4,8 @@ import type {
   SkillBuilderFileContent,
   SkillBuilderFilesResponse,
   SkillBuilderSession,
+  SkillBuilderSessionBrief,
+  SkillBuilderSessionListParams,
   SkillBuilderStartRequest,
   SkillDraftPackage,
 } from '@/lib/types/skill-builder'
@@ -14,6 +16,18 @@ export const skillBuilderApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  list: (params?: SkillBuilderSessionListParams) => {
+    const query = new URLSearchParams()
+    if (params?.skill_id) query.set('skill_id', params.skill_id)
+    if (params?.status) query.set('status', params.status)
+    if (params?.limit) query.set('limit', String(params.limit))
+    // URLSearchParams.size는 2023+ API(Safari<17 undefined) — 문자열 길이로 판정.
+    const encoded = query.toString()
+    return apiFetch<SkillBuilderSessionBrief[]>(
+      encoded ? `/api/skill-builder?${encoded}` : '/api/skill-builder',
+    )
+  },
 
   get: (sessionId: string) => apiFetch<SkillBuilderSession>(`/api/skill-builder/${sessionId}`),
 

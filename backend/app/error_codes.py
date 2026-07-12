@@ -72,6 +72,13 @@ def skill_revision_not_found() -> NotFoundError:
     return NotFoundError("SKILL_REVISION_NOT_FOUND", "스킬 이력을 찾을 수 없습니다")
 
 
+def skill_revision_snapshot_unavailable() -> ConflictError:
+    return ConflictError(
+        "SKILL_REVISION_SNAPSHOT_UNAVAILABLE",
+        "이 리비전의 스냅샷이 정리되어 되돌릴 수 없습니다",
+    )
+
+
 def skill_evaluation_set_not_found() -> NotFoundError:
     return NotFoundError("SKILL_EVALUATION_SET_NOT_FOUND", "스킬 평가 세트를 찾을 수 없습니다")
 
