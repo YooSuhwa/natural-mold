@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Sequence
-from datetime import UTC, datetime
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import HTTPException
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.agent_runtime import event_names
+from app.config import settings
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, RUN_TERMINAL_STATUSES, ConversationRun
@@ -473,6 +474,37 @@ async def mark_stale_active_runs(
     return marked
 
 
+async def sweep_stale_conversation_runs(
+    *,
+    session_factory: Callable[[], AsyncSession],
+) -> None:
+    """Mark active conversation runs stale after their heartbeat threshold.
+
+    BE-S9 — 본문은 ``app.scheduler``에서 이관. keep-cron-alive try/except 포함.
+    """
+    # conversation_run_worker imports this module — keep the import call-local.
+    from app.services.conversation_run_worker import get_run_task_registry
+
+    stale_before = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+        seconds=settings.chat_run_stale_after_seconds
+    )
+    try:
+        async with session_factory() as db:
+            registry = get_run_task_registry()
+            marked = await mark_stale_active_runs(
+                db,
+                stale_before=stale_before,
+                worker_instance_id=None,
+                include_workerless=True,
+                protected_run_ids=registry.active_run_ids(),
+            )
+            await db.commit()
+        if marked:
+            logger.warning("Marked %d stale conversation run(s)", marked)
+    except Exception:  # noqa: BLE001 — keep cron alive
+        logger.exception("Conversation run stale sweep failed; will retry next run")
+
+
 __all__ = [
     "ALLOWED_TRANSITIONS",
     "RUN_ACTIVE_STATUSES",
@@ -488,5 +520,6 @@ __all__ = [
     "latest_run_for_conversation",
     "mark_stale_active_runs",
     "request_cancel_run",
+    "sweep_stale_conversation_runs",
     "transition_run",
 ]
