@@ -1,17 +1,25 @@
-# Stage 2 — 레이어링·경계 ✅ 완료 (PR #295)
+# Stage 3 — 갓 모듈 분해 (한 PR, 항목별 커밋 + 항목별 리뷰)
 
-브랜치: `refactor/stage2-layering` (origin/main 기준), 한 PR = Stage 2 전체(항목 7–10), 항목별 커밋 + 항목별 리뷰.
+브랜치: `refactor/stage3-god-modules` (origin/main = 5c7a6c01 기준)
+원칙: 기능 변화 0, 순수 이동 + facade re-export, 항목당 작은 커밋, 항목 완료마다 code-review → 수정 커밋 → 다음 항목.
+검증(항목별): `ruff check` + 타깃 pytest → 커밋 전 `SKILL_EVALUATION_ENABLED=true pytest -q -n 4 --ignore=tests/integration`
+최종: integration 직렬(`-m integration` 필수) + 푸시 시 `SKILL_EVALUATION_ENABLED=true`
 
-- [x] BE-S7: credentials 라우터 OAuth → oauth_service (899bc1be)
-  - [x] 리뷰: 승인(Critical/High 0, Low 2) → [x] 수정: 교차 사용자 forbidden 회귀 테스트 (9dbf3ece)
-  - PR 본문 명시됨: start 에러 경로 commit→rollback 발산(정책상 의도)
-- [x] BE-S2: MCP/tools/models 서비스 레이어 신설 (0a0e4c81, 07bc3ba6, 939b876b)
-  - [x] 리뷰: 승인(발견 0, Low 2건 정보성 — 조치 불필요)
-- [x] BE-D3: audit record_self_event 래퍼 + 18곳 치환 (50fdb7c1)
-  - [x] 리뷰: Medium 2 → [x] 수정: finalize 누락 사이트 + 신원 컬럼 계약 테스트 (ba3e1493)
-- [x] BE-D7: 테스트 팩토리 + auth 세션 헬퍼 (5ac614b2)
-  - [x] 리뷰: 승인(Critical/High/Medium 0, Low 2건 정보성)
-- [x] 전체 검증: ruff 그린 / pytest 2668 passed (SKILL_EVALUATION_ENABLED=true) / integration 직렬 29 passed
-- [x] 푸시 → PR #295 → 플랜 문서 ✅ 갱신
-
-다음(Stage 3): BE-S1 chat_service 8-클러스터 분해 → BE-S3 install_service 분해.
+- [x] 0. 기준선: 2702 passed / 5 failed = 전부 SKILL_EVALUATION_ENABLED=false 기인(플래그 켜면 통과) → 실질 그린
+- [ ] 1. BE-S1 — chat_service.py(1810줄) → `app/services/chat/` 8-클러스터 분해 + facade
+  - interrupts / secrets / conversations / messages / usage / attachments / runtime_context
+  - [ ] 구현 커밋 → [ ] 리뷰 → [ ] 수정 커밋
+- [ ] 2. BE-S3 — install_service.py(1365줄) → `app/marketplace/install/` 분해 + facade 디스패처
+  - snapshot / bindings / skill / mcp / agent_blueprint
+  - [ ] 구현 커밋 → [ ] 리뷰 → [ ] 수정 커밋
+- [ ] 3. BE-S5 — write_tools.py(1091줄) → 그룹별 서브 빌더 분해 (tool_links / composition / agent_config / cron)
+  - [ ] 구현 커밋 → [ ] 리뷰 → [ ] 수정 커밋
+- [ ] 4. BE-S8 — artifact_service.py(1035줄) → `app/services/artifacts/` (recorder / library / content / summary) + facade
+  - [ ] 구현 커밋 → [ ] 리뷰 → [ ] 수정 커밋
+- [ ] 5. BE-S9 — scheduler.py(805줄) 잡 로직 → 도메인 서비스 이관, scheduler는 등록만
+  - [ ] 구현 커밋 → [ ] 리뷰 → [ ] 수정 커밋
+- [ ] 6. BE-S10 — runtime_component_builder.py(930줄) → `agent_runtime/runtime/` 5-관심사 분해
+  - models / reliability / interrupts / prompts / memory_context
+  - [ ] 구현 커밋 → [ ] 리뷰 → [ ] 수정 커밋
+- [ ] 7. 최종 전체 검증 (ruff + full pytest + integration 직렬) + 플랜 문서 갱신
+- [ ] 8. 푸시 (SKILL_EVALUATION_ENABLED=true) + PR 생성
