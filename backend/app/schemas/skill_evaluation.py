@@ -81,6 +81,13 @@ class SkillEvaluationRunEstimate(BaseModel):
     uses_baseline_comparison: bool
 
 
+class SkillEvaluationRunCreateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    # False skips the measured without-arm (2 calls/case instead of 3).
+    baseline_comparison: bool = True
+
+
 class SkillEvaluationRunCancelRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 

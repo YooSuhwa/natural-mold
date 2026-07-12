@@ -36,6 +36,8 @@ class SkillEvaluationContext:
     evals: Sequence[JsonValue]
     runtime_context: SkillToolContext
     cancellation: EvalCancellationProbe = field(default_factory=NoopEvalCancellationProbe)
+    # run_config.baseline_comparison — False skips the without-arm (Phase 3 §4).
+    baseline_comparison: bool = True
 
 
 @dataclass(frozen=True, slots=True)

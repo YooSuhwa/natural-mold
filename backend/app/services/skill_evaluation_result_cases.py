@@ -75,6 +75,9 @@ def _case_result_row(*, index: int, eval_case: JsonValue, raw: JsonObject) -> Js
         "evidence": string_or_none(raw.get("evidence")),
         "grader_feedback": string_or_none(raw.get("grader_feedback")),
         "review_status": review_status(raw.get("review_status")),
+        # llm-2 measured arms (Phase 3 §4) — None for legacy runners.
+        "with_answer_preview": string_or_none(raw.get("with_answer_preview")),
+        "without_answer_preview": string_or_none(raw.get("without_answer_preview")),
     }
     for field in LEGACY_CASE_RESULT_FIELDS:
         value = raw.get(field)

@@ -158,6 +158,8 @@ def test_case_results_v2_adds_review_and_metric_defaults() -> None:
             "evidence": None,
             "grader_feedback": None,
             "review_status": "unreviewed",
+            "with_answer_preview": None,
+            "without_answer_preview": None,
         }
     ]
 

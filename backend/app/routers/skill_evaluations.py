@@ -22,6 +22,7 @@ from app.routers.skill_evaluations_support import (
 )
 from app.schemas.skill_evaluation import (
     SkillEvaluationRunCancelRequest,
+    SkillEvaluationRunCreateRequest,
     SkillEvaluationRunEstimate,
     SkillEvaluationRunResponse,
     SkillEvaluationSetCreate,
@@ -149,6 +150,7 @@ async def create_skill_evaluation_run(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
     request: Request,
+    data: SkillEvaluationRunCreateRequest | None = None,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -188,11 +190,13 @@ async def create_skill_evaluation_run(
     except SkillEvaluationQueueFull as exc:
         raise skill_evaluation_queue_full() from exc
     reserved_slot = True
+    baseline_comparison = data.baseline_comparison if data is not None else True
     run = await skill_evaluation_service.create_run(
         db,
         user_id=user.id,
         skill=skill,
         evaluation_set=evaluation_set,
+        run_config=(None if baseline_comparison else {"baseline_comparison": False}),
     )
     try:
         await record_evaluation_audit(

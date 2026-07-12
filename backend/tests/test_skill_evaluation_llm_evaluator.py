@@ -48,8 +48,8 @@ async def test_llm_evaluator_grades_cases_with_system_model(
     result = await evaluator.evaluate(db, context)
 
     assert result.runner_model == "fake-eval-model"
-    assert result.runner_version == "llm-1"
-    assert result.grader_prompt_version == "llm-grader-1"
+    assert result.runner_version == "llm-2"
+    assert result.grader_prompt_version == "llm-grader-2"
     assert result.summary["case_count"] == 1
     assert result.summary["passed_count"] == 1
     assert result.summary["pass_rate"] == 1
@@ -81,7 +81,7 @@ async def test_worker_persists_llm_evaluation_result(
     assert completed is not None
     assert completed.status == "completed"
     assert completed.runner_model == "fake-eval-model"
-    assert completed.runner_version == "llm-1"
+    assert completed.runner_version == "llm-2"
     assert completed.summary is not None
     assert completed.summary["pass_rate"] == 1
     assert completed.summary["schema_version"] == 2
@@ -91,9 +91,10 @@ async def test_worker_persists_llm_evaluation_result(
     # Phase 3 §5.1 — measured usage rollup persists on the run and the
     # skill-axis ledger gets one evaluation_run event. FakeListChatModel
     # reports no usage_metadata, so tokens stay 0 and cost stays unknown.
+    # llm-2 makes 3 calls for the single case: with-arm, without-arm, grader.
     assert completed.usage is not None
     assert completed.usage["measured"] is True
-    assert completed.usage["model_calls"] == 1
+    assert completed.usage["model_calls"] == 3
     assert completed.usage["cost_usd"] is None
 
     from sqlalchemy import select
@@ -127,15 +128,11 @@ async def test_llm_evaluator_sanitizes_non_finite_scores(
     evaluator = LlmSkillEvaluationEvaluator.for_model(
         _fake_model_with_payload(
             {
-                "case_results": [
-                    {
-                        "case_index": 0,
-                        "score": float("nan"),
-                        "baseline_score": float("inf"),
-                        "grader_feedback": "Bad numeric output.",
-                        "evidence": "The grader returned non-finite numbers.",
-                    }
-                ]
+                "case_index": 0,
+                "score": float("nan"),
+                "baseline_score": float("inf"),
+                "grader_feedback": "Bad numeric output.",
+                "evidence": "The grader returned non-finite numbers.",
             }
         ),
         model_name="fake-eval-model",
@@ -145,7 +142,10 @@ async def test_llm_evaluator_sanitizes_non_finite_scores(
 
     assert result.case_results is not None
     assert result.case_results[0]["score"] == 0.0
-    assert result.case_results[0]["baseline_score"] == 0.0
+    # Non-finite baseline collapses to "unknown", not a fake 0.0 measurement
+    # (llm-2 feeds raw grader rows straight into the v2 schema normalizer).
+    assert result.case_results[0]["baseline_score"] is None
+    assert result.case_results[0]["baseline_status"] is None
     assert result.case_results[0]["status"] == "failed"
     assert result.benchmark is not None
     json.dumps(result.summary, allow_nan=False)
@@ -183,26 +183,17 @@ async def _create_llm_run(
 
 
 def _fake_model() -> FakeListChatModel:
+    # llm-2 per-case grader shape — the same response also serves as the
+    # with/without arm answers (FakeListChatModel repeats its last response).
     return _fake_model_with_payload(
         {
-            "case_results": [
-                {
-                    "case_index": 0,
-                    "status": "passed",
-                    "score": 0.92,
-                    "baseline_status": "failed",
-                    "baseline_score": 0.15,
-                    "grader_feedback": "SKILL.md gives the needed extraction behavior.",
-                    "evidence": "The skill explicitly targets meeting action items.",
-                }
-            ],
-            "eval_feedback": [
-                {
-                    "case_index": 0,
-                    "severity": "info",
-                    "message": "Strong match.",
-                }
-            ],
+            "case_index": 0,
+            "status": "passed",
+            "score": 0.92,
+            "baseline_status": "failed",
+            "baseline_score": 0.15,
+            "grader_feedback": "SKILL.md gives the needed extraction behavior.",
+            "evidence": "The skill explicitly targets meeting action items.",
         }
     )
 
