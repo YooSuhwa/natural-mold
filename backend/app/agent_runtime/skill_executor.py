@@ -179,6 +179,21 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             err = stderr.decode("utf-8", errors="replace")
             result += f"\nSTDERR: {err}"
 
+        # Phase 3 skill-axis usage (spec §5.3) — count the sandbox execution
+        # for real chat runs only. Evaluation runs and builder draft tests set
+        # a different audit_kind (and drafts carry no persisted skill row), so
+        # they never reach this ledger. A nonzero exit still executed the
+        # script — the count reflects sandbox executions, not successes.
+        if ctx.audit_kind == "execute_in_skill" and ctx.user_id is not None:
+            from app.services.skill_usage_service import record_chat_execution_nonfatal
+
+            await record_chat_execution_nonfatal(
+                skill_id=descriptor.id,
+                user_id=ctx.user_id,
+                thread_id=ctx.thread_id,
+                agent_id=ctx.agent_id,
+            )
+
         # IMAGE: 절대경로 → API URL 자동 변환
         if _path_re and str(output_dir) in result:
             result = _path_re.sub(lambda m: api_file_prefix + m.group(1), result)
