@@ -27,6 +27,7 @@ from app.schemas.skill_evaluation import (
     SkillEvaluationRunResponse,
     SkillEvaluationSetCreate,
     SkillEvaluationSetResponse,
+    SkillEvaluationVersionStatsResponse,
 )
 from app.services import skill_evaluation_service
 from app.services.skill_evaluation_worker import (
@@ -75,6 +76,32 @@ async def create_skill_evaluation(
     await db.commit()
     await db.refresh(row)
     return SkillEvaluationSetResponse.model_validate(row)
+
+
+# NOTE: literal route registered before /{evaluation_set_id} so the path
+# segment "version-stats" never reaches the UUID parser.
+@router.get("/version-stats", response_model=list[SkillEvaluationVersionStatsResponse])
+async def get_skill_evaluation_version_stats(
+    skill_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> list[SkillEvaluationVersionStatsResponse]:
+    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    stats = await skill_evaluation_service.version_stats(db, skill=skill, user_id=user.id)
+    return [
+        SkillEvaluationVersionStatsResponse(
+            skill_version=item.skill_version,
+            content_hash=item.content_hash,
+            run_count=item.run_count,
+            latest_pass_rate=item.latest_pass_rate,
+            avg_pass_rate=item.avg_pass_rate,
+            latest_pass_rate_delta=item.latest_pass_rate_delta,
+            latest_measured=item.latest_measured,
+            first_run_at=item.first_run_at,
+            last_run_at=item.last_run_at,
+        )
+        for item in stats
+    ]
 
 
 @router.get("/{evaluation_set_id}", response_model=SkillEvaluationSetResponse)

@@ -81,6 +81,20 @@ class SkillEvaluationRunEstimate(BaseModel):
     uses_baseline_comparison: bool
 
 
+class SkillEvaluationVersionStatsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    skill_version: str | None = None
+    content_hash: str | None = None
+    run_count: int = Field(..., ge=0)
+    latest_pass_rate: float | None = None
+    avg_pass_rate: float | None = None
+    latest_pass_rate_delta: float | None = None
+    latest_measured: bool = False
+    first_run_at: datetime
+    last_run_at: datetime
+
+
 class SkillEvaluationRunCreateRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 

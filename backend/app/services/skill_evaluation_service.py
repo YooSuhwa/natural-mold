@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -275,6 +276,91 @@ async def create_run(
     db.add(run)
     await db.flush()
     return run
+
+
+@dataclass(frozen=True, slots=True)
+class SkillVersionStats:
+    skill_version: str | None
+    content_hash: str | None
+    run_count: int
+    latest_pass_rate: float | None
+    avg_pass_rate: float | None
+    latest_pass_rate_delta: float | None
+    latest_measured: bool
+    first_run_at: datetime
+    last_run_at: datetime
+
+
+async def version_stats(
+    db: AsyncSession,
+    *,
+    skill: Skill,
+    user_id: uuid.UUID,
+) -> list[SkillVersionStats]:
+    """Completed runs grouped by (skill_version, content_hash) — Phase 3 §6.
+
+    ``pass_rate`` lives inside the summary JSON, so grouping happens in
+    Python; per-skill run counts are small (worker queue is bounded).
+    Ordered chronologically by each version's last run.
+    """
+
+    rows = (
+        (
+            await db.execute(
+                select(SkillEvaluationRun)
+                .where(
+                    SkillEvaluationRun.skill_id == skill.id,
+                    SkillEvaluationRun.user_id == user_id,
+                    SkillEvaluationRun.status == "completed",
+                )
+                .order_by(SkillEvaluationRun.created_at.asc(), SkillEvaluationRun.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    groups: dict[tuple[str | None, str | None], list[SkillEvaluationRun]] = {}
+    for run in rows:
+        groups.setdefault((run.skill_version, run.skill_content_hash), []).append(run)
+
+    stats = [
+        _version_group_stats(version, content_hash, runs)
+        for (version, content_hash), runs in groups.items()
+    ]
+    stats.sort(key=lambda item: item.last_run_at)
+    return stats
+
+
+def _version_group_stats(
+    version: str | None,
+    content_hash: str | None,
+    runs: list[SkillEvaluationRun],
+) -> SkillVersionStats:
+    pass_rates = [rate for rate in (_run_pass_rate(run) for run in runs) if rate is not None]
+    latest = runs[-1]
+    latest_benchmark = latest.benchmark if isinstance(latest.benchmark, dict) else {}
+    delta = latest_benchmark.get("pass_rate_delta")
+    return SkillVersionStats(
+        skill_version=version,
+        content_hash=content_hash,
+        run_count=len(runs),
+        latest_pass_rate=_run_pass_rate(latest),
+        avg_pass_rate=(round(sum(pass_rates) / len(pass_rates), 6) if pass_rates else None),
+        latest_pass_rate_delta=(
+            float(delta) if isinstance(delta, int | float) and not isinstance(delta, bool) else None
+        ),
+        latest_measured=latest_benchmark.get("measured") is True,
+        first_run_at=runs[0].created_at,
+        last_run_at=latest.created_at,
+    )
+
+
+def _run_pass_rate(run: SkillEvaluationRun) -> float | None:
+    summary = run.summary if isinstance(run.summary, dict) else {}
+    value = summary.get("pass_rate")
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return float(value)
+    return None
 
 
 async def cancel_run(
