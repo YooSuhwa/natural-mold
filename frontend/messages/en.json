@@ -2621,12 +2621,6 @@
           "averageDuration": "Average {seconds}s",
           "tokenDelta": "Tokens {count}"
         },
-        "benchmarkTitle": "Benchmark deltas",
-        "benchmark": {
-          "durationDelta": "Duration {value}ms",
-          "tokenDelta": "Tokens {count}",
-          "qualityDelta": "Quality {rate}%"
-        },
         "caseResultsTitle": "Case results",
         "noCaseResults": "No case results recorded.",
         "errorTitle": "Failure reason",

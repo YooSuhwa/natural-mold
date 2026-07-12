@@ -2621,12 +2621,6 @@
           "averageDuration": "평균 {seconds}초",
           "tokenDelta": "토큰 {count}"
         },
-        "benchmarkTitle": "벤치마크 변화",
-        "benchmark": {
-          "durationDelta": "소요 시간 {value}ms",
-          "tokenDelta": "토큰 {count}",
-          "qualityDelta": "품질 {rate}%"
-        },
         "caseResultsTitle": "케이스 결과",
         "noCaseResults": "기록된 케이스 결과가 없습니다.",
         "errorTitle": "실패 원인",

@@ -136,7 +136,9 @@ async def get_skill_evaluation(
 async def estimate_skill_evaluation_run(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
-    baseline_comparison: bool = True,
+    # Same request shape as run creation so a future baseline toggle sends the
+    # flag to ONE place (avoids the estimate/create divergence trap).
+    data: SkillEvaluationRunCreateRequest | None = None,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -151,7 +153,7 @@ async def estimate_skill_evaluation_run(
     return await skill_evaluation_service.estimate_run_priced(
         db,
         evaluation_set,
-        uses_baseline_comparison=baseline_comparison,
+        uses_baseline_comparison=(data.baseline_comparison if data is not None else True),
     )
 
 
