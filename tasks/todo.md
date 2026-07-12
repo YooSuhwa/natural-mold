@@ -6,9 +6,8 @@
 최종: integration 직렬(`-m integration` 필수) + 푸시 시 `SKILL_EVALUATION_ENABLED=true`
 
 - [x] 0. 기준선: 2702 passed / 5 failed = 전부 SKILL_EVALUATION_ENABLED=false 기인(플래그 켜면 통과) → 실질 그린
-- [ ] 1. BE-S1 — chat_service.py(1810줄) → `app/services/chat/` 8-클러스터 분해 + facade
-  - interrupts / secrets / conversations / messages / usage / attachments / runtime_context
-  - [ ] 구현 커밋 → [ ] 리뷰 → [ ] 수정 커밋
+- [x] 1. BE-S1 — chat_service.py(1810줄→104줄 facade) → `app/services/chat/` 7모듈 분해 (a901b319)
+  - [x] 구현 커밋 → [x] 리뷰: 승인, 발견 0 (AST 전수 대조로 순수 이동 확증, 함수-로컬 import 4곳 유지 사유 실증) → 수정 불필요
 - [ ] 2. BE-S3 — install_service.py(1365줄) → `app/marketplace/install/` 분해 + facade 디스패처
   - snapshot / bindings / skill / mcp / agent_blueprint
   - [ ] 구현 커밋 → [ ] 리뷰 → [ ] 수정 커밋
