@@ -21,18 +21,24 @@ and matches no value heuristic, so only value-based replacement can mask it.
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.credentials import service as credential_service
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.mcp_server import McpServer
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.model import Model
+from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
 from app.routers.conversation_agent_protocol_state_snapshot import (
+    collect_state_secret_values,
     load_thread_state_snapshot,
     serialize_langchain_message,
 )
@@ -226,3 +232,230 @@ async def test_collect_conversation_secrets_includes_fallback_base_url_userinfo(
 
     assert "fallbackpw99999" in secrets, "fallback base_url password must be collected"
     assert "fbuser" in secrets
+
+
+# ---------------------------------------------------------------------------
+# collect_conversation_secret_values — one assert per collection source, so a
+# partial-source-removal mutation (e.g. dropping only the tool-credentials
+# block) fails exactly the test that pins that source instead of slipping
+# through a single-source assertion (under-masking leak).
+# ---------------------------------------------------------------------------
+
+
+class _SeededSecretSources(NamedTuple):
+    conversation: Conversation
+    llm_api_key: str
+    tool_credential_secret: str
+    mcp_header_token: str
+    base_url_password: str
+
+
+async def _seed_conversation_with_secret_sources(db: AsyncSession) -> _SeededSecretSources:
+    """Seed one agent wiring every collection source with a unique sentinel.
+
+    Self-contained on purpose: unique names/values per call so the tests
+    never depend on global state (xdist flake guard — see the fallback test's
+    Model-lookup history). Sources:
+
+    * LLM ``api_key`` via ``agent.llm_credential`` (tier-1 resolution),
+    * tool config plaintext ``credentials`` (Tool → Credential),
+    * MCP ``mcp_transport_headers`` (static server headers, no credential),
+    * primary model ``base_url`` userinfo.
+    """
+
+    unique = uuid.uuid4().hex[:10]
+    llm_api_key = f"sk-llm-{uuid.uuid4().hex}"
+    tool_credential_secret = f"Zq{uuid.uuid4().hex[:16]}ToolVal"
+    mcp_header_token = f"Zq{uuid.uuid4().hex[:16]}McpVal"
+    base_url_password = f"primarypw{uuid.uuid4().hex[:12]}"
+
+    user = await db.get(User, TEST_USER_ID)
+    if user is None:
+        user = User(id=TEST_USER_ID, email=f"collect-{unique}@test.dev", name="Collect")
+        db.add(user)
+        await db.flush()
+
+    llm_cred = await credential_service.create(
+        db,
+        user_id=TEST_USER_ID,
+        definition_key="openai",
+        name=f"collect-llm-{unique}",
+        data={"api_key": llm_api_key},
+    )
+    tool_cred = await credential_service.create(
+        db,
+        user_id=TEST_USER_ID,
+        definition_key="naver_search",
+        name=f"collect-naver-{unique}",
+        data={"client_id": "nv-client-id", "client_secret": tool_credential_secret},
+    )
+
+    model = Model(
+        provider="openai_compatible",
+        model_name=f"local-llm-{unique}",
+        display_name="Collect Primary",
+        base_url=f"https://primaryuser:{base_url_password}@self-hosted.example/v1",
+    )
+    db.add(model)
+    await db.flush()
+
+    agent = Agent(
+        user_id=TEST_USER_ID,
+        name=f"Collect Agent {unique}",
+        system_prompt="You are helpful.",
+        model_id=model.id,
+        llm_credential_id=llm_cred.id,
+    )
+    db.add(agent)
+    await db.flush()
+
+    tool = Tool(
+        user_id=TEST_USER_ID,
+        name=f"Collect Naver Blog {unique}",
+        definition_key="naver_search_blog",
+        parameters={},
+        credential_id=tool_cred.id,
+    )
+    db.add(tool)
+    await db.flush()
+    db.add(AgentToolLink(agent_id=agent.id, tool_id=tool.id))
+
+    server = McpServer(
+        user_id=TEST_USER_ID,
+        name=f"Collect MCP {unique}",
+        transport="streamable_http",
+        url="http://localhost:18010/mcp",
+        headers={"X-Api-Token": mcp_header_token},
+        env_vars={},
+    )
+    db.add(server)
+    await db.flush()
+    mcp_tool = McpTool(
+        server_id=server.id,
+        name=f"get_thing_{unique}",
+        description="thing",
+        input_schema={"type": "object"},
+        enabled=True,
+    )
+    db.add(mcp_tool)
+    await db.flush()
+    db.add(AgentMcpToolLink(agent_id=agent.id, mcp_tool_id=mcp_tool.id))
+
+    conversation = Conversation(agent_id=agent.id, title=f"Collect Conversation {unique}")
+    db.add(conversation)
+    await db.commit()
+    return _SeededSecretSources(
+        conversation=conversation,
+        llm_api_key=llm_api_key,
+        tool_credential_secret=tool_credential_secret,
+        mcp_header_token=mcp_header_token,
+        base_url_password=base_url_password,
+    )
+
+
+@pytest.mark.asyncio
+async def test_collect_conversation_secrets_includes_llm_api_key(db: AsyncSession) -> None:
+    """Source ①: the agent's resolved LLM ``api_key`` must be collected."""
+
+    from app.services.chat_service import collect_conversation_secret_values
+
+    seeded = await _seed_conversation_with_secret_sources(db)
+    secrets = await collect_conversation_secret_values(db, seeded.conversation)
+    assert seeded.llm_api_key in secrets, "LLM api_key must be collected"
+
+
+@pytest.mark.asyncio
+async def test_collect_conversation_secrets_includes_tool_credential_values(
+    db: AsyncSession,
+) -> None:
+    """Source ②: each tool config's decrypted plaintext ``credentials``."""
+
+    from app.services.chat_service import collect_conversation_secret_values
+
+    seeded = await _seed_conversation_with_secret_sources(db)
+    secrets = await collect_conversation_secret_values(db, seeded.conversation)
+    assert seeded.tool_credential_secret in secrets, "tool credential values must be collected"
+
+
+@pytest.mark.asyncio
+async def test_collect_conversation_secrets_includes_mcp_transport_headers(
+    db: AsyncSession,
+) -> None:
+    """Source ③: MCP transport header values (static server headers)."""
+
+    from app.services.chat_service import collect_conversation_secret_values
+
+    seeded = await _seed_conversation_with_secret_sources(db)
+    secrets = await collect_conversation_secret_values(db, seeded.conversation)
+    assert seeded.mcp_header_token in secrets, "MCP transport header values must be collected"
+
+
+@pytest.mark.asyncio
+async def test_collect_conversation_secrets_includes_model_base_url_userinfo(
+    db: AsyncSession,
+) -> None:
+    """Source ④: userinfo embedded in the primary model's ``base_url``."""
+
+    from app.services.chat_service import collect_conversation_secret_values
+
+    seeded = await _seed_conversation_with_secret_sources(db)
+    secrets = await collect_conversation_secret_values(db, seeded.conversation)
+    assert seeded.base_url_password in secrets, "primary base_url password must be collected"
+    assert "primaryuser" in secrets, "primary base_url username must be collected"
+
+
+# ---------------------------------------------------------------------------
+# End-to-end read-path lock: facade → collect → redact. Mirrors the
+# GET /threads/{id}/state handler pair (conversation_agent_protocol.py):
+# ``collect_state_secret_values`` (which imports through the
+# ``app.services.chat_service`` facade) feeds ``load_thread_state_snapshot``.
+# Catches BOTH a facade re-export removal (ImportError at call time) and a
+# neutered collector (empty set → the sentinel leaks into the response).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_thread_state_read_path_masks_collected_secret_end_to_end(
+    monkeypatch, db: AsyncSession
+) -> None:
+    seeded = await _seed_conversation_with_secret_sources(db)
+    conversation = seeded.conversation
+    sentinel = seeded.tool_credential_secret
+
+    # A persisted turn whose tool_call args echo the tool credential — opaque
+    # value under an innocuous key, so key/value heuristics can't mask it.
+    checkpoint = _CheckpointSlim(
+        checkpoint_id="ck-leaf",
+        parent_checkpoint_id=None,
+        messages=[
+            HumanMessage(id="user-1", content="call the tool"),
+            AIMessage(
+                id="assistant-1",
+                content="calling the tool now",
+                tool_calls=[
+                    {
+                        "name": "naver_search_blog",
+                        "args": {"note": f"looked up {sentinel} for you"},
+                        "id": "call-1",
+                    }
+                ],
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: _FakeCheckpointer([checkpoint]),
+    )
+
+    # Negative control: without the collected set the sentinel survives —
+    # proving the masking assertion below can only pass via the
+    # collect → redact chain (no heuristic tautology).
+    unmasked = await load_thread_state_snapshot(conversation, db=db)
+    assert sentinel in json.dumps(unmasked.values)
+
+    collected = await collect_state_secret_values(db, conversation)
+    snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=collected)
+
+    rendered = json.dumps(snapshot.values)
+    assert sentinel not in rendered, "collected tool secret leaked through the state read path"
+    assert "<redacted>" in rendered
