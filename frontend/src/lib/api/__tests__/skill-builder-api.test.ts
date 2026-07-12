@@ -44,7 +44,7 @@ describe('skill builder APIs', () => {
     }
 
     await skillEvaluationsApi.createSet('skill-1', request)
-    await skillEvaluationsApi.createRun('skill-1', 'set-1')
+    await skillEvaluationsApi.createRun('skill-1', 'set-1', true)
 
     expect(apiFetch).toHaveBeenCalledWith('/api/skills/skill-1/evaluations', {
       method: 'POST',
@@ -52,6 +52,7 @@ describe('skill builder APIs', () => {
     })
     expect(apiFetch).toHaveBeenCalledWith('/api/skills/skill-1/evaluations/set-1/runs', {
       method: 'POST',
+      body: JSON.stringify({ baseline_comparison: true }),
     })
   })
 

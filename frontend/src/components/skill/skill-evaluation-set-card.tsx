@@ -83,12 +83,17 @@ export function SkillEvaluationSetCard({
   const cancelRun = useCancelSkillEvaluationRun(skillId, set.id)
   const [estimate, setEstimate] = useState<SkillEvaluationRunEstimate | null>(null)
   const [estimateOpen, setEstimateOpen] = useState(false)
+  // Baseline comparison runs an extra "without-skill" arm per case (3 calls
+  // instead of 2). The estimate is refetched whenever it changes so the shown
+  // call count / cost / duration stay honest.
+  const [baselineComparison, setBaselineComparison] = useState(true)
   const latestRun = set.latest_run
   const canCancel = latestRun ? CANCELLABLE_RUN_STATUS[latestRun.status] : false
   const isMutating = runAgain.isPending || estimateRun.isPending || cancelRun.isPending
 
   function requestRunAgain(): void {
-    estimateRun.mutate(undefined, {
+    setBaselineComparison(true)
+    estimateRun.mutate(true, {
       onSuccess: (nextEstimate) => {
         setEstimate(nextEstimate)
         setEstimateOpen(true)
@@ -96,8 +101,15 @@ export function SkillEvaluationSetCard({
     })
   }
 
+  function handleBaselineComparisonChange(next: boolean): void {
+    setBaselineComparison(next)
+    estimateRun.mutate(next, {
+      onSuccess: (nextEstimate) => setEstimate(nextEstimate),
+    })
+  }
+
   function confirmRunAgain(): void {
-    runAgain.mutate(undefined, {
+    runAgain.mutate(baselineComparison, {
       onSuccess: () => setEstimateOpen(false),
     })
   }
@@ -176,6 +188,9 @@ export function SkillEvaluationSetCard({
         setName={set.name}
         estimate={estimate}
         isPending={runAgain.isPending}
+        isEstimating={estimateRun.isPending}
+        baselineComparison={baselineComparison}
+        onBaselineComparisonChange={handleBaselineComparisonChange}
         onOpenChange={setEstimateOpen}
         onConfirm={confirmRunAgain}
       />

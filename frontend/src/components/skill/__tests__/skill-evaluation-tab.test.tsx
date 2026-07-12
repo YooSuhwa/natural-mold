@@ -9,7 +9,7 @@ const mockUseSkillEvaluationSets = vi.fn()
 const mockUseSkillEvaluationRuns = vi.fn()
 const mockEstimateRun = vi.fn(
   (
-    _variables: undefined,
+    _baselineComparison: boolean,
     options?: { readonly onSuccess?: (data: SkillEvaluationRunEstimate) => void },
   ) => {
     options?.onSuccess?.(evaluationEstimate)
@@ -178,13 +178,49 @@ describe('SkillEvaluationTab', () => {
     await user.click(screen.getByRole('button', { name: '품질 평가 평가 다시 실행' }))
 
     expect(mockEstimateRun).toHaveBeenCalledOnce()
+    // The default run keeps baseline comparison on.
+    expect(mockEstimateRun).toHaveBeenLastCalledWith(true, expect.anything())
     expect(mockCreateRun).not.toHaveBeenCalled()
     expect(screen.getByRole('alertdialog', { name: '평가 실행 확인' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '평가 실행' }))
 
     expect(mockCreateRun).toHaveBeenCalledOnce()
+    expect(mockCreateRun).toHaveBeenLastCalledWith(true, expect.anything())
     expect(mockCancelRun).not.toHaveBeenCalled()
+  })
+
+  it('re-estimates and runs without baseline comparison when the toggle is turned off', async () => {
+    const user = userEvent.setup()
+    mockUseSkillEvaluationSets.mockReturnValue({
+      data: [
+        buildEvaluationSet({
+          latest_run: {
+            id: 'run-baseline',
+            skill_id: 'skill-1',
+            evaluation_set_id: 'set-1',
+            status: 'completed',
+            summary: { pass_rate: 0.92 },
+            created_at: '2026-06-01T00:00:00Z',
+            updated_at: '2026-06-01T00:01:00Z',
+            completed_at: '2026-06-01T00:01:00Z',
+          },
+        }),
+      ],
+      isLoading: false,
+    })
+
+    render(<SkillEvaluationTab skillId="skill-1" />)
+
+    await user.click(screen.getByRole('button', { name: '품질 평가 평가 다시 실행' }))
+    expect(mockEstimateRun).toHaveBeenLastCalledWith(true, expect.anything())
+
+    await user.click(screen.getByTestId('estimate-baseline-toggle'))
+    // Toggling off refetches the estimate so the shown numbers stay honest.
+    expect(mockEstimateRun).toHaveBeenLastCalledWith(false, expect.anything())
+
+    await user.click(screen.getByRole('button', { name: '평가 실행' }))
+    expect(mockCreateRun).toHaveBeenLastCalledWith(false, expect.anything())
   })
 
   it('opens credentials instead of estimating a run when required credentials are missing', async () => {

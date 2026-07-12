@@ -106,10 +106,10 @@ describe('skill builder hooks', () => {
     })
 
     await act(async () => {
-      await result.current.mutateAsync()
+      await result.current.mutateAsync(true)
     })
 
-    expect(skillEvaluationsApi.createRun).toHaveBeenCalledWith('skill-1', 'set-1')
+    expect(skillEvaluationsApi.createRun).toHaveBeenCalledWith('skill-1', 'set-1', true)
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['skills', 'skill-1', 'evaluations'] })
     })

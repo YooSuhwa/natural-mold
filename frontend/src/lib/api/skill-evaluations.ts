@@ -23,18 +23,22 @@ export const skillEvaluationsApi = {
   getSet: (skillId: string, evaluationSetId: string) =>
     apiFetch<SkillEvaluationSet>(`/api/skills/${skillId}/evaluations/${evaluationSetId}`),
 
-  estimateRun: (skillId: string, evaluationSetId: string) =>
+  estimateRun: (skillId: string, evaluationSetId: string, baselineComparison: boolean) =>
     apiFetch<SkillEvaluationRunEstimate>(
       `/api/skills/${skillId}/evaluations/${evaluationSetId}/estimate`,
-      { method: 'POST' },
+      {
+        method: 'POST',
+        body: JSON.stringify({ baseline_comparison: baselineComparison }),
+      },
     ),
 
   listRuns: (skillId: string, evaluationSetId: string) =>
     apiFetch<SkillEvaluationRun[]>(`/api/skills/${skillId}/evaluations/${evaluationSetId}/runs`),
 
-  createRun: (skillId: string, evaluationSetId: string) =>
+  createRun: (skillId: string, evaluationSetId: string, baselineComparison: boolean) =>
     apiFetch<SkillEvaluationRun>(`/api/skills/${skillId}/evaluations/${evaluationSetId}/runs`, {
       method: 'POST',
+      body: JSON.stringify({ baseline_comparison: baselineComparison }),
     }),
 
   cancelRun: (

@@ -260,18 +260,21 @@ async function mockPhase3Apis(page: import('@playwright/test').Page) {
     }
     if (pathName === `/api/skills/${SKILL_ID}/evaluations/${SET_ID}/estimate`) {
       state.estimateRequests += 1
+      const body = route.request().postDataJSON() as { baseline_comparison?: boolean } | null
+      const baseline = body?.baseline_comparison ?? true
       return route.fulfill({
         json: {
           case_count: 2,
-          model_call_count: 6,
-          estimated_seconds: 24,
+          // 3 arms/case with baseline, 2 without (Phase 3 §4).
+          model_call_count: baseline ? 6 : 4,
+          estimated_seconds: baseline ? 24 : 16,
           timeout_seconds: 180,
           estimated_tokens_in: 5200,
           estimated_tokens_out: 2400,
-          estimated_cost_usd: 0.0231,
+          estimated_cost_usd: baseline ? 0.0231 : 0.0154,
           pricing_available: true,
           runner_model: 'scripted-eval-model',
-          uses_baseline_comparison: true,
+          uses_baseline_comparison: baseline,
         },
       })
     }
@@ -380,5 +383,20 @@ test.describe('Skill studio phase 3 — measured evaluation surfaces', () => {
     await page.getByRole('button', { name: /다시 실행/ }).first().click()
     await expect(page.getByTestId('estimate-cost')).toContainText('$0.0231')
     await expect(page.getByText('scripted-eval-model')).toBeVisible()
+  })
+
+  test('baseline toggle re-estimates with a cheaper 2-arm run', async ({ page }) => {
+    await mockPhase3Apis(page)
+    await page.goto(`/skills/${SKILL_ID}/evaluation`)
+
+    await page.getByRole('button', { name: /다시 실행/ }).first().click()
+    const toggle = page.getByTestId('estimate-baseline-toggle')
+    await expect(toggle).toBeChecked()
+    await expect(page.getByTestId('estimate-cost')).toContainText('$0.0231')
+
+    await toggle.click()
+    await expect(toggle).not.toBeChecked()
+    // The refetched estimate reflects the skipped without-arm.
+    await expect(page.getByTestId('estimate-cost')).toContainText('$0.0154')
   })
 })

@@ -92,14 +92,16 @@ export function useCreateSkillEvaluationSet(skillId: string) {
 
 export function useEstimateSkillEvaluationRun(skillId: string, evaluationSetId: string) {
   return useMutation({
-    mutationFn: () => skillEvaluationsApi.estimateRun(skillId, evaluationSetId),
+    mutationFn: (baselineComparison: boolean) =>
+      skillEvaluationsApi.estimateRun(skillId, evaluationSetId, baselineComparison),
   })
 }
 
 export function useCreateSkillEvaluationRun(skillId: string, evaluationSetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => skillEvaluationsApi.createRun(skillId, evaluationSetId),
+    mutationFn: (baselineComparison: boolean) =>
+      skillEvaluationsApi.createRun(skillId, evaluationSetId, baselineComparison),
     onSuccess: () => {
       invalidateSkillEvaluationCaches(qc, skillId, evaluationSetId)
     },
