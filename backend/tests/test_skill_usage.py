@@ -283,6 +283,57 @@ async def test_executor_records_only_chat_executions(
         assert recorded[0]["thread_id"] == ctx.thread_id
 
 
+async def test_executor_does_not_record_failed_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """spec §5.3/§10.3 — only SUCCESSFUL (exit 0) executions count; a crashing
+    script must NOT inflate the skill's execution stat (review R5).
+    """
+
+    from app.agent_runtime.skill_executor import _create_skill_execute_tool
+    from app.marketplace.skill_runtime import SkillRuntimeDescriptor, SkillToolContext
+
+    runtime_root = tmp_path / "runtime"
+    skill_dir = runtime_root / "counter"
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "boom.py").write_text("import sys\nsys.exit(1)\n")
+
+    descriptor = SkillRuntimeDescriptor(
+        id=uuid.uuid4(),
+        slug="counter",
+        name="Counter",
+        description="fails",
+        original_storage_path=skill_dir,
+        runtime_storage_path=skill_dir,
+    )
+    ctx = SkillToolContext(
+        thread_id=str(uuid.uuid4()),
+        output_dir=tmp_path / "outputs",
+        runtime_root=runtime_root,
+        descriptors={"counter": descriptor},
+        user_id=TEST_USER_ID,
+        audit_kind="execute_in_skill",
+    )
+
+    recorded: list[dict] = []
+
+    async def _fake_record(**kwargs) -> None:
+        recorded.append(kwargs)
+
+    monkeypatch.setattr(skill_usage_service, "record_chat_execution_nonfatal", _fake_record)
+
+    tool = _create_skill_execute_tool(ctx)
+    assert tool.coroutine is not None
+    await tool.coroutine(
+        skill_directory=f"/runtime/{ctx.thread_id}/skills/counter/",
+        command="python scripts/boom.py",
+    )
+
+    assert recorded == []  # failed script → no usage event
+
+
 # ---------------------------------------------------------------------------
 # API — GET /api/skills/{id}/usage
 # ---------------------------------------------------------------------------

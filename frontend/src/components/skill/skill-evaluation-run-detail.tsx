@@ -83,9 +83,14 @@ function usageItems(run: SkillEvaluationRun, t: ReturnType<typeof useTranslation
   const usage = run.usage
   if (!usage?.measured) return []
   const tokens = (usage.tokens_in ?? 0) + (usage.tokens_out ?? 0)
+  // tokens_measured=false → the model made calls but reported no usage_metadata,
+  // so 0 is "unknown", not a real count (unknown ≠ zero, same as cost).
+  const tokensUnknown = usage.tokens_measured === false
   return [
     t('usageLine.modelCalls', { count: usage.model_calls ?? 0 }),
-    t('usageLine.tokens', { count: formatDisplayNumber(tokens) }),
+    tokensUnknown
+      ? t('usageLine.tokensUnknown')
+      : t('usageLine.tokens', { count: formatDisplayNumber(tokens) }),
     typeof usage.cost_usd === 'number'
       ? t('usageLine.cost', { value: formatDisplayUsd(usage.cost_usd) })
       : t('usageLine.costUnknown'),

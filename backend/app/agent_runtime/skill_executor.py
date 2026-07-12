@@ -179,16 +179,20 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             err = stderr.decode("utf-8", errors="replace")
             result += f"\nSTDERR: {err}"
 
-        # Phase 3 skill-axis usage (spec §5.3) — count the sandbox execution
-        # for agent runs (chat + scheduled triggers + Agent-API; all use the
-        # default "execute_in_skill" audit_kind). Evaluation runs
-        # ("skill_evaluation") and builder draft tests ("skill_builder.draft_test")
-        # set a different audit_kind — and drafts carry no persisted skill row —
-        # so they never reach this ledger. Trigger/API runs whose thread_id is
-        # not a conversation UUID record with conversation_id NULL (self-describing).
-        # A nonzero exit still executed the script — the count reflects sandbox
-        # executions, not successes.
-        if ctx.audit_kind == "execute_in_skill" and ctx.user_id is not None:
+        # Phase 3 skill-axis usage (spec §5.3 — "성공 경로에서") — count a
+        # SUCCESSFUL (exit 0) sandbox execution for agent runs (chat + scheduled
+        # triggers + Agent-API; all use the default "execute_in_skill"
+        # audit_kind). Evaluation runs ("skill_evaluation") and builder draft
+        # tests ("skill_builder.draft_test") set a different audit_kind — and
+        # drafts carry no persisted skill row — so they never reach this ledger.
+        # Trigger/API runs whose thread_id is not a conversation UUID record with
+        # conversation_id NULL (self-describing). A failed script (nonzero exit)
+        # is NOT counted — the "실행" stat reflects successful executions.
+        if (
+            proc.returncode == 0
+            and ctx.audit_kind == "execute_in_skill"
+            and ctx.user_id is not None
+        ):
             from app.services.skill_usage_service import record_chat_execution_nonfatal
 
             await record_chat_execution_nonfatal(

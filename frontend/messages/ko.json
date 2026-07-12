@@ -2658,6 +2658,7 @@
           "title": "이 런의 실측 사용량",
           "modelCalls": "모델 콜 {count}회",
           "tokens": "토큰 {count}",
+          "tokensUnknown": "토큰 미측정",
           "cost": "비용 {value}",
           "costUnknown": "비용 단가 미설정"
         },

@@ -57,6 +57,45 @@ async def test_estimate_run_without_baseline_uses_two_calls() -> None:
     assert estimate.uses_baseline_comparison is False
 
 
+async def test_run_timeout_scales_with_case_count() -> None:
+    """review R5 — the whole-run timeout must scale with case count × arms so a
+    legal multi-case run isn't killed mid-run by a fixed 180s cap.
+    """
+
+    from app.config import settings
+    from app.services.skill_evaluation_service import effective_run_timeout_seconds
+
+    case_timeout = settings.skill_evaluation_case_timeout_seconds
+    floor = settings.skill_evaluation_run_timeout_seconds
+    ceiling = settings.skill_evaluation_run_timeout_max_seconds
+
+    # 1 case × 3 arms × 60s = 180s == floor.
+    assert effective_run_timeout_seconds(1, uses_baseline_comparison=True) == max(
+        floor, 3 * case_timeout
+    )
+    # 10 cases × 3 arms × 60s = 1800s (scales well past the fixed 180s cap).
+    assert effective_run_timeout_seconds(10, uses_baseline_comparison=True) == min(
+        ceiling, 10 * 3 * case_timeout
+    )
+    # A max-size set is capped by the ceiling, not left unbounded.
+    assert effective_run_timeout_seconds(50, uses_baseline_comparison=True) == ceiling
+    # baseline off → 2 arms/case, smaller budget.
+    assert effective_run_timeout_seconds(5, uses_baseline_comparison=False) == min(
+        ceiling, max(floor, 5 * 2 * case_timeout)
+    )
+
+
+async def test_estimate_timeout_seconds_reflects_scaled_run_timeout() -> None:
+    estimate = estimate_run(_evaluation_set([{"input": "x"}] * 10))
+    from app.config import settings
+
+    # 10 cases → scaled timeout, not the fixed 180s floor.
+    assert estimate.timeout_seconds == min(
+        settings.skill_evaluation_run_timeout_max_seconds,
+        10 * 3 * settings.skill_evaluation_case_timeout_seconds,
+    )
+
+
 async def test_create_run_threads_baseline_into_persisted_estimate(
     db: AsyncSession,
     tmp_path: Path,

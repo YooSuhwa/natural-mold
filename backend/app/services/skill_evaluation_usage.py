@@ -107,6 +107,10 @@ class LlmUsageCollector:
         cost = pricing.cost_for(self.tokens_in, self.tokens_out) if measured_tokens else None
         return {
             "measured": True,
+            # False when calls were made but no response carried usage_metadata:
+            # the 0 token totals are "unknown", not real (unknown ≠ zero, same
+            # principle applied to cost). The UI shows "미측정", not "0 토큰".
+            "tokens_measured": measured_tokens,
             "model_calls": self.model_calls,
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,

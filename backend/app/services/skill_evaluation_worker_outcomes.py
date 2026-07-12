@@ -24,10 +24,19 @@ async def cancel_if_requested(db: AsyncSession, run: SkillEvaluationRun) -> bool
     return True
 
 
-async def mark_timeout_failed(db: AsyncSession, run: SkillEvaluationRun) -> None:
-    timeout_message = (
-        f"timeout: evaluation run exceeded {settings.skill_evaluation_run_timeout_seconds}s"
+async def mark_timeout_failed(
+    db: AsyncSession,
+    run: SkillEvaluationRun,
+    timeout_seconds: float | None = None,
+) -> None:
+    # Report the timeout that actually fired (scaled to the run's workload),
+    # not the fixed floor.
+    effective = (
+        timeout_seconds
+        if timeout_seconds is not None
+        else settings.skill_evaluation_run_timeout_seconds
     )
+    timeout_message = f"timeout: evaluation run exceeded {effective}s"
     await mark_failed(db, run, timeout_message)
     await record_run_audit(
         db,

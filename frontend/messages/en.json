@@ -2658,6 +2658,7 @@
           "title": "Measured usage for this run",
           "modelCalls": "{count} model calls",
           "tokens": "{count} tokens",
+          "tokensUnknown": "Tokens unknown",
           "cost": "{value} cost",
           "costUnknown": "No pricing for cost"
         },

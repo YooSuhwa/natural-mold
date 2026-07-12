@@ -15,6 +15,7 @@ from app.config import settings
 from app.database import async_session
 from app.models.skill_evaluation import SkillEvaluationRun
 from app.services.skill_evaluation_llm import LlmSkillEvaluationEvaluator
+from app.services.skill_evaluation_service import effective_run_timeout_seconds
 from app.services.skill_evaluation_worker_leader import (
     release_skill_evaluation_worker_leader,
     try_acquire_skill_evaluation_worker_leader,
@@ -168,17 +169,23 @@ class SkillEvaluationWorker:
         await mark_grading(db, run)
         await db.commit()
         await db.refresh(run)
+        context = await build_context(db, run)
+        # Scale the whole-run timeout to the case count × arms so a legal
+        # multi-case run isn't killed mid-run by a fixed cap (spec §4.1).
+        run_timeout = effective_run_timeout_seconds(
+            len(context.evals), uses_baseline_comparison=context.baseline_comparison
+        )
         try:
             result = await asyncio.wait_for(
-                self.evaluator.evaluate(db, await build_context(db, run)),
-                timeout=settings.skill_evaluation_run_timeout_seconds,
+                self.evaluator.evaluate(db, context),
+                timeout=run_timeout,
             )
         except EvalRunCancelled:
             await mark_cancelled(db, run)
             await db.flush()
             return run
         except TimeoutError:
-            await mark_timeout_failed(db, run)
+            await mark_timeout_failed(db, run, timeout_seconds=run_timeout)
             return run
         except SkillEvaluationExecutionError as exc:
             await mark_execution_error_failed(db, run, exc)

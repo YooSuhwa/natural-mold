@@ -195,6 +195,22 @@ def _estimated_case_tokens(evaluation_set: SkillEvaluationSet) -> int:
     return chars // _ESTIMATE_CHARS_PER_TOKEN
 
 
+def effective_run_timeout_seconds(case_count: int, *, uses_baseline_comparison: bool) -> int:
+    """Whole-run timeout scaled to the workload (spec §4.1).
+
+    Each of the ``arms/case`` model calls is independently bounded by
+    ``case_timeout``; the run budget is proportional to the total call count so
+    a legal multi-case set isn't killed mid-run by a fixed cap — floored at the
+    configured base and capped at ``_max_seconds`` so a max-size set can't hold
+    a worker slot indefinitely.
+    """
+
+    arms_per_case = 3 if uses_baseline_comparison else 2
+    workload = case_count * arms_per_case * settings.skill_evaluation_case_timeout_seconds
+    floored = max(settings.skill_evaluation_run_timeout_seconds, workload)
+    return min(settings.skill_evaluation_run_timeout_max_seconds, floored)
+
+
 def estimate_run(
     evaluation_set: SkillEvaluationSet,
     *,
@@ -203,9 +219,12 @@ def estimate_run(
     case_count = len(evaluation_set.evals or [])
     model_calls_per_case = 3 if uses_baseline_comparison else 2
     model_call_count = case_count * model_calls_per_case
+    run_timeout = effective_run_timeout_seconds(
+        case_count, uses_baseline_comparison=uses_baseline_comparison
+    )
     estimated_seconds = min(
-        settings.skill_evaluation_run_timeout_seconds,
-        case_count * settings.skill_evaluation_case_timeout_seconds,
+        run_timeout,
+        model_call_count * settings.skill_evaluation_case_timeout_seconds,
     )
     case_tokens = _estimated_case_tokens(evaluation_set)
     tokens_in = (
@@ -217,7 +236,7 @@ def estimate_run(
         case_count=case_count,
         model_call_count=model_call_count,
         estimated_seconds=estimated_seconds,
-        timeout_seconds=settings.skill_evaluation_run_timeout_seconds,
+        timeout_seconds=run_timeout,
         estimated_tokens_in=tokens_in,
         estimated_tokens_out=tokens_out,
         estimated_cost_usd=0,

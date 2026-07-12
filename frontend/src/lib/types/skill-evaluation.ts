@@ -43,6 +43,8 @@ export type SkillEvaluationRunEstimate = {
 /** llm-2 실측 usage rollup — 레거시/deterministic 런은 null. */
 export type SkillEvaluationRunUsage = {
   readonly measured?: boolean
+  /** false → 콜은 했지만 usage_metadata가 없어 토큰 수치가 "미측정"(0 아님). */
+  readonly tokens_measured?: boolean
   readonly model_calls?: number
   readonly tokens_in?: number
   readonly tokens_out?: number
