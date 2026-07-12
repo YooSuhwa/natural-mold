@@ -24,3 +24,6 @@
   - [x] 구현 커밋 → [x] 리뷰: 승인, 발견 0
 - [x] 7. 최종 전체 검증: ruff 0 / full 2707 passed / integration 29 passed·1 skipped / frontend vitest 1294 passed + 플랜 문서 ✅ 갱신
 - [x] 8. 푸시 + **PR #296** 생성 (pre-push 게이트: 워크트리 node_modules에 diff@9 미설치가 원인이던 vitest 실패는 클린 pnpm install로 해결 — 코드 무관)
+- [x] 9. 최종 /review (교차 리뷰) 승인 + CLAUDE.md facade-분해 규칙 수확 (0e3da3f2)
+- [x] 10. 적대적 리뷰 4렌즈 병렬(동적참조·직렬화 / mutation 실증 / 보안 / 동시성·트랜잭션): **커밋 브랜치 결함 0**. mutation 7/8 CAUGHT, MISSED 1은 기존 갭 → seam 보강 테스트 6건(각 mutation FAIL 실증) 커밋 292dedb4, 전체 2713 passed. PR 코멘트 기록.
+  - 후속 후보(범위 밖): xdist 저빈도 flake(test_state_snapshot fallback, 격리 충돌·main과 동일), write_tools docstring "18개" 표기(pre-existing)
