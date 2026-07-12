@@ -11,6 +11,7 @@ from app.error_codes import (
     skill_evaluation_queue_full,
     skill_evaluation_run_not_cancellable,
     skill_evaluation_run_not_found,
+    skill_feedback_invalid,
 )
 from app.marketplace import credential_requirements
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
@@ -29,7 +30,11 @@ from app.schemas.skill_evaluation import (
     SkillEvaluationSetResponse,
     SkillEvaluationVersionStatsResponse,
 )
-from app.services import skill_evaluation_service
+from app.schemas.skill_feedback import (
+    SkillCaseFeedbackResponse,
+    SkillCaseFeedbackUpsertRequest,
+)
+from app.services import skill_evaluation_service, skill_feedback_service
 from app.services.skill_evaluation_worker import (
     SkillEvaluationQueueFull,
     skill_evaluation_worker,
@@ -291,6 +296,121 @@ async def cancel_skill_evaluation_run(
     await db.commit()
     await db.refresh(cancelled)
     return SkillEvaluationRunResponse.model_validate(cancelled)
+
+
+@router.get(
+    "/{evaluation_set_id}/runs/{run_id}/case-feedback",
+    response_model=list[SkillCaseFeedbackResponse],
+)
+async def list_skill_evaluation_case_feedback(
+    skill_id: uuid.UUID,
+    evaluation_set_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> list[SkillCaseFeedbackResponse]:
+    run = await _load_run_or_404(
+        db,
+        skill_id=skill_id,
+        evaluation_set_id=evaluation_set_id,
+        run_id=run_id,
+        user=user,
+    )
+    rows = await skill_feedback_service.list_case_feedback(db, run_id=run.id, user_id=user.id)
+    return [SkillCaseFeedbackResponse.model_validate(row) for row in rows]
+
+
+@router.put(
+    "/{evaluation_set_id}/runs/{run_id}/case-feedback",
+    response_model=SkillCaseFeedbackResponse,
+)
+async def upsert_skill_evaluation_case_feedback(
+    skill_id: uuid.UUID,
+    evaluation_set_id: uuid.UUID,
+    run_id: uuid.UUID,
+    data: SkillCaseFeedbackUpsertRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> SkillCaseFeedbackResponse:
+    run = await _load_run_or_404(
+        db,
+        skill_id=skill_id,
+        evaluation_set_id=evaluation_set_id,
+        run_id=run_id,
+        user=user,
+    )
+    try:
+        row = await skill_feedback_service.upsert_case_feedback(
+            db,
+            run=run,
+            user_id=user.id,
+            case_index=data.case_index,
+            verdict=data.verdict,
+            comment=data.comment,
+        )
+    except skill_feedback_service.SkillFeedbackInvalid as exc:
+        raise skill_feedback_invalid(str(exc)) from exc
+    await db.commit()
+    await db.refresh(row)
+    return SkillCaseFeedbackResponse.model_validate(row)
+
+
+@router.delete(
+    "/{evaluation_set_id}/runs/{run_id}/case-feedback/{case_index}",
+    status_code=204,
+)
+async def delete_skill_evaluation_case_feedback(
+    skill_id: uuid.UUID,
+    evaluation_set_id: uuid.UUID,
+    run_id: uuid.UUID,
+    case_index: int,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> None:
+    run = await _load_run_or_404(
+        db,
+        skill_id=skill_id,
+        evaluation_set_id=evaluation_set_id,
+        run_id=run_id,
+        user=user,
+    )
+    # Idempotent — deleting absent feedback is not an error.
+    await skill_feedback_service.delete_case_feedback(
+        db,
+        run_id=run.id,
+        user_id=user.id,
+        case_index=case_index,
+    )
+    await db.commit()
+
+
+async def _load_run_or_404(
+    db: AsyncSession,
+    *,
+    skill_id: uuid.UUID,
+    evaluation_set_id: uuid.UUID,
+    run_id: uuid.UUID,
+    user: CurrentUser,
+) -> SkillEvaluationRun:
+    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    evaluation_set = await load_evaluation_set_or_404(
+        db,
+        skill=skill,
+        user=user,
+        evaluation_set_id=evaluation_set_id,
+    )
+    run = await skill_evaluation_service.get_run(
+        db,
+        skill=skill,
+        user_id=user.id,
+        evaluation_set=evaluation_set,
+        run_id=run_id,
+    )
+    if run is None:
+        raise skill_evaluation_run_not_found()
+    return run
 
 
 def _evaluation_set_response(
