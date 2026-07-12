@@ -194,8 +194,53 @@ class SkillEvaluationWorker:
                 return run
             raise SkillEvaluationExecutionError(f"run completion conflicted: {run.status}")
         await record_completed_audit(db, run, result)
+        await self._record_usage_ledger(db, run, result)
         await db.flush()
         return run
+
+    @staticmethod
+    async def _record_usage_ledger(
+        db: AsyncSession,
+        run: SkillEvaluationRun,
+        result: object,
+    ) -> None:
+        """Append the skill-axis usage event for a completed run (Phase 3 §5.1).
+
+        Nested savepoint + broad except: accounting must never fail (or roll
+        back) the run completion that was just flushed.
+        """
+
+        usage = getattr(result, "usage", None)
+        if not isinstance(usage, dict):
+            return
+        try:
+            from decimal import Decimal
+
+            from app.services.skill_usage_service import record_evaluation_usage
+
+            raw_cost = usage.get("cost_usd")
+            cost = (
+                Decimal(str(raw_cost))
+                if isinstance(raw_cost, int | float) and not isinstance(raw_cost, bool)
+                else None
+            )
+            async with db.begin_nested():
+                await record_evaluation_usage(
+                    db,
+                    skill_id=run.skill_id,
+                    user_id=run.user_id,
+                    evaluation_run_id=run.id,
+                    model_name=run.runner_model,
+                    tokens_in=int(usage.get("tokens_in") or 0),
+                    tokens_out=int(usage.get("tokens_out") or 0),
+                    cost_usd=cost,
+                )
+        except Exception:  # noqa: BLE001 — ledger write must not fail the run
+            logger.warning(
+                "skill evaluation usage ledger write failed run_id=%s",
+                run.id,
+                exc_info=True,
+            )
 
     async def mark_interrupted_runs(self, db: AsyncSession) -> int:
         result = await db.execute(

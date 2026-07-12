@@ -88,6 +88,33 @@ async def test_worker_persists_llm_evaluation_result(
     assert completed.case_results is not None
     assert completed.case_results[0]["baseline_status"] == "failed"
 
+    # Phase 3 §5.1 — measured usage rollup persists on the run and the
+    # skill-axis ledger gets one evaluation_run event. FakeListChatModel
+    # reports no usage_metadata, so tokens stay 0 and cost stays unknown.
+    assert completed.usage is not None
+    assert completed.usage["measured"] is True
+    assert completed.usage["model_calls"] == 1
+    assert completed.usage["cost_usd"] is None
+
+    from sqlalchemy import select
+
+    from app.models.skill_usage_event import SkillUsageEvent
+
+    events = (
+        (
+            await db.execute(
+                select(SkillUsageEvent).where(SkillUsageEvent.evaluation_run_id == completed.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(events) == 1
+    assert events[0].source_kind == "evaluation_run"
+    assert events[0].skill_id == completed.skill_id
+    assert events[0].model_name == "fake-eval-model"
+    assert events[0].cost_usd is None
+
 
 async def test_llm_evaluator_sanitizes_non_finite_scores(
     db: AsyncSession,

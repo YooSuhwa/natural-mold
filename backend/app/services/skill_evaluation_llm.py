@@ -36,6 +36,7 @@ from app.services.skill_evaluation_llm_results import (
     summary_payload,
 )
 from app.services.skill_evaluation_result_schema import normalize_skill_evaluation_result
+from app.services.skill_evaluation_usage import LlmUsageCollector, resolve_model_pricing
 from app.services.skill_evaluation_worker_types import (
     SkillEvaluationContext,
     SkillEvaluationResult,
@@ -79,6 +80,7 @@ class LlmSkillEvaluationEvaluator:
             EvalCancellationCheckpoint(EvalCancellationPhase.GRADING)
         )
         built_model = await self.model_builder(db)
+        usage_collector = LlmUsageCollector()
         response = await built_model.model.ainvoke(
             [
                 SystemMessage(content=GRADER_SYSTEM_PROMPT),
@@ -94,6 +96,7 @@ class LlmSkillEvaluationEvaluator:
                 ),
             ]
         )
+        usage_collector.add_response(response)
         payload = json_object_from_text(message_text(response))
         case_results = normalize_case_results(
             evals=context.evals,
@@ -119,6 +122,7 @@ class LlmSkillEvaluationEvaluator:
             raw_summary=summary,
             raw_benchmark=benchmark,
         )
+        pricing = await resolve_model_pricing(db, built_model.model_name)
         return SkillEvaluationResult(
             summary=summary,
             benchmark=benchmark,
@@ -126,4 +130,5 @@ class LlmSkillEvaluationEvaluator:
             runner_model=built_model.model_name,
             runner_version=self.runner_version,
             grader_prompt_version=self.grader_prompt_version,
+            usage=usage_collector.rollup(pricing),
         )

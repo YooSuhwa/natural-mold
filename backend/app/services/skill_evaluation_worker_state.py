@@ -143,6 +143,7 @@ async def mark_completed(
             runner_version=result.runner_version,
             grader_prompt_version=result.grader_prompt_version,
             eval_schema_version=result.eval_schema_version,
+            usage=result.usage,
             error_message=None,
             completed_at=completed_at,
         )

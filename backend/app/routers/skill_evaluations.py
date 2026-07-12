@@ -114,7 +114,7 @@ async def estimate_skill_evaluation_run(
         user=user,
         evaluation_set_id=evaluation_set_id,
     )
-    return skill_evaluation_service.estimate_run(evaluation_set)
+    return await skill_evaluation_service.estimate_run_priced(db, evaluation_set)
 
 
 @router.get("/{evaluation_set_id}/runs", response_model=list[SkillEvaluationRunResponse])

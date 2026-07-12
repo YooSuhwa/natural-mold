@@ -71,7 +71,13 @@ class SkillEvaluationRunEstimate(BaseModel):
     model_call_count: int = Field(..., ge=0)
     estimated_seconds: int = Field(..., ge=0)
     timeout_seconds: int = Field(..., ge=1)
+    estimated_tokens_in: int = Field(default=0, ge=0)
+    estimated_tokens_out: int = Field(default=0, ge=0)
     estimated_cost_usd: float = Field(..., ge=0)
+    # False → the runner model has no per-token pricing; estimated_cost_usd=0
+    # then means "unknown", not "free" (spec §5.2).
+    pricing_available: bool = False
+    runner_model: str | None = None
     uses_baseline_comparison: bool
 
 
@@ -111,6 +117,9 @@ class SkillEvaluationRunResponse(BaseModel):
     runner_model: str | None = None
     summary: dict[str, JsonValue] | None = None
     benchmark: dict[str, JsonValue] | None = None
+    # Measured LLM usage rollup — {model_calls, tokens_in, tokens_out,
+    # cost_usd, measured}. None for legacy/deterministic runs.
+    usage: dict[str, JsonValue] | None = None
     case_results: list[JsonValue] | None = None
     error_message: str | None = None
     cancellation_requested_at: datetime | None = None

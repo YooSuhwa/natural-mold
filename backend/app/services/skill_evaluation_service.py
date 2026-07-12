@@ -164,6 +164,26 @@ async def get_run(
     return result.scalar_one_or_none()
 
 
+# Token heuristics for the pre-run cost estimate (spec §5.2). Deliberately
+# coarse — chars/4 plus flat per-call constants for prompt framing (grader
+# system prompt, skill payload) and completions (arm answers, grader JSON).
+_ESTIMATE_CHARS_PER_TOKEN = 4
+_ESTIMATE_PROMPT_OVERHEAD_TOKENS_PER_CALL = 800
+_ESTIMATE_COMPLETION_TOKENS_PER_CALL = 400
+
+
+def _estimated_case_tokens(evaluation_set: SkillEvaluationSet) -> int:
+    chars = 0
+    for case in evaluation_set.evals or []:
+        if not isinstance(case, dict):
+            continue
+        for field in ("input", "expected"):
+            value = case.get(field)
+            if isinstance(value, str):
+                chars += len(value)
+    return chars // _ESTIMATE_CHARS_PER_TOKEN
+
+
 def estimate_run(
     evaluation_set: SkillEvaluationSet,
     *,
@@ -171,17 +191,65 @@ def estimate_run(
 ) -> SkillEvaluationRunEstimate:
     case_count = len(evaluation_set.evals or [])
     model_calls_per_case = 3 if uses_baseline_comparison else 2
+    model_call_count = case_count * model_calls_per_case
     estimated_seconds = min(
         settings.skill_evaluation_run_timeout_seconds,
         case_count * settings.skill_evaluation_case_timeout_seconds,
     )
+    case_tokens = _estimated_case_tokens(evaluation_set)
+    tokens_in = (
+        case_tokens * model_calls_per_case
+        + model_call_count * _ESTIMATE_PROMPT_OVERHEAD_TOKENS_PER_CALL
+    )
+    tokens_out = model_call_count * _ESTIMATE_COMPLETION_TOKENS_PER_CALL
     return SkillEvaluationRunEstimate(
         case_count=case_count,
-        model_call_count=case_count * model_calls_per_case,
+        model_call_count=model_call_count,
         estimated_seconds=estimated_seconds,
         timeout_seconds=settings.skill_evaluation_run_timeout_seconds,
+        estimated_tokens_in=tokens_in,
+        estimated_tokens_out=tokens_out,
         estimated_cost_usd=0,
+        pricing_available=False,
         uses_baseline_comparison=uses_baseline_comparison,
+    )
+
+
+async def estimate_run_priced(
+    db: AsyncSession,
+    evaluation_set: SkillEvaluationSet,
+    *,
+    uses_baseline_comparison: bool = True,
+) -> SkillEvaluationRunEstimate:
+    """Estimate with real per-token pricing of the current runner model.
+
+    The runner model is the ``text_primary`` System LLM (same resolution the
+    evaluator uses); when the slot is unset or the model has no pricing the
+    estimate degrades to ``estimated_cost_usd=0`` + ``pricing_available=False``
+    so the UI can say "단가 미설정" instead of implying "free" (spec §5.2).
+    """
+
+    estimate = estimate_run(evaluation_set, uses_baseline_comparison=uses_baseline_comparison)
+    from app.models.system_llm_setting import SystemLlmSetting
+    from app.services.skill_evaluation_usage import resolve_model_pricing
+
+    runner_model = (
+        await db.execute(
+            select(SystemLlmSetting.model_name)
+            .where(SystemLlmSetting.role == "text_primary")
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if not runner_model:
+        return estimate
+    pricing = await resolve_model_pricing(db, runner_model)
+    cost = pricing.cost_for(estimate.estimated_tokens_in, estimate.estimated_tokens_out)
+    return estimate.model_copy(
+        update={
+            "runner_model": runner_model,
+            "pricing_available": pricing.available,
+            "estimated_cost_usd": float(cost) if cost is not None else 0,
+        }
     )
 
 
@@ -193,7 +261,7 @@ async def create_run(
     evaluation_set: SkillEvaluationSet,
     run_config: dict[str, Any] | None = None,
 ) -> SkillEvaluationRun:
-    estimate = estimate_run(evaluation_set)
+    estimate = await estimate_run_priced(db, evaluation_set)
     run = SkillEvaluationRun(
         user_id=user_id,
         skill_id=skill.id,
