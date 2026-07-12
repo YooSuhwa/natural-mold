@@ -2621,12 +2621,6 @@
           "averageDuration": "평균 {seconds}초",
           "tokenDelta": "토큰 {count}"
         },
-        "benchmarkTitle": "벤치마크 변화",
-        "benchmark": {
-          "durationDelta": "소요 시간 {value}ms",
-          "tokenDelta": "토큰 {count}",
-          "qualityDelta": "품질 {rate}%"
-        },
         "caseResultsTitle": "케이스 결과",
         "noCaseResults": "기록된 케이스 결과가 없습니다.",
         "errorTitle": "실패 원인",
@@ -2638,7 +2632,61 @@
           "completed": "평가 완료",
           "failed": "평가 실패",
           "cancelled": "평가 취소"
-        }
+        },
+        "abBenchmark": {
+          "title": "A/B 벤치마크 (스킬 유/무)",
+          "measured": "실측",
+          "estimated": "추정",
+          "baselineSkipped": "baseline 미실행 런",
+          "withSkill": "스킬 사용",
+          "withoutSkill": "스킬 없이",
+          "passRateDelta": "통과율 차이 {rate}",
+          "tokenDelta": "토큰 차이 {count}",
+          "durationDelta": "응답 시간 차이 {count}ms"
+        },
+        "usage": {
+          "title": "사용량·비용",
+          "window": "최근 {days}일",
+          "tokens": "토큰",
+          "cost": "비용",
+          "costUnknown": "단가 미설정",
+          "evaluationRuns": "평가 실행",
+          "executions": "채팅 실행",
+          "unpricedHint": "단가가 없는 이벤트 {count}건은 비용에 포함되지 않았습니다."
+        },
+        "usageLine": {
+          "title": "이 런의 실측 사용량",
+          "modelCalls": "모델 콜 {count}회",
+          "tokens": "토큰 {count}",
+          "tokensUnknown": "토큰 미측정",
+          "cost": "비용 {value}",
+          "costUnknown": "비용 단가 미설정"
+        },
+        "feedback": {
+          "title": "이 스킬, 도움이 됐나요?",
+          "displayOnly": "표시 전용 — 통과율에는 반영되지 않아요",
+          "rateUp": "도움됨",
+          "rateDown": "도움 안 됨",
+          "commentOpen": "코멘트 남기기",
+          "commentClose": "코멘트 닫기",
+          "commentPlaceholder": "어떤 점이 좋았는지/아쉬웠는지 적어 주세요",
+          "commentHint": "코멘트는 평가 버튼을 누를 때 함께 저장됩니다."
+        },
+        "caseFeedback": {
+          "prompt": "판정에 동의하시나요?",
+          "agree": "케이스 {number} 판정 동의",
+          "disagree": "케이스 {number} 판정 비동의",
+          "commentOpen": "코멘트",
+          "commentClose": "닫기",
+          "commentPlaceholder": "판정에 대한 의견을 적어 주세요"
+        },
+        "versionStats": {
+          "title": "버전별 통과율",
+          "hint": "완료된 평가 런을 스킬 버전별로 묶은 최신 통과율입니다.",
+          "runCount": "런 {count}회"
+        },
+        "estimateCostUnpriced": "단가 미설정",
+        "estimateRunnerModel": "실행 모델"
       },
       "history": {
         "empty": "현재 버전부터 이력이 쌓입니다.",
@@ -2672,7 +2720,8 @@
           "builder_create": "빌더 생성",
           "builder_improvement": "빌더 개선",
           "rollback": "롤백"
-        }
+        },
+        "passRate": "통과율 {rate}%"
       },
       "metadata": {
         "name": "이름",

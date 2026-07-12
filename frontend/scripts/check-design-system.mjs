@@ -358,6 +358,11 @@ const STYLE_ATTRIBUTE_ALLOWLIST = [
     context: /style=\{\{\s*width:\s*`\$\{widthPct\}%`\s*\}\}/,
   },
   {
+    filePath: 'src/components/skill/skill-metric-bar-list.tsx',
+    reason: 'data-driven bar width (skill A/B benchmark + version pass-rate bars)',
+    context: /style=\{\{\s*width:\s*`\$\{widthPct\}%`\s*\}\}/,
+  },
+  {
     filePath: 'src/components/chat/context-window-gauge.tsx',
     reason: 'SVG ring stroke-dashoffset for context-window progress ratio',
     context: /style=\{\{\s*strokeDashoffset\s*\}\}/,

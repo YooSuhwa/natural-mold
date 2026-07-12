@@ -68,7 +68,16 @@ async def build_context(
         evals=evaluation_set.evals or [],
         runtime_context=runtime_context,
         cancellation=DbSkillEvaluationCancellationProbe(db=db, run_id=run.id),
+        baseline_comparison=_baseline_comparison(run.run_config),
     )
+
+
+def _baseline_comparison(run_config: dict | None) -> bool:
+    if isinstance(run_config, dict):
+        value = run_config.get("baseline_comparison")
+        if isinstance(value, bool):
+            return value
+    return True
 
 
 async def _build_runtime_context(
@@ -143,6 +152,7 @@ async def mark_completed(
             runner_version=result.runner_version,
             grader_prompt_version=result.grader_prompt_version,
             eval_schema_version=result.eval_schema_version,
+            usage=result.usage,
             error_message=None,
             completed_at=completed_at,
         )

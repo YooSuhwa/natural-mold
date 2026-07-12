@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
-from app.error_codes import invalid_skill_package, skill_not_found
+from app.error_codes import invalid_skill_package, skill_feedback_invalid, skill_not_found
 from app.routers.skill_router_support import (
     record_revision_create_audits,
     record_skill_audit,
@@ -20,7 +20,13 @@ from app.schemas.skill import (
     SkillResponse,
     SkillTextContentResponse,
 )
-from app.services import skill_revision_mutations
+from app.schemas.skill_feedback import (
+    SkillFeedbackMineResponse,
+    SkillFeedbackSummaryResponse,
+    SkillFeedbackUpsertRequest,
+)
+from app.schemas.skill_usage import SkillUsageDailyPointResponse, SkillUsageSummaryResponse
+from app.services import skill_feedback_service, skill_revision_mutations, skill_usage_service
 from app.skills import service as skill_service
 from app.skills.inspector import SkillMetadataError
 from app.skills.package_exporter import build_installed_skill_zip_bytes
@@ -219,6 +225,115 @@ async def get_text_content(
         raise invalid_skill_package("only text skills expose plain content")
     content = await skill_service.read_text_content(skill)
     return SkillTextContentResponse(content=content)
+
+
+@router.get("/{skill_id}/feedback", response_model=SkillFeedbackSummaryResponse)
+async def get_skill_feedback(
+    skill_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    skill = await skill_service.get_skill(db, skill_id, user.id)
+    if not skill:
+        raise skill_not_found()
+    return await _feedback_summary_response(db, skill_id=skill.id, user_id=user.id)
+
+
+@router.put("/{skill_id}/feedback", response_model=SkillFeedbackSummaryResponse)
+async def upsert_skill_feedback(
+    skill_id: uuid.UUID,
+    data: SkillFeedbackUpsertRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+):
+    skill = await skill_service.get_skill(db, skill_id, user.id)
+    if not skill:
+        raise skill_not_found()
+    try:
+        await skill_feedback_service.upsert_skill_feedback(
+            db,
+            skill_id=skill.id,
+            user_id=user.id,
+            rating=data.rating,
+            comment=data.comment,
+        )
+    except skill_feedback_service.SkillFeedbackInvalid as exc:
+        raise skill_feedback_invalid(str(exc)) from exc
+    await db.commit()
+    return await _feedback_summary_response(db, skill_id=skill.id, user_id=user.id)
+
+
+@router.delete("/{skill_id}/feedback", status_code=204)
+async def delete_skill_feedback(
+    skill_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+):
+    skill = await skill_service.get_skill(db, skill_id, user.id)
+    if not skill:
+        raise skill_not_found()
+    # Idempotent — deleting absent feedback is not an error.
+    await skill_feedback_service.delete_skill_feedback(db, skill_id=skill.id, user_id=user.id)
+    await db.commit()
+
+
+async def _feedback_summary_response(
+    db: AsyncSession,
+    *,
+    skill_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> SkillFeedbackSummaryResponse:
+    summary = await skill_feedback_service.get_skill_feedback_summary(
+        db,
+        skill_id=skill_id,
+        user_id=user_id,
+    )
+    return SkillFeedbackSummaryResponse(
+        skill_id=skill_id,
+        up_count=summary.up_count,
+        down_count=summary.down_count,
+        mine=(
+            SkillFeedbackMineResponse.model_validate(summary.mine)
+            if summary.mine is not None
+            else None
+        ),
+    )
+
+
+@router.get("/{skill_id}/usage", response_model=SkillUsageSummaryResponse)
+async def get_skill_usage(
+    skill_id: uuid.UUID,
+    days: int = Query(default=30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    skill = await skill_service.get_skill(db, skill_id, user.id)
+    if not skill:
+        raise skill_not_found()
+    summary = await skill_usage_service.get_skill_usage_summary(db, skill_id=skill.id, days=days)
+    return SkillUsageSummaryResponse(
+        skill_id=skill.id,
+        days=summary.days,
+        tokens_in=summary.tokens_in,
+        tokens_out=summary.tokens_out,
+        cost_usd=summary.cost_usd,
+        priced_event_count=summary.priced_event_count,
+        unpriced_token_event_count=summary.unpriced_token_event_count,
+        evaluation_run_count=summary.evaluation_run_count,
+        chat_execution_count=summary.chat_execution_count,
+        daily=[
+            SkillUsageDailyPointResponse(
+                date=point.date,
+                tokens_in=point.tokens_in,
+                tokens_out=point.tokens_out,
+                cost_usd=point.cost_usd,
+                execution_count=point.execution_count,
+            )
+            for point in summary.daily
+        ],
+    )
 
 
 @router.get("/{skill_id}/export")

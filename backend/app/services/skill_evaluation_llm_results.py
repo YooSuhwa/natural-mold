@@ -43,10 +43,15 @@ def summary_payload(
     case_results: list[JsonObject],
     payload: JsonObject,
     runner_version: str,
+    baseline_enabled: bool = True,
 ) -> JsonObject:
     case_count = len(case_results)
     passed_count = sum(1 for row in case_results if row["status"] == "passed")
     failed_count = case_count - passed_count
+    # A baseline-off run makes 2 calls/case (with-arm + grader, no without-arm)
+    # — never report phantom without-skill runs the worker did not execute.
+    without_skill_runs = case_count if baseline_enabled else 0
+    model_call_count = case_count * (3 if baseline_enabled else 2)
     grader_result = validate_grader_result(
         {
             "expectations": [_case_field(case, "expected") for case in evals],
@@ -59,8 +64,8 @@ def summary_payload(
             },
             "execution_metrics": {
                 "with_skill_runs": case_count,
-                "without_skill_runs": case_count,
-                "model_call_count": case_count * 3,
+                "without_skill_runs": without_skill_runs,
+                "model_call_count": model_call_count,
                 "tool_calls": _tool_call_count(case_results),
             },
             "timing": {

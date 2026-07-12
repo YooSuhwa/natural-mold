@@ -42,6 +42,22 @@ vi.mock('@/lib/hooks/use-skill-evaluations', () => ({
     mutate: mockCancelRun,
     isPending: false,
   }),
+  // Phase 3 hooks — the tab now also renders version stats + case feedback.
+  useSkillEvaluationVersionStats: () => ({ data: [], isLoading: false }),
+  useSkillEvaluationCaseFeedback: () => ({ data: [], isLoading: false }),
+  useUpsertSkillCaseFeedback: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteSkillCaseFeedback: () => ({ mutate: vi.fn(), isPending: false }),
+  useInvalidateSkillMetricsOnRunCompletion: () => {},
+}))
+
+vi.mock('@/lib/hooks/use-skill-usage', () => ({
+  useSkillUsage: () => ({ data: undefined, isLoading: false }),
+}))
+
+vi.mock('@/lib/hooks/use-skill-feedback', () => ({
+  useSkillFeedback: () => ({ data: undefined, isLoading: false }),
+  useUpsertSkillFeedback: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteSkillFeedback: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 function buildEvaluationSet(overrides: Partial<SkillEvaluationSet>): SkillEvaluationSet {
@@ -267,7 +283,9 @@ describe('SkillEvaluationTab', () => {
     expect(screen.getByText('트리거 정확도 50%')).toBeInTheDocument()
     expect(screen.getByText('평균 1.3초')).toBeInTheDocument()
     expect(screen.getByText('토큰 -18')).toBeInTheDocument()
-    expect(screen.getByText('소요 시간 -220ms')).toBeInTheDocument()
+    // Benchmark deltas are now rendered only by SkillBenchmarkPanel (which
+    // needs a with_skill_pass_rate) — the legacy duration-delta line was
+    // removed to stop the double render (review finding).
     expect(screen.getByText('담당자와 마감일을 찾았습니다.')).toBeInTheDocument()
     expect(screen.getByText('액션 아이템 표')).toBeInTheDocument()
 

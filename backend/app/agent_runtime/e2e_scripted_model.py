@@ -286,6 +286,63 @@ SKILL_BUILDER_FINALIZE_CONFLICT_FINAL = (
 )
 
 
+# --- Phase 3 llm-2 measured A/B evaluation arms -----------------------------
+# The evaluator sends [SystemMessage, HumanMessage] per call; the system
+# prompt's first line is a stable marker (see skill_evaluation_ab_arms.py —
+# kept as literals here to avoid an app.services import cycle, same reasoning
+# as UI_DATA_KIND_BY_MARKER). Responses carry usage_metadata so the measured
+# cost/token plumbing lights up deterministically in E2E.
+SKILL_EVAL_WITH_ARM_PROMPT_HEAD = "You are Moldy's skill evaluation with-skill arm."
+SKILL_EVAL_WITHOUT_ARM_PROMPT_HEAD = "You are Moldy's skill evaluation baseline arm."
+SKILL_EVAL_AB_GRADER_PROMPT_HEAD = "You are Moldy's skill evaluation A/B grader."
+# Legacy llm-1 run-level grader — kept answerable so older paths don't hang.
+SKILL_EVAL_LEGACY_GRADER_PROMPT_HEAD = "You are Moldy's skill evaluation grader."
+SKILL_EVAL_WITH_ARM_ANSWER = (
+    "담당자/마감일 표\n| 담당자 | 마감일 |\n| --- | --- |\n| 김철수 | 7월 15일 |"
+)
+SKILL_EVAL_WITHOUT_ARM_ANSWER = (
+    "회의록을 다시 확인해 보셔야 할 것 같습니다. 일반적인 요약만 가능해요."
+)
+SKILL_EVAL_AB_GRADER_JSON = (
+    '{"case_index": 0, "status": "passed", "score": 0.95,'
+    ' "baseline_status": "failed", "baseline_score": 0.3,'
+    ' "grader_feedback": "with-arm은 스킬 지시대로 표를 반환했고 baseline은 형식을 놓쳤습니다.",'
+    ' "evidence": "with_skill_answer가 expected의 담당자/마감일 표와 일치합니다."}'
+)
+SKILL_EVAL_LEGACY_GRADER_JSON = (
+    '{"case_results": [{"case_index": 0, "status": "passed", "score": 0.95,'
+    ' "baseline_status": "failed", "baseline_score": 0.3,'
+    ' "grader_feedback": "scripted legacy grader", "evidence": "scripted"}]}'
+)
+
+
+def _skill_eval_arm_response(messages: list[BaseMessage]) -> AIMessage | None:
+    if not messages:
+        return None
+    first = messages[0]
+    if isinstance(first, HumanMessage | ToolMessage):
+        return None
+    system_text = _message_text(first)
+    if system_text.startswith(SKILL_EVAL_WITH_ARM_PROMPT_HEAD):
+        content, tokens_in, tokens_out = SKILL_EVAL_WITH_ARM_ANSWER, 620, 180
+    elif system_text.startswith(SKILL_EVAL_WITHOUT_ARM_PROMPT_HEAD):
+        content, tokens_in, tokens_out = SKILL_EVAL_WITHOUT_ARM_ANSWER, 240, 60
+    elif system_text.startswith(SKILL_EVAL_AB_GRADER_PROMPT_HEAD):
+        content, tokens_in, tokens_out = SKILL_EVAL_AB_GRADER_JSON, 900, 120
+    elif system_text.startswith(SKILL_EVAL_LEGACY_GRADER_PROMPT_HEAD):
+        content, tokens_in, tokens_out = SKILL_EVAL_LEGACY_GRADER_JSON, 900, 120
+    else:
+        return None
+    return AIMessage(
+        content=content,
+        usage_metadata={
+            "input_tokens": tokens_in,
+            "output_tokens": tokens_out,
+            "total_tokens": tokens_in + tokens_out,
+        },
+    )
+
+
 def _skill_builder_write_tool_calls(workspace: str) -> list[dict[str, Any]]:
     return [
         {
@@ -712,6 +769,9 @@ class E2EScriptedChatModel(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
+        skill_eval_response = _skill_eval_arm_response(messages)
+        if skill_eval_response is not None:
+            return ChatResult(generations=[ChatGeneration(message=skill_eval_response)])
         human_text = self._latest_human_text(messages)
         if ERROR_MARKER in human_text:
             # RateLimitError prefix triggers public_stream_error_message masking so

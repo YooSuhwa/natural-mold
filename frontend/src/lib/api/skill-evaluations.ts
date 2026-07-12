@@ -1,10 +1,13 @@
 import { apiFetch } from './client'
 import type {
+  SkillCaseFeedback,
+  SkillCaseFeedbackUpsert,
   SkillEvaluationRun,
   SkillEvaluationRunCancelRequest,
   SkillEvaluationRunEstimate,
   SkillEvaluationSet,
   SkillEvaluationSetCreate,
+  SkillEvaluationVersionStats,
 } from '@/lib/types/skill-evaluation'
 
 export const skillEvaluationsApi = {
@@ -46,5 +49,39 @@ export const skillEvaluationsApi = {
         method: 'POST',
         body: JSON.stringify(data),
       },
+    ),
+
+  versionStats: (skillId: string) =>
+    apiFetch<SkillEvaluationVersionStats[]>(`/api/skills/${skillId}/evaluations/version-stats`),
+
+  listCaseFeedback: (skillId: string, evaluationSetId: string, runId: string) =>
+    apiFetch<SkillCaseFeedback[]>(
+      `/api/skills/${skillId}/evaluations/${evaluationSetId}/runs/${runId}/case-feedback`,
+    ),
+
+  upsertCaseFeedback: (
+    skillId: string,
+    evaluationSetId: string,
+    runId: string,
+    data: SkillCaseFeedbackUpsert,
+  ) =>
+    apiFetch<SkillCaseFeedback>(
+      `/api/skills/${skillId}/evaluations/${evaluationSetId}/runs/${runId}/case-feedback`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      },
+    ),
+
+  deleteCaseFeedback: (
+    skillId: string,
+    evaluationSetId: string,
+    runId: string,
+    caseIndex: number,
+  ) =>
+    apiFetch<void>(
+      `/api/skills/${skillId}/evaluations/${evaluationSetId}/runs/${runId}` +
+        `/case-feedback/${caseIndex}`,
+      { method: 'DELETE' },
     ),
 }

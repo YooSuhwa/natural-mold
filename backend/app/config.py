@@ -135,7 +135,12 @@ class Settings(BaseSettings):
     skill_evaluation_enabled: bool = True
     skill_evaluation_max_concurrent: int = 1
     skill_evaluation_queue_max_size: int = 20
+    # Per-run floor. The effective run timeout scales UP with the case count ×
+    # per-case model calls (llm-2 makes up to 3/case) so a legal multi-case set
+    # isn't killed mid-run by a fixed cap, bounded by ``_max_seconds`` so a
+    # pathological set can't hold a worker slot indefinitely.
     skill_evaluation_run_timeout_seconds: int = 180
+    skill_evaluation_run_timeout_max_seconds: int = 1800
     skill_evaluation_case_timeout_seconds: int = 60
 
     # ADR-017 Slice F — k-skill upstream import (super_user CLI only).

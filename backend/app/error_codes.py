@@ -187,6 +187,10 @@ def invalid_skill_package(detail: str) -> ValidationError:
     return ValidationError("INVALID_SKILL_PACKAGE", detail)
 
 
+def skill_feedback_invalid(detail: str) -> ValidationError:
+    return ValidationError("SKILL_FEEDBACK_INVALID", detail)
+
+
 def marketplace_credential_mismatch(detail: str) -> ValidationError:
     """Spec §10.7 — credential definition_key / requirement_key mismatch
     on a binding write. 400 ``ValidationError`` keeps client-side hints

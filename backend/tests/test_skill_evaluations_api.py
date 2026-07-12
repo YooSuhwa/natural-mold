@@ -110,6 +110,33 @@ async def test_create_and_list_evaluation_sets(
     assert listing.json()[0]["latest_run"] is None
 
 
+async def test_estimate_baseline_off_uses_two_calls(
+    client: AsyncClient,
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """Estimate reads baseline_comparison from the SAME body shape as create."""
+
+    await _configure_system_llm(db)
+    skill = await _create_skill(db, tmp_path)
+    created = await client.post(
+        f"/api/skills/{skill.id}/evaluations",
+        json={"name": "Smoke", "evals": [{"input": "a"}, {"input": "b"}]},
+    )
+    set_id = created.json()["id"]
+
+    default_estimate = await client.post(f"/api/skills/{skill.id}/evaluations/{set_id}/estimate")
+    baseline_off = await client.post(
+        f"/api/skills/{skill.id}/evaluations/{set_id}/estimate",
+        json={"baseline_comparison": False},
+    )
+
+    assert default_estimate.json()["model_call_count"] == 6  # 2 cases × 3
+    assert default_estimate.json()["uses_baseline_comparison"] is True
+    assert baseline_off.json()["model_call_count"] == 4  # 2 cases × 2
+    assert baseline_off.json()["uses_baseline_comparison"] is False
+
+
 async def test_estimate_and_create_run(
     client: AsyncClient,
     db: AsyncSession,

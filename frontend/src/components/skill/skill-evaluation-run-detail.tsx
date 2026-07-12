@@ -1,15 +1,23 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 
 import { Skeleton } from '@/components/ui/skeleton'
+import { useSkillEvaluationCaseFeedback } from '@/lib/hooks/use-skill-evaluations'
+import { formatDisplayNumber, formatDisplayUsd } from '@/lib/utils/display-format'
 import type { JsonObject, JsonValue } from '@/lib/types/json'
-import type { SkillEvaluationRun } from '@/lib/types/skill-evaluation'
+import type { SkillCaseFeedback, SkillEvaluationRun } from '@/lib/types/skill-evaluation'
+
+import { SkillBenchmarkPanel } from './skill-benchmark-panel'
+import { SkillCaseFeedbackControls } from './skill-case-feedback-controls'
 
 type SkillEvaluationRunDetailProps = {
   readonly currentSkillContentHash?: string | null
   readonly isLoading?: boolean
   readonly run: SkillEvaluationRun | null
+  /** 케이스 피드백 활성화용 — 없으면 피드백 컨트롤은 렌더하지 않는다. */
+  readonly skillId?: string | null
 }
 
 function normalizedRate(value: number): number {
@@ -63,20 +71,6 @@ function metricItems(run: SkillEvaluationRun, t: ReturnType<typeof useTranslatio
   ].filter((item): item is string => item !== null)
 }
 
-function benchmarkItems(run: SkillEvaluationRun, t: ReturnType<typeof useTranslations>) {
-  const durationDeltaMs = numberValue(run.benchmark, 'duration_delta_ms')
-  const tokenDelta = numberValue(run.benchmark, 'token_delta')
-  const qualityDelta = numberValue(run.benchmark, 'quality_delta')
-
-  return [
-    durationDeltaMs === null ? null : t('benchmark.durationDelta', { value: durationDeltaMs }),
-    tokenDelta === null ? null : t('benchmark.tokenDelta', { count: tokenDelta }),
-    qualityDelta === null
-      ? null
-      : t('benchmark.qualityDelta', { rate: normalizedRate(qualityDelta) }),
-  ].filter((item): item is string => item !== null)
-}
-
 function runIsStale(run: SkillEvaluationRun, currentSkillContentHash?: string | null): boolean {
   return Boolean(
     currentSkillContentHash &&
@@ -85,12 +79,44 @@ function runIsStale(run: SkillEvaluationRun, currentSkillContentHash?: string | 
   )
 }
 
+function usageItems(run: SkillEvaluationRun, t: ReturnType<typeof useTranslations>) {
+  const usage = run.usage
+  if (!usage?.measured) return []
+  const tokens = (usage.tokens_in ?? 0) + (usage.tokens_out ?? 0)
+  // tokens_measured=false → the model made calls but reported no usage_metadata,
+  // so 0 is "unknown", not a real count (unknown ≠ zero, same as cost).
+  const tokensUnknown = usage.tokens_measured === false
+  return [
+    t('usageLine.modelCalls', { count: usage.model_calls ?? 0 }),
+    tokensUnknown
+      ? t('usageLine.tokensUnknown')
+      : t('usageLine.tokens', { count: formatDisplayNumber(tokens) }),
+    typeof usage.cost_usd === 'number'
+      ? t('usageLine.cost', { value: formatDisplayUsd(usage.cost_usd) })
+      : t('usageLine.costUnknown'),
+  ]
+}
+
 export function SkillEvaluationRunDetail({
   currentSkillContentHash,
   isLoading = false,
   run,
+  skillId = null,
 }: SkillEvaluationRunDetailProps) {
   const t = useTranslations('skill.detailDialog.evaluation')
+  const feedbackEnabled = Boolean(skillId && run && run.status === 'completed')
+  const { data: caseFeedback } = useSkillEvaluationCaseFeedback(
+    feedbackEnabled ? skillId : null,
+    feedbackEnabled ? (run?.evaluation_set_id ?? null) : null,
+    feedbackEnabled ? (run?.id ?? null) : null,
+  )
+  const feedbackByCase = useMemo(() => {
+    const map = new Map<number, SkillCaseFeedback>()
+    for (const item of caseFeedback ?? []) {
+      map.set(item.case_index, item)
+    }
+    return map
+  }, [caseFeedback])
 
   if (isLoading) {
     return <Skeleton className="h-48 w-full rounded-lg" />
@@ -105,7 +131,7 @@ export function SkillEvaluationRunDetail({
   }
 
   const metrics = metricItems(run, t)
-  const benchmarks = benchmarkItems(run, t)
+  const usageLines = usageItems(run, t)
   const caseResults = run.case_results ?? []
 
   return (
@@ -130,16 +156,12 @@ export function SkillEvaluationRunDetail({
         </dl>
       ) : null}
 
-      {benchmarks.length > 0 ? (
-        <div className="mt-4">
-          <h4 className="moldy-ui-micro text-muted-foreground">{t('benchmarkTitle')}</h4>
-          <ul className="mt-2 space-y-1">
-            {benchmarks.map((benchmark) => (
-              <li key={benchmark} className="text-xs">
-                {benchmark}
-              </li>
-            ))}
-          </ul>
+      <SkillBenchmarkPanel run={run} />
+
+      {usageLines.length > 0 ? (
+        <div className="mt-4" data-testid="run-usage-line">
+          <h4 className="moldy-ui-micro text-muted-foreground">{t('usageLine.title')}</h4>
+          <p className="mt-2 text-xs">{usageLines.join(' · ')}</p>
         </div>
       ) : null}
 
@@ -164,7 +186,10 @@ export function SkillEvaluationRunDetail({
               const evidence = jsonPreview(record?.evidence)
               return (
                 <article
-                  key={`${title}-${index}`}
+                  // Scope the key to the run so unsaved case-feedback draft
+                  // state can't bleed across runs (unnamed cases share the
+                  // fallback "Case N" title, which would otherwise collide).
+                  key={`${run.id}-${index}`}
                   className="rounded-lg border border-border/60 p-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -176,6 +201,15 @@ export function SkillEvaluationRunDetail({
                   {feedback ? <p className="mt-2 text-xs">{feedback}</p> : null}
                   {evidence ? (
                     <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{evidence}</p>
+                  ) : null}
+                  {feedbackEnabled && skillId ? (
+                    <SkillCaseFeedbackControls
+                      skillId={skillId}
+                      evaluationSetId={run.evaluation_set_id}
+                      runId={run.id}
+                      caseIndex={index}
+                      mine={feedbackByCase.get(index) ?? null}
+                    />
                   ) : null}
                 </article>
               )

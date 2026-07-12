@@ -15,6 +15,7 @@ from app.config import settings
 from app.database import async_session
 from app.models.skill_evaluation import SkillEvaluationRun
 from app.services.skill_evaluation_llm import LlmSkillEvaluationEvaluator
+from app.services.skill_evaluation_service import effective_run_timeout_seconds
 from app.services.skill_evaluation_worker_leader import (
     release_skill_evaluation_worker_leader,
     try_acquire_skill_evaluation_worker_leader,
@@ -39,6 +40,7 @@ from app.services.skill_evaluation_worker_types import (
     SkillEvaluationEvaluator,
     SkillEvaluationExecutionError,
 )
+from app.services.skill_usage_service import record_evaluation_usage_nonfatal
 
 logger = logging.getLogger(__name__)
 type SkillEvaluationSessionFactory = async_sessionmaker[AsyncSession]
@@ -167,17 +169,23 @@ class SkillEvaluationWorker:
         await mark_grading(db, run)
         await db.commit()
         await db.refresh(run)
+        context = await build_context(db, run)
+        # Scale the whole-run timeout to the case count × arms so a legal
+        # multi-case run isn't killed mid-run by a fixed cap (spec §4.1).
+        run_timeout = effective_run_timeout_seconds(
+            len(context.evals), uses_baseline_comparison=context.baseline_comparison
+        )
         try:
             result = await asyncio.wait_for(
-                self.evaluator.evaluate(db, await build_context(db, run)),
-                timeout=settings.skill_evaluation_run_timeout_seconds,
+                self.evaluator.evaluate(db, context),
+                timeout=run_timeout,
             )
         except EvalRunCancelled:
             await mark_cancelled(db, run)
             await db.flush()
             return run
         except TimeoutError:
-            await mark_timeout_failed(db, run)
+            await mark_timeout_failed(db, run, timeout_seconds=run_timeout)
             return run
         except SkillEvaluationExecutionError as exc:
             await mark_execution_error_failed(db, run, exc)
@@ -195,7 +203,29 @@ class SkillEvaluationWorker:
             raise SkillEvaluationExecutionError(f"run completion conflicted: {run.status}")
         await record_completed_audit(db, run, result)
         await db.flush()
+        # NOTE: the skill-axis usage ledger is written AFTER the outer commit
+        # (see _record_usage_ledger_after_commit) so a cancellation during the
+        # ledger write can never roll back this already-completed run.
         return run
+
+    @staticmethod
+    async def _record_usage_ledger_after_commit(run: SkillEvaluationRun) -> None:
+        """Best-effort skill-axis usage event for a COMMITTED completed run.
+
+        Runs in its own session after the completion is durable — the run's FK
+        target already exists, and CancelledError here can't unwind the run.
+        """
+
+        usage = run.usage
+        if run.status != "completed" or not isinstance(usage, dict):
+            return
+        await record_evaluation_usage_nonfatal(
+            skill_id=run.skill_id,
+            user_id=run.user_id,
+            evaluation_run_id=run.id,
+            model_name=run.runner_model,
+            usage=usage,
+        )
 
     async def mark_interrupted_runs(self, db: AsyncSession) -> int:
         result = await db.execute(
@@ -242,14 +272,19 @@ class SkillEvaluationWorker:
         await self._execute_run_with_session(run_id)
 
     async def _execute_run_with_session(self, run_id: uuid.UUID) -> None:
+        run: SkillEvaluationRun | None = None
         async with self._session_factory() as db:
             try:
-                await self.run_once(db, run_id)
+                run = await self.run_once(db, run_id)
             except SkillEvaluationExecutionError as exc:
                 await db.rollback()
                 logger.warning("skill evaluation run skipped run_id=%s error=%s", run_id, exc)
                 return
             await db.commit()
+        # Ledger write is deferred to AFTER the durable commit above so a late
+        # cancellation can't roll back the completed run (Phase 3 §5.1).
+        if run is not None:
+            await self._record_usage_ledger_after_commit(run)
 
 
 skill_evaluation_worker = SkillEvaluationWorker()

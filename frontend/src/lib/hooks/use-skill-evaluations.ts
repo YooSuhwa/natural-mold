@@ -1,10 +1,12 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { skillEvaluationsApi } from '@/lib/api/skill-evaluations'
 import { skillQueryKeys } from '@/lib/query-keys/skills'
 import { requireQueryId } from './query-id'
 import type {
+  SkillCaseFeedbackUpsert,
   SkillEvaluationRun,
   SkillEvaluationRunCancelRequest,
   SkillEvaluationSetCreate,
@@ -29,6 +31,13 @@ export const skillEvaluationKeys = {
     ['skills', skillId, 'evaluations', evaluationSetId] as const,
   runs: (skillId: string | null | undefined, evaluationSetId: string | null | undefined) =>
     ['skills', skillId, 'evaluations', evaluationSetId, 'runs'] as const,
+  versionStats: (skillId: string | null | undefined) =>
+    ['skills', skillId, 'evaluations', 'version-stats'] as const,
+  caseFeedback: (
+    skillId: string | null | undefined,
+    evaluationSetId: string | null | undefined,
+    runId: string | null | undefined,
+  ) => ['skills', skillId, 'evaluations', evaluationSetId, 'runs', runId, 'case-feedback'] as const,
 }
 
 export function useSkillEvaluationSets(skillId: string | null | undefined) {
@@ -113,6 +122,91 @@ export function useCancelSkillEvaluationRun(skillId: string, evaluationSetId: st
   })
 }
 
+/**
+ * When a run finishes via the 1s poll (active → no-active transition), the
+ * version-stats + usage caches (staleTime 30s) would otherwise show pre-run
+ * numbers for up to 30s. Invalidate them on the completing edge so the freshly
+ * measured pass rate / usage appear immediately. Invalidation is a side effect
+ * (no setState), so an effect is the right place.
+ */
+export function useInvalidateSkillMetricsOnRunCompletion(
+  skillId: string | null | undefined,
+  runs: readonly SkillEvaluationRun[] | undefined,
+): void {
+  const qc = useQueryClient()
+  const hadActiveRef = useRef(false)
+  const hasActive = !!runs?.some((run) => ACTIVE_EVALUATION_RUN_STATUSES.has(run.status))
+
+  useEffect(() => {
+    if (hadActiveRef.current && !hasActive && skillId) {
+      qc.invalidateQueries({ queryKey: skillEvaluationKeys.versionStats(skillId) })
+      qc.invalidateQueries({ queryKey: skillQueryKeys.feedback(skillId) })
+      qc.invalidateQueries({ queryKey: ['skills', skillId, 'usage'] })
+    }
+    hadActiveRef.current = hasActive
+  }, [qc, skillId, hasActive])
+}
+
+export function useSkillEvaluationVersionStats(skillId: string | null | undefined) {
+  return useQuery({
+    queryKey: skillEvaluationKeys.versionStats(skillId),
+    queryFn: () => skillEvaluationsApi.versionStats(requireQueryId(skillId, 'skillId')),
+    enabled: !!skillId,
+    staleTime: 30_000,
+  })
+}
+
+export function useSkillEvaluationCaseFeedback(
+  skillId: string | null | undefined,
+  evaluationSetId: string | null | undefined,
+  runId: string | null | undefined,
+) {
+  return useQuery({
+    queryKey: skillEvaluationKeys.caseFeedback(skillId, evaluationSetId, runId),
+    queryFn: () =>
+      skillEvaluationsApi.listCaseFeedback(
+        requireQueryId(skillId, 'skillId'),
+        requireQueryId(evaluationSetId, 'evaluationSetId'),
+        requireQueryId(runId, 'runId'),
+      ),
+    enabled: !!skillId && !!evaluationSetId && !!runId,
+  })
+}
+
+export function useUpsertSkillCaseFeedback(
+  skillId: string,
+  evaluationSetId: string,
+  runId: string,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: SkillCaseFeedbackUpsert) =>
+      skillEvaluationsApi.upsertCaseFeedback(skillId, evaluationSetId, runId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: skillEvaluationKeys.caseFeedback(skillId, evaluationSetId, runId),
+      })
+    },
+  })
+}
+
+export function useDeleteSkillCaseFeedback(
+  skillId: string,
+  evaluationSetId: string,
+  runId: string,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (caseIndex: number) =>
+      skillEvaluationsApi.deleteCaseFeedback(skillId, evaluationSetId, runId, caseIndex),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: skillEvaluationKeys.caseFeedback(skillId, evaluationSetId, runId),
+      })
+    },
+  })
+}
+
 function invalidateSkillEvaluationCaches(
   qc: ReturnType<typeof useQueryClient>,
   skillId: string,
@@ -121,6 +215,7 @@ function invalidateSkillEvaluationCaches(
   qc.invalidateQueries({ queryKey: skillQueryKeys.all })
   qc.invalidateQueries({ queryKey: skillQueryKeys.detail(skillId) })
   qc.invalidateQueries({ queryKey: skillEvaluationKeys.sets(skillId) })
+  qc.invalidateQueries({ queryKey: skillEvaluationKeys.versionStats(skillId) })
   if (evaluationSetId) {
     qc.invalidateQueries({ queryKey: skillEvaluationKeys.set(skillId, evaluationSetId) })
     qc.invalidateQueries({ queryKey: skillEvaluationKeys.runs(skillId, evaluationSetId) })

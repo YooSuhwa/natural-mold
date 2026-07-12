@@ -94,7 +94,9 @@ async def test_estimate_run_uses_case_count_and_settings(db: AsyncSession) -> No
 
     assert estimate.case_count == 2
     assert estimate.model_call_count == 6
-    assert estimate.timeout_seconds == 180
+    # timeout scales with the workload (2 cases × 3 arms × 60s = 360), floored
+    # at the configured base and capped by _max_seconds (review R5).
+    assert estimate.timeout_seconds == 360
     assert estimate.uses_baseline_comparison is True
 
 

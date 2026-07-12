@@ -36,6 +36,8 @@ class SkillEvaluationContext:
     evals: Sequence[JsonValue]
     runtime_context: SkillToolContext
     cancellation: EvalCancellationProbe = field(default_factory=NoopEvalCancellationProbe)
+    # run_config.baseline_comparison — False skips the without-arm (Phase 3 §4).
+    baseline_comparison: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +49,9 @@ class SkillEvaluationResult:
     runner_version: str = DEFAULT_RUNNER_VERSION
     grader_prompt_version: str = DEFAULT_GRADER_PROMPT_VERSION
     eval_schema_version: int = 1
+    # Measured LLM usage rollup (Phase 3 §5.1) — None when the evaluator made
+    # no model calls (deterministic runner) or predates measurement.
+    usage: dict[str, JsonValue] | None = None
 
 
 class SkillEvaluationEvaluator(Protocol):

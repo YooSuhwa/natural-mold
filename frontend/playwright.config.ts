@@ -20,7 +20,9 @@ const webServer = [
     ? []
     : [
         {
-          command: `cd ../backend && E2E_SCRIPTED_MODEL_ENABLED=true SKILL_EVALUATION_ENABLED=false CORS_ALLOWED_ORIGINS=${corsOrigins} uv run uvicorn app.main:app --port ${backendPort}`,
+          // SKILL_EVALUATION_ENABLED 기본 false(기존 계약 — eval worker 소음 차단).
+          // Phase 3 평가 런 투어만 E2E_SKILL_EVALUATION_ENABLED=true로 켠다.
+          command: `cd ../backend && E2E_SCRIPTED_MODEL_ENABLED=true SKILL_EVALUATION_ENABLED=${process.env.E2E_SKILL_EVALUATION_ENABLED === 'true' ? 'true' : 'false'} CORS_ALLOWED_ORIGINS=${corsOrigins} uv run uvicorn app.main:app --port ${backendPort}`,
           port: backendPort,
           reuseExistingServer: true,
         },

@@ -11,4 +11,7 @@ export const skillQueryKeys = {
   detail: (skillId: string | null | undefined) => ['skills', skillId] as const,
   files: (skillId: string | null | undefined) => ['skills', skillId, 'files'] as const,
   content: (skillId: string | null | undefined) => ['skills', skillId, 'content'] as const,
+  usage: (skillId: string | null | undefined, days: number) =>
+    ['skills', skillId, 'usage', days] as const,
+  feedback: (skillId: string | null | undefined) => ['skills', skillId, 'feedback'] as const,
 }

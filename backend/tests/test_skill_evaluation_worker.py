@@ -236,7 +236,13 @@ async def test_worker_marks_timed_out_run_failed_and_records_sanitized_audit(
     run = await create_run(db, tmp_path)
     worker = SkillEvaluationWorker(evaluator=HangingEvaluator())
 
-    with patch.object(settings, "skill_evaluation_run_timeout_seconds", 0.01):
+    # The effective run timeout scales with the workload and is capped by
+    # _max_seconds — patch the ceiling to force a tiny timeout regardless of the
+    # per-workload floor.
+    with (
+        patch.object(settings, "skill_evaluation_run_timeout_seconds", 0.01),
+        patch.object(settings, "skill_evaluation_run_timeout_max_seconds", 0.01),
+    ):
         failed = await worker.run_once(db, run.id)
     await db.commit()
 
