@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -218,51 +218,18 @@ _ROTATION_BATCH = 100
 async def rotate_credentials_to_active_key() -> int:
     """Re-encrypt every credential whose ``key_id`` differs from the active key.
 
-    Iterates in pages of ``_ROTATION_BATCH`` so a large backlog doesn't OOM
-    a single transaction. Each row writes a ``rotate`` audit log; failures
-    log+continue so a single bad row can't stall the rotation.
+    본문은 ``app.credentials.rotation``으로 이관 (BE-S9). 이 wrapper는 영속
+    jobstore의 ``app.scheduler`` job 레퍼런스를 보존하고, 모듈 전역
+    ``async_session`` / ``_ROTATION_BATCH``를 call-time에 읽어 주입한다
+    (테스트 patch 표면).
     """
 
-    from sqlalchemy import select
+    from app.credentials import rotation as credential_rotation
 
-    from app.credentials import service as credential_service
-    from app.models.credential import Credential
-    from app.security.key_provider import get_active_key_id
-
-    active_key_id = get_active_key_id()
-    rotated = 0
-    # Rows that failed re-encryption keep their stale key_id, so without an
-    # exclusion a batch of >=_ROTATION_BATCH persistent failures would be
-    # re-fetched forever (the len(rows) < batch guard never trips). Excluding
-    # failed ids guarantees progress: every iteration either rotates a row
-    # (drops out via key_id) or marks it failed (drops out via notin_).
-    failed_ids: set[uuid.UUID] = set()
-
-    while True:
-        async with async_session() as db:
-            stmt = select(Credential).where(Credential.key_id != active_key_id)
-            if failed_ids:
-                stmt = stmt.where(Credential.id.notin_(failed_ids))
-            result = await db.execute(stmt.limit(_ROTATION_BATCH))
-            rows = list(result.scalars().all())
-            if not rows:
-                break
-            for cred in rows:
-                try:
-                    await credential_service.re_encrypt_with_active_key(db, cred)
-                    rotated += 1
-                except Exception:  # noqa: BLE001 — keep rotation moving
-                    failed_ids.add(cred.id)
-                    logger.exception("credential %s rotation failed; will retry next run", cred.id)
-            await db.commit()
-        if len(rows) < _ROTATION_BATCH:
-            break
-    if failed_ids:
-        logger.warning(
-            "credential rotation finished with %d failed rows; they will be retried next run",
-            len(failed_ids),
-        )
-    return rotated
+    return await credential_rotation.rotate_credentials_to_active_key(
+        session_factory=async_session,
+        batch_size=_ROTATION_BATCH,
+    )
 
 
 def _register_cron_job(
@@ -568,58 +535,12 @@ async def poll_mcp_servers_health() -> dict[str, int]:
     history row): this job only refreshes the lightweight
     ``health_status`` / ``health_polled_at`` / ``health_message`` columns
     so the list view can show a fresh dot without paying for a full sweep.
+    본문은 ``app.services.mcp_service``로 이관 (BE-S9).
     """
 
-    from sqlalchemy import or_, select
+    from app.services import mcp_service
 
-    from app.mcp import discovery as mcp_discovery
-    from app.models.mcp_server import McpServer
-
-    counters = {"checked": 0, "ok": 0, "error": 0}
-    polled_at = datetime.now(UTC).replace(tzinfo=None)
-
-    async with async_session() as db:
-        rows = (
-            (
-                await db.execute(
-                    select(McpServer).where(
-                        or_(
-                            McpServer.is_system.is_(True),
-                            McpServer.status != "disabled",
-                        )
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-
-        for server in rows:
-            counters["checked"] += 1
-            try:
-                probe = await mcp_discovery.test_server(db, server)
-            except Exception as exc:  # noqa: BLE001 — keep the sweep alive
-                logger.exception("mcp health poll failed for server %s", server.id)
-                server.health_status = "error"
-                server.health_polled_at = polled_at
-                server.health_message = str(exc)
-                counters["error"] += 1
-                continue
-
-            server.health_polled_at = polled_at
-            if probe.get("success"):
-                server.health_status = "ok"
-                server.health_message = None
-                counters["ok"] += 1
-            else:
-                server.health_status = "error"
-                server.health_message = probe.get("error")
-                counters["error"] += 1
-
-        await db.commit()
-
-    logger.info("mcp health poll finished: %s", counters)
-    return counters
+    return await mcp_service.poll_mcp_servers_health(session_factory=async_session)
 
 
 def register_mcp_health_job() -> None:
@@ -658,28 +579,13 @@ CONVERSATION_RUN_STALE_SWEEP_JOB_ID = "conversation_run_stale_sweep"
 
 
 async def sweep_stale_conversation_runs() -> None:
-    """Mark active conversation runs stale after their heartbeat threshold."""
-    from app.services import conversation_run_service
-    from app.services.conversation_run_worker import get_run_task_registry
+    """Mark active conversation runs stale after their heartbeat threshold.
 
-    stale_before = datetime.now(UTC).replace(tzinfo=None) - timedelta(
-        seconds=settings.chat_run_stale_after_seconds
-    )
-    try:
-        async with async_session() as db:
-            registry = get_run_task_registry()
-            marked = await conversation_run_service.mark_stale_active_runs(
-                db,
-                stale_before=stale_before,
-                worker_instance_id=None,
-                include_workerless=True,
-                protected_run_ids=registry.active_run_ids(),
-            )
-            await db.commit()
-        if marked:
-            logger.warning("Marked %d stale conversation run(s)", marked)
-    except Exception:  # noqa: BLE001 — keep cron alive
-        logger.exception("Conversation run stale sweep failed; will retry next run")
+    본문은 ``app.services.conversation_run_service``로 이관 (BE-S9).
+    """
+    from app.services import conversation_run_service
+
+    await conversation_run_service.sweep_stale_conversation_runs(session_factory=async_session)
 
 
 def evict_expired_brokers() -> None:
@@ -732,21 +638,16 @@ _SKILL_RUNTIME_RETENTION_SECONDS = 3600  # 1 hour
 def cleanup_skill_runtime_roots() -> None:
     """Drop stale ``data/runtime/<thread_id>/`` directories.
 
-    Wraps ``app.marketplace.skill_runtime.cleanup_stale_runtime_roots`` so
-    APScheduler can target a module-level callable. Wrapped in a broad
-    ``except`` so a single failure doesn't disable the cron.
+    Wraps ``app.marketplace.skill_runtime.cleanup_skill_runtime_roots`` so
+    APScheduler can target a module-level callable. 본문(keep-cron-alive
+    try/except 포함)은 그쪽으로 이관 (BE-S9).
     """
 
-    from app.agent_runtime.runtime_config import _DATA_DIR
-    from app.marketplace.skill_runtime import cleanup_stale_runtime_roots
+    from app.marketplace import skill_runtime
 
-    try:
-        cleanup_stale_runtime_roots(
-            _DATA_DIR,
-            retention_seconds=_SKILL_RUNTIME_RETENTION_SECONDS,
-        )
-    except Exception:  # noqa: BLE001 — keep cron alive
-        logger.exception("skill runtime root cleanup failed; will retry next run")
+    skill_runtime.cleanup_skill_runtime_roots(
+        retention_seconds=_SKILL_RUNTIME_RETENTION_SECONDS,
+    )
 
 
 def register_skill_runtime_cleanup_job() -> None:

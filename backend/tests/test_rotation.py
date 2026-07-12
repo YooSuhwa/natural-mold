@@ -141,6 +141,67 @@ async def test_rotation_is_noop_when_already_active() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("_user", "_restore_keys")
+async def test_rotation_wrapper_wires_patched_batch_size_through() -> None:
+    """The scheduler wrapper must inject the (patched) ``_ROTATION_BATCH``
+    into the rotation loop — not a hardcoded batch of its own.
+
+    The loop opens one session (and runs one SELECT) per page, so 5 stale
+    rows at batch=2 must page 2+2+1 → 3 session-factory calls. A wrapper
+    that hardcoded e.g. ``batch_size=100`` would still rotate all 5 rows in
+    a single page, which is exactly the mutation this pins. It also makes
+    the ``notin_`` regression test below honest: that test silently relies
+    on ``_ROTATION_BATCH=2`` actually reaching the loop.
+    """
+
+    key_a = secrets.token_hex(32)
+    key_b = secrets.token_hex(32)
+    _swap_keys(key_a)
+
+    created: list[uuid.UUID] = []
+    async with TestSession() as db:
+        for idx in range(5):
+            cred = await credential_service.create(
+                db,
+                user_id=TEST_USER_ID,
+                definition_key="openai",
+                name=f"batch-{idx}",
+                data={"api_key": f"sk-batch-{idx}"},
+            )
+            created.append(cred.id)
+        await db.commit()
+
+    _swap_keys(key_b, key_a)
+    active_b_id = key_provider.get_active_key_id()
+
+    session_calls = 0
+
+    def _counting_session() -> AsyncSession:
+        nonlocal session_calls
+        session_calls += 1
+        return TestSession()
+
+    with (
+        patch("app.scheduler.async_session", _counting_session),
+        patch("app.scheduler._ROTATION_BATCH", 2),
+    ):
+        rotated = await rotate_credentials_to_active_key()
+
+    # Everything rotated…
+    assert rotated == len(created)
+    async with TestSession() as db:
+        rows = (await db.execute(select(Credential).where(Credential.id.in_(created)))).scalars()
+        assert all(row.key_id == active_b_id for row in rows)
+
+    # …AND batch paging actually happened: 5 rows at batch=2 need at least
+    # 3 pages (2+2+1). A hardcoded large batch finishes in a single session.
+    assert session_calls >= 3, (
+        f"expected >=3 session pages for 5 rows at batch=2, got {session_calls} — "
+        "the wrapper is not forwarding _ROTATION_BATCH"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_user", "_restore_keys")
 async def test_rotation_terminates_when_rows_keep_failing() -> None:
     """A full batch of persistently failing rows must not spin the loop
     forever: failed ids are excluded from the next fetch, so the job
