@@ -1,15 +1,23 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 
 import { Skeleton } from '@/components/ui/skeleton'
+import { useSkillEvaluationCaseFeedback } from '@/lib/hooks/use-skill-evaluations'
+import { formatDisplayNumber, formatDisplayUsd } from '@/lib/utils/display-format'
 import type { JsonObject, JsonValue } from '@/lib/types/json'
-import type { SkillEvaluationRun } from '@/lib/types/skill-evaluation'
+import type { SkillCaseFeedback, SkillEvaluationRun } from '@/lib/types/skill-evaluation'
+
+import { SkillBenchmarkPanel } from './skill-benchmark-panel'
+import { SkillCaseFeedbackControls } from './skill-case-feedback-controls'
 
 type SkillEvaluationRunDetailProps = {
   readonly currentSkillContentHash?: string | null
   readonly isLoading?: boolean
   readonly run: SkillEvaluationRun | null
+  /** 케이스 피드백 활성화용 — 없으면 피드백 컨트롤은 렌더하지 않는다. */
+  readonly skillId?: string | null
 }
 
 function normalizedRate(value: number): number {
@@ -85,12 +93,39 @@ function runIsStale(run: SkillEvaluationRun, currentSkillContentHash?: string | 
   )
 }
 
+function usageItems(run: SkillEvaluationRun, t: ReturnType<typeof useTranslations>) {
+  const usage = run.usage
+  if (!usage?.measured) return []
+  const tokens = (usage.tokens_in ?? 0) + (usage.tokens_out ?? 0)
+  return [
+    t('usageLine.modelCalls', { count: usage.model_calls ?? 0 }),
+    t('usageLine.tokens', { count: formatDisplayNumber(tokens) }),
+    typeof usage.cost_usd === 'number'
+      ? t('usageLine.cost', { value: formatDisplayUsd(usage.cost_usd) })
+      : t('usageLine.costUnknown'),
+  ]
+}
+
 export function SkillEvaluationRunDetail({
   currentSkillContentHash,
   isLoading = false,
   run,
+  skillId = null,
 }: SkillEvaluationRunDetailProps) {
   const t = useTranslations('skill.detailDialog.evaluation')
+  const feedbackEnabled = Boolean(skillId && run && run.status === 'completed')
+  const { data: caseFeedback } = useSkillEvaluationCaseFeedback(
+    feedbackEnabled ? skillId : null,
+    feedbackEnabled ? (run?.evaluation_set_id ?? null) : null,
+    feedbackEnabled ? (run?.id ?? null) : null,
+  )
+  const feedbackByCase = useMemo(() => {
+    const map = new Map<number, SkillCaseFeedback>()
+    for (const item of caseFeedback ?? []) {
+      map.set(item.case_index, item)
+    }
+    return map
+  }, [caseFeedback])
 
   if (isLoading) {
     return <Skeleton className="h-48 w-full rounded-lg" />
@@ -106,6 +141,7 @@ export function SkillEvaluationRunDetail({
 
   const metrics = metricItems(run, t)
   const benchmarks = benchmarkItems(run, t)
+  const usageLines = usageItems(run, t)
   const caseResults = run.case_results ?? []
 
   return (
@@ -130,6 +166,8 @@ export function SkillEvaluationRunDetail({
         </dl>
       ) : null}
 
+      <SkillBenchmarkPanel run={run} />
+
       {benchmarks.length > 0 ? (
         <div className="mt-4">
           <h4 className="moldy-ui-micro text-muted-foreground">{t('benchmarkTitle')}</h4>
@@ -140,6 +178,13 @@ export function SkillEvaluationRunDetail({
               </li>
             ))}
           </ul>
+        </div>
+      ) : null}
+
+      {usageLines.length > 0 ? (
+        <div className="mt-4" data-testid="run-usage-line">
+          <h4 className="moldy-ui-micro text-muted-foreground">{t('usageLine.title')}</h4>
+          <p className="mt-2 text-xs">{usageLines.join(' · ')}</p>
         </div>
       ) : null}
 
@@ -176,6 +221,15 @@ export function SkillEvaluationRunDetail({
                   {feedback ? <p className="mt-2 text-xs">{feedback}</p> : null}
                   {evidence ? (
                     <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{evidence}</p>
+                  ) : null}
+                  {feedbackEnabled && skillId ? (
+                    <SkillCaseFeedbackControls
+                      skillId={skillId}
+                      evaluationSetId={run.evaluation_set_id}
+                      runId={run.id}
+                      caseIndex={index}
+                      mine={feedbackByCase.get(index) ?? null}
+                    />
                   ) : null}
                 </article>
               )

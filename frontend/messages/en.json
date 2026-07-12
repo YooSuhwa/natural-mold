@@ -2638,7 +2638,60 @@
           "completed": "Evaluation complete",
           "failed": "Evaluation failed",
           "cancelled": "Evaluation cancelled"
-        }
+        },
+        "abBenchmark": {
+          "title": "A/B benchmark (with vs without skill)",
+          "measured": "Measured",
+          "estimated": "Estimated",
+          "baselineSkipped": "Baseline arm skipped",
+          "withSkill": "With skill",
+          "withoutSkill": "Without skill",
+          "passRateDelta": "Pass-rate delta {rate}",
+          "tokenDelta": "Token delta {count}",
+          "durationDelta": "Latency delta {count}ms"
+        },
+        "usage": {
+          "title": "Usage & cost",
+          "window": "Last {days} days",
+          "tokens": "Tokens",
+          "cost": "Cost",
+          "costUnknown": "No pricing",
+          "evaluationRuns": "Evaluation runs",
+          "executions": "Chat executions",
+          "unpricedHint": "{count} events had no pricing and are excluded from cost."
+        },
+        "usageLine": {
+          "title": "Measured usage for this run",
+          "modelCalls": "{count} model calls",
+          "tokens": "{count} tokens",
+          "cost": "{value} cost",
+          "costUnknown": "No pricing for cost"
+        },
+        "feedback": {
+          "title": "Was this skill helpful?",
+          "displayOnly": "Display only — never affects pass rate",
+          "rateUp": "Helpful",
+          "rateDown": "Not helpful",
+          "commentOpen": "Add comment",
+          "commentClose": "Close comment",
+          "commentPlaceholder": "Tell us what worked or what fell short",
+          "commentHint": "The comment is saved together with your rating."
+        },
+        "caseFeedback": {
+          "prompt": "Agree with the verdict?",
+          "agree": "Agree with case {number} verdict",
+          "disagree": "Disagree with case {number} verdict",
+          "commentOpen": "Comment",
+          "commentClose": "Close",
+          "commentPlaceholder": "Share your take on this verdict"
+        },
+        "versionStats": {
+          "title": "Pass rate by version",
+          "hint": "Latest pass rate of completed evaluation runs grouped by skill version.",
+          "runCount": "{count} runs"
+        },
+        "estimateCostUnpriced": "No pricing",
+        "estimateRunnerModel": "Runner model"
       },
       "history": {
         "empty": "History starts from the current version.",
@@ -2672,7 +2725,8 @@
           "builder_create": "Builder created",
           "builder_improvement": "Builder improvement",
           "rollback": "Rollback"
-        }
+        },
+        "passRate": "Pass {rate}%"
       },
       "metadata": {
         "name": "Name",

@@ -10,6 +10,9 @@ import type { SkillEvaluationRun, SkillEvaluationSet } from '@/lib/types/skill-e
 
 import { SkillEvaluationRunDetail } from './skill-evaluation-run-detail'
 import { SkillEvaluationSetCard } from './skill-evaluation-set-card'
+import { SkillFeedbackCard } from './skill-feedback-card'
+import { SkillUsageSummaryCard } from './skill-usage-summary-card'
+import { SkillVersionPassRatePanel } from './skill-version-pass-rate-panel'
 
 type SkillEvaluationTabProps = {
   readonly currentSkillContentHash?: string | null
@@ -63,60 +66,74 @@ export function SkillEvaluationTab({
 
   if (evaluationSets.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-6 text-center">
-        <p className="text-sm font-medium">{t('emptyTitle')}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{t('emptyDescription')}</p>
+      <div className="space-y-4">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SkillUsageSummaryCard skillId={skillId} />
+          <SkillFeedbackCard skillId={skillId} />
+        </div>
+        <div className="rounded-lg border border-dashed p-6 text-center">
+          <p className="text-sm font-medium">{t('emptyTitle')}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('emptyDescription')}</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(20rem,1fr)]">
-      <div className="space-y-4">
-        <div className="space-y-3">
-          {evaluationSets.map((set) => (
-            <SkillEvaluationSetCard
-              key={set.id}
-              currentSkillContentHash={resolvedContentHash}
-              needsCredentialSetup={needsCredentialSetup}
-              onOpenCredentials={onOpenCredentials}
-              onSelect={() => selectSet(set.id)}
-              selected={selectedSet?.id === set.id}
-              set={set}
-              skillId={skillId}
-            />
-          ))}
-        </div>
-        <section className="rounded-lg border border-border/70 p-3">
-          <h3 className="text-sm font-semibold">{t('runHistoryTitle')}</h3>
-          {runsQuery.isLoading ? (
-            <Skeleton className="mt-3 h-20 w-full rounded-lg" />
-          ) : runs.length === 0 ? (
-            <p className="mt-2 text-xs text-muted-foreground">{t('noRunHistory')}</p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {runs.map((run) => (
-                <Button
-                  key={run.id}
-                  type="button"
-                  variant={selectedRun?.id === run.id ? 'secondary' : 'outline'}
-                  size="sm"
-                  className="w-full justify-start font-mono"
-                  aria-label={t('viewRun', { id: run.id })}
-                  onClick={() => setSelectedRunId(run.id)}
-                >
-                  {run.id}
-                </Button>
-              ))}
-            </div>
-          )}
-        </section>
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SkillUsageSummaryCard skillId={skillId} />
+        <SkillFeedbackCard skillId={skillId} />
       </div>
-      <SkillEvaluationRunDetail
-        currentSkillContentHash={resolvedContentHash}
-        isLoading={runsQuery.isLoading}
-        run={selectedRun}
-      />
+      <SkillVersionPassRatePanel skillId={skillId} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(20rem,1fr)]">
+        <div className="space-y-4">
+          <div className="space-y-3">
+            {evaluationSets.map((set) => (
+              <SkillEvaluationSetCard
+                key={set.id}
+                currentSkillContentHash={resolvedContentHash}
+                needsCredentialSetup={needsCredentialSetup}
+                onOpenCredentials={onOpenCredentials}
+                onSelect={() => selectSet(set.id)}
+                selected={selectedSet?.id === set.id}
+                set={set}
+                skillId={skillId}
+              />
+            ))}
+          </div>
+          <section className="rounded-lg border border-border/70 p-3">
+            <h3 className="text-sm font-semibold">{t('runHistoryTitle')}</h3>
+            {runsQuery.isLoading ? (
+              <Skeleton className="mt-3 h-20 w-full rounded-lg" />
+            ) : runs.length === 0 ? (
+              <p className="mt-2 text-xs text-muted-foreground">{t('noRunHistory')}</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {runs.map((run) => (
+                  <Button
+                    key={run.id}
+                    type="button"
+                    variant={selectedRun?.id === run.id ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="w-full justify-start font-mono"
+                    aria-label={t('viewRun', { id: run.id })}
+                    onClick={() => setSelectedRunId(run.id)}
+                  >
+                    {run.id}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+        <SkillEvaluationRunDetail
+          currentSkillContentHash={resolvedContentHash}
+          isLoading={runsQuery.isLoading}
+          run={selectedRun}
+          skillId={skillId}
+        />
+      </div>
     </div>
   )
 }

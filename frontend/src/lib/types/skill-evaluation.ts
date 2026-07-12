@@ -31,8 +31,50 @@ export type SkillEvaluationRunEstimate = {
   readonly model_call_count: number
   readonly estimated_seconds: number
   readonly timeout_seconds: number
+  readonly estimated_tokens_in?: number
+  readonly estimated_tokens_out?: number
   readonly estimated_cost_usd: number
+  /** false → runner 모델 단가 미보유. cost 0은 "무료"가 아니라 "모름". */
+  readonly pricing_available?: boolean
+  readonly runner_model?: string | null
   readonly uses_baseline_comparison: boolean
+}
+
+/** llm-2 실측 usage rollup — 레거시/deterministic 런은 null. */
+export type SkillEvaluationRunUsage = {
+  readonly measured?: boolean
+  readonly model_calls?: number
+  readonly tokens_in?: number
+  readonly tokens_out?: number
+  readonly cost_usd?: number | null
+}
+
+export type SkillEvaluationVersionStats = {
+  readonly skill_version?: string | null
+  readonly content_hash?: string | null
+  readonly run_count: number
+  readonly latest_pass_rate?: number | null
+  readonly avg_pass_rate?: number | null
+  readonly latest_pass_rate_delta?: number | null
+  readonly latest_measured: boolean
+  readonly first_run_at: string
+  readonly last_run_at: string
+}
+
+export type SkillCaseFeedbackVerdict = 'agree' | 'disagree'
+
+export type SkillCaseFeedback = {
+  readonly run_id: string
+  readonly case_index: number
+  readonly verdict: SkillCaseFeedbackVerdict
+  readonly comment?: string | null
+  readonly updated_at: string
+}
+
+export type SkillCaseFeedbackUpsert = {
+  readonly case_index: number
+  readonly verdict: SkillCaseFeedbackVerdict
+  readonly comment?: string | null
 }
 
 export type SkillEvaluationRun = {
@@ -45,6 +87,7 @@ export type SkillEvaluationRun = {
   readonly runner_model?: string | null
   readonly summary?: Readonly<Record<string, JsonValue>> | null
   readonly benchmark?: Readonly<Record<string, JsonValue>> | null
+  readonly usage?: SkillEvaluationRunUsage | null
   readonly case_results?: readonly JsonValue[] | null
   readonly error_message?: string | null
   readonly cancellation_requested_at?: string | null

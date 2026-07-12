@@ -42,6 +42,21 @@ vi.mock('@/lib/hooks/use-skill-evaluations', () => ({
     mutate: mockCancelRun,
     isPending: false,
   }),
+  // Phase 3 hooks — the tab now also renders version stats + case feedback.
+  useSkillEvaluationVersionStats: () => ({ data: [], isLoading: false }),
+  useSkillEvaluationCaseFeedback: () => ({ data: [], isLoading: false }),
+  useUpsertSkillCaseFeedback: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteSkillCaseFeedback: () => ({ mutate: vi.fn(), isPending: false }),
+}))
+
+vi.mock('@/lib/hooks/use-skill-usage', () => ({
+  useSkillUsage: () => ({ data: undefined, isLoading: false }),
+}))
+
+vi.mock('@/lib/hooks/use-skill-feedback', () => ({
+  useSkillFeedback: () => ({ data: undefined, isLoading: false }),
+  useUpsertSkillFeedback: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteSkillFeedback: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 function buildEvaluationSet(overrides: Partial<SkillEvaluationSet>): SkillEvaluationSet {

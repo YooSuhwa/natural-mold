@@ -76,8 +76,20 @@ export function SkillEvaluationEstimateDialog({
             </div>
             <div className="flex items-center justify-between gap-3">
               <dt className="text-muted-foreground">{t('estimateCost')}</dt>
-              <dd className="font-medium">{formatDisplayUsd(estimate.estimated_cost_usd)}</dd>
+              <dd className="font-medium" data-testid="estimate-cost">
+                {estimate.pricing_available
+                  ? formatDisplayUsd(estimate.estimated_cost_usd)
+                  : t('estimateCostUnpriced')}
+              </dd>
             </div>
+            {estimate.pricing_available && estimate.runner_model ? (
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">{t('estimateRunnerModel')}</dt>
+                <dd className="max-w-48 truncate font-mono text-xs" title={estimate.runner_model}>
+                  {estimate.runner_model}
+                </dd>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between gap-3">
               <dt className="text-muted-foreground">{t('estimateBaseline')}</dt>
               <dd className="font-medium">

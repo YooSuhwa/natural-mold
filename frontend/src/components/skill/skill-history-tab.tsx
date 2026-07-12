@@ -14,6 +14,7 @@ import {
   useSkillRevision,
   useSkillRevisions,
 } from '@/lib/hooks/use-skill-revisions'
+import { useSkillEvaluationVersionStats } from '@/lib/hooks/use-skill-evaluations'
 import { formatDisplayDateTime } from '@/lib/utils/display-format'
 import type { SkillRevisionSummary } from '@/lib/types/skill-revision'
 import type { SkillDetailTabRender } from './skill-detail-tab-shell'
@@ -35,6 +36,16 @@ export function SkillHistoryTab({
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null)
   const [rollbackRevision, setRollbackRevision] = useState<SkillRevisionSummary | null>(null)
   const { data: revisions, isLoading } = useSkillRevisions(skillId)
+  const { data: versionStats } = useSkillEvaluationVersionStats(skillId)
+  const passRateByContentHash = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const stat of versionStats ?? []) {
+      if (stat.content_hash && typeof stat.latest_pass_rate === 'number') {
+        map.set(stat.content_hash, stat.latest_pass_rate)
+      }
+    }
+    return map
+  }, [versionStats])
   const items = useMemo(() => sortRevisionsNewestFirst(revisions ?? []), [revisions])
   const currentRevisionId = items[0]?.id ?? null
   const resolvedSelectedRevisionId = selectedRevisionId ?? currentRevisionId
@@ -88,6 +99,23 @@ export function SkillHistoryTab({
                             {t('selected')}
                           </Badge>
                         ) : null}
+                        {(() => {
+                          const passRate = revision.content_hash
+                            ? passRateByContentHash.get(revision.content_hash)
+                            : undefined
+                          if (passRate === undefined) return null
+                          return (
+                            <Badge
+                              variant="secondary"
+                              className="moldy-ui-micro tabular-nums"
+                              data-testid="revision-pass-rate"
+                            >
+                              {t('passRate', {
+                                rate: Math.round(passRate <= 1 ? passRate * 100 : passRate),
+                              })}
+                            </Badge>
+                          )
+                        })()}
                       </div>
                       <p className="mt-1 moldy-ui-micro text-muted-foreground">
                         {t(`operation.${revision.operation}`)} ·{' '}

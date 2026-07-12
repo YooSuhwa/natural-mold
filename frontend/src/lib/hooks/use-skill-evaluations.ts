@@ -5,6 +5,7 @@ import { skillEvaluationsApi } from '@/lib/api/skill-evaluations'
 import { skillQueryKeys } from '@/lib/query-keys/skills'
 import { requireQueryId } from './query-id'
 import type {
+  SkillCaseFeedbackUpsert,
   SkillEvaluationRun,
   SkillEvaluationRunCancelRequest,
   SkillEvaluationSetCreate,
@@ -29,6 +30,13 @@ export const skillEvaluationKeys = {
     ['skills', skillId, 'evaluations', evaluationSetId] as const,
   runs: (skillId: string | null | undefined, evaluationSetId: string | null | undefined) =>
     ['skills', skillId, 'evaluations', evaluationSetId, 'runs'] as const,
+  versionStats: (skillId: string | null | undefined) =>
+    ['skills', skillId, 'evaluations', 'version-stats'] as const,
+  caseFeedback: (
+    skillId: string | null | undefined,
+    evaluationSetId: string | null | undefined,
+    runId: string | null | undefined,
+  ) => ['skills', skillId, 'evaluations', evaluationSetId, 'runs', runId, 'case-feedback'] as const,
 }
 
 export function useSkillEvaluationSets(skillId: string | null | undefined) {
@@ -113,6 +121,66 @@ export function useCancelSkillEvaluationRun(skillId: string, evaluationSetId: st
   })
 }
 
+export function useSkillEvaluationVersionStats(skillId: string | null | undefined) {
+  return useQuery({
+    queryKey: skillEvaluationKeys.versionStats(skillId),
+    queryFn: () => skillEvaluationsApi.versionStats(requireQueryId(skillId, 'skillId')),
+    enabled: !!skillId,
+    staleTime: 30_000,
+  })
+}
+
+export function useSkillEvaluationCaseFeedback(
+  skillId: string | null | undefined,
+  evaluationSetId: string | null | undefined,
+  runId: string | null | undefined,
+) {
+  return useQuery({
+    queryKey: skillEvaluationKeys.caseFeedback(skillId, evaluationSetId, runId),
+    queryFn: () =>
+      skillEvaluationsApi.listCaseFeedback(
+        requireQueryId(skillId, 'skillId'),
+        requireQueryId(evaluationSetId, 'evaluationSetId'),
+        requireQueryId(runId, 'runId'),
+      ),
+    enabled: !!skillId && !!evaluationSetId && !!runId,
+  })
+}
+
+export function useUpsertSkillCaseFeedback(
+  skillId: string,
+  evaluationSetId: string,
+  runId: string,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: SkillCaseFeedbackUpsert) =>
+      skillEvaluationsApi.upsertCaseFeedback(skillId, evaluationSetId, runId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: skillEvaluationKeys.caseFeedback(skillId, evaluationSetId, runId),
+      })
+    },
+  })
+}
+
+export function useDeleteSkillCaseFeedback(
+  skillId: string,
+  evaluationSetId: string,
+  runId: string,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (caseIndex: number) =>
+      skillEvaluationsApi.deleteCaseFeedback(skillId, evaluationSetId, runId, caseIndex),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: skillEvaluationKeys.caseFeedback(skillId, evaluationSetId, runId),
+      })
+    },
+  })
+}
+
 function invalidateSkillEvaluationCaches(
   qc: ReturnType<typeof useQueryClient>,
   skillId: string,
@@ -121,6 +189,7 @@ function invalidateSkillEvaluationCaches(
   qc.invalidateQueries({ queryKey: skillQueryKeys.all })
   qc.invalidateQueries({ queryKey: skillQueryKeys.detail(skillId) })
   qc.invalidateQueries({ queryKey: skillEvaluationKeys.sets(skillId) })
+  qc.invalidateQueries({ queryKey: skillEvaluationKeys.versionStats(skillId) })
   if (evaluationSetId) {
     qc.invalidateQueries({ queryKey: skillEvaluationKeys.set(skillId, evaluationSetId) })
     qc.invalidateQueries({ queryKey: skillEvaluationKeys.runs(skillId, evaluationSetId) })

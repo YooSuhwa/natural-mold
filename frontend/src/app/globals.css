@@ -856,6 +856,11 @@
     --moldy-usage-bar-color: var(--usage-chart-requests);
   }
 
+  /* Phase 3 skill A/B baseline arm — muted contrast against the with-skill bar. */
+  .moldy-usage-bar[data-usage-metric='baseline'] {
+    --moldy-usage-bar-color: var(--muted-foreground);
+  }
+
   .moldy-content-visibility {
     content-visibility: auto;
     contain-intrinsic-size: 1px 680px;
