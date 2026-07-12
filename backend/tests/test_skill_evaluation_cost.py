@@ -202,3 +202,36 @@ async def test_usage_collector_rollup_without_pricing() -> None:
     collector.add_response(SimpleNamespace(usage_metadata={"input_tokens": 10, "output_tokens": 5}))
     rollup = collector.rollup(UNPRICED)
     assert rollup["cost_usd"] is None
+
+
+async def test_usage_collector_priced_but_no_metadata_is_unknown_not_free() -> None:
+    """review R3 — a priced model that returns NO usage_metadata must report
+    cost None (unknown), never a $0 that masquerades as a free measured run.
+    """
+
+    collector = LlmUsageCollector()
+    collector.add_response(SimpleNamespace(usage_metadata=None))
+    collector.add_response(SimpleNamespace(usage_metadata=None))
+
+    priced = ModelPricing(
+        cost_per_input_token=Decimal("0.000001"),
+        cost_per_output_token=Decimal("0.000002"),
+    )
+    rollup = collector.rollup(priced)
+
+    assert rollup["model_calls"] == 2
+    assert rollup["tokens_in"] == 0
+    assert rollup["cost_usd"] is None  # unknown, NOT 0.0
+
+
+async def test_estimate_run_counts_structured_input_tokens() -> None:
+    """review R3 — structured (dict) inputs are json-serialized into the prompt,
+    so the token estimate must count them (a str-only heuristic reports ~0).
+    """
+
+    structured = estimate_run(
+        _evaluation_set([{"input": {"query": "x" * 400, "context": ["y" * 400]}}])
+    )
+    empty = estimate_run(_evaluation_set([{"input": None}]))
+    # Structured case contributes real serialized chars beyond the flat overhead.
+    assert structured.estimated_tokens_in > empty.estimated_tokens_in

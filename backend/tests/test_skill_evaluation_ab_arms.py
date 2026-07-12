@@ -180,6 +180,96 @@ async def test_baseline_comparison_off_skips_without_arm(db: AsyncSession, tmp_p
     assert metrics["model_call_count"] == 2  # 1 case × (with-arm + grader)
 
 
+async def test_baseline_off_sends_with_arm_not_baseline_prompt(
+    db: AsyncSession, tmp_path: Path
+) -> None:
+    """review R3 — baseline-off must still send the WITH-skill arm as the solve
+    call, never the without-skill prompt (a wrong-arm regression keeps 2 calls).
+    """
+
+    from app.services.skill_evaluation_ab_arms import (
+        AB_GRADER_SYSTEM_PROMPT,
+        WITH_ARM_SYSTEM_PROMPT,
+        WITHOUT_ARM_SYSTEM_PROMPT,
+    )
+
+    seen_system_prompts: list[str] = []
+
+    class RecordingModel(FakeUsageChatModel):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            seen_system_prompts.append(str(messages[0].content))
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    run = await _create_run(db, tmp_path, run_config={"baseline_comparison": False})
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        context = await build_context(db, run)
+
+    model = RecordingModel(responses=["with", _grader_json()])
+    evaluator = LlmSkillEvaluationEvaluator.for_model(model, model_name="fake-ab-model")
+    await evaluator.evaluate(db, context)
+
+    assert seen_system_prompts == [WITH_ARM_SYSTEM_PROMPT, AB_GRADER_SYSTEM_PROMPT]
+    assert WITHOUT_ARM_SYSTEM_PROMPT not in seen_system_prompts
+
+
+async def test_malformed_grader_answer_isolates_to_one_case(
+    db: AsyncSession, tmp_path: Path
+) -> None:
+    """review R3 — a single unparseable grader answer must fail only THAT case
+    ('error'→failed), never nuke the whole multi-case run.
+    """
+
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        skill = await skill_service.create_text_skill(
+            db,
+            user_id=TEST_USER_ID,
+            name="AB Multi",
+            slug=f"ab-multi-{uuid.uuid4().hex[:8]}",
+            description="Use when testing per-case grader isolation.",
+            content=(
+                "---\nname: ab-multi\n"
+                'description: "Use when testing per-case grader isolation."\n---\n\nBody.\n'
+            ),
+            version="1.0.0",
+        )
+    evaluation_set = await skill_evaluation_service.create_evaluation_set(
+        db,
+        user_id=TEST_USER_ID,
+        skill=skill,
+        name="two cases",
+        evals=[{"input": "case 0"}, {"input": "case 1"}],
+    )
+    run = await skill_evaluation_service.create_run(
+        db,
+        user_id=TEST_USER_ID,
+        skill=skill,
+        evaluation_set=evaluation_set,
+        run_config={"baseline_comparison": False},
+    )
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        context = await build_context(db, run)
+
+    # case 0: with-arm + valid grader (pass). case 1: with-arm + GARBAGE grader.
+    model = FakeUsageChatModel(
+        responses=[
+            "with-arm 0",
+            _grader_json(),
+            "with-arm 1",
+            "I'm sorry, I can't grade this.",  # non-JSON grader → error, isolated
+        ]
+    )
+    evaluator = LlmSkillEvaluationEvaluator.for_model(model, model_name="fake-ab-model")
+
+    result = await evaluator.evaluate(db, context)  # must NOT raise
+
+    assert len(result.case_results) == 2
+    assert result.case_results[0]["status"] == "passed"
+    assert result.case_results[1]["status"] in ("failed", "error")
+    # Benchmark and summary agree: 1/2 passed (no self-contradiction).
+    assert result.summary["pass_rate"] == 0.5
+    assert result.benchmark["with_skill_pass_rate"] == 0.5
+
+
 async def test_scripted_model_answers_eval_arm_prompts() -> None:
     """E2E scripted 모델이 arm/grader 프롬프트에 결정론적으로 응답한다.
 

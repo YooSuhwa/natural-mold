@@ -5,7 +5,11 @@ import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useSkillEvaluationRuns, useSkillEvaluationSets } from '@/lib/hooks/use-skill-evaluations'
+import {
+  useInvalidateSkillMetricsOnRunCompletion,
+  useSkillEvaluationRuns,
+  useSkillEvaluationSets,
+} from '@/lib/hooks/use-skill-evaluations'
 import type { SkillEvaluationRun, SkillEvaluationSet } from '@/lib/types/skill-evaluation'
 
 import { SkillEvaluationRunDetail } from './skill-evaluation-run-detail'
@@ -53,6 +57,7 @@ export function SkillEvaluationTab({
     [runFallback, runsQuery.data],
   )
   const selectedRun = runs.find((run) => run.id === selectedRunId) ?? runs[0] ?? runFallback
+  useInvalidateSkillMetricsOnRunCompletion(skillId, runsQuery.data)
   const resolvedContentHash = currentSkillContentHash ?? skillContentHash ?? null
 
   function selectSet(setId: string): void {

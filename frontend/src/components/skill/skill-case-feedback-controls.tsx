@@ -37,16 +37,25 @@ export function SkillCaseFeedbackControls({
   const [commentOpen, setCommentOpen] = useState(false)
   const isPending = upsert.isPending || remove.isPending
 
+  function toggleComment(): void {
+    // Seed the editor from the saved comment when opening (view/edit, not blank).
+    if (!commentOpen) setComment(mine?.comment ?? '')
+    setCommentOpen((open) => !open)
+  }
+
   function submit(verdict: SkillCaseFeedbackVerdict): void {
     if (mine?.verdict === verdict && !commentOpen) {
       remove.mutate(caseIndex)
       return
     }
+    // Preserve the saved comment on a verdict-only change (agree↔disagree) —
+    // only overwrite when the editor is open.
+    const nextComment = commentOpen ? comment.trim() || null : (mine?.comment ?? null)
     upsert.mutate(
       {
         case_index: caseIndex,
         verdict,
-        comment: commentOpen && comment.trim() ? comment.trim() : null,
+        comment: nextComment,
       },
       {
         onSuccess: () => {
@@ -88,7 +97,7 @@ export function SkillCaseFeedbackControls({
           size="sm"
           variant="ghost"
           disabled={isPending}
-          onClick={() => setCommentOpen((open) => !open)}
+          onClick={toggleComment}
         >
           {commentOpen ? t('commentClose') : t('commentOpen')}
         </Button>

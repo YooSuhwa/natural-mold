@@ -181,7 +181,10 @@ export function SkillEvaluationRunDetail({
               const evidence = jsonPreview(record?.evidence)
               return (
                 <article
-                  key={`${title}-${index}`}
+                  // Scope the key to the run so unsaved case-feedback draft
+                  // state can't bleed across runs (unnamed cases share the
+                  // fallback "Case N" title, which would otherwise collide).
+                  key={`${run.id}-${index}`}
                   className="rounded-lg border border-border/60 p-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">

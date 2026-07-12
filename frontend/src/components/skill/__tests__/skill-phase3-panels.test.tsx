@@ -217,4 +217,27 @@ describe('SkillFeedbackCard', () => {
     await user.click(screen.getAllByTestId('skill-feedback-up')[1])
     expect(mockDeleteFeedback).toHaveBeenCalled()
   })
+
+  it('preserves the saved comment when only the rating changes', async () => {
+    // review R3 — switching up→down must NOT wipe the existing comment.
+    mockFeedbackSummary.mockReturnValue({
+      data: {
+        skill_id: 'skill-1',
+        up_count: 1,
+        down_count: 0,
+        mine: { rating: 'up', comment: '표 정리가 정확해요', updated_at: '2026-07-12T00:00:00Z' },
+      },
+      isLoading: false,
+    })
+    const user = userEvent.setup()
+    render(<SkillFeedbackCard skillId="skill-1" />)
+
+    // Switch to down without opening the comment editor.
+    await user.click(screen.getByTestId('skill-feedback-down'))
+
+    expect(mockUpsertFeedback).toHaveBeenCalledWith(
+      { rating: 'down', comment: '표 정리가 정확해요' },
+      expect.anything(),
+    )
+  })
 })

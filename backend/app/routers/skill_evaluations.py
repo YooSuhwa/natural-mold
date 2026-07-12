@@ -230,14 +230,17 @@ async def create_skill_evaluation_run(
         raise skill_evaluation_queue_full() from exc
     reserved_slot = True
     baseline_comparison = data.baseline_comparison if data is not None else True
-    run = await skill_evaluation_service.create_run(
-        db,
-        user_id=user.id,
-        skill=skill,
-        evaluation_set=evaluation_set,
-        run_config=(None if baseline_comparison else {"baseline_comparison": False}),
-    )
     try:
+        # create_run does a pricing SELECT (estimate_run_priced) before the run
+        # insert — must be INSIDE the finally that releases the reserved slot,
+        # or a transient DB error there permanently leaks queue capacity.
+        run = await skill_evaluation_service.create_run(
+            db,
+            user_id=user.id,
+            skill=skill,
+            evaluation_set=evaluation_set,
+            run_config=(None if baseline_comparison else {"baseline_comparison": False}),
+        )
         await record_evaluation_audit(
             db,
             user=user,

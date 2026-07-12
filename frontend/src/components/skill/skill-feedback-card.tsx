@@ -35,13 +35,23 @@ export function SkillFeedbackCard({ skillId }: { readonly skillId: string }) {
   const mine = summary.mine ?? null
   const isPending = upsert.isPending || remove.isPending
 
+  function toggleComment(): void {
+    // Seed the editor from the saved comment when opening so it can be viewed
+    // and edited (never a blank box over an existing comment).
+    if (!commentOpen) setComment(mine?.comment ?? '')
+    setCommentOpen((open) => !open)
+  }
+
   function submit(rating: SkillFeedbackRating): void {
     if (mine?.rating === rating && !commentOpen) {
       remove.mutate()
       return
     }
+    // Preserve the saved comment on a rating-only change — only overwrite it
+    // when the editor is open (else switching up↔down silently wipes it).
+    const nextComment = commentOpen ? comment.trim() || null : (mine?.comment ?? null)
     upsert.mutate(
-      { rating, comment: commentOpen && comment.trim() ? comment.trim() : null },
+      { rating, comment: nextComment },
       {
         onSuccess: () => {
           setComment('')
@@ -87,7 +97,7 @@ export function SkillFeedbackCard({ skillId }: { readonly skillId: string }) {
           size="sm"
           variant="ghost"
           disabled={isPending}
-          onClick={() => setCommentOpen((open) => !open)}
+          onClick={toggleComment}
         >
           {commentOpen ? t('commentClose') : t('commentOpen')}
         </Button>

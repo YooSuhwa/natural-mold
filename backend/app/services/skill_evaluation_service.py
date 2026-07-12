@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -181,8 +182,12 @@ def _estimated_case_tokens(evaluation_set: SkillEvaluationSet) -> int:
             continue
         for field in ("input", "expected"):
             value = case.get(field)
-            if isinstance(value, str):
-                chars += len(value)
+            if value is None:
+                continue
+            # Structured (dict/list) inputs are json.dumps-serialized into the
+            # arm prompt, so count their serialized length too — a str-only
+            # heuristic would report near-zero cost for structured eval sets.
+            chars += len(value) if isinstance(value, str) else len(json.dumps(value))
     return chars // _ESTIMATE_CHARS_PER_TOKEN
 
 

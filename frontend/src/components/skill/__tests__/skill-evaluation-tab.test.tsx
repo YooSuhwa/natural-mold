@@ -47,6 +47,7 @@ vi.mock('@/lib/hooks/use-skill-evaluations', () => ({
   useSkillEvaluationCaseFeedback: () => ({ data: [], isLoading: false }),
   useUpsertSkillCaseFeedback: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteSkillCaseFeedback: () => ({ mutate: vi.fn(), isPending: false }),
+  useInvalidateSkillMetricsOnRunCompletion: () => {},
 }))
 
 vi.mock('@/lib/hooks/use-skill-usage', () => ({

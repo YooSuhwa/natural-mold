@@ -76,17 +76,21 @@ class LlmUsageCollector:
     model_calls: int = 0
     tokens_in: int = 0
     tokens_out: int = 0
+    metadata_seen: bool = False
     _last_call_tokens: tuple[int, int] = field(default=(0, 0))
 
     def add_response(self, message: Any) -> tuple[int, int]:
         """Record one model response; returns ``(tokens_in, tokens_out)`` of it.
 
         ``usage_metadata`` is optional on ``AIMessage`` (scripted/e2e models
-        may omit it) — missing metadata counts the call with zero tokens.
+        may omit it) — missing metadata counts the call with zero tokens but
+        also flips ``metadata_seen`` false so cost stays unknown, never $0.
         """
 
         self.model_calls += 1
         usage = getattr(message, "usage_metadata", None)
+        if isinstance(usage, dict):
+            self.metadata_seen = True
         tokens_in = _int_or_zero(usage.get("input_tokens")) if isinstance(usage, dict) else 0
         tokens_out = _int_or_zero(usage.get("output_tokens")) if isinstance(usage, dict) else 0
         self.tokens_in += tokens_in
@@ -95,7 +99,12 @@ class LlmUsageCollector:
         return tokens_in, tokens_out
 
     def rollup(self, pricing: ModelPricing) -> dict[str, JsonValue]:
-        cost = pricing.cost_for(self.tokens_in, self.tokens_out)
+        # If calls were made but NO response carried usage_metadata, the token
+        # totals are "unknown", not "zero" — a priced model must not then report
+        # a $0 cost that masquerades as a genuinely free measured run
+        # (unknown ≠ free, spec §3.1). Cost stays None in that case.
+        measured_tokens = self.metadata_seen or self.model_calls == 0
+        cost = pricing.cost_for(self.tokens_in, self.tokens_out) if measured_tokens else None
         return {
             "measured": True,
             "model_calls": self.model_calls,

@@ -61,6 +61,7 @@ from app.services.skill_evaluation_result_schema import normalize_skill_evaluati
 from app.services.skill_evaluation_usage import LlmUsageCollector, resolve_model_pricing
 from app.services.skill_evaluation_worker_types import (
     SkillEvaluationContext,
+    SkillEvaluationExecutionError,
     SkillEvaluationResult,
 )
 
@@ -69,6 +70,24 @@ type JsonObject = dict[str, JsonValue]
 
 LLM_RUNNER_VERSION = "llm-2"
 LLM_GRADER_PROMPT_VERSION = "llm-grader-2"
+
+
+def _coerce_case_status(row: JsonObject, status_key: str, score_key: str) -> None:
+    """Normalize a grader verdict to a definite passed/failed before both the
+    benchmark aggregate and the schema normalizer consume it.
+
+    The grader is asked for ``passed``/``failed`` only; any other value (a
+    refusal, ``error``, prose) is coerced by score (>=0.5 → passed) so the two
+    downstream normalizers cannot disagree. Absent key stays absent.
+    """
+
+    if status_key not in row:
+        return
+    if row.get(status_key) in ("passed", "failed"):
+        return
+    score = row.get(score_key)
+    passed = isinstance(score, int | float) and not isinstance(score, bool) and score >= 0.5
+    row[status_key] = "passed" if passed else "failed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,13 +240,31 @@ class LlmSkillEvaluationEvaluator:
             ),
             collector=usage_collector,
         )
-        row = json_object_from_text(grader_run.answer)
+        # Per-case isolation — a single malformed grader answer must fail only
+        # THIS case (marked "error"), never nuke the whole multi-case run.
+        try:
+            row = json_object_from_text(grader_run.answer)
+        except SkillEvaluationExecutionError:
+            row = {
+                "status": "error",
+                "score": 0,
+                "grader_feedback": "Grader returned an unparseable response.",
+                "evidence": "The evaluation grader did not return valid JSON for this case.",
+            }
         # Positional identity — the grader's echoed index is advisory only.
         row["case_index"] = case_index
+        # Both the benchmark aggregate (via scores_from_case_results._status) and
+        # the final schema normalizer (via result_values.status) must agree on the
+        # verdict — coerce any non-pass/fail status to a definite one up front so
+        # the two paths cannot disagree (an "error"+0.9-score row otherwise reads
+        # as 100% pass in the benchmark and 0% in the summary).
+        _coerce_case_status(row, "status", "score")
         if not baseline_enabled:
             # Never keep a guessed baseline the run did not actually measure.
             row.pop("baseline_status", None)
             row.pop("baseline_score", None)
+        else:
+            _coerce_case_status(row, "baseline_status", "baseline_score")
         row.update(measurement.case_row_metrics())
         if execution_result is not None:
             row["execution"] = execution_result

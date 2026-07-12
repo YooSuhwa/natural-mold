@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { skillEvaluationsApi } from '@/lib/api/skill-evaluations'
 import { skillQueryKeys } from '@/lib/query-keys/skills'
@@ -119,6 +120,31 @@ export function useCancelSkillEvaluationRun(skillId: string, evaluationSetId: st
       invalidateSkillEvaluationCaches(qc, skillId, evaluationSetId)
     },
   })
+}
+
+/**
+ * When a run finishes via the 1s poll (active → no-active transition), the
+ * version-stats + usage caches (staleTime 30s) would otherwise show pre-run
+ * numbers for up to 30s. Invalidate them on the completing edge so the freshly
+ * measured pass rate / usage appear immediately. Invalidation is a side effect
+ * (no setState), so an effect is the right place.
+ */
+export function useInvalidateSkillMetricsOnRunCompletion(
+  skillId: string | null | undefined,
+  runs: readonly SkillEvaluationRun[] | undefined,
+): void {
+  const qc = useQueryClient()
+  const hadActiveRef = useRef(false)
+  const hasActive = !!runs?.some((run) => ACTIVE_EVALUATION_RUN_STATUSES.has(run.status))
+
+  useEffect(() => {
+    if (hadActiveRef.current && !hasActive && skillId) {
+      qc.invalidateQueries({ queryKey: skillEvaluationKeys.versionStats(skillId) })
+      qc.invalidateQueries({ queryKey: skillQueryKeys.feedback(skillId) })
+      qc.invalidateQueries({ queryKey: ['skills', skillId, 'usage'] })
+    }
+    hadActiveRef.current = hasActive
+  }, [qc, skillId, hasActive])
 }
 
 export function useSkillEvaluationVersionStats(skillId: string | null | undefined) {
