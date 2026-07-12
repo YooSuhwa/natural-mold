@@ -20,8 +20,15 @@ function numberOrNull(value: JsonValue | undefined): number | null {
 }
 
 function ratePercent(value: number): string {
-  const percent = value <= 1 ? value * 100 : value
+  const percent = value <= 1 && value >= -1 ? value * 100 : value
   return `${Math.max(0, Math.min(100, Math.round(percent)))}%`
+}
+
+/** Signed percent for deltas — a regression (negative delta) must stay negative. */
+function signedRatePercent(value: number): string {
+  const percent = Math.round(value <= 1 && value >= -1 ? value * 100 : value)
+  const clamped = Math.max(-100, Math.min(100, percent))
+  return `${clamped > 0 ? '+' : ''}${clamped}%`
 }
 
 export function SkillBenchmarkPanel({ run }: { readonly run: SkillEvaluationRun }) {
@@ -59,7 +66,7 @@ export function SkillBenchmarkPanel({ run }: { readonly run: SkillEvaluationRun 
   }
 
   const deltaItems = [
-    passRateDelta === null ? null : t('passRateDelta', { rate: ratePercent(passRateDelta) }),
+    passRateDelta === null ? null : t('passRateDelta', { rate: signedRatePercent(passRateDelta) }),
     tokenDelta === null
       ? null
       : t('tokenDelta', { count: formatDisplayNumber(Math.round(tokenDelta)) }),

@@ -132,6 +132,7 @@ class LlmSkillEvaluationEvaluator:
             case_results=case_results,
             payload={},
             runner_version=self.runner_version,
+            baseline_enabled=baseline_enabled,
         )
         benchmark = aggregate_benchmark(
             with_skill=scores_from_case_results(case_results, baseline=False),

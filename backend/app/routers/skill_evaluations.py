@@ -136,6 +136,7 @@ async def get_skill_evaluation(
 async def estimate_skill_evaluation_run(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
+    baseline_comparison: bool = True,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -147,7 +148,11 @@ async def estimate_skill_evaluation_run(
         user=user,
         evaluation_set_id=evaluation_set_id,
     )
-    return await skill_evaluation_service.estimate_run_priced(db, evaluation_set)
+    return await skill_evaluation_service.estimate_run_priced(
+        db,
+        evaluation_set,
+        uses_baseline_comparison=baseline_comparison,
+    )
 
 
 @router.get("/{evaluation_set_id}/runs", response_model=list[SkillEvaluationRunResponse])

@@ -32,6 +32,11 @@ vi.mock('@/lib/hooks/use-skill-revisions', () => ({
   useSkillRevisionFileContent: () => ({ data: undefined, isLoading: true, isError: false }),
 }))
 
+// Phase 3 — 히스토리 탭이 리비전 통과율 배지용으로 version-stats를 조회한다.
+vi.mock('@/lib/hooks/use-skill-evaluations', () => ({
+  useSkillEvaluationVersionStats: () => ({ data: [], isLoading: false }),
+}))
+
 function buildRevision(overrides: Partial<SkillRevisionSummary>): SkillRevisionSummary {
   return {
     id: 'rev-1',

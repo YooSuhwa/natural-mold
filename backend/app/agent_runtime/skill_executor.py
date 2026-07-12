@@ -180,10 +180,14 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             result += f"\nSTDERR: {err}"
 
         # Phase 3 skill-axis usage (spec §5.3) — count the sandbox execution
-        # for real chat runs only. Evaluation runs and builder draft tests set
-        # a different audit_kind (and drafts carry no persisted skill row), so
-        # they never reach this ledger. A nonzero exit still executed the
-        # script — the count reflects sandbox executions, not successes.
+        # for agent runs (chat + scheduled triggers + Agent-API; all use the
+        # default "execute_in_skill" audit_kind). Evaluation runs
+        # ("skill_evaluation") and builder draft tests ("skill_builder.draft_test")
+        # set a different audit_kind — and drafts carry no persisted skill row —
+        # so they never reach this ledger. Trigger/API runs whose thread_id is
+        # not a conversation UUID record with conversation_id NULL (self-describing).
+        # A nonzero exit still executed the script — the count reflects sandbox
+        # executions, not successes.
         if ctx.audit_kind == "execute_in_skill" and ctx.user_id is not None:
             from app.services.skill_usage_service import record_chat_execution_nonfatal
 

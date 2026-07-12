@@ -71,7 +71,25 @@ describe('SkillBenchmarkPanel', () => {
     expect(bars[0]).toHaveTextContent('95%')
     expect(bars[1]).toHaveTextContent('스킬 없이')
     expect(bars[1]).toHaveTextContent('30%')
-    expect(screen.getByText('통과율 차이 65%')).toBeInTheDocument()
+    expect(screen.getByText('통과율 차이 +65%')).toBeInTheDocument()
+  })
+
+  it('renders a negative pass-rate delta as a regression, not clamped to 0%', () => {
+    render(
+      <SkillBenchmarkPanel
+        run={buildRun({
+          measured: true,
+          baseline_skipped: false,
+          with_skill_pass_rate: 0.4,
+          without_skill_pass_rate: 0.7,
+          pass_rate_delta: -0.3,
+        })}
+      />,
+    )
+
+    // A skill that performs WORSE than baseline must show the negative delta,
+    // never a clamped "0%" that hides the regression (review finding).
+    expect(screen.getByText('통과율 차이 -30%')).toBeInTheDocument()
   })
 
   it('labels legacy runs as estimated and hides missing baseline', () => {

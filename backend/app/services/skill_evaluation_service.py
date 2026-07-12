@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.agent_runtime.skill_builder.eval_limits import MAX_SKILL_EVAL_CASES, MIN_SKILL_EVAL_CASES
 from app.config import settings
@@ -254,6 +255,12 @@ async def estimate_run_priced(
     )
 
 
+def _run_config_baseline(run_config: dict[str, Any] | None) -> bool:
+    if isinstance(run_config, dict) and isinstance(run_config.get("baseline_comparison"), bool):
+        return run_config["baseline_comparison"]
+    return True
+
+
 async def create_run(
     db: AsyncSession,
     *,
@@ -262,7 +269,13 @@ async def create_run(
     evaluation_set: SkillEvaluationSet,
     run_config: dict[str, Any] | None = None,
 ) -> SkillEvaluationRun:
-    estimate = await estimate_run_priced(db, evaluation_set)
+    # The persisted estimate must match the run the worker will actually
+    # execute — a baseline-off run makes 2 calls/case, not 3 (spec §4.1).
+    estimate = await estimate_run_priced(
+        db,
+        evaluation_set,
+        uses_baseline_comparison=_run_config_baseline(run_config),
+    )
     run = SkillEvaluationRun(
         user_id=user_id,
         skill_id=skill.id,
@@ -300,8 +313,10 @@ async def version_stats(
     """Completed runs grouped by (skill_version, content_hash) — Phase 3 §6.
 
     ``pass_rate`` lives inside the summary JSON, so grouping happens in
-    Python; per-skill run counts are small (worker queue is bounded).
-    Ordered chronologically by each version's last run.
+    Python; per-skill run counts are small (worker queue is bounded). Only the
+    lightweight columns are loaded — the heavy ``case_results``/``estimate``/
+    ``usage`` JSON blobs are never read here, so ``load_only`` keeps this scan
+    cheap even for skills with many runs. Ordered chronologically by last run.
     """
 
     rows = (
@@ -312,6 +327,15 @@ async def version_stats(
                     SkillEvaluationRun.skill_id == skill.id,
                     SkillEvaluationRun.user_id == user_id,
                     SkillEvaluationRun.status == "completed",
+                )
+                .options(
+                    load_only(
+                        SkillEvaluationRun.skill_version,
+                        SkillEvaluationRun.skill_content_hash,
+                        SkillEvaluationRun.summary,
+                        SkillEvaluationRun.benchmark,
+                        SkillEvaluationRun.created_at,
+                    )
                 )
                 .order_by(SkillEvaluationRun.created_at.asc(), SkillEvaluationRun.id.asc())
             )

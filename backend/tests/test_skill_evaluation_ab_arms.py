@@ -174,6 +174,11 @@ async def test_baseline_comparison_off_skips_without_arm(db: AsyncSession, tmp_p
     assert benchmark["without_skill_pass_rate"] is None
     assert benchmark["pass_rate_delta"] is None
 
+    # execution_metrics must NOT report phantom without-skill runs (review R1).
+    metrics = result.summary["execution_metrics"]
+    assert metrics["without_skill_runs"] == 0
+    assert metrics["model_call_count"] == 2  # 1 case × (with-arm + grader)
+
 
 async def test_scripted_model_answers_eval_arm_prompts() -> None:
     """E2E scripted 모델이 arm/grader 프롬프트에 결정론적으로 응답한다.

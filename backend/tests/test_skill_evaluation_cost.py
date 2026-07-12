@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -54,6 +55,49 @@ async def test_estimate_run_without_baseline_uses_two_calls() -> None:
     estimate = estimate_run(_evaluation_set([{"input": "x"}]), uses_baseline_comparison=False)
     assert estimate.model_call_count == 2
     assert estimate.uses_baseline_comparison is False
+
+
+async def test_create_run_threads_baseline_into_persisted_estimate(
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """review R1 — a baseline-off run must persist a 2-call estimate, not 3."""
+
+    from unittest.mock import patch
+
+    from app.skills import service as skill_service
+
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        skill = await skill_service.create_text_skill(
+            db,
+            user_id=TEST_USER_ID,
+            name="Baseline",
+            slug="baseline-estimate",
+            description="Use when testing baseline estimate threading.",
+            content='---\nname: baseline\ndescription: "Use when testing."\n---\n\nBody.\n',
+            version="1.0.0",
+        )
+    eval_set = SkillEvaluationSet(
+        user_id=TEST_USER_ID,
+        skill_id=skill.id,
+        name="baseline",
+        evals=[{"input": "x"}, {"input": "y"}],
+    )
+    db.add(eval_set)
+    await db.flush()
+
+    from app.services.skill_evaluation_service import create_run
+
+    run = await create_run(
+        db,
+        user_id=TEST_USER_ID,
+        skill=skill,
+        evaluation_set=eval_set,
+        run_config={"baseline_comparison": False},
+    )
+    assert run.estimate is not None
+    assert run.estimate["uses_baseline_comparison"] is False
+    assert run.estimate["model_call_count"] == 4  # 2 cases × 2 calls, not ×3
 
 
 # ---------------------------------------------------------------------------

@@ -71,20 +71,6 @@ function metricItems(run: SkillEvaluationRun, t: ReturnType<typeof useTranslatio
   ].filter((item): item is string => item !== null)
 }
 
-function benchmarkItems(run: SkillEvaluationRun, t: ReturnType<typeof useTranslations>) {
-  const durationDeltaMs = numberValue(run.benchmark, 'duration_delta_ms')
-  const tokenDelta = numberValue(run.benchmark, 'token_delta')
-  const qualityDelta = numberValue(run.benchmark, 'quality_delta')
-
-  return [
-    durationDeltaMs === null ? null : t('benchmark.durationDelta', { value: durationDeltaMs }),
-    tokenDelta === null ? null : t('benchmark.tokenDelta', { count: tokenDelta }),
-    qualityDelta === null
-      ? null
-      : t('benchmark.qualityDelta', { rate: normalizedRate(qualityDelta) }),
-  ].filter((item): item is string => item !== null)
-}
-
 function runIsStale(run: SkillEvaluationRun, currentSkillContentHash?: string | null): boolean {
   return Boolean(
     currentSkillContentHash &&
@@ -140,7 +126,6 @@ export function SkillEvaluationRunDetail({
   }
 
   const metrics = metricItems(run, t)
-  const benchmarks = benchmarkItems(run, t)
   const usageLines = usageItems(run, t)
   const caseResults = run.case_results ?? []
 
@@ -167,19 +152,6 @@ export function SkillEvaluationRunDetail({
       ) : null}
 
       <SkillBenchmarkPanel run={run} />
-
-      {benchmarks.length > 0 ? (
-        <div className="mt-4">
-          <h4 className="moldy-ui-micro text-muted-foreground">{t('benchmarkTitle')}</h4>
-          <ul className="mt-2 space-y-1">
-            {benchmarks.map((benchmark) => (
-              <li key={benchmark} className="text-xs">
-                {benchmark}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
 
       {usageLines.length > 0 ? (
         <div className="mt-4" data-testid="run-usage-line">

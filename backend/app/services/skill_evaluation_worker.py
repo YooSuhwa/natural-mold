@@ -38,6 +38,7 @@ from app.services.skill_evaluation_worker_state import (
 from app.services.skill_evaluation_worker_types import (
     SkillEvaluationEvaluator,
     SkillEvaluationExecutionError,
+    SkillEvaluationResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -202,7 +203,7 @@ class SkillEvaluationWorker:
     async def _record_usage_ledger(
         db: AsyncSession,
         run: SkillEvaluationRun,
-        result: object,
+        result: SkillEvaluationResult,
     ) -> None:
         """Append the skill-axis usage event for a completed run (Phase 3 §5.1).
 
@@ -210,7 +211,7 @@ class SkillEvaluationWorker:
         back) the run completion that was just flushed.
         """
 
-        usage = getattr(result, "usage", None)
+        usage = result.usage
         if not isinstance(usage, dict):
             return
         try:
