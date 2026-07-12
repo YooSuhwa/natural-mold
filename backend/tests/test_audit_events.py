@@ -69,6 +69,50 @@ async def test_record_event_sanitizes_sensitive_metadata(db: AsyncSession) -> No
 
 
 @pytest.mark.asyncio
+async def test_record_self_event_fills_identity_columns(db: AsyncSession) -> None:
+    """record_self_event는 21개 self-action 감사 사이트의 단일 신원 채움 지점 —
+    각 컬럼을 리터럴 기대값(독립 오라클)으로 고정한다. record_event 출력과의
+    상호 비교(tautology)로 대체하지 말 것 (BE-P5 교훈)."""
+
+    user_id = uuid.uuid4()
+    db.add(User(id=user_id, email="self@test.com", name="Self"))
+    await db.flush()
+    run_id = uuid.uuid4()
+
+    await audit_service.record_self_event(
+        db,
+        CurrentUser(id=user_id, email="self@test.com", name="Self"),
+        action="agent.update",
+        target_type="agent",
+        target_id="agent-9",
+        target_name="My Agent",
+        outcome="failure",
+        reason_code="tool_run_failed",
+        reason_message="boom",
+        run_id=run_id,
+        metadata={"changed_fields": ["name"]},
+    )
+    await db.commit()
+
+    row = (await db.execute(select(AuditEvent))).scalar_one()
+    assert row.actor_type == "user"
+    assert row.actor_user_id == user_id
+    assert row.actor_email_snapshot == "self@test.com"
+    assert row.owner_user_id == user_id
+    assert row.owner_email_snapshot == "self@test.com"
+    assert row.target_owner_user_id == user_id
+    assert row.action == "agent.update"
+    assert row.target_type == "agent"
+    assert row.target_id == "agent-9"
+    assert row.target_name_snapshot == "My Agent"
+    assert row.outcome == "failure"
+    assert row.reason_code == "tool_run_failed"
+    assert row.reason_message == "boom"
+    assert row.run_id == str(run_id)
+    assert row.event_metadata == {"changed_fields": ["name"]}
+
+
+@pytest.mark.asyncio
 async def test_list_events_mine_uses_owner_or_actor(db: AsyncSession) -> None:
     owner_id = uuid.uuid4()
     other_id = uuid.uuid4()

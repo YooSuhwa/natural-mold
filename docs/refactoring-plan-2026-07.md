@@ -36,7 +36,9 @@
 - ~~**BE-P5**: (b) 이중 redaction, (d) seen_event_ids, (e) inline flush~~ → **PR #294로 완료** (상세는 실행 순서 6번)
 - ~~**BE-D1**: 나머지 20곳~~ → **PR #292로 완료** (18곳 전환 + run_cancel/stream_resume 의도적 보존 2곳 문서화; 상세는 실행 순서 5번)
 
-**미착수 P1** (다음 우선): BE-P2(메시지 페이지네이션·FE연동), BE-S2(MCP/tools/models 서비스레이어), BE-S7(OAuth 분리), BE-S1(chat_service 분해), BE-S3(install_service 분해), FE-S1(런타임 수렴), FE-S2(2941줄 훅), FE-P1(컨텍스트 churn), FE-P2(가상화). **미착수 P2/P3**: §1 매트릭스에서 ✅/🔶 없는 행 전부.
+- ~~**Stage 2 전체** (BE-S7·BE-S2·BE-D3·BE-D7)~~ → **PR #295로 완료** (상세는 실행 순서 7–10번)
+
+**미착수 P1** (다음 우선): BE-P2(메시지 페이지네이션·FE연동), BE-S1(chat_service 분해), BE-S3(install_service 분해), FE-S1(런타임 수렴), FE-S2(2941줄 훅), FE-P1(컨텍스트 churn), FE-P2(가상화). **미착수 P2/P3**: §1 매트릭스에서 ✅/🔶 없는 행 전부.
 
 **별도 트랙**: pyright 번다운 B/C/D(`docs/pyright-burndown-plan.md`), 린트 하드닝 A~G(`docs/lint-hardening-plan.md`).
 
@@ -155,11 +157,11 @@
 5. ✅ **BE-D1 나머지** — PR #292. 잔여 18곳(8파일) 전환: conv 재사용 라우터(branches 2·crud 3·messages list·followup·shares create/revoke·e2e 4)는 conv 주입 — **`verify_csrf` 뒤 파라미터 위치**로 CSRF 403→404 순서 보존(decorator dependencies는 param 의존성보다 먼저 돌아 게이트를 decorator에 얹으면 순서가 뒤집힘, e2e heartbeat에 주석 실증). GET 게이트 5곳(runs 3·ag_ui·shares get)은 decorator `dependencies=[...]`. 의도적 보존 3: run_cancel 헬퍼(두 라우트가 conversation_id/thread_id 다른 path param 공유), messages stream_resume(`resume_not_found` 별도 계약+reject 로깅), crud get_conversation_detail(agent eager-load 별도 getter). shares 로컬 `_require_owned_conversation` 삭제. agents.py `owned_agent` 확산(6곳)은 §6 방안 2단계의 선택 후속으로 남김.
 6. ✅ **BE-P5 나머지** — PR #294. (b) persist가 wire 1회 redaction 재사용(`persistable_wire_protocol_event` = compact + memory 마스킹만; W2-3 계약은 `redact_memory_content` 분리로 유지, full/wire 변형 등가성 테스트로 잠금). (d) `build_persist_callback`에 run-scoped seen_event_ids 캐시 — 첫 flush 1회 시드(`load_persisted_event_ids`) 후 증분, **불변식 캐시 ⊆ DB**(commit 성공분만 반영, 실패 시 리셋 재시드; 캐시가 DB를 앞서면 재시도 이벤트가 dedup으로 유실). (e) v3 emit의 inline `await` flush → `asyncio.create_task` fire-and-forget — in-flight 한도 **1**(legacy는 4)로 run 내 직렬화해 chunk seq_start 단조 + (d) 캐시 무경합, 실패 chunk는 buffer **앞** 복원으로 순서 보존 + 5000 events 캡(legacy 패리티), finally에서 task join → 최종 flush.
 
-**Stage 2 — 레이어링·경계 (명확한 정답)**
-7. **BE-S7** — credentials 라우터 OAuth → oauth_service. §4 [BE-S7].
-8. **BE-S2** — MCP/tools/models 서비스 레이어 신설. §4 [BE-S2]. (트랜잭션 정책 = 서비스 flush/라우터 commit 전역 결정)
-9. **BE-D3** — audit self-action 래퍼. §6 [BE-D3].
-10. **BE-D7** — 테스트 Model/Agent 팩토리 픽스처. §6 [BE-D7].
+**Stage 2 — 레이어링·경계 (명확한 정답)** — ✅ **전체 PR #295** (한 PR, 항목별 커밋 + 항목별 리뷰)
+7. ✅ **BE-S7** — PR #295. OAuth ~286줄 → `app/credentials/oauth_service.py` (client=저수준 HTTP / service=DB 상태·오케스트레이션 계약 명시). **트랜잭션 정책 전역 결정: 서비스 flush / 라우터 commit.** `gc_oauth_states` public 노출(스케줄러 재사용 대비). 리뷰 반영: 콜백 교차 사용자 forbidden 회귀 테스트(비인증 콜백의 유일한 탈취 state 방어 분기 계약 잠금). 알려진 발산 1(의도): auth_start의 malformed URL 에러 경로가 commit→롤백으로 바뀜(정책 귀결, 더 원자적).
+8. ✅ **BE-S2** — PR #295. `mcp_service` 신설 + `tool_service`(CRUD·run·audit)·`model_service`(operator CRUD·in-use 체크) 확장, 3개 라우터 raw DB 접근 0. 기존 커밋 시퀀스(이중 commit 포함) 보존으로 semantics 불변. 리뷰 승인(발견 0).
+9. ✅ **BE-D3** — PR #295. `audit_service.record_self_event`가 self-action 신원 kwargs 7개 흡수, 18곳 치환(actor≠owner는 record_event 유지). 리뷰 반영: finalize 누락 사이트 + 신원 컬럼 리터럴 기대값 계약 테스트(위임 tautology 회피).
+10. ✅ **BE-D7** — PR #295. conftest `make_model`/`make_agent`/`seed_agent(db)->(user,model,agent)` + `AuthSession`/`register_session`(auth 5파일 shim 전환, 시그니처 보존). ORM 팩토리는 대표 2파일 채택, 나머지는 가드레일대로 점진 이관. 참고: Model에 (provider,model_name) unique 제약 없음(ORM 레벨) — seed 반복 호출 안전.
 
 **Stage 3 — 갓 모듈 분해 (facade 순수 이동, 하나씩)**
 11. **BE-S1** — chat_service.py 8-클러스터 분해. §4 [BE-S1]. (#285로 1,810줄, 스킬빌더 코드도 포함)

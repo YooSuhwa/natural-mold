@@ -54,18 +54,13 @@ async def _record_trigger_audit(
     run_id: str | uuid.UUID | None = None,
     metadata: dict[str, object] | None = None,
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action=action,
         target_type="trigger",
         target_id=trigger.id,
-        target_name_snapshot=trigger.name,
-        target_owner_user_id=user.id,
+        target_name=trigger.name,
         outcome=outcome,
         reason_code=reason_code,
         reason_message=reason_message,

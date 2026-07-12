@@ -9,19 +9,12 @@ from httpx import AsyncClient
 from PIL import Image
 
 from app.config import settings
+from tests.conftest import register_session
 
 
 async def _register(raw_client: AsyncClient, *, email: str = "profile@test.com") -> str:
-    resp = await raw_client.post(
-        "/api/auth/register",
-        json={
-            "email": email,
-            "password": "correct horse",
-            "display_name": "Initial",
-        },
-    )
-    assert resp.status_code == 201, resp.text
-    return resp.json()["csrf_token"]
+    sess = await register_session(raw_client, email=email, display_name="Initial")
+    return sess.csrf
 
 
 def _png_bytes() -> bytes:

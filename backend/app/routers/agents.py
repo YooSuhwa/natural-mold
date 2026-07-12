@@ -159,19 +159,13 @@ async def create_agent(
     _csrf: None = Depends(verify_csrf),
 ):
     agent = await agent_service.create_agent(db, data, user.id)
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="agent.create",
         target_type="agent",
         target_id=agent.id,
-        target_name_snapshot=agent.name,
-        target_owner_user_id=user.id,
-        outcome="success",
+        target_name=agent.name,
         request=request,
         metadata={
             "model_id": str(data.model_id),
@@ -213,19 +207,13 @@ async def update_agent(
     _require_standard_profile(agent)
     updated = await agent_service.update_agent(db, agent, data)
     changed_fields = sorted(data.model_fields_set - {"system_prompt"})
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="agent.update",
         target_type="agent",
         target_id=updated.id,
-        target_name_snapshot=updated.name,
-        target_owner_user_id=user.id,
-        outcome="success",
+        target_name=updated.name,
         request=request,
         metadata={
             "changed_fields": changed_fields,
@@ -249,19 +237,13 @@ async def toggle_favorite(
         raise agent_not_found()
     _require_standard_profile(agent)
     updated = await agent_service.toggle_favorite(db, agent)
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="agent.favorite",
         target_type="agent",
         target_id=updated.id,
-        target_name_snapshot=updated.name,
-        target_owner_user_id=user.id,
-        outcome="success",
+        target_name=updated.name,
         request=request,
         metadata={"is_favorite": updated.is_favorite},
     )
@@ -281,19 +263,13 @@ async def delete_agent(
     if not agent:
         raise agent_not_found()
     _require_standard_profile(agent)
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="agent.delete",
         target_type="agent",
         target_id=agent.id,
-        target_name_snapshot=agent.name,
-        target_owner_user_id=user.id,
-        outcome="success",
+        target_name=agent.name,
         request=request,
     )
     await agent_service.delete_agent(db, agent)

@@ -257,19 +257,13 @@ async def _record_audit(
     outcome: str,
     metadata: dict[str, Any],
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=actor.id,
-        actor_email_snapshot=actor.email,
-        owner_user_id=actor.id,
-        owner_email_snapshot=actor.email,
+        actor,
         action=action,
         target_type="skill_builder_session",
         target_id=session.id,
-        target_owner_user_id=actor.id,
         outcome=outcome,
-        request=None,
         metadata={
             "session_id": str(session.id),
             "mode": session.mode,

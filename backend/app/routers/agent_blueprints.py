@@ -39,9 +39,7 @@ def _project_blueprint(
         source_marketplace_item_id=blueprint.source_marketplace_item_id,
         source_marketplace_version_id=blueprint.source_marketplace_version_id,
         installation_id=installation.id if installation else None,
-        install_status=(
-            installation.install_status if installation else blueprint.install_status
-        ),  # type: ignore[arg-type]
+        install_status=(installation.install_status if installation else blueprint.install_status),  # type: ignore[arg-type]
         is_dirty=bool(blueprint.is_dirty or (installation and installation.is_dirty)),
         created_agent_count=blueprint.created_agent_count,
         created_at=blueprint.created_at,
@@ -59,10 +57,7 @@ async def list_agent_blueprints(
             select(AgentBlueprint, MarketplaceInstallation)
             .outerjoin(
                 MarketplaceInstallation,
-                (
-                    MarketplaceInstallation.installed_agent_blueprint_id
-                    == AgentBlueprint.id
-                )
+                (MarketplaceInstallation.installed_agent_blueprint_id == AgentBlueprint.id)
                 # Uninstall is a soft delete (row kept with
                 # ``install_status='uninstalled'``) — joining those rows
                 # would duplicate blueprints after a re-install and show
@@ -93,10 +88,7 @@ async def get_agent_blueprint(
             select(AgentBlueprint, MarketplaceInstallation)
             .outerjoin(
                 MarketplaceInstallation,
-                (
-                    MarketplaceInstallation.installed_agent_blueprint_id
-                    == AgentBlueprint.id
-                )
+                (MarketplaceInstallation.installed_agent_blueprint_id == AgentBlueprint.id)
                 & (MarketplaceInstallation.install_status != "uninstalled"),
             )
             .where(AgentBlueprint.id == blueprint_id)
@@ -128,19 +120,13 @@ async def create_agent_from_blueprint(
         user_id=user.id,
         body=body,
     )
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="agent_blueprint.create_agent",
         target_type="agent",
         target_id=agent.id,
-        target_name_snapshot=agent.name,
-        target_owner_user_id=user.id,
-        outcome="success",
+        target_name=agent.name,
         request=request,
         metadata={"blueprint_id": str(blueprint_id)},
     )

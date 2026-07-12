@@ -1,4 +1,8 @@
-"""MCP server / tool API."""
+"""MCP server / tool API.
+
+DB access and side effects live in :mod:`app.services.mcp_service` (BE-S2);
+this router keeps schema conversion, ``Depends`` guards, and commits.
+"""
 
 from __future__ import annotations
 
@@ -6,27 +10,22 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials.validation import require_user_credential
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import (
     credential_not_found,
-    mcp_server_not_found,
     unknown_registry_entry,
 )
 from app.mcp import discovery
 from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import connect_and_list
-from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.schemas.mcp import (
     McpDiscoverResponse,
     McpExportEntry,
     McpExportResponse,
-    McpImportError,
     McpImportRequest,
     McpImportResult,
     McpProbeRequest,
@@ -42,8 +41,8 @@ from app.schemas.mcp import (
     McpToolResponse,
     McpToolWithServerResponse,
 )
-from app.services import audit_service
 from app.services import mcp_registry as mcp_registry_service
+from app.services import mcp_service
 
 router = APIRouter(prefix="/api/mcp-servers", tags=["mcp"])
 # Catalog of well-known MCP servers — separate prefix so router mount paths
@@ -94,102 +93,6 @@ def _tool_to_response(tool: McpTool) -> McpToolResponse:
     )
 
 
-async def _load_owned(db: AsyncSession, server_id: uuid.UUID, user_id: uuid.UUID) -> McpServer:
-    row = (
-        await db.execute(
-            select(McpServer).where(McpServer.id == server_id, McpServer.user_id == user_id)
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        raise mcp_server_not_found()
-    return row
-
-
-async def _load_tools_for(db: AsyncSession, server_id: uuid.UUID) -> list[McpTool]:
-    rows = (
-        (
-            await db.execute(
-                select(McpTool).where(McpTool.server_id == server_id).order_by(McpTool.name)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return list(rows)
-
-
-def _validate_payload_consistency(
-    transport: str | None,
-    url: str | None,
-    command: str | None,
-) -> None:
-    if transport in {"sse", "streamable_http"} and not url:
-        raise HTTPException(
-            status_code=422,
-            detail=f"transport '{transport}' requires url",
-        )
-    if transport == "stdio" and not command:
-        raise HTTPException(
-            status_code=422,
-            detail="stdio transport requires command",
-        )
-
-
-async def _invalidate_runtime_mcp_cache() -> None:
-    from app.agent_runtime.mcp_cache import clear_mcp_tool_cache
-
-    await clear_mcp_tool_cache()
-
-
-def _keys(value: dict[str, Any] | None) -> list[str]:
-    return sorted(str(key) for key in (value or {}))
-
-
-def _mcp_server_metadata(server: McpServer) -> dict[str, Any]:
-    return {
-        "transport": server.transport,
-        "has_url": bool(server.url),
-        "command_present": bool(server.command),
-        "arg_count": len(server.args or []),
-        "env_var_keys": _keys(server.env_vars),
-        "header_keys": _keys(server.headers),
-        "credential_bound": server.credential_id is not None,
-        "status": server.status,
-    }
-
-
-async def _record_mcp_audit(
-    db: AsyncSession,
-    *,
-    user: CurrentUser,
-    request: Request,
-    action: str,
-    server: McpServer,
-    outcome: str = "success",
-    reason_code: str | None = None,
-    reason_message: str | None = None,
-    metadata: dict[str, Any] | None = None,
-) -> None:
-    await audit_service.record_event(
-        db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
-        action=action,
-        target_type="mcp_server",
-        target_id=server.id,
-        target_name_snapshot=server.name,
-        target_owner_user_id=user.id,
-        outcome=outcome,
-        reason_code=reason_code,
-        reason_message=reason_message,
-        request=request,
-        metadata={**_mcp_server_metadata(server), **(metadata or {})},
-    )
-
-
 # -- CRUD --------------------------------------------------------------------
 
 
@@ -198,17 +101,7 @@ async def list_servers(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[McpServerResponse]:
-    rows = (
-        (
-            await db.execute(
-                select(McpServer)
-                .where(McpServer.user_id == user.id)
-                .order_by(McpServer.created_at.desc())
-            )
-        )
-        .scalars()
-        .all()
-    )
+    rows = await mcp_service.list_servers(db, user.id)
     return [_server_to_response(r) for r in rows]
 
 
@@ -220,26 +113,10 @@ async def create_server(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> McpServerResponse:
-    _validate_payload_consistency(payload.transport, payload.url, payload.command)
-    if payload.credential_id is not None:
-        await require_user_credential(db, credential_id=payload.credential_id, user_id=user.id)
-    server = McpServer(
-        user_id=user.id,
-        name=payload.name,
-        description=payload.description,
-        transport=payload.transport,
-        url=payload.url,
-        command=payload.command,
-        args=list(payload.args or []),
-        env_vars=dict(payload.env_vars or {}),
-        headers=dict(payload.headers or {}),
-        credential_id=payload.credential_id,
-        status="unknown",
-    )
-    db.add(server)
+    server = await mcp_service.create_server(db, user_id=user.id, data=payload)
     await db.commit()
     await db.refresh(server)
-    await _record_mcp_audit(
+    await mcp_service.record_server_audit(
         db,
         user=user,
         request=request,
@@ -247,7 +124,7 @@ async def create_server(
         server=server,
     )
     await db.commit()
-    await _invalidate_runtime_mcp_cache()
+    await mcp_service.invalidate_runtime_mcp_cache()
     return _server_to_response(server)
 
 
@@ -274,30 +151,16 @@ async def create_server_from_registry(
             detail=f"unknown registry entry '{payload.registry_key}'",
         )
 
-    transport = entry.get("transport")
-    url = entry.get("url")
-    command = entry.get("command")
-    _validate_payload_consistency(transport, url, command)
-    if payload.credential_id is not None:
-        await require_user_credential(db, credential_id=payload.credential_id, user_id=user.id)
-
-    server = McpServer(
+    server = await mcp_service.create_server_from_registry_entry(
+        db,
         user_id=user.id,
         name=payload.name,
-        description=entry.get("description"),
-        transport=transport,
-        url=url,
-        command=command,
-        args=list(entry.get("args") or []),
-        env_vars=dict(entry.get("env_vars") or {}),
-        headers={},
         credential_id=payload.credential_id,
-        status="unknown",
+        entry=entry,
     )
-    db.add(server)
     await db.commit()
     await db.refresh(server)
-    await _record_mcp_audit(
+    await mcp_service.record_server_audit(
         db,
         user=user,
         request=request,
@@ -306,7 +169,7 @@ async def create_server_from_registry(
         metadata={"registry_key": payload.registry_key},
     )
     await db.commit()
-    await _invalidate_runtime_mcp_cache()
+    await mcp_service.invalidate_runtime_mcp_cache()
     return _server_to_response(server)
 
 
@@ -347,7 +210,7 @@ async def probe_mcp_server(
             status_code=422,
             detail="transport is required (or provide registry_key)",
         )
-    _validate_payload_consistency(transport, url, payload.command)
+    mcp_service.validate_payload_consistency(transport, url, payload.command)
 
     credentials: dict[str, Any] | None = None
     if payload.credential_id is not None:
@@ -360,12 +223,12 @@ async def probe_mcp_server(
         if auth.error:
             if auth.status == "credential_not_found":
                 raise credential_not_found()
-            return {
-                "success": False,
-                "server_info": {},
-                "tools": [],
-                "error": auth.error,
-            }
+            return McpProbeResponse(
+                success=False,
+                server_info={},
+                tools=[],
+                error=auth.error,
+            )
         if auth.credentials is None:
             raise credential_not_found()
         credentials = auth.credentials
@@ -379,30 +242,17 @@ async def probe_mcp_server(
         user_id=user.id,
         credential_id=payload.credential_id,
     )
-    await audit_service.record_event(
+    await mcp_service.record_probe_audit(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
-        action="mcp_server.probe",
-        target_type="mcp_server_probe",
-        target_name_snapshot=payload.registry_key,
-        target_owner_user_id=user.id,
-        outcome="success" if result.get("success") else "failure",
-        reason_code=None if result.get("success") else "mcp_probe_failed",
-        reason_message=result.get("error"),
+        user=user,
         request=request,
-        metadata={
-            "registry_key": payload.registry_key,
-            "transport": transport,
-            "has_url": bool(url),
-            "command_present": bool(payload.command),
-            "header_keys": _keys(headers),
-            "credential_bound": payload.credential_id is not None,
-            "tool_count": len(result.get("tools") or []),
-        },
+        registry_key=payload.registry_key,
+        transport=transport,
+        url=url,
+        command_present=bool(payload.command),
+        headers=headers,
+        credential_bound=payload.credential_id is not None,
+        result=result,
     )
     await db.commit()
 
@@ -430,14 +280,7 @@ async def list_all_user_mcp_tools(
     picker (Tools tab → MCP source) so the user can bind individual tools
     to an agent without first navigating to each server detail page."""
 
-    rows = (
-        await db.execute(
-            select(McpTool, McpServer.name)
-            .join(McpServer, McpTool.server_id == McpServer.id)
-            .where(McpServer.user_id == user.id)
-            .order_by(McpServer.name, McpTool.name)
-        )
-    ).all()
+    rows = await mcp_service.list_all_tools(db, user.id)
     return [
         McpToolWithServerResponse(
             id=tool.id,
@@ -477,141 +320,18 @@ async def import_servers(
     (its tool links are preserved because the row keeps its id).
     """
 
-    result = McpImportResult()
-
-    # Pre-load existing servers by name so we don't re-query inside the loop.
-    existing_rows = (
-        (await db.execute(select(McpServer).where(McpServer.user_id == user.id))).scalars().all()
-    )
-    by_name: dict[str, McpServer] = {row.name: row for row in existing_rows}
-
-    # Validate referenced credentials up-front (a 400 is friendlier than
-    # silently committing rows with a dangling FK).
-    referenced_creds: set[uuid.UUID] = {
-        e.credential_id for e in payload.mcpServers.values() if e.credential_id is not None
-    }
-    valid_creds: set[uuid.UUID] = set()
-    if referenced_creds:
-        owned = (
-            (
-                await db.execute(
-                    select(Credential.id).where(
-                        Credential.user_id == user.id,
-                        Credential.id.in_(referenced_creds),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        valid_creds = set(owned)
-
-    for name, entry in payload.mcpServers.items():
-        try:
-            transport = entry.transport
-            if transport is None and entry.command:
-                transport = "stdio"
-            if transport is None:
-                result.errors.append(
-                    McpImportError(
-                        name=name,
-                        reason="transport could not be inferred (provide transport or command)",
-                    )
-                )
-                continue
-
-            # Mirror create-server validation so import doesn't smuggle in
-            # rows that wouldn't survive POST /api/mcp-servers.
-            if transport in {"sse", "streamable_http"} and not entry.url:
-                result.errors.append(
-                    McpImportError(
-                        name=name,
-                        reason=f"transport '{transport}' requires url",
-                    )
-                )
-                continue
-            if transport == "stdio" and not entry.command:
-                result.errors.append(
-                    McpImportError(
-                        name=name,
-                        reason="stdio transport requires command",
-                    )
-                )
-                continue
-
-            credential_id = entry.credential_id
-            if credential_id is not None and credential_id not in valid_creds:
-                result.errors.append(
-                    McpImportError(
-                        name=name,
-                        reason=f"credential_id {credential_id} not found",
-                    )
-                )
-                continue
-
-            existing = by_name.get(name)
-            if existing is not None and not payload.overwrite:
-                result.skipped += 1
-                continue
-
-            if existing is None:
-                server = McpServer(
-                    user_id=user.id,
-                    name=name,
-                    description=entry.description,
-                    transport=transport,
-                    url=entry.url,
-                    command=entry.command,
-                    args=list(entry.args or []),
-                    env_vars=dict(entry.env or {}),
-                    headers=dict(entry.headers or {}),
-                    credential_id=credential_id,
-                    status="unknown",
-                )
-                db.add(server)
-                by_name[name] = server
-                result.created += 1
-            else:
-                existing.description = entry.description
-                existing.transport = transport
-                existing.url = entry.url
-                existing.command = entry.command
-                existing.args = list(entry.args or [])
-                existing.env_vars = dict(entry.env or {})
-                existing.headers = dict(entry.headers or {})
-                existing.credential_id = credential_id
-                result.updated += 1
-        except Exception as exc:  # noqa: BLE001 — record + continue
-            result.errors.append(McpImportError(name=name, reason=str(exc)))
-
+    result = await mcp_service.import_servers(db, user_id=user.id, data=payload)
     await db.commit()
-    import_outcome = (
-        "failure" if result.errors and result.created == 0 and result.updated == 0 else "success"
-    )
-    await audit_service.record_event(
+    await mcp_service.record_import_audit(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
-        action="mcp_server.import",
-        target_type="mcp_server",
-        target_owner_user_id=user.id,
-        outcome=import_outcome,
-        reason_code="mcp_import_errors" if result.errors else None,
+        user=user,
         request=request,
-        metadata={
-            "created": result.created,
-            "updated": result.updated,
-            "skipped": result.skipped,
-            "error_count": len(result.errors),
-            "entry_count": len(payload.mcpServers),
-            "overwrite": payload.overwrite,
-        },
+        result=result,
+        entry_count=len(payload.mcpServers),
+        overwrite=payload.overwrite,
     )
     await db.commit()
-    await _invalidate_runtime_mcp_cache()
+    await mcp_service.invalidate_runtime_mcp_cache()
     return result
 
 
@@ -626,15 +346,7 @@ async def export_servers(
     template strings, and ``credential_id`` is exported as a bare reference.
     """
 
-    rows = (
-        (
-            await db.execute(
-                select(McpServer).where(McpServer.user_id == user.id).order_by(McpServer.name)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    rows = await mcp_service.list_servers(db, user.id, order_by_name=True)
 
     out: dict[str, McpExportEntry] = {}
     for row in rows:
@@ -657,8 +369,8 @@ async def get_server(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> McpServerDetailResponse:
-    server = await _load_owned(db, server_id, user.id)
-    tools = await _load_tools_for(db, server_id)
+    server = await mcp_service.load_owned(db, server_id, user.id)
+    tools = await mcp_service.load_tools_for(db, server_id)
     base = _server_to_response(server)
     return McpServerDetailResponse(
         **base.model_dump(),
@@ -675,36 +387,12 @@ async def update_server(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> McpServerResponse:
-    server = await _load_owned(db, server_id, user.id)
+    server = await mcp_service.load_owned(db, server_id, user.id)
     fields_set = payload.model_fields_set
-
-    if "name" in fields_set and payload.name is not None:
-        server.name = payload.name
-    if "description" in fields_set:
-        server.description = payload.description
-    if "transport" in fields_set and payload.transport is not None:
-        server.transport = payload.transport
-    if "url" in fields_set:
-        server.url = payload.url
-    if "command" in fields_set:
-        server.command = payload.command
-    if "args" in fields_set and payload.args is not None:
-        server.args = list(payload.args)
-    if "env_vars" in fields_set and payload.env_vars is not None:
-        server.env_vars = dict(payload.env_vars)
-    if "headers" in fields_set and payload.headers is not None:
-        server.headers = dict(payload.headers)
-    if "credential_id" in fields_set:
-        if payload.credential_id is not None:
-            await require_user_credential(db, credential_id=payload.credential_id, user_id=user.id)
-        server.credential_id = payload.credential_id
-    if "status" in fields_set and payload.status is not None:
-        server.status = payload.status
-
-    _validate_payload_consistency(server.transport, server.url, server.command)
+    await mcp_service.update_server(db, server=server, user_id=user.id, data=payload)
     await db.commit()
     await db.refresh(server)
-    await _record_mcp_audit(
+    await mcp_service.record_server_audit(
         db,
         user=user,
         request=request,
@@ -718,7 +406,7 @@ async def update_server(
         },
     )
     await db.commit()
-    await _invalidate_runtime_mcp_cache()
+    await mcp_service.invalidate_runtime_mcp_cache()
     return _server_to_response(server)
 
 
@@ -730,20 +418,17 @@ async def delete_server(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> None:
-    server = await _load_owned(db, server_id, user.id)
-    await _record_mcp_audit(
+    server = await mcp_service.load_owned(db, server_id, user.id)
+    await mcp_service.record_server_audit(
         db,
         user=user,
         request=request,
         action="mcp_server.delete",
         server=server,
     )
-    # Manual cascade for SQLite tests where ondelete=CASCADE isn't enforced.
-    for row in await _load_tools_for(db, server_id):
-        await db.delete(row)
-    await db.delete(server)
+    await mcp_service.delete_server(db, server=server)
     await db.commit()
-    await _invalidate_runtime_mcp_cache()
+    await mcp_service.invalidate_runtime_mcp_cache()
 
 
 # -- Connectivity probes ------------------------------------------------------
@@ -757,9 +442,9 @@ async def test_server(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> McpTestResponse:
-    server = await _load_owned(db, server_id, user.id)
+    server = await mcp_service.load_owned(db, server_id, user.id)
     probe: dict[str, Any] = await discovery.test_server(db, server)
-    await _record_mcp_audit(
+    await mcp_service.record_server_audit(
         db,
         user=user,
         request=request,
@@ -771,7 +456,7 @@ async def test_server(
         metadata={"tool_count": len(probe.get("tools") or [])},
     )
     await db.commit()
-    await _invalidate_runtime_mcp_cache()
+    await mcp_service.invalidate_runtime_mcp_cache()
     return McpTestResponse(
         success=probe["success"],
         status=server.status,
@@ -789,9 +474,9 @@ async def discover_server_tools(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> McpDiscoverResponse:
-    server = await _load_owned(db, server_id, user.id)
+    server = await mcp_service.load_owned(db, server_id, user.id)
     probe, tools = await discovery.discover_tools(db, server)
-    await _record_mcp_audit(
+    await mcp_service.record_server_audit(
         db,
         user=user,
         request=request,
@@ -803,7 +488,7 @@ async def discover_server_tools(
         metadata={"tool_count": len(tools)},
     )
     await db.commit()
-    await _invalidate_runtime_mcp_cache()
+    await mcp_service.invalidate_runtime_mcp_cache()
     return McpDiscoverResponse(
         success=probe["success"],
         status=server.status,

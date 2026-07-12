@@ -31,19 +31,13 @@ async def _record_deployment_audit(
     row: AgentDeployment,
     metadata: dict[str, object] | None = None,
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action=action,
         target_type="agent_deployment",
         target_id=row.id,
-        target_name_snapshot=row.public_id,
-        target_owner_user_id=user.id,
-        outcome="success",
+        target_name=row.public_id,
         request=request,
         metadata={
             "agent_id": str(row.agent_id),
@@ -67,19 +61,13 @@ async def _record_api_key_audit(
     row: AgentApiKey,
     metadata: dict[str, object] | None = None,
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action=action,
         target_type="agent_api_key",
         target_id=row.id,
-        target_name_snapshot=row.name,
-        target_owner_user_id=user.id,
-        outcome="success",
+        target_name=row.name,
         request=request,
         metadata={
             "key_id": row.key_id,
@@ -114,9 +102,7 @@ def _key_list_response(row) -> AgentApiKeyListResponse:
     )
 
 
-@router.get(
-    "/deployment-candidates", response_model=list[AgentDeploymentCandidateResponse]
-)
+@router.get("/deployment-candidates", response_model=list[AgentDeploymentCandidateResponse])
 async def list_deployment_candidates(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),

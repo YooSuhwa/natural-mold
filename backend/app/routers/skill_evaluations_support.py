@@ -64,17 +64,12 @@ async def record_evaluation_audit(
     outcome: str = "success",
     metadata: dict[str, JsonValue] | None = None,
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action=action,
         target_type="skill_evaluation_run" if run_id else "skill",
         target_id=run_id or skill_id,
-        target_owner_user_id=user.id,
         outcome=outcome,
         request=request,
         metadata={

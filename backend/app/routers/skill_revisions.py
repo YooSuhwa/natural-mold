@@ -228,18 +228,12 @@ async def _record_revision_rollback_audit(
     old_hash: str | None,
     new_hash: str | None,
 ) -> None:
-    await audit_service.record_event(
+    await audit_service.record_self_event(
         db,
-        actor_type="user",
-        actor_user_id=user.id,
-        actor_email_snapshot=user.email,
-        owner_user_id=user.id,
-        owner_email_snapshot=user.email,
+        user,
         action="skill_revision.rollback",
         target_type="skill",
         target_id=skill_id,
-        target_owner_user_id=user.id,
-        outcome="success",
         request=request,
         metadata={
             "restored_revision_id": str(restored_revision_id),

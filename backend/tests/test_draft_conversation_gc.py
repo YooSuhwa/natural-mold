@@ -17,24 +17,20 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
-from app.models.model import Model
-from app.models.user import User
 from app.services.chat_service import gc_orphan_draft_conversations
+from tests.conftest import seed_agent
 
 
 async def _seed_agent(db: AsyncSession) -> uuid.UUID:
     """Create User + Model + Agent, return agent_id."""
-    user = User(id=uuid.uuid4(), email=f"u-{uuid.uuid4().hex[:8]}@test.com", name="Test")
-    db.add(user)
-    model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
-    db.add(model)
-    await db.flush()
-    agent = Agent(user_id=user.id, name="Chat Agent", system_prompt="Hi", model_id=model.id)
-    db.add(agent)
-    await db.flush()
+    _user, _model, agent = await seed_agent(
+        db,
+        user_id=uuid.uuid4(),
+        name="Chat Agent",
+        system_prompt="Hi",
+    )
     return agent.id
 
 
