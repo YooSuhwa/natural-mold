@@ -1,17 +1,33 @@
+"""Runtime component builder — 에이전트 실행 컴포넌트 조립 오케스트레이터.
+
+BE-S10: 모델 후보/폴백(``runtime.models``), 신뢰성 미들웨어
+(``runtime.reliability``), HiTL 인터럽트 정책(``runtime.interrupts``),
+프롬프트 블록(``runtime.prompts``), 장기 기억 컨텍스트
+(``runtime.memory_context``) 클러스터는 ``app.agent_runtime.runtime``
+패키지로 분리됐고, 이 모듈이 기존 표면을 그대로 재-export 한다.
+
+Patch-contract notes (tests/test_executor.py, tests/test_model_fallback.py,
+tests/test_hitl_middleware.py, tests/test_skill_builder_*.py):
+
+- ``create_chat_model`` 은 이 모듈 attribute 로 남아야 한다 — 테스트가
+  ``runtime_component_builder.create_chat_model`` 을 patch 하고,
+  ``runtime.models`` 의 함수들이 call-time 에 이 모듈을 경유해 조회한다.
+- ``_build_model_candidates`` / ``_load_memory_context`` /
+  ``_memory_write_policy_for_run`` 은 이 모듈 binding 을 patch 하는 테스트가
+  있으므로, 잔류 함수들은 모듈 global(재-export binding)로 호출한다.
+"""
+
 from __future__ import annotations
 
 import logging
 import time
-import uuid as _uuid
 from pathlib import Path
 from typing import Any, cast
 
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
 from deepagents.middleware.filesystem import FilesystemPermission
-from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage
 from langchain_core.tools import BaseTool
 
 from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
@@ -22,25 +38,72 @@ from app.agent_runtime.middleware_registry import (
     build_middleware_instances,
     get_provider_middleware,
 )
-from app.agent_runtime.model_factory import create_chat_model
+from app.agent_runtime.model_factory import create_chat_model as create_chat_model
 from app.agent_runtime.run_secrets import add_run_secrets, collect_secret_values
+from app.agent_runtime.runtime.interrupts import _build_interrupt_on_policy
+from app.agent_runtime.runtime.interrupts import (
+    _default_interrupt_on_from_tools as _default_interrupt_on_from_tools,
+)
+from app.agent_runtime.runtime.memory_context import (
+    _RECALLED_MEMORY_PREVIEW_CHARS as _RECALLED_MEMORY_PREVIEW_CHARS,
+)
+from app.agent_runtime.runtime.memory_context import (
+    _load_memory_context,
+    _memory_write_policy_for_run,
+)
+from app.agent_runtime.runtime.memory_context import (
+    _parse_uuid as _parse_uuid,
+)
+from app.agent_runtime.runtime.memory_context import (
+    _recalled_memory_briefs as _recalled_memory_briefs,
+)
+from app.agent_runtime.runtime.models import (
+    _MIDDLEWARE_MODEL_FIELDS as _MIDDLEWARE_MODEL_FIELDS,
+)
+from app.agent_runtime.runtime.models import (
+    MiddlewareModelCredentialRequiredError as MiddlewareModelCredentialRequiredError,
+)
+from app.agent_runtime.runtime.models import (
+    _build_model_candidates,
+    _resolve_middleware_model_params,
+)
+from app.agent_runtime.runtime.models import (
+    _build_model_with_fallback as _build_model_with_fallback,
+)
+from app.agent_runtime.runtime.models import (
+    _is_retryable_model_error as _is_retryable_model_error,
+)
+from app.agent_runtime.runtime.models import (
+    _model_chain as _model_chain,
+)
+from app.agent_runtime.runtime.models import (
+    _model_constructor_params as _model_constructor_params,
+)
+from app.agent_runtime.runtime.prompts import (
+    _artifact_file_instruction_prompt,
+    _interactive_tool_instruction_prompt,
+    _memory_tool_instruction_prompt,
+    _system_prompt_with_temporal_context,
+)
+from app.agent_runtime.runtime.reliability import (
+    EmptyContentRetryMiddleware as EmptyContentRetryMiddleware,
+)
+from app.agent_runtime.runtime.reliability import (
+    _build_default_reliability_middleware,
+)
+from app.agent_runtime.runtime.reliability import (
+    _has_visible_ai_content as _has_visible_ai_content,
+)
 from app.agent_runtime.runtime_config import _DATA_DIR, AgentConfig, RuntimeComponents
 from app.agent_runtime.skill_builder.chat_prompt import load_skill_builder_prompt
 from app.agent_runtime.skill_builder.tools import build_skill_builder_tools
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.agent_runtime.skill_tool_dependencies import build_skill_dependency_tool_configs
-from app.agent_runtime.temporal import build_temporal_context_prompt
 from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_for_runtime
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
 from app.agent_runtime.tools.memory import build_memory_tools
 from app.config import settings
-from app.exceptions import AppError
 from app.marketplace.skill_runtime import build_skill_runtime_context, resolve_runtime_credentials
-from app.tools.risk import (
-    default_deepagents_interrupt_policy,
-    interrupt_policy_for_tool,
-    merge_interrupt_policies,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -48,21 +111,6 @@ _TEMPORAL_BUILTIN_TOOL_KEYS = (
     "builtin:current_datetime",
     "builtin:resolve_relative_date",
 )
-
-
-class MiddlewareModelCredentialRequiredError(AppError):
-    """Raised when middleware model config has no user-owned provider key."""
-
-    def __init__(self, provider: str) -> None:
-        super().__init__(
-            code="middleware_model_credential_required",
-            message=(
-                f"미들웨어 모델({provider})에 사용할 본인의 LLM API 키가 등록되어 있지 않습니다. "
-                "/credentials 페이지에서 해당 제공자의 키를 등록하거나 미들웨어 모델 설정을 "
-                "변경해주세요."
-            ),
-            status=422,
-        )
 
 
 def build_agent(
@@ -99,49 +147,6 @@ def build_agent(
     )
 
 
-_MIDDLEWARE_MODEL_FIELDS = frozenset({"model", "fallback_model"})
-
-
-def _resolve_middleware_model_params(
-    configs: list[dict[str, Any]],
-    provider_api_keys: dict[str, str | None],
-) -> list[dict[str, Any]]:
-    """미들웨어 config의 model 문자열을 BaseChatModel 객체로 사전 해석.
-
-    User-facing agent runtime must not fall through to env/system credentials.
-    The caller provides only user-owned provider keys; missing keys become a
-    clear 422 error before LangChain model construction.
-    """
-    resolved = []
-    for config in configs:
-        params = dict(config.get("params", {}))
-        for field_name in _MIDDLEWARE_MODEL_FIELDS:
-            val = params.get(field_name)
-            if isinstance(val, str) and ":" in val:
-                prov, mname = val.split(":", 1)
-                api_key = provider_api_keys.get(prov)
-                if not api_key:
-                    raise MiddlewareModelCredentialRequiredError(prov)
-                params[field_name] = create_chat_model(
-                    prov,
-                    mname,
-                    api_key=api_key,
-                    allow_env_fallback=False,
-                )
-        resolved.append({**config, "params": params})
-    return resolved
-
-
-def _model_constructor_params(cfg: AgentConfig) -> dict[str, Any]:
-    params = dict(cfg.model_params or {})
-    params.pop("recursion_limit", None)
-    # Forward the model context limit so ``create_chat_model`` injects it into
-    # ``model.profile`` (auto-summarization threshold = single source of truth).
-    if cfg.context_window:
-        params["context_window"] = cfg.context_window
-    return params
-
-
 def _configured_recursion_limit(cfg: AgentConfig) -> int | None:
     raw = (cfg.model_params or {}).get("recursion_limit")
     if raw is None:
@@ -151,157 +156,6 @@ def _configured_recursion_limit(cfg: AgentConfig) -> int | None:
     except (TypeError, ValueError):
         return None
     return value if value > 0 else None
-
-
-def _model_chain(cfg: AgentConfig) -> list[dict[str, Any]]:
-    chain: list[dict[str, Any]] = [
-        {
-            "provider": cfg.provider,
-            "model_name": cfg.model_name,
-            "base_url": cfg.base_url,
-        }
-    ]
-    chain.extend(cfg.model_fallback_chain or [])
-    return chain
-
-
-def _build_model_candidates(cfg: AgentConfig) -> list[BaseChatModel]:
-    """Construct the primary chat model, walking ``model_fallback_chain``
-    when the primary raises a recoverable error.
-
-    This mirrors :func:`app.agent_runtime.model_factory.create_chat_model_with_fallback`
-    but operates on the pre-resolved chain in ``AgentConfig`` so the executor
-    can stay synchronous and DB-free. The chain entries are resolved by the
-    caller (chat_service / trigger_executor) which has the DB session.
-    """
-
-    from app.agent_runtime.model_factory import _is_fallback_recoverable
-
-    last_error: BaseException | None = None
-    candidates: list[BaseChatModel] = []
-    params = _model_constructor_params(cfg)
-    chain = _model_chain(cfg)
-
-    for idx, entry in enumerate(chain):
-        try:
-            candidates.append(
-                create_chat_model(
-                    entry["provider"],
-                    entry["model_name"],
-                    cfg.api_key,
-                    entry.get("base_url"),
-                    **params,
-                )
-            )
-        except Exception as exc:  # noqa: BLE001
-            last_error = exc
-            if not candidates:
-                if idx == len(chain) - 1 or not _is_fallback_recoverable(exc):
-                    raise
-                logger.info(
-                    "model %s/%s failed; trying fallback (%d remaining)",
-                    entry["provider"],
-                    entry["model_name"],
-                    len(chain) - idx - 1,
-                )
-                continue
-            logger.warning(
-                "fallback model %s/%s could not be constructed; runtime fallback will skip it",
-                entry["provider"],
-                entry["model_name"],
-                exc_info=True,
-            )
-
-    if candidates:
-        return candidates
-    assert last_error is not None  # noqa: S101 — loop invariant (type narrowing)
-    raise last_error
-
-
-def _build_model_with_fallback(cfg: AgentConfig) -> BaseChatModel:
-    """Backward-compatible helper that returns the first constructible candidate."""
-
-    return _build_model_candidates(cfg)[0]
-
-
-def _is_retryable_model_error(exc: Exception) -> bool:
-    from app.agent_runtime.model_factory import _is_fallback_recoverable
-
-    if _is_fallback_recoverable(exc):
-        return True
-    return isinstance(exc, ValueError) and "No generations found in stream" in str(exc)
-
-
-def _has_visible_ai_content(response: ModelResponse[Any] | AIMessage) -> bool:
-    messages = [response] if isinstance(response, AIMessage) else list(response.result)
-    for message in messages:
-        if getattr(message, "type", None) != "ai":
-            continue
-        if getattr(message, "tool_calls", None):
-            return True
-        content = getattr(message, "content", None)
-        if isinstance(content, str):
-            if content.strip():
-                return True
-            continue
-        if isinstance(content, list):
-            for block in content:
-                if isinstance(block, str) and block.strip():
-                    return True
-                if isinstance(block, dict) and str(block.get("text") or "").strip():
-                    return True
-    return False
-
-
-class EmptyContentRetryMiddleware(AgentMiddleware):
-    """Retry model calls that return an empty assistant message without tool calls."""
-
-    def __init__(self, *, max_retries: int = 1) -> None:
-        super().__init__()
-        self.max_retries = max(0, max_retries)
-        self.tools = []
-
-    def wrap_model_call(self, request: ModelRequest, handler: Any) -> Any:
-        response = None
-        for attempt in range(self.max_retries + 1):
-            response = handler(request)
-            if _has_visible_ai_content(response) or attempt >= self.max_retries:
-                return response
-        return response
-
-    async def awrap_model_call(self, request: ModelRequest, handler: Any) -> Any:
-        response = None
-        for attempt in range(self.max_retries + 1):
-            response = await handler(request)
-            if _has_visible_ai_content(response) or attempt >= self.max_retries:
-                return response
-        return response
-
-
-def _build_default_reliability_middleware(
-    model_candidates: list[BaseChatModel],
-    *,
-    configured_types: set[str],
-) -> list[Any]:
-    from langchain.agents.middleware import ModelFallbackMiddleware, ModelRetryMiddleware
-
-    middleware: list[Any] = []
-    if len(model_candidates) > 1:
-        middleware.append(ModelFallbackMiddleware(*model_candidates[1:]))
-    if "model_retry" not in configured_types:
-        middleware.append(
-            ModelRetryMiddleware(
-                max_retries=2,
-                retry_on=_is_retryable_model_error,
-                on_failure="error",
-                initial_delay=1.0,
-                backoff_factor=2.0,
-                max_delay=60.0,
-                jitter=True,
-            )
-        )
-    middleware.append(EmptyContentRetryMiddleware(max_retries=1))
-    return middleware
 
 
 def _append_temporal_tools(tools: list[BaseTool]) -> None:
@@ -353,47 +207,6 @@ def _append_e2e_ui_data_demo_tool(tools: list[BaseTool]) -> None:
     tools.append(tool)
 
 
-def _default_interrupt_on_from_tools(tools: list[BaseTool]) -> dict[str, Any]:
-    """Build the minimum HITL policy from attached tool risk metadata."""
-
-    policy = default_deepagents_interrupt_policy()
-    for tool in tools:
-        policy.update(interrupt_policy_for_tool(tool))
-    return policy
-
-
-def _build_interrupt_on_policy(
-    middleware_configs: list[dict[str, Any]] | None,
-    tools: list[BaseTool],
-    *,
-    include_ask_user: bool,
-    is_trigger_mode: bool,
-) -> dict[str, Any] | None:
-    """Build the DeepAgents top-level ``interrupt_on`` policy.
-
-    DeepAgents propagates top-level HITL policy to its built-in subagent
-    middleware. Keep the policy out of the explicit middleware list so
-    ``ask_user`` and delegated tool calls share the same standard path.
-    """
-
-    if is_trigger_mode:
-        return None
-
-    interrupt_on: dict[str, Any] = _default_interrupt_on_from_tools(tools)
-    for mw_config in middleware_configs or []:
-        if mw_config.get("type") != "human_in_the_loop":
-            continue
-        explicit = mw_config.get("params", {}).get("interrupt_on")
-        if isinstance(explicit, dict):
-            interrupt_on = merge_interrupt_policies(interrupt_on, explicit)
-        break
-
-    policy = dict(interrupt_on or {})
-    if include_ask_user:
-        policy.setdefault("ask_user", {"allowed_decisions": ["respond"]})
-    return policy or None
-
-
 def _add_skill_secrets_to_run(skill_ctx: Any, cfg: AgentConfig) -> None:
     """ADR-021 — union resolved skill credential plaintext into the run set.
 
@@ -425,149 +238,6 @@ def _selected_skill_slugs(agent_skills: list[dict[str, Any]] | None) -> list[str
         if isinstance(slug, str) and slug:
             slugs.append(slug)
     return slugs
-
-
-def _system_prompt_with_temporal_context(system_prompt: str) -> str:
-    block = build_temporal_context_prompt().strip()
-    prompt = system_prompt.strip()
-    return f"{prompt}\n\n{block}" if prompt else block
-
-
-def _parse_uuid(value: str | None) -> _uuid.UUID | None:
-    if not value:
-        return None
-    try:
-        return _uuid.UUID(str(value))
-    except (TypeError, ValueError):
-        return None
-
-
-# 회상 칩 payload에 싣는 기억 내용 미리보기 상한 — 전문은 memory 설정 화면에서
-# 확인하고, 스트림 이벤트에는 식별 가능한 한 줄만 싣는다.
-_RECALLED_MEMORY_PREVIEW_CHARS = 200
-
-
-def _recalled_memory_briefs(records: list[Any]) -> list[dict[str, Any]]:
-    briefs: list[dict[str, Any]] = []
-    for record in records:
-        content = str(record.content or "").strip()
-        if len(content) > _RECALLED_MEMORY_PREVIEW_CHARS:
-            content = content[:_RECALLED_MEMORY_PREVIEW_CHARS] + "…"
-        briefs.append(
-            {
-                "id": str(record.id),
-                "scope": record.scope,
-                "content": content,
-            }
-        )
-    return briefs
-
-
-async def _load_memory_context(cfg: AgentConfig) -> tuple[str, list[dict[str, Any]]]:
-    """Load the long-term memory prompt block plus recall briefs.
-
-    Returns ``(prompt, briefs)`` — ``briefs`` feed the ``moldy.memory_recalled``
-    stream-head event so the chat can show which memories informed this run.
-    """
-
-    user_uuid = _parse_uuid(cfg.user_id)
-    if user_uuid is None:
-        return "", []
-    agent_uuid = _parse_uuid(cfg.agent_id)
-    try:
-        from app.database import async_session as _async_session_factory
-        from app.services import memory_service
-
-        async with _async_session_factory() as db:
-            policy = await memory_service.resolve_effective_policy(
-                db,
-                user_id=user_uuid,
-                agent_id=agent_uuid,
-            )
-            if not policy.read_enabled:
-                return "", []
-            records = await memory_service.list_runtime_memory_records(
-                db,
-                user_id=user_uuid,
-                agent_id=agent_uuid,
-                allowed_scopes=policy.allowed_scopes,
-            )
-            prompt = memory_service.render_memory_prompt(records)
-            return prompt, _recalled_memory_briefs(records) if prompt else []
-    except Exception:  # noqa: BLE001 — memory is helpful context, not a hard runtime dependency
-        logger.warning("memory prompt load failed", exc_info=True)
-        return "", []
-
-
-async def _memory_write_policy_for_run(cfg: AgentConfig, *, is_trigger_mode: bool) -> str:
-    user_uuid = _parse_uuid(cfg.user_id)
-    if user_uuid is None:
-        return "off"
-    agent_uuid = _parse_uuid(cfg.agent_id)
-    try:
-        from app.database import async_session as _async_session_factory
-        from app.services import memory_service
-
-        async with _async_session_factory() as db:
-            policy = await memory_service.resolve_effective_policy(
-                db,
-                user_id=user_uuid,
-                agent_id=agent_uuid,
-            )
-            return policy.trigger_write_policy if is_trigger_mode else policy.write_policy
-    except Exception:  # noqa: BLE001 — memory writes are optional runtime affordances
-        logger.warning("memory write policy load failed", exc_info=True)
-        return "off"
-
-
-def _memory_tool_instruction_prompt() -> str:
-    return (
-        "## Long-term Memory Tool Rules\n"
-        "- If the user explicitly asks you to remember, save, or persist a durable "
-        "preference or fact, call `propose_memory`, `save_user_memory`, or "
-        "`save_agent_memory` instead of only describing what you would do.\n"
-        "- Use `propose_memory` when you are unsure whether the memory should be "
-        "user-wide or agent-specific; use `save_user_memory` for user-wide "
-        "preferences and `save_agent_memory` for this agent's operating notes.\n"
-        "- The server enforces the user's memory policy. In ask mode, save tools "
-        "create an approval proposal rather than directly storing the memory.\n"
-        "- Do not claim a memory was saved unless a memory tool result says "
-        "`memory_saved`. If the tool reports `memory_proposed`, tell the user it "
-        "is waiting for approval.\n"
-        "- Never store API keys, passwords, tokens, credentials, or government ID "
-        "numbers. Ordinary test labels or preference IDs are not secrets by "
-        "themselves."
-    )
-
-
-def _interactive_tool_instruction_prompt() -> str:
-    return (
-        "## Interactive Tool Rules\n"
-        "- If the user explicitly asks you to ask the user, use ask_user, "
-        "let them choose, or pick from options, call the `ask_user` tool. "
-        "Do not answer with plain text that only describes asking.\n"
-        "- For a single-choice option request, call `ask_user` with "
-        '`mode="option_list"`, a concise title, the requested options, '
-        "`minSelections=1`, and `maxSelections=1`.\n"
-        "- If the user explicitly asks to use an available tool or MCP tool, "
-        "call the matching tool instead of simulating the tool result in text.\n"
-        "- If a tool requires HITL approval, wait for the approval result before "
-        "claiming that the tool ran or that the requested side effect happened."
-    )
-
-
-def _artifact_file_instruction_prompt(thread_id: str) -> str:
-    return (
-        "## Generated File Rules\n"
-        f"- When the user asks you to create, save, or output a file, call `write_file` "
-        f"with an absolute path under `/conversations/{thread_id}/`.\n"
-        f"- Example: `/conversations/{thread_id}/report.md` or "
-        f"`/conversations/{thread_id}/charts/summary.csv`.\n"
-        "- Do not use `/tmp`, `/runtime`, `/skills`, or `/agents` for user-visible "
-        "generated files; those paths are not shown as chat artifacts and may be rejected.\n"
-        "- After a file tool succeeds, briefly tell the user the file is ready. "
-        "Do not claim the file was saved if the tool result reports an error."
-    )
 
 
 async def _prepare_skill_builder_components(
