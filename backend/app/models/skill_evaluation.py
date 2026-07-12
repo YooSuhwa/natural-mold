@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -23,12 +23,12 @@ SKILL_EVALUATION_RUN_STATUSES = (
     "cancelled",
 )
 
+SKILL_EVALUATION_CASE_FEEDBACK_VERDICTS = ("agree", "disagree")
+
 
 class SkillEvaluationSet(Base):
     __tablename__ = "skill_evaluation_sets"
-    __table_args__ = (
-        Index("ix_skill_evaluation_sets_skill_updated", "skill_id", "updated_at"),
-    )
+    __table_args__ = (Index("ix_skill_evaluation_sets_skill_updated", "skill_id", "updated_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -128,6 +128,10 @@ class SkillEvaluationRun(Base):
     estimate: Mapped[dict[str, JsonValue] | None] = mapped_column(JSON, nullable=True)
     summary: Mapped[dict[str, JsonValue] | None] = mapped_column(JSON, nullable=True)
     benchmark: Mapped[dict[str, JsonValue] | None] = mapped_column(JSON, nullable=True)
+    # Measured LLM usage rollup — {model_calls, tokens_in, tokens_out,
+    # cost_usd, measured}. NULL for legacy runs (pre-Phase-3); cost_usd is
+    # None when the runner model has no pricing (unknown ≠ free).
+    usage: Mapped[dict[str, JsonValue] | None] = mapped_column(JSON, nullable=True)
     case_results: Mapped[list[JsonValue] | None] = mapped_column(JSON, nullable=True)
     artifact_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -153,3 +157,43 @@ class SkillEvaluationRun(Base):
     user: Mapped[User] = relationship()
     skill: Mapped[Skill] = relationship()
     evaluation_set: Mapped[SkillEvaluationSet] = relationship()
+
+
+class SkillEvaluationCaseFeedback(Base):
+    """Per-case human verdict on a grader result — display-only in v1 (D2)."""
+
+    __tablename__ = "skill_evaluation_case_feedbacks"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "user_id",
+            "case_index",
+            name="uq_skill_eval_case_feedback_run_user_case",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("skill_evaluation_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    case_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    verdict: Mapped[str] = mapped_column(String(10), nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        default=utc_now_naive,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
+        nullable=False,
+    )
+
+    run: Mapped[SkillEvaluationRun] = relationship()
