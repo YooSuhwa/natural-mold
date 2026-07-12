@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from app.agent_runtime.runtime_config import _DATA_DIR
 from app.storage.paths import resolve_data_path
 
 logger = logging.getLogger(__name__)
@@ -423,12 +424,29 @@ def cleanup_stale_runtime_roots(data_dir: Path, *, retention_seconds: int = 3600
     return removed
 
 
+def cleanup_skill_runtime_roots(*, retention_seconds: int) -> None:
+    """Drop stale ``data/runtime/<thread_id>/`` directories.
+
+    BE-S9 — 본문은 ``app.scheduler``에서 이관. Wrapped in a broad
+    ``except`` so a single failure doesn't disable the cron.
+    """
+
+    try:
+        cleanup_stale_runtime_roots(
+            _DATA_DIR,
+            retention_seconds=retention_seconds,
+        )
+    except Exception:  # noqa: BLE001 — keep cron alive
+        logger.exception("skill runtime root cleanup failed; will retry next run")
+
+
 __all__ = [
     "ResolvedCredential",
     "SkillExecutionAuditKind",
     "SkillRuntimeDescriptor",
     "SkillToolContext",
     "build_skill_runtime_context",
+    "cleanup_skill_runtime_roots",
     "cleanup_stale_runtime_roots",
     "resolve_runtime_credentials",
 ]

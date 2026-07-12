@@ -9,16 +9,20 @@ Transaction policy: the service ``flush``es, the calling router ``commit``s.
 
 from __future__ import annotations
 
+import logging
 import uuid
+from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials.validation import require_user_credential
 from app.dependencies import CurrentUser
 from app.error_codes import mcp_server_not_found
+from app.mcp import discovery as mcp_discovery
 from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
@@ -30,6 +34,8 @@ from app.schemas.mcp import (
     McpServerUpdate,
 )
 from app.services import audit_service
+
+logger = logging.getLogger(__name__)
 
 # -- Queries -------------------------------------------------------------------
 
@@ -460,3 +466,65 @@ async def record_import_audit(
             "overwrite": overwrite,
         },
     )
+
+
+# -- Health polling (BE-S9 — 본문은 app.scheduler에서 이관) ----------------------
+
+
+async def poll_mcp_servers_health(
+    *,
+    session_factory: Callable[[], AsyncSession],
+) -> dict[str, int]:
+    """Run a quick connectivity probe against every enabled MCP server.
+
+    Distinct from ``health_check_all_active`` (which writes a persistent
+    history row): this job only refreshes the lightweight
+    ``health_status`` / ``health_polled_at`` / ``health_message`` columns
+    so the list view can show a fresh dot without paying for a full sweep.
+    """
+
+    counters = {"checked": 0, "ok": 0, "error": 0}
+    polled_at = datetime.now(UTC).replace(tzinfo=None)
+
+    async with session_factory() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(McpServer).where(
+                        or_(
+                            McpServer.is_system.is_(True),
+                            McpServer.status != "disabled",
+                        )
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        for server in rows:
+            counters["checked"] += 1
+            try:
+                probe = await mcp_discovery.test_server(db, server)
+            except Exception as exc:  # noqa: BLE001 — keep the sweep alive
+                logger.exception("mcp health poll failed for server %s", server.id)
+                server.health_status = "error"
+                server.health_polled_at = polled_at
+                server.health_message = str(exc)
+                counters["error"] += 1
+                continue
+
+            server.health_polled_at = polled_at
+            if probe.get("success"):
+                server.health_status = "ok"
+                server.health_message = None
+                counters["ok"] += 1
+            else:
+                server.health_status = "error"
+                server.health_message = probe.get("error")
+                counters["error"] += 1
+
+        await db.commit()
+
+    logger.info("mcp health poll finished: %s", counters)
+    return counters
