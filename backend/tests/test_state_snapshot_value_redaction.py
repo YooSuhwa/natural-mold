@@ -459,3 +459,56 @@ async def test_thread_state_read_path_masks_collected_secret_end_to_end(
     rendered = json.dumps(snapshot.values)
     assert sentinel not in rendered, "collected tool secret leaked through the state read path"
     assert "<redacted>" in rendered
+
+
+@pytest.mark.asyncio
+async def test_get_thread_state_route_masks_collected_secret(
+    monkeypatch, db: AsyncSession, client
+) -> None:
+    """HTTP-level wiring lock for GET /threads/{id}/state.
+
+    The seam-function test above (``..._end_to_end``) proves the facade →
+    collect → redact chain, but it calls the two helpers itself — so a
+    *handler* regression that drops the ``collect_state_secret_values`` call
+    or passes ``secret_values=None`` into ``load_thread_state_snapshot``
+    would still slip through. This drives the real route (``get_thread_state``
+    in ``conversation_agent_protocol.py``) end to end so the handler's own
+    wiring is covered.
+    """
+
+    seeded = await _seed_conversation_with_secret_sources(db)
+    conversation = seeded.conversation
+    sentinel = seeded.tool_credential_secret
+
+    checkpoint = _CheckpointSlim(
+        checkpoint_id="ck-leaf",
+        parent_checkpoint_id=None,
+        messages=[
+            HumanMessage(id="user-1", content="call the tool"),
+            AIMessage(
+                id="assistant-1",
+                content="calling the tool now",
+                tool_calls=[
+                    {
+                        "name": "naver_search_blog",
+                        "args": {"note": f"looked up {sentinel} for you"},
+                        "id": "call-1",
+                    }
+                ],
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: _FakeCheckpointer([checkpoint]),
+    )
+
+    # thread_id must equal str(conversation_id) (get_owned_thread contract).
+    thread_id = str(conversation.id)
+    resp = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{thread_id}/state"
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.text
+    assert sentinel not in body, "collected tool secret leaked through GET /threads/{id}/state"
+    assert "<redacted>" in body
