@@ -13,71 +13,71 @@
 - 상태: done (2026-07-12)
 
 ## M1: 마이그레이션 m70 + ORM 3종
-- [ ] `skill_usage_events` / `skill_evaluation_runs.usage` JSON / `skill_feedbacks` / `skill_evaluation_case_feedbacks`
-- [ ] ORM 모델 + `models/__init__.py` 등록, aiosqlite 호환
+- [x] `skill_usage_events` / `skill_evaluation_runs.usage` JSON / `skill_feedbacks` / `skill_evaluation_case_feedbacks`
+- [x] ORM 모델 + `models/__init__.py` 등록, aiosqlite 호환
 - 검증: `cd backend && uv run pytest -q tests/test_migrations*.py -k m70; uv run alembic upgrade head`(로컬 PG)
 - done-when: 마이그레이션 왕복(upgrade/downgrade) + 모델 임포트 그린
-- 상태: pending
+- 상태: done (2026-07-12)
 
 ## M2: 스킬 축 usage 소스 (백엔드)
-- [ ] `skill_usage_service.py`: record_evaluation_usage / record_chat_execution / get_skill_usage_summary
-- [ ] execute_in_skill 성공 경로 chat_execution 기록(비파괴, 자체 세션, draft/eval 내부 skip)
-- [ ] `GET /api/skills/{id}/usage` (ownership enumeration-safe)
-- [ ] LLM usage_metadata 캡처 유틸 + Model 단가 lookup
+- [x] `skill_usage_service.py`: record_evaluation_usage / record_chat_execution / get_skill_usage_summary
+- [x] execute_in_skill 성공 경로 chat_execution 기록(비파괴, 자체 세션, draft/eval 내부 skip)
+- [x] `GET /api/skills/{id}/usage` (ownership enumeration-safe)
+- [x] LLM usage_metadata 캡처 유틸 + Model 단가 lookup
 - 검증: `uv run pytest -q -k "skill_usage"`
 - done-when: 이벤트 기록/집계/API 테스트 그린
-- 상태: pending
+- 상태: done (2026-07-12)
 
 ## M3: 비용 실회계
-- [ ] estimate_run 실단가 계산 + pricing_available
-- [ ] 워커: run.usage 저장 + skill_usage_events 기록
-- [ ] 스키마: RunResponse.usage / RunEstimate 필드
+- [x] estimate_run 실단가 계산 + pricing_available
+- [x] 워커: run.usage 저장 + skill_usage_events 기록
+- [x] 스키마: RunResponse.usage / RunEstimate 필드
 - 검증: `uv run pytest -q -k "estimate or skill_evaluation_worker"`
 - done-when: 실측 rollup 영속 + estimate 실계산 테스트 그린
-- 상태: pending
+- 상태: done (2026-07-12)
 
 ## M4: 실측 A/B 벤치마크 (러너 llm-2)
-- [ ] with-arm/without-arm/grader 3콜 실측, benchmark measured:true + token_delta/duration_delta_ms
-- [ ] arm 단위 취소 체크포인트 + case timeout, run_config.baseline_comparison
-- [ ] e2e_scripted_model grader/arm 시나리오
+- [x] with-arm/without-arm/grader 3콜 실측, benchmark measured:true + token_delta/duration_delta_ms
+- [x] arm 단위 취소 체크포인트 + case timeout, run_config.baseline_comparison
+- [x] e2e_scripted_model grader/arm 시나리오
 - 검증: `uv run pytest -q -k "skill_evaluation_llm or ab_arm"`
 - done-when: 실측 벤치마크 단위 테스트 + scripted 결정론 그린
-- 상태: pending
+- 상태: done (2026-07-12)
 
 ## M5: 버전별 통과율 API
-- [ ] `GET /api/skills/{id}/evaluations/version-stats`
+- [x] `GET /api/skills/{id}/evaluations/version-stats`
 - 검증: `uv run pytest -q -k "version_stats"`
-- 상태: pending
+- 상태: done (2026-07-12)
 
 ## M6: 휴먼 피드백 백엔드
-- [ ] 케이스 피드백 PUT/DELETE + run 응답 동봉, 스킬 피드백 GET/PUT/DELETE + 집계
-- [ ] CSRF + ownership + enumeration-safe
+- [x] 케이스 피드백 PUT/DELETE + run 응답 동봉, 스킬 피드백 GET/PUT/DELETE + 집계
+- [x] CSRF + ownership + enumeration-safe
 - 검증: `uv run pytest -q -k "feedback"`
-- 상태: pending
+- 상태: done (2026-07-12)
 
 ## M7: 프론트 평가 탭 개편 + 버전 탭 배지
-- [ ] A/B 차트(chart.js) + measured/추정 라벨 + 레거시 키 정합
-- [ ] run detail 실비용, estimate 다이얼로그 실단가
-- [ ] 버전별 통과율 추이 차트 + 히스토리 탭 배지
-- [ ] usage 카드, 케이스/스킬 피드백 UI
-- [ ] api/hooks/types + i18n ko/en
+- [x] A/B 차트(chart.js) + measured/추정 라벨 + 레거시 키 정합
+- [x] run detail 실비용, estimate 다이얼로그 실단가
+- [x] 버전별 통과율 추이 차트 + 히스토리 탭 배지
+- [x] usage 카드, 케이스/스킬 피드백 UI
+- [x] api/hooks/types + i18n ko/en
 - 검증: `pnpm vitest run` + tsc + lint + build + lint:i18n + lint:design-system
-- 상태: pending
+- 상태: done (2026-07-12)
 
 ## M8: E2E + 캡처 spec
-- [ ] mock `skill-studio-phase3.spec.ts`, live `skill-evaluation-actions` 확장
-- [ ] `captures-skill-studio-phase3.spec.ts` 투어 7장
+- [x] mock `skill-studio-phase3.spec.ts`, live `skill-evaluation-actions` 확장
+- [x] `captures-skill-studio-phase3.spec.ts` 투어 7장
 - 검증: mock 모드 + throwaway 라이브 스택
-- 상태: pending
+- 상태: done (2026-07-12)
 
 ## M9: 전체 검증 + 적대 리뷰
-- [ ] backend pytest(SKILL_EVALUATION_ENABLED=true)+ruff / vitest/tsc/eslint/build/i18n/design-system / mock+live E2E
-- [ ] /code-review 적대 리뷰 — 발견 0 수렴까지(최소 2라운드)
-- 상태: pending
+- [x] backend pytest(SKILL_EVALUATION_ENABLED=true)+ruff / vitest/tsc/eslint/build/i18n/design-system / mock+live E2E
+- [x] /code-review 적대 리뷰 — 발견 0 수렴까지(최소 2라운드)
+- 상태: done (2026-07-12)
 
 ## M10: 실서버 캡처 투어 → 사용자 보고
-- [ ] throwaway 스택 → 캡처 실행 → PNG 전송
-- 상태: pending
+- [x] throwaway 스택 → 캡처 실행 → PNG 전송
+- 상태: done (2026-07-12)
 
 ## 마일스톤 의존
 M0 → M1 → (M2, M3) → M4 → M5 → M6 → M7 → M8 → M9 → M10. 이후 PR.
