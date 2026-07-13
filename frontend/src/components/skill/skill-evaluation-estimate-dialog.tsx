@@ -32,6 +32,8 @@ type SkillEvaluationEstimateDialogProps = {
 }
 
 const BASELINE_TOGGLE_ID = 'skill-evaluation-baseline-toggle'
+const BASELINE_LABEL_ID = 'skill-evaluation-baseline-label'
+const BASELINE_HINT_ID = 'skill-evaluation-baseline-hint'
 
 function roundedSeconds(value: number): number {
   return Math.max(1, Math.ceil(value))
@@ -113,14 +115,22 @@ export function SkillEvaluationEstimateDialog({
               className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/30 p-3 text-sm"
             >
               <span className="flex flex-col gap-0.5">
-                <span className="font-medium">{t('estimateBaseline')}</span>
-                <span className="text-xs text-muted-foreground">{t('estimateBaselineHint')}</span>
+                <span id={BASELINE_LABEL_ID} className="font-medium">
+                  {t('estimateBaseline')}
+                </span>
+                <span id={BASELINE_HINT_ID} className="text-xs text-muted-foreground">
+                  {t('estimateBaselineHint')}
+                </span>
               </span>
               <Checkbox
                 id={BASELINE_TOGGLE_ID}
                 checked={baselineComparison}
                 onCheckedChange={(next) => onBaselineComparisonChange(Boolean(next))}
                 disabled={isPending || isEstimating}
+                // Name from the title only (not the long hint paragraph); the
+                // hint is exposed as the description.
+                aria-labelledby={BASELINE_LABEL_ID}
+                aria-describedby={BASELINE_HINT_ID}
                 data-testid="estimate-baseline-toggle"
               />
             </label>

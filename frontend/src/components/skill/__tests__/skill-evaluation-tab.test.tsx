@@ -219,6 +219,9 @@ describe('SkillEvaluationTab', () => {
     await user.click(screen.getByRole('button', { name: '품질 평가 평가 다시 실행' }))
     expect(mockEstimateRun).toHaveBeenLastCalledWith(true, expect.anything())
 
+    // Accessible name is the title alone, not the long hint paragraph.
+    expect(screen.getByRole('checkbox', { name: '기준선 비교' })).toBeInTheDocument()
+
     await user.click(screen.getByTestId('estimate-baseline-toggle'))
     // Toggling off refetches the estimate so the shown numbers stay honest.
     expect(mockEstimateRun).toHaveBeenLastCalledWith(false, expect.anything())
