@@ -56,6 +56,27 @@ describe('skill builder APIs', () => {
     })
   })
 
+  it('threads the baseline_comparison flag into estimate and run bodies', async () => {
+    // Both booleans asserted so a hardcoded `true` (which the backend would
+    // silently accept as data=None → default true) is mutation-detectable.
+    await skillEvaluationsApi.estimateRun('skill-1', 'set-1', true)
+    await skillEvaluationsApi.estimateRun('skill-1', 'set-1', false)
+    await skillEvaluationsApi.createRun('skill-1', 'set-1', false)
+
+    expect(apiFetch).toHaveBeenCalledWith('/api/skills/skill-1/evaluations/set-1/estimate', {
+      method: 'POST',
+      body: JSON.stringify({ baseline_comparison: true }),
+    })
+    expect(apiFetch).toHaveBeenCalledWith('/api/skills/skill-1/evaluations/set-1/estimate', {
+      method: 'POST',
+      body: JSON.stringify({ baseline_comparison: false }),
+    })
+    expect(apiFetch).toHaveBeenCalledWith('/api/skills/skill-1/evaluations/set-1/runs', {
+      method: 'POST',
+      body: JSON.stringify({ baseline_comparison: false }),
+    })
+  })
+
   it('rolls back a skill revision through the revision endpoint', async () => {
     await skillRevisionsApi.rollback('skill-1', 'revision-1')
 

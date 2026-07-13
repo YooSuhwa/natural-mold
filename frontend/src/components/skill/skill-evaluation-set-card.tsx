@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CircleStop, KeyRound, RefreshCw } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -87,25 +87,33 @@ export function SkillEvaluationSetCard({
   // instead of 2). The estimate is refetched whenever it changes so the shown
   // call count / cost / duration stay honest.
   const [baselineComparison, setBaselineComparison] = useState(true)
+  // Monotonic id so an out-of-order estimate response can't overwrite the shown
+  // numbers with a superseded baseline (e.g. cancel mid-refetch → reopen, where
+  // the older request resolves last). Only the latest request may commit.
+  const estimateRequestId = useRef(0)
   const latestRun = set.latest_run
   const canCancel = latestRun ? CANCELLABLE_RUN_STATUS[latestRun.status] : false
   const isMutating = runAgain.isPending || estimateRun.isPending || cancelRun.isPending
 
-  function requestRunAgain(): void {
-    setBaselineComparison(true)
-    estimateRun.mutate(true, {
+  function requestEstimate(next: boolean, openOnSuccess: boolean): void {
+    const requestId = (estimateRequestId.current += 1)
+    estimateRun.mutate(next, {
       onSuccess: (nextEstimate) => {
+        if (requestId !== estimateRequestId.current) return
         setEstimate(nextEstimate)
-        setEstimateOpen(true)
+        if (openOnSuccess) setEstimateOpen(true)
       },
     })
   }
 
+  function requestRunAgain(): void {
+    setBaselineComparison(true)
+    requestEstimate(true, true)
+  }
+
   function handleBaselineComparisonChange(next: boolean): void {
     setBaselineComparison(next)
-    estimateRun.mutate(next, {
-      onSuccess: (nextEstimate) => setEstimate(nextEstimate),
-    })
+    requestEstimate(next, false)
   }
 
   function confirmRunAgain(): void {
