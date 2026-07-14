@@ -44,7 +44,7 @@ describe('skill builder APIs', () => {
     }
 
     await skillEvaluationsApi.createSet('skill-1', request)
-    await skillEvaluationsApi.createRun('skill-1', 'set-1')
+    await skillEvaluationsApi.createRun('skill-1', 'set-1', true)
 
     expect(apiFetch).toHaveBeenCalledWith('/api/skills/skill-1/evaluations', {
       method: 'POST',
@@ -52,6 +52,28 @@ describe('skill builder APIs', () => {
     })
     expect(apiFetch).toHaveBeenCalledWith('/api/skills/skill-1/evaluations/set-1/runs', {
       method: 'POST',
+      body: JSON.stringify({ baseline_comparison: true }),
+    })
+  })
+
+  it('threads the baseline_comparison flag into estimate and run bodies', async () => {
+    // Both booleans asserted so a hardcoded `true` (which the backend would
+    // silently accept as data=None → default true) is mutation-detectable.
+    await skillEvaluationsApi.estimateRun('skill-1', 'set-1', true)
+    await skillEvaluationsApi.estimateRun('skill-1', 'set-1', false)
+    await skillEvaluationsApi.createRun('skill-1', 'set-1', false)
+
+    expect(apiFetch).toHaveBeenCalledWith('/api/skills/skill-1/evaluations/set-1/estimate', {
+      method: 'POST',
+      body: JSON.stringify({ baseline_comparison: true }),
+    })
+    expect(apiFetch).toHaveBeenCalledWith('/api/skills/skill-1/evaluations/set-1/estimate', {
+      method: 'POST',
+      body: JSON.stringify({ baseline_comparison: false }),
+    })
+    expect(apiFetch).toHaveBeenCalledWith('/api/skills/skill-1/evaluations/set-1/runs', {
+      method: 'POST',
+      body: JSON.stringify({ baseline_comparison: false }),
     })
   })
 

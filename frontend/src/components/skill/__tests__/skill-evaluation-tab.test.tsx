@@ -1,20 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act } from '@testing-library/react'
 
 import { render, screen, userEvent } from '../../../../tests/test-utils'
 import type { SkillEvaluationRunEstimate, SkillEvaluationSet } from '@/lib/types/skill-evaluation'
 
 import { SkillEvaluationTab } from '../skill-evaluation-tab'
 
+type EstimateMutateOptions = {
+  readonly onSuccess?: (data: SkillEvaluationRunEstimate) => void
+}
+
 const mockUseSkillEvaluationSets = vi.fn()
 const mockUseSkillEvaluationRuns = vi.fn()
-const mockEstimateRun = vi.fn(
-  (
-    _variables: undefined,
-    options?: { readonly onSuccess?: (data: SkillEvaluationRunEstimate) => void },
-  ) => {
-    options?.onSuccess?.(evaluationEstimate)
-  },
-)
+// Default: resolve synchronously with the shared fixture. Tests that need to
+// control resolution order override this; beforeEach restores it.
+function autoResolveEstimate(_baselineComparison: boolean, options?: EstimateMutateOptions): void {
+  options?.onSuccess?.(evaluationEstimate)
+}
+const mockEstimateRun = vi.fn(autoResolveEstimate)
 const mockCreateRun = vi.fn()
 const mockCancelRun = vi.fn()
 
@@ -81,7 +84,8 @@ describe('SkillEvaluationTab', () => {
     mockUseSkillEvaluationSets.mockReset()
     mockUseSkillEvaluationRuns.mockReset()
     mockUseSkillEvaluationRuns.mockReturnValue({ data: [], isLoading: false })
-    mockEstimateRun.mockClear()
+    mockEstimateRun.mockReset()
+    mockEstimateRun.mockImplementation(autoResolveEstimate)
     mockCreateRun.mockReset()
     mockCancelRun.mockReset()
   })
@@ -178,13 +182,115 @@ describe('SkillEvaluationTab', () => {
     await user.click(screen.getByRole('button', { name: '품질 평가 평가 다시 실행' }))
 
     expect(mockEstimateRun).toHaveBeenCalledOnce()
+    // The default run keeps baseline comparison on.
+    expect(mockEstimateRun).toHaveBeenLastCalledWith(true, expect.anything())
     expect(mockCreateRun).not.toHaveBeenCalled()
     expect(screen.getByRole('alertdialog', { name: '평가 실행 확인' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '평가 실행' }))
 
     expect(mockCreateRun).toHaveBeenCalledOnce()
+    expect(mockCreateRun).toHaveBeenLastCalledWith(true, expect.anything())
     expect(mockCancelRun).not.toHaveBeenCalled()
+  })
+
+  it('re-estimates and runs without baseline comparison when the toggle is turned off', async () => {
+    const user = userEvent.setup()
+    mockUseSkillEvaluationSets.mockReturnValue({
+      data: [
+        buildEvaluationSet({
+          latest_run: {
+            id: 'run-baseline',
+            skill_id: 'skill-1',
+            evaluation_set_id: 'set-1',
+            status: 'completed',
+            summary: { pass_rate: 0.92 },
+            created_at: '2026-06-01T00:00:00Z',
+            updated_at: '2026-06-01T00:01:00Z',
+            completed_at: '2026-06-01T00:01:00Z',
+          },
+        }),
+      ],
+      isLoading: false,
+    })
+
+    render(<SkillEvaluationTab skillId="skill-1" />)
+
+    await user.click(screen.getByRole('button', { name: '품질 평가 평가 다시 실행' }))
+    expect(mockEstimateRun).toHaveBeenLastCalledWith(true, expect.anything())
+
+    // Accessible name is the title alone, not the long hint paragraph.
+    expect(screen.getByRole('checkbox', { name: '기준선 비교' })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('estimate-baseline-toggle'))
+    // Toggling off refetches the estimate so the shown numbers stay honest.
+    expect(mockEstimateRun).toHaveBeenLastCalledWith(false, expect.anything())
+
+    await user.click(screen.getByRole('button', { name: '평가 실행' }))
+    expect(mockCreateRun).toHaveBeenLastCalledWith(false, expect.anything())
+  })
+
+  it('ignores a stale estimate response that resolves after a newer one', async () => {
+    const user = userEvent.setup()
+    // Capture estimates without resolving so we can drive their resolution
+    // order. The race: toggle refetch (#1) is in flight, the user cancels and
+    // reopens (#2), then the superseded #1 resolves LAST — it must not overwrite
+    // the shown numbers with a baseline the toggle/run no longer reflects.
+    const calls: EstimateMutateOptions[] = []
+    mockEstimateRun.mockImplementation((_baseline: boolean, options?: EstimateMutateOptions) => {
+      calls.push(options ?? {})
+    })
+    mockUseSkillEvaluationSets.mockReturnValue({
+      data: [
+        buildEvaluationSet({
+          latest_run: {
+            id: 'run-race',
+            skill_id: 'skill-1',
+            evaluation_set_id: 'set-1',
+            status: 'completed',
+            summary: { pass_rate: 0.9 },
+            created_at: '2026-06-01T00:00:00Z',
+            updated_at: '2026-06-01T00:01:00Z',
+            completed_at: '2026-06-01T00:01:00Z',
+          },
+        }),
+      ],
+      isLoading: false,
+    })
+
+    const withBaseline: SkillEvaluationRunEstimate = {
+      case_count: 2,
+      model_call_count: 6,
+      estimated_seconds: 24,
+      timeout_seconds: 180,
+      estimated_cost_usd: 0.0231,
+      pricing_available: true,
+      uses_baseline_comparison: true,
+    }
+    const withoutBaseline: SkillEvaluationRunEstimate = {
+      ...withBaseline,
+      model_call_count: 4,
+      estimated_cost_usd: 0.0154,
+      uses_baseline_comparison: false,
+    }
+
+    render(<SkillEvaluationTab skillId="skill-1" />)
+
+    // Open (#0, baseline on) and resolve it so the dialog appears.
+    await user.click(screen.getByRole('button', { name: '품질 평가 평가 다시 실행' }))
+    await act(async () => calls[0].onSuccess?.(withBaseline))
+    expect(screen.getByTestId('estimate-cost')).toHaveTextContent('$0.0231')
+
+    // Toggle off (#1) but leave it unresolved; cancel, reopen (#2), resolve #2.
+    await user.click(screen.getByTestId('estimate-baseline-toggle'))
+    await user.click(screen.getByRole('button', { name: '취소' }))
+    await user.click(screen.getByRole('button', { name: '품질 평가 평가 다시 실행' }))
+    await act(async () => calls[2].onSuccess?.(withBaseline))
+    // Superseded #1 resolves last — the request-id guard must drop it.
+    await act(async () => calls[1].onSuccess?.(withoutBaseline))
+
+    expect(screen.getByTestId('estimate-cost')).toHaveTextContent('$0.0231')
+    expect(screen.queryByText('$0.0154')).not.toBeInTheDocument()
   })
 
   it('opens credentials instead of estimating a run when required credentials are missing', async () => {
