@@ -77,6 +77,12 @@ test.describe('skill builder chat', () => {
     // (post-run 하이드레이션이 컴포저를 잠그던 결함의 근본 수정 검증 —
     // 폴백 없이 Enter만으로 값이 비워져야 한다).
     const sendMessage = async (text: string) => {
+      // 응답 텍스트는 stream 종료보다 먼저 보일 수 있다. Builder 전송 버튼은
+      // thread.isRunning=false일 때만 렌더되므로 실제 입력 가능 상태를 기다린다.
+      // post-run 하이드레이션이 running을 잘못 유지하면 이 대기 자체가 실패한다.
+      await expect(page.getByRole('button', { name: '전송' }).last()).toBeVisible({
+        timeout: 45_000,
+      })
       await composer.fill(text)
       await composer.press('Enter')
       await expect(composer).toHaveValue('', { timeout: 10_000 })
