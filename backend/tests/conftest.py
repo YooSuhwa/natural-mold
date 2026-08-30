@@ -16,6 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 # module that reads settings during collection sees a valid value.
 os.environ.setdefault("ENCRYPTION_KEYS", secrets.token_hex(32))
 
+# The application default enables skill evaluation. Keep the unit-test suite
+# independent from a developer's ``backend/.env`` (which may intentionally
+# disable the feature), while tests that exercise environment overrides can
+# still use ``monkeypatch.setenv`` locally.
+os.environ["SKILL_EVALUATION_ENABLED"] = "true"
+
 from app.auth import password as password_module  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.database import Base  # noqa: E402
