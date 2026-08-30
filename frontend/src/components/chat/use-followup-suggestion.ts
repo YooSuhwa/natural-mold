@@ -38,16 +38,22 @@ export function useFollowupSuggestion(conversationId: string | null): void {
     if (!wasRunning || isRunning || !enabled) return
 
     let cancelled = false
+    const handlePageHide = () => {
+      cancelled = true
+    }
+    window.addEventListener('pagehide', handlePageHide, { once: true })
     fetchSuggestion(conversationId)
       .then((response) => {
         if (cancelled) return
         setFollowup({ conversationId, suggestion: response.suggestion ?? null })
       })
       .catch((error) => {
+        if (cancelled) return
         reportClientError('useFollowupSuggestion', 'suggestion fetch failed:', error)
       })
     return () => {
       cancelled = true
+      window.removeEventListener('pagehide', handlePageHide)
     }
   }, [conversationId, enabled, fetchSuggestion, isRunning, setFollowup])
 }
