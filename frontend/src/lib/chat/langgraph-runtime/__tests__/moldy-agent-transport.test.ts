@@ -52,7 +52,7 @@ describe('createMoldyAgentTransport', () => {
     expect('apiUrl' in transport).toBe(false)
   })
 
-  it('notifies after a run.start command is accepted', async () => {
+  it('notifies with the accepted run id after a run.start command succeeds', async () => {
     const onRunStartAccepted = vi.fn()
     const fetchMock = vi.fn<typeof fetch>(async () =>
       jsonResponse({
@@ -73,7 +73,57 @@ describe('createMoldyAgentTransport', () => {
       params: { assistant_id: '_', input: { messages: [] } },
     })
 
-    expect(onRunStartAccepted).toHaveBeenCalledOnce()
+    expect(onRunStartAccepted).toHaveBeenCalledExactlyOnceWith('run-1')
+  })
+
+  it('does not notify when a protocol error response includes a run-like value', async () => {
+    const onRunStartAccepted = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        type: 'error',
+        id: 1,
+        result: { run_id: 'not-an-accepted-run' },
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-error', 'agent-error', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onRunStartAccepted,
+    })
+
+    await transport
+      .send({
+        id: 1,
+        method: 'run.start',
+        params: { assistant_id: '_', input: { messages: [] } },
+      })
+      .catch(() => undefined)
+
+    expect(onRunStartAccepted).not.toHaveBeenCalled()
+  })
+
+  it('does not notify when a successful protocol response omits run_id', async () => {
+    const onRunStartAccepted = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        type: 'success',
+        id: 1,
+        result: {},
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-no-run', 'agent-no-run', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onRunStartAccepted,
+    })
+
+    await transport.send({
+      id: 1,
+      method: 'run.start',
+      params: { assistant_id: '_', input: { messages: [] } },
+    })
+
+    expect(onRunStartAccepted).not.toHaveBeenCalled()
   })
 
   it('uses the state path for SDK hydration without adding CSRF to GET requests', async () => {
@@ -167,6 +217,38 @@ describe('createMoldyAgentTransport', () => {
       next: [],
       tasks: [],
     })
+    deactivate()
+  })
+
+  it('supports installing and clearing the state hydration listener after activation', async () => {
+    const onState = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        values: { messages: [{ id: 'message-late-listener' }] },
+        next: [],
+        tasks: [],
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-late', 'agent-late', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+    })
+    const deactivate = transport.activateStateHydration()
+
+    transport.setStateHydrationListener(onState)
+    await transport.getState?.()
+
+    expect(onState).toHaveBeenCalledOnce()
+    expect(onState).toHaveBeenCalledWith({
+      values: { messages: [{ id: 'message-late-listener' }] },
+      next: [],
+      tasks: [],
+    })
+
+    transport.setStateHydrationListener(undefined)
+    await transport.getState?.()
+
+    expect(onState).toHaveBeenCalledOnce()
     deactivate()
   })
 })

@@ -4,11 +4,13 @@ import { csrfStore } from '@/lib/auth/csrf'
 
 const MUTATION_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 
+export type RunStartAcceptedListener = (runId?: string) => void
+
 export interface MoldyAgentTransportOptions {
   apiBase?: string
   fetch?: typeof fetch
   onState?: (state: AgentServerState<unknown>) => void
-  onRunStartAccepted?: () => void
+  onRunStartAccepted?: RunStartAcceptedListener
 }
 
 type AgentServerState<StateType = unknown> = {
@@ -24,7 +26,8 @@ type StateHydrationListener = (state: AgentServerState<unknown>) => void
 
 export interface MoldyAgentServerAdapter extends AgentServerAdapter {
   activateStateHydration(): () => void
-  setRunStartAcceptedListener(listener: (() => void) | undefined): void
+  setStateHydrationListener(listener: MoldyAgentTransportOptions['onState']): void
+  setRunStartAcceptedListener(listener: RunStartAcceptedListener | undefined): void
 }
 
 function encodePathSegment(value: string): string {
@@ -62,6 +65,14 @@ type ProtocolSendResult = ReturnType<HttpAgentServerAdapter['send']>
 type EventStreamParams = Parameters<NonNullable<AgentServerAdapter['openEventStream']>>[0]
 type EventStreamHandle = ReturnType<NonNullable<AgentServerAdapter['openEventStream']>>
 
+function acceptedRunId(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  if (!('type' in value) || value.type !== 'success') return undefined
+  const result = 'result' in value ? value.result : undefined
+  if (typeof result !== 'object' || result === null || !('run_id' in result)) return undefined
+  return typeof result.run_id === 'string' && result.run_id.trim() ? result.run_id : undefined
+}
+
 function commandWithAgentId(command: ProtocolCommand, agentId: string): ProtocolCommand {
   if (command.method !== 'run.start') return command
   return {
@@ -89,7 +100,7 @@ function registerLangGraphClientDefaults(apiUrl: string, fetchImpl: typeof fetch
 class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   readonly #agentId: string
   readonly #delegate: HttpAgentServerAdapter
-  readonly #onState: MoldyAgentTransportOptions['onState']
+  #onState: MoldyAgentTransportOptions['onState']
   #onRunStartAccepted: MoldyAgentTransportOptions['onRunStartAccepted']
   readonly #stateHydrationListeners = new Set<StateHydrationListener>()
   #latestState: AgentServerState<unknown> | undefined
@@ -113,8 +124,12 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
     this.threadId = this.#delegate.threadId
   }
 
-  setRunStartAcceptedListener(listener: (() => void) | undefined): void {
+  setRunStartAcceptedListener(listener: RunStartAcceptedListener | undefined): void {
     this.#onRunStartAccepted = listener
+  }
+
+  setStateHydrationListener(listener: MoldyAgentTransportOptions['onState']): void {
+    this.#onState = listener
   }
 
   open(): Promise<void> {
@@ -123,8 +138,9 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
 
   async send(command: ProtocolCommand): Promise<Awaited<ProtocolSendResult>> {
     const value = await this.#delegate.send(commandWithAgentId(command, this.#agentId))
-    if (command.method === 'run.start') {
-      this.#onRunStartAccepted?.()
+    const runId = command.method === 'run.start' ? acceptedRunId(value) : undefined
+    if (runId) {
+      this.#onRunStartAccepted?.(runId)
     }
     return value
   }
@@ -143,13 +159,11 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   }
 
   activateStateHydration(): () => void {
-    const onState = this.#onState
-    if (!onState) return () => {}
     // Per-activation wrapper so each activate/deactivate is tracked independently.
     // Under StrictMode double-activate, sharing a single stored listener reference
     // means the first deactivate() removes the only Set entry and the second
     // activation silently loses its listener.
-    const listener: StateHydrationListener = (state) => onState(state)
+    const listener: StateHydrationListener = (state) => this.#onState?.(state)
     this.#stateHydrationListeners.add(listener)
     if (this.#latestState !== undefined) {
       listener(this.#latestState)

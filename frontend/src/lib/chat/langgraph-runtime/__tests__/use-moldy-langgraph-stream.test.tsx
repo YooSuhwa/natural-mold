@@ -38,15 +38,11 @@ interface MockUseStreamOptions {
   onCompleted?: () => void
 }
 
-interface MockTransportOptions {
-  onState?: (state: unknown) => void
-  onRunStartAccepted?: () => void
-}
-
 interface MockTransport {
   kind: 'transport'
   conversationId: string
   onState?: (state: unknown) => void
+  setStateHydrationListener: ReturnType<typeof vi.fn>
   setRunStartAcceptedListener: ReturnType<typeof vi.fn>
 }
 
@@ -83,15 +79,20 @@ const mocks = vi.hoisted(() => {
     metadataStore,
     stream,
     thread,
-    createMoldyAgentTransport: vi.fn(
-      (conversationId: string, _agentId: string, options?: MockTransportOptions) =>
-        ({
-          kind: 'transport',
-          conversationId,
-          onState: options?.onState,
-          setRunStartAcceptedListener: vi.fn(),
-        }) satisfies MockTransport,
-    ),
+    createMoldyAgentTransport: vi.fn((conversationId: string, _agentId: string) => {
+      const setStateHydrationListener = vi.fn()
+      const transport = {
+        kind: 'transport' as const,
+        conversationId,
+        onState: undefined as ((state: unknown) => void) | undefined,
+        setStateHydrationListener,
+        setRunStartAcceptedListener: vi.fn(),
+      } satisfies MockTransport
+      setStateHydrationListener.mockImplementation((listener?: (state: unknown) => void) => {
+        transport.onState = listener
+      })
+      return transport
+    }),
     useStream: vi.fn((options: MockUseStreamOptions) => {
       void options
       return stream
@@ -211,11 +212,7 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith(
-      'conversation-1',
-      'agent-1',
-      expect.objectContaining({ onState: expect.any(Function) }),
-    )
+    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith('conversation-1', 'agent-1')
     expect(mocks.useStream).toHaveBeenCalledWith(
       expect.objectContaining({
         transport: expect.objectContaining({
@@ -244,7 +241,7 @@ describe('useMoldyLangGraphStream', () => {
   it('defers transport state hydration emitted during initial render until after mount', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mocks.useStream.mockImplementationOnce((options: MockUseStreamOptions) => {
-      const transport = options.transport as MockTransportOptions
+      const transport = options.transport as MockTransport
       setTimeout(() => {
         transport.onState?.({
           metadata: {
@@ -709,15 +706,14 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith(
-      'conversation-2',
-      'agent-2',
-      expect.objectContaining({ onState: expect.any(Function) }),
-    )
+    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith('conversation-2', 'agent-2')
     const transport = mocks.createMoldyAgentTransport.mock.results[0]?.value as
       | MockTransport
       | undefined
-    expect(transport?.setRunStartAcceptedListener).toHaveBeenCalledWith(onRunStartAccepted)
+    const listener = transport?.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
+    expect(listener).toEqual(expect.any(Function))
+    listener?.('run-2')
+    expect(onRunStartAccepted).toHaveBeenCalledOnce()
   })
 
   it('keeps the LangGraph transport stable when only the run-start callback changes', async () => {
@@ -1098,11 +1094,11 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    const transportOptions = mocks.createMoldyAgentTransport.mock.calls.at(-1)?.[2] as
-      | { onState?: (state: unknown) => void }
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as
+      | MockTransport
       | undefined
     act(() => {
-      transportOptions?.onState?.({
+      transport?.onState?.({
         metadata: { latest_run: { id: 'run-stale', status: 'stale' } },
       })
     })
@@ -1137,11 +1133,11 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    const transportOptions = mocks.createMoldyAgentTransport.mock.calls.at(-1)?.[2] as
-      | { onState?: (state: unknown) => void }
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as
+      | MockTransport
       | undefined
     act(() => {
-      transportOptions?.onState?.({
+      transport?.onState?.({
         metadata: {
           latest_run: {
             id: 'run-failed',
@@ -1182,11 +1178,11 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    const transportOptions = mocks.createMoldyAgentTransport.mock.calls.at(-1)?.[2] as
-      | { onState?: (state: unknown) => void }
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as
+      | MockTransport
       | undefined
     act(() => {
-      transportOptions?.onState?.({
+      transport?.onState?.({
         values: {
           messages: [
             {
@@ -1238,11 +1234,11 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    const transportOptions = mocks.createMoldyAgentTransport.mock.calls.at(-1)?.[2] as
-      | { onState?: (state: unknown) => void }
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as
+      | MockTransport
       | undefined
     act(() => {
-      transportOptions?.onState?.({
+      transport?.onState?.({
         values: {
           messages: [
             {
@@ -1514,11 +1510,11 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    const transportOptions = mocks.createMoldyAgentTransport.mock.calls.at(-1)?.[2] as
-      | { onState?: (state: unknown) => void }
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as
+      | MockTransport
       | undefined
     act(() => {
-      transportOptions?.onState?.({
+      transport?.onState?.({
         values: {
           messages: [
             {

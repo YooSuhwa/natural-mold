@@ -155,6 +155,12 @@ interface PendingReloadRenderState {
   readonly requiredUserBranch: PendingReloadRequiredUserBranch | null
 }
 
+interface ReloadRunCorrelation {
+  readonly conversationId: string
+  readonly pendingReload: boolean
+  readonly acceptedRunId: string | null
+}
+
 interface PendingNewSubmitState {
   readonly conversationId: string
   readonly content: string
@@ -270,6 +276,17 @@ function terminalRunNoticeFromThreadState(state: unknown): ThreadRunNotice | nul
       ? rawErrorMessage
       : undefined
   return errorMessage ? { id, status, errorMessage } : { id, status }
+}
+
+function terminalFailureIsStaleForCurrentAttempt(
+  conversationId: string,
+  notice: ThreadRunNotice | null,
+  correlation: ReloadRunCorrelation,
+): boolean {
+  if (notice?.status !== 'failed') return false
+  if (correlation.conversationId !== conversationId) return false
+  if (correlation.pendingReload) return correlation.acceptedRunId !== notice.id
+  return correlation.acceptedRunId !== null && correlation.acceptedRunId !== notice.id
 }
 
 function messageMetadataFromThreadState(state: unknown): ServerMessageMetadataSnapshot {
@@ -1130,9 +1147,21 @@ function pendingEditHydrationIsReady(state: unknown, pendingEdit: PendingEditRen
 function pendingReloadHydrationIsReady(
   state: unknown,
   pendingReload: PendingReloadRenderState,
+  correlation: ReloadRunCorrelation,
 ): boolean {
   const messages = messagesFromThreadState(state)
   if (!messages) return false
+  // A failed reload has no replacement assistant turn to satisfy the normal
+  // branch-metadata predicate. Its terminal run state is the completed result
+  // that must replace the optimistic reload render so the error notice can
+  // remain visible and retryable.
+  const terminalRunNotice = terminalRunNoticeFromThreadState(state)
+  if (terminalRunNotice?.status === 'failed') {
+    return (
+      correlation.conversationId === pendingReload.conversationId &&
+      correlation.acceptedRunId === terminalRunNotice.id
+    )
+  }
   const targetIndex = pendingReloadTargetIndex(messages, pendingReload)
   if (targetIndex < 0) return false
   const targetMessage = messages[targetIndex]
@@ -2050,9 +2079,37 @@ export function useMoldyLangGraphStream({
   const pendingEditRender = activePendingEditRenderState(conversationId, pendingEditRenderState)
   const [pendingReloadRenderState, setPendingReloadRenderState] =
     useState<PendingReloadRenderState | null>(null)
+  const [reloadRunCorrelation, setReloadRunCorrelation] = useState<ReloadRunCorrelation>({
+    conversationId,
+    pendingReload: false,
+    acceptedRunId: null,
+  })
+  const reloadRunCorrelationRef = useRef<ReloadRunCorrelation>({
+    conversationId,
+    pendingReload: false,
+    acceptedRunId: null,
+  })
   const setPendingReloadRender = useCallback(
-    (next: PendingReloadRenderState | null) => setPendingReloadRenderState(next),
-    [],
+    (next: PendingReloadRenderState | null) => {
+      if (next) {
+        const nextCorrelation = {
+          conversationId: next.conversationId,
+          pendingReload: true,
+          acceptedRunId: null,
+        }
+        reloadRunCorrelationRef.current = nextCorrelation
+        setReloadRunCorrelation(nextCorrelation)
+      } else {
+        const current = reloadRunCorrelationRef.current
+        if (current.conversationId === conversationId && current.pendingReload) {
+          const nextCorrelation = { ...current, pendingReload: false }
+          reloadRunCorrelationRef.current = nextCorrelation
+          setReloadRunCorrelation(nextCorrelation)
+        }
+      }
+      setPendingReloadRenderState(next)
+    },
+    [conversationId],
   )
   const pendingReloadRender = activePendingReloadRenderState(
     conversationId,
@@ -2078,28 +2135,62 @@ export function useMoldyLangGraphStream({
   )
   const handleThreadState = useCallback(
     (state: unknown, options?: ThreadStateHydrationOptions) => {
-      setThreadRunNotice(terminalRunNoticeFromThreadState(state))
+      const terminalRunNotice = terminalRunNoticeFromThreadState(state)
+      if (
+        terminalFailureIsStaleForCurrentAttempt(
+          conversationId,
+          terminalRunNotice,
+          reloadRunCorrelationRef.current,
+        )
+      ) {
+        return
+      }
+      const terminalRunFailed = terminalRunNotice?.status === 'failed'
+      setThreadRunNotice(terminalRunNotice)
       setServerMessageMetadata(messageMetadataFromThreadState(state))
       const interrupts = interruptsFromThreadState(state)
       setServerInterruptsState({ conversationId, interrupts })
-      if (options?.replaceMessages || interrupts.length > 0) {
+      if (options?.replaceMessages || interrupts.length > 0 || terminalRunFailed) {
         const messages = messagesFromThreadState(state)
         setServerStateMessages(messages ? { conversationId, messages } : null)
       }
+      // The server can publish a failed retry while the client stream remains
+      // loading. Apply that terminal state immediately instead of waiting for
+      // replacement-assistant hydration, which a failed run never produces.
+      if (terminalRunFailed && reloadRunCorrelationRef.current.pendingReload) {
+        setPendingReloadRender(null)
+      }
     },
-    [conversationId, setServerMessageMetadata, setThreadRunNotice],
+    [conversationId, setPendingReloadRender, setServerMessageMetadata, setThreadRunNotice],
   )
   const transport = useMemo(
-    () =>
-      createMoldyAgentTransport(conversationId, agentId, {
-        onState: handleThreadState,
-      }),
-    [agentId, conversationId, handleThreadState],
+    () => createMoldyAgentTransport(conversationId, agentId),
+    [agentId, conversationId],
+  )
+  const handleRunStartAccepted = useCallback(
+    (runId?: string) => {
+      if (runId) {
+        const current = reloadRunCorrelationRef.current
+        const nextCorrelation = {
+          conversationId,
+          pendingReload: current.conversationId === conversationId ? current.pendingReload : false,
+          acceptedRunId: runId,
+        }
+        reloadRunCorrelationRef.current = nextCorrelation
+        setReloadRunCorrelation(nextCorrelation)
+      }
+      onRunStartAccepted?.()
+    },
+    [conversationId, onRunStartAccepted],
   )
   useEffect(() => {
-    transport.setRunStartAcceptedListener(onRunStartAccepted)
+    transport.setRunStartAcceptedListener(handleRunStartAccepted)
     return () => transport.setRunStartAcceptedListener(undefined)
-  }, [onRunStartAccepted, transport])
+  }, [handleRunStartAccepted, transport])
+  useEffect(() => {
+    transport.setStateHydrationListener(handleThreadState)
+    return () => transport.setStateHydrationListener(undefined)
+  }, [handleThreadState, transport])
   const stream = useStream<MoldyGraphState>({
     transport,
     threadId: conversationId,
@@ -2224,7 +2315,11 @@ export function useMoldyLangGraphStream({
       void loadServerThreadState(conversationId)
         .then((state: ThreadStateResponse) => {
           if (cancelled) return
-          const hydrationReady = pendingReloadHydrationIsReady(state, pendingReloadRender)
+          const hydrationReady = pendingReloadHydrationIsReady(
+            state,
+            pendingReloadRender,
+            reloadRunCorrelation,
+          )
           if (!hydrationReady) {
             if (Date.now() - startedAt > POST_RUN_HYDRATION_TIMEOUT_MS) {
               clearPendingReloadRenderState()
@@ -2253,6 +2348,7 @@ export function useMoldyLangGraphStream({
     conversationId,
     handleThreadState,
     pendingReloadRender,
+    reloadRunCorrelation,
     stream.isLoading,
   ])
   useEffect(() => {
