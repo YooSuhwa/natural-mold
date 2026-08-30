@@ -8,7 +8,14 @@ from deepagents.middleware.filesystem import FilesystemPermission
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+from app.config import settings
+
+_configured_data_root = Path(settings.data_root)
+_DATA_DIR = (
+    _configured_data_root
+    if _configured_data_root.is_absolute()
+    else Path(__file__).resolve().parents[2] / _configured_data_root
+)
 
 
 @dataclass

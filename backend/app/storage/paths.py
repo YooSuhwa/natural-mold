@@ -38,7 +38,11 @@ def resolve_data_path(value: str | os.PathLike[str]) -> Path:
     if path.is_absolute():
         logger.debug("resolve_data_path got absolute input: %s", path)
         return path
-    return (_data_root() / path).resolve()
+    root = _data_root()
+    resolved = (root / path).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError("relative storage_path cannot escape data_root")
+    return resolved
 
 
 def ensure_relative(value: str) -> str:
@@ -48,7 +52,8 @@ def ensure_relative(value: str) -> str:
     if not value:
         raise ValueError("empty storage_path")
     if Path(value).is_absolute():
-        raise ValueError(
-            f"storage_path must be relative to data_root, got absolute: {value}"
-        )
+        raise ValueError(f"storage_path must be relative to data_root, got absolute: {value}")
+    sentinel_root = Path("/moldy-data-root")
+    if not (sentinel_root / value).resolve().is_relative_to(sentinel_root):
+        raise ValueError("relative storage_path cannot escape data_root")
     return value

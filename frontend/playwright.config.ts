@@ -1,8 +1,10 @@
 import { defineConfig } from '@playwright/test'
+import path from 'node:path'
 
 import {
   assertIsolatedDatabaseEnvironment,
   getE2EAuthStatePath,
+  getE2ERunPaths,
   getLaneDefaultPorts,
   LIVE_E2E_SPECS,
   LIVE_E2E_TEST_MATCH,
@@ -17,11 +19,18 @@ const configuredE2eLane = process.env.E2E_LANE
 const e2eLane = configuredE2eLane || 'scripted'
 const defaultPorts = getLaneDefaultPorts(e2eLane)
 const authStatePath = getE2EAuthStatePath(e2eLane, process.env)
+const runPaths = getE2ERunPaths(e2eLane, process.env)
+const backendSourceRoot = process.env.MOLDY_BACKEND_SOURCE_ROOT ?? path.resolve('../backend')
+if (process.env.MOLDY_TEST_RUN_ROOT && !path.isAbsolute(backendSourceRoot)) {
+  throw new Error('MOLDY_BACKEND_SOURCE_ROOT must be absolute in isolated mode.')
+}
 const frontendPort = Number(process.env.E2E_FRONTEND_PORT ?? defaultPorts.frontend)
 const backendPort = Number(process.env.E2E_BACKEND_PORT ?? defaultPorts.backend)
 process.env.E2E_FRONTEND_PORT = String(frontendPort)
 process.env.E2E_BACKEND_PORT = String(backendPort)
 process.env.E2E_AUTH_STATE_PATH = authStatePath
+process.env.E2E_NEXT_BUILD_DIR = runPaths.buildDir
+process.env.E2E_RESULTS_DIR = runPaths.resultsDir
 const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${frontendPort}`
 const apiBaseURL = process.env.E2E_API_BASE_URL ?? `http://localhost:${backendPort}`
 const corsOrigins = `http://localhost:${frontendPort},http://127.0.0.1:${frontendPort}`
@@ -53,7 +62,8 @@ const webServer = [
         {
           // SKILL_EVALUATION_ENABLED 기본 false(기존 계약 — eval worker 소음 차단).
           // Phase 3 평가 런 투어만 E2E_SKILL_EVALUATION_ENABLED=true로 켠다.
-          command: `cd ../backend && ${backendModelEnvironment} SKILL_EVALUATION_ENABLED=${process.env.E2E_SKILL_EVALUATION_ENABLED === 'true' ? 'true' : 'false'} CORS_ALLOWED_ORIGINS=${corsOrigins} uv run uvicorn app.main:app --port ${backendPort}`,
+          command: `${backendModelEnvironment} SKILL_EVALUATION_ENABLED=${process.env.E2E_SKILL_EVALUATION_ENABLED === 'true' ? 'true' : 'false'} CORS_ALLOWED_ORIGINS=${corsOrigins} uv run uvicorn app.main:app --port ${backendPort}`,
+          cwd: backendSourceRoot,
           port: backendPort,
           reuseExistingServer,
         },
@@ -67,7 +77,7 @@ const webServer = [
 
 export default defineConfig({
   testDir: './e2e',
-  outputDir: `test-results/${e2eLane}`,
+  outputDir: runPaths.resultsDir,
   testMatch: e2eLane === 'live' ? [...LIVE_E2E_TEST_MATCH] : undefined,
   testIgnore: e2eLane === 'scripted' ? [...LIVE_E2E_SPECS] : undefined,
   timeout: testTimeout,

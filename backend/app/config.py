@@ -1,4 +1,6 @@
-from typing import Literal
+import os
+from pathlib import Path
+from typing import Final, Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -285,4 +287,46 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
 
-settings = Settings()
+_LANE_PATH_DEFAULTS: Final[dict[str, str]] = {
+    "data_root": "backend/data",
+    "skill_storage_dir": "backend/data/skills",
+    "k_skill_sync_dir": "backend/data/upstreams/k-skill",
+    "k_skill_builtin_storage_dir": "backend/data/marketplace/k-skill",
+    "conversation_output_dir": "backend/data/conversations",
+    "upload_dir": "backend/data/uploads",
+    "artifact_storage_dir": "backend/data/artifacts",
+    "agent_image_dir": "backend/data/agents",
+    "user_avatar_dir": "backend/data/users",
+}
+
+
+def _load_settings() -> Settings:
+    """Load process settings, applying the explicit test-runner isolation contract."""
+    env_file = None if os.environ.get("MOLDY_DISABLE_ENV_FILE") == "true" else ".env"
+    configured = Settings(_env_file=env_file)
+    raw_run_root = os.environ.get("MOLDY_TEST_RUN_ROOT")
+    if raw_run_root is None:
+        return configured
+    run_root = Path(raw_run_root)
+    if not run_root.is_absolute():
+        raise RuntimeError("MOLDY_TEST_RUN_ROOT must be absolute")
+    resolved_root = run_root.resolve()
+    for field_name, relative_default in _LANE_PATH_DEFAULTS.items():
+        raw_value = (
+            getattr(configured, field_name)
+            if field_name in configured.model_fields_set
+            else relative_default
+        )
+        raw_candidate = Path(raw_value)
+        candidate = (
+            raw_candidate if raw_candidate.is_absolute() else resolved_root / raw_candidate
+        ).resolve()
+        if not candidate.is_relative_to(resolved_root):
+            raise RuntimeError(
+                f"lane-owned path {field_name} must remain beneath MOLDY_TEST_RUN_ROOT"
+            )
+        setattr(configured, field_name, str(candidate))
+    return configured
+
+
+settings = _load_settings()

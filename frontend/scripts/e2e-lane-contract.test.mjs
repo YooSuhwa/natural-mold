@@ -4,11 +4,13 @@ import {
   assertIsolatedDatabaseEnvironment,
   buildLaneEnvironment,
   getE2EAuthStatePath,
+  getE2ERunPaths,
   getLaneDefaultPorts,
   LIVE_E2E_SPECS,
   LIVE_E2E_TEST_MATCH,
   normalizePlaywrightArguments,
 } from './e2e-lane-contract.mjs'
+import './e2e-prepared-lane.test.mjs'
 
 describe('E2E lane contract', () => {
   it('uses the scripted model when LiteLLM variables are inherited', () => {
@@ -189,4 +191,21 @@ describe('E2E lane contract', () => {
       'moldy_e2e_scripted',
     )
   })
+
+  it('preserves default bytes and safe explicit path precedence', () => {
+    // Given: no wrapper root and an explicit legacy auth override.
+
+    // When: lane paths are resolved.
+    const defaults = getE2ERunPaths('live', {})
+    const overridden = getE2ERunPaths('live', { E2E_AUTH_STATE_PATH: './tmp/live-auth.json' })
+
+    // Then: existing dev/default values are byte-equivalent and overrides still win.
+    expect(defaults).toEqual({
+      authStatePath: './e2e/.auth/live-user.json',
+      buildDir: '.next',
+      resultsDir: 'test-results/live',
+    })
+    expect(overridden.authStatePath).toBe('./tmp/live-auth.json')
+  })
+
 })

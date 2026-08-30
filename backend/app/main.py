@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
+
 from dotenv import load_dotenv
 
-load_dotenv()  # .env → OS 환경 변수 (LangSmith 등 외부 SDK용)
+if os.environ.get("MOLDY_DISABLE_ENV_FILE") != "true":
+    load_dotenv()  # .env → OS 환경 변수 (LangSmith 등 외부 SDK용)
 
-import os
 import ssl
 import uuid
 from collections.abc import AsyncGenerator
