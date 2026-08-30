@@ -300,10 +300,17 @@ _LANE_PATH_DEFAULTS: Final[dict[str, str]] = {
 }
 
 
+def _settings_from_env_file(env_file: str | None) -> Settings:
+    """Bridge Pydantic Settings' runtime-only private env-file keyword."""
+    configured = Settings.__new__(Settings)
+    BaseSettings.__init__(configured, _env_file=env_file)
+    return configured
+
+
 def _load_settings() -> Settings:
     """Load process settings, applying the explicit test-runner isolation contract."""
     env_file = None if os.environ.get("MOLDY_DISABLE_ENV_FILE") == "true" else ".env"
-    configured = Settings(_env_file=env_file)
+    configured = _settings_from_env_file(env_file)
     raw_run_root = os.environ.get("MOLDY_TEST_RUN_ROOT")
     if raw_run_root is None:
         return configured

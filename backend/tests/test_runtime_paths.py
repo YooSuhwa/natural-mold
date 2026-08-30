@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from app.config import Settings
+from app.config import _settings_from_env_file
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 LANE_ENVIRONMENT_NAMES = {
@@ -93,7 +93,7 @@ def test_default_path_values_are_byte_equivalent() -> None:
     # Given: settings constructed without the test runner contract.
 
     # When: defaults are loaded without an env file.
-    configured = Settings(_env_file=None)
+    configured = _settings_from_env_file(None)
 
     # Then: all pre-existing development path bytes are unchanged.
     assert {

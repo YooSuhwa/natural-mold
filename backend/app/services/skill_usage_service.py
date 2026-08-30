@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -27,6 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
+from app.models.skill_builder_session import JsonValue
 from app.models.skill_usage_event import SkillUsageEvent
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,12 @@ class SkillUsageSummary:
     evaluation_run_count: int
     chat_execution_count: int
     daily: list[SkillUsageDailyPoint]
+
+
+def _usage_int(value: JsonValue | None) -> int:
+    if isinstance(value, bool) or not isinstance(value, str | int | float):
+        return 0
+    return int(value)
 
 
 def _utc_now_naive() -> datetime:
@@ -93,7 +101,7 @@ async def record_evaluation_usage_nonfatal(
     user_id: uuid.UUID,
     evaluation_run_id: uuid.UUID,
     model_name: str | None,
-    usage: dict[str, object],
+    usage: Mapping[str, JsonValue],
 ) -> None:
     """Own-session, best-effort evaluation-run ledger write.
 
@@ -117,8 +125,8 @@ async def record_evaluation_usage_nonfatal(
                 user_id=user_id,
                 evaluation_run_id=evaluation_run_id,
                 model_name=model_name,
-                tokens_in=int(usage.get("tokens_in") or 0),
-                tokens_out=int(usage.get("tokens_out") or 0),
+                tokens_in=_usage_int(usage.get("tokens_in")),
+                tokens_out=_usage_int(usage.get("tokens_out")),
                 cost_usd=cost,
             )
             await db.commit()

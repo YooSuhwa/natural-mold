@@ -167,6 +167,10 @@ venv = ".venv"
 # snapshots) — third-party scripts that vary per machine and must not gate
 # type checking. alembic migrations are generated boilerplate.
 exclude = ["data", ".venv", "alembic/versions"]
+executionEnvironments = [
+    { root = ".", extraPaths = ["scripts", "../scripts"] },
+    { root = "../scripts", extraPaths = ["../scripts"] },
+]
 
 [dependency-groups]
 dev = [
@@ -176,4 +180,5 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8,<4",
 ]

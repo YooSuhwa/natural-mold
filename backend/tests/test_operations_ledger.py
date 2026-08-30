@@ -123,7 +123,9 @@ def test_bootstrap_rejects_non_exact_facts(mutation: str) -> None:
     elif mutation == "extra":
         facts["unexpected"] = "value"
     else:
-        facts["resolved_links"] = list(reversed(facts["resolved_links"]))
+        resolved_links = facts["resolved_links"]
+        assert isinstance(resolved_links, list)
+        facts["resolved_links"] = list(reversed(resolved_links))
 
     # When / Then: no alternate genesis dialect is accepted.
     with pytest.raises(writer.LedgerError):
