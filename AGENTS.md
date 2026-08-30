@@ -153,21 +153,23 @@ dev 환경에서 backend가 시작되면 `seed_e2e_user`가 위 계정을 DB에 
 기본 포트(3000/8001/5432)를 다른 프로젝트가 점유 중이면 throwaway 스택으로 격리해 실행한다:
 
 ```bash
-# 1) throwaway Postgres (예: 호스트 5433)
-docker run -d --name moldy-e2e-pg -p 5433:5432 \
-  -e POSTGRES_DB=moldy -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy postgres:16-alpine
+# 1) scripted throwaway Postgres (예: 호스트 5433, DB명은 lane prefix 필수)
+docker run -d --name moldy-e2e-scripted-pg -p 5433:5432 \
+  -e POSTGRES_DB=moldy_e2e_scripted_local -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy postgres:16-alpine
+until docker exec moldy-e2e-scripted-pg pg_isready -U moldy -d moldy_e2e_scripted_local; do sleep 1; done
 
 # 2) 마이그레이션 — throwaway DB에만 직접 실행 (공유/main DB 금지)
-cd backend && DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy' \
-  uv run alembic upgrade head
+(cd backend && \
+  DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
+  uv run alembic upgrade head)
 
 # 3) E2E 실행 (playwright webServer가 backend+frontend 자체 기동)
-cd frontend && \
-E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
-DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy' \
-DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5433/moldy' \
-RATE_LIMIT_ENABLED=false E2E_TEST_HELPERS_ENABLED=true \
-pnpm exec playwright test e2e/<spec>.spec.ts
+(cd frontend && \
+  E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
+  DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
+  DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
+  RATE_LIMIT_ENABLED=false E2E_TEST_HELPERS_ENABLED=true \
+  pnpm exec playwright test e2e/<spec>.spec.ts)
 ```
 
 주의:
@@ -176,6 +178,13 @@ pnpm exec playwright test e2e/<spec>.spec.ts
   (`backend/app/config.py`). LangGraph checkpointer가 이 값을 쓰므로 **둘 다**
   오버라이드해야 한다. 하나만 바꾸면 checkpointer가 기존 DB를 바라보다
   PoolTimeout으로 백엔드 기동에 실패한다.
+- E2E lane은 `DATABASE_URL=postgresql+asyncpg://...`,
+  `DATABASE_URL_SYNC=postgresql://...` 형식을 요구하며 둘은 같은 host/port/database를
+  가리켜야 한다. scripted 기본 포트는 `3100/8101`, live 기본 포트는 `3200/8201`이다.
+  DB 이름은 각각 `moldy_e2e_scripted`/`moldy_e2e_scripted_*`,
+  `moldy_e2e_live`/`moldy_e2e_live_*` 형식이어야 한다. live는
+  `E2E_LLM_BASE_URL`, `E2E_LLM_API_KEY`, `E2E_LLM_MODEL`을 모두 설정한 뒤
+  `pnpm test:e2e:live`로 실행한다.
 - checkpointer의 psycopg `AsyncConnectionPool`은 `CHECKPOINTER_POOL_MIN_SIZE`
   / `CHECKPOINTER_POOL_MAX_SIZE`로 조정된다(기본 1/10). 슬로우 스트리밍 런이나
   평가 런이 동시에 많이 돌면 백엔드 전체가 직렬화되어 무관한 요청까지 timeout

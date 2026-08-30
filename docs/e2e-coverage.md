@@ -10,27 +10,35 @@ Update this whenever you add/change a spec or ship a user-facing feature.
 ## How to run (throwaway stack, port/DB isolated)
 
 ```bash
-# 1) throwaway Postgres on :5433
-docker run -d --name moldy-e2e-pg -p 5433:5432 \
-  -e POSTGRES_DB=moldy -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy postgres:16-alpine
+# 1) scripted throwaway Postgres on :5433 (DB name must carry the lane prefix)
+docker run -d --name moldy-e2e-scripted-pg -p 5433:5432 \
+  -e POSTGRES_DB=moldy_e2e_scripted_local -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy postgres:16-alpine
+until docker exec moldy-e2e-scripted-pg pg_isready -U moldy -d moldy_e2e_scripted_local; do sleep 1; done
 
-# 2) backend/.env: throwaway DB + generated ENCRYPTION_KEYS/JWT_SECRET + E2E flags
-#    DATABASE_URL=...@localhost:5433/moldy  (+ _SYNC), E2E_SCRIPTED_MODEL_ENABLED=true,
-#    E2E_SEED_USER_ENABLED=true, E2E_TEST_HELPERS_ENABLED=true, RATE_LIMIT_ENABLED=false
+# 2) migrate only the disposable DB
+(cd backend && \
+  DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
+  uv run alembic upgrade head)
 
-# 3) migrate the throwaway DB
-cd backend && uv run alembic upgrade head
+# 3) run; scripted defaults to frontend/backend 3100/8101 and clears E2E_LLM_*
+(cd frontend && \
+  DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
+  DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
+  pnpm test:e2e:scripted -- --grep-invert "Manual Atlassian")
 
-# 4) run (Playwright boots backend+frontend itself; or reuse a running backend)
-cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
-  pnpm exec playwright test --grep-invert "Manual Atlassian"
+# 4) cleanup
+docker rm -f moldy-e2e-scripted-pg
 ```
 
 ## Run model
 
-- **One mode: live throwaway backend + the seeded `e2e_scripted` model.** Chat
-  flows run a real start→stream→create turn deterministically with **no LLM API
-  key** (the scripted model is keyless — `credential_resolution` bypasses it).
+- **Scripted lane:** a throwaway backend plus the seeded `e2e_scripted` model.
+  Chat flows run a real start→stream→create turn deterministically with **no LLM
+  API key** (the scripted model is keyless — `credential_resolution` bypasses it).
+- **Live lane:** uses frontend/backend `3200/8201`, a separate
+  `moldy_e2e_live` or `moldy_e2e_live_*` database, all three `E2E_LLM_*` values,
+  and only its fixed compatible scenarios. It is never a substitute for the scripted
+  regression lane.
 - **Mock-only specs** layer `page.route` on top of the live backend. They must
   mock *every* endpoint the page touches — an unmocked call hits the real backend
   with fixture IDs and 422s, which the `errors` fixture flags as a console error.

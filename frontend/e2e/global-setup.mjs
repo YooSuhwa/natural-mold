@@ -3,13 +3,16 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { getE2EAuthStatePath } from '../scripts/e2e-lane-contract.mjs'
+
 const dirname = path.dirname(fileURLToPath(import.meta.url))
-const authFile = path.join(dirname, '.auth', 'user.json')
+const e2eLane = process.env.E2E_LANE ?? 'scripted'
+const authFile = path.resolve(process.cwd(), getE2EAuthStatePath(e2eLane, process.env))
 const repoRoot = path.resolve(dirname, '..', '..')
 const skillNodeModules = path.join(repoRoot, 'backend', 'skill-node', 'node_modules')
 const requiredSkillNodePackages = ['docx', 'xlsx', 'pptxgenjs']
 
-const backendPort = process.env.E2E_BACKEND_PORT ?? '8001'
+const backendPort = process.env.E2E_BACKEND_PORT ?? '8101'
 const apiBase = process.env.E2E_API_BASE_URL ?? `http://localhost:${backendPort}`
 const email = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const password =

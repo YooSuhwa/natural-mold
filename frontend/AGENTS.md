@@ -68,10 +68,10 @@ E2E 테스트에서 로그인 때문에 실패가 반복될 때, 각 spec/test�
   기본값을 둘 수 있다. 운영/공유 staging 계정 비밀번호를 repo에 하드코딩하지 않는다
 - 로그인 실패 시 같은 E2E 계정으로 `/api/auth/register` 시도; 이미 존재하면
   `409` 이후 다시 로그인
-- 로그인 성공 후 `api.storageState({ path: './e2e/.auth/user.json' })`로
+- 로그인 성공 후 `api.storageState({ path: './e2e/.auth/<lane>-user.json' })`로
   HttpOnly auth cookie와 CSRF cookie가 포함된 세션 저장
 - `playwright.config.ts`에서 `globalSetup`과
-  `use.storageState: './e2e/.auth/user.json'`를 등록해 모든 페이지 테스트가
+  `use.storageState: './e2e/.auth/<lane>-user.json'`를 등록해 모든 페이지 테스트가
   로그인된 상태로 시작
 - `PW_SKIP_BACKEND=1` mock-only 모드에서는 global setup이 가짜
   `moldy_rt`, `moldy_csrf` cookie를 저장하고, `e2e/fixtures.ts`가
@@ -83,7 +83,8 @@ E2E auth failure를 고칠 때 먼저 확인할 것:
 
 - global setup이 같은 E2E 계정으로 login → register fallback → login 순서를 타는지
 - `playwright.config.ts`에 `globalSetup`과 `storageState`가 살아있는지
-- `e2e/.auth/user.json`은 생성 산출물이므로 커밋하지 않는지
+- `e2e/.auth/scripted-user.json`과 `e2e/.auth/live-user.json`은 lane별 생성
+  산출물이므로 커밋하지 않는지 (`E2E_AUTH_STATE_PATH` 명시 override 허용)
 - 테스트가 로그인 페이지 UI에 의존하지 않고 `/` 진입 시 바로 dashboard/authenticated
   shell을 기대하는지
 - mock-only 테스트가 `PW_SKIP_BACKEND=1`에서 `/api/auth/me`를 mock하고 있는지
