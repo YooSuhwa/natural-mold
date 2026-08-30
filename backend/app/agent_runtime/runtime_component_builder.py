@@ -25,8 +25,10 @@ from pathlib import Path
 from typing import Any, cast
 
 from deepagents import create_deep_agent
-from deepagents.backends import FilesystemBackend
-from deepagents.middleware.filesystem import FilesystemPermission
+from deepagents.backends import FilesystemBackend, StateBackend
+from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
+from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT
+from langchain.agents.middleware import TodoListMiddleware
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
@@ -112,6 +114,130 @@ _TEMPORAL_BUILTIN_TOOL_KEYS = (
     "builtin:resolve_relative_date",
 )
 
+# Deep Agents 0.7 makes ``delete`` part of its default filesystem surface and
+# stops installing TodoListMiddleware. Moldy intentionally preserves its
+# pre-0.7 non-deleting filesystem capability set and todo-state stream
+# contract here, at the single build boundary used by chat, Assistant, and
+# Skill Builder.
+_MOLDY_FILESYSTEM_TOOL_NAMES = (
+    "ls",
+    "read_file",
+    "write_file",
+    "edit_file",
+    "glob",
+    "grep",
+    "execute",
+)
+_FILESYSTEM_MIDDLEWARE_NAME = "FilesystemMiddleware"
+_TODO_LIST_MIDDLEWARE_NAME = "TodoListMiddleware"
+_GENERAL_PURPOSE_SUBAGENT_NAME = GENERAL_PURPOSE_SUBAGENT["name"]
+
+
+def _middleware_name(middleware: Any) -> str | None:
+    """Return a middleware's public name without assuming a concrete type."""
+
+    name = getattr(middleware, "name", None)
+    return name if isinstance(name, str) else None
+
+
+def _build_moldy_filesystem_middleware(
+    *,
+    backend: Any,
+    permissions: list[FilesystemPermission] | None,
+) -> FilesystemMiddleware:
+    """Build Moldy's deliberately non-deleting Deep Agents filesystem layer."""
+
+    return FilesystemMiddleware(
+        backend=backend,
+        tools=list(_MOLDY_FILESYSTEM_TOOL_NAMES),
+        _permissions=permissions,
+    )
+
+
+def _with_moldy_deepagents_compatibility(
+    middleware: list[Any] | tuple[Any, ...] | None,
+    *,
+    backend: Any,
+    permissions: list[FilesystemPermission] | None,
+) -> list[Any]:
+    """Replace Deep Agents 0.7 default FS/todo behavior with Moldy's contract.
+
+    The two compatibility middleware entries are intentionally recreated rather
+    than reusing caller instances: the filesystem instance must share the same
+    backend and effective permission list as the graph it configures.  All
+    unrelated middleware retain their caller-provided relative order.
+    """
+
+    retained = [
+        item
+        for item in (middleware or ())
+        if _middleware_name(item) not in {_FILESYSTEM_MIDDLEWARE_NAME, _TODO_LIST_MIDDLEWARE_NAME}
+    ]
+    return [
+        _build_moldy_filesystem_middleware(backend=backend, permissions=permissions),
+        TodoListMiddleware(),
+        *retained,
+    ]
+
+
+def _normalize_declarative_subagents(
+    subagents: list[dict[str, Any]] | None,
+    *,
+    model: BaseChatModel,
+    tools: list[BaseTool],
+    backend: Any,
+    permissions: list[FilesystemPermission] | None,
+    interrupt_on: dict[str, Any] | bool | None,
+    skills: list[str] | None,
+) -> list[dict[str, Any]]:
+    """Return copied declarative specs with Moldy's 0.7 compatibility layer.
+
+    Deep Agents treats specs with ``runnable`` or ``graph_id`` as precompiled
+    or asynchronous respectively.  Those are opaque caller-owned execution
+    units, so this function leaves them untouched.  Declarative specs are
+    copied before normalizing their effective middleware and inherited fields.
+    """
+
+    normalized: list[dict[str, Any]] = []
+    has_general_purpose = False
+    for spec in subagents or ():
+        if spec.get("name") == _GENERAL_PURPOSE_SUBAGENT_NAME:
+            has_general_purpose = True
+
+        if "runnable" in spec or "graph_id" in spec:
+            normalized.append(spec)
+            continue
+
+        child_permissions = spec.get("permissions", permissions)
+        child = dict(spec)
+        child["middleware"] = _with_moldy_deepagents_compatibility(
+            spec.get("middleware"),
+            backend=backend,
+            permissions=child_permissions,
+        )
+        normalized.append(child)
+
+    if not has_general_purpose:
+        general_purpose = dict(GENERAL_PURPOSE_SUBAGENT)
+        general_purpose.update(
+            {
+                "model": model,
+                "tools": list(tools),
+                "middleware": _with_moldy_deepagents_compatibility(
+                    None,
+                    backend=backend,
+                    permissions=permissions,
+                ),
+                "permissions": permissions,
+                "interrupt_on": interrupt_on,
+            }
+        )
+        if skills is not None:
+            general_purpose["skills"] = list(skills)
+        normalized.insert(0, general_purpose)
+
+    return normalized
+
 
 def build_agent(
     model: BaseChatModel,
@@ -130,20 +256,35 @@ def build_agent(
     subagents: list[dict[str, Any]] | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
+    resolved_backend = backend if backend is not None else StateBackend()
+    compatible_middleware = _with_moldy_deepagents_compatibility(
+        middleware,
+        backend=resolved_backend,
+        permissions=permissions,
+    )
+    compatible_subagents = _normalize_declarative_subagents(
+        subagents,
+        model=model,
+        tools=tools,
+        backend=resolved_backend,
+        permissions=permissions,
+        interrupt_on=interrupt_on,
+        skills=skills,
+    )
     return create_deep_agent(
         model=model,
         tools=tools,
         system_prompt=system_prompt,
-        middleware=middleware or (),
+        middleware=compatible_middleware,
         interrupt_on=interrupt_on,  # type: ignore[arg-type]  # bool/dict 양쪽 지원
         checkpointer=checkpointer,
         store=store,
-        backend=backend,
+        backend=resolved_backend,
         skills=skills,
         memory=memory,
         permissions=permissions,
         name=name,
-        subagents=cast(Any, subagents),
+        subagents=cast(Any, compatible_subagents),
     )
 
 

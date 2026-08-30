@@ -148,7 +148,7 @@ def _compaction_summarization_event(event: StoredProtocolEvent) -> Mapping[str, 
 def _compaction_signal(event: StoredProtocolEvent) -> str | None:
     """Classify the auto-compaction signal in an adapted v3 protocol event.
 
-    deepagents 0.6.9 streams its summarization tokens on the ``messages`` channel
+    Deep Agents streams its summarization tokens on the ``messages`` channel
     tagged ``metadata.lc_source == "summarization"`` (these must be suppressed so
     the summary text never leaks into the answer), and commits the compaction via
     a ``_summarization_event`` on the ``values`` channel. Returns
@@ -174,8 +174,9 @@ def _compaction_offload_path(event: StoredProtocolEvent, thread_id: str) -> str 
         file_path = summarization_event.get("file_path")
         if isinstance(file_path, str) and file_path:
             return file_path
-    # FilesystemBackend(virtual_mode=True) offloads deterministically here when the
-    # event omits an explicit ``file_path`` (runtime_component_builder).
+    # Compatibility fallback for older/custom summarization events. Deep Agents
+    # 0.7 emits an opaque per-graph ``session_<uuid>`` file_path, which is always
+    # preferred above so parent and subagent histories remain isolated.
     return f"/conversation_history/{thread_id}.md" if thread_id else None
 
 

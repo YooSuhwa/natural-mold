@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import itertools
 import json
+from pathlib import PurePosixPath
 from typing import Any
 
 import pytest
@@ -119,7 +120,14 @@ async def test_compaction_emits_running_done_and_suppresses_summary_tokens() -> 
     assert states.count("done") == 1, payloads
 
     done = next(payload for payload in payloads if payload.get("state") == "done")
-    assert done.get("offload_path") == f"/conversation_history/{thread_id}.md"
+    offload_path = done.get("offload_path")
+    assert isinstance(offload_path, str)
+    # Deep Agents 0.7 scopes history files to graph invocations rather than the
+    # shared thread id so parent/subagent compactions cannot mix their history.
+    history_path = PurePosixPath(offload_path)
+    assert history_path.parent == PurePosixPath("/conversation_history")
+    assert history_path.suffix == ".md"
+    assert history_path.name != f"{thread_id}.md"
     assert isinstance(done.get("cutoff_index"), int)
     assert done["cutoff_index"] > 0
 

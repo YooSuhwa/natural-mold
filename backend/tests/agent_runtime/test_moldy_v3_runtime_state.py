@@ -54,7 +54,7 @@ def _event_params(event: dict[str, Any]) -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
-async def test_moldy_runtime_v3_stream_preserves_subagent_namespace_and_files_state(
+async def test_moldy_runtime_v3_stream_preserves_subagent_namespace_and_message_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     subagent_model = FakeToolBindingChatModel(
@@ -104,12 +104,11 @@ async def test_moldy_runtime_v3_stream_preserves_subagent_namespace_and_files_st
     value_payloads = [
         _event_params(event).get("data") for event in events if event.get("method") == "values"
     ]
-    assert any(
-        isinstance(payload, dict)
-        and isinstance(payload.get("files"), dict)
-        and "messages" in payload
-        for payload in value_payloads
-    )
+    # Deep Agents 0.7 only contributes a ``files`` state channel for
+    # StateBackend. Moldy's production FilesystemBackend keeps files on disk,
+    # while generated-file UI state comes from the application artifact/file
+    # protocol; the raw values contract here is the message state itself.
+    assert any(isinstance(payload, dict) and "messages" in payload for payload in value_payloads)
 
     lifecycle_payloads = [
         _event_params(event).get("data") for event in events if event.get("method") == "lifecycle"

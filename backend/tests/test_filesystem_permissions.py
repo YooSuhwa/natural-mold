@@ -190,6 +190,61 @@ def test_filesystem_permissions_can_scope_skills_by_agent_runtime_name() -> None
 
 
 @pytest.mark.asyncio
+async def test_moldy_compat_filesystem_middleware_keeps_scope_and_allows_overwrite(
+    tmp_path: Path,
+) -> None:
+    """The 0.7 compatibility middleware is non-deleting and permission-scoped."""
+
+    from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
+    from app.agent_runtime.runtime_component_builder import (
+        _MOLDY_FILESYSTEM_TOOL_NAMES,
+        _build_moldy_filesystem_middleware,
+    )
+
+    _seed_virtual_data(tmp_path)
+    permissions = build_filesystem_permissions(
+        thread_id="thread-a",
+        agent_id="agent-a",
+        user_id="user-a",
+        selected_skill_slugs=["selected"],
+    )
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=True)
+    middleware = _build_moldy_filesystem_middleware(
+        backend=backend,
+        permissions=permissions,
+    )
+    assert tuple(tool.name for tool in middleware.tools) == _MOLDY_FILESYSTEM_TOOL_NAMES
+    assert "delete" not in {tool.name for tool in middleware.tools}
+    assert middleware.backend is backend
+    assert middleware._permissions == permissions
+
+    runtime = SimpleNamespace(tool_call_id="call-compat")
+    read_file_run = tool_coroutine(_tool_by_name(middleware, "read_file"))
+    write_file_run = tool_coroutine(_tool_by_name(middleware, "write_file"))
+
+    denied = await read_file_run(
+        file_path="/runtime/thread-b/skills/selected/SKILL.md",
+        runtime=runtime,
+    )
+    assert denied.status == "error"
+    assert "permission denied" in denied.content
+
+    first_write = await write_file_run(
+        file_path="/conversations/thread-a/overwrite.txt",
+        content="first\n",
+        runtime=runtime,
+    )
+    assert first_write.status == "success"
+    overwrite = await write_file_run(
+        file_path="/conversations/thread-a/overwrite.txt",
+        content="second\n",
+        runtime=runtime,
+    )
+    assert overwrite.status == "success"
+    assert (tmp_path / "conversations" / "thread-a" / "overwrite.txt").read_text() == "second\n"
+
+
+@pytest.mark.asyncio
 async def test_deepagents_filesystem_tools_enforce_scoped_permissions(
     tmp_path: Path,
 ) -> None:

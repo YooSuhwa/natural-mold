@@ -81,35 +81,60 @@ def _capture_runtime_tool_configs(captured: list[dict[str, object]]):
 
 @patch("app.agent_runtime.runtime_component_builder.create_deep_agent")
 def test_build_agent_calls_deep_agent(mock_create: MagicMock):
-    from app.agent_runtime.runtime_component_builder import build_agent
+    from deepagents.backends import StateBackend
+
+    from app.agent_runtime.runtime_component_builder import (
+        _MOLDY_FILESYSTEM_TOOL_NAMES,
+        build_agent,
+    )
 
     mock_model = MagicMock()
     mock_tools = [MagicMock(), MagicMock()]
 
     build_agent(mock_model, mock_tools, "You are helpful.")  # type: ignore[arg-type]
 
-    mock_create.assert_called_once_with(
-        model=mock_model,
-        tools=mock_tools,
-        system_prompt="You are helpful.",
-        middleware=(),
-        interrupt_on=None,
-        checkpointer=None,
-        store=None,
-        backend=None,
-        skills=None,
-        memory=None,
-        permissions=None,
-        name=None,
-        subagents=None,
-    )
+    call = mock_create.call_args.kwargs
+    assert call["model"] is mock_model
+    assert call["tools"] is mock_tools
+    assert call["system_prompt"] == "You are helpful."
+    assert isinstance(call["backend"], StateBackend)
+    assert [item.name for item in call["middleware"]] == [
+        "FilesystemMiddleware",
+        "TodoListMiddleware",
+    ]
+    filesystem = call["middleware"][0]
+    assert tuple(tool.name for tool in filesystem.tools) == _MOLDY_FILESYSTEM_TOOL_NAMES
+    assert "delete" not in {tool.name for tool in filesystem.tools}
+    assert call["interrupt_on"] is None
+    assert call["checkpointer"] is None
+    assert call["store"] is None
+    assert call["skills"] is None
+    assert call["memory"] is None
+    assert call["permissions"] is None
+    assert call["name"] is None
+
+    # 0.7 no longer auto-adds todo support. Moldy provides an equivalent
+    # general-purpose declarative spec so task-mode keeps the same contract.
+    subagents = call["subagents"]
+    assert [spec["name"] for spec in subagents] == ["general-purpose"]
+    assert [item.name for item in subagents[0]["middleware"]] == [
+        "FilesystemMiddleware",
+        "TodoListMiddleware",
+    ]
+    assert subagents[0]["middleware"][0].backend is call["backend"]
 
 
 @patch("app.agent_runtime.runtime_component_builder.create_deep_agent")
 def test_build_agent_forwards_subagents_to_deep_agents(mock_create: MagicMock):
     from app.agent_runtime.runtime_component_builder import build_agent
 
-    subagents = [{"name": "agent_abcd1234", "description": "helper"}]
+    subagents = [
+        {
+            "name": "agent_abcd1234",
+            "description": "helper",
+            "system_prompt": "help the parent",
+        }
+    ]
 
     build_agent(
         MagicMock(),
@@ -120,15 +145,24 @@ def test_build_agent_forwards_subagents_to_deep_agents(mock_create: MagicMock):
     )  # type: ignore[arg-type]
 
     assert mock_create.call_args.kwargs["name"] == "agent_parent12"
-    assert mock_create.call_args.kwargs["subagents"] == subagents
+    normalized = mock_create.call_args.kwargs["subagents"]
+    assert [spec["name"] for spec in normalized] == ["general-purpose", "agent_abcd1234"]
+    assert normalized[1] is not subagents[0]
+    assert normalized[1]["description"] == "helper"
+    assert [item.name for item in normalized[1]["middleware"]] == [
+        "FilesystemMiddleware",
+        "TodoListMiddleware",
+    ]
 
 
 @patch("app.agent_runtime.runtime_component_builder.create_deep_agent")
 def test_build_agent_passes_skills_and_memory(mock_create: MagicMock):
+    from deepagents.backends import StateBackend
+
     from app.agent_runtime.runtime_component_builder import build_agent
 
     mock_model = MagicMock()
-    mock_backend = MagicMock()
+    mock_backend = StateBackend()
 
     build_agent(
         mock_model,
@@ -143,6 +177,11 @@ def test_build_agent_passes_skills_and_memory(mock_create: MagicMock):
     assert call_kwargs["skills"] == ["/skills/"]
     assert call_kwargs["memory"] == ["/agents/abc/AGENTS.md"]
     assert call_kwargs["backend"] is mock_backend
+    assert call_kwargs["middleware"][0].backend is mock_backend
+    general_purpose = call_kwargs["subagents"][0]
+    assert general_purpose["name"] == "general-purpose"
+    assert general_purpose["skills"] == ["/skills/"]
+    assert general_purpose["tools"] == []
 
 
 @patch("app.agent_runtime.runtime_component_builder.create_deep_agent")
@@ -162,6 +201,113 @@ def test_build_agent_passes_permissions(mock_create: MagicMock):
 
     call_kwargs = mock_create.call_args[1]
     assert call_kwargs["permissions"] == permissions
+    assert call_kwargs["middleware"][0]._permissions == permissions
+    assert call_kwargs["subagents"][0]["permissions"] == permissions
+
+
+@patch("app.agent_runtime.runtime_component_builder.create_deep_agent")
+def test_build_agent_replaces_duplicate_compatibility_middleware_and_uses_child_permissions(
+    mock_create: MagicMock,
+):
+    from deepagents.backends import StateBackend
+    from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
+    from langchain.agents.middleware import TodoListMiddleware
+
+    from app.agent_runtime.runtime_component_builder import build_agent
+
+    parent_permissions = [FilesystemPermission(operations=["read"], paths=["/parent/**"])]
+    child_permissions = [FilesystemPermission(operations=["read"], paths=["/child/**"])]
+    backend = StateBackend()
+    retained = MagicMock()
+    retained.name = "RetainedMiddleware"
+    incoming = [
+        FilesystemMiddleware(backend=backend, tools=["read_file"]),
+        TodoListMiddleware(),
+        TodoListMiddleware(),
+        retained,
+    ]
+    subagents = [
+        {
+            "name": "child",
+            "description": "child helper",
+            "system_prompt": "help",
+            "permissions": child_permissions,
+            "middleware": incoming,
+        },
+        {
+            "name": "inherited-child",
+            "description": "inherits parent filesystem policy",
+            "system_prompt": "help",
+        },
+    ]
+
+    build_agent(
+        MagicMock(),
+        [],
+        "prompt",
+        backend=backend,
+        middleware=incoming,
+        permissions=parent_permissions,
+        subagents=subagents,
+    )
+
+    call = mock_create.call_args.kwargs
+    assert [item.name for item in call["middleware"]] == [
+        "FilesystemMiddleware",
+        "TodoListMiddleware",
+        "RetainedMiddleware",
+    ]
+    assert call["middleware"][0].backend is backend
+    assert call["middleware"][0]._permissions == parent_permissions
+    child = next(spec for spec in call["subagents"] if spec["name"] == "child")
+    assert [item.name for item in child["middleware"]] == [
+        "FilesystemMiddleware",
+        "TodoListMiddleware",
+        "RetainedMiddleware",
+    ]
+    assert child["middleware"][0].backend is backend
+    assert child["middleware"][0]._permissions == child_permissions
+    inherited_child = next(spec for spec in call["subagents"] if spec["name"] == "inherited-child")
+    assert inherited_child["middleware"][0]._permissions == parent_permissions
+    # Caller-owned declarative specs and middleware lists are never modified.
+    assert subagents[0]["middleware"] is incoming
+
+
+@patch("app.agent_runtime.runtime_component_builder.create_deep_agent")
+def test_build_agent_normalizes_explicit_general_purpose_without_duplicate(
+    mock_create: MagicMock,
+):
+    from app.agent_runtime.runtime_component_builder import build_agent
+
+    explicit_general_purpose = {
+        "name": "general-purpose",
+        "description": "Custom description",
+        "system_prompt": "Custom prompt",
+    }
+    build_agent(MagicMock(), [], "prompt", subagents=[explicit_general_purpose])
+
+    specs = mock_create.call_args.kwargs["subagents"]
+    assert [spec["name"] for spec in specs] == ["general-purpose"]
+    assert specs[0] is not explicit_general_purpose
+    assert specs[0]["description"] == "Custom description"
+    assert specs[0]["system_prompt"] == "Custom prompt"
+    assert [item.name for item in specs[0]["middleware"]] == [
+        "FilesystemMiddleware",
+        "TodoListMiddleware",
+    ]
+
+
+@patch("app.agent_runtime.runtime_component_builder.create_deep_agent")
+def test_build_agent_leaves_compiled_and_async_subagents_unchanged(mock_create: MagicMock):
+    from app.agent_runtime.runtime_component_builder import build_agent
+
+    compiled = {"name": "compiled", "description": "compiled", "runnable": MagicMock()}
+    asynchronous = {"name": "remote", "description": "remote", "graph_id": "remote-graph"}
+    build_agent(MagicMock(), [], "prompt", subagents=[compiled, asynchronous])
+
+    specs = mock_create.call_args.kwargs["subagents"]
+    assert next(spec for spec in specs if spec["name"] == "compiled") is compiled
+    assert next(spec for spec in specs if spec["name"] == "remote") is asynchronous
 
 
 @patch("app.agent_runtime.runtime_component_builder.create_deep_agent")
@@ -173,6 +319,18 @@ def test_build_agent_returns_agent(mock_create: MagicMock):
 
     result = build_agent(MagicMock(), [], "prompt")
     assert result is sentinel
+
+
+def test_build_agent_compiles_with_deepagents_07_compatibility_stack():
+    """Exercise the real 0.7 graph assembly, not only the call boundary mock."""
+
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from app.agent_runtime.runtime_component_builder import build_agent
+
+    agent = build_agent(FakeListChatModel(responses=["done"]), [], "prompt")
+
+    assert "TodoListMiddleware.after_model" in agent.nodes
 
 
 @pytest.mark.asyncio
