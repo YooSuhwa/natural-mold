@@ -44,6 +44,8 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage
 
+from app.agent_runtime.message_utils import flatten_base_messages
+
 logger = logging.getLogger(__name__)
 
 # Default rank for a sibling whose checkpoint isn't in ``checkpoint_rank_by_id``.
@@ -54,6 +56,28 @@ logger = logging.getLogger(__name__)
 # chain/leaf set that built the rank map), but the explicit sentinel documents
 # the ordering instead of leaving a bare ``-1`` magic number (ADR-021 review).
 _UNRANKED_SIBLING_RANK = -1
+
+
+def _unwrap_delta_snapshot(value: Any) -> Any:
+    """Unwrap LangGraph's exact DeltaChannel snapshot wrapper when available.
+
+    ``_DeltaSnapshot`` is an internal LangGraph serde type, so keep the import
+    local to the checkpointer boundary. If a future LangGraph release removes
+    it, normal checkpoint reads keep their legacy behavior instead of making
+    all message conversion imports fail.
+    """
+
+    try:
+        from langgraph.checkpoint.serde.types import _DeltaSnapshot
+    except ImportError:
+        return value
+    return value.value if isinstance(value, _DeltaSnapshot) else value
+
+
+def _normalize_checkpoint_messages(value: Any, *, source: str) -> list[BaseMessage]:
+    """Materialize an exact checkpoint value into the flat message invariant."""
+
+    return flatten_base_messages(_unwrap_delta_snapshot(value), source=source)
 
 
 @dataclass
@@ -145,7 +169,7 @@ async def _collect_checkpoints(
             _CheckpointSlim(
                 checkpoint_id=header.checkpoint_id,
                 parent_checkpoint_id=header.parent_checkpoint_id,
-                messages=list(msgs or []),
+                messages=msgs,
             )
         )
     return out
@@ -196,10 +220,13 @@ async def _messages_for_header(
 ) -> list[BaseMessage]:
     msgs = header.messages
     if msgs is None and "messages" in header.versions:
-        msgs = await materialize_messages_at_checkpoint(
+        return await materialize_messages_at_checkpoint(
             checkpointer, thread_id, header.checkpoint_id
         )
-    return list(msgs or [])
+    return _normalize_checkpoint_messages(
+        msgs,
+        source=f"checkpoint {header.checkpoint_id} messages",
+    )
 
 
 async def materialize_messages_at_checkpoint(
@@ -218,7 +245,6 @@ async def materialize_messages_at_checkpoint(
     DeltaChannel (e.g. the test fake).
     """
 
-    from langgraph.checkpoint.serde.types import _DeltaSnapshot
     from langgraph.types import Overwrite
 
     cfg = {"configurable": {"thread_id": thread_id, "checkpoint_id": checkpoint_id}}
@@ -230,7 +256,10 @@ async def materialize_messages_at_checkpoint(
         if tup is None:
             return []
         cv_msgs = (tup.checkpoint or {}).get("channel_values", {}).get("messages")
-        return list(cv_msgs or [])
+        return _normalize_checkpoint_messages(
+            cv_msgs,
+            source=f"checkpoint {checkpoint_id} fallback channel value",
+        )
     except Exception:  # noqa: BLE001
         logger.warning(
             "aget_delta_channel_history failed for checkpoint %s", checkpoint_id, exc_info=True
@@ -240,19 +269,23 @@ async def materialize_messages_at_checkpoint(
     if history is None:
         return []
     seed = history.get("seed")
-    if isinstance(seed, _DeltaSnapshot):
-        base: list[BaseMessage] = list(seed.value or [])
-    elif isinstance(seed, list):
-        base = list(seed)
-    else:
-        base = []
+    base = _normalize_checkpoint_messages(
+        seed,
+        source=f"checkpoint {checkpoint_id} DeltaChannel seed",
+    )
     for _, _, batch in history.get("writes", []):
         if isinstance(batch, Overwrite):
-            base = list(batch.value or [])
-        elif isinstance(batch, list):
-            base.extend(batch)
-        elif batch is not None:
-            base.append(batch)
+            base = _normalize_checkpoint_messages(
+                batch.value,
+                source=f"checkpoint {checkpoint_id} DeltaChannel overwrite",
+            )
+        else:
+            base.extend(
+                _normalize_checkpoint_messages(
+                    batch,
+                    source=f"checkpoint {checkpoint_id} DeltaChannel write",
+                )
+            )
     return base
 
 

@@ -637,6 +637,38 @@ async def test_list_messages_with_data(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_list_messages_flattens_nested_checkpoint_message_batch(client: AsyncClient):
+    """A nested checkpoint batch must still render through GET /messages."""
+
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+    messages = [
+        HumanMessage(content="Hello", id=str(uuid.uuid4())),
+        AIMessage(content="Hi!", id=str(uuid.uuid4())),
+    ]
+
+    async def _alist(_config):
+        yield type(
+            "CT",
+            (),
+            {
+                "config": {"configurable": {"checkpoint_id": "ck1"}},
+                "parent_config": None,
+                "checkpoint": {"channel_values": {"messages": [messages]}},
+            },
+        )()
+
+    with patch("app.agent_runtime.checkpointer.get_checkpointer") as mock_cp:
+        mock_cp.return_value.alist = _alist
+        resp = await client.get(f"/api/conversations/{conv_id}/messages")
+
+    assert resp.status_code == 200
+    assert [message["role"] for message in resp.json()["messages"]] == ["user", "assistant"]
+
+
+@pytest.mark.asyncio
 async def test_list_messages_does_not_write_missing_timestamps_on_read(client: AsyncClient):
     from langchain_core.messages import AIMessage, HumanMessage
     from sqlalchemy import select

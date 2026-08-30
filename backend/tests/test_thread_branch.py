@@ -22,6 +22,8 @@ from app.services.thread_branch_service import (
     _build_tree_from_checkpoints,
     _build_tree_from_leaf_checkpoints,
     _CheckpointSlim,
+    _collect_checkpoints,
+    materialize_messages_at_checkpoint,
     rewind_to_checkpoint_before_message,
 )
 from tests.conftest import TEST_USER_ID, TestSession
@@ -34,6 +36,116 @@ from tests.conftest import TEST_USER_ID, TestSession
 def _msg(role: str, mid: str, text: str) -> Any:
     cls = HumanMessage if role == "user" else AIMessage
     return cls(content=text, id=mid)
+
+
+@pytest.mark.asyncio
+async def test_materialize_messages_flattens_nested_delta_seed_and_writes(caplog):
+    """DeltaChannel containers may nest message batches, but message content stays intact."""
+
+    from langgraph.checkpoint.serde.types import _DeltaSnapshot
+
+    seed = _msg("user", "u1", "seed")
+    nested_content = [{"type": "text", "text": "multi-block content"}]
+    appended = AIMessage(content=nested_content, id="a1")
+
+    class _DeltaCheckpointer:
+        async def aget_delta_channel_history(
+            self, *, config: dict[str, Any], channels: list[str]
+        ) -> dict[str, Any]:
+            assert config["configurable"]["checkpoint_id"] == "ck1"
+            assert channels == ["messages"]
+            return {
+                "messages": {
+                    "seed": _DeltaSnapshot(value=[[seed], "invalid"]),
+                    "writes": [("", "", [[appended]])],
+                }
+            }
+
+    messages = await materialize_messages_at_checkpoint(_DeltaCheckpointer(), "thread", "ck1")
+
+    assert messages == [seed, appended]
+    assert appended.content == nested_content
+    assert "Dropping malformed checkpoint message value" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_materialize_messages_flattens_nested_overwrite_value():
+    """A fork/regenerate Overwrite replaces prior messages with a flat message sequence."""
+
+    from langgraph.checkpoint.serde.types import _DeltaSnapshot
+    from langgraph.types import Overwrite
+
+    seed = _msg("user", "u1", "seed")
+    replacement = _msg("user", "u2", "replacement")
+    appended = _msg("ai", "a2", "reply")
+
+    class _DeltaCheckpointer:
+        async def aget_delta_channel_history(
+            self, *, config: dict[str, Any], channels: list[str]
+        ) -> dict[str, Any]:
+            return {
+                "messages": {
+                    "seed": _DeltaSnapshot(value=[seed]),
+                    "writes": [
+                        ("", "", Overwrite(value=[[replacement]])),
+                        ("", "", [[appended]]),
+                    ],
+                }
+            }
+
+    messages = await materialize_messages_at_checkpoint(_DeltaCheckpointer(), "thread", "ck1")
+
+    assert messages == [replacement, appended]
+
+
+@pytest.mark.asyncio
+async def test_materialize_messages_flattens_nested_fallback_channel_value():
+    """Legacy savers keep the same flat-message contract when their channel value is nested."""
+
+    user = _msg("user", "u1", "fallback")
+    assistant = _msg("ai", "a1", "reply")
+
+    class _LegacyCheckpointer:
+        async def aget_tuple(self, _config: dict[str, Any]) -> Any:
+            return type(
+                "Tuple",
+                (),
+                {"checkpoint": {"channel_values": {"messages": [[user], [assistant]]}}},
+            )()
+
+    messages = await materialize_messages_at_checkpoint(_LegacyCheckpointer(), "thread", "ck1")
+
+    assert messages == [user, assistant]
+
+
+@pytest.mark.asyncio
+async def test_collect_checkpoints_unwraps_delta_snapshot_channel_value(caplog):
+    """A persisted DeltaChannel snapshot is a message container, not malformed state."""
+
+    from langgraph.checkpoint.serde.types import _DeltaSnapshot
+
+    user = _msg("user", "u1", "snapshot")
+    assistant = _msg("ai", "a1", "reply")
+
+    class _SnapshotCheckpointer:
+        async def alist(self, _config: dict[str, Any]) -> AsyncIterator[Any]:
+            yield type(
+                "Tuple",
+                (),
+                {
+                    "config": {"configurable": {"checkpoint_id": "ck1"}},
+                    "parent_config": None,
+                    "checkpoint": {
+                        "channel_values": {"messages": _DeltaSnapshot(value=[[user, assistant]])},
+                        "channel_versions": {},
+                    },
+                },
+            )()
+
+    checkpoints = await _collect_checkpoints(_SnapshotCheckpointer(), "thread")
+
+    assert checkpoints[0].messages == [user, assistant]
+    assert "Dropping malformed checkpoint message value" not in caplog.text
 
 
 def test_build_tree_single_branch():
@@ -799,6 +911,49 @@ async def test_regenerate_targeted_assistant_uses_correct_checkpoint(
     assert isinstance(ow, Overwrite)
     assert len(ow.value) == 3
     assert [m.content for m in ow.value] == ["안녕?", "안녕!", "정말 슬펐어"]
+
+
+@pytest.mark.asyncio
+async def test_regenerate_flattens_nested_legacy_checkpoint_messages(client: AsyncClient):
+    """Regenerate writes a flat Overwrite even when legacy checkpoint values are nested."""
+
+    _agent_id, conv_id = await _seed_agent_and_conv()
+    user = _msg("user", "u1", "질문")
+    assistant = _msg("ai", "a1", "기존 응답")
+    nested_parent_messages: Any = [[user]]
+    nested_leaf_messages: Any = [[user, assistant]]
+    parent = _CheckpointSlim(
+        checkpoint_id="ck0",
+        parent_checkpoint_id=None,
+        messages=nested_parent_messages,
+    )
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck1",
+        parent_checkpoint_id="ck0",
+        messages=nested_leaf_messages,
+    )
+    fake_cp = _FakeCheckpointer([leaf, parent])
+    captured: list[Any] = []
+
+    async def mock_stream(cfg: Any, messages_history: Any, **_kwargs: Any):
+        captured.append((cfg, messages_history))
+        yield 'event: message_end\ndata: {"content": "새 응답", "usage": {}}\n\n'
+
+    with (
+        patch("app.agent_runtime.checkpointer.get_checkpointer", return_value=fake_cp),
+        patch(
+            "app.routers.conversation_branches.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+    ):
+        response = await client.post(f"/api/conversations/{conv_id}/messages/regenerate", json={})
+
+    assert response.status_code == 200
+    from langgraph.types import Overwrite
+
+    overwrite = captured[0][1]["messages"]
+    assert isinstance(overwrite, Overwrite)
+    assert overwrite.value == [user]
 
 
 @pytest.mark.asyncio
