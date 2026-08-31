@@ -1,5 +1,9 @@
 """Runtime component builder — 에이전트 실행 컴포넌트 조립 오케스트레이터.
 
+This module is intentionally a narrow legacy compatibility facade. Its import
+and monkeypatch surface is larger than the leaf-module size target, while new
+implementation belongs in the extracted factory and preparation modules.
+
 BE-S10: 모델 후보/폴백(``runtime.models``), 신뢰성 미들웨어
 (``runtime.reliability``), HiTL 인터럽트 정책(``runtime.interrupts``),
 프롬프트 블록(``runtime.prompts``), 장기 기억 컨텍스트
@@ -23,18 +27,40 @@ import logging
 import time
 import uuid
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from deepagents import create_deep_agent
 from deepagents.backends import StateBackend
 from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
 from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT
 from deepagents.middleware.summarization import create_summarization_middleware
-from langchain.agents.middleware import TodoListMiddleware
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
-from app.agent_runtime.filesystem_permission_middleware import MoldyFilesystemMiddleware
+from app.agent_runtime.deep_agent_factory import (
+    DeepAgentFactoryBindings as _DeepAgentFactoryBindings,
+)
+from app.agent_runtime.deep_agent_factory import (
+    actor_backend_impl as _actor_backend_impl,
+)
+from app.agent_runtime.deep_agent_factory import (
+    build_agent_impl as _build_agent_impl,
+)
+from app.agent_runtime.deep_agent_factory import (
+    build_moldy_filesystem_middleware_impl as _build_moldy_filesystem_middleware_impl,
+)
+from app.agent_runtime.deep_agent_factory import (
+    middleware_name_impl as _middleware_name_impl,
+)
+from app.agent_runtime.deep_agent_factory import (
+    normalize_declarative_subagents_impl as _normalize_declarative_subagents_impl,
+)
+from app.agent_runtime.deep_agent_factory import (
+    with_actor_summarization_impl as _with_actor_summarization_impl,
+)
+from app.agent_runtime.deep_agent_factory import (
+    with_moldy_deepagents_compatibility_impl as _with_moldy_deepagents_compatibility_impl,
+)
 from app.agent_runtime.filesystem_permissions import (
     add_scoped_offload_permissions,
     build_filesystem_permissions,
@@ -49,9 +75,7 @@ from app.agent_runtime.middleware_registry import (
 from app.agent_runtime.model_factory import create_chat_model as create_chat_model
 from app.agent_runtime.offload_storage import (
     GENERAL_PURPOSE_ACTOR,
-    OffloadIdentity,
     ScopedOffloadBackend,
-    ScopedOffloadStorage,
 )
 from app.agent_runtime.run_secrets import add_run_secrets, collect_secret_values
 from app.agent_runtime.runtime.interrupts import _build_interrupt_on_policy
@@ -109,8 +133,43 @@ from app.agent_runtime.runtime.reliability import (
     _has_visible_ai_content as _has_visible_ai_content,
 )
 from app.agent_runtime.runtime_config import _DATA_DIR, AgentConfig, RuntimeComponents
+from app.agent_runtime.runtime_preparation import (
+    prepare_runtime_components_impl as _prepare_runtime_components_impl,
+)
+from app.agent_runtime.runtime_preparation_skill_builder import (
+    prepare_skill_builder_components_impl as _prepare_skill_builder_components_impl,
+)
+from app.agent_runtime.runtime_preparation_support import (
+    RuntimePreparationBindings as _RuntimePreparationBindings,
+)
+from app.agent_runtime.runtime_preparation_support import (
+    add_skill_secrets_to_run_impl as _add_skill_secrets_to_run_impl,
+)
+from app.agent_runtime.runtime_preparation_support import (
+    append_builtin_tools_impl as _append_builtin_tools_impl,
+)
+from app.agent_runtime.runtime_preparation_support import (
+    build_runtime_skills_prompt as _build_runtime_skills_prompt_impl,
+)
+from app.agent_runtime.runtime_preparation_support import (
+    configured_recursion_limit_impl as _configured_recursion_limit_impl,
+)
+from app.agent_runtime.runtime_preparation_support import (
+    runtime_db_session_factory as _runtime_db_session_factory_impl,
+)
+from app.agent_runtime.runtime_preparation_support import (
+    scoped_runtime_backend_impl as _scoped_runtime_backend_impl,
+)
+from app.agent_runtime.runtime_preparation_support import (
+    selected_skill_slugs_impl as _selected_skill_slugs_impl,
+)
 from app.agent_runtime.skill_builder.chat_prompt import load_skill_builder_prompt
-from app.agent_runtime.skill_builder.tools import build_skill_builder_tools
+from app.agent_runtime.skill_builder.tools import (
+    SESSION_CONSENT_ELIGIBLE_TOOLS as _SESSION_CONSENT_ELIGIBLE_TOOLS,
+)
+from app.agent_runtime.skill_builder.tools import (
+    build_skill_builder_tools,
+)
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.agent_runtime.skill_tool_dependencies import build_skill_dependency_tool_configs
 from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_for_runtime
@@ -151,8 +210,7 @@ _DB_FREE_ACTOR_ID = uuid.UUID("00000000-0000-4000-8000-000000000000")
 def _middleware_name(middleware: Any) -> str | None:
     """Return a middleware's public name without assuming a concrete type."""
 
-    name = getattr(middleware, "name", None)
-    return name if isinstance(name, str) else None
+    return _middleware_name_impl(middleware)
 
 
 def _build_moldy_filesystem_middleware(
@@ -162,16 +220,11 @@ def _build_moldy_filesystem_middleware(
 ) -> FilesystemMiddleware:
     """Build Moldy's deliberately non-deleting Deep Agents filesystem layer."""
 
-    effective_permissions = permissions
-    if permissions is not None and isinstance(backend, ScopedOffloadBackend):
-        effective_permissions = add_scoped_offload_permissions(
-            permissions,
-            backend.artifacts_root,
-        )
-    return MoldyFilesystemMiddleware(
+    return _build_moldy_filesystem_middleware_impl(
         backend=backend,
-        tools=list(_MOLDY_FILESYSTEM_TOOL_NAMES),
-        permissions=effective_permissions,
+        permissions=permissions,
+        filesystem_tool_names=_MOLDY_FILESYSTEM_TOOL_NAMES,
+        add_scoped_permissions=add_scoped_offload_permissions,
     )
 
 
@@ -189,26 +242,21 @@ def _with_moldy_deepagents_compatibility(
     unrelated middleware retain their caller-provided relative order.
     """
 
-    retained = [
-        item
-        for item in (middleware or ())
-        if _middleware_name(item) not in {_FILESYSTEM_MIDDLEWARE_NAME, _TODO_LIST_MIDDLEWARE_NAME}
-    ]
-    return [
-        _build_moldy_filesystem_middleware(backend=backend, permissions=permissions),
-        TodoListMiddleware(),
-        *retained,
-    ]
+    return _with_moldy_deepagents_compatibility_impl(
+        middleware,
+        backend=backend,
+        permissions=permissions,
+        middleware_name=_middleware_name,
+        build_filesystem_middleware=_build_moldy_filesystem_middleware,
+        filesystem_middleware_name=_FILESYSTEM_MIDDLEWARE_NAME,
+        todo_list_middleware_name=_TODO_LIST_MIDDLEWARE_NAME,
+    )
 
 
 def _actor_backend(backend: Any, actor_id: uuid.UUID | str | None) -> Any:
     """Return an actor-scoped backend when Moldy's scoped backend is active."""
 
-    if not isinstance(backend, ScopedOffloadBackend):
-        return backend
-    if actor_id is None:
-        raise ValueError("declarative subagent is missing its trusted actor identity")
-    return backend.for_actor(actor_id)
+    return _actor_backend_impl(backend, actor_id)
 
 
 def _with_actor_summarization(
@@ -219,12 +267,14 @@ def _with_actor_summarization(
 ) -> list[Any]:
     """Replace Deep Agents' child summarizer with one using the child's backend."""
 
-    if not isinstance(backend, ScopedOffloadBackend):
-        return middleware
-    retained = [
-        item for item in middleware if _middleware_name(item) != _SUMMARIZATION_MIDDLEWARE_NAME
-    ]
-    return [*retained, create_summarization_middleware(model, backend)]
+    return _with_actor_summarization_impl(
+        middleware,
+        model=model,
+        backend=backend,
+        middleware_name=_middleware_name,
+        create_summarization_middleware=create_summarization_middleware,
+        summarization_middleware_name=_SUMMARIZATION_MIDDLEWARE_NAME,
+    )
 
 
 def _scoped_runtime_backend(
@@ -233,28 +283,12 @@ def _scoped_runtime_backend(
     run_id: str | None,
 ) -> ScopedOffloadBackend:
     """Build the trusted owner/conversation/run/actor storage boundary."""
-
-    if run_id is None:
-        raise ValueError("run_id is required when scoped offload storage is enabled")
-    owner_id = cfg.agent_owner_user_id or cfg.user_id or "db-free"
-    if cfg.agent_id is not None:
-        try:
-            actor_id: uuid.UUID = uuid.UUID(cfg.agent_id)
-        except ValueError:
-            # Older DB-free callers and fixtures used opaque identifiers here.
-            # Keep them isolated without ever using the raw value as a path.
-            actor_id = uuid.uuid5(uuid.NAMESPACE_URL, f"moldy-agent:{cfg.agent_id}")
-    else:
-        actor_id = _DB_FREE_ACTOR_ID
-    storage = ScopedOffloadStorage(
+    return _scoped_runtime_backend_impl(
+        cfg,
+        run_id=run_id,
         data_dir=_DATA_DIR,
-        identity=OffloadIdentity(
-            owner_id=owner_id,
-            conversation_id=cfg.thread_id,
-            run_id=run_id,
-        ),
+        db_free_actor_id=_DB_FREE_ACTOR_ID,
     )
-    return storage.for_actor(actor_id)
 
 
 def _normalize_declarative_subagents(
@@ -275,65 +309,22 @@ def _normalize_declarative_subagents(
     copied before normalizing their effective middleware and inherited fields.
     """
 
-    normalized: list[dict[str, Any]] = []
-    has_general_purpose = False
-    for spec in subagents or ():
-        if spec.get("name") == _GENERAL_PURPOSE_SUBAGENT_NAME:
-            has_general_purpose = True
-
-        if "runnable" in spec or "graph_id" in spec:
-            normalized.append(spec)
-            continue
-
-        child_permissions = spec.get("permissions", permissions)
-        child = dict(spec)
-        actor_id = child.pop(
-            _MOLDY_ACTOR_ID_KEY,
-            GENERAL_PURPOSE_ACTOR if spec.get("name") == _GENERAL_PURPOSE_SUBAGENT_NAME else None,
-        )
-        if isinstance(backend, ScopedOffloadBackend) and actor_id is None:
-            raise ValueError("declarative subagent is missing its trusted actor identity")
-        child_backend = _actor_backend(backend, actor_id)
-        child_model = cast(BaseChatModel, child.get("model", model))
-        child_middleware = _with_moldy_deepagents_compatibility(
-            spec.get("middleware"),
-            backend=child_backend,
-            permissions=child_permissions,
-        )
-        child["middleware"] = _with_actor_summarization(
-            child_middleware,
-            model=child_model,
-            backend=child_backend,
-        )
-        normalized.append(child)
-
-    if not has_general_purpose:
-        general_purpose = dict(GENERAL_PURPOSE_SUBAGENT)
-        general_purpose_backend = _actor_backend(backend, GENERAL_PURPOSE_ACTOR)
-        general_purpose_middleware = _with_moldy_deepagents_compatibility(
-            None,
-            backend=general_purpose_backend,
-            permissions=permissions,
-        )
-        general_purpose.update(
-            {
-                "model": model,
-                "tools": list(tools),
-                "middleware": general_purpose_middleware,
-                "permissions": permissions,
-                "interrupt_on": interrupt_on,
-            }
-        )
-        general_purpose["middleware"] = _with_actor_summarization(
-            general_purpose_middleware,
-            model=model,
-            backend=general_purpose_backend,
-        )
-        if skills is not None:
-            general_purpose["skills"] = list(skills)
-        normalized.insert(0, general_purpose)
-
-    return normalized
+    return _normalize_declarative_subagents_impl(
+        subagents,
+        model=model,
+        tools=tools,
+        backend=backend,
+        permissions=permissions,
+        interrupt_on=interrupt_on,
+        skills=skills,
+        actor_backend=_actor_backend,
+        with_compatibility=_with_moldy_deepagents_compatibility,
+        with_actor_summarization=_with_actor_summarization,
+        general_purpose_subagent=GENERAL_PURPOSE_SUBAGENT,
+        general_purpose_subagent_name=_GENERAL_PURPOSE_SUBAGENT_NAME,
+        actor_id_key=_MOLDY_ACTOR_ID_KEY,
+        general_purpose_actor=GENERAL_PURPOSE_ACTOR,
+    )
 
 
 def build_agent(
@@ -353,59 +344,40 @@ def build_agent(
     subagents: list[dict[str, Any]] | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
-    resolved_backend = backend if backend is not None else StateBackend()
-    compatible_middleware = _with_moldy_deepagents_compatibility(
-        middleware,
-        backend=resolved_backend,
-        permissions=permissions,
-    )
-    compatible_subagents = _normalize_declarative_subagents(
-        subagents,
-        model=model,
-        tools=tools,
-        backend=resolved_backend,
-        permissions=permissions,
-        interrupt_on=interrupt_on,
-        skills=skills,
-    )
-    return create_deep_agent(
+    return _build_agent_impl(
         model=model,
         tools=tools,
         system_prompt=system_prompt,
-        middleware=compatible_middleware,
-        interrupt_on=interrupt_on,  # type: ignore[arg-type]  # bool/dict 양쪽 지원
+        middleware=middleware,
+        interrupt_on=interrupt_on,
         checkpointer=checkpointer,
         store=store,
-        backend=resolved_backend,
+        backend=backend,
         skills=skills,
         memory=memory,
         permissions=permissions,
         name=name,
-        subagents=cast(Any, compatible_subagents),
+        subagents=subagents,
+        bindings=_DeepAgentFactoryBindings(
+            create_deep_agent=create_deep_agent,
+            with_compatibility=_with_moldy_deepagents_compatibility,
+            normalize_subagents=_normalize_declarative_subagents,
+        ),
     )
 
 
 def _configured_recursion_limit(cfg: AgentConfig) -> int | None:
-    raw = (cfg.model_params or {}).get("recursion_limit")
-    if raw is None:
-        return None
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return None
-    return value if value > 0 else None
+    return _configured_recursion_limit_impl(cfg)
 
 
 def _append_temporal_tools(tools: list[BaseTool]) -> None:
     """Ensure date/time grounding tools are always available to agents."""
 
-    existing = {tool.name for tool in tools}
-    for key in _TEMPORAL_BUILTIN_TOOL_KEYS:
-        tool = create_builtin_tool(key)
-        if tool is None or tool.name in existing:
-            continue
-        tools.append(tool)
-        existing.add(tool.name)
+    _append_builtin_tools_impl(
+        tools,
+        keys=_TEMPORAL_BUILTIN_TOOL_KEYS,
+        create_builtin_tool=create_builtin_tool,
+    )
 
 
 def _append_e2e_scripted_search_tool(tools: list[BaseTool]) -> None:
@@ -421,11 +393,11 @@ def _append_e2e_scripted_search_tool(tools: list[BaseTool]) -> None:
 
     if not settings.e2e_scripted_model_enabled:
         return
-    existing = {tool.name for tool in tools}
-    tool = create_builtin_tool("builtin:e2e_scripted_search")
-    if tool is None or tool.name in existing:
-        return
-    tools.append(tool)
+    _append_builtin_tools_impl(
+        tools,
+        keys=("builtin:e2e_scripted_search",),
+        create_builtin_tool=create_builtin_tool,
+    )
 
 
 def _append_e2e_ui_data_demo_tool(tools: list[BaseTool]) -> None:
@@ -438,11 +410,11 @@ def _append_e2e_ui_data_demo_tool(tools: list[BaseTool]) -> None:
 
     if not settings.e2e_scripted_model_enabled:
         return
-    existing = {tool.name for tool in tools}
-    tool = create_builtin_tool("builtin:e2e_ui_data_demo")
-    if tool is None or tool.name in existing:
-        return
-    tools.append(tool)
+    _append_builtin_tools_impl(
+        tools,
+        keys=("builtin:e2e_ui_data_demo",),
+        create_builtin_tool=create_builtin_tool,
+    )
 
 
 def _add_skill_secrets_to_run(skill_ctx: Any, cfg: AgentConfig) -> None:
@@ -460,22 +432,16 @@ def _add_skill_secrets_to_run(skill_ctx: Any, cfg: AgentConfig) -> None:
     credentials must land there too or they'd escape error_message redaction.
     """
 
-    for descriptor in getattr(skill_ctx, "descriptors", {}).values():
-        for binding in getattr(descriptor, "credential_bindings", {}).values():
-            decrypted = getattr(binding, "decrypted", None)
-            add_run_secrets(decrypted)
-            cfg.secret_values.update(collect_secret_values(decrypted))
+    _add_skill_secrets_to_run_impl(
+        skill_ctx,
+        cfg,
+        add_run_secrets=add_run_secrets,
+        collect_secret_values=collect_secret_values,
+    )
 
 
 def _selected_skill_slugs(agent_skills: list[dict[str, Any]] | None) -> list[str]:
-    if not agent_skills:
-        return []
-    slugs: list[str] = []
-    for raw in agent_skills:
-        slug = raw.get("slug")
-        if isinstance(slug, str) and slug:
-            slugs.append(slug)
-    return slugs
+    return _selected_skill_slugs_impl(agent_skills)
 
 
 async def _prepare_skill_builder_components(
@@ -486,92 +452,59 @@ async def _prepare_skill_builder_components(
     run_id: str | None = None,
     scope_offload_backend: bool = False,
 ) -> RuntimeComponents:
-    """``runtime_profile='skill_builder'`` 전용 분기 (스펙 AD-3).
+    """Build the isolated Skill Builder runtime through fresh facade bindings."""
 
-    표준 경로와의 차이: 코드 정의 프롬프트(``skill_builder/prompt.md``)로 교체,
-    ``tools_config`` 루프·``execute_in_skill``·memory 도구·subagents·스킬 마운트
-    전부 생략, 빌더 도구(validate_skill/generate_evals) append, 드래프트
-    워크스페이스를 쓰기 가능 마운트. ``ask_user``/temporal 도구는 유지(명료화
-    질문). 모델은 ``resolve_agent_context`` 가 이미 System LLM(text_primary)로
-    재해석해 cfg에 채워 둔 값을 그대로 쓴다 (ADR-019).
-    """
-
-    workspace_path = cfg.draft_workspace_path or ""
-    system_prompt = _system_prompt_with_temporal_context(load_skill_builder_prompt(workspace_path))
-    model_candidates = _build_model_candidates(cfg)
-    model = model_candidates[0]
-
-    langchain_tools: list[BaseTool] = []
-    if cfg.skill_builder_session_id and workspace_path:
-        from app.database import async_session as _session_factory
-
-        langchain_tools.extend(
-            build_skill_builder_tools(
-                session_id=cfg.skill_builder_session_id,
-                workspace_path=workspace_path,
-                session_factory=_session_factory,
-                user_id=cfg.user_id,
-                agent_id=cfg.agent_id,
-                credential_subject_user_id=cfg.credential_subject_user_id,
-                include_runtime_tools=True,
-                consented_tools=cfg.skill_builder_consented_tools,
-            )
-        )
-    _append_temporal_tools(langchain_tools)
-
-    middleware = _build_default_reliability_middleware(
-        model_candidates,
-        configured_types=set(),
-    )
-    middleware += get_provider_middleware(cfg.provider)
-
-    backend = (
-        _scoped_runtime_backend(cfg, run_id=run_id) if scope_offload_backend else StateBackend()
-    )
-    permissions = build_filesystem_permissions(
-        thread_id=cfg.thread_id,
-        agent_id=cfg.agent_id,
-        user_id=cfg.user_id,
-        selected_skill_slugs=[],
-        agent_runtime_name=cfg.agent_runtime_name,
-        draft_workspace_path=workspace_path or None,
-    )
-
-    if include_ask_user and not is_trigger_mode:
-        system_prompt += "\n\n" + _interactive_tool_instruction_prompt()
-        langchain_tools.append(ask_user_tool)
-
-    interrupt_on = _build_interrupt_on_policy(
-        None,
-        langchain_tools,
-        include_ask_user=any(t.name == "ask_user" for t in langchain_tools),
+    return await _prepare_skill_builder_components_impl(
+        cfg,
         is_trigger_mode=is_trigger_mode,
+        include_ask_user=include_ask_user,
+        run_id=run_id,
+        scope_offload_backend=scope_offload_backend,
+        bindings=_runtime_preparation_bindings(),
     )
-    if interrupt_on:
-        # AD-3 과승인 방지 — 드래프트 점진 편집이 빌더의 핵심 UX이고 파일
-        # 도구는 M2 권한으로 워크스페이스에 스코프되어 있으므로, deepagents
-        # 기본 정책의 write_file/edit_file 승인 카드는 제외한다.
-        for fs_tool_name in ("write_file", "edit_file"):
-            interrupt_on.pop(fs_tool_name, None)
-        # AD-4 세션 동의 — 동의된 도구는 정책에서 제외 (finalize_skill 불가,
-        # requires_network 재검증은 resolve_agent_context 가 수행).
-        from app.agent_runtime.skill_builder.tools import SESSION_CONSENT_ELIGIBLE_TOOLS
 
-        for consented in cfg.skill_builder_consented_tools or []:
-            if consented in SESSION_CONSENT_ELIGIBLE_TOOLS:
-                interrupt_on.pop(consented, None)
 
-    return RuntimeComponents(
-        model_candidates=model_candidates,
-        model=model,
-        tools=langchain_tools,
-        middleware=middleware,
-        system_prompt=system_prompt,
-        skills_sources=None,
-        backend=backend,
-        memory_sources=None,
-        permissions=permissions,
-        interrupt_on=interrupt_on or None,
+def _runtime_preparation_bindings() -> _RuntimePreparationBindings:
+    """Capture the facade's current preparation collaborators for one call."""
+
+    return _RuntimePreparationBindings(
+        data_dir=_DATA_DIR,
+        conversation_output_dir=Path(settings.conversation_output_dir),
+        deepagent_builtin_types=DEEPAGENT_BUILTIN_TYPES,
+        state_backend=StateBackend,
+        perf_counter=time.perf_counter,
+        system_prompt_with_temporal_context=_system_prompt_with_temporal_context,
+        artifact_file_instruction_prompt=_artifact_file_instruction_prompt,
+        interactive_tool_instruction_prompt=_interactive_tool_instruction_prompt,
+        build_model_candidates=_build_model_candidates,
+        build_skill_dependency_tool_configs=build_skill_dependency_tool_configs,
+        create_tool_for_runtime=create_tool_for_runtime,
+        build_mcp_tools=_build_mcp_tools,
+        append_temporal_tools=_append_temporal_tools,
+        append_e2e_scripted_search_tool=_append_e2e_scripted_search_tool,
+        append_e2e_ui_data_demo_tool=_append_e2e_ui_data_demo_tool,
+        memory_write_policy_for_run=_memory_write_policy_for_run,
+        build_memory_tools=build_memory_tools,
+        resolve_middleware_model_params=_resolve_middleware_model_params,
+        build_default_reliability_middleware=_build_default_reliability_middleware,
+        build_middleware_instances=build_middleware_instances,
+        get_provider_middleware=get_provider_middleware,
+        scoped_runtime_backend=_scoped_runtime_backend,
+        build_skill_runtime_context=build_skill_runtime_context,
+        runtime_db_session_factory=_runtime_db_session_factory_impl,
+        resolve_runtime_credentials=resolve_runtime_credentials,
+        add_skill_secrets_to_run=_add_skill_secrets_to_run,
+        create_skill_execute_tool=_create_skill_execute_tool,
+        build_skills_prompt=_build_runtime_skills_prompt_impl,
+        memory_tool_instruction_prompt=_memory_tool_instruction_prompt,
+        load_memory_context=_load_memory_context,
+        build_filesystem_permissions=build_filesystem_permissions,
+        selected_skill_slugs=_selected_skill_slugs,
+        ask_user_tool=ask_user_tool,
+        build_interrupt_on_policy=_build_interrupt_on_policy,
+        load_skill_builder_prompt=load_skill_builder_prompt,
+        build_skill_builder_tools=build_skill_builder_tools,
+        session_consent_eligible_tools=_SESSION_CONSENT_ELIGIBLE_TOOLS,
     )
 
 
@@ -586,7 +519,6 @@ async def _prepare_runtime_components(
     scope_offload_backend: bool = False,
 ) -> RuntimeComponents:
     """Build reusable Deep Agents runtime pieces for a parent or child agent."""
-
     if cfg.runtime_profile == "skill_builder":
         return await _prepare_skill_builder_components(
             cfg,
@@ -595,177 +527,15 @@ async def _prepare_runtime_components(
             run_id=run_id,
             scope_offload_backend=scope_offload_backend,
         )
-
-    last_mark = time.perf_counter()
-
-    def mark_timing(name: str) -> None:
-        nonlocal last_mark
-        if timings is None:
-            return
-        now = time.perf_counter()
-        timings[name] = int((now - last_mark) * 1000)
-        last_mark = now
-
-    system_prompt = _system_prompt_with_temporal_context(cfg.system_prompt)
-    system_prompt += "\n\n" + _artifact_file_instruction_prompt(cfg.thread_id)
-    if include_ask_user and not is_trigger_mode:
-        system_prompt += "\n\n" + _interactive_tool_instruction_prompt()
-    model_candidates = _build_model_candidates(cfg)
-    model = model_candidates[0]
-    mark_timing("model_ms")
-
-    langchain_tools: list[BaseTool] = []
-    mcp_configs: list[dict] = []
-    runtime_tool_configs = [
-        *cfg.tools_config,
-        *build_skill_dependency_tool_configs(
-            agent_skills=cfg.agent_skills or [],
-            existing_tool_configs=cfg.tools_config,
-            user_id=cfg.user_id,
-            agent_id=cfg.agent_id,
-        ),
-    ]
-
-    for tc in runtime_tool_configs:
-        if tc.get("mcp_server_url"):
-            mcp_configs.append(tc)
-            continue
-        tool = create_tool_for_runtime(tc)
-        if tool is not None:
-            langchain_tools.append(tool)
-
-    langchain_tools.extend(await _build_mcp_tools(mcp_configs))
-    _append_temporal_tools(langchain_tools)
-    _append_e2e_scripted_search_tool(langchain_tools)
-    _append_e2e_ui_data_demo_tool(langchain_tools)
-
-    memory_write_policy = await _memory_write_policy_for_run(
+    return await _prepare_runtime_components_impl(
         cfg,
         is_trigger_mode=is_trigger_mode,
-    )
-    memory_tools_enabled = cfg.user_id is not None and memory_write_policy != "off"
-    if memory_tools_enabled:
-        memory_user_id = cfg.user_id
-        assert memory_user_id is not None  # noqa: S101 — guarded by memory_tools_enabled (type narrowing)
-        langchain_tools.extend(
-            build_memory_tools(
-                user_id=memory_user_id,
-                agent_id=cfg.agent_id,
-                conversation_id=cfg.thread_id,
-                is_trigger_mode=is_trigger_mode,
-            )
-        )
-    mark_timing("tools_ms")
-
-    configured_mw_types = {
-        str(c.get("type")) for c in (cfg.middleware_configs or []) if c.get("type")
-    }
-    filtered_mw = [
-        c for c in (cfg.middleware_configs or []) if c.get("type") not in DEEPAGENT_BUILTIN_TYPES
-    ]
-    resolved_mw = _resolve_middleware_model_params(filtered_mw, cfg.provider_api_keys or {})
-    middleware = _build_default_reliability_middleware(
-        model_candidates,
-        configured_types=configured_mw_types,
-    )
-    middleware += build_middleware_instances(resolved_mw)
-    middleware += get_provider_middleware(cfg.provider)
-    mark_timing("middleware_ms")
-
-    backend = (
-        _scoped_runtime_backend(cfg, run_id=run_id) if scope_offload_backend else StateBackend()
-    )
-
-    skills_sources: list[str] | None = None
-    if cfg.agent_skills:
-        skill_ctx = build_skill_runtime_context(
-            cfg,
-            data_dir=_DATA_DIR,
-            output_root=Path(settings.conversation_output_dir),
-        )
-        if cfg.user_id:
-            from app.database import async_session as _async_session_factory
-
-            async with _async_session_factory() as _runtime_db:
-                await resolve_runtime_credentials(skill_ctx, db=_runtime_db, cfg=cfg)
-            # ADR-021 — union the just-resolved skill credential plaintext into
-            # the run-scoped redaction set (lazy path). No-op when the run
-            # ContextVar is unset (DB-free tests, trigger mode). Works for the
-            # parent run; subagents share the same in-place set object.
-            _add_skill_secrets_to_run(skill_ctx, cfg)
-        skills_virtual_prefix = (
-            f"/runtime/{cfg.thread_id}/agents/{cfg.agent_runtime_name}/skills/"
-            if cfg.agent_runtime_name
-            else f"/runtime/{cfg.thread_id}/skills/"
-        )
-        skills_sources = [skills_virtual_prefix]
-        langchain_tools.append(_create_skill_execute_tool(skill_ctx))
-        system_prompt += (
-            "\n\n## 스킬 사용 규칙\n"
-            "스킬을 사용할 때는 반드시 read_file 도구로 SKILL.md를 먼저 읽고 "
-            "그 안의 지시를 직접 따르세요. "
-            "스크립트 실행이 필요하면 execute_in_skill 도구를 사용하세요. "
-            "task 도구의 subagent_type에 스킬 이름을 넣지 마세요. "
-            "task 도구를 사용할 때 subagent_type은 task 도구 설명에 표시된 "
-            "available subagent types 중 하나여야 합니다.\n"
-            "스크립트 실행 후 OUTPUT_FILES에 이미지가 있으면 "
-            "![image](/api/conversations/" + cfg.thread_id + "/files/<파일명>) 형식으로 표시하세요."
-        )
-
-        from app.skills.prompt import build_skills_prompt
-
-        skills_block = build_skills_prompt(cfg.agent_skills)
-        if skills_block:
-            skills_block = skills_block.replace("/skills/", skills_virtual_prefix)
-            system_prompt += "\n" + skills_block
-
-    memory_sources: list[str] | None = None
-    if include_agent_memory_file and cfg.agent_id:
-        (_DATA_DIR / "agents" / cfg.agent_id).mkdir(parents=True, exist_ok=True)
-        memory_sources = [f"/agents/{cfg.agent_id}/AGENTS.md"]
-
-    if memory_tools_enabled:
-        system_prompt += "\n\n" + _memory_tool_instruction_prompt()
-
-    if include_agent_memory_file:
-        memory_prompt, recalled_memories = await _load_memory_context(cfg)
-        if memory_prompt:
-            system_prompt += "\n\n" + memory_prompt
-        if recalled_memories:
-            # 러너가 stream head에서 moldy.memory_recalled 이벤트로 방출한다.
-            # (subagent_display_names와 같은 cfg-경유 계약.)
-            cfg.recalled_memories = recalled_memories
-
-    permissions = build_filesystem_permissions(
-        thread_id=cfg.thread_id,
-        agent_id=cfg.agent_id,
-        user_id=cfg.user_id,
-        selected_skill_slugs=_selected_skill_slugs(cfg.agent_skills),
-        agent_runtime_name=cfg.agent_runtime_name,
-    )
-
-    if include_ask_user and not is_trigger_mode:
-        langchain_tools.append(ask_user_tool)
-
-    interrupt_on = _build_interrupt_on_policy(
-        cfg.middleware_configs,
-        langchain_tools,
-        include_ask_user=any(t.name == "ask_user" for t in langchain_tools),
-        is_trigger_mode=is_trigger_mode,
-    )
-    mark_timing("skills_filesystem_ms")
-
-    return RuntimeComponents(
-        model_candidates=model_candidates,
-        model=model,
-        tools=langchain_tools,
-        middleware=middleware,
-        system_prompt=system_prompt,
-        skills_sources=skills_sources,
-        backend=backend,
-        memory_sources=memory_sources,
-        permissions=permissions,
-        interrupt_on=interrupt_on,
+        include_ask_user=include_ask_user,
+        include_agent_memory_file=include_agent_memory_file,
+        timings=timings,
+        run_id=run_id,
+        scope_offload_backend=scope_offload_backend,
+        bindings=_runtime_preparation_bindings(),
     )
 
 
