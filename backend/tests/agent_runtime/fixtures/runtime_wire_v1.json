@@ -1,0 +1,733 @@
+{
+  "adapted_raw": [
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "content": "보고서를 만들겠습니다.",
+        "id": "assistant-wire-1",
+        "tool_calls": [
+          {
+            "args": {
+              "title": "주간 보고서"
+            },
+            "id": "call-report-1",
+            "name": "create_report"
+          }
+        ],
+        "type": "AIMessageChunk",
+        "usage_metadata": {
+          "input_token_details": {
+            "cache_creation": 2,
+            "cache_read": 3
+          },
+          "input_tokens": 11,
+          "output_tokens": 7
+        }
+      },
+      "id": "raw-message-1",
+      "method": "messages",
+      "namespace": [],
+      "run_id": "run-wire-contract-1",
+      "seq": 1,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-message-1"
+    },
+    {
+      "checkpoint_id": "checkpoint-wire-1",
+      "checkpoint_ns": "tools:call-report-1",
+      "data": {
+        "__interrupt__": [
+          {
+            "id": "interrupt-wire-1",
+            "value": {
+              "action_requests": [
+                {
+                  "args": {
+                    "title": "주간 보고서"
+                  },
+                  "name": "create_report"
+                }
+              ],
+              "review_configs": [
+                {
+                  "action_name": "create_report",
+                  "allowed_decisions": [
+                    "approve",
+                    "reject"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "messages": [
+          {
+            "content": "보고서를 만들겠습니다.",
+            "id": "assistant-wire-1",
+            "tool_calls": [
+              {
+                "args": {
+                  "title": "주간 보고서"
+                },
+                "id": "call-report-1",
+                "name": "create_report"
+              }
+            ],
+            "type": "ai"
+          },
+          {
+            "content": "report.md created",
+            "id": "tool-wire-1",
+            "name": "create_report",
+            "tool_call_id": "call-report-1",
+            "type": "tool"
+          }
+        ],
+        "todos": [
+          {
+            "content": "작성",
+            "id": "todo-wire-1",
+            "status": "done"
+          }
+        ]
+      },
+      "id": "raw-values-1",
+      "method": "values",
+      "namespace": [
+        "tools:call-report-1"
+      ],
+      "run_id": "run-wire-contract-1",
+      "seq": 2,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-values-1"
+    },
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "name": "vendor.progress",
+        "payload": {
+          "stage": "done"
+        }
+      },
+      "id": "raw-vendor-1",
+      "method": "custom",
+      "namespace": [
+        "tools:call-report-1"
+      ],
+      "run_id": "run-wire-contract-1",
+      "seq": 3,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-vendor-1"
+    },
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "name": "malformed_payload",
+        "payload": null
+      },
+      "id": "raw-malformed-1",
+      "method": "custom",
+      "namespace": [],
+      "run_id": "run-wire-contract-1",
+      "seq": 4,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-malformed-1"
+    }
+  ],
+  "agent_input": [
+    {
+      "messages": [
+        {
+          "content": "주간 보고서를 만들어줘",
+          "role": "user"
+        }
+      ]
+    }
+  ],
+  "artifact_calls": [
+    [
+      "create_report",
+      "call-report-1"
+    ]
+  ],
+  "event_order": [
+    "lifecycle",
+    "messages",
+    "custom",
+    "values",
+    "input.requested",
+    "tools",
+    "tools",
+    "custom",
+    "custom",
+    "custom",
+    "lifecycle"
+  ],
+  "persistable": [
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "event": "running"
+      },
+      "id": "run-wire-contract-1:lifecycle:running",
+      "method": "lifecycle",
+      "namespace": [],
+      "run_id": "run-wire-contract-1",
+      "seq": 0,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "run-wire-contract-1:lifecycle:running"
+    },
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "content": "보고서를 만들겠습니다.",
+        "id": "assistant-wire-1",
+        "tool_calls": [
+          {
+            "args": {
+              "title": "주간 보고서"
+            },
+            "id": "call-report-1",
+            "name": "create_report"
+          }
+        ],
+        "type": "AIMessageChunk",
+        "usage_metadata": {
+          "input_token_details": {
+            "cache_creation": 2,
+            "cache_read": 3
+          },
+          "input_tokens": 11,
+          "output_tokens": 7
+        }
+      },
+      "id": "raw-message-1",
+      "method": "messages",
+      "namespace": [],
+      "run_id": "run-wire-contract-1",
+      "seq": 1,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-message-1"
+    },
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "name": "usage",
+        "payload": {
+          "assistant_msg_id": "assistant-wire-1",
+          "cache_creation_tokens": 2,
+          "cache_read_tokens": 3,
+          "completion_tokens": 7,
+          "prompt_tokens": 11,
+          "run_id": "run-wire-contract-1"
+        }
+      },
+      "id": "raw-message-1:usage",
+      "method": "custom",
+      "namespace": [],
+      "run_id": "run-wire-contract-1",
+      "seq": 2,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-message-1:usage"
+    },
+    {
+      "checkpoint_id": "checkpoint-wire-1",
+      "checkpoint_ns": "tools:call-report-1",
+      "data": {
+        "__interrupt__": [
+          {
+            "id": "interrupt-wire-1",
+            "value": {
+              "action_requests": [
+                {
+                  "args": {
+                    "title": "주간 보고서"
+                  },
+                  "name": "create_report"
+                }
+              ],
+              "review_configs": [
+                {
+                  "action_name": "create_report",
+                  "allowed_decisions": [
+                    "approve",
+                    "reject"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "messages": [
+          {
+            "checkpoint_id": "checkpoint-wire-1",
+            "checkpoint_ns": "tools:call-report-1",
+            "id": "assistant-wire-1",
+            "type": "ai"
+          },
+          {
+            "checkpoint_id": "checkpoint-wire-1",
+            "checkpoint_ns": "tools:call-report-1",
+            "id": "tool-wire-1",
+            "type": "tool"
+          }
+        ],
+        "todos": [
+          {
+            "content": "작성",
+            "id": "todo-wire-1",
+            "status": "done"
+          }
+        ]
+      },
+      "id": "raw-values-1",
+      "method": "values",
+      "namespace": [
+        "tools:call-report-1"
+      ],
+      "run_id": "run-wire-contract-1",
+      "seq": 3,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-values-1"
+    },
+    {
+      "checkpoint_id": "checkpoint-wire-1",
+      "checkpoint_ns": "tools:call-report-1",
+      "data": {
+        "interrupt_id": "interrupt-wire-1",
+        "namespace": [
+          "tools:call-report-1"
+        ],
+        "payload": {
+          "action_requests": [
+            {
+              "args": {
+                "title": "주간 보고서"
+              },
+              "name": "create_report"
+            }
+          ],
+          "review_configs": [
+            {
+              "action_name": "create_report",
+              "allowed_decisions": [
+                "approve",
+                "reject"
+              ]
+            }
+          ]
+        }
+      },
+      "id": "run-wire-contract-1:input:00000004:0",
+      "method": "input.requested",
+      "namespace": [
+        "tools:call-report-1"
+      ],
+      "run_id": "run-wire-contract-1",
+      "seq": 4,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "run-wire-contract-1:input:00000004:0"
+    },
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "args": {
+          "title": "주간 보고서"
+        },
+        "event": "tool-started",
+        "name": "create_report",
+        "tool_call_id": "call-report-1"
+      },
+      "id": "raw-values-1:tool-started:0:call-report-1",
+      "method": "tools",
+      "namespace": [
+        "tools:call-report-1"
+      ],
+      "run_id": "run-wire-contract-1",
+      "seq": 5,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-values-1:tool-started:call-report-1"
+    },
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "content": "report.md created",
+        "event": "tool-finished",
+        "name": "create_report",
+        "status": "complete",
+        "tool_call_id": "call-report-1"
+      },
+      "id": "raw-values-1:tool-finished:1:call-report-1",
+      "method": "tools",
+      "namespace": [
+        "tools:call-report-1"
+      ],
+      "run_id": "run-wire-contract-1",
+      "seq": 6,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-values-1:tool-finished:call-report-1"
+    },
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "name": "file_event",
+        "payload": {
+          "id": "artifact-1",
+          "op": "created",
+          "path": "report.md"
+        }
+      },
+      "id": "raw-values-1:tool-finished:1:call-report-1:artifact:0",
+      "method": "custom",
+      "namespace": [
+        "tools:call-report-1"
+      ],
+      "run_id": "run-wire-contract-1",
+      "seq": 7,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-values-1:tool-finished:1:call-report-1:artifact:0"
+    },
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "name": "vendor.progress",
+        "payload": {
+          "stage": "done"
+        }
+      },
+      "id": "raw-vendor-1",
+      "method": "custom",
+      "namespace": [
+        "tools:call-report-1"
+      ],
+      "run_id": "run-wire-contract-1",
+      "seq": 8,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-vendor-1"
+    },
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "name": "malformed_payload",
+        "payload": null
+      },
+      "id": "raw-malformed-1",
+      "method": "custom",
+      "namespace": [],
+      "run_id": "run-wire-contract-1",
+      "seq": 9,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "raw-malformed-1"
+    },
+    {
+      "checkpoint_id": null,
+      "checkpoint_ns": null,
+      "data": {
+        "event": "interrupted"
+      },
+      "id": "run-wire-contract-1:lifecycle:interrupted",
+      "method": "lifecycle",
+      "namespace": [],
+      "run_id": "run-wire-contract-1",
+      "seq": 10,
+      "thread_id": "thread-wire-contract-1",
+      "timestamp": null,
+      "upstream_event_id": "run-wire-contract-1:lifecycle:interrupted"
+    }
+  ],
+  "wire_sse": [
+    {
+      "event_id": "run-wire-contract-1:lifecycle:running",
+      "method": "lifecycle",
+      "params": {
+        "data": {
+          "event": "running"
+        },
+        "namespace": []
+      },
+      "seq": 0,
+      "type": "event"
+    },
+    {
+      "event_id": "raw-message-1",
+      "method": "messages",
+      "params": {
+        "data": {
+          "content": "보고서를 만들겠습니다.",
+          "id": "assistant-wire-1",
+          "tool_calls": [
+            {
+              "args": {
+                "title": "주간 보고서"
+              },
+              "id": "call-report-1",
+              "name": "create_report"
+            }
+          ],
+          "type": "AIMessageChunk",
+          "usage_metadata": {
+            "input_token_details": {
+              "cache_creation": 2,
+              "cache_read": 3
+            },
+            "input_tokens": 11,
+            "output_tokens": 7
+          }
+        },
+        "namespace": []
+      },
+      "seq": 1,
+      "type": "event"
+    },
+    {
+      "event_id": "raw-message-1:usage",
+      "method": "custom",
+      "params": {
+        "data": {
+          "name": "usage",
+          "payload": {
+            "assistant_msg_id": "assistant-wire-1",
+            "cache_creation_tokens": 2,
+            "cache_read_tokens": 3,
+            "completion_tokens": 7,
+            "prompt_tokens": 11,
+            "run_id": "run-wire-contract-1"
+          }
+        },
+        "namespace": []
+      },
+      "seq": 2,
+      "type": "event"
+    },
+    {
+      "event_id": "raw-values-1",
+      "method": "values",
+      "params": {
+        "checkpoint_id": "checkpoint-wire-1",
+        "checkpoint_ns": "tools:call-report-1",
+        "data": {
+          "__interrupt__": [
+            {
+              "id": "interrupt-wire-1",
+              "value": {
+                "action_requests": [
+                  {
+                    "args": {
+                      "title": "주간 보고서"
+                    },
+                    "name": "create_report"
+                  }
+                ],
+                "review_configs": [
+                  {
+                    "action_name": "create_report",
+                    "allowed_decisions": [
+                      "approve",
+                      "reject"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "messages": [
+            {
+              "content": "보고서를 만들겠습니다.",
+              "id": "assistant-wire-1",
+              "tool_calls": [
+                {
+                  "args": {
+                    "title": "주간 보고서"
+                  },
+                  "id": "call-report-1",
+                  "name": "create_report"
+                }
+              ],
+              "type": "ai"
+            },
+            {
+              "content": "report.md created",
+              "id": "tool-wire-1",
+              "name": "create_report",
+              "tool_call_id": "call-report-1",
+              "type": "tool"
+            }
+          ],
+          "todos": [
+            {
+              "content": "작성",
+              "id": "todo-wire-1",
+              "status": "done"
+            }
+          ]
+        },
+        "namespace": [
+          "tools:call-report-1"
+        ]
+      },
+      "seq": 3,
+      "type": "event"
+    },
+    {
+      "event_id": "run-wire-contract-1:input:00000004:0",
+      "method": "input.requested",
+      "params": {
+        "checkpoint_id": "checkpoint-wire-1",
+        "checkpoint_ns": "tools:call-report-1",
+        "data": {
+          "interrupt_id": "interrupt-wire-1",
+          "namespace": [
+            "tools:call-report-1"
+          ],
+          "payload": {
+            "action_requests": [
+              {
+                "args": {
+                  "title": "주간 보고서"
+                },
+                "name": "create_report"
+              }
+            ],
+            "review_configs": [
+              {
+                "action_name": "create_report",
+                "allowed_decisions": [
+                  "approve",
+                  "reject"
+                ]
+              }
+            ]
+          }
+        },
+        "namespace": [
+          "tools:call-report-1"
+        ]
+      },
+      "seq": 4,
+      "type": "event"
+    },
+    {
+      "event_id": "raw-values-1:tool-started:call-report-1",
+      "method": "tools",
+      "params": {
+        "data": {
+          "args": {
+            "title": "주간 보고서"
+          },
+          "event": "tool-started",
+          "name": "create_report",
+          "tool_call_id": "call-report-1"
+        },
+        "namespace": [
+          "tools:call-report-1"
+        ]
+      },
+      "seq": 5,
+      "type": "event"
+    },
+    {
+      "event_id": "raw-values-1:tool-finished:call-report-1",
+      "method": "tools",
+      "params": {
+        "data": {
+          "content": "report.md created",
+          "event": "tool-finished",
+          "name": "create_report",
+          "status": "complete",
+          "tool_call_id": "call-report-1"
+        },
+        "namespace": [
+          "tools:call-report-1"
+        ]
+      },
+      "seq": 6,
+      "type": "event"
+    },
+    {
+      "event_id": "raw-values-1:tool-finished:1:call-report-1:artifact:0",
+      "method": "custom",
+      "params": {
+        "data": {
+          "name": "file_event",
+          "payload": {
+            "id": "artifact-1",
+            "op": "created",
+            "path": "report.md"
+          }
+        },
+        "namespace": [
+          "tools:call-report-1"
+        ]
+      },
+      "seq": 7,
+      "type": "event"
+    },
+    {
+      "event_id": "raw-vendor-1",
+      "method": "custom",
+      "params": {
+        "data": {
+          "name": "vendor.progress",
+          "payload": {
+            "stage": "done"
+          }
+        },
+        "namespace": [
+          "tools:call-report-1"
+        ]
+      },
+      "seq": 8,
+      "type": "event"
+    },
+    {
+      "event_id": "raw-malformed-1",
+      "method": "custom",
+      "params": {
+        "data": {
+          "name": "malformed_payload",
+          "payload": null
+        },
+        "namespace": []
+      },
+      "seq": 9,
+      "type": "event"
+    },
+    {
+      "event_id": "run-wire-contract-1:lifecycle:interrupted",
+      "method": "lifecycle",
+      "params": {
+        "data": {
+          "event": "interrupted"
+        },
+        "namespace": []
+      },
+      "seq": 10,
+      "type": "event"
+    }
+  ]
+}
