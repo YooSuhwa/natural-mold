@@ -1,7 +1,5 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
-import fs from 'node:fs/promises'
-import path from 'node:path'
 
 const BACKEND_PORT = process.env.E2E_BACKEND_PORT ?? '8001'
 const API_BASE = process.env.E2E_API_BASE_URL ?? `http://localhost:${BACKEND_PORT}`
@@ -197,12 +195,6 @@ test.describe('Chat run lifecycle API contract', () => {
       modelId,
       `E2E Chat Run P2 ${Date.now()}`,
     )
-    const captureDir = path.join(
-      '..',
-      'output',
-      'e2e-captures',
-      '20260610-chat-run-lifecycle',
-    )
 
     try {
       const conversationA = await createConversation(
@@ -217,7 +209,6 @@ test.describe('Chat run lifecycle API contract', () => {
         agentId,
         'P2 other session B',
       )
-      await fs.mkdir(captureDir, { recursive: true })
 
       await page.goto(`/agents/${agentId}/conversations/${conversationA}`)
       const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
@@ -227,28 +218,16 @@ test.describe('Chat run lifecycle API contract', () => {
 
       const spinnerA = page.locator(`[data-moldy-run-spinner="${conversationA}"]`)
       await expect(spinnerA).toBeVisible({ timeout: 10_000 })
-      await page.screenshot({
-        path: path.join(captureDir, 'p2-spinner-conversation-a.png'),
-        fullPage: true,
-      })
 
       await page.goto(`/agents/${agentId}/conversations/${conversationB}`)
       await expect(page).toHaveURL(new RegExp(`/conversations/${conversationB}$`))
       await expect(spinnerA).toBeVisible({ timeout: 10_000 })
-      await page.screenshot({
-        path: path.join(captureDir, 'p2-spinner-while-other-session-open.png'),
-        fullPage: true,
-      })
 
       await page.goto(`/agents/${agentId}/conversations/${conversationA}`)
       await expect(page.getByText(/E2E slow stream completed/)).toBeVisible({
         timeout: 30_000,
       })
       await expect(spinnerA).toBeHidden({ timeout: 10_000 })
-      await page.screenshot({
-        path: path.join(captureDir, 'p2-reattached-completed.png'),
-        fullPage: true,
-      })
 
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
@@ -270,12 +249,6 @@ test.describe('Chat run lifecycle API contract', () => {
       modelId,
       `E2E Chat Run P4 ${Date.now()}`,
     )
-    const captureDir = path.join(
-      '..',
-      'output',
-      'e2e-captures',
-      '20260610-chat-run-lifecycle',
-    )
 
     try {
       const conversationId = await createConversation(
@@ -284,7 +257,6 @@ test.describe('Chat run lifecycle API contract', () => {
         agentId,
         'P4 refresh restore',
       )
-      await fs.mkdir(captureDir, { recursive: true })
 
       await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
       const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
@@ -300,19 +272,11 @@ test.describe('Chat run lifecycle API contract', () => {
       await page.reload()
 
       await expect(spinner).toBeVisible({ timeout: 10_000 })
-      await page.screenshot({
-        path: path.join(captureDir, 'p4-spinner-after-refresh.png'),
-        fullPage: true,
-      })
 
       await expect(page.getByText(/E2E slow stream completed/)).toBeVisible({
         timeout: 30_000,
       })
       await expect(spinner).toBeHidden({ timeout: 10_000 })
-      await page.screenshot({
-        path: path.join(captureDir, 'p4-reattached-completed-after-refresh.png'),
-        fullPage: true,
-      })
 
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
@@ -334,12 +298,6 @@ test.describe('Chat run lifecycle API contract', () => {
       modelId,
       `E2E Chat Run P3 Cancel ${Date.now()}`,
     )
-    const captureDir = path.join(
-      '..',
-      'output',
-      'e2e-captures',
-      '20260610-chat-run-lifecycle',
-    )
 
     try {
       const conversationId = await createConversation(
@@ -348,7 +306,6 @@ test.describe('Chat run lifecycle API contract', () => {
         agentId,
         'P3 cancel slow run',
       )
-      await fs.mkdir(captureDir, { recursive: true })
 
       await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
       const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
@@ -377,10 +334,6 @@ test.describe('Chat run lifecycle API contract', () => {
       await waitForRunStatus(request, conversationId, activeRun.id, 'canceled')
       await expect(spinner).toBeHidden({ timeout: 10_000 })
       await expect(page.getByText(/중단됨|Canceled/)).toBeVisible({ timeout: 10_000 })
-      await page.screenshot({
-        path: path.join(captureDir, 'p3-canceled-run.png'),
-        fullPage: true,
-      })
 
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
@@ -402,12 +355,6 @@ test.describe('Chat run lifecycle API contract', () => {
       modelId,
       `E2E Chat Run P3 Stale ${Date.now()}`,
     )
-    const captureDir = path.join(
-      '..',
-      'output',
-      'e2e-captures',
-      '20260610-chat-run-lifecycle',
-    )
 
     try {
       const conversationId = await createConversation(
@@ -416,7 +363,6 @@ test.describe('Chat run lifecycle API contract', () => {
         agentId,
         'P3 stale run',
       )
-      await fs.mkdir(captureDir, { recursive: true })
 
       const seedRes = await request.post(`${API_BASE}/api/e2e/conversations/${conversationId}/runs`, {
         headers: csrfHeaders,
@@ -447,10 +393,6 @@ test.describe('Chat run lifecycle API contract', () => {
       await expect(page.locator(`[data-moldy-run-spinner="${conversationId}"]`)).toBeHidden({
         timeout: 10_000,
       })
-      await page.screenshot({
-        path: path.join(captureDir, 'p3-stale-run.png'),
-        fullPage: true,
-      })
 
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
@@ -472,12 +414,6 @@ test.describe('Chat run lifecycle API contract', () => {
       modelId,
       `E2E Chat Run P3 HITL ${Date.now()}`,
     )
-    const captureDir = path.join(
-      '..',
-      'output',
-      'e2e-captures',
-      '20260610-chat-run-lifecycle',
-    )
 
     try {
       const conversationId = await createConversation(
@@ -486,7 +422,6 @@ test.describe('Chat run lifecycle API contract', () => {
         agentId,
         'P3 action required run',
       )
-      await fs.mkdir(captureDir, { recursive: true })
 
       const seedRes = await request.post(`${API_BASE}/api/e2e/conversations/${conversationId}/runs`, {
         headers: csrfHeaders,
@@ -506,10 +441,6 @@ test.describe('Chat run lifecycle API contract', () => {
         timeout: 10_000,
       })
       await expect(page.locator(`[data-moldy-run-spinner="${conversationId}"]`)).toBeHidden()
-      await page.screenshot({
-        path: path.join(captureDir, 'p3-interrupted-action-required.png'),
-        fullPage: true,
-      })
 
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
