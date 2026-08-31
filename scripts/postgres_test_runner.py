@@ -24,6 +24,7 @@ from postgres_runner_contract import (
     parse_lane_dsns,
 )
 from postgres_runner_runtime import (
+    ExternalScenarioKind,
     OwnedContainer,
     ScenarioKind,
     alembic_state,
@@ -150,7 +151,13 @@ def _run_scenario(
                 )
             )
         )
-        expected = {"all": 0, "success": 0, "child_failure": 23, "sigint": 130}[kind]
+        expected = {
+            "all": 0,
+            "stream-resume": 0,
+            "success": 0,
+            "child_failure": 23,
+            "sigint": 130,
+        }[kind]
         outcome.update(
             {
                 "status": "passed" if exit_code == expected else "failed",
@@ -163,7 +170,9 @@ def _run_scenario(
                 "second_upgrade_idempotent": idempotent,
                 "warning_hits": warnings,
                 "warning_scan_complete": True,
-                "test_receipt": json.loads(receipt.read_text()) if kind == "all" else None,
+                "test_receipt": json.loads(receipt.read_text())
+                if kind in {"all", "stream-resume"}
+                else None,
                 "tmpfs_storage": tmpfs_owned,
             }
         )
@@ -209,11 +218,15 @@ def _run_scenario(
 
 
 def _early_interrupt_outcome(
-    signal_number: int, *, process_id: int, process_identity: str
+    signal_number: int,
+    *,
+    process_id: int,
+    process_identity: str,
+    mode: ExternalScenarioKind = "all",
 ) -> dict[str, object]:
     """Emit only cleanup facts knowable before resource acquisition."""
     outcome = _initial_outcome(
-        "all",
+        mode,
         secrets.token_hex(12),
         None,
         process_id=process_id,

@@ -170,15 +170,14 @@ def _validate_scenario(scenario: dict[str, object], *, require_test_receipt: boo
     _validate_container_identity(scenario, required=True)
     _validate_progressive_observations(scenario, container_created=True, require_complete=True)
     _validate_run_root(scenario, require_created=True)
-    _require(
-        scenario.get("alembic_head") == scenario.get("alembic_current"),
-        "alembic_current",
-    )
+    _require(scenario.get("alembic_head") == scenario.get("alembic_current"), "alembic_current")
     _require(scenario.get("second_upgrade_idempotent") is True, "alembic_idempotence")
     _validate_cleanup_receipt(scenario)
     _require(scenario.get("warning_scan_complete") is True, "warning_observation")
     receipt = scenario.get("test_receipt")
+    child_exit_code = scenario.get("child_exit_code")
     if require_test_receipt:
+        _require(_integer(child_exit_code, "child_exit_code") == 0, "child_exit_code")
         _validate_test_receipt(_mapping(receipt, "test_receipt"))
     else:
         _require(receipt is None, "unexpected_test_receipt")
@@ -206,11 +205,11 @@ def validate_payload(payload: dict[str, object]) -> None:
     _require(payload.get("schema_version") == 1, "schema_version")
     scenarios = _mapping_list(payload.get("scenarios"), "scenarios")
     match payload.get("mode"):
-        case "all":
+        case ("all" | "stream-resume") as mode:
             _require(payload.get("concurrent_pair") is False, "concurrent_pair")
             _require(
-                len(scenarios) == 1 and scenarios[0].get("scenario") == "all",
-                "all_scenarios",
+                len(scenarios) == 1 and scenarios[0].get("scenario") == mode,
+                "all_scenarios" if mode == "all" else "stream_resume_scenarios",
             )
             match payload.get("status"):
                 case "passed":

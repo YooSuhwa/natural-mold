@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: run-isolated-postgres-tests.sh <all|self-test> --manifest <evidence-json>" >&2
+  echo "usage: run-isolated-postgres-tests.sh <all|self-test|stream-resume> --manifest <evidence-json>" >&2
   exit 64
 }
 
@@ -10,7 +10,7 @@ if [[ $# -ne 3 || "$2" != "--manifest" ]]; then
   usage
 fi
 case "$1" in
-  all|self-test) mode="$1" ;;
+  all|self-test|stream-resume) mode="$1" ;;
   *) usage ;;
 esac
 

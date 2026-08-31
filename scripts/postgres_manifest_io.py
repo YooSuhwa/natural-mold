@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import Final, Protocol
 
 from postgres_runner_contract import ensure_evidence_root, validate_manifest_destination
-from postgres_runner_runtime import REPO_ROOT, ScenarioKind, process_identity_sha256
+from postgres_runner_runtime import (
+    REPO_ROOT,
+    ExternalScenarioKind,
+    ScenarioKind,
+    process_identity_sha256,
+)
 
 _CLEANUP_FIELDS: Final = (
     "cleanup_container_removed",
@@ -57,7 +62,12 @@ class ScenarioRunner(Protocol):
 
 class EarlyInterruptBuilder(Protocol):
     def __call__(
-        self, signal_number: int, *, process_id: int, process_identity: str
+        self,
+        signal_number: int,
+        *,
+        process_id: int,
+        process_identity: str,
+        mode: ExternalScenarioKind,
     ) -> dict[str, object]: ...
 
 
@@ -184,7 +194,7 @@ def defer_cleanup_signals() -> Iterator[list[int]]:
 
 def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptBuilder) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("all", "self-test"))
+    parser.add_argument("mode", choices=("all", "self-test", "stream-resume"))
     parser.add_argument("--manifest", required=True, type=Path)
     args = parser.parse_args()
     ensure_evidence_root(REPO_ROOT)
@@ -199,9 +209,11 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
     manifest_mode = args.mode
     try:
         try:
-            if args.mode == "all":
+            if args.mode in {"all", "stream-resume"}:
                 scenarios = [
-                    run_scenario("all", process_id=process_id, process_identity=process_identity)
+                    run_scenario(
+                        args.mode, process_id=process_id, process_identity=process_identity
+                    )
                 ]
             else:
                 scenarios = []
@@ -216,15 +228,19 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
                         break
             concurrent_pair = False
         except RunnerInterrupted as interrupted:
+            early_mode: ExternalScenarioKind = (
+                "stream-resume" if args.mode == "stream-resume" else "all"
+            )
             scenarios = [
                 build_early_interrupt(
                     interrupted.signal_number,
                     process_id=process_id,
                     process_identity=process_identity,
+                    mode=early_mode,
                 )
             ]
             concurrent_pair = False
-            manifest_mode = "all"
+            manifest_mode = early_mode
         status = (
             "passed"
             if all(
