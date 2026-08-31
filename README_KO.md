@@ -18,7 +18,7 @@
 
 [Overview](#-overview) · [빠른 답변](#-빠른-답변) · [Quick Start](#-quick-start) · [신뢰 근거](#-품질보안문서화-신호) · [기능](#-주요-기능) · [아키텍처](#-아키텍처)
 
-**마지막 업데이트:** 2026년 6월 7일 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
+**마지막 업데이트:** 2026년 9월 1일 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
 
 </div>
 
@@ -50,8 +50,8 @@ skill 패키지, 마켓플레이스 설치, 스케줄 트리거, 사용량 추�
 | 주요 사용 사례 | 노코드 AI 에이전트 생성, 채팅, 스케줄링, 도구/스킬 오케스트레이션 |
 | Backend | FastAPI 0.115+, SQLAlchemy 2.0 async, Alembic, Python 3.12 |
 | Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
-| AI runtime | LangGraph 1.x + `create_deep_agent` 기반 `deepagents` |
-| Database | PostgreSQL 16, 현재 마이그레이션 head는 `m59_conversation_artifacts` |
+| AI runtime | LangGraph 1.x + `create_deep_agent` 기반 `deepagents` 0.7.11 |
+| Database | PostgreSQL 16, Alembic head는 `m70_skill_usage_and_feedback` |
 | 인증 | JWT HS256, HttpOnly cookie, CSRF double-submit, refresh token rotation, `super_user` |
 | License | MIT |
 
@@ -126,7 +126,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # ENCRYPTION_KEYS / JWT_SECRET 등 입력 (LLM 키는 UI에서 등록)
 uv sync                               # 의존성 설치 (+ Python 3.12 없으면 자동 다운로드)
-uv run alembic upgrade head           # DB 마이그레이션 (현재 head: m59)
+uv run alembic upgrade head           # DB 마이그레이션 (head: m70_skill_usage_and_feedback)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
@@ -225,7 +225,7 @@ CORS_ALLOWED_ORIGINS=https://app.example.com \
 ```bash
 # Backend
 cd backend
-uv run ruff check .                   # 린트
+uv run ruff check .                   # 린트 (Ruff 0.16.5)
 uv run pytest                         # 단위 테스트 (aiosqlite, Postgres 불필요)
 uv run pytest -m integration          # 통합 테스트 (Postgres 필요)
 
@@ -468,7 +468,7 @@ credential 필드를 보간할 수 있습니다.
 
 - **Router** (`app/routers/`) — HTTP 엔드포인트, 요청·응답 변환
 - **Service** (`app/services/`) — 비즈니스 로직, DB 쿼리, 트랜잭션
-- **Model** (`app/models/`) — SQLAlchemy ORM, 49개 테이블 (m59 기준)
+- **Model** (`app/models/`) — SQLAlchemy ORM
 
 ### Frontend 패턴
 
@@ -496,7 +496,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + 도메인
 │   │   ├── agent_runtime/       # AI 실행 엔진
 │   │   └── seed/                # 시드 데이터
-│   ├── alembic/versions/        # 마이그레이션 (m59까지)
+│   ├── alembic/versions/        # 마이그레이션 (head: m70_skill_usage_and_feedback)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
@@ -581,8 +581,8 @@ Moldy README를 프로젝트 홈페이지, 문서 사이트, 제품 페이지에
       "operatingSystem": "Web",
       "isAccessibleForFree": true,
       "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
-      "softwareVersion": "development snapshot, migration head m59",
-      "dateModified": "2026-06-07",
+      "softwareVersion": "development snapshot, migration head m70_skill_usage_and_feedback",
+      "dateModified": "2026-09-01",
       "author": {
         "@id": "https://github.com/YooSuhwa/natural-mold#organization"
       },

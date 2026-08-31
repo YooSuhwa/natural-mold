@@ -1,9 +1,14 @@
 # Execution Plans Index
 
+This index mirrors the tracked execution-plan directories. The wording after
+each link is taken from the plan's declared state when present; folder placement
+determines the Active and Completed sections.
+
 ## Active
 
-_(진행 중인 실행 계획 없음)_
+- [백로그 C — credentials list N+1 복호화 제거](active/backlog-c-field-keys-cache.md) — explicit status not declared.
+- [백로그 E — Connection 엔티티 통합 리팩토링](active/backlog-e-connection-refactor.md) — M0 완료 (ADR-008 승인 대기) — M1 대기.
 
 ## Completed
 
-_(완료된 실행 계획 없음)_
+- [HiTL Phase 2 — Wire Contract](completed/hitl-phase2-contract.md) — APPROVED — 후속 마일스톤(M1·M2) 진입 게이트.

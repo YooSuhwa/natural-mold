@@ -18,7 +18,7 @@
 
 [Overview](#-overview) · [Quick Answers](#-quick-answers) · [Quick Start](#-quick-start) · [Trust](#-quality-security-and-documentation-signals) · [Features](#-features) · [Architecture](#-architecture)
 
-**Last updated:** June 7, 2026 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
+**Last updated:** September 1, 2026 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
 
 </div>
 
@@ -51,8 +51,8 @@ triggers, and usage tracking.
 | Primary use case | No-code AI agent creation, chat, scheduling, and tool/skill orchestration |
 | Backend | FastAPI 0.115+, SQLAlchemy 2.0 async, Alembic, Python 3.12 |
 | Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
-| AI runtime | LangGraph 1.x + `deepagents` via `create_deep_agent` |
-| Database | PostgreSQL 16, current migration head `m59_conversation_artifacts` |
+| AI runtime | LangGraph 1.x + `deepagents` 0.7.11 via `create_deep_agent` |
+| Database | PostgreSQL 16, Alembic head `m70_skill_usage_and_feedback` |
 | Authentication | JWT HS256, HttpOnly cookies, CSRF double-submit, refresh-token rotation, `super_user` |
 | License | MIT |
 
@@ -132,7 +132,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # set ENCRYPTION_KEYS / JWT_SECRET (LLM keys via UI)
 uv sync                               # install dependencies (+ Python 3.12 if missing)
-uv run alembic upgrade head           # run migrations (head: m59)
+uv run alembic upgrade head           # run migrations (head: m70_skill_usage_and_feedback)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
@@ -235,7 +235,7 @@ CORS_ALLOWED_ORIGINS=https://app.example.com \
 # Backend
 (
   cd backend
-  uv run ruff check .                 # lint
+  uv run ruff check .                 # lint (Ruff 0.16.5)
   uv run pytest                       # unit tests (aiosqlite, no Postgres needed)
 )
 manifest=".omo/evidence/project-restart-consolidated-roadmap/local-postgres-$(date +%s).json"
@@ -485,7 +485,7 @@ process separately before probing those presets.
 
 - **Router** (`app/routers/`) — HTTP endpoints, request / response shaping
 - **Service** (`app/services/`) — Business logic, DB queries, transactions
-- **Model** (`app/models/`) — SQLAlchemy ORM, 49 tables as of m59
+- **Model** (`app/models/`) — SQLAlchemy ORM
 
 ### Frontend pattern
 
@@ -513,7 +513,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + domain
 │   │   ├── agent_runtime/       # AI execution engine
 │   │   └── seed/                # seed data
-│   ├── alembic/versions/        # migrations (up to m59)
+│   ├── alembic/versions/        # migrations (head: m70_skill_usage_and_feedback)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
@@ -599,8 +599,8 @@ official profiles or documentation URLs exist.
       "operatingSystem": "Web",
       "isAccessibleForFree": true,
       "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
-      "softwareVersion": "development snapshot, migration head m59",
-      "dateModified": "2026-06-07",
+      "softwareVersion": "development snapshot, migration head m70_skill_usage_and_feedback",
+      "dateModified": "2026-09-01",
       "author": {
         "@id": "https://github.com/YooSuhwa/natural-mold#organization"
       },

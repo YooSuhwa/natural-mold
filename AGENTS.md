@@ -12,13 +12,14 @@
 | Frontend | Next.js (App Router) + React + TailwindCSS v4 + shadcn/ui | Next 16, React 19 |
 | 상태관리 | TanStack Query (서버), Jotai (클라이언트) | |
 | Backend | FastAPI + SQLAlchemy (async) + Alembic | FastAPI 0.115+, SA 2.0+ |
-| AI Runtime | LangChain 1.x + LangGraph 1.x + **deepagents** + LangSmith | `create_deep_agent` 기반 |
+| AI Runtime | LangChain 1.x + LangGraph 1.x + **deepagents** 0.7.11 + LangSmith | `create_deep_agent` 기반 |
 | 인증 | JWT (HS256) + HttpOnly Cookie + CSRF double-submit | ADR-016 |
 | 암호화 | Cipher V2 — HKDF-SHA256 + AES-256-GCM, multi-key rotation | ADR-009 |
 | DB | PostgreSQL 16 (docker-compose) | |
 | 스케줄러 | APScheduler 3.x | |
 | 패키지 매니저 | uv (backend), pnpm (frontend) | |
 | 런타임 버전 | Python 3.12 (uv 자동 설치), Node 22 (`.node-version`) | |
+| 백엔드 개발 도구 | Ruff `ruff>=0.16.5,<0.17.0` (lock: 0.16.5) | |
 
 ---
 
@@ -74,7 +75,7 @@ natural-mold/
 │   │   │   ├── google_tools.py  # Google Custom Search 도구
 │   │   │   └── google_workspace_tools.py # Gmail, Calendar, Chat Webhook
 │   │   └── seed/                # 시드 데이터 (모델, 템플릿, 시스템 도구, bootstrap_from_env)
-│   ├── alembic/                 # DB 마이그레이션 (M1 ~ M63)
+│   ├── alembic/                 # DB 마이그레이션 (head: m70_skill_usage_and_feedback)
 │   ├── tests/                   # pytest (aiosqlite in-memory)
 │   ├── scripts/                 # 유틸리티 (migrate_mock_to_real_user, google_oauth_setup, ...)
 │   ├── pyproject.toml
@@ -93,7 +94,7 @@ natural-mold/
 │   ├── PRD.md                   # 제품 요구사항 정의서
 │   ├── PRD-screens.md           # 화면별 와이어프레임
 │   ├── ARCHITECTURE.md          # 시스템 아키텍처
-│   ├── design-docs/             # ADR + 설계 스펙 (adr-001 ~ adr-019, 멀티유저 UI spec 등)
+│   ├── design-docs/             # ADR + 설계 스펙 (ADR-001~014, ADR-016~021 등)
 │   ├── tool-setup-guide.md      # 프리빌트 도구 API 키 설정 가이드
 │   └── marketplace-resources-prd.md # Agent/MCP/Skill 마켓플레이스 PRD + 구현 상태
 │
@@ -283,7 +284,7 @@ docker-compose up -d postgres
 cd backend
 cp .env.example .env  # API 키 + ENCRYPTION_KEYS / JWT_SECRET 설정
 uv sync               # 의존성 설치 (.venv 자동 생성)
-uv run alembic upgrade head   # DB 마이그레이션 (M63까지)
+uv run alembic upgrade head   # DB 마이그레이션 (head: m70_skill_usage_and_feedback)
 uv run uvicorn app.main:app --reload --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 # 시작 시 시드 데이터 자동 삽입 (모델, 템플릿, ENV → system credentials bootstrap)
@@ -363,7 +364,7 @@ trigger_executor           → 스케줄 트리거 (invoke 모드, ask_user/HiTL
 - 도구 타입: `builtin:*` (web_search, web_scraper, current_datetime), `registry`(Tool 모델의 definition_key 기반), `mcp`(AgentMcpToolLink)
 - Skill 시스템: 선택된 skill만 `/runtime/<thread_id>/.../skills/` 가상 경로에 노출한다. LLM은 `read_file`로 `SKILL.md`를 먼저 읽고 지시를 따른다.
 - Skill subprocess 실행: **`execute_in_skill` 도구**는 `skill_executor.py`에 있으며 Python 스크립트 allowlist, timeout, output dir, credential env injection, redaction 계약을 사용한다.
-- Generated file 규칙: user-visible 파일은 `/conversations/<thread_id>/...` 아래에 쓰게 유도하고 M59 `conversation_artifacts`로 인덱싱한다.
+- Generated file 규칙: user-visible 파일은 `/conversations/<thread_id>/...` 아래에 쓰게 유도하고 `conversation_artifacts`로 인덱싱한다.
 
 ### Frontend: API Client → TanStack Query → Component
 
@@ -407,7 +408,7 @@ lib/types/      → Backend 스키마와 1:1 대응하는 TS 타입
 | `conversations` | 대화 세션 + active branch checkpoint |
 | `message_events`, `message_event_chunks` | SSE 이벤트 스트림, streaming resume, trace correlation |
 | `message_attachments`, `message_feedback` | 첨부/피드백 |
-| `conversation_artifacts`, `artifact_versions` | 생성 파일 artifact와 버전 (M59) |
+| `conversation_artifacts`, `artifact_versions` | 생성 파일 artifact와 버전 |
 | `share_links` | 대화 공유 링크 (M30/M31) |
 | `token_usages` | 토큰 사용량 추적 |
 | `templates` | 에이전트 템플릿 |
@@ -418,7 +419,7 @@ lib/types/      → Backend 스키마와 1:1 대응하는 TS 타입
 | `audit_events`, `daily_spend_*`, `health_check_history` | 감사, 비용 집계, health history |
 | `system_llm_settings` | Builder/Assistant/Image role별 system model 설정 |
 
-마이그레이션: `backend/alembic/versions/` (Alembic). 최신 head는 M63 (`chat_navigator_indexes`).
+마이그레이션: `backend/alembic/versions/` (Alembic). 최신 head는 `m70_skill_usage_and_feedback`이다.
 
 `is_system` 플래그가 있는 테이블 공통 제약: `CHECK ((is_system = false) OR (user_id IS NULL))`. 시스템 리소스는 user_id가 반드시 NULL.
 
@@ -490,7 +491,7 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 
 - 타입 힌트 필수 (함수 시그니처, 반환 타입)
 - async/await 패턴, `select()` 구문
-- 린터: ruff (line-length=100, target=py312)
+- 린터: Ruff `ruff>=0.16.5,<0.17.0` (lock: 0.16.5, line-length=100, target=py312)
 - 테스트: pytest + aiosqlite in-memory (PostgreSQL 불필요)
 - 새 테이블 추가 시 Alembic 마이그레이션 필수
 - Ownership 검증: enumeration oracle 방지 — 없음(404)과 권한 없음(403) 응답을 외부로 동일하게 통일
@@ -541,7 +542,7 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 
 ## 현재 상태 요약
 
-- **백엔드**: M63까지 마이그레이션 적용. 멀티유저 인증, marketplace skill publish/install, System LLM settings, schedule productization, Agent API, memory controls, audit events, generated artifacts, credential OAuth states, conversation runs, agent blueprints, chat navigator indexes, subagent runtime, executor split 반영.
+- **백엔드**: Alembic head `m70_skill_usage_and_feedback` 적용. 멀티유저 인증, marketplace skill publish/install, System LLM settings, schedule productization, Agent API, memory controls, audit events, generated artifacts, credential OAuth states, conversation runs, agent blueprints, chat navigation indexes, subagent runtime, executor split, skill usage and feedback 반영.
 - **프론트엔드**: 멀티유저 로그인/회원가입 UI, MCP 서버 관리, Skill/Credential/Marketplace 관리, 채팅 SSE 스트리밍, artifact preview/right rail/library, memory/settings, Agent API settings, 트리거 스케줄링, Builder 마법사.
 - **다음 단계**: MCP/Agent marketplace 확장, artifact/share E2E 강화, long-running scheduler/worktree 운영 안정화.
 - 자세한 태스크 현황은 `TASKS.md` 참조

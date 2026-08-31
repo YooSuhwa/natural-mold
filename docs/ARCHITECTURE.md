@@ -1,8 +1,8 @@
 # Moldy Architecture Map
 
-> Last updated: 2026-06-13
-> Source basis: current working tree on `codex/fix-frontend-docker-lock-docs`,
-> recent runtime commits, and the files under `backend/app/`,
+> Last updated: 2026-09-01
+> Source basis: current tracked repository source, recent runtime commits, and
+> the files under `backend/app/`,
 > `frontend/src/`, and `frontend/e2e/`.
 
 Moldy is a multi-user no-code AI agent builder. The current codebase is no
@@ -15,14 +15,14 @@ schedule productization.
 
 | Area | Current source state |
 |------|----------------------|
-| Backend | FastAPI app factory in `backend/app/main.py`, async SQLAlchemy services, 49 ORM tables |
+| Backend | FastAPI app factory in `backend/app/main.py` and async SQLAlchemy services |
 | Frontend | Next.js 16.2.2 + React 19.2.4 App Router, `next-intl`, TanStack Query, Jotai |
-| Runtime | LangChain 1.x + LangGraph 1.x + `deepagents>=0.6.8,<0.7.0` |
-| Database | PostgreSQL 16, Alembic head `m59_conversation_artifacts` |
+| Runtime | LangChain 1.x + LangGraph 1.x + `deepagents>=0.7.11,<0.8.0` (lock: 0.7.11) |
+| Database | PostgreSQL 16, Alembic head `m70_skill_usage_and_feedback` |
 | Auth | ADR-016 JWT HS256, HttpOnly cookies, CSRF double-submit, refresh rotation, `super_user` |
-| Credentials | Cipher V2, system/user split, 22 credential definitions registered |
+| Credentials | Cipher V2 and system/user credential separation |
 | Marketplace | Catalog, install, update, uninstall, publish, ACL, moderation/listing, k-skill importer |
-| Latest major feature | M59 generated conversation artifacts + artifact preview/library |
+| Latest major feature | Skill-axis usage, human feedback, and measured evaluation-run usage |
 
 ## System Overview
 
@@ -90,7 +90,7 @@ The backend keeps the Router -> Service -> Model direction:
 - `memory_service.py` resolves user/agent memory policies and stores records or
   approval proposals.
 - `artifact_service.py` and `artifact_storage.py` persist generated file metadata
-  and local artifact bytes introduced by M59.
+  and local artifact bytes introduced by `m59_conversation_artifacts`.
 
 ## Agent Runtime
 
@@ -182,8 +182,7 @@ The current skill runtime is selected-skill based, not a broad `/skills/` mount:
 
 ## Data Model Groups
 
-Alembic head is `m59_conversation_artifacts`. The ORM currently exposes 49
-tables across these groups:
+Alembic head is `m70_skill_usage_and_feedback`. The ORM groups tables as follows:
 
 | Group | Tables / models |
 |-------|-----------------|
@@ -281,7 +280,7 @@ See `docs/agent-api.md` for request examples.
 | 2026-06-07 | `6770ba7` | Extract frontend agent settings draft hook/lib |
 | 2026-06-07 | `ca54bdc` | Defer conversation creation until first message |
 | 2026-06-07 | `12c8b98` | Lazy-load heavy chat preview modules |
-| 2026-06-06 | `83bf67d` | Add generated file artifacts, M59, artifact preview/library |
+| 2026-06-06 | `83bf67d` | Add generated file artifacts, `m59_conversation_artifacts`, and artifact preview/library |
 | 2026-06-05 | `05e6ea6` | Wire subagent chat delegation and runtime identity |
 | 2026-06-05 | `def260b` | Add long-term memory controls, memory tools, settings UI |
 | 2026-06-05 | `d5fe960`, `08f5371` | Document E2E capture workflow and GitHub connector PR fallback |
@@ -290,7 +289,7 @@ See `docs/agent-api.md` for request examples.
 
 - Long-running concurrent worktrees can double-run scheduler jobs if multiple
   backend processes share the same DB and all acquire work over time.
-- Artifact and preview surfaces are new as of M59 and should keep getting E2E
+- Artifact and preview surfaces date from `m59_conversation_artifacts` and should keep getting E2E
   coverage around branch links, shares, and generated-file permissions.
 - Marketplace supports Skill Phase 1 deeply; MCP/Agent resource publishing is
   still a future expansion even though the schema is resource-type generic.
