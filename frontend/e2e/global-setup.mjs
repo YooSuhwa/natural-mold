@@ -9,7 +9,6 @@ const dirname = path.dirname(fileURLToPath(import.meta.url))
 const e2eLane = process.env.E2E_LANE ?? 'scripted'
 const authFile = path.resolve(process.cwd(), getE2EAuthStatePath(e2eLane, process.env))
 const repoRoot = path.resolve(dirname, '..', '..')
-const skillNodeModules = path.join(repoRoot, 'backend', 'skill-node', 'node_modules')
 const requiredSkillNodePackages = ['docx', 'xlsx', 'pptxgenjs']
 
 const backendPort = process.env.E2E_BACKEND_PORT ?? '8101'
@@ -19,9 +18,22 @@ const password =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 const name = process.env.E2E_USER_NAME ?? process.env.E2E_NAME ?? 'E2E User'
 
-async function failWithBody(label, response) {
-  const body = await response.text().catch(() => '')
-  throw new Error(`${label} failed (${response.status()}): ${body.slice(0, 500)}`)
+export function authenticationSetupFailure(label, status) {
+  return new Error(`${label} failed (${status}).`)
+}
+
+export function resolveSkillNodeModulesDirectory(environment, repositoryRoot = repoRoot) {
+  if (!environment.MOLDY_TEST_RUN_ROOT) {
+    return path.join(repositoryRoot, 'backend', 'skill-node', 'node_modules')
+  }
+  const backendSourceRoot = environment.MOLDY_BACKEND_SOURCE_ROOT
+  if (!backendSourceRoot) {
+    throw new Error('MOLDY_BACKEND_SOURCE_ROOT is required in isolated E2E mode.')
+  }
+  if (!path.isAbsolute(backendSourceRoot)) {
+    throw new Error('MOLDY_BACKEND_SOURCE_ROOT must be absolute in isolated E2E mode.')
+  }
+  return path.join(path.resolve(backendSourceRoot), 'skill-node', 'node_modules')
 }
 
 async function writeSkipBackendState() {
@@ -60,6 +72,7 @@ async function writeSkipBackendState() {
 }
 
 async function assertSkillNodeDependencies() {
+  const skillNodeModules = resolveSkillNodeModulesDirectory(process.env)
   const missing = []
   for (const packageName of requiredSkillNodePackages) {
     try {
@@ -103,7 +116,7 @@ export default async function globalSetup() {
       response = await api.post('/api/auth/login', { data: auth })
     }
     if (!response.ok()) {
-      await failWithBody('E2E authentication setup', response)
+      throw authenticationSetupFailure('E2E authentication setup', response.status())
     }
 
     await api.storageState({ path: authFile })

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "smoke": {
+      "lane": "scripted",
+      "project": "scripted-smoke",
+      "spec": "e2e/smoke.spec.ts",
+      "workers": 1,
+      "retries": 0
+    }
+  }
+}

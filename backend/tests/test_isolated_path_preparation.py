@@ -18,10 +18,13 @@ def test_backend_run_has_prepared_lane_tree_under_system_temp(tmp_path: Path) ->
     receipt = tmp_path / "prepared.json"
     code = (
         "import json,os,pathlib; root=pathlib.Path(os.environ['MOLDY_TEST_RUN_ROOT']); "
-        "names=['backend/data','frontend/auth','frontend/next',"
-        "'frontend/test-results','frontend/output']; "
+        "names=['backend/data','frontend/auth','frontend/.next',"
+        "'frontend/.next/scripted-smoke','frontend/.next/scripted-full',"
+        "'frontend/.next/scripted-capture','frontend/.next/live-manual',"
+        "'frontend/test-results','output/e2e-captures']; "
         f"pathlib.Path({str(receipt)!r}).write_text(json.dumps("
-        "{'root':str(root),'ready':all((root/name).is_dir() for name in names)}))"
+        "{'root':str(root),'ready':all((root/name).is_dir() for name in names),"
+        "'legacy_next':(root/'frontend/next').exists()}))"
     )
 
     # When: the wrapper prepares and runs the backend child.
@@ -39,6 +42,7 @@ def test_backend_run_has_prepared_lane_tree_under_system_temp(tmp_path: Path) ->
     root = Path(payload["root"])
     assert result.returncode == 0, result.stderr
     assert payload["ready"] is True
+    assert payload["legacy_next"] is False
     assert not root.is_relative_to(REPO_ROOT)
     assert not root.exists()
 

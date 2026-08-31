@@ -63,48 +63,41 @@ scripted/live는 각각 `scripted-user.json`/`live-user.json`을 사용하며,
 산출물이므로 커밋하지 않습니다. `PW_SKIP_BACKEND=1`은
 모든 `/api/*` 요청을 mock하는 spec에서만 사용하세요.
 
-## Playwright E2E lane
+## Playwright E2E lanes
 
-E2E는 공유 개발 DB를 사용하지 않습니다. `DATABASE_URL`은
-`postgresql+asyncpg://`, `DATABASE_URL_SYNC`는 `postgresql://`로 같은 lane 전용
-DB를 가리켜야 합니다. scripted는 기본 포트 `3100/8101`과
-`moldy_e2e_scripted` 또는 `moldy_e2e_scripted_...` DB 이름을, live는 `3200/8201`과
-`moldy_e2e_live` 또는 `moldy_e2e_live_...` 이름을 사용합니다. 포트는 환경변수로
-덮어쓸 수 있습니다.
-
-```bash
-# scripted throwaway DB 생성 및 migration
-docker run -d --name moldy-e2e-scripted-pg -p 5433:5432 \
-  -e POSTGRES_DB=moldy_e2e_scripted_local -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy postgres:16-alpine
-until docker exec moldy-e2e-scripted-pg pg_isready -U moldy -d moldy_e2e_scripted_local; do sleep 1; done
-cd ../backend && DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
-  DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' uv run alembic upgrade head
-
-# frontend에서 scripted lane 실행 (E2E_LLM_*는 실행기가 제거)
-cd ../frontend
-DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
-DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
-pnpm test:e2e:scripted
-
-docker rm -f moldy-e2e-scripted-pg
-```
-
-live는 scripted DB에 같은 이름의 database만 추가해 재사용하지 말고, 별도
-throwaway 컨테이너를 만들고 마이그레이션한 뒤 실행합니다. 예를 들어 다음은
-live의 기본 포트(`3200/8201`)와 별도 DB 포트(`5434`)를 사용합니다.
+Todo04의 lane runner가 PostgreSQL 16, backend/frontend, live egress proxy(live만)를
+포함한 disposable lifecycle을 소유합니다. 사용자가 DB를 만들거나 migration·서비스
+종료를 수동으로 수행하지 않습니다. 각 실행은 scripted `3100/8101`, live `3200/8201`,
+Playwright `workers=1`/`retries=0`, 기존 서버 재사용 금지로 고정되며 성공·실패·SIGINT
+뒤 owned resource를 정리합니다.
 
 ```bash
-docker run -d --name moldy-e2e-live-pg -p 5434:5432 \
-  -e POSTGRES_DB=moldy_e2e_live_local -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy postgres:16-alpine
-until docker exec moldy-e2e-live-pg pg_isready -U moldy -d moldy_e2e_live_local; do sleep 1; done
-cd ../backend && DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5434/moldy_e2e_live_local' \
-  DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5434/moldy_e2e_live_local' uv run alembic upgrade head
+# scripted smoke
+pnpm test:e2e:scripted -- --project=scripted-smoke
 
-cd ../frontend
-DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5434/moldy_e2e_live_local' \
-DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5434/moldy_e2e_live_local' \
-E2E_LLM_BASE_URL='...' E2E_LLM_API_KEY='...' E2E_LLM_MODEL='...' \
-pnpm test:e2e:live
+# scripted full (기본 scripted project)
+pnpm test:e2e:scripted -- --project=scripted-full
 
-docker rm -f moldy-e2e-live-pg
+# scripted capture (capture tour를 요청할 때만)
+E2E_CAPTURE_TOUR=1 pnpm test:e2e:scripted -- --project=scripted-capture
+
+# live manual — 아래 세 변수가 모두 필요
+E2E_LLM_BASE_URL='https://llm.example/v1' \
+E2E_LLM_API_KEY='...' \
+E2E_LLM_MODEL='...' \
+pnpm test:e2e:live -- --project=live-manual
 ```
+
+`E2E_LLM_BASE_URL`, `E2E_LLM_API_KEY`, `E2E_LLM_MODEL` 중 하나라도 비어 있으면
+live lane은 실행되지 않습니다. `--list`를 붙인 live 실행은 실제 provider 호출 없이
+고정된 네 개의 live test만 선택하는지 확인할 때 사용합니다.
+scripted lane은 runner가 E2E scripted model을 활성화하며, 외부 LiteLLM 값은 전달하지
+않습니다.
+
+runner manifest는 `E2E_RUN_MANIFEST`로 지정할 수 있고, 기본값은
+`.omo/evidence/project-restart-consolidated-roadmap/e2e-<lane>-<pid>-<timestamp>.json`입니다.
+`E2E_EXPORT_SLUG`로 export slug를 지정할 수 있습니다. 실행 종료 전
+selection/execution receipt, JUnit/Playwright 결과와 capture를 secret scan한 뒤,
+`export-manifest.json`과 allowlist에 맞는 파일을
+`output/e2e-captures/<Asia-Seoul-date>-<E2E_EXPORT_SLUG>/`로 export합니다. Screenshot은
+`scripted-capture`에서만 export되며, export 후 run root도 제거됩니다.

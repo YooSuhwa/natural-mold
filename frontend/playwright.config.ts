@@ -3,23 +3,42 @@ import path from 'node:path'
 
 import {
   assertIsolatedDatabaseEnvironment,
+  buildBackendWebServerCommand,
+  buildExactLiveTitleFilter,
+  buildFrontendWebServerCommand,
+  buildPlaywrightProjectUse,
+  E2E_PROJECTS,
   getE2EAuthStatePath,
   getE2ERunPaths,
   getLaneDefaultPorts,
-  LIVE_E2E_SPECS,
-  LIVE_E2E_TEST_MATCH,
+  getPlaywrightExecutionPolicy,
+  getPlaywrightArtifactsDirectory,
+  LIVE_E2E_SPEC_GLOBS,
+  resolveConfiguredE2EProject,
+  sanitizePlaywrightEnvironment,
 } from './scripts/e2e-lane-contract.mjs'
 
-// `PW_SKIP_BACKEND=1` skips spinning up the FastAPI backend. Useful for specs
-// that mock every `/api/*` request via `page.route` (M9 health, M10 spend
-// dashboard, model fallback) and don't need a live backend. Defaults to off so
-// integration specs continue to boot the full stack.
-const skipBackend = process.env.PW_SKIP_BACKEND === '1'
+const selectionOnly = process.env.E2E_SELECTION_ONLY === '1'
 const configuredE2eLane = process.env.E2E_LANE
 const e2eLane = configuredE2eLane || 'scripted'
+if (configuredE2eLane && e2eLane !== 'scripted' && e2eLane !== 'live') {
+  throw new Error('E2E_LANE must be scripted or live.')
+}
+const e2eProject = resolveConfiguredE2EProject(e2eLane, process.env, process.argv.slice(2))
+const workerEnvironment = sanitizePlaywrightEnvironment(e2eLane, process.env, e2eProject)
+for (const name of Object.keys(process.env)) delete process.env[name]
+Object.assign(process.env, workerEnvironment)
+
+const skipBackend = false
 const defaultPorts = getLaneDefaultPorts(e2eLane)
-const authStatePath = getE2EAuthStatePath(e2eLane, process.env)
-const runPaths = getE2ERunPaths(e2eLane, process.env)
+const authStatePath = getE2EAuthStatePath(e2eLane, process.env, e2eProject)
+const runPaths = getE2ERunPaths(e2eLane, process.env, e2eProject)
+const playwrightArtifactsDirectory = getPlaywrightArtifactsDirectory(
+  e2eLane,
+  process.env,
+  e2eProject,
+)
+const executionPolicy = getPlaywrightExecutionPolicy()
 const backendSourceRoot = process.env.MOLDY_BACKEND_SOURCE_ROOT ?? path.resolve('../backend')
 if (process.env.MOLDY_TEST_RUN_ROOT && !path.isAbsolute(backendSourceRoot)) {
   throw new Error('MOLDY_BACKEND_SOURCE_ROOT must be absolute in isolated mode.')
@@ -31,64 +50,98 @@ process.env.E2E_BACKEND_PORT = String(backendPort)
 process.env.E2E_AUTH_STATE_PATH = authStatePath
 process.env.E2E_NEXT_BUILD_DIR = runPaths.buildDir
 process.env.E2E_RESULTS_DIR = runPaths.resultsDir
+process.env.E2E_PROJECT = e2eProject
 const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${frontendPort}`
 const apiBaseURL = process.env.E2E_API_BASE_URL ?? `http://localhost:${backendPort}`
 const corsOrigins = `http://localhost:${frontendPort},http://127.0.0.1:${frontendPort}`
-const workers = Number(process.env.E2E_WORKERS ?? '1')
 const testTimeout = Number(process.env.E2E_TEST_TIMEOUT_MS ?? '60000')
 const chatRuntime = process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy' ? 'legacy' : 'langgraph_v3'
-const reuseExistingServer = process.env.PW_REUSE_EXISTING_SERVER === '1'
 process.env.NEXT_PUBLIC_CHAT_RUNTIME = chatRuntime
 
-if (configuredE2eLane && e2eLane !== 'scripted' && e2eLane !== 'live') {
-  throw new Error('E2E_LANE must be scripted or live.')
+if (!selectionOnly && !skipBackend) assertIsolatedDatabaseEnvironment(e2eLane, process.env)
+
+if (
+  e2eLane === 'live' &&
+  (!process.env.E2E_LLM_BASE_URL || !process.env.E2E_LLM_API_KEY || !process.env.E2E_LLM_MODEL)
+) {
+  throw new Error(
+    'The live E2E lane requires E2E_LLM_BASE_URL, E2E_LLM_API_KEY, and E2E_LLM_MODEL.',
+  )
 }
 
-if (!skipBackend) assertIsolatedDatabaseEnvironment(e2eLane, process.env)
-
-if (e2eLane === 'live' && (!process.env.E2E_LLM_BASE_URL || !process.env.E2E_LLM_API_KEY || !process.env.E2E_LLM_MODEL)) {
-  throw new Error('The live E2E lane requires E2E_LLM_BASE_URL, E2E_LLM_API_KEY, and E2E_LLM_MODEL.')
-}
-
-const backendModelEnvironment =
-  e2eLane === 'scripted'
-    ? 'E2E_LLM_BASE_URL= E2E_LLM_API_KEY= E2E_LLM_MODEL= E2E_SCRIPTED_MODEL_ENABLED=true'
-    : 'E2E_SCRIPTED_MODEL_ENABLED=false'
-
-const webServer = [
+const runtimeWebServers = [
   ...(skipBackend
     ? []
     : [
         {
           // SKILL_EVALUATION_ENABLED 기본 false(기존 계약 — eval worker 소음 차단).
           // Phase 3 평가 런 투어만 E2E_SKILL_EVALUATION_ENABLED=true로 켠다.
-          command: `${backendModelEnvironment} SKILL_EVALUATION_ENABLED=${process.env.E2E_SKILL_EVALUATION_ENABLED === 'true' ? 'true' : 'false'} CORS_ALLOWED_ORIGINS=${corsOrigins} uv run uvicorn app.main:app --port ${backendPort}`,
+          command: buildBackendWebServerCommand(
+            e2eLane,
+            process.env.E2E_SKILL_EVALUATION_ENABLED === 'true',
+            corsOrigins,
+            backendPort,
+          ),
           cwd: backendSourceRoot,
           port: backendPort,
-          reuseExistingServer,
+          reuseExistingServer: false,
         },
       ]),
   {
-    command: `pnpm prepare:assets && NEXT_PUBLIC_CHAT_RUNTIME=${chatRuntime} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL} pnpm exec next dev --port ${frontendPort}`,
+    command: buildFrontendWebServerCommand(chatRuntime, apiBaseURL, frontendPort),
     port: frontendPort,
-    reuseExistingServer,
+    reuseExistingServer: false,
+  },
+]
+
+const scriptedFullIgnore = [
+  '**/*live*.spec.ts',
+  '**/manual/**',
+  '**/manual*.spec.ts',
+  '**/captures/**',
+]
+const projects = [
+  {
+    name: E2E_PROJECTS[0],
+    testMatch: '**/smoke.spec.ts',
+    use: buildPlaywrightProjectUse(E2E_PROJECTS[0]),
+  },
+  {
+    name: E2E_PROJECTS[1],
+    testIgnore: scriptedFullIgnore,
+    use: buildPlaywrightProjectUse(E2E_PROJECTS[1]),
+  },
+  {
+    name: E2E_PROJECTS[2],
+    testMatch: '**/captures/**/*.spec.ts',
+    use: buildPlaywrightProjectUse(E2E_PROJECTS[2]),
+  },
+  {
+    name: E2E_PROJECTS[3],
+    testMatch: [...LIVE_E2E_SPEC_GLOBS],
+    grep: new RegExp(buildExactLiveTitleFilter()),
+    use: buildPlaywrightProjectUse(E2E_PROJECTS[3]),
   },
 ]
 
 export default defineConfig({
   testDir: './e2e',
-  outputDir: runPaths.resultsDir,
-  testMatch: e2eLane === 'live' ? [...LIVE_E2E_TEST_MATCH] : undefined,
-  testIgnore: e2eLane === 'scripted' ? [...LIVE_E2E_SPECS] : undefined,
+  outputDir: playwrightArtifactsDirectory,
   timeout: testTimeout,
-  globalSetup: './e2e/global-setup.mjs',
-  retries: 1,
-  workers,
+  globalSetup: selectionOnly ? undefined : './e2e/global-setup.mjs',
+  retries: executionPolicy.retries,
+  workers: executionPolicy.workers,
+  reporter: [
+    ['json', { outputFile: path.join(runPaths.resultsDir, 'execution.json') }],
+    ['list'],
+    ['junit', { outputFile: path.join(runPaths.resultsDir, 'junit.xml') }],
+  ],
   use: {
     baseURL,
     storageState: authStatePath,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
-  webServer,
-  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+  webServer: selectionOnly ? [] : runtimeWebServers,
+  projects,
 })
