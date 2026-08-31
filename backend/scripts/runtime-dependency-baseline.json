@@ -1,0 +1,495 @@
+{
+  "schema_version": 1,
+  "reviewed_from": "4615923bca84ad9c829876e58c20add63a8a3e84",
+  "historical_base": "7a9cee88c772e29c830cd84fb5578d06d753e080",
+  "legacy_violations": [
+    {
+      "rule": "models_to_upper_layers",
+      "importer": "app.models.agent",
+      "imported": "app.agent_runtime.identity"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.agent_api",
+      "imported": "app.models.agent_api"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.agent_blueprints",
+      "imported": "app.models.agent_blueprint"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.agent_blueprints",
+      "imported": "app.models.marketplace"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.agent_runtime_api",
+      "imported": "app.models.agent_api"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.agents",
+      "imported": "app.models.agent"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.artifacts",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.audit",
+      "imported": "app.models.audit_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_ag_ui",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_ag_ui",
+      "imported": "app.models.conversation_run"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_ag_ui",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_attach",
+      "imported": "app.models.conversation_run"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_commands",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_consent",
+      "imported": "app.models.skill_builder_session"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_contracts",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_interrupts",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_legacy",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_replay",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_replay",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_resume_redaction",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_runtime",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_runtime",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_stale",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_stale",
+      "imported": "app.models.conversation_run"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_state",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_agent_protocol_state_snapshot",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_branches",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_crud",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_followup",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_messages",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_messages",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_run_cancel",
+      "imported": "app.models.conversation_run"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_runs",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_runs",
+      "imported": "app.models.conversation_run"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_runs",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_traces",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_traces",
+      "imported": "app.models.conversation_run"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_traces",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.credentials",
+      "imported": "app.models.credential"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.e2e_chat_run_helpers",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.feedback",
+      "imported": "app.models.message_feedback"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.health",
+      "imported": "app.models.credential"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.health",
+      "imported": "app.models.health_check_history"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.health",
+      "imported": "app.models.mcp_server"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.health",
+      "imported": "app.models.model"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.marketplace",
+      "imported": "app.models.marketplace"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.mcp",
+      "imported": "app.models.mcp_server"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.mcp",
+      "imported": "app.models.mcp_tool"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.models",
+      "imported": "app.models.credential"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.shares",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.shares",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_builder_audit",
+      "imported": "app.models.skill"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_builder_audit",
+      "imported": "app.models.skill_builder_session"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_builder_audit",
+      "imported": "app.models.skill_revision"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_builder_support",
+      "imported": "app.models.skill"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_builder_support",
+      "imported": "app.models.skill_builder_session"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_evaluations",
+      "imported": "app.models.skill_evaluation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_evaluations_support",
+      "imported": "app.models.skill"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_evaluations_support",
+      "imported": "app.models.skill_evaluation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_files",
+      "imported": "app.models.skill"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_files",
+      "imported": "app.models.skill_revision"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_revisions",
+      "imported": "app.models.skill"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_revisions",
+      "imported": "app.models.skill_revision"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_router_support",
+      "imported": "app.models.marketplace"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_router_support",
+      "imported": "app.models.skill"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.skill_router_support",
+      "imported": "app.models.skill_revision"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.system_llm_settings",
+      "imported": "app.models.system_llm_setting"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.tools",
+      "imported": "app.models.tool"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.triggers",
+      "imported": "app.models.agent_trigger"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.uploads",
+      "imported": "app.models.message_attachment"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.assistant.assistant_agent",
+      "imported": "app.services.system_credential_resolver"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.assistant.tools.read_tools",
+      "imported": "app.services.tool_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.assistant.tools.write_tools.agent_config",
+      "imported": "app.services.model_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.assistant.tools.write_tools.cron",
+      "imported": "app.services.trigger_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.builder.sub_agents.helpers",
+      "imported": "app.services.system_credential_resolver"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.builder_v3.image_gen",
+      "imported": "app.services.agent_image_paths"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.builder_v3.image_gen",
+      "imported": "app.services.image_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.builder_v3.image_gen",
+      "imported": "app.services.system_credential_resolver"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.builder_v3.nodes.phase8_build",
+      "imported": "app.services.builder_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.runtime.memory_context",
+      "imported": "app.services.memory_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.skill_builder.agent",
+      "imported": "app.services.system_credential_resolver"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.skill_builder.deterministic_eval_runner",
+      "imported": "app.services.skill_evaluation_result_schema"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.skill_builder.tools",
+      "imported": "app.services.skill_builder_finalize"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.skill_builder.tools",
+      "imported": "app.services.skill_draft_workspace"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.skill_executor",
+      "imported": "app.services.skill_usage_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.skill_executor_audit",
+      "imported": "app.services.audit_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.subagents",
+      "imported": "app.services.chat_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.tools.memory",
+      "imported": "app.services.memory_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_executor",
+      "imported": "app.services.chat_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_executor",
+      "imported": "app.services.trigger_service"
+    },
+    {
+      "rule": "services_to_routers",
+      "importer": "app.services.skill_builder_finalize",
+      "imported": "app.routers.skill_builder_audit"
+    }
+  ],
+  "legacy_cyclic_edges": [
+    {
+      "importer": "app.agent_runtime.ag_ui_adapter",
+      "imported": "app.agent_runtime.ag_ui_streaming"
+    },
+    {
+      "importer": "app.agent_runtime.ag_ui_streaming",
+      "imported": "app.agent_runtime.ag_ui_adapter"
+    },
+    {
+      "importer": "app.agent_runtime.runtime.models",
+      "imported": "app.agent_runtime.runtime_component_builder"
+    },
+    {
+      "importer": "app.agent_runtime.runtime.reliability",
+      "imported": "app.agent_runtime.runtime.models"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_component_builder",
+      "imported": "app.agent_runtime.runtime.models"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_component_builder",
+      "imported": "app.agent_runtime.runtime.reliability"
+    }
+  ],
+  "dynamic_import_exceptions": [
+    {
+      "module": "app.agent_runtime.middleware_registry",
+      "function": "_resolve_middleware_class",
+      "callee": "importlib.import_module"
+    }
+  ]
+}
