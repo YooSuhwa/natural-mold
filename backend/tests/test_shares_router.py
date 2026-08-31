@@ -8,10 +8,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
 from app.agent_runtime.protocol_events import stored_protocol_event
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from app.schemas.conversation import MessageResponse
@@ -252,6 +254,96 @@ async def test_public_share_view_includes_protocol_traces(client: AsyncClient):
     trace = resp.json()["traces"][0]
     assert trace["events"][0]["method"] == "tools"
     assert trace["events"][0]["data"]["args"] == {"query": "moldy"}
+
+
+@pytest.mark.asyncio
+async def test_public_share_projects_legacy_offload_traces_without_mutating_storage(
+    client: AsyncClient,
+) -> None:
+    """The anonymous share surface exposes only logical offload IDs."""
+    from app.services import trace_storage
+
+    conv_id = await _seed_conversation()
+    token = (await client.post(f"/api/conversations/{conv_id}/share")).json()["share_token"]
+    visible_message_id = uuid.uuid4()
+    message_id = str(visible_message_id)
+    configured_secret = "share-configured-secret-42"
+    history_path = "/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    spill_path = "/large_tool_results/tool-call.json"
+    virtual_path = (
+        "/.moldy-offload/owner/conversation/actor/"
+        "conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    )
+    physical_path = (
+        "/tmp/moldy/.moldy-internal/offload/spill/owner/run/actor/large_tool_results/tool-call.json"
+    )
+    events = [
+        {
+            "id": f"{message_id}-1",
+            "event": "message_start",
+            "data": {
+                "id": message_id,
+                "history": history_path,
+                "spill": spill_path,
+                "virtual": virtual_path,
+                "physical": physical_path,
+                "note": f"path={history_path}; credential={configured_secret}",
+                "_summarization_event": {"file_path": history_path},
+            },
+        },
+        {
+            "id": f"{message_id}-2",
+            "event": "memory_proposed",
+            "data": {
+                "id": "proposal-share-1",
+                "scope": "user",
+                "content": "share-private-memory-body",
+                "reason": "share-private-memory-reason",
+            },
+        },
+    ]
+    async with TestSession() as db:
+        await trace_storage.record_turn(db, conversation_id=conv_id, events=events)
+        await db.commit()
+
+    with (
+        patch(
+            "app.routers.shares.chat_service.list_messages_from_checkpointer",
+            new=AsyncMock(return_value=[_shared_assistant_message(conv_id, visible_message_id)]),
+        ),
+        patch(
+            "app.services.chat.secrets.collect_conversation_secret_values",
+            new=AsyncMock(return_value={configured_secret}),
+        ),
+    ):
+        response = await client.get(f"/api/shares/{token}")
+        cached_response = await client.get(f"/api/shares/{token}")
+
+    assert response.status_code == 200
+    rendered = repr(response.json())
+    assert cached_response.status_code == 200
+    assert cached_response.json() == response.json()
+    assert configured_secret not in rendered
+    assert configured_secret not in repr(cached_response.json())
+    for path in (history_path, spill_path, virtual_path, physical_path):
+        assert path not in rendered
+    assert "/conversation_history/" not in rendered
+    assert "/large_tool_results/" not in rendered
+    assert "/.moldy-offload/" not in rendered
+    assert "/.moldy-internal/offload/" not in rendered
+    assert "history_" in rendered
+    assert "spill_" not in rendered
+    assert "internal_reference_redacted" in rendered
+    assert "file_path" not in rendered
+    assert "share-private-memory-body" not in rendered
+    assert "share-private-memory-reason" not in rendered
+
+    async with TestSession() as db:
+        stored = await db.scalar(
+            select(MessageEvent).where(MessageEvent.assistant_msg_id == message_id)
+        )
+        assert stored is not None
+        assert stored.events == events
 
 
 @pytest.mark.asyncio

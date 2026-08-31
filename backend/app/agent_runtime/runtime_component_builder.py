@@ -21,13 +21,15 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from pathlib import Path
 from typing import Any, cast
 
 from deepagents import create_deep_agent
-from deepagents.backends import FilesystemBackend, StateBackend
+from deepagents.backends import StateBackend
 from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
 from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT
+from deepagents.middleware.summarization import create_summarization_middleware
 from langchain.agents.middleware import TodoListMiddleware
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
@@ -41,6 +43,12 @@ from app.agent_runtime.middleware_registry import (
     get_provider_middleware,
 )
 from app.agent_runtime.model_factory import create_chat_model as create_chat_model
+from app.agent_runtime.offload_storage import (
+    GENERAL_PURPOSE_ACTOR,
+    OffloadIdentity,
+    ScopedOffloadBackend,
+    ScopedOffloadStorage,
+)
 from app.agent_runtime.run_secrets import add_run_secrets, collect_secret_values
 from app.agent_runtime.runtime.interrupts import _build_interrupt_on_policy
 from app.agent_runtime.runtime.interrupts import (
@@ -129,8 +137,11 @@ _MOLDY_FILESYSTEM_TOOL_NAMES = (
     "execute",
 )
 _FILESYSTEM_MIDDLEWARE_NAME = "FilesystemMiddleware"
+_SUMMARIZATION_MIDDLEWARE_NAME = "SummarizationMiddleware"
 _TODO_LIST_MIDDLEWARE_NAME = "TodoListMiddleware"
 _GENERAL_PURPOSE_SUBAGENT_NAME = GENERAL_PURPOSE_SUBAGENT["name"]
+_MOLDY_ACTOR_ID_KEY = "_moldy_actor_id"
+_DB_FREE_ACTOR_ID = uuid.UUID("00000000-0000-4000-8000-000000000000")
 
 
 def _middleware_name(middleware: Any) -> str | None:
@@ -180,6 +191,62 @@ def _with_moldy_deepagents_compatibility(
     ]
 
 
+def _actor_backend(backend: Any, actor_id: uuid.UUID | str | None) -> Any:
+    """Return an actor-scoped backend when Moldy's scoped backend is active."""
+
+    if not isinstance(backend, ScopedOffloadBackend):
+        return backend
+    if actor_id is None:
+        raise ValueError("declarative subagent is missing its trusted actor identity")
+    return backend.for_actor(actor_id)
+
+
+def _with_actor_summarization(
+    middleware: list[Any],
+    *,
+    model: BaseChatModel,
+    backend: Any,
+) -> list[Any]:
+    """Replace Deep Agents' child summarizer with one using the child's backend."""
+
+    if not isinstance(backend, ScopedOffloadBackend):
+        return middleware
+    retained = [
+        item for item in middleware if _middleware_name(item) != _SUMMARIZATION_MIDDLEWARE_NAME
+    ]
+    return [*retained, create_summarization_middleware(model, backend)]
+
+
+def _scoped_runtime_backend(
+    cfg: AgentConfig,
+    *,
+    run_id: str | None,
+) -> ScopedOffloadBackend:
+    """Build the trusted owner/conversation/run/actor storage boundary."""
+
+    if run_id is None:
+        raise ValueError("run_id is required when scoped offload storage is enabled")
+    owner_id = cfg.agent_owner_user_id or cfg.user_id or "db-free"
+    if cfg.agent_id is not None:
+        try:
+            actor_id: uuid.UUID = uuid.UUID(cfg.agent_id)
+        except ValueError:
+            # Older DB-free callers and fixtures used opaque identifiers here.
+            # Keep them isolated without ever using the raw value as a path.
+            actor_id = uuid.uuid5(uuid.NAMESPACE_URL, f"moldy-agent:{cfg.agent_id}")
+    else:
+        actor_id = _DB_FREE_ACTOR_ID
+    storage = ScopedOffloadStorage(
+        data_dir=_DATA_DIR,
+        identity=OffloadIdentity(
+            owner_id=owner_id,
+            conversation_id=cfg.thread_id,
+            run_id=run_id,
+        ),
+    )
+    return storage.for_actor(actor_id)
+
+
 def _normalize_declarative_subagents(
     subagents: list[dict[str, Any]] | None,
     *,
@@ -210,27 +277,47 @@ def _normalize_declarative_subagents(
 
         child_permissions = spec.get("permissions", permissions)
         child = dict(spec)
-        child["middleware"] = _with_moldy_deepagents_compatibility(
+        actor_id = child.pop(
+            _MOLDY_ACTOR_ID_KEY,
+            GENERAL_PURPOSE_ACTOR if spec.get("name") == _GENERAL_PURPOSE_SUBAGENT_NAME else None,
+        )
+        if isinstance(backend, ScopedOffloadBackend) and actor_id is None:
+            raise ValueError("declarative subagent is missing its trusted actor identity")
+        child_backend = _actor_backend(backend, actor_id)
+        child_model = cast(BaseChatModel, child.get("model", model))
+        child_middleware = _with_moldy_deepagents_compatibility(
             spec.get("middleware"),
-            backend=backend,
+            backend=child_backend,
             permissions=child_permissions,
+        )
+        child["middleware"] = _with_actor_summarization(
+            child_middleware,
+            model=child_model,
+            backend=child_backend,
         )
         normalized.append(child)
 
     if not has_general_purpose:
         general_purpose = dict(GENERAL_PURPOSE_SUBAGENT)
+        general_purpose_backend = _actor_backend(backend, GENERAL_PURPOSE_ACTOR)
+        general_purpose_middleware = _with_moldy_deepagents_compatibility(
+            None,
+            backend=general_purpose_backend,
+            permissions=permissions,
+        )
         general_purpose.update(
             {
                 "model": model,
                 "tools": list(tools),
-                "middleware": _with_moldy_deepagents_compatibility(
-                    None,
-                    backend=backend,
-                    permissions=permissions,
-                ),
+                "middleware": general_purpose_middleware,
                 "permissions": permissions,
                 "interrupt_on": interrupt_on,
             }
+        )
+        general_purpose["middleware"] = _with_actor_summarization(
+            general_purpose_middleware,
+            model=model,
+            backend=general_purpose_backend,
         )
         if skills is not None:
             general_purpose["skills"] = list(skills)
@@ -386,6 +473,8 @@ async def _prepare_skill_builder_components(
     *,
     is_trigger_mode: bool,
     include_ask_user: bool,
+    run_id: str | None = None,
+    scope_offload_backend: bool = False,
 ) -> RuntimeComponents:
     """``runtime_profile='skill_builder'`` 전용 분기 (스펙 AD-3).
 
@@ -426,7 +515,9 @@ async def _prepare_skill_builder_components(
     )
     middleware += get_provider_middleware(cfg.provider)
 
-    backend = FilesystemBackend(root_dir=str(_DATA_DIR), virtual_mode=True)
+    backend = (
+        _scoped_runtime_backend(cfg, run_id=run_id) if scope_offload_backend else StateBackend()
+    )
     permissions = build_filesystem_permissions(
         thread_id=cfg.thread_id,
         agent_id=cfg.agent_id,
@@ -481,6 +572,8 @@ async def _prepare_runtime_components(
     include_ask_user: bool,
     include_agent_memory_file: bool,
     timings: dict[str, int] | None = None,
+    run_id: str | None = None,
+    scope_offload_backend: bool = False,
 ) -> RuntimeComponents:
     """Build reusable Deep Agents runtime pieces for a parent or child agent."""
 
@@ -489,6 +582,8 @@ async def _prepare_runtime_components(
             cfg,
             is_trigger_mode=is_trigger_mode,
             include_ask_user=include_ask_user,
+            run_id=run_id,
+            scope_offload_backend=scope_offload_backend,
         )
 
     last_mark = time.perf_counter()
@@ -567,7 +662,9 @@ async def _prepare_runtime_components(
     middleware += get_provider_middleware(cfg.provider)
     mark_timing("middleware_ms")
 
-    backend = FilesystemBackend(root_dir=str(_DATA_DIR), virtual_mode=True)
+    backend = (
+        _scoped_runtime_backend(cfg, run_id=run_id) if scope_offload_backend else StateBackend()
+    )
 
     skills_sources: list[str] | None = None
     if cfg.agent_skills:
@@ -667,6 +764,7 @@ async def _prepare_agent(
     *,
     messages_history: list[dict[str, str]],
     is_trigger_mode: bool = False,
+    run_id: str | None = None,
 ) -> tuple[Any, list, dict]:
     """에이전트 빌드 + 설정. stream/invoke 공용.
 
@@ -690,6 +788,8 @@ async def _prepare_agent(
         include_ask_user=not is_trigger_mode,
         include_agent_memory_file=True,
         timings=timings,
+        run_id=run_id,
+        scope_offload_backend=run_id is not None,
     )
     last_mark = time.perf_counter()
 

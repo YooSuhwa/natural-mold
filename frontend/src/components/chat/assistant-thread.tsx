@@ -377,7 +377,7 @@ function AssistantCompactionMarker() {
         ?.compaction ?? null,
   )
   if (!compaction) return null
-  return <CompactionSummary offloadPath={compaction.offloadPath} className="mt-2" />
+  return <CompactionSummary className="mt-2" />
 }
 
 function AssistantArtifactCards() {

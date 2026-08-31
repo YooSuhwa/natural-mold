@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -220,6 +221,69 @@ async def test_get_traces_endpoint_returns_protocol_events(client: AsyncClient) 
     body = response.json()
     assert body[0]["events"][0]["method"] == "lifecycle"
     assert body[0]["events"][0]["data"] == {"event": "completed"}
+
+
+@pytest.mark.asyncio
+async def test_get_traces_endpoint_projects_legacy_offload_paths_without_mutating_storage(
+    client: AsyncClient,
+) -> None:
+    """Trace egress replaces every legacy offload path while preserving the DB event."""
+    conv_id = await _seed_conversation()
+    message_id = "legacy-offload-trace"
+    configured_secret = "trace-configured-secret-42"
+    history_path = "/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    spill_path = "/large_tool_results/tool-call.json"
+    virtual_path = (
+        "/.moldy-offload/owner/conversation/actor/"
+        "conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    )
+    physical_path = (
+        "/tmp/moldy/.moldy-internal/offload/spill/owner/run/actor/large_tool_results/tool-call.json"
+    )
+    events = [
+        {
+            "id": f"{message_id}-1",
+            "event": "message_start",
+            "data": {
+                "id": message_id,
+                "history": history_path,
+                "spill": spill_path,
+                "virtual": virtual_path,
+                "physical": physical_path,
+                "note": f"path={history_path}; credential={configured_secret}",
+                "_summarization_event": {"file_path": history_path},
+            },
+        }
+    ]
+
+    async with TestSession() as db:
+        await trace_storage.record_turn(db, conversation_id=conv_id, events=events)
+        await db.commit()
+
+    with patch(
+        "app.services.chat.secrets.collect_conversation_secret_values",
+        new=AsyncMock(return_value={configured_secret}),
+    ):
+        response = await client.get(f"/api/conversations/{conv_id}/traces")
+
+    assert response.status_code == 200
+    rendered = repr(response.json())
+    assert configured_secret not in rendered
+    for path in (history_path, spill_path, virtual_path, physical_path):
+        assert path not in rendered
+    assert "/conversation_history/" not in rendered
+    assert "/large_tool_results/" not in rendered
+    assert "/.moldy-offload/" not in rendered
+    assert "/.moldy-internal/offload/" not in rendered
+    assert "history_" in rendered
+    assert "spill_" not in rendered
+    assert "internal_reference_redacted" in rendered
+    assert "file_path" not in rendered
+
+    async with TestSession() as db:
+        stored = await trace_storage.get_trace_by_msg_id(db, message_id)
+        assert stored is not None
+        assert stored.events == events
 
 
 @pytest.mark.asyncio

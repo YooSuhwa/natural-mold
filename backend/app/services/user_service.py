@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.conversation_run import ConversationRun
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 
@@ -27,12 +28,14 @@ MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_DURATION = timedelta(minutes=15)
 
 
+class ActiveConversationRunConflict(RuntimeError):
+    """User cleanup cannot safely proceed while a conversation run is active."""
+
+
 async def get_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     """PK lookup. Centralized so callers don't replicate the SELECT."""
 
-    return (
-        await db.execute(select(User).where(User.id == user_id))
-    ).scalar_one_or_none()
+    return (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
 
 
 async def get_by_email(db: AsyncSession, email: str) -> User | None:
@@ -86,9 +89,7 @@ async def create_user(
     return user
 
 
-async def record_login_success(
-    db: AsyncSession, user: User, *, ip: str | None
-) -> None:
+async def record_login_success(db: AsyncSession, user: User, *, ip: str | None) -> None:
     user.last_login_at = datetime.now(UTC)
     user.last_login_ip = ip
     user.failed_login_attempts = 0
@@ -128,7 +129,8 @@ def is_locked(user: User) -> bool:
 # linger forever, leaking the user's transcript content even after delete.
 #
 # ``cleanup_user_resources`` walks the user's conversations, deletes the
-# corresponding LangGraph threads, then revokes outstanding refresh tokens.
+# corresponding LangGraph threads and internal offloads, then revokes
+# outstanding refresh tokens.
 # ``delete_user`` is the higher-level call that runs cleanup and then
 # removes the User row (CASCADE finishes the rest).
 
@@ -139,39 +141,77 @@ async def cleanup_user_resources(db: AsyncSession, user_id: uuid.UUID) -> None:
     Currently:
     1. LangGraph checkpoints — every conversation owned (transitively via
        Agent.user_id) by this user.
-    2. Active refresh tokens — revoked so any leaked browser session stops
+    2. Internal compaction history and large-result spill files for those
+       same trusted owner/conversation pairs.
+    3. Active refresh tokens — revoked so any leaked browser session stops
        being able to mint new access tokens. (DB CASCADE removes the rows
        a moment later but this gives a tighter window.)
-    3. Builder sessions — already covered by ``ON DELETE CASCADE`` since m36;
+    4. Builder sessions — already covered by ``ON DELETE CASCADE`` since m36;
        no extra work here. Documented for future maintainers.
 
-    Idempotent: safe to call repeatedly. Logs (not raises) when the
-    LangGraph checkpointer isn't available (e.g. tests with no Postgres pool).
+    Idempotent: safe to call repeatedly. A checkpoint failure is logged and
+    does not block DB deletion. An internal-offload failure is retried across
+    sibling conversations and then raised so transcript data cannot be orphaned
+    by deleting its ownership rows.
     """
 
-    # 1. Conversations owned by the user (joined via Agent.user_id).
+    locked_user_id = await db.scalar(select(User.id).where(User.id == user_id).with_for_update())
+    if locked_user_id is None:
+        return
+
+    # 1. Conversations owned by the user (joined via Agent.user_id). The
+    # deterministic row-lock order matches run creation's User -> Conversation
+    # order and keeps the active-run check valid until the caller commits.
     conv_rows = (
-        await db.execute(
-            select(Conversation.id)
-            .join(Agent, Agent.id == Conversation.agent_id)
-            .where(Agent.user_id == user_id)
+        (
+            await db.execute(
+                select(Conversation.id)
+                .join(Agent, Agent.id == Conversation.agent_id)
+                .where(Agent.user_id == user_id)
+                .order_by(Conversation.id)
+                .with_for_update(of=Conversation)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     if conv_rows:
-        import asyncio
+        active_run_id = await db.scalar(
+            select(ConversationRun.id)
+            .where(
+                ConversationRun.conversation_id.in_(conv_rows),
+                ConversationRun.is_active.is_(True),
+            )
+            .limit(1)
+        )
+        if active_run_id is not None:
+            raise ActiveConversationRunConflict("user cleanup blocked by active conversation run")
 
+    offload_cleanup_failed = False
+    if conv_rows:
         from app.agent_runtime import checkpointer as cp
+        from app.agent_runtime.offload_storage import delete_conversation_offloads
+        from app.agent_runtime.runtime_config import _DATA_DIR
 
-        async def _safe_delete(thread_id: str) -> None:
+        for conversation_id in conv_rows:
+            thread_id = str(conversation_id)
             try:
                 await cp.delete_thread(thread_id)
             except Exception:  # noqa: BLE001 — checkpoint cleanup must not block user delete
-                logger.exception(
-                    "cleanup_user_resources: delete_thread(%s) failed", thread_id
+                logger.warning("cleanup_user_resources: checkpoint cleanup failed")
+            try:
+                delete_conversation_offloads(
+                    _DATA_DIR,
+                    owner_id=str(user_id),
+                    conversation_id=thread_id,
                 )
+            except Exception:  # noqa: BLE001 — finish siblings, then fail closed
+                logger.warning("cleanup_user_resources: offload cleanup failed")
+                offload_cleanup_failed = True
 
-        await asyncio.gather(*(_safe_delete(str(c)) for c in conv_rows))
+    if offload_cleanup_failed:
+        raise RuntimeError("user offload cleanup incomplete")
 
     # 2. Revoke active refresh tokens. The CASCADE on the FK will remove the
     # rows themselves when the User is deleted; we mark them revoked first so

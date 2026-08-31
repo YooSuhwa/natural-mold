@@ -390,15 +390,13 @@ def _redact_custom_event(data: Any) -> Any:
         return data
     if name in _MEMORY_RECALLED_NAMES:
         memories = payload.get("memories")
-        if not isinstance(memories, list):
-            return data
-        safe_memories = [
-            {**dict(brief), "content": REDACTED_MEMORY_FIELD}
-            if isinstance(brief, Mapping) and "content" in brief
-            else brief
-            for brief in memories
-        ]
-        return {**dict(data), "payload": {**dict(payload), "memories": safe_memories}}
+        safe_payload = _redact_memory_mapping(payload)
+        if isinstance(memories, list):
+            safe_payload["memories"] = [
+                _redact_memory_mapping(brief) if isinstance(brief, Mapping) else brief
+                for brief in memories
+            ]
+        return {**dict(data), "payload": safe_payload}
     if name not in MEMORY_EVENT_NAMES:
         return data
     return {**dict(data), "payload": _redact_memory_mapping(payload)}

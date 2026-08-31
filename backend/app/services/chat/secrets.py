@@ -123,13 +123,23 @@ def _redact_response_tool_calls(
     *,
     secret_values: Sequence[str] | None = None,
 ) -> None:
-    # ADR-021 C2 — this runs in a GET /messages request (no active run /
-    # ContextVar), so the run's secrets are passed explicitly by the caller.
+    """Redact every browser-facing message field after egress projection.
+
+    The historical name is retained because ``chat_service`` exports this
+    helper for compatibility.  GET/share paths call it after message-path
+    projection, so content and tool arguments need the same explicit secret
+    values outside a run-scoped ContextVar.
+    """
+
     for response in responses:
-        if not response.tool_calls:
-            continue
-        redacted = redact_protocol_data(
-            "messages", response.tool_calls, secret_values=secret_values
+        redacted_content = redact_protocol_data(
+            "messages", response.content, secret_values=secret_values
         )
-        if isinstance(redacted, list) and all(isinstance(item, dict) for item in redacted):
-            response.tool_calls = redacted
+        if isinstance(redacted_content, str):
+            response.content = redacted_content
+        if response.tool_calls:
+            redacted = redact_protocol_data(
+                "messages", response.tool_calls, secret_values=secret_values
+            )
+            if isinstance(redacted, list) and all(isinstance(item, dict) for item in redacted):
+                response.tool_calls = redacted

@@ -74,7 +74,9 @@ async def test_langgraph_runner_emits_input_requested_for_execute_in_skill_inter
         *,
         messages_history: list[dict[str, str]],
         is_trigger_mode: bool = False,
+        run_id: str,
     ) -> tuple[Any, list[dict[str, str]], dict[str, Any]]:
+        assert run_id == "run-hitl"
         return agent, messages_history, {"configurable": {"thread_id": "thread-hitl"}}
 
     from app.agent_runtime import langgraph_agent_stream_runner

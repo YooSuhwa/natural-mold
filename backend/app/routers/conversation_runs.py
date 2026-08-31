@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable
 from datetime import timedelta
 from typing import Literal
 
@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
+from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.streaming import format_sse
 from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.error_codes import resume_not_found
+from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun, utc_now_naive
 from app.models.message_event import MessageEvent
 from app.routers.conversation_run_cancel import (
@@ -24,6 +26,7 @@ from app.routers.conversation_run_cancel import (
 )
 from app.schemas.conversation_run import ConversationRunResponse
 from app.services import conversation_run_service, trace_storage
+from app.services.chat import secrets as chat_secrets
 from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_stream_service import sse_response
 
@@ -35,7 +38,10 @@ def _normalize_event_id(raw: object) -> str | None:
 
 
 async def _broker_run_generator(
-    broker: EventBroker, after_id: str | None
+    broker: EventBroker,
+    after_id: str | None,
+    *,
+    secret_values: Iterable[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     effective_after_id = after_id
     if after_id and not broker.has_event_id(after_id):
@@ -53,12 +59,20 @@ async def _broker_run_generator(
         )
         effective_after_id = None
     async for evt in broker.subscribe(after_id=effective_after_id):
-        yield format_sse(evt["event"], evt["data"], event_id=_normalize_event_id(evt.get("id")))
+        yield format_sse(
+            evt["event"],
+            project_and_redact_protocol_data(
+                evt["event"], evt["data"], secret_values=secret_values
+            ),
+            event_id=_normalize_event_id(evt.get("id")),
+        )
 
 
 async def _replay_run_generator(
     record: MessageEvent,
     after_id: str | None,
+    *,
+    secret_values: Iterable[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     for evt in slice_events_after(record.events or [], after_id):
         evt_name = evt.get("event")
@@ -66,7 +80,11 @@ async def _replay_run_generator(
             continue
         yield format_sse(
             evt_name,
-            evt.get("data") or {},
+            project_and_redact_protocol_data(
+                evt_name,
+                evt.get("data") or {},
+                secret_values=secret_values,
+            ),
             event_id=_normalize_event_id(evt.get("id")),
         )
 
@@ -128,6 +146,7 @@ async def stream_conversation_run(
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    conversation: Conversation = Depends(owned_conversation),
 ) -> StreamingResponse:
     after_id = last_event_id or last_event_id_header
     run = await conversation_run_service.get_run_for_user(
@@ -141,12 +160,13 @@ async def stream_conversation_run(
         raise resume_not_found()
 
     run_id_str = str(run_id)
+    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
     broker = broker_registry.get(run_id_str)
     if broker is not None and not broker.is_closed:
         if broker.conversation_id != str(conversation_id):
             raise resume_not_found()
         return sse_response(
-            _broker_run_generator(broker, after_id),
+            _broker_run_generator(broker, after_id, secret_values=secrets),
             extra_headers={"X-Run-Id": run_id_str, "X-Resume-Mode": "live"},
         )
 
@@ -184,7 +204,7 @@ async def stream_conversation_run(
     if record is None or record.conversation_id != conversation_id:
         raise resume_not_found()
     return sse_response(
-        _replay_run_generator(record, after_id),
+        _replay_run_generator(record, after_id, secret_values=secrets),
         extra_headers={"X-Run-Id": run_id_str, "X-Resume-Mode": "replay"},
     )
 

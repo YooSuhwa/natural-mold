@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
+from app.agent_runtime.offload_storage_types import OffloadKind, logical_offload_id
 from app.agent_runtime.protocol_events import (
     protocol_event_cursor,
     resequence_protocol_events,
@@ -19,11 +20,14 @@ from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
+from app.routers.conversation_ag_ui import _replay_ag_ui_generator
 from app.routers.conversation_agent_protocol_replay import (
     _events_after_cursor,
     load_protocol_events,
     protocol_replay_generator,
 )
+from app.routers.conversation_messages import _replay_resume_generator
+from app.routers.conversation_runs import _replay_run_generator
 from app.services import trace_storage
 from tests.conftest import TEST_USER_ID
 
@@ -327,6 +331,115 @@ async def test_protocol_replay_projects_legacy_terminal_events(
     assert '"method":"custom"' in body
     assert '"name":"stale"' in body
     assert "run_worker_lost" in body
+
+
+@pytest.mark.asyncio
+async def test_legacy_replay_projects_offload_paths_at_each_public_stream_boundary(
+    db: AsyncSession,
+) -> None:
+    """Legacy traces expose logical IDs without altering the stored event."""
+
+    conversation = await _seed_conversation(db)
+    run_id = uuid.uuid4().hex
+    scope = f"/.moldy-offload/{'a' * 32}/{'b' * 32}/{'c' * 32}"
+    history_path = f"{scope}/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    spill_path = f"{scope}/large_tool_results/tool-call_json"
+    configured_secret = "replay-configured-secret-42"
+    legacy_data = {
+        "content": (f"history={history_path}; spill={spill_path}; credential={configured_secret}"),
+        "paths": [history_path, spill_path],
+        "_summarization_event": {"file_path": history_path, "cutoff_index": 4},
+        "status": "completed",
+    }
+    memory_data = {
+        "id": "replay-proposal-1",
+        "scope": "user",
+        "content": "replay-private-memory-body",
+        "reason": "replay-private-memory-reason",
+    }
+    record = MessageEvent(
+        conversation_id=conversation.id,
+        assistant_msg_id=run_id,
+        events=[
+            {"id": f"{run_id}-1", "event": event_names.MESSAGE_END, "data": legacy_data},
+            {"id": f"{run_id}-2", "event": event_names.MEMORY_PROPOSED, "data": memory_data},
+        ],
+        last_event_id=f"{run_id}-2",
+        status="completed",
+    )
+    db.add(record)
+    await db.commit()
+
+    protocol_events = await load_protocol_events(
+        db,
+        conversation.id,
+        secret_values={configured_secret},
+    )
+    protocol_wire = "".join(
+        [
+            chunk
+            async for chunk in protocol_replay_generator(
+                protocol_events,
+                {},
+                after_id=None,
+            )
+        ]
+    )
+    moldy_wire = "".join(
+        [
+            chunk
+            async for chunk in _replay_run_generator(
+                record,
+                after_id=None,
+                secret_values={configured_secret},
+            )
+        ]
+    )
+    resume_wire = "".join(
+        [
+            chunk
+            async for chunk in _replay_resume_generator(
+                record,
+                after_id=None,
+                mark_stale=False,
+                secret_values={configured_secret},
+            )
+        ]
+    )
+    ag_ui_wire = "".join(
+        [
+            chunk
+            async for chunk in _replay_ag_ui_generator(
+                record,
+                after_id=None,
+                conversation_id=conversation.id,
+                run_id=uuid.UUID(run_id),
+                secret_values={configured_secret},
+            )
+        ]
+    )
+
+    history_id = logical_offload_id(OffloadKind.HISTORY, history_path)
+    spill_id = logical_offload_id(OffloadKind.SPILL, spill_path)
+    for wire_payload in (protocol_wire, moldy_wire, resume_wire, ag_ui_wire):
+        assert configured_secret not in wire_payload
+        assert history_path not in wire_payload
+        assert spill_path not in wire_payload
+        assert "/.moldy-offload/" not in wire_payload
+        assert "/.moldy-internal/offload/" not in wire_payload
+        assert "conversation_history" not in wire_payload
+        assert "large_tool_results" not in wire_payload
+        assert "file_path" not in wire_payload
+        assert history_id in wire_payload
+        assert spill_id not in wire_payload
+        assert "internal_reference_redacted" in wire_payload
+        assert "replay-private-memory-body" not in wire_payload
+        assert "replay-private-memory-reason" not in wire_payload
+
+    assert record.events == [
+        {"id": f"{run_id}-1", "event": event_names.MESSAGE_END, "data": legacy_data},
+        {"id": f"{run_id}-2", "event": event_names.MEMORY_PROPOSED, "data": memory_data},
+    ]
 
 
 @pytest.mark.asyncio

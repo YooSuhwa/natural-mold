@@ -22,18 +22,20 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any, NamedTuple
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime import event_names
 from app.credentials import service as credential_service
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
+from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
@@ -177,6 +179,78 @@ async def test_state_snapshot_leaks_without_secret_values(monkeypatch, db: Async
         "without secret_values the opaque value must survive (heuristics can't "
         "catch it) — proving value-based masking is the real defence"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "checkpointer_factory",
+    [
+        pytest.param(
+            lambda: (_ for _ in ()).throw(RuntimeError("checkpointer unavailable")),
+            id="unavailable",
+        ),
+        pytest.param(lambda: _FakeCheckpointer([]), id="empty_tree"),
+    ],
+)
+async def test_legacy_state_snapshot_projects_offload_paths_and_redacts_without_mutating_trace(
+    monkeypatch: pytest.MonkeyPatch,
+    db: AsyncSession,
+    checkpointer_factory: Callable[[], Any],
+) -> None:
+    """The unavailable-checkpointer fallback remains an egress-only boundary."""
+
+    conversation = await _seed_conversation(db)
+    session_name = "session_0123456789abcdef0123456789abcdef.md"
+    scope = f"/.moldy-offload/{'a' * 32}/{'b' * 32}/{'c' * 32}"
+    history_path = f"{scope}/conversation_history/{session_name}"
+    spill_path = f"{scope}/large_tool_results/0123456789abcdef_json"
+    raw_content = f"history={history_path}; spill={spill_path}; secret={OPAQUE_SECRET}"
+    record = MessageEvent(
+        conversation_id=conversation.id,
+        assistant_msg_id="legacy-offload-state",
+        events=[
+            {
+                "id": "legacy-offload-state-1",
+                "event": event_names.MESSAGE_START,
+                "data": {
+                    "id": "legacy-offload-state",
+                    "role": "assistant",
+                    "input": {"messages": [{"role": "user", "content": raw_content}]},
+                },
+            },
+            {
+                "id": "legacy-offload-state-2",
+                "event": event_names.MESSAGE_END,
+                "data": {"content": raw_content, "status": "completed"},
+            },
+        ],
+        last_event_id="legacy-offload-state-2",
+        status="completed",
+    )
+    db.add(record)
+    await db.commit()
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        checkpointer_factory,
+    )
+
+    snapshot = await load_thread_state_snapshot(
+        conversation,
+        db=db,
+        secret_values={OPAQUE_SECRET},
+    )
+
+    rendered = json.dumps(snapshot.values)
+    assert history_path not in rendered
+    assert spill_path not in rendered
+    assert ".moldy-internal/offload" not in rendered
+    assert "history_" not in rendered
+    assert "spill_" not in rendered
+    assert "internal_reference_redacted" in rendered
+    assert OPAQUE_SECRET not in rendered
+    assert "<redacted>" not in rendered
+    assert record.events[0]["data"]["input"]["messages"][0]["content"] == raw_content
+    assert record.events[1]["data"]["content"] == raw_content
 
 
 def test_serialize_langchain_message_masks_secret_value() -> None:

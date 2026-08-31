@@ -85,7 +85,14 @@ def _tool_output_event(content: str) -> dict[str, Any]:
 
 
 async def _fake_prepare_agent(agent: ProtocolAgent):
-    async def _prepare(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+    async def _prepare(
+        _cfg: AgentConfig,
+        *,
+        messages_history,
+        is_trigger_mode=False,
+        run_id: str,
+    ):
+        assert run_id
         return agent, ["lc-message"], {"configurable": {"thread_id": "thread-redact"}}
 
     return _prepare

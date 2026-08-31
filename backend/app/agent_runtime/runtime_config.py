@@ -18,6 +18,16 @@ _DATA_DIR = (
 )
 
 
+def runtime_data_dir() -> Path:
+    """Return the current agent-runtime data root.
+
+    Tests patch ``_DATA_DIR`` per isolated lane, so callers intentionally read
+    it through this function at operation time rather than import time.
+    """
+
+    return _DATA_DIR
+
+
 @dataclass
 class AgentConfig:
     """에이전트 실행에 필요한 설정 묶음. executor 공용 함수들의 시그니처를 단순화.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, Iterable, Mapping
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
+from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.streaming import format_sse
 from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.error_codes import (
@@ -29,6 +30,7 @@ from app.services import (
     thread_branch_service,
     trace_storage,
 )
+from app.services.chat import secrets as chat_secrets
 from app.services.conversation_audit_service import record_conversation_audit
 from app.services.conversation_run_worker import start_conversation_run
 from app.services.conversation_stream_service import (
@@ -246,10 +248,19 @@ def _normalize_event_id(raw: object) -> str | None:
 
 
 async def _broker_resume_generator(
-    broker: EventBroker, after_id: str | None
+    broker: EventBroker,
+    after_id: str | None,
+    *,
+    secret_values: Iterable[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     async for evt in broker.subscribe(after_id=after_id):
-        yield format_sse(evt["event"], evt["data"], event_id=_normalize_event_id(evt.get("id")))
+        yield format_sse(
+            evt["event"],
+            project_and_redact_protocol_data(
+                evt["event"], evt["data"], secret_values=secret_values
+            ),
+            event_id=_normalize_event_id(evt.get("id")),
+        )
 
 
 async def _replay_resume_generator(
@@ -257,6 +268,7 @@ async def _replay_resume_generator(
     after_id: str | None,
     *,
     mark_stale: bool,
+    secret_values: Iterable[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     last_emitted_id: str | None = None
     for evt in slice_events_after(record.events or [], after_id):
@@ -269,7 +281,15 @@ async def _replay_resume_generator(
             )
             continue
         emitted_id = _normalize_event_id(evt.get("id"))
-        yield format_sse(evt_name, evt.get("data") or {}, event_id=emitted_id)
+        yield format_sse(
+            evt_name,
+            project_and_redact_protocol_data(
+                evt_name,
+                evt.get("data") or {},
+                secret_values=secret_values,
+            ),
+            event_id=emitted_id,
+        )
         if emitted_id:
             last_emitted_id = emitted_id
 
@@ -316,6 +336,7 @@ async def stream_resume(
     if conv is None:
         _log_resume_reject("conv_unowned_or_missing", conversation_id, run_id_str, user=user.id)
         raise resume_not_found()
+    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conv))
 
     broker = broker_registry.get(run_id_str)
     if broker is not None and not broker.is_closed:
@@ -334,7 +355,7 @@ async def stream_resume(
             after_id,
         )
         return sse_response(
-            _broker_resume_generator(broker, after_id),
+            _broker_resume_generator(broker, after_id, secret_values=secrets),
             extra_headers={
                 "X-Run-Id": run_id_str,
                 "X-Resume-Mode": "live",
@@ -374,7 +395,12 @@ async def stream_resume(
         record.status,
     )
     return sse_response(
-        _replay_resume_generator(record, after_id, mark_stale=is_stale),
+        _replay_resume_generator(
+            record,
+            after_id,
+            mark_stale=is_stale,
+            secret_values=secrets,
+        ),
         extra_headers={
             "X-Run-Id": run_id_str,
             "X-Resume-Mode": "replay",
@@ -436,7 +462,7 @@ async def send_message(
         attachment_ids=[a.id for a in data.attachments] if data.attachments else None,
     )
     return sse_response(
-        _broker_resume_generator(ctx.broker, None),
+        _broker_resume_generator(ctx.broker, None, secret_values=cfg.secret_values),
         extra_headers={"X-Run-Id": ctx.run_id},
     )
 
@@ -480,9 +506,15 @@ async def resume_message(
                 detail="Resume run requires an interrupted parent run",
             )
 
-    interrupt_id = (
-        parent_run.interrupt_id if parent_run else _legacy_interrupt_id(legacy_interrupt_trace)
-    )
+    if parent_run is not None:
+        interrupt_id = parent_run.interrupt_id
+    else:
+        if legacy_interrupt_trace is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Resume run requires an interrupted parent run",
+            )
+        interrupt_id = _legacy_interrupt_id(legacy_interrupt_trace)
     metadata = None
     if legacy_interrupt_trace is not None:
         metadata = {"legacy_interrupt_assistant_msg_id": legacy_interrupt_trace.assistant_msg_id}

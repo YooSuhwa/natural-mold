@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import HumanMessage
 
+from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
 from app.marketplace.skill_runtime import SkillToolContext
@@ -622,7 +623,6 @@ async def test_execute_stream_runtime_tool_called_per_entry(
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
 @patch("app.agent_runtime.runtime_component_builder.build_agent")
@@ -636,7 +636,6 @@ async def test_execute_stream_injects_skill_tool_dependency(
     mock_build: MagicMock,
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
-    mock_fs_backend_cls: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
@@ -676,7 +675,6 @@ async def test_execute_stream_injects_skill_tool_dependency(
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
 @patch("app.agent_runtime.runtime_component_builder.build_agent")
@@ -690,7 +688,6 @@ async def test_execute_stream_dedupes_exact_skill_dependency_name(
     mock_build: MagicMock,
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
-    mock_fs_backend_cls: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
@@ -727,7 +724,6 @@ async def test_execute_stream_dedupes_exact_skill_dependency_name(
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
 @patch("app.agent_runtime.runtime_component_builder.build_agent")
@@ -741,7 +737,6 @@ async def test_execute_stream_keeps_stable_dependency_alias_when_explicit_tool_h
     mock_build: MagicMock,
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
-    mock_fs_backend_cls: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
@@ -1225,7 +1220,6 @@ async def test_resume_stream_records_stream_error_in_sink(monkeypatch):
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
 @patch("app.agent_runtime.runtime_component_builder.build_agent")
@@ -1237,7 +1231,6 @@ async def test_execute_stream_passes_skills_and_memory(
     mock_build: MagicMock,
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
-    mock_fs_backend_cls: MagicMock,
     tmp_path,
 ):
     """Skills and memory params are forwarded to build_agent when provided."""
@@ -1275,14 +1268,13 @@ async def test_execute_stream_passes_skills_and_memory(
     # (Spec §9). The ``_cfg`` fixture uses ``thread_id="t-1"``.
     assert build_kwargs["skills"] == ["/runtime/t-1/skills/"]
     assert build_kwargs["memory"] == ["/agents/agent-123/AGENTS.md"]
-    assert build_kwargs["backend"] is mock_fs_backend_cls.return_value
+    assert isinstance(build_kwargs["backend"], ScopedOffloadBackend)
 
     # Verify agent directory was created
     assert (mock_data_dir / "agents" / "agent-123").exists()
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
 @patch("app.agent_runtime.runtime_component_builder.build_agent")
@@ -1294,7 +1286,6 @@ async def test_execute_stream_injects_product_memory_tools_and_prompt(
     mock_build: MagicMock,
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
-    mock_fs_backend_cls: MagicMock,
 ) -> None:
     from app.agent_runtime.agent_stream_runner import execute_agent_stream
 
@@ -1385,7 +1376,6 @@ async def test_prepare_runtime_components_adds_memory_rules_without_memory_file(
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
 @patch("app.agent_runtime.runtime_component_builder.build_agent")
@@ -1397,7 +1387,6 @@ async def test_execute_stream_no_skills_no_memory_when_not_provided(
     mock_build: MagicMock,
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
-    mock_fs_backend_cls: MagicMock,
 ):
     """When agent_skills and agent_id are not provided, skills/memory should be None."""
     from app.agent_runtime.agent_stream_runner import execute_agent_stream
@@ -1500,7 +1489,6 @@ async def test_interrupt_on_without_hitl_middleware(
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
 @patch("app.agent_runtime.runtime_component_builder.build_agent")
@@ -1512,7 +1500,6 @@ async def test_ask_user_not_included_in_invoke(
     mock_build: MagicMock,
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
-    mock_fs_backend_cls: MagicMock,
 ):
     """execute_agent_invoke should NOT include ask_user tool."""
     from app.agent_runtime.agent_stream_runner import execute_agent_invoke
@@ -1586,3 +1573,117 @@ async def test_execute_agent_invoke_attaches_langfuse_trace_context(monkeypatch)
     assert fake_agent.config is not None
     assert fake_agent.config["callbacks"] == ["langfuse-callback"]
     assert fake_agent.config["metadata"]["moldy_run_id"] == "trigger-run-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw_content", "expected_content", "secret_values"),
+    [
+        (
+            "History at /conversation_history/session_0123456789abcdef0123456789abcdef.md; "
+            "token=invoke-secret-42",
+            "History at history_af5ef34f123d9b24bb00d96b; token=<redacted>",
+            {"invoke-secret-42"},
+        ),
+        (
+            "Unknown at /private/.moldy-internal/offload/history/secret",
+            "internal_reference_redacted",
+            set(),
+        ),
+        ("ordinary trigger output", "ordinary trigger output", set()),
+    ],
+)
+async def test_execute_agent_invoke_projects_final_message_before_hook_and_return(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_content: str,
+    expected_content: str,
+    secret_values: set[str],
+) -> None:
+    """Non-streaming trigger output crosses the same offload egress boundary."""
+    from app.agent_runtime.agent_stream_runner import execute_agent_invoke
+
+    source_message = SimpleNamespace(content=raw_content)
+
+    class FakeAgent:
+        async def ainvoke(self, _payload, *, config):
+            return {"messages": [source_message]}
+
+    async def fake_prepare_agent(*args, **kwargs):
+        return FakeAgent(), [], {"configurable": {}}
+
+    class FakeLangfuseContext:
+        trace = None
+
+        def configure_config(self, config):
+            return config
+
+        def flush(self):
+            pass
+
+    mock_hooks = MagicMock()
+    mock_hooks.run_pre = AsyncMock()
+    mock_hooks.run_post = AsyncMock()
+    mock_hooks.run_failure = AsyncMock()
+    monkeypatch.setattr("app.agent_runtime.agent_stream_runner._prepare_agent", fake_prepare_agent)
+    monkeypatch.setattr(
+        "app.agent_runtime.agent_stream_runner.build_langfuse_run_context",
+        lambda *_args, **_kwargs: FakeLangfuseContext(),
+    )
+    monkeypatch.setattr("app.agent_runtime.agent_stream_runner.hooks", mock_hooks)
+
+    result = await execute_agent_invoke(
+        _cfg(
+            user_id="00000000-0000-0000-0000-000000000001",
+            secret_values=secret_values,
+        ),
+        [{"role": "user", "content": "scheduled"}],
+    )
+
+    assert result == expected_content
+    assert source_message.content == raw_content
+    assert mock_hooks.run_post.await_args.args[1].output == expected_content
+
+
+@pytest.mark.asyncio
+async def test_execute_agent_invoke_normalizes_redacted_content_blocks_without_mutating_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invoke keeps its promised string return contract for provider content blocks."""
+    from app.agent_runtime.agent_stream_runner import execute_agent_invoke
+
+    secret = "invoke-block-secret-42"
+    source_content = [
+        {"type": "text", "text": f"Visible token={secret}"},
+        {"type": "reasoning", "text": "private"},
+    ]
+    source_message = SimpleNamespace(content=source_content)
+
+    class FakeAgent:
+        async def ainvoke(self, _payload, *, config):
+            return {"messages": [source_message]}
+
+    async def fake_prepare_agent(*args, **kwargs):
+        return FakeAgent(), [], {"configurable": {}}
+
+    class FakeLangfuseContext:
+        trace = None
+
+        def configure_config(self, config):
+            return config
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr("app.agent_runtime.agent_stream_runner._prepare_agent", fake_prepare_agent)
+    monkeypatch.setattr(
+        "app.agent_runtime.agent_stream_runner.build_langfuse_run_context",
+        lambda *_args, **_kwargs: FakeLangfuseContext(),
+    )
+
+    result = await execute_agent_invoke(
+        _cfg(secret_values={secret}),
+        [{"role": "user", "content": "scheduled"}],
+    )
+
+    assert result == "Visible token=<redacted>"
+    assert source_message.content == source_content

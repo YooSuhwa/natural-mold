@@ -1693,9 +1693,7 @@
       "error": "Something went wrong"
     },
     "compaction": {
-      "summary": "Older messages were summarized to free up context",
-      "viewOriginal": "View original",
-      "copied": "Path copied"
+      "summary": "Older messages were summarized to free up context"
     },
     "subagents": {
       "progress": "{completed}/{total} sub-agents done",

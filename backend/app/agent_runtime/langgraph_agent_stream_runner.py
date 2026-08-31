@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid as _uuid
 from collections.abc import AsyncGenerator
 from contextlib import nullcontext
 from typing import Any
@@ -42,6 +43,7 @@ async def _run_langgraph_agent_stream(
     # a spawned task — so the ContextVar survives across yields (ADR §2 / C5).
     # ``reset`` happens in ``finally`` so the set never leaks into the next run
     # on this task.
+    effective_run_id = run_id or str(_uuid.uuid4())
     secret_token = set_run_secrets(cfg.secret_values)
     try:
         async for chunk in _stream_langgraph_with_secrets(
@@ -53,7 +55,7 @@ async def _run_langgraph_agent_stream(
             error_sink=error_sink,
             broker=broker,
             persist_callback=persist_callback,
-            run_id=run_id,
+            run_id=effective_run_id,
             artifact_recorder=artifact_recorder,
             moldy_source=moldy_source,
             langfuse_sink=langfuse_sink,
@@ -89,6 +91,8 @@ async def _stream_langgraph_with_secrets(
     agent, lc_messages, config = await _prepare_agent(
         cfg,
         messages_history=messages_history,
+        is_trigger_mode=False,
+        run_id=run_id,
     )
     actual_input = lc_messages if stream_input is _USE_PREPPED_LC_MESSAGES else stream_input
     if actual_input == []:

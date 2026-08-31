@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.message_utils import parse_msg_id
-from app.agent_runtime.protocol_redaction import redact_protocol_data
+from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_checkpoint_state import (
     load_checkpoint_channel_values,
@@ -43,7 +43,11 @@ def serialize_langchain_message(
         }
     # ADR-021 C2 — this runs in a plain HTTP GET (no active run / ContextVar),
     # so the run secret set is passed explicitly by the router.
-    payload = redact_protocol_data("messages", payload, secret_values=secret_values)
+    payload = project_and_redact_protocol_data(
+        "messages",
+        payload,
+        secret_values=secret_values,
+    )
     if not isinstance(payload, dict):
         payload = {"type": "unknown", "content": payload}
     if checkpoint_id is None and not metadata:
@@ -94,11 +98,19 @@ async def load_thread_state_snapshot(
             parent_checkpoint_by_message_id,
         ) = await _checkpoint_maps_by_message_id(checkpointer, str(conversation.id), conversation)
     except RuntimeError:
-        return await _legacy_thread_state_snapshot(conversation, db)
+        return await _legacy_thread_state_snapshot(
+            conversation,
+            db,
+            secret_values=secrets,
+        )
     if not tree.nodes:
-        return await _legacy_thread_state_snapshot(conversation, db)
+        return await _legacy_thread_state_snapshot(
+            conversation,
+            db,
+            secret_values=secrets,
+        )
 
-    values = redact_protocol_data(
+    values = project_and_redact_protocol_data(
         "values",
         await load_checkpoint_channel_values(
             checkpointer,
@@ -146,6 +158,8 @@ async def load_thread_state_snapshot(
 async def _legacy_thread_state_snapshot(
     conversation: Conversation,
     db: AsyncSession | None,
+    *,
+    secret_values: Iterable[str] | None = None,
 ) -> ThreadStateSnapshot:
     if db is None:
         return ThreadStateSnapshot(
@@ -153,9 +167,13 @@ async def _legacy_thread_state_snapshot(
             checkpoint_by_message_id={},
             parent_checkpoint_by_message_id={},
         )
-    messages = await legacy_state_messages(db, conversation.id)
+    messages = project_and_redact_protocol_data(
+        "messages",
+        await legacy_state_messages(db, conversation.id),
+        secret_values=secret_values,
+    )
     return ThreadStateSnapshot(
-        values={"messages": messages},
+        values={"messages": messages if isinstance(messages, list) else []},
         checkpoint_by_message_id={},
         parent_checkpoint_by_message_id={},
     )

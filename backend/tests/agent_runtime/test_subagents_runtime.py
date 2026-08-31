@@ -124,11 +124,13 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
         is_trigger_mode: bool,
         include_ask_user: bool,
         include_agent_memory_file: bool,
+        scope_offload_backend: bool,
     ) -> SimpleNamespace:
         observed_cfgs.append(cfg)
         assert is_trigger_mode is False
         assert include_ask_user is False
         assert include_agent_memory_file is False
+        assert scope_offload_backend is False
         child_tool = MagicMock()
         child_tool.name = "child_only_tool"
         return SimpleNamespace(

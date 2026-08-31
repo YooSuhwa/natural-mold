@@ -8,6 +8,9 @@ from contextlib import nullcontext
 from datetime import UTC, datetime
 from typing import Any
 
+from app.agent_runtime.message_utils import content_to_text
+from app.agent_runtime.offload_protocol_projection import project_offload_egress_data
+from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
 from app.agent_runtime.runtime_component_builder import _prepare_agent
 from app.agent_runtime.runtime_config import AgentConfig
@@ -116,11 +119,14 @@ async def _run_agent_stream(
     # mutates the same object, and so the redaction ContextVar is live for the
     # whole streaming generator. ``reset`` happens in the outer ``finally`` to
     # avoid leaking the set into the next run on this task.
+    effective_run_id = run_id or str(_uuid.uuid4())
     secret_token = set_run_secrets(cfg.secret_values)
     try:
         agent, lc_messages, config = await _prepare_agent(
             cfg,
             messages_history=messages_history,
+            is_trigger_mode=False,
+            run_id=effective_run_id,
         )
         async for chunk in _stream_with_secrets(
             cfg,
@@ -134,7 +140,7 @@ async def _run_agent_stream(
             error_sink=error_sink,
             broker=broker,
             persist_callback=persist_callback,
-            run_id=run_id,
+            run_id=effective_run_id,
             artifact_recorder=artifact_recorder,
             moldy_source=moldy_source,
             langfuse_sink=langfuse_sink,
@@ -384,13 +390,14 @@ async def _execute_agent_invoke_inner(
     run_id: str | None = None,
     moldy_source: str = "trigger",
 ) -> str:
+    effective_run_id = run_id or str(_uuid.uuid4())
     agent, lc_messages, config = await _prepare_agent(
         cfg,
         messages_history=messages_history,
         is_trigger_mode=True,
+        run_id=effective_run_id,
     )
 
-    effective_run_id = run_id or str(_uuid.uuid4())
     langfuse_ctx = build_langfuse_run_context(
         cfg,
         run_id=effective_run_id,
@@ -422,14 +429,18 @@ async def _execute_agent_invoke_inner(
     messages = result.get("messages", [])
     text = ""
     if messages and hasattr(messages[-1], "content"):
-        text = messages[-1].content
+        projected_content = project_offload_egress_data(messages[-1].content)
+        redacted_content = redact_protocol_data(
+            "messages", projected_content, secret_values=cfg.secret_values
+        )
+        text = content_to_text(redacted_content)
 
     if ctx is not None:
         await hooks.run_post(
             ctx,
             HookResult(
                 duration_ms=int((time.monotonic() - started) * 1000),
-                output=(text[:200] if isinstance(text, str) else None),
+                output=text[:200],
             ),
         )
     return text

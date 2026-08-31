@@ -6,14 +6,17 @@ import base64
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 
+from app.agent_runtime.offload_storage import OffloadIdentity, ScopedOffloadStorage
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
@@ -637,6 +640,43 @@ async def test_list_messages_with_data(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_list_messages_projects_offload_tool_pointer(client: AsyncClient):
+    """Authenticated message history exposes an opaque spill reference only."""
+    from langchain_core.messages import ToolMessage
+
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+    tool_call_id = "call_a_b_c"
+    path = "/large_tool_results/call_a_b_c"
+    content = (
+        f"Tool result too large, the result of this tool call {tool_call_id} was saved in the "
+        f"filesystem at this path: {path}\n\n"
+    )
+    messages = [ToolMessage(content=content, tool_call_id=tool_call_id, id=str(uuid.uuid4()))]
+
+    async def _alist(_config):
+        yield type(
+            "CT",
+            (),
+            {
+                "config": {"configurable": {"checkpoint_id": "ck1"}},
+                "parent_config": None,
+                "checkpoint": {"channel_values": {"messages": messages}},
+            },
+        )()
+
+    with patch("app.agent_runtime.checkpointer.get_checkpointer") as mock_cp:
+        mock_cp.return_value.alist = _alist
+        response = await client.get(f"/api/conversations/{conv_id}/messages")
+
+    assert response.status_code == 200
+    rendered = response.json()["messages"][0]["content"]
+    assert path not in rendered
+    assert "spill_" in rendered
+    assert messages[0].content == content
+
+
+@pytest.mark.asyncio
 async def test_list_messages_flattens_nested_checkpoint_message_batch(client: AsyncClient):
     """A nested checkpoint batch must still render through GET /messages."""
 
@@ -1000,6 +1040,158 @@ async def test_delete_conversation(client: AsyncClient):
     resp = await client.get(f"/api/agents/{agent_id}/conversations")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_rejects_active_run_without_cleanup(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An active worker keeps its conversation and external runtime state."""
+
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+    async with TestSession() as db:
+        db.add(
+            ConversationRun(
+                conversation_id=conv_id,
+                agent_id=agent_id,
+                user_id=TEST_USER_ID,
+                source="chat",
+                status="running",
+                is_active=True,
+            )
+        )
+        await db.commit()
+
+    from app.agent_runtime import checkpointer, offload_storage
+
+    delete_thread = AsyncMock()
+    delete_offloads = AsyncMock()
+    monkeypatch.setattr(checkpointer, "delete_thread", delete_thread)
+    monkeypatch.setattr(offload_storage, "delete_conversation_offloads", delete_offloads)
+
+    response = await client.delete(f"/api/conversations/{conv_id}")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "HTTP_409",
+            "message": "Conversation has an active run",
+        }
+    }
+    delete_thread.assert_not_awaited()
+    delete_offloads.assert_not_awaited()
+    async with TestSession() as db:
+        assert await db.get(Conversation, conv_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_removes_internal_offloads_after_checkpoint(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    """The deletion route uses the DB-owned agent owner before deleting its row."""
+
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+    backend = ScopedOffloadStorage(
+        data_dir=tmp_path,
+        identity=OffloadIdentity(
+            owner_id=str(TEST_USER_ID),
+            conversation_id=str(conv_id),
+            run_id="conversation-delete-test",
+        ),
+    ).for_actor(uuid.UUID("11111111-1111-4111-8111-111111111111"))
+    history = (
+        f"{backend.artifacts_root}/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    )
+    spill = f"{backend.artifacts_root}/large_tool_results/conversation-delete-test"
+    assert backend.write(history, "history").error is None
+    assert backend.write(spill, "spill").error is None
+    artifact = tmp_path / "artifacts" / "sentinel"
+    artifact.parent.mkdir()
+    artifact.write_text("keep")
+    from app.agent_runtime import runtime_config
+
+    monkeypatch.setattr(runtime_config, "_DATA_DIR", tmp_path)
+
+    from app.agent_runtime import checkpointer, offload_storage
+
+    events: list[str] = []
+    post_cleanup_constructor_blocked: list[bool] = []
+    real_delete_offloads = offload_storage.delete_conversation_offloads
+
+    async def record_checkpoint(thread_id: str) -> None:
+        assert thread_id == str(conv_id)
+        events.append("checkpoint")
+
+    def record_offload(
+        data_dir: Path, *, owner_id: str, conversation_id: str
+    ) -> offload_storage.OffloadCleanupReceipt:
+        assert data_dir == tmp_path
+        assert owner_id == str(TEST_USER_ID)
+        assert conversation_id == str(conv_id)
+        events.append("offload")
+        receipt = real_delete_offloads(
+            data_dir,
+            owner_id=owner_id,
+            conversation_id=conversation_id,
+        )
+        with pytest.raises(offload_storage.OffloadSecurityError, match="deleted"):
+            ScopedOffloadStorage(
+                data_dir=data_dir,
+                identity=OffloadIdentity(
+                    owner_id=owner_id,
+                    conversation_id=conversation_id,
+                    run_id="late-conversation-run",
+                ),
+            ).for_actor(uuid.UUID("22222222-2222-4222-8222-222222222222"))
+        post_cleanup_constructor_blocked.append(True)
+        return receipt
+
+    monkeypatch.setattr(checkpointer, "delete_thread", record_checkpoint)
+    monkeypatch.setattr(offload_storage, "delete_conversation_offloads", record_offload)
+
+    # When
+    response = await client.delete(f"/api/conversations/{conv_id}")
+
+    # Then
+    assert response.status_code == 204
+    assert events == ["checkpoint", "offload"]
+    assert post_cleanup_constructor_blocked == [True]
+    assert artifact.read_text() == "keep"
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_keeps_db_row_when_offload_cleanup_fails(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed private-file deletion stays retryable through the DB owner row."""
+
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+    from app.agent_runtime import checkpointer, offload_storage
+
+    monkeypatch.setattr(checkpointer, "delete_thread", AsyncMock())
+
+    def fail_offload_cleanup(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError("injected cleanup failure")
+
+    monkeypatch.setattr(
+        offload_storage,
+        "delete_conversation_offloads",
+        fail_offload_cleanup,
+    )
+
+    with pytest.raises(PermissionError, match="injected cleanup failure"):
+        await client.delete(f"/api/conversations/{conv_id}")
+
+    response = await client.get(f"/api/agents/{agent_id}/conversations")
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [str(conv_id)]
 
 
 @pytest.mark.asyncio

@@ -22,6 +22,7 @@ from app.agent_runtime.langgraph_protocol_adapter import (
     adapt_v3_protocol_event,
 )
 from app.agent_runtime.langgraph_tool_event_synthesis import synthesize_tool_events_from_values
+from app.agent_runtime.offload_protocol_projection import project_offload_egress_data
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
     canonical_input_requested_events,
@@ -168,16 +169,23 @@ def _compaction_signal(event: StoredProtocolEvent) -> str | None:
     return None
 
 
-def _compaction_offload_path(event: StoredProtocolEvent, thread_id: str) -> str | None:
+def _compaction_history_id(event: StoredProtocolEvent) -> str | None:
     summarization_event = _compaction_summarization_event(event)
-    if summarization_event is not None:
-        file_path = summarization_event.get("file_path")
-        if isinstance(file_path, str) and file_path:
-            return file_path
-    # Compatibility fallback for older/custom summarization events. Deep Agents
-    # 0.7 emits an opaque per-graph ``session_<uuid>`` file_path, which is always
-    # preferred above so parent and subagent histories remain isolated.
-    return f"/conversation_history/{thread_id}.md" if thread_id else None
+    if summarization_event is None:
+        return None
+    projected = project_offload_egress_data({"_summarization_event": summarization_event})
+    event_data = projected.get("_summarization_event") if isinstance(projected, Mapping) else None
+    history_id = event_data.get("history_id") if isinstance(event_data, Mapping) else None
+    if isinstance(history_id, str):
+        return history_id
+    # Never invent a path-derived identity when upstream did not commit one.
+    return None
+
+
+def _project_offload_egress_data(data: Any) -> Any:
+    """Compatibility wrapper for the public protocol egress projection."""
+
+    return project_offload_egress_data(data)
 
 
 def _compaction_cutoff_index(event: StoredProtocolEvent) -> int | None:
@@ -195,12 +203,12 @@ def _compaction_event(
     thread_id: str,
     seq: int,
     state: str,
-    offload_path: str | None = None,
+    history_id: str | None = None,
     cutoff_index: int | None = None,
 ) -> StoredProtocolEvent:
     payload: dict[str, Any] = {"state": state}
-    if offload_path is not None:
-        payload["offload_path"] = offload_path
+    if history_id is not None:
+        payload["history_id"] = history_id
     if cutoff_index is not None:
         payload["cutoff_index"] = cutoff_index
     # Stable event id (``run:compaction:<state>``) so a reload replay dedupes the
@@ -426,11 +434,12 @@ async def stream_agent_response_langgraph(
         max_emitted_seq = event_to_emit["seq"]
         if event_to_emit["method"] == "input.requested":
             input_requested_emitted = True
+        projected_data = _project_offload_egress_data(event_to_emit["data"])
         wire_event: StoredProtocolEvent = {
             **event_to_emit,
             "data": redact_protocol_data(
                 event_to_emit["method"],
-                event_to_emit["data"],
+                projected_data,
                 redact_memory=False,
             ),
         }
@@ -548,7 +557,7 @@ async def stream_agent_response_langgraph(
                                 thread_id=thread_id,
                                 seq=side_effect_seq,
                                 state="done",
-                                offload_path=_compaction_offload_path(event, thread_id),
+                                history_id=_compaction_history_id(event),
                                 cutoff_index=_compaction_cutoff_index(event),
                             )
                         )
@@ -625,7 +634,7 @@ async def stream_agent_response_langgraph(
                                 thread_id=thread_id,
                                 seq=side_effect_seq,
                                 state="done",
-                                offload_path=_compaction_offload_path(event, thread_id),
+                                history_id=_compaction_history_id(event),
                                 cutoff_index=_compaction_cutoff_index(event),
                             )
                         )

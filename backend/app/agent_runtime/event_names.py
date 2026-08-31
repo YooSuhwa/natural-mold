@@ -29,7 +29,8 @@ FILE_EVENT: Final = "file_event"
 # Auto-compaction side-channel (dev-plan-context-compaction-marker.md). Emitted as
 # a ``custom`` protocol event (``name="moldy.compaction"``) carrying ``{state}`` —
 # ``running`` while deepagents summarizes older messages, ``done`` once the
-# ``_summarization_event`` is committed (with ``offload_path`` / ``cutoff_index``).
+# ``_summarization_event`` is committed. The public done payload carries only
+# an opaque ``history_id`` plus ``cutoff_index``; internal paths never cross wire.
 COMPACTION: Final = "moldy.compaction"
 # Generative UI side-channel (chat-generative-ui-dev-plan §2.1). Emitted as a
 # ``custom`` protocol event (``name="moldy.ui_data"``) carrying a typed

@@ -17,6 +17,7 @@ from app.config import settings
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, RUN_TERMINAL_STATUSES, ConversationRun
+from app.models.user import User
 from app.services import trace_storage
 from app.services.artifact_service import finalize_artifacts_for_run
 from app.services.conversation_audit_service import record_conversation_run_audit
@@ -69,6 +70,9 @@ async def _conversation_owned_by_user(
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> Conversation | None:
+    user_exists = await db.scalar(select(User.id).where(User.id == user_id).with_for_update())
+    if user_exists is None:
+        return None
     result = await db.execute(
         select(Conversation)
         .join(Agent, Agent.id == Conversation.agent_id)
@@ -77,6 +81,7 @@ async def _conversation_owned_by_user(
             Conversation.agent_id == agent_id,
             Agent.user_id == user_id,
         )
+        .with_for_update(of=Conversation)
     )
     return result.scalar_one_or_none()
 
@@ -496,7 +501,7 @@ async def sweep_stale_conversation_runs(
                 stale_before=stale_before,
                 worker_instance_id=None,
                 include_workerless=True,
-                protected_run_ids=registry.active_run_ids(),
+                protected_run_ids=tuple(registry.active_run_ids()),
             )
             await db.commit()
         if marked:

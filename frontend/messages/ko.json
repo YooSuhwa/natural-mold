@@ -1693,9 +1693,7 @@
       "error": "문제가 발생했습니다"
     },
     "compaction": {
-      "summary": "이전 대화를 요약해 컨텍스트를 정리했어요",
-      "viewOriginal": "원본 보기",
-      "copied": "경로가 복사되었습니다"
+      "summary": "이전 대화를 요약해 컨텍스트를 정리했어요"
     },
     "subagents": {
       "progress": "서브 에이전트 {completed}/{total} 완료",

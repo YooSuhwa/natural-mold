@@ -30,15 +30,16 @@ describe('computeCompactionByMessageId', () => {
       messageStartEvent(7, 'answer-msg'),
       compactionEvent(12, {
         state: 'done',
-        offload_path: '/conversation_history/t.md',
+        history_id: 'hist_opaque',
         cutoff_index: 2,
+        offload_path: '/private/runtime/conversation_history/legacy.md',
       }),
     ]
 
     const map = computeCompactionByMessageId(events)
 
     expect(map.get('answer-msg')).toEqual({
-      offloadPath: '/conversation_history/t.md',
+      historyId: 'hist_opaque',
       cutoffIndex: 2,
     })
   })
@@ -52,13 +53,13 @@ describe('computeCompactionByMessageId', () => {
   it('done보다 늦은 message-start는 매핑하지 않는다', () => {
     const events = [
       messageStartEvent(7, 'earlier'),
-      compactionEvent(12, { state: 'done', offload_path: '/a.md' }),
+      compactionEvent(12, { state: 'done', history_id: 'hist_earlier' }),
       messageStartEvent(20, 'later'),
     ]
 
     const map = computeCompactionByMessageId(events)
 
-    expect(map.get('earlier')).toEqual({ offloadPath: '/a.md' })
+    expect(map.get('earlier')).toEqual({ historyId: 'hist_earlier' })
     expect(map.has('later')).toBe(false)
   })
 })
@@ -70,22 +71,22 @@ describe('attachCompactionToMessages + compactionFromMessage', () => {
       new AIMessage({ id: 'answer-msg', content: 'a' }),
     ]
     const map = new Map<string, CompactionMarker>([
-      ['answer-msg', { offloadPath: '/x.md', cutoffIndex: 1 }],
+      ['answer-msg', { historyId: 'hist_opaque', cutoffIndex: 1 }],
     ])
 
     const attached = attachCompactionToMessages(messages, map)
 
-    expect(compactionFromMessage(attached[1])).toEqual({ offloadPath: '/x.md', cutoffIndex: 1 })
+    expect(compactionFromMessage(attached[1])).toEqual({ historyId: 'hist_opaque', cutoffIndex: 1 })
     expect(compactionFromMessage(attached[0])).toBeNull()
   })
 
   it('렌더되지 않은 id는 마지막 assistant 메시지로 폴백한다', () => {
     const messages = [new AIMessage({ id: 'visible-answer', content: 'a' })]
-    const map = new Map<string, CompactionMarker>([['stale-id', { offloadPath: '/y.md' }]])
+    const map = new Map<string, CompactionMarker>([['stale-id', { historyId: 'hist_stale' }]])
 
     const attached = attachCompactionToMessages(messages, map)
 
-    expect(compactionFromMessage(attached[0])).toEqual({ offloadPath: '/y.md' })
+    expect(compactionFromMessage(attached[0])).toEqual({ historyId: 'hist_stale' })
   })
 
   it('마커가 없으면 같은 배열 참조를 반환한다', () => {
@@ -104,7 +105,7 @@ describe('reduceActivity — compaction', () => {
 
     const done = reduceActivity(
       running,
-      compactionEvent(12, { state: 'done', offload_path: '/t.md' }),
+      compactionEvent(12, { state: 'done', history_id: 'hist_complete' }),
     )
     // same activity id (run:compaction:compaction) → upsert, not a second pill.
     expect(done).toHaveLength(1)

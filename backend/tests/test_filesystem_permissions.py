@@ -356,7 +356,6 @@ async def test_deepagents_filesystem_tools_enforce_scoped_permissions(
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
 @patch("app.agent_runtime.runtime_component_builder.build_agent")
@@ -368,7 +367,6 @@ async def test_prepare_agent_passes_scoped_permissions_to_deepagents(
     mock_build: MagicMock,
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
-    mock_fs_backend_cls: MagicMock,
     tmp_path: Path,
 ) -> None:
     from app.agent_runtime.agent_stream_runner import execute_agent_stream

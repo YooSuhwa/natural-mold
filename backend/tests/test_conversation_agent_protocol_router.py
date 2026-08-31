@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
+from langgraph.types import Send
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,18 +30,25 @@ from tests.conftest import TEST_USER_ID
 
 
 class _FakeSnapshot:
-    def __init__(self, *, values: dict[str, Any], checkpoint_id: str | None) -> None:
+    def __init__(
+        self,
+        *,
+        values: dict[str, Any],
+        checkpoint_id: str | None,
+        tasks: tuple[dict[str, Any], ...] = (),
+    ) -> None:
         self.values = values
         self.config = {"configurable": {"checkpoint_id": checkpoint_id}}
         self.next: tuple[str, ...] = ()
-        self.tasks: tuple[dict[str, Any], ...] = ()
+        self.tasks = tasks
         self.metadata: dict[str, Any] = {}
         self.created_at: str | None = None
 
 
 class _FakeStateGraph:
-    def __init__(self) -> None:
+    def __init__(self, *, updated_tasks: tuple[dict[str, Any], ...] = ()) -> None:
         self.snapshot = _FakeSnapshot(values={}, checkpoint_id=None)
+        self.updated_tasks = updated_tasks
         self.updates: list[tuple[dict[str, Any], dict[str, Any], str | None, str | None]] = []
 
     async def aget_state(self, _config: dict[str, Any]) -> _FakeSnapshot:
@@ -55,7 +63,11 @@ class _FakeStateGraph:
         task_id: str | None = None,
     ) -> None:
         self.updates.append((config, values, as_node, task_id))
-        self.snapshot = _FakeSnapshot(values=values, checkpoint_id="ck-updated")
+        self.snapshot = _FakeSnapshot(
+            values=values,
+            checkpoint_id="ck-updated",
+            tasks=self.updated_tasks,
+        )
 
 
 class _FakeDeltaCheckpointer:
@@ -502,6 +514,140 @@ async def test_thread_state_and_history_use_sdk_compatible_shapes(
 
     assert history_response.status_code == 200
     assert history_response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_update_thread_state_redacts_task_secrets_paths_and_memory_without_mutation(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_conversation(db)
+    state_url = f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    secret = "opaque-route-state-secret-42"
+    session_name = "session_0123456789abcdef0123456789abcdef.md"
+    scope = f"/.moldy-offload/{'a' * 32}/{'b' * 32}/{'c' * 32}"
+    history_path = f"{scope}/conversation_history/{session_name}"
+    raw_task = {
+        "id": f"task-{secret}",
+        "name": f"agent-{secret}",
+        "error": f"history={history_path}; credential={secret}",
+        "interrupts": [
+            {"value": secret, "path": history_path},
+            {
+                "method": "custom:moldy.memory_recalled",
+                "params": {
+                    "data": {
+                        "payload": {
+                            "memories": [{"id": "m-task", "content": "private task memory body"}]
+                        }
+                    }
+                },
+            },
+        ],
+        "checkpoint": {"checkpoint_id": f"cp-{secret}", "history": history_path},
+        "state": Send("delegate", {"credential": secret, "history": history_path}),
+    }
+    fake_graph = _FakeStateGraph(updated_tasks=(raw_task,))
+
+    async def fake_resolve_agent_context(
+        _db: AsyncSession,
+        conversation_id: uuid.UUID,
+        _user: Any,
+        *,
+        checkpoint_id: str | None = None,
+    ) -> AgentConfig:
+        assert checkpoint_id is None
+        return AgentConfig(
+            provider="openai",
+            model_name="gpt-4o",
+            api_key=secret,
+            base_url=None,
+            system_prompt="You are helpful.",
+            tools_config=[],
+            thread_id=str(conversation_id),
+            agent_id=str(conversation.agent_id),
+            user_id=str(TEST_USER_ID),
+        )
+
+    async def fake_prepare_agent(
+        cfg: AgentConfig,
+        *,
+        messages_history: list[dict[str, str]],
+        is_trigger_mode: bool = False,
+    ) -> tuple[_FakeStateGraph, list[Any], dict[str, Any]]:
+        assert messages_history == []
+        assert is_trigger_mode is False
+        return fake_graph, [], {"configurable": {"thread_id": cfg.thread_id}}
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state.resolve_agent_context",
+        fake_resolve_agent_context,
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state._prepare_agent",
+        fake_prepare_agent,
+    )
+
+    response = await client.post(
+        state_url,
+        json={
+            "values": {
+                "credential_echo": secret,
+                "event": {
+                    "name": "moldy.memory_recalled",
+                    "payload": {
+                        "id": "memory-route-1",
+                        "content": "private route memory body",
+                        "reason": "private route memory reason",
+                    },
+                },
+                "legacy": {
+                    "event": "memory_saved",
+                    "data": {
+                        "content": "private legacy state body",
+                        "reason": "private legacy state reason",
+                    },
+                },
+                "wire": {
+                    "method": "custom:moldy.memory_recalled",
+                    "params": {
+                        "data": {
+                            "payload": {
+                                "memories": [{"id": "m-wire", "content": "private wire state body"}]
+                            }
+                        }
+                    },
+                },
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    rendered = repr(response.json())
+    assert secret not in rendered
+    assert history_path not in rendered
+    assert "/.moldy-offload/" not in rendered
+    assert "private route memory body" not in rendered
+    assert "private route memory reason" not in rendered
+    assert "private legacy state body" not in rendered
+    assert "private legacy state reason" not in rendered
+    assert "private wire state body" not in rendered
+    assert "private task memory body" not in rendered
+    assert "<redacted>" in rendered
+    assert "history_" in rendered
+
+    assert fake_graph.snapshot.values["credential_echo"] == secret
+    assert fake_graph.snapshot.values["event"]["payload"]["content"] == (
+        "private route memory body"
+    )
+    assert fake_graph.snapshot.values["legacy"]["data"]["content"] == ("private legacy state body")
+    assert (
+        fake_graph.snapshot.values["wire"]["params"]["data"]["payload"]["memories"][0]["content"]
+        == "private wire state body"
+    )
+    assert raw_task["error"] == f"history={history_path}; credential={secret}"
+    assert raw_task["state"].arg == {"credential": secret, "history": history_path}
 
 
 @pytest.mark.asyncio

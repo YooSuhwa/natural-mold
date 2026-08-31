@@ -42,7 +42,9 @@ async def test_execute_agent_stream_langgraph_posts_usage_to_hooks(monkeypatch) 
 
     posted: list[HookResult] = []
 
-    async def fake_prepare_agent(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+    async def fake_prepare_agent(
+        _cfg: AgentConfig, *, messages_history, is_trigger_mode=False, run_id
+    ):
         return "agent", ["lc-message"], {"configurable": {"thread_id": "thread-runner"}}
 
     async def fake_stream(_agent, _input, _config, **kwargs):
@@ -91,7 +93,9 @@ async def test_execute_agent_stream_langgraph_uses_prepared_messages(monkeypatch
 
     captured: dict[str, Any] = {}
 
-    async def fake_prepare_agent(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+    async def fake_prepare_agent(
+        _cfg: AgentConfig, *, messages_history, is_trigger_mode=False, run_id
+    ):
         captured["messages_history"] = messages_history
         return "agent", ["lc-message"], {"configurable": {"thread_id": "thread-runner"}}
 
@@ -130,7 +134,9 @@ async def test_execute_agent_stream_langgraph_passes_state_dict_inputs(monkeypat
 
     captured: dict[str, Any] = {}
 
-    async def fake_prepare_agent(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+    async def fake_prepare_agent(
+        _cfg: AgentConfig, *, messages_history, is_trigger_mode=False, run_id
+    ):
         captured["messages_history"] = messages_history
         return "agent", [], {"configurable": {"thread_id": "thread-runner"}}
 
@@ -165,7 +171,9 @@ async def test_execute_agent_stream_langgraph_passes_artifact_recorder(monkeypat
     captured: dict[str, Any] = {}
     recorder = object()
 
-    async def fake_prepare_agent(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+    async def fake_prepare_agent(
+        _cfg: AgentConfig, *, messages_history, is_trigger_mode=False, run_id
+    ):
         captured["messages_history"] = messages_history
         return "agent", ["lc-message"], {"configurable": {"thread_id": "thread-runner"}}
 
@@ -211,7 +219,9 @@ async def test_execute_agent_stream_langgraph_accepts_worker_common_kwargs(
     async def persist_callback(_events) -> None:
         captured["persisted"] = True
 
-    async def fake_prepare_agent(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+    async def fake_prepare_agent(
+        _cfg: AgentConfig, *, messages_history, is_trigger_mode=False, run_id
+    ):
         captured["messages_history"] = messages_history
         return "agent", ["lc-message"], {"configurable": {"thread_id": "thread-runner"}}
 
@@ -260,7 +270,9 @@ async def test_resume_agent_stream_langgraph_passes_command_resume(monkeypatch) 
 
     captured = {}
 
-    async def fake_prepare_agent(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+    async def fake_prepare_agent(
+        _cfg: AgentConfig, *, messages_history, is_trigger_mode=False, run_id
+    ):
         captured["messages_history"] = messages_history
         return "agent", [], {"configurable": {"thread_id": "thread-runner"}}
 
@@ -303,7 +315,9 @@ async def test_resume_agent_stream_langgraph_accepts_worker_common_kwargs(monkey
     async def persist_callback(_events) -> None:
         captured["persisted"] = True
 
-    async def fake_prepare_agent(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+    async def fake_prepare_agent(
+        _cfg: AgentConfig, *, messages_history, is_trigger_mode=False, run_id
+    ):
         captured["messages_history"] = messages_history
         return "agent", [], {"configurable": {"thread_id": "thread-runner"}}
 
