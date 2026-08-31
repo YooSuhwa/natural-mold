@@ -6,7 +6,6 @@ import os
 from pathlib import Path, PurePosixPath
 from typing import Final
 
-from deepagents.backends import FilesystemBackend
 from deepagents.backends.protocol import FileDownloadResponse, ReadResult, WriteResult
 from deepagents.backends.utils import slice_read_response
 
@@ -26,6 +25,7 @@ from app.agent_runtime.offload_storage_types import (
     OffloadMutationScope,
     OffloadSecurityError,
 )
+from app.agent_runtime.runtime_filesystem_secure_backend import SecureRuntimeFilesystemBackend
 
 HIDDEN_ROOTS: Final = frozenset(
     {PHYSICAL_ROOT, VIRTUAL_ROOT.removeprefix("/"), "conversation_history", "large_tool_results"}
@@ -40,8 +40,22 @@ def parts(key: str) -> tuple[str, ...]:
     return result
 
 
-class HiddenFilesystemBackend(FilesystemBackend):
+class HiddenFilesystemBackend(SecureRuntimeFilesystemBackend):
     """Default data backend that makes both internal namespaces unreachable."""
+
+    _moldy_hidden_roots = HIDDEN_ROOTS
+
+    def _validated_parts(self, file_path: str) -> tuple[str, ...]:
+        key_parts = super()._validated_parts(file_path)
+        if key_parts and key_parts[0] in HIDDEN_ROOTS:
+            raise PermissionError("internal offload path is not publicly accessible")
+        return key_parts
+
+    def _directory_parts(self, path: str) -> tuple[str, ...]:
+        key_parts = super()._directory_parts(path)
+        if key_parts and key_parts[0] in HIDDEN_ROOTS:
+            raise PermissionError("internal offload path is not publicly accessible")
+        return key_parts
 
     def _resolve_path(self, key: str) -> Path:
         key_parts = parts(key) if key not in {"", "/"} else ()

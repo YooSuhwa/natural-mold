@@ -34,7 +34,11 @@ from langchain.agents.middleware import TodoListMiddleware
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
-from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
+from app.agent_runtime.filesystem_permission_middleware import MoldyFilesystemMiddleware
+from app.agent_runtime.filesystem_permissions import (
+    add_scoped_offload_permissions,
+    build_filesystem_permissions,
+)
 from app.agent_runtime.mcp_tool_loader import _build_mcp_tools
 from app.agent_runtime.message_utils import convert_to_langchain_messages
 from app.agent_runtime.middleware_registry import (
@@ -158,10 +162,16 @@ def _build_moldy_filesystem_middleware(
 ) -> FilesystemMiddleware:
     """Build Moldy's deliberately non-deleting Deep Agents filesystem layer."""
 
-    return FilesystemMiddleware(
+    effective_permissions = permissions
+    if permissions is not None and isinstance(backend, ScopedOffloadBackend):
+        effective_permissions = add_scoped_offload_permissions(
+            permissions,
+            backend.artifacts_root,
+        )
+    return MoldyFilesystemMiddleware(
         backend=backend,
         tools=list(_MOLDY_FILESYSTEM_TOOL_NAMES),
-        _permissions=permissions,
+        permissions=effective_permissions,
     )
 
 

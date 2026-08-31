@@ -2,7 +2,86 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Final, Literal
+
 from deepagents.middleware.filesystem import FilesystemPermission
+from wcmatch import glob as wcglob
+
+FilesystemAccess = Literal["allow", "deny", "interrupt"]
+FilesystemOperation = Literal["read", "write"]
+_MATCH_FLAGS: Final = wcglob.GLOBSTAR | wcglob.BRACE
+_RULE_META: Final = frozenset("*?[]{}!%")
+
+
+@dataclass(frozen=True, slots=True)
+class UnsafeFilesystemPath(ValueError):
+    """A model-supplied virtual path that cannot be safely interpreted."""
+
+
+def canonicalize_virtual_path(raw_path: str) -> str:
+    """Return one unambiguous absolute POSIX path or fail closed."""
+
+    has_control = any(ord(character) < 32 or ord(character) == 127 for character in raw_path)
+    if (
+        not raw_path
+        or not raw_path.startswith("/")
+        or has_control
+        or ":" in raw_path
+        or "%" in raw_path
+    ):
+        raise UnsafeFilesystemPath
+    if "\\" in raw_path:
+        raise UnsafeFilesystemPath
+    parts = raw_path.split("/")[1:]
+    if any(part in {"", ".", ".."} for part in parts[:-1]):
+        raise UnsafeFilesystemPath
+    if parts and parts[-1] in {".", ".."}:
+        raise UnsafeFilesystemPath
+    return raw_path.rstrip("/") or "/"
+
+
+def _validate_rule_segment(segment: str) -> str:
+    has_control = any(ord(character) < 32 or ord(character) == 127 for character in segment)
+    if (
+        not segment
+        or segment in {".", ".."}
+        or "/" in segment
+        or "\\" in segment
+        or ":" in segment
+        or has_control
+        or any(character in _RULE_META for character in segment)
+    ):
+        raise ValueError("filesystem scope contains an unsafe path segment")
+    return segment
+
+
+def validate_search_pattern(pattern: str | None) -> None:
+    """Reject search selectors that can hide alternate path syntax."""
+
+    if pattern is None:
+        return
+    has_control = any(ord(character) < 32 or ord(character) == 127 for character in pattern)
+    if "%" in pattern or "\\" in pattern or has_control:
+        raise UnsafeFilesystemPath
+    if any(part == ".." for part in pattern.split("/")):
+        raise UnsafeFilesystemPath
+
+
+def calculate_filesystem_access(
+    permissions: list[FilesystemPermission],
+    operation: FilesystemOperation,
+    raw_path: str,
+) -> tuple[FilesystemAccess, str]:
+    """Canonicalize once and resolve the first matching ordered rule."""
+
+    path = canonicalize_virtual_path(raw_path)
+    for rule in permissions:
+        if operation not in rule.operations:
+            continue
+        if any(wcglob.globmatch(path, pattern, flags=_MATCH_FLAGS) for pattern in rule.paths):
+            return rule.mode, path
+    return "deny", path
 
 
 def _path_and_descendants(path: str) -> list[str]:
@@ -16,6 +95,30 @@ def _protected_tree(path: str) -> FilesystemPermission:
         paths=_path_and_descendants(path),
         mode="deny",
     )
+
+
+def add_scoped_offload_permissions(
+    permissions: list[FilesystemPermission],
+    artifacts_root: str,
+) -> list[FilesystemPermission]:
+    """Allow exact actor-scoped Deep Agents history and spill references."""
+
+    root = canonicalize_virtual_path(artifacts_root)
+    for segment in root.strip("/").split("/"):
+        _validate_rule_segment(segment)
+    scoped = [
+        FilesystemPermission(
+            operations=["read"],
+            paths=_path_and_descendants(f"{root}/conversation_history"),
+            mode="allow",
+        ),
+        FilesystemPermission(
+            operations=["read"],
+            paths=_path_and_descendants(f"{root}/large_tool_results"),
+            mode="allow",
+        ),
+    ]
+    return [*scoped, *permissions]
 
 
 def build_filesystem_permissions(
@@ -42,6 +145,14 @@ def build_filesystem_permissions(
 
     if agent_id and not user_id:
         raise ValueError("user_id is required when building agent-scoped filesystem permissions")
+
+    _validate_rule_segment(thread_id)
+    if agent_id:
+        _validate_rule_segment(agent_id)
+    if agent_runtime_name:
+        _validate_rule_segment(agent_runtime_name)
+    for slug in selected_skill_slugs:
+        _validate_rule_segment(slug)
 
     permissions: list[FilesystemPermission] = []
     skill_base = (
@@ -89,6 +200,8 @@ def build_filesystem_permissions(
             raise ValueError(
                 f"draft_workspace_path must live under skill-drafts/: {draft_workspace_path!r}"
             )
+        for segment in stripped.split("/"):
+            _validate_rule_segment(segment)
         permissions.append(
             FilesystemPermission(
                 operations=["read", "write"],
@@ -109,10 +222,23 @@ def build_filesystem_permissions(
             # paths default to allow, so without this rule any agent could
             # ``ls``/``read_file`` other users' uploads (cross-user exposure).
             _protected_tree("/uploads"),
-            FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
+            _protected_tree("/artifacts"),
+            _protected_tree("/.moldy-offload"),
+            FilesystemPermission(
+                operations=["read", "write"],
+                paths=["/**"],
+                mode="deny",
+            ),
         ]
     )
     return permissions
 
 
-__all__ = ["build_filesystem_permissions"]
+__all__ = [
+    "UnsafeFilesystemPath",
+    "add_scoped_offload_permissions",
+    "build_filesystem_permissions",
+    "calculate_filesystem_access",
+    "canonicalize_virtual_path",
+    "validate_search_pattern",
+]

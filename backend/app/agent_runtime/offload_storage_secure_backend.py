@@ -31,6 +31,7 @@ from app.agent_runtime.offload_storage_fd import (
     open_directory_components,
     open_scoped_directory,
 )
+from app.agent_runtime.offload_storage_secure_bulk import DenyHashedBulkOperationsMixin
 from app.agent_runtime.offload_storage_types import (
     OffloadMutationScope,
     OffloadSecurityError,
@@ -116,10 +117,8 @@ def _atomic_replace_private_file(
             os.unlink(temporary, dir_fd=parent)
 
 
-class SecureHashedFilesystemBackend(FilesystemBackend):
+class SecureHashedFilesystemBackend(DenyHashedBulkOperationsMixin, FilesystemBackend):
     """Map exact virtual paths to opaque leaves without pathname-based internal I/O."""
-
-    domain: str
 
     def __init__(
         self,
