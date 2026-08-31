@@ -16,9 +16,15 @@ import app.agent_runtime.checkpointer as mod
 
 
 def _install_fake_checkpointer_modules(monkeypatch, pool_cls: type, saver_cls: type) -> None:
-    psycopg_pool_module = ModuleType("psycopg_pool")
+    class PsycopgPoolModule(ModuleType):
+        AsyncConnectionPool: type
+
+    class AioModule(ModuleType):
+        AsyncPostgresSaver: type
+
+    psycopg_pool_module = PsycopgPoolModule("psycopg_pool")
     psycopg_pool_module.AsyncConnectionPool = pool_cls
-    aio_module = ModuleType("langgraph.checkpoint.postgres.aio")
+    aio_module = AioModule("langgraph.checkpoint.postgres.aio")
     aio_module.AsyncPostgresSaver = saver_cls
     monkeypatch.setitem(sys.modules, "psycopg_pool", psycopg_pool_module)
     monkeypatch.setitem(sys.modules, "langgraph.checkpoint.postgres.aio", aio_module)
@@ -134,6 +140,129 @@ async def test_init_checkpointer_clamps_invalid_pool_bounds(monkeypatch):
 
         assert pool_kwargs["min_size"] == 1
         assert pool_kwargs["max_size"] == 1
+    finally:
+        mod._pool = orig_pool
+        mod._checkpointer = orig_cp
+
+
+@pytest.mark.asyncio
+async def test_init_checkpointer_closes_candidate_when_open_fails(monkeypatch):
+    orig_pool = mod._pool
+    orig_cp = mod._checkpointer
+
+    class OpenFailure(RuntimeError):
+        pass
+
+    candidates: list[FakePool] = []
+
+    class FakePool:
+        def __init__(self, **kwargs: object) -> None:
+            del kwargs
+            self.closed = False
+            candidates.append(self)
+
+        async def open(self) -> None:
+            raise OpenFailure
+
+        async def close(self) -> None:
+            self.closed = True
+
+    class FakeSaver:
+        def __init__(self, conn: object) -> None:
+            del conn
+
+    _install_fake_checkpointer_modules(monkeypatch, FakePool, FakeSaver)
+    try:
+        mod._pool = None
+        mod._checkpointer = None
+
+        with pytest.raises(OpenFailure):
+            await mod.init_checkpointer("postgresql://example")
+
+        assert len(candidates) == 1
+        assert candidates[0].closed is True
+        assert mod._pool is None
+        assert mod._checkpointer is None
+    finally:
+        mod._pool = orig_pool
+        mod._checkpointer = orig_cp
+
+
+@pytest.mark.asyncio
+async def test_init_checkpointer_closes_candidate_when_setup_fails(monkeypatch):
+    orig_pool = mod._pool
+    orig_cp = mod._checkpointer
+
+    class SetupFailure(RuntimeError):
+        pass
+
+    class CandidateCloseFailure(RuntimeError):
+        pass
+
+    candidates: list[FakePool] = []
+
+    class FakePool:
+        def __init__(self, **kwargs: object) -> None:
+            del kwargs
+            self.closed = False
+            candidates.append(self)
+
+        async def open(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            self.closed = True
+            raise CandidateCloseFailure
+
+    class FakeSaver:
+        def __init__(self, conn: object) -> None:
+            del conn
+
+        async def setup(self) -> None:
+            raise SetupFailure
+
+    _install_fake_checkpointer_modules(monkeypatch, FakePool, FakeSaver)
+    try:
+        mod._pool = None
+        mod._checkpointer = None
+
+        with pytest.raises(SetupFailure):
+            await mod.init_checkpointer("postgresql://example")
+
+        assert len(candidates) == 1
+        assert candidates[0].closed is True
+        assert mod._pool is None
+        assert mod._checkpointer is None
+    finally:
+        mod._pool = orig_pool
+        mod._checkpointer = orig_cp
+
+
+@pytest.mark.asyncio
+async def test_shutdown_checkpointer_preserves_owner_when_close_fails():
+    orig_pool = mod._pool
+    orig_cp = mod._checkpointer
+
+    class CloseFailure(RuntimeError):
+        pass
+
+    pool = AsyncMock()
+    pool.close.side_effect = [CloseFailure, None]
+    try:
+        mod._pool = pool
+        mod._checkpointer = AsyncMock()
+
+        with pytest.raises(CloseFailure):
+            await mod.shutdown_checkpointer()
+
+        assert mod._pool is pool
+        assert mod._checkpointer is not None
+
+        await mod.shutdown_checkpointer()
+
+        assert pool.close.await_count == 2
+        assert mod._pool is None
+        assert mod._checkpointer is None
     finally:
         mod._pool = orig_pool
         mod._checkpointer = orig_cp

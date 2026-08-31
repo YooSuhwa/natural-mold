@@ -233,10 +233,15 @@ CORS_ALLOWED_ORIGINS=https://app.example.com \
 
 ```bash
 # Backend
-cd backend
-uv run ruff check .                   # lint
-uv run pytest                         # unit tests (aiosqlite, no Postgres needed)
-uv run pytest -m integration          # integration tests (Postgres required)
+(
+  cd backend
+  uv run ruff check .                 # lint
+  uv run pytest                       # unit tests (aiosqlite, no Postgres needed)
+)
+manifest=".omo/evidence/project-restart-consolidated-roadmap/local-postgres-$(date +%s).json"
+bash scripts/run-isolated-postgres-tests.sh all --manifest "$manifest"
+(cd backend && uv run python ../scripts/check-isolation-cleanup.py \
+  "../$manifest") # disposable PostgreSQL lane
 
 # Frontend
 cd frontend

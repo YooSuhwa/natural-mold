@@ -52,11 +52,18 @@ jobs:
       # the *silent* variant is a full-suite `pytest tests/` run, where
       # passing sibling tests mask the deselection with exit 0. Both
       # contracts are pinned by tests/test_integration_marker_hook.py.
-      # test_m9_pg_roundtrip self-skips unless INTEGRATION_DATABASE_URL
-      # points at a live Postgres.
+      # The canonical serial lane provisions PostgreSQL 16, migrates twice,
+      # forces INTEGRATION_DATABASE_URL, verifies exact node execution, and
+      # proves owned-resource cleanup from its immutable manifest.
       - run: bash scripts/run-isolated-command.sh --cwd backend -- uv run pytest -q -n 4 --ignore=tests/integration
         working-directory: .
-      - run: uv run pytest -q tests/integration -m integration
+      - name: Disposable PostgreSQL integration lane
+        working-directory: .
+        run: |
+          bash scripts/run-isolated-postgres-tests.sh all \
+            --manifest .omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json
+          (cd backend && uv run python ../scripts/check-isolation-cleanup.py \
+            ../.omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json)
 
   # Project-wide Pyright still has a pre-existing backlog (801 errors in the
   # Todo01 evidence baseline), so

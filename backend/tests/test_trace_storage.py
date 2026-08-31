@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import stored_protocol_event
+from app.database import async_session
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
@@ -17,10 +20,14 @@ from app.models.user import User
 from app.services import trace_storage
 from tests.conftest import TEST_USER_ID, TestSession
 
+SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
-async def _seed_conversation(*, owner_id: uuid.UUID = TEST_USER_ID) -> uuid.UUID:
+
+async def _seed_conversation(
+    *, owner_id: uuid.UUID = TEST_USER_ID, session_factory: SessionFactory = TestSession
+) -> uuid.UUID:
     """Insert minimal User + Model + Agent + Conversation, return conversation_id."""
-    async with TestSession() as db:
+    async with session_factory() as db:
         existing_user = await db.get(User, owner_id)
         if existing_user is None:
             db.add(User(id=owner_id, email=f"{owner_id}@test.com", name="Test"))
@@ -381,14 +388,14 @@ async def test_message_event_cascade_delete_with_conversation() -> None:
     ``ondelete='CASCADE'``가 무시된다. 마이그레이션에 선언된 cascade가 실제로
     동작하는지 검증하려면 라이브 PG가 필요하므로 integration 마커를 단다.
     """
-    conv_id = await _seed_conversation()
-    async with TestSession() as db:
+    conv_id = await _seed_conversation(session_factory=async_session)
+    async with async_session() as db:
         await trace_storage.record_turn(
             db, conversation_id=conv_id, events=_events_for_msg("msg-x")
         )
         await db.commit()
 
-    async with TestSession() as db:
+    async with async_session() as db:
         # 직접 SQL로 conversation 삭제
         from sqlalchemy import select
 
@@ -398,7 +405,7 @@ async def test_message_event_cascade_delete_with_conversation() -> None:
         await db.delete(conv)
         await db.commit()
 
-    async with TestSession() as db:
+    async with async_session() as db:
         from sqlalchemy import select
 
         rows = (await db.execute(select(MessageEvent))).scalars().all()

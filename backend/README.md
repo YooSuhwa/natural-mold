@@ -30,11 +30,23 @@ CORS_ALLOWED_ORIGINS=http://localhost:3010,http://127.0.0.1:3010 \
 
 ```bash
 uv run pytest                # aiosqlite 기반 단위 테스트 (Postgres 불필요)
-uv run pytest -m integration # Postgres가 필요한 통합 테스트 (기본 비활성)
 uv run ruff check .          # 린트
 uv run ruff format .         # 포맷
 uv run alembic revision -m "..." --autogenerate  # 새 마이그레이션
+
+# disposable PostgreSQL 통합 테스트는 저장소 루트 runner로 실행한다.
+(
+  cd ..
+  manifest=".omo/evidence/project-restart-consolidated-roadmap/local-postgres-$(date +%s).json"
+  bash scripts/run-isolated-postgres-tests.sh all --manifest "$manifest"
+  (cd backend && uv run python ../scripts/check-isolation-cleanup.py "../$manifest")
+)
 ```
+
+runner는 `backend/tests` 전체에서 `integration` 마커가 붙은 테스트를 선택하므로
+`tests/integration/` 디렉토리만 직접 지정하는 것보다 canonical integration lane의
+검증 범위를 정확히 반영한다. 특정 테스트를 빠르게 디버깅할 때만 backend 디렉토리에서
+`uv run pytest -q tests/integration/test_name.py -m integration`을 사용한다.
 
 ## 디렉토리 구조
 

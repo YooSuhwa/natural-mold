@@ -1,11 +1,16 @@
 """M9 migration PostgreSQL round-trip integration test.
 
-Default pytest run skips this (`addopts = -m 'not integration'`). To execute:
+Default pytest run skips this (`addopts = -m 'not integration'`). The canonical
+disposable PostgreSQL lane is started from the repository root:
 
-    cd backend
-    docker-compose up -d postgres
-    INTEGRATION_DATABASE_URL='postgresql+psycopg://moldy:moldy@localhost:5432/moldy' \
-      uv run pytest -m integration tests/integration/test_m9_pg_roundtrip.py
+    manifest=".omo/evidence/project-restart-consolidated-roadmap/local-postgres-$(date +%s).json"
+    bash scripts/run-isolated-postgres-tests.sh all --manifest "$manifest"
+    (cd backend && uv run python ../scripts/check-isolation-cleanup.py "../$manifest")
+
+For focused debugging only, run this file from ``backend/`` with
+``uv run pytest -m integration tests/integration/test_m9_pg_roundtrip.py`` and
+an explicitly supplied ``INTEGRATION_DATABASE_URL``. That direct invocation does
+not replace the disposable-lane lifecycle and cleanup checks.
 
 The configured PostgreSQL role must have `CREATEDB`: the fixture creates a
 UUID-named temporary database for the migration round-trip and drops it during
