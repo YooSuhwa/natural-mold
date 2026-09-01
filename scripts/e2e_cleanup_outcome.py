@@ -91,6 +91,15 @@ def validate_outcome(payload: dict[str, object], lane: str, project: str) -> Non
         if lane == "live":
             require(selected == list(LIVE_NODES), "live_selection")
         return
+    if self_test == "normal":
+        require(
+            status == "failed" and reason == "playwright_failed" and exit_code == 1,
+            "self_test",
+        )
+        require(bool(selected) and selected == executed, "node_execution_mismatch")
+        if lane == "live":
+            require(selected == list(LIVE_NODES), "live_selection")
+        return
     if self_test == "sigint":
         require(
             status == "interrupted" and reason == "signal" and exit_code in {130, 143},

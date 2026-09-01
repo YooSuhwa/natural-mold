@@ -519,6 +519,89 @@ def test_validate_payload_rejects_server_failure_without_bounded_server_start_ex
     # Then only a bounded non-signal server-start failure is accepted.
 
 
+def test_validate_payload_accepts_normal_playwright_failure_receipt(tmp_path: Path) -> None:
+    # Given a normal E2E run that selected and executed one case before Playwright failed.
+    payload = _manifest(tmp_path)
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "playwright_failed",
+            "child_exit_code": 1,
+        }
+    )
+
+    # When the normal failure receipt is checked.
+    validate_payload(payload, repository_root=tmp_path)
+
+    # Then the non-forced Playwright failure remains checker-valid.
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("status", "passed"),
+        ("failure_reason", None),
+        ("failure_reason", "server_start_failed"),
+        ("child_exit_code", 0),
+        ("child_exit_code", 2),
+        ("child_exit_code", 70),
+        ("child_exit_code", 130),
+    ],
+)
+def test_validate_payload_rejects_normal_playwright_failure_contract_mutations(
+    tmp_path: Path, field: str, value: str | int | None
+) -> None:
+    # Given a normal Playwright failure with one contract field forged.
+    payload = _manifest(tmp_path)
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "playwright_failed",
+            "child_exit_code": 1,
+        }
+    )
+    payload[field] = value
+
+    # When the receipt is independently checked.
+    with pytest.raises(ManifestValidationError):
+        validate_payload(payload, repository_root=tmp_path)
+
+    # Then wrong status, reason, and exit semantics cannot masquerade as normal failure.
+
+
+@pytest.mark.parametrize(
+    ("selected", "executed"),
+    [
+        ([], []),
+        (["scripted-smoke::e2e/smoke.spec.ts::works"], []),
+        (
+            ["scripted-smoke::e2e/smoke.spec.ts::works"],
+            ["scripted-smoke::e2e/smoke.spec.ts::other"],
+        ),
+    ],
+)
+def test_validate_payload_rejects_normal_playwright_execution_mismatch(
+    tmp_path: Path, selected: list[str], executed: list[str]
+) -> None:
+    # Given a normal Playwright failure with empty, partial, or mismatched execution.
+    payload = _manifest(tmp_path)
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "playwright_failed",
+            "child_exit_code": 1,
+            "selected_ids": selected,
+            "executed_ids": executed,
+        }
+    )
+
+    # When the receipt is independently checked.
+    with pytest.raises(ManifestValidationError, match="node_execution_mismatch"):
+        validate_payload(payload, repository_root=tmp_path)
+
+    # Then a normal failure must prove a nonempty exact selected/executed set.
+
+
 def test_main_dispatches_mixed_postgres_and_e2e_manifests(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
