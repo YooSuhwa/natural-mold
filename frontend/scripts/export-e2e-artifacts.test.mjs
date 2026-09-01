@@ -193,12 +193,38 @@ describe('E2E artifact exporter', () => {
     }
   })
 
-  it('rejects screenshots from smoke, full, and live projects', () => {
+  it('exports scripted-full failure context while ignoring its Playwright failure screenshot', () => {
+    const fixture_ = fixture()
+    try {
+      const resultDirectory = results(fixture_, 'scripted-full')
+      writeArtifact(resultDirectory, 'playwright-artifacts/suite-case/error-context.md')
+      writeArtifact(
+        resultDirectory,
+        'playwright-artifacts/suite-case/test-failed-1.png',
+        'ignored-screenshot-secret',
+      )
+
+      const receipt = exportFixture(fixture_, { secrets: ['ignored-screenshot-secret'] })
+
+      expect(receipt.secret_scan_passed).toBe(true)
+      expect(receipt.files.map((file) => file.path)).toEqual([
+        'export-manifest.json',
+        'results/playwright-artifacts/suite-case/error-context.md',
+      ])
+      expect(receipt.screenshots).toEqual([])
+    } finally {
+      rmSync(fixture_.repositoryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects persistent capture screenshots from smoke, full, and live projects', () => {
     for (const project of ['scripted-smoke', 'scripted-full', 'live-manual']) {
       const fixture_ = fixture()
       try {
-        writeArtifact(results(fixture_, project), 'case/test-failed-1.png')
-        expect(() => exportFixture(fixture_, { project })).toThrow('scripted-capture project')
+        writeArtifact(fixture_.captures, 'wave-1/dashboard.png')
+        expect(() =>
+          exportFixture(fixture_, { project, sourceDirectory: fixture_.captures }),
+        ).toThrow('scripted-capture project')
       } finally {
         rmSync(fixture_.repositoryRoot, { recursive: true, force: true })
       }

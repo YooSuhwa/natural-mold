@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { getE2ERunPaths } from './e2e-lane-contract.mjs'
+import { getE2ERunPaths, LIVE_E2E_SPECS } from './e2e-lane-contract.mjs'
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -364,7 +364,7 @@ describe('prepared E2E lane boundary', () => {
     }
     expect(smoke.every((node) => node.file === 'smoke.spec.ts')).toBe(true)
     expect(full.some((node) => /(^|\/)(captures|manual)/.test(node.file))).toBe(false)
-    expect(full.some((node) => node.file.includes('live'))).toBe(false)
+    expect(full.every((node) => !LIVE_E2E_SPECS.includes(`e2e/${node.file}`))).toBe(true)
     const rootCaptureNodes = capture.filter((node) => !node.file.startsWith('captures/'))
     expect(rootCaptureNodes).toEqual([
       {

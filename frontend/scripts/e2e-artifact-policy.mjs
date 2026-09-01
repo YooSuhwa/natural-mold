@@ -36,6 +36,7 @@ export function classifyArtifact(kind, relative, project) {
     throw new Error('Suspicious E2E artifact is outside the explicit allowlist.')
   }
   if (!allowed) return undefined
+  if (screenshot && kind === 'results' && project !== 'scripted-capture') return undefined
   if (screenshot && project !== 'scripted-capture') {
     throw new Error('Screenshots may only be exported from the scripted-capture project.')
   }

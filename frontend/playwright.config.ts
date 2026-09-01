@@ -95,6 +95,7 @@ const runtimeWebServers = [
 ]
 
 const scriptedFullIgnore = [
+  ...LIVE_E2E_SPEC_GLOBS,
   '**/*live*.spec.ts',
   '**/manual/**',
   '**/manual*.spec.ts',
