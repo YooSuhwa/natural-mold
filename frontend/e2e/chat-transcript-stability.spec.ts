@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test'
 import { API_BASE, apiDeleteOk, expect, test } from './fixtures'
+import { setFailurePhase } from './helpers/failure-phase-diagnostic'
 import { sendMessage, setupLangGraphV3Agent } from './langgraph-v3-helpers'
 
 const FRONTEND =
@@ -169,40 +170,65 @@ test.describe('Chat transcript stability QA bundle', () => {
     page,
     request,
     errors,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(120_000)
+    setFailurePhase(testInfo.annotations, 'setup_agent')
     const setup = await setupLangGraphV3Agent(request)
     const prompt = '사과, 포도, 배 중에 하나 선택하는 ask user 해줘'
+    let bodySucceeded = false
 
     try {
+      setFailurePhase(testInfo.annotations, 'open_draft')
       await page.goto(`${FRONTEND}/agents/${setup.parentAgentId}/conversations/new`)
+      setFailurePhase(testInfo.annotations, 'verify_draft_route')
       await expect(page).toHaveURL(new RegExp(`/agents/${setup.parentAgentId}/conversations/new$`))
+      setFailurePhase(testInfo.annotations, 'install_prompt_observer')
       await installUserPromptStabilityObserver(page, prompt)
 
+      setFailurePhase(testInfo.annotations, 'submit_prompt')
       await sendMessage(page, prompt)
+      setFailurePhase(testInfo.annotations, 'wait_draft_promotion')
       await expect(page).toHaveURL(DRAFT_TO_CONVERSATION_URL, { timeout: 30_000 })
+      setFailurePhase(testInfo.annotations, 'wait_prompt')
       await expect(
         page.locator('[data-moldy-message-role="user"]').filter({ hasText: prompt }),
       ).toBeVisible({ timeout: 30_000 })
 
       const askUserCards = page.locator('[data-tool-ui-id]').filter({ hasText: '🍎 사과' })
+      setFailurePhase(testInfo.annotations, 'wait_ask_user_card')
       await expect(askUserCards).toHaveCount(1, { timeout: 30_000 })
       await expect(askUserCards.first().getByText('입력이 필요합니다')).toBeVisible()
+      setFailurePhase(testInfo.annotations, 'verify_prompt_stability')
       await expectNoUserPromptDisappearance(page)
 
       const askUserCard = askUserCards.first()
+      setFailurePhase(testInfo.annotations, 'select_option')
       await askUserCard.getByRole('option', { name: /사과/ }).click()
+      setFailurePhase(testInfo.annotations, 'submit_decision')
       await askUserCard.getByRole('button', { name: /선택 확인 \(1\)|Confirm \(1\)/ }).click()
 
+      setFailurePhase(testInfo.annotations, 'wait_final_response')
       await expect(page.getByText(ASK_USER_FINAL_TEXT)).toBeVisible({ timeout: 60_000 })
+      setFailurePhase(testInfo.annotations, 'verify_final_prompt')
       await expect(
         page.locator('[data-moldy-message-role="user"]').filter({ hasText: prompt }),
       ).toBeVisible()
+      setFailurePhase(testInfo.annotations, 'verify_error_collectors')
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
+      bodySucceeded = true
     } finally {
+      if (bodySucceeded) {
+        setFailurePhase(testInfo.annotations, 'cleanup_parent_agent')
+      }
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      if (bodySucceeded) {
+        setFailurePhase(testInfo.annotations, 'cleanup_child_agent')
+      }
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+      if (bodySucceeded) {
+        setFailurePhase(testInfo.annotations, 'complete')
+      }
     }
   })
 

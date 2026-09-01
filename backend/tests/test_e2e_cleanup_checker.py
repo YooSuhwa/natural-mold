@@ -550,6 +550,7 @@ def test_validate_payload_accepts_normal_playwright_failure_receipt(tmp_path: Pa
                         "api_request_failure",
                         "other_response_failure",
                     ],
+                    "failure_phase": "verify_error_collectors",
                 }
             ],
         }

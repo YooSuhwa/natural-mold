@@ -10,7 +10,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from e2e_failure_diagnostics import FailureDiagnostic, FailureLocation  # noqa: E402
 from e2e_runner_export import ExportFile, ExportReceipt  # noqa: E402
+from e2e_runner_failure_phase import FailurePhase  # noqa: E402
 from e2e_runner_manifest import RunFacts, build_manifest  # noqa: E402
+from e2e_runner_network_failure import NetworkFailureCode  # noqa: E402
 
 
 def test_manifest_is_versioned_and_omits_physical_root_and_secrets() -> None:
@@ -29,7 +31,11 @@ def test_manifest_is_versioned_and_omits_physical_root_and_secrets() -> None:
                 "scripted-smoke::e2e/a.spec.ts::works",
                 "failed",
                 FailureLocation("e2e/a.spec.ts", 7, 3),
-                ("api_request_failure", "other_response_failure"),
+                (
+                    NetworkFailureCode.API_REQUEST_FAILURE,
+                    NetworkFailureCode.OTHER_RESPONSE_FAILURE,
+                ),
+                FailurePhase.VERIFY_ERROR_COLLECTORS,
             ),
         ),
         facts=RunFacts("run-id", "160001", "m70", "m70", "hash", True),
@@ -62,5 +68,6 @@ def test_manifest_is_versioned_and_omits_physical_root_and_secrets() -> None:
             "status": "failed",
             "location": {"file": "e2e/a.spec.ts", "line": 7, "column": 3},
             "network_failure_codes": ["api_request_failure", "other_response_failure"],
+            "failure_phase": "verify_error_collectors",
         }
     ]

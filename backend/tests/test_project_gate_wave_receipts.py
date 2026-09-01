@@ -136,6 +136,7 @@ def test_e2e_receipt_accepts_failed_child_with_sanitized_export(
                     "api_request_failure",
                     "other_response_failure",
                 ],
+                "failure_phase": "verify_error_collectors",
             }
         ],
         "export": {"secret_scan_passed": True, "screenshots": []},
