@@ -147,6 +147,22 @@ def test_isolated_wrapper_ignores_shadow_utilities(tmp_path: Path) -> None:
     assert not marker.exists()
 
 
+def test_safe_environment_uses_canonical_system_tmpdir_for_no_follow_cleanup(
+    tmp_path: Path,
+) -> None:
+    """Given the gate environment, when TMPDIR is selected, then it is physical and absolute."""
+    process = load_module("project_gate_process")
+    toolchain = load_module("project_gate_toolchain")
+    trusted = _trusted(toolchain, tmp_path)
+
+    environment = process.safe_environment({}, trusted)
+    tmpdir = Path(environment["TMPDIR"])
+
+    assert tmpdir == Path("/tmp").resolve(strict=True)
+    assert tmpdir.is_absolute()
+    assert tmpdir == tmpdir.resolve(strict=True)
+
+
 def test_provenance_rejects_dirty_or_changed_head(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

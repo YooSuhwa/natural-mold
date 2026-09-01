@@ -30,7 +30,7 @@ def safe_environment(inherited: dict[str, str], toolchain: TrustedToolchain) -> 
     environment = {
         "PATH": toolchain.path,
         "HOME": str(toolchain.home),
-        "TMPDIR": "/tmp",  # noqa: S108 - mktemp child roots are identity-bound and private
+        "TMPDIR": str(Path("/tmp").resolve(strict=True)),  # noqa: S108 - fixed system temp root
         "USER": toolchain.user,
         "LOGNAME": toolchain.user,
         "LC_ALL": "C",

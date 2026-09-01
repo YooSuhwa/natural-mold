@@ -216,7 +216,7 @@ def test_composite_environment_drops_secrets(tmp_path: Path, process: ModuleType
     assert environment == {
         "PATH": trusted.path,
         "HOME": str(tmp_path),
-        "TMPDIR": "/tmp",
+        "TMPDIR": str(Path("/tmp").resolve(strict=True)),
         "USER": "tester",
         "LOGNAME": "tester",
         "LC_ALL": "C",
