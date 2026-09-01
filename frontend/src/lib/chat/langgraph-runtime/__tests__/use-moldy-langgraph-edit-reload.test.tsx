@@ -2350,4 +2350,141 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
 
     expect(mocks.stream.submit).not.toHaveBeenCalled()
   })
+
+  it('clears a rejected edit from A without clearing B after an A-B-A switch', async () => {
+    const originalUser = new HumanMessage({
+      id: 'switch-edit-user',
+      content: 'original prompt',
+      additional_kwargs: { metadata: { checkpoint_id: 'ck-switch-edit' } },
+    })
+    const originalAssistant = new AIMessage({ id: 'switch-edit-assistant', content: 'answer' })
+    mocks.stream.messages = [originalUser, originalAssistant]
+    mocks.convertedMessages = [
+      { id: 'switch-edit-user', role: 'user' },
+      { id: 'switch-edit-assistant', role: 'assistant' },
+    ]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['switch-edit-user', { parentCheckpointId: 'ck-before-switch-edit' }]]),
+    )
+    let rejectEdit: ((reason: Error) => void) | undefined
+    mocks.stream.submit.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectEdit = reject
+        }),
+    )
+    const { rerender } = renderHook(
+      ({ conversationId }: { conversationId: string }) =>
+        useMoldyLangGraphStream({ agentId: 'agent-edit-switch', conversationId }),
+      {
+        initialProps: { conversationId: 'conversation-edit-a' },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const runtimeA = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as RuntimeOptions
+    const edit = runtimeA.onEdit({
+      content: [{ type: 'text', text: 'edited prompt' }],
+      parentId: 'switch-edit-user',
+      sourceId: 'switch-edit-user',
+    })
+
+    rerender({ conversationId: 'conversation-edit-b' })
+    await act(async () => {
+      rejectEdit?.(new Error('edit failed'))
+      await expect(edit).rejects.toThrow('edit failed')
+    })
+    rerender({ conversationId: 'conversation-edit-a' })
+
+    await waitFor(() => {
+      const options = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+        messages: readonly BaseMessage[]
+      }
+      expect(options.messages.some((message) => message.content === 'edited prompt')).toBe(false)
+      expect(options.messages).toContain(originalUser)
+    })
+  })
+
+  it('clears a rejected reload from A without clearing B after an A-B-A switch', async () => {
+    const originalUser = new HumanMessage({
+      id: 'switch-reload-user',
+      content: 'prompt',
+      additional_kwargs: { metadata: { checkpoint_id: 'ck-switch-reload' } },
+    })
+    const originalAssistant = new AIMessage({ id: 'switch-reload-assistant', content: 'answer' })
+    mocks.stream.messages = [originalUser, originalAssistant]
+    mocks.convertedMessages = [
+      { id: 'switch-reload-user', role: 'user' },
+      { id: 'switch-reload-assistant', role: 'assistant' },
+    ]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['switch-reload-assistant', { parentCheckpointId: 'ck-switch-reload' }]]),
+    )
+    let rejectReload: ((reason: Error) => void) | undefined
+    mocks.stream.submit.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectReload = reject
+        }),
+    )
+    const { rerender } = renderHook(
+      ({ conversationId }: { conversationId: string }) =>
+        useMoldyLangGraphStream({ agentId: 'agent-reload-switch', conversationId }),
+      {
+        initialProps: { conversationId: 'conversation-reload-a' },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const runtimeA = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as RuntimeOptions
+    const reload = runtimeA.onReload('switch-reload-user')
+
+    rerender({ conversationId: 'conversation-reload-b' })
+    await act(async () => {
+      rejectReload?.(new Error('reload failed'))
+      await expect(reload).rejects.toThrow('reload failed')
+    })
+    rerender({ conversationId: 'conversation-reload-a' })
+
+    await waitFor(() => {
+      const options = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+        messages: readonly BaseMessage[]
+      }
+      expect(options.messages).toContain(originalAssistant)
+    })
+  })
+
+  it('does not publish a late A cancellation after an A-B-A switch', async () => {
+    let resolveStop: (() => void) | undefined
+    mocks.stream.stop.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStop = resolve
+        }),
+    )
+    const { rerender } = renderHook(
+      ({ conversationId }: { conversationId: string }) =>
+        useMoldyLangGraphStream({ agentId: 'agent-cancel-switch', conversationId }),
+      {
+        initialProps: { conversationId: 'conversation-cancel-a' },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const runtimeA = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as RuntimeOptions
+    const cancel = runtimeA.onCancel()
+
+    rerender({ conversationId: 'conversation-cancel-b' })
+    await act(async () => {
+      resolveStop?.()
+      await cancel
+    })
+    rerender({ conversationId: 'conversation-cancel-a' })
+
+    await waitFor(() => {
+      const options = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+        messages: readonly BaseMessage[]
+      }
+      expect(
+        options.messages.some((message) => String(message.id).startsWith('moldy-canceled-local-')),
+      ).toBe(false)
+    })
+  })
 })
