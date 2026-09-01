@@ -12,6 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
+import e2e_failure_diagnostics as diagnostics  # noqa: E402
 import e2e_runner_playwright as playwright  # noqa: E402
 from e2e_cleanup_export import validate_export  # noqa: E402
 from postgres_cleanup_checker import ManifestValidationError  # noqa: E402
@@ -104,7 +105,31 @@ def test_execution_parse_reports_only_unexpected_terminal_failures(tmp_path: Pat
                         "title": "retries failed run",
                         "projectName": "scripted-full",
                         "expectedStatus": "passed",
-                        "results": [{"status": "failed"}],
+                        "results": [
+                            {
+                                "status": "failed",
+                                "errorLocation": {
+                                    "file": (
+                                        "/private/tmp/run/frontend/e2e/chat-error-retry.spec.ts"
+                                    ),
+                                    "line": 49,
+                                    "column": 6,
+                                },
+                                "error": {
+                                    "location": {
+                                        "file": (
+                                            "/private/tmp/run/frontend/e2e/chat-error-retry.spec.ts"
+                                        ),
+                                        "line": 49,
+                                        "column": 6,
+                                    },
+                                    "message": "api_key=must-not-survive",
+                                    "stack": "Bearer must-not-survive",
+                                },
+                                "stdout": ["must-not-survive"],
+                                "stderr": ["must-not-survive"],
+                            }
+                        ],
                     },
                     {
                         "title": "known expected failure",
@@ -122,9 +147,81 @@ def test_execution_parse_reports_only_unexpected_terminal_failures(tmp_path: Pat
 
     # Then only the unexpected failure can enter sanitized export diagnostics.
     assert len(execution.nodes) == 2
-    assert [(item.node_id, item.status) for item in execution.unexpected_outcomes] == [
-        ("scripted-full::e2e/chat-error-retry.spec.ts::retries failed run", "failed")
+    assert [
+        (item.node_id, item.status, item.location) for item in execution.unexpected_outcomes
+    ] == [
+        (
+            "scripted-full::e2e/chat-error-retry.spec.ts::retries failed run",
+            "failed",
+            diagnostics.FailureLocation("e2e/chat-error-retry.spec.ts", 49, 6),
+        )
     ]
+    assert "must-not-survive" not in repr(execution.unexpected_outcomes)
+
+
+@pytest.mark.parametrize(
+    "locations",
+    [
+        {"errorLocation": {"file": "../secret.spec.ts", "line": 1, "column": 1}},
+        {"errorLocation": {"file": "e2e/a.spec.ts", "line": True, "column": 1}},
+        {"errorLocation": {"file": "e2e/a.spec.ts", "line": 0, "column": 1}},
+        {"errorLocation": {"file": "e2e/a.spec.ts", "line": 1_000_001, "column": 1}},
+        {
+            "errorLocation": {
+                "file": "e2e/other-safe.spec.ts",
+                "line": 1,
+                "column": 1,
+            }
+        },
+        {
+            "errorLocation": {
+                "file": "/tmp/e2e/archive/e2e/chat-error-retry.spec.ts",
+                "line": 1,
+                "column": 1,
+            }
+        },
+        {
+            "errorLocation": {"file": "e2e/a.spec.ts", "line": 1, "column": 1},
+            "error": {"location": {"file": "e2e/a.spec.ts", "line": 2, "column": 1}},
+        },
+    ],
+)
+def test_execution_parse_omits_unsafe_or_conflicting_failure_location(
+    tmp_path: Path, locations: dict[str, object]
+) -> None:
+    receipt = tmp_path / "execution.json"
+    result = {"status": "failed", **locations}
+    receipt.write_text(
+        json.dumps(
+            _execution_receipt(
+                [
+                    {
+                        "title": "retries failed run",
+                        "projectName": "scripted-full",
+                        "expectedStatus": "passed",
+                        "results": [result],
+                    }
+                ]
+            )
+        )
+    )
+
+    execution = playwright.parse_playwright_execution_json(receipt)
+
+    assert len(execution.unexpected_outcomes) == 1
+    assert execution.unexpected_outcomes[0].location is None
+
+
+def test_failure_diagnostic_serializer_rejects_location_for_another_safe_spec() -> None:
+    node_id = "scripted-full::e2e/a.spec.ts::fails"
+    outcome = diagnostics.FailureDiagnostic(
+        node_id,
+        "failed",
+        diagnostics.FailureLocation("e2e/b.spec.ts", 1, 1),
+    )
+
+    with pytest.raises(diagnostics.FailureDiagnosticError):
+        diagnostics.failure_diagnostics_payload((outcome,), "scripted-full")
 
 
 def test_execution_parse_bounds_unexpected_failure_diagnostics(tmp_path: Path) -> None:

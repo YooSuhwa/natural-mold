@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Final
 
+from e2e_failure_diagnostics import FailureDiagnostic as PlaywrightOutcome
+from e2e_runner_failure_location import extract_failure_location
 from e2e_runner_receipt_io import (
     MAX_PLAYWRIGHT_RECEIPT_BYTES,
     PlaywrightReceiptError,
@@ -27,12 +29,6 @@ class PlaywrightNode:
     @property
     def node_id(self) -> str:
         return f"{self.project}::{self.spec}::{self.title}"
-
-
-@dataclass(frozen=True, slots=True, order=True)
-class PlaywrightOutcome:
-    node_id: str
-    status: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,8 +187,15 @@ def _walk_suites(suites: list[JsonValue]) -> PlaywrightExecution:
                 if (
                     result_status in DIAGNOSTIC_FAILURE_STATUSES
                     and result_status != expected_status
+                    and result is not None
                 ):
-                    unexpected_outcomes.append(PlaywrightOutcome(node.node_id, result_status))
+                    unexpected_outcomes.append(
+                        PlaywrightOutcome(
+                            node.node_id,
+                            result_status,
+                            extract_failure_location(result, node.spec),
+                        )
+                    )
                     if len(unexpected_outcomes) > MAX_UNEXPECTED_OUTCOMES:
                         raise PlaywrightReceiptError("unexpected_outcome_limit")
         for child in reversed(_child_sequence(raw_suite, "suites")):

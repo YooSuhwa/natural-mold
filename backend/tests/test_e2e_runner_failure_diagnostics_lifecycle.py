@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import e2e_runner_finalization as finalization  # noqa: E402
 import e2e_test_runner as runner  # noqa: E402
 from e2e_runner_contract import build_e2e_dsns  # noqa: E402
-from e2e_runner_export import ExportFile, ExportReceipt  # noqa: E402
+from e2e_runner_export import ExportReceipt  # noqa: E402
 from e2e_runner_playwright import PlaywrightOutcome  # noqa: E402
 from e2e_runner_process import ProcessResult  # noqa: E402
 from e2e_runner_runtime import E2eResources  # noqa: E402
@@ -51,7 +51,20 @@ def _report(*, failed: bool) -> str:
                                 {
                                     "projectName": "scripted-smoke",
                                     "expectedStatus": "passed",
-                                    "results": [{"status": "failed"}] if failed else [],
+                                    "results": [
+                                        {
+                                            "status": "failed",
+                                            "errorLocation": {
+                                                "file": (
+                                                    "/tmp/run/frontend/e2e/chat-error-retry.spec.ts"
+                                                ),
+                                                "line": 49,
+                                                "column": 6,
+                                            },
+                                        }
+                                    ]
+                                    if failed
+                                    else [],
                                 }
                             ],
                         }
@@ -111,12 +124,7 @@ def test_failed_playwright_outcome_reaches_export_finalizer(
         diagnostics = args[-1]
         assert isinstance(diagnostics, tuple)
         captured.extend(diagnostics)
-        return ExportReceipt(
-            True,
-            "output/e2e-captures/test",
-            (ExportFile("export-manifest.json", "0" * 64, 10),),
-            (),
-        )
+        return ExportReceipt(False, None, (), (), failure_code="bounds")
 
     monkeypatch.setattr(runner, "run_owned_process", fake_process)
     monkeypatch.setattr(runner, "export_artifacts", fake_export)
@@ -131,5 +139,18 @@ def test_failed_playwright_outcome_reaches_export_finalizer(
             "failed",
         )
     ]
+    assert manifest["unexpected_failures"] == [
+        {
+            "node_id": "scripted-smoke::e2e/chat-error-retry.spec.ts::retries failed run",
+            "status": "failed",
+            "location": {
+                "file": "e2e/chat-error-retry.spec.ts",
+                "line": 49,
+                "column": 6,
+            },
+        }
+    ]
+    export = manifest["export"]
+    assert isinstance(export, dict) and export["failure_code"] == "bounds"
     cleanup = manifest["cleanup"]
     assert isinstance(cleanup, dict) and cleanup["cleanup_run_root_removed"] is True

@@ -109,6 +109,7 @@ def _manifest(
         "backend_port": 8101 if lane == "scripted" else 8201,
         "selected_ids": ["scripted-smoke::e2e/smoke.spec.ts::works"],
         "executed_ids": ["scripted-smoke::e2e/smoke.spec.ts::works"],
+        "unexpected_failures": [],
         "export": {
             "schema_version": 1,
             "secret_scan_passed": True,
@@ -141,6 +142,15 @@ def test_validate_payload_accepts_persistent_scripted_success(tmp_path: Path) ->
     validate_payload(payload, repository_root=tmp_path)
 
     # Then the cleanup and export guarantees are accepted.
+
+
+def test_validate_payload_accepts_legacy_success_without_failure_diagnostics(
+    tmp_path: Path,
+) -> None:
+    payload = _manifest(tmp_path)
+    del payload["unexpected_failures"]
+
+    validate_payload(payload, repository_root=tmp_path)
 
 
 def test_validate_payload_accepts_exporter_smoke_receipt_without_playwright_dotfile(
@@ -527,6 +537,17 @@ def test_validate_payload_accepts_normal_playwright_failure_receipt(tmp_path: Pa
             "status": "failed",
             "failure_reason": "playwright_failed",
             "child_exit_code": 1,
+            "unexpected_failures": [
+                {
+                    "node_id": "scripted-smoke::e2e/smoke.spec.ts::works",
+                    "status": "failed",
+                    "location": {
+                        "file": "e2e/smoke.spec.ts",
+                        "line": 10,
+                        "column": 2,
+                    },
+                }
+            ],
         }
     )
 
@@ -534,6 +555,85 @@ def test_validate_payload_accepts_normal_playwright_failure_receipt(tmp_path: Pa
     validate_payload(payload, repository_root=tmp_path)
 
     # Then the non-forced Playwright failure remains checker-valid.
+
+
+def test_validate_payload_rejects_normal_playwright_failure_without_diagnostics(
+    tmp_path: Path,
+) -> None:
+    payload = _manifest(tmp_path)
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "playwright_failed",
+            "child_exit_code": 1,
+        }
+    )
+    del payload["unexpected_failures"]
+
+    with pytest.raises(ManifestValidationError, match="failure_diagnostics"):
+        validate_payload(payload, repository_root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "unexpected",
+    [
+        [
+            {
+                "node_id": "scripted-smoke::e2e/smoke.spec.ts::works",
+                "status": "failed",
+                "extra": 1,
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-smoke::e2e/smoke.spec.ts::works",
+                "status": "failed",
+                "location": {
+                    "file": "/tmp/secret.spec.ts",
+                    "line": 1,
+                    "column": 1,
+                },
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-smoke::e2e/smoke.spec.ts::works",
+                "status": "failed",
+                "location": {
+                    "file": "e2e/other-safe.spec.ts",
+                    "line": 1,
+                    "column": 1,
+                },
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-smoke::e2e/smoke.spec.ts::works",
+                "status": "failed",
+                "location": {
+                    "file": "e2e/smoke.spec.ts",
+                    "line": True,
+                    "column": 1,
+                },
+            }
+        ],
+    ],
+)
+def test_validate_payload_rejects_malformed_unexpected_failure_diagnostics(
+    tmp_path: Path, unexpected: list[dict[str, object]]
+) -> None:
+    payload = _manifest(tmp_path)
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "playwright_failed",
+            "child_exit_code": 1,
+        }
+    )
+    payload["unexpected_failures"] = unexpected
+
+    with pytest.raises(ManifestValidationError, match="failure_diagnostics"):
+        validate_payload(payload, repository_root=tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -592,6 +692,12 @@ def test_validate_payload_rejects_normal_playwright_execution_mismatch(
             "child_exit_code": 1,
             "selected_ids": selected,
             "executed_ids": executed,
+            "unexpected_failures": [
+                {
+                    "node_id": "scripted-smoke::e2e/smoke.spec.ts::works",
+                    "status": "failed",
+                }
+            ],
         }
     )
 

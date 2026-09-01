@@ -91,6 +91,7 @@ def test_e2e_receipt_rejects_retry_selection_or_secret_debt(
         "child_exit_code": 0,
         "selected_ids": ["scripted-full::e2e/a.spec.ts::works"],
         "executed_ids": ["scripted-full::e2e/a.spec.ts::works"],
+        "unexpected_failures": [],
         "export": {"secret_scan_passed": True, "screenshots": []},
         "cleanup": cleanup,
     }
@@ -122,6 +123,17 @@ def test_e2e_receipt_accepts_failed_child_with_sanitized_export(
         "child_exit_code": 1,
         "selected_ids": [node],
         "executed_ids": [node],
+        "unexpected_failures": [
+            {
+                "node_id": node,
+                "status": "failed",
+                "location": {
+                    "file": "e2e/chat-error-retry.spec.ts",
+                    "line": 49,
+                    "column": 6,
+                },
+            }
+        ],
         "export": {"secret_scan_passed": True, "screenshots": []},
         "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
     }
@@ -137,6 +149,112 @@ def test_e2e_receipt_accepts_failed_child_with_sanitized_export(
     )
 
     assert summary["secret_scan_passed"] is True
+
+
+def test_e2e_receipt_rejects_failed_child_without_failure_diagnostics(
+    tmp_path: Path, receipts: ModuleType
+) -> None:
+    node = "scripted-full::e2e/chat-error-retry.spec.ts::retries failed run"
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-full",
+        "workers": 1,
+        "retries": 0,
+        "status": "failed",
+        "child_exit_code": 1,
+        "selected_ids": [node],
+        "executed_ids": [node],
+        "export": {"secret_scan_passed": True, "screenshots": []},
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / "e2e-failed-without-diagnostics.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_e2e(
+            path,
+            tmp_path,
+            1,
+            project="scripted-full",
+            expected_spec=None,
+        )
+
+
+def test_e2e_receipt_accepts_legacy_success_without_failure_diagnostics(
+    tmp_path: Path, receipts: ModuleType
+) -> None:
+    node = "scripted-full::e2e/a.spec.ts::works"
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-full",
+        "workers": 1,
+        "retries": 0,
+        "status": "passed",
+        "child_exit_code": 0,
+        "selected_ids": [node],
+        "executed_ids": [node],
+        "export": {"secret_scan_passed": True, "screenshots": []},
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / "e2e-legacy-success.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    summary = receipts.validate_e2e(
+        path,
+        tmp_path,
+        0,
+        project="scripted-full",
+        expected_spec=None,
+    )
+
+    assert summary["secret_scan_passed"] is True
+
+
+@pytest.mark.parametrize(
+    "location_file",
+    ["/tmp/e2e/chat-error-retry.spec.ts", "e2e/other-safe.spec.ts"],
+)
+def test_e2e_receipt_rejects_untrusted_failure_location(
+    tmp_path: Path, receipts: ModuleType, location_file: str
+) -> None:
+    node = "scripted-full::e2e/chat-error-retry.spec.ts::retries failed run"
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-full",
+        "workers": 1,
+        "retries": 0,
+        "status": "failed",
+        "child_exit_code": 1,
+        "selected_ids": [node],
+        "executed_ids": [node],
+        "unexpected_failures": [
+            {
+                "node_id": node,
+                "status": "failed",
+                "location": {
+                    "file": location_file,
+                    "line": 49,
+                    "column": 6,
+                },
+            }
+        ],
+        "export": {"secret_scan_passed": True, "screenshots": []},
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / "e2e-unsafe-location.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_e2e(
+            path,
+            tmp_path,
+            1,
+            project="scripted-full",
+            expected_spec=None,
+        )
 
 
 def test_capture_receipt_requires_exact_safe_screenshot_contract(
@@ -159,6 +277,7 @@ def test_capture_receipt_requires_exact_safe_screenshot_contract(
         "child_exit_code": 0,
         "selected_ids": selected_json,
         "executed_ids": selected_json,
+        "unexpected_failures": [],
         "export": {
             "secret_scan_passed": True,
             "screenshots": screenshots,

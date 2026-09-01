@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from e2e_failure_diagnostics import source_rejection_payload
+from e2e_failure_diagnostics import (
+    FailureDiagnostic,
+    failure_diagnostics_payload,
+    source_rejection_payload,
+)
 from e2e_runner_contract import Lane, Project
 from e2e_runner_export import ExportReceipt
 
@@ -29,6 +33,7 @@ def build_manifest(
     self_test: str,
     selected_ids: tuple[str, ...],
     executed_ids: tuple[str, ...],
+    unexpected_failures: tuple[FailureDiagnostic, ...],
     facts: RunFacts,
     export: ExportReceipt,
     egress: dict[str, object],
@@ -64,6 +69,7 @@ def build_manifest(
         "backend_port": 8101 if lane == "scripted" else 8201,
         "selected_ids": list(selected_ids),
         "executed_ids": list(executed_ids),
+        "unexpected_failures": failure_diagnostics_payload(unexpected_failures, project),
         "export": {
             "schema_version": export.schema_version,
             "secret_scan_passed": export.secret_scan_passed,

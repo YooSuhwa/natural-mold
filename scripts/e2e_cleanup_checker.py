@@ -10,6 +10,7 @@ from e2e_cleanup_contract import require
 from e2e_cleanup_export import SECRET, validate_export
 from e2e_cleanup_lifecycle import validate_lifecycle, validate_live_absence
 from e2e_cleanup_outcome import validate_cleanup, validate_egress, validate_outcome
+from e2e_failure_diagnostics import FailureDiagnosticError, parse_failure_diagnostics
 from postgres_cleanup_checker import ManifestValidationError, load_manifest
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[1]
@@ -24,7 +25,26 @@ def validate_payload(payload: dict[str, object], *, repository_root: Path = REPO
         "runner",
     )
     lane, project, database_owned = validate_lifecycle(payload)
+    diagnostics_value = payload.get("unexpected_failures")
+    if "unexpected_failures" not in payload and (
+        payload.get("status") == "passed" or payload.get("self_test") != "normal"
+    ):
+        diagnostics = ()
+    else:
+        try:
+            diagnostics = parse_failure_diagnostics(diagnostics_value, project)
+        except FailureDiagnosticError as error:
+            raise ManifestValidationError("failure_diagnostics") from error
+    if payload.get("status") == "passed":
+        require(not diagnostics, "failure_diagnostics")
+    elif payload.get("self_test") == "normal":
+        require(bool(diagnostics), "failure_diagnostics")
     validate_outcome(payload, lane, project)
+    executed = payload.get("executed_ids")
+    require(
+        isinstance(executed, list) and all(item.node_id in executed for item in diagnostics),
+        "failure_diagnostics",
+    )
     validate_export(payload.get("export"), project, repository_root)
     validate_egress(payload.get("egress"), lane)
     validate_cleanup(payload, database_owned)

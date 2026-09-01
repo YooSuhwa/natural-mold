@@ -67,7 +67,6 @@ def _run(
     diagnostics: tuple[PlaywrightOutcome, ...] = ()
     export = ExportReceipt(False, None, (), ())
     cleanup: dict[str, bool | None] = empty_cleanup()
-    reason: str | None
     status, reason, child_exit = "failed", "not_started", 70
     process_stopped = True
     runner_receipts_published = True
@@ -243,6 +242,7 @@ def _run(
         self_test=self_test,
         selected_ids=selected_ids,
         executed_ids=executed_ids,
+        unexpected_failures=diagnostics,
         facts=resource_facts(resources, run_id),
         export=export,
         egress=egress,

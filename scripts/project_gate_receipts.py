@@ -10,6 +10,7 @@ import stat
 from pathlib import Path
 from typing import Final, TypedDict
 
+from e2e_failure_diagnostics import FailureDiagnosticError, parse_failure_diagnostics
 from project_gate_runtime import JSONObject, JSONValue, ProjectGateError
 
 MAX_RECEIPT_BYTES: Final = 4 * 1024 * 1024
@@ -162,6 +163,12 @@ def _safe_screenshots(value: JSONValue) -> list[str] | None:
     return None
 
 
+def _safe_node_ids(value: JSONValue) -> list[str] | None:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        return None
+    return [item for item in value if isinstance(item, str)]
+
+
 def validate_e2e(
     path: Path,
     repo_root: Path,
@@ -171,15 +178,23 @@ def validate_e2e(
     expected_spec: str | None,
 ) -> ReceiptSummary:
     payload, digest = _read_receipt(path)
-    selected = payload.get("selected_ids")
-    executed = payload.get("executed_ids")
+    selected = _safe_node_ids(payload.get("selected_ids"))
+    executed = _safe_node_ids(payload.get("executed_ids"))
     export = payload.get("export")
     cleanup = payload.get("cleanup")
     screenshots = _safe_screenshots(export.get("screenshots")) if isinstance(export, dict) else None
+    diagnostics_value = payload.get("unexpected_failures", [])
+    try:
+        diagnostics = parse_failure_diagnostics(diagnostics_value, project)
+    except FailureDiagnosticError as error:
+        raise ProjectGateError("invalid_child_receipt") from error
     expected_prefix = f"{project}::{expected_spec}::" if expected_spec is not None else None
+    selection_values = selected is not None and executed is not None
+    selected_nodes = selected or []
+    executed_nodes = executed or []
+    executed_strings = set(executed_nodes)
     selection_matches = expected_prefix is None or (
-        isinstance(selected, list)
-        and all(isinstance(item, str) and item.startswith(expected_prefix) for item in selected)
+        all(item.startswith(expected_prefix) for item in selected_nodes)
     )
     screenshots_match = screenshots == [] if project == "scripted-full" else screenshots is not None
     if project == "scripted-capture":
@@ -192,14 +207,17 @@ def validate_e2e(
         and payload.get("retries") == 0
         and payload.get("status") == ("passed" if expected_exit == 0 else "failed")
         and payload.get("child_exit_code") == expected_exit
-        and isinstance(selected, list)
-        and bool(selected)
-        and selected == executed
-        and len(selected) == len(set(selected))
+        and selection_values
+        and bool(selected_nodes)
+        and selected_nodes == executed_nodes
+        and len(selected_nodes) == len(set(selected_nodes))
         and selection_matches
         and isinstance(export, dict)
         and export.get("secret_scan_passed") is True
         and screenshots_match
+        and ("unexpected_failures" in payload or expected_exit == 0)
+        and (not diagnostics if expected_exit == 0 else bool(diagnostics))
+        and all(item.node_id in executed_strings for item in diagnostics)
         and isinstance(cleanup, dict)
         and all(cleanup.get(key) is True for key in E2E_CLEANUP_KEYS)
     )
