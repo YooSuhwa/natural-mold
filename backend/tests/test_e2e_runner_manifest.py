@@ -29,6 +29,7 @@ def test_manifest_is_versioned_and_omits_physical_root_and_secrets() -> None:
                 "scripted-smoke::e2e/a.spec.ts::works",
                 "failed",
                 FailureLocation("e2e/a.spec.ts", 7, 3),
+                ("api_request_failure", "other_response_failure"),
             ),
         ),
         facts=RunFacts("run-id", "160001", "m70", "m70", "hash", True),
@@ -60,5 +61,6 @@ def test_manifest_is_versioned_and_omits_physical_root_and_secrets() -> None:
             "node_id": "scripted-smoke::e2e/a.spec.ts::works",
             "status": "failed",
             "location": {"file": "e2e/a.spec.ts", "line": 7, "column": 3},
+            "network_failure_codes": ["api_request_failure", "other_response_failure"],
         }
     ]

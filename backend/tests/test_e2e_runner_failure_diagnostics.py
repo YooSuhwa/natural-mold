@@ -128,6 +128,16 @@ def test_execution_parse_reports_only_unexpected_terminal_failures(tmp_path: Pat
                                 },
                                 "stdout": ["must-not-survive"],
                                 "stderr": ["must-not-survive"],
+                                "annotations": [
+                                    {
+                                        "type": "moldy.network-failure.v1",
+                                        "description": "api_request_failure",
+                                    },
+                                    {
+                                        "type": "moldy.network-failure.v1",
+                                        "description": "must-not-survive",
+                                    },
+                                ],
                             }
                         ],
                     },
@@ -148,12 +158,14 @@ def test_execution_parse_reports_only_unexpected_terminal_failures(tmp_path: Pat
     # Then only the unexpected failure can enter sanitized export diagnostics.
     assert len(execution.nodes) == 2
     assert [
-        (item.node_id, item.status, item.location) for item in execution.unexpected_outcomes
+        (item.node_id, item.status, item.location, item.network_failure_codes)
+        for item in execution.unexpected_outcomes
     ] == [
         (
             "scripted-full::e2e/chat-error-retry.spec.ts::retries failed run",
             "failed",
             diagnostics.FailureLocation("e2e/chat-error-retry.spec.ts", 49, 6),
+            ("api_request_failure",),
         )
     ]
     assert "must-not-survive" not in repr(execution.unexpected_outcomes)

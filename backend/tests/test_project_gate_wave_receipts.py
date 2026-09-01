@@ -132,6 +132,10 @@ def test_e2e_receipt_accepts_failed_child_with_sanitized_export(
                     "line": 49,
                     "column": 6,
                 },
+                "network_failure_codes": [
+                    "api_request_failure",
+                    "other_response_failure",
+                ],
             }
         ],
         "export": {"secret_scan_passed": True, "screenshots": []},

@@ -546,6 +546,10 @@ def test_validate_payload_accepts_normal_playwright_failure_receipt(tmp_path: Pa
                         "line": 10,
                         "column": 2,
                     },
+                    "network_failure_codes": [
+                        "api_request_failure",
+                        "other_response_failure",
+                    ],
                 }
             ],
         }

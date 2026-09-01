@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Final, Never, NotRequired, TypedDict
 
+from e2e_runner_network_failure import (
+    NetworkFailureCode,
+    NetworkFailureCodeError,
+    parse_network_failure_codes,
+)
+
 MAX_FAILURE_DIAGNOSTICS: Final = 16
 MAX_NODE_ID_LENGTH: Final = 2048
 MAX_ARTIFACT_PATH_LENGTH: Final = 1024
@@ -45,6 +51,7 @@ class FailureDiagnostic:
     node_id: str
     status: str
     location: FailureLocation | None = None
+    network_failure_codes: tuple[NetworkFailureCode, ...] = ()
 
 
 class FailureLocationPayload(TypedDict):
@@ -57,6 +64,7 @@ class FailureDiagnosticPayload(TypedDict):
     node_id: str
     status: str
     location: NotRequired[FailureLocationPayload]
+    network_failure_codes: NotRequired[list[NetworkFailureCode]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +84,12 @@ def _fail() -> Never:
 
 
 def _safe_artifact_path(value: object) -> str:
-    if not isinstance(value, str) or not value or "\\" in value or value.startswith("/"):
+    if (
+        not isinstance(value, str)
+        or not value
+        or "\\" in value
+        or value.startswith("/")
+    ):
         _fail()
     path = PurePosixPath(value)
     if (
@@ -137,27 +150,52 @@ def _safe_location(value: object) -> FailureLocation:
     return FailureLocation(file, line, column)
 
 
-def parse_failure_diagnostics(value: object, project: str) -> tuple[FailureDiagnostic, ...]:
+def parse_failure_diagnostics(
+    value: object, project: str
+) -> tuple[FailureDiagnostic, ...]:
     """Parse the runner's bounded, source-only unexpected failure projection."""
     if not isinstance(value, list) or len(value) > MAX_FAILURE_DIAGNOSTICS:
         _fail()
     parsed: list[FailureDiagnostic] = []
     seen: set[str] = set()
     for item in value:
-        if not isinstance(item, dict) or set(item) not in (
-            {"node_id", "status"},
-            {"node_id", "status", "location"},
+        if not isinstance(item, dict):
+            _fail()
+        keys = set(item)
+        if (
+            not {"node_id", "status"}
+            <= keys
+            <= {
+                "node_id",
+                "status",
+                "location",
+                "network_failure_codes",
+            }
         ):
             _fail()
         node_id = _safe_node_id(item.get("node_id"), project)
         status = item.get("status")
-        if not isinstance(status, str) or status not in FAILURE_STATUSES or node_id in seen:
+        if (
+            not isinstance(status, str)
+            or status not in FAILURE_STATUSES
+            or node_id in seen
+        ):
             _fail()
         seen.add(node_id)
         location = _safe_location(item.get("location")) if "location" in item else None
         if location is not None and location.file != _node_spec(node_id, project):
             _fail()
-        parsed.append(FailureDiagnostic(node_id, status, location))
+        try:
+            network_failure_codes = (
+                parse_network_failure_codes(item.get("network_failure_codes"))
+                if "network_failure_codes" in item
+                else ()
+            )
+        except NetworkFailureCodeError:
+            _fail()
+        parsed.append(
+            FailureDiagnostic(node_id, status, location, network_failure_codes)
+        )
     return tuple(parsed)
 
 
@@ -185,6 +223,14 @@ def failure_diagnostics_payload(
             if item.location.file != _node_spec(node_id, project):
                 _fail()
             diagnostic["location"] = location
+        if item.network_failure_codes:
+            try:
+                network_failure_codes = parse_network_failure_codes(
+                    list(item.network_failure_codes)
+                )
+            except NetworkFailureCodeError:
+                _fail()
+            diagnostic["network_failure_codes"] = list(network_failure_codes)
         payload.append(diagnostic)
     return payload
 
@@ -215,7 +261,11 @@ def parse_source_rejection(value: object, project: str) -> SourceRejection:
             _fail()
         node_id = _safe_node_id(item.get("node_id"), project)
         status = item.get("status")
-        if not isinstance(status, str) or status not in FAILURE_STATUSES or node_id in seen:
+        if (
+            not isinstance(status, str)
+            or status not in FAILURE_STATUSES
+            or node_id in seen
+        ):
             _fail()
         seen.add(node_id)
         parsed.append(FailureDiagnostic(node_id, status))
@@ -232,5 +282,7 @@ def source_rejection_payload(value: SourceRejection) -> dict[str, object]:
         "category": value.category,
         "rule_id": value.rule_id,
         "artifact_path": value.artifact_path,
-        "tests": [{"node_id": item.node_id, "status": item.status} for item in value.tests],
+        "tests": [
+            {"node_id": item.node_id, "status": item.status} for item in value.tests
+        ],
     }

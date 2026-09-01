@@ -10,6 +10,7 @@ from typing import Final
 
 from e2e_failure_diagnostics import FailureDiagnostic as PlaywrightOutcome
 from e2e_runner_failure_location import extract_failure_location
+from e2e_runner_network_failure import extract_network_failure_codes
 from e2e_runner_receipt_io import (
     MAX_PLAYWRIGHT_RECEIPT_BYTES,
     PlaywrightReceiptError,
@@ -99,7 +100,9 @@ def _leaf_title(spec: dict[str, JsonValue], test: dict[str, JsonValue]) -> str |
     return title or None
 
 
-def _project_name(test: dict[str, JsonValue], result: dict[str, JsonValue] | None) -> str | None:
+def _project_name(
+    test: dict[str, JsonValue], result: dict[str, JsonValue] | None
+) -> str | None:
     test_project = _string(test.get("projectName"))
     result_project = _string(result.get("projectName")) if result is not None else None
     if test_project and result_project and test_project != result_project:
@@ -194,6 +197,7 @@ def _walk_suites(suites: list[JsonValue]) -> PlaywrightExecution:
                             node.node_id,
                             result_status,
                             extract_failure_location(result, node.spec),
+                            extract_network_failure_codes(result),
                         )
                     )
                     if len(unexpected_outcomes) > MAX_UNEXPECTED_OUTCOMES:
@@ -262,7 +266,9 @@ def parse_live_cases(raw: str, project: str) -> tuple[PlaywrightNode, ...]:
 
 
 def canonical_live_nodes(project: str) -> tuple[PlaywrightNode, ...]:
-    nodes = (PlaywrightNode(project, spec, title) for spec, title in CANONICAL_LIVE_CASES)
+    nodes = (
+        PlaywrightNode(project, spec, title) for spec, title in CANONICAL_LIVE_CASES
+    )
     return tuple(sorted(nodes))
 
 
@@ -273,7 +279,8 @@ def canonical_live_cases_json() -> str:
 
 def canonical_live_title_filter() -> str:
     escaped = [
-        re.sub(r"[.*+?^${}()|[\]\\]", r"\\\g<0>", title) for _, title in CANONICAL_LIVE_CASES
+        re.sub(r"[.*+?^${}()|[\]\\]", r"\\\g<0>", title)
+        for _, title in CANONICAL_LIVE_CASES
     ]
     return f"(?:{'|'.join(escaped)})$"
 

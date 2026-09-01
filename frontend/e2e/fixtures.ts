@@ -11,11 +11,17 @@ import {
   isExpectedNextStaticChunkAbort,
   observeAndRecordMainFrameRequestAtStart,
 } from './helpers/next-static-chunk-abort'
+import {
+  classifyRequestFailure,
+  classifyResponseFailure,
+  recordNetworkFailure,
+  type NetworkFailureCode,
+} from './helpers/network-failure-diagnostic'
 
 type ErrorCollector = {
   console: string[]
   page: string[]
-  network: string[]
+  network: NetworkFailureCode[]
 }
 
 const E2E_USER = {
@@ -114,7 +120,7 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
     },
     { auto: true },
   ],
-  errors: async ({ page }, use) => {
+  errors: async ({ page }, use, testInfo) => {
     const errors: ErrorCollector = { console: [], page: [], network: [] }
     const mainFrameRequestGenerations = new WeakMap<Request, number>()
     let mainFrameNavigationGeneration = 0
@@ -146,7 +152,11 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
       const status = response.status()
       const url = response.url()
       if (status >= 400 && !isExpectedNonOkResponse(url, status)) {
-        errors.network.push(`${response.request().method()} ${url} ${status}`)
+        recordNetworkFailure(
+          errors.network,
+          testInfo.annotations,
+          classifyResponseFailure({ requestUrl: url }),
+        )
       }
     })
     page.on('requestfailed', (req) => {
@@ -225,7 +235,18 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         !expectedConversationDeleteAbort &&
         !expectedNextStaticChunkAbort
       ) {
-        errors.network.push(`${req.method()} ${url} ${errorText}`)
+        recordNetworkFailure(
+          errors.network,
+          testInfo.annotations,
+          classifyRequestFailure({
+            errorText,
+            method: req.method(),
+            resourceType: req.resourceType(),
+            ...nextStaticChunkProvenance,
+            requestUrl: url,
+            currentPageUrl: page.url(),
+          }),
+        )
       }
     })
 

@@ -79,6 +79,21 @@ function isSameOriginNextJavaScriptChunk(requestUrl: string, currentPageUrl: str
   }
 }
 
+/** Match the exact browser transport shape before applying request provenance. */
+export function isNextStaticChunkRequestAbort(
+  input: Pick<
+    NextStaticChunkAbortInput,
+    'errorText' | 'method' | 'resourceType' | 'requestUrl' | 'currentPageUrl'
+  >,
+): boolean {
+  return (
+    input.errorText === 'net::ERR_ABORTED' &&
+    input.method === 'GET' &&
+    input.resourceType === 'script' &&
+    isSameOriginNextJavaScriptChunk(input.requestUrl, input.currentPageUrl)
+  )
+}
+
 /**
  * A main-frame reload can intentionally cancel a generated Next JavaScript chunk
  * that was in flight from the previous document. This accepts only that exact
@@ -86,11 +101,8 @@ function isSameOriginNextJavaScriptChunk(requestUrl: string, currentPageUrl: str
  */
 export function isExpectedNextStaticChunkAbort(input: NextStaticChunkAbortInput): boolean {
   return (
-    input.errorText === 'net::ERR_ABORTED' &&
-    input.method === 'GET' &&
-    input.resourceType === 'script' &&
+    isNextStaticChunkRequestAbort(input) &&
     input.isMainFrame &&
-    input.startedBeforeCurrentMainFrameNavigation &&
-    isSameOriginNextJavaScriptChunk(input.requestUrl, input.currentPageUrl)
+    input.startedBeforeCurrentMainFrameNavigation
   )
 }
