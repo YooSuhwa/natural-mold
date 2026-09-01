@@ -188,6 +188,42 @@ async def test_runtime_wire_contract_matches_checked_raw_to_wire_fixture() -> No
 
 
 @pytest.mark.asyncio
+async def test_runtime_wire_contract_keeps_stable_delivery_fields_in_persisted_order() -> None:
+    """Live and persisted paths retain the same stable identity and ordering fields."""
+
+    # Given: the reviewed raw-to-wire fixture spanning messages, HITL, and unknown events.
+    manifest = await _collect_manifest()
+
+    # When: live wire records are paired with their append-only persisted records.
+    wire_events = manifest["wire_sse"]
+    persisted_events = manifest["persistable"]
+
+    # Then: persistence changes data visibility only, never event identity or order.
+    assert len(wire_events) == len(persisted_events)
+    assert [
+        (
+            event["method"],
+            event["params"]["namespace"],
+            event["seq"],
+            event.get("event_id"),
+            event["params"].get("checkpoint_id"),
+            event["params"].get("checkpoint_ns"),
+        )
+        for event in wire_events
+    ] == [
+        (
+            event["method"],
+            event["namespace"],
+            event["seq"],
+            event["upstream_event_id"],
+            event["checkpoint_id"],
+            event["checkpoint_ns"],
+        )
+        for event in persisted_events
+    ]
+
+
+@pytest.mark.asyncio
 async def test_runtime_wire_contract_reports_precise_mutation_paths() -> None:
     """Given reviewed output, each boundary mutation reports its exact contract path."""
 
