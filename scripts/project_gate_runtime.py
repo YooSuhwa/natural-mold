@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import shutil
 import stat
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, NamedTuple
+
+type JSONValue = None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
+type JSONObject = dict[str, JSONValue]
 
 
 class ProjectGateError(RuntimeError):
@@ -22,6 +27,109 @@ class GateProfile(NamedTuple):
     spec: str
     workers: int
     retries: int
+
+
+class CompositeProfile(NamedTuple):
+    nodes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeDirectoryIdentity:
+    """Stable identity and exact allowlist for one directory exposed through PATH."""
+
+    path: Path
+    device: int
+    inode: int
+    owner: int
+    mode: int
+    entries: tuple[str, ...]
+    required: str
+    allowed: frozenset[str]
+
+
+def capture_runtime_directory(
+    path: Path, *, required: str, allowed: frozenset[str]
+) -> RuntimeDirectoryIdentity:
+    """Capture a narrow account/root-owned runtime directory without following links."""
+    try:
+        metadata = path.lstat()
+        entries = tuple(sorted(entry.name for entry in os.scandir(path)))
+    except OSError as error:
+        raise ProjectGateError("runtime_preflight_failed") from error
+    unsafe_mode = metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid not in {0, os.getuid()}
+        or unsafe_mode
+        or required not in entries
+        or not set(entries) <= allowed
+    ):
+        raise ProjectGateError("runtime_preflight_failed")
+    return RuntimeDirectoryIdentity(
+        path,
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_uid,
+        stat.S_IMODE(metadata.st_mode),
+        entries,
+        required,
+        allowed,
+    )
+
+
+def run_trusted_process(
+    command: list[str],
+    repo_root: Path,
+    *,
+    path: str = "/usr/bin:/bin:/usr/sbin:/sbin",
+    disable_package_manager_delegation: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run an absolute executable with a fixed, secret-free environment."""
+    environment = {"PATH": path, "LC_ALL": "C"}
+    if disable_package_manager_delegation:
+        environment["npm_config_manage_package_manager_versions"] = "false"
+    try:
+        return subprocess.run(  # noqa: S603 - absolute reviewed executable
+            command,
+            cwd=repo_root,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as error:
+        raise ProjectGateError("trusted_tool_start_failed") from error
+
+
+def runtime_version(
+    executable: Path,
+    repo_root: Path,
+    *,
+    launcher: Path | None = None,
+    path: str = "/usr/bin:/bin:/usr/sbin:/sbin",
+    disable_package_manager_delegation: bool = False,
+) -> str:
+    """Probe a runtime without returning child errors at the trust boundary."""
+    command = [str(executable), "--version"]
+    if launcher is not None:
+        command = [str(launcher), str(executable), "--version"]
+    result = run_trusted_process(
+        command,
+        repo_root,
+        path=path,
+        disable_package_manager_delegation=disable_package_manager_delegation,
+    )
+    if result.returncode != 0:
+        raise ProjectGateError("runtime_preflight_failed")
+    return (result.stdout or result.stderr).strip()
+
+
+def normalized_version(output: str, pattern: re.Pattern[str]) -> str:
+    """Accept an exact version grammar and retain only its numeric token."""
+    matched = pattern.fullmatch(output)
+    if matched is None:
+        raise ProjectGateError("runtime_preflight_failed")
+    return matched.group("version")
 
 
 LAUNCHER_ENVIRONMENT_NAMES: Final[frozenset[str]] = frozenset(

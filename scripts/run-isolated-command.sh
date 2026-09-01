@@ -21,14 +21,18 @@ if [[ $# -eq 0 || -z "$1" ]]; then
   usage
 fi
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+repo_root="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+trusted_python="${MOLDY_GATE_PYTHON:-$repo_root/backend/.venv/bin/python}"
+if [[ "$trusted_python" != /* || ! -x "$trusted_python" ]]; then
+  exit 70
+fi
 inherited_run_root="${MOLDY_TEST_RUN_ROOT:-}"
-run_root="$(mktemp -d "${TMPDIR:-/tmp}/.moldy-test-run.XXXXXXXX")" || exit 70
+run_root="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/.moldy-test-run.XXXXXXXX")" || exit 70
 cleanup_helper="$repo_root/scripts/cleanup-isolated-root.py"
 prepare_helper="$repo_root/scripts/prepare-isolated-run.py"
 manifest_helper="$repo_root/scripts/isolated-manifest.py"
-root_identity="$(python3 "$cleanup_helper" identity "$run_root")" || {
-  rmdir -- "$run_root"
+root_identity="$("$trusted_python" "$cleanup_helper" identity "$run_root")" || {
+  /bin/rmdir -- "$run_root"
   exit 70
 }
 root_device="${root_identity%%:*}"
@@ -42,14 +46,14 @@ cleaned=0
 cleanup_result="cleanup_failed"
 manifest_result="not_requested"
 
-if [[ "$(python3 "$prepare_helper" "$run_root" "$repo_root")" != "prepared" ]]; then
-  python3 "$cleanup_helper" cleanup "$run_root" "$root_device" "$root_inode" >/dev/null
+if [[ "$("$trusted_python" "$prepare_helper" "$run_root" "$repo_root")" != "prepared" ]]; then
+  "$trusted_python" "$cleanup_helper" cleanup "$run_root" "$root_device" "$root_inode" >/dev/null
   exit 70
 fi
 
 if [[ -n "$manifest_path" ]]; then
-  manifest_identity="$(python3 "$manifest_helper" prepare "$manifest_path")" || {
-    python3 "$cleanup_helper" cleanup "$run_root" "$root_device" "$root_inode" >/dev/null
+  manifest_identity="$("$trusted_python" "$manifest_helper" prepare "$manifest_path")" || {
+    "$trusted_python" "$cleanup_helper" cleanup "$run_root" "$root_device" "$root_inode" >/dev/null
     exit 74
   }
   manifest_parent_identity="${manifest_identity%% *}"
@@ -57,7 +61,8 @@ if [[ -n "$manifest_path" ]]; then
 fi
 
 root_hash() {
-  printf '%s' "$run_root" | shasum -a 256 | awk '{print $1}'
+  "$trusted_python" -c \
+    'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' "$run_root"
 }
 
 write_manifest() {
@@ -68,7 +73,7 @@ write_manifest() {
   local payload
   payload="{\"schema_version\":1,\"status\":\"${status}\",\"child_exit_code\":${exit_code},\"cleanup\":\"${cleanup_result}\",\"run_root_sha256\":\"${digest}\"}"
   if [[ -n "$manifest_path" ]]; then
-    if python3 "$manifest_helper" finalize "$manifest_path" "$manifest_parent_identity" "$manifest_file_identity" "$payload" >/dev/null; then
+    if "$trusted_python" "$manifest_helper" finalize "$manifest_path" "$manifest_parent_identity" "$manifest_file_identity" "$payload" >/dev/null; then
       manifest_result="written"
     else
       manifest_result="failed"
@@ -88,7 +93,7 @@ terminate_owned_group() {
     if ! kill -0 -- "-$child_pid" 2>/dev/null; then
       return
     fi
-    sleep 0.05
+    /bin/sleep 0.05
   done
   kill -KILL -- "-$child_pid" 2>/dev/null || true
 }
@@ -104,7 +109,7 @@ cleanup() {
   if [[ -n "$child_pid" ]]; then
     wait "$child_pid" 2>/dev/null || true
   fi
-  cleanup_result="$(python3 "$cleanup_helper" cleanup "$run_root" "$root_device" "$root_inode")"
+  cleanup_result="$("$trusted_python" "$cleanup_helper" cleanup "$run_root" "$root_device" "$root_inode")"
   cleanup_exit=$?
   if [[ "$cleanup_exit" -ne 0 && "$cleanup_result" != "identity_mismatch" && "$cleanup_result" != "root_recreated" && "$cleanup_result" != "replacement_detected" ]]; then
     cleanup_result="cleanup_failed"

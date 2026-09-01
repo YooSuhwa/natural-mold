@@ -1,0 +1,231 @@
+"""Fixed command catalog for composite project gates."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Final, Literal
+
+type NodeKind = Literal["isolated", "postgres", "e2e"]
+
+
+@dataclass(frozen=True, slots=True)
+class GateNode:
+    """One reviewed command with a fixed execution and receipt contract."""
+
+    node_id: str
+    kind: NodeKind
+    cwd: Literal["backend", "frontend", "repo"]
+    argv: tuple[str, ...]
+
+
+def _isolated(node_id: str, cwd: Literal["backend", "frontend"], *argv: str) -> GateNode:
+    return GateNode(node_id, "isolated", cwd, argv)
+
+
+CATALOG: Final[dict[str, GateNode]] = {
+    node.node_id: node
+    for node in (
+        _isolated("backend-full", "backend", "-m", "pytest", "-q", "-m", "not integration"),
+        _isolated(
+            "todo05-storage-security",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/agent_runtime/test_offload_storage.py",
+            "tests/agent_runtime/test_offload_storage_security.py",
+            "tests/agent_runtime/test_offload_storage_lifecycle.py",
+            "tests/test_artifact_paths.py",
+            "tests/test_artifact_storage.py",
+        ),
+        _isolated(
+            "todo06-filesystem-security",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_filesystem_permissions.py",
+            "tests/agent_runtime/test_langgraph_streaming_compaction.py",
+        ),
+        _isolated(
+            "todo07-project-facts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_project_facts.py",
+        ),
+        _isolated(
+            "todo07-project-facts-check",
+            "backend",
+            "../scripts/check_project_facts.py",
+        ),
+        GateNode("postgres-all", "postgres", "repo", ("all",)),
+        _isolated("frontend-lint", "frontend", "lint"),
+        _isolated("frontend-i18n", "frontend", "lint:i18n"),
+        _isolated("frontend-type-safety", "frontend", "lint:type-safety"),
+        _isolated("frontend-e2e-hygiene", "frontend", "lint:e2e-hygiene"),
+        _isolated("frontend-vitest", "frontend", "exec", "vitest", "run"),
+        _isolated("frontend-build", "frontend", "build"),
+        GateNode("scripted-full", "e2e", "repo", ("scripted-full",)),
+        _isolated(
+            "todo08-runtime-contracts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_executor.py",
+            "tests/test_middleware_registry.py",
+            "tests/test_filesystem_permissions.py",
+            "tests/test_hitl_middleware.py",
+            "tests/test_hitl_wire.py",
+            "tests/agent_runtime/test_subagents_runtime.py",
+            "tests/agent_runtime/test_langgraph_hitl_interrupts.py",
+            "tests/agent_runtime/test_langgraph_protocol_adapter.py",
+            "tests/agent_runtime/test_langgraph_protocol_adapter_subgraphs.py",
+            "tests/agent_runtime/test_langgraph_streaming.py",
+            "tests/agent_runtime/test_langgraph_streaming_sequences.py",
+            "tests/agent_runtime/test_runtime_facade_contract.py",
+            "tests/agent_runtime/test_runtime_facade_contract_mutations.py",
+            "tests/agent_runtime/test_runtime_profile_contract.py",
+            "tests/agent_runtime/test_runtime_profile_contract_graphs.py",
+            "tests/agent_runtime/test_runtime_wire_contract.py",
+            "tests/agent_runtime/test_runtime_resume_contract.py",
+            "tests/agent_runtime/test_runtime_branch_replay_contract.py",
+        ),
+        _isolated(
+            "todo09-runtime-dependency-guard",
+            "backend",
+            "scripts/check_runtime_dependencies.py",
+        ),
+        _isolated(
+            "todo09-runtime-dependency-tests",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_runtime_dependency_guard.py",
+            "tests/test_runtime_dependency_guard_graph.py",
+            "tests/test_runtime_dependency_guard_security.py",
+        ),
+        _isolated(
+            "todo10-runtime-preparation-contracts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_executor.py",
+            "tests/test_middleware_registry.py",
+            "tests/test_filesystem_permissions.py",
+            "tests/test_model_factory.py",
+            "tests/test_skill_executor_node.py",
+            "tests/test_trigger_executor.py",
+            "tests/test_assistant_agent.py",
+            "tests/test_builder_v3.py",
+            "tests/test_builder_sub_agents.py",
+            "tests/test_skill_builder_api.py",
+            "tests/test_skill_builder_api_contracts.py",
+            "tests/test_skill_builder_chat_runtime.py",
+            "tests/test_skill_builder_service.py",
+            "tests/agent_runtime/test_subagents_runtime.py",
+            "tests/agent_runtime/test_runtime_extraction_contract.py",
+            "tests/agent_runtime/test_runtime_preparation_extraction_contract.py",
+            "tests/agent_runtime/test_runtime_skill_builder_extraction_contract.py",
+        ),
+        _isolated(
+            "todo11-streaming-contracts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/agent_runtime/test_langgraph_protocol_adapter.py",
+            "tests/agent_runtime/test_langgraph_protocol_adapter_subgraphs.py",
+            "tests/agent_runtime/test_ag_ui_protocol_adapter.py",
+            "tests/agent_runtime/test_protocol_persistence.py",
+            "tests/agent_runtime/test_protocol_usage.py",
+            "tests/agent_runtime/test_usage_timing.py",
+            "tests/agent_runtime/test_langgraph_streaming.py",
+            "tests/agent_runtime/test_langgraph_streaming_sequences.py",
+            "tests/agent_runtime/test_langgraph_streaming_lifecycle.py",
+            "tests/agent_runtime/test_langgraph_streaming_side_effects.py",
+            "tests/agent_runtime/test_legacy_event_projection.py",
+            "tests/agent_runtime/test_langgraph_live_replay_matrix.py",
+            "tests/agent_runtime/test_langgraph_projection_stages.py",
+            "tests/agent_runtime/test_runtime_wire_contract.py",
+            "tests/test_conversation_agent_protocol_commands.py",
+            "tests/test_conversation_agent_protocol_replay.py",
+            "tests/test_conversation_agent_protocol_replay_custom_compat.py",
+            "tests/test_conversation_agent_protocol_state_hydration.py",
+        ),
+        GateNode("postgres-stream-resume", "postgres", "repo", ("stream-resume",)),
+        _isolated(
+            "todo12-frontend-contracts",
+            "frontend",
+            "exec",
+            "vitest",
+            "run",
+            "src/lib/chat/langgraph-runtime/__tests__",
+            "src/components/chat/__tests__/assistant-thread-grouping.test.tsx",
+        ),
+        _isolated("todo12-frontend-architecture", "frontend", "lint:frontend-architecture"),
+        _isolated(
+            "todo13-runtime-split-contracts",
+            "frontend",
+            "exec",
+            "vitest",
+            "run",
+            "src/lib/chat/langgraph-runtime/__tests__",
+        ),
+        _isolated(
+            "todo14-assistant-contracts",
+            "frontend",
+            "exec",
+            "vitest",
+            "run",
+            "tests/components/chat/assistant-thread-actions.test.tsx",
+            "tests/components/chat/assistant-thread-edit.test.tsx",
+            "src/components/chat/__tests__/assistant-thread-grouping.test.tsx",
+            "src/components/chat/__tests__/chat-runtime-section.test.tsx",
+            "tests/components/agent/assistant-panel.test.tsx",
+            "tests/unit/bundle/lazy-boundaries.test.ts",
+            "src/lib/hooks/__tests__/use-conversation-branch-switch.test.tsx",
+        ),
+        GateNode(
+            "todo14-visual-capture",
+            "e2e",
+            "repo",
+            ("scripted-capture", "e2e/chat-langgraph-v3-visual-matrix.spec.ts"),
+        ),
+    )
+}
+
+WAVE_1: Final[tuple[str, ...]] = (
+    "backend-full",
+    "todo05-storage-security",
+    "todo06-filesystem-security",
+    "todo07-project-facts",
+    "todo07-project-facts-check",
+    "postgres-all",
+    "frontend-lint",
+    "frontend-i18n",
+    "frontend-type-safety",
+    "frontend-e2e-hygiene",
+    "frontend-vitest",
+    "frontend-build",
+    "scripted-full",
+)
+WAVE_2: Final[tuple[str, ...]] = WAVE_1[:-1] + (
+    "todo08-runtime-contracts",
+    "todo09-runtime-dependency-guard",
+    "todo09-runtime-dependency-tests",
+    "todo10-runtime-preparation-contracts",
+    "todo11-streaming-contracts",
+    "postgres-stream-resume",
+    "todo12-frontend-contracts",
+    "todo12-frontend-architecture",
+    "todo13-runtime-split-contracts",
+    "todo14-assistant-contracts",
+    "todo14-visual-capture",
+    "scripted-full",
+)
+CANONICAL_WAVES: Final[dict[str, tuple[str, ...]]] = {"wave-1": WAVE_1, "wave-2": WAVE_2}

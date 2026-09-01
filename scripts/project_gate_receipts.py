@@ -1,0 +1,217 @@
+"""Identity-safe aggregate I/O and child receipt validation."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import stat
+from pathlib import Path
+from typing import Final, TypedDict
+
+from project_gate_runtime import JSONObject, JSONValue, ProjectGateError
+
+MAX_RECEIPT_BYTES: Final = 4 * 1024 * 1024
+STATIC_KEYS: Final = frozenset(
+    {"schema_version", "status", "child_exit_code", "cleanup", "run_root_sha256"}
+)
+POSTGRES_CLEANUP_KEYS: Final = (
+    "cleanup_container_removed",
+    "owned_label_absent",
+    "port_mapping_removed",
+    "process_group_stopped",
+    "cleanup_run_root_removed",
+)
+E2E_CLEANUP_KEYS: Final = (
+    "cleanup_container_removed",
+    "owned_label_absent",
+    "postgres_port_removed",
+    "owned_database_removed",
+    "backend_port_removed",
+    "frontend_port_removed",
+    "proxy_port_removed",
+    "process_group_stopped",
+    "cleanup_run_root_removed",
+    "foreign_containers_preserved",
+)
+
+
+class ReceiptSummary(TypedDict):
+    relative_path: str
+    sha256: str
+    cleanup_passed: bool
+    secret_scan_passed: bool | None
+    workers: int | None
+    retries: int | None
+    screenshot_count: int | None
+
+
+def new_child_path(aggregate: Path, node_id: str, token: str) -> Path:
+    """Build a safe, unique sibling receipt path without creating it."""
+    return aggregate.with_name(f"{aggregate.stem}.{node_id}.{token}.json")
+
+
+def _read_receipt(path: Path) -> tuple[JSONObject, str]:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise ProjectGateError("invalid_child_receipt") from error
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or metadata.st_size <= 0
+            or metadata.st_size > MAX_RECEIPT_BYTES
+        ):
+            raise ProjectGateError("invalid_child_receipt")
+        data = os.read(descriptor, metadata.st_size + 1)
+    finally:
+        os.close(descriptor)
+    try:
+        parsed = json.loads(data)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProjectGateError("invalid_child_receipt") from error
+    if not isinstance(parsed, dict):
+        raise ProjectGateError("invalid_child_receipt")
+    return parsed, hashlib.sha256(data).hexdigest()
+
+
+def _summary(
+    path: Path,
+    repo_root: Path,
+    digest: str,
+    *,
+    cleanup: bool,
+    secret_scan: bool | None = None,
+    workers: int | None = None,
+    retries: int | None = None,
+    screenshot_count: int | None = None,
+) -> ReceiptSummary:
+    return {
+        "relative_path": path.relative_to(repo_root).as_posix(),
+        "sha256": digest,
+        "cleanup_passed": cleanup,
+        "secret_scan_passed": secret_scan,
+        "workers": workers,
+        "retries": retries,
+        "screenshot_count": screenshot_count,
+    }
+
+
+def validate_static(path: Path, repo_root: Path, expected_exit: int) -> ReceiptSummary:
+    payload, digest = _read_receipt(path)
+    valid = (
+        set(payload) == STATIC_KEYS
+        and payload.get("schema_version") == 1
+        and payload.get("status") == ("passed" if expected_exit == 0 else "failed")
+        and payload.get("child_exit_code") == expected_exit
+        and payload.get("cleanup") == "removed"
+        and isinstance(payload.get("run_root_sha256"), str)
+        and len(str(payload["run_root_sha256"])) == 64
+    )
+    if not valid:
+        raise ProjectGateError("invalid_child_receipt")
+    return _summary(path, repo_root, digest, cleanup=True)
+
+
+def validate_postgres(path: Path, repo_root: Path, mode: str, expected_exit: int) -> ReceiptSummary:
+    payload, digest = _read_receipt(path)
+    scenarios = payload.get("scenarios")
+    scenario = scenarios[0] if isinstance(scenarios, list) and len(scenarios) == 1 else None
+    receipt = scenario.get("test_receipt") if isinstance(scenario, dict) else None
+    zero_selection_debt = (
+        isinstance(receipt, dict)
+        and isinstance(receipt.get("selected_node_ids"), list)
+        and bool(receipt["selected_node_ids"])
+        and receipt.get("selected_node_ids") == receipt.get("executed_node_ids")
+        and receipt.get("failed_node_ids") == []
+        and receipt.get("skipped_node_ids") == []
+        and receipt.get("deselected_node_ids") == []
+    )
+    valid = (
+        payload.get("schema_version") == 1
+        and payload.get("mode") == mode
+        and payload.get("status") == ("passed" if expected_exit == 0 else "failed")
+        and isinstance(scenario, dict)
+        and scenario.get("scenario") == mode
+        and scenario.get("child_exit_code") == expected_exit
+        and all(scenario.get(key) is True for key in POSTGRES_CLEANUP_KEYS)
+        and zero_selection_debt
+    )
+    if not valid:
+        raise ProjectGateError("invalid_child_receipt")
+    return _summary(path, repo_root, digest, cleanup=True)
+
+
+def _safe_screenshots(value: JSONValue) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    screenshots: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            return None
+        screenshots.append(item)
+    safe = re.compile(r"^captures/[A-Za-z0-9][A-Za-z0-9._/-]*\.png$")
+    if all(safe.fullmatch(item) and ".." not in item.split("/") for item in screenshots):
+        return screenshots
+    return None
+
+
+def validate_e2e(
+    path: Path,
+    repo_root: Path,
+    expected_exit: int,
+    *,
+    project: str,
+    expected_spec: str | None,
+) -> ReceiptSummary:
+    payload, digest = _read_receipt(path)
+    selected = payload.get("selected_ids")
+    executed = payload.get("executed_ids")
+    export = payload.get("export")
+    cleanup = payload.get("cleanup")
+    screenshots = _safe_screenshots(export.get("screenshots")) if isinstance(export, dict) else None
+    expected_prefix = f"{project}::{expected_spec}::" if expected_spec is not None else None
+    selection_matches = expected_prefix is None or (
+        isinstance(selected, list)
+        and all(isinstance(item, str) and item.startswith(expected_prefix) for item in selected)
+    )
+    screenshots_match = screenshots == [] if project == "scripted-full" else screenshots is not None
+    if project == "scripted-capture":
+        screenshots_match = screenshots is not None and len(screenshots) == 13
+    valid = (
+        payload.get("runner") == "moldy-isolated-e2e"
+        and payload.get("lane") == "scripted"
+        and payload.get("project") == project
+        and payload.get("workers") == 1
+        and payload.get("retries") == 0
+        and payload.get("status") == ("passed" if expected_exit == 0 else "failed")
+        and payload.get("child_exit_code") == expected_exit
+        and isinstance(selected, list)
+        and bool(selected)
+        and selected == executed
+        and len(selected) == len(set(selected))
+        and selection_matches
+        and isinstance(export, dict)
+        and export.get("secret_scan_passed") is True
+        and screenshots_match
+        and isinstance(cleanup, dict)
+        and all(cleanup.get(key) is True for key in E2E_CLEANUP_KEYS)
+    )
+    if not valid:
+        raise ProjectGateError("invalid_child_receipt")
+    return _summary(
+        path,
+        repo_root,
+        digest,
+        cleanup=True,
+        secret_scan=True,
+        workers=1,
+        retries=0,
+        screenshot_count=len(screenshots) if screenshots is not None else None,
+    )

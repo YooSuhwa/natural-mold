@@ -14,6 +14,6 @@ case "$1" in
   *) usage ;;
 esac
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+repo_root="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 exec "$repo_root/backend/.venv/bin/python" "$repo_root/scripts/postgres_test_runner.py" \
   "$mode" --manifest "$3"
