@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   isExpectedNextStaticChunkAbort,
-  isRequestFromMainFrame,
+  observeMainFrameRequestAtStart,
   type NextStaticChunkAbortInput,
-  type RequestFrameAccess,
+  type RequestStartAccess,
 } from '../e2e/helpers/next-static-chunk-abort'
 
 const validAbort: NextStaticChunkAbortInput = {
@@ -18,61 +18,166 @@ const validAbort: NextStaticChunkAbortInput = {
 }
 
 describe('isExpectedNextStaticChunkAbort', () => {
-  it('rejects a service-worker request without reading its frame', () => {
-    // Given: a service-worker request whose frame accessor would fail if invoked.
+  it('tracks the same request identity before teardown without failed-time accessors', () => {
+    // Given: a main-frame request whose browser accessors become unavailable after navigation starts.
+    const mainFrame = {}
+    const observedRequests = new WeakSet<RequestStartAccess>()
+    let serviceWorkerCalls = 0
     let frameCalls = 0
-    const request: RequestFrameAccess = {
-      serviceWorker: () => ({}),
+    let isTornDown = false
+    const request: RequestStartAccess = {
+      isNavigationRequest: () => true,
+      serviceWorker: () => {
+        serviceWorkerCalls += 1
+        if (isTornDown) throw new Error('service worker unavailable after teardown')
+        return null
+      },
       frame: () => {
         frameCalls += 1
-        throw new Error('frame must not be read for a service worker')
+        if (isTornDown) throw new Error('frame unavailable after teardown')
+        return mainFrame
       },
     }
 
-    // When: main-frame identity is determined for the failed request.
-    const actual = isRequestFromMainFrame(request, {})
+    // When: the request is observed at start and later fails after teardown.
+    const startsMainFrameNavigation = observeMainFrameRequestAtStart(
+      observedRequests,
+      request,
+      mainFrame,
+    )
+    isTornDown = true
+    const remainsTrackedAtFailure = observedRequests.has(request)
 
-    // Then: it fails closed before accessing the unavailable frame.
-    expect(actual).toBe(false)
-    expect(frameCalls).toBe(0)
+    // Then: identity remains available without calling serviceWorker() or frame() again.
+    expect(startsMainFrameNavigation).toBe(true)
+    expect(remainsTrackedAtFailure).toBe(true)
+    expect(serviceWorkerCalls).toBe(1)
+    expect(frameCalls).toBe(1)
   })
 
-  it('rejects a request when its frame accessor throws', () => {
-    // Given: a non-service-worker request whose frame is unavailable during navigation.
-    const request: RequestFrameAccess = {
-      serviceWorker: () => null,
-      frame: () => {
-        throw new Error('frame unavailable')
-      },
-    }
-
-    // When: main-frame identity is determined.
-    const actual = isRequestFromMainFrame(request, {})
-
-    // Then: the classifier fails closed instead of failing the E2E fixture itself.
-    expect(actual).toBe(false)
-  })
-
-  it('accepts only the actual main frame identity', () => {
-    // Given: two distinct frame identities and ordinary document requests.
+  it('does not treat a different same-shaped request as observed', () => {
+    // Given: two equal-looking requests with distinct identities.
     const mainFrame = {}
-    const otherFrame = {}
-    const mainFrameRequest: RequestFrameAccess = {
+    const observedRequests = new WeakSet<RequestStartAccess>()
+    const observedRequest: RequestStartAccess = {
+      isNavigationRequest: () => false,
       serviceWorker: () => null,
       frame: () => mainFrame,
     }
-    const otherFrameRequest: RequestFrameAccess = {
+    const sameShapedRequest: RequestStartAccess = {
+      isNavigationRequest: () => false,
+      serviceWorker: () => null,
+      frame: () => mainFrame,
+    }
+
+    // When: only the first request is observed at start.
+    observeMainFrameRequestAtStart(observedRequests, observedRequest, mainFrame)
+
+    // Then: the failure-time lookup accepts only the exact request instance.
+    expect(observedRequests.has(observedRequest)).toBe(true)
+    expect(observedRequests.has(sameShapedRequest)).toBe(false)
+  })
+
+  it('rejects iframe, service-worker, and throwing request-start accessors before tracking', () => {
+    // Given: requests that cannot be safely tied to the page main frame.
+    const mainFrame = {}
+    const otherFrame = {}
+    const observedRequests = new WeakSet<RequestStartAccess>()
+    let serviceWorkerFrameCalls = 0
+    const iframeRequest: RequestStartAccess = {
+      isNavigationRequest: () => true,
       serviceWorker: () => null,
       frame: () => otherFrame,
     }
+    const serviceWorkerRequest: RequestStartAccess = {
+      isNavigationRequest: () => true,
+      serviceWorker: () => ({}),
+      frame: () => {
+        serviceWorkerFrameCalls += 1
+        return mainFrame
+      },
+    }
+    const frameThrowRequest: RequestStartAccess = {
+      isNavigationRequest: () => true,
+      serviceWorker: () => null,
+      frame: () => {
+        throw new Error('frame unavailable at request start')
+      },
+    }
+    const navigationThrowRequest: RequestStartAccess = {
+      isNavigationRequest: () => {
+        throw new Error('navigation status unavailable at request start')
+      },
+      serviceWorker: () => null,
+      frame: () => mainFrame,
+    }
 
-    // When: each request is compared with the page main frame.
-    const mainFrameActual = isRequestFromMainFrame(mainFrameRequest, mainFrame)
-    const otherFrameActual = isRequestFromMainFrame(otherFrameRequest, mainFrame)
+    // When: each request is observed at start.
+    const iframeStartsNavigation = observeMainFrameRequestAtStart(
+      observedRequests,
+      iframeRequest,
+      mainFrame,
+    )
+    const serviceWorkerStartsNavigation = observeMainFrameRequestAtStart(
+      observedRequests,
+      serviceWorkerRequest,
+      mainFrame,
+    )
+    const frameThrowStartsNavigation = observeMainFrameRequestAtStart(
+      observedRequests,
+      frameThrowRequest,
+      mainFrame,
+    )
+    const navigationThrowStartsNavigation = observeMainFrameRequestAtStart(
+      observedRequests,
+      navigationThrowRequest,
+      mainFrame,
+    )
 
-    // Then: only object identity with the main frame is accepted.
-    expect(mainFrameActual).toBe(true)
-    expect(otherFrameActual).toBe(false)
+    // Then: all fail closed, leave no unproven identity, and service workers never call frame().
+    expect(iframeStartsNavigation).toBe(false)
+    expect(serviceWorkerStartsNavigation).toBe(false)
+    expect(frameThrowStartsNavigation).toBe(false)
+    expect(navigationThrowStartsNavigation).toBe(false)
+    expect(observedRequests.has(iframeRequest)).toBe(false)
+    expect(observedRequests.has(serviceWorkerRequest)).toBe(false)
+    expect(observedRequests.has(frameThrowRequest)).toBe(false)
+    expect(observedRequests.has(navigationThrowRequest)).toBe(false)
+    expect(serviceWorkerFrameCalls).toBe(0)
+  })
+
+  it('supports failure-time lookup cleanup and keeps the classifier identity-bound', () => {
+    // Given: an observed main-frame script request and an unobserved same-shaped request.
+    const mainFrame = {}
+    const observedRequests = new WeakSet<RequestStartAccess>()
+    const trackedRequest: RequestStartAccess = {
+      isNavigationRequest: () => false,
+      serviceWorker: () => null,
+      frame: () => mainFrame,
+    }
+    const unobservedRequest: RequestStartAccess = {
+      isNavigationRequest: () => false,
+      serviceWorker: () => null,
+      frame: () => mainFrame,
+    }
+    observeMainFrameRequestAtStart(observedRequests, trackedRequest, mainFrame)
+
+    // When: failure-time code reads identity, runs the classifier, then deletes the request.
+    const trackedAtFailure = observedRequests.has(trackedRequest)
+    const trackedClassifierResult = isExpectedNextStaticChunkAbort({
+      ...validAbort,
+      isMainFrame: trackedAtFailure,
+    })
+    observedRequests.delete(trackedRequest)
+    const unobservedClassifierResult = isExpectedNextStaticChunkAbort({
+      ...validAbort,
+      isMainFrame: observedRequests.has(unobservedRequest),
+    })
+
+    // Then: only tracked identity enables the exact classifier and cleanup removes it.
+    expect(trackedClassifierResult).toBe(true)
+    expect(unobservedClassifierResult).toBe(false)
+    expect(observedRequests.has(trackedRequest)).toBe(false)
   })
 
   it('accepts only the generated Next JavaScript chunk abort during main-frame navigation', () => {

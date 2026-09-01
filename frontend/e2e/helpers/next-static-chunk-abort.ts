@@ -8,7 +8,8 @@ export type NextStaticChunkAbortInput = {
   readonly elapsedSinceMainFrameNavigationMs: number
 }
 
-export type RequestFrameAccess = {
+export type RequestStartAccess = {
+  readonly isNavigationRequest: () => boolean
   readonly serviceWorker: () => unknown
   readonly frame: () => unknown
 }
@@ -16,13 +17,20 @@ export type RequestFrameAccess = {
 const NEXT_STATIC_CHUNKS_PREFIX = '/_next/static/chunks/'
 
 /**
- * Playwright does not expose a frame for service-worker requests and can also
- * reject frame access while navigation tears down a document. Fail closed so
- * requestfailed handling never hides an unrelated transport error.
+ * Record main-frame request identity while its Playwright accessors are still
+ * safe. Service workers and iframe requests are never tracked; if request-start
+ * frame access fails, the request remains visible to the E2E error collector.
  */
-export function isRequestFromMainFrame(request: RequestFrameAccess, mainFrame: unknown): boolean {
+export function observeMainFrameRequestAtStart<TRequest extends RequestStartAccess>(
+  observedRequests: WeakSet<TRequest>,
+  request: TRequest,
+  mainFrame: unknown,
+): boolean {
   try {
-    return request.serviceWorker() === null && request.frame() === mainFrame
+    if (request.serviceWorker() !== null || request.frame() !== mainFrame) return false
+    const isMainFrameNavigation = request.isNavigationRequest()
+    observedRequests.add(request)
+    return isMainFrameNavigation
   } catch {
     return false
   }

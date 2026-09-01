@@ -1,8 +1,14 @@
-import { test as base, expect, type APIRequestContext, type APIResponse } from '@playwright/test'
+import {
+  test as base,
+  expect,
+  type APIRequestContext,
+  type APIResponse,
+  type Request,
+} from '@playwright/test'
 
 import {
   isExpectedNextStaticChunkAbort,
-  isRequestFromMainFrame,
+  observeMainFrameRequestAtStart,
 } from './helpers/next-static-chunk-abort'
 
 type ErrorCollector = {
@@ -109,10 +115,11 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
   ],
   errors: async ({ page }, use) => {
     const errors: ErrorCollector = { console: [], page: [], network: [] }
+    const observedMainFrameRequests = new WeakSet<Request>()
     let mainFrameNavigationStartedAt = Number.NEGATIVE_INFINITY
 
     page.on('request', (request) => {
-      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+      if (observeMainFrameRequestAtStart(observedMainFrameRequests, request, page.mainFrame())) {
         mainFrameNavigationStartedAt = Date.now()
       }
     })
@@ -133,6 +140,8 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
       }
     })
     page.on('requestfailed', (req) => {
+      const isMainFrameRequest = observedMainFrameRequests.has(req)
+      observedMainFrameRequests.delete(req)
       const url = req.url()
       const errorText = req.failure()?.errorText ?? 'unknown'
       const expectedStreamDetach =
@@ -188,7 +197,7 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         errorText,
         method: req.method(),
         resourceType: req.resourceType(),
-        isMainFrame: isRequestFromMainFrame(req, page.mainFrame()),
+        isMainFrame: isMainFrameRequest,
         requestUrl: url,
         currentPageUrl: page.url(),
         elapsedSinceMainFrameNavigationMs: Date.now() - mainFrameNavigationStartedAt,
