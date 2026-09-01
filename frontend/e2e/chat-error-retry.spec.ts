@@ -1,8 +1,8 @@
 import { API_BASE, apiPostJson, expect, isRecord, test } from './fixtures'
 import {
-  sendMessage,
+  sendMessageForRun,
   setupLangGraphV3Agent,
-  waitForActiveRun,
+  waitForAcceptedRunStart,
   waitForRunStatus,
 } from './langgraph-v3-helpers'
 
@@ -28,7 +28,8 @@ test.describe('Chat error retry (v3, G2)', () => {
       csrfHeaders,
       { title: 'error-retry' },
     )
-    if (!isRecord(convo) || typeof convo.id !== 'string') throw new Error('conversation create failed')
+    if (!isRecord(convo) || typeof convo.id !== 'string')
+      throw new Error('conversation create failed')
     const conversationId = convo.id
 
     await page.goto(`/agents/${agentId}/conversations/${conversationId}`, {
@@ -40,9 +41,8 @@ test.describe('Chat error retry (v3, G2)', () => {
       .last()
       .waitFor({ state: 'visible', timeout: 90_000 })
 
-    // Force a genuine run failure via the scripted-model marker.
-    await sendMessage(page, 'E2E_ERROR 강제 실패')
-    const runId = await waitForActiveRun(request, conversationId)
+    // Capture the accepted run id directly: E2E_ERROR can fail before active-run polling.
+    const runId = await sendMessageForRun(page, conversationId, 'E2E_ERROR 강제 실패')
     await waitForRunStatus(request, conversationId, runId, 'failed')
 
     // The failed run renders an error bubble whose retry button is always visible
@@ -52,12 +52,11 @@ test.describe('Chat error retry (v3, G2)', () => {
 
     // Clicking retry must send a fresh run command to the backend (fork re-run). If
     // the retry were a no-op (e.g. missing checkpoint), no command request fires.
-    const commandRequest = page.waitForRequest(
-      (req) => req.url().includes('/commands') && req.method() === 'POST',
-      { timeout: 30_000 },
+    const retryRunId = await waitForAcceptedRunStart(page, conversationId, () =>
+      retryButton.click(),
     )
-    await retryButton.click()
-    await commandRequest
+    expect(retryRunId).not.toBe(runId)
+    await waitForRunStatus(request, conversationId, retryRunId, 'failed')
 
     // The re-run hits E2E_ERROR again and fails, so the error bubble + retry button
     // persists — confirming retry actually drove a new run rather than clearing UI.

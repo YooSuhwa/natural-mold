@@ -1,4 +1,4 @@
-import type { APIRequestContext, Page, Request } from '@playwright/test'
+import type { APIRequestContext, Page } from '@playwright/test'
 import {
   API_BASE,
   apiGetJson,
@@ -8,6 +8,9 @@ import {
   loginApi,
   type CsrfHeaders,
 } from './fixtures'
+import { waitForAcceptedRunStart } from './helpers/run-start'
+
+export { commandMethod, waitForAcceptedRunStart } from './helpers/run-start'
 
 export const DOCX_SKILL_SLUG = 'docx-document'
 export const SCRIPTED_PROVIDER = 'e2e_scripted'
@@ -146,13 +149,17 @@ export async function sendMessage(page: Page, text: string): Promise<void> {
   await sendButton.click()
 }
 
-export function commandMethod(request: Request): string | null {
-  if (request.method() !== 'POST' || !request.url().includes('/langgraph/threads/')) return null
-  if (!request.url().endsWith('/commands')) return null
-  const raw = request.postData()
-  if (!raw) return null
-  const parsed: unknown = JSON.parse(raw)
-  return isRecord(parsed) && typeof parsed.method === 'string' ? parsed.method : null
+/**
+ * Sends an initial chat message and returns the run id accepted by its `run.start`
+ * command. This avoids relying on the transient active-run state for runs that can
+ * complete or fail before active-run polling begins.
+ */
+export async function sendMessageForRun(
+  page: Page,
+  conversationId: string,
+  text: string,
+): Promise<string> {
+  return waitForAcceptedRunStart(page, conversationId, () => sendMessage(page, text))
 }
 
 export async function waitForActiveRun(
