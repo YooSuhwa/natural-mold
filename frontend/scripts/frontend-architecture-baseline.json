@@ -38,7 +38,6 @@
     "direct-api-import:src/app/skills/_components/skill-list-table.tsx",
     "direct-api-import:src/components/chat/artifacts/artifact-preview.tsx",
     "direct-api-import:src/components/chat/artifacts/providers/use-artifact-binary.ts",
-    "direct-api-import:src/components/chat/assistant-thread.tsx",
     "direct-api-import:src/components/chat/message-attachments.tsx",
     "direct-api-import:src/components/chat/right-rail/chat-right-rail.tsx",
     "direct-api-import:src/components/chat/trace-debugger-view.tsx",

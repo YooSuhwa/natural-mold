@@ -184,7 +184,7 @@ const ARBITRARY_LAYOUT_ALLOWLIST = [
     reason: 'dropdown content follows the trigger width CSS variable',
   },
   {
-    filePath: 'src/components/chat/assistant-thread.tsx',
+    filePath: 'src/components/chat/assistant-thread-message-renderers.tsx',
     tokenPattern: /^max-w-\[80%\]$/,
     reason: 'chat message bubbles use a transcript column ratio',
   },

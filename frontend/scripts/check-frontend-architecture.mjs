@@ -51,12 +51,12 @@ const heavyClientImports = [
   },
   {
     module: '@assistant-ui/react-streamdown',
-    files: new Set(['src/components/chat/assistant-thread.tsx']),
+    files: new Set(['src/components/chat/assistant-message-parts.tsx']),
     prefixes: [],
   },
   {
     module: '@streamdown/math',
-    files: new Set(['src/components/chat/assistant-thread.tsx']),
+    files: new Set(['src/components/chat/assistant-message-parts.tsx']),
     prefixes: [],
   },
   {

@@ -27,9 +27,14 @@ import {
 
 const FRONTEND =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`
-const CAPTURE_DIR = path.join('..', 'output', 'e2e-captures', '20260614-langgraph-v3-visual-matrix')
+const CAPTURE_DIR = path.join('..', 'output', 'captures')
 const DESKTOP_VIEWPORT = { width: 1366, height: 900 } as const
 const MOBILE_VIEWPORT = { width: 390, height: 844 } as const
+const ASSISTANT_THREAD_VIEWPORTS = [
+  { name: 'mobile-375', width: 375, height: 844 },
+  { name: 'tablet-768', width: 768, height: 900 },
+  { name: 'desktop-1280', width: 1280, height: 900 },
+] as const
 const TERMINAL_RUN_STATUS_PATTERN = /^(completed|failed|interrupted|canceled|stale|gone)$/
 
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
@@ -57,6 +62,29 @@ async function waitForCapturePaint(page: Page): Promise<void> {
         })
       }),
   )
+}
+
+async function captureAssistantThreadViewportMatrix(page: Page): Promise<void> {
+  // This matrix is behavior-neutral parity evidence; the pre-existing 375px document-width
+  // blocker belongs to Todo 22, while the older 390px overflow assertion below remains unchanged.
+  for (const viewport of ASSISTANT_THREAD_VIEWPORTS) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    if (viewport.width >= 768) {
+      const scrollToBottomButton = page.getByRole('button', {
+        name: /맨 아래로 이동|Scroll to bottom/,
+      })
+      if ((await scrollToBottomButton.isVisible()) && (await scrollToBottomButton.isEnabled())) {
+        await scrollToBottomButton.click()
+      }
+    }
+    await waitForCapturePaint(page)
+    const filename = `task-14-completed-thread-${viewport.name}.png`
+    await capture(page, filename)
+    const file = await fs.stat(path.join(CAPTURE_DIR, filename))
+    expect(file.size).toBeGreaterThan(0)
+  }
+
+  expect(ASSISTANT_THREAD_VIEWPORTS.map(({ width }) => width)).toEqual([375, 768, 1280])
 }
 
 async function expectApprovalCardVisible(page: Page): Promise<void> {
@@ -208,6 +236,24 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       await expect(page.getByText(setup.childName).first()).toBeVisible()
       await capture(page, '03-completed-thread-with-subagent.png')
 
+      await page.setViewportSize(DESKTOP_VIEWPORT)
+      await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
+      const parityArtifactRail = page.getByRole('complementary')
+      await expect(parityArtifactRail).toBeVisible()
+      const parityReportArtifactButton = parityArtifactRail
+        .getByRole('button', { name: new RegExp(REPORT_FILE) })
+        .last()
+      await expect(parityReportArtifactButton).toBeVisible()
+      await parityReportArtifactButton.dispatchEvent('click')
+      await expect(parityArtifactRail.getByText('LangGraph v3 E2E Report')).toBeVisible({
+        timeout: 20_000,
+      })
+
+      await captureAssistantThreadViewportMatrix(page)
+
+      await parityArtifactRail.getByRole('button', { name: 'Close panel' }).click()
+      await expect(parityArtifactRail).toBeHidden()
+
       await page.setViewportSize(MOBILE_VIEWPORT)
       await expectNoHorizontalOverflow(page)
       await capture(page, '04-mobile-thread.png')
@@ -241,6 +287,7 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       await page.setViewportSize(MOBILE_VIEWPORT)
       await expectNoHorizontalOverflow(page)
       await capture(page, '07-mobile-artifact-rail.png')
+      await page.setViewportSize(DESKTOP_VIEWPORT)
 
       const share = await apiPostJson(
         request,

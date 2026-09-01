@@ -113,7 +113,7 @@ const projects = [
   },
   {
     name: E2E_PROJECTS[2],
-    testMatch: '**/captures/**/*.spec.ts',
+    testMatch: ['**/captures/**/*.spec.ts', '**/chat-langgraph-v3-visual-matrix.spec.ts'],
     use: buildPlaywrightProjectUse(E2E_PROJECTS[2]),
   },
   {
