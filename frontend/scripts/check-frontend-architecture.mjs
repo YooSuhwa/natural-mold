@@ -5,6 +5,7 @@ import { exit } from 'node:process'
 const root = process.cwd()
 const srcRoot = join(root, 'src')
 const strict = process.argv.includes('--strict')
+const baselinePath = join(root, 'scripts', 'frontend-architecture-baseline.json')
 
 const allow = {
   dialogContent: new Set([
@@ -80,54 +81,63 @@ const heavyRouteComponents = new Set([
   '@/components/agent/visual-settings/visual-settings-island',
 ])
 
-const strictBaseline = new Set([
-  'tabs:src/app/(auth)/layout.tsx',
-  'client-page:src/app/(auth)/login/page.tsx',
-  'client-page:src/app/(auth)/register/page.tsx',
-  'client-page:src/app/agents/[agentId]/conversations/[conversationId]/page.tsx',
-  'client-page:src/app/agents/[agentId]/conversations/[conversationId]/traces/page.tsx',
-  'client-page:src/app/agents/[agentId]/page.tsx',
-  'client-page:src/app/agents/[agentId]/settings/page.tsx',
-  'client-page:src/app/agents/[agentId]/visual-settings/page.tsx',
-  'client-page:src/app/agents/new/conversational/page.tsx',
-  'client-page:src/app/agents/new/manual/page.tsx',
-  'client-page:src/app/agents/new/page.tsx',
-  'client-page:src/app/agents/new/template/page.tsx',
-  'client-page:src/app/marketplace/[item-id]/page.tsx',
-  'client-page:src/app/marketplace/page.tsx',
-  'client-page:src/app/settings/admin-audit/page.tsx',
-  'client-page:src/app/settings/agent-api/page.tsx',
-  'client-page:src/app/settings/credentials/page.tsx',
-  'client-page:src/app/settings/marketplace-admin/page.tsx',
-  'client-page:src/app/settings/memory/page.tsx',
-  'client-page:src/app/settings/models/page.tsx',
-  'client-page:src/app/settings/page.tsx',
-  'client-page:src/app/settings/schedules/page.tsx',
-  'client-page:src/app/settings/system-credentials/page.tsx',
-  'client-page:src/app/settings/system-llm/page.tsx',
-  'tabs:src/app/settings/usage/page.tsx',
-  'client-page:src/app/settings/usage/page.tsx',
-  'client-page:src/app/shared/[shareId]/page.tsx',
-  'common-page-header:src/app/agents/new/page.tsx',
-  'direct-api-import:src/app/agents/[agentId]/page.tsx',
-  'direct-api-import:src/app/agents/new/conversational/page.tsx',
-  'direct-api-import:src/app/settings/page.tsx',
-  'direct-api-import:src/components/chat/artifacts/artifact-preview.tsx',
-  'direct-api-import:src/components/chat/artifacts/providers/use-artifact-binary.ts',
-  'direct-api-import:src/components/chat/assistant-thread.tsx',
-  'direct-api-import:src/components/chat/right-rail/chat-right-rail.tsx',
-  'direct-api-import:src/components/chat/trace-debugger-view.tsx',
-  'direct-api-import:src/components/chat/use-conversation-row-actions.tsx',
-  'direct-api-import:src/components/skill/skill-builder-dialog.tsx',
-  'direct-api-import:src/components/skill/skill-detail-package-editor.tsx',
-  'direct-api-import:src/components/skill/skill-file-editor-pane.tsx',
-  'direct-api-import:src/components/skill/use-skill-file-remote-cache.ts',
-  'private-route-import:src/app/agents/new/manual/page.tsx->src/app/agents/[agentId]/settings/_components/form-mode/form-mode',
-  'private-route-import:src/app/agents/new/manual/page.tsx->src/app/agents/[agentId]/settings/_components/right-panel/right-panel',
-  'barrel-index:src/components/agent-prism/theme/index.ts',
-  'barrel-index:src/components/marketplace/badges/index.ts',
-  'barrel-index:src/lib/types/index.ts',
-])
+function isStableIssueKey(value) {
+  return typeof value === 'string' && /^[a-z][a-z0-9-]*:src\/.+/.test(value)
+}
+
+function failBaseline(message) {
+  console.error(`frontend architecture baseline error: ${message}`)
+  exit(1)
+}
+
+function readBaseline() {
+  let parsed
+  try {
+    parsed = JSON.parse(readFileSync(baselinePath, 'utf8'))
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'unreadable baseline'
+    failBaseline(reason)
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    failBaseline('expected an object')
+  }
+  const baseline = parsed
+  const keys = Object.keys(baseline).sort()
+  if (keys.join(',') !== 'issueKeys,schemaVersion,strictBlockerKeys') {
+    failBaseline('expected only schemaVersion, issueKeys, and strictBlockerKeys')
+  }
+  if (baseline.schemaVersion !== 1) failBaseline('unsupported schemaVersion')
+  if (!Array.isArray(baseline.issueKeys) || !Array.isArray(baseline.strictBlockerKeys)) {
+    failBaseline('issueKeys and strictBlockerKeys must be arrays')
+  }
+  if (!baseline.issueKeys.every(isStableIssueKey)) {
+    failBaseline('issueKeys must contain stable identities')
+  }
+  if (!baseline.strictBlockerKeys.every(isStableIssueKey)) {
+    failBaseline('strictBlockerKeys must contain stable identities')
+  }
+
+  const issueKeys = new Set(baseline.issueKeys)
+  const strictBlockerKeys = new Set(baseline.strictBlockerKeys)
+  if (issueKeys.size !== baseline.issueKeys.length) failBaseline('issueKeys contains duplicates')
+  if (strictBlockerKeys.size !== baseline.strictBlockerKeys.length) {
+    failBaseline('strictBlockerKeys contains duplicates')
+  }
+  if (baseline.issueKeys.join('\n') !== [...issueKeys].toSorted().join('\n')) {
+    failBaseline('issueKeys must be sorted')
+  }
+  if (baseline.strictBlockerKeys.join('\n') !== [...strictBlockerKeys].toSorted().join('\n')) {
+    failBaseline('strictBlockerKeys must be sorted')
+  }
+  if ([...strictBlockerKeys].some((key) => !issueKeys.has(key))) {
+    failBaseline('strictBlockerKeys must be a subset of issueKeys')
+  }
+
+  return { issueKeys, strictBlockerKeys }
+}
+
+const baseline = readBaseline()
 
 function toPosixPath(path) {
   return path.split(sep).join('/')
@@ -411,8 +421,27 @@ for (const issue of issues) {
 
 console.log(`frontend architecture issues: ${issues.length}`)
 
+const actualIssueKeys = issues.map(issueKey)
+const actualIssueKeySet = new Set(actualIssueKeys)
+if (actualIssueKeySet.size !== actualIssueKeys.length) {
+  console.error('frontend architecture baseline error: scanner emitted duplicate stable identities')
+  exit(1)
+}
+
+const unexpectedIssueKeys = [...actualIssueKeySet].filter((key) => !baseline.issueKeys.has(key))
+const missingIssueKeys = [...baseline.issueKeys].filter((key) => !actualIssueKeySet.has(key))
+if (unexpectedIssueKeys.length > 0 || missingIssueKeys.length > 0) {
+  for (const key of unexpectedIssueKeys.toSorted()) {
+    console.error(`frontend architecture new issue: ${key}`)
+  }
+  for (const key of missingIssueKeys.toSorted()) {
+    console.error(`frontend architecture baseline issue missing from source: ${key}`)
+  }
+  exit(1)
+}
+
 if (strict) {
-  const blockingIssues = issues.filter((issue) => !strictBaseline.has(issueKey(issue)))
+  const blockingIssues = issues.filter((issue) => baseline.strictBlockerKeys.has(issueKey(issue)))
   console.log(`frontend architecture strict blocking issues: ${blockingIssues.length}`)
   if (blockingIssues.length > 0) exit(1)
 }

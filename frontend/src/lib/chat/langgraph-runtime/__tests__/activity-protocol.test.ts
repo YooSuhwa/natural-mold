@@ -72,6 +72,26 @@ describe('reduceProtocolActivity', () => {
     ])
   })
 
+  it('preserves the current activity projection when a partial stream delta is malformed', () => {
+    const activities = reduce([
+      event('updates', {
+        node: 'agent',
+        values: {
+          todos: [{ id: 'todo-1', content: 'Plan', status: 'in_progress' }],
+        },
+      }),
+      event('messages', { event: 'content-block-delta', delta: null }, { seq: 2 }),
+    ])
+
+    expect(activities).toEqual([
+      expect.objectContaining({
+        kind: 'planning',
+        status: 'running',
+        title: 'Planning',
+      }),
+    ])
+  })
+
   it('marks root running activities complete when a terminal lifecycle event is replayed', () => {
     const activities = reduce([
       event(

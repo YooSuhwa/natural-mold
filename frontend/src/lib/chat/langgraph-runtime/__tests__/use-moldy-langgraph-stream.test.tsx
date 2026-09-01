@@ -236,6 +236,26 @@ describe('useMoldyLangGraphStream', () => {
     expect(result.current.activities).toEqual([])
     expect(result.current.deepAgentsState).toEqual({ todos: [], files: [] })
     expect(result.current.assistantRuntime).toEqual(expect.objectContaining({ kind: 'runtime' }))
+    expect(Object.keys(result.current).toSorted()).toEqual([
+      'activities',
+      'assistantRuntime',
+      'deepAgentsState',
+      'onResumeDecisions',
+      'registerDecision',
+      'sendMessage',
+      'stream',
+    ])
+    expect(result.current).toEqual(
+      expect.objectContaining({
+        stream: mocks.stream,
+        assistantRuntime: expect.objectContaining({ kind: 'runtime' }),
+        activities: [],
+        deepAgentsState: { todos: [], files: [] },
+        sendMessage: expect.any(Function),
+        onResumeDecisions: expect.any(Function),
+        registerDecision: expect.any(Function),
+      }),
+    )
   })
 
   it('defers transport state hydration emitted during initial render until after mount', async () => {
