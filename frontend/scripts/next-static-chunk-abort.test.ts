@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  consumeMainFrameRequestFailure,
   isExpectedNextStaticChunkAbort,
-  observeMainFrameRequestAtStart,
+  observeAndRecordMainFrameRequestAtStart,
   type NextStaticChunkAbortInput,
   type RequestStartAccess,
 } from '../e2e/helpers/next-static-chunk-abort'
@@ -12,82 +13,108 @@ const validAbort: NextStaticChunkAbortInput = {
   method: 'GET',
   resourceType: 'script',
   isMainFrame: true,
+  startedBeforeCurrentMainFrameNavigation: true,
   requestUrl: 'http://localhost:3100/_next/static/chunks/app/page.js?cache=1',
   currentPageUrl: 'http://localhost:3100/agents/agent-1/conversations/conversation-1',
-  elapsedSinceMainFrameNavigationMs: 999,
 }
 
-describe('isExpectedNextStaticChunkAbort', () => {
-  it('tracks the same request identity before teardown without failed-time accessors', () => {
-    // Given: a main-frame request whose browser accessors become unavailable after navigation starts.
+function mainFrameRequest(isNavigationRequest: boolean, mainFrame: object): RequestStartAccess {
+  return {
+    isNavigationRequest: () => isNavigationRequest,
+    serviceWorker: () => null,
+    frame: () => mainFrame,
+  }
+}
+
+describe('Next static chunk abort provenance', () => {
+  it('accepts a delayed previous-document chunk after a later reload and cleans up its identity', () => {
+    // Given: initial navigation -> old chunk -> reload navigation.
     const mainFrame = {}
-    const observedRequests = new WeakSet<RequestStartAccess>()
-    let serviceWorkerCalls = 0
-    let frameCalls = 0
-    let isTornDown = false
-    const request: RequestStartAccess = {
+    const requestGenerations = new WeakMap<RequestStartAccess, number>()
+    let generation = 0
+    const initialNavigation = mainFrameRequest(true, mainFrame)
+    const oldChunk = mainFrameRequest(false, mainFrame)
+    const reloadNavigation = mainFrameRequest(true, mainFrame)
+
+    const initial = observeAndRecordMainFrameRequestAtStart(
+      requestGenerations,
+      initialNavigation,
+      mainFrame,
+      generation,
+    )
+    expect(initial).toEqual({ navigationGeneration: 1, mainFrameNavigationBegan: true })
+    if (initial === undefined) return
+    generation = initial.navigationGeneration
+    const chunk = observeAndRecordMainFrameRequestAtStart(
+      requestGenerations,
+      oldChunk,
+      mainFrame,
+      generation,
+    )
+    expect(chunk).toEqual({ navigationGeneration: 1, mainFrameNavigationBegan: false })
+    const reload = observeAndRecordMainFrameRequestAtStart(
+      requestGenerations,
+      reloadNavigation,
+      mainFrame,
+      generation,
+    )
+    expect(reload).toEqual({ navigationGeneration: 2, mainFrameNavigationBegan: true })
+    if (reload === undefined) return
+    generation = reload.navigationGeneration
+
+    // When: the old chunk fails long after the reload began.
+    const provenance = consumeMainFrameRequestFailure(requestGenerations, oldChunk, generation)
+    const actual = isExpectedNextStaticChunkAbort({ ...validAbort, ...provenance })
+
+    // Then: only the previous-generation identity is accepted and removed.
+    expect(actual).toBe(true)
+    expect(requestGenerations.has(oldChunk)).toBe(false)
+  })
+
+  it('rejects current-generation and equal-shaped unobserved identities', () => {
+    // Given: a current chunk tracked after navigation and a different untracked request.
+    const mainFrame = {}
+    const requestGenerations = new WeakMap<RequestStartAccess, number>()
+    const navigation = mainFrameRequest(true, mainFrame)
+    const currentChunk = mainFrameRequest(false, mainFrame)
+    const sameShapedUnobservedChunk = mainFrameRequest(false, mainFrame)
+    const startedNavigation = observeAndRecordMainFrameRequestAtStart(
+      requestGenerations,
+      navigation,
+      mainFrame,
+      0,
+    )
+    expect(startedNavigation).toBeDefined()
+    if (startedNavigation === undefined) return
+    const generation = startedNavigation.navigationGeneration
+    observeAndRecordMainFrameRequestAtStart(requestGenerations, currentChunk, mainFrame, generation)
+
+    // When: each identity is consumed at failure time.
+    const current = consumeMainFrameRequestFailure(requestGenerations, currentChunk, generation)
+    const unobserved = consumeMainFrameRequestFailure(
+      requestGenerations,
+      sameShapedUnobservedChunk,
+      generation,
+    )
+
+    // Then: neither identity has prior-generation provenance.
+    expect(isExpectedNextStaticChunkAbort({ ...validAbort, ...current })).toBe(false)
+    expect(isExpectedNextStaticChunkAbort({ ...validAbort, ...unobserved })).toBe(false)
+    expect(requestGenerations.has(currentChunk)).toBe(false)
+  })
+
+  it('does not change the map or generation when request-start access is unsafe', () => {
+    // Given: service-worker, frame, and navigation accessors that are unsafe or not page-main-frame.
+    const mainFrame = {}
+    const requestGenerations = new WeakMap<RequestStartAccess, number>()
+    const generation = 7
+    let serviceWorkerFrameCalls = 0
+    const serviceWorkerThrow: RequestStartAccess = {
       isNavigationRequest: () => true,
       serviceWorker: () => {
-        serviceWorkerCalls += 1
-        if (isTornDown) throw new Error('service worker unavailable after teardown')
-        return null
+        throw new Error('service worker unavailable')
       },
-      frame: () => {
-        frameCalls += 1
-        if (isTornDown) throw new Error('frame unavailable after teardown')
-        return mainFrame
-      },
-    }
-
-    // When: the request is observed at start and later fails after teardown.
-    const startsMainFrameNavigation = observeMainFrameRequestAtStart(
-      observedRequests,
-      request,
-      mainFrame,
-    )
-    isTornDown = true
-    const remainsTrackedAtFailure = observedRequests.has(request)
-
-    // Then: identity remains available without calling serviceWorker() or frame() again.
-    expect(startsMainFrameNavigation).toBe(true)
-    expect(remainsTrackedAtFailure).toBe(true)
-    expect(serviceWorkerCalls).toBe(1)
-    expect(frameCalls).toBe(1)
-  })
-
-  it('does not treat a different same-shaped request as observed', () => {
-    // Given: two equal-looking requests with distinct identities.
-    const mainFrame = {}
-    const observedRequests = new WeakSet<RequestStartAccess>()
-    const observedRequest: RequestStartAccess = {
-      isNavigationRequest: () => false,
-      serviceWorker: () => null,
       frame: () => mainFrame,
-    }
-    const sameShapedRequest: RequestStartAccess = {
-      isNavigationRequest: () => false,
-      serviceWorker: () => null,
-      frame: () => mainFrame,
-    }
-
-    // When: only the first request is observed at start.
-    observeMainFrameRequestAtStart(observedRequests, observedRequest, mainFrame)
-
-    // Then: the failure-time lookup accepts only the exact request instance.
-    expect(observedRequests.has(observedRequest)).toBe(true)
-    expect(observedRequests.has(sameShapedRequest)).toBe(false)
-  })
-
-  it('rejects iframe, service-worker, and throwing request-start accessors before tracking', () => {
-    // Given: requests that cannot be safely tied to the page main frame.
-    const mainFrame = {}
-    const otherFrame = {}
-    const observedRequests = new WeakSet<RequestStartAccess>()
-    let serviceWorkerFrameCalls = 0
-    const iframeRequest: RequestStartAccess = {
-      isNavigationRequest: () => true,
-      serviceWorker: () => null,
-      frame: () => otherFrame,
     }
     const serviceWorkerRequest: RequestStartAccess = {
       isNavigationRequest: () => true,
@@ -97,144 +124,76 @@ describe('isExpectedNextStaticChunkAbort', () => {
         return mainFrame
       },
     }
-    const frameThrowRequest: RequestStartAccess = {
+    const frameThrow: RequestStartAccess = {
       isNavigationRequest: () => true,
       serviceWorker: () => null,
       frame: () => {
-        throw new Error('frame unavailable at request start')
+        throw new Error('frame unavailable')
       },
     }
-    const navigationThrowRequest: RequestStartAccess = {
+    const navigationThrow: RequestStartAccess = {
       isNavigationRequest: () => {
-        throw new Error('navigation status unavailable at request start')
+        throw new Error('navigation unavailable')
       },
       serviceWorker: () => null,
       frame: () => mainFrame,
     }
+    const iframeRequest: RequestStartAccess = {
+      isNavigationRequest: () => true,
+      serviceWorker: () => null,
+      frame: () => ({}),
+    }
 
-    // When: each request is observed at start.
-    const iframeStartsNavigation = observeMainFrameRequestAtStart(
-      observedRequests,
-      iframeRequest,
-      mainFrame,
-    )
-    const serviceWorkerStartsNavigation = observeMainFrameRequestAtStart(
-      observedRequests,
+    // When: the shared fixture helper observes each request start.
+    for (const request of [
+      serviceWorkerThrow,
       serviceWorkerRequest,
-      mainFrame,
-    )
-    const frameThrowStartsNavigation = observeMainFrameRequestAtStart(
-      observedRequests,
-      frameThrowRequest,
-      mainFrame,
-    )
-    const navigationThrowStartsNavigation = observeMainFrameRequestAtStart(
-      observedRequests,
-      navigationThrowRequest,
-      mainFrame,
-    )
+      frameThrow,
+      navigationThrow,
+      iframeRequest,
+    ]) {
+      expect(
+        observeAndRecordMainFrameRequestAtStart(requestGenerations, request, mainFrame, generation),
+      ).toBeUndefined()
+      expect(requestGenerations.has(request)).toBe(false)
+    }
 
-    // Then: all fail closed, leave no unproven identity, and service workers never call frame().
-    expect(iframeStartsNavigation).toBe(false)
-    expect(serviceWorkerStartsNavigation).toBe(false)
-    expect(frameThrowStartsNavigation).toBe(false)
-    expect(navigationThrowStartsNavigation).toBe(false)
-    expect(observedRequests.has(iframeRequest)).toBe(false)
-    expect(observedRequests.has(serviceWorkerRequest)).toBe(false)
-    expect(observedRequests.has(frameThrowRequest)).toBe(false)
-    expect(observedRequests.has(navigationThrowRequest)).toBe(false)
+    // Then: no unsafe request can mutate provenance or the caller's generation.
+    expect(generation).toBe(7)
     expect(serviceWorkerFrameCalls).toBe(0)
   })
 
-  it('supports failure-time lookup cleanup and keeps the classifier identity-bound', () => {
-    // Given: an observed main-frame script request and an unobserved same-shaped request.
-    const mainFrame = {}
-    const observedRequests = new WeakSet<RequestStartAccess>()
-    const trackedRequest: RequestStartAccess = {
-      isNavigationRequest: () => false,
-      serviceWorker: () => null,
-      frame: () => mainFrame,
-    }
-    const unobservedRequest: RequestStartAccess = {
-      isNavigationRequest: () => false,
-      serviceWorker: () => null,
-      frame: () => mainFrame,
-    }
-    observeMainFrameRequestAtStart(observedRequests, trackedRequest, mainFrame)
-
-    // When: failure-time code reads identity, runs the classifier, then deletes the request.
-    const trackedAtFailure = observedRequests.has(trackedRequest)
-    const trackedClassifierResult = isExpectedNextStaticChunkAbort({
-      ...validAbort,
-      isMainFrame: trackedAtFailure,
-    })
-    observedRequests.delete(trackedRequest)
-    const unobservedClassifierResult = isExpectedNextStaticChunkAbort({
-      ...validAbort,
-      isMainFrame: observedRequests.has(unobservedRequest),
-    })
-
-    // Then: only tracked identity enables the exact classifier and cleanup removes it.
-    expect(trackedClassifierResult).toBe(true)
-    expect(unobservedClassifierResult).toBe(false)
-    expect(observedRequests.has(trackedRequest)).toBe(false)
-  })
-
-  it('accepts only the generated Next JavaScript chunk abort during main-frame navigation', () => {
-    // Given: an exact same-origin main-frame generated chunk request that the browser aborts on reload.
-
-    // When: the request failure is classified.
-    const actual = isExpectedNextStaticChunkAbort(validAbort)
-
-    // Then: the expected transport artifact is ignored by the E2E error collector.
-    expect(actual).toBe(true)
-    expect(
-      isExpectedNextStaticChunkAbort({ ...validAbort, elapsedSinceMainFrameNavigationMs: 0 }),
-    ).toBe(true)
-  })
-
   it.each([
-    ['a non-abort error', { errorText: 'net::ERR_FAILED' }],
     ['a connection reset', { errorText: 'net::ERR_CONNECTION_RESET' }],
-    ['an abort with additional failure text', { errorText: 'net::ERR_ABORTED extra' }],
+    ['an abort with extra text', { errorText: 'net::ERR_ABORTED extra' }],
     ['a POST request', { method: 'POST' }],
-    ['a stylesheet request', { resourceType: 'stylesheet' }],
-    ['an image request', { resourceType: 'image' }],
-    ['an image asset path', { requestUrl: 'http://localhost:3100/_next/static/chunks/logo.png' }],
-    ['the Next image route', { requestUrl: 'http://localhost:3100/_next/image?url=%2Flogo.png' }],
+    ['an image resource', { resourceType: 'image' }],
     ['an iframe request', { isMainFrame: false }],
+    ['a current-navigation request', { startedBeforeCurrentMainFrameNavigation: false }],
+    ['a cross-origin URL', { requestUrl: 'http://localhost:3200/_next/static/chunks/app/page.js' }],
+    ['a Next image URL', { requestUrl: 'http://localhost:3100/_next/image?url=%2Flogo.png' }],
+    ['an image path', { requestUrl: 'http://localhost:3100/_next/static/chunks/logo.png' }],
+    ['a path outside chunks', { requestUrl: 'http://localhost:3100/_next/static/other/page.js' }],
     [
-      'a cross-origin request',
-      { requestUrl: 'http://localhost:3200/_next/static/chunks/app/page.js' },
-    ],
-    [
-      'a path outside static chunks',
-      { requestUrl: 'http://localhost:3100/_next/static/other/page.js' },
-    ],
-    [
-      'a static chunk path prefix spoof',
+      'a chunks-prefix spoof',
       { requestUrl: 'http://localhost:3100/_next/static/chunks-evil/page.js' },
     ],
     ['a source map', { requestUrl: 'http://localhost:3100/_next/static/chunks/app/page.js.map' }],
     ['a stylesheet path', { requestUrl: 'http://localhost:3100/_next/static/chunks/app/page.css' }],
     [
-      'a query-only JavaScript path spoof',
-      {
-        requestUrl: 'http://localhost:3100/_next/static/chunks/?asset=app/page.js',
-      },
+      'a query-only JavaScript spoof',
+      { requestUrl: 'http://localhost:3100/_next/static/chunks/?asset=app/page.js' },
     ],
     ['a malformed request URL', { requestUrl: 'not-a-url' }],
-    ['a malformed current page URL', { currentPageUrl: 'not-a-url' }],
-    ['a request before navigation starts', { elapsedSinceMainFrameNavigationMs: -1 }],
-    ['the 1000ms boundary', { elapsedSinceMainFrameNavigationMs: 1000 }],
+    ['a malformed page URL', { currentPageUrl: 'not-a-url' }],
   ])('rejects %s', (_label, overrides: Partial<NextStaticChunkAbortInput>) => {
-    // Given: one safety invariant differs from the exact approved tuple.
+    // Given: one exact abort invariant is violated.
     const input: NextStaticChunkAbortInput = { ...validAbort, ...overrides }
 
-    // When: the request failure is classified.
+    // When: the failure is classified.
     const actual = isExpectedNextStaticChunkAbort(input)
 
-    // Then: it remains visible to the E2E error collector.
+    // Then: it remains visible to the error collector.
     expect(actual).toBe(false)
   })
 })

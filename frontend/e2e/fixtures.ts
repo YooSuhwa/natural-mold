@@ -7,8 +7,9 @@ import {
 } from '@playwright/test'
 
 import {
+  consumeMainFrameRequestFailure,
   isExpectedNextStaticChunkAbort,
-  observeMainFrameRequestAtStart,
+  observeAndRecordMainFrameRequestAtStart,
 } from './helpers/next-static-chunk-abort'
 
 type ErrorCollector = {
@@ -115,11 +116,20 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
   ],
   errors: async ({ page }, use) => {
     const errors: ErrorCollector = { console: [], page: [], network: [] }
-    const observedMainFrameRequests = new WeakSet<Request>()
+    const mainFrameRequestGenerations = new WeakMap<Request, number>()
+    let mainFrameNavigationGeneration = 0
     let mainFrameNavigationStartedAt = Number.NEGATIVE_INFINITY
 
     page.on('request', (request) => {
-      if (observeMainFrameRequestAtStart(observedMainFrameRequests, request, page.mainFrame())) {
+      const observation = observeAndRecordMainFrameRequestAtStart(
+        mainFrameRequestGenerations,
+        request,
+        page.mainFrame(),
+        mainFrameNavigationGeneration,
+      )
+      if (observation === undefined) return
+      mainFrameNavigationGeneration = observation.navigationGeneration
+      if (observation.mainFrameNavigationBegan) {
         mainFrameNavigationStartedAt = Date.now()
       }
     })
@@ -140,8 +150,11 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
       }
     })
     page.on('requestfailed', (req) => {
-      const isMainFrameRequest = observedMainFrameRequests.has(req)
-      observedMainFrameRequests.delete(req)
+      const nextStaticChunkProvenance = consumeMainFrameRequestFailure(
+        mainFrameRequestGenerations,
+        req,
+        mainFrameNavigationGeneration,
+      )
       const url = req.url()
       const errorText = req.failure()?.errorText ?? 'unknown'
       const expectedStreamDetach =
@@ -197,10 +210,9 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         errorText,
         method: req.method(),
         resourceType: req.resourceType(),
-        isMainFrame: isMainFrameRequest,
+        ...nextStaticChunkProvenance,
         requestUrl: url,
         currentPageUrl: page.url(),
-        elapsedSinceMainFrameNavigationMs: Date.now() - mainFrameNavigationStartedAt,
       })
       if (
         !url.includes('favicon') &&

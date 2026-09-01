@@ -3,9 +3,9 @@ export type NextStaticChunkAbortInput = {
   readonly method: string
   readonly resourceType: string
   readonly isMainFrame: boolean
+  readonly startedBeforeCurrentMainFrameNavigation: boolean
   readonly requestUrl: string
   readonly currentPageUrl: string
-  readonly elapsedSinceMainFrameNavigationMs: number
 }
 
 export type RequestStartAccess = {
@@ -14,25 +14,54 @@ export type RequestStartAccess = {
   readonly frame: () => unknown
 }
 
+export type MainFrameRequestStart = {
+  readonly navigationGeneration: number
+  readonly mainFrameNavigationBegan: boolean
+}
+
+export type MainFrameRequestFailure = {
+  readonly isMainFrame: boolean
+  readonly startedBeforeCurrentMainFrameNavigation: boolean
+}
+
 const NEXT_STATIC_CHUNKS_PREFIX = '/_next/static/chunks/'
 
 /**
- * Record main-frame request identity while its Playwright accessors are still
- * safe. Service workers and iframe requests are never tracked; if request-start
- * frame access fails, the request remains visible to the E2E error collector.
+ * Safely observe and bind an exact page-main-frame request to its navigation
+ * generation. Unsafe accessors leave both the map and caller generation intact.
  */
-export function observeMainFrameRequestAtStart<TRequest extends RequestStartAccess>(
-  observedRequests: WeakSet<TRequest>,
+export function observeAndRecordMainFrameRequestAtStart<
+  TRequest extends RequestStartAccess & object,
+>(
+  requestGenerations: WeakMap<TRequest, number>,
   request: TRequest,
   mainFrame: unknown,
-): boolean {
+  currentNavigationGeneration: number,
+): MainFrameRequestStart | undefined {
   try {
-    if (request.serviceWorker() !== null || request.frame() !== mainFrame) return false
-    const isMainFrameNavigation = request.isNavigationRequest()
-    observedRequests.add(request)
-    return isMainFrameNavigation
+    if (request.serviceWorker() !== null || request.frame() !== mainFrame) return undefined
+    const mainFrameNavigationBegan = request.isNavigationRequest()
+    let navigationGeneration = currentNavigationGeneration
+    if (mainFrameNavigationBegan) navigationGeneration += 1
+    requestGenerations.set(request, navigationGeneration)
+    return { navigationGeneration, mainFrameNavigationBegan }
   } catch {
-    return false
+    return undefined
+  }
+}
+
+/** Consume and remove the exact request provenance before failure classification. */
+export function consumeMainFrameRequestFailure<TRequest extends object>(
+  requestGenerations: WeakMap<TRequest, number>,
+  request: TRequest,
+  currentNavigationGeneration: number,
+): MainFrameRequestFailure {
+  const requestGeneration = requestGenerations.get(request)
+  requestGenerations.delete(request)
+  return {
+    isMainFrame: requestGeneration !== undefined,
+    startedBeforeCurrentMainFrameNavigation:
+      requestGeneration !== undefined && requestGeneration < currentNavigationGeneration,
   }
 }
 
@@ -61,8 +90,7 @@ export function isExpectedNextStaticChunkAbort(input: NextStaticChunkAbortInput)
     input.method === 'GET' &&
     input.resourceType === 'script' &&
     input.isMainFrame &&
-    input.elapsedSinceMainFrameNavigationMs >= 0 &&
-    input.elapsedSinceMainFrameNavigationMs < 1_000 &&
+    input.startedBeforeCurrentMainFrameNavigation &&
     isSameOriginNextJavaScriptChunk(input.requestUrl, input.currentPageUrl)
   )
 }
