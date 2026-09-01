@@ -54,6 +54,19 @@ def test_capture_tour_rejects_noncanonical_true(
         _environment(tmp_path, "scripted-capture")
 
 
+def test_lane_environment_uses_only_the_fixed_runner_interpreter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Given hostile Python controls, when the child env is built, then the runner wins."""
+    monkeypatch.setenv("MOLDY_GATE_PYTHON", "/untrusted/gate-python")
+    monkeypatch.setenv("PYTHON", "/untrusted/python")
+
+    environment = _environment(tmp_path)
+
+    assert environment["MOLDY_GATE_PYTHON"] == sys.executable
+    assert "PYTHON" not in environment
+
+
 @pytest.mark.parametrize(
     "project",
     ["scripted-smoke", "scripted-full", "scripted-capture", "live-manual"],

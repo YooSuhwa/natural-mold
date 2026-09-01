@@ -7,6 +7,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from e2e_runner_contract import E2eContractError, E2eDsns, Lane, Project
@@ -56,12 +57,22 @@ def _optional_frontend_controls(project: Project) -> dict[str, str]:
 def build_lane_environment(
     lane: Lane, project: Project, dsns: E2eDsns, run_root: Path
 ) -> dict[str, str]:
-    allowed = {"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TZ", "USER", "LOGNAME"}
+    allowed = {
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "LANG",
+        "LC_ALL",
+        "TZ",
+        "USER",
+        "LOGNAME",
+    }
     env = {key: value for key, value in os.environ.items() if key in allowed}
     frontend_port, backend_port = (3100, 8101) if lane == "scripted" else (3200, 8201)
     env.update(
         {
             "MOLDY_DISABLE_ENV_FILE": "true",
+            "MOLDY_GATE_PYTHON": sys.executable,
             "PYTHON_DOTENV_DISABLED": "1",
             "MOLDY_TEST_RUN_ROOT": str(run_root),
             "MOLDY_BACKEND_SOURCE_ROOT": str(REPO_ROOT / "backend"),

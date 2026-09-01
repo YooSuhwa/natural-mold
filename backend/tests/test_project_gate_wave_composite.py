@@ -209,6 +209,7 @@ def test_composite_environment_drops_secrets(tmp_path: Path, process: ModuleType
             "OPENAI_API_KEY": "secret",
             "NODE_OPTIONS": "--require=evil",
             "E2E_LLM_API_KEY": "secret",
+            "MOLDY_GATE_PYTHON": "/untrusted/python",
         },
         trusted,
     )

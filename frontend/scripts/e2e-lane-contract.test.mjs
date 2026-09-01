@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -236,6 +245,94 @@ describe('E2E lane contract', () => {
     expect(environment.OTEL_EXPORTER_OTLP_HEADERS).toBeUndefined()
     expect(environment.NODE_OPTIONS).toBeUndefined()
     expect(environment.E2E_LLM_API_KEY).toBeUndefined()
+  })
+
+  it('drops ambient Python controls before the fixed lifecycle derives its interpreter', () => {
+    // Given: a parent shell that supplies Python controls outside the fixed lifecycle boundary.
+    const inheritedEnvironment = {
+      MOLDY_GATE_PYTHON: '/untrusted/gate-python',
+      PYTHON: '/untrusted/python',
+    }
+
+    // When: the JavaScript launcher prepares the fixed Python lifecycle process.
+    const launcherEnvironment = buildE2ELauncherEnvironment(
+      'scripted',
+      'scripted-full',
+      inheritedEnvironment,
+    )
+
+    // Then: neither ambient Python selector crosses that trust boundary.
+    expect(launcherEnvironment.MOLDY_GATE_PYTHON).toBeUndefined()
+    expect(launcherEnvironment.PYTHON).toBeUndefined()
+
+    // When: the fixed Python lifecycle supplies its own interpreter to Playwright.
+    const workerEnvironment = sanitizePlaywrightEnvironment(
+      'scripted',
+      { ...launcherEnvironment, MOLDY_GATE_PYTHON: '/fixed/runner/python' },
+      'scripted-full',
+    )
+    const command = buildBackendWebServerCommand(
+      'scripted',
+      false,
+      'http://localhost:3100,http://127.0.0.1:3100',
+      8101,
+    )
+
+    // Then: the runner interpreter reaches uvicorn without reopening PATH or invoking uv.
+    expect(workerEnvironment.MOLDY_GATE_PYTHON).toBe('/fixed/runner/python')
+    expect(workerEnvironment.PYTHON).toBeUndefined()
+    expect(command).toContain('"${MOLDY_GATE_PYTHON:-./.venv/bin/python}" -m uvicorn')
+    expect(command).not.toContain('uv run')
+  })
+
+  it('quotes the runner interpreter and uses the backend-local standalone fallback', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'moldy-python-command-'))
+    const backendRoot = path.join(tempRoot, 'backend')
+    const fallback = path.join(backendRoot, '.venv', 'bin', 'python')
+    const injectedMarker = path.join(tempRoot, 'injected-marker')
+    const capturedArguments = path.join(tempRoot, 'arguments.txt')
+    const hostileName = path.join(tempRoot, 'python $(touch injected-marker)')
+    const command = buildBackendWebServerCommand(
+      'scripted',
+      false,
+      'http://localhost:3100,http://127.0.0.1:3100',
+      8101,
+    )
+    const script = '#!/bin/sh\nprintf "%s\\n" "$@" > "$MOLDY_CAPTURE_ARGS"\n'
+
+    try {
+      mkdirSync(path.dirname(fallback), { recursive: true })
+      for (const executable of [hostileName, fallback]) {
+        writeFileSync(executable, script, { mode: 0o700 })
+        chmodSync(executable, 0o700)
+      }
+
+      for (const gatePython of [hostileName, undefined]) {
+        rmSync(capturedArguments, { force: true })
+        const environment = {
+          PATH: '/usr/bin:/bin',
+          MOLDY_CAPTURE_ARGS: capturedArguments,
+          ...(gatePython ? { MOLDY_GATE_PYTHON: gatePython } : {}),
+        }
+        const result = spawnSync('/bin/sh', ['-ceu', command], {
+          cwd: backendRoot,
+          env: environment,
+          encoding: 'utf8',
+        })
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(readFileSync(capturedArguments, 'utf8').trim().split('\n')).toEqual([
+          '-m',
+          'uvicorn',
+          'app.main:app',
+          '--port',
+          '8101',
+        ])
+        expect(existsSync(injectedMarker)).toBe(false)
+      }
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true })
+    }
   })
 
   it('passes exactly the live connection triple only to the live lifecycle launcher', () => {
