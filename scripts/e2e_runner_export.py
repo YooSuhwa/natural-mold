@@ -133,11 +133,14 @@ def export_artifacts(
 ) -> ExportReceipt:
     del lane
     receipt_path = resources.run_root / "export-receipt.json"
-    sources = (
-        resources.run_root / "frontend/test-results" / project,
-        resources.run_root / "output/captures",
-        resources.run_root / "output/e2e-captures",
-    )
+    sources = [resources.run_root / "frontend/test-results" / project]
+    if project == "scripted-capture":
+        sources.extend(
+            (
+                resources.run_root / "output/captures",
+                resources.run_root / "output/e2e-captures",
+            )
+        )
     base_slug = os.environ.get("E2E_EXPORT_SLUG", project)[:48].rstrip("-")
     env = {
         key: value

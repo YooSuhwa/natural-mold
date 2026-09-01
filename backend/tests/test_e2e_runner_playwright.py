@@ -42,7 +42,13 @@ def test_json_list_parses_exact_leaf_identity(tmp_path: Path) -> None:
                         "specs": [
                             {
                                 "title": "leaf title",
-                                "tests": [{"projectName": "live-manual", "results": []}],
+                                "tests": [
+                                    {
+                                        "projectName": "live-manual",
+                                        "expectedStatus": "passed",
+                                        "results": [],
+                                    }
+                                ],
                             }
                         ],
                     }
@@ -54,6 +60,186 @@ def test_json_list_parses_exact_leaf_identity(tmp_path: Path) -> None:
     nodes = parse_playwright_json(receipt)
 
     assert nodes == (PlaywrightNode("live-manual", "e2e/builder.spec.ts", "leaf title"),)
+
+
+@pytest.mark.parametrize(
+    ("active_results", "skipped_results"),
+    [
+        ([], []),
+        ([{"status": "passed"}], [{"status": "skipped"}]),
+    ],
+)
+def test_receipt_omits_tests_declared_skipped(
+    tmp_path: Path,
+    active_results: list[dict[str, str]],
+    skipped_results: list[dict[str, str]],
+) -> None:
+    """Given list or execution skips, when parsed, then only executable identities remain."""
+    receipt = tmp_path / "list.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "suites": [
+                    {
+                        "file": "e2e/drafts.spec.ts",
+                        "specs": [
+                            {
+                                "title": "active",
+                                "tests": [
+                                    {
+                                        "projectName": "scripted-full",
+                                        "expectedStatus": "passed",
+                                        "results": active_results,
+                                    }
+                                ],
+                            },
+                            {
+                                "title": "draft",
+                                "tests": [
+                                    {
+                                        "projectName": "scripted-full",
+                                        "expectedStatus": "skipped",
+                                        "annotations": [{"type": "skip"}],
+                                        "results": skipped_results,
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+
+    nodes = parse_playwright_json(receipt)
+
+    assert nodes == (PlaywrightNode("scripted-full", "e2e/drafts.spec.ts", "active"),)
+
+
+@pytest.mark.parametrize("field", ["expectedStatus", "resultStatus"])
+def test_receipt_rejects_unknown_playwright_status(tmp_path: Path, field: str) -> None:
+    """Given an unknown status, when parsed, then receipt validation fails closed."""
+    test = {
+        "projectName": "scripted-full",
+        "expectedStatus": "passed",
+        "results": [{"status": "passed"}],
+    }
+    if field == "expectedStatus":
+        test["expectedStatus"] = "customer-secret-status"
+    else:
+        test["results"] = [{"status": "customer-secret-status"}]
+    receipt = tmp_path / f"{field}.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "suites": [
+                    {
+                        "file": "e2e/a.spec.ts",
+                        "specs": [{"title": "leaf", "tests": [test]}],
+                    }
+                ]
+            }
+        )
+    )
+
+    with pytest.raises(PlaywrightReceiptError, match="invalid_playwright_status"):
+        parse_playwright_json(receipt)
+
+
+@pytest.mark.parametrize("field", ["expectedStatus", "resultStatus"])
+def test_receipt_rejects_missing_playwright_status(tmp_path: Path, field: str) -> None:
+    """Given an omitted status, when parsed, then receipt validation fails closed."""
+    test = {
+        "projectName": "scripted-full",
+        "expectedStatus": "passed",
+        "results": [{"status": "passed"}],
+    }
+    if field == "expectedStatus":
+        del test["expectedStatus"]
+    else:
+        test["results"] = [{}]
+    receipt = tmp_path / f"missing-{field}.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "suites": [
+                    {
+                        "file": "e2e/a.spec.ts",
+                        "specs": [{"title": "leaf", "tests": [test]}],
+                    }
+                ]
+            }
+        )
+    )
+
+    with pytest.raises(PlaywrightReceiptError, match="missing_playwright_status"):
+        parse_playwright_json(receipt)
+
+
+@pytest.mark.parametrize("result_status", ["passed", "failed", "timedOut", "interrupted"])
+def test_receipt_rejects_executed_result_declared_skipped(
+    tmp_path: Path, result_status: str
+) -> None:
+    """Given a declared skip that executed, when parsed, then validation fails closed."""
+    receipt = tmp_path / f"contradictory-{result_status}.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "suites": [
+                    {
+                        "file": "e2e/a.spec.ts",
+                        "specs": [
+                            {
+                                "title": "leaf",
+                                "tests": [
+                                    {
+                                        "projectName": "scripted-full",
+                                        "expectedStatus": "skipped",
+                                        "results": [{"status": result_status}],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+
+    with pytest.raises(PlaywrightReceiptError, match="contradictory_playwright_status"):
+        parse_playwright_json(receipt)
+
+
+def test_receipt_accepts_playwright_interrupted_status(tmp_path: Path) -> None:
+    """Given Playwright's supported interrupted status, when parsed, then identity is retained."""
+    receipt = tmp_path / "interrupted.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "suites": [
+                    {
+                        "file": "e2e/a.spec.ts",
+                        "specs": [
+                            {
+                                "title": "leaf",
+                                "tests": [
+                                    {
+                                        "projectName": "scripted-full",
+                                        "expectedStatus": "interrupted",
+                                        "results": [{"status": "interrupted"}],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+
+    assert parse_playwright_json(receipt) == (
+        PlaywrightNode("scripted-full", "e2e/a.spec.ts", "leaf"),
+    )
 
 
 def test_live_cases_require_exactly_four_unique_cases() -> None:
@@ -78,7 +264,13 @@ def test_json_list_rejects_duplicate_physical_node(tmp_path: Path) -> None:
     receipt = tmp_path / "list.json"
     duplicate = {
         "title": "same leaf",
-        "tests": [{"projectName": "live-manual", "results": []}],
+        "tests": [
+            {
+                "projectName": "live-manual",
+                "expectedStatus": "passed",
+                "results": [],
+            }
+        ],
     }
     receipt.write_text(
         json.dumps(
@@ -141,7 +333,13 @@ def test_receipt_rejects_title_beyond_title_limit(tmp_path: Path) -> None:
                         "specs": [
                             {
                                 "title": "x" * (MAX_PLAYWRIGHT_TITLE_LENGTH + 1),
-                                "tests": [{"projectName": "scripted-full", "results": []}],
+                                "tests": [
+                                    {
+                                        "projectName": "scripted-full",
+                                        "expectedStatus": "passed",
+                                        "results": [],
+                                    }
+                                ],
                             }
                         ],
                     }
@@ -169,6 +367,7 @@ def test_receipt_rejects_string_and_node_id_beyond_limits(tmp_path: Path) -> Non
                                 "tests": [
                                     {
                                         "projectName": "x" * (MAX_PLAYWRIGHT_STRING_LENGTH + 1),
+                                        "expectedStatus": "passed",
                                         "results": [],
                                     }
                                 ],
@@ -192,6 +391,7 @@ def test_receipt_rejects_string_and_node_id_beyond_limits(tmp_path: Path) -> Non
                                 "tests": [
                                     {
                                         "projectName": "p" * MAX_PLAYWRIGHT_TITLE_LENGTH,
+                                        "expectedStatus": "passed",
                                         "results": [],
                                     }
                                 ],
@@ -215,7 +415,13 @@ def test_receipt_rejects_node_explosion(tmp_path: Path) -> None:
     specs = [
         {
             "title": f"leaf {index}",
-            "tests": [{"projectName": "scripted-full", "results": []}],
+            "tests": [
+                {
+                    "projectName": "scripted-full",
+                    "expectedStatus": "passed",
+                    "results": [],
+                }
+            ],
         }
         for index in range(MAX_PLAYWRIGHT_NODES + 1)
     ]
@@ -242,6 +448,7 @@ def test_receipt_rejects_suite_and_result_explosions(tmp_path: Path) -> None:
                                 "tests": [
                                     {
                                         "projectName": "scripted-full",
+                                        "expectedStatus": "skipped",
                                         "results": [{"status": "skipped"}],
                                     }
                                 ],
@@ -275,6 +482,7 @@ def test_receipt_rejects_ambiguous_multiple_results(tmp_path: Path) -> None:
                                 "tests": [
                                     {
                                         "projectName": "scripted-full",
+                                        "expectedStatus": "passed",
                                         "results": [
                                             {"status": "passed"},
                                             {"status": "passed"},

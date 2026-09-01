@@ -34,6 +34,42 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
+async function normalizeArtifactList(page: Page, reportFile: string, notesFile: string) {
+  const artifactRail = page.getByRole('complementary')
+  const reportArtifactButton = artifactRail
+    .getByRole('button', { name: new RegExp(reportFile) })
+    .last()
+  const notesArtifactButton = artifactRail
+    .getByRole('button', { name: new RegExp(notesFile) })
+    .last()
+  const artifactPreviewHeadings = [
+    artifactRail.getByRole('heading', { name: reportFile }),
+    artifactRail.getByRole('heading', { name: notesFile }),
+  ]
+  const artifactListIsVisible = async (): Promise<boolean> =>
+    (await Promise.all([reportArtifactButton.isVisible(), notesArtifactButton.isVisible()])).every(
+      Boolean,
+    )
+  const artifactPreviewIsVisible = async (): Promise<boolean> =>
+    (await Promise.all(artifactPreviewHeadings.map((heading) => heading.isVisible()))).some(Boolean)
+
+  // 파일 이벤트는 마지막 파일을 자동 미리보기로 열 수 있다. 이벤트가 UI에 반영된 뒤
+  // 목록 패널을 선택해야 이후의 파일 선택 계약을 결정적으로 검증할 수 있다.
+  await expect
+    .poll(async () => (await artifactListIsVisible()) || (await artifactPreviewIsVisible()), {
+      timeout: 20_000,
+      intervals: [250, 500, 1000],
+    })
+    .toBe(true)
+  if (!(await artifactListIsVisible())) {
+    await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
+  }
+  await expect(reportArtifactButton).toBeVisible({ timeout: 20_000 })
+  await expect(notesArtifactButton).toBeVisible({ timeout: 20_000 })
+
+  return { reportArtifactButton }
+}
+
 test.describe('LangGraph v3 chat runtime', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
   test.skip(
@@ -91,16 +127,7 @@ test.describe('LangGraph v3 chat runtime', () => {
       await expectNoHorizontalOverflow(page)
       await page.setViewportSize(DESKTOP_VIEWPORT)
 
-      await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
-      const artifactRail = page.getByRole('complementary')
-      const reportArtifactButton = artifactRail
-        .getByRole('button', { name: new RegExp(REPORT_FILE) })
-        .last()
-      const notesArtifactButton = artifactRail
-        .getByRole('button', { name: new RegExp(NOTES_FILE) })
-        .last()
-      await expect(reportArtifactButton).toBeVisible()
-      await expect(notesArtifactButton).toBeVisible()
+      const { reportArtifactButton } = await normalizeArtifactList(page, REPORT_FILE, NOTES_FILE)
       await reportArtifactButton.click()
       await expect(
         page.getByRole('complementary').getByText('LangGraph v3 E2E Report'),

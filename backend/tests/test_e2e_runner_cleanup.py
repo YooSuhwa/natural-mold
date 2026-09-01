@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import e2e_runner_export as export_module  # noqa: E402
 from e2e_runner_cleanup import publish_runner_receipts  # noqa: E402
-from e2e_runner_contract import build_e2e_dsns  # noqa: E402
+from e2e_runner_contract import Project, build_e2e_dsns  # noqa: E402
 from e2e_runner_export import (  # noqa: E402
     EXPORT_FAILURE_CATEGORIES,
     EXPORT_FAILURE_PREFIX,
@@ -143,3 +143,45 @@ def test_export_adapter_rejects_malicious_or_noncanonical_failure_output(
     )
 
     assert receipt.failure_code == "exporter_process_failed"
+
+
+@pytest.mark.parametrize(
+    ("project", "expected_sources"),
+    [
+        ("scripted-smoke", ("frontend/test-results/scripted-smoke",)),
+        ("scripted-full", ("frontend/test-results/scripted-full",)),
+        ("live-manual", ("frontend/test-results/live-manual",)),
+        (
+            "scripted-capture",
+            (
+                "frontend/test-results/scripted-capture",
+                "output/captures",
+                "output/e2e-captures",
+            ),
+        ),
+    ],
+)
+def test_export_adapter_scopes_capture_sources_to_capture_project(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    project: Project,
+    expected_sources: tuple[str, ...],
+) -> None:
+    captured_command: list[str] = []
+
+    def record_command(
+        command: list[str], **_kwargs: ExportValue
+    ) -> subprocess.CompletedProcess[str]:
+        captured_command.extend(command)
+        return subprocess.CompletedProcess(command, 1, "", f"{EXPORT_FAILURE_PREFIX}internal\n")
+
+    monkeypatch.setattr(export_module, "run_command", record_command)
+
+    export_artifacts(_resources(tmp_path), "scripted", project, ())
+
+    sources = tuple(
+        Path(captured_command[index + 1]).relative_to(tmp_path).as_posix()
+        for index, value in enumerate(captured_command)
+        if value == "--source-dir"
+    )
+    assert sources == expected_sources

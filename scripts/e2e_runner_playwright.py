@@ -37,6 +37,10 @@ MAX_PLAYWRIGHT_RESULTS: Final = 512
 MAX_PLAYWRIGHT_STRING_LENGTH: Final = 4096
 MAX_PLAYWRIGHT_TITLE_LENGTH: Final = 1024
 MAX_PLAYWRIGHT_NODE_ID_LENGTH: Final = 2048
+PLAYWRIGHT_EXPECTED_STATUSES: Final = frozenset(
+    {"passed", "failed", "timedOut", "skipped", "interrupted"}
+)
+PLAYWRIGHT_RESULT_STATUSES: Final = PLAYWRIGHT_EXPECTED_STATUSES
 
 
 CANONICAL_LIVE_CASES = (
@@ -162,6 +166,11 @@ def _walk_suites(suites: list[JsonValue]) -> set[PlaywrightNode]:
                 node_count += 1
                 if node_count > MAX_PLAYWRIGHT_NODES:
                     raise PlaywrightReceiptError("playwright_node_limit")
+                expected_status = _string(raw_test.get("expectedStatus"))
+                if expected_status is None:
+                    raise PlaywrightReceiptError("missing_playwright_status")
+                if expected_status not in PLAYWRIGHT_EXPECTED_STATUSES:
+                    raise PlaywrightReceiptError("invalid_playwright_status")
                 results = _child_sequence(raw_test, "results")
                 result_count += len(results)
                 if result_count > MAX_PLAYWRIGHT_RESULTS:
@@ -174,8 +183,20 @@ def _walk_suites(suites: list[JsonValue]) -> set[PlaywrightNode]:
                     if not isinstance(candidate, dict):
                         raise PlaywrightReceiptError("invalid_playwright_shape")
                     result = candidate
-                    if _string(result.get("status")) == "skipped":
-                        continue
+                    result_status = _string(result.get("status"))
+                    if result_status is None:
+                        raise PlaywrightReceiptError("missing_playwright_status")
+                    if result_status not in PLAYWRIGHT_RESULT_STATUSES:
+                        raise PlaywrightReceiptError("invalid_playwright_status")
+                else:
+                    result_status = None
+                if expected_status == "skipped" and result_status not in {
+                    None,
+                    "skipped",
+                }:
+                    raise PlaywrightReceiptError("contradictory_playwright_status")
+                if expected_status == "skipped" or result_status == "skipped":
+                    continue
                 project = _project_name(raw_test, result)
                 title = _leaf_title(raw_spec, raw_test)
                 if project is None or path is None or title is None:
@@ -194,7 +215,13 @@ def _walk_suites(suites: list[JsonValue]) -> set[PlaywrightNode]:
 def parse_playwright_json(path: Path) -> tuple[PlaywrightNode, ...]:
     try:
         decoded: JsonValue = json.loads(_read_receipt(path))
-    except (UnicodeError, json.JSONDecodeError, MemoryError, RecursionError, ValueError) as error:
+    except (
+        UnicodeError,
+        json.JSONDecodeError,
+        MemoryError,
+        RecursionError,
+        ValueError,
+    ) as error:
         raise PlaywrightReceiptError("invalid_playwright_json") from error
     if not isinstance(decoded, dict):
         raise PlaywrightReceiptError("invalid_playwright_shape")

@@ -217,6 +217,31 @@ describe('E2E artifact exporter', () => {
     }
   })
 
+  it('exports scripted-full diagnostics without collecting legacy functional screenshots', () => {
+    const fixture_ = fixture()
+    try {
+      const resultDirectory = results(fixture_, 'scripted-full')
+      writeArtifact(resultDirectory, 'junit.xml', '<testsuite failures="1"/>')
+      writeArtifact(resultDirectory, 'execution.log', 'bounded failure summary')
+      writeArtifact(
+        fixture_.legacyCaptures,
+        '20260615-skill-history/functional-screenshot.png',
+        'legacy screenshot outside the selected source',
+      )
+
+      const receipt = exportFixture(fixture_, { sourceDirectories: [resultDirectory] })
+
+      expect(receipt.files.map((file) => file.path)).toEqual([
+        'export-manifest.json',
+        'results/execution.log',
+        'results/junit.xml',
+      ])
+      expect(receipt.screenshots).toEqual([])
+    } finally {
+      rmSync(fixture_.repositoryRoot, { recursive: true, force: true })
+    }
+  })
+
   it('rejects persistent capture screenshots from smoke, full, and live projects', () => {
     for (const project of ['scripted-smoke', 'scripted-full', 'live-manual']) {
       const fixture_ = fixture()

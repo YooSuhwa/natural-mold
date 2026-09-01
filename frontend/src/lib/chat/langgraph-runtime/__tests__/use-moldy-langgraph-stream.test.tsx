@@ -1,11 +1,17 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AIMessage, HumanMessage } from '@langchain/core/messages'
+import { createStore, Provider } from 'jotai'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMoldyLangGraphStream } from '../use-moldy-langgraph-stream'
 import { dispatchMoldyBranchSwitched } from '../branch-switch-events'
 import type { AttachmentAdapter, CompleteAttachment, PendingAttachment } from '@assistant-ui/react'
+import { conversationRunKeys } from '@/lib/hooks/use-conversation-runs'
+import { conversationKeys } from '@/lib/hooks/use-conversations'
+import { conversationRuntimeStatusAtom } from '@/lib/stores/chat-navigator-store'
+
+type JotaiStore = ReturnType<typeof createStore>
 
 interface MockInterrupt {
   id: string
@@ -145,10 +151,16 @@ vi.mock('sonner', () => ({
   },
 }))
 
-function createQueryWrapper() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function createQueryWrapper(
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  store: JotaiStore = createStore(),
+) {
   return function QueryWrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    return (
+      <Provider store={store}>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </Provider>
+    )
   }
 }
 
@@ -1152,6 +1164,98 @@ describe('useMoldyLangGraphStream', () => {
 
     expect(mocks.stream.stop).toHaveBeenCalled()
     expect(mocks.stream.disconnect).not.toHaveBeenCalled()
+  })
+
+  it('clears the navigator run overlay and invalidates the canceled run list', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const store = createStore()
+    queryClient.setQueryData(conversationKeys.list('agent-cancel'), [])
+    store.set(conversationRuntimeStatusAtom, { 'conversation-cancel': 'running' })
+    mocks.apiFetch
+      .mockResolvedValueOnce({ id: 'run-cancel', status: 'running', agent_id: 'agent-cancel' })
+      .mockResolvedValueOnce({ id: 'run-cancel', status: 'canceled', agent_id: 'agent-cancel' })
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-cancel',
+          conversationId: 'conversation-cancel',
+        }),
+      { wrapper: createQueryWrapper(queryClient, store) },
+    )
+
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onCancel: () => Promise<void>
+    }
+
+    await act(async () => {
+      await runtimeOptions.onCancel()
+    })
+
+    expect(store.get(conversationRuntimeStatusAtom)['conversation-cancel']).toBe('idle')
+    expect(queryClient.getQueryState(conversationKeys.list('agent-cancel'))?.isInvalidated).toBe(
+      true,
+    )
+  })
+
+  it('clears the navigator run overlay when the canceled run already finished', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const store = createStore()
+    queryClient.setQueryData(conversationRunKeys.active('conversation-cancel'), null)
+    store.set(conversationRuntimeStatusAtom, { 'conversation-cancel': 'running' })
+    mocks.apiFetch.mockResolvedValueOnce(null)
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-cancel',
+          conversationId: 'conversation-cancel',
+        }),
+      { wrapper: createQueryWrapper(queryClient, store) },
+    )
+
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onCancel: () => Promise<void>
+    }
+
+    await act(async () => {
+      await runtimeOptions.onCancel()
+    })
+
+    expect(store.get(conversationRuntimeStatusAtom)['conversation-cancel']).toBe('idle')
+    expect(
+      queryClient.getQueryState(conversationRunKeys.active('conversation-cancel'))?.isInvalidated,
+    ).toBe(true)
+  })
+
+  it('keeps the navigator running when the server cancel request fails', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const store = createStore()
+    queryClient.setQueryData(conversationKeys.list('agent-cancel'), [])
+    store.set(conversationRuntimeStatusAtom, { 'conversation-cancel': 'running' })
+    mocks.apiFetch
+      .mockResolvedValueOnce({ id: 'run-cancel', status: 'running', agent_id: 'agent-cancel' })
+      .mockRejectedValueOnce(new Error('cancel request failed'))
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-cancel',
+          conversationId: 'conversation-cancel',
+        }),
+      { wrapper: createQueryWrapper(queryClient, store) },
+    )
+
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onCancel: () => Promise<void>
+    }
+
+    await expect(runtimeOptions.onCancel()).rejects.toThrow('cancel request failed')
+
+    expect(store.get(conversationRuntimeStatusAtom)['conversation-cancel']).toBe('running')
+    expect(queryClient.getQueryState(conversationKeys.list('agent-cancel'))?.isInvalidated).toBe(
+      false,
+    )
   })
 
   it('adds a local canceled notice after assistant-ui stops a v3 run', async () => {
