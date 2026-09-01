@@ -1,5 +1,10 @@
 import { test as base, expect, type APIRequestContext, type APIResponse } from '@playwright/test'
 
+import {
+  isExpectedNextStaticChunkAbort,
+  isRequestFromMainFrame,
+} from './helpers/next-static-chunk-abort'
+
 type ErrorCollector = {
   console: string[]
   page: string[]
@@ -179,6 +184,15 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         errorText.includes('net::ERR_ABORTED') &&
         req.method() === 'DELETE' &&
         /\/api\/conversations\/[^/?]+(?:\/share)?(?:\?.*)?$/.test(url)
+      const expectedNextStaticChunkAbort = isExpectedNextStaticChunkAbort({
+        errorText,
+        method: req.method(),
+        resourceType: req.resourceType(),
+        isMainFrame: isRequestFromMainFrame(req, page.mainFrame()),
+        requestUrl: url,
+        currentPageUrl: page.url(),
+        elapsedSinceMainFrameNavigationMs: Date.now() - mainFrameNavigationStartedAt,
+      })
       if (
         !url.includes('favicon') &&
         !expectedStreamDetach &&
@@ -187,7 +201,8 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         !expectedFollowupTransitionAbort &&
         !expectedLangGraphSdkTransitionAbort &&
         !expectedBranchSwitchAbort &&
-        !expectedConversationDeleteAbort
+        !expectedConversationDeleteAbort &&
+        !expectedNextStaticChunkAbort
       ) {
         errors.network.push(`${req.method()} ${url} ${errorText}`)
       }
