@@ -52,7 +52,13 @@ def _report() -> str:
                     "specs": [
                         {
                             "title": "smoke works",
-                            "tests": [{"projectName": "scripted-smoke", "results": []}],
+                            "tests": [
+                                {
+                                    "projectName": "scripted-smoke",
+                                    "expectedStatus": "passed",
+                                    "results": [],
+                                }
+                            ],
                         }
                     ],
                 }
