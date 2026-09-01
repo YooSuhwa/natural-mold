@@ -102,9 +102,13 @@ async def test_worker_script_eval_uses_execute_in_skill_env_and_redaction(
     assert completed.summary["passed_count"] == 1
     assert completed.summary["pass_rate"] == 1
     assert completed.case_results is not None
-    execution = completed.case_results[0]["execution"]
+    case_result = completed.case_results[0]
+    assert isinstance(case_result, dict)
+    execution = case_result["execution"]
+    assert isinstance(execution, dict)
     assert execution["status"] == "passed"
     preview = execution["output_preview"]
+    assert isinstance(preview, str)
     assert "HOME=" in preview
     assert "PYTHONPATH=" in preview
     assert "SKILL_OUTPUT_DIR=" in preview
@@ -149,7 +153,10 @@ async def test_worker_script_eval_uses_execute_in_skill_sandbox_denial(
     assert completed.summary["passed_count"] == 0
     assert completed.summary["failed_count"] == 1
     assert completed.case_results is not None
-    execution = completed.case_results[0]["execution"]
+    case_result = completed.case_results[0]
+    assert isinstance(case_result, dict)
+    execution = case_result["execution"]
+    assert isinstance(execution, dict)
     assert execution["status"] == "failed"
     assert execution["output_preview"] == "Error: only python, node, or curl commands are allowed."
 
@@ -168,15 +175,26 @@ async def test_worker_script_eval_uses_execute_in_skill_sandbox_denial(
 async def test_worker_loop_consumes_enqueued_run(db: AsyncSession, tmp_path: Path) -> None:
     run = await create_run(db, tmp_path, evals=[{"input": "queued"}])
     await db.commit()
-    worker = SkillEvaluationWorker(evaluator=DeterministicSkillEvaluationEvaluator())
+    evaluator = BlockingEvaluator()
+    worker = SkillEvaluationWorker(evaluator=evaluator)
 
     with patch.object(settings, "data_root", str(tmp_path)):
-        await worker.start(TestSession)
-        worker.reserve_slot()
-        worker.enqueue(run.id, reserved=True)
-        completed = await wait_for_run_status(run.id, "completed")
-        await worker.stop()
+        try:
+            assert await worker.start(TestSession) is True
+            worker.reserve_slot()
+            worker.enqueue(run.id, reserved=True)
+            started_run_id = await asyncio.wait_for(evaluator.started.get(), timeout=5)
+            assert started_run_id == run.id
+            evaluator.releases[run.id].set()
+            await worker.stop()
+        finally:
+            await worker.stop()
 
+    async with TestSession() as session:
+        completed = await session.get(SkillEvaluationRun, run.id)
+
+    assert completed is not None
+    assert completed.status == "completed"
     assert completed.summary is not None
     assert completed.summary["case_count"] == 1
 
@@ -268,6 +286,7 @@ async def test_worker_skips_cancelled_run(db: AsyncSession, tmp_path: Path) -> N
     skipped = await worker.run_once(db, run.id)
 
     assert skipped is run
+    assert skipped is not None
     assert skipped.status == "cancelled"
     assert await audit_actions(db) == []
 
