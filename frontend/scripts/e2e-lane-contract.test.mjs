@@ -10,6 +10,7 @@ import {
 import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -43,6 +44,8 @@ import {
 } from '../e2e/global-setup.mjs'
 import { collectJsonNodes, runIsolatedLane } from './run-e2e-lane.mjs'
 import './e2e-prepared-lane.test.mjs'
+
+const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('E2E lane contract', () => {
   it('fails before lane startup unless the launcher uses Node 22', () => {
@@ -625,6 +628,22 @@ describe('E2E lane contract', () => {
       'not valid for the scripted lane',
     )
     expect(() => resolveE2EProject('live', 'unknown')).toThrow('unknown E2E project')
+  })
+
+  it('routes the named LangGraph v3 suite through functional and capture projects', () => {
+    // Given: the user-facing package scripts for the LangGraph v3 E2E suite.
+    const packageJson = JSON.parse(readFileSync(path.join(frontendRoot, 'package.json'), 'utf8'))
+
+    // When / Then: the aggregate command preserves both isolated project-specific runs.
+    expect(packageJson.scripts['test:e2e:langgraph-v3']).toBe(
+      'pnpm test:e2e:langgraph-v3:functional && pnpm test:e2e:langgraph-v3:capture',
+    )
+    expect(packageJson.scripts['test:e2e:langgraph-v3:functional']).toBe(
+      'NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 node scripts/run-e2e-lane.mjs scripted e2e/chat-langgraph-v3.spec.ts e2e/draft-conversation-langgraph-v3.spec.ts e2e/chat-transcript-stability.spec.ts',
+    )
+    expect(packageJson.scripts['test:e2e:langgraph-v3:capture']).toBe(
+      'NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 E2E_CAPTURE_TOUR=1 node scripts/run-e2e-lane.mjs scripted --project=scripted-capture e2e/chat-langgraph-v3-visual-matrix.spec.ts',
+    )
   })
 
   it('rejects CLI selection and execution overrides outside the lane contract', () => {

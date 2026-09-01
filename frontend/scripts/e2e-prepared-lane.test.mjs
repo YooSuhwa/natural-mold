@@ -365,6 +365,8 @@ describe('prepared E2E lane boundary', () => {
     expect(smoke.every((node) => node.file === 'smoke.spec.ts')).toBe(true)
     expect(full.some((node) => /(^|\/)(captures|manual)/.test(node.file))).toBe(false)
     expect(full.every((node) => !LIVE_E2E_SPECS.includes(`e2e/${node.file}`))).toBe(true)
+    const fullFiles = new Set(full.map((node) => node.file))
+    expect(capture.some((node) => fullFiles.has(node.file))).toBe(false)
     const rootCaptureNodes = capture.filter((node) => !node.file.startsWith('captures/'))
     expect(rootCaptureNodes).toEqual([
       {

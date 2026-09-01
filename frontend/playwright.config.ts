@@ -94,12 +94,13 @@ const runtimeWebServers = [
   },
 ]
 
+const captureSpecGlobs = ['**/captures/**/*.spec.ts', '**/chat-langgraph-v3-visual-matrix.spec.ts']
 const scriptedFullIgnore = [
   ...LIVE_E2E_SPEC_GLOBS,
+  ...captureSpecGlobs,
   '**/*live*.spec.ts',
   '**/manual/**',
   '**/manual*.spec.ts',
-  '**/captures/**',
 ]
 const projects = [
   {
@@ -114,7 +115,7 @@ const projects = [
   },
   {
     name: E2E_PROJECTS[2],
-    testMatch: ['**/captures/**/*.spec.ts', '**/chat-langgraph-v3-visual-matrix.spec.ts'],
+    testMatch: captureSpecGlobs,
     use: buildPlaywrightProjectUse(E2E_PROJECTS[2]),
   },
   {
