@@ -8,7 +8,13 @@ import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from e2e_failure_diagnostics import (
+    FailureDiagnosticError,
+    SourceRejection,
+    parse_source_rejection,
+)
 from e2e_runner_contract import Lane, Project
+from e2e_runner_playwright import PlaywrightOutcome
 from e2e_runner_runtime import REPO_ROOT, E2eResources
 from postgres_runner_runtime import run_command
 
@@ -45,6 +51,7 @@ class ExportReceipt:
     schema_version: int = 1
     manifest: ExportFile | None = None
     failure_code: str | None = None
+    source_rejection: SourceRejection | None = None
 
 
 def _failure(code: str) -> ExportReceipt:
@@ -86,7 +93,7 @@ def _parse_export_file(value: ExportValue) -> ExportFile | None:
     return ExportFile(file_path, sha256, size_bytes)
 
 
-def _decode_receipt(path: Path) -> ExportReceipt:
+def _decode_receipt(path: Path, project: Project) -> ExportReceipt:
     try:
         decoded = json.loads(path.read_text())
         passed = decoded["secret_scan_passed"] is True
@@ -95,6 +102,7 @@ def _decode_receipt(path: Path) -> ExportReceipt:
         directory = decoded["export_directory"]
         files = decoded["files"]
         screenshots = decoded["screenshots"]
+        rejection_value = decoded.get("source_rejection")
     except (OSError, KeyError, json.JSONDecodeError, TypeError):
         return _failure("invalid_export_receipt")
     if (
@@ -108,7 +116,18 @@ def _decode_receipt(path: Path) -> ExportReceipt:
         return _failure("invalid_export_receipt")
     typed_files = tuple(file for file in parsed_files if file is not None)
     manifest = _parse_export_file(manifest_value)
+    try:
+        rejection = (
+            parse_source_rejection(rejection_value, project)
+            if rejection_value is not None
+            else None
+        )
+    except FailureDiagnosticError:
+        return _failure("invalid_export_receipt")
     paths = [file.path for file in typed_files]
+    fallback_shape = rejection is None or (
+        len(typed_files) == 1 and typed_files[0] == manifest and screenshots == []
+    )
     valid = (
         schema_version == 1
         and manifest is not None
@@ -117,11 +136,18 @@ def _decode_receipt(path: Path) -> ExportReceipt:
         and len(paths) == len(set(paths))
         and paths[1:] == sorted(paths[1:])
         and all(isinstance(value, str) for value in screenshots)
+        and fallback_shape
     )
     if not valid:
         return _failure("invalid_export_receipt")
     return ExportReceipt(
-        passed, directory, typed_files, tuple(screenshots), schema_version, manifest
+        passed,
+        directory,
+        typed_files,
+        tuple(screenshots),
+        schema_version,
+        manifest,
+        source_rejection=rejection,
     )
 
 
@@ -130,6 +156,7 @@ def export_artifacts(
     lane: Lane,
     project: Project,
     secrets_to_scan: tuple[str, ...],
+    failure_diagnostics: tuple[PlaywrightOutcome, ...] = (),
 ) -> ExportReceipt:
     del lane
     receipt_path = resources.run_root / "export-receipt.json"
@@ -148,6 +175,13 @@ def export_artifacts(
         if key in {"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TZ"}
     }
     env["E2E_EXPORT_SECRETS_JSON"] = json.dumps(list(secrets_to_scan))
+    if failure_diagnostics:
+        env["E2E_EXPORT_FAILURE_DIAGNOSTICS_JSON"] = json.dumps(
+            [
+                {"node_id": diagnostic.node_id, "status": diagnostic.status}
+                for diagnostic in failure_diagnostics
+            ]
+        )
     command = ["node", str(REPO_ROOT / "frontend/scripts/export-e2e-artifacts.mjs")]
     for source in sources:
         command.extend(("--source-dir", str(source)))
@@ -168,4 +202,4 @@ def export_artifacts(
     result = run_command(command, env=env, timeout=120)
     if result.returncode != 0:
         return _failure(_parse_process_failure(result.stdout, result.stderr))
-    return _decode_receipt(receipt_path)
+    return _decode_receipt(receipt_path, project)

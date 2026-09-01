@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from e2e_failure_diagnostics import source_rejection_payload
 from e2e_runner_contract import Lane, Project
 from e2e_runner_export import ExportReceipt
 
@@ -78,10 +79,19 @@ def build_manifest(
                 else None
             ),
             "files": [
-                {"path": file.path, "sha256": file.sha256, "size_bytes": file.size_bytes}
+                {
+                    "path": file.path,
+                    "sha256": file.sha256,
+                    "size_bytes": file.size_bytes,
+                }
                 for file in export.files
             ],
             "screenshots": list(export.screenshots),
+            "source_rejection": (
+                source_rejection_payload(export.source_rejection)
+                if export.source_rejection is not None
+                else None
+            ),
         },
         "egress": egress,
         "cleanup": cleanup,

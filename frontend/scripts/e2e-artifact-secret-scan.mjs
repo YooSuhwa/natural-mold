@@ -1,5 +1,7 @@
 import { inflateRawSync } from 'node:zlib'
 
+import { SecretScanFailure } from './e2e-artifact-secret-rules.mjs'
+
 const MAX_DECODED_REPRESENTATION_BYTES = 5 * 1024 * 1024
 const MAX_REPRESENTATION_DEPTH = 4
 const MAX_STRUCTURED_DEPTH = 32
@@ -14,15 +16,18 @@ const SENSITIVE_QUERY_NAMES =
   /^(?:key|api[_-]?key|token|access[_-]?token|auth|authorization|password|secret|client[_-]?secret|code|credential|signature|sig|session(?:[_-]?(?:id|token))?|x-amz-(?:credential|signature|security-token)|x-goog-(?:credential|signature))$/i
 const REPRESENTATION_NAMES = /^(?:body|content|payload|request|response|text|value|data)$/i
 const SECRET_PATTERNS = Object.freeze([
-  /-----BEGIN (?:ENCRYPTED |RSA |EC |OPENSSH )?PRIVATE KEY-----/,
-  /\bbearer\s+[a-z0-9._~+/=-]{8,}/i,
-  /\b(?:authorization|cookie|set-cookie|password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|csrf[_-]?token|session[_-]?(?:id|token)|moldy_(?:at|rt|csrf))\s*[:=]\s*["']?[^\s"',;}]{8,}/i,
-  /\b(?:postgres(?:ql)?|mysql|redis):\/\/[^\s/:"'<>]+:[^\s/@"'<>]+@[^\s"'<>]+/i,
-  /\beyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\b/,
+  ['private_key', /-----BEGIN (?:ENCRYPTED |RSA |EC |OPENSSH )?PRIVATE KEY-----/],
+  ['bearer_token', /\bbearer\s+[a-z0-9._~+/=-]{8,}/i],
+  [
+    'sensitive_assignment',
+    /\b(?:authorization|cookie|set-cookie|password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|csrf[_-]?token|session[_-]?(?:id|token)|moldy_(?:at|rt|csrf))\s*[:=]\s*["']?[^\s"',;}]{8,}/i,
+  ],
+  ['credential_dsn', /\b(?:postgres(?:ql)?|mysql|redis):\/\/[^\s/:"'<>]+:[^\s/@"'<>]+@[^\s"'<>]+/i],
+  ['jwt', /\beyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\b/],
 ])
 
-function failSecret() {
-  throw new Error('E2E artifact secret scan failed.')
+function failSecret(ruleId) {
+  throw new SecretScanFailure(ruleId)
 }
 
 function failZip(message = 'Playwright trace archive is invalid.') {
@@ -57,7 +62,7 @@ function decodeBase64(value) {
     return undefined
   }
   const decodedSize = Math.floor((normalized.length * 3) / 4)
-  if (decodedSize > MAX_DECODED_REPRESENTATION_BYTES) failSecret()
+  if (decodedSize > MAX_DECODED_REPRESENTATION_BYTES) failSecret('representation_bounds')
   const decoded = Buffer.from(normalized, 'base64')
   return decoded.toString('base64').replace(/=+$/, '') === normalized.replace(/=+$/, '')
     ? decoded
@@ -66,7 +71,8 @@ function decodeBase64(value) {
 
 function scanStructured(value, state, parentName = '') {
   state.nodes += 1
-  if (state.nodes > MAX_STRUCTURED_NODES || state.depth > MAX_STRUCTURED_DEPTH) failSecret()
+  if (state.nodes > MAX_STRUCTURED_NODES || state.depth > MAX_STRUCTURED_DEPTH)
+    failSecret('representation_bounds')
   if (typeof value === 'string') {
     scanTextValue(value, state, REPRESENTATION_NAMES.test(parentName))
     return
@@ -90,11 +96,11 @@ function scanStructured(value, state, parentName = '') {
     typeof nameEntry[1] === 'string' &&
     SENSITIVE_NAMES.test(nameEntry[1]) &&
     isSensitiveValue(valueEntry[1])
-  if (cookieValue || namedSensitiveValue) {
-    failSecret()
-  }
+  if (cookieValue) failSecret('structured_cookie_value')
+  if (namedSensitiveValue) failSecret('structured_sensitive_value')
   for (const [key, child] of entries) {
-    if (SENSITIVE_NAMES.test(key) && isSensitiveValue(child)) failSecret()
+    if (SENSITIVE_NAMES.test(key) && isSensitiveValue(child))
+      failSecret('structured_sensitive_value')
     scanStructured(child, next, key)
   }
   state.nodes = next.nodes
@@ -116,16 +122,18 @@ function scanParsedRepresentations(text, state) {
 }
 
 function scanTextValue(text, state, representation = false) {
-  if (state.secrets.some((secret) => text.includes(secret))) failSecret()
-  if (SECRET_PATTERNS.some((pattern) => pattern.test(text)) || containsCredentialQuery(text))
-    failSecret()
+  if (state.secrets.some((secret) => text.includes(secret))) failSecret('configured_exact_secret')
+  for (const [ruleId, pattern] of SECRET_PATTERNS) {
+    if (pattern.test(text)) failSecret(ruleId)
+  }
+  if (containsCredentialQuery(text)) failSecret('credential_query')
   if (state.representationDepth >= MAX_REPRESENTATION_DEPTH) return
   const shouldParse = representation || /^[\s]*[\[{]/.test(text)
   if (shouldParse) scanParsedRepresentations(text, state)
   const decoded = decodeBase64(text)
   if (!decoded) return
   state.decodedBytes += decoded.length
-  if (state.decodedBytes > MAX_DECODED_REPRESENTATION_BYTES) failSecret()
+  if (state.decodedBytes > MAX_DECODED_REPRESENTATION_BYTES) failSecret('representation_bounds')
   scanTextValue(
     decoded.toString('utf8'),
     { ...state, representationDepth: state.representationDepth + 1 },
@@ -145,7 +153,8 @@ export function validateSecrets(secrets) {
 }
 
 export function scanArtifactContent(content, secrets) {
-  if (secrets.some((secret) => content.includes(Buffer.from(secret)))) failSecret()
+  if (secrets.some((secret) => content.includes(Buffer.from(secret))))
+    failSecret('configured_exact_secret')
   const state = { secrets, nodes: 0, depth: 0, decodedBytes: 0, representationDepth: 0 }
   const text = content.toString('utf8')
   scanTextValue(text, state, true)

@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
 import re
-import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Final
+
+from e2e_runner_receipt_io import (
+    MAX_PLAYWRIGHT_RECEIPT_BYTES,
+    PlaywrightReceiptError,
+    read_playwright_receipt,
+)
 
 type JsonScalar = str | int | float | bool | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -25,11 +29,18 @@ class PlaywrightNode:
         return f"{self.project}::{self.spec}::{self.title}"
 
 
-class PlaywrightReceiptError(RuntimeError):
-    """Stable parse failure for an untrusted Playwright receipt."""
+@dataclass(frozen=True, slots=True, order=True)
+class PlaywrightOutcome:
+    node_id: str
+    status: str
 
 
-MAX_PLAYWRIGHT_RECEIPT_BYTES: Final = 2 * 1024 * 1024
+@dataclass(frozen=True, slots=True)
+class PlaywrightExecution:
+    nodes: tuple[PlaywrightNode, ...]
+    unexpected_outcomes: tuple[PlaywrightOutcome, ...]
+
+
 MAX_PLAYWRIGHT_SUITE_DEPTH: Final = 32
 MAX_PLAYWRIGHT_SUITES: Final = 1024
 MAX_PLAYWRIGHT_NODES: Final = 1024
@@ -37,10 +48,12 @@ MAX_PLAYWRIGHT_RESULTS: Final = 512
 MAX_PLAYWRIGHT_STRING_LENGTH: Final = 4096
 MAX_PLAYWRIGHT_TITLE_LENGTH: Final = 1024
 MAX_PLAYWRIGHT_NODE_ID_LENGTH: Final = 2048
+MAX_UNEXPECTED_OUTCOMES: Final = 16
 PLAYWRIGHT_EXPECTED_STATUSES: Final = frozenset(
     {"passed", "failed", "timedOut", "skipped", "interrupted"}
 )
 PLAYWRIGHT_RESULT_STATUSES: Final = PLAYWRIGHT_EXPECTED_STATUSES
+DIAGNOSTIC_FAILURE_STATUSES: Final = frozenset({"failed", "timedOut", "interrupted"})
 
 
 CANONICAL_LIVE_CASES = (
@@ -109,41 +122,9 @@ def _spec_path(spec: dict[str, JsonValue], suite_file: str | None) -> str | None
     return str(PurePosixPath("e2e", normalized.name))
 
 
-def _read_receipt(path: Path) -> str:
-    """Read one stable, regular receipt without following a path link."""
-    try:
-        before = path.lstat()
-        if not stat.S_ISREG(before.st_mode):
-            raise PlaywrightReceiptError("unsafe_playwright_receipt_file")
-        if before.st_size > MAX_PLAYWRIGHT_RECEIPT_BYTES:
-            raise PlaywrightReceiptError("playwright_receipt_too_large")
-        if not hasattr(os, "O_NOFOLLOW"):
-            raise PlaywrightReceiptError("unsafe_playwright_receipt_file")
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-    except OSError as error:
-        raise PlaywrightReceiptError("unsafe_playwright_receipt_file") from error
-    with os.fdopen(descriptor, "rb") as receipt:
-        try:
-            opened = os.fstat(receipt.fileno())
-            if (
-                not stat.S_ISREG(opened.st_mode)
-                or opened.st_dev != before.st_dev
-                or opened.st_ino != before.st_ino
-            ):
-                raise PlaywrightReceiptError("unsafe_playwright_receipt_file")
-            data = receipt.read(MAX_PLAYWRIGHT_RECEIPT_BYTES + 1)
-        except OSError as error:
-            raise PlaywrightReceiptError("invalid_playwright_json") from error
-    if len(data) > MAX_PLAYWRIGHT_RECEIPT_BYTES:
-        raise PlaywrightReceiptError("playwright_receipt_too_large")
-    try:
-        return data.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise PlaywrightReceiptError("invalid_playwright_json") from error
-
-
-def _walk_suites(suites: list[JsonValue]) -> set[PlaywrightNode]:
+def _walk_suites(suites: list[JsonValue]) -> PlaywrightExecution:
     nodes: set[PlaywrightNode] = set()
+    unexpected_outcomes: list[PlaywrightOutcome] = []
     stack = [(suite, 1) for suite in reversed(suites)]
     suite_count = node_count = result_count = 0
     while stack:
@@ -207,14 +188,26 @@ def _walk_suites(suites: list[JsonValue]) -> set[PlaywrightNode]:
                 if node in nodes:
                     raise PlaywrightReceiptError("duplicate_playwright_node")
                 nodes.add(node)
+                if (
+                    result_status in DIAGNOSTIC_FAILURE_STATUSES
+                    and result_status != expected_status
+                ):
+                    unexpected_outcomes.append(PlaywrightOutcome(node.node_id, result_status))
+                    if len(unexpected_outcomes) > MAX_UNEXPECTED_OUTCOMES:
+                        raise PlaywrightReceiptError("unexpected_outcome_limit")
         for child in reversed(_child_sequence(raw_suite, "suites")):
             stack.append((child, depth + 1))
-    return nodes
+    if not nodes:
+        raise PlaywrightReceiptError("empty_playwright_selection")
+    return PlaywrightExecution(
+        tuple(sorted(nodes)),
+        tuple(sorted(unexpected_outcomes)),
+    )
 
 
-def parse_playwright_json(path: Path) -> tuple[PlaywrightNode, ...]:
+def parse_playwright_execution_json(path: Path) -> PlaywrightExecution:
     try:
-        decoded: JsonValue = json.loads(_read_receipt(path))
+        decoded: JsonValue = json.loads(read_playwright_receipt(path))
     except (
         UnicodeError,
         json.JSONDecodeError,
@@ -225,10 +218,11 @@ def parse_playwright_json(path: Path) -> tuple[PlaywrightNode, ...]:
         raise PlaywrightReceiptError("invalid_playwright_json") from error
     if not isinstance(decoded, dict):
         raise PlaywrightReceiptError("invalid_playwright_shape")
-    nodes = _walk_suites(_sequence(decoded.get("suites")))
-    if not nodes:
-        raise PlaywrightReceiptError("empty_playwright_selection")
-    return tuple(sorted(nodes))
+    return _walk_suites(_sequence(decoded.get("suites")))
+
+
+def parse_playwright_json(path: Path) -> tuple[PlaywrightNode, ...]:
+    return parse_playwright_execution_json(path).nodes
 
 
 def parse_live_cases(raw: str, project: str) -> tuple[PlaywrightNode, ...]:

@@ -64,6 +64,16 @@ describe('E2E artifact secret scanner', () => {
     ).not.toThrow()
   })
 
+  it('exposes a fixed rule id without exposing the matched secret', () => {
+    try {
+      scanArtifactContent(Buffer.from('prefix exact-secret-123 suffix'), ['exact-secret-123'])
+      throw new Error('expected secret scan to fail')
+    } catch (error) {
+      expect(error).toMatchObject({ ruleId: 'configured_exact_secret' })
+      expect(error).not.toHaveProperty('message', expect.stringContaining('exact-secret-123'))
+    }
+  })
+
   it('rejects recursively structured headers, cookies, and token fields', () => {
     expect(
       scanText('{"events":[{"headers":[{"name":"authorization","value":"opaque-value-123"}]}]}'),

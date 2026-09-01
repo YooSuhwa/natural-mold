@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -50,6 +50,9 @@ function runCli(fixture_, overrides = {}) {
         ...process.env,
         NODE_OPTIONS: '',
         E2E_EXPORT_SECRETS_JSON: overrides.secrets ?? '[]',
+        ...(overrides.diagnostics
+          ? { E2E_EXPORT_FAILURE_DIAGNOSTICS_JSON: JSON.stringify(overrides.diagnostics) }
+          : {}),
       },
     },
   )
@@ -106,6 +109,76 @@ describe('E2E artifact exporter failure contract', () => {
     try {
       writeArtifact(fixture_.results, 'junit.xml', 'password=super-sensitive-value')
       expectFailure(runCli(fixture_), 'secret_scan', ['super-sensitive-value', fixture_.runRoot])
+      expectNoPartialExport(fixture_)
+    } finally {
+      rmSync(fixture_.repositoryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('publishes a manifest-only fallback with bounded failure diagnostics', () => {
+    const fixture_ = fixture()
+    try {
+      writeArtifact(fixture_.results, 'execution.log', 'password=super-sensitive-value')
+      const result = runCli(fixture_, {
+        diagnostics: [
+          {
+            node_id: 'scripted-full::e2e/chat-error-retry.spec.ts::retry reruns failed run',
+            status: 'failed',
+          },
+        ],
+      })
+
+      expect(result.status, result.stderr).toBe(0)
+      const receipt = JSON.parse(result.stdout)
+      const exportRoot = path.join(fixture_.repositoryRoot, receipt.export_directory)
+      expect(readdirSync(exportRoot)).toEqual(['export-manifest.json'])
+      const manifest = JSON.parse(
+        readFileSync(path.join(exportRoot, 'export-manifest.json'), 'utf8'),
+      )
+      expect(manifest).toMatchObject({
+        schema_version: 1,
+        project: 'scripted-full',
+        secret_scan: { passed: true },
+        files: [],
+        total: { file_count: 0, size_bytes: 0 },
+        source_rejection: {
+          category: 'secret_scan',
+          rule_id: 'sensitive_assignment',
+          artifact_path: 'results/execution.log',
+          tests: [
+            {
+              node_id: 'scripted-full::e2e/chat-error-retry.spec.ts::retry reruns failed run',
+              status: 'failed',
+            },
+          ],
+        },
+      })
+      expect(JSON.stringify(manifest)).not.toContain('super-sensitive-value')
+      expect(receipt.files).toEqual([receipt.manifest])
+      expect(receipt.source_rejection).toEqual(manifest.source_rejection)
+    } finally {
+      rmSync(fixture_.repositoryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    ['configured exact secret', 'exact-secret-123', ['exact-secret-123']],
+    ['secret-shaped assignment', 'password=diagnostic-secret-value', []],
+  ])('fails closed when a diagnostic title contains a %s', (_label, title, secrets) => {
+    const fixture_ = fixture()
+    try {
+      writeArtifact(fixture_.results, 'execution.log', 'password=raw-sensitive-value')
+      const result = runCli(fixture_, {
+        secrets: JSON.stringify(secrets),
+        diagnostics: [
+          {
+            node_id: `scripted-full::e2e/chat-error-retry.spec.ts::${title}`,
+            status: 'failed',
+          },
+        ],
+      })
+
+      expectFailure(result, 'secret_scan', [title, 'raw-sensitive-value', fixture_.runRoot])
       expectNoPartialExport(fixture_)
     } finally {
       rmSync(fixture_.repositoryRoot, { recursive: true, force: true })

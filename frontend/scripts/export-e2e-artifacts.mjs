@@ -15,6 +15,12 @@ import {
   writeReceipt,
 } from './e2e-artifact-safe-fs.mjs'
 import {
+  ArtifactSecretScanFailure,
+  parseFailureDiagnostics,
+  scanSelectedArtifact,
+  sourceRejection,
+} from './e2e-artifact-failure-diagnostics.mjs'
+import {
   classifyArtifact,
   dateInSeoul,
   E2E_EXPORT_PROJECTS,
@@ -34,7 +40,7 @@ const FAILURE_PREFIX = 'E2E_ARTIFACT_EXPORT_FAILURE:'
 // prettier-ignore
 const FAILURE_RULES = Object.freeze([
   ['secret_scan', /^E2E artifact secret scan failed\.$/],
-  ['bounds', /^(?:E2E artifact size limit exceeded\.|Playwright trace archive exceeds the scan limit\.|E2E export secret values must be a bounded JSON string array\.|E2E_EXPORT_SLUG must be a bounded lowercase-safe slug\.)$/],
+  ['bounds', /^(?:E2E artifact size limit exceeded\.|Playwright trace archive exceeds the scan limit\.|E2E export secret values must be a bounded JSON string array\.|E2E export failure diagnostics must be a bounded sanitized JSON array\.|E2E_EXPORT_SLUG must be a bounded lowercase-safe slug\.)$/],
   ['manifest_publish', /^(?:E2E export repository root is invalid\.|E2E export destination (?:is unsafe|already exists)\.|E2E export receipt destination is unsafe\.)$/],
   ['unsupported_artifact', /^(?:Suspicious E2E artifact is outside the explicit allowlist\.|Screenshots may only be exported from the scripted-capture project\.|Playwright trace archive is invalid\.|Artifact source may only contain (?:regular files|unlinked regular files)\.)$/],
   ['source_topology', /^(?:MOLDY_TEST_RUN_ROOT must be a prepared directory\.|Artifact source must (?:remain in the prepared capture subtree|be a prepared capture subtree|not contain symbolic links|not contain hard-linked files)\.|Artifact source changed during export\.|E2E artifact path is outside the explicit topology policy\.|E2E artifact sources must be unique\.|At least one E2E artifact source is required\.|E2E export project is invalid\.|E2E export secret values must be a JSON array in E2E_EXPORT_SECRETS_JSON\.|Usage: export-e2e-artifacts\.mjs .*)$/],
@@ -79,8 +85,13 @@ function collectArtifacts(runRoot, sources, secrets, project) {
     if (!content || !classification) fail('Artifact source changed during export.')
     total += content.length
     if (total > MAX_TOTAL_BYTES) fail('E2E artifact size limit exceeded.')
-    if (classification.trace) scanTraceZip(content, secrets)
-    else scanArtifactContent(content, secrets)
+    scanSelectedArtifact(
+      () =>
+        classification.trace
+          ? scanTraceZip(content, secrets)
+          : scanArtifactContent(content, secrets),
+      artifactPath,
+    )
     artifacts.push({
       path: artifactPath,
       content,
@@ -92,7 +103,7 @@ function collectArtifacts(runRoot, sources, secrets, project) {
   return artifacts.sort((left, right) => left.path.localeCompare(right.path))
 }
 
-function buildManifest(project, artifacts, exactSecretCount) {
+function buildManifest(project, artifacts, exactSecretCount, rejection) {
   return {
     schema_version: EXPORT_SCHEMA_VERSION,
     project,
@@ -103,6 +114,7 @@ function buildManifest(project, artifacts, exactSecretCount) {
       max_total_bytes: MAX_TOTAL_BYTES,
     },
     secret_scan: { passed: true, exact_secret_count: exactSecretCount },
+    ...(rejection ? { source_rejection: rejection } : {}),
     files: artifacts.map(({ path: artifactPath, sha256: hash, size_bytes: size }) => ({
       path: artifactPath,
       sha256: hash,
@@ -132,6 +144,10 @@ export function exportE2EArtifacts(options) {
   const secrets = validateSecrets(
     options.secrets ?? parseSecrets(environment.E2E_EXPORT_SECRETS_JSON),
   )
+  const diagnostics = parseFailureDiagnostics(
+    options.failureDiagnostics ?? environment.E2E_EXPORT_FAILURE_DIAGNOSTICS_JSON,
+    project,
+  )
   const repositoryRoot = canonicalDirectory(
     path.resolve(
       options.repositoryRoot ??
@@ -143,10 +159,19 @@ export function exportE2EArtifacts(options) {
   const date = dateInSeoul(options.now ?? new Date())
   const name = `${date.year}${date.month}${date.day}-${slug}`
   const destinationRelative = path.posix.join('output', 'e2e-captures', name)
-  const artifacts = collectArtifacts(runRoot, sources, secrets, project)
+  let artifacts
+  let rejection
+  try {
+    artifacts = collectArtifacts(runRoot, sources, secrets, project)
+  } catch (error) {
+    if (!(error instanceof ArtifactSecretScanFailure)) throw error
+    artifacts = []
+    rejection = sourceRejection(error, diagnostics)
+  }
   const manifestContent = Buffer.from(
-    `${JSON.stringify(buildManifest(project, artifacts, secrets.length), null, 2)}\n`,
+    `${JSON.stringify(buildManifest(project, artifacts, secrets.length, rejection), null, 2)}\n`,
   )
+  if (rejection) scanArtifactContent(manifestContent, secrets)
   const manifestFile = {
     path: EXPORT_MANIFEST_NAME,
     sha256: sha256(manifestContent),
@@ -168,6 +193,7 @@ export function exportE2EArtifacts(options) {
     screenshots: artifacts
       .filter((artifact) => artifact.screenshot)
       .map((artifact) => artifact.path),
+    ...(rejection ? { source_rejection: rejection } : {}),
   }
   let published = false
   try {

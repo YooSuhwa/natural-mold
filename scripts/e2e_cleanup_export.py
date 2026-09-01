@@ -17,6 +17,11 @@ from e2e_cleanup_export_paths import (
     safe_relative,
     walk_export,
 )
+from e2e_failure_diagnostics import (
+    FailureDiagnosticError,
+    SourceRejection,
+    parse_source_rejection,
+)
 from postgres_cleanup_checker import ManifestValidationError
 
 SECRET: Final = re.compile(
@@ -47,7 +52,7 @@ def _artifact_file(value: object) -> tuple[str, str, int]:
 
 def _validate_export_manifest(
     content: bytes, project: str, listed: list[tuple[str, str, int]]
-) -> None:
+) -> SourceRejection | None:
     try:
         decoded = json.loads(content)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -88,6 +93,15 @@ def _validate_export_manifest(
         },
         "export_manifest_total",
     )
+    rejection_value = manifest.get("source_rejection")
+    if rejection_value is None:
+        return None
+    try:
+        rejection = parse_source_rejection(rejection_value, project)
+    except FailureDiagnosticError as error:
+        raise ManifestValidationError("source_rejection") from error
+    require(not expected, "source_rejection_files")
+    return rejection
 
 
 def validate_export(export: object, project: str, repository_root: Path) -> None:
@@ -129,7 +143,18 @@ def validate_export(export: object, project: str, repository_root: Path) -> None
         )
         require(SECRET.search(content) is None, "secret_material")
         content_by_path[path] = content
-    _validate_export_manifest(content_by_path["export-manifest.json"], project, listed)
+    rejection = _validate_export_manifest(content_by_path["export-manifest.json"], project, listed)
+    receipt_rejection_value = receipt.get("source_rejection")
+    require(
+        (receipt_rejection_value is None) == (rejection is None),
+        "source_rejection",
+    )
+    if rejection is not None:
+        try:
+            receipt_rejection = parse_source_rejection(receipt_rejection_value, project)
+        except FailureDiagnosticError as error:
+            raise ManifestValidationError("source_rejection") from error
+        require(receipt_rejection == rejection, "source_rejection")
     screenshots = strings(receipt.get("screenshots"), "export_screenshots")
     expected_screenshots = [path for path in paths if path.lower().endswith(".png")]
     require(
@@ -137,3 +162,7 @@ def validate_export(export: object, project: str, repository_root: Path) -> None
         "export_screenshots",
     )
     require(not screenshots or project == "scripted-capture", "export_screenshots")
+    require(
+        rejection is None or (listed == [manifest_entry] and not screenshots),
+        "source_rejection",
+    )

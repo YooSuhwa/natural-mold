@@ -84,10 +84,14 @@ class _PinnedDirectory:
                     dir_fd=self._fds[index - 1],
                     follow_symlinks=False,
                 )
+                is_trust_root = index == len(self._fds) - 1
                 require(
                     stat.S_ISDIR(named.st_mode)
                     and (named.st_dev, named.st_ino) == (expected.device, expected.inode)
-                    and (not require_unchanged or named.st_ctime_ns == expected.change_ns),
+                    and (
+                        not (require_unchanged and is_trust_root)
+                        or named.st_ctime_ns == expected.change_ns
+                    ),
                     reason,
                 )
 

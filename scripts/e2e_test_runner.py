@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import os
 
-from e2e_runner_cleanup import (
-    cleanup_resources,
-    publish_runner_receipts,
-)
+from e2e_runner_cleanup import cleanup_resources
 from e2e_runner_cli import run_cli
 from e2e_runner_contract import (
     E2eContractError,
@@ -16,9 +13,12 @@ from e2e_runner_contract import (
     parse_e2e_dsns,
 )
 from e2e_runner_environment import assert_node22, build_lane_environment
+from e2e_runner_execution import read_execution_receipt
 from e2e_runner_export import ExportReceipt, export_artifacts
+from e2e_runner_finalization import publish_and_export_artifacts
 from e2e_runner_manifest import build_manifest
 from e2e_runner_playwright import (
+    PlaywrightOutcome,
     PlaywrightReceiptError,
     assert_exact_selection,
     parse_playwright_json,
@@ -64,11 +64,11 @@ def _run(
     proxy = None
     selected_ids: tuple[str, ...] = ()
     executed_ids: tuple[str, ...] = ()
+    diagnostics: tuple[PlaywrightOutcome, ...] = ()
     export = ExportReceipt(False, None, (), ())
     cleanup: dict[str, bool | None] = empty_cleanup()
-    status = "failed"
-    reason: str | None = "not_started"
-    child_exit = 70
+    reason: str | None
+    status, reason, child_exit = "failed", "not_started", 70
     process_stopped = True
     runner_receipts_published = True
     secrets_to_scan: tuple[str, ...] = ()
@@ -157,12 +157,7 @@ def _run(
         execution_receipt = (
             resources.run_root / "frontend/test-results" / project / "execution.json"
         )
-        try:
-            executed = parse_playwright_json(execution_receipt)
-            executed_ids = tuple(node.node_id for node in executed)
-        except PlaywrightReceiptError:
-            if execution.returncode == 0:
-                raise
+        executed_ids, diagnostics = read_execution_receipt(execution_receipt, execution.returncode)
         if execution.returncode == 0 and executed_ids != selected_ids:
             reason = "execution_selection_mismatch"
         elif execution.returncode == 0:
@@ -215,13 +210,14 @@ def _run(
             egress = read_proxy_receipt(proxy, proxy_stopped)
             process_stopped = process_stopped and proxy_stopped
             if resources is not None:
-                runner_receipts_published = publish_runner_receipts(resources, project)
-                try:
-                    export = export_artifacts(resources, lane, project, secrets_to_scan)
-                except BaseException:  # noqa: BLE001 - finalizer must continue
-                    export = ExportReceipt(
-                        False, None, (), (), failure_code="export_adapter_exception"
-                    )
+                runner_receipts_published, export = publish_and_export_artifacts(
+                    resources,
+                    lane,
+                    project,
+                    secrets_to_scan,
+                    diagnostics,
+                    export_artifacts,
+                )
                 try:
                     cleanup = cleanup_resources(resources, process_stopped, lane)
                 except BaseException:  # noqa: BLE001 - finalizer must emit conservative facts
@@ -256,9 +252,5 @@ def _run(
     return manifest, child_exit if status == "interrupted" else (0 if status == "passed" else 1)
 
 
-def main() -> int:
-    return run_cli(_run)
-
-
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_cli(_run))

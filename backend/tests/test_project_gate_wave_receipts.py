@@ -108,6 +108,37 @@ def test_e2e_receipt_rejects_retry_selection_or_secret_debt(
         )
 
 
+def test_e2e_receipt_accepts_failed_child_with_sanitized_export(
+    tmp_path: Path, receipts: ModuleType
+) -> None:
+    node = "scripted-full::e2e/chat-error-retry.spec.ts::retries failed run"
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-full",
+        "workers": 1,
+        "retries": 0,
+        "status": "failed",
+        "child_exit_code": 1,
+        "selected_ids": [node],
+        "executed_ids": [node],
+        "export": {"secret_scan_passed": True, "screenshots": []},
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / "e2e-failed.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    summary = receipts.validate_e2e(
+        path,
+        tmp_path,
+        1,
+        project="scripted-full",
+        expected_spec=None,
+    )
+
+    assert summary["secret_scan_passed"] is True
+
+
 def test_capture_receipt_requires_exact_safe_screenshot_contract(
     tmp_path: Path, receipts: ModuleType
 ) -> None:
