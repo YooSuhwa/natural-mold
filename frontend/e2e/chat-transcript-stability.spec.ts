@@ -1,7 +1,12 @@
 import type { Locator, Page } from '@playwright/test'
 import { API_BASE, apiDeleteOk, expect, test } from './fixtures'
 import { setFailurePhase } from './helpers/failure-phase-diagnostic'
-import { sendMessage, setupLangGraphV3Agent } from './langgraph-v3-helpers'
+import {
+  sendMessage,
+  sendMessageForRun,
+  setupLangGraphV3Agent,
+  waitForRunStatus,
+} from './langgraph-v3-helpers'
 
 const FRONTEND =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`
@@ -307,12 +312,15 @@ test.describe('Chat transcript stability QA bundle', () => {
       )
       await installUserPromptStabilityObserver(page, RICH_OUTPUT_PROMPT)
 
-      await sendMessage(page, RICH_OUTPUT_PROMPT)
+      const runId = await sendMessageForRun(page, setup.conversationId, RICH_OUTPUT_PROMPT)
+      await waitForRunStatus(request, setup.conversationId, runId, 'completed')
       await expect(
         page.locator('[data-moldy-message-role="user"]').filter({ hasText: RICH_OUTPUT_PROMPT }),
       ).toBeVisible({ timeout: 30_000 })
       await expectRichOutputRendered(page)
       await expectNoUserPromptDisappearance(page)
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
 
       const conversationUrl = page.url()
       await page.reload()
