@@ -22,19 +22,90 @@ from e2e_runner_process import (  # noqa: E402
 from postgres_manifest_io import RunnerInterrupted  # noqa: E402
 
 
-def test_port_preflight_preserves_foreign_listener() -> None:
+def test_port_preflight_preserves_foreign_listener(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Given a foreign listener, when checked, then it remains bound and startup fails."""
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind(("127.0.0.1", 0))
     port = listener.getsockname()[1]
+    listener.listen()
+    monkeypatch.setattr(
+        process_module.time,
+        "sleep",
+        lambda _seconds: pytest.fail("active listener must fail without retrying"),
+    )
     try:
         with pytest.raises(RuntimeError, match="lane_port_unavailable"):
             assert_ports_available((port,))
-        listener.listen()
         assert ports_have_no_listener((port,)) is False
     finally:
         listener.close()
     assert ports_have_no_listener((port,)) is True
+
+
+def test_port_preflight_preserves_foreign_exclusive_bound_socket() -> None:
+    """Given an exclusively bound foreign socket, preflight does not take ownership."""
+    owner = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    owner.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+    owner.bind(("127.0.0.1", 0))
+    port = owner.getsockname()[1]
+    try:
+        with pytest.raises(RuntimeError, match="lane_port_unavailable"):
+            assert_ports_available((port,), timeout_seconds=0)
+        assert owner.getsockname()[1] == port
+    finally:
+        owner.close()
+
+    assert_ports_available((port,), timeout_seconds=0)
+
+
+def test_port_preflight_retries_transient_partial_bind_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Given a transient bind race, the preflight closes partial state and retries."""
+
+    class FakeSocket:
+        def __init__(self, *, fail_bind: bool) -> None:
+            self.fail_bind = fail_bind
+            self.closed = False
+            self.listened = False
+            self.reuse_address: int | None = None
+
+        def setsockopt(self, _level: int, _option: int, value: int) -> None:
+            self.reuse_address = value
+
+        def bind(self, _address: tuple[str, int]) -> None:
+            if self.fail_bind:
+                raise OSError("transient port state")
+
+        def listen(self) -> None:
+            self.listened = True
+
+        def close(self) -> None:
+            self.closed = True
+
+    all_sockets = [
+        FakeSocket(fail_bind=False),
+        FakeSocket(fail_bind=True),
+        FakeSocket(fail_bind=False),
+        FakeSocket(fail_bind=False),
+    ]
+    pending_sockets = all_sockets.copy()
+    sleeps: list[float] = []
+    monkeypatch.setattr(process_module, "ports_have_no_listener", lambda _ports: True)
+    monkeypatch.setattr(process_module.socket, "socket", lambda *_args: pending_sockets.pop(0))
+    monkeypatch.setattr(process_module.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(process_module.time, "sleep", sleeps.append)
+
+    assert_ports_available((3100, 8101))
+
+    assert pending_sockets == []
+    assert all(item.closed for item in all_sockets)
+    assert all(item.reuse_address == 1 for item in all_sockets)
+    assert [item.listened for item in all_sockets] == [True, False, True, True]
+    assert sleeps == [0.05]
 
 
 def test_owned_process_captures_exit_and_reaps_group(tmp_path: Path) -> None:

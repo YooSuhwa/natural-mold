@@ -10,9 +10,12 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO
+from typing import IO, Final
 
 from postgres_manifest_io import RunnerInterrupted
+
+PORT_BIND_RETRY_SECONDS: Final = 5.0
+PORT_BIND_RETRY_INTERVAL_SECONDS: Final = 0.05
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,19 +30,36 @@ class OwnedProcessInterrupted(BaseException):
     process_group_stopped: bool
 
 
-def assert_ports_available(ports: tuple[int, ...]) -> None:
+def assert_ports_available(
+    ports: tuple[int, ...], *, timeout_seconds: float = PORT_BIND_RETRY_SECONDS
+) -> None:
+    if not ports_have_no_listener(ports):
+        raise RuntimeError("lane_port_unavailable")
+    deadline = time.monotonic() + max(timeout_seconds, 0.0)
+    while True:
+        bind_error = _bind_ports_once(ports)
+        if bind_error is None:
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError("lane_port_unavailable") from bind_error
+        time.sleep(PORT_BIND_RETRY_INTERVAL_SECONDS)
+
+
+def _bind_ports_once(ports: tuple[int, ...]) -> OSError | None:
     sockets: list[socket.socket] = []
     try:
         for port in ports:
             listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
-            listener.bind(("127.0.0.1", port))
             sockets.append(listener)
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("127.0.0.1", port))
+            listener.listen()
     except OSError as error:
-        raise RuntimeError("lane_port_unavailable") from error
+        return error
     finally:
         for listener in sockets:
             listener.close()
+    return None
 
 
 def ports_have_no_listener(ports: tuple[int, ...]) -> bool:
