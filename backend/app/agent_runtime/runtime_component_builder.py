@@ -253,7 +253,6 @@ def _with_moldy_deepagents_compatibility(
     *,
     backend: Any,
     permissions: list[FilesystemPermission] | None,
-    include_todo: bool = True,
 ) -> list[Any]:
     """Replace Deep Agents 0.7 default FS/todo behavior with Moldy's contract.
 
@@ -271,7 +270,6 @@ def _with_moldy_deepagents_compatibility(
         build_filesystem_middleware=_build_moldy_filesystem_middleware,
         filesystem_middleware_name=_FILESYSTEM_MIDDLEWARE_NAME,
         todo_list_middleware_name=_TODO_LIST_MIDDLEWARE_NAME,
-        include_todo=include_todo,
     )
 
 
