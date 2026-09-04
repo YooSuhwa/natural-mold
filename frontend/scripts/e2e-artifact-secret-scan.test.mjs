@@ -106,6 +106,11 @@ describe('E2E artifact secret scanner', () => {
     expect(scanText('moldy_rt=session-value-123')).toThrow('secret scan')
   })
 
+  it('allows builder session identifiers while rejecting auth-shaped session identifiers', () => {
+    expect(scanText('builderSessionId="dummy-builder-1"')).not.toThrow()
+    expect(scanText('sessionId="dummy-session-1"')).toThrow('secret scan')
+  })
+
   it('recursively decodes base64 and JSON content representations', () => {
     const encoded = Buffer.from('{"payload":"authorization: Bearer hidden-token-123"}').toString(
       'base64',
