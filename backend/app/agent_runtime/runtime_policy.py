@@ -1,7 +1,7 @@
 """Strict, versioned agent runtime-policy parsing and canonicalization.
 
-This module defines persistence/API semantics only. Runtime graph behavior is
-intentionally unchanged until the snapshotted policy is propagated by M72.
+This module defines the canonical persistence/API policy shape. Snapshotted
+policies are enforced at the runtime graph's capability-specific build boundaries.
 """
 
 from __future__ import annotations

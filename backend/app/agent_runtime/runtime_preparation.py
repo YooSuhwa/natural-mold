@@ -12,7 +12,25 @@ from typing import Any
 from langchain_core.tools import BaseTool
 
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
+from app.agent_runtime.runtime_policy_capabilities import STORED_RESERVED_TOOL_NAMES
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
+
+_STORED_FILESYSTEM_INTERRUPT_NAMES = frozenset(
+    {"delete", "execute", "execute_in_skill", "shell", "write_file", "edit_file"}
+)
+
+
+def _without_stored_filesystem_interrupts(
+    interrupt_on: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if interrupt_on is None:
+        return None
+    retained = {
+        tool_name: config
+        for tool_name, config in interrupt_on.items()
+        if tool_name not in _STORED_FILESYSTEM_INTERRUPT_NAMES
+    }
+    return retained or None
 
 
 async def prepare_runtime_components_impl(
@@ -39,7 +57,10 @@ async def prepare_runtime_components_impl(
         last_mark = now
 
     system_prompt = bindings.system_prompt_with_temporal_context(cfg.system_prompt)
-    system_prompt += "\n\n" + bindings.artifact_file_instruction_prompt(cfg.thread_id)
+    stored_policy = cfg.runtime_policy.source == "stored"
+    filesystem_mode = cfg.runtime_policy.effective.filesystem.mode
+    if not stored_policy or filesystem_mode == "artifact_write":
+        system_prompt += "\n\n" + bindings.artifact_file_instruction_prompt(cfg.thread_id)
     if include_ask_user and not is_trigger_mode:
         system_prompt += "\n\n" + bindings.interactive_tool_instruction_prompt()
     model_candidates = bindings.build_model_candidates(cfg)
@@ -121,7 +142,7 @@ async def prepare_runtime_components_impl(
             data_dir=bindings.data_dir,
             output_root=bindings.conversation_output_dir,
         )
-        if cfg.user_id:
+        if cfg.user_id and not stored_policy:
             async with bindings.runtime_db_session_factory() as runtime_db:
                 await bindings.resolve_runtime_credentials(skill_ctx, db=runtime_db, cfg=cfg)
             bindings.add_skill_secrets_to_run(skill_ctx, cfg)
@@ -131,18 +152,30 @@ async def prepare_runtime_components_impl(
             else f"/runtime/{cfg.thread_id}/skills/"
         )
         skills_sources = [skills_virtual_prefix]
-        langchain_tools.append(bindings.create_skill_execute_tool(skill_ctx))
-        system_prompt += (
-            "\n\n## 스킬 사용 규칙\n"
-            "스킬을 사용할 때는 반드시 read_file 도구로 SKILL.md를 먼저 읽고 "
-            "그 안의 지시를 직접 따르세요. "
-            "스크립트 실행이 필요하면 execute_in_skill 도구를 사용하세요. "
-            "task 도구의 subagent_type에 스킬 이름을 넣지 마세요. "
-            "task 도구를 사용할 때 subagent_type은 task 도구 설명에 표시된 "
-            "available subagent types 중 하나여야 합니다.\n"
-            "스크립트 실행 후 OUTPUT_FILES에 이미지가 있으면 "
-            "![image](/api/conversations/" + cfg.thread_id + "/files/<파일명>) 형식으로 표시하세요."
-        )
+        if stored_policy:
+            system_prompt += (
+                "\n\n## 스킬 사용 규칙\n"
+                "스킬을 사용할 때는 반드시 read_file 도구로 SKILL.md를 먼저 읽고 "
+                "그 안의 지시를 직접 따르세요. "
+                "task 도구의 subagent_type에 스킬 이름을 넣지 마세요. "
+                "task 도구를 사용할 때 subagent_type은 task 도구 설명에 표시된 "
+                "available subagent types 중 하나여야 합니다."
+            )
+        else:
+            langchain_tools.append(bindings.create_skill_execute_tool(skill_ctx))
+            system_prompt += (
+                "\n\n## 스킬 사용 규칙\n"
+                "스킬을 사용할 때는 반드시 read_file 도구로 SKILL.md를 먼저 읽고 "
+                "그 안의 지시를 직접 따르세요. "
+                "스크립트 실행이 필요하면 execute_in_skill 도구를 사용하세요. "
+                "task 도구의 subagent_type에 스킬 이름을 넣지 마세요. "
+                "task 도구를 사용할 때 subagent_type은 task 도구 설명에 표시된 "
+                "available subagent types 중 하나여야 합니다.\n"
+                "스크립트 실행 후 OUTPUT_FILES에 이미지가 있으면 "
+                "![image](/api/conversations/"
+                + cfg.thread_id
+                + "/files/<파일명>) 형식으로 표시하세요."
+            )
         skills_block = bindings.build_skills_prompt(cfg.agent_skills)
         if skills_block:
             skills_block = skills_block.replace("/skills/", skills_virtual_prefix)
@@ -163,13 +196,27 @@ async def prepare_runtime_components_impl(
         if recalled_memories:
             cfg.recalled_memories = recalled_memories
 
-    permissions = bindings.build_filesystem_permissions(
-        thread_id=cfg.thread_id,
-        agent_id=cfg.agent_id,
-        user_id=cfg.user_id,
-        selected_skill_slugs=bindings.selected_skill_slugs(cfg.agent_skills),
-        agent_runtime_name=cfg.agent_runtime_name,
-    )
+    if stored_policy:
+        permissions = bindings.build_stored_filesystem_permissions(
+            thread_id=cfg.thread_id,
+            agent_id=cfg.agent_id,
+            user_id=cfg.user_id,
+            selected_skill_slugs=bindings.selected_skill_slugs(cfg.agent_skills),
+            agent_runtime_name=cfg.agent_runtime_name,
+            include_agent_memory_file=include_agent_memory_file,
+            mode=filesystem_mode,
+        )
+        langchain_tools = [
+            tool for tool in langchain_tools if tool.name not in STORED_RESERVED_TOOL_NAMES
+        ]
+    else:
+        permissions = bindings.build_filesystem_permissions(
+            thread_id=cfg.thread_id,
+            agent_id=cfg.agent_id,
+            user_id=cfg.user_id,
+            selected_skill_slugs=bindings.selected_skill_slugs(cfg.agent_skills),
+            agent_runtime_name=cfg.agent_runtime_name,
+        )
 
     if include_ask_user and not is_trigger_mode:
         langchain_tools.append(bindings.ask_user_tool)
@@ -180,6 +227,8 @@ async def prepare_runtime_components_impl(
         include_ask_user=any(tool.name == "ask_user" for tool in langchain_tools),
         is_trigger_mode=is_trigger_mode,
     )
+    if stored_policy:
+        interrupt_on = _without_stored_filesystem_interrupts(interrupt_on)
     mark_timing("skills_filesystem_ms")
 
     return RuntimeComponents(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -111,6 +112,201 @@ def test_scoped_filesystem_permissions_only_allow_current_runtime_surfaces() -> 
     assert _check_fs_permission(permissions, "read", "/uploads/deadbeef.png") == "deny"
     assert _check_fs_permission(permissions, "read", "/uploads") == "deny"
     assert _check_fs_permission(permissions, "write", "/uploads/deadbeef.png") == "deny"
+
+
+@pytest.mark.parametrize(
+    ("mode", "conversation_write"),
+    [("inspect", "deny"), ("artifact_write", "allow")],
+)
+def test_stored_filesystem_permissions_limit_runtime_surfaces(
+    mode: Literal["inspect", "artifact_write"],
+    conversation_write: str,
+) -> None:
+    from deepagents.middleware.filesystem import _check_fs_permission
+
+    from app.agent_runtime.runtime_policy_capabilities import (
+        build_stored_filesystem_permissions,
+    )
+
+    permissions = build_stored_filesystem_permissions(
+        thread_id="thread-a",
+        agent_id="agent-a",
+        user_id="user-a",
+        selected_skill_slugs=["selected"],
+        agent_runtime_name=None,
+        include_agent_memory_file=True,
+        mode=mode,
+    )
+
+    assert (
+        _check_fs_permission(
+            permissions,
+            "read",
+            "/runtime/thread-a/skills/selected/SKILL.md",
+        )
+        == "allow"
+    )
+    assert _check_fs_permission(permissions, "read", "/conversations/thread-a/out.md") == "allow"
+    assert (
+        _check_fs_permission(permissions, "write", "/conversations/thread-a/out.md")
+        == conversation_write
+    )
+    assert _check_fs_permission(permissions, "read", "/agents/agent-a/AGENTS.md") == "allow"
+    assert _check_fs_permission(permissions, "write", "/agents/agent-a/AGENTS.md") == "deny"
+    for denied_path in (
+        "/runtime/thread-a/skills/unselected/SKILL.md",
+        "/conversations/thread-b/out.md",
+        "/artifacts/physical.bin",
+        "/uploads/blob.bin",
+        "/unknown/file.txt",
+    ):
+        assert _check_fs_permission(permissions, "read", denied_path) == "deny"
+        assert _check_fs_permission(permissions, "write", denied_path) == "deny"
+
+
+def test_stored_filesystem_permissions_omit_unmounted_agent_memory() -> None:
+    from deepagents.middleware.filesystem import _check_fs_permission
+
+    from app.agent_runtime.runtime_policy_capabilities import (
+        build_stored_filesystem_permissions,
+    )
+
+    permissions = build_stored_filesystem_permissions(
+        thread_id="thread-a",
+        agent_id="agent-a",
+        user_id="user-a",
+        selected_skill_slugs=[],
+        agent_runtime_name="agent_child",
+        include_agent_memory_file=False,
+        mode="artifact_write",
+    )
+
+    assert _check_fs_permission(permissions, "read", "/agents/agent-a/AGENTS.md") == "deny"
+
+
+def test_stored_child_permissions_rebuild_canonical_rules_from_adversarial_candidate() -> None:
+    from deepagents.middleware.filesystem import FilesystemPermission, _check_fs_permission
+
+    from app.agent_runtime.runtime_policy_capabilities import (
+        build_stored_filesystem_permissions,
+        sanitize_child_filesystem_permissions,
+    )
+
+    parent = build_stored_filesystem_permissions(
+        thread_id="thread-a",
+        agent_id="parent",
+        user_id="user-a",
+        selected_skill_slugs=[],
+        agent_runtime_name=None,
+        include_agent_memory_file=True,
+        mode="inspect",
+    )
+    child_skill = "/runtime/thread-a/agents/agent_child/skills/selected"
+    candidate = [
+        FilesystemPermission(
+            operations=["read", "write"],
+            paths=[child_skill, f"{child_skill}/", f"{child_skill}/**"],
+            mode="allow",
+        ),
+        FilesystemPermission(
+            operations=["read", "write"],
+            paths=["/conversations/other-thread/**"],
+            mode="allow",
+        ),
+        FilesystemPermission(
+            operations=["read", "write"],
+            paths=["/**"],
+            mode="interrupt",
+        ),
+    ]
+
+    sanitized = sanitize_child_filesystem_permissions(
+        parent,
+        candidate,
+        child_name="agent_child",
+        trusted_child=True,
+        allow_child_writes=False,
+    )
+
+    assert _check_fs_permission(sanitized, "read", f"{child_skill}/SKILL.md") == "allow"
+    assert _check_fs_permission(sanitized, "write", f"{child_skill}/SKILL.md") == "deny"
+    assert _check_fs_permission(sanitized, "read", "/conversations/thread-a/out.md") == "allow"
+    assert _check_fs_permission(sanitized, "write", "/conversations/thread-a/out.md") == "deny"
+    assert _check_fs_permission(sanitized, "read", "/conversations/other-thread/out.md") == "deny"
+    assert _check_fs_permission(sanitized, "write", "/unknown/out.md") == "deny"
+
+
+def test_stored_child_permissions_fail_closed_for_missing_parent_global_deny() -> None:
+    from deepagents.middleware.filesystem import FilesystemPermission, _check_fs_permission
+
+    from app.agent_runtime.runtime_policy_capabilities import sanitize_child_filesystem_permissions
+
+    incomplete_parent = [
+        FilesystemPermission(
+            operations=["read", "write"],
+            paths=[
+                "/conversations/thread-a",
+                "/conversations/thread-a/",
+                "/conversations/thread-a/**",
+            ],
+            mode="allow",
+        )
+    ]
+
+    sanitized = sanitize_child_filesystem_permissions(
+        incomplete_parent,
+        None,
+        child_name=None,
+        trusted_child=False,
+        allow_child_writes=True,
+    )
+
+    assert _check_fs_permission(sanitized, "read", "/conversations/thread-a/out.md") == "deny"
+    assert _check_fs_permission(sanitized, "write", "/unknown/out.md") == "deny"
+
+
+@pytest.mark.parametrize("child_name", [None, "", "../escape"])
+def test_stored_child_permissions_fail_closed_for_invalid_trusted_child_name(
+    child_name: str | None,
+) -> None:
+    from deepagents.middleware.filesystem import FilesystemPermission, _check_fs_permission
+
+    from app.agent_runtime.runtime_policy_capabilities import (
+        build_stored_filesystem_permissions,
+        sanitize_child_filesystem_permissions,
+    )
+
+    parent = build_stored_filesystem_permissions(
+        thread_id="thread-a",
+        agent_id="parent",
+        user_id="user-a",
+        selected_skill_slugs=[],
+        agent_runtime_name=None,
+        include_agent_memory_file=False,
+        mode="artifact_write",
+    )
+    candidate = [
+        FilesystemPermission(
+            operations=["read"],
+            paths=[
+                "/runtime/thread-a/agents/agent_child/skills/selected",
+                "/runtime/thread-a/agents/agent_child/skills/selected/",
+                "/runtime/thread-a/agents/agent_child/skills/selected/**",
+            ],
+            mode="allow",
+        )
+    ]
+
+    sanitized = sanitize_child_filesystem_permissions(
+        parent,
+        candidate,
+        child_name=child_name,
+        trusted_child=True,
+        allow_child_writes=True,
+    )
+
+    assert _check_fs_permission(sanitized, "read", candidate[0].paths[0]) == "deny"
+    assert _check_fs_permission(sanitized, "write", "/conversations/thread-a/out.md") == "deny"
 
 
 def test_draft_workspace_mount_allows_session_and_denies_siblings() -> None:

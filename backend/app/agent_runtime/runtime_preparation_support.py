@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable, Iterable, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from deepagents.backends import BackendProtocol
 from deepagents.middleware.filesystem import FilesystemPermission
@@ -112,6 +112,20 @@ class BuildFilesystemPermissions(Protocol):
     ) -> list[FilesystemPermission]: ...
 
 
+class BuildStoredFilesystemPermissions(Protocol):
+    def __call__(
+        self,
+        *,
+        thread_id: str,
+        agent_id: str | None,
+        user_id: str | None,
+        selected_skill_slugs: list[str],
+        agent_runtime_name: str | None,
+        include_agent_memory_file: bool,
+        mode: Literal["inspect", "artifact_write"],
+    ) -> list[FilesystemPermission]: ...
+
+
 class BuildInterruptPolicy(Protocol):
     def __call__(
         self,
@@ -160,6 +174,7 @@ class RuntimePreparationBindings:
     memory_tool_instruction_prompt: Callable[[], str]
     load_memory_context: Callable[[AgentConfig], Awaitable[tuple[str, list[dict[str, Any]]]]]
     build_filesystem_permissions: BuildFilesystemPermissions
+    build_stored_filesystem_permissions: BuildStoredFilesystemPermissions
     selected_skill_slugs: Callable[[list[dict[str, Any]] | None], list[str]]
     ask_user_tool: BaseTool
     build_interrupt_on_policy: BuildInterruptPolicy

@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import pytest
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.e2e_langgraph_v3_script import (
     LANGGRAPH_V3_SECRET_TOOL_ARG_VALUE,
     LANGGRAPH_V3_SECRET_TOOL_ARGS_REQUEST,
+)
+from app.agent_runtime.e2e_runtime_filesystem_policy_script import (
+    RUNTIME_FILESYSTEM_ARTIFACT_CONTENT,
+    RUNTIME_FILESYSTEM_ARTIFACT_FINAL_CONTENT,
+    RUNTIME_FILESYSTEM_ARTIFACT_NAME,
+    RUNTIME_FILESYSTEM_ARTIFACT_WRITE_MARKER,
+    RUNTIME_FILESYSTEM_INSPECT_FINAL_CONTENT,
+    RUNTIME_FILESYSTEM_INSPECT_MARKER,
 )
 from app.agent_runtime.e2e_scripted_model import (
     ASK_USER_FRUIT_FINAL_CONTENT,
@@ -83,6 +91,171 @@ def test_e2e_scripted_model_error_marker_raises_on_stream() -> None:
 
     with pytest.raises(RuntimeError, match="error simulation"):
         list(model.stream([HumanMessage(content="E2E_ERROR")]))
+
+
+def test_e2e_scripted_model_inspect_policy_reads_searches_and_denies_escape() -> None:
+    """The inspect fixture only consumes the read-only filesystem surface."""
+    thread_id = "00000000-0000-4000-8000-000000000111"
+    workspace = f"/conversations/{thread_id}"
+    skill_file = f"/runtime/{thread_id}/skills/e2e-inspect-input/SKILL.md"
+    skill_directory = skill_file.removesuffix("/SKILL.md")
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": name} for name in ("ls", "read_file", "glob", "grep")]
+    )
+    # Stored inspect policies do not receive the generated-artifact prompt;
+    # their conversation scope is derived from the selected runtime skill mount.
+    messages: list[BaseMessage] = [
+        HumanMessage(content=f"{RUNTIME_FILESYSTEM_INSPECT_MARKER} mounted {skill_file}")
+    ]
+
+    first = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in first.tool_calls] == [
+        ("call_e2e_runtime_inspect_ls", "ls", {"path": skill_directory}),
+    ]
+
+    messages.append(ToolMessage(content="[]", tool_call_id="call_e2e_runtime_inspect_ls"))
+    second = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in second.tool_calls] == [
+        (
+            "call_e2e_runtime_inspect_glob",
+            "glob",
+            {"pattern": "SKILL.md", "path": skill_directory},
+        ),
+    ]
+
+    messages.append(ToolMessage(content="[]", tool_call_id="call_e2e_runtime_inspect_glob"))
+    third = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in third.tool_calls] == [
+        (
+            "call_e2e_runtime_inspect_grep",
+            "grep",
+            {"pattern": RUNTIME_FILESYSTEM_INSPECT_MARKER, "path": skill_directory},
+        ),
+    ]
+
+    messages.append(ToolMessage(content="[]", tool_call_id="call_e2e_runtime_inspect_grep"))
+    fourth = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in fourth.tool_calls] == [
+        (
+            "call_e2e_runtime_inspect_read",
+            "read_file",
+            {"file_path": skill_file},
+        ),
+    ]
+
+    messages.append(
+        ToolMessage(
+            content=RUNTIME_FILESYSTEM_INSPECT_MARKER, tool_call_id="call_e2e_runtime_inspect_read"
+        )
+    )
+    fifth = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in fifth.tool_calls] == [
+        (
+            "call_e2e_runtime_inspect_write_denied",
+            "write_file",
+            {
+                "file_path": f"{workspace}/inspect-denied.md",
+                "content": "E2E inspect write must be denied.",
+            },
+        ),
+    ]
+
+    messages.append(
+        ToolMessage(
+            content="Error: write_file is not a valid tool",
+            tool_call_id="call_e2e_runtime_inspect_write_denied",
+            status="error",
+        )
+    )
+    escape = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in escape.tool_calls] == [
+        (
+            "call_e2e_runtime_inspect_sibling_escape",
+            "read_file",
+            {"file_path": f"{skill_directory}/../sibling/SKILL.md"},
+        ),
+    ]
+
+    messages.append(
+        ToolMessage(
+            content="Error: filesystem permission denied",
+            tool_call_id="call_e2e_runtime_inspect_sibling_escape",
+            status="error",
+        )
+    )
+    final = model.invoke(messages)
+    assert final.tool_calls == []
+    assert final.content == RUNTIME_FILESYSTEM_INSPECT_FINAL_CONTENT
+
+
+def test_e2e_scripted_model_artifact_policy_writes_edits_reads_and_denies_escape() -> None:
+    """The artifact-write fixture uses only a conversation-owned artifact path."""
+    thread_id = "00000000-0000-4000-8000-000000000222"
+    workspace = f"/conversations/{thread_id}"
+    artifact_path = f"{workspace}/{RUNTIME_FILESYSTEM_ARTIFACT_NAME}"
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": name} for name in ("ls", "read_file", "write_file", "edit_file", "glob", "grep")]
+    )
+    messages: list[BaseMessage] = [
+        HumanMessage(content=f"{RUNTIME_FILESYSTEM_ARTIFACT_WRITE_MARKER} {workspace}/")
+    ]
+
+    write = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in write.tool_calls] == [
+        (
+            "call_e2e_runtime_artifact_write",
+            "write_file",
+            {"file_path": artifact_path, "content": RUNTIME_FILESYSTEM_ARTIFACT_CONTENT},
+        ),
+    ]
+
+    messages.append(ToolMessage(content="updated", tool_call_id="call_e2e_runtime_artifact_write"))
+    edit = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in edit.tool_calls] == [
+        (
+            "call_e2e_runtime_artifact_edit",
+            "edit_file",
+            {
+                "file_path": artifact_path,
+                "old_string": RUNTIME_FILESYSTEM_ARTIFACT_CONTENT,
+                "new_string": RUNTIME_FILESYSTEM_ARTIFACT_FINAL_CONTENT,
+            },
+        ),
+    ]
+
+    messages.append(ToolMessage(content="edited", tool_call_id="call_e2e_runtime_artifact_edit"))
+    read = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in read.tool_calls] == [
+        ("call_e2e_runtime_artifact_read", "read_file", {"file_path": artifact_path}),
+    ]
+
+    messages.append(
+        ToolMessage(
+            content=RUNTIME_FILESYSTEM_ARTIFACT_FINAL_CONTENT,
+            tool_call_id="call_e2e_runtime_artifact_read",
+        )
+    )
+    listed = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in listed.tool_calls] == [
+        ("call_e2e_runtime_artifact_ls", "ls", {"path": workspace}),
+    ]
+
+    messages.append(ToolMessage(content="[]", tool_call_id="call_e2e_runtime_artifact_ls"))
+    escape = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in escape.tool_calls] == [
+        ("call_e2e_runtime_artifact_root_escape", "ls", {"path": "/"}),
+    ]
+
+    messages.append(
+        ToolMessage(
+            content="Error: filesystem permission denied",
+            tool_call_id="call_e2e_runtime_artifact_root_escape",
+            status="error",
+        )
+    )
+    final = model.invoke(messages)
+    assert final.tool_calls == []
+    assert final.content == RUNTIME_FILESYSTEM_ARTIFACT_FINAL_CONTENT
 
 
 def test_e2e_scripted_model_uses_latest_human_message_marker() -> None:

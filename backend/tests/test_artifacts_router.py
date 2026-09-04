@@ -43,6 +43,42 @@ async def _create_artifact(tmp_path: Path, *, name: str = "report.md") -> tuple[
 
 
 @pytest.mark.asyncio
+async def test_same_run_write_then_edit_remains_recordable(tmp_path: Path) -> None:
+    conv_id, agent_id = await seed_artifact_conversation()
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    recorder = ArtifactDeltaRecorder(
+        session_factory=TestSession,
+        context=ArtifactRuntimeContext(
+            conversation_id=conv_id,
+            user_id=TEST_USER_ID,
+            agent_id=agent_id,
+            assistant_msg_id="stored-artifact-write-run",
+            output_dir=output_dir,
+        ),
+        storage=LocalArtifactStorageBackend(tmp_path / "artifacts"),
+    )
+    await recorder.prepare()
+    report = output_dir / "report.md"
+    report.write_text("v1", encoding="utf-8")
+
+    created = await recorder.collect_after_tool_result(
+        tool_name="write_file",
+        tool_call_id="call-write",
+    )
+    report.write_text("v2", encoding="utf-8")
+    updated = await recorder.collect_after_tool_result(
+        tool_name="edit_file",
+        tool_call_id="call-edit",
+    )
+
+    assert [event["op"] for event in created] == ["created"]
+    assert [event["op"] for event in updated] == ["updated"]
+    assert updated[0]["id"] == created[0]["id"]
+    assert updated[0]["version_number"] == 2
+
+
+@pytest.mark.asyncio
 async def test_conversation_artifact_content_and_download(
     client: AsyncClient,
     tmp_path: Path,

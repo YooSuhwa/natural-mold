@@ -27,6 +27,9 @@ from app.agent_runtime.e2e_langgraph_v3_script import (
     langgraph_v3_subagent_parts,
     langgraph_v3_subagent_response,
 )
+from app.agent_runtime.e2e_runtime_filesystem_policy_script import (
+    runtime_filesystem_policy_message,
+)
 
 SCRIPTED_DOCUMENT_COMMANDS: dict[str, dict[str, str]] = {
     "E2E_DOCX": {
@@ -729,6 +732,7 @@ def _message_text(message: BaseMessage) -> str:
 class E2EScriptedChatModel(BaseChatModel):
     """Deterministic dev-only model for document artifact E2E tests."""
 
+    model: str = "document-artifact-scripted"
     slow_stream_delay_seconds: float = 0.75
     _bound_tool_names: tuple[str, ...] = PrivateAttr(default_factory=tuple)
 
@@ -791,6 +795,10 @@ class E2EScriptedChatModel(BaseChatModel):
                 docx_tool_args=LANGGRAPH_V3_ARTIFACT_COMMAND,
             )
             return ChatResult(generations=[ChatGeneration(message=message)])
+
+        runtime_filesystem_message = runtime_filesystem_policy_message(messages, human_text)
+        if runtime_filesystem_message is not None:
+            return ChatResult(generations=[ChatGeneration(message=runtime_filesystem_message)])
 
         if messages and isinstance(messages[-1], ToolMessage):
             # A REJECTED tool call comes back as an error ToolMessage carrying a

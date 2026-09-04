@@ -26,8 +26,9 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, assert_never
 
 from deepagents import create_deep_agent
 from deepagents.backends import StateBackend
@@ -134,6 +135,15 @@ from app.agent_runtime.runtime.reliability import (
 )
 from app.agent_runtime.runtime_config import _DATA_DIR, AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_policy import ResolvedRuntimePolicy
+from app.agent_runtime.runtime_policy_capabilities import (
+    STORED_RESERVED_TOOL_NAMES,
+    RestrictedSubagentSpecError,
+    build_stored_filesystem_permissions,
+    sanitize_child_filesystem_permissions,
+)
+from app.agent_runtime.runtime_policy_parent_permissions import (
+    canonicalize_stored_parent_permissions,
+)
 from app.agent_runtime.runtime_preparation import (
     prepare_runtime_components_impl as _prepare_runtime_components_impl,
 )
@@ -200,6 +210,15 @@ _MOLDY_FILESYSTEM_TOOL_NAMES = (
     "grep",
     "execute",
 )
+_INSPECT_FILESYSTEM_TOOL_NAMES = ("ls", "read_file", "glob", "grep")
+_ARTIFACT_WRITE_FILESYSTEM_TOOL_NAMES = (
+    "ls",
+    "read_file",
+    "write_file",
+    "edit_file",
+    "glob",
+    "grep",
+)
 _FILESYSTEM_MIDDLEWARE_NAME = "FilesystemMiddleware"
 _SUMMARIZATION_MIDDLEWARE_NAME = "SummarizationMiddleware"
 _TODO_LIST_MIDDLEWARE_NAME = "TodoListMiddleware"
@@ -249,6 +268,48 @@ def _with_moldy_deepagents_compatibility(
         permissions=permissions,
         middleware_name=_middleware_name,
         build_filesystem_middleware=_build_moldy_filesystem_middleware,
+        filesystem_middleware_name=_FILESYSTEM_MIDDLEWARE_NAME,
+        todo_list_middleware_name=_TODO_LIST_MIDDLEWARE_NAME,
+    )
+
+
+def _stored_filesystem_tool_names(
+    runtime_policy: ResolvedRuntimePolicy,
+) -> tuple[str, ...]:
+    match runtime_policy.effective.filesystem.mode:
+        case "inspect":
+            return _INSPECT_FILESYSTEM_TOOL_NAMES
+        case "artifact_write":
+            return _ARTIFACT_WRITE_FILESYSTEM_TOOL_NAMES
+        case unreachable:
+            assert_never(unreachable)
+
+
+def _with_stored_policy_compatibility(
+    middleware: list[Any] | tuple[Any, ...] | None,
+    *,
+    backend: Any,
+    permissions: list[FilesystemPermission] | None,
+    filesystem_tool_names: tuple[str, ...],
+) -> list[Any]:
+    def build_filesystem_middleware(
+        *,
+        backend: Any,
+        permissions: list[FilesystemPermission] | None,
+    ) -> FilesystemMiddleware:
+        return _build_moldy_filesystem_middleware_impl(
+            backend=backend,
+            permissions=permissions,
+            filesystem_tool_names=filesystem_tool_names,
+            add_scoped_permissions=add_scoped_offload_permissions,
+        )
+
+    return _with_moldy_deepagents_compatibility_impl(
+        middleware,
+        backend=backend,
+        permissions=permissions,
+        middleware_name=_middleware_name,
+        build_filesystem_middleware=build_filesystem_middleware,
         filesystem_middleware_name=_FILESYSTEM_MIDDLEWARE_NAME,
         todo_list_middleware_name=_TODO_LIST_MIDDLEWARE_NAME,
     )
@@ -328,6 +389,72 @@ def _normalize_declarative_subagents(
     )
 
 
+def _normalize_stored_policy_subagents(
+    subagents: list[dict[str, Any]] | None,
+    *,
+    model: BaseChatModel,
+    tools: list[BaseTool],
+    backend: Any,
+    permissions: list[FilesystemPermission] | None,
+    interrupt_on: dict[str, Any] | bool | None,
+    skills: list[str] | None,
+    filesystem_tool_names: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    compatibility = partial(
+        _with_stored_policy_compatibility,
+        filesystem_tool_names=filesystem_tool_names,
+    )
+    allow_child_writes = "write_file" in filesystem_tool_names
+    parent_child_permissions = sanitize_child_filesystem_permissions(
+        permissions,
+        permissions,
+        child_name=None,
+        trusted_child=False,
+        allow_child_writes=allow_child_writes,
+    )
+    restricted_subagents: list[dict[str, Any]] = []
+    for spec in subagents or ():
+        if "runnable" in spec or "graph_id" in spec:
+            raise RestrictedSubagentSpecError
+        child = dict(spec)
+        trusted_child = _MOLDY_ACTOR_ID_KEY in spec
+        candidate_permissions = (
+            spec.get("permissions", permissions) if trusted_child else permissions
+        )
+        child_name = spec.get("name")
+        child["permissions"] = sanitize_child_filesystem_permissions(
+            permissions,
+            candidate_permissions,
+            child_name=child_name if isinstance(child_name, str) else None,
+            trusted_child=trusted_child,
+            allow_child_writes=allow_child_writes,
+        )
+        child_tools = spec.get("tools")
+        if isinstance(child_tools, (list, tuple)):
+            child["tools"] = [
+                tool
+                for tool in child_tools
+                if getattr(tool, "name", None) not in STORED_RESERVED_TOOL_NAMES
+            ]
+        restricted_subagents.append(child)
+    return _normalize_declarative_subagents_impl(
+        restricted_subagents,
+        model=model,
+        tools=tools,
+        backend=backend,
+        permissions=parent_child_permissions,
+        interrupt_on=interrupt_on,
+        skills=skills,
+        actor_backend=_actor_backend,
+        with_compatibility=compatibility,
+        with_actor_summarization=_with_actor_summarization,
+        general_purpose_subagent=GENERAL_PURPOSE_SUBAGENT,
+        general_purpose_subagent_name=_GENERAL_PURPOSE_SUBAGENT_NAME,
+        actor_id_key=_MOLDY_ACTOR_ID_KEY,
+        general_purpose_actor=GENERAL_PURPOSE_ACTOR,
+    )
+
+
 def build_agent(
     model: BaseChatModel,
     tools: list[BaseTool],
@@ -346,10 +473,34 @@ def build_agent(
     runtime_policy: ResolvedRuntimePolicy | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
-    del runtime_policy  # Metadata-only until the source-gated policy pilots land.
+    effective_permissions = permissions
+    effective_tools = tools
+    bindings = _DeepAgentFactoryBindings(
+        create_deep_agent=create_deep_agent,
+        with_compatibility=_with_moldy_deepagents_compatibility,
+        normalize_subagents=_normalize_declarative_subagents,
+    )
+    if runtime_policy is not None and runtime_policy.source == "stored":
+        effective_tools = [tool for tool in tools if tool.name not in STORED_RESERVED_TOOL_NAMES]
+        effective_permissions = canonicalize_stored_parent_permissions(
+            permissions,
+            mode=runtime_policy.effective.filesystem.mode,
+        )
+        filesystem_tool_names = _stored_filesystem_tool_names(runtime_policy)
+        bindings = _DeepAgentFactoryBindings(
+            create_deep_agent=create_deep_agent,
+            with_compatibility=partial(
+                _with_stored_policy_compatibility,
+                filesystem_tool_names=filesystem_tool_names,
+            ),
+            normalize_subagents=partial(
+                _normalize_stored_policy_subagents,
+                filesystem_tool_names=filesystem_tool_names,
+            ),
+        )
     return _build_agent_impl(
         model=model,
-        tools=tools,
+        tools=effective_tools,
         system_prompt=system_prompt,
         middleware=middleware,
         interrupt_on=interrupt_on,
@@ -358,14 +509,10 @@ def build_agent(
         backend=backend,
         skills=skills,
         memory=memory,
-        permissions=permissions,
+        permissions=effective_permissions,
         name=name,
         subagents=subagents,
-        bindings=_DeepAgentFactoryBindings(
-            create_deep_agent=create_deep_agent,
-            with_compatibility=_with_moldy_deepagents_compatibility,
-            normalize_subagents=_normalize_declarative_subagents,
-        ),
+        bindings=bindings,
     )
 
 
@@ -502,6 +649,7 @@ def _runtime_preparation_bindings() -> _RuntimePreparationBindings:
         memory_tool_instruction_prompt=_memory_tool_instruction_prompt,
         load_memory_context=_load_memory_context,
         build_filesystem_permissions=build_filesystem_permissions,
+        build_stored_filesystem_permissions=build_stored_filesystem_permissions,
         selected_skill_slugs=_selected_skill_slugs,
         ask_user_tool=ask_user_tool,
         build_interrupt_on_policy=_build_interrupt_on_policy,
