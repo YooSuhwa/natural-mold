@@ -83,7 +83,7 @@ def _run(
             for name in ("E2E_LLM_BASE_URL", "E2E_LLM_API_KEY", "E2E_LLM_MODEL")
         ):
             raise RuntimeError("live_llm_configuration_missing")
-        resources = provision_resources(lane)
+        resources = provision_resources(lane, project)
         ownership["run_root"] = True
         ownership["database"] = True
         run_id = resources.run_id

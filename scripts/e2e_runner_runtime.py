@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Final
 
 import psycopg
-from e2e_runner_contract import E2eDsns, Lane, build_e2e_dsns, parse_e2e_dsns
+from e2e_runner_contract import E2eDsns, Lane, Project, build_e2e_dsns, parse_e2e_dsns
 from e2e_runner_environment import build_lane_environment
 from postgres_manifest_io import RunnerInterrupted
 from postgres_runner_runtime import (
@@ -134,7 +134,7 @@ def _partial_cleanup(
     }
 
 
-def provision_resources(lane: Lane) -> E2eResources:
+def provision_resources(lane: Lane, project: Project) -> E2eResources:
     run_id = secrets.token_hex(12)
     owner_token = secrets.token_hex(32)
     owner = OwnedContainer(owner_token, run_id, f"moldy-e2e-{run_id}")
@@ -167,7 +167,6 @@ def provision_resources(lane: Lane) -> E2eResources:
         with psycopg.connect(postgres_url, autocommit=True) as connection:
             connection.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
         database_created = True
-        project = "scripted-full" if lane == "scripted" else "live-manual"
         env = build_lane_environment(lane, project, dsns, run_root)
         head, current, fingerprint, idempotent = alembic_state(env)
         return E2eResources(

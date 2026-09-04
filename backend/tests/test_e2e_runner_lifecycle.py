@@ -83,7 +83,11 @@ def _manifest_section(manifest: dict[str, object], name: str) -> dict[str, objec
 def _install_common_fakes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(runner, "assert_node22", lambda: None)
     monkeypatch.setattr(runner, "assert_ports_available", lambda _ports: None)
-    monkeypatch.setattr(runner, "provision_resources", lambda _lane: _resources(tmp_path))
+    monkeypatch.setattr(
+        runner,
+        "provision_resources",
+        lambda _lane, _project: _resources(tmp_path),
+    )
     monkeypatch.setattr(
         runner,
         "export_artifacts",
@@ -209,7 +213,7 @@ def test_node_guard_fails_before_resource_provision(
 ) -> None:
     provisioned = False
 
-    def provision(_lane: str) -> None:
+    def provision(_lane: str, _project: str) -> None:
         nonlocal provisioned
         provisioned = True
 
@@ -313,7 +317,7 @@ def test_provisioning_sigint_preserves_cleanup_and_interrupt_status(
         "proxy": False,
     }
 
-    def interrupt(_lane: str) -> None:
+    def interrupt(_lane: str, _project: str) -> None:
         raise ProvisioningError("RunnerInterrupted", cleanup, ownership, signal.SIGINT)
 
     monkeypatch.setattr(runner, "provision_resources", interrupt)

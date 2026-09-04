@@ -96,7 +96,11 @@ def test_failed_playwright_outcome_reaches_export_finalizer(
 ) -> None:
     monkeypatch.setattr(runner, "assert_node22", lambda: None)
     monkeypatch.setattr(runner, "assert_ports_available", lambda _ports: None)
-    monkeypatch.setattr(runner, "provision_resources", lambda _lane: _resources(tmp_path))
+    monkeypatch.setattr(
+        runner,
+        "provision_resources",
+        lambda _lane, _project: _resources(tmp_path),
+    )
     monkeypatch.setattr(runner, "cleanup_resources", lambda *_args: _cleanup())
     monkeypatch.setattr(finalization, "publish_runner_receipts", lambda *_args: True)
     calls = 0
@@ -162,7 +166,11 @@ def test_source_rejection_fails_an_otherwise_successful_playwright_run(
 ) -> None:
     monkeypatch.setattr(runner, "assert_node22", lambda: None)
     monkeypatch.setattr(runner, "assert_ports_available", lambda _ports: None)
-    monkeypatch.setattr(runner, "provision_resources", lambda _lane: _resources(tmp_path))
+    monkeypatch.setattr(
+        runner,
+        "provision_resources",
+        lambda _lane, _project: _resources(tmp_path),
+    )
     monkeypatch.setattr(runner, "cleanup_resources", lambda *_args: _cleanup())
     monkeypatch.setattr(finalization, "publish_runner_receipts", lambda *_args: True)
     calls = 0
