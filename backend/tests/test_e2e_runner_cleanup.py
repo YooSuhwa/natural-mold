@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from e2e_runner_export import (  # noqa: E402
     EXPORT_FAILURE_PREFIX,
     MAX_EXPORT_FILE_BYTES,
     ExportValue,
+    _decode_receipt,
     _parse_export_file,
     export_artifacts,
 )
@@ -76,6 +78,35 @@ def test_export_file_rejects_invalid_hash_or_size(field: str, value: ExportValue
     receipt[field] = value
 
     assert _parse_export_file(receipt) is None
+
+
+def test_export_adapter_retains_empty_test_source_rejection(tmp_path: Path) -> None:
+    manifest = _file("export-manifest.json")
+    path = tmp_path / "export-receipt.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "secret_scan_passed": True,
+                "export_directory": "output/e2e-captures/safe-rejection",
+                "manifest": manifest,
+                "files": [manifest],
+                "screenshots": [],
+                "source_rejection": {
+                    "category": "secret_scan",
+                    "rule_id": "sensitive_assignment",
+                    "artifact_path": "results/execution.log",
+                    "tests": [],
+                },
+            }
+        )
+    )
+
+    receipt = _decode_receipt(path, "scripted-full")
+
+    assert receipt.failure_code is None
+    assert receipt.source_rejection is not None
+    assert receipt.source_rejection.tests == ()
 
 
 @pytest.mark.parametrize("kind", ["source_symlink", "destination_symlink", "source_hardlink"])

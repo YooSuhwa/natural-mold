@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import e2e_runner_finalization as finalization  # noqa: E402
 import e2e_test_runner as runner  # noqa: E402
+from e2e_failure_diagnostics import SourceRejection  # noqa: E402
 from e2e_runner_contract import build_e2e_dsns  # noqa: E402
 from e2e_runner_export import ExportReceipt  # noqa: E402
 from e2e_runner_playwright import PlaywrightOutcome  # noqa: E402
@@ -154,3 +155,69 @@ def test_failed_playwright_outcome_reaches_export_finalizer(
     assert isinstance(export, dict) and export["failure_code"] == "bounds"
     cleanup = manifest["cleanup"]
     assert isinstance(cleanup, dict) and cleanup["cleanup_run_root_removed"] is True
+
+
+def test_source_rejection_fails_an_otherwise_successful_playwright_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner, "assert_node22", lambda: None)
+    monkeypatch.setattr(runner, "assert_ports_available", lambda _ports: None)
+    monkeypatch.setattr(runner, "provision_resources", lambda _lane: _resources(tmp_path))
+    monkeypatch.setattr(runner, "cleanup_resources", lambda *_args: _cleanup())
+    monkeypatch.setattr(finalization, "publish_runner_receipts", lambda *_args: True)
+    calls = 0
+
+    def fake_process(
+        _argv: list[str],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        stdout_path: Path,
+        stderr_path: Path,
+    ) -> ProcessResult:
+        nonlocal calls
+        del cwd, env
+        calls += 1
+        report = _report(failed=False)
+        stdout_path.write_text(report)
+        stderr_path.write_text("")
+        if calls == 2:
+            execution = tmp_path / "frontend/test-results/scripted-smoke/execution.json"
+            execution.write_text(report)
+        return ProcessResult(0, True)
+
+    rejection = SourceRejection(
+        "secret_scan",
+        "sensitive_assignment",
+        "results/execution.log",
+        (),
+    )
+    monkeypatch.setattr(runner, "run_owned_process", fake_process)
+    monkeypatch.setattr(
+        runner,
+        "export_artifacts",
+        lambda *_args: ExportReceipt(
+            True,
+            "output/e2e-captures/safe-rejection",
+            (),
+            (),
+            source_rejection=rejection,
+        ),
+    )
+
+    manifest, exit_code = runner._run("scripted", "scripted-smoke", ())
+
+    assert exit_code == 1
+    assert manifest["status"] == "failed"
+    assert manifest["failure_reason"] == "artifact_export_failed"
+    assert manifest["child_exit_code"] == 0
+    assert manifest["unexpected_failures"] == []
+    export = manifest["export"]
+    assert isinstance(export, dict)
+    assert export["secret_scan_passed"] is True
+    assert export["source_rejection"] == {
+        "category": "secret_scan",
+        "rule_id": "sensitive_assignment",
+        "artifact_path": "results/execution.log",
+        "tests": [],
+    }

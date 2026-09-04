@@ -134,6 +134,37 @@ def _manifest(
     }
 
 
+def _replace_export_with_source_rejection(
+    repository: Path, payload: dict[str, object]
+) -> dict[str, object]:
+    export = payload["export"]
+    assert isinstance(export, dict)
+    directory = repository / str(export["export_directory"])
+    shutil.rmtree(directory / "results")
+    rejection: dict[str, object] = {
+        "category": "secret_scan",
+        "rule_id": "sensitive_assignment",
+        "artifact_path": "results/execution.log",
+        "tests": [],
+    }
+    manifest_path = directory / "export-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["source_rejection"] = rejection
+    manifest["files"] = []
+    manifest["total"] = {"file_count": 0, "size_bytes": 0}
+    content = (json.dumps(manifest, sort_keys=True) + "\n").encode()
+    manifest_path.write_bytes(content)
+    manifest_file = {
+        "path": "export-manifest.json",
+        "sha256": _sha256(content),
+        "size_bytes": len(content),
+    }
+    export["manifest"] = manifest_file
+    export["files"] = [manifest_file]
+    export["source_rejection"] = rejection
+    return rejection
+
+
 def test_validate_payload_accepts_persistent_scripted_success(tmp_path: Path) -> None:
     # Given a logical E2E success with a hash-valid persistent export.
     payload = _manifest(tmp_path)
@@ -151,6 +182,47 @@ def test_validate_payload_accepts_legacy_success_without_failure_diagnostics(
     del payload["unexpected_failures"]
 
     validate_payload(payload, repository_root=tmp_path)
+
+
+def test_validate_payload_accepts_fail_closed_artifact_source_rejection(tmp_path: Path) -> None:
+    payload = _manifest(tmp_path)
+    _replace_export_with_source_rejection(tmp_path, payload)
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "artifact_export_failed",
+            "child_exit_code": 0,
+        }
+    )
+
+    validate_payload(payload, repository_root=tmp_path)
+
+
+def test_validate_payload_rejects_passed_run_with_artifact_source_rejection(
+    tmp_path: Path,
+) -> None:
+    payload = _manifest(tmp_path)
+    _replace_export_with_source_rejection(tmp_path, payload)
+
+    with pytest.raises(ManifestValidationError):
+        validate_payload(payload, repository_root=tmp_path)
+
+
+def test_validate_payload_rejects_playwright_failure_without_own_diagnostics(
+    tmp_path: Path,
+) -> None:
+    payload = _manifest(tmp_path)
+    _replace_export_with_source_rejection(tmp_path, payload)
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "playwright_failed",
+            "child_exit_code": 1,
+        }
+    )
+
+    with pytest.raises(ManifestValidationError, match="failure_diagnostics"):
+        validate_payload(payload, repository_root=tmp_path)
 
 
 def test_validate_payload_accepts_exporter_smoke_receipt_without_playwright_dotfile(

@@ -25,6 +25,7 @@ def validate_payload(payload: dict[str, object], *, repository_root: Path = REPO
         "runner",
     )
     lane, project, database_owned = validate_lifecycle(payload)
+    rejection = validate_export(payload.get("export"), project, repository_root)
     diagnostics_value = payload.get("unexpected_failures")
     if "unexpected_failures" not in payload and (
         payload.get("status") == "passed" or payload.get("self_test") != "normal"
@@ -35,17 +36,27 @@ def validate_payload(payload: dict[str, object], *, repository_root: Path = REPO
             diagnostics = parse_failure_diagnostics(diagnostics_value, project)
         except FailureDiagnosticError as error:
             raise ManifestValidationError("failure_diagnostics") from error
+    if rejection is not None:
+        require(
+            tuple((item.node_id, item.status) for item in rejection.tests)
+            == tuple((item.node_id, item.status) for item in diagnostics),
+            "source_rejection",
+        )
     if payload.get("status") == "passed":
-        require(not diagnostics, "failure_diagnostics")
+        require(not diagnostics and rejection is None, "failure_diagnostics")
     elif payload.get("self_test") == "normal":
-        require(bool(diagnostics), "failure_diagnostics")
-    validate_outcome(payload, lane, project)
+        if payload.get("failure_reason") == "artifact_export_failed":
+            require(not diagnostics and rejection is not None, "failure_diagnostics")
+        else:
+            require(bool(diagnostics), "failure_diagnostics")
+    else:
+        require(rejection is None, "source_rejection")
+    validate_outcome(payload, lane, project, source_rejected=rejection is not None)
     executed = payload.get("executed_ids")
     require(
         isinstance(executed, list) and all(item.node_id in executed for item in diagnostics),
         "failure_diagnostics",
     )
-    validate_export(payload.get("export"), project, repository_root)
     validate_egress(payload.get("egress"), lane)
     validate_cleanup(payload, database_owned)
 

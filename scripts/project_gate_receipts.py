@@ -10,7 +10,11 @@ import stat
 from pathlib import Path
 from typing import Final, TypedDict
 
-from e2e_failure_diagnostics import FailureDiagnosticError, parse_failure_diagnostics
+from e2e_failure_diagnostics import (
+    FailureDiagnosticError,
+    parse_failure_diagnostics,
+    parse_source_rejection,
+)
 from project_gate_runtime import JSONObject, JSONValue, ProjectGateError
 
 MAX_RECEIPT_BYTES: Final = 4 * 1024 * 1024
@@ -186,6 +190,11 @@ def validate_e2e(
     diagnostics_value = payload.get("unexpected_failures", [])
     try:
         diagnostics = parse_failure_diagnostics(diagnostics_value, project)
+        rejection = (
+            parse_source_rejection(export.get("source_rejection"), project)
+            if isinstance(export, dict) and export.get("source_rejection") is not None
+            else None
+        )
     except FailureDiagnosticError as error:
         raise ProjectGateError("invalid_child_receipt") from error
     expected_prefix = f"{project}::{expected_spec}::" if expected_spec is not None else None
@@ -199,6 +208,26 @@ def validate_e2e(
     screenshots_match = screenshots == [] if project == "scripted-full" else screenshots is not None
     if project == "scripted-capture":
         screenshots_match = screenshots is not None and len(screenshots) == 13
+    rejection_matches_diagnostics = rejection is None or tuple(
+        (item.node_id, item.status) for item in rejection.tests
+    ) == tuple((item.node_id, item.status) for item in diagnostics)
+    artifact_export_failure = (
+        expected_exit != 0
+        and rejection is not None
+        and not rejection.tests
+        and not diagnostics
+        and payload.get("failure_reason") == "artifact_export_failed"
+        and payload.get("child_exit_code") == 0
+    )
+    child_exit_matches = payload.get("child_exit_code") == expected_exit or artifact_export_failure
+    failure_evidence_matches = (
+        not diagnostics and rejection is None
+        if expected_exit == 0
+        else bool(diagnostics) or artifact_export_failure
+    )
+    rejection_nodes_match = all(
+        item.node_id in executed_strings for item in (() if rejection is None else rejection.tests)
+    )
     valid = (
         payload.get("runner") == "moldy-isolated-e2e"
         and payload.get("lane") == "scripted"
@@ -206,7 +235,7 @@ def validate_e2e(
         and payload.get("workers") == 1
         and payload.get("retries") == 0
         and payload.get("status") == ("passed" if expected_exit == 0 else "failed")
-        and payload.get("child_exit_code") == expected_exit
+        and child_exit_matches
         and selection_values
         and bool(selected_nodes)
         and selected_nodes == executed_nodes
@@ -216,8 +245,10 @@ def validate_e2e(
         and export.get("secret_scan_passed") is True
         and screenshots_match
         and ("unexpected_failures" in payload or expected_exit == 0)
-        and (not diagnostics if expected_exit == 0 else bool(diagnostics))
+        and failure_evidence_matches
+        and rejection_matches_diagnostics
         and all(item.node_id in executed_strings for item in diagnostics)
+        and rejection_nodes_match
         and isinstance(cleanup, dict)
         and all(cleanup.get(key) is True for key in E2E_CLEANUP_KEYS)
     )

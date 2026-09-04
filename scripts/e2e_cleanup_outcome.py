@@ -61,7 +61,9 @@ def validate_egress(value: object, lane: str) -> None:
         )
 
 
-def validate_outcome(payload: dict[str, object], lane: str, project: str) -> None:
+def validate_outcome(
+    payload: dict[str, object], lane: str, project: str, *, source_rejected: bool
+) -> None:
     """Validate success, forced-failure, and signal receipt semantics."""
     status = string(payload.get("status"), "status")
     self_test = string(payload.get("self_test"), "self_test")
@@ -86,14 +88,21 @@ def validate_outcome(payload: dict[str, object], lane: str, project: str) -> Non
             "smoke_selection",
         )
     if status == "passed":
-        require(self_test == "normal" and reason is None and exit_code == 0, "status")
+        require(
+            self_test == "normal" and reason is None and exit_code == 0 and not source_rejected,
+            "status",
+        )
         require(bool(selected) and selected == executed, "node_execution_mismatch")
         if lane == "live":
             require(selected == list(LIVE_NODES), "live_selection")
         return
     if self_test == "normal":
+        playwright_failed = reason == "playwright_failed" and exit_code == 1
+        artifact_export_failed = (
+            source_rejected and reason == "artifact_export_failed" and exit_code == 0
+        )
         require(
-            status == "failed" and reason == "playwright_failed" and exit_code == 1,
+            status == "failed" and (playwright_failed or artifact_export_failed),
             "self_test",
         )
         require(bool(selected) and selected == executed, "node_execution_mismatch")

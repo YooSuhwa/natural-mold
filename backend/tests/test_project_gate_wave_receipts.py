@@ -156,6 +156,89 @@ def test_e2e_receipt_accepts_failed_child_with_sanitized_export(
     assert summary["secret_scan_passed"] is True
 
 
+def test_e2e_receipt_accepts_artifact_rejection_after_playwright_success(
+    tmp_path: Path, receipts: ModuleType
+) -> None:
+    node = "scripted-full::e2e/chat-error-retry.spec.ts::retries failed run"
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-full",
+        "workers": 1,
+        "retries": 0,
+        "status": "failed",
+        "failure_reason": "artifact_export_failed",
+        "child_exit_code": 0,
+        "selected_ids": [node],
+        "executed_ids": [node],
+        "unexpected_failures": [],
+        "export": {
+            "secret_scan_passed": True,
+            "screenshots": [],
+            "source_rejection": {
+                "category": "secret_scan",
+                "rule_id": "sensitive_assignment",
+                "artifact_path": "results/execution.log",
+                "tests": [],
+            },
+        },
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / "e2e-artifact-rejected.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    summary = receipts.validate_e2e(
+        path,
+        tmp_path,
+        1,
+        project="scripted-full",
+        expected_spec=None,
+    )
+
+    assert summary["secret_scan_passed"] is True
+
+
+def test_e2e_receipt_rejects_success_with_artifact_source_rejection(
+    tmp_path: Path, receipts: ModuleType
+) -> None:
+    node = "scripted-full::e2e/a.spec.ts::works"
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-full",
+        "workers": 1,
+        "retries": 0,
+        "status": "passed",
+        "failure_reason": None,
+        "child_exit_code": 0,
+        "selected_ids": [node],
+        "executed_ids": [node],
+        "unexpected_failures": [],
+        "export": {
+            "secret_scan_passed": True,
+            "screenshots": [],
+            "source_rejection": {
+                "category": "secret_scan",
+                "rule_id": "sensitive_assignment",
+                "artifact_path": "results/execution.log",
+                "tests": [],
+            },
+        },
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / "e2e-success-with-rejection.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_e2e(
+            path,
+            tmp_path,
+            0,
+            project="scripted-full",
+            expected_spec=None,
+        )
+
+
 def test_e2e_receipt_rejects_failed_child_without_failure_diagnostics(
     tmp_path: Path, receipts: ModuleType
 ) -> None:

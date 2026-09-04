@@ -104,12 +104,31 @@ describe('E2E artifact exporter failure contract', () => {
     }
   })
 
-  it('emits a sanitized secret_scan category', () => {
+  it('publishes a sanitized source rejection when no Playwright test failed', () => {
     const fixture_ = fixture()
     try {
       writeArtifact(fixture_.results, 'junit.xml', 'password=super-sensitive-value')
-      expectFailure(runCli(fixture_), 'secret_scan', ['super-sensitive-value', fixture_.runRoot])
-      expectNoPartialExport(fixture_)
+      const result = runCli(fixture_)
+
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stderr).toBe('')
+      const receipt = JSON.parse(result.stdout)
+      const exportRoot = path.join(fixture_.repositoryRoot, receipt.export_directory)
+      expect(readdirSync(exportRoot)).toEqual(['export-manifest.json'])
+      const manifest = JSON.parse(
+        readFileSync(path.join(exportRoot, 'export-manifest.json'), 'utf8'),
+      )
+      const rejection = {
+        category: 'secret_scan',
+        rule_id: 'sensitive_assignment',
+        artifact_path: 'results/junit.xml',
+        tests: [],
+      }
+      expect(manifest.source_rejection).toEqual(rejection)
+      expect(receipt.source_rejection).toEqual(rejection)
+      expect(receipt.files).toEqual([receipt.manifest])
+      expect(`${result.stdout}${JSON.stringify(manifest)}`).not.toContain('super-sensitive-value')
+      expect(result.stdout).not.toContain(fixture_.runRoot)
     } finally {
       rmSync(fixture_.repositoryRoot, { recursive: true, force: true })
     }

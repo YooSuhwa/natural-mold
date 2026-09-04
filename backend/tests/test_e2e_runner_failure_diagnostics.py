@@ -74,6 +74,16 @@ def _source_rejection(*, rule_id: str = "bearer_token") -> dict[str, object]:
     }
 
 
+def test_source_rejection_accepts_export_only_failure_without_failed_tests() -> None:
+    rejection = _source_rejection()
+    rejection["tests"] = []
+
+    parsed = diagnostics.parse_source_rejection(rejection, "scripted-full")
+
+    assert parsed.tests == ()
+    assert diagnostics.source_rejection_payload(parsed) == rejection
+
+
 def _execution_receipt(tests: list[dict[str, object]]) -> dict[str, object]:
     return {
         "suites": [
@@ -279,6 +289,19 @@ def test_validate_export_accepts_manifest_only_sanitized_source_rejection(tmp_pa
     validate_export(export, "scripted-full", tmp_path)
 
     # Then the failed run retains safe diagnostics without retaining raw artifacts.
+
+
+def test_validate_export_accepts_manifest_only_rejection_without_failed_tests(
+    tmp_path: Path,
+) -> None:
+    rejection = _source_rejection()
+    rejection["tests"] = []
+    export = _write_fallback_export(tmp_path, rejection)
+
+    actual = validate_export(export, "scripted-full", tmp_path)
+
+    assert actual is not None
+    assert actual.tests == ()
 
 
 @pytest.mark.parametrize(

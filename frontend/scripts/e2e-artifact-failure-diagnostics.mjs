@@ -92,7 +92,7 @@ export function parseFailureDiagnostics(raw, project) {
 }
 
 export function sourceRejection(error, tests) {
-  if (!(error instanceof ArtifactSecretScanFailure) || tests.length === 0) throw error
+  if (!(error instanceof ArtifactSecretScanFailure)) throw error
   return {
     category: 'secret_scan',
     rule_id: error.ruleId,

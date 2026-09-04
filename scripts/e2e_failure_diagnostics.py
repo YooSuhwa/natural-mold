@@ -266,7 +266,7 @@ def parse_source_rejection(value: object, project: str) -> SourceRejection:
         or not isinstance(rule_id, str)
         or rule_id not in SECRET_SCAN_RULE_IDS
         or not isinstance(tests, list)
-        or not 1 <= len(tests) <= MAX_FAILURE_DIAGNOSTICS
+        or len(tests) > MAX_FAILURE_DIAGNOSTICS
     ):
         _fail()
     parsed: list[FailureDiagnostic] = []

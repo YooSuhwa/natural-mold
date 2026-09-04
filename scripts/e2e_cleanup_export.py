@@ -104,8 +104,8 @@ def _validate_export_manifest(
     return rejection
 
 
-def validate_export(export: object, project: str, repository_root: Path) -> None:
-    """Verify an ignored, persistent export against its receipt and internal manifest."""
+def validate_export(export: object, project: str, repository_root: Path) -> SourceRejection | None:
+    """Verify an ignored, persistent export and return any safe source rejection."""
     receipt = mapping(export, "export")
     require(
         receipt.get("schema_version") == 1 and receipt.get("secret_scan_passed") is True,
@@ -166,3 +166,4 @@ def validate_export(export: object, project: str, repository_root: Path) -> None
         rejection is None or (listed == [manifest_entry] and not screenshots),
         "source_rejection",
     )
+    return rejection

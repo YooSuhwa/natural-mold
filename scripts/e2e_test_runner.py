@@ -226,7 +226,11 @@ def _run(
             status, reason, child_exit = "interrupted", "signal", 128 + strongest
         if not cleanup_passed(cleanup, resources_acquired=any(ownership.values())):
             status, reason = "failed", "cleanup_failed"
-        export_failed = not export.secret_scan_passed or not runner_receipts_published
+        export_failed = (
+            not export.secret_scan_passed
+            or export.source_rejection is not None
+            or not runner_receipts_published
+        )
         if export_failed and resources is not None:
             status = "failed"
             if reason in {None, "not_started"}:
