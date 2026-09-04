@@ -17,6 +17,12 @@ from app.agent_runtime.e2e_runtime_filesystem_policy_script import (
     RUNTIME_FILESYSTEM_INSPECT_FINAL_CONTENT,
     RUNTIME_FILESYSTEM_INSPECT_MARKER,
 )
+from app.agent_runtime.e2e_runtime_todo_policy_script import (
+    RUNTIME_TODO_POLICY_FINAL_CONTENT,
+    RUNTIME_TODO_POLICY_MARKER,
+    RUNTIME_TODO_POLICY_TOOL_CALL_ID,
+    runtime_todo_policy_tool_call_id,
+)
 from app.agent_runtime.e2e_scripted_model import (
     ASK_USER_FRUIT_FINAL_CONTENT,
     ASK_USER_FRUIT_MARKER,
@@ -256,6 +262,76 @@ def test_e2e_scripted_model_artifact_policy_writes_edits_reads_and_denies_escape
     final = model.invoke(messages)
     assert final.tool_calls == []
     assert final.content == RUNTIME_FILESYSTEM_ARTIFACT_FINAL_CONTENT
+
+
+def test_e2e_scripted_model_runtime_todo_policy_emits_todos_only_when_bound() -> None:
+    """Todo-policy fixture distinguishes the enabled and disabled tool manifests."""
+    enabled = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "write_todos"}]
+    )
+    disabled = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools([])
+    prompt = HumanMessage(content=RUNTIME_TODO_POLICY_MARKER)
+
+    enabled_result = enabled.invoke([prompt])
+    disabled_result = disabled.invoke([prompt])
+
+    assert enabled_result.tool_calls == [
+        {
+            "name": "write_todos",
+            "args": {
+                "todos": [
+                    {"content": "Verify Todo policy snapshot", "status": "completed"},
+                    {"content": "Keep only the selected conversation plan", "status": "pending"},
+                ]
+            },
+            "id": RUNTIME_TODO_POLICY_TOOL_CALL_ID,
+            "type": "tool_call",
+        }
+    ]
+    assert disabled_result.tool_calls == []
+    assert disabled_result.content == RUNTIME_TODO_POLICY_FINAL_CONTENT
+
+
+def test_e2e_scripted_model_runtime_todo_policy_finishes_after_todo_result() -> None:
+    """The enabled Todo fixture terminates after the deterministic tool result."""
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "write_todos"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content=RUNTIME_TODO_POLICY_MARKER),
+            ToolMessage(content="todos saved", tool_call_id=RUNTIME_TODO_POLICY_TOOL_CALL_ID),
+        ]
+    )
+
+    assert result.tool_calls == []
+    assert result.content == RUNTIME_TODO_POLICY_FINAL_CONTENT
+
+
+def test_e2e_scripted_model_runtime_todo_policy_emits_a_fresh_call_for_each_marker_turn() -> None:
+    """A completed Todo turn must not suppress a later marker-bearing turn."""
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "write_todos"}]
+    )
+    first_call_id = runtime_todo_policy_tool_call_id(1)
+    messages: list[BaseMessage] = [HumanMessage(content=RUNTIME_TODO_POLICY_MARKER)]
+
+    first = model.invoke(messages)
+    assert first.tool_calls[0]["id"] == first_call_id
+
+    messages.extend(
+        [
+            first,
+            ToolMessage(content="todos saved", tool_call_id=first_call_id),
+            HumanMessage(content=f"{RUNTIME_TODO_POLICY_MARKER} second turn"),
+        ]
+    )
+
+    second = model.invoke(messages)
+
+    assert second.tool_calls[0]["name"] == "write_todos"
+    assert second.tool_calls[0]["id"] == runtime_todo_policy_tool_call_id(2)
 
 
 def test_e2e_scripted_model_uses_latest_human_message_marker() -> None:

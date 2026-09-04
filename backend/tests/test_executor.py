@@ -75,8 +75,14 @@ def _cfg(**overrides) -> AgentConfig:
     return AgentConfig(**defaults)  # type: ignore[arg-type]
 
 
-def _stored_policy(mode: str):
-    return resolve_runtime_policy({"version": 1, "filesystem": {"mode": mode}})
+def _stored_policy(mode: str, *, todo_enabled: bool = True):
+    return resolve_runtime_policy(
+        {
+            "version": 1,
+            "filesystem": {"mode": mode},
+            "todo": {"enabled": todo_enabled},
+        }
+    )
 
 
 def _deep_research_skill() -> dict[str, object]:
@@ -389,6 +395,69 @@ def test_build_agent_limits_stored_filesystem_profiles(
 
 
 @pytest.mark.parametrize(
+    ("todo_enabled", "expected_middleware_names"),
+    [
+        (True, ["FilesystemMiddleware", "TodoListMiddleware"]),
+        (False, ["FilesystemMiddleware"]),
+    ],
+)
+@patch("app.agent_runtime.runtime_component_builder.create_deep_agent")
+def test_build_agent_applies_stored_todo_policy_to_parent_and_children(
+    mock_create: MagicMock,
+    todo_enabled: bool,
+    expected_middleware_names: list[str],
+) -> None:
+    """Stored Todo policy gates every declarative Deep Agents compatibility stack."""
+    from app.agent_runtime.runtime_component_builder import build_agent
+
+    colliding_todo_tool = MagicMock()
+    colliding_todo_tool.name = "write_todos"
+    safe_tool = MagicMock()
+    safe_tool.name = "safe_search"
+
+    build_agent(
+        MagicMock(),
+        [colliding_todo_tool, safe_tool],
+        "prompt",
+        subagents=[
+            {
+                "name": "custom-child",
+                "description": "helper",
+                "system_prompt": "help",
+                "tools": [colliding_todo_tool, safe_tool],
+            }
+        ],
+        runtime_policy=_stored_policy("artifact_write", todo_enabled=todo_enabled),
+    )
+
+    call = mock_create.call_args.kwargs
+    assert call["tools"] == [safe_tool]
+    assert [item.name for item in call["middleware"]] == expected_middleware_names
+    for child in call["subagents"]:
+        assert [item.name for item in child["middleware"]] == expected_middleware_names
+        assert [tool.name for tool in child["tools"]] == ["safe_search"]
+    custom_child = next(spec for spec in call["subagents"] if spec["name"] == "custom-child")
+    assert custom_child["tools"] == [safe_tool]
+
+
+@pytest.mark.parametrize("todo_enabled", [True, False])
+def test_build_agent_compiles_stored_todo_policy(todo_enabled: bool) -> None:
+    """The direct graph exposes Todo state exactly when the stored policy enables it."""
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from app.agent_runtime.runtime_component_builder import build_agent
+
+    agent = build_agent(
+        FakeListChatModel(responses=["done"]),
+        [],
+        "prompt",
+        runtime_policy=_stored_policy("artifact_write", todo_enabled=todo_enabled),
+    )
+
+    assert ("TodoListMiddleware.after_model" in agent.nodes) is todo_enabled
+
+
+@pytest.mark.parametrize(
     "runtime_policy",
     [LEGACY_RUNTIME_POLICY, ASSISTANT_RUNTIME_POLICY, SKILL_BUILDER_RUNTIME_POLICY],
 )
@@ -408,6 +477,14 @@ def test_build_agent_preserves_nonstored_filesystem_manifest(
     assert tuple(tool.name for tool in call["middleware"][0].tools) == (
         _MOLDY_FILESYSTEM_TOOL_NAMES
     )
+    assert [item.name for item in call["middleware"]] == [
+        "FilesystemMiddleware",
+        "TodoListMiddleware",
+    ]
+    assert [item.name for item in call["subagents"][0]["middleware"]] == [
+        "FilesystemMiddleware",
+        "TodoListMiddleware",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1669,6 +1746,8 @@ async def test_prepare_stored_filesystem_profile_omits_skill_execution_capabilit
     add_skill_secrets = MagicMock()
     execute_tool = MagicMock()
     execute_tool.name = "execute_in_skill"
+    mcp_todo_tool = MagicMock()
+    mcp_todo_tool.name = "write_todos"
     configured_tools: dict[str, MagicMock] = {}
 
     def configured_tool(config: dict[str, object]) -> MagicMock:
@@ -1682,7 +1761,7 @@ async def test_prepare_stored_filesystem_profile_omits_skill_execution_capabilit
     (skill_source / "SKILL.md").write_text("# Selected\n")
 
     monkeypatch.setattr(executor, "_build_model_candidates", lambda _cfg: [model])
-    monkeypatch.setattr(executor, "_build_mcp_tools", AsyncMock(return_value=[]))
+    monkeypatch.setattr(executor, "_build_mcp_tools", AsyncMock(return_value=[mcp_todo_tool]))
     monkeypatch.setattr(executor, "create_tool_for_runtime", configured_tool)
     monkeypatch.setattr(executor, "_append_temporal_tools", lambda _tools: None)
     monkeypatch.setattr(executor, "_append_e2e_scripted_search_tool", lambda _tools: None)
@@ -1711,14 +1790,17 @@ async def test_prepare_stored_filesystem_profile_omits_skill_execution_capabilit
         _cfg(
             runtime_policy=_stored_policy(mode),
             tools_config=[
-                {"name": name}
-                for name in (
-                    "read_file",
-                    "write_file",
-                    "task",
-                    "write_todos",
-                    "safe_search",
-                )
+                *[
+                    {"name": name}
+                    for name in (
+                        "read_file",
+                        "write_file",
+                        "task",
+                        "write_todos",
+                        "safe_search",
+                    )
+                ],
+                {"name": "mcp-write-todos", "mcp_server_url": "https://mcp.invalid"},
             ],
             agent_skills=[
                 {

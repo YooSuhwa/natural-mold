@@ -253,6 +253,7 @@ def _with_moldy_deepagents_compatibility(
     *,
     backend: Any,
     permissions: list[FilesystemPermission] | None,
+    include_todo: bool = True,
 ) -> list[Any]:
     """Replace Deep Agents 0.7 default FS/todo behavior with Moldy's contract.
 
@@ -270,6 +271,7 @@ def _with_moldy_deepagents_compatibility(
         build_filesystem_middleware=_build_moldy_filesystem_middleware,
         filesystem_middleware_name=_FILESYSTEM_MIDDLEWARE_NAME,
         todo_list_middleware_name=_TODO_LIST_MIDDLEWARE_NAME,
+        include_todo=include_todo,
     )
 
 
@@ -291,6 +293,7 @@ def _with_stored_policy_compatibility(
     backend: Any,
     permissions: list[FilesystemPermission] | None,
     filesystem_tool_names: tuple[str, ...],
+    todo_enabled: bool,
 ) -> list[Any]:
     def build_filesystem_middleware(
         *,
@@ -312,6 +315,7 @@ def _with_stored_policy_compatibility(
         build_filesystem_middleware=build_filesystem_middleware,
         filesystem_middleware_name=_FILESYSTEM_MIDDLEWARE_NAME,
         todo_list_middleware_name=_TODO_LIST_MIDDLEWARE_NAME,
+        include_todo=todo_enabled,
     )
 
 
@@ -399,10 +403,12 @@ def _normalize_stored_policy_subagents(
     interrupt_on: dict[str, Any] | bool | None,
     skills: list[str] | None,
     filesystem_tool_names: tuple[str, ...],
+    todo_enabled: bool,
 ) -> list[dict[str, Any]]:
     compatibility = partial(
         _with_stored_policy_compatibility,
         filesystem_tool_names=filesystem_tool_names,
+        todo_enabled=todo_enabled,
     )
     allow_child_writes = "write_file" in filesystem_tool_names
     parent_child_permissions = sanitize_child_filesystem_permissions(
@@ -487,15 +493,18 @@ def build_agent(
             mode=runtime_policy.effective.filesystem.mode,
         )
         filesystem_tool_names = _stored_filesystem_tool_names(runtime_policy)
+        todo_enabled = runtime_policy.effective.todo.enabled
         bindings = _DeepAgentFactoryBindings(
             create_deep_agent=create_deep_agent,
             with_compatibility=partial(
                 _with_stored_policy_compatibility,
                 filesystem_tool_names=filesystem_tool_names,
+                todo_enabled=todo_enabled,
             ),
             normalize_subagents=partial(
                 _normalize_stored_policy_subagents,
                 filesystem_tool_names=filesystem_tool_names,
+                todo_enabled=todo_enabled,
             ),
         )
     return _build_agent_impl(

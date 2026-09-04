@@ -22,6 +22,7 @@ from app.routers.conversation_agent_protocol_contracts import (
 )
 from app.routers.conversation_agent_protocol_state_snapshot import (
     collect_state_secret_values,
+    project_todo_policy_values,
     serialize_langchain_message,
 )
 from app.services.conversation_stream_service import resolve_agent_context
@@ -86,7 +87,7 @@ async def update_thread_state_response(
         checkpoint=request.checkpoint,
     )
     snapshot = await agent.aget_state(update_config)
-    values = request.values or {"messages": []}
+    values = project_todo_policy_values(conversation, request.values or {"messages": []})
     await agent.aupdate_state(
         update_config,
         values,
@@ -173,7 +174,7 @@ def _checkpoint_state_response(
         )
     return state_response(
         conversation,
-        values={"messages": messages},
+        values=project_todo_policy_values(conversation, {"messages": messages}),
         checkpoint_id=checkpoint.checkpoint_id,
         checkpoint_by_message_id=checkpoint_by_message_id,
         metadata_source="moldy_checkpointer_history",
@@ -220,7 +221,10 @@ def _snapshot_state_response(
     configurable = _snapshot_configurable(snapshot)
     checkpoint_id = configurable.get("checkpoint_id")
     checkpoint_ns = configurable.get("checkpoint_ns")
-    values = _snapshot_values(snapshot, secret_values=secret_values)
+    values = project_todo_policy_values(
+        conversation,
+        _snapshot_values(snapshot, secret_values=secret_values),
+    )
     return state_response(
         conversation,
         values=values,

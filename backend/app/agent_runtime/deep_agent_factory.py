@@ -124,6 +124,7 @@ def with_moldy_deepagents_compatibility_impl(
     build_filesystem_middleware: _FilesystemMiddlewareBuilder,
     filesystem_middleware_name: str,
     todo_list_middleware_name: str,
+    include_todo: bool = True,
 ) -> list[Any]:
     excluded_names = {filesystem_middleware_name, todo_list_middleware_name}
     retained = [item for item in (middleware or ()) if middleware_name(item) not in excluded_names]
@@ -131,7 +132,10 @@ def with_moldy_deepagents_compatibility_impl(
         backend=cast(BackendProtocol, backend),
         permissions=permissions,
     )
-    return [filesystem, TodoListMiddleware(), *retained]
+    compatibility_middleware: list[Any] = [filesystem]
+    if include_todo:
+        compatibility_middleware.append(TodoListMiddleware())
+    return [*compatibility_middleware, *retained]
 
 
 def actor_backend_impl(backend: Any, actor_id: Any) -> Any:

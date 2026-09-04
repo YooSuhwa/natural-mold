@@ -30,6 +30,7 @@ from app.agent_runtime.e2e_langgraph_v3_script import (
 from app.agent_runtime.e2e_runtime_filesystem_policy_script import (
     runtime_filesystem_policy_message,
 )
+from app.agent_runtime.e2e_runtime_todo_policy_script import runtime_todo_policy_message
 
 SCRIPTED_DOCUMENT_COMMANDS: dict[str, dict[str, str]] = {
     "E2E_DOCX": {
@@ -799,6 +800,14 @@ class E2EScriptedChatModel(BaseChatModel):
         runtime_filesystem_message = runtime_filesystem_policy_message(messages, human_text)
         if runtime_filesystem_message is not None:
             return ChatResult(generations=[ChatGeneration(message=runtime_filesystem_message)])
+
+        runtime_todo_message = runtime_todo_policy_message(
+            messages,
+            human_text,
+            bound_tool_names=self._bound_tool_names,
+        )
+        if runtime_todo_message is not None:
+            return ChatResult(generations=[ChatGeneration(message=runtime_todo_message)])
 
         if messages and isinstance(messages[-1], ToolMessage):
             # A REJECTED tool call comes back as an error ToolMessage carrying a

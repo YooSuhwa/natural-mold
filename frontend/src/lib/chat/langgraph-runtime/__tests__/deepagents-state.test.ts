@@ -32,6 +32,15 @@ describe('selectDeepAgentsState', () => {
     expect(hasDeepAgentsState(malformed)).toBe(false)
   })
 
+  it('normalizes a Todo-absent file state to an empty Todo list', () => {
+    const state = selectDeepAgentsState({
+      files: [{ path: 'reports/off-policy.md', content: 'No Todo state in this conversation.' }],
+    })
+
+    expect(state.todos).toEqual([])
+    expect(state.files).toEqual([expect.objectContaining({ path: 'reports/off-policy.md' })])
+  })
+
   it('normalizes files from arrays and record maps', () => {
     const state = selectDeepAgentsState({
       files: {

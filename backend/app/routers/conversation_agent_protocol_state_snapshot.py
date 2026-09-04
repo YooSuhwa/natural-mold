@@ -14,6 +14,7 @@ from app.routers.conversation_agent_protocol_checkpoint_state import (
     load_checkpoint_channel_values,
 )
 from app.routers.conversation_agent_protocol_legacy import legacy_state_messages
+from app.services.conversation_runtime_policy import snapshot_from_conversation
 from app.services.thread_branch_service import _collect_checkpoints, build_message_tree
 
 
@@ -22,6 +23,21 @@ class ThreadStateSnapshot:
     values: dict[str, Any]
     checkpoint_by_message_id: dict[str, str]
     parent_checkpoint_by_message_id: dict[str, str]
+
+
+def project_todo_policy_values(
+    conversation: Conversation,
+    values: dict[str, Any],
+) -> dict[str, Any]:
+    """Hide stale Todo state for a conversation that snapshotted explicit Todo-off."""
+    runtime_policy = snapshot_from_conversation(conversation)
+    if (
+        runtime_policy is None
+        or runtime_policy.source != "stored"
+        or runtime_policy.effective.todo.enabled
+    ):
+        return values
+    return {key: value for key, value in values.items() if key != "todos"}
 
 
 def serialize_langchain_message(
@@ -121,6 +137,7 @@ async def load_thread_state_snapshot(
     )
     if not isinstance(values, dict):
         values = {}
+    values = project_todo_policy_values(conversation, values)
     messages: list[dict[str, Any]] = []
     for idx, node in enumerate(tree.nodes):
         aliases = _message_id_aliases(node.message, conversation, idx)
