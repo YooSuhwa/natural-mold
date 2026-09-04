@@ -24,8 +24,15 @@ REPO_ROOT: Final = Path(__file__).resolve().parents[1]
 BACKEND_ROOT: Final = REPO_ROOT / "backend"
 OWNER_LABEL: Final = "dev.moldy.postgres-test-owner"
 IMAGE: Final = "postgres:16-alpine"
-ExternalScenarioKind = Literal["all", "stream-resume"]
-ScenarioKind = Literal["all", "stream-resume", "success", "child_failure", "sigint"]
+ExternalScenarioKind = Literal["all", "migration-roundtrip", "stream-resume"]
+ScenarioKind = Literal[
+    "all",
+    "migration-roundtrip",
+    "stream-resume",
+    "success",
+    "child_failure",
+    "sigint",
+]
 
 
 @dataclass(slots=True)
@@ -221,6 +228,28 @@ def alembic_state(env: dict[str, str]) -> tuple[str, str, str, bool]:
     unchanged = second_current.returncode == 0 and head in second_current.stdout
     unchanged = unchanged and fingerprint == _fingerprint(env["DATABASE_URL_SYNC"])
     return head, head, fingerprint, unchanged
+
+
+def alembic_migration_roundtrip(
+    env: dict[str, str], expected_head: str, expected_fingerprint: str
+) -> bool:
+    """Downgrade one revision and restore the exact disposable-lane schema."""
+    executable = str(BACKEND_ROOT / ".venv/bin/alembic")
+    downgrade = run_command([executable, "downgrade", "-1"], env=env, timeout=180)
+    if downgrade.returncode != 0:
+        return False
+    previous = run_command([executable, "current"], env=env)
+    if previous.returncode != 0 or expected_head in previous.stdout:
+        return False
+    upgrade = run_command([executable, "upgrade", "head"], env=env, timeout=180)
+    if upgrade.returncode != 0:
+        return False
+    current = run_command([executable, "current"], env=env)
+    return (
+        current.returncode == 0
+        and expected_head in current.stdout
+        and _fingerprint(env["DATABASE_URL_SYNC"]) == expected_fingerprint
+    )
 
 
 def lane_env(dsns: LaneDsns, run_root: Path, receipt: Path) -> dict[str, str]:

@@ -205,15 +205,33 @@ def validate_payload(payload: dict[str, object]) -> None:
     _require(payload.get("schema_version") == 1, "schema_version")
     scenarios = _mapping_list(payload.get("scenarios"), "scenarios")
     match payload.get("mode"):
-        case ("all" | "stream-resume") as mode:
+        case ("all" | "migration-roundtrip" | "stream-resume") as mode:
             _require(payload.get("concurrent_pair") is False, "concurrent_pair")
+            match mode:
+                case "all":
+                    scenario_reason = "all_scenarios"
+                case "migration-roundtrip":
+                    scenario_reason = "migration_roundtrip_scenarios"
+                case "stream-resume":
+                    scenario_reason = "stream_resume_scenarios"
             _require(
                 len(scenarios) == 1 and scenarios[0].get("scenario") == mode,
-                "all_scenarios" if mode == "all" else "stream_resume_scenarios",
+                scenario_reason,
             )
             match payload.get("status"):
                 case "passed":
-                    _validate_scenario(scenarios[0], require_test_receipt=True)
+                    _validate_scenario(
+                        scenarios[0], require_test_receipt=mode != "migration-roundtrip"
+                    )
+                    if mode == "migration-roundtrip":
+                        _require(
+                            scenarios[0].get("child_exit_code") == 0,
+                            "child_exit_code",
+                        )
+                        _require(
+                            scenarios[0].get("migration_roundtrip") is True,
+                            "migration_roundtrip",
+                        )
                 case "interrupted":
                     _validate_interrupted_scenario(scenarios[0])
                 case _:

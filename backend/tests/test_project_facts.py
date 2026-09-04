@@ -47,6 +47,9 @@ down_revision = None
         "backend/alembic/versions/m70_current.py": """revision: str = \"m70_current\"
 down_revision: str | None = \"m69_previous\"
 """,
+        "backend/alembic/versions/m71_current.py": """revision: str = \"m71_current\"
+down_revision: str | None = \"m70_current\"
+""",
         "docs/design-docs/adr-020-example.md": "# ADR-020\n",
         "docs/design-docs/adr-021-example.md": "# ADR-021\n",
         "docs/design-docs/index.md": """# ADR Index
@@ -69,17 +72,17 @@ down_revision: str | None = \"m69_previous\"
 - [Completed](completed/completed-plan.md)
 """,
         "README.md": (
-            "AI runtime: `deepagents` 0.7.11; Ruff 0.16.5; Current migration: `m70_current`\n"
+            "AI runtime: `deepagents` 0.7.11; Ruff 0.16.5; Current migration: `m71_current`\n"
         ),
         "README_KO.md": (
-            "AI runtime: `deepagents` 0.7.11; Ruff 0.16.5; 현재 migration: `m70_current`\n"
+            "AI runtime: `deepagents` 0.7.11; Ruff 0.16.5; 현재 migration: `m71_current`\n"
         ),
         "AGENTS.md": (
             "AI Runtime: **deepagents** 0.7.11; Ruff `ruff>=0.16.5,<0.17.0` "
-            "(lock: 0.16.5); migration: `m70_current`\n"
+            "(lock: 0.16.5); migration: `m71_current`\n"
         ),
         "docs/ARCHITECTURE.md": (
-            "Runtime: `deepagents>=0.7.11,<0.8.0` (lock: 0.7.11); migration: `m70_current`\n"
+            "Runtime: `deepagents>=0.7.11,<0.8.0` (lock: 0.7.11); migration: `m71_current`\n"
         ),
     }
     for relative_path, content in files.items():
@@ -113,7 +116,7 @@ def test_inspect_project_facts_returns_derived_canonical_values_when_complete(
     # Then resolved versions, head, and exact index entries are observable.
     assert facts[0] == "0.7.11"
     assert facts[1] == "0.16.5"
-    assert facts[2] == "m70_current"
+    assert facts[2] == "m71_current"
     assert facts[3] == ("adr-020-example.md", "adr-021-example.md")
     assert facts[4] == ("active/active-plan.md",)
     assert facts[5] == ("completed/completed-plan.md",)
@@ -165,12 +168,12 @@ def test_inspect_project_facts_rejects_wrong_displayed_locked_versions(
         ),
         (
             "README.md",
-            "Current AI runtime: DeepAgents 0.6.9; migration `m70_current`\n",
+            "Current AI runtime: DeepAgents 0.6.9; migration `m71_current`\n",
             "stale marker",
         ),
         (
             "README_KO.md",
-            "현재 migration head: M59 / M63; derived head `m70_current`\n",
+            "현재 migration head: M59 / M63; derived head `m71_current`\n",
             "stale marker",
         ),
         (
@@ -359,13 +362,6 @@ def test_inspect_project_facts_rejects_cycle_reachable_from_visible_head(
     previous.write_text(
         'revision = "m69_previous"\ndown_revision = "m70_current"\n', encoding="utf-8"
     )
-    head = fixture_repository / "backend/alembic/versions/m71_visible.py"
-    head.write_text('revision = "m71_visible"\ndown_revision = "m70_current"\n', encoding="utf-8")
-    subprocess.run(
-        ["/usr/bin/git", "add", str(head.relative_to(fixture_repository))],
-        cwd=fixture_repository,
-        check=True,
-    )
 
     # When the graph is checked, the reachable cycle is still rejected.
     with pytest.raises(RuntimeError, match="cycle"):
@@ -475,7 +471,7 @@ def test_inspect_project_facts_allows_explicit_historical_provenance(
     # When canonical current facts are checked, accurate historical provenance is preserved.
     facts = checker.inspect_project_facts(fixture_repository)
 
-    assert facts[2] == "m70_current"
+    assert facts[2] == "m71_current"
 
 
 def test_cli_returns_zero_for_complete_tracked_metadata(fixture_repository: Path) -> None:
@@ -487,7 +483,7 @@ def test_cli_returns_zero_for_complete_tracked_metadata(fixture_repository: Path
 
     # Then its binary observable is success and it prints the derived head.
     assert completed.returncode == 0, completed.stderr
-    assert "m70_current" in completed.stdout
+    assert "m71_current" in completed.stdout
 
 
 def test_cli_reports_malformed_utf8_without_traceback(fixture_repository: Path) -> None:

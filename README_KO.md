@@ -51,7 +51,7 @@ skill 패키지, 마켓플레이스 설치, 스케줄 트리거, 사용량 추�
 | Backend | FastAPI 0.115+, SQLAlchemy 2.0 async, Alembic, Python 3.12 |
 | Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
 | AI runtime | LangGraph 1.x + `create_deep_agent` 기반 `deepagents` 0.7.11 |
-| Database | PostgreSQL 16, Alembic head는 `m70_skill_usage_and_feedback` |
+| Database | PostgreSQL 16, Alembic head는 `m71_runtime_policy` |
 | 인증 | JWT HS256, HttpOnly cookie, CSRF double-submit, refresh token rotation, `super_user` |
 | License | MIT |
 
@@ -126,7 +126,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # ENCRYPTION_KEYS / JWT_SECRET 등 입력 (LLM 키는 UI에서 등록)
 uv sync                               # 의존성 설치 (+ Python 3.12 없으면 자동 다운로드)
-uv run alembic upgrade head           # DB 마이그레이션 (head: m70_skill_usage_and_feedback)
+uv run alembic upgrade head           # DB 마이그레이션 (head: m71_runtime_policy)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
@@ -496,7 +496,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + 도메인
 │   │   ├── agent_runtime/       # AI 실행 엔진
 │   │   └── seed/                # 시드 데이터
-│   ├── alembic/versions/        # 마이그레이션 (head: m70_skill_usage_and_feedback)
+│   ├── alembic/versions/        # 마이그레이션 (head: m71_runtime_policy)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
@@ -581,7 +581,7 @@ Moldy README를 프로젝트 홈페이지, 문서 사이트, 제품 페이지에
       "operatingSystem": "Web",
       "isAccessibleForFree": true,
       "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
-      "softwareVersion": "development snapshot, migration head m70_skill_usage_and_feedback",
+      "softwareVersion": "development snapshot, migration head m71_runtime_policy",
       "dateModified": "2026-09-01",
       "author": {
         "@id": "https://github.com/YooSuhwa/natural-mold#organization"

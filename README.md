@@ -52,7 +52,7 @@ triggers, and usage tracking.
 | Backend | FastAPI 0.115+, SQLAlchemy 2.0 async, Alembic, Python 3.12 |
 | Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
 | AI runtime | LangGraph 1.x + `deepagents` 0.7.11 via `create_deep_agent` |
-| Database | PostgreSQL 16, Alembic head `m70_skill_usage_and_feedback` |
+| Database | PostgreSQL 16, Alembic head `m71_runtime_policy` |
 | Authentication | JWT HS256, HttpOnly cookies, CSRF double-submit, refresh-token rotation, `super_user` |
 | License | MIT |
 
@@ -132,7 +132,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # set ENCRYPTION_KEYS / JWT_SECRET (LLM keys via UI)
 uv sync                               # install dependencies (+ Python 3.12 if missing)
-uv run alembic upgrade head           # run migrations (head: m70_skill_usage_and_feedback)
+uv run alembic upgrade head           # run migrations (head: m71_runtime_policy)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
@@ -513,7 +513,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + domain
 │   │   ├── agent_runtime/       # AI execution engine
 │   │   └── seed/                # seed data
-│   ├── alembic/versions/        # migrations (head: m70_skill_usage_and_feedback)
+│   ├── alembic/versions/        # migrations (head: m71_runtime_policy)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
@@ -599,7 +599,7 @@ official profiles or documentation URLs exist.
       "operatingSystem": "Web",
       "isAccessibleForFree": true,
       "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
-      "softwareVersion": "development snapshot, migration head m70_skill_usage_and_feedback",
+      "softwareVersion": "development snapshot, migration head m71_runtime_policy",
       "dateModified": "2026-09-01",
       "author": {
         "@id": "https://github.com/YooSuhwa/natural-mold#organization"

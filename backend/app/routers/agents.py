@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import get_middleware_registry
+from app.agent_runtime.runtime_policy import resolve_runtime_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import agent_not_found, image_not_found
 from app.exceptions import ExternalServiceError, ValidationError
@@ -57,6 +58,7 @@ def _tool_icon_id(definition_key: str) -> str | None:
 
 def _agent_to_response(agent: Agent) -> AgentResponse:
     """Convert Agent model to AgentResponse with tool configs."""
+    resolved_runtime_policy = resolve_runtime_policy(agent.runtime_policy)
     fallback_ids: list[uuid.UUID] = []
     if agent.model_fallback_list:
         for raw in agent.model_fallback_list:
@@ -112,6 +114,11 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
             for link in agent.sub_agent_links
         ],
         middleware_configs=agent.middleware_configs or [],
+        runtime_policy=(
+            resolved_runtime_policy.effective if agent.runtime_policy is not None else None
+        ),
+        runtime_policy_effective=resolved_runtime_policy.effective,
+        runtime_policy_source=resolved_runtime_policy.source,
         status=agent.status,
         is_favorite=agent.is_favorite,
         model_params=agent.model_params,

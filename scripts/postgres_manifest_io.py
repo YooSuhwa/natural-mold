@@ -194,7 +194,9 @@ def defer_cleanup_signals() -> Iterator[list[int]]:
 
 def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptBuilder) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("all", "self-test", "stream-resume"))
+    parser.add_argument(
+        "mode", choices=("all", "migration-roundtrip", "self-test", "stream-resume")
+    )
     parser.add_argument("--manifest", required=True, type=Path)
     args = parser.parse_args()
     ensure_evidence_root(REPO_ROOT)
@@ -209,7 +211,7 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
     manifest_mode = args.mode
     try:
         try:
-            if args.mode in {"all", "stream-resume"}:
+            if args.mode in {"all", "migration-roundtrip", "stream-resume"}:
                 scenarios = [
                     run_scenario(
                         args.mode, process_id=process_id, process_identity=process_identity
@@ -229,7 +231,7 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
             concurrent_pair = False
         except RunnerInterrupted as interrupted:
             early_mode: ExternalScenarioKind = (
-                "stream-resume" if args.mode == "stream-resume" else "all"
+                args.mode if args.mode in {"migration-roundtrip", "stream-resume"} else "all"
             )
             scenarios = [
                 build_early_interrupt(

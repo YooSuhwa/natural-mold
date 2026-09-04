@@ -27,6 +27,7 @@ from postgres_runner_runtime import (
     ExternalScenarioKind,
     OwnedContainer,
     ScenarioKind,
+    alembic_migration_roundtrip,
     alembic_state,
     build_docker_env,
     build_docker_run_argv,
@@ -141,7 +142,12 @@ def _run_scenario(
             connection.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
         env = lane_env(dsns, run_root, receipt)
         head, current, fingerprint, idempotent = alembic_state(env)
-        exit_code, output = run_test_child(env, kind)
+        if kind == "migration-roundtrip":
+            migration_roundtrip = alembic_migration_roundtrip(env, head, fingerprint)
+            exit_code, output = (0 if migration_roundtrip else 1), ""
+        else:
+            migration_roundtrip = None
+            exit_code, output = run_test_child(env, kind)
         warnings = sorted(
             set(
                 re.findall(
@@ -153,6 +159,7 @@ def _run_scenario(
         )
         expected = {
             "all": 0,
+            "migration-roundtrip": 0,
             "stream-resume": 0,
             "success": 0,
             "child_failure": 23,
@@ -176,6 +183,8 @@ def _run_scenario(
                 "tmpfs_storage": tmpfs_owned,
             }
         )
+        if migration_roundtrip is not None:
+            outcome["migration_roundtrip"] = migration_roundtrip
     except RunnerInterrupted as interrupted:
         outcome.update(
             {
