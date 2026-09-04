@@ -8,6 +8,7 @@ export type RuntimeFailureCode =
   | 'post_run_hydration_failed'
   | 'cancel_active_lookup_failed'
   | 'hitl_flush_failed'
+  | 'hitl_refresh_failed'
 
 export function reportRuntimeFailure(_caught: unknown, code: RuntimeFailureCode): void {
   reportClientWarning('useMoldyLangGraphStream', `Runtime operation failed: ${code}`)

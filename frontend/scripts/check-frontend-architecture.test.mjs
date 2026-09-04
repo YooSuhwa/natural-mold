@@ -43,14 +43,14 @@ const emptyBaseline = {
 }
 
 describe('frontend architecture baseline', () => {
-  it('Given the reviewed application tree When the normal and strict guards run Then normal accepts 50 identities and strict retains seven blockers', () => {
+  it('Given the reviewed application tree When the normal and strict guards run Then normal accepts 43 identities and strict reports no blockers', () => {
     const normal = runChecker(frontendRoot)
     const strict = runChecker(frontendRoot, true)
 
     expect(normal.status).toBe(0)
-    expect(normal.stdout).toContain('frontend architecture issues: 50')
-    expect(strict.status).toBe(1)
-    expect(strict.stdout).toContain('frontend architecture strict blocking issues: 7')
+    expect(normal.stdout).toContain('frontend architecture issues: 43')
+    expect(strict.status).toBe(0)
+    expect(strict.stdout).toContain('frontend architecture strict blocking issues: 0')
   })
 
   it('Given a duplicate reviewed identity When the guard reads the tampered baseline Then it rejects the baseline before scanning source', () => {

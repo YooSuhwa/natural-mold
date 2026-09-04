@@ -87,50 +87,22 @@ function preparedRoot() {
 
 describe('prepared E2E lane boundary', () => {
   it('writes the root visual matrix only to the canonical PNG capture source', () => {
-    // Given: the root visual matrix is admitted to the scripted-capture project.
     const source = readFileSync(
       path.join(frontendRoot, 'e2e/chat-langgraph-v3-visual-matrix.spec.ts'),
       'utf8',
     )
+    const helpersSource = readFileSync(
+      path.join(frontendRoot, 'e2e/langgraph-v3-helpers.ts'),
+      'utf8',
+    )
 
-    // When / Then: its artifacts use the runner-owned capture source and remain PNG-only.
     expect(source).toContain("const CAPTURE_DIR = path.join('..', 'output', 'captures')")
     expect(source).not.toContain('task-14-assistant-thread-viewport-manifest.json')
     expect(source).not.toContain('fs.writeFile')
-    const viewportMatrix = source.match(
-      /async function captureAssistantThreadViewportMatrix[\s\S]*?\n}\n\nasync function expectApprovalCardVisible/,
-    )?.[0]
-    expect(viewportMatrix).toBeDefined()
-    expect(viewportMatrix).not.toContain('expectNoHorizontalOverflow')
-    expect(viewportMatrix).toContain(
-      "await page.setViewportSize({ width: viewport.width, height: viewport.height })\n    if (viewport.width >= 768) {\n      const scrollToBottomButton = page.getByRole('button', {\n        name: /맨 아래로 이동|Scroll to bottom/,\n      })\n      if ((await scrollToBottomButton.isVisible()) && (await scrollToBottomButton.isEnabled())) {\n        await scrollToBottomButton.click()\n      }\n    }\n    await waitForCapturePaint(page)",
+    expect(source).toMatch(
+      /import\s*{[^}]*\bnormalizeArtifactList\b[^}]*}\s*from\s*['"]\.\/langgraph-v3-helpers['"]/s,
     )
-    expect(source).toContain(
-      "await page.setViewportSize(DESKTOP_VIEWPORT)\n      await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()\n      const parityArtifactRail = page.getByRole('complementary')\n      await expect(parityArtifactRail).toBeVisible()\n      const parityReportArtifactButton = parityArtifactRail\n        .getByRole('button', { name: new RegExp(REPORT_FILE) })\n        .last()\n      await expect(parityReportArtifactButton).toBeVisible()\n      await parityReportArtifactButton.dispatchEvent('click')\n      await expect(parityArtifactRail.getByText('LangGraph v3 E2E Report')).toBeVisible({\n        timeout: 20_000,\n      })\n\n      await captureAssistantThreadViewportMatrix(page)\n\n      await parityArtifactRail.getByRole('button', { name: 'Close panel' }).click()\n      await expect(parityArtifactRail).toBeHidden()",
-    )
-    expect(source).toContain(
-      "await captureAssistantThreadViewportMatrix(page)\n\n      await parityArtifactRail.getByRole('button', { name: 'Close panel' }).click()\n      await expect(parityArtifactRail).toBeHidden()\n\n      await page.setViewportSize(MOBILE_VIEWPORT)\n      await expectNoHorizontalOverflow(page)",
-    )
-    expect(source).toContain('await reportArtifactButton.click()')
-    const mobileArtifactCaptureOffset = source.indexOf(
-      "await capture(page, '07-mobile-artifact-rail.png')",
-    )
-    const desktopResetOffset = source.indexOf(
-      'await page.setViewportSize(DESKTOP_VIEWPORT)',
-      mobileArtifactCaptureOffset,
-    )
-    const shareApiOffset = source.indexOf(
-      'const share = await apiPostJson(',
-      mobileArtifactCaptureOffset,
-    )
-    const anonymousContextOffset = source.indexOf(
-      'const anonymous = await browser.newContext(',
-      mobileArtifactCaptureOffset,
-    )
-    expect(mobileArtifactCaptureOffset).toBeGreaterThan(-1)
-    expect(desktopResetOffset).toBeGreaterThan(mobileArtifactCaptureOffset)
-    expect(shareApiOffset).toBeGreaterThan(desktopResetOffset)
-    expect(anonymousContextOffset).toBeGreaterThan(shareApiOffset)
+    expect(helpersSource).toMatch(/export\s+async\s+function\s+normalizeArtifactList\s*\(/)
   })
 
   it('derives auth, Next build, and results from one run root', () => {

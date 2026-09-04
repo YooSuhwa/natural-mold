@@ -1,7 +1,13 @@
 import type { APIRequestContext, Page } from '@playwright/test'
 import { API_BASE, apiPostJson, expect, isRecord, test, type CsrfHeaders } from '../fixtures'
 import { approveExecuteInSkill, sendMessage, setupLangGraphV3Agent } from '../langgraph-v3-helpers'
-import { capture, captureLocator, DESKTOP_VIEWPORT, settle, warmUpChatRoute } from './_capture-helpers'
+import {
+  capture,
+  captureLocator,
+  DESKTOP_VIEWPORT,
+  settle,
+  warmUpChatRoute,
+} from './_capture-helpers'
 
 /**
  * Wave 10 — HITL approval DECISION states. The existing chat-state matrix
@@ -26,6 +32,19 @@ import { capture, captureLocator, DESKTOP_VIEWPORT, settle, warmUpChatRoute } fr
 
 const WAVE = 'wave10-hitl-decisions'
 const SINGLE_PROMPT = '문서 생성 도구를 사용해 승인 후 실행해줘'
+const COMPLETION_MESSAGE = '문서 파일 생성이 완료되었습니다. 오른쪽 파일 패널에서 확인하세요.'
+const DOCX_PREVIEW_HEADING = 'Moldy 문서 생성 검증 보고서'
+
+async function waitForCompletedDocxCapture(page: Page): Promise<void> {
+  await expect(page.getByText(COMPLETION_MESSAGE, { exact: true }).last()).toBeVisible({
+    timeout: 60_000,
+  })
+  const renderedPage = page.locator('.moldy-docx-wrapper:visible section.moldy-docx').last()
+  await expect(renderedPage).toBeVisible({ timeout: 60_000 })
+  await expect(renderedPage.getByText(DOCX_PREVIEW_HEADING, { exact: true }).first()).toBeVisible({
+    timeout: 30_000,
+  })
+}
 
 async function freshConversation(
   request: APIRequestContext,
@@ -39,7 +58,8 @@ async function freshConversation(
     csrfHeaders,
     { title },
   )
-  if (!isRecord(convo) || typeof convo.id !== 'string') throw new Error('conversation create failed')
+  if (!isRecord(convo) || typeof convo.id !== 'string')
+    throw new Error('conversation create failed')
   return convo.id
 }
 
@@ -129,6 +149,7 @@ test.describe('Wave 10 — HITL approval decision captures', () => {
             await expect(page.getByText('승인됨', { exact: true }).last()).toBeVisible({
               timeout: 30_000,
             })
+            await waitForCompletedDocxCapture(page)
             await page.waitForTimeout(400)
             await capture(page, WAVE, '02-single-approved.png')
           },
@@ -246,6 +267,9 @@ test.describe('Wave 10 — HITL approval decision captures', () => {
             await expect(page.getByText('승인됨', { exact: true })).toHaveCount(2, {
               timeout: 30_000,
             })
+            await expect(page.getByText('모든 액션을 결정했습니다', { exact: true })).toBeVisible()
+            await expect(page.getByText(/승인 대기 2건/)).toBeHidden()
+            await waitForCompletedDocxCapture(page)
             await page.waitForTimeout(400)
             await capture(page, WAVE, '08-multi-approved.png')
           },

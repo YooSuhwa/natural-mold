@@ -16,6 +16,7 @@ import {
   REPORT_FILE,
   approveExecuteInSkill,
   expectFinalTextVisible,
+  normalizeArtifactList,
   sendMessage,
   setupLangGraphV3Agent,
   stringField,
@@ -49,8 +50,8 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
-async function capture(page: Page, filename: string): Promise<void> {
-  await page.screenshot({ path: path.join(CAPTURE_DIR, filename), fullPage: true })
+async function capture(page: Page, filename: string, fullPage = true): Promise<void> {
+  await page.screenshot({ path: path.join(CAPTURE_DIR, filename), fullPage })
 }
 
 async function waitForCapturePaint(page: Page): Promise<void> {
@@ -69,7 +70,20 @@ async function captureAssistantThreadViewportMatrix(page: Page): Promise<void> {
   // blocker belongs to Todo 22, while the older 390px overflow assertion below remains unchanged.
   for (const viewport of ASSISTANT_THREAD_VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
-    if (viewport.width >= 768) {
+    const inlineRail = page.locator('[data-slot="chat-right-rail"]')
+    const overlayRail = page.locator('[role="dialog"]')
+    if (viewport.width === 768) {
+      await expect(overlayRail).toBeVisible()
+      await expect(inlineRail).toBeHidden()
+    }
+    if (viewport.width === 1280) {
+      await expect(overlayRail).toBeHidden()
+      await expect(inlineRail).toBeVisible()
+    }
+    // At tablet widths the artifact rail is a full-screen dialog. The underlying
+    // chat button can still satisfy `isVisible()` while the dialog intercepts
+    // pointer events, so only scroll the chat when the rail is inline.
+    if (viewport.width >= 1280) {
       const scrollToBottomButton = page.getByRole('button', {
         name: /맨 아래로 이동|Scroll to bottom/,
       })
@@ -79,7 +93,9 @@ async function captureAssistantThreadViewportMatrix(page: Page): Promise<void> {
     }
     await waitForCapturePaint(page)
     const filename = `task-14-completed-thread-${viewport.name}.png`
-    await capture(page, filename)
+    // The matrix records the exact viewport; fixed overlay rails must not use
+    // Playwright's full-page stitching path.
+    await capture(page, filename, false)
     const file = await fs.stat(path.join(CAPTURE_DIR, filename))
     expect(file.size).toBeGreaterThan(0)
   }
@@ -195,6 +211,23 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       await expect(page.getByText('Collect LangGraph v3 runtime evidence').first()).toBeVisible({
         timeout: 30_000,
       })
+      const streamingStatusPanel = page.locator('[data-slot="streaming-status-panel"]')
+      const planPill = page
+        .locator('.moldy-tool-pill')
+        .filter({ hasText: 'Collect LangGraph v3 runtime evidence' })
+        .first()
+      await expect(streamingStatusPanel).toBeVisible()
+      await expect(planPill).toBeVisible()
+      await expect
+        .poll(async () => {
+          const [statusBox, planBox] = await Promise.all([
+            streamingStatusPanel.boundingBox(),
+            planPill.boundingBox(),
+          ])
+          if (!statusBox || !planBox) return false
+          return statusBox.y + statusBox.height <= planBox.y
+        })
+        .toBe(true)
       await waitForCapturePaint(page)
       await capture(page, '01-running-subagent-and-planning.png')
 
@@ -218,7 +251,9 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
     browser,
     errors,
   }) => {
-    test.setTimeout(180_000)
+    // Cold isolated stacks may spend up to 20 seconds synchronizing the artifact
+    // index before this scenario captures five viewport/share states.
+    test.setTimeout(240_000)
     const setup = await setupLangGraphV3Agent(request)
 
     try {
@@ -237,13 +272,13 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       await capture(page, '03-completed-thread-with-subagent.png')
 
       await page.setViewportSize(DESKTOP_VIEWPORT)
-      await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
       const parityArtifactRail = page.getByRole('complementary')
+      const { reportArtifactButton: parityReportArtifactButton } = await normalizeArtifactList(
+        page,
+        REPORT_FILE,
+        NOTES_FILE,
+      )
       await expect(parityArtifactRail).toBeVisible()
-      const parityReportArtifactButton = parityArtifactRail
-        .getByRole('button', { name: new RegExp(REPORT_FILE) })
-        .last()
-      await expect(parityReportArtifactButton).toBeVisible()
       await parityReportArtifactButton.dispatchEvent('click')
       await expect(parityArtifactRail.getByText('LangGraph v3 E2E Report')).toBeVisible({
         timeout: 20_000,
@@ -262,9 +297,12 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       const tokenButton = page.getByRole('button', { name: /토큰 사용량 보기|Toggle Aria/ }).last()
       await expect(tokenButton).toBeVisible({ timeout: 20_000 })
       await tokenButton.hover()
-      await expect(
-        page.getByRole('tooltip').filter({ hasText: /토큰 사용량|Token Usage/ }),
-      ).toBeVisible()
+      const tokenUsageTooltip = page
+        .getByRole('tooltip')
+        .filter({ hasText: /토큰 사용량|Token Usage/ })
+      await expect(tokenUsageTooltip).toBeVisible()
+      await expect(tokenUsageTooltip).toHaveCSS('opacity', '1')
+      await waitForCapturePaint(page)
       await capture(page, '05-token-usage-tooltip.png')
       await page.mouse.move(1, 1)
 
@@ -308,6 +346,34 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
         // empty store) — the pill keeps the raw runtime name here. Tag display
         // names on the share snapshot is out of G10-A scope.
         await expect(publicPage.getByText(setup.childRuntimeName).first()).toBeVisible()
+        const metadataBadges = publicPage.locator(
+          '[data-slot="share-hero-summary"] [data-slot="badge"]',
+        )
+        await expect(metadataBadges).toHaveCount(2)
+        const metadataBoxes = await metadataBadges.evaluateAll((badges) =>
+          badges.map((badge) => {
+            const box = badge.getBoundingClientRect()
+            return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
+          }),
+        )
+        for (let leftIndex = 0; leftIndex < metadataBoxes.length; leftIndex += 1) {
+          for (let rightIndex = leftIndex + 1; rightIndex < metadataBoxes.length; rightIndex += 1) {
+            const left = metadataBoxes[leftIndex]
+            const right = metadataBoxes[rightIndex]
+            const rowsOverlap = left.top < right.bottom && right.top < left.bottom
+            if (rowsOverlap) expect(left.right <= right.left || right.right <= left.left).toBe(true)
+          }
+        }
+        const summaryBox = await publicPage
+          .locator('[data-slot="share-hero-summary"]')
+          .boundingBox()
+        const descriptionBox = await publicPage
+          .locator('[data-slot="share-hero-description"]')
+          .boundingBox()
+        if (!summaryBox || !descriptionBox) {
+          throw new Error('Share summary and description must both have layout boxes')
+        }
+        expect(summaryBox.y + summaryBox.height <= descriptionBox.y).toBe(true)
         await capture(publicPage, '08-share-page-subagent-chip.png')
       } finally {
         await anonymous.close()

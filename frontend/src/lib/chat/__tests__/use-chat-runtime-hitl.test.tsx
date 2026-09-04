@@ -15,6 +15,12 @@ import type { Decision, Message, SSEEvent, StandardInterruptPayload } from '@/li
 import { useChatRuntime } from '../use-chat-runtime'
 
 // ── 가벼운 mocks ──────────────────────────────────────────────────────────
+const streamResumeDecisionsMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/lib/sse/stream-resume', () => ({
+  streamResumeDecisions: streamResumeDecisionsMock,
+}))
+
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }))
@@ -68,6 +74,14 @@ function makeStreamFn(customEvents: SSEEvent[]): (content: string) => AsyncGener
   }
 }
 
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 const STANDARD_PAYLOAD: StandardInterruptPayload = {
   interrupt_id: 'ns-1',
   action_requests: [{ name: 'send_email', args: { to: 'x@y' }, description: 'Send' }],
@@ -114,6 +128,7 @@ function buildHookOptions(opts: HookSpyOptions) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  streamResumeDecisionsMock.mockReset()
 })
 
 afterEach(() => {
@@ -386,8 +401,8 @@ describe('useChatRuntime — onResumeDecisions', () => {
     expect('onResume' in result.current).toBe(false)
   })
 
-  it('conversationId가 없으면 onResumeDecisions는 noop으로 동작', async () => {
-    // builder v3 등 conversationId 없는 컨텍스트 — resume 송신 안 함.
+  it('conversationId와 resumeFn이 모두 없으면 결정을 완료 처리하지 않는다', async () => {
+    // 잘못 연결된 HiTL 컨텍스트가 결정을 전송하지 않고 완료로 보이는 것을 막는다.
     const { options } = buildHookOptions({ events: [] })
     const noConvOptions = { ...options, conversationId: undefined }
     const { result } = renderHook(() => useChatRuntime(noConvOptions), {
@@ -395,8 +410,9 @@ describe('useChatRuntime — onResumeDecisions', () => {
     })
 
     const decisions: Decision[] = [{ type: 'approve' }]
-    // throw 없이 즉시 resolve.
-    await expect(result.current.onResumeDecisions(decisions)).resolves.toBeUndefined()
+    await expect(result.current.onResumeDecisions(decisions)).rejects.toThrow(
+      'Resume target is unavailable',
+    )
   })
 
   it('multi-action coordinator resumes through the latest resumeFn after rerender', async () => {
@@ -412,7 +428,13 @@ describe('useChatRuntime — onResumeDecisions', () => {
       ],
     }
     const resume1 = vi.fn<ResumeSpy>(async function* () {})
-    const resume2 = vi.fn<ResumeSpy>(async function* () {})
+    const resume2 = vi.fn<ResumeSpy>(async function* () {
+      yield {
+        event: 'message_end' as const,
+        id: 'resume-latest-end',
+        data: { content: '', status: 'completed', usage: {} },
+      }
+    })
     const { options } = buildHookOptions({ events: [{ event: 'interrupt', data: multi }] })
     const { result, rerender } = renderHook(
       ({ resumeFn }: { readonly resumeFn: ResumeSpy }) => useChatRuntime({ ...options, resumeFn }),
@@ -425,14 +447,24 @@ describe('useChatRuntime — onResumeDecisions', () => {
     await act(async () => {
       await result.current.sendMessage('hi')
     })
-    await act(async () => {
-      await result.current.registerDecision(1, { type: 'reject', message: '아니요' }, '거부')
+    let earlyDecision!: Promise<void>
+    act(() => {
+      earlyDecision = result.current.registerDecision(
+        1,
+        { type: 'reject', message: '아니요' },
+        '거부',
+      )
     })
     expect(resume1).not.toHaveBeenCalled()
 
     rerender({ resumeFn: resume2 })
     await act(async () => {
-      await result.current.registerDecision(0, { type: 'respond', message: '네' }, '네')
+      const finalDecision = result.current.registerDecision(
+        0,
+        { type: 'respond', message: '네' },
+        '네',
+      )
+      await Promise.all([earlyDecision, finalDecision])
     })
 
     expect(resume1).not.toHaveBeenCalled()
@@ -443,5 +475,407 @@ describe('useChatRuntime — onResumeDecisions', () => {
     ])
     expect(resume2.mock.calls[0]?.[2]).toBe('네 | 거부')
     expect(resume2.mock.calls[0]?.[3]).toBe('ns-multi-latest')
+  })
+
+  it('keeps a rejected multi-action resume retryable as one complete ordered batch', async () => {
+    const multi: StandardInterruptPayload = {
+      interrupt_id: 'ns-multi-retry',
+      action_requests: [
+        { name: 'send_email', args: { to: 'team@example.com' } },
+        { name: 'delete_record', args: { id: 42 } },
+      ],
+      review_configs: [
+        { action_name: 'send_email', allowed_decisions: ['approve', 'reject'] },
+        { action_name: 'delete_record', allowed_decisions: ['approve', 'reject'] },
+      ],
+    }
+    let resumeAttempt = 0
+    const resume = vi.fn<ResumeSpy>(() => {
+      resumeAttempt += 1
+      const currentAttempt = resumeAttempt
+      return (async function* () {
+        if (currentAttempt === 1) throw new Error('resume rejected')
+        yield {
+          event: 'message_start' as const,
+          id: `resume-${currentAttempt}-start`,
+          data: { id: `resume-${currentAttempt}`, role: 'assistant' },
+        }
+        yield {
+          event: 'message_end' as const,
+          id: `resume-${currentAttempt}-end`,
+          data: { content: '', status: 'completed', usage: {} },
+        }
+      })()
+    })
+    const { options } = buildHookOptions({ events: [{ event: 'interrupt', data: multi }] })
+    const { result } = renderHook(() => useChatRuntime({ ...options, resumeFn: resume }), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    await act(async () => {
+      const first = result.current.registerDecision(0, { type: 'approve' }, '승인')
+      const second = result.current.registerDecision(1, { type: 'reject', message: '거부' }, '거부')
+      await expect(Promise.all([first, second])).rejects.toThrow('resume rejected')
+    })
+
+    expect(resume).toHaveBeenCalledTimes(1)
+    expect(resume.mock.calls[0]?.[0]).toEqual([
+      { type: 'approve' },
+      { type: 'reject', message: '거부' },
+    ])
+
+    await act(async () => {
+      const first = result.current.registerDecision(0, { type: 'approve' }, '승인')
+      const second = result.current.registerDecision(1, { type: 'reject', message: '거부' }, '거부')
+      await Promise.all([first, second])
+    })
+
+    expect(resume).toHaveBeenCalledTimes(2)
+    expect(resume.mock.calls[1]?.[0]).toEqual([
+      { type: 'approve' },
+      { type: 'reject', message: '거부' },
+    ])
+    expect(resume.mock.calls.every(([decisions]) => decisions.length === 2)).toBe(true)
+  })
+
+  it('treats a custom resume error with a dispatch completion status as accepted', async () => {
+    const resume = vi.fn<ResumeSpy>(async function* () {
+      yield {
+        event: 'message_start' as const,
+        id: 'resume-dispatched-start',
+        data: { id: 'resume-dispatched', role: 'assistant' },
+      }
+      yield {
+        event: 'error' as const,
+        id: 'resume-dispatched-error',
+        data: { message: 'agent failed after dispatch' },
+      }
+      yield {
+        event: 'message_end' as const,
+        id: 'resume-dispatched-end',
+        data: { content: '', status: 'failed', usage: {} },
+      }
+    })
+    const { options } = buildHookOptions({ events: [] })
+    const { result } = renderHook(() => useChatRuntime({ ...options, resumeFn: resume }), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await expect(
+        result.current.onResumeDecisions([{ type: 'approve' }], '승인', 'intr-dispatched'),
+      ).resolves.toBeUndefined()
+    })
+
+    expect(resume).toHaveBeenCalledOnce()
+  })
+
+  it('rejects a custom resume error emitted before dispatch acceptance', async () => {
+    const resume = vi.fn<ResumeSpy>(async function* () {
+      yield {
+        event: 'error' as const,
+        id: 'resume-not-accepted-error',
+        data: { message: 'stale interrupt' },
+      }
+    })
+    const { options } = buildHookOptions({ events: [] })
+    const { result } = renderHook(() => useChatRuntime({ ...options, resumeFn: resume }), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await expect(
+        result.current.onResumeDecisions([{ type: 'approve' }], '승인', 'intr-stale'),
+      ).rejects.toThrow('stale interrupt')
+    })
+
+    expect(resume).toHaveBeenCalledOnce()
+  })
+
+  it('retries a conversation batch only before the resume endpoint returns a run id', async () => {
+    const multi: StandardInterruptPayload = {
+      interrupt_id: 'ns-conversation-retry',
+      action_requests: [
+        { name: 'send_email', args: { to: 'team@example.com' } },
+        { name: 'delete_record', args: { id: 42 } },
+      ],
+      review_configs: [
+        { action_name: 'send_email', allowed_decisions: ['approve', 'reject'] },
+        { action_name: 'delete_record', allowed_decisions: ['approve', 'reject'] },
+      ],
+    }
+    streamResumeDecisionsMock
+      .mockImplementationOnce(() =>
+        (async function* () {
+          throw new Error('resume request rejected')
+        })(),
+      )
+      .mockImplementationOnce(
+        (
+          _conversationId: string,
+          _decisions: Decision[],
+          _signal?: AbortSignal,
+          options?: { onRunId?: (runId: string) => void },
+        ) => {
+          options?.onRunId?.('accepted-run')
+          return (async function* () {
+            yield {
+              event: 'error' as const,
+              id: 'accepted-run-error',
+              data: { message: 'accepted run later failed' },
+            }
+            yield {
+              event: 'message_end' as const,
+              id: 'accepted-run-end',
+              data: { content: '', status: 'failed', usage: {} },
+            }
+          })()
+        },
+      )
+    const { options } = buildHookOptions({ events: [{ event: 'interrupt', data: multi }] })
+    const { result } = renderHook(() => useChatRuntime(options), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    await act(async () => {
+      const first = result.current.registerDecision(0, { type: 'approve' }, '승인')
+      const second = result.current.registerDecision(1, { type: 'reject', message: '거부' }, '거부')
+      await expect(Promise.all([first, second])).rejects.toThrow('resume request rejected')
+    })
+
+    await act(async () => {
+      const first = result.current.registerDecision(0, { type: 'approve' }, '승인')
+      const second = result.current.registerDecision(1, { type: 'reject', message: '거부' }, '거부')
+      await Promise.all([first, second])
+    })
+
+    expect(streamResumeDecisionsMock).toHaveBeenCalledTimes(2)
+    for (const call of streamResumeDecisionsMock.mock.calls) {
+      expect(call[1]).toEqual([{ type: 'approve' }, { type: 'reject', message: '거부' }])
+    }
+  })
+
+  it('rejects an incomplete decision batch when a new stream replaces its interrupt', async () => {
+    const multi: StandardInterruptPayload = {
+      interrupt_id: 'ns-replaced-incomplete',
+      action_requests: [
+        { name: 'send_email', args: { to: 'team@example.com' } },
+        { name: 'delete_record', args: { id: 42 } },
+      ],
+      review_configs: [
+        { action_name: 'send_email', allowed_decisions: ['approve', 'reject'] },
+        { action_name: 'delete_record', allowed_decisions: ['approve', 'reject'] },
+      ],
+    }
+    const resume = vi.fn<ResumeSpy>(async function* () {})
+    const { options } = buildHookOptions({ events: [{ event: 'interrupt', data: multi }] })
+    const { result } = renderHook(() => useChatRuntime({ ...options, resumeFn: resume }), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+    const pending = result.current.registerDecision(0, { type: 'approve' }, '승인')
+    const pendingRejection = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+
+    await act(async () => {
+      await result.current.sendMessage('replacement')
+    })
+
+    await pendingRejection
+    expect(resume).not.toHaveBeenCalled()
+  })
+
+  it('rejects a stale card id instead of contaminating or bypassing the active batch', async () => {
+    const payloadFor = (interruptId: string): StandardInterruptPayload => ({
+      interrupt_id: interruptId,
+      action_requests: [
+        { name: 'send_email', args: { to: `${interruptId}@example.com` } },
+        { name: 'delete_record', args: { id: interruptId } },
+      ],
+      review_configs: [
+        { action_name: 'send_email', allowed_decisions: ['approve', 'reject'] },
+        { action_name: 'delete_record', allowed_decisions: ['approve', 'reject'] },
+      ],
+    })
+    const streamFn = async function* (content: string): AsyncGenerator<SSEEvent> {
+      const interruptId = content === 'old' ? 'intr-old' : 'intr-new'
+      yield {
+        event: 'interrupt',
+        id: `${interruptId}-event`,
+        data: payloadFor(interruptId),
+      }
+      yield {
+        event: 'message_end',
+        id: `${interruptId}-end`,
+        data: { content: '', usage: {} },
+      }
+    }
+    const resume = vi.fn<ResumeSpy>(async function* () {
+      yield {
+        event: 'message_end',
+        id: 'resume-current-end',
+        data: { content: '', status: 'completed', usage: {} },
+      }
+    })
+    const { result } = renderHook(
+      () =>
+        useChatRuntime({
+          messages: [],
+          streamFn,
+          resumeFn: resume,
+          conversationId: 'conv-identity',
+        }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('old')
+    })
+    const oldPending = result.current.registerDecision(
+      0,
+      { type: 'approve' },
+      '이전 승인',
+      'intr-old',
+    )
+    const oldRejection = expect(oldPending).rejects.toMatchObject({ name: 'AbortError' })
+
+    await act(async () => {
+      await result.current.sendMessage('new')
+    })
+    await oldRejection
+
+    await expect(
+      result.current.registerDecision(1, { type: 'approve' }, '잘못된 승인', 'intr-old'),
+    ).rejects.toMatchObject({ name: 'InvalidStateError' })
+    await expect(
+      result.current.registerDecision(1, { type: 'approve' }, '빈 식별자 승인', null),
+    ).rejects.toMatchObject({ name: 'InvalidStateError' })
+
+    const first = result.current.registerDecision(
+      0,
+      { type: 'reject', message: '현재 거부' },
+      '현재 거부',
+      'intr-new',
+    )
+    const second = result.current.registerDecision(1, { type: 'approve' }, '현재 승인', 'intr-new')
+    await Promise.all([first, second])
+
+    expect(resume).toHaveBeenCalledOnce()
+    expect(resume.mock.calls[0]?.[0]).toEqual([
+      { type: 'reject', message: '현재 거부' },
+      { type: 'approve' },
+    ])
+    await expect(
+      result.current.registerDecision(0, { type: 'approve' }, '중복 승인', 'intr-new'),
+    ).rejects.toMatchObject({ name: 'InvalidStateError' })
+    expect(resume).toHaveBeenCalledOnce()
+  })
+
+  it('rejects an in-flight custom resume that is aborted before dispatch acceptance', async () => {
+    const multi: StandardInterruptPayload = {
+      interrupt_id: 'ns-aborted-before-acceptance',
+      action_requests: [
+        { name: 'send_email', args: { to: 'team@example.com' } },
+        { name: 'delete_record', args: { id: 42 } },
+      ],
+      review_configs: [
+        { action_name: 'send_email', allowed_decisions: ['approve', 'reject'] },
+        { action_name: 'delete_record', allowed_decisions: ['approve', 'reject'] },
+      ],
+    }
+    const resumeStarted = deferred()
+    const resume = vi.fn<ResumeSpy>(async function* (_decisions, signal) {
+      resumeStarted.resolve()
+      await new Promise<void>((_resolve, reject) => {
+        const rejectAbort = () =>
+          reject(new DOMException('Resume transport was aborted', 'AbortError'))
+        if (signal.aborted) rejectAbort()
+        else signal.addEventListener('abort', rejectAbort, { once: true })
+      })
+    })
+    const { options } = buildHookOptions({ events: [{ event: 'interrupt', data: multi }] })
+    const { result } = renderHook(() => useChatRuntime({ ...options, resumeFn: resume }), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+    const first = result.current.registerDecision(0, { type: 'approve' }, '승인')
+    const second = result.current.registerDecision(1, { type: 'approve' }, '승인')
+    const batch = Promise.all([first, second])
+    const batchRejection = expect(batch).rejects.toMatchObject({ name: 'AbortError' })
+    await resumeStarted.promise
+
+    await act(async () => {
+      await result.current.sendMessage('replacement')
+    })
+
+    await batchRejection
+    expect(resume).toHaveBeenCalledOnce()
+  })
+
+  it('accepts an in-flight conversation resume aborted after the endpoint returns a run id', async () => {
+    const multi: StandardInterruptPayload = {
+      interrupt_id: 'ns-aborted-after-run-id',
+      action_requests: [
+        { name: 'send_email', args: { to: 'team@example.com' } },
+        { name: 'delete_record', args: { id: 42 } },
+      ],
+      review_configs: [
+        { action_name: 'send_email', allowed_decisions: ['approve', 'reject'] },
+        { action_name: 'delete_record', allowed_decisions: ['approve', 'reject'] },
+      ],
+    }
+    const resumeStarted = deferred()
+    streamResumeDecisionsMock.mockImplementation(
+      (
+        _conversationId: string,
+        _decisions: Decision[],
+        signal: AbortSignal,
+        options?: { onRunId?: (runId: string) => void },
+      ) => {
+        options?.onRunId?.('accepted-before-abort')
+        return (async function* () {
+          resumeStarted.resolve()
+          await new Promise<void>((_resolve, reject) => {
+            const rejectAbort = () =>
+              reject(new DOMException('Accepted stream was detached', 'AbortError'))
+            if (signal.aborted) rejectAbort()
+            else signal.addEventListener('abort', rejectAbort, { once: true })
+          })
+        })()
+      },
+    )
+    const { options } = buildHookOptions({ events: [{ event: 'interrupt', data: multi }] })
+    const { result } = renderHook(() => useChatRuntime(options), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+    const first = result.current.registerDecision(0, { type: 'approve' }, '승인')
+    const second = result.current.registerDecision(1, { type: 'approve' }, '승인')
+    const batch = Promise.all([first, second])
+    const batchResolution = expect(batch).resolves.toEqual([undefined, undefined])
+    await resumeStarted.promise
+
+    await act(async () => {
+      await result.current.sendMessage('replacement')
+    })
+
+    await batchResolution
+    expect(streamResumeDecisionsMock).toHaveBeenCalledOnce()
   })
 })

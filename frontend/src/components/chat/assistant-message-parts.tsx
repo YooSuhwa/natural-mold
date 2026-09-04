@@ -145,7 +145,7 @@ export function renderGroupedAssistantPart({ part, children }: GroupedRenderInfo
 
 export function AssistantMessageParts() {
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-1.5">
       <MessagePrimitive.GroupedParts groupBy={groupAssistantParts} indicator="never">
         {renderGroupedAssistantPart}
       </MessagePrimitive.GroupedParts>

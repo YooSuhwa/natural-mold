@@ -22,7 +22,7 @@ export function ComposerGhostSuggestion({
   const t = useTranslations('chat.followup')
   return (
     <div
-      className="pointer-events-none absolute inset-0 flex items-start overflow-hidden px-3.5 py-2.5"
+      className="moldy-composer-ghost-overlay pointer-events-none"
       data-moldy-followup-ghost="true"
     >
       <button

@@ -263,10 +263,26 @@ describe('createHiTLDecisionCoordinator', () => {
       resume,
     })
 
-    await coordinator.registerDecision(1, { type: 'reject', message: '아니요' }, '거부')
+    let earlyDecisionSettled = false
+    const earlyDecision = coordinator.registerDecision(
+      1,
+      { type: 'reject', message: '아니요' },
+      '거부',
+    )
+    void earlyDecision.then(
+      () => {
+        earlyDecisionSettled = true
+      },
+      () => {
+        earlyDecisionSettled = true
+      },
+    )
+    await Promise.resolve()
     expect(resume).not.toHaveBeenCalled()
+    expect(earlyDecisionSettled).toBe(false)
 
-    await coordinator.registerDecision(0, { type: 'approve' }, '승인')
+    const finalDecision = coordinator.registerDecision(0, { type: 'approve' }, '승인')
+    await Promise.all([earlyDecision, finalDecision])
 
     expect(resume).toHaveBeenCalledTimes(1)
     expect(resume).toHaveBeenCalledWith(
@@ -274,5 +290,138 @@ describe('createHiTLDecisionCoordinator', () => {
       '승인 | 거부',
       'intr-multi',
     )
+  })
+
+  it('retries the complete ordered batch after the final resume fails', async () => {
+    const resume = vi
+      .fn<
+        (decisions: Decision[], displayText?: string, interruptId?: string | null) => Promise<void>
+      >()
+      .mockRejectedValueOnce(new Error('stale interrupt'))
+      .mockResolvedValueOnce(undefined)
+    const coordinator = createHiTLDecisionCoordinator({
+      totalActions: 2,
+      interruptId: 'intr-retry',
+      resume,
+    })
+
+    const firstAttempt = coordinator.registerDecision(0, { type: 'approve' }, '승인')
+    const finalAttempt = coordinator.registerDecision(
+      1,
+      { type: 'reject', message: '아니요' },
+      '거부',
+    )
+    await expect(Promise.all([firstAttempt, finalAttempt])).rejects.toThrow('stale interrupt')
+
+    const retryFirst = coordinator.registerDecision(0, { type: 'approve' }, '승인')
+    const retryFinal = coordinator.registerDecision(
+      1,
+      { type: 'reject', message: '아니요' },
+      '거부',
+    )
+    await Promise.all([retryFirst, retryFinal])
+
+    expect(resume).toHaveBeenNthCalledWith(
+      1,
+      [{ type: 'approve' }, { type: 'reject', message: '아니요' }],
+      '승인 | 거부',
+      'intr-retry',
+    )
+    expect(resume).toHaveBeenNthCalledWith(
+      2,
+      [{ type: 'approve' }, { type: 'reject', message: '아니요' }],
+      '승인 | 거부',
+      'intr-retry',
+    )
+    expect(resume).toHaveBeenCalledTimes(2)
+  })
+
+  it('shares one in-flight final resume between simultaneous calls', async () => {
+    let resolveResume: (() => void) | undefined
+    const resume = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveResume = resolve
+        }),
+    )
+    const coordinator = createHiTLDecisionCoordinator({
+      totalActions: 1,
+      interruptId: 'intr-concurrent',
+      resume,
+    })
+
+    const first = coordinator.registerDecision(0, { type: 'approve' }, '승인')
+    const second = coordinator.registerDecision(0, { type: 'approve' }, '승인')
+
+    await vi.waitFor(() => {
+      expect(resume).toHaveBeenCalledTimes(1)
+    })
+    resolveResume?.()
+    await Promise.all([first, second])
+
+    await coordinator.registerDecision(0, { type: 'approve' }, '승인')
+
+    expect(resume).toHaveBeenCalledWith([{ type: 'approve' }], '승인', 'intr-concurrent')
+    expect(resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the first decision for a duplicate action index before dispatch', async () => {
+    const resume = vi.fn<
+      (decisions: Decision[], displayText?: string, interruptId?: string | null) => Promise<void>
+    >(async () => {})
+    const coordinator = createHiTLDecisionCoordinator({
+      totalActions: 2,
+      interruptId: 'intr-duplicate',
+      resume,
+    })
+
+    const first = coordinator.registerDecision(0, { type: 'approve' }, '승인')
+    const conflicting = coordinator.registerDecision(0, { type: 'reject', message: '거부' }, '거부')
+    const final = coordinator.registerDecision(1, { type: 'approve' }, '승인')
+    await Promise.all([first, conflicting, final])
+
+    expect(resume).toHaveBeenCalledWith(
+      [{ type: 'approve' }, { type: 'approve' }],
+      '승인 | 승인',
+      'intr-duplicate',
+    )
+  })
+
+  it('rejects an invalid action index without sending a partial decision array', async () => {
+    const resume = vi.fn<
+      (decisions: Decision[], displayText?: string, interruptId?: string | null) => Promise<void>
+    >(async () => {})
+    const coordinator = createHiTLDecisionCoordinator({
+      totalActions: 2,
+      interruptId: 'intr-invalid-index',
+      resume,
+    })
+
+    await expect(coordinator.registerDecision(2, { type: 'approve' }, '승인')).rejects.toThrow(
+      RangeError,
+    )
+    expect(resume).not.toHaveBeenCalled()
+  })
+
+  it('rejects an incomplete batch when its coordinator is cancelled', async () => {
+    const resume = vi.fn<
+      (decisions: Decision[], displayText?: string, interruptId?: string | null) => Promise<void>
+    >(async () => {})
+    const coordinator = createHiTLDecisionCoordinator({
+      totalActions: 2,
+      interruptId: 'intr-replaced',
+      resume,
+    })
+    const reason = new DOMException('Pending HiTL decisions were replaced', 'AbortError')
+    const pending = coordinator.registerDecision(0, { type: 'approve' }, '승인')
+    const pendingRejection = expect(pending).rejects.toBe(reason)
+
+    coordinator.cancel(reason)
+
+    await pendingRejection
+    await expect(
+      coordinator.registerDecision(1, { type: 'reject', message: '거부' }, '거부'),
+    ).rejects.toBe(reason)
+    expect(resume).not.toHaveBeenCalled()
   })
 })

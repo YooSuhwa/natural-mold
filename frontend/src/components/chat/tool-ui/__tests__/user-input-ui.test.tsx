@@ -61,4 +61,34 @@ describe('UserInputUI', () => {
       )
     })
   })
+
+  it('returns a batched user response to idle when the shared resume is rejected', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockRejectedValue(new Error('stale'))
+    const toolUi = UserInputUI as unknown as ToolUiRender
+    function UserInputUnderTest() {
+      return toolUi.render({
+        args: {
+          question: 'Continue?',
+          options: ['Yes'],
+          hitl_action_index: 0,
+          hitl_total_actions: 2,
+          hitl_interrupt_id: 'interrupt-mixed',
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <UserInputUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    const response = screen.getByRole('button', { name: 'Yes' })
+    fireEvent.click(response)
+
+    await waitFor(() => expect(response).toBeEnabled())
+    expect(screen.queryByText('completed')).toBeNull()
+    expect(screen.getByRole('alert')).toHaveTextContent('resumeFailed')
+  })
 })

@@ -13,8 +13,7 @@ import { PublishWizard } from '@/components/marketplace/publish-wizard'
 import { SkillCredentialBindingsPanel } from '@/components/skill/skill-credential-bindings-panel'
 import { SkillMetadataTab } from '@/components/skill/skill-metadata-tab'
 import type { SkillDetailTabSlots } from '@/components/skill/skill-detail-tab-shell'
-import { skillsApi } from '@/lib/api/skills'
-import { useDeleteSkill } from '@/lib/hooks/use-skills'
+import { getSkillExportUrl, useDeleteSkill } from '@/lib/hooks/use-skills'
 import type { Skill } from '@/lib/types/skill'
 
 /**
@@ -74,7 +73,7 @@ export function SkillSettingsSections({ skill }: { readonly skill: Skill }) {
               variant="outline"
               render={
                 <a
-                  href={skillsApi.exportUrl(skill.id)}
+                  href={getSkillExportUrl(skill.id)}
                   download
                   aria-label={dialog('exportPackage')}
                 />

@@ -138,11 +138,6 @@ function AssistantMessage() {
       data-moldy-message-id={messageId}
       data-moldy-message-role="assistant"
     >
-      <StreamingMessageLoadingIndicator
-        activities={activities}
-        deepAgentsState={deepAgentsState}
-        className="absolute -top-5 left-11 mb-0"
-      />
       <AgentAvatar
         imageUrl={agentImageUrl ?? null}
         name={agentName ?? tChat('defaultAgentName')}
@@ -150,6 +145,10 @@ function AssistantMessage() {
         publicAsset={agentImagePublicAsset}
       />
       <div className="min-w-0 flex-1">
+        <StreamingMessageLoadingIndicator
+          activities={activities}
+          deepAgentsState={deepAgentsState}
+        />
         {isFailedNotice ? (
           <div className="moldy-status-surface moldy-status-danger flex items-start gap-2 rounded-lg px-3 py-2.5 leading-normal">
             <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />

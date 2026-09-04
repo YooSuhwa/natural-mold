@@ -10,11 +10,11 @@ import { useSession } from '@/lib/auth/session'
 import {
   useMessagesEnvelope,
   useMarkConversationRead,
+  conversationDetailQueryOptions,
   conversationKeys,
   invalidateConversationNavigators,
   upsertConversationNavigatorCache,
 } from '@/lib/hooks/use-conversations'
-import { conversationsApi } from '@/lib/api/conversations'
 import { useConversationTitle } from '@/lib/hooks/use-conversation-title'
 import { useQueryClient } from '@tanstack/react-query'
 import { streamChat, streamStartConversation, type StreamChatOptions } from '@/lib/sse/stream-chat'
@@ -244,8 +244,7 @@ export default function ChatPage({
     (createdConversationId: string) => {
       void queryClient
         .fetchQuery({
-          queryKey: conversationKeys.detail(createdConversationId),
-          queryFn: () => conversationsApi.get(createdConversationId),
+          ...conversationDetailQueryOptions(createdConversationId),
         })
         .then((conversation) => {
           // M5 — optimistic upsert로 navigator(list/agent pages/global pages)를

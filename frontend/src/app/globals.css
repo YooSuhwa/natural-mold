@@ -2893,6 +2893,36 @@
     var(--moldy-inset-highlight);
 }
 
+.moldy-dialog-attachment-preview {
+  width: calc(100vw - 2rem) !important;
+  max-width: calc(100vw - 2rem) !important;
+  height: calc(100vh - 2rem) !important;
+  max-height: calc(100vh - 2rem) !important;
+}
+
+@media (min-width: 1024px) {
+  .moldy-dialog-attachment-preview {
+    width: min(calc(100vw - 2rem), 1200px) !important;
+  }
+}
+
+.moldy-composer-ghost-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  overflow: hidden;
+  padding: 0.625rem 0.875rem;
+}
+
+.moldy-approval-args-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 8rem) 1fr;
+  column-gap: 0.75rem;
+  row-gap: 0.125rem;
+  font-size: 0.75rem;
+}
+
 .moldy-dialog-shell::before {
   position: absolute;
   inset: 0 0 auto;

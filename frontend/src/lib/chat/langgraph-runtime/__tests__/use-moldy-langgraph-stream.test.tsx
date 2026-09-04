@@ -85,7 +85,7 @@ const mocks = vi.hoisted(() => {
     metadataStore,
     stream,
     thread,
-    createMoldyAgentTransport: vi.fn((conversationId: string, _agentId: string) => {
+    createMoldyAgentTransport: vi.fn((conversationId: string) => {
       const setStateHydrationListener = vi.fn()
       const transport = {
         kind: 'transport' as const,
@@ -2088,8 +2088,18 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    await result.current.onResumeDecisions([{ type: 'approve' }], '승인', 'intr-forged')
-    await result.current.registerDecision(0, { type: 'approve' }, '승인', 'intr-forged')
+    await expect(
+      result.current.onResumeDecisions([{ type: 'approve' }], '승인', 'intr-forged'),
+    ).rejects.toMatchObject({ name: 'InvalidStateError' })
+    await expect(
+      result.current.registerDecision(0, { type: 'approve' }, '승인', 'intr-forged'),
+    ).rejects.toMatchObject({ name: 'InvalidStateError' })
+    await expect(
+      result.current.onResumeDecisions([{ type: 'approve' }], '승인', null),
+    ).rejects.toMatchObject({ name: 'InvalidStateError' })
+    await expect(
+      result.current.registerDecision(0, { type: 'approve' }, '승인', null),
+    ).rejects.toMatchObject({ name: 'InvalidStateError' })
 
     expect(mocks.stream.respond).not.toHaveBeenCalled()
     expect(mocks.stream.respondAll).not.toHaveBeenCalled()
@@ -2214,7 +2224,7 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    await result.current.registerDecision(
+    const firstDecision = result.current.registerDecision(
       1,
       { type: 'reject', message: '아니요' },
       '거부',
@@ -2222,7 +2232,13 @@ describe('useMoldyLangGraphStream', () => {
     )
     expect(mocks.stream.respond).not.toHaveBeenCalled()
 
-    await result.current.registerDecision(0, { type: 'respond', message: '네' }, '네', 'intr-multi')
+    const finalDecision = result.current.registerDecision(
+      0,
+      { type: 'respond', message: '네' },
+      '네',
+      'intr-multi',
+    )
+    await Promise.all([firstDecision, finalDecision])
 
     expect(mocks.stream.respond).toHaveBeenCalledWith(
       {
@@ -2256,12 +2272,13 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    await result.current.registerDecision(
+    const staleDecision = result.current.registerDecision(
       1,
       { type: 'reject', message: '아니요' },
       '거부',
       'intr-multi',
     )
+    const staleRejection = expect(staleDecision).rejects.toMatchObject({ name: 'AbortError' })
     expect(mocks.stream.respond).not.toHaveBeenCalled()
 
     mocks.stream.interrupts = []
@@ -2273,15 +2290,23 @@ describe('useMoldyLangGraphStream', () => {
       },
     ]
     rerender()
-    await result.current.registerDecision(0, { type: 'respond', message: '네' }, '네', 'intr-multi')
+    await staleRejection
+
+    const firstDecision = result.current.registerDecision(
+      0,
+      { type: 'respond', message: '네' },
+      '네',
+      'intr-multi',
+    )
     expect(mocks.stream.respond).not.toHaveBeenCalled()
 
-    await result.current.registerDecision(
+    const finalDecision = result.current.registerDecision(
       1,
       { type: 'reject', message: '새 거부' },
       '새 거부',
       'intr-multi',
     )
+    await Promise.all([firstDecision, finalDecision])
 
     expect(mocks.stream.respond).toHaveBeenCalledWith(
       {
@@ -2322,12 +2347,18 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    await result.current.registerDecision(0, { type: 'approve' }, '승인', 'intr-a')
+    const firstDecision = result.current.registerDecision(0, { type: 'approve' }, '승인', 'intr-a')
 
     expect(mocks.stream.respond).not.toHaveBeenCalled()
     expect(mocks.stream.respondAll).not.toHaveBeenCalled()
 
-    await result.current.registerDecision(0, { type: 'reject', message: '거부' }, '거부', 'intr-b')
+    const finalDecision = result.current.registerDecision(
+      0,
+      { type: 'reject', message: '거부' },
+      '거부',
+      'intr-b',
+    )
+    await Promise.all([firstDecision, finalDecision])
 
     expect(mocks.stream.respond).not.toHaveBeenCalled()
     expect(mocks.stream.respondAll).toHaveBeenCalledWith({
@@ -2364,7 +2395,12 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    await result.current.registerDecision(0, { type: 'approve' }, '승인', 'intr-a')
+    const pendingDecision = result.current.registerDecision(
+      0,
+      { type: 'approve' },
+      '승인',
+      'intr-a',
+    )
     expect(mocks.stream.respond).not.toHaveBeenCalled()
     expect(mocks.stream.respondAll).not.toHaveBeenCalled()
 
@@ -2377,6 +2413,7 @@ describe('useMoldyLangGraphStream', () => {
         { interruptId: 'intr-a', namespace: ['tools:call-a'] },
       )
     })
+    await pendingDecision
     expect(mocks.stream.respondAll).not.toHaveBeenCalled()
   })
 })

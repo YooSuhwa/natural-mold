@@ -105,7 +105,10 @@ export function StreamingMessageLoadingIndicator({
   return (
     <AuiIf condition={(s) => s.thread.isRunning}>
       {hasStatusPanel ? (
-        <div className={cn('mb-1 flex flex-col gap-1.5', className)}>
+        <div
+          className={cn('mb-1 flex flex-col gap-1.5', className)}
+          data-slot="streaming-status-panel"
+        >
           {filesState ? <DeepAgentsStatePanel state={filesState} showTodos={false} /> : null}
           {hasSubagentProgress ? <SubagentProgress summary={subagentProgress} /> : null}
           {hasActivities ? <RunActivityStrip activities={progressActivities} /> : null}

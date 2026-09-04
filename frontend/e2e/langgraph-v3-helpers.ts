@@ -229,6 +229,45 @@ export async function waitForArtifact(
     .toBe(true)
 }
 
+export async function normalizeArtifactList(page: Page, reportFile: string, notesFile: string) {
+  const artifactRail = page.getByRole('complementary')
+  const reportArtifactButton = artifactRail
+    .getByRole('button', { name: new RegExp(reportFile) })
+    .last()
+  const notesArtifactButton = artifactRail
+    .getByRole('button', { name: new RegExp(notesFile) })
+    .last()
+  const artifactPreviewHeadings = [
+    artifactRail.getByRole('heading', { name: reportFile }),
+    artifactRail.getByRole('heading', { name: notesFile }),
+  ]
+  const artifactListIsVisible = async (): Promise<boolean> =>
+    (await Promise.all([reportArtifactButton.isVisible(), notesArtifactButton.isVisible()])).every(
+      Boolean,
+    )
+  const artifactPreviewIsVisible = async (): Promise<boolean> =>
+    (await Promise.all(artifactPreviewHeadings.map((heading) => heading.isVisible()))).some(Boolean)
+
+  // 파일 이벤트는 마지막 파일을 자동 미리보기로 열 수 있다. 이벤트가 UI에 반영된 뒤
+  // 목록 패널을 선택해야 이후의 파일 선택 계약을 결정적으로 검증할 수 있다.
+  if (!(await artifactRail.isVisible())) {
+    await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
+  }
+  await expect
+    .poll(async () => (await artifactListIsVisible()) || (await artifactPreviewIsVisible()), {
+      timeout: 20_000,
+      intervals: [250, 500, 1000],
+    })
+    .toBe(true)
+  if (!(await artifactListIsVisible())) {
+    await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
+  }
+  await expect(reportArtifactButton).toBeVisible({ timeout: 20_000 })
+  await expect(notesArtifactButton).toBeVisible({ timeout: 20_000 })
+
+  return { reportArtifactButton }
+}
+
 export async function approveExecuteInSkill(page: Page): Promise<void> {
   await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible({
     timeout: 30_000,

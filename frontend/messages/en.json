@@ -1348,6 +1348,7 @@
       "approved": "Approved",
       "rejected": "Rejected",
       "editApproved": "Edit Approved",
+      "rejectReasonLabel": "Rejection reason",
       "rejectReasonPlaceholder": "Reject Reason Placeholder",
       "editArgsPlaceholder": "Edit Args Placeholder",
       "approve": "Approve",
@@ -1399,7 +1400,8 @@
       "complete": "Complete",
       "clear": "Clear",
       "selectionRange": "Select {min} to {max}",
-      "confirmSelection": "Confirm ({count})"
+      "confirmSelection": "Confirm ({count})",
+      "resumeFailed": "Could not send the response. Try again."
     },
     "clarifying": {
       "directInput": "Direct Input",

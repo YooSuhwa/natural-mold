@@ -8,7 +8,7 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import { ArtifactPreview } from '@/components/chat/artifacts/artifact-preview'
 import { ChatImage } from '@/components/chat/chat-image'
 import { attachmentToArtifactSummary } from '@/lib/chat/attachment-to-artifact'
-import { getUploadTextContent } from '@/lib/api/uploads'
+import { getAttachmentTextPreview } from '@/lib/chat/attachment-preview'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { useConversationFiles } from '@/lib/hooks/use-conversation-files'
 import type { FileItem, MessageAttachmentBrief } from '@/lib/types'
@@ -46,14 +46,14 @@ export function AttachmentPreviewDialog({
       onOpenChange={onOpenChange}
       size="xl"
       height="auto"
-      className="!h-[calc(100vh-2rem)] !max-h-[calc(100vh-2rem)] !w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] lg:!w-[min(calc(100vw-2rem),1200px)]"
+      className="moldy-dialog-attachment-preview"
     >
       <DialogShell.Header title={<span className="truncate">{brief.filename}</span>} />
       <DialogShell.Body className="min-h-0 overflow-auto">
         {open ? (
           <ArtifactPreview
             artifact={attachmentToArtifactSummary(brief)}
-            textLoader={() => getUploadTextContent(brief.id)}
+            textLoader={() => getAttachmentTextPreview(brief.id)}
           />
         ) : null}
       </DialogShell.Body>

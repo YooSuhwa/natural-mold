@@ -1348,6 +1348,7 @@
       "approved": "승인됨",
       "rejected": "거부됨",
       "editApproved": "수정 승인됨",
+      "rejectReasonLabel": "거부 사유",
       "rejectReasonPlaceholder": "거부 사유를 입력하세요 (선택)",
       "editArgsPlaceholder": "수정된 인자 (JSON)",
       "approve": "승인",
@@ -1399,7 +1400,8 @@
       "complete": "완료",
       "clear": "초기화",
       "selectionRange": "{min}개 이상 {max}개 이하 선택",
-      "confirmSelection": "선택 확인 ({count})"
+      "confirmSelection": "선택 확인 ({count})",
+      "resumeFailed": "답변을 전송하지 못했습니다. 다시 시도하세요."
     },
     "clarifying": {
       "directInput": "직접 입력",

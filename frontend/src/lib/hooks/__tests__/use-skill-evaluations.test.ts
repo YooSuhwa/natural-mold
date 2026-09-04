@@ -1,6 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { renderHook } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createElement, type ReactNode } from 'react'
+import { describe, expect, it, vi } from 'vitest'
 
-import { skillEvaluationRunsRefetchInterval } from '../use-skill-evaluations'
+import {
+  skillEvaluationKeys,
+  skillEvaluationRunsRefetchInterval,
+  useInvalidateSkillMetricsOnRunCompletion,
+} from '../use-skill-evaluations'
+import { skillQueryKeys } from '@/lib/query-keys/skills'
 import type { SkillEvaluationRun } from '@/lib/types/skill-evaluation'
 
 function run(status: SkillEvaluationRun['status']): SkillEvaluationRun {
@@ -25,6 +33,12 @@ function run(status: SkillEvaluationRun['status']): SkillEvaluationRun {
   }
 }
 
+function createWrapper(queryClient: QueryClient) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return createElement(QueryClientProvider, { client: queryClient }, children)
+  }
+}
+
 describe('skill evaluation hooks', () => {
   it('polls run history while any evaluation run is active', () => {
     expect(skillEvaluationRunsRefetchInterval([run('queued')])).toBe(1000)
@@ -36,5 +50,28 @@ describe('skill evaluation hooks', () => {
     expect(skillEvaluationRunsRefetchInterval([run('completed'), run('failed')])).toBe(false)
     expect(skillEvaluationRunsRefetchInterval([])).toBe(false)
     expect(skillEvaluationRunsRefetchInterval(undefined)).toBe(false)
+  })
+
+  it('invalidates skill usage, version stats, and feedback when an active run completes', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const { rerender } = renderHook(
+      ({ runs }) => useInvalidateSkillMetricsOnRunCompletion('skill-1', runs),
+      {
+        initialProps: { runs: [run('running')] },
+        wrapper: createWrapper(queryClient),
+      },
+    )
+
+    invalidateSpy.mockClear()
+    rerender({ runs: [run('completed')] })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: skillEvaluationKeys.versionStats('skill-1'),
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: skillQueryKeys.feedback('skill-1') })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: skillQueryKeys.usageRoot('skill-1') })
   })
 })

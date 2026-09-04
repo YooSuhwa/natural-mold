@@ -174,6 +174,27 @@ describe('ChatRightRail', () => {
     )
   })
 
+  it('keeps the artifact rail in the overlay through tablet widths before using the inline desktop split', () => {
+    const store = createStore()
+    store.set(chatRightRailAtom, {
+      mode: 'artifacts',
+      artifacts: {
+        conversationId: 'conversation-1',
+        view: 'list',
+      },
+    })
+
+    const { container } = render(
+      <Provider store={store}>
+        <ChatRightRail conversationId="conversation-1" />
+      </Provider>,
+    )
+
+    expect(container.querySelector('aside')).toHaveClass('hidden', 'xl:block')
+    expect(container.querySelector('[role="dialog"]')).toHaveClass('xl:hidden')
+    expect(screen.getByRole('separator', { name: '파일 패널 크기 조절' })).toHaveClass('xl:flex')
+  })
+
   it('resizes the desktop rail and persists the last stable width', () => {
     const store = createStore()
     store.set(chatRightRailAtom, {
@@ -268,7 +289,7 @@ describe('ChatRightRail', () => {
     expect(store.get(chatRightRailWidthAtom)).toBe(420)
   })
 
-  it('keeps artifact close controls on the left for mobile list and preview headers', () => {
+  it('keeps artifact close controls on the left for overlay list and preview headers', () => {
     const listStore = createStore()
     listStore.set(chatRightRailAtom, {
       mode: 'artifacts',
@@ -288,9 +309,9 @@ describe('ChatRightRail', () => {
     const listCloseButtons = Array.from(
       listHeader?.querySelectorAll('button[aria-label="Close panel"]') ?? [],
     )
-    expect(listCloseButtons[0]).toHaveClass('md:hidden')
+    expect(listCloseButtons[0]).toHaveClass('xl:hidden')
     expect(listHeader?.firstElementChild).toBe(listCloseButtons[0])
-    expect(listCloseButtons[1]).toHaveClass('hidden', 'md:inline-flex')
+    expect(listCloseButtons[1]).toHaveClass('hidden', 'xl:inline-flex')
 
     const previewStore = createStore()
     previewStore.set(chatArtifactsAtom, {
@@ -318,8 +339,8 @@ describe('ChatRightRail', () => {
     const previewCloseButtons = Array.from(
       previewHeader?.querySelectorAll('button[aria-label="Close panel"]') ?? [],
     )
-    expect(previewCloseButtons[0]).toHaveClass('md:hidden')
+    expect(previewCloseButtons[0]).toHaveClass('xl:hidden')
     expect(previewHeader?.firstElementChild).toBe(previewCloseButtons[0])
-    expect(previewCloseButtons.at(-1)).toHaveClass('hidden', 'md:inline-flex')
+    expect(previewCloseButtons.at(-1)).toHaveClass('hidden', 'xl:inline-flex')
   })
 })

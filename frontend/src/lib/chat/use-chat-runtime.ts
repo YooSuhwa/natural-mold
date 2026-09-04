@@ -307,6 +307,17 @@ type ResumeFn = (
   interruptId?: string | null,
 ) => AsyncGenerator<SSEEvent>
 
+interface RunStreamOptions {
+  /** A durable conversation resume is accepted once the POST returns its run id. */
+  acceptAfterRunId?: boolean
+  /** Keep the current decision batch alive until its resume stream is accepted. */
+  preserveHiTLCoordinator?: boolean
+  /** Let the decision UI roll back and retry when transport or SSE resume fails. */
+  propagateFailure?: boolean
+  /** Reject a custom resume that reports an error without a dispatch completion status. */
+  requireResumeAcceptance?: boolean
+}
+
 interface UseChatRuntimeOptions {
   /** TanStack Query에서 가져온 메시지 목록 */
   messages: Message[]
@@ -431,20 +442,28 @@ export function useChatRuntime({
     [queryClient, conversationId],
   )
 
-  const prepareStream = useCallback((): { signal: AbortSignal; token: number } => {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-    streamInFlightRef.current = true
-    setIsRunning(true)
-    pendingHiTLCoordinatorRef.current = null
-    runIdRef.current = null
-    lastEventIdRef.current = null
-    setReconnectState('idle')
-    // stream version 발급 — 이전 stream의 stale event는 이 token 비교로 폐기.
-    const token = streamGuardRef.current.begin()
-    return { signal: controller.signal, token }
-  }, [setReconnectState])
+  const prepareStream = useCallback(
+    (preserveHiTLCoordinator = false): { signal: AbortSignal; token: number } => {
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+      streamInFlightRef.current = true
+      setIsRunning(true)
+      if (!preserveHiTLCoordinator) {
+        pendingHiTLCoordinatorRef.current?.cancel(
+          new DOMException('Pending HiTL decisions were replaced', 'AbortError'),
+        )
+        pendingHiTLCoordinatorRef.current = null
+      }
+      runIdRef.current = null
+      lastEventIdRef.current = null
+      setReconnectState('idle')
+      // stream version 발급 — 이전 stream의 stale event는 이 token 비교로 폐기.
+      const token = streamGuardRef.current.begin()
+      return { signal: controller.signal, token }
+    },
+    [setReconnectState],
+  )
 
   // 로드된 메시지 + 스트리밍 중인 메시지 병합.
   // assistant-ui MessageRepository는 id 유일성을 불변식으로 요구한다. builder
@@ -552,7 +571,12 @@ export function useChatRuntime({
    * AbortController로 fetch는 끊지만 이미 buffer에 yield된 chunk는 막지 못하므로
    * caller side에서 한 번 더 거른다. */
   const consumeStream = useCallback(
-    async (stream: AsyncGenerator<SSEEvent>, optimisticUserMsg: Message | null, token: number) => {
+    async (
+      stream: AsyncGenerator<SSEEvent>,
+      optimisticUserMsg: Message | null,
+      token: number,
+      requireResumeAcceptance = false,
+    ) => {
       let accumulated = ''
       const toolCalls: ToolCallInfo[] = []
       const toolResults: Message[] = []
@@ -563,6 +587,8 @@ export function useChatRuntime({
       // 박혀 푸터 hover 팝오버가 직접 참조한다.
       let messageUsage: TokenUsageBreakdown | null = null
       let hadLifecycleNotice = false
+      let resumeError: Error | null = null
+      let resumeCompletionStatus: string | null = null
 
       // tool_calls 배열은 토큰 단위로 재생성하지 않고 dirty 시점에만 스냅샷.
       // content_delta가 빈번해도 cachedToolCalls 참조가 유지되어 React.memo 자식이
@@ -775,14 +801,17 @@ export function useChatRuntime({
                 toast.error(tPage('interruptStateLost'), { id: TOAST_ID_INTERRUPT_LOST })
                 break
               }
-              pendingHiTLCoordinatorRef.current = createHiTLDecisionCoordinator({
+              const coordinator = createHiTLDecisionCoordinator({
                 totalActions: data.action_requests.length,
                 interruptId: data.interrupt_id ?? null,
                 resume: async (decisions, displayText, interruptId) => {
-                  pendingHiTLCoordinatorRef.current = null
                   await resumeHiTLDecisionRef.current(decisions, displayText, interruptId)
+                  if (pendingHiTLCoordinatorRef.current === coordinator) {
+                    pendingHiTLCoordinatorRef.current = null
+                  }
                 },
               })
+              pendingHiTLCoordinatorRef.current = coordinator
               const syntheticToolCalls = standardInterruptToToolCalls(data)
               if (syntheticToolCalls.length > 0) {
                 toolCalls.splice(0, toolCalls.length, ...mergeInterruptToolCalls(toolCalls, data))
@@ -800,9 +829,12 @@ export function useChatRuntime({
               // 한 stream 내 다중 error event 시 sonner 가 같은 id 토스트를
               // 교체하도록 dedup id 부여 — 마지막 메시지만 보이고 스택 방지.
               toast.error(errMsg, { id: TOAST_ID_STREAM_ERROR })
+              resumeError ??= new Error(errMsg)
               break
             }
             case 'message_end': {
+              const status = (event.data as { status?: unknown }).status
+              if (typeof status === 'string') resumeCompletionStatus = status
               // 토큰 사용량 업데이트 — 세션 누적 + 메시지 단위 4종 모두.
               const usage = (
                 event.data as {
@@ -848,6 +880,9 @@ export function useChatRuntime({
               break
             }
           }
+        }
+        if (requireResumeAcceptance && resumeCompletionStatus === null) {
+          throw resumeError ?? new Error('Resume stream ended before dispatch acceptance')
         }
         endedNormally = true
       } catch (err) {
@@ -1068,12 +1103,15 @@ export function useChatRuntime({
       ) => AsyncGenerator<SSEEvent>,
       optimisticMsg: Message | null,
       truncateAtIdx?: number,
+      options: RunStreamOptions = {},
     ) => {
       if (truncateAtIdx !== undefined && truncateAtIdx >= 0) {
         truncateMessagesCache(truncateAtIdx)
       }
-      const { signal, token } = prepareStream()
+      const { signal, token } = prepareStream(options.preserveHiTLCoordinator)
+      let acceptedRunId = false
       const onRunId = (id: string) => {
+        acceptedRunId = true
         runIdRef.current = id
         queryClient.invalidateQueries({ queryKey: agentQueryKeys.all })
       }
@@ -1134,12 +1172,23 @@ export function useChatRuntime({
         },
       })
       try {
-        await consumeStream(wrapped, optimisticMsg, token)
+        await consumeStream(wrapped, optimisticMsg, token, options.requireResumeAcceptance)
+        const resumeWasAccepted = options.acceptAfterRunId === true && acceptedRunId
+        if (options.propagateFailure && signal.aborted && !resumeWasAccepted) {
+          throw new DOMException('Resume was aborted before acceptance', 'AbortError')
+        }
       } catch (err) {
+        const resumeWasAccepted = options.acceptAfterRunId === true && acceptedRunId
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          if (options.propagateFailure && !resumeWasAccepted) throw err
+          return
+        }
         if (err instanceof StreamApiError && err.code === 'llm_credential_required') {
+          if (options.propagateFailure && !resumeWasAccepted) throw err
           return
         }
         reportClientError('useChatRuntime', 'Stream error:', err)
+        if (options.propagateFailure && !resumeWasAccepted) throw err
       }
     },
     [
@@ -1186,14 +1235,29 @@ export function useChatRuntime({
       const userMsg = displayText ? createOptimisticMessage('user', displayText) : null
 
       if (resumeFn) {
-        await _runStream((signal) => resumeFn(decisions, signal, displayText, intrId), userMsg)
+        await _runStream(
+          (signal) => resumeFn(decisions, signal, displayText, intrId),
+          userMsg,
+          undefined,
+          {
+            preserveHiTLCoordinator: true,
+            propagateFailure: true,
+            requireResumeAcceptance: true,
+          },
+        )
         return
       }
 
-      if (!conversationId) return
+      if (!conversationId) throw new Error('Resume target is unavailable')
       await _runStream(
         (signal, onRunId) => streamResumeDecisions(conversationId, decisions, signal, { onRunId }),
         userMsg,
+        undefined,
+        {
+          acceptAfterRunId: true,
+          preserveHiTLCoordinator: true,
+          propagateFailure: true,
+        },
       )
     },
     [conversationId, resumeFn, _runStream],
@@ -1204,11 +1268,22 @@ export function useChatRuntime({
   }, [onResumeDecisions])
 
   const registerDecision = useCallback(
-    async (actionIndex: number, decision: Decision, displayText?: string) => {
+    async (
+      actionIndex: number,
+      decision: Decision,
+      displayText?: string,
+      interruptId?: string | null,
+    ) => {
       const coordinator = pendingHiTLCoordinatorRef.current
       if (!coordinator) {
+        if (interruptId !== undefined) {
+          throw new DOMException('HiTL interrupt is no longer active', 'InvalidStateError')
+        }
         await onResumeDecisions([decision], displayText)
         return
+      }
+      if (interruptId !== undefined && coordinator.interruptId !== interruptId) {
+        throw new DOMException('HiTL interrupt is no longer active', 'InvalidStateError')
       }
       await coordinator.registerDecision(actionIndex, decision, displayText)
     },
