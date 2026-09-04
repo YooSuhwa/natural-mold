@@ -7,6 +7,7 @@ import {
   setupLangGraphV3Agent,
   waitForRunStatus,
 } from './langgraph-v3-helpers'
+import { waitForAcceptedRunStartResponse } from './helpers/run-start'
 
 const FRONTEND =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`
@@ -16,7 +17,7 @@ const RICH_OUTPUT_PROMPT =
 const RICH_OUTPUT_TITLE = 'E2E rich output contract'
 const RICH_OUTPUT_IMAGE_ALT = 'E2E rich output image'
 const RICH_OUTPUT_REFERENCE_URL = 'https://example.com/e2e-chat-rich-output'
-const DRAFT_TO_CONVERSATION_URL = /\/agents\/[^/]+\/conversations\/[0-9a-f-]{36}$/
+const DRAFT_TO_CONVERSATION_URL = /\/agents\/[^/]+\/conversations\/([0-9a-f-]{36})$/
 
 type TranscriptStabilityWindow = Window & {
   __moldyAskUserActivityMaxRows?: number
@@ -191,9 +192,19 @@ test.describe('Chat transcript stability QA bundle', () => {
       await installUserPromptStabilityObserver(page, prompt)
 
       setFailurePhase(testInfo.annotations, 'submit_prompt')
-      await sendMessage(page, prompt)
+      const acceptedRun = await waitForAcceptedRunStartResponse(page, () =>
+        sendMessage(page, prompt),
+      )
       setFailurePhase(testInfo.annotations, 'wait_draft_promotion')
       await expect(page).toHaveURL(DRAFT_TO_CONVERSATION_URL, { timeout: 30_000 })
+      const promotedConversationId = new URL(page.url()).pathname.match(
+        DRAFT_TO_CONVERSATION_URL,
+      )?.[1]
+      if (!promotedConversationId) {
+        throw new Error('Draft promotion did not produce a conversation id')
+      }
+      expect(promotedConversationId).toBe(acceptedRun.conversationId)
+      await waitForRunStatus(request, acceptedRun.conversationId, acceptedRun.runId, 'interrupted')
       setFailurePhase(testInfo.annotations, 'wait_prompt')
       await expect(
         page.locator('[data-moldy-message-role="user"]').filter({ hasText: prompt }),
@@ -208,9 +219,16 @@ test.describe('Chat transcript stability QA bundle', () => {
 
       const askUserCard = askUserCards.first()
       setFailurePhase(testInfo.annotations, 'select_option')
-      await askUserCard.getByRole('option', { name: /사과/ }).click()
+      const selectedOption = askUserCard.getByRole('option', { name: /사과/ })
+      await expect(selectedOption).toBeEnabled()
+      await selectedOption.click()
+      await expect(selectedOption).toHaveAttribute('aria-selected', 'true')
+      await expect(selectedOption).toBeEnabled()
       setFailurePhase(testInfo.annotations, 'submit_decision')
-      await askUserCard.getByRole('button', { name: /선택 확인 \(1\)|Confirm \(1\)/ }).click()
+      const confirmButton = askUserCard.getByRole('button', { name: /선택 확인|Confirm/ })
+      await expect(confirmButton).toBeVisible()
+      await expect(confirmButton).toBeEnabled()
+      await confirmButton.click()
 
       setFailurePhase(testInfo.annotations, 'wait_final_response')
       await expect(page.getByText(ASK_USER_FINAL_TEXT)).toBeVisible({ timeout: 60_000 })
