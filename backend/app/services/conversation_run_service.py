@@ -77,7 +77,9 @@ async def _conversation_owned_by_user(
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> Conversation | None:
-    user_exists = await db.scalar(select(User.id).where(User.id == user_id).with_for_update())
+    user_exists = await db.scalar(
+        select(User.id).where(User.id == user_id).with_for_update(read=True, key_share=True)
+    )
     if user_exists is None:
         return None
     result = await db.execute(

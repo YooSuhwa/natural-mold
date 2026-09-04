@@ -19,7 +19,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.model import Model
 from app.models.user import User
-from app.services import conversation_run_service, user_service
+from app.services import conversation_run_service, memory_service, user_service
 from app.services.chat import conversations as conversation_service
 
 
@@ -290,3 +290,35 @@ async def test_run_first_blocks_user_delete_then_preserves_graph(
 
     assert cleanup_calls == CleanupCalls()
     await _assert_graph(pg_factory, graph, user_present=True, conversation_present=True)
+
+
+@pytest.mark.asyncio
+async def test_run_creation_user_fence_allows_memory_settings_insert_before_commit(
+    pg_factory: async_sessionmaker[AsyncSession],
+    graph: SeededGraph,
+) -> None:
+    """A pending run must not block runtime memory-policy initialization.
+
+    ``create_run`` fences the user against a concurrent delete until its
+    transaction commits. Runtime component assembly uses another session to
+    lazily create the user's memory settings, which needs PostgreSQL's
+    ``KEY SHARE`` foreign-key lock on that user row. The create fence must be
+    compatible with that insert while still blocking a delete.
+    """
+    async with pg_factory() as create_db, pg_factory() as memory_db:
+        # Given: create_run has acquired its user/conversation fences but has
+        # not committed the new run yet.
+        await _create_run(create_db, graph)
+
+        # When: the separately scoped runtime-memory session resolves its
+        # policy, lazily creating default user settings.
+        with anyio.fail_after(1):
+            policy = await memory_service.resolve_effective_policy(
+                memory_db,
+                user_id=graph.user_id,
+                agent_id=graph.agent_id,
+            )
+
+        # Then: the FK-backed insert completes before create_run commits.
+        assert policy.read_enabled is True
+        await create_db.rollback()
