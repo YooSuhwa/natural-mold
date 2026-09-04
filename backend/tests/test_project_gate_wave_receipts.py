@@ -495,7 +495,10 @@ def test_capture_receipt_accepts_exact_wave_four_spec_and_screenshot_contract(
     selected: list[JSONValue] = []
     selected.extend(f"scripted-capture::{spec}::viewport" for spec in expected_specs)
     screenshots: list[JSONValue] = []
-    screenshots.extend(f"captures/{index:02d}.png" for index in range(24))
+    screenshots.extend(
+        f"results/playwright-artifacts/case-{index:02d}/viewport-{index:02d}.png"
+        for index in range(24)
+    )
     payload: JSONObject = {
         "runner": "moldy-isolated-e2e",
         "lane": "scripted",
@@ -525,6 +528,22 @@ def test_capture_receipt_accepts_exact_wave_four_spec_and_screenshot_contract(
     assert summary["screenshot_count"] == 24
 
 
+@pytest.mark.parametrize(
+    "screenshot",
+    [
+        "results/other/viewport.png",
+        "results/playwright-artifacts/../viewport.png",
+        "/results/playwright-artifacts/viewport.png",
+        "results/playwright-artifacts/viewport.jpg",
+    ],
+)
+def test_capture_receipt_rejects_untrusted_exported_screenshot_path(
+    receipts: ModuleType, screenshot: str
+) -> None:
+    """Only the two reviewed capture roots may satisfy the screenshot contract."""
+    assert receipts._safe_screenshots([screenshot]) is None
+
+
 @pytest.mark.parametrize("mutation", ["missing", "extra", "wrong_count"])
 def test_capture_receipt_rejects_invalid_wave_four_capture_contract(
     tmp_path: Path, receipts: ModuleType, mutation: str
@@ -544,7 +563,10 @@ def test_capture_receipt_rejects_invalid_wave_four_capture_contract(
         selected.append("scripted-capture::e2e/unreviewed.spec.ts::viewport")
     screenshot_count = 23 if mutation == "wrong_count" else 24
     screenshots: list[JSONValue] = []
-    screenshots.extend(f"captures/{index:02d}.png" for index in range(screenshot_count))
+    screenshots.extend(
+        f"results/playwright-artifacts/case-{index:02d}/viewport-{index:02d}.png"
+        for index in range(screenshot_count)
+    )
     payload: JSONObject = {
         "runner": "moldy-isolated-e2e",
         "lane": "scripted",

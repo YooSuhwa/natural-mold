@@ -169,7 +169,9 @@ def _safe_screenshots(value: JSONValue) -> list[str] | None:
         if not isinstance(item, str):
             return None
         screenshots.append(item)
-    safe = re.compile(r"^captures/[A-Za-z0-9][A-Za-z0-9._/-]*\.png$")
+    safe = re.compile(
+        r"^(?:captures|results/playwright-artifacts)/[A-Za-z0-9][A-Za-z0-9._/-]*\.png$"
+    )
     if all(safe.fullmatch(item) and ".." not in item.split("/") for item in screenshots):
         return screenshots
     return None
