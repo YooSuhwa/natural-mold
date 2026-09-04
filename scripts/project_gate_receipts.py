@@ -138,6 +138,14 @@ def validate_postgres(path: Path, repo_root: Path, mode: str, expected_exit: int
         and receipt.get("skipped_node_ids") == []
         and receipt.get("deselected_node_ids") == []
     )
+    migration_roundtrip = (
+        isinstance(scenario, dict)
+        and mode == "migration-roundtrip"
+        and "test_receipt" in scenario
+        and scenario.get("test_receipt") is None
+        and scenario.get("migration_roundtrip") is True
+        and scenario.get("child_exit_code") == 0
+    )
     valid = (
         payload.get("schema_version") == 1
         and payload.get("mode") == mode
@@ -146,7 +154,7 @@ def validate_postgres(path: Path, repo_root: Path, mode: str, expected_exit: int
         and scenario.get("scenario") == mode
         and scenario.get("child_exit_code") == expected_exit
         and all(scenario.get(key) is True for key in POSTGRES_CLEANUP_KEYS)
-        and zero_selection_debt
+        and (migration_roundtrip or (mode != "migration-roundtrip" and zero_selection_debt))
     )
     if not valid:
         raise ProjectGateError("invalid_child_receipt")

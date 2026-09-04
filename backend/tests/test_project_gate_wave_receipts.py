@@ -68,6 +68,101 @@ def test_postgres_receipt_rejects_skip_or_deselection(tmp_path: Path, receipts: 
         receipts.validate_postgres(path, tmp_path, "all", 0)
 
 
+def test_postgres_migration_roundtrip_accepts_null_test_receipt(
+    tmp_path: Path, receipts: ModuleType
+) -> None:
+    """Given a migration roundtrip, when parsed, then its dedicated receipt shape passes."""
+    scenario: JSONObject = {
+        "scenario": "migration-roundtrip",
+        "status": "passed",
+        "child_exit_code": 0,
+        "test_receipt": None,
+        "migration_roundtrip": True,
+    }
+    scenario.update(dict.fromkeys(receipts.POSTGRES_CLEANUP_KEYS, True))
+    path = tmp_path / "postgres-migration-roundtrip.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "mode": "migration-roundtrip",
+                "status": "passed",
+                "scenarios": [scenario],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = receipts.validate_postgres(path, tmp_path, "migration-roundtrip", 0)
+
+    assert summary["cleanup_passed"] is True
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"test_receipt": {}},
+        {"migration_roundtrip": False},
+    ],
+)
+def test_postgres_migration_roundtrip_rejects_malformed_receipt(
+    tmp_path: Path, receipts: ModuleType, mutation: JSONObject
+) -> None:
+    """Given an incomplete migration receipt, when parsed, then the gate rejects it."""
+    scenario: JSONObject = {
+        "scenario": "migration-roundtrip",
+        "status": "passed",
+        "child_exit_code": 0,
+        "test_receipt": None,
+        "migration_roundtrip": True,
+    }
+    scenario.update(mutation)
+    scenario.update(dict.fromkeys(receipts.POSTGRES_CLEANUP_KEYS, True))
+    path = tmp_path / "postgres-malformed-migration-roundtrip.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "mode": "migration-roundtrip",
+                "status": "passed",
+                "scenarios": [scenario],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_postgres(path, tmp_path, "migration-roundtrip", 0)
+
+
+def test_postgres_migration_roundtrip_rejects_missing_test_receipt(
+    tmp_path: Path, receipts: ModuleType
+) -> None:
+    """Given a migration receipt without the null marker, when parsed, then the gate rejects it."""
+    scenario: JSONObject = {
+        "scenario": "migration-roundtrip",
+        "status": "passed",
+        "child_exit_code": 0,
+        "migration_roundtrip": True,
+    }
+    scenario.update(dict.fromkeys(receipts.POSTGRES_CLEANUP_KEYS, True))
+    path = tmp_path / "postgres-missing-migration-test-receipt.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "mode": "migration-roundtrip",
+                "status": "passed",
+                "scenarios": [scenario],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_postgres(path, tmp_path, "migration-roundtrip", 0)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
