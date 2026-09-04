@@ -4,13 +4,17 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.agent_runtime.runtime_policy import RuntimePolicyV1
 
 AgentApiScope = Literal["invoke", "stream", "background", "read"]
 AgentDeploymentIneligibleReasonCode = Literal["fixed_identity_required"]
 
 
 class AgentDeploymentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     agent_id: uuid.UUID
     allow_streaming: bool = True
     allow_background: bool = False
@@ -19,6 +23,8 @@ class AgentDeploymentCreate(BaseModel):
 
 
 class AgentDeploymentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     status: Literal["active", "disabled"] | None = None
     allow_streaming: bool | None = None
     allow_background: bool | None = None
@@ -36,6 +42,7 @@ class AgentDeploymentResponse(BaseModel):
     allow_background: bool
     rate_limit_per_minute: int | None
     daily_token_limit: int | None
+    runtime_policy: RuntimePolicyV1 | None
     created_at: datetime
     updated_at: datetime
 
@@ -49,6 +56,7 @@ class AgentDeploymentCandidateResponse(BaseModel):
     eligible: bool
     ineligible_reason: str | None = None
     ineligible_reason_code: AgentDeploymentIneligibleReasonCode | None = None
+    runtime_policy: RuntimePolicyV1 | None
 
 
 class AgentApiKeyDeploymentRef(BaseModel):

@@ -1,4 +1,4 @@
-import type { Agent, AgentIdentityMode, AgentUpdateRequest } from '@/lib/types'
+import type { Agent, AgentIdentityMode, AgentUpdateRequest, RuntimePolicyV1 } from '@/lib/types'
 import { arraysEqual, setsEqual } from '@/lib/utils'
 
 export const DEFAULT_TEMPERATURE = 0.7
@@ -21,6 +21,40 @@ export type AgentSettingsDraft = {
   maxTokens: number
   selectedMiddlewareTypes: Set<string>
   openerQuestions: string[]
+  runtimePolicy: RuntimePolicyV1 | null
+}
+
+function cloneRuntimePolicy(policy: RuntimePolicyV1 | null | undefined): RuntimePolicyV1 | null {
+  if (policy === null || policy === undefined) return null
+  return {
+    version: policy.version,
+    filesystem: { mode: policy.filesystem.mode },
+    todo: { enabled: policy.todo.enabled },
+    summarization:
+      policy.summarization.mode === 'auto'
+        ? { mode: 'auto' }
+        : { mode: 'preset', preset: policy.summarization.preset },
+  }
+}
+
+function runtimePoliciesEqual(
+  left: RuntimePolicyV1 | null,
+  right: RuntimePolicyV1 | null,
+): boolean {
+  if (left === null || right === null) return left === right
+  if (
+    left.version !== right.version ||
+    left.filesystem.mode !== right.filesystem.mode ||
+    left.todo.enabled !== right.todo.enabled ||
+    left.summarization.mode !== right.summarization.mode
+  ) {
+    return false
+  }
+  if (left.summarization.mode === 'auto') return true
+  return (
+    right.summarization.mode === 'preset' &&
+    left.summarization.preset === right.summarization.preset
+  )
 }
 
 export function createEmptyAgentSettingsDraft(): AgentSettingsDraft {
@@ -40,6 +74,7 @@ export function createEmptyAgentSettingsDraft(): AgentSettingsDraft {
     maxTokens: DEFAULT_MAX_TOKENS,
     selectedMiddlewareTypes: new Set(),
     openerQuestions: [],
+    runtimePolicy: null,
   }
 }
 
@@ -62,6 +97,7 @@ export function buildAgentSettingsDraftFromAgent(agent: Agent): AgentSettingsDra
       agent.middleware_configs?.map((middleware) => middleware.type) ?? [],
     ),
     openerQuestions: [...(agent.opener_questions ?? [])],
+    runtimePolicy: cloneRuntimePolicy(agent.runtime_policy),
   }
 }
 
@@ -85,7 +121,8 @@ export function isAgentSettingsDraftDirty(
     !setsEqual(draft.selectedSubAgentIds, baseline.selectedSubAgentIds) ||
     !setsEqual(draft.selectedMiddlewareTypes, baseline.selectedMiddlewareTypes) ||
     !arraysEqual(draft.openerQuestions, baseline.openerQuestions) ||
-    !arraysEqual(draft.fallbackIds, baseline.fallbackIds)
+    !arraysEqual(draft.fallbackIds, baseline.fallbackIds) ||
+    !runtimePoliciesEqual(draft.runtimePolicy, baseline.runtimePolicy)
   )
 }
 
@@ -140,6 +177,9 @@ export function mergeUntouchedAgentSettingsDraft(
     openerQuestions: arraysEqual(draft.openerQuestions, previousBaseline.openerQuestions)
       ? nextBaseline.openerQuestions
       : draft.openerQuestions,
+    runtimePolicy: runtimePoliciesEqual(draft.runtimePolicy, previousBaseline.runtimePolicy)
+      ? nextBaseline.runtimePolicy
+      : draft.runtimePolicy,
   }
 }
 
@@ -165,5 +205,6 @@ export function buildAgentUpdateRequest(draft: AgentSettingsDraft): AgentUpdateR
     },
     opener_questions: draft.openerQuestions,
     model_fallback_ids: draft.fallbackIds.length > 0 ? draft.fallbackIds : null,
+    runtime_policy: cloneRuntimePolicy(draft.runtimePolicy),
   }
 }

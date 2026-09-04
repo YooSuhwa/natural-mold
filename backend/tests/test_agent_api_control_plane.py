@@ -63,6 +63,7 @@ async def test_deployment_candidates_include_owned_fixed_agents(client, db):
             "eligible": True,
             "ineligible_reason": None,
             "ineligible_reason_code": None,
+            "runtime_policy": None,
         }
     ]
 
@@ -84,8 +85,107 @@ async def test_deployment_candidates_return_reason_code_for_per_user_agents(clie
             "eligible": False,
             "ineligible_reason": None,
             "ineligible_reason_code": "fixed_identity_required",
+            "runtime_policy": None,
         }
     ]
+
+
+async def test_deployment_payloads_expose_only_canonical_agent_runtime_policy(client, db):
+    agent = await _seed_agent(db)
+    agent.runtime_policy = {
+        "version": 1,
+        "todo": {"enabled": False},
+    }
+    await db.commit()
+
+    candidate_response = await client.get("/api/agent-api/deployment-candidates")
+
+    assert candidate_response.status_code == 200
+    candidate = candidate_response.json()[0]
+    expected_policy = {
+        "version": 1,
+        "filesystem": {"mode": "artifact_write"},
+        "todo": {"enabled": False},
+        "summarization": {"mode": "auto"},
+    }
+    assert candidate["runtime_policy"] == expected_policy
+    assert "runtime_policy_source" not in candidate
+    assert "runtime_policy_snapshot" not in candidate
+
+    deployment_response = await client.post(
+        "/api/agent-api/deployments",
+        json={"agent_id": str(agent.id)},
+    )
+
+    assert deployment_response.status_code == 201
+    assert deployment_response.json()["runtime_policy"] == expected_policy
+
+    agent.runtime_policy = {
+        "version": 1,
+        "filesystem": {"mode": "inspect"},
+        "todo": {"enabled": False},
+    }
+    await db.commit()
+    list_response = await client.get("/api/agent-api/deployments")
+
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["runtime_policy"] == {
+        "version": 1,
+        "filesystem": {"mode": "inspect"},
+        "todo": {"enabled": False},
+        "summarization": {"mode": "auto"},
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("runtime_policy", {"version": 1, "todo": {"enabled": False}}),
+        ("runtime_policy_source", "server_owned"),
+        ("unknown_runtime_option", True),
+    ],
+)
+async def test_deployment_create_rejects_runtime_policy_injection(client, db, field, value):
+    agent = await _seed_agent(db)
+    agent.runtime_policy = {"version": 1, "todo": {"enabled": False}}
+    await db.commit()
+
+    response = await client.post(
+        "/api/agent-api/deployments",
+        json={"agent_id": str(agent.id), field: value},
+    )
+
+    assert response.status_code == 422
+    await db.refresh(agent)
+    assert agent.runtime_policy == {"version": 1, "todo": {"enabled": False}}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("runtime_policy", {"version": 1, "todo": {"enabled": False}}),
+        ("runtime_policy_source", "server_owned"),
+        ("unknown_runtime_option", True),
+    ],
+)
+async def test_deployment_update_rejects_runtime_policy_injection(client, db, field, value):
+    agent = await _seed_agent(db)
+    agent.runtime_policy = {"version": 1, "todo": {"enabled": False}}
+    await db.commit()
+    deployment_response = await client.post(
+        "/api/agent-api/deployments",
+        json={"agent_id": str(agent.id)},
+    )
+    assert deployment_response.status_code == 201
+
+    response = await client.patch(
+        f"/api/agent-api/deployments/{deployment_response.json()['id']}",
+        json={field: value},
+    )
+
+    assert response.status_code == 422
+    await db.refresh(agent)
+    assert agent.runtime_policy == {"version": 1, "todo": {"enabled": False}}
 
 
 async def test_create_deployment_and_api_key_cleartext_once(client, db):

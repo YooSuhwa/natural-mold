@@ -11,6 +11,7 @@ import pytest
 from tests.project_gate_wave_support import (
     EXPECTED_WAVE_1,
     EXPECTED_WAVE_2,
+    EXPECTED_WAVE_3,
     SCRIPTS,
     config_path,
     load_module,
@@ -23,20 +24,22 @@ def runner() -> ModuleType:
 
 
 def test_config_loads_exact_canonical_wave_order(runner: ModuleType) -> None:
-    """Given tracked config, when loaded, then both waves retain canonical node order."""
+    """Given tracked config, when loaded, then every reviewed wave retains canonical order."""
     profiles = runner.load_profiles(SCRIPTS / "project-gates.json")
 
     assert profiles["wave-1"].nodes == EXPECTED_WAVE_1
     assert profiles["wave-2"].nodes == EXPECTED_WAVE_2
+    assert profiles["wave-3"].nodes == EXPECTED_WAVE_3
     assert profiles["wave-1"].nodes != profiles["wave-2"].nodes
+    assert profiles["wave-2"].nodes != profiles["wave-3"].nodes
 
 
 @pytest.mark.parametrize("mutation", ["unknown", "duplicate", "reordered", "omitted", "argv"])
-def test_config_rejects_noncanonical_composite_catalog(
+def test_config_rejects_noncanonical_wave_three_catalog(
     tmp_path: Path, runner: ModuleType, mutation: str
 ) -> None:
     """Given unreviewed composite data, when parsed, then it fails before execution."""
-    nodes: list[str] = list(EXPECTED_WAVE_1)
+    nodes: list[str] = list(EXPECTED_WAVE_3)
     if mutation == "unknown":
         nodes[-1] = "shell-command"
     elif mutation == "duplicate":
@@ -46,25 +49,25 @@ def test_config_rejects_noncanonical_composite_catalog(
     elif mutation == "omitted":
         nodes.pop(3)
     else:
-        path = config_path(tmp_path, nodes)
+        path = config_path(tmp_path, nodes, wave="wave-3")
         payload = json.loads(path.read_text(encoding="utf-8"))
-        payload["profiles"]["wave-1"]["argv"] = ["sh", "-c", "touch pwned"]
+        payload["profiles"]["wave-3"]["argv"] = ["sh", "-c", "touch pwned"]
         path.write_text(json.dumps(payload), encoding="utf-8")
         with pytest.raises(runner.ProjectGateError, match="invalid_config"):
             runner.load_profiles(path)
         return
 
     with pytest.raises(runner.ProjectGateError, match="invalid_config"):
-        runner.load_profiles(config_path(tmp_path, nodes))
+        runner.load_profiles(config_path(tmp_path, nodes, wave="wave-3"))
 
 
 def test_config_rejects_future_wave_without_review(tmp_path: Path, runner: ModuleType) -> None:
     """Given an undeclared future wave, when parsed, then the closed profile set rejects it."""
-    path = config_path(tmp_path, list(EXPECTED_WAVE_1))
+    path = config_path(tmp_path, list(EXPECTED_WAVE_3), wave="wave-3")
     payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["profiles"]["wave-3"] = {
+    payload["profiles"]["wave-4"] = {
         "kind": "composite",
-        "nodes": list(EXPECTED_WAVE_2),
+        "nodes": list(EXPECTED_WAVE_3),
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
 

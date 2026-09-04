@@ -7,6 +7,7 @@ import { ArrowLeftIcon, ClipboardListIcon, Loader2Icon, WorkflowIcon } from 'luc
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { storeFixInitialMessage } from '@/lib/agents/fix-message-handoff'
+import { buildAgentCreateRequest } from '@/lib/agents/build-agent-create-request'
 import { useCreateAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
@@ -172,23 +173,22 @@ export default function ManualCreationPage() {
   const canSave = name.trim().length > 0 && modelId.length > 0
 
   function buildCreateRequest() {
-    return {
+    return buildAgentCreateRequest({
       name: name.trim() || t('defaultName'),
       description: description.trim() || undefined,
-      system_prompt: systemPrompt,
-      model_id: modelId,
-      identity_mode: identityMode,
-      tool_ids: Array.from(selectedToolIds),
-      mcp_tool_ids: Array.from(selectedMcpToolIds),
-      skill_ids: Array.from(selectedSkillIds),
-      sub_agent_ids: Array.from(selectedSubAgentIds),
-      middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
-        type,
-        params: {},
-      })),
-      model_params: { temperature, top_p: topP, max_tokens: maxTokens },
-      opener_questions: openerQuestions,
-    }
+      systemPrompt,
+      modelId,
+      identityMode,
+      toolIds: selectedToolIds,
+      mcpToolIds: selectedMcpToolIds,
+      skillIds: selectedSkillIds,
+      subAgentIds: selectedSubAgentIds,
+      middlewareTypes: selectedMiddlewareTypes,
+      temperature,
+      topP,
+      maxTokens,
+      openerQuestions,
+    })
   }
 
   async function handleSave() {

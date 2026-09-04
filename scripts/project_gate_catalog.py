@@ -196,6 +196,60 @@ CATALOG: Final[dict[str, GateNode]] = {
             "repo",
             ("scripted-capture", "e2e/chat-langgraph-v3-visual-matrix.spec.ts"),
         ),
+        _isolated(
+            "todo15-runtime-policy-contracts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_runtime_policy.py",
+            "tests/test_migration_runtime_policy.py",
+            "tests/test_agent_service_extended.py",
+            "tests/test_project_facts.py",
+        ),
+        GateNode("postgres-migration-roundtrip", "postgres", "repo", ("migration-roundtrip",)),
+        _isolated(
+            "todo16-policy-snapshot-contracts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_runtime_policy_snapshot.py",
+            "tests/test_migration_m72_runtime_policy_snapshot.py",
+            "tests/test_conversation_run_service.py",
+            "tests/test_conversation_agent_protocol_commands.py",
+            "tests/test_trigger_executor.py",
+            "tests/agent_runtime/test_subagents_runtime.py",
+            "tests/test_assistant_agent.py",
+            "tests/test_skill_builder_chat_runtime.py",
+            "tests/test_builder_v3.py",
+            "tests/test_project_facts.py",
+        ),
+        GateNode(
+            "postgres-run-lifecycle-stream-resume",
+            "postgres",
+            "repo",
+            ("run-lifecycle", "stream-resume"),
+        ),
+        _isolated(
+            "todo17-policy-portability",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_marketplace_agent_blueprint.py",
+            "tests/test_agent_blueprint_model.py",
+            "tests/test_agent_api_control_plane.py",
+            "tests/test_agent_api_compat_adapters.py",
+        ),
+        _isolated(
+            "todo17-frontend-policy-portability",
+            "frontend",
+            "exec",
+            "vitest",
+            "run",
+            "tests/pages/agent-settings-draft.test.ts",
+        ),
     )
 }
 
@@ -228,4 +282,17 @@ WAVE_2: Final[tuple[str, ...]] = WAVE_1[:-1] + (
     "todo14-visual-capture",
     "scripted-full",
 )
-CANONICAL_WAVES: Final[dict[str, tuple[str, ...]]] = {"wave-1": WAVE_1, "wave-2": WAVE_2}
+WAVE_3: Final[tuple[str, ...]] = WAVE_2[:-1] + (
+    "todo15-runtime-policy-contracts",
+    "postgres-migration-roundtrip",
+    "todo16-policy-snapshot-contracts",
+    "postgres-run-lifecycle-stream-resume",
+    "todo17-policy-portability",
+    "todo17-frontend-policy-portability",
+    "scripted-full",
+)
+CANONICAL_WAVES: Final[dict[str, tuple[str, ...]]] = {
+    "wave-1": WAVE_1,
+    "wave-2": WAVE_2,
+    "wave-3": WAVE_3,
+}

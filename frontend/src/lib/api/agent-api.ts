@@ -6,6 +6,7 @@ import type {
   AgentDeployment,
   AgentDeploymentCandidate,
   AgentDeploymentCreateRequest,
+  AgentDeploymentUpdateRequest,
 } from '@/lib/types'
 
 export const agentApi = {
@@ -17,7 +18,7 @@ export const agentApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateDeployment: (id: string, data: Partial<AgentDeployment>) =>
+  updateDeployment: (id: string, data: AgentDeploymentUpdateRequest) =>
     apiFetch<AgentDeployment>(`/api/agent-api/deployments/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

@@ -10,12 +10,14 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
+from app.agent_runtime.runtime_policy import RuntimePolicyV1
 from app.error_codes import (
     marketplace_credential_required,
     marketplace_invalid_package,
     marketplace_item_not_found,
     model_not_found,
 )
+from app.marketplace.runtime_policy import parse_portable_runtime_policy
 from app.marketplace.schemas import CreateAgentFromBlueprintIn
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_blueprint import AgentBlueprint
@@ -151,6 +153,13 @@ def _validated_middleware_configs(agent_spec: dict[str, Any]) -> list[dict[str, 
             f"unknown middleware keys: {', '.join(sorted(set(unknown)))}"
         )
     return configs
+
+
+def _validated_runtime_policy(agent_spec: dict[str, Any]) -> RuntimePolicyV1 | None:
+    """Parse the optional portable runtime policy from a blueprint spec."""
+    if "runtime_policy" not in agent_spec or agent_spec["runtime_policy"] is None:
+        return None
+    return parse_portable_runtime_policy(agent_spec["runtime_policy"])
 
 
 def _safe_key(prefix: str, value: str) -> str:
@@ -743,6 +752,7 @@ async def create_agent_from_blueprint(
         opener_questions=agent_spec.get("opener_questions"),
         model_fallback_ids=model_fallback_ids,
         identity_mode=agent_spec.get("identity_mode") or "per_user",
+        runtime_policy=_validated_runtime_policy(agent_spec),
         tool_ids=tool_ids,
         skill_ids=skill_ids,
         mcp_tool_ids=mcp_tool_ids,

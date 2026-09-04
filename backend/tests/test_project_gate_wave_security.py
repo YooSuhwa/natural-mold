@@ -18,9 +18,11 @@ import pytest
 from tests.project_gate_wave_support import (
     REPO_ROOT,
     SCRIPTS,
+    ReceiptSummaryPayload,
     RunKwargs,
     TrustedToolchainLike,
     load_module,
+    receipt_summary,
 )
 
 
@@ -49,6 +51,12 @@ def test_catalog_commands_ignore_path_shadowing(tmp_path: Path) -> None:
     capture, _ = process.command_for(
         catalog.CATALOG["todo14-visual-capture"], receipt, REPO_ROOT, trusted
     )
+    migration, _ = process.command_for(
+        catalog.CATALOG["postgres-migration-roundtrip"], receipt, REPO_ROOT, trusted
+    )
+    lifecycle, _ = process.command_for(
+        catalog.CATALOG["postgres-run-lifecycle-stream-resume"], receipt, REPO_ROOT, trusted
+    )
 
     assert backend[-6:] == [
         "/trusted/python",
@@ -69,6 +77,36 @@ def test_catalog_commands_ignore_path_shadowing(tmp_path: Path) -> None:
         "--project=scripted-capture",
         "e2e/chat-langgraph-v3-visual-matrix.spec.ts",
     ]
+    assert migration[-3:] == ["migration-roundtrip", "--manifest", str(receipt)]
+    assert lifecycle[-4:] == ["run-lifecycle", "stream-resume", "--manifest", str(receipt)]
+
+
+def test_composite_postgres_selector_binds_to_exact_internal_receipt_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Given a fixed public selector pair, when receipt validation runs, then its mode is exact."""
+    catalog = load_module("project_gate_catalog")
+    process = load_module("project_gate_process")
+    captured: list[tuple[str, int]] = []
+
+    def record_validation(
+        _path: Path, _root: Path, mode: str, exit_code: int
+    ) -> ReceiptSummaryPayload:
+        captured.append((mode, exit_code))
+        return receipt_summary(_path)
+
+    monkeypatch.setattr(process, "_checker", lambda _receipt, _root, _env: True)
+    monkeypatch.setattr(process, "validate_postgres", record_validation)
+
+    process.validate_child(
+        catalog.CATALOG["postgres-run-lifecycle-stream-resume"],
+        tmp_path / "child.json",
+        tmp_path,
+        0,
+        {},
+    )
+
+    assert captured == [("run-lifecycle+stream-resume", 0)]
 
 
 def test_trusted_git_ignores_shadow_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

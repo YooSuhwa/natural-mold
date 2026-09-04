@@ -66,7 +66,7 @@ def command_for(
             command = [
                 "/bin/bash",
                 str(repo_root / "scripts" / "run-isolated-postgres-tests.sh"),
-                node.argv[0],
+                *node.argv,
                 "--manifest",
                 str(receipt),
             ]
@@ -176,7 +176,7 @@ def validate_child(
         case "postgres":
             if not _checker(receipt, repo_root, environment):
                 raise ProjectGateError("invalid_child_receipt")
-            return validate_postgres(receipt, repo_root, node.argv[0], exit_code)
+            return validate_postgres(receipt, repo_root, "+".join(node.argv), exit_code)
         case "e2e":
             if not _checker(receipt, repo_root, environment):
                 raise ProjectGateError("invalid_child_receipt")

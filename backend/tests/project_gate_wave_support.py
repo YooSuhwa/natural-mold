@@ -46,6 +46,15 @@ EXPECTED_WAVE_2 = EXPECTED_WAVE_1[:-1] + (
     "todo14-visual-capture",
     "scripted-full",
 )
+EXPECTED_WAVE_3 = EXPECTED_WAVE_2[:-1] + (
+    "todo15-runtime-policy-contracts",
+    "postgres-migration-roundtrip",
+    "todo16-policy-snapshot-contracts",
+    "postgres-run-lifecycle-stream-resume",
+    "todo17-policy-portability",
+    "todo17-frontend-policy-portability",
+    "scripted-full",
+)
 
 
 class ReceiptSummaryPayload(TypedDict):
@@ -106,23 +115,35 @@ def load_module(name: str) -> ModuleType:
     return module
 
 
-def config_path(tmp_path: Path, nodes: list[str]) -> Path:
+def config_path(tmp_path: Path, nodes: list[str], *, wave: str = "wave-1") -> Path:
+    """Write a complete canonical profile table with one selected composite mutation."""
+    canonical_nodes = {
+        "wave-1": list(EXPECTED_WAVE_1),
+        "wave-2": list(EXPECTED_WAVE_2),
+        "wave-3": list(EXPECTED_WAVE_3),
+    }
+    canonical_nodes[wave] = nodes
     path = tmp_path / "gates.json"
+    profiles: JSONObject = {
+        "smoke": {
+            "lane": "scripted",
+            "project": "scripted-smoke",
+            "spec": "e2e/smoke.spec.ts",
+            "workers": 1,
+            "retries": 0,
+        }
+    }
+    profiles.update(
+        {
+            name: {"kind": "composite", "nodes": profile_nodes}
+            for name, profile_nodes in canonical_nodes.items()
+        }
+    )
     path.write_text(
         json.dumps(
             {
                 "schema_version": 2,
-                "profiles": {
-                    "smoke": {
-                        "lane": "scripted",
-                        "project": "scripted-smoke",
-                        "spec": "e2e/smoke.spec.ts",
-                        "workers": 1,
-                        "retries": 0,
-                    },
-                    "wave-1": {"kind": "composite", "nodes": nodes},
-                    "wave-2": {"kind": "composite", "nodes": list(EXPECTED_WAVE_2)},
-                },
+                "profiles": profiles,
             }
         ),
         encoding="utf-8",

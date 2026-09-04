@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.error_codes import marketplace_credential_required
 from app.marketplace import credential_requirements
 from app.marketplace.install.common import _now
+from app.marketplace.runtime_policy import canonicalize_agent_blueprint_runtime_policy
 from app.models.credential import Credential
 from app.models.marketplace import MarketplaceVersion, SkillCredentialBinding
 from app.models.mcp_server import McpServer
@@ -86,7 +87,7 @@ def _agent_blueprint_payload_with_requirements(
             **setup,
             "required_credentials": list(version.credential_requirements or []),
         }
-    return payload
+    return canonicalize_agent_blueprint_runtime_policy(payload)
 
 
 async def _validate_version_credential_bindings(

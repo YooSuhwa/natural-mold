@@ -1,4 +1,5 @@
 import type { Agent } from '@/lib/types'
+import { buildAgentCreateRequest } from '@/lib/agents/build-agent-create-request'
 import {
   buildAgentSettingsDraftFromAgent,
   buildAgentUpdateRequest,
@@ -36,6 +37,14 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     llm_credential_id: null,
     unread_count: 0,
     model_fallback_ids: null,
+    runtime_policy: null,
+    runtime_policy_effective: {
+      version: 1,
+      filesystem: { mode: 'artifact_write' },
+      todo: { enabled: true },
+      summarization: { mode: 'auto' },
+    },
+    runtime_policy_source: 'legacy_compat',
     ...overrides,
   }
 }
@@ -102,11 +111,7 @@ describe('agent settings draft helpers', () => {
       }),
     )
 
-    const merged = mergeUntouchedAgentSettingsDraft(
-      currentDraft,
-      previousBaseline,
-      nextBaseline,
-    )
+    const merged = mergeUntouchedAgentSettingsDraft(currentDraft, previousBaseline, nextBaseline)
 
     expect(merged.name).toBe('Local edited name')
     expect(Array.from(merged.selectedMcpToolIds)).toEqual(['local-mcp-tool'])
@@ -129,6 +134,12 @@ describe('agent settings draft helpers', () => {
         model_params: { temperature: 0.4, top_p: 0.9, max_tokens: 2048 },
         opener_questions: ['Start here'],
         model_fallback_ids: ['model-fallback-a'],
+        runtime_policy: {
+          version: 1,
+          filesystem: { mode: 'inspect' },
+          todo: { enabled: false },
+          summarization: { mode: 'preset', preset: 'balanced_context_v1' },
+        },
       }),
     )
 
@@ -146,6 +157,12 @@ describe('agent settings draft helpers', () => {
       model_params: { temperature: 0.4, top_p: 0.9, max_tokens: 2048 },
       opener_questions: ['Start here'],
       model_fallback_ids: ['model-fallback-a'],
+      runtime_policy: {
+        version: 1,
+        filesystem: { mode: 'inspect' },
+        todo: { enabled: false },
+        summarization: { mode: 'preset', preset: 'balanced_context_v1' },
+      },
     })
   })
 
@@ -154,5 +171,122 @@ describe('agent settings draft helpers', () => {
 
     expect(request.description).toBeUndefined()
     expect(request.model_fallback_ids).toBeNull()
+    expect(request.runtime_policy).toBeNull()
+  })
+
+  it('preserves a stored false policy across draft reload, merge, and save', () => {
+    const storedPolicy = {
+      version: 1 as const,
+      filesystem: { mode: 'artifact_write' as const },
+      todo: { enabled: false },
+      summarization: { mode: 'auto' as const },
+    }
+    const baseline = buildAgentSettingsDraftFromAgent(makeAgent({ runtime_policy: storedPolicy }))
+    const refetched = buildAgentSettingsDraftFromAgent(makeAgent({ runtime_policy: storedPolicy }))
+    const merged = mergeUntouchedAgentSettingsDraft(baseline, baseline, refetched)
+
+    expect(merged.runtimePolicy).toEqual(storedPolicy)
+    expect(merged.runtimePolicy).not.toBe(storedPolicy)
+    expect(buildAgentUpdateRequest(merged).runtime_policy).toEqual(storedPolicy)
+    expect(isAgentSettingsDraftDirty(merged, refetched)).toBe(false)
+  })
+
+  it('keeps a locally changed runtime policy when a refetch merges untouched fields', () => {
+    const baseline = buildAgentSettingsDraftFromAgent(makeAgent({ runtime_policy: null }))
+    const localPolicy = {
+      version: 1 as const,
+      filesystem: { mode: 'inspect' as const },
+      todo: { enabled: false },
+      summarization: { mode: 'auto' as const },
+    }
+    const refetched = buildAgentSettingsDraftFromAgent(
+      makeAgent({ name: 'Refetched name', runtime_policy: null }),
+    )
+    const merged = mergeUntouchedAgentSettingsDraft(
+      { ...baseline, runtimePolicy: localPolicy },
+      baseline,
+      refetched,
+    )
+
+    expect(merged.name).toBe('Refetched name')
+    expect(merged.runtimePolicy).toEqual(localPolicy)
+    expect(isAgentSettingsDraftDirty(merged, refetched)).toBe(true)
+  })
+
+  it('keeps manual and visual creation requests in the no-policy legacy state', () => {
+    const manualRequest = buildAgentCreateRequest({
+      name: 'Manual Agent',
+      description: 'Manual description',
+      systemPrompt: 'Be helpful.',
+      modelId: 'model-1',
+      identityMode: 'per_user',
+      toolIds: ['tool-1'],
+      mcpToolIds: [],
+      skillIds: [],
+      subAgentIds: [],
+      middlewareTypes: [],
+      temperature: 0.7,
+      topP: 1,
+      maxTokens: 4096,
+      openerQuestions: [],
+    })
+    const visualRequest = buildAgentCreateRequest({
+      name: 'Visual Agent',
+      description: '',
+      systemPrompt: '',
+      modelId: 'model-1',
+      identityMode: 'per_user',
+      toolIds: [],
+      mcpToolIds: [],
+      skillIds: [],
+      subAgentIds: [],
+      middlewareTypes: [],
+      temperature: 0.7,
+      topP: 1,
+      maxTokens: 4096,
+    })
+
+    expect(manualRequest).not.toHaveProperty('runtime_policy')
+    expect(manualRequest.opener_questions).toEqual([])
+    expect(visualRequest).not.toHaveProperty('runtime_policy')
+    expect(visualRequest).not.toHaveProperty('opener_questions')
+    expect(visualRequest.name).toBe('Visual Agent')
+  })
+
+  it('leaves each creation surface responsible for its existing whitespace normalization', () => {
+    const manualRequest = buildAgentCreateRequest({
+      name: 'Manual Agent',
+      description: undefined,
+      systemPrompt: '',
+      modelId: 'model-1',
+      identityMode: 'per_user',
+      toolIds: [],
+      mcpToolIds: [],
+      skillIds: [],
+      subAgentIds: [],
+      middlewareTypes: [],
+      temperature: 0.7,
+      topP: 1,
+      maxTokens: 4096,
+    })
+    const visualRequest = buildAgentCreateRequest({
+      name: '  Visual Agent  ',
+      description: '  visual description  ',
+      systemPrompt: '',
+      modelId: 'model-1',
+      identityMode: 'per_user',
+      toolIds: [],
+      mcpToolIds: [],
+      skillIds: [],
+      subAgentIds: [],
+      middlewareTypes: [],
+      temperature: 0.7,
+      topP: 1,
+      maxTokens: 4096,
+    })
+
+    expect(manualRequest.description).toBeUndefined()
+    expect(visualRequest.name).toBe('  Visual Agent  ')
+    expect(visualRequest.description).toBe('  visual description  ')
   })
 })

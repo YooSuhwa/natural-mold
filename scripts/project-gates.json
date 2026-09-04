@@ -54,6 +54,41 @@
         "todo14-visual-capture",
         "scripted-full"
       ]
+    },
+    "wave-3": {
+      "kind": "composite",
+      "nodes": [
+        "backend-full",
+        "todo05-storage-security",
+        "todo06-filesystem-security",
+        "todo07-project-facts",
+        "todo07-project-facts-check",
+        "postgres-all",
+        "frontend-lint",
+        "frontend-i18n",
+        "frontend-type-safety",
+        "frontend-e2e-hygiene",
+        "frontend-vitest",
+        "frontend-build",
+        "todo08-runtime-contracts",
+        "todo09-runtime-dependency-guard",
+        "todo09-runtime-dependency-tests",
+        "todo10-runtime-preparation-contracts",
+        "todo11-streaming-contracts",
+        "postgres-stream-resume",
+        "todo12-frontend-contracts",
+        "todo12-frontend-architecture",
+        "todo13-runtime-split-contracts",
+        "todo14-assistant-contracts",
+        "todo14-visual-capture",
+        "todo15-runtime-policy-contracts",
+        "postgres-migration-roundtrip",
+        "todo16-policy-snapshot-contracts",
+        "postgres-run-lifecycle-stream-resume",
+        "todo17-policy-portability",
+        "todo17-frontend-policy-portability",
+        "scripted-full"
+      ]
     }
   }
 }
