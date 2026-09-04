@@ -432,7 +432,8 @@ def test_build_agent_applies_stored_todo_policy_to_parent_and_children(
 
     call = mock_create.call_args.kwargs
     assert call["tools"] == [safe_tool]
-    assert [item.name for item in call["middleware"]] == expected_middleware_names
+    expected_with_summarization = [*expected_middleware_names, "SummarizationMiddleware"]
+    assert [item.name for item in call["middleware"]] == expected_with_summarization
     for child in call["subagents"]:
         assert [item.name for item in child["middleware"]] == expected_middleware_names
         assert [tool.name for tool in child["tools"]] == ["safe_search"]

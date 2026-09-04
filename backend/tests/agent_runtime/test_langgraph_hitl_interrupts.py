@@ -4,14 +4,18 @@ import json
 from typing import Any
 
 import pytest
-from deepagents import create_deep_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.agent_runtime.langgraph_agent_stream_runner import execute_agent_stream_langgraph
+from app.agent_runtime.langgraph_agent_stream_runner import (
+    execute_agent_stream_langgraph,
+    resume_agent_stream_langgraph,
+)
+from app.agent_runtime.runtime_component_builder import build_agent
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.runtime_policy import resolve_runtime_policy
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:The v3 streaming protocol on Pregel is experimental"
@@ -40,6 +44,22 @@ def _payloads(raw_chunks: list[str]) -> list[dict[str, Any]]:
     return payloads
 
 
+def _message_text(payloads: list[dict[str, Any]]) -> str:
+    """Collect user-visible assistant content from a v3 stream."""
+
+    parts: list[str] = []
+    for payload in payloads:
+        if payload.get("method") != "messages":
+            continue
+        data = payload.get("params", {}).get("data")
+        if not isinstance(data, dict):
+            continue
+        content = data.get("content")
+        if isinstance(content, str):
+            parts.append(content)
+    return "".join(parts)
+
+
 @pytest.mark.asyncio
 async def test_langgraph_runner_emits_input_requested_for_execute_in_skill_interrupt(
     monkeypatch: pytest.MonkeyPatch,
@@ -58,15 +78,24 @@ async def test_langgraph_runner_emits_input_requested_for_execute_in_skill_inter
                         },
                     }
                 ],
-            )
+            ),
+            AIMessage(content="문서 생성이 완료되었습니다."),
         ]
     )
-    agent = create_deep_agent(
-        model=model,
-        tools=[execute_in_skill],
-        system_prompt="Use execute_in_skill.",
+    agent = build_agent(
+        model,
+        [execute_in_skill],
+        "Use execute_in_skill.",
         interrupt_on={"execute_in_skill": {"allowed_decisions": ["approve", "reject"]}},
         checkpointer=MemorySaver(),
+        runtime_policy=resolve_runtime_policy(
+            {
+                "version": 1,
+                "filesystem": {"mode": "artifact_write"},
+                "todo": {"enabled": True},
+                "summarization": {"mode": "auto"},
+            }
+        ),
     )
 
     async def fake_prepare_agent(
@@ -108,3 +137,25 @@ async def test_langgraph_runner_emits_input_requested_for_execute_in_skill_inter
     assert data["interrupt_id"]
     assert data["payload"]["action_requests"][0]["name"] == "execute_in_skill"
     assert data["payload"]["review_configs"][0]["allowed_decisions"] == ["approve", "reject"]
+
+    resumed_chunks = [
+        chunk
+        async for chunk in resume_agent_stream_langgraph(
+            AgentConfig(
+                provider="fake",
+                model_name="fake-chat",
+                api_key=None,
+                base_url=None,
+                system_prompt="Use execute_in_skill.",
+                tools_config=[],
+                thread_id="thread-hitl",
+            ),
+            {"decisions": [{"type": "approve"}]},
+            run_id="run-hitl",
+        )
+    ]
+    resumed_payloads = _payloads(resumed_chunks)
+    assert [
+        payload for payload in resumed_payloads if payload.get("method") == "input.requested"
+    ] == []
+    assert "문서 생성이 완료되었습니다." in _message_text(resumed_payloads)

@@ -18,12 +18,15 @@ from __future__ import annotations
 
 import itertools
 import json
-from typing import Any
+from typing import Any, assert_never
 
 import pytest
 from deepagents import create_deep_agent
+from langchain.agents.middleware import ModelFallbackMiddleware
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent_runtime.event_broker import EventBroker
@@ -34,9 +37,17 @@ from app.agent_runtime.langgraph_streaming import (
 )
 from app.agent_runtime.offload_storage import OffloadKind, logical_offload_id
 from app.agent_runtime.protocol_events import stored_protocol_event
+from app.agent_runtime.runtime_component_builder import build_agent
+from app.agent_runtime.runtime_policy import (
+    JsonObject,
+    ResolvedRuntimePolicy,
+    resolve_runtime_policy,
+)
 from app.config import settings
 
 _ANSWER = "ANSWER-CONTENT"
+_FALLBACK_ANSWER = "FALLBACK-ANSWER-CONTENT"
+_PRIMARY_UNAVAILABLE = "PRIMARY_UNAVAILABLE"
 
 
 class _FakeModel(GenericFakeChatModel):
@@ -44,13 +55,60 @@ class _FakeModel(GenericFakeChatModel):
         return self
 
 
-def _build_agent() -> Any:
+class _FallbackAfterCompactionModel(_FakeModel):
+    """Fail a normal answer only after the primary has produced a summary."""
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        response = next(self.messages)
+        match response:
+            case AIMessage(content=content) if content == _PRIMARY_UNAVAILABLE:
+                raise RuntimeError("primary model unavailable")
+            case AIMessage():
+                return ChatResult(generations=[ChatGeneration(message=response)])
+            case str() as content:
+                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+            case unreachable:
+                assert_never(unreachable)
+
+
+def _build_agent(summarization: JsonObject | None = None) -> Any:
     fake = _FakeModel(messages=itertools.cycle([AIMessage(content=_ANSWER)]))
     # Tiny window → deepagents summarizes on the next turn.
     fake.profile = {"max_input_tokens": 50}
+    if summarization is not None:
+        policy: JsonObject = {
+            "version": 1,
+            "filesystem": {"mode": "artifact_write"},
+            "todo": {"enabled": True},
+            "summarization": summarization,
+        }
+        runtime_policy = resolve_runtime_policy(policy)
+        return build_agent(
+            fake,
+            [],
+            "sys",
+            checkpointer=InMemorySaver(),
+            runtime_policy=runtime_policy,
+        )
     return create_deep_agent(
         model=fake, tools=[], system_prompt="sys", checkpointer=InMemorySaver()
     )
+
+
+def _stored_auto_policy() -> ResolvedRuntimePolicy:
+    policy: JsonObject = {
+        "version": 1,
+        "filesystem": {"mode": "artifact_write"},
+        "todo": {"enabled": True},
+        "summarization": {"mode": "auto"},
+    }
+    return resolve_runtime_policy(policy)
 
 
 def _parse_sse(raw: str) -> dict[str, Any]:
@@ -163,6 +221,30 @@ def test_compaction_projection_strips_paths_without_mutating_graph_state() -> No
     assert history_id == logical_offload_id(OffloadKind.HISTORY, history_path)
 
 
+def test_compaction_projection_preserves_nested_messages_usage_and_artifact_metadata() -> None:
+    """Offload redaction must not discard ordinary projected stream state."""
+
+    history_path = "/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    raw_state = {
+        "_summarization_event": {"cutoff_index": 9, "file_path": history_path},
+        "messages": [[{"content": [{"type": "text", "text": "visible nested reply"}]}]],
+        "usage": {"input_tokens": 42, "output_tokens": 7},
+        "artifacts": [{"name": "summary.md", "path": history_path}],
+    }
+
+    projected = _project_offload_egress_data(raw_state)
+
+    assert projected["messages"] == raw_state["messages"]
+    assert projected["usage"] == raw_state["usage"]
+    assert projected["artifacts"] == [
+        {
+            "name": "summary.md",
+            "path": logical_offload_id(OffloadKind.HISTORY, history_path),
+        }
+    ]
+    assert history_path not in _serialized(projected)
+
+
 def test_compaction_projection_fails_closed_for_untrusted_physical_paths() -> None:
     absolute_spill = "/tmp/data/.moldy-internal/offload/spill/owner/run/actor/leaf"
     relative_history = ".moldy-internal/offload/history/owner/conversation/session"
@@ -213,8 +295,20 @@ def test_compaction_projection_uses_session_identity_not_conversation_only() -> 
 
 
 @pytest.mark.asyncio
-async def test_compaction_projects_two_runs_without_offload_path_leaks() -> None:
-    agent = _build_agent()
+@pytest.mark.parametrize(
+    "summarization",
+    [
+        {"mode": "auto"},
+        {"mode": "preset", "preset": "balanced_context_v1"},
+    ],
+    ids=["auto", "balanced-context"],
+)
+async def test_stored_summarization_projects_two_runs_without_offload_path_leaks(
+    summarization: JsonObject,
+) -> None:
+    """Each stored policy keeps repeated compaction's public stream contract."""
+
+    agent = _build_agent(summarization)
     thread_id = "thread-compact"
     await _drive(agent, thread_id, "run-before-compaction", "첫 질문 " * 40)
     first_events, first_persisted, first_trace, first_broker = await _drive(
@@ -264,6 +358,42 @@ async def test_compaction_projects_two_runs_without_offload_path_leaks() -> None
         assert "file_path" not in serialized
         assert "/conversation_history/" not in serialized
         assert "/.moldy-offload/" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_stored_auto_compaction_keeps_normal_answer_fallback_functional() -> None:
+    """A primary summary must not disable fallback for the following user-facing answer."""
+
+    primary = _FallbackAfterCompactionModel(
+        messages=iter(
+            [
+                AIMessage(content=_ANSWER),
+                AIMessage(content="summary state"),
+                AIMessage(content=_PRIMARY_UNAVAILABLE),
+            ]
+        )
+    )
+    primary.profile = {"max_input_tokens": 50}
+    fallback = _FakeModel(messages=itertools.repeat(AIMessage(content=_FALLBACK_ANSWER)))
+    agent = build_agent(
+        primary,
+        [],
+        "sys",
+        middleware=[ModelFallbackMiddleware(fallback)],
+        checkpointer=InMemorySaver(),
+        runtime_policy=_stored_auto_policy(),
+    )
+
+    await _drive(agent, "thread-fallback", "run-before-compaction", "첫 질문 " * 40)
+    events, persisted, trace, broker = await _drive(
+        agent, "thread-fallback", "run-after-compaction", "둘째 질문 " * 40
+    )
+
+    payloads = _compaction_payloads(events)
+    assert [payload.get("state") for payload in payloads].count("done") == 1
+    assert _FALLBACK_ANSWER in _answer_text(events)
+    for projection in (events, persisted, trace, broker):
+        assert "/conversation_history/" not in _serialized(projection)
 
 
 @pytest.mark.asyncio

@@ -174,6 +174,9 @@ from app.agent_runtime.runtime_preparation_support import (
 from app.agent_runtime.runtime_preparation_support import (
     selected_skill_slugs_impl as _selected_skill_slugs_impl,
 )
+from app.agent_runtime.runtime_summarization_policy import (
+    create_stored_summarization_middleware,
+)
 from app.agent_runtime.skill_builder.chat_prompt import load_skill_builder_prompt
 from app.agent_runtime.skill_builder.tools import (
     SESSION_CONSENT_ELIGIBLE_TOOLS as _SESSION_CONSENT_ELIGIBLE_TOOLS,
@@ -341,6 +344,51 @@ def _with_actor_summarization(
     )
 
 
+def _with_stored_policy_summarization(
+    middleware: list[Any],
+    *,
+    model: BaseChatModel,
+    backend: Any,
+    runtime_policy: ResolvedRuntimePolicy,
+) -> list[Any]:
+    """Replace any caller summarizer with the snapshotted stored policy."""
+
+    retained = [
+        item for item in middleware if _middleware_name(item) != _SUMMARIZATION_MIDDLEWARE_NAME
+    ]
+    return [
+        *retained,
+        create_stored_summarization_middleware(runtime_policy, model, backend),
+    ]
+
+
+def _with_stored_parent_policy(
+    middleware: list[Any] | tuple[Any, ...] | None,
+    *,
+    backend: Any,
+    permissions: list[FilesystemPermission] | None,
+    filesystem_tool_names: tuple[str, ...],
+    todo_enabled: bool,
+    model: BaseChatModel,
+    runtime_policy: ResolvedRuntimePolicy,
+) -> list[Any]:
+    """Build the top-level stored-policy compatibility stack."""
+
+    compatible = _with_stored_policy_compatibility(
+        middleware,
+        backend=backend,
+        permissions=permissions,
+        filesystem_tool_names=filesystem_tool_names,
+        todo_enabled=todo_enabled,
+    )
+    return _with_stored_policy_summarization(
+        compatible,
+        model=model,
+        backend=backend,
+        runtime_policy=runtime_policy,
+    )
+
+
 def _scoped_runtime_backend(
     cfg: AgentConfig,
     *,
@@ -495,9 +543,11 @@ def build_agent(
         bindings = _DeepAgentFactoryBindings(
             create_deep_agent=create_deep_agent,
             with_compatibility=partial(
-                _with_stored_policy_compatibility,
+                _with_stored_parent_policy,
                 filesystem_tool_names=filesystem_tool_names,
                 todo_enabled=todo_enabled,
+                model=model,
+                runtime_policy=runtime_policy,
             ),
             normalize_subagents=partial(
                 _normalize_stored_policy_subagents,
