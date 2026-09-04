@@ -10,7 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.agent_api.dependencies import ApiKeyPrincipal
 from app.agent_api.service import utc_now_naive
-from app.exceptions import ForbiddenError, NotFoundError, ValidationError
+from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
+from app.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.models.agent_api import AgentApiRun, AgentApiThread, AgentDeployment
 from app.models.conversation import Conversation
 from app.schemas.agent_api import AgentRunRequest, AgentThreadCreateRequest, AgentThreadResponse
@@ -18,6 +19,10 @@ from app.services import chat_service
 from app.services.agent_invocation_service import (
     AgentInvocationPrincipal,
     build_agent_config_for_loaded_agent,
+)
+from app.services.conversation_runtime_policy import (
+    ensure_conversation_runtime_policy,
+    snapshot_from_conversation,
 )
 
 
@@ -172,6 +177,11 @@ async def create_run_row(
     input_payload: dict[str, Any],
     metadata: dict[str, Any] | None,
 ) -> AgentApiRun:
+    if conversation_id is not None:
+        try:
+            await ensure_conversation_runtime_policy(db, conversation_id)
+        except RuntimePolicySnapshotError as exc:
+            raise ConflictError(exc.code, exc.code) from None
     row = AgentApiRun(
         public_id=f"run_{uuid.uuid4().hex}",
         user_id=principal.user_id,
@@ -226,6 +236,15 @@ async def build_config_for_run(
     conversation: Conversation,
     external_user: str | None,
 ):
+    try:
+        runtime_policy = snapshot_from_conversation(conversation)
+    except RuntimePolicySnapshotError as exc:
+        raise ConflictError(exc.code, exc.code) from None
+    if runtime_policy is None:
+        raise ConflictError(
+            "RUNTIME_POLICY_SNAPSHOT_INVALID",
+            "RUNTIME_POLICY_SNAPSHOT_INVALID",
+        )
     agent = await chat_service.get_agent_with_tools(db, deployment.agent_id, principal.user_id)
     if agent is None:
         raise NotFoundError("AGENT_NOT_FOUND", "agent not found")
@@ -239,6 +258,7 @@ async def build_config_for_run(
             external_user_id=external_user,
         ),
         source="api",
+        runtime_policy=runtime_policy,
     )
 
 

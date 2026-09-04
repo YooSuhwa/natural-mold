@@ -19,7 +19,15 @@ from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute, contains_eager
 
-from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
+from app.agent_runtime.runtime_policy import (
+    SKILL_BUILDER_RUNTIME_POLICY,
+    runtime_policy_to_json,
+)
+from app.models.agent import (
+    AGENT_RUNTIME_PROFILE_SKILL_BUILDER,
+    AGENT_RUNTIME_PROFILE_STANDARD,
+    Agent,
+)
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
@@ -269,6 +277,15 @@ async def create_conversation(
     source: str = "ui",
 ) -> Conversation:
     conv = Conversation(agent_id=agent_id, title=title or "새 대화", source=source)
+    if source == "draft":
+        runtime_profile = await db.scalar(select(Agent.runtime_profile).where(Agent.id == agent_id))
+        if runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER:
+            conv.runtime_policy_snapshot = runtime_policy_to_json(
+                SKILL_BUILDER_RUNTIME_POLICY.effective
+            )
+            conv.runtime_policy_version = SKILL_BUILDER_RUNTIME_POLICY.effective.version
+            conv.runtime_policy_hash = SKILL_BUILDER_RUNTIME_POLICY.policy_hash
+            conv.runtime_policy_source = SKILL_BUILDER_RUNTIME_POLICY.source
     db.add(conv)
     await db.flush()
     await db.refresh(conv)

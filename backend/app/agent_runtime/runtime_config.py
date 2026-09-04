@@ -8,6 +8,7 @@ from deepagents.middleware.filesystem import FilesystemPermission
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.runtime_policy import LEGACY_RUNTIME_POLICY, ResolvedRuntimePolicy
 from app.config import settings
 
 _configured_data_root = Path(settings.data_root)
@@ -47,6 +48,7 @@ class AgentConfig:
     system_prompt: str
     tools_config: list[dict[str, Any]]
     thread_id: str
+    runtime_policy: ResolvedRuntimePolicy = LEGACY_RUNTIME_POLICY
     model_params: dict[str, Any] | None = None
     middleware_configs: list[dict[str, Any]] | None = None
     agent_skills: list[dict[str, Any]] | None = None

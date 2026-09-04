@@ -79,6 +79,10 @@ async def test_active_run_endpoint_returns_active_run(
     assert body["conversation_id"] == str(conversation.id)
     assert body["status"] == "queued"
     assert body["source"] == "chat"
+    assert body["runtime_policy_version"] == 1
+    assert body["runtime_policy_hash"] == run.runtime_policy_hash
+    assert body["runtime_policy_source"] == "legacy_compat"
+    assert "runtime_policy_snapshot" not in body
 
 
 @pytest.mark.asyncio

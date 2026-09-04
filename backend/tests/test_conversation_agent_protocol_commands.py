@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import stored_protocol_event
+from app.agent_runtime.runtime_policy import LEGACY_RUNTIME_POLICY
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -98,6 +99,66 @@ async def test_input_respond_command_starts_langgraph_resume_run(
     assert started["input_payload"] == {"decisions": [{"type": "approve"}]}
     assert started["moldy_source"] == "resume"
     assert started["executor_fn"].__name__ == "resume_agent_stream_langgraph"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["run.start", "input.respond"])
+async def test_protocol_commands_preserve_runtime_policy_snapshot_conflict(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    conversation.runtime_policy_snapshot = {"version": 1}
+    conversation.runtime_policy_version = 1
+    conversation.runtime_policy_hash = LEGACY_RUNTIME_POLICY.policy_hash
+    conversation.runtime_policy_source = "legacy_compat"
+    if method == "input.respond":
+        db.add(
+            ConversationRun(
+                conversation_id=conversation.id,
+                agent_id=conversation.agent_id,
+                user_id=TEST_USER_ID,
+                source="chat",
+                status="interrupted",
+                is_active=False,
+                interrupt_id="intr-policy",
+            )
+        )
+    await db.commit()
+
+    async def fail_start_conversation_run(**_kwargs):
+        raise AssertionError("invalid policy must reject before worker start")
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fail_start_conversation_run,
+    )
+    params = (
+        {"input": {"messages": [{"role": "user", "content": "hello"}]}}
+        if method == "run.start"
+        else {
+            "namespace": [],
+            "interrupt_id": "intr-policy",
+            "response": {"decisions": [{"type": "approve"}]},
+        }
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={"id": "invalid-policy", "method": method, "params": params},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "type": "error",
+        "id": "invalid-policy",
+        "error": {
+            "code": "RUNTIME_POLICY_SNAPSHOT_INVALID",
+            "message": "RUNTIME_POLICY_SNAPSHOT_INVALID",
+        },
+    }
 
 
 @pytest.mark.asyncio

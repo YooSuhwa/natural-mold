@@ -29,6 +29,9 @@ class ConversationRunResponse(BaseModel):
     input_preview: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    runtime_policy_version: int | None = None
+    runtime_policy_hash: str | None = None
+    runtime_policy_source: str | None = None
     cancel_requested_at: UtcDatetime | None = None
     started_at: UtcDatetime | None = None
     heartbeat_at: UtcDatetime | None = None

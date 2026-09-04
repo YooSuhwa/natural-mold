@@ -145,10 +145,11 @@ async def test_resolve_agent_context_builder_branch(client, db: AsyncSession) ->
     assert start.status_code == 201, start.text
     body = start.json()
 
-    user = CurrentUser(
-        id=TEST_USER_ID, email="test@test.com", name="Test User", is_super_user=True
-    )
+    user = CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User", is_super_user=True)
     cfg = await resolve_agent_context(db, uuid.UUID(body["conversation_id"]), user)
+    from app.agent_runtime.runtime_policy import SKILL_BUILDER_RUNTIME_POLICY
+
+    assert cfg.runtime_policy is SKILL_BUILDER_RUNTIME_POLICY
 
     assert cfg.runtime_profile == "skill_builder"
     # ADR-019 — 모델은 seed FK가 아니라 System LLM(text_primary) 재해석.
@@ -214,9 +215,7 @@ async def test_generate_evals_writes_schema_valid_file(db: AsyncSession) -> None
     assert output["path"] == "evals/evals.json"
     assert output["case_count"] >= 1
     evals_path = (
-        workspace.resolve_workspace_dir(session.draft_workspace_path or "")
-        / "evals"
-        / "evals.json"
+        workspace.resolve_workspace_dir(session.draft_workspace_path or "") / "evals" / "evals.json"
     )
     parsed = parse_evals_json(evals_path.read_text(encoding="utf-8"))
     assert len(parsed.evals) == output["case_count"]
@@ -338,9 +337,7 @@ def _validation_result_json() -> str:
 
 
 async def test_skill_validation_projection_accepts_validate_result() -> None:
-    payload = skill_validation_event_from_tool_result(
-        "validate_skill", _validation_result_json()
-    )
+    payload = skill_validation_event_from_tool_result("validate_skill", _validation_result_json())
     assert payload is not None
     assert payload["tool_name"] == "validate_skill"
     assert payload["session_id"] == "s1"
@@ -348,15 +345,9 @@ async def test_skill_validation_projection_accepts_validate_result() -> None:
 
 
 async def test_skill_validation_projection_rejects_other_tools_and_shapes() -> None:
-    assert (
-        skill_validation_event_from_tool_result("web_search", _validation_result_json())
-        is None
-    )
+    assert skill_validation_event_from_tool_result("web_search", _validation_result_json()) is None
     assert skill_validation_event_from_tool_result("validate_skill", "not json") is None
-    assert (
-        skill_validation_event_from_tool_result("validate_skill", json.dumps({"ok": 1}))
-        is None
-    )
+    assert skill_validation_event_from_tool_result("validate_skill", json.dumps({"ok": 1})) is None
 
 
 async def test_streaming_projects_validate_skill_result_to_custom_event() -> None:

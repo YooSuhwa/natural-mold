@@ -117,6 +117,7 @@ async def build_subagents_config(
             system_prompt=_subagent_system_prompt(child),
             tools_config=child_tools_config,
             thread_id=parent_cfg.thread_id,
+            runtime_policy=parent_cfg.runtime_policy,
             model_params=child.model_params,
             middleware_configs=child.middleware_configs,
             agent_skills=chat_service.build_agent_skills(child) or None,

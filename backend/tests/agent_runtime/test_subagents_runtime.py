@@ -187,3 +187,4 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
     assert observed_cfgs[0].provider == "anthropic"
     assert observed_cfgs[0].api_key == "child-key"
     assert observed_cfgs[0].credential_subject_user_id == str(caller_id)
+    assert observed_cfgs[0].runtime_policy is parent_cfg.runtime_policy

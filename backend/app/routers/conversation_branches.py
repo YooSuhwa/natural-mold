@@ -47,11 +47,13 @@ async def edit_message(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ):
+    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, user.id)
+    if conv is None:
+        raise conversation_not_found()
     resolved = await resolve_branch_checkpoint(conversation_id, data.message_id)
     if not resolved.found:
         raise HTTPException(status_code=422, detail="message does not belong to this conversation.")
     checkpoint_id = resolved.checkpoint_id
-    cfg = await resolve_agent_context(db, conversation_id, user, checkpoint_id=checkpoint_id)
     await chat_service.touch_conversation(db, conversation_id)
     await chat_service.clear_active_branch_override(db, conversation_id)
 
@@ -72,7 +74,7 @@ async def edit_message(
         request=request,
         action="conversation.message_edit",
         conversation_id=conversation_id,
-        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        agent_id=conv.agent_id,
         metadata={
             "message_id": str(data.message_id),
             "new_content_length": len(data.new_content),
@@ -81,11 +83,12 @@ async def edit_message(
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=_cfg_agent_uuid(cfg),
+        agent_id=conv.agent_id,
         user_id=user.id,
         source="edit",
         input_preview=data.new_content,
     )
+    cfg = await resolve_agent_context(db, conversation_id, user, checkpoint_id=checkpoint_id)
     run_id = run.id
     await db.commit()
 
@@ -162,8 +165,6 @@ async def regenerate_message(
         checkpointer, str(conversation_id), target_msg_raw
     )
 
-    cfg = await resolve_agent_context(db, conversation_id, user, checkpoint_id=checkpoint_id)
-    cfg = with_regeneration_guidance(cfg, target_msg)
     await chat_service.touch_conversation(db, conversation_id)
     await chat_service.clear_active_branch_override(db, conversation_id)
 
@@ -176,7 +177,7 @@ async def regenerate_message(
         request=request,
         action="conversation.message_regenerate",
         conversation_id=conversation_id,
-        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        agent_id=conv.agent_id,
         metadata={
             "message_id": str(data.message_id) if data.message_id else None,
         },
@@ -184,11 +185,13 @@ async def regenerate_message(
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=_cfg_agent_uuid(cfg),
+        agent_id=conv.agent_id,
         user_id=user.id,
         source="regenerate",
         input_preview=None,
     )
+    cfg = await resolve_agent_context(db, conversation_id, user, checkpoint_id=checkpoint_id)
+    cfg = with_regeneration_guidance(cfg, target_msg)
     run_id = run.id
     await db.commit()
 

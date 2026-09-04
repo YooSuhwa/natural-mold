@@ -13,6 +13,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.agent_runtime.offload_storage import OffloadIdentity, ScopedOffloadStorage
+from app.agent_runtime.runtime_policy import LEGACY_RUNTIME_POLICY
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -868,6 +869,42 @@ async def test_send_message_conversation_not_found(client: AsyncClient):
         json={"content": "Hello"},
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_send_message_rejects_noncanonical_runtime_policy_snapshot(
+    client: AsyncClient,
+) -> None:
+    from sqlalchemy import select
+
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+    async with TestSession() as db:
+        conversation = await db.get(Conversation, conv_id)
+        assert conversation is not None
+        conversation.runtime_policy_snapshot = {"version": 1}
+        conversation.runtime_policy_version = 1
+        conversation.runtime_policy_hash = LEGACY_RUNTIME_POLICY.policy_hash
+        conversation.runtime_policy_source = "legacy_compat"
+        await db.commit()
+
+    response = await client.post(
+        f"/api/conversations/{conv_id}/messages",
+        json={"content": "must fail before streaming"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "RUNTIME_POLICY_SNAPSHOT_INVALID",
+            "message": "RUNTIME_POLICY_SNAPSHOT_INVALID",
+        }
+    }
+    async with TestSession() as db:
+        runs = await db.scalars(
+            select(ConversationRun).where(ConversationRun.conversation_id == conv_id)
+        )
+        assert list(runs) == []
 
 
 @pytest.mark.asyncio

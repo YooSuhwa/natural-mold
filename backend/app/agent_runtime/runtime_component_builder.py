@@ -133,6 +133,7 @@ from app.agent_runtime.runtime.reliability import (
     _has_visible_ai_content as _has_visible_ai_content,
 )
 from app.agent_runtime.runtime_config import _DATA_DIR, AgentConfig, RuntimeComponents
+from app.agent_runtime.runtime_policy import ResolvedRuntimePolicy
 from app.agent_runtime.runtime_preparation import (
     prepare_runtime_components_impl as _prepare_runtime_components_impl,
 )
@@ -342,8 +343,10 @@ def build_agent(
     permissions: list[FilesystemPermission] | None = None,
     name: str | None = None,
     subagents: list[dict[str, Any]] | None = None,
+    runtime_policy: ResolvedRuntimePolicy | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
+    del runtime_policy  # Metadata-only until the source-gated policy pilots land.
     return _build_agent_impl(
         model=model,
         tools=tools,
@@ -590,6 +593,7 @@ async def _prepare_agent(
         permissions=components.permissions,
         name=cfg.agent_runtime_name or f"agent_{cfg.thread_id[:8]}",
         subagents=cfg.subagents_config,
+        runtime_policy=cfg.runtime_policy,
     )
     timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
     last_mark = time.perf_counter()

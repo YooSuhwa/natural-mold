@@ -18,7 +18,7 @@ schedule productization.
 | Backend | FastAPI app factory in `backend/app/main.py` and async SQLAlchemy services |
 | Frontend | Next.js 16.2.2 + React 19.2.4 App Router, `next-intl`, TanStack Query, Jotai |
 | Runtime | LangChain 1.x + LangGraph 1.x + `deepagents>=0.7.11,<0.8.0` (lock: 0.7.11) |
-| Database | PostgreSQL 16, Alembic head `m71_runtime_policy` |
+| Database | PostgreSQL 16, Alembic head `m72_runtime_policy_snapshot` |
 | Auth | ADR-016 JWT HS256, HttpOnly cookies, CSRF double-submit, refresh rotation, `super_user` |
 | Credentials | Cipher V2 and system/user credential separation |
 | Marketplace | Catalog, install, update, uninstall, publish, ACL, moderation/listing, k-skill importer |
@@ -182,7 +182,7 @@ The current skill runtime is selected-skill based, not a broad `/skills/` mount:
 
 ## Data Model Groups
 
-Alembic head is `m71_runtime_policy`. The ORM groups tables as follows:
+Alembic head is `m72_runtime_policy_snapshot`. The ORM groups tables as follows:
 
 | Group | Tables / models |
 |-------|-----------------|

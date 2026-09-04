@@ -408,6 +408,7 @@ async def test_execute_trigger_passes_messages():
 
     # args: (cfg: AgentConfig, messages_history: list)
     assert captured_args[0].provider_api_keys == {"openai": "test-api-key"}
+    assert captured_args[0].runtime_policy.source == "legacy_compat"
     assert captured_args[1] == [{"role": "user", "content": "뉴스 검색해줘"}]
     assert captured_kwargs["moldy_source"] == "trigger"
     assert captured_kwargs["run_id"]

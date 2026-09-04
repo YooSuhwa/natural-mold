@@ -17,6 +17,7 @@ from app.agent_runtime.streaming import format_sse
 from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.error_codes import (
     agent_not_found,
+    conversation_not_found,
     resume_interrupt_pending,
     resume_not_found,
 )
@@ -69,6 +70,14 @@ async def start_conversation_with_message(
 
     title = chat_service.conversation_title_from_content(data.content)
     conv = await chat_service.create_conversation(db, agent_id, title)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conv.id,
+        agent_id=agent_id,
+        user_id=user.id,
+        source="start",
+        input_preview=data.content,
+    )
     cfg = await resolve_agent_context(db, conv.id, user)
     await chat_service.touch_conversation(db, conv.id)
 
@@ -95,20 +104,12 @@ async def start_conversation_with_message(
         request=request,
         action="conversation.message_send",
         conversation_id=conv.id,
-        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        agent_id=conv.agent_id,
         title=conv.title,
         metadata={
             "content_length": len(data.content),
             "attachment_count": len(data.attachments or []),
         },
-    )
-    run = await conversation_run_service.create_run(
-        db,
-        conversation_id=conv.id,
-        agent_id=agent_id,
-        user_id=user.id,
-        source="start",
-        input_preview=data.content,
     )
     run_id = run.id
     await db.commit()
@@ -417,6 +418,17 @@ async def send_message(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ):
+    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, user.id)
+    if conv is None:
+        raise conversation_not_found()
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation_id,
+        agent_id=conv.agent_id,
+        user_id=user.id,
+        source="chat",
+        input_preview=data.content,
+    )
     cfg = await resolve_agent_context(db, conversation_id, user)
     await chat_service.maybe_set_auto_title(db, conversation_id, data.content)
     await chat_service.touch_conversation(db, conversation_id)
@@ -439,14 +451,6 @@ async def send_message(
             "content_length": len(data.content),
             "attachment_count": len(data.attachments or []),
         },
-    )
-    run = await conversation_run_service.create_run(
-        db,
-        conversation_id=conversation_id,
-        agent_id=_cfg_agent_uuid(cfg),
-        user_id=user.id,
-        source="chat",
-        input_preview=data.content,
     )
     run_id = run.id
     await db.commit()
@@ -476,7 +480,9 @@ async def resume_message(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ):
-    cfg = await resolve_agent_context(db, conversation_id, user)
+    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, user.id)
+    if conv is None:
+        raise conversation_not_found()
     await chat_service.touch_conversation(db, conversation_id)
 
     decisions_payload: list[dict[str, Any]] = [
@@ -489,7 +495,7 @@ async def resume_message(
         request=request,
         action="conversation.message_resume",
         conversation_id=conversation_id,
-        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        agent_id=conv.agent_id,
         metadata={"decision_count": len(decisions_payload)},
     )
     parent_run = await conversation_run_service.get_latest_interrupted_run(
@@ -521,7 +527,7 @@ async def resume_message(
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=_cfg_agent_uuid(cfg),
+        agent_id=conv.agent_id,
         user_id=user.id,
         source="resume",
         input_preview=None,
@@ -530,6 +536,7 @@ async def resume_message(
         metadata=metadata,
         allow_legacy_resume=legacy_interrupt_trace is not None,
     )
+    cfg = await resolve_agent_context(db, conversation_id, user)
     run_id = run.id
     await db.commit()
 

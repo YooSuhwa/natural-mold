@@ -5,10 +5,10 @@ import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agent_runtime import event_names
 from app.agent_runtime.agent_stream_runner import execute_agent_stream, resume_agent_stream
@@ -22,12 +22,18 @@ from app.agent_runtime.identity import (
 )
 from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.runtime_policy import (
+    SKILL_BUILDER_RUNTIME_POLICY,
+    ResolvedRuntimePolicy,
+    RuntimePolicySnapshotError,
+)
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
 from app.agent_runtime.subagents import build_subagents_config
 from app.config import settings
 from app.database import async_session
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
+from app.exceptions import ConflictError
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.model import Model
@@ -39,6 +45,7 @@ from app.services.artifact_service import (
     finalize_artifacts_for_run,
     link_artifacts_to_messages,
 )
+from app.services.conversation_runtime_policy import snapshot_from_conversation
 
 logger = logging.getLogger(__name__)
 
@@ -88,9 +95,24 @@ async def resolve_agent_context(
     if agent is None:
         raise agent_not_found()
 
+    try:
+        runtime_policy = snapshot_from_conversation(conv)
+    except RuntimePolicySnapshotError as exc:
+        raise ConflictError(exc.code, exc.code) from None
+    if runtime_policy is None:
+        raise ConflictError(
+            "RUNTIME_POLICY_SNAPSHOT_INVALID",
+            "RUNTIME_POLICY_SNAPSHOT_INVALID",
+        )
+
     if agent.runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER:
         return await _resolve_skill_builder_agent_context(
-            db, conv, agent, user, checkpoint_id=checkpoint_id
+            db,
+            conv,
+            agent,
+            user,
+            runtime_policy=SKILL_BUILDER_RUNTIME_POLICY,
+            checkpoint_id=checkpoint_id,
         )
 
     if agent.model is None:
@@ -140,6 +162,7 @@ async def resolve_agent_context(
         system_prompt=effective_prompt,
         tools_config=tools_config,
         thread_id=str(conversation_id),
+        runtime_policy=runtime_policy,
         model_params=agent.model_params,
         middleware_configs=agent.middleware_configs,
         agent_skills=chat_service.build_agent_skills(agent) or None,
@@ -184,6 +207,7 @@ async def _resolve_skill_builder_agent_context(
     agent: Any,
     user: CurrentUser,
     *,
+    runtime_policy: ResolvedRuntimePolicy,
     checkpoint_id: str | None,
 ) -> AgentConfig:
     """히든 빌더 에이전트의 대화 → AgentConfig (스펙 AD-1/AD-3/AD-5).
@@ -262,6 +286,7 @@ async def _resolve_skill_builder_agent_context(
         system_prompt=agent.system_prompt,
         tools_config=[],
         thread_id=str(conv.id),
+        runtime_policy=runtime_policy,
         agent_id=str(agent.id),
         agent_name=agent.name,
         user_id=str(user.id),
@@ -442,7 +467,7 @@ def build_artifact_recorder(
     if not cfg.agent_id:
         return None
     return ArtifactDeltaRecorder(
-        session_factory=async_session,
+        session_factory=cast(async_sessionmaker[AsyncSession], async_session),
         context=ArtifactRuntimeContext(
             conversation_id=conversation_id,
             user_id=user.id,

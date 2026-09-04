@@ -17,13 +17,19 @@ from app.agent_runtime.identity import (
 )
 from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.runtime_policy import (
+    LEGACY_RUNTIME_POLICY,
+    ResolvedRuntimePolicy,
+    RuntimePolicySnapshotError,
+)
 from app.agent_runtime.subagents import build_subagents_config
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
-from app.exceptions import ValidationError
+from app.exceptions import ConflictError, ValidationError
 from app.models.agent import Agent
 from app.models.model import Model
 from app.services import chat_service
+from app.services.conversation_runtime_policy import snapshot_from_conversation
 
 InvocationSource = Literal["chat", "trigger", "api"]
 
@@ -127,6 +133,15 @@ async def build_agent_config_for_conversation(
         raise conversation_not_found()
     if conv.agent is None:
         raise agent_not_found()
+    try:
+        runtime_policy = snapshot_from_conversation(conv)
+    except RuntimePolicySnapshotError as exc:
+        raise ConflictError(exc.code, exc.code) from None
+    if runtime_policy is None:
+        raise ConflictError(
+            "RUNTIME_POLICY_SNAPSHOT_INVALID",
+            "RUNTIME_POLICY_SNAPSHOT_INVALID",
+        )
     return await build_agent_config_for_loaded_agent(
         db,
         conv.agent,
@@ -135,6 +150,7 @@ async def build_agent_config_for_conversation(
         source="chat",
         current_user=user,
         checkpoint_id=checkpoint_id,
+        runtime_policy=runtime_policy,
     )
 
 
@@ -147,6 +163,7 @@ async def build_agent_config_for_loaded_agent(
     source: InvocationSource,
     current_user: CurrentUser | None = None,
     checkpoint_id: str | None = None,
+    runtime_policy: ResolvedRuntimePolicy = LEGACY_RUNTIME_POLICY,
 ) -> AgentConfig:
     if agent.model is None:
         raise ValidationError("AGENT_MODEL_REQUIRED", "agent has no model bound")
@@ -185,6 +202,7 @@ async def build_agent_config_for_loaded_agent(
         system_prompt=effective_prompt,
         tools_config=tools_config,
         thread_id=thread_id,
+        runtime_policy=runtime_policy,
         model_params=agent.model_params,
         middleware_configs=agent.middleware_configs,
         agent_skills=chat_service.build_agent_skills(agent) or None,

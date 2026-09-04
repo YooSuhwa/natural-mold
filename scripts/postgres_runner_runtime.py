@@ -24,11 +24,14 @@ REPO_ROOT: Final = Path(__file__).resolve().parents[1]
 BACKEND_ROOT: Final = REPO_ROOT / "backend"
 OWNER_LABEL: Final = "dev.moldy.postgres-test-owner"
 IMAGE: Final = "postgres:16-alpine"
-ExternalScenarioKind = Literal["all", "migration-roundtrip", "stream-resume"]
+ExternalScenarioKind = Literal[
+    "all", "migration-roundtrip", "stream-resume", "run-lifecycle+stream-resume"
+]
 ScenarioKind = Literal[
     "all",
     "migration-roundtrip",
     "stream-resume",
+    "run-lifecycle+stream-resume",
     "success",
     "child_failure",
     "sigint",
@@ -287,6 +290,16 @@ def run_test_child(env: dict[str, str], kind: ScenarioKind) -> tuple[int, str]:
             "-q",
             "-p",
             "tests.postgres_execution_plugin",
+            "tests/integration/test_stream_resume.py",
+            "-m",
+            "integration",
+        ],
+        "run-lifecycle+stream-resume": [
+            str(BACKEND_ROOT / ".venv/bin/pytest"),
+            "-q",
+            "-p",
+            "tests.postgres_execution_plugin",
+            "tests/integration/test_conversation_run_lifecycle.py",
             "tests/integration/test_stream_resume.py",
             "-m",
             "integration",

@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.agent_runtime import event_names
+from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.config import settings
+from app.exceptions import ConflictError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, RUN_TERMINAL_STATUSES, ConversationRun
@@ -21,6 +23,11 @@ from app.models.user import User
 from app.services import trace_storage
 from app.services.artifact_service import finalize_artifacts_for_run
 from app.services.conversation_audit_service import record_conversation_run_audit
+from app.services.conversation_runtime_policy import (
+    copy_snapshot_to_run,
+    ensure_conversation_runtime_policy,
+    require_parent_snapshot_match,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +263,11 @@ async def create_run(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    try:
+        _, _, runtime_policy = await ensure_conversation_runtime_policy(db, conversation.id)
+    except RuntimePolicySnapshotError as exc:
+        raise ConflictError(exc.code, exc.code) from None
+
     active = await get_active_run(db, conversation_id=conversation_id, user_id=user_id)
     if active is not None:
         raise _conflict("Conversation already has an active run")
@@ -287,6 +299,10 @@ async def create_run(
                 raise _conflict("Resume run must target the latest interrupted run")
             if latest.interrupt_id and latest.interrupt_id != interrupt_id:
                 raise _conflict("Resume interrupt id does not match the interrupted run")
+            try:
+                require_parent_snapshot_match(latest, runtime_policy)
+            except RuntimePolicySnapshotError as exc:
+                raise ConflictError(exc.code, exc.code) from None
 
     run = ConversationRun(
         conversation_id=conversation.id,
@@ -300,6 +316,7 @@ async def create_run(
         input_preview=(input_preview[:500] if input_preview else None),
         metadata_json=metadata,
     )
+    copy_snapshot_to_run(run, runtime_policy)
     db.add(run)
     try:
         await db.flush()
