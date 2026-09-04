@@ -180,13 +180,13 @@ def validate_child(
         case "e2e":
             if not _checker(receipt, repo_root, environment):
                 raise ProjectGateError("invalid_child_receipt")
-            expected_spec = node.argv[1] if len(node.argv) == 2 else None
             return validate_e2e(
                 receipt,
                 repo_root,
                 exit_code,
                 project=node.argv[0],
-                expected_spec=expected_spec,
+                expected_spec=node.argv[1:] or None,
+                expected_screenshot_count=node.expected_screenshot_count,
             )
         case _:
             assert_never(kind)

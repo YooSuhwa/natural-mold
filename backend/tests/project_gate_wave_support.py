@@ -55,6 +55,17 @@ EXPECTED_WAVE_3 = EXPECTED_WAVE_2[:-1] + (
     "todo17-frontend-policy-portability",
     "scripted-full",
 )
+EXPECTED_WAVE_4 = EXPECTED_WAVE_3[:-1] + (
+    "todo18-filesystem-policy-contracts",
+    "todo19-todo-policy-contracts",
+    "todo19-frontend-todo-contracts",
+    "todo20-summarization-policy-contracts",
+    "todo20-frontend-compaction-contracts",
+    "todo21-runtime-settings-contracts",
+    "todo21-runtime-policy-e2e",
+    "todo21-visual-capture",
+    "scripted-full",
+)
 
 
 class ReceiptSummaryPayload(TypedDict):
@@ -121,6 +132,7 @@ def config_path(tmp_path: Path, nodes: list[str], *, wave: str = "wave-1") -> Pa
         "wave-1": list(EXPECTED_WAVE_1),
         "wave-2": list(EXPECTED_WAVE_2),
         "wave-3": list(EXPECTED_WAVE_3),
+        "wave-4": list(EXPECTED_WAVE_4),
     }
     canonical_nodes[wave] = nodes
     path = tmp_path / "gates.json"

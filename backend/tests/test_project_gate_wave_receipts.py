@@ -476,6 +476,98 @@ def test_capture_receipt_requires_exact_safe_screenshot_contract(
         0,
         project="scripted-capture",
         expected_spec=spec,
+        expected_screenshot_count=13,
     )
 
     assert summary["screenshot_count"] == 13
+
+
+def test_capture_receipt_accepts_exact_wave_four_spec_and_screenshot_contract(
+    tmp_path: Path, receipts: ModuleType
+) -> None:
+    """Given Wave 4 capture metadata, when its reviewed selection completes, then it is valid."""
+    expected_specs = (
+        "e2e/agent-settings.spec.ts",
+        "e2e/runtime-todo-policy.spec.ts",
+        "e2e/runtime-filesystem-policy.spec.ts",
+        "e2e/chat-compaction.spec.ts",
+    )
+    selected: list[JSONValue] = []
+    selected.extend(f"scripted-capture::{spec}::viewport" for spec in expected_specs)
+    screenshots: list[JSONValue] = []
+    screenshots.extend(f"captures/{index:02d}.png" for index in range(24))
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-capture",
+        "workers": 1,
+        "retries": 0,
+        "status": "passed",
+        "child_exit_code": 0,
+        "selected_ids": selected,
+        "executed_ids": selected,
+        "unexpected_failures": [],
+        "export": {"secret_scan_passed": True, "screenshots": screenshots},
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / "wave-four-capture.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    summary = receipts.validate_e2e(
+        path,
+        tmp_path,
+        0,
+        project="scripted-capture",
+        expected_spec=expected_specs,
+        expected_screenshot_count=24,
+    )
+
+    assert summary["screenshot_count"] == 24
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra", "wrong_count"])
+def test_capture_receipt_rejects_invalid_wave_four_capture_contract(
+    tmp_path: Path, receipts: ModuleType, mutation: str
+) -> None:
+    """Given Wave 4 capture metadata, when its selected spec list drifts, then validation fails."""
+    expected_specs = (
+        "e2e/agent-settings.spec.ts",
+        "e2e/runtime-todo-policy.spec.ts",
+        "e2e/runtime-filesystem-policy.spec.ts",
+        "e2e/chat-compaction.spec.ts",
+    )
+    selected: list[JSONValue] = []
+    selected.extend(f"scripted-capture::{spec}::viewport" for spec in expected_specs)
+    if mutation == "missing":
+        selected.pop()
+    elif mutation == "extra":
+        selected.append("scripted-capture::e2e/unreviewed.spec.ts::viewport")
+    screenshot_count = 23 if mutation == "wrong_count" else 24
+    screenshots: list[JSONValue] = []
+    screenshots.extend(f"captures/{index:02d}.png" for index in range(screenshot_count))
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-capture",
+        "workers": 1,
+        "retries": 0,
+        "status": "passed",
+        "child_exit_code": 0,
+        "selected_ids": selected,
+        "executed_ids": selected,
+        "unexpected_failures": [],
+        "export": {"secret_scan_passed": True, "screenshots": screenshots},
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / f"wave-four-capture-{mutation}.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_e2e(
+            path,
+            tmp_path,
+            0,
+            project="scripted-capture",
+            expected_spec=expected_specs,
+            expected_screenshot_count=24,
+        )

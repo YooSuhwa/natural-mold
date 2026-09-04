@@ -16,6 +16,7 @@ class GateNode:
     kind: NodeKind
     cwd: Literal["backend", "frontend", "repo"]
     argv: tuple[str, ...]
+    expected_screenshot_count: int | None = None
 
 
 def _isolated(node_id: str, cwd: Literal["backend", "frontend"], *argv: str) -> GateNode:
@@ -195,6 +196,7 @@ CATALOG: Final[dict[str, GateNode]] = {
             "e2e",
             "repo",
             ("scripted-capture", "e2e/chat-langgraph-v3-visual-matrix.spec.ts"),
+            13,
         ),
         _isolated(
             "todo15-runtime-policy-contracts",
@@ -254,6 +256,90 @@ CATALOG: Final[dict[str, GateNode]] = {
             "run",
             "tests/pages/agent-settings-draft.test.ts",
         ),
+        _isolated(
+            "todo18-filesystem-policy-contracts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_filesystem_permissions.py",
+            "tests/agent_runtime/test_subagents_runtime.py",
+            "tests/test_artifacts_router.py",
+        ),
+        _isolated(
+            "todo19-todo-policy-contracts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_executor.py",
+            "-k",
+            "todo",
+        ),
+        _isolated(
+            "todo19-frontend-todo-contracts",
+            "frontend",
+            "exec",
+            "vitest",
+            "run",
+            "src/lib/chat/langgraph-runtime/__tests__/deepagents-state.test.ts",
+            "src/components/chat/__tests__/deepagents-state-panel.test.tsx",
+        ),
+        _isolated(
+            "todo20-summarization-policy-contracts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/agent_runtime/test_langgraph_streaming_compaction.py",
+            "tests/test_thread_branch.py",
+            "tests/test_conversations_router.py",
+            "tests/test_model_fallback.py",
+            "tests/agent_runtime/test_langgraph_hitl_interrupts.py",
+        ),
+        _isolated(
+            "todo20-frontend-compaction-contracts",
+            "frontend",
+            "exec",
+            "vitest",
+            "run",
+            "src/lib/chat/langgraph-runtime/__tests__/compaction-events.test.ts",
+        ),
+        _isolated(
+            "todo21-runtime-settings-contracts",
+            "frontend",
+            "exec",
+            "vitest",
+            "run",
+            "tests/pages/agent-settings-draft.test.ts",
+            "tests/pages/agent-settings.test.tsx",
+            "tests/pages/runtime-policy-settings.test.tsx",
+        ),
+        GateNode(
+            "todo21-runtime-policy-e2e",
+            "e2e",
+            "repo",
+            (
+                "scripted-full",
+                "e2e/agent-settings.spec.ts",
+                "e2e/runtime-todo-policy.spec.ts",
+                "e2e/runtime-filesystem-policy.spec.ts",
+                "e2e/chat-compaction.spec.ts",
+            ),
+        ),
+        GateNode(
+            "todo21-visual-capture",
+            "e2e",
+            "repo",
+            (
+                "scripted-capture",
+                "e2e/agent-settings.spec.ts",
+                "e2e/runtime-todo-policy.spec.ts",
+                "e2e/runtime-filesystem-policy.spec.ts",
+                "e2e/chat-compaction.spec.ts",
+            ),
+            24,
+        ),
     )
 }
 
@@ -295,8 +381,20 @@ WAVE_3: Final[tuple[str, ...]] = WAVE_2[:-1] + (
     "todo17-frontend-policy-portability",
     "scripted-full",
 )
+WAVE_4: Final[tuple[str, ...]] = WAVE_3[:-1] + (
+    "todo18-filesystem-policy-contracts",
+    "todo19-todo-policy-contracts",
+    "todo19-frontend-todo-contracts",
+    "todo20-summarization-policy-contracts",
+    "todo20-frontend-compaction-contracts",
+    "todo21-runtime-settings-contracts",
+    "todo21-runtime-policy-e2e",
+    "todo21-visual-capture",
+    "scripted-full",
+)
 CANONICAL_WAVES: Final[dict[str, tuple[str, ...]]] = {
     "wave-1": WAVE_1,
     "wave-2": WAVE_2,
     "wave-3": WAVE_3,
+    "wave-4": WAVE_4,
 }

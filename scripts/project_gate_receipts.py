@@ -187,7 +187,8 @@ def validate_e2e(
     expected_exit: int,
     *,
     project: str,
-    expected_spec: str | None,
+    expected_spec: str | tuple[str, ...] | None,
+    expected_screenshot_count: int | None = None,
 ) -> ReceiptSummary:
     payload, digest = _read_receipt(path)
     selected = _safe_node_ids(payload.get("selected_ids"))
@@ -205,17 +206,37 @@ def validate_e2e(
         )
     except FailureDiagnosticError as error:
         raise ProjectGateError("invalid_child_receipt") from error
-    expected_prefix = f"{project}::{expected_spec}::" if expected_spec is not None else None
+    expected_specs = (
+        ()
+        if expected_spec is None
+        else (expected_spec,)
+        if isinstance(expected_spec, str)
+        else expected_spec
+    )
+    expected_prefixes = tuple(f"{project}::{spec}::" for spec in expected_specs)
     selection_values = selected is not None and executed is not None
     selected_nodes = selected or []
     executed_nodes = executed or []
     executed_strings = set(executed_nodes)
-    selection_matches = expected_prefix is None or (
-        all(item.startswith(expected_prefix) for item in selected_nodes)
+    selection_matches = not expected_prefixes or (
+        all(item.startswith(expected_prefixes) for item in selected_nodes)
+        and all(item.startswith(expected_prefixes) for item in executed_nodes)
+        and all(
+            any(item.startswith(expected_prefix) for item in selected_nodes)
+            for expected_prefix in expected_prefixes
+        )
+        and all(
+            any(item.startswith(expected_prefix) for item in executed_nodes)
+            for expected_prefix in expected_prefixes
+        )
     )
     screenshots_match = screenshots == [] if project == "scripted-full" else screenshots is not None
     if project == "scripted-capture":
-        screenshots_match = screenshots is not None and len(screenshots) == 13
+        screenshots_match = (
+            expected_screenshot_count is not None
+            and screenshots is not None
+            and len(screenshots) == expected_screenshot_count
+        )
     rejection_matches_diagnostics = rejection is None or tuple(
         (item.node_id, item.status) for item in rejection.tests
     ) == tuple((item.node_id, item.status) for item in diagnostics)

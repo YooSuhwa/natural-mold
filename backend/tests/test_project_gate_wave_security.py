@@ -51,6 +51,12 @@ def test_catalog_commands_ignore_path_shadowing(tmp_path: Path) -> None:
     capture, _ = process.command_for(
         catalog.CATALOG["todo14-visual-capture"], receipt, REPO_ROOT, trusted
     )
+    todo21_capture, _ = process.command_for(
+        catalog.CATALOG["todo21-visual-capture"], receipt, REPO_ROOT, trusted
+    )
+    todo21_runtime, _ = process.command_for(
+        catalog.CATALOG["todo21-runtime-policy-e2e"], receipt, REPO_ROOT, trusted
+    )
     migration, _ = process.command_for(
         catalog.CATALOG["postgres-migration-roundtrip"], receipt, REPO_ROOT, trusted
     )
@@ -76,6 +82,20 @@ def test_catalog_commands_ignore_path_shadowing(tmp_path: Path) -> None:
     assert capture[-2:] == [
         "--project=scripted-capture",
         "e2e/chat-langgraph-v3-visual-matrix.spec.ts",
+    ]
+    assert todo21_capture[-5:] == [
+        "--project=scripted-capture",
+        "e2e/agent-settings.spec.ts",
+        "e2e/runtime-todo-policy.spec.ts",
+        "e2e/runtime-filesystem-policy.spec.ts",
+        "e2e/chat-compaction.spec.ts",
+    ]
+    assert todo21_runtime[-5:] == [
+        "--project=scripted-full",
+        "e2e/agent-settings.spec.ts",
+        "e2e/runtime-todo-policy.spec.ts",
+        "e2e/runtime-filesystem-policy.spec.ts",
+        "e2e/chat-compaction.spec.ts",
     ]
     assert migration[-3:] == ["migration-roundtrip", "--manifest", str(receipt)]
     assert lifecycle[-4:] == ["run-lifecycle", "stream-resume", "--manifest", str(receipt)]
@@ -107,6 +127,62 @@ def test_composite_postgres_selector_binds_to_exact_internal_receipt_mode(
     )
 
     assert captured == [("run-lifecycle+stream-resume", 0)]
+
+
+@pytest.mark.parametrize(
+    ("node_id", "expected_project", "expected_screenshot_count"),
+    [
+        ("todo21-runtime-policy-e2e", "scripted-full", None),
+        ("todo21-visual-capture", "scripted-capture", 24),
+    ],
+)
+def test_multi_spec_e2e_binds_to_exact_receipt_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    node_id: str,
+    expected_project: str,
+    expected_screenshot_count: int | None,
+) -> None:
+    """Given reviewed Wave 4 E2E nodes, when validated, then every spec and count binds."""
+    catalog = load_module("project_gate_catalog")
+    process = load_module("project_gate_process")
+    captured: list[tuple[str | tuple[str, ...] | None, int | None]] = []
+
+    def record_validation(
+        _path: Path,
+        _root: Path,
+        _exit_code: int,
+        *,
+        project: str,
+        expected_spec: str | tuple[str, ...] | None,
+        expected_screenshot_count: int | None = None,
+    ) -> ReceiptSummaryPayload:
+        assert project == expected_project
+        captured.append((expected_spec, expected_screenshot_count))
+        return receipt_summary(_path)
+
+    monkeypatch.setattr(process, "_checker", lambda _receipt, _root, _env: True)
+    monkeypatch.setattr(process, "validate_e2e", record_validation)
+
+    process.validate_child(
+        catalog.CATALOG[node_id],
+        tmp_path / "child.json",
+        tmp_path,
+        0,
+        {},
+    )
+
+    assert captured == [
+        (
+            (
+                "e2e/agent-settings.spec.ts",
+                "e2e/runtime-todo-policy.spec.ts",
+                "e2e/runtime-filesystem-policy.spec.ts",
+                "e2e/chat-compaction.spec.ts",
+            ),
+            expected_screenshot_count,
+        )
+    ]
 
 
 def test_trusted_git_ignores_shadow_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
