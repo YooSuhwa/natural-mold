@@ -32,7 +32,6 @@ from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.model import Model
 from app.services import chat_service, trigger_service
-from app.services.conversation_runtime_policy import ensure_conversation_runtime_policy
 from app.tools.risk import format_trigger_block_reason
 
 logger = logging.getLogger(__name__)
@@ -239,7 +238,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
 
         conversation = await trigger_service.resolve_schedule_conversation(db, trigger)
         try:
-            _, _, runtime_policy = await ensure_conversation_runtime_policy(
+            runtime_policy = await trigger_service.ensure_schedule_conversation_runtime_policy(
                 db,
                 conversation.id,
                 current_trigger_run_id=run.id,

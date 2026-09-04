@@ -48,7 +48,13 @@ class AgentConfig:
     system_prompt: str
     tools_config: list[dict[str, Any]]
     thread_id: str
-    runtime_policy: ResolvedRuntimePolicy = LEGACY_RUNTIME_POLICY
+    # Additive public-facade field. Keep it keyword-only so legacy callers that
+    # pass ``model_params`` (and later fields) positionally retain their exact
+    # argument mapping.
+    runtime_policy: ResolvedRuntimePolicy = field(
+        default=LEGACY_RUNTIME_POLICY,
+        kw_only=True,
+    )
     model_params: dict[str, Any] | None = None
     middleware_configs: list[dict[str, Any]] | None = None
     agent_skills: list[dict[str, Any]] | None = None

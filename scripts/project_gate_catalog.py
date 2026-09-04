@@ -224,6 +224,10 @@ CATALOG: Final[dict[str, GateNode]] = {
             "tests/test_skill_builder_chat_runtime.py",
             "tests/test_builder_v3.py",
             "tests/test_project_facts.py",
+            "tests/agent_runtime/test_runtime_extraction_contract.py",
+            "tests/agent_runtime/test_runtime_facade_contract.py",
+            "tests/agent_runtime/test_runtime_facade_contract_mutations.py",
+            "tests/test_runtime_dependency_guard.py",
         ),
         GateNode(
             "postgres-run-lifecycle-stream-resume",

@@ -9,11 +9,15 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.runtime_policy import ResolvedRuntimePolicy
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
 from app.schemas.trigger import TriggerCreate, TriggerUpdate
+from app.services.conversation_runtime_policy import (
+    ensure_conversation_runtime_policy as _ensure_conversation_runtime_policy,
+)
 
 DEFAULT_TIMEZONE = "Asia/Seoul"
 DEFAULT_CONVERSATION_POLICY = "schedule_thread"
@@ -472,6 +476,21 @@ async def resolve_schedule_conversation(db: AsyncSession, trigger: AgentTrigger)
         await db.refresh(trigger)
         await db.refresh(conversation)
     return conversation
+
+
+async def ensure_schedule_conversation_runtime_policy(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    *,
+    current_trigger_run_id: uuid.UUID,
+) -> ResolvedRuntimePolicy:
+    """Snapshot policy for a trigger-owned conversation through the service boundary."""
+    _, _, runtime_policy = await _ensure_conversation_runtime_policy(
+        db,
+        conversation_id,
+        current_trigger_run_id=current_trigger_run_id,
+    )
+    return runtime_policy
 
 
 async def finish_trigger_run(

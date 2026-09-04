@@ -255,3 +255,22 @@ async def test_runtime_facade_matches_reviewed_contract(monkeypatch: pytest.Monk
     manifest = await collect_runtime_facade_contract(monkeypatch)
 
     assert_contract_matches(_FIXTURE_NAME, manifest)
+
+
+def test_agent_config_preserves_legacy_positional_model_params_slot() -> None:
+    """The additive policy field must not shift the established positional prefix."""
+    model_params = {"temperature": 0.25}
+
+    config = AgentConfig(
+        "provider",
+        "model",
+        None,
+        None,
+        "<base>",
+        [],
+        "contract-thread",
+        model_params,
+    )
+
+    assert config.model_params is model_params
+    assert config.runtime_policy.source == "legacy_compat"

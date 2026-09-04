@@ -512,6 +512,12 @@
           "default": "value:_HAS_DEFAULT_FACTORY_CLASS",
           "kind": "positional_or_keyword",
           "name": "secret_values"
+        },
+        {
+          "annotation": "ResolvedRuntimePolicy",
+          "default": "value:ResolvedRuntimePolicy",
+          "kind": "keyword_only",
+          "name": "runtime_policy"
         }
       ],
       "return": "None"
@@ -1054,6 +1060,12 @@
           "default": "none",
           "kind": "keyword_only",
           "name": "subagents"
+        },
+        {
+          "annotation": "ResolvedRuntimePolicy | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "runtime_policy"
         }
       ],
       "return": "Any"
