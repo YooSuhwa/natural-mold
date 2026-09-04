@@ -1,4 +1,4 @@
-import type { APIRequestContext, Page } from '@playwright/test'
+import type { APIRequestContext, Page, TestInfo } from '@playwright/test'
 
 import {
   API_BASE,
@@ -21,6 +21,7 @@ const INSPECT_FINAL = 'E2E runtime inspect policy completed with scoped read-onl
 const ARTIFACT_FINAL = 'E2E runtime artifact final content.\n'
 const ARTIFACT_NAME = 'e2e-runtime-policy-artifact.md'
 const FORBIDDEN_TOOL_NAMES = ['execute', 'delete', 'shell', 'execute_in_skill'] as const
+const RUNTIME_POLICY_CAPTURE_VIEWPORTS = [375, 768, 1280] as const
 
 interface RuntimePolicyAgentSetup {
   readonly agentId: string
@@ -31,6 +32,26 @@ interface ArtifactRow {
   readonly id: string
   readonly displayName: string
   readonly status: string
+}
+
+async function capturePermissionDeniedState(
+  page: Page,
+  testInfo: TestInfo,
+  deniedTestId = 'filesystem-permission-denied',
+  filenamePrefix = 'filesystem-denial',
+): Promise<void> {
+  if (testInfo.project.name !== 'scripted-capture') return
+
+  for (const width of RUNTIME_POLICY_CAPTURE_VIEWPORTS) {
+    await page.setViewportSize({ width, height: 960 })
+    const denied = page.getByTestId(deniedTestId)
+    await denied.scrollIntoViewIfNeeded()
+    await expect(denied).toBeInViewport()
+    await page.screenshot({
+      path: testInfo.outputPath(`${filenamePrefix}-${width}.png`),
+      fullPage: false,
+    })
+  }
 }
 
 test.describe.configure({ mode: 'serial', retries: 0 })
@@ -249,7 +270,7 @@ test.describe('stored runtime filesystem policy E2E', () => {
     page,
     request,
     errors,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(120_000)
     const unique = Date.now()
     const csrfHeaders = await loginApi(request)
@@ -300,6 +321,8 @@ test.describe('stored runtime filesystem policy E2E', () => {
         conversationId,
         'call_e2e_runtime_inspect_sibling_escape',
       )
+      await expect(page.getByTestId('filesystem-permission-denied')).toBeVisible()
+      await capturePermissionDeniedState(page, testInfo)
 
       expect(
         artifactRows(
@@ -318,7 +341,7 @@ test.describe('stored runtime filesystem policy E2E', () => {
     page,
     request,
     errors,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(120_000)
     const unique = Date.now()
     const csrfHeaders = await loginApi(request)
@@ -352,6 +375,27 @@ test.describe('stored runtime filesystem policy E2E', () => {
         'read_file',
         'ls',
       ])
+      await expectPermissionDeniedToolResult(
+        request,
+        conversationId,
+        'call_e2e_runtime_artifact_edit_escape',
+      )
+      const closeArtifactPreview = page.getByRole('button', { name: 'Close panel' })
+      await expect(closeArtifactPreview).toBeVisible()
+      await closeArtifactPreview.click()
+      await expect(closeArtifactPreview).toBeHidden()
+      const editDenial = page.getByTestId('filesystem-edit-denied')
+      await expect(editDenial).toBeVisible()
+      await expect(page.getByText('tampered', { exact: true })).toHaveCount(0)
+      await expect(
+        page.getByText('Error: filesystem permission denied', { exact: true }),
+      ).toHaveCount(0)
+      await capturePermissionDeniedState(
+        page,
+        testInfo,
+        'filesystem-edit-denied',
+        'filesystem-edit-denial',
+      )
       await expectPermissionDeniedToolResult(
         request,
         conversationId,

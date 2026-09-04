@@ -1,4 +1,9 @@
-import type { AgentCreateRequest, AgentIdentityMode, MiddlewareConfigEntry } from '@/lib/types'
+import type {
+  AgentCreateRequest,
+  AgentIdentityMode,
+  MiddlewareConfigEntry,
+  RuntimePolicyV1,
+} from '@/lib/types'
 
 type AgentCreateRequestInput = {
   name: string
@@ -15,15 +20,18 @@ type AgentCreateRequestInput = {
   topP: number
   maxTokens: number
   openerQuestions?: string[]
+  /**
+   * `undefined` keeps legacy create callers byte-for-byte compatible;
+   * `null` explicitly asks the server for its recommended policy.
+   */
+  runtimePolicy?: RuntimePolicyV1 | null
 }
 
 /**
  * Build the existing agent-create request used by manual and visual creation.
  *
- * New agents deliberately omit `runtime_policy`: absence is the legacy
- * compatibility state until runtime controls are introduced in a later UI
- * slice. Existing settings save through their dedicated update path so they
- * can preserve an already stored policy.
+ * Untouched legacy callers omit `runtime_policy`. The manual-create advanced
+ * control passes either an explicit recommended `null` or a complete policy.
  */
 export function buildAgentCreateRequest(input: AgentCreateRequestInput): AgentCreateRequest {
   const middleware_configs: MiddlewareConfigEntry[] = Array.from(input.middlewareTypes, (type) => ({
@@ -49,6 +57,9 @@ export function buildAgentCreateRequest(input: AgentCreateRequestInput): AgentCr
   }
   if (input.openerQuestions !== undefined) {
     request.opener_questions = input.openerQuestions
+  }
+  if (input.runtimePolicy !== undefined) {
+    request.runtime_policy = input.runtimePolicy
   }
   return request
 }

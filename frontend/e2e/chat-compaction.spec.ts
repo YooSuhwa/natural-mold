@@ -1,4 +1,4 @@
-import type { APIRequestContext, Page } from '@playwright/test'
+import type { APIRequestContext, Page, TestInfo } from '@playwright/test'
 import {
   API_BASE,
   apiDeleteOk,
@@ -43,6 +43,7 @@ const COMPACTION_SUMMARY_TEXT = '이전 대화를 요약해 컨텍스트를 정�
 // The scripted model's generic reply (app/agent_runtime/e2e_scripted_model.py).
 const SCRIPTED_GENERIC_REPLY = 'E2E scripted document model is ready.'
 const SCRIPTED_SLOW_REPLY = 'E2E slow stream completed after detached navigation.'
+const RUNTIME_POLICY_CAPTURE_VIEWPORTS = [375, 768, 1280] as const
 
 type SummarizationPolicy =
   | { readonly mode: 'auto' }
@@ -53,6 +54,26 @@ interface CompactionSetup {
   readonly conversationId: string
   readonly modelId: string
   readonly csrfHeaders: CsrfHeaders
+}
+
+async function captureBoundedCompactionState(
+  page: Page,
+  testInfo: TestInfo,
+  summarization: SummarizationPolicy,
+): Promise<void> {
+  if (testInfo.project.name !== 'scripted-capture') return
+
+  const policyName = summarization.mode === 'auto' ? 'auto' : summarization.preset
+  for (const width of RUNTIME_POLICY_CAPTURE_VIEWPORTS) {
+    await page.setViewportSize({ width, height: 960 })
+    const summary = page.getByTestId('compaction-summary').first()
+    await summary.scrollIntoViewIfNeeded()
+    await expect(summary).toBeInViewport()
+    await page.screenshot({
+      path: testInfo.outputPath(`compaction-bounded-${policyName}-${width}.png`),
+      fullPage: false,
+    })
+  }
 }
 
 function runtimePolicy(summarization: SummarizationPolicy) {
@@ -166,6 +187,7 @@ test.describe('Auto-compaction marker', () => {
   async function runStoredCompactionScenario(
     page: Page,
     request: APIRequestContext,
+    testInfo: TestInfo,
     errors: {
       readonly console: readonly string[]
       readonly network: readonly string[]
@@ -223,6 +245,7 @@ test.describe('Auto-compaction marker', () => {
         COMPACTION_SUMMARY_TEXT,
       )
       await expect(page.getByText(SCRIPTED_GENERIC_REPLY, { exact: true })).toHaveCount(3)
+      await captureBoundedCompactionState(page, testInfo, summarization)
 
       // A normal interaction after compaction must still finish safely rather
       // than leaving the conversation at a summary/checkpoint boundary.
@@ -253,18 +276,18 @@ test.describe('Auto-compaction marker', () => {
     page,
     request,
     errors,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(210_000)
-    await runStoredCompactionScenario(page, request, errors, { mode: 'auto' })
+    await runStoredCompactionScenario(page, request, testInfo, errors, { mode: 'auto' })
   })
 
   test('stored balanced preset shows bounded compaction projection for two compactions', async ({
     page,
     request,
     errors,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(210_000)
-    await runStoredCompactionScenario(page, request, errors, {
+    await runStoredCompactionScenario(page, request, testInfo, errors, {
       mode: 'preset',
       preset: 'balanced_context_v1',
     })

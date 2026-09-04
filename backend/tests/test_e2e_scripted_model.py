@@ -247,8 +247,28 @@ def test_e2e_scripted_model_artifact_policy_writes_edits_reads_and_denies_escape
     ]
 
     messages.append(ToolMessage(content="[]", tool_call_id="call_e2e_runtime_artifact_ls"))
-    escape = model.invoke(messages)
-    assert [(call["id"], call["name"], call["args"]) for call in escape.tool_calls] == [
+    edit_escape = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in edit_escape.tool_calls] == [
+        (
+            "call_e2e_runtime_artifact_edit_escape",
+            "edit_file",
+            {
+                "file_path": "/conversations/00000000-0000-4000-8000-000000000333/foreign.md",
+                "old_string": "foreign",
+                "new_string": "tampered",
+            },
+        ),
+    ]
+
+    messages.append(
+        ToolMessage(
+            content="Error: filesystem permission denied",
+            tool_call_id="call_e2e_runtime_artifact_edit_escape",
+            status="error",
+        )
+    )
+    root_escape = model.invoke(messages)
+    assert [(call["id"], call["name"], call["args"]) for call in root_escape.tool_calls] == [
         ("call_e2e_runtime_artifact_root_escape", "ls", {"path": "/"}),
     ]
 

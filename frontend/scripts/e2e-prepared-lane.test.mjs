@@ -17,6 +17,12 @@ import { describe, expect, it } from 'vitest'
 import { getE2ERunPaths, LIVE_E2E_SPECS } from './e2e-lane-contract.mjs'
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const RUNTIME_POLICY_CAPTURE_FILES = Object.freeze([
+  'agent-settings.spec.ts',
+  'runtime-todo-policy.spec.ts',
+  'runtime-filesystem-policy.spec.ts',
+  'chat-compaction.spec.ts',
+])
 
 function collectListedNodes(report) {
   const nodes = []
@@ -366,9 +372,25 @@ describe('prepared E2E lane boundary', () => {
     expect(full.some((node) => /(^|\/)(captures|manual)/.test(node.file))).toBe(false)
     expect(full.every((node) => !LIVE_E2E_SPECS.includes(`e2e/${node.file}`))).toBe(true)
     const fullFiles = new Set(full.map((node) => node.file))
-    expect(capture.some((node) => fullFiles.has(node.file))).toBe(false)
-    const rootCaptureNodes = capture.filter((node) => !node.file.startsWith('captures/'))
-    expect(rootCaptureNodes).toEqual([
+    const captureFiles = new Set(capture.map((node) => node.file))
+    for (const file of RUNTIME_POLICY_CAPTURE_FILES) {
+      expect(captureFiles.has(file)).toBe(true)
+      expect(fullFiles.has(file)).toBe(true)
+    }
+    expect(captureFiles.has('chat-langgraph-v3-visual-matrix.spec.ts')).toBe(true)
+    expect(capture.some((node) => node.file.startsWith('captures/'))).toBe(true)
+    expect(
+      capture.every(
+        (node) =>
+          node.file.startsWith('captures/') ||
+          node.file === 'chat-langgraph-v3-visual-matrix.spec.ts' ||
+          RUNTIME_POLICY_CAPTURE_FILES.includes(node.file),
+      ),
+    ).toBe(true)
+    const visualMatrixNodes = capture.filter(
+      (node) => node.file === 'chat-langgraph-v3-visual-matrix.spec.ts',
+    )
+    expect(visualMatrixNodes).toEqual([
       {
         file: 'chat-langgraph-v3-visual-matrix.spec.ts',
         project: 'scripted-capture',
@@ -385,13 +407,7 @@ describe('prepared E2E lane boundary', () => {
         title: 'captures active streaming and completed stream states',
       },
     ])
-    expect(
-      capture.every(
-        (node) =>
-          node.file.startsWith('captures/') ||
-          node.file === 'chat-langgraph-v3-visual-matrix.spec.ts',
-      ),
-    ).toBe(true)
+    expect(captureFiles.has('skill-studio.spec.ts')).toBe(false)
     expect(live).toEqual([
       {
         file: 'agent-triggers.spec.ts',

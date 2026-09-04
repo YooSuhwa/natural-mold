@@ -94,10 +94,19 @@ const runtimeWebServers = [
   },
 ]
 
-const captureSpecGlobs = ['**/captures/**/*.spec.ts', '**/chat-langgraph-v3-visual-matrix.spec.ts']
+const legacyCaptureSpecGlobs = [
+  '**/captures/**/*.spec.ts',
+  '**/chat-langgraph-v3-visual-matrix.spec.ts',
+]
+const runtimePolicyCaptureSpecGlobs = [
+  '**/agent-settings.spec.ts',
+  '**/runtime-todo-policy.spec.ts',
+  '**/runtime-filesystem-policy.spec.ts',
+  '**/chat-compaction.spec.ts',
+]
 const scriptedFullIgnore = [
   ...LIVE_E2E_SPEC_GLOBS,
-  ...captureSpecGlobs,
+  ...legacyCaptureSpecGlobs,
   '**/*live*.spec.ts',
   '**/manual/**',
   '**/manual*.spec.ts',
@@ -115,7 +124,7 @@ const projects = [
   },
   {
     name: E2E_PROJECTS[2],
-    testMatch: captureSpecGlobs,
+    testMatch: [...legacyCaptureSpecGlobs, ...runtimePolicyCaptureSpecGlobs],
     use: buildPlaywrightProjectUse(E2E_PROJECTS[2]),
   },
   {

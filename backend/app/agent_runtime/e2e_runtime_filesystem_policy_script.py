@@ -115,6 +115,16 @@ def _runtime_filesystem_artifact_write_message(messages: Sequence[BaseMessage]) 
             "ls",
             {"path": workspace},
         )
+    if "call_e2e_runtime_artifact_edit_escape" not in seen:
+        return _tool_call_message(
+            "call_e2e_runtime_artifact_edit_escape",
+            "edit_file",
+            {
+                "file_path": "/conversations/00000000-0000-4000-8000-000000000333/foreign.md",
+                "old_string": "foreign",
+                "new_string": "tampered",
+            },
+        )
     if "call_e2e_runtime_artifact_root_escape" not in seen:
         return _tool_call_message(
             "call_e2e_runtime_artifact_root_escape",

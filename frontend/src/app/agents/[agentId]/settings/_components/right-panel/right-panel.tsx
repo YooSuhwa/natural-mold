@@ -12,7 +12,7 @@ import {
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
 import { AssistantPanel } from '@/components/agent/assistant-panel'
-import type { AgentIdentityMode } from '@/lib/types'
+import type { AgentIdentityMode, RuntimePolicyV1 } from '@/lib/types'
 import { TriggersTab } from '../triggers-tab'
 import { TestChatPanel } from './test-chat-panel'
 import { OpenerEditor } from './opener-editor'
@@ -29,6 +29,10 @@ interface RightPanelProps {
   agentImageUrl: string | null
   identityMode?: AgentIdentityMode
   onIdentityModeChange?: (mode: AgentIdentityMode) => void
+  /** Existing agents keep this state in the settings-page draft. */
+  runtimePolicy?: RuntimePolicyV1 | null
+  onRuntimePolicyChange?: (value: RuntimePolicyV1 | null) => void
+  modelContextWindow?: number | null
   openerQuestions: string[]
   onOpenerQuestionsChange: (q: string[]) => void
   onRequestDeleteTrigger: (target: { id: string; description: string }) => void
@@ -46,6 +50,9 @@ export function RightPanel({
   agentImageUrl,
   identityMode,
   onIdentityModeChange,
+  runtimePolicy,
+  onRuntimePolicyChange,
+  modelContextWindow,
   openerQuestions,
   onOpenerQuestionsChange,
   onRequestDeleteTrigger,
@@ -151,6 +158,9 @@ export function RightPanel({
             name={agentName}
             identityMode={identityMode}
             onIdentityModeChange={onIdentityModeChange}
+            runtimePolicy={runtimePolicy ?? null}
+            onRuntimePolicyChange={onRuntimePolicyChange}
+            modelContextWindow={modelContextWindow ?? null}
           />
         ) : (
           <CreateModePlaceholder label={t('createModeLocked')} />

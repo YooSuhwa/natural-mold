@@ -834,6 +834,41 @@
         "success": "캐릭터가 생성되었습니다",
         "failed": "캐릭터 생성에 실패했습니다"
       },
+      "runtimePolicy": {
+        "advancedTitle": "실행 동작 고급 설정",
+        "title": "실행 동작",
+        "description": "대화가 시작될 때 적용할 작업 방식입니다.",
+        "modeLabel": "실행 동작 설정 방식",
+        "recommended": "권장 설정 사용",
+        "custom": "직접 설정",
+        "sourceRecommended": "권장 설정",
+        "sourceCustom": "직접 설정",
+        "todo": {
+          "title": "할 일 목록",
+          "description": "작업 단계를 정리해 대화에서 확인할 수 있습니다.",
+          "label": "할 일 목록 사용"
+        },
+        "filesystem": {
+          "title": "파일 작업",
+          "description": "에이전트가 대화 중 파일을 다루는 범위를 정합니다.",
+          "inspect": "검토만",
+          "artifactWrite": "산출물 생성"
+        },
+        "summarization": {
+          "title": "긴 대화 정리",
+          "description": "긴 대화에서 필요한 문맥을 유지하도록 정리합니다.",
+          "auto": "자동",
+          "balanced": "균형",
+          "unavailable": "선택한 모델의 컨텍스트 길이 정보가 있어야 균형 모드를 사용할 수 있어요.",
+          "invalidCurrent": "현재 선택은 이 모델에서 사용할 수 없습니다. 모델을 바꾸거나 자동으로 전환하세요."
+        },
+        "notice": {
+          "existingAgent": "이미 실행된 대화에는 영향을 주지 않습니다. 아직 실행하지 않은 대화와 새 대화에는 변경된 설정이 적용됩니다.",
+          "newAgent": "새 대화부터 설정이 적용됩니다."
+        }
+      },
+      "loadUnavailable": "에이전트를 찾을 수 없거나 접근 권한이 없습니다.",
+      "modelsUnavailable": "모델 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
       "save": "저장",
       "deleteAgent": "에이전트 삭제",
       "deleteDialog": {
@@ -1572,7 +1607,8 @@
       "file": {
         "read": "Read",
         "write": "Write",
-        "edit": "Edit"
+        "edit": "Edit",
+        "permissionDenied": "파일 작업이 현재 실행 동작 설정에 따라 차단되었습니다."
       },
       "expandToPanel": "Expand to panel"
     },

@@ -1,5 +1,6 @@
 import type { Agent } from '@/lib/types'
 import { buildAgentCreateRequest } from '@/lib/agents/build-agent-create-request'
+import { isRuntimePolicyCompatibleWithContextWindow } from '@/lib/agents/runtime-policy-validation'
 import {
   buildAgentSettingsDraftFromAgent,
   buildAgentUpdateRequest,
@@ -213,7 +214,7 @@ describe('agent settings draft helpers', () => {
     expect(isAgentSettingsDraftDirty(merged, refetched)).toBe(true)
   })
 
-  it('keeps manual and visual creation requests in the no-policy legacy state', () => {
+  it('serializes the recommended null runtime policy from manual creation', () => {
     const manualRequest = buildAgentCreateRequest({
       name: 'Manual Agent',
       description: 'Manual description',
@@ -229,6 +230,35 @@ describe('agent settings draft helpers', () => {
       topP: 1,
       maxTokens: 4096,
       openerQuestions: [],
+      runtimePolicy: null,
+    })
+    expect(manualRequest).toHaveProperty('runtime_policy', null)
+    expect(manualRequest.opener_questions).toEqual([])
+  })
+
+  it('serializes a custom false and balanced runtime policy identically for form and visual creation', () => {
+    const runtimePolicy = {
+      version: 1 as const,
+      filesystem: { mode: 'inspect' as const },
+      todo: { enabled: false },
+      summarization: { mode: 'preset' as const, preset: 'balanced_context_v1' as const },
+    }
+    const formRequest = buildAgentCreateRequest({
+      name: 'Manual Agent',
+      description: 'Manual description',
+      systemPrompt: 'Be helpful.',
+      modelId: 'model-1',
+      identityMode: 'per_user',
+      toolIds: ['tool-1'],
+      mcpToolIds: [],
+      skillIds: [],
+      subAgentIds: [],
+      middlewareTypes: [],
+      temperature: 0.7,
+      topP: 1,
+      maxTokens: 4096,
+      openerQuestions: [],
+      runtimePolicy,
     })
     const visualRequest = buildAgentCreateRequest({
       name: 'Visual Agent',
@@ -244,13 +274,52 @@ describe('agent settings draft helpers', () => {
       temperature: 0.7,
       topP: 1,
       maxTokens: 4096,
+      runtimePolicy,
     })
 
-    expect(manualRequest).not.toHaveProperty('runtime_policy')
-    expect(manualRequest.opener_questions).toEqual([])
-    expect(visualRequest).not.toHaveProperty('runtime_policy')
+    expect(formRequest.runtime_policy).toEqual(runtimePolicy)
+    expect(visualRequest.runtime_policy).toEqual(runtimePolicy)
     expect(visualRequest).not.toHaveProperty('opener_questions')
     expect(visualRequest.name).toBe('Visual Agent')
+  })
+
+  it('keeps the runtime policy omitted for legacy create callers', () => {
+    const request = buildAgentCreateRequest({
+      name: 'Legacy Agent',
+      systemPrompt: '',
+      modelId: 'model-1',
+      identityMode: 'per_user',
+      toolIds: [],
+      mcpToolIds: [],
+      skillIds: [],
+      subAgentIds: [],
+      middlewareTypes: [],
+      temperature: 0.7,
+      topP: 1,
+      maxTokens: 4096,
+    })
+
+    expect(request).not.toHaveProperty('runtime_policy')
+  })
+
+  it('rejects a balanced runtime policy without a usable selected-model context window', () => {
+    const balancedPolicy = {
+      version: 1 as const,
+      filesystem: { mode: 'artifact_write' as const },
+      todo: { enabled: false },
+      summarization: { mode: 'preset' as const, preset: 'balanced_context_v1' as const },
+    }
+
+    expect(isRuntimePolicyCompatibleWithContextWindow(balancedPolicy, null)).toBe(false)
+    expect(isRuntimePolicyCompatibleWithContextWindow(balancedPolicy, 0)).toBe(false)
+    expect(isRuntimePolicyCompatibleWithContextWindow(balancedPolicy, 128_000)).toBe(true)
+    expect(
+      isRuntimePolicyCompatibleWithContextWindow(
+        { ...balancedPolicy, summarization: { mode: 'auto' } },
+        null,
+      ),
+    ).toBe(true)
+    expect(isRuntimePolicyCompatibleWithContextWindow(null, null)).toBe(true)
   })
 
   it('leaves each creation surface responsible for its existing whitespace normalization', () => {

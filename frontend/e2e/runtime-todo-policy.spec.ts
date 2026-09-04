@@ -1,4 +1,4 @@
-import type { APIRequestContext } from '@playwright/test'
+import type { APIRequestContext, Page, TestInfo } from '@playwright/test'
 
 import {
   API_BASE,
@@ -18,6 +18,7 @@ const SCRIPTED_MODEL = 'document-artifact-scripted'
 const TODO_POLICY_MARKER = 'E2E_RUNTIME_TODO_POLICY'
 const TODO_POLICY_FINAL = 'E2E runtime Todo policy validation complete.'
 const TODO_POLICY_TOOL_CALL_ID_PREFIX = 'call_e2e_runtime_todo_policy_turn'
+const RUNTIME_POLICY_CAPTURE_VIEWPORTS = [375, 768, 1280] as const
 
 interface TodoPolicyAgentSetup {
   readonly agentId: string
@@ -27,6 +28,22 @@ interface TodoPolicyAgentSetup {
 interface RunPolicyEvidence {
   readonly hash: string
   readonly source: string
+}
+
+async function captureTodoAbsentState(page: Page, testInfo: TestInfo): Promise<void> {
+  if (testInfo.project.name !== 'scripted-capture') return
+
+  for (const width of RUNTIME_POLICY_CAPTURE_VIEWPORTS) {
+    await page.setViewportSize({ width, height: 960 })
+    const final = page.getByText(TODO_POLICY_FINAL, { exact: true })
+    await final.scrollIntoViewIfNeeded()
+    await expect(final).toBeInViewport()
+    await expect(page.getByText('Plan', { exact: true })).toHaveCount(0)
+    await page.screenshot({
+      path: testInfo.outputPath(`todo-absent-${width}.png`),
+      fullPage: false,
+    })
+  }
 }
 
 test.describe.configure({ mode: 'serial', retries: 0 })
@@ -224,7 +241,7 @@ test.describe('stored runtime Todo policy E2E', () => {
     page,
     request,
     errors,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(120_000)
     const csrfHeaders = await loginApi(request)
     const setup = await createTodoPolicyAgent(request, csrfHeaders, `E2E Todo Policy ${Date.now()}`)
@@ -271,6 +288,7 @@ test.describe('stored runtime Todo policy E2E', () => {
       await expect(page.getByText(TODO_POLICY_FINAL, { exact: true })).toBeVisible()
       await expect(page.getByText('Plan', { exact: true })).toHaveCount(0)
       await expect(page.getByText('작업 목록', { exact: true })).toHaveCount(0)
+      await captureTodoAbsentState(page, testInfo)
       await expectWriteTodosTrace(request, disabledConversationId, todoPolicyToolCallId(1), false)
       const disabledRun = await runPolicyEvidence(request, disabledConversationId, disabledRunId)
       expect(disabledRun.source).toBe('stored')

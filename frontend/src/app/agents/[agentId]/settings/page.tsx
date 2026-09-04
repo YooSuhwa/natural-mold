@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { consumeFixInitialMessage } from '@/lib/agents/fix-message-handoff'
+import { isRuntimePolicyCompatibleWithContextWindow } from '@/lib/agents/runtime-policy-validation'
 import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,6 +26,7 @@ import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import { useTriggers, useDeleteTrigger } from '@/lib/hooks/use-triggers'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
+import { ErrorState } from '@/components/shared/error-state'
 import { FormMode } from './_components/form-mode/form-mode'
 import { RightPanel, type RightTab } from './_components/right-panel/right-panel'
 import { useAgentSettingsDraft } from './_hooks/use-agent-settings-draft'
@@ -58,7 +60,12 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const router = useRouter()
   const t = useTranslations('agent.settings')
   const tc = useTranslations('common')
-  const { data: agent, isLoading: agentLoading } = useAgent(agentId)
+  const {
+    data: agent,
+    isLoading: agentLoading,
+    isError: agentLoadError,
+    refetch: refetchAgent,
+  } = useAgent(agentId)
   const { data: models } = useModels()
   const { data: tools } = useTools()
   const { data: skills } = useSkills()
@@ -68,6 +75,17 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const deleteAgent = useDeleteAgent()
   const deleteTrigger = useDeleteTrigger(agentId)
   const { draft, actions: draftActions, isDirty, updateRequest } = useAgentSettingsDraft(agent)
+
+  const selectedModelContextWindow = useMemo(() => {
+    const catalogModel = models?.find((model) => model.id === draft.modelId)
+    if (catalogModel) return catalogModel.context_window
+    if (agent?.model?.id === draft.modelId) return agent.model.context_window ?? null
+    return null
+  }, [agent?.model, draft.modelId, models])
+  const runtimePolicyCompatible = isRuntimePolicyCompatibleWithContextWindow(
+    draft.runtimePolicy,
+    selectedModelContextWindow,
+  )
 
   const [leftTab, setLeftTab] = useState<LeftTab>('form')
   const [rightTab, setRightTab] = useState<RightTab>('fix')
@@ -138,6 +156,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   }, [isDirty])
 
   async function handleSave() {
+    if (!runtimePolicyCompatible) {
+      toast.error(t('runtimePolicy.summarization.invalidCurrent'))
+      return
+    }
     try {
       await updateAgent.mutateAsync(updateRequest)
       toast.success(t('toast.saved'))
@@ -181,6 +203,14 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     )
   }
 
+  if (agentLoadError) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <ErrorState description={t('loadUnavailable')} onRetry={() => void refetchAgent()} />
+      </div>
+    )
+  }
+
   return (
     <div className="moldy-app-surface flex flex-1 flex-col overflow-hidden">
       <header className="moldy-panel-header flex items-start gap-3 px-6 py-3">
@@ -211,15 +241,18 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
           >
             <Trash2Icon className="size-4 text-destructive" />
           </Button>
-          <Button onClick={handleSave} disabled={updateAgent.isPending || !isDirty}>
+          <Button
+            onClick={handleSave}
+            disabled={updateAgent.isPending || !isDirty || !runtimePolicyCompatible}
+          >
             {updateAgent.isPending ? <Loader2Icon className="mr-1 size-4 animate-spin" /> : null}
             {t('save')}
           </Button>
         </div>
       </header>
 
-      <main className="grid flex-1 grid-cols-1 gap-3 overflow-hidden p-3 lg:grid-cols-2">
-        <section className="moldy-panel flex min-h-0 flex-col overflow-hidden">
+      <main className="grid flex-1 grid-cols-1 content-start gap-3 overflow-x-hidden overflow-y-auto p-3 lg:grid-cols-2 lg:content-stretch lg:overflow-hidden">
+        <section className="moldy-panel flex min-h-176 min-w-0 flex-col overflow-hidden lg:min-h-0">
           <Tabs
             value={leftTab}
             onValueChange={(v) => setLeftTab(v as LeftTab)}
@@ -293,7 +326,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
           </Tabs>
         </section>
 
-        <section className="moldy-panel flex min-h-0 flex-col overflow-hidden">
+        <section className="moldy-panel flex min-h-176 min-w-0 flex-col overflow-hidden lg:min-h-0">
           <RightPanel
             tab={rightTab}
             onTabChange={setRightTab}
@@ -302,6 +335,9 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             agentImageUrl={agent?.image_url ?? null}
             identityMode={draft.identityMode}
             onIdentityModeChange={draftActions.setIdentityMode}
+            runtimePolicy={draft.runtimePolicy}
+            onRuntimePolicyChange={draftActions.setRuntimePolicy}
+            modelContextWindow={selectedModelContextWindow}
             openerQuestions={draft.openerQuestions}
             onOpenerQuestionsChange={draftActions.setOpenerQuestions}
             onRequestDeleteTrigger={setDeletingTriggerTarget}
