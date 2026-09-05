@@ -24,6 +24,7 @@ from final_attempt_lifecycle import begin_final_attempt, seal_attempt  # noqa: E
 from operation_ledger_format import JSONValue, LedgerError, canonical_line  # noqa: E402
 from operation_ledger_writer import append_operation  # noqa: E402
 from plan_history_contract import (  # noqa: E402
+    PRIMARY_TRAILER,
     CommitRecord,
     load_contract,
     load_verified_operations,
@@ -484,26 +485,31 @@ def _complete_history() -> tuple[object, tuple[CommitRecord, ...], list[dict[str
     contract = load_contract(CONTRACT_PATH)
     commits = list(read_git_history(REPO_ROOT, contract.base_sha))
     entries = load_verified_operations(EVIDENCE / "operations.ndjson")
-    for index, item in enumerate(("23", "24", "25"), start=1):
-        sha = f"{index:x}" * 40
+    observed_primary = {
+        item for commit in commits for item in PRIMARY_TRAILER.findall(commit.message)
+    }
+    for item in (item for item in ("23", "24", "25") if item not in observed_primary):
+        digest = hashlib.sha256(f"plan-history-fixture:{item}".encode()).hexdigest()
+        sha = digest[:40]
+        tree_sha = hashlib.sha256(f"plan-history-fixture-tree:{item}".encode()).hexdigest()[:40]
         commits.append(
-            CommitRecord(
-                sha, (commits[-1].sha,), f"{index + 3:x}" * 40, f"item\n\nPlan-Item: {item}\n"
-            )
+            CommitRecord(sha, (commits[-1].sha,), tree_sha, f"item\n\nPlan-Item: {item}\n")
         )
-        entries.append(
-            {
-                "schema_version": 1,
-                "sequence": len(entries),
-                "previous_entry_hash": "a" * 64,
-                "timestamp_utc": "2026-09-05T00:00:00Z",
-                "task_id": item,
-                "action_class": "commit",
-                "arguments": {"commit_sha": sha, "plan_item": item},
-                "status": "passed",
-                "entry_hash": "b" * 64,
-            }
-        )
+        entry: dict[str, JSONValue] = {
+            "schema_version": 1,
+            "sequence": len(entries),
+            "previous_entry_hash": entries[-1]["entry_hash"],
+            "timestamp_utc": "2026-09-05T00:00:00Z",
+            "task_id": item,
+            "action_class": "commit",
+            "arguments": {"commit_sha": sha, "plan_item": item},
+            "status": "passed",
+            "entry_hash": "",
+        }
+        entry["entry_hash"] = hashlib.sha256(
+            canonical_line({key: value for key, value in entry.items() if key != "entry_hash"})
+        ).hexdigest()
+        entries.append(entry)
     return contract, tuple(commits), entries
 
 

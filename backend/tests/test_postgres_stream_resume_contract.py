@@ -114,6 +114,7 @@ def _patch_run_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[dict
     )
     monkeypatch.setattr(postgres_manifest_io, "open_evidence_directory", lambda _root: dummy)
     monkeypatch.setattr(postgres_manifest_io, "close_evidence_directory", lambda _root: None)
+    monkeypatch.setattr(postgres_manifest_io, "verify_evidence_directory", lambda _root: None)
     monkeypatch.setattr(postgres_manifest_io, "process_identity_sha256", lambda: "d" * 64)
     monkeypatch.setattr(
         postgres_manifest_io,
