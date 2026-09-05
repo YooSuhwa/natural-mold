@@ -76,10 +76,15 @@ def _coverage_temp_parent() -> Path | None:
     try:
         metadata = root.lstat()
         canonical = root.resolve(strict=True)
-        system_temp = Path(os.environ.get("TMPDIR", tempfile.gettempdir())).resolve(strict=True)
+        active_temp = Path(os.environ.get("TMPDIR", tempfile.gettempdir())).resolve(strict=True)
         parent = root.parent.resolve(strict=True)
     except OSError as error:
         raise CoverageContractError("isolated coverage root is invalid") from error
+    system_temp = (
+        canonical.parent
+        if active_temp == canonical or canonical in active_temp.parents
+        else active_temp
+    )
     if (
         not root.is_absolute()
         or parent != system_temp

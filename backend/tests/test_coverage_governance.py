@@ -520,6 +520,37 @@ def test_coverage_runner_accepts_physical_wrapper_root_through_temp_alias(
     assert run_coverage_gate._coverage_temp_parent() == physical_root
 
 
+def test_coverage_runner_accepts_nested_temp_inside_isolated_run_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Given recursive coverage, its private temp tree retains the wrapper trust root."""
+    run_root = tmp_path / ".moldy-test-run.a1B2c3D4"
+    run_root.mkdir(mode=0o700)
+    nested_temp = run_root / "moldy-backend-coverage-a1B2c3D4" / "tmp"
+    nested_temp.mkdir(mode=0o700, parents=True)
+
+    monkeypatch.setenv(run_coverage_gate.ISOLATED_RUN_ROOT_ENVIRONMENT_NAME, str(run_root))
+    monkeypatch.setenv("TMPDIR", str(nested_temp))
+
+    assert run_coverage_gate._coverage_temp_parent() == run_root
+
+
+def test_coverage_runner_rejects_nested_temp_inside_another_isolated_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Given unrelated recursive temp state, coverage does not widen its trust boundary."""
+    run_root = tmp_path / ".moldy-test-run.a1B2c3D4"
+    run_root.mkdir(mode=0o700)
+    other_temp = tmp_path / ".moldy-test-run.e5F6g7H8" / "nested" / "tmp"
+    other_temp.mkdir(mode=0o700, parents=True)
+
+    monkeypatch.setenv(run_coverage_gate.ISOLATED_RUN_ROOT_ENVIRONMENT_NAME, str(run_root))
+    monkeypatch.setenv("TMPDIR", str(other_temp))
+
+    with pytest.raises(CoverageContractError, match="isolated coverage root"):
+        run_coverage_gate._coverage_temp_parent()
+
+
 @pytest.mark.parametrize("mutation", ["missing", "wrong_prefix", "symlink", "permissions"])
 def test_coverage_runner_rejects_untrusted_isolated_run_root(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mutation: str
