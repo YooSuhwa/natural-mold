@@ -528,6 +528,149 @@ def test_capture_receipt_accepts_exact_wave_four_spec_and_screenshot_contract(
     assert summary["screenshot_count"] == 24
 
 
+def test_capture_receipt_accepts_failed_run_with_source_rejection_and_no_screenshots(
+    tmp_path: Path, receipts: ModuleType
+) -> None:
+    """Given a rejected failed capture, when parsed, then its failure evidence stays usable."""
+    spec = "e2e/chat-compaction.spec.ts"
+    node = f"scripted-capture::{spec}::stored auto policy compaction"
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-capture",
+        "workers": 1,
+        "retries": 0,
+        "status": "failed",
+        "failure_reason": "playwright_failed",
+        "child_exit_code": 1,
+        "selected_ids": [node],
+        "executed_ids": [node],
+        "unexpected_failures": [{"node_id": node, "status": "failed"}],
+        "export": {
+            "secret_scan_passed": True,
+            "screenshots": [],
+            "source_rejection": {
+                "category": "secret_scan",
+                "rule_id": "sensitive_assignment",
+                "artifact_path": "results/execution.json",
+                "tests": [{"node_id": node, "status": "failed"}],
+            },
+        },
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / "capture-failed-source-rejection.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    summary = receipts.validate_e2e(
+        path,
+        tmp_path,
+        1,
+        project="scripted-capture",
+        expected_spec=spec,
+        expected_screenshot_count=13,
+    )
+
+    assert summary["screenshot_count"] == 0
+
+
+@pytest.mark.parametrize(
+    "export_mutation",
+    [
+        {"secret_scan_passed": False},
+        {"screenshots": ["captures/../untrusted.png"]},
+    ],
+)
+def test_capture_failure_rejects_unscanned_or_unsafe_export(
+    tmp_path: Path, receipts: ModuleType, export_mutation: JSONObject
+) -> None:
+    """Given a failed capture, when its export is unsafe, then failure evidence is rejected."""
+    spec = "e2e/chat-compaction.spec.ts"
+    node = f"scripted-capture::{spec}::stored auto policy compaction"
+    export: JSONObject = {"secret_scan_passed": True, "screenshots": []}
+    export.update(export_mutation)
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-capture",
+        "workers": 1,
+        "retries": 0,
+        "status": "failed",
+        "failure_reason": "playwright_failed",
+        "child_exit_code": 1,
+        "selected_ids": [node],
+        "executed_ids": [node],
+        "unexpected_failures": [{"node_id": node, "status": "failed"}],
+        "export": export,
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / "capture-failed-unsafe-export.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_e2e(
+            path,
+            tmp_path,
+            1,
+            project="scripted-capture",
+            expected_spec=spec,
+            expected_screenshot_count=13,
+        )
+
+
+@pytest.mark.parametrize(
+    ("screenshots", "rejection_status"),
+    [
+        (["captures/failed-state.png"], "failed"),
+        ([], "timedOut"),
+    ],
+)
+def test_capture_failure_rejects_untrusted_source_rejection_projection(
+    tmp_path: Path,
+    receipts: ModuleType,
+    screenshots: list[JSONValue],
+    rejection_status: str,
+) -> None:
+    """Given a failed capture, when source rejection drifts, then it cannot become evidence."""
+    spec = "e2e/chat-compaction.spec.ts"
+    node = f"scripted-capture::{spec}::stored auto policy compaction"
+    payload: JSONObject = {
+        "runner": "moldy-isolated-e2e",
+        "lane": "scripted",
+        "project": "scripted-capture",
+        "workers": 1,
+        "retries": 0,
+        "status": "failed",
+        "failure_reason": "playwright_failed",
+        "child_exit_code": 1,
+        "selected_ids": [node],
+        "executed_ids": [node],
+        "unexpected_failures": [{"node_id": node, "status": "failed"}],
+        "export": {
+            "secret_scan_passed": True,
+            "screenshots": screenshots,
+            "source_rejection": {
+                "category": "secret_scan",
+                "rule_id": "sensitive_assignment",
+                "artifact_path": "results/execution.json",
+                "tests": [{"node_id": node, "status": rejection_status}],
+            },
+        },
+        "cleanup": dict.fromkeys(receipts.E2E_CLEANUP_KEYS, True),
+    }
+    path = tmp_path / "capture-failed-untrusted-source-rejection.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_e2e(
+            path,
+            tmp_path,
+            1,
+            project="scripted-capture",
+            expected_spec=spec,
+            expected_screenshot_count=13,
+        )
+
+
 @pytest.mark.parametrize(
     "screenshot",
     [

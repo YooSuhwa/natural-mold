@@ -276,16 +276,20 @@ def validate_e2e(
             for expected_prefix in expected_prefixes
         )
     )
+    rejection_matches_diagnostics = rejection is None or tuple(
+        (item.node_id, item.status) for item in rejection.tests
+    ) == tuple((item.node_id, item.status) for item in diagnostics)
     screenshots_match = screenshots == [] if project == "scripted-full" else screenshots is not None
     if project == "scripted-capture":
         screenshots_match = (
             expected_screenshot_count is not None
             and screenshots is not None
-            and len(screenshots) == expected_screenshot_count
+            and (
+                len(screenshots) == expected_screenshot_count
+                if expected_exit == 0
+                else rejection is None or screenshots == []
+            )
         )
-    rejection_matches_diagnostics = rejection is None or tuple(
-        (item.node_id, item.status) for item in rejection.tests
-    ) == tuple((item.node_id, item.status) for item in diagnostics)
     artifact_export_failure = (
         expected_exit != 0
         and rejection is not None
