@@ -180,17 +180,17 @@ def test_tracked_frontend_baseline_accepts_reviewed_exact_counts(tmp_path: Path)
         tmp_path / "coverage-summary.json",
         {
             "total": {
-                "statements": {"covered": 11801, "total": 18860},
-                "branches": {"covered": 8595, "total": 15594},
+                "statements": {"covered": 11802, "total": 18860},
+                "branches": {"covered": 8596, "total": 15594},
                 "functions": {"covered": 3146, "total": 5668},
-                "lines": {"covered": 10659, "total": 16553},
+                "lines": {"covered": 10660, "total": 16553},
             }
         },
     )
 
     result = check_frontend(baseline, report)
 
-    assert result["branches"].covered == 8595
+    assert result["branches"].covered == 8596
     assert result["lines"].total == 16553
 
 

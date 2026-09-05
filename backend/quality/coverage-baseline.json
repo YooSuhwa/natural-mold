@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_commit": "a7abda470873ef45f291cf7f176c8b3d54445cf2",
+  "source_commit": "ea253c19de5549f79987e51fefde8a4ba017cb9e",
   "measurement_command": "uv run pytest --cov=app --cov-report=json",
   "reviewed_runs": 2,
   "metric": "line",
