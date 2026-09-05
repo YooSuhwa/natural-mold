@@ -360,7 +360,12 @@ def test_coverage_runner_accepts_older_ancestor_and_fresh_external_report(
     if kind == "backend":
         assert argv[:4] == ["/fixture/uv", "run", "pytest", "--cov=app"]
         assert cwd == repo / "backend"
-        assert env is None
+        assert env is not None
+        temporary_root = Path(env["TMPDIR"])
+        assert temporary_root == report.parent / "tmp"
+        assert temporary_root.is_absolute()
+        assert not temporary_root.is_relative_to(repo)
+        assert not temporary_root.exists()
         assert not (repo / "backend/coverage.json").exists()
     else:
         assert argv == [
@@ -465,6 +470,77 @@ def test_coverage_runner_prefers_validated_gate_uv_over_path(
     run_coverage_gate.run_gate("backend", repo)
 
     assert measured[0][0] == str(uv)
+
+
+def test_coverage_runner_nests_temporary_tree_in_isolated_run_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Given a wrapper-owned root, coverage artifacts remain owned by wrapper cleanup."""
+    repo, _ = _coverage_repo(tmp_path, "backend")
+    run_root = tmp_path / ".moldy-test-run.a1B2c3D4"
+    run_root.mkdir(mode=0o700)
+    calls: list[tuple[list[str], Path, dict[str, str] | None, Path]] = []
+
+    def measure(argv: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> None:
+        assert env is not None
+        assert Path(env["TMPDIR"]).stat().st_mode & 0o777 == 0o700
+        report = _write_measurement_report("backend", argv, env)
+        calls.append((argv, cwd, env, report))
+
+    monkeypatch.setenv(run_coverage_gate.ISOLATED_RUN_ROOT_ENVIRONMENT_NAME, str(run_root))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.delenv(run_coverage_gate.GATE_UV_ENVIRONMENT_NAME, raising=False)
+    monkeypatch.setattr(run_coverage_gate.shutil, "which", lambda _command: "/fixture/uv")
+    monkeypatch.setattr(run_coverage_gate, "_run_measurement", measure)
+
+    run_coverage_gate.run_gate("backend", repo)
+
+    _argv, _cwd, environment, report = calls[0]
+    assert report.parent.parent == run_root
+    assert environment is not None
+    assert Path(environment["TMPDIR"]) == report.parent / "tmp"
+    assert not report.parent.exists()
+
+
+def test_coverage_runner_accepts_physical_wrapper_root_through_temp_alias(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Given a symlinked system temp alias, the non-symlink wrapper leaf stays valid."""
+    physical_temp = tmp_path / "physical-temp"
+    physical_temp.mkdir(mode=0o700)
+    logical_temp = tmp_path / "logical-temp"
+    logical_temp.symlink_to(physical_temp, target_is_directory=True)
+    physical_root = physical_temp / ".moldy-test-run.a1B2c3D4"
+    physical_root.mkdir(mode=0o700)
+    logical_root = logical_temp / physical_root.name
+
+    monkeypatch.setenv(run_coverage_gate.ISOLATED_RUN_ROOT_ENVIRONMENT_NAME, str(logical_root))
+    monkeypatch.setenv("TMPDIR", str(logical_temp))
+
+    assert run_coverage_gate._coverage_temp_parent() == physical_root
+
+
+@pytest.mark.parametrize("mutation", ["missing", "wrong_prefix", "symlink", "permissions"])
+def test_coverage_runner_rejects_untrusted_isolated_run_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mutation: str
+) -> None:
+    """Given an untrusted wrapper root, coverage fails before creating artifacts."""
+    candidate = tmp_path / ".moldy-test-run.a1B2c3D4"
+    if mutation == "wrong_prefix":
+        candidate = tmp_path / "not-a-wrapper-root"
+        candidate.mkdir(mode=0o700)
+    elif mutation == "symlink":
+        target = tmp_path / "target"
+        target.mkdir(mode=0o700)
+        candidate.symlink_to(target, target_is_directory=True)
+    elif mutation == "permissions":
+        candidate.mkdir(mode=0o700)
+        candidate.chmod(0o770)
+
+    monkeypatch.setenv(run_coverage_gate.ISOLATED_RUN_ROOT_ENVIRONMENT_NAME, str(candidate))
+
+    with pytest.raises(CoverageContractError, match="isolated coverage root"):
+        run_coverage_gate._coverage_temp_parent()
 
 
 @pytest.mark.parametrize("override", ["relative", "missing", "non_executable"])

@@ -20,6 +20,8 @@ from project_gate_toolchain import resolve_provenance, verify_provenance
 
 FRONTEND_COVERAGE_DIRECTORY = "MOLDY_VITEST_COVERAGE_DIRECTORY"
 GATE_UV_ENVIRONMENT_NAME = "MOLDY_GATE_UV"
+ISOLATED_RUN_ROOT_ENVIRONMENT_NAME = "MOLDY_TEST_RUN_ROOT"
+ISOLATED_RUN_ROOT_PREFIX = ".moldy-test-run."
 
 
 def _run_measurement(argv: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> None:
@@ -65,18 +67,52 @@ def _backend_uv() -> str:
     return str(uv)
 
 
+def _coverage_temp_parent() -> Path | None:
+    """Bind coverage artifacts to the wrapper-owned root when one is active."""
+    configured = os.environ.get(ISOLATED_RUN_ROOT_ENVIRONMENT_NAME)
+    if configured is None:
+        return None
+    root = Path(configured)
+    try:
+        metadata = root.lstat()
+        canonical = root.resolve(strict=True)
+        system_temp = Path(os.environ.get("TMPDIR", tempfile.gettempdir())).resolve(strict=True)
+        parent = root.parent.resolve(strict=True)
+    except OSError as error:
+        raise CoverageContractError("isolated coverage root is invalid") from error
+    if (
+        not root.is_absolute()
+        or parent != system_temp
+        or canonical.parent != system_temp
+        or canonical.name != root.name
+        or not root.name.startswith(ISOLATED_RUN_ROOT_PREFIX)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or metadata.st_mode & 0o077
+    ):
+        raise CoverageContractError("isolated coverage root is invalid")
+    return canonical
+
+
 def run_gate(kind: str, repo_root: Path) -> None:
     baseline = repo_root / kind / "quality/coverage-baseline.json"
     source_commit = baseline_source_commit(baseline, kind)
     provenance = resolve_provenance(source_commit, repo_root)
-    with tempfile.TemporaryDirectory(prefix=f"moldy-{kind}-coverage-") as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix=f"moldy-{kind}-coverage-", dir=_coverage_temp_parent()
+    ) as temporary:
         report_root = Path(temporary)
         if kind == "backend":
             report = report_root / "coverage.json"
+            pytest_temp_root = report_root / "tmp"
+            pytest_temp_root.mkdir(mode=0o700)
+            environment = dict(os.environ)
+            environment["TMPDIR"] = str(pytest_temp_root)
             uv = _backend_uv()
             _run_measurement(
                 [uv, "run", "pytest", "--cov=app", f"--cov-report=json:{report}"],
                 cwd=repo_root / "backend",
+                env=environment,
             )
         else:
             report = report_root / "coverage-summary.json"

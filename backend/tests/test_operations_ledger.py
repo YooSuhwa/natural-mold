@@ -7,6 +7,7 @@ import importlib.util
 import multiprocessing
 import subprocess
 import sys
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -156,16 +157,64 @@ def test_parallel_writers_form_gap_free_hash_chain(tmp_path: Path) -> None:
         context.Process(target=_append_worker, args=(str(WRITER_PATH), str(ledger), worker))
         for worker in range(32)
     ]
-    for process in processes:
-        process.start()
-    for process in processes:
-        process.join(timeout=20)
+    started = processes[:0]
+    try:
+        for process in processes:
+            process.start()
+            started.append(process)
+        deadline = time.monotonic() + 20
+        for process in started:
+            process.join(timeout=max(0, deadline - time.monotonic()))
+    finally:
+        for process in started:
+            if process.is_alive():
+                process.terminate()
+        for process in started:
+            process.join(timeout=1)
+        for process in started:
+            if process.is_alive():
+                process.kill()
+                process.join()
 
     # Then: every child succeeds and the ledger is one valid gap-free sequence.
     assert all(process.exitcode == 0 for process in processes)
     entries = writer.verify_ledger(ledger)
     assert [entry["sequence"] for entry in entries] == list(range(33))
     assert {entry["arguments"]["worker"] for entry in entries[1:]} == set(range(32))
+
+
+def test_lock_open_failure_is_not_retried_or_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given: a valid ledger whose parent disappears at the lock-open boundary.
+    writer = _load_writer()
+    ledger = tmp_path / "operations.ndjson"
+    writer.write_genesis(ledger, writer.build_genesis(_golden_facts(), clock=_fixed_clock))
+    original = ledger.read_bytes()
+    implementation = sys.modules[writer.append_operation.__module__]
+    lock_open_calls = 0
+    real_open = implementation.os.open
+
+    def fail_lock_open(*args: object, **kwargs: object) -> int:
+        nonlocal lock_open_calls
+        if args and args[0] == ".evidence-writer.lock":
+            lock_open_calls += 1
+            raise FileNotFoundError
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(implementation.os, "open", fail_lock_open)
+
+    # When / Then: the identity loss fails closed without retrying or changing bytes.
+    with pytest.raises(writer.LedgerError, match="writer lock cannot be opened safely"):
+        writer.append_operation(
+            ledger,
+            task_id="02",
+            action_class="test",
+            arguments={},
+            status="passed",
+        )
+    assert lock_open_calls == 1
+    assert ledger.read_bytes() == original
 
 
 def test_append_rejects_wrong_previous_hash_and_seal(tmp_path: Path) -> None:
