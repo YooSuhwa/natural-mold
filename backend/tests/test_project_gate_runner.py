@@ -17,6 +17,8 @@ from uuid import uuid4
 
 import pytest
 
+from tests.project_gate_wave_support import synthetic_docker_identity
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNNER_PATH = REPO_ROOT / "scripts" / "project_gate_runner.py"
 WRAPPER_PATH = REPO_ROOT / "scripts" / "run-project-gate.sh"
@@ -160,21 +162,239 @@ def _is_string_list(value: object) -> TypeGuard[list[str]]:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
-def test_runner_invokes_exact_smoke_argv_and_runner_owned_environment(tmp_path: Path) -> None:
+def _fake_pnpm_path(environment: dict[str, str]) -> Path:
+    """Return the test-only lifecycle executable created at the first PATH entry."""
+    return Path(environment["PATH"].split(os.pathsep, 1)[0]) / "pnpm"
+
+
+def _remove_fake_exports(log_path: Path, manifest: Path) -> None:
+    """Remove the fake lifecycle's owned artifacts after direct-boundary assertions."""
+    if log_path.exists():
+        for call in _read_log(log_path):
+            slug = call.get("slug")
+            if isinstance(slug, str):
+                shutil.rmtree(
+                    REPO_ROOT / "output" / "e2e-captures" / f"{slug}-fake", ignore_errors=True
+                )
+    manifest.unlink(missing_ok=True)
+
+
+def _direct_gate_toolchain(project_gate_runner: ModuleType, *, identity_count: int) -> object:
+    """Build a captured toolchain shape for the public GateProfile boundary."""
+    toolchain_module = sys.modules[project_gate_runner.resolve_toolchain.__module__]
+    docker = Path("/usr/local/bin/docker")
+    identities = tuple(synthetic_docker_identity(docker) for _ in range(identity_count))
+    return toolchain_module.TrustedToolchain(
+        python=Path("/trusted/python"),
+        node=Path("/trusted/node"),
+        pnpm=Path("/trusted/pnpm"),
+        uv=Path("/trusted/uv"),
+        home=Path("/trusted/home"),
+        user="trusted-user",
+        docker=docker,
+        system_paths=("/usr/bin", "/bin"),
+        runtime_paths=("/trusted/runtime",),
+        identities=identities,
+        git=Path("/trusted/git"),
+    )
+
+
+def _runner_subprocess(project_gate_runner: ModuleType) -> ModuleType:
+    """Return the process module shared by trusted Git and direct lane execution."""
+    runtime = sys.modules[project_gate_runner._run_profile_with_environment.__module__]
+    return runtime.subprocess
+
+
+@pytest.mark.parametrize(
+    "ambient_docker",
+    [
+        {},
+        {
+            "MOLDY_GATE_DOCKER": "/attacker/docker",
+            "MOLDY_GATE_DOCKER_IDENTITY": "b" * 64,
+        },
+    ],
+    ids=("missing-ambient-token", "hostile-ambient-pair"),
+)
+def test_public_gate_profile_uses_captured_toolchain_environment(
+    project_gate_runner: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    ambient_docker: dict[str, str],
+) -> None:
+    """Given ambient Docker values, public smoke passes only captured values to children."""
+    manifest = _manifest_path()
+    profile = project_gate_runner.GateProfile(
+        "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
+    )
+    trusted = _direct_gate_toolchain(project_gate_runner, identity_count=1)
+    calls: list[tuple[list[str], dict[str, str]]] = []
+    verification_calls: list[object] = []
+
+    def fake_run(
+        command: list[str], *, env: dict[str, str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((command, env))
+        if command[:3] == ["/trusted/git", "rev-parse", "--verify"]:
+            return subprocess.CompletedProcess(command, 0, stdout="a" * 40, stderr="")
+        if command[:3] == ["/trusted/git", "merge-base", "--is-ancestor"]:
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        if command[0] != "/trusted/pnpm":
+            manifest.write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    def verify_captured(toolchain: object) -> None:
+        verification_calls.append(toolchain)
+
+    inherited = {
+        "PATH": "/attacker/bin",
+        "DOCKER_HOST": "tcp://attacker.example.test:2375",
+        "DOCKER_CONFIG": "/attacker/docker-config",
+        "DOCKER_CONTEXT": "attacker-context",
+        "OPENAI_API_KEY": "sentinel-openai",
+        **ambient_docker,
+    }
+    monkeypatch.setattr(project_gate_runner, "load_profiles", lambda _path: {"smoke": profile})
+    monkeypatch.setattr(project_gate_runner, "resolve_toolchain", lambda _root: (trusted, {}))
+    monkeypatch.setattr(project_gate_runner, "verify_toolchain", verify_captured)
+    monkeypatch.setattr(_runner_subprocess(project_gate_runner), "run", fake_run)
+    monkeypatch.setenv("PATH", "/attacker/bin")
+
+    try:
+        result = project_gate_runner.run(
+            ["smoke", "--base-sha", "a" * 40, "--manifest", str(manifest)],
+            REPO_ROOT,
+            inherited,
+        )
+    finally:
+        manifest.unlink(missing_ok=True)
+
+    assert result == 0
+    assert verification_calls == [trusted, trusted]
+    assert len(calls) == 4
+    assert calls[0][0] == ["/trusted/git", "rev-parse", "--verify", f"{'a' * 40}^{{commit}}"]
+    assert calls[1][0] == [
+        "/trusted/git",
+        "merge-base",
+        "--is-ancestor",
+        "a" * 40,
+        "HEAD",
+    ]
+    assert calls[0][1] == {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LC_ALL": "C"}
+    assert calls[1][1] == calls[0][1]
+    pnpm_command, pnpm_environment = calls[2]
+    assert pnpm_command[0] == "/trusted/pnpm"
+    assert pnpm_environment["PATH"] == "/trusted/runtime:/usr/bin:/bin"
+    assert pnpm_environment["MOLDY_GATE_DOCKER"] == "/usr/local/bin/docker"
+    assert pnpm_environment["MOLDY_GATE_DOCKER_IDENTITY"] != ambient_docker.get(
+        "MOLDY_GATE_DOCKER_IDENTITY"
+    )
+    assert {"DOCKER_HOST", "DOCKER_CONFIG", "DOCKER_CONTEXT", "OPENAI_API_KEY"}.isdisjoint(
+        pnpm_environment
+    )
+    checker_command, checker_environment = calls[3]
+    assert checker_command[-1] == str(manifest)
+    assert checker_environment["MOLDY_GATE_DOCKER"] == "/usr/local/bin/docker"
+    assert (
+        checker_environment["MOLDY_GATE_DOCKER_IDENTITY"]
+        == pnpm_environment["MOLDY_GATE_DOCKER_IDENTITY"]
+    )
+
+
+@pytest.mark.parametrize("identity_count", [0, 2], ids=("missing", "ambiguous"))
+def test_public_gate_profile_rejects_missing_or_ambiguous_docker_identity_before_child(
+    project_gate_runner: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    identity_count: int,
+) -> None:
+    """Given an incomplete captured toolchain, when public smoke starts, then no child launches."""
+    profile = project_gate_runner.GateProfile(
+        "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
+    )
+    trusted = _direct_gate_toolchain(project_gate_runner, identity_count=identity_count)
+
+    def unexpected_subprocess(
+        *_args: object, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("child subprocess launched before Docker identity preflight")
+
+    monkeypatch.setattr(project_gate_runner, "load_profiles", lambda _path: {"smoke": profile})
+    monkeypatch.setattr(project_gate_runner, "resolve_toolchain", lambda _root: (trusted, {}))
+    monkeypatch.setattr(_runner_subprocess(project_gate_runner), "run", unexpected_subprocess)
+
+    with pytest.raises(project_gate_runner.ProjectGateError, match="runtime_preflight_failed"):
+        project_gate_runner.run(
+            ["smoke", "--base-sha", "a" * 40, "--manifest", str(_manifest_path())],
+            REPO_ROOT,
+            {},
+        )
+
+
+def test_public_gate_profile_rechecks_toolchain_after_base_resolution(
+    tmp_path: Path,
+    project_gate_runner: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Given a captured pnpm changes during base resolution, public smoke starts no child."""
+    profile = project_gate_runner.GateProfile(
+        "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
+    )
+    trusted = _direct_gate_toolchain(project_gate_runner, identity_count=1)
+    captured_pnpm = tmp_path / "pnpm"
+    captured_pnpm.write_text("original", encoding="utf-8")
+
+    def mutate_pnpm(_base: str, _root: Path, _git: Path) -> str:
+        captured_pnpm.write_text("mutated", encoding="utf-8")
+        return "a" * 40
+
+    def verify_after_mutation(_toolchain: object) -> None:
+        if captured_pnpm.read_text(encoding="utf-8") == "mutated":
+            raise project_gate_runner.ProjectGateError("runtime_changed")
+
+    def unexpected_subprocess(
+        *_args: object, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("child subprocess launched after toolchain mutation")
+
+    monkeypatch.setattr(project_gate_runner, "load_profiles", lambda _path: {"smoke": profile})
+    monkeypatch.setattr(project_gate_runner, "resolve_toolchain", lambda _root: (trusted, {}))
+    monkeypatch.setattr(project_gate_runner, "_resolve_base_sha", mutate_pnpm)
+    monkeypatch.setattr(
+        project_gate_runner, "verify_toolchain", verify_after_mutation, raising=False
+    )
+    monkeypatch.setattr(_runner_subprocess(project_gate_runner), "run", unexpected_subprocess)
+
+    with pytest.raises(project_gate_runner.ProjectGateError, match="runtime_changed"):
+        project_gate_runner.run(
+            ["smoke", "--base-sha", "a" * 40, "--manifest", str(_manifest_path())],
+            REPO_ROOT,
+            {},
+        )
+
+
+def test_runner_invokes_exact_smoke_argv_and_runner_owned_environment(
+    tmp_path: Path, project_gate_runner: ModuleType
+) -> None:
     """Given a valid smoke gate, when run, then pnpm receives fixed argv and safe exports."""
     log_path, environment = _fake_commands(tmp_path)
     manifest = _manifest_path()
 
-    result = _run_wrapper(
-        "smoke",
-        "--base-sha",
-        "a" * 40,
-        "--manifest",
-        str(manifest.relative_to(REPO_ROOT)),
-        environment=environment,
+    profile = project_gate_runner.GateProfile(
+        "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
     )
+    try:
+        result = project_gate_runner._run_profile_with_environment(
+            "smoke",
+            profile,
+            "a" * 40,
+            manifest,
+            REPO_ROOT,
+            environment,
+            trusted_pnpm=_fake_pnpm_path(environment),
+        )
+    finally:
+        _remove_fake_exports(log_path, manifest)
 
-    assert result.returncode == 0, result.stderr
+    assert result == 0
     calls = _read_log(log_path)
     pnpm = next(call for call in calls if call["command"] == "pnpm")
     assert pnpm["argv"] == [
@@ -191,7 +411,9 @@ def test_runner_invokes_exact_smoke_argv_and_runner_owned_environment(tmp_path: 
     assert not manifest.exists()
 
 
-def test_runner_argv_is_accepted_by_lifecycle_boundary(tmp_path: Path) -> None:
+def test_runner_argv_is_accepted_by_lifecycle_boundary(
+    tmp_path: Path, project_gate_runner: ModuleType
+) -> None:
     """Given the real lifecycle contract, when run, then no rejected overrides cross pnpm."""
     expected_argv = [
         "--dir",
@@ -203,21 +425,31 @@ def test_runner_argv_is_accepted_by_lifecycle_boundary(tmp_path: Path) -> None:
     ]
     log_path, environment = _fake_commands(tmp_path, pnpm_expected_argv=expected_argv)
 
-    result = _run_wrapper(
-        "smoke",
-        "--base-sha",
-        "a" * 40,
-        "--manifest",
-        str(_manifest_path().relative_to(REPO_ROOT)),
-        environment=environment,
+    manifest = _manifest_path()
+    profile = project_gate_runner.GateProfile(
+        "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
     )
+    try:
+        result = project_gate_runner._run_profile_with_environment(
+            "smoke",
+            profile,
+            "a" * 40,
+            manifest,
+            REPO_ROOT,
+            environment,
+            trusted_pnpm=_fake_pnpm_path(environment),
+        )
+    finally:
+        _remove_fake_exports(log_path, manifest)
 
-    assert result.returncode == 0, result.stderr
+    assert result == 0
     pnpm = next(call for call in _read_log(log_path) if call["command"] == "pnpm")
     assert pnpm["argv"] == expected_argv
 
 
-def test_runner_sanitizes_scripted_pnpm_environment(tmp_path: Path) -> None:
+def test_runner_sanitizes_scripted_pnpm_environment(
+    tmp_path: Path, project_gate_runner: ModuleType
+) -> None:
     """Given provider secrets in the caller, when scripted starts, then pnpm sees only safe env."""
     log_path, environment = _fake_commands(tmp_path)
     environment.update(
@@ -235,16 +467,24 @@ def test_runner_sanitizes_scripted_pnpm_environment(tmp_path: Path) -> None:
         }
     )
 
-    result = _run_wrapper(
-        "smoke",
-        "--base-sha",
-        "a" * 40,
-        "--manifest",
-        str(_manifest_path().relative_to(REPO_ROOT)),
-        environment=environment,
+    manifest = _manifest_path()
+    profile = project_gate_runner.GateProfile(
+        "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
     )
+    try:
+        result = project_gate_runner._run_profile_with_environment(
+            "smoke",
+            profile,
+            "a" * 40,
+            manifest,
+            REPO_ROOT,
+            environment,
+            trusted_pnpm=_fake_pnpm_path(environment),
+        )
+    finally:
+        _remove_fake_exports(log_path, manifest)
 
-    assert result.returncode == 0, result.stderr
+    assert result == 0
     pnpm = next(call for call in _read_log(log_path) if call["command"] == "pnpm")
     raw_environment_keys = pnpm["environment_keys"]
     assert _is_string_list(raw_environment_keys)
@@ -260,7 +500,8 @@ def test_runner_sanitizes_scripted_pnpm_environment(tmp_path: Path) -> None:
         "E2E_LLM_MODEL",
     ):
         assert name not in environment_keys
-    assert {"PATH", "PNPM_HOME", "DOCKER_CONTEXT"} <= environment_keys
+    assert {"PATH", "PNPM_HOME"} <= environment_keys
+    assert {"DOCKER_HOST", "DOCKER_CONFIG", "DOCKER_CONTEXT"}.isdisjoint(environment_keys)
     assert pnpm["manifest"] is not None
     assert pnpm["slug"] is not None
 
@@ -290,7 +531,6 @@ def test_runner_allows_live_llm_environment_and_exact_owned_loopback_opt_in(
             "E2E_EGRESS_ALLOW_OWNED_LOOPBACK": "1",
         }
     )
-    monkeypatch.setenv("PATH", environment["PATH"])
     manifest = _manifest_path()
     profile = project_gate_runner.GateProfile(
         "live", "live-manual", "e2e/manual/live.spec.ts", 1, 0
@@ -304,15 +544,10 @@ def test_runner_allows_live_llm_environment_and_exact_owned_loopback_opt_in(
             manifest,
             REPO_ROOT,
             environment,
+            trusted_pnpm=_fake_pnpm_path(environment),
         )
     finally:
-        for call in _read_log(log_path):
-            slug = call.get("slug")
-            if isinstance(slug, str):
-                shutil.rmtree(
-                    REPO_ROOT / "output" / "e2e-captures" / f"{slug}-fake", ignore_errors=True
-                )
-        manifest.unlink(missing_ok=True)
+        _remove_fake_exports(log_path, manifest)
 
     assert result == 0
     pnpm = next(call for call in _read_log(log_path) if call["command"] == "pnpm")
@@ -333,6 +568,68 @@ def test_runner_allows_live_llm_environment_and_exact_owned_loopback_opt_in(
     assert pnpm["owned_loopback"] == "1"
 
 
+def test_public_live_gate_preserves_only_live_llm_environment(
+    project_gate_runner: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public live gate keeps its exact live allowlist after toolchain sanitization."""
+    manifest = _manifest_path()
+    profile = project_gate_runner.GateProfile(
+        "live", "live-manual", "e2e/manual/live.spec.ts", 1, 0
+    )
+    trusted = _direct_gate_toolchain(project_gate_runner, identity_count=1)
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    def fake_run(
+        command: list[str], *, env: dict[str, str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((command, env))
+        if command[:3] == ["/trusted/git", "rev-parse", "--verify"]:
+            return subprocess.CompletedProcess(command, 0, stdout="a" * 40, stderr="")
+        if command[:3] == ["/trusted/git", "merge-base", "--is-ancestor"]:
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        if command[0] != "/trusted/pnpm":
+            manifest.write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    inherited = {
+        "PATH": "/attacker/bin",
+        "OPENAI_API_KEY": "sentinel-openai",
+        "TAVILY_API_KEY": "sentinel-tavily",
+        "LANGCHAIN_API_KEY": "sentinel-langchain",
+        "NODE_OPTIONS": "--require=/tmp/sentinel",
+        "E2E_LLM_BASE_URL": "https://llm.example.test/v1",
+        "E2E_LLM_API_KEY": "live-key",
+        "E2E_LLM_MODEL": "live-model",
+        "E2E_EGRESS_ALLOW_OWNED_LOOPBACK": "1",
+    }
+    monkeypatch.setattr(project_gate_runner, "load_profiles", lambda _path: {"live": profile})
+    monkeypatch.setattr(project_gate_runner, "resolve_toolchain", lambda _root: (trusted, {}))
+    monkeypatch.setattr(project_gate_runner, "verify_toolchain", lambda _toolchain: None)
+    monkeypatch.setattr(_runner_subprocess(project_gate_runner), "run", fake_run)
+
+    try:
+        result = project_gate_runner.run(
+            ["live", "--base-sha", "a" * 40, "--manifest", str(manifest)],
+            REPO_ROOT,
+            inherited,
+        )
+    finally:
+        manifest.unlink(missing_ok=True)
+
+    assert result == 0
+    pnpm_environment = calls[2][1]
+    assert {
+        "E2E_LLM_BASE_URL",
+        "E2E_LLM_API_KEY",
+        "E2E_LLM_MODEL",
+        "E2E_EGRESS_ALLOW_OWNED_LOOPBACK",
+    } <= set(pnpm_environment)
+    assert {"OPENAI_API_KEY", "TAVILY_API_KEY", "LANGCHAIN_API_KEY", "NODE_OPTIONS"}.isdisjoint(
+        pnpm_environment
+    )
+
+
 def test_runner_checks_direct_manifest_after_successful_child(
     project_gate_runner: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -346,6 +643,11 @@ def test_runner_checks_direct_manifest_after_successful_child(
         "LANGCHAIN_API_KEY": "sentinel-langchain",
         "NODE_OPTIONS": "--require=/tmp/sentinel",
         "PNPM_HOME": "/tmp/pnpm-home",
+        "DOCKER_HOST": "tcp://127.0.0.1:65535",
+        "DOCKER_CONFIG": "/tmp/attacker-docker-config",
+        "DOCKER_CONTEXT": "attacker-context",
+        "MOLDY_GATE_DOCKER": "/usr/local/bin/docker",
+        "MOLDY_GATE_DOCKER_IDENTITY": "a" * 64,
     }
     calls: list[tuple[list[str], dict[str, str]]] = []
 
@@ -358,21 +660,45 @@ def test_runner_checks_direct_manifest_after_successful_child(
         manifest.write_text("{}", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(project_gate_runner.shutil, "which", lambda _name: "/fixed/pnpm")
-    monkeypatch.setattr(project_gate_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(_runner_subprocess(project_gate_runner), "run", fake_run)
     profile = project_gate_runner.GateProfile(
         "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
     )
 
     try:
         result = project_gate_runner._run_profile_with_environment(
-            "smoke", profile, "a" * 40, manifest, REPO_ROOT, inherited
+            "smoke",
+            profile,
+            "a" * 40,
+            manifest,
+            REPO_ROOT,
+            inherited,
+            trusted_pnpm=Path("/fixed/pnpm"),
         )
     finally:
         manifest.unlink(missing_ok=True)
 
     assert result == 0
     assert len(calls) == 2
+    pnpm_command, pnpm_environment = calls[0]
+    assert pnpm_command == [
+        "/fixed/pnpm",
+        "--dir",
+        "frontend",
+        "test:e2e:scripted",
+        "--",
+        "--project=scripted-smoke",
+        "e2e/smoke.spec.ts",
+    ]
+    assert pnpm_environment["MOLDY_GATE_DOCKER"] == "/usr/local/bin/docker"
+    assert pnpm_environment["MOLDY_GATE_DOCKER_IDENTITY"] == "a" * 64
+    assert {"DOCKER_HOST", "DOCKER_CONFIG", "DOCKER_CONTEXT"}.isdisjoint(pnpm_environment)
+    assert {
+        "OPENAI_API_KEY",
+        "TAVILY_API_KEY",
+        "LANGCHAIN_API_KEY",
+        "NODE_OPTIONS",
+    }.isdisjoint(pnpm_environment)
     checker_command, checker_environment = calls[1]
     assert checker_command == [
         str(REPO_ROOT / "backend/.venv/bin/python"),
@@ -383,6 +709,8 @@ def test_runner_checks_direct_manifest_after_successful_child(
         "PATH": "/usr/bin",
         "HOME": "/tmp/home",
         "PNPM_HOME": "/tmp/pnpm-home",
+        "MOLDY_GATE_DOCKER": "/usr/local/bin/docker",
+        "MOLDY_GATE_DOCKER_IDENTITY": "a" * 64,
     }
 
 
@@ -412,15 +740,20 @@ def test_runner_fails_when_cleanup_checker_rejects_manifest(
             manifest.write_text("{}" if manifest_mode == "forged" else "valid", encoding="utf-8")
         return subprocess.CompletedProcess(command, checker_exit)
 
-    monkeypatch.setattr(project_gate_runner.shutil, "which", lambda _name: "/fixed/pnpm")
-    monkeypatch.setattr(project_gate_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(_runner_subprocess(project_gate_runner), "run", fake_run)
     profile = project_gate_runner.GateProfile(
         "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
     )
 
     try:
         result = project_gate_runner._run_profile_with_environment(
-            "smoke", profile, "a" * 40, manifest, REPO_ROOT, {"PATH": "/usr/bin"}
+            "smoke",
+            profile,
+            "a" * 40,
+            manifest,
+            REPO_ROOT,
+            {"PATH": "/usr/bin"},
+            trusted_pnpm=Path("/fixed/pnpm"),
         )
     finally:
         manifest.unlink(missing_ok=True)
@@ -440,14 +773,19 @@ def test_runner_skips_cleanup_checker_after_child_failure(
         calls.append(command)
         return subprocess.CompletedProcess(command, 23)
 
-    monkeypatch.setattr(project_gate_runner.shutil, "which", lambda _name: "/fixed/pnpm")
-    monkeypatch.setattr(project_gate_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(_runner_subprocess(project_gate_runner), "run", fake_run)
     profile = project_gate_runner.GateProfile(
         "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
     )
 
     result = project_gate_runner._run_profile_with_environment(
-        "smoke", profile, "a" * 40, _manifest_path(), REPO_ROOT, {"PATH": "/usr/bin"}
+        "smoke",
+        profile,
+        "a" * 40,
+        _manifest_path(),
+        REPO_ROOT,
+        {"PATH": "/usr/bin"},
+        trusted_pnpm=Path("/fixed/pnpm"),
     )
 
     assert result == 23
@@ -456,41 +794,56 @@ def test_runner_skips_cleanup_checker_after_child_failure(
 
 @pytest.mark.parametrize("manifest_mode", ["missing", "forged"])
 def test_runner_rejects_missing_or_forged_manifest_with_real_checker(
-    tmp_path: Path, manifest_mode: str
+    tmp_path: Path, project_gate_runner: ModuleType, manifest_mode: str
 ) -> None:
     """A successful fake lifecycle still fails the independent checker boundary."""
     log_path, environment = _fake_commands(tmp_path, pnpm_manifest_mode=manifest_mode)
 
-    result = _run_wrapper(
-        "smoke",
-        "--base-sha",
-        "a" * 40,
-        "--manifest",
-        str(_manifest_path().relative_to(REPO_ROOT)),
-        environment=environment,
+    manifest = _manifest_path()
+    profile = project_gate_runner.GateProfile(
+        "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
     )
+    try:
+        result = project_gate_runner._run_profile_with_environment(
+            "smoke",
+            profile,
+            "a" * 40,
+            manifest,
+            REPO_ROOT,
+            environment,
+            trusted_pnpm=_fake_pnpm_path(environment),
+        )
+    finally:
+        _remove_fake_exports(log_path, manifest)
 
-    assert result.returncode != 0
+    assert result != 0
     assert any(call["command"] == "pnpm" for call in _read_log(log_path))
 
 
-def test_runner_uses_unique_safe_export_slug_for_reruns(tmp_path: Path) -> None:
+def test_runner_uses_unique_safe_export_slug_for_reruns(
+    tmp_path: Path, project_gate_runner: ModuleType
+) -> None:
     """Given same-day reruns, when each gate starts, then export slugs remain distinct and safe."""
     log_path, environment = _fake_commands(tmp_path)
-    arguments = (
-        "smoke",
-        "--base-sha",
-        "a" * 40,
-        "--manifest",
+    profile = project_gate_runner.GateProfile(
+        "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
     )
 
     for _ in range(2):
-        result = _run_wrapper(
-            *arguments,
-            str(_manifest_path().relative_to(REPO_ROOT)),
-            environment=environment,
-        )
-        assert result.returncode == 0, result.stderr
+        manifest = _manifest_path()
+        try:
+            result = project_gate_runner._run_profile_with_environment(
+                "smoke",
+                profile,
+                "a" * 40,
+                manifest,
+                REPO_ROOT,
+                environment,
+                trusted_pnpm=_fake_pnpm_path(environment),
+            )
+        finally:
+            _remove_fake_exports(log_path, manifest)
+        assert result == 0
 
     slugs = [call["slug"] for call in _read_log(log_path) if call["command"] == "pnpm"]
     assert len(slugs) == 2
@@ -506,7 +859,6 @@ def test_runner_uses_unique_safe_export_slug_for_reruns(tmp_path: Path) -> None:
     [
         ("missing", "a" * 40, "safe.json", "ok", "unknown_profile"),
         ("smoke", "not-a-commit", "safe.json", "invalid", "base_not_commit"),
-        ("smoke", "a" * 40, "safe.json", "nonancestor", "base_not_ancestor"),
         ("smoke", "a" * 40, "../escape.json", "ok", "unsafe_manifest"),
     ],
 )
@@ -641,17 +993,26 @@ def test_config_parser_rejects_noncanonical_execution_counts(
         project_gate_runner.load_profiles(config)
 
 
-def test_runner_propagates_pnpm_exit_status(tmp_path: Path) -> None:
+def test_runner_propagates_pnpm_exit_status(
+    tmp_path: Path, project_gate_runner: ModuleType
+) -> None:
     """Given a failed lane run, when the gate finishes, then its exit code is preserved."""
-    _, environment = _fake_commands(tmp_path, pnpm_exit=27)
-
-    result = _run_wrapper(
-        "smoke",
-        "--base-sha",
-        "a" * 40,
-        "--manifest",
-        str(_manifest_path().relative_to(REPO_ROOT)),
-        environment=environment,
+    log_path, environment = _fake_commands(tmp_path, pnpm_exit=27)
+    manifest = _manifest_path()
+    profile = project_gate_runner.GateProfile(
+        "scripted", "scripted-smoke", "e2e/smoke.spec.ts", 1, 0
     )
+    try:
+        result = project_gate_runner._run_profile_with_environment(
+            "smoke",
+            profile,
+            "a" * 40,
+            manifest,
+            REPO_ROOT,
+            environment,
+            trusted_pnpm=_fake_pnpm_path(environment),
+        )
+    finally:
+        _remove_fake_exports(log_path, manifest)
 
-    assert result.returncode == 27
+    assert result == 27

@@ -11,6 +11,12 @@ import threading
 import time
 from pathlib import Path
 
+from cleanup_docker import (
+    docker_subprocess_environment,
+    resolve_trusted_docker,
+    verify_docker_identity,
+)
+
 BACKEND_ROOT = Path(__file__).resolve().parents[1] / "backend"
 _ACTIVE_PROCESS_GROUPS: dict[int, set[int]] = {}
 _PROCESS_GROUP_FAILURES: set[int] = set()
@@ -21,10 +27,19 @@ def run_command(
     argv: list[str], *, env: dict[str, str] | None = None, timeout: float = 120
 ) -> subprocess.CompletedProcess[str]:
     """Run one owned child in its own process group and reap that group."""
+    command = argv
+    child_environment = env
+    docker: Path | None = None
+    if argv and argv[0] == "docker":
+        docker = Path(resolve_trusted_docker())
+        command = [str(docker), *argv[1:]]
+        child_environment = docker_subprocess_environment(env)
+    if docker is not None:
+        verify_docker_identity(docker)
     process = subprocess.Popen(  # noqa: S603 - internal fixed runner argv only
-        argv,
+        command,
         cwd=BACKEND_ROOT,
-        env=env,
+        env=child_environment,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

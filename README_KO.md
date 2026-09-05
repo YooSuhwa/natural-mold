@@ -231,6 +231,12 @@ cd backend
 uv run ruff check .                   # 린트 (Ruff 0.16.5)
 uv run pytest                         # 단위 테스트 (aiosqlite, Postgres 불필요)
 uv run pytest -m integration          # 통합 테스트 (Postgres 필요)
+cd ..
+manifest=".omo/evidence/project-restart-consolidated-roadmap/local-postgres-$(date +%s).json"
+bash scripts/run-isolated-postgres-tests.sh all --manifest "$manifest"
+(cd backend && uv run python ../scripts/check-isolation-cleanup.py "../$manifest")
+(cd backend && uv run python ../scripts/check-isolation-cleanup.py \
+  --discover ../.omo/evidence/project-restart-consolidated-roadmap) # 전체 테스트 잔여 리소스
 
 # Frontend
 cd frontend

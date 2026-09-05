@@ -5,11 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Final
 
+from cleanup_docker import probe_docker
 from postgres_manifest_io import (
     ManifestPathError,
     read_manifest_bytes,
@@ -20,8 +20,7 @@ _SECRET_MATERIAL: Final = re.compile(
     r"postgresql(?:\+[^:]*)?://|DATABASE_URL|PASSWORD|authorization|cookie",
     re.IGNORECASE,
 )
-_DOCKER: Final = shutil.which("docker") or "/usr/bin/docker"
-_PS: Final = shutil.which("ps") or "/bin/ps"
+_PS: Final = "/bin/ps"
 
 
 class ManifestValidationError(RuntimeError):
@@ -209,15 +208,14 @@ def validate_payload(payload: dict[str, object]) -> None:
             "all" | "migration-roundtrip" | "stream-resume" | "run-lifecycle+stream-resume"
         ) as mode:
             _require(payload.get("concurrent_pair") is False, "concurrent_pair")
-            match mode:
-                case "all":
-                    scenario_reason = "all_scenarios"
-                case "migration-roundtrip":
-                    scenario_reason = "migration_roundtrip_scenarios"
-                case "stream-resume":
-                    scenario_reason = "stream_resume_scenarios"
-                case "run-lifecycle+stream-resume":
-                    scenario_reason = "run_lifecycle_stream_resume_scenarios"
+            if mode == "all":
+                scenario_reason = "all_scenarios"
+            elif mode == "migration-roundtrip":
+                scenario_reason = "migration_roundtrip_scenarios"
+            elif mode == "stream-resume":
+                scenario_reason = "stream_resume_scenarios"
+            else:
+                scenario_reason = "run_lifecycle_stream_resume_scenarios"
             _require(
                 len(scenarios) == 1 and scenarios[0].get("scenario") == mode,
                 scenario_reason,
@@ -265,13 +263,7 @@ def validate_live_absence(payload: dict[str, object]) -> None:
     for scenario in scenarios:
         if "container_id" in scenario:
             container_id = _string(scenario.get("container_id"), "container_id")
-            inspect = subprocess.run(  # noqa: S603 - parsed immutable container ID
-                [_DOCKER, "inspect", container_id],
-                capture_output=True,
-                text=True,
-                timeout=20,
-                check=False,
-            )
+            inspect = probe_docker(("inspect", container_id), timeout=20)
             _require(inspect.returncode != 0, "live_container")
         if scenario.get("run_root_created") is True:
             _require(

@@ -245,6 +245,8 @@ manifest=".omo/evidence/project-restart-consolidated-roadmap/local-postgres-$(da
 bash scripts/run-isolated-postgres-tests.sh all --manifest "$manifest"
 (cd backend && uv run python ../scripts/check-isolation-cleanup.py \
   "../$manifest") # disposable PostgreSQL lane
+(cd backend && uv run python ../scripts/check-isolation-cleanup.py \
+  --discover ../.omo/evidence/project-restart-consolidated-roadmap) # all known test residue
 
 # Frontend
 cd frontend

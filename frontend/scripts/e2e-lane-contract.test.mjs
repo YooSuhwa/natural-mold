@@ -234,6 +234,10 @@ describe('E2E lane contract', () => {
       HOME: '/tmp/moldy-home',
       CI: 'true',
       DOCKER_HOST: 'unix:///var/run/docker.sock',
+      DOCKER_CONFIG: '/tmp/attacker-docker-config',
+      DOCKER_CONTEXT: 'attacker-context',
+      MOLDY_GATE_DOCKER: '/usr/local/bin/docker',
+      MOLDY_GATE_DOCKER_IDENTITY: 'a'.repeat(64),
       E2E_RUN_MANIFEST: '/tmp/manifest.json',
       E2E_TEST_TIMEOUT_MS: '60000',
       NEXT_PUBLIC_CHAT_RUNTIME: 'langgraph_v3',
@@ -256,7 +260,8 @@ describe('E2E lane contract', () => {
       PATH: inheritedEnvironment.PATH,
       HOME: inheritedEnvironment.HOME,
       CI: 'true',
-      DOCKER_HOST: inheritedEnvironment.DOCKER_HOST,
+      MOLDY_GATE_DOCKER: inheritedEnvironment.MOLDY_GATE_DOCKER,
+      MOLDY_GATE_DOCKER_IDENTITY: inheritedEnvironment.MOLDY_GATE_DOCKER_IDENTITY,
       E2E_RUN_MANIFEST: inheritedEnvironment.E2E_RUN_MANIFEST,
       E2E_TEST_TIMEOUT_MS: '60000',
       NEXT_PUBLIC_CHAT_RUNTIME: 'langgraph_v3',
@@ -267,6 +272,9 @@ describe('E2E lane contract', () => {
     expect(environment.OTEL_EXPORTER_OTLP_HEADERS).toBeUndefined()
     expect(environment.NODE_OPTIONS).toBeUndefined()
     expect(environment.E2E_LLM_API_KEY).toBeUndefined()
+    expect(environment.DOCKER_HOST).toBeUndefined()
+    expect(environment.DOCKER_CONFIG).toBeUndefined()
+    expect(environment.DOCKER_CONTEXT).toBeUndefined()
   })
 
   it('drops ambient Python controls before the fixed lifecycle derives its interpreter', () => {
@@ -430,6 +438,9 @@ describe('E2E lane contract', () => {
     const launches = []
     const inheritedEnvironment = {
       PATH: process.env.PATH ?? '',
+      DOCKER_HOST: 'tcp://127.0.0.1:65535',
+      MOLDY_GATE_DOCKER: '/usr/local/bin/docker',
+      MOLDY_GATE_DOCKER_IDENTITY: 'a'.repeat(64),
       OPENAI_API_KEY: 'provider-sentinel',
       TAVILY_API_KEY: 'tool-sentinel',
     }
@@ -453,6 +464,9 @@ describe('E2E lane contract', () => {
     const [, , options] = launches[0]
     expect(options.env.OPENAI_API_KEY).toBeUndefined()
     expect(options.env.TAVILY_API_KEY).toBeUndefined()
+    expect(options.env.DOCKER_HOST).toBeUndefined()
+    expect(options.env.MOLDY_GATE_DOCKER).toBe('/usr/local/bin/docker')
+    expect(options.env.MOLDY_GATE_DOCKER_IDENTITY).toBe('a'.repeat(64))
     expect(options.env.E2E_RUN_MANIFEST).toBe('/tmp/moldy-manifest.json')
   })
 

@@ -23,6 +23,7 @@ from tests.project_gate_wave_support import (
     TrustedToolchainLike,
     load_module,
     receipt_summary,
+    synthetic_docker_identity,
 )
 
 
@@ -34,6 +35,7 @@ def _trusted(toolchain: ModuleType, tmp_path: Path) -> TrustedToolchainLike:
         Path("/trusted/uv"),
         tmp_path,
         "tester",
+        identities=(synthetic_docker_identity(),),
     )
 
 

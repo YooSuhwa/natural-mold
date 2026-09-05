@@ -10,6 +10,11 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Final, assert_never
 
+from cleanup_docker import (
+    DOCKER_ENVIRONMENT_NAME,
+    DOCKER_IDENTITY_ENVIRONMENT_NAME,
+    docker_identity_token,
+)
 from project_gate_catalog import GateNode
 from project_gate_receipts import ReceiptSummary, validate_e2e, validate_postgres, validate_static
 from project_gate_runtime import ProjectGateError
@@ -27,6 +32,11 @@ class GateSignal(RuntimeError):
 
 
 def safe_environment(inherited: dict[str, str], toolchain: TrustedToolchain) -> dict[str, str]:
+    docker_identities = tuple(
+        identity for identity in toolchain.identities if identity.path == toolchain.docker
+    )
+    if len(docker_identities) != 1:
+        raise ProjectGateError("runtime_preflight_failed")
     environment = {
         "PATH": toolchain.path,
         "HOME": str(toolchain.home),
@@ -36,9 +46,11 @@ def safe_environment(inherited: dict[str, str], toolchain: TrustedToolchain) -> 
         "LC_ALL": "C",
         "MOLDY_GATE_PYTHON": str(toolchain.python),
         "MOLDY_GATE_UV": str(toolchain.uv),
+        DOCKER_ENVIRONMENT_NAME: str(toolchain.docker),
+        DOCKER_IDENTITY_ENVIRONMENT_NAME: docker_identity_token(docker_identities[0]),
         "npm_config_manage_package_manager_versions": "false",
     }
-    for name in ("CI", "DOCKER_HOST", "DOCKER_CONFIG", "DOCKER_CONTEXT"):
+    for name in ("CI",):
         if name in inherited:
             environment[name] = inherited[name]
     return environment

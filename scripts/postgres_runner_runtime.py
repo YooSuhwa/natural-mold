@@ -168,10 +168,7 @@ def build_docker_run_argv(owner: OwnedContainer) -> list[str]:
 
 
 def build_docker_env(password: str) -> dict[str, str]:
-    allowed = {"PATH", "HOME", "DOCKER_HOST", "DOCKER_CONFIG", "DOCKER_CONTEXT"}
-    env = {key: value for key, value in os.environ.items() if key in allowed}
-    env["POSTGRES_PASSWORD"] = password
-    return env
+    return {"POSTGRES_PASSWORD": password}
 
 
 def wait_ready(container_id: str, dsn: str) -> str:

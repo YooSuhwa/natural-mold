@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Literal, Protocol, TypedDict
@@ -114,6 +115,30 @@ class TrustedToolchainLike(Protocol):
     def path(self) -> str: ...
 
 
+@dataclass(frozen=True, slots=True)
+class SyntheticExecutableIdentity:
+    """Structural executable identity for process-boundary unit tests."""
+
+    path: Path
+    link_device: int = 1
+    link_inode: int = 2
+    target: Path = Path("/usr/local/bin/docker")
+    target_device: int = 3
+    target_inode: int = 4
+    target_size: int = 5
+    target_mtime_ns: int = 6
+    require_regular: bool = False
+    target_ctime_ns: int = 7
+    target_sha256: str = "a" * 64
+
+
+def synthetic_docker_identity(
+    path: Path = Path("/usr/local/bin/docker"),
+) -> SyntheticExecutableIdentity:
+    """Build a deterministic Docker identity without touching the host toolchain."""
+    return SyntheticExecutableIdentity(path=path, target=path)
+
+
 class GateNodeLike(Protocol):
     node_id: str
     kind: NodeKind
@@ -208,6 +233,7 @@ def composite_args(
         Path("/trusted/uv"),
         tmp_path,
         "tester",
+        identities=(synthetic_docker_identity(),),
     )
     return (
         provenance,
@@ -222,3 +248,4 @@ def composite_args(
 
 def allow_stable_repository(composite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(composite, "verify_provenance", lambda _expected, _root: None)
+    monkeypatch.setattr(composite, "verify_toolchain", lambda _toolchain: None)

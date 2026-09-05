@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import re
-import shutil
 import socket
 import subprocess
 
+from cleanup_docker import probe_docker
 from e2e_cleanup_contract import HEX_64, PORTS, PROJECTS, RUN_ID, require, string
 from postgres_cleanup_checker import ManifestValidationError
 
@@ -86,12 +86,9 @@ def validate_live_absence(payload: dict[str, object]) -> None:
             probe.settimeout(0.25)
             if probe.connect_ex(("127.0.0.1", port)) == 0:
                 raise ManifestValidationError("live_port")
-    docker = shutil.which("docker") or "/usr/bin/docker"
     try:
-        result = subprocess.run(  # noqa: S603 - fixed Docker inspection with validated run ID
-            [docker, "container", "inspect", f"moldy-e2e-{run_id}"],
-            capture_output=True,
-            check=False,
+        result = probe_docker(
+            ("container", "inspect", f"moldy-e2e-{run_id}"),
             timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired) as error:

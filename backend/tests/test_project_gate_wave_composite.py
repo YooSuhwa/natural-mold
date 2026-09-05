@@ -16,6 +16,7 @@ from tests.project_gate_wave_support import (
     composite_args,
     load_module,
     receipt_summary,
+    synthetic_docker_identity,
 )
 
 
@@ -95,6 +96,7 @@ def test_composite_fails_when_repository_changes_after_node(
             raise composite.ProjectGateError("repository_changed")
 
     monkeypatch.setattr(composite, "verify_provenance", changed)
+    monkeypatch.setattr(composite, "verify_toolchain", lambda _toolchain: None)
     monkeypatch.setattr(composite, "run_process", lambda _cmd, _root, _env: 0)
     monkeypatch.setattr(
         composite,
@@ -195,6 +197,7 @@ def test_signal_finalizes_manifest_and_validates_child_receipt(
 
 def test_composite_environment_drops_secrets(tmp_path: Path, process: ModuleType) -> None:
     """Given credential-like environment values, when sanitized, then only launcher keys remain."""
+    docker_identity = synthetic_docker_identity()
     trusted = process.TrustedToolchain(
         Path("/trusted/python"),
         Path("/trusted/node22/bin/node"),
@@ -202,17 +205,22 @@ def test_composite_environment_drops_secrets(tmp_path: Path, process: ModuleType
         Path("/trusted/uv"),
         tmp_path,
         "tester",
+        identities=(docker_identity,),
     )
     environment = process.safe_environment(
         {
             "PATH": "/bin",
             "HOME": "/tmp/home",
             "DOCKER_HOST": "unix:///tmp/docker.sock",
+            "DOCKER_CONFIG": "/tmp/docker-config",
+            "DOCKER_CONTEXT": "alternate",
             "OPENAI_API_KEY": "secret",
             "NODE_OPTIONS": "--require=evil",
             "E2E_LLM_API_KEY": "secret",
             "MOLDY_GATE_PYTHON": "/untrusted/python",
             "MOLDY_GATE_UV": "/untrusted/uv",
+            "MOLDY_GATE_DOCKER": "/untrusted/docker",
+            "MOLDY_GATE_DOCKER_IDENTITY": "f" * 64,
         },
         trusted,
     )
@@ -226,6 +234,7 @@ def test_composite_environment_drops_secrets(tmp_path: Path, process: ModuleType
         "LC_ALL": "C",
         "MOLDY_GATE_PYTHON": "/trusted/python",
         "MOLDY_GATE_UV": "/trusted/uv",
+        "MOLDY_GATE_DOCKER": "/usr/local/bin/docker",
+        "MOLDY_GATE_DOCKER_IDENTITY": process.docker_identity_token(docker_identity),
         "npm_config_manage_package_manager_versions": "false",
-        "DOCKER_HOST": "unix:///tmp/docker.sock",
     }

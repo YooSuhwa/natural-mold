@@ -39,7 +39,11 @@ from project_gate_catalog import CATALOG  # noqa: E402
 from project_gate_manifest import AggregateWriter  # noqa: E402
 from project_gate_process import command_for  # noqa: E402
 from project_gate_receipts import E2E_CLEANUP_KEYS, validate_e2e  # noqa: E402
-from project_gate_toolchain import RepositoryProvenance, TrustedToolchain  # noqa: E402
+from project_gate_toolchain import (  # noqa: E402
+    ExecutableIdentity,
+    RepositoryProvenance,
+    TrustedToolchain,
+)
 
 
 def _attempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, str, str]:
@@ -451,8 +455,16 @@ def test_composite_revalidates_final_binding_before_child_callback(
     repo, evidence, attempt_id, head = _attempt(tmp_path, monkeypatch)
     destination = evidence / "final-attempts" / attempt_id / "f2-static.json"
     provenance = RepositoryProvenance(base_sha=head, head_sha=head)
+    docker = Path("/usr/local/bin/docker")
+    docker_identity = ExecutableIdentity(docker, 1, 2, docker, 3, 4, 5, 6, 7, "a" * 64)
     toolchain = TrustedToolchain(
-        Path("/python"), Path("/node"), Path("/pnpm"), Path("/uv"), repo, "x"
+        Path("/python"),
+        Path("/node"),
+        Path("/pnpm"),
+        Path("/uv"),
+        repo,
+        "x",
+        identities=(docker_identity,),
     )
     called = False
     original = project_gate_composite.command_for

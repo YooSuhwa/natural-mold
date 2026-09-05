@@ -66,6 +66,8 @@ jobs:
             --manifest .omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json
           (cd backend && uv run python ../scripts/check-isolation-cleanup.py \
             ../.omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json)
+          (cd backend && uv run python ../scripts/check-isolation-cleanup.py \
+            --discover ../.omo/evidence/project-restart-consolidated-roadmap)
 
   # Project-wide Pyright still has a pre-existing backlog (801 errors in the
   # Todo01 evidence baseline), so

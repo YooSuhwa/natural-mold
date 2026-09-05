@@ -5,13 +5,14 @@ from __future__ import annotations
 import os
 import re
 import secrets
-import shutil
 import stat
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, NamedTuple
+
+from cleanup_docker import DOCKER_ENVIRONMENT_NAME, DOCKER_IDENTITY_ENVIRONMENT_NAME
 
 type JSONValue = None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
 type JSONObject = dict[str, JSONValue]
@@ -146,9 +147,8 @@ LAUNCHER_ENVIRONMENT_NAMES: Final[frozenset[str]] = frozenset(
         "LOGNAME",
         "PNPM_HOME",
         "CI",
-        "DOCKER_HOST",
-        "DOCKER_CONFIG",
-        "DOCKER_CONTEXT",
+        DOCKER_ENVIRONMENT_NAME,
+        DOCKER_IDENTITY_ENVIRONMENT_NAME,
     }
 )
 LIVE_LLM_ENVIRONMENT_NAMES: Final[frozenset[str]] = frozenset(
@@ -202,13 +202,12 @@ def run_profile_with_environment(
     manifest: Path,
     repo_root: Path,
     inherited_environment: dict[str, str],
+    *,
+    trusted_pnpm: Path,
 ) -> int:
     """Run the lifecycle child and validate its manifest only after child success."""
     if profile.workers != 1 or profile.retries != 0:
         raise ProjectGateError("invalid_config")
-    pnpm = shutil.which("pnpm")
-    if pnpm is None:
-        raise ProjectGateError("pnpm_start_failed")
     environment = {
         key: value
         for key, value in inherited_environment.items()
@@ -233,7 +232,7 @@ def run_profile_with_environment(
         }
     )
     command = [
-        pnpm,
+        str(trusted_pnpm),
         "--dir",
         "frontend",
         f"test:e2e:{profile.lane}",
@@ -249,4 +248,4 @@ def run_profile_with_environment(
         raise ProjectGateError("pnpm_start_failed") from error
     if completed.returncode != 0:
         return completed.returncode
-    return 0 if _run_cleanup_checker(manifest, repo_root, inherited_environment) else 1
+    return 0 if _run_cleanup_checker(manifest, repo_root, environment) else 1

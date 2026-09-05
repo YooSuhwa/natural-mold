@@ -123,13 +123,15 @@ def test_docker_argv_uses_environment_reference_not_password_value() -> None:
 def test_docker_env_does_not_inherit_provider_key(monkeypatch) -> None:
     # Given an unrelated provider key in the parent environment.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "provider-canary")
+    monkeypatch.setenv("DOCKER_HOST", "tcp://127.0.0.1:65535")
+    monkeypatch.setenv("DOCKER_CONFIG", "/tmp/attacker-docker-config")
+    monkeypatch.setenv("DOCKER_CONTEXT", "attacker-context")
 
     # When the Docker client environment is built.
     child = build_docker_env("database-dummy")
 
     # Then only the database bootstrap secret crosses this boundary.
-    assert "ANTHROPIC_API_KEY" not in child
-    assert child["POSTGRES_PASSWORD"] == "database-dummy"
+    assert child == {"POSTGRES_PASSWORD": "database-dummy"}
 
 
 def test_runner_selects_all_marked_integration_nodes_not_only_directory(monkeypatch) -> None:
@@ -229,8 +231,14 @@ def test_parent_signal_after_container_create_emits_progressive_cleanup_receipt(
     assert not Path(str(outcome["run_root"])).exists()
 
 
-def test_cleanup_failure_overrides_child_success(monkeypatch) -> None:
+def test_cleanup_failure_overrides_child_success(monkeypatch, tmp_path: Path) -> None:
     # Given a successful child receipt with a captured before-snapshot.
+    def isolated_mkdtemp(*, prefix: str) -> str:
+        run_root = tmp_path / f"{prefix}fixture"
+        run_root.mkdir()
+        return str(run_root)
+
+    monkeypatch.setattr(postgres_test_runner.tempfile, "mkdtemp", isolated_mkdtemp)
     monkeypatch.setattr(postgres_test_runner, "start_process_scope", lambda: None)
     monkeypatch.setattr(
         postgres_test_runner,

@@ -5,24 +5,34 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import NamedTuple, assert_never
 
 from project_gate_catalog import CANONICAL_WAVES, CATALOG
 from project_gate_composite import run_composite
-from project_gate_runtime import CompositeProfile, GateProfile, JSONValue, ProjectGateError
+from project_gate_process import safe_environment
+from project_gate_runtime import (
+    LIVE_LLM_ENVIRONMENT_NAMES,
+    OWNED_LOOPBACK_OPT_IN,
+    CompositeProfile,
+    GateProfile,
+    JSONValue,
+    ProjectGateError,
+)
 from project_gate_runtime import (
     run_profile_with_environment as _run_profile_with_environment,
 )
-from project_gate_toolchain import resolve_provenance, resolve_toolchain
+from project_gate_toolchain import resolve_base_sha as _resolve_base_sha
+from project_gate_toolchain import (
+    resolve_provenance,
+    resolve_toolchain,
+    verify_toolchain,
+)
 
 PROFILE_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 PROJECT_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 SPEC_PATH = re.compile(r"^e2e/[A-Za-z0-9][A-Za-z0-9._/-]*\.spec\.ts$")
-COMMIT_ID = re.compile(r"^[0-9a-f]{40,64}$")
 ALLOWED_PROJECTS: dict[str, frozenset[str]] = {
     "scripted": frozenset({"scripted-smoke", "scripted-full", "scripted-capture"}),
     "live": frozenset({"live-manual"}),
@@ -162,32 +172,6 @@ def _safe_new_manifest(repo_root: Path, raw_path: str, profile_name: str) -> Pat
     raise ProjectGateError("manifest_exists")
 
 
-def _resolve_base_sha(base_sha: str, repo_root: Path) -> str:
-    git = shutil.which("git")
-    if git is None:
-        raise ProjectGateError("git_start_failed")
-    result = subprocess.run(  # noqa: S603 - fixed Git query with a commit-shaped revision
-        [git, "rev-parse", "--verify", f"{base_sha}^{{commit}}"],
-        cwd=repo_root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    resolved = result.stdout.strip()
-    if result.returncode != 0 or not COMMIT_ID.fullmatch(resolved):
-        raise ProjectGateError("base_not_commit")
-    ancestor = subprocess.run(  # noqa: S603 - fixed Git ancestry query with resolved commit ID
-        [git, "merge-base", "--is-ancestor", resolved, "HEAD"],
-        cwd=repo_root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if ancestor.returncode != 0:
-        raise ProjectGateError("base_not_ancestor")
-    return resolved
-
-
 def run(arguments: list[str], repo_root: Path, inherited_environment: dict[str, str]) -> int:
     """Validate the public request, then delegate resource ownership to the lane runner."""
     request = _parse_request(arguments, repo_root)
@@ -210,14 +194,29 @@ def run(arguments: list[str], repo_root: Path, inherited_environment: dict[str, 
                 inherited_environment,
             )
         case GateProfile():
-            base_sha = _resolve_base_sha(request.base_sha, repo_root)
+            toolchain, _runtime = resolve_toolchain(repo_root)
+            environment = safe_environment(inherited_environment, toolchain)
+            if profile.lane == "live":
+                environment.update(
+                    {
+                        name: inherited_environment[name]
+                        for name in LIVE_LLM_ENVIRONMENT_NAMES
+                        if name in inherited_environment
+                    }
+                )
+                if inherited_environment.get(OWNED_LOOPBACK_OPT_IN) == "1":
+                    environment[OWNED_LOOPBACK_OPT_IN] = "1"
+            verify_toolchain(toolchain)
+            base_sha = _resolve_base_sha(request.base_sha, repo_root, toolchain.git)
+            verify_toolchain(toolchain)
             return _run_profile_with_environment(
                 request.profile_name,
                 profile,
                 base_sha,
                 request.manifest,
                 repo_root,
-                inherited_environment,
+                environment,
+                trusted_pnpm=toolchain.pnpm,
             )
         case _:
             assert_never(profile)

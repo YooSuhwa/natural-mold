@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import pwd
 import re
@@ -35,6 +36,8 @@ NODE_VERSION: Final = re.compile(r"v(?P<version>22\.\d+\.\d+)")
 PNPM_VERSION: Final = re.compile(r"(?P<version>\d+\.\d+\.\d+)")
 NODE_RUNTIME_ENTRIES: Final = frozenset({"corepack", "node", "npm", "npx", "pnpm", "pnpx"})
 PNPM_RUNTIME_ENTRIES: Final = frozenset({"pnpm", "pnpx"})
+MAX_EXECUTABLE_BYTES: Final = 512 * 1024 * 1024
+READ_CHUNK_BYTES: Final = 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +52,8 @@ class ExecutableIdentity:
     target_inode: int
     target_size: int
     target_mtime_ns: int
+    target_ctime_ns: int
+    target_sha256: str
     require_regular: bool = False
 
 
@@ -65,6 +70,7 @@ class TrustedToolchain:
     runtime_paths: tuple[str, ...] = ()
     identities: tuple[ExecutableIdentity, ...] = ()
     directory_identities: tuple[RuntimeDirectoryIdentity, ...] = ()
+    git: Path = GIT
 
     @property
     def path(self) -> str:
@@ -125,14 +131,49 @@ def _trusted_system_paths() -> tuple[str, ...]:
     return tuple(paths)
 
 
+def _capture_target_contents(path: Path) -> tuple[os.stat_result, str]:
+    """Read one reviewed regular executable through a no-follow descriptor."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    except OSError as error:
+        raise ProjectGateError("runtime_preflight_failed") from error
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_size < 0
+            or before.st_size > MAX_EXECUTABLE_BYTES
+        ):
+            raise ProjectGateError("runtime_preflight_failed")
+        digest = hashlib.sha256()
+        while chunk := os.read(descriptor, READ_CHUNK_BYTES):
+            digest.update(chunk)
+        after = os.fstat(descriptor)
+    except OSError as error:
+        raise ProjectGateError("runtime_preflight_failed") from error
+    finally:
+        os.close(descriptor)
+    if (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    ) != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    ):
+        raise ProjectGateError("runtime_preflight_failed")
+    return before, digest.hexdigest()
+
+
 def _capture_executable(path: Path, *, require_regular: bool = False) -> ExecutableIdentity:
     if require_regular:
         try:
-            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-            try:
-                metadata = os.fstat(descriptor)
-            finally:
-                os.close(descriptor)
+            metadata, target_sha256 = _capture_target_contents(path)
         except OSError as error:
             raise ProjectGateError("runtime_preflight_failed") from error
         target = path
@@ -141,9 +182,9 @@ def _capture_executable(path: Path, *, require_regular: bool = False) -> Executa
         try:
             link = path.lstat()
             target = path.resolve(strict=True)
-            metadata = target.stat()
         except OSError as error:
             raise ProjectGateError("runtime_preflight_failed") from error
+        metadata, target_sha256 = _capture_target_contents(target)
     valid_link = stat.S_ISREG(link.st_mode) or stat.S_ISLNK(link.st_mode)
     unsafe_mode = metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
     if (
@@ -155,15 +196,17 @@ def _capture_executable(path: Path, *, require_regular: bool = False) -> Executa
     ):
         raise ProjectGateError("runtime_preflight_failed")
     return ExecutableIdentity(
-        path,
-        link.st_dev,
-        link.st_ino,
-        target,
-        metadata.st_dev,
-        metadata.st_ino,
-        metadata.st_size,
-        metadata.st_mtime_ns,
-        require_regular,
+        path=path,
+        link_device=link.st_dev,
+        link_inode=link.st_ino,
+        target=target,
+        target_device=metadata.st_dev,
+        target_inode=metadata.st_ino,
+        target_size=metadata.st_size,
+        target_mtime_ns=metadata.st_mtime_ns,
+        require_regular=require_regular,
+        target_ctime_ns=metadata.st_ctime_ns,
+        target_sha256=target_sha256,
     )
 
 
@@ -260,6 +303,7 @@ def resolve_toolchain(repo_root: Path) -> tuple[TrustedToolchain, dict[str, str]
         _capture_executable(pnpm),
         _capture_executable(uv, require_regular=True),
         _capture_executable(docker),
+        _capture_executable(GIT),
     )
     toolchain = TrustedToolchain(
         python,
@@ -273,9 +317,24 @@ def resolve_toolchain(repo_root: Path) -> tuple[TrustedToolchain, dict[str, str]
         runtime_paths,
         identities,
         directory_identities,
+        git=GIT,
     )
     verify_toolchain(toolchain)
     return toolchain, {"python": python_version, "node": node_version, "pnpm": pnpm_version}
+
+
+def resolve_base_sha(base: str, repo_root: Path, git: Path) -> str:
+    """Resolve a direct gate base with the captured absolute Git executable."""
+    if not git.is_absolute():
+        raise ProjectGateError("runtime_preflight_failed")
+    result = _run([str(git), "rev-parse", "--verify", f"{base}^{{commit}}"], repo_root)
+    resolved = result.stdout.strip()
+    if result.returncode != 0 or not COMMIT_ID.fullmatch(resolved):
+        raise ProjectGateError("base_not_commit")
+    ancestor = _run([str(git), "merge-base", "--is-ancestor", resolved, "HEAD"], repo_root)
+    if ancestor.returncode != 0:
+        raise ProjectGateError("base_not_ancestor")
+    return resolved
 
 
 def resolve_provenance(base: str, repo_root: Path) -> RepositoryProvenance:
