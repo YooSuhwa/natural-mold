@@ -18,7 +18,9 @@
 
 [Overview](#-overview) · [Quick Answers](#-quick-answers) · [Quick Start](#-quick-start) · [Trust](#-quality-security-and-documentation-signals) · [Features](#-features) · [Architecture](#-architecture)
 
-**Last updated:** September 1, 2026 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
+<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+
+**Last updated:** September 5, 2026 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
 
 </div>
 
@@ -52,6 +54,7 @@ triggers, and usage tracking.
 | Backend | FastAPI 0.115+, SQLAlchemy 2.0 async, Alembic, Python 3.12 |
 | Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
 | AI runtime | LangGraph 1.x + `deepagents` 0.7.11 via `create_deep_agent` |
+| Runtime policy | Agent policy is mutable for new conversations; each existing conversation keeps an immutable effective-policy snapshot |
 | Database | PostgreSQL 16, Alembic head `m72_runtime_policy_snapshot` |
 | Authentication | JWT HS256, HttpOnly cookies, CSRF double-submit, refresh-token rotation, `super_user` |
 | License | MIT |

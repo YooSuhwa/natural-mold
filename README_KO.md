@@ -18,7 +18,9 @@
 
 [Overview](#-overview) · [빠른 답변](#-빠른-답변) · [Quick Start](#-quick-start) · [신뢰 근거](#-품질보안문서화-신호) · [기능](#-주요-기능) · [아키텍처](#-아키텍처)
 
-**마지막 업데이트:** 2026년 9월 1일 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
+<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+
+**마지막 업데이트:** 2026년 9월 5일 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
 
 </div>
 
@@ -51,6 +53,7 @@ skill 패키지, 마켓플레이스 설치, 스케줄 트리거, 사용량 추�
 | Backend | FastAPI 0.115+, SQLAlchemy 2.0 async, Alembic, Python 3.12 |
 | Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
 | AI runtime | LangGraph 1.x + `create_deep_agent` 기반 `deepagents` 0.7.11 |
+| Runtime policy | 에이전트 정책 변경은 새 대화에 적용되며, 기존 대화는 최초 확정된 유효 정책 snapshot을 유지 |
 | Database | PostgreSQL 16, Alembic head는 `m72_runtime_policy_snapshot` |
 | 인증 | JWT HS256, HttpOnly cookie, CSRF double-submit, refresh token rotation, `super_user` |
 | License | MIT |

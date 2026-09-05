@@ -1,18 +1,30 @@
 # Moldy PRD
 
-> Last updated: 2026-06-07
-> Version: v0.4
-> Source basis: current source tree, Alembic head `m59_conversation_artifacts`,
-> and recent commits through merge `078250c`.
+<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+
+> Last updated: 2026-09-05
+> Version: v0.5
+> Source basis: current source tree and Alembic head
+> `m72_runtime_policy_snapshot`. M59 is retained below only as the historical
+> origin of generated artifacts.
 
 ## Changelog
 
 | Version | Date | Change |
 |---------|------|--------|
+| v0.5 | 2026-09-05 | Refreshed current source state for Deep Agents 0.7.11, the LangGraph v3 runtime path, and versioned runtime-policy snapshots. |
 | v0.4 | 2026-06-07 | Rebased PRD on actual source. Replaced single-user PoC assumptions with ADR-016 multi-user auth, marketplace, memory, Agent API, artifacts, audit, subagents, and runtime split status. |
 | v0.3 | 2026-05-26 | Reflected System LLM settings and UI-managed LLM credentials. |
 | v0.2 | 2026-05-18 | Reflected marketplace resource design. |
 | v0.1 | 2026-04-01 | Initial PoC draft. |
+
+## Implementation Notes Since v0.4
+
+| Program | Source-aligned state | Evidence boundary |
+|---------|----------------------|-------------------|
+| Deep Agents 0.7 migration | Runtime dependency and compatibility boundary updated to 0.7.11 | `backend/pyproject.toml`, `backend/uv.lock`, `backend/app/agent_runtime/runtime_component_builder.py` |
+| Isolated test lanes | Backend, frontend, scripted E2E, and live E2E have distinct runner/database contracts | `scripts/run-isolated-command.sh`, `frontend/scripts/run-e2e-lane.mjs` |
+| Runtime policy M71/M72 | Agent policy plus immutable conversation snapshot and `ConversationRun` provenance implemented; legacy conversations retain compatibility semantics | `backend/app/agent_runtime/runtime_policy.py`, `backend/app/services/conversation_runtime_policy.py`, migrations M71/M72, ADR-022 |
 
 ## 1. Product Overview
 
@@ -60,6 +72,9 @@ Required behavior:
   fallback model list, opener questions, identity mode, tools, MCP tools,
   skills, middleware, subagents, memory settings, and schedules.
 - Agent settings support form mode and visual settings mode.
+- Manual creation and agent settings expose the versioned filesystem, Todo,
+  and summarization runtime-policy controls. Policy changes apply to new
+  conversations; an existing conversation keeps its first snapshotted policy.
 - First message can create the conversation lazily rather than pre-creating
   empty conversations.
 

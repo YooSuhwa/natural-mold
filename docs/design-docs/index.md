@@ -26,3 +26,4 @@
 | ADR-019 | [System LLM Settings (역할별 모델 선택 + base_url 주입)](adr-019-system-llm-settings.md) | 제안됨 (2026-05-26) |
 | ADR-020 | [Chat Run AG-UI Adapter](adr-020-chat-run-ag-ui-adapter.md) | Accepted |
 | ADR-021 | [Value-Based Trace Redaction (값 기반 트레이스 시크릿 마스킹)](adr-021-value-based-trace-redaction.md) | Proposed (제안됨, 2026-06-24) |
+| ADR-022 | [Versioned Runtime Policy Lifecycle](adr-022-runtime-policy-lifecycle.md) | Accepted (2026-09-05) |

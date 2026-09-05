@@ -52,12 +52,17 @@ down_revision: str | None = \"m70_current\"
 """,
         "docs/design-docs/adr-020-example.md": "# ADR-020\n",
         "docs/design-docs/adr-021-example.md": "# ADR-021\n",
+        "docs/design-docs/adr-022-runtime-policy-lifecycle.md": (
+            "<!-- runtime-policy-contract: RuntimePolicyV1; schema=1; "
+            "migration=m71_current; status=accepted -->\n# ADR-022\n"
+        ),
         "docs/design-docs/index.md": """# ADR Index
 
 | ADR | Title |
 | --- | --- |
 | ADR-020 | [Example](adr-020-example.md) |
 | ADR-021 | [Example](adr-021-example.md) |
+| ADR-022 | [Runtime policy](adr-022-runtime-policy-lifecycle.md) |
 """,
         "docs/exec-plans/active/active-plan.md": "# Active plan\n",
         "docs/exec-plans/completed/completed-plan.md": "# Completed plan\n",
@@ -70,19 +75,50 @@ down_revision: str | None = \"m70_current\"
 ## Completed
 
 - [Completed](completed/completed-plan.md)
+
+## Deferred programs
+
+<!-- future-program: rubric; status=deferred -->
+<!-- future-program: total-technical-debt-cleanup; status=deferred -->
+<!-- future-program: domain-relocation; status=deferred -->
+<!-- future-program: attachment-video-expansion; status=deferred -->
+<!-- future-program: async-subagents; status=deferred -->
+<!-- future-program: store-composite-backend-adoption; status=deferred -->
+<!-- future-program: observation-window-removal; status=deferred -->
 """,
         "README.md": (
+            "<!-- project-current-source: migration=m71_current; deepagents=0.7.11; "
+            "ruff=0.16.5; refreshed=2026-09-05 -->\n"
             "AI runtime: `deepagents` 0.7.11; Ruff 0.16.5; Current migration: `m71_current`\n"
         ),
         "README_KO.md": (
+            "<!-- project-current-source: migration=m71_current; deepagents=0.7.11; "
+            "ruff=0.16.5; refreshed=2026-09-05 -->\n"
             "AI runtime: `deepagents` 0.7.11; Ruff 0.16.5; 현재 migration: `m71_current`\n"
         ),
         "AGENTS.md": (
+            "<!-- project-current-source: migration=m71_current; deepagents=0.7.11; "
+            "ruff=0.16.5; refreshed=2026-09-05 -->\n"
             "AI Runtime: **deepagents** 0.7.11; Ruff `ruff>=0.16.5,<0.17.0` "
             "(lock: 0.16.5); migration: `m71_current`\n"
         ),
         "docs/ARCHITECTURE.md": (
+            "<!-- project-current-source: migration=m71_current; deepagents=0.7.11; "
+            "ruff=0.16.5; refreshed=2026-09-05 -->\n"
             "Runtime: `deepagents>=0.7.11,<0.8.0` (lock: 0.7.11); migration: `m71_current`\n"
+        ),
+        "TASKS.md": (
+            "<!-- project-current-source: migration=m71_current; deepagents=0.7.11; "
+            "ruff=0.16.5; refreshed=2026-09-05 -->\n"
+            "Current head: `m71_current`; historical M59 feature origin.\n"
+        ),
+        "docs/PRD.md": (
+            "<!-- project-current-source: migration=m71_current; deepagents=0.7.11; "
+            "ruff=0.16.5; refreshed=2026-09-05 -->\n"
+            "Current head: `m71_current`; historical M59 feature origin.\n"
+        ),
+        "docs/e2e-coverage.md": (
+            "<!-- e2e-current-source: profile-personalization=untested; refreshed=2026-09-05 -->\n"
         ),
     }
     for relative_path, content in files.items():
@@ -117,7 +153,11 @@ def test_inspect_project_facts_returns_derived_canonical_values_when_complete(
     assert facts[0] == "0.7.11"
     assert facts[1] == "0.16.5"
     assert facts[2] == "m71_current"
-    assert facts[3] == ("adr-020-example.md", "adr-021-example.md")
+    assert facts[3] == (
+        "adr-020-example.md",
+        "adr-021-example.md",
+        "adr-022-runtime-policy-lifecycle.md",
+    )
     assert facts[4] == ("active/active-plan.md",)
     assert facts[5] == ("completed/completed-plan.md",)
 
@@ -446,14 +486,91 @@ def test_inspect_project_facts_rejects_symlinked_metadata_parent(
 def test_inspect_project_facts_ignores_untracked_metadata(fixture_repository: Path) -> None:
     # Given an extra ADR-shaped file that is deliberately not tracked by git.
     checker = _load_checker()
-    untracked = fixture_repository / "docs/design-docs/adr-022-untracked.md"
-    untracked.write_text("# ADR-022\n", encoding="utf-8")
+    untracked = fixture_repository / "docs/design-docs/adr-023-untracked.md"
+    untracked.write_text("# ADR-023\n", encoding="utf-8")
 
     # When the checker reads its tracked metadata boundary.
     facts = checker.inspect_project_facts(fixture_repository)
 
     # Then the untracked file cannot influence canonical source-derived facts.
-    assert facts[3] == ("adr-020-example.md", "adr-021-example.md")
+    assert facts[3] == (
+        "adr-020-example.md",
+        "adr-021-example.md",
+        "adr-022-runtime-policy-lifecycle.md",
+    )
+
+
+@pytest.mark.parametrize("path", ["TASKS.md", "docs/PRD.md"])
+def test_inspect_project_facts_rejects_stale_current_source_contract(
+    fixture_repository: Path, path: str
+) -> None:
+    # Given a canonical current document declares an obsolete migration as its source.
+    checker = _load_checker()
+    surface = fixture_repository / path
+    surface.write_text(
+        surface.read_text(encoding="utf-8").replace(
+            "migration=m71_current", "migration=m59_conversation_artifacts"
+        ),
+        encoding="utf-8",
+    )
+
+    # When source-derived facts are checked, the explicit current contract fails.
+    with pytest.raises(RuntimeError, match="current-source contract"):
+        checker.inspect_project_facts(fixture_repository)
+
+
+@pytest.mark.parametrize("status", ["current", "approved"])
+def test_inspect_project_facts_rejects_future_program_as_committed_work(
+    fixture_repository: Path, status: str
+) -> None:
+    # Given a separately gated future program is represented as current or approved.
+    checker = _load_checker()
+    index = fixture_repository / "docs/exec-plans/index.md"
+    index.write_text(
+        index.read_text(encoding="utf-8").replace(
+            "future-program: rubric; status=deferred",
+            f"future-program: rubric; status={status}",
+        ),
+        encoding="utf-8",
+    )
+
+    # When the project facts are checked, roadmap scope cannot silently expand.
+    with pytest.raises(RuntimeError, match="deferred-program contract"):
+        checker.inspect_project_facts(fixture_repository)
+
+
+def test_inspect_project_facts_rejects_runtime_policy_adr_contract_drift(
+    fixture_repository: Path,
+) -> None:
+    # Given ADR-022 no longer identifies the source-derived migration contract.
+    checker = _load_checker()
+    adr = fixture_repository / "docs/design-docs/adr-022-runtime-policy-lifecycle.md"
+    adr.write_text(
+        adr.read_text(encoding="utf-8").replace("migration=m71_current", "migration=m70_current"),
+        encoding="utf-8",
+    )
+
+    # When checked, the accepted runtime-policy decision fails closed.
+    with pytest.raises(RuntimeError, match="ADR-022 runtime-policy contract"):
+        checker.inspect_project_facts(fixture_repository)
+
+
+def test_inspect_project_facts_rejects_false_profile_e2e_coverage(
+    fixture_repository: Path,
+) -> None:
+    # Given the E2E matrix claims the still-uncovered profile flow is tested.
+    checker = _load_checker()
+    coverage = fixture_repository / "docs/e2e-coverage.md"
+    coverage.write_text(
+        coverage.read_text(encoding="utf-8").replace(
+            "profile-personalization=untested", "profile-personalization=tested"
+        ),
+        encoding="utf-8",
+    )
+
+    # When current facts are checked, the false coverage marker is rejected.
+    with pytest.raises(RuntimeError, match="E2E current-source contract"):
+        checker.inspect_project_facts(fixture_repository)
 
 
 def test_inspect_project_facts_allows_explicit_historical_provenance(

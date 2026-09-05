@@ -1,11 +1,14 @@
 # Moldy — TASKS
 
-> Last updated: 2026-06-07
-> Source-aligned snapshot: Alembic head `m59_conversation_artifacts`, merge
-> `078250c`. The original Phase 0~14 list below is preserved as historical
-> build-up context; the current source has moved beyond it.
+<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
 
-## Current Source Snapshot (2026-06-07)
+> Last updated: 2026-09-05
+> Source-aligned snapshot: Alembic head `m72_runtime_policy_snapshot`. The
+> original Phase 0~14 list below is preserved as historical build-up context;
+> M59 remains the feature-origin point for generated artifacts, not the current
+> migration head.
+
+## Current Source Snapshot (2026-09-05)
 
 - [x] Multi-user auth and operator split (ADR-016): JWT, HttpOnly cookies, CSRF,
   refresh-token rotation, `super_user`, system/user resource separation.
@@ -28,6 +31,11 @@
   filesystem permission updates.
 - [x] Runtime cleanup: executor split into facade + runtime config/component
   builder/stream runner/MCP loader/skill executor.
+- [x] Deep Agents 0.7.11 migration with Moldy's non-deleting filesystem and
+  Todo projection compatibility at the shared graph-build boundary.
+- [x] Versioned runtime policy: agent-level configuration, immutable
+  conversation snapshots, run provenance, filesystem/Todo/summarization
+  capability enforcement, and agent create/settings UI.
 - [x] Conversation router cleanup: split CRUD/messages/branches/files/traces and
   move stream responsibilities into services.
 - [x] Frontend performance and state cleanup: lazy chat preview modules, scoped
@@ -37,11 +45,16 @@
 
 - [ ] Extend marketplace publishing/install UX beyond Skill Phase 1 for MCP and
   Agent resources.
-- [ ] Add/expand E2E coverage for artifacts, shares, marketplace install,
-  memory approvals, and Agent API settings.
+- [ ] Add E2E coverage for profile personalization, MCP tool attachment, and
+  marketplace publish/moderation. Existing artifact, share, marketplace
+  install, memory-control, and Agent API settings paths are covered.
 - [ ] Harden multi-worktree scheduler behavior when several backends share one DB.
 - [ ] Keep `docs/ARCHITECTURE.md`, `docs/PRD.md`, `AGENTS.md`, and README files
   synchronized after migrations or runtime module splits.
+- [ ] Treat Rubric, total technical-debt cleanup, domain relocation,
+  attachment/video expansion, async subagents, Store/Composite backend
+  adoption, and observation-window removal as separately approved programs;
+  none is a current commitment in this snapshot.
 
 ---
 

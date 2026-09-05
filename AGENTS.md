@@ -1,5 +1,7 @@
 # Moldy — AI Agent Builder
 
+<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+
 노코드로 AI 에이전트를 만들고, 채팅하고, 스케줄링하는 웹 애플리케이션.
 **ADR-016에 따라 멀티유저 인증 적용 완료** (JWT + super_user). 운영자(super_user)와 일반 사용자 권한이 분리되어 있다.
 
@@ -535,6 +537,9 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 | ADR-017 | Marketplace Resources | Skill/MCP/Agent 공유 레이어, Phase 1 Skill |
 | ADR-018 | Relative Storage Path | worktree 간 data 경로 안정화 |
 | ADR-019 | System LLM Settings | 역할별 모델 선택 + base_url 주입 |
+| ADR-020 | Chat Run AG-UI Adapter | LangGraph v3 run/stream protocol adapter |
+| ADR-021 | Value-Based Trace Redaction | 값 기반 trace secret 마스킹 |
+| ADR-022 | Runtime Policy Lifecycle | versioned agent policy, immutable conversation snapshot, run provenance |
 
 각 ADR 본문은 `docs/design-docs/`에 있다.
 
@@ -544,6 +549,6 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 
 - **백엔드**: Alembic head `m72_runtime_policy_snapshot` 적용. 멀티유저 인증, marketplace skill publish/install, System LLM settings, schedule productization, Agent API, memory controls, audit events, generated artifacts, credential OAuth states, conversation runs, agent blueprints, chat navigation indexes, subagent runtime, executor split, skill usage and feedback, conversation runtime policy snapshot 반영.
 - **프론트엔드**: 멀티유저 로그인/회원가입 UI, MCP 서버 관리, Skill/Credential/Marketplace 관리, 채팅 SSE 스트리밍, artifact preview/right rail/library, memory/settings, Agent API settings, 트리거 스케줄링, Builder 마법사.
-- **다음 단계**: MCP/Agent marketplace 확장, artifact/share E2E 강화, long-running scheduler/worktree 운영 안정화.
+- **다음 단계**: MCP/Agent marketplace 확장, profile/MCP attach/marketplace moderation E2E, long-running scheduler/worktree 운영 안정화.
 - 자세한 태스크 현황은 `TASKS.md` 참조
 - 기능 명세는 `docs/PRD.md` + `docs/PRD-screens.md` 참조

@@ -1,6 +1,8 @@
 # Moldy Architecture Map
 
-> Last updated: 2026-09-01
+<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+
+> Last updated: 2026-09-05
 > Source basis: current tracked repository source, recent runtime commits, and
 > the files under `backend/app/`,
 > `frontend/src/`, and `frontend/e2e/`.
@@ -22,7 +24,7 @@ schedule productization.
 | Auth | ADR-016 JWT HS256, HttpOnly cookies, CSRF double-submit, refresh rotation, `super_user` |
 | Credentials | Cipher V2 and system/user credential separation |
 | Marketplace | Catalog, install, update, uninstall, publish, ACL, moderation/listing, k-skill importer |
-| Latest major feature | Skill-axis usage, human feedback, and measured evaluation-run usage |
+| Latest major feature | Versioned runtime policy with immutable conversation snapshots and run provenance |
 
 ## System Overview
 
@@ -165,6 +167,14 @@ Runtime details:
   instead of flattening metadata into the payload. Legacy SSE/AG-UI projections
   unwrap that shape at their own boundary.
 
+Runtime-policy ownership is split deliberately: an agent's `runtime_policy` is
+mutable configuration for future conversations, while a conversation owns the
+immutable effective snapshot used by every subsequent execution. Normal durable
+`ConversationRun` rows copy the snapshot version/hash/source for resume audit;
+Agent API and trigger paths resolve the same conversation snapshot. See
+[ADR-022](design-docs/adr-022-runtime-policy-lifecycle.md) for lifecycle,
+compatibility, rollback, and security boundaries.
+
 ### Skills and Filesystem
 
 The current skill runtime is selected-skill based, not a broad `/skills/` mount:
@@ -243,8 +253,9 @@ lib/sse/* and lib/chat/use-chat-runtime.ts for legacy streaming and resume
 lib/chat/langgraph-runtime/* for the feature-flagged LangGraph v3 runtime
 ```
 
-The LangGraph v3 frontend path is selected with
-`NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3`. `useMoldyLangGraphStream` owns a single
+The LangGraph v3 frontend transport path is selected with
+`NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3`. This switch does not select or override
+the effective runtime policy. `useMoldyLangGraphStream` owns a single
 `@langchain/react` stream per conversation/thread, bridges root messages into
 assistant-ui with `useExternalStoreRuntime`, keeps the raw stream available for
 DeepAgents selectors, and routes HITL resume through `stream.respond`.
@@ -273,8 +284,9 @@ See `docs/agent-api.md` for request examples.
 
 | Date | Commit | Change reflected in docs |
 |------|--------|--------------------------|
-| 2026-06-14 | pending | Add SDK top-level history hydration and harden LangGraph v3 assistant-ui/subagent message projection |
-| 2026-06-13 | pending | Add LangGraph v3 Agent Streaming Protocol BFF path, assistant-ui bridge, and deterministic v3 E2E |
+| 2026-09-05 | current source | Add RuntimePolicyV1 enforcement, first-writer-wins conversation snapshots, and run provenance through M71/M72 |
+| 2026-06-14 | implemented | Add SDK top-level history hydration and harden LangGraph v3 assistant-ui/subagent message projection |
+| 2026-06-13 | implemented | Add LangGraph v3 Agent Streaming Protocol BFF path, assistant-ui bridge, and deterministic v3 E2E |
 | 2026-06-07 | `e2178d6` | Split executor into facade + runtime component builder + stream runner + MCP/skill modules |
 | 2026-06-07 | `243b5db` | Split conversation router responsibilities into CRUD/messages/branches/files/traces |
 | 2026-06-07 | `6770ba7` | Extract frontend agent settings draft hook/lib |

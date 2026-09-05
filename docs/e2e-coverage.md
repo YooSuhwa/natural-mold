@@ -1,5 +1,7 @@
 # E2E Coverage Matrix
 
+<!-- e2e-current-source: profile-personalization=untested; refreshed=2026-09-05 -->
+
 Living record of Playwright E2E coverage across Moldy's feature surface.
 Update this whenever you add/change a spec or ship a user-facing feature.
 
@@ -106,13 +108,14 @@ agent-triggers (interval) · share-link (publish + logged-out read-only + revoke
 surfaces)** · **operator-screens (System LLM render + system-credential
 create/delete, super_user)** · **message-attachments (composer attach → upload
 on send)** · **hitl-approval (reject an execute_in_skill interrupt)** · the 4
-stale fixes · **chat-langgraph-v3 (DeepAgents v3 runtime: state, HITL approve,
+stale fixes · **chat-langgraph-v3 (LangGraph v3/Deep Agents runtime path: state, HITL approve,
 subagent delegation, artifacts, usage, replay, history, share)**.
 
 **Next up (remaining ❌, rough priority):**
-1. MCP tool attach — needs a running MCP server (first-party `localhost:18001-4`);
+1. Profile personalization (`/settings`) — no user-profile E2E exists yet
+2. MCP tool attach — needs a running MCP server (first-party `localhost:18001-4`);
    most setup-heavy, defer unless an MCP server is available
-2. Marketplace publish/moderation (`/marketplace/admin`) — super_user moderation
+3. Marketplace publish/moderation (`/marketplace/admin`) — super_user moderation
    queue (publish → approve listing)
 
 **Notes for the remaining HITL/attachment nuances:**

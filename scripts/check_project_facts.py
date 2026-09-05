@@ -25,6 +25,32 @@ ADR_ROW: Final = re.compile(r"^\|\s*(ADR-\d{3})\s*\|.*?\]\(([^)]+)\)", re.MULTIL
 MARKDOWN_LINK: Final = re.compile(r"\[[^]]+\]\(([^)]+)\)")
 VERSION_CLAUSE: Final = re.compile(r"(<=|>=|==|!=|<|>)(\d+(?:\.\d+)*)")
 FACT_SURFACES: Final = ("README.md", "README_KO.md", "AGENTS.md", "docs/ARCHITECTURE.md")
+CURRENT_CONTRACT_SURFACES: Final = (*FACT_SURFACES, "TASKS.md", "docs/PRD.md")
+CURRENT_SOURCE_CONTRACT: Final = re.compile(
+    r"<!-- project-current-source: migration=([\w-]+); deepagents=([0-9.]+); "
+    r"ruff=([0-9.]+); refreshed=(\d{4}-\d{2}-\d{2}) -->"
+)
+RUNTIME_POLICY_ADR: Final = "docs/design-docs/adr-022-runtime-policy-lifecycle.md"
+RUNTIME_POLICY_CONTRACT: Final = re.compile(
+    r"<!-- runtime-policy-contract: RuntimePolicyV1; schema=1; "
+    r"migration=([\w-]+); status=accepted -->"
+)
+E2E_CURRENT_CONTRACT: Final = re.compile(
+    r"<!-- e2e-current-source: profile-personalization=(untested); "
+    r"refreshed=(\d{4}-\d{2}-\d{2}) -->"
+)
+FUTURE_PROGRAM: Final = re.compile(r"<!-- future-program: ([a-z0-9-]+); status=([a-z]+) -->")
+DEFERRED_PROGRAMS: Final = frozenset(
+    {
+        "rubric",
+        "total-technical-debt-cleanup",
+        "domain-relocation",
+        "attachment-video-expansion",
+        "async-subagents",
+        "store-composite-backend-adoption",
+        "observation-window-removal",
+    }
+)
 STALE_PATTERNS: Final = (
     re.compile(r"deepagents[^\n]*0\.6", re.IGNORECASE),
     re.compile(r"\bm(?:59|63)(?:_[\w-]+)?\b", re.IGNORECASE),
@@ -321,6 +347,40 @@ def _validate_current_facts(
             raise RuntimeError(f"current fact is missing locked Ruff version in {path}")
 
 
+def _validate_document_contracts(
+    texts: dict[PurePosixPath, str],
+    head: str,
+    deepagents_version: str,
+    ruff_version: str,
+) -> None:
+    refresh_dates: set[str] = set()
+    for path in CURRENT_CONTRACT_SURFACES:
+        matches = CURRENT_SOURCE_CONTRACT.findall(_text(texts, path))
+        expected_prefix = (head, deepagents_version, ruff_version)
+        if len(matches) != 1 or matches[0][:3] != expected_prefix:
+            raise RuntimeError(f"current-source contract is stale or missing in {path}")
+        refresh_dates.add(matches[0][3])
+    if len(refresh_dates) != 1:
+        raise RuntimeError("current-source contract refresh dates must match")
+
+    e2e_matches = E2E_CURRENT_CONTRACT.findall(_text(texts, "docs/e2e-coverage.md"))
+    if len(e2e_matches) != 1 or e2e_matches[0][1] not in refresh_dates:
+        raise RuntimeError("E2E current-source contract is stale or missing")
+
+    adr_matches = RUNTIME_POLICY_CONTRACT.findall(_text(texts, RUNTIME_POLICY_ADR))
+    if adr_matches != [head]:
+        raise RuntimeError("ADR-022 runtime-policy contract is stale or missing")
+
+    future_markers = FUTURE_PROGRAM.findall(_text(texts, "docs/exec-plans/index.md"))
+    programs = {program for program, _status in future_markers}
+    if (
+        len(future_markers) != len(DEFERRED_PROGRAMS)
+        or programs != DEFERRED_PROGRAMS
+        or any(status != "deferred" for _program, status in future_markers)
+    ):
+        raise RuntimeError("deferred-program contract is stale or incomplete")
+
+
 def _tracked_texts(root: Path) -> tuple[dict[PurePosixPath, str], frozenset[PurePosixPath]]:
     root = root.resolve()
     result = subprocess.run(  # noqa: S603 -- fixed git subcommand reads only this repository index
@@ -337,7 +397,12 @@ def _tracked_texts(root: Path) -> tuple[dict[PurePosixPath, str], frozenset[Pure
     tracked = frozenset(PurePosixPath(item) for item in tracked_output.split("\0") if item)
     fixed = frozenset(
         PurePosixPath(path)
-        for path in (*FACT_SURFACES, "backend/pyproject.toml", "backend/uv.lock")
+        for path in (
+            *CURRENT_CONTRACT_SURFACES,
+            "docs/e2e-coverage.md",
+            "backend/pyproject.toml",
+            "backend/uv.lock",
+        )
     )
     allowed = {
         path
@@ -394,6 +459,7 @@ def inspect_project_facts(repository_root: Path = ROOT) -> ProjectFacts:
         ruff,
         ruff_version,
     )
+    _validate_document_contracts(texts, head, deepagents_version, ruff_version)
     return deepagents_version, ruff_version, head, adr_files, active, completed
 
 
