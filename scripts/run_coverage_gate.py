@@ -86,7 +86,15 @@ def run_gate(kind: str, repo_root: Path) -> None:
             env = dict(os.environ)
             env[FRONTEND_COVERAGE_DIRECTORY] = str(report_root)
             _run_measurement(
-                [pnpm, "--dir", str(repo_root / "frontend"), "test:coverage", "--", "--run"],
+                [
+                    pnpm,
+                    "--dir",
+                    str(repo_root / "frontend"),
+                    "exec",
+                    "vitest",
+                    "--coverage",
+                    "--run",
+                ],
                 cwd=repo_root,
                 env=env,
             )

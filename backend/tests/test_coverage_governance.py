@@ -159,7 +159,7 @@ def test_frontend_coverage_rejects_one_regressed_metric(tmp_path: Path) -> None:
             "source_commit": "a" * 40,
             "reviewed_runs": 2,
             "update_policy": "reviewed-manual-only",
-            "measurement_command": "pnpm test:coverage -- --run",
+            "measurement_command": "pnpm exec vitest --coverage --run",
             "metrics": dict.fromkeys(("statements", "branches", "functions", "lines"), metric),
         },
     )
@@ -302,7 +302,7 @@ def _coverage_repo(tmp_path: Path, kind: str, *, source: str | None = None) -> t
         baseline = {
             "schema_version": 1,
             "source_commit": source or ancestor,
-            "measurement_command": "pnpm test:coverage -- --run",
+            "measurement_command": "pnpm exec vitest --coverage --run",
             "reviewed_runs": 2,
             "metrics": {
                 name: dict(metric) for name in ("statements", "branches", "functions", "lines")
@@ -367,10 +367,12 @@ def test_coverage_runner_accepts_older_ancestor_and_fresh_external_report(
             "/fixture/pnpm",
             "--dir",
             str(repo / "frontend"),
-            "test:coverage",
-            "--",
+            "exec",
+            "vitest",
+            "--coverage",
             "--run",
         ]
+        assert "--" not in argv
         assert cwd == repo
         assert (
             env is not None

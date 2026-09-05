@@ -123,7 +123,7 @@ def baseline_source_commit(path: Path, kind: str) -> str:
         _assert_common(
             baseline,
             keys=FRONTEND_KEYS,
-            measurement_command="pnpm test:coverage -- --run",
+            measurement_command="pnpm exec vitest --coverage --run",
         )
     else:
         raise CoverageContractError("unsupported coverage baseline kind")
@@ -168,7 +168,7 @@ def check_frontend(baseline_path: Path, summary_path: Path) -> dict[str, Metric]
     _assert_common(
         baseline,
         keys=FRONTEND_KEYS,
-        measurement_command="pnpm test:coverage -- --run",
+        measurement_command="pnpm exec vitest --coverage --run",
     )
     expected_raw = baseline.get("metrics")
     summary = _load(summary_path).get("total")
