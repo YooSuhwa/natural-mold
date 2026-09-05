@@ -76,6 +76,64 @@ def test_runner_cleans_root_and_propagates_exit(
     assert str(root) not in combined
 
 
+@pytest.mark.parametrize(("exit_code", "status"), [(0, "passed"), (17, "failed")])
+def test_runner_writes_canonical_static_receipt_bytes(
+    tmp_path: Path, exit_code: int, status: str
+) -> None:
+    # Given: a child with a deterministic passing or failing exit code.
+    code = f"import sys; raise SystemExit({exit_code})"
+
+    # When: the wrapper writes its manifest through the isolated writer.
+    result, manifest = _run(tmp_path, "backend", [sys.executable, "-c", code])
+
+    # Then: the raw receipt is compact, key-sorted, and newline-terminated.
+    receipt = tmp_path / "cleanup.json"
+    expected = (
+        "{"
+        f'"child_exit_code":{exit_code},'
+        '"cleanup":"removed",'
+        f'"run_root_sha256":"{manifest["run_root_sha256"]}",'
+        '"schema_version":1,'
+        f'"status":"{status}"'
+        "}\n"
+    ).encode()
+    assert result.returncode == exit_code
+    assert receipt.read_bytes() == expected
+
+
+@pytest.mark.parametrize(("exit_code", "status"), [(0, "passed"), (17, "failed")])
+def test_runner_writes_canonical_static_receipt_to_stdout(exit_code: int, status: str) -> None:
+    # Given: a child run without a cleanup-manifest environment variable.
+    environment = {
+        key: value for key, value in os.environ.items() if key != "MOLDY_CLEANUP_MANIFEST"
+    }
+    code = f"import sys; raise SystemExit({exit_code})"
+
+    # When: the wrapper falls back to its stdout receipt channel.
+    result = subprocess.run(
+        [BASH, str(RUNNER), "--cwd", "backend", "--", sys.executable, "-c", code],
+        cwd=REPO_ROOT,
+        env=environment,
+        capture_output=True,
+        text=False,
+        check=False,
+    )
+
+    # Then: it writes one compact, key-sorted JSON line and no second newline.
+    payload = json.loads(result.stdout)
+    expected = (
+        "{"
+        f'"child_exit_code":{exit_code},'
+        '"cleanup":"removed",'
+        f'"run_root_sha256":"{payload["run_root_sha256"]}",'
+        '"schema_version":1,'
+        f'"status":"{status}"'
+        "}\n"
+    ).encode()
+    assert result.returncode == exit_code
+    assert result.stdout == expected
+
+
 def test_runner_cleans_root_on_sigint(tmp_path: Path) -> None:
     # Given: a child that reports readiness through an inherited POSIX pipe.
     manifest = tmp_path / "cleanup.json"

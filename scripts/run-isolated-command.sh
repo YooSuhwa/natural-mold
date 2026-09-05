@@ -71,7 +71,8 @@ write_manifest() {
   local digest
   digest="$(root_hash)"
   local payload
-  payload="{\"schema_version\":1,\"status\":\"${status}\",\"child_exit_code\":${exit_code},\"cleanup\":\"${cleanup_result}\",\"run_root_sha256\":\"${digest}\"}"
+  payload="{\"child_exit_code\":${exit_code},\"cleanup\":\"${cleanup_result}\",\"run_root_sha256\":\"${digest}\",\"schema_version\":1,\"status\":\"${status}\"}"
+  payload+=$'\n'
   if [[ -n "$manifest_path" ]]; then
     if "$trusted_python" "$manifest_helper" finalize "$manifest_path" "$manifest_parent_identity" "$manifest_file_identity" "$payload" >/dev/null; then
       manifest_result="written"
@@ -79,7 +80,7 @@ write_manifest() {
       manifest_result="failed"
     fi
   else
-    printf '%s\n' "$payload"
+    printf '%s' "$payload"
     manifest_result="stdout"
   fi
 }

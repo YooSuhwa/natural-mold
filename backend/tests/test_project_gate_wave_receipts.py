@@ -36,6 +36,114 @@ def test_static_receipt_rejects_cleanup_failure(tmp_path: Path, receipts: Module
         receipts.validate_static(path, tmp_path, 0)
 
 
+def test_static_receipt_accepts_canonical_bytes(tmp_path: Path, receipts: ModuleType) -> None:
+    """Given a canonical static receipt, when parsed, then retain its cleanup proof."""
+    path = tmp_path / "static-canonical.json"
+    path.write_bytes(
+        b'{"child_exit_code":0,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'","schema_version":1,"status":"passed"}\n'
+    )
+
+    summary = receipts.validate_static(path, tmp_path, 0)
+
+    assert summary["cleanup_passed"] is True
+
+
+@pytest.mark.parametrize(
+    "receipt_bytes",
+    [
+        b'{"child_exit_code":0,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'","schema_version":true,"status":"passed"}\n',
+        b'{"child_exit_code":true,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'","schema_version":1,"status":"passed"}\n',
+    ],
+)
+def test_static_receipt_rejects_boolean_numeric_fields(
+    tmp_path: Path, receipts: ModuleType, receipt_bytes: bytes
+) -> None:
+    """Given canonical bytes with JSON booleans, when parsed, then numeric fields reject them."""
+    path = tmp_path / "static-boolean-numeric.json"
+    path.write_bytes(receipt_bytes)
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_static(path, tmp_path, 0)
+
+
+@pytest.mark.parametrize(
+    "receipt_bytes",
+    [
+        b'{"schema_version":1,"status":"passed","child_exit_code":0,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'"}\n',
+        b'{"child_exit_code":0,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'","schema_version":1,"status":"passed"}',
+        b'{\n  "child_exit_code": 0,\n  "cleanup": "removed",\n  "run_root_sha256": "'
+        + b"a" * 64
+        + b'",\n  "schema_version": 1,\n  "status": "passed"\n}\n',
+        b'{"child_exit_code":0,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'","schema_version":1,"status":"passed"}\n ',
+    ],
+)
+def test_static_receipt_rejects_semantically_valid_noncanonical_bytes(
+    tmp_path: Path, receipts: ModuleType, receipt_bytes: bytes
+) -> None:
+    """Given a static receipt with valid fields but invalid bytes, when parsed, then reject it."""
+    path = tmp_path / "static-noncanonical.json"
+    path.write_bytes(receipt_bytes)
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_static(path, tmp_path, 0)
+
+
+def test_legacy_static_receipt_accepts_semantically_valid_noncanonical_bytes(
+    tmp_path: Path, receipts: ModuleType
+) -> None:
+    """Given a frozen legacy child, when recovery validates it, then retain its semantic proof."""
+    path = tmp_path / "static-legacy.json"
+    path.write_bytes(
+        b'{"schema_version":1,"status":"passed","child_exit_code":0,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'"}\n'
+    )
+
+    summary = receipts.validate_legacy_static(path, tmp_path, 0)
+
+    assert summary["cleanup_passed"] is True
+
+
+@pytest.mark.parametrize(
+    "receipt_bytes",
+    [
+        b'{"schema_version":true,"status":"passed","child_exit_code":0,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'"}\n',
+        b'{"schema_version":1.0,"status":"passed","child_exit_code":0,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'"}\n',
+        b'{"schema_version":1,"status":"passed","child_exit_code":false,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'"}\n',
+        b'{"schema_version":1,"status":"passed","child_exit_code":0.0,"cleanup":"removed","run_root_sha256":"'
+        + b"a" * 64
+        + b'"}\n',
+    ],
+)
+def test_legacy_static_receipt_rejects_boolean_or_float_numeric_fields(
+    tmp_path: Path, receipts: ModuleType, receipt_bytes: bytes
+) -> None:
+    """Given legacy JSON boolean or float numerics, when recovered, then reject them."""
+    path = tmp_path / "static-legacy-nonnumeric.json"
+    path.write_bytes(receipt_bytes)
+
+    with pytest.raises(receipts.ProjectGateError, match="invalid_child_receipt"):
+        receipts.validate_legacy_static(path, tmp_path, 0)
+
+
 def test_postgres_receipt_rejects_skip_or_deselection(tmp_path: Path, receipts: ModuleType) -> None:
     """Given PostgreSQL selection debt, when parsed, then the canonical acceptance fails."""
     scenario: JSONObject = {

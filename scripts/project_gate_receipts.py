@@ -16,6 +16,7 @@ from e2e_failure_diagnostics import (
     parse_source_rejection,
 )
 from e2e_runner_manifest import FINAL_E2E_EXPORT_KEYS, FINAL_E2E_TOP_KEYS
+from operation_ledger_format import LedgerError, canonical_line
 from project_gate_runtime import JSONObject, JSONValue, ProjectGateError
 
 MAX_RECEIPT_BYTES: Final = 4 * 1024 * 1024
@@ -58,7 +59,9 @@ def new_child_path(aggregate: Path, node_id: str, token: str) -> Path:
     return aggregate.with_name(f"{aggregate.stem}.{node_id}.{token}.json")
 
 
-def _read_receipt(path: Path, parent_descriptor: int | None = None) -> tuple[JSONObject, str]:
+def _read_receipt(
+    path: Path, parent_descriptor: int | None = None
+) -> tuple[JSONObject, bytes, str]:
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -99,7 +102,7 @@ def _read_receipt(path: Path, parent_descriptor: int | None = None) -> tuple[JSO
         raise ProjectGateError("invalid_child_receipt") from error
     if not isinstance(parsed, dict):
         raise ProjectGateError("invalid_child_receipt")
-    return parsed, hashlib.sha256(data).hexdigest()
+    return parsed, data, hashlib.sha256(data).hexdigest()
 
 
 def _summary(
@@ -124,20 +127,49 @@ def _summary(
     }
 
 
-def validate_static(
-    path: Path, repo_root: Path, expected_exit: int, parent_descriptor: int | None = None
-) -> ReceiptSummary:
-    payload, digest = _read_receipt(path, parent_descriptor)
-    valid = (
+def _static_payload_is_valid(payload: JSONObject, expected_exit: int) -> bool:
+    """Check the semantic contract shared by current and frozen static receipts."""
+    schema_version = payload.get("schema_version")
+    child_exit_code = payload.get("child_exit_code")
+    return (
         set(payload) == STATIC_KEYS
-        and payload.get("schema_version") == 1
+        and type(schema_version) is int
+        and schema_version == 1
         and payload.get("status") == ("passed" if expected_exit == 0 else "failed")
-        and payload.get("child_exit_code") == expected_exit
+        and type(child_exit_code) is int
+        and child_exit_code == expected_exit
         and payload.get("cleanup") == "removed"
         and isinstance(payload.get("run_root_sha256"), str)
-        and len(str(payload["run_root_sha256"])) == 64
+        and re.fullmatch(r"[0-9a-f]{64}", str(payload["run_root_sha256"])) is not None
     )
-    if not valid:
+
+
+def validate_legacy_static(
+    path: Path,
+    repo_root: Path,
+    expected_exit: int,
+    parent_descriptor: int | None = None,
+) -> ReceiptSummary:
+    """Validate a frozen pre-canonical static receipt during final-attempt recovery only."""
+    payload, _, digest = _read_receipt(path, parent_descriptor)
+    if not _static_payload_is_valid(payload, expected_exit):
+        raise ProjectGateError("invalid_child_receipt")
+    return _summary(path, repo_root, digest, cleanup=True)
+
+
+def validate_static(
+    path: Path,
+    repo_root: Path,
+    expected_exit: int,
+    parent_descriptor: int | None = None,
+) -> ReceiptSummary:
+    """Validate a canonical static child receipt produced by the current gate."""
+    payload, data, digest = _read_receipt(path, parent_descriptor)
+    try:
+        is_canonical = canonical_line(payload) == data
+    except (LedgerError, UnicodeEncodeError) as error:
+        raise ProjectGateError("invalid_child_receipt") from error
+    if not is_canonical or not _static_payload_is_valid(payload, expected_exit):
         raise ProjectGateError("invalid_child_receipt")
     return _summary(path, repo_root, digest, cleanup=True)
 
@@ -149,7 +181,7 @@ def validate_postgres(
     expected_exit: int,
     parent_descriptor: int | None = None,
 ) -> ReceiptSummary:
-    payload, digest = _read_receipt(path, parent_descriptor)
+    payload, _, digest = _read_receipt(path, parent_descriptor)
     scenarios = payload.get("scenarios")
     scenario = scenarios[0] if isinstance(scenarios, list) and len(scenarios) == 1 else None
     receipt = scenario.get("test_receipt") if isinstance(scenario, dict) else None
@@ -235,7 +267,7 @@ def validate_e2e(
     expected_attempt_id: str | None = None,
     expected_head_sha: str | None = None,
 ) -> ReceiptSummary:
-    payload, digest = _read_receipt(path, parent_descriptor)
+    payload, _, digest = _read_receipt(path, parent_descriptor)
     selected = _safe_node_ids(payload.get("selected_ids"))
     executed = _safe_node_ids(payload.get("executed_ids"))
     export = payload.get("export")
