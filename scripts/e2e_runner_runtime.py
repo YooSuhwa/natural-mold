@@ -35,6 +35,8 @@ from psycopg import sql
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[1]
 FRONTEND_ROOT: Final = REPO_ROOT / "frontend"
+RUN_ROOT_PREFIX: Final = ".moldy-test-run.e2e-"
+_DIRECTORY_FLAGS: Final = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 
 
 @dataclass(slots=True)
@@ -71,10 +73,47 @@ class ProvisioningError(RuntimeError):
         self.signal_number = signal_number
 
 
+def _create_run_root() -> tuple[Path, os.stat_result]:
+    """Create one physical, no-follow run root beneath the system temp directory."""
+    temp_parent = Path(tempfile.gettempdir()).resolve(strict=True)
+    run_root = Path(tempfile.mkdtemp(prefix=RUN_ROOT_PREFIX, dir=temp_parent))
+    if (
+        not run_root.is_absolute()
+        or run_root.parent != temp_parent
+        or not run_root.name.startswith(RUN_ROOT_PREFIX)
+    ):
+        raise OSError("unsafe_run_root")
+    if not stat.S_ISDIR(run_root.lstat().st_mode):
+        raise OSError("unsafe_run_root")
+
+    descriptor = os.open(run_root, _DIRECTORY_FLAGS)
+    try:
+        os.fchmod(descriptor, stat.S_IRWXU)
+        root_stat = os.fstat(descriptor)
+        named_stat = run_root.stat(follow_symlinks=False)
+        if not stat.S_ISDIR(named_stat.st_mode) or (named_stat.st_dev, named_stat.st_ino) != (
+            root_stat.st_dev,
+            root_stat.st_ino,
+        ):
+            raise OSError("unsafe_run_root")
+    finally:
+        os.close(descriptor)
+    return run_root, root_stat
+
+
+def _run_root_matches(run_root: Path, root_stat: os.stat_result) -> bool:
+    try:
+        current = run_root.stat(follow_symlinks=False)
+    except OSError:
+        return False
+    return stat.S_ISDIR(current.st_mode) and (current.st_dev, current.st_ino) == (
+        root_stat.st_dev,
+        root_stat.st_ino,
+    )
+
+
 def _prepare_run_root() -> tuple[Path, os.stat_result]:
-    run_root = Path(tempfile.mkdtemp(prefix=".moldy-test-run.e2e-"))
-    run_root.chmod(stat.S_IRWXU)
-    root_stat = run_root.stat()
+    run_root, root_stat = _create_run_root()
     try:
         prepared = run_command(
             [
@@ -87,6 +126,8 @@ def _prepare_run_root() -> tuple[Path, os.stat_result]:
         )
         if prepared.returncode != 0:
             raise RuntimeError("run_root_prepare_failed")
+        if not _run_root_matches(run_root, root_stat):
+            raise RuntimeError("run_root_identity_changed")
     except BaseException as error:
         try:
             root_removed = cleanup_run_root(run_root, root_stat.st_dev, root_stat.st_ino)
