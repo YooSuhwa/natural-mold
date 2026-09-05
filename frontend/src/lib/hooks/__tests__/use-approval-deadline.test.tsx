@@ -10,20 +10,45 @@ describe('useApprovalDeadline', () => {
   })
 
   afterEach(() => {
+    vi.clearAllTimers()
     vi.useRealTimers()
   })
 
-  it('keeps the same remaining value on a subsecond tick and advances on a full tick', () => {
+  it('initializes the remaining value on the immediate tick', async () => {
     const onExpire = vi.fn()
-    const { result } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useApprovalDeadline({ approvalId: 'approval-1', initialTimeoutSeconds: 120, onExpire }),
     )
 
-    act(() => vi.advanceTimersByTime(0))
-    expect(result.current.remaining).toBe(120)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
 
-    act(() => vi.advanceTimersByTime(1000))
-    expect(result.current.remaining).toBe(119)
-    expect(onExpire).not.toHaveBeenCalled()
+    try {
+      expect(result.current.remaining).toBe(120)
+      expect(result.current.formatted).toBe('2:00')
+    } finally {
+      unmount()
+    }
+  })
+
+  it('decrements remaining after one full-second tick', async () => {
+    const onExpire = vi.fn()
+    const { result, unmount } = renderHook(() =>
+      useApprovalDeadline({ approvalId: 'approval-1', initialTimeoutSeconds: 120, onExpire }),
+    )
+
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+        await vi.advanceTimersByTimeAsync(1000)
+      })
+
+      expect(result.current.remaining).toBe(119)
+      expect(result.current.formatted).toBe('1:59')
+      expect(onExpire).not.toHaveBeenCalled()
+    } finally {
+      unmount()
+    }
   })
 })
