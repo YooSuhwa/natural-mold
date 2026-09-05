@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.messages import BaseMessage
+from langchain_core.outputs import ChatResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.skill_builder.agent import SkillBuilderChatModel
@@ -92,6 +95,78 @@ async def test_llm_generator_caps_case_count(
     assert len(generated.payload["evals"]) == 5
 
 
+async def test_llm_generator_previews_only_visible_regular_skill_files(
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    skill = await _package_skill(
+        db,
+        tmp_path,
+        skill_body="Use when inspecting files.",
+        storage_prefix=".hidden-parent/skills",
+    )
+    root = tmp_path / ".hidden-parent" / "skills" / str(skill.id)
+    (root / "visible.txt").write_text("visible payload\n", encoding="utf-8")
+    nested = root / "nested"
+    nested.mkdir()
+    (nested / "visible.txt").write_text("nested visible\n", encoding="utf-8")
+    (root / ".hidden.txt").write_text("hidden root value\n", encoding="utf-8")
+    hidden_dir = root / ".hidden-dir"
+    hidden_dir.mkdir()
+    (hidden_dir / "secret.txt").write_text("hidden directory value\n", encoding="utf-8")
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("external secret value\n", encoding="utf-8")
+    (root / "outside-link.txt").symlink_to(outside)
+    (root / "inside-link.txt").symlink_to(root / "visible.txt")
+
+    seen_messages: list[list[BaseMessage]] = []
+
+    with patch(_DATA_ROOT_PATCH, str(tmp_path)):
+        await generate_skill_smoke_eval_payload(
+            db,
+            skill=skill,
+            model_builder=_recording_model_builder(seen_messages),
+        )
+
+    prompt = json.loads(str(seen_messages[0][1].content))
+    files = prompt["skill"]["files"]
+
+    assert [item["path"] for item in files] == [
+        "SKILL.md",
+        "nested/visible.txt",
+        "visible.txt",
+    ]
+    assert "external secret value" not in str(files)
+
+
+async def test_llm_generator_rejects_symlinked_skill_root(
+    db: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    skill = await _package_skill(db, tmp_path, skill_body="Original package content.")
+    root = tmp_path / "skills" / str(skill.id)
+    (root / "SKILL.md").unlink()
+    root.rmdir()
+    outside = tmp_path / "outside-package"
+    outside.mkdir()
+    (outside / "SKILL.md").write_text("external root secret\n", encoding="utf-8")
+    root.symlink_to(outside, target_is_directory=True)
+    seen_messages: list[list[BaseMessage]] = []
+
+    with patch(_DATA_ROOT_PATCH, str(tmp_path)):
+        await generate_skill_smoke_eval_payload(
+            db,
+            skill=skill,
+            model_builder=_recording_model_builder(seen_messages),
+        )
+
+    prompt = json.loads(str(seen_messages[0][1].content))
+
+    assert prompt["skill"]["files"] == []
+    assert "external root secret" not in str(prompt)
+
+
 async def test_llm_generator_does_not_run_when_system_model_missing(
     db: AsyncSession,
     tmp_path: Path,
@@ -110,9 +185,15 @@ async def test_llm_generator_does_not_run_when_system_model_missing(
         await generate_skill_smoke_eval_payload(db, skill=skill, model_builder=missing_model)
 
 
-async def _package_skill(db: AsyncSession, tmp_path: Path, *, skill_body: str) -> Skill:
+async def _package_skill(
+    db: AsyncSession,
+    tmp_path: Path,
+    *,
+    skill_body: str,
+    storage_prefix: str = "skills",
+) -> Skill:
     skill_id = uuid.uuid4()
-    root = tmp_path / "skills" / str(skill_id)
+    root = tmp_path / storage_prefix / str(skill_id)
     root.mkdir(parents=True)
     (root / "SKILL.md").write_text(
         f'---\nname: generated\ndescription: "Use when generating evals."\n---\n\n{skill_body}\n',
@@ -125,7 +206,7 @@ async def _package_skill(db: AsyncSession, tmp_path: Path, *, skill_body: str) -
         slug=f"generated-{skill_id.hex[:8]}",
         description="Use when generating evals.",
         kind="package",
-        storage_path=ensure_relative(f"skills/{skill_id}"),
+        storage_path=ensure_relative(f"{storage_prefix}/{skill_id}"),
         content_hash="hash",
         size_bytes=1,
         version="1.0.0",
@@ -145,6 +226,40 @@ def _fake_builder_model_text(response: str) -> ModelBuilder:
         return SkillBuilderChatModel(
             model=FakeListChatModel(responses=[response]),
             model_name="fake-smoke-model",
+        )
+
+    return build_model
+
+
+def _recording_model_builder(seen_messages: list[list[BaseMessage]]) -> ModelBuilder:
+    class RecordingModel(FakeListChatModel):
+        def _generate(
+            self,
+            messages: list[BaseMessage],
+            stop: list[str] | None = None,
+            run_manager: Any = None,
+            **kwargs: Any,
+        ) -> ChatResult:
+            seen_messages.append(messages)
+            return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+    async def build_model(_db: AsyncSession) -> SkillBuilderChatModel:
+        return SkillBuilderChatModel(
+            model=RecordingModel(
+                responses=[
+                    json.dumps(
+                        {
+                            "evals": [
+                                {
+                                    "input": "Inspect files",
+                                    "expected": "Visible files are considered",
+                                }
+                            ]
+                        }
+                    )
+                ]
+            ),
+            model_name="recording-model",
         )
 
     return build_model
