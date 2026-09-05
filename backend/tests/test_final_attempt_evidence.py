@@ -18,11 +18,13 @@ from final_attempt_lifecycle import (
     reopen_seal,
     seal_attempt,
 )
+from operation_ledger_format import JSONValue
 from plan_history_support import (
     HEAD,
     _begin,
     _prepare_seal_prerequisites,
     _seal,
+    _write_e2e_receipt,
     _write_failure_receipt,
     _write_final_e2e_receipt,
     _write_json,
@@ -314,6 +316,192 @@ def test_lifecycle_rejects_full_valid_export_receipt_from_arbitrary_tmp_parent(
 
     with pytest.raises(LifecycleError, match="canonical validation|namespace"):
         seal_attempt(**lifecycle, output=attempt_dir / "operations-seal.json")
+
+
+def _write_noncanonical_static_child(
+    attempt_dir: Path,
+) -> tuple[Path, bytes, dict[str, JSONValue]]:
+    """Create a complete legacy static receipt and its aggregate summary."""
+    child = attempt_dir / "f2-static.backend-full.0000000000000000.json"
+    original = (
+        b'{"status":"failed","schema_version":1,"child_exit_code":1,'
+        b'"cleanup":"removed","run_root_sha256":"' + b"a" * 64 + b'"}'
+    )
+    child.write_bytes(original)
+    return (
+        child,
+        original,
+        {
+            "relative_path": "attempt/f2-static.backend-full.0000000000000000.json",
+            "sha256": hashlib.sha256(original).hexdigest(),
+            "cleanup_passed": True,
+            "secret_scan_passed": None,
+            "workers": None,
+            "retries": None,
+            "screenshot_count": None,
+        },
+    )
+
+
+def test_external_exports_ignores_referenced_noncanonical_static_child(tmp_path: Path) -> None:
+    """A failed static child remains immutable evidence, not an E2E export receipt."""
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    child, original, summary = _write_noncanonical_static_child(attempt_dir)
+    _write_json(
+        attempt_dir / "f2-static.json",
+        {
+            "nodes": [
+                {
+                    "node_id": "backend-full",
+                    "status": "failed",
+                    "exit_code": 1,
+                    "receipt": summary,
+                }
+            ]
+        },
+    )
+
+    exports = evidence_module._external_exports(tmp_path, attempt_dir, "a" * 64)
+
+    assert exports == []
+    assert child.read_bytes() == original
+
+
+@pytest.mark.parametrize("mutation", ["path", "hash", "summary"])
+def test_external_exports_rejects_referenced_static_child_summary_mismatch(
+    tmp_path: Path, mutation: str
+) -> None:
+    """A retained non-E2E child must still bind to its catalog aggregate summary."""
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    _child, _original, summary = _write_noncanonical_static_child(attempt_dir)
+    if mutation == "path":
+        summary["relative_path"] = "outside/f2-static.backend-full.0000000000000000.json"
+    elif mutation == "hash":
+        summary["sha256"] = "0" * 64
+    else:
+        summary["cleanup_passed"] = False
+    _write_json(
+        attempt_dir / "f2-static.json",
+        {
+            "nodes": [
+                {
+                    "node_id": "backend-full",
+                    "status": "failed",
+                    "exit_code": 1,
+                    "receipt": summary,
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(LifecycleError, match="F2 child receipt|summary"):
+        evidence_module._external_exports(tmp_path, attempt_dir, "a" * 64)
+
+
+def test_external_exports_rejects_referenced_noncanonical_e2e_child(tmp_path: Path) -> None:
+    """A catalog E2E child cannot evade export validation through noncanonical bytes."""
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    child = attempt_dir / "f2-static.scripted-full.0000000000000000.json"
+    child.write_bytes(b'{"runner":"moldy-isolated-e2e"}')
+    _write_json(
+        attempt_dir / "f2-static.json",
+        {
+            "head_sha": HEAD,
+            "nodes": [
+                {
+                    "node_id": "scripted-full",
+                    "status": "failed",
+                    "exit_code": 1,
+                    "receipt": {
+                        "relative_path": "attempt/f2-static.scripted-full.0000000000000000.json",
+                        "sha256": "0" * 64,
+                        "cleanup_passed": True,
+                        "secret_scan_passed": True,
+                        "workers": 1,
+                        "retries": 0,
+                        "screenshot_count": None,
+                    },
+                }
+            ],
+        },
+    )
+
+    with pytest.raises(LifecycleError, match="not canonical"):
+        evidence_module._external_exports(tmp_path, attempt_dir, "a" * 64)
+
+
+def test_external_exports_rejects_e2e_receipt_relabelled_as_static(tmp_path: Path) -> None:
+    """A catalog static node cannot suppress a genuine E2E receipt's validation."""
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    child = _write_e2e_receipt(
+        tmp_path,
+        attempt_dir / "f2-static.backend-full.0000000000000000.json",
+        "a" * 64,
+        HEAD,
+        "scripted-full",
+        (),
+        "relabelled",
+        0,
+    )
+    content = child.read_bytes()
+    _write_json(
+        attempt_dir / "f2-static.json",
+        {
+            "nodes": [
+                {
+                    "node_id": "backend-full",
+                    "status": "passed",
+                    "exit_code": 0,
+                    "receipt": {
+                        "relative_path": "attempt/f2-static.backend-full.0000000000000000.json",
+                        "sha256": hashlib.sha256(content).hexdigest(),
+                        "cleanup_passed": True,
+                        "secret_scan_passed": True,
+                        "workers": 1,
+                        "retries": 0,
+                        "screenshot_count": 0,
+                    },
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(LifecycleError, match="F2 child receipt"):
+        evidence_module._external_exports(tmp_path, attempt_dir, "a" * 64)
+
+
+def test_external_exports_rejects_unreferenced_f2_e2e_receipt(tmp_path: Path) -> None:
+    """An F2 E2E child cannot exist outside the aggregate's exact child set."""
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    _write_e2e_receipt(
+        tmp_path,
+        attempt_dir / "f2-static.scripted-full.0000000000000000.json",
+        "a" * 64,
+        HEAD,
+        "scripted-full",
+        (),
+        "unreferenced",
+        0,
+    )
+    _write_json(attempt_dir / "f2-static.json", {"nodes": []})
+
+    with pytest.raises(LifecycleError, match="F2 child receipts"):
+        evidence_module._external_exports(tmp_path, attempt_dir, "a" * 64)
+
+
+def test_external_exports_rejects_expected_e2e_receipt_with_wrong_runner(tmp_path: Path) -> None:
+    """A named F3 receipt must be an E2E receipt instead of silently disappearing."""
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    _write_json(attempt_dir / "f3-scripted.json", {"runner": "wrong-runner"})
+
+    with pytest.raises(LifecycleError, match="runner"):
+        evidence_module._external_exports(tmp_path, attempt_dir, "a" * 64)
 
 
 def test_lifecycle_seals_exact_direct_child_final_attempt_export(

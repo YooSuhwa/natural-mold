@@ -13,6 +13,7 @@ from typing import Final
 from e2e_cleanup_checker import validate_payload
 from e2e_cleanup_export import validate_export
 from final_attempt_io import (
+    SHA40,
     SHA64,
     LifecycleError,
     UnsafeFinalAttemptEntry,
@@ -29,6 +30,9 @@ from operation_ledger_format import JSONValue, LedgerError
 from operation_ledger_fs import open_parent
 from operation_ledger_writer import current_evidence_lock
 from postgres_cleanup_checker import ManifestValidationError
+from project_gate_catalog import CATALOG
+from project_gate_receipts import validate_e2e, validate_postgres, validate_static
+from project_gate_runtime import ProjectGateError
 
 TERMINAL_FAILURES: Final = {
     "abandon": {"f2-failure.json", "f3-failure.json"},
@@ -321,6 +325,83 @@ def _validate_export_tree(directory: Path, export: Mapping[str, JSONValue]) -> s
     return tree_hash
 
 
+def _validated_f2_e2e_projects(
+    repo_root: Path, attempt_dir: Path, attempt_id: str, aggregate: Mapping[str, JSONValue]
+) -> tuple[dict[str, str], frozenset[str]]:
+    """Validate referenced F2 children and return E2E projects plus their exact names."""
+    nodes = aggregate.get("nodes")
+    if not isinstance(nodes, list):
+        return {}, frozenset()
+    projects: dict[str, str] = {}
+    child_names: set[str] = set()
+    for raw in nodes:
+        if not isinstance(raw, dict) or raw.get("receipt") is None:
+            continue
+        node_id = raw.get("node_id")
+        exit_code = raw.get("exit_code")
+        summary = raw.get("receipt")
+        node = CATALOG.get(node_id) if isinstance(node_id, str) else None
+        if (
+            node is None
+            or type(exit_code) is not int
+            or raw.get("status") != ("passed" if exit_code == 0 else "failed")
+            or not isinstance(summary, dict)
+        ):
+            raise LifecycleError("F2 aggregate child binding is invalid")
+        relative = summary.get("relative_path")
+        path = Path(relative) if isinstance(relative, str) else None
+        child = F2_CHILD.fullmatch(path.name) if path is not None else None
+        if (
+            path is None
+            or path.is_absolute()
+            or ".." in path.parts
+            or child is None
+            or child.group(1) != node_id
+            or path.name in child_names
+            or (repo_root / path).absolute() != (attempt_dir / path.name).absolute()
+        ):
+            raise LifecycleError("F2 child receipt is outside the attempt directory")
+        child_names.add(path.name)
+        try:
+            match node.kind:
+                case "isolated":
+                    validated = validate_static(attempt_dir / path.name, repo_root, exit_code)
+                case "postgres":
+                    validated = validate_postgres(
+                        attempt_dir / path.name, repo_root, "+".join(node.argv), exit_code
+                    )
+                case "e2e":
+                    receipt = _read_json(attempt_dir / path.name)
+                    head = aggregate.get("head_sha")
+                    if not isinstance(head, str) or SHA40.fullmatch(head) is None:
+                        raise LifecycleError("F2 E2E child aggregate head is invalid")
+                    validated = validate_e2e(
+                        attempt_dir / path.name,
+                        repo_root,
+                        exit_code,
+                        project=node.argv[0],
+                        expected_spec=node.argv[1:] or None,
+                        expected_screenshot_count=node.expected_screenshot_count,
+                        expected_attempt_id=attempt_id,
+                        expected_head_sha=head,
+                    )
+                    if set(receipt) != E2E_KEYS:
+                        raise LifecycleError("F2 E2E child final schema is invalid")
+                    validate_payload(
+                        receipt,
+                        repository_root=repo_root,
+                        receipt_path=attempt_dir / path.name,
+                    )
+                    projects[path.name] = node.argv[0]
+                case _:
+                    raise LifecycleError("F2 catalog node kind is unsupported")
+        except (ManifestValidationError, OSError, ProjectGateError, ValueError) as error:
+            raise LifecycleError("F2 child receipt failed independent validation") from error
+        if dict(validated) != summary:
+            raise LifecycleError("F2 aggregate child summary is not reproducible")
+    return projects, frozenset(child_names)
+
+
 def _external_exports(repo_root: Path, attempt_dir: Path, attempt_id: str) -> list[JSONValue]:
     exports: list[JSONValue] = []
     active_lock = current_evidence_lock()
@@ -338,22 +419,30 @@ def _external_exports(repo_root: Path, attempt_dir: Path, attempt_id: str) -> li
             ]
         finally:
             os.close(descriptor)
+    expected_projects = {
+        "f3-scripted.json": "scripted-full",
+        "f3-capture.json": "scripted-capture",
+        "f3-live.json": "live-manual",
+    }
     aggregate = _read_optional(attempt_dir / "f2-static.json")
-    nodes = aggregate.get("nodes") if aggregate is not None else None
-    expected_names = {"f3-scripted.json", "f3-capture.json", "f3-live.json"}
-    if isinstance(nodes, list):
-        for item in nodes:
-            if not isinstance(item, dict) or not isinstance(item.get("receipt"), dict):
-                continue
-            relative = item["receipt"].get("relative_path")
-            if isinstance(relative, str) and F2_CHILD.fullmatch(Path(relative).name):
-                expected_names.add(Path(relative).name)
+    f2_projects, referenced_f2_children = (
+        ({}, frozenset())
+        if aggregate is None
+        else _validated_f2_e2e_projects(repo_root, attempt_dir, attempt_id, aggregate)
+    )
+    expected_projects.update(f2_projects)
+    actual_f2_children = frozenset(
+        path.name for path in receipt_paths if F2_CHILD.fullmatch(path.name) is not None
+    )
+    if actual_f2_children != referenced_f2_children:
+        raise LifecycleError("F2 child receipts do not exactly match aggregate references")
     for receipt_path in receipt_paths:
-        if receipt_path.name not in expected_names:
+        expected_project = expected_projects.get(receipt_path.name)
+        if expected_project is None:
             continue
         receipt = _read_json(receipt_path)
         if receipt.get("runner") != "moldy-isolated-e2e":
-            continue
+            raise LifecycleError("final-attempt E2E receipt runner is invalid")
         absolute = receipt.get("export_directory_absolute")
         tree_hash = receipt.get("export_tree_sha256")
         project = receipt.get("project")
@@ -363,7 +452,8 @@ def _external_exports(repo_root: Path, attempt_dir: Path, attempt_id: str) -> li
             "live-manual": "live",
         }.get(project)
         if (
-            receipt.get("attempt_id") != attempt_id
+            project != expected_project
+            or receipt.get("attempt_id") != attempt_id
             or not isinstance(absolute, str)
             or suffix is None
             or not isinstance(tree_hash, str)
