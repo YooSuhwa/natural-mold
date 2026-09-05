@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   readdirSync,
   rmSync,
   symlinkSync,
@@ -452,6 +453,59 @@ describe('E2E artifact exporter', () => {
       expect(() =>
         exportFixture(fixture_, { environment: { E2E_EXPORT_SLUG: '../unsafe' } }),
       ).toThrow('E2E_EXPORT_SLUG')
+    } finally {
+      rmSync(fixture_.repositoryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('binds final-attempt exports to the full attempt id and absolute paths', () => {
+    const fixture_ = fixture()
+    const attemptId = 'b'.repeat(64)
+    try {
+      writeArtifact(results(fixture_, 'scripted-capture'), 'junit.xml')
+      writeArtifact(results(fixture_, 'scripted-capture'), 'case/page.png')
+      const receipt = exportFixture(fixture_, {
+        project: 'scripted-capture',
+        environment: {
+          E2E_EXPORT_SLUG: `runtime-policy-final-${attemptId}-capture`,
+        },
+      })
+      expect(receipt.attempt_id).toBe(attemptId)
+      expect(receipt.export_directory).toContain(attemptId)
+      expect(receipt.export_directory_absolute).toBe(
+        path.join(realpathSync(fixture_.repositoryRoot), ...receipt.export_directory.split('/')),
+      )
+      expect(receipt.screenshots_absolute).toEqual(
+        receipt.screenshots.map((value) => path.join(receipt.export_directory_absolute, value)),
+      )
+      expect(receipt.export_tree_sha256).toMatch(/^[0-9a-f]{64}$/)
+    } finally {
+      rmSync(fixture_.repositoryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('parses the bounded F2 child slug without colliding with F3 exports', () => {
+    const fixture_ = fixture()
+    const attemptId = 'c'.repeat(64)
+    const token = 'd'.repeat(16)
+    try {
+      writeArtifact(results(fixture_, 'scripted-full'), 'junit.xml')
+      const receipt = exportFixture(fixture_, {
+        environment: {
+          E2E_EXPORT_SLUG: `runtime-policy-final-${attemptId}-f2-${token}`,
+        },
+      })
+      expect(receipt.attempt_id).toBe(attemptId)
+      expect(receipt.export_directory).toContain(`-f2-${token}`)
+      expect(path.basename(receipt.export_directory).length).toBeLessThanOrEqual(128)
+      expect(receipt.export_directory).not.toContain(`-${attemptId}-scripted`)
+      expect(() =>
+        exportFixture(fixture_, {
+          environment: {
+            E2E_EXPORT_SLUG: `runtime-policy-final-${attemptId}-f2-todo21-runtime-policy-e2e-${token}`,
+          },
+        }),
+      ).toThrow('E2E_EXPORT_SLUG must be a bounded lowercase-safe slug.')
     } finally {
       rmSync(fixture_.repositoryRoot, { recursive: true, force: true })
     }

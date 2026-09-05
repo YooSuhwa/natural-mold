@@ -18,7 +18,7 @@ def _validate_manifest(manifest: Path) -> None:
     """Dispatch only after the shared no-follow manifest read boundary parsed the runner."""
     payload = load_manifest(manifest)
     if payload.get("runner") == "moldy-isolated-e2e" and payload.get("schema_version") == 1:
-        validate_e2e_payload(payload)
+        validate_e2e_payload(payload, receipt_path=manifest)
         validate_e2e_live_absence(payload)
         return
     validate_payload(payload)

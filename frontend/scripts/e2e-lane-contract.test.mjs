@@ -42,12 +42,31 @@ import {
   authenticationSetupFailure,
   resolveSkillNodeModulesDirectory,
 } from '../e2e/global-setup.mjs'
-import { collectJsonNodes, runIsolatedLane } from './run-e2e-lane.mjs'
+import { collectJsonNodes, parseArguments, runIsolatedLane } from './run-e2e-lane.mjs'
 import './e2e-prepared-lane.test.mjs'
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('E2E lane contract', () => {
+  it('consumes only the redundant fixed worker and retry options', () => {
+    expect(
+      parseArguments('scripted', [
+        '--project=scripted-full',
+        'e2e/smoke.spec.ts',
+        '--workers=1',
+        '--retries=0',
+      ]),
+    ).toEqual({ project: 'scripted-full', forwarded: ['e2e/smoke.spec.ts'] })
+    expect(() => parseArguments('scripted', ['--workers=2'])).toThrow(
+      'Only --workers=1 and --retries=0',
+    )
+    expect(() => parseArguments('scripted', ['--retries=1'])).toThrow(
+      'Only --workers=1 and --retries=0',
+    )
+    expect(() => parseArguments('scripted', ['--workers', '1'])).toThrow(
+      'Only --workers=1 and --retries=0',
+    )
+  })
   it('fails before lane startup unless the launcher uses Node 22', () => {
     // Given: supported and unsupported Node version strings from the launcher boundary.
 

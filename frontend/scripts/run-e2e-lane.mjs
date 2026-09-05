@@ -17,10 +17,11 @@ import {
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(frontendRoot, '..')
 
-function parseArguments(lane, rawArguments) {
+export function parseArguments(lane, rawArguments) {
   const arguments_ = normalizePlaywrightArguments(rawArguments)
   let project
   const forwarded = []
+  const consumedPolicy = new Set()
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index]
     if (argument === '--project') {
@@ -28,6 +29,13 @@ function parseArguments(lane, rawArguments) {
       index += 1
     } else if (argument.startsWith('--project=')) {
       project = argument.slice('--project='.length)
+    } else if (argument === '--workers=1' || argument === '--retries=0') {
+      if (consumedPolicy.has(argument)) {
+        throw new Error('Duplicate Playwright execution policy override.')
+      }
+      consumedPolicy.add(argument)
+    } else if (argument.startsWith('-')) {
+      throw new Error('Only --workers=1 and --retries=0 execution options are accepted.')
     } else {
       forwarded.push(argument)
     }

@@ -54,10 +54,12 @@ export function dateInSeoul(now) {
 }
 
 export function validateSlug(slug) {
+  const finalSlug =
+    typeof slug === 'string' &&
+    /^runtime-policy-final-[0-9a-f]{64}-(?:scripted|capture|live|f2-[0-9a-f]{16})$/.test(slug)
   if (
     typeof slug !== 'string' ||
-    !/^[a-z0-9]+(?:-[a-z0-9]+){0,7}$/.test(slug) ||
-    slug.length > 64
+    (!finalSlug && (!/^[a-z0-9]+(?:-[a-z0-9]+){0,9}$/.test(slug) || slug.length > 112))
   ) {
     throw new Error('E2E_EXPORT_SLUG must be a bounded lowercase-safe slug.')
   }

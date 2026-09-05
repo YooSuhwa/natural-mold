@@ -36,6 +36,7 @@ class PlaywrightNode:
 @dataclass(frozen=True, slots=True)
 class PlaywrightExecution:
     nodes: tuple[PlaywrightNode, ...]
+    skipped_nodes: tuple[PlaywrightNode, ...]
     unexpected_outcomes: tuple[PlaywrightOutcome, ...]
 
 
@@ -122,6 +123,7 @@ def _spec_path(spec: dict[str, JsonValue], suite_file: str | None) -> str | None
 
 def _walk_suites(suites: list[JsonValue]) -> PlaywrightExecution:
     nodes: set[PlaywrightNode] = set()
+    skipped_nodes: set[PlaywrightNode] = set()
     unexpected_outcomes: list[PlaywrightOutcome] = []
     stack = [(suite, 1) for suite in reversed(suites)]
     suite_count = node_count = result_count = 0
@@ -174,8 +176,6 @@ def _walk_suites(suites: list[JsonValue]) -> PlaywrightExecution:
                     "skipped",
                 }:
                     raise PlaywrightReceiptError("contradictory_playwright_status")
-                if expected_status == "skipped" or result_status == "skipped":
-                    continue
                 project = _project_name(raw_test, result)
                 title = _leaf_title(raw_spec, raw_test)
                 if project is None or path is None or title is None:
@@ -183,8 +183,13 @@ def _walk_suites(suites: list[JsonValue]) -> PlaywrightExecution:
                 node = PlaywrightNode(project, path, title)
                 if len(node.node_id) > MAX_PLAYWRIGHT_NODE_ID_LENGTH:
                     raise PlaywrightReceiptError("playwright_node_id_too_long")
-                if node in nodes:
+                if node in nodes or node in skipped_nodes:
                     raise PlaywrightReceiptError("duplicate_playwright_node")
+                if expected_status == "skipped" or result_status == "skipped":
+                    if node in skipped_nodes:
+                        raise PlaywrightReceiptError("duplicate_playwright_node")
+                    skipped_nodes.add(node)
+                    continue
                 nodes.add(node)
                 if (
                     result_status in DIAGNOSTIC_FAILURE_STATUSES
@@ -208,10 +213,11 @@ def _walk_suites(suites: list[JsonValue]) -> PlaywrightExecution:
                         raise PlaywrightReceiptError("unexpected_outcome_limit")
         for child in reversed(_child_sequence(raw_suite, "suites")):
             stack.append((child, depth + 1))
-    if not nodes:
+    if not nodes and not skipped_nodes:
         raise PlaywrightReceiptError("empty_playwright_selection")
     return PlaywrightExecution(
         tuple(sorted(nodes)),
+        tuple(sorted(skipped_nodes)),
         tuple(sorted(unexpected_outcomes)),
     )
 

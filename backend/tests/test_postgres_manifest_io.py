@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
+import stat
 import sys
 from pathlib import Path
 
@@ -68,6 +70,7 @@ def test_main_writes_checker_eligible_parent_interrupt_receipt(
     )
     monkeypatch.setattr(postgres_manifest_io, "open_evidence_directory", lambda _root: dummy)
     monkeypatch.setattr(postgres_manifest_io, "close_evidence_directory", lambda _root: None)
+    monkeypatch.setattr(postgres_manifest_io, "verify_evidence_directory", lambda _root: None)
     monkeypatch.setattr(postgres_manifest_io, "process_identity_sha256", lambda: "d" * 64)
     monkeypatch.setattr(postgres_test_runner, "_run_scenario", lambda _kind, **_kw: interrupted)
     monkeypatch.setattr(
@@ -106,6 +109,7 @@ def test_run_cli_recasts_passed_scenario_when_after_snapshot_is_unavailable(
     )
     monkeypatch.setattr(postgres_manifest_io, "open_evidence_directory", lambda _root: dummy)
     monkeypatch.setattr(postgres_manifest_io, "close_evidence_directory", lambda _root: None)
+    monkeypatch.setattr(postgres_manifest_io, "verify_evidence_directory", lambda _root: None)
     monkeypatch.setattr(postgres_manifest_io, "process_identity_sha256", lambda: "d" * 64)
     monkeypatch.setattr(
         postgres_manifest_io,
@@ -297,6 +301,58 @@ def test_write_manifest_removes_partial_leaf_after_interruption(
 
     # Then no incomplete destination survives through the pinned directory.
     assert not destination.exists()
+
+
+def test_write_manifest_preserves_attacker_swap_after_parent_fsync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given a destination whose visible name is replaced only after its parent has been synced.
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    destination = evidence / "result.json"
+    trusted = open_evidence_directory(evidence)
+    real_fsync = postgres_manifest_io.os.fsync
+    swapped = False
+
+    def swap_after_parent_fsync(descriptor: int) -> None:
+        nonlocal swapped
+        real_fsync(descriptor)
+        if descriptor == trusted.descriptor and not swapped:
+            swapped = True
+            attacker = evidence / "attacker.json"
+            attacker.write_text("attacker-owned", encoding="utf-8")
+            attacker.replace(destination)
+
+    monkeypatch.setattr(postgres_manifest_io.os, "fsync", swap_after_parent_fsync)
+    try:
+        # When the writer completes the former parent-fsync window, then its final fd binding fails.
+        with pytest.raises(ManifestPathError, match="manifest_file"):
+            write_manifest(destination, {"status": "passed"}, trusted)
+    finally:
+        close_evidence_directory(trusted)
+
+    # Then cleanup leaves the substituted attacker inode in place.
+    assert destination.read_text(encoding="utf-8") == "attacker-owned"
+
+
+def test_write_manifest_writes_private_bound_regular_file(tmp_path: Path) -> None:
+    # Given a trusted empty destination, when manifest emission completes,
+    # then the named leaf is safe.
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    destination = evidence / "result.json"
+    trusted = open_evidence_directory(evidence)
+    try:
+        write_manifest(destination, {"status": "passed"}, trusted)
+    finally:
+        close_evidence_directory(trusted)
+
+    metadata = destination.lstat()
+    assert destination.read_text(encoding="utf-8") == '{"status":"passed"}\n'
+    assert stat.S_ISREG(metadata.st_mode)
+    assert metadata.st_uid == os.geteuid()
+    assert metadata.st_nlink == 1
+    assert not metadata.st_mode & 0o022
 
 
 def test_load_manifest_reads_once_from_nofollow_descriptor(

@@ -109,6 +109,33 @@ def test_export_adapter_retains_empty_test_source_rejection(tmp_path: Path) -> N
     assert receipt.source_rejection.tests == ()
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"unexpected": "value"},
+        {"attempt_id": None},
+        {"export_directory_absolute": "/tmp/mixed"},
+    ],
+)
+def test_export_adapter_rejects_extra_and_mixed_schema_variants(
+    tmp_path: Path, mutation: dict[str, ExportValue]
+) -> None:
+    manifest = _file("export-manifest.json")
+    payload: dict[str, ExportValue] = {
+        "schema_version": 1,
+        "secret_scan_passed": True,
+        "export_directory": "output/e2e-captures/legacy",
+        "manifest": manifest,
+        "files": [manifest],
+        "screenshots": [],
+    }
+    payload.update(mutation)
+    path = tmp_path / "export-receipt.json"
+    path.write_text(json.dumps(payload))
+
+    assert _decode_receipt(path, "scripted-full").failure_code == "invalid_export_receipt"
+
+
 @pytest.mark.parametrize("kind", ["source_symlink", "destination_symlink", "source_hardlink"])
 def test_receipt_publisher_rejects_link_attacks(tmp_path: Path, kind: str) -> None:
     runner = tmp_path / "runner"
@@ -216,3 +243,25 @@ def test_export_adapter_scopes_capture_sources_to_capture_project(
         if value == "--source-dir"
     )
     assert sources == expected_sources
+
+
+def test_final_attempt_export_slug_preserves_full_attempt_id_without_run_suffix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    attempt_id = "b" * 64
+    slug = f"runtime-policy-final-{attempt_id}-capture"
+    captured_command: list[str] = []
+
+    def record_command(
+        command: list[str], **_kwargs: ExportValue
+    ) -> subprocess.CompletedProcess[str]:
+        captured_command.extend(command)
+        return subprocess.CompletedProcess(command, 1, "", f"{EXPORT_FAILURE_PREFIX}internal\n")
+
+    monkeypatch.setenv("E2E_EXPORT_SLUG", slug)
+    monkeypatch.setattr(export_module, "run_command", record_command)
+
+    export_artifacts(_resources(tmp_path), "scripted", "scripted-capture", ())
+
+    slug_index = captured_command.index("--slug")
+    assert captured_command[slug_index + 1] == slug

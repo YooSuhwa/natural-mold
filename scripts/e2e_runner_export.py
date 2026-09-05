@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from e2e_cleanup_export_paths import read_regular
 from e2e_failure_diagnostics import (
     FailureDiagnosticError,
     SourceRejection,
@@ -52,6 +54,10 @@ class ExportReceipt:
     manifest: ExportFile | None = None
     failure_code: str | None = None
     source_rejection: SourceRejection | None = None
+    attempt_id: str | None = None
+    export_directory_absolute: str | None = None
+    export_tree_sha256: str | None = None
+    screenshots_absolute: tuple[str, ...] = ()
 
 
 def _failure(code: str) -> ExportReceipt:
@@ -95,7 +101,7 @@ def _parse_export_file(value: ExportValue) -> ExportFile | None:
 
 def _decode_receipt(path: Path, project: Project) -> ExportReceipt:
     try:
-        decoded = json.loads(path.read_text())
+        decoded = json.loads(read_regular(path))
         passed = decoded["secret_scan_passed"] is True
         schema_version = decoded["schema_version"]
         manifest_value = decoded["manifest"]
@@ -103,7 +109,34 @@ def _decode_receipt(path: Path, project: Project) -> ExportReceipt:
         files = decoded["files"]
         screenshots = decoded["screenshots"]
         rejection_value = decoded.get("source_rejection")
+        attempt_id = decoded.get("attempt_id")
+        directory_absolute = decoded.get("export_directory_absolute")
+        tree_sha256 = decoded.get("export_tree_sha256")
+        screenshots_absolute = decoded.get("screenshots_absolute")
     except (OSError, KeyError, json.JSONDecodeError, TypeError):
+        return _failure("invalid_export_receipt")
+    base_keys = {
+        "schema_version",
+        "secret_scan_passed",
+        "export_directory",
+        "manifest",
+        "files",
+        "screenshots",
+    }
+    current_keys = {
+        "attempt_id",
+        "export_directory_absolute",
+        "export_tree_sha256",
+        "screenshots_absolute",
+    }
+    optional_keys = {"source_rejection"}
+    present_current = set(decoded) & current_keys
+    if (
+        not isinstance(decoded, dict)
+        or not base_keys.issubset(decoded)
+        or set(decoded) - base_keys - current_keys - optional_keys
+        or present_current not in (set(), current_keys)
+    ):
         return _failure("invalid_export_receipt")
     if (
         not isinstance(directory, str)
@@ -128,6 +161,23 @@ def _decode_receipt(path: Path, project: Project) -> ExportReceipt:
     fallback_shape = rejection is None or (
         len(typed_files) == 1 and typed_files[0] == manifest and screenshots == []
     )
+    legacy_metadata = not present_current
+    current_metadata = (
+        (
+            attempt_id is None
+            or (isinstance(attempt_id, str) and SHA256_PATTERN.fullmatch(attempt_id))
+        )
+        and isinstance(directory_absolute, str)
+        and Path(directory_absolute).is_absolute()
+        and Path(directory_absolute) == REPO_ROOT / directory
+        and isinstance(tree_sha256, str)
+        and SHA256_PATTERN.fullmatch(tree_sha256) is not None
+        and isinstance(screenshots_absolute, list)
+        and all(
+            isinstance(value, str) and Path(value).is_absolute() for value in screenshots_absolute
+        )
+        and screenshots_absolute == [str(Path(directory_absolute) / value) for value in screenshots]
+    )
     valid = (
         schema_version == 1
         and manifest is not None
@@ -137,8 +187,20 @@ def _decode_receipt(path: Path, project: Project) -> ExportReceipt:
         and paths[1:] == sorted(paths[1:])
         and all(isinstance(value, str) for value in screenshots)
         and fallback_shape
+        and (legacy_metadata or current_metadata)
     )
     if not valid:
+        return _failure("invalid_export_receipt")
+    expected_tree = hashlib.sha256(
+        json.dumps(
+            [
+                {"path": item.path, "sha256": item.sha256, "size_bytes": item.size_bytes}
+                for item in typed_files
+            ],
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    if current_metadata and tree_sha256 != expected_tree:
         return _failure("invalid_export_receipt")
     return ExportReceipt(
         passed,
@@ -148,6 +210,10 @@ def _decode_receipt(path: Path, project: Project) -> ExportReceipt:
         schema_version,
         manifest,
         source_rejection=rejection,
+        attempt_id=attempt_id,
+        export_directory_absolute=directory_absolute,
+        export_tree_sha256=tree_sha256,
+        screenshots_absolute=tuple(screenshots_absolute or ()),
     )
 
 
@@ -168,7 +234,13 @@ def export_artifacts(
                 resources.run_root / "output/e2e-captures",
             )
         )
-    base_slug = os.environ.get("E2E_EXPORT_SLUG", project)[:48].rstrip("-")
+    base_slug = os.environ.get("E2E_EXPORT_SLUG", project)
+    final_match = re.fullmatch(
+        r"runtime-policy-final-([0-9a-f]{64})-"
+        r"(?:scripted|capture|live|f2-[0-9a-f]{16})",
+        base_slug,
+    )
+    slug = base_slug if final_match else f"{base_slug}-{resources.run_id[:12]}"
     env = {
         key: value
         for key, value in os.environ.items()
@@ -192,7 +264,7 @@ def export_artifacts(
             "--project",
             project,
             "--slug",
-            f"{base_slug}-{resources.run_id[:12]}",
+            slug,
             "--repo-root",
             str(REPO_ROOT),
             "--receipt",

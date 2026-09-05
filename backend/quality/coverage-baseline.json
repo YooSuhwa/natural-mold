@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "source_commit": "a7abda470873ef45f291cf7f176c8b3d54445cf2",
+  "measurement_command": "uv run pytest --cov=app --cov-report=json",
+  "reviewed_runs": 2,
+  "metric": "line",
+  "covered": 30842,
+  "total": 38451,
+  "minimum_percent": 80.21117786273439,
+  "update_policy": "reviewed-manual-only"
+}

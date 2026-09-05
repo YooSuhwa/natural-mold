@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import stat
 from pathlib import Path
 from types import ModuleType
@@ -93,6 +94,53 @@ def test_aggregate_writer_detects_link_replacement(tmp_path: Path, manifest_io: 
             writer.write({"status": "failed"})
     finally:
         writer.close()
+
+
+def test_aggregate_writer_preserves_attacker_swap_after_parent_fsync(
+    tmp_path: Path, manifest_io: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reject a post-fsync swap while preserving the attacker's replacement."""
+    path = tmp_path / "wave.json"
+    writer = manifest_io.AggregateWriter.create(path)
+    real_fsync = manifest_io.os.fsync
+    swapped = False
+
+    def swap_after_parent_fsync(descriptor: int) -> None:
+        nonlocal swapped
+        real_fsync(descriptor)
+        if descriptor == writer.parent_descriptor and not swapped:
+            swapped = True
+            attacker = tmp_path / "attacker.json"
+            attacker.write_text("attacker-owned", encoding="utf-8")
+            attacker.replace(path)
+
+    monkeypatch.setattr(manifest_io.os, "fsync", swap_after_parent_fsync)
+    try:
+        with pytest.raises(manifest_io.ProjectGateError, match="manifest_write_failed"):
+            writer.write({"status": "passed"})
+    finally:
+        writer.close()
+
+    assert path.read_text(encoding="utf-8") == "attacker-owned"
+
+
+def test_aggregate_writer_writes_private_bound_regular_file(
+    tmp_path: Path, manifest_io: ModuleType
+) -> None:
+    """Given an untouched destination, when finalized, then the named aggregate remains safe."""
+    path = tmp_path / "wave.json"
+    writer = manifest_io.AggregateWriter.create(path)
+    try:
+        writer.write({"status": "passed"})
+    finally:
+        writer.close()
+
+    metadata = path.lstat()
+    assert path.read_text(encoding="utf-8") == '{"status":"passed"}\n'
+    assert stat.S_ISREG(metadata.st_mode)
+    assert metadata.st_uid == os.geteuid()
+    assert metadata.st_nlink == 1
+    assert not metadata.st_mode & 0o022
 
 
 def test_aggregate_file_is_private_regular_file(

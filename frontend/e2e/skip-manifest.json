@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-09-05",
+  "rules": [
+    {
+      "id": "backend-required",
+      "path_glob": "e2e/**",
+      "condition": "process.env.PW_SKIP_BACKEND === '1'",
+      "reason": "Requires the FastAPI backend",
+      "category": "infrastructure",
+      "owner": "quality-runtime",
+      "expires": "2027-03-31",
+      "expected_count": 38
+    },
+    {
+      "id": "system-llm-required",
+      "path_glob": "e2e/builder.spec.ts",
+      "condition": "process.env.PW_SKIP_BACKEND === '1'",
+      "reason": "Requires the FastAPI backend and a real System LLM",
+      "category": "credentialed-live",
+      "owner": "agent-runtime",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "capture-tour-opt-in",
+      "path_glob": "e2e/captures/**",
+      "condition": "process.env.E2E_CAPTURE_TOUR !== '1'",
+      "reason": "Set E2E_CAPTURE_TOUR=1 to run the capture tour",
+      "category": "manual-capture",
+      "owner": "frontend-quality",
+      "expires": "2027-03-31",
+      "expected_count": 21
+    },
+    {
+      "id": "legacy-runtime",
+      "path_glob": "e2e/**",
+      "condition": "process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy'",
+      "reason": "Skipped for the legacy chat runtime",
+      "category": "legacy-matrix",
+      "owner": "chat-runtime",
+      "expires": "2027-03-31",
+      "expected_count": 11
+    },
+    {
+      "id": "legacy-draft",
+      "path_glob": "e2e/draft-conversation.spec.ts",
+      "condition": "IS_LANGGRAPH_V3",
+      "reason": "Legacy draft lifecycle is covered by LangGraph v3 draft spec",
+      "category": "legacy-matrix",
+      "owner": "chat-runtime",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "run-seed-helper",
+      "path_glob": "e2e/chat-run-lifecycle.spec.ts",
+      "condition": "process.env.E2E_TEST_HELPERS_ENABLED !== 'true'",
+      "reason": "Requires E2E_TEST_HELPERS_ENABLED=true for run seeding",
+      "category": "infrastructure",
+      "owner": "backend-runtime",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "live-chat-capture",
+      "path_glob": "e2e/chat-surfaces-live-captures.spec.ts",
+      "condition": "process.env.E2E_LIVE_CHAT_SURFACES !== '1'",
+      "reason": "Set E2E_LIVE_CHAT_SURFACES=1 to capture live chat surfaces",
+      "category": "credentialed-live",
+      "owner": "frontend-quality",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "manual-atlassian",
+      "path_glob": "e2e/manual-atlassian-oauth.spec.ts",
+      "condition": "process.env.MANUAL_ATLASSIAN_E2E !== '1'",
+      "reason": "Set MANUAL_ATLASSIAN_E2E=1 to run the headed Atlassian OAuth flow.",
+      "category": "credentialed-live",
+      "owner": "mcp-integrations",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    }
+  ]
+}

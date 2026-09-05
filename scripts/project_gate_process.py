@@ -44,7 +44,13 @@ def safe_environment(inherited: dict[str, str], toolchain: TrustedToolchain) -> 
 
 
 def command_for(
-    node: GateNode, receipt: Path, repo_root: Path, toolchain: TrustedToolchain
+    node: GateNode,
+    receipt: Path,
+    repo_root: Path,
+    toolchain: TrustedToolchain,
+    *,
+    attempt_id: str | None = None,
+    head_sha: str | None = None,
 ) -> tuple[list[str], dict[str, str]]:
     kind = node.kind
     match kind:
@@ -88,6 +94,20 @@ def command_for(
             }
         case _:
             assert_never(kind)
+    if attempt_id is not None:
+        if head_sha is None:
+            raise ProjectGateError("unsafe_manifest")
+        token = receipt.name.removesuffix(".json").rsplit(".", 1)[-1]
+        final_slug = f"runtime-policy-final-{attempt_id}-f2-{token}"
+        extra.update(
+            {
+                "E2E_EXPORT_SLUG": final_slug,
+                "MOLDY_FINAL_ATTEMPT_ID": attempt_id,
+                "MOLDY_FINAL_ATTEMPT_HEAD": head_sha,
+                "MOLDY_FINAL_NODE_ID": node.node_id,
+                "MOLDY_FINAL_RECEIPT_TOKEN": token,
+            }
+        )
     return command, extra
 
 
@@ -167,26 +187,45 @@ def _checker(receipt: Path, repo_root: Path, environment: dict[str, str]) -> boo
 
 
 def validate_child(
-    node: GateNode, receipt: Path, repo_root: Path, exit_code: int, environment: dict[str, str]
+    node: GateNode,
+    receipt: Path,
+    repo_root: Path,
+    exit_code: int,
+    environment: dict[str, str],
+    parent_descriptor: int | None = None,
 ) -> ReceiptSummary:
     kind = node.kind
     match kind:
         case "isolated":
-            return validate_static(receipt, repo_root, exit_code)
+            if parent_descriptor is None:
+                return validate_static(receipt, repo_root, exit_code)
+            return validate_static(receipt, repo_root, exit_code, parent_descriptor)
         case "postgres":
             if not _checker(receipt, repo_root, environment):
                 raise ProjectGateError("invalid_child_receipt")
-            return validate_postgres(receipt, repo_root, "+".join(node.argv), exit_code)
+            if parent_descriptor is None:
+                return validate_postgres(receipt, repo_root, "+".join(node.argv), exit_code)
+            return validate_postgres(
+                receipt, repo_root, "+".join(node.argv), exit_code, parent_descriptor
+            )
         case "e2e":
             if not _checker(receipt, repo_root, environment):
                 raise ProjectGateError("invalid_child_receipt")
+            options = {
+                "project": node.argv[0],
+                "expected_spec": node.argv[1:] or None,
+                "expected_screenshot_count": node.expected_screenshot_count,
+            }
+            if parent_descriptor is None:
+                return validate_e2e(receipt, repo_root, exit_code, **options)
             return validate_e2e(
                 receipt,
                 repo_root,
                 exit_code,
-                project=node.argv[0],
-                expected_spec=node.argv[1:] or None,
-                expected_screenshot_count=node.expected_screenshot_count,
+                **options,
+                parent_descriptor=parent_descriptor,
+                expected_attempt_id=environment.get("MOLDY_FINAL_ATTEMPT_ID"),
+                expected_head_sha=environment.get("MOLDY_FINAL_ATTEMPT_HEAD"),
             )
         case _:
             assert_never(kind)

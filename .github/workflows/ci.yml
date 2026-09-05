@@ -57,6 +57,8 @@ jobs:
       # proves owned-resource cleanup from its immutable manifest.
       - run: bash scripts/run-isolated-command.sh --cwd backend -- uv run pytest -q -n 4 --ignore=tests/integration
         working-directory: .
+      - name: Enforce reviewed backend coverage floor
+        run: uv run python ../scripts/run_coverage_gate.py backend
       - name: Disposable PostgreSQL integration lane
         working-directory: .
         run: |
@@ -93,6 +95,8 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       # pnpm version comes from the root package.json "packageManager" field.
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -113,4 +117,41 @@ jobs:
       - run: pnpm lint:type-safety
       - run: pnpm lint:e2e-hygiene
       - run: pnpm exec vitest run
+      - name: Enforce reviewed frontend coverage floor
+        run: python3 ../scripts/run_coverage_gate.py frontend
       - run: pnpm build
+
+  pr-scripted-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: uv sync --frozen --all-extras
+        working-directory: backend
+      - run: pnpm install --frozen-lockfile
+      - name: Govern skips and run deterministic PR smoke
+        run: |
+          pnpm --dir frontend lint:e2e-skips
+          E2E_RUN_MANIFEST="$PWD/.omo/evidence/project-restart-consolidated-roadmap/ci-pr-smoke.json" \
+            pnpm --dir frontend test:e2e:scripted -- --project=scripted-smoke --workers=1
+      - name: Validate cleanup and redacted artifact contract
+        run: >-
+          backend/.venv/bin/python scripts/check-isolation-cleanup.py
+          .omo/evidence/project-restart-consolidated-roadmap/ci-pr-smoke.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-scripted-smoke
+          path: |
+            .omo/evidence/project-restart-consolidated-roadmap/ci-pr-smoke.json
+            output/e2e-captures/
+          if-no-files-found: error
+          retention-days: 14

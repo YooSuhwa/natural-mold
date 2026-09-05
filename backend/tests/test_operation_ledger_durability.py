@@ -277,3 +277,75 @@ def test_append_detects_valid_ledger_name_swap_before_commit(tmp_path: Path) -> 
             filesystem_hook=swap,
         )
     assert ledger.read_bytes() == alternate_bytes
+
+
+def test_post_file_fsync_validation_failure_rolls_back_and_retry_appends_once(
+    tmp_path: Path,
+) -> None:
+    # Given: a valid ledger and a post-durability hook that makes its name unsafe.
+    writer = _load_writer()
+    ledger = _ledger(writer, tmp_path / "operations.ndjson")
+    before = ledger.read_bytes()
+
+    def make_ledger_writable(stage: str) -> None:
+        if stage == "after_file_fsync":
+            ledger.chmod(0o660)
+
+    # When: validation runs after the new entry reaches durable file storage.
+    with pytest.raises(writer.LedgerError):
+        _append(writer, ledger, interruption_hook=make_ledger_writable)
+    ledger.chmod(0o600)
+
+    # Then: rollback restores exactly the verified prefix and a retry adds one entry.
+    assert ledger.read_bytes() == before
+    _append(writer, ledger)
+    assert len(writer.verify_ledger(ledger)) == 2
+
+
+def test_post_file_fsync_parent_fsync_failure_rolls_back_and_retry_appends_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given: a valid ledger and an injected failure on the append parent fsync.
+    writer = _load_writer()
+    ledger = _ledger(writer, tmp_path / "operations.ndjson")
+    before = ledger.read_bytes()
+    original_fsync = os.fsync
+    calls = 0
+
+    def fail_parent_fsync(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected parent fsync failure")
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", fail_parent_fsync)
+
+    # When: the parent fsync reports failure after the file has been synced.
+    with pytest.raises(OSError, match="parent fsync"):
+        _append(writer, ledger)
+
+    # Then: rollback is durable and retry does not duplicate the failed append.
+    assert ledger.read_bytes() == before
+    monkeypatch.setattr(os, "fsync", original_fsync)
+    _append(writer, ledger)
+    assert len(writer.verify_ledger(ledger)) == 2
+
+
+def test_append_detects_post_parent_fsync_name_swap_without_touching_replacement(
+    tmp_path: Path,
+) -> None:
+    # Given: a valid append and a foreign valid ledger swapped in after parent fsync.
+    writer = _load_writer()
+    ledger = _ledger(writer, tmp_path / "operations.ndjson")
+    alternate = _ledger(writer, tmp_path / "alternate.ndjson")
+    alternate_bytes = alternate.read_bytes()
+
+    def swap_after_parent_fsync(stage: str) -> None:
+        if stage == "after_parent_fsync":
+            alternate.replace(ledger)
+
+    # When / Then: the final fd/name proof fails and rollback touches only the opened inode.
+    with pytest.raises(writer.LedgerError, match="pathname identity changed"):
+        _append(writer, ledger, interruption_hook=swap_after_parent_fsync)
+    assert ledger.read_bytes() == alternate_bytes

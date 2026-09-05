@@ -129,11 +129,11 @@ def _parse_request(arguments: list[str], repo_root: Path) -> GateRequest:
         raise ProjectGateError("unknown_profile")
     if not base_sha:
         raise ProjectGateError("base_not_commit")
-    manifest = _safe_new_manifest(repo_root, arguments[4])
+    manifest = _safe_new_manifest(repo_root, arguments[4], profile_name)
     return GateRequest(profile_name, base_sha, manifest)
 
 
-def _safe_new_manifest(repo_root: Path, raw_path: str) -> Path:
+def _safe_new_manifest(repo_root: Path, raw_path: str, profile_name: str) -> Path:
     evidence_root = repo_root / ".omo" / "evidence" / "project-restart-consolidated-roadmap"
     if not evidence_root.exists() or evidence_root.is_symlink() or not evidence_root.is_dir():
         raise ProjectGateError("unsafe_manifest")
@@ -142,11 +142,14 @@ def _safe_new_manifest(repo_root: Path, raw_path: str) -> Path:
     if ".." in candidate.parts:
         raise ProjectGateError("unsafe_manifest")
     resolved_candidate = candidate if candidate.is_absolute() else repo_root / candidate
-    try:
-        relative = resolved_candidate.relative_to(trusted_root)
-    except ValueError as error:
-        raise ProjectGateError("unsafe_manifest") from error
-    if len(relative.parts) != 1 or resolved_candidate.suffix != ".json":
+    direct = resolved_candidate.parent == trusted_root
+    final = (
+        profile_name == "final-static"
+        and resolved_candidate.name == "f2-static.json"
+        and resolved_candidate.parent.parent == trusted_root / "final-attempts"
+        and re.fullmatch(r"[0-9a-f]{64}", resolved_candidate.parent.name) is not None
+    )
+    if (not direct and not final) or resolved_candidate.suffix != ".json":
         raise ProjectGateError("unsafe_manifest")
     try:
         resolved_candidate.lstat()

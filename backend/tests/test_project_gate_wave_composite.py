@@ -91,7 +91,8 @@ def test_composite_fails_when_repository_changes_after_node(
     def changed(_expected: RepositoryProvenanceLike, _root: Path) -> None:
         nonlocal checks
         checks += 1
-        raise composite.ProjectGateError("repository_changed")
+        if checks == 2:
+            raise composite.ProjectGateError("repository_changed")
 
     monkeypatch.setattr(composite, "verify_provenance", changed)
     monkeypatch.setattr(composite, "run_process", lambda _cmd, _root, _env: 0)
@@ -113,7 +114,7 @@ def test_composite_fails_when_repository_changes_after_node(
 
     payload = json.loads(manifest.read_text(encoding="utf-8"))
     assert result == 1
-    assert checks == 1
+    assert checks == 2
     assert payload["failure_reason"] == "repository_changed"
     assert payload["executed_node_ids"] == ["backend-full"]
 

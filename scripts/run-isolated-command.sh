@@ -148,6 +148,13 @@ else
   child_cwd="$run_root/frontend"
 fi
 
+if [[ -n "$manifest_path" ]]; then
+  if ! "$trusted_python" "$manifest_helper" verify "$manifest_path" "$manifest_parent_identity" "$manifest_file_identity" >/dev/null; then
+    cleanup 74 failed
+    exit 74
+  fi
+fi
+
 (
   cd "$child_cwd" || exit 70
   exec "$@"

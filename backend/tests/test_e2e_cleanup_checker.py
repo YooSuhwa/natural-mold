@@ -17,7 +17,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import e2e_cleanup_lifecycle as lifecycle  # noqa: E402
-from e2e_cleanup_checker import ManifestValidationError, validate_payload  # noqa: E402
+from e2e_cleanup_checker import (  # noqa: E402
+    ManifestValidationError,
+    load_and_validate,
+    validate_payload,
+)
 
 _LIVE_NODES = [
     (
@@ -132,6 +136,151 @@ def _manifest(
             "foreign_containers_preserved": True,
         },
     }
+
+
+@pytest.mark.parametrize(
+    ("target", "field"),
+    [("export", "unexpected"), ("export", "attempt_id"), ("top", "attempt_id")],
+)
+def test_validate_payload_rejects_extra_and_mixed_export_schema(
+    tmp_path: Path, target: str, field: str
+) -> None:
+    payload = _manifest(tmp_path)
+    if target == "export":
+        export = payload["export"]
+        assert isinstance(export, dict)
+        export[field] = None
+    else:
+        payload[field] = None
+
+    with pytest.raises(ManifestValidationError, match="export_schema"):
+        validate_payload(payload, repository_root=tmp_path)
+
+
+def test_validate_payload_rejects_legacy_schema_in_final_attempt_namespace(
+    tmp_path: Path,
+) -> None:
+    payload = _manifest(tmp_path, project="scripted-full")
+    export = payload["export"]
+    assert isinstance(export, dict)
+    old_directory = tmp_path / str(export["export_directory"])
+    final_relative = "output/e2e-captures/20260905-runtime-policy-final-" + "a" * 64 + "-scripted"
+    final_directory = tmp_path / final_relative
+    old_directory.rename(final_directory)
+    export["export_directory"] = final_relative
+
+    with pytest.raises(ManifestValidationError, match="final_attempt_export"):
+        validate_payload(payload, repository_root=tmp_path)
+
+
+def _final_f2_manifest(
+    repository: Path, node: str, project: str, requested_specs: tuple[str, ...]
+) -> tuple[dict[str, object], Path]:
+    payload = _manifest(repository, project=project)
+    attempt_id = "a" * 64
+    token = "c" * 16
+    export = payload["export"]
+    assert isinstance(export, dict)
+    original = repository / str(export["export_directory"])
+    relative = f"output/e2e-captures/20260905-runtime-policy-final-{attempt_id}-f2-{token}"
+    destination = repository / relative
+    original.rename(destination)
+    files = export["files"]
+    assert isinstance(files, list)
+    tree_payload = json.dumps(files, separators=(",", ":")).encode()
+    tree_hash = hashlib.sha256(tree_payload).hexdigest()
+    export.update(
+        failure_code=None,
+        export_directory=relative,
+        attempt_id=attempt_id,
+        export_directory_absolute=str(destination),
+        export_tree_sha256=tree_hash,
+        screenshots_absolute=[],
+        source_rejection=None,
+    )
+    selected = [f"{project}::{spec}::works" for spec in requested_specs]
+    if not selected:
+        selected = [f"{project}::e2e/smoke.spec.ts::works"]
+    payload.update(
+        attempt_id=attempt_id,
+        head_sha="b" * 40,
+        requested_specs=list(requested_specs),
+        skipped_ids=[],
+        export_directory_absolute=str(destination),
+        export_tree_sha256=tree_hash,
+        screenshots=[],
+        selected_ids=selected,
+        executed_ids=selected,
+    )
+    receipt = repository / "final-attempts" / attempt_id / f"f2-static.{node}.{token}.json"
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    receipt.write_text(json.dumps(payload), encoding="utf-8")
+    receipt.chmod(0o600)
+    return payload, receipt
+
+
+@pytest.mark.parametrize(
+    ("node", "project", "requested_specs"),
+    [
+        (
+            "todo21-runtime-policy-e2e",
+            "scripted-full",
+            (
+                "e2e/agent-settings.spec.ts",
+                "e2e/runtime-todo-policy.spec.ts",
+                "e2e/runtime-filesystem-policy.spec.ts",
+                "e2e/chat-compaction.spec.ts",
+            ),
+        ),
+        (
+            "todo21-visual-capture",
+            "scripted-capture",
+            (
+                "e2e/agent-settings.spec.ts",
+                "e2e/runtime-todo-policy.spec.ts",
+                "e2e/runtime-filesystem-policy.spec.ts",
+                "e2e/chat-compaction.spec.ts",
+            ),
+        ),
+    ],
+)
+def test_checker_accepts_exact_f2_e2e_receipt_binding(
+    tmp_path: Path, node: str, project: str, requested_specs: tuple[str, ...]
+) -> None:
+    payload, receipt = _final_f2_manifest(tmp_path, node, project, requested_specs)
+    load_and_validate(receipt, repository_root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["top_key", "export_key", "duplicate_skip", "nonempty_skip", "receipt"]
+)
+def test_final_checker_rejects_schema_skip_and_binding_mutations(
+    tmp_path: Path, mutation: str
+) -> None:
+    specs = (
+        "e2e/agent-settings.spec.ts",
+        "e2e/runtime-todo-policy.spec.ts",
+        "e2e/runtime-filesystem-policy.spec.ts",
+        "e2e/chat-compaction.spec.ts",
+    )
+    payload, receipt = _final_f2_manifest(
+        tmp_path, "todo21-runtime-policy-e2e", "scripted-full", specs
+    )
+    skipped = "scripted-full::e2e/skipped.spec.ts::skipped case"
+    if mutation == "top_key":
+        payload["unknown"] = True
+    elif mutation == "export_key":
+        export = payload["export"]
+        assert isinstance(export, dict)
+        export["unknown"] = True
+    elif mutation == "duplicate_skip":
+        payload["skipped_ids"] = [skipped, skipped]
+    elif mutation == "nonempty_skip":
+        payload["skipped_ids"] = [skipped]
+    else:
+        receipt = receipt.with_name("f2-static.todo21-visual-capture." + "c" * 16 + ".json")
+    with pytest.raises(ManifestValidationError):
+        validate_payload(payload, repository_root=tmp_path, receipt_path=receipt)
 
 
 def _replace_export_with_source_rejection(
@@ -265,6 +414,10 @@ def test_validate_payload_accepts_exporter_smoke_receipt_without_playwright_dotf
     assert result.returncode == 0, result.stderr
     receipt = json.loads(result.stdout)
     payload["export"] = receipt
+    payload["attempt_id"] = receipt["attempt_id"]
+    payload["export_directory_absolute"] = receipt["export_directory_absolute"]
+    payload["export_tree_sha256"] = receipt["export_tree_sha256"]
+    payload["screenshots"] = receipt["screenshots_absolute"]
 
     # When the passed smoke manifest is independently checked.
     validate_payload(payload, repository_root=tmp_path)
@@ -806,7 +959,9 @@ def test_main_dispatches_mixed_postgres_and_e2e_manifests(
     monkeypatch.setattr(
         module, "validate_live_absence", lambda _payload: calls.append("postgres_live")
     )
-    monkeypatch.setattr(module, "validate_e2e_payload", lambda _payload: calls.append("e2e"))
+    monkeypatch.setattr(
+        module, "validate_e2e_payload", lambda _payload, **_kwargs: calls.append("e2e")
+    )
     monkeypatch.setattr(
         module, "validate_e2e_live_absence", lambda _payload: calls.append("e2e_live")
     )

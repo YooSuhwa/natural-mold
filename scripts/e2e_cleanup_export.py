@@ -58,8 +58,18 @@ def _validate_export_manifest(
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ManifestValidationError("export_manifest_json") from error
     manifest = mapping(decoded, "export_manifest")
+    manifest_keys = {
+        "schema_version",
+        "project",
+        "policy",
+        "secret_scan",
+        "files",
+        "total",
+    }
     require(
-        manifest.get("schema_version") == 1 and manifest.get("project") == project,
+        set(manifest) in (manifest_keys, manifest_keys | {"source_rejection"})
+        and manifest.get("schema_version") == 1
+        and manifest.get("project") == project,
         "export_manifest",
     )
     policy = mapping(manifest.get("policy"), "export_manifest_policy")
@@ -75,7 +85,8 @@ def _validate_export_manifest(
     )
     scan = mapping(manifest.get("secret_scan"), "export_secret_scan")
     require(
-        scan.get("passed") is True
+        set(scan) == {"passed", "exact_secret_count"}
+        and scan.get("passed") is True
         and integer(scan.get("exact_secret_count"), "export_secret_scan") >= 0,
         "export_secret_scan",
     )
@@ -107,6 +118,29 @@ def _validate_export_manifest(
 def validate_export(export: object, project: str, repository_root: Path) -> SourceRejection | None:
     """Verify an ignored, persistent export and return any safe source rejection."""
     receipt = mapping(export, "export")
+    base_keys = {
+        "schema_version",
+        "secret_scan_passed",
+        "failure_code",
+        "export_directory",
+        "manifest",
+        "files",
+        "screenshots",
+    }
+    current_keys = {
+        "attempt_id",
+        "export_directory_absolute",
+        "export_tree_sha256",
+        "screenshots_absolute",
+    }
+    optional_keys = {"source_rejection"}
+    present_current = set(receipt) & current_keys
+    require(
+        (set(receipt) - base_keys - current_keys - optional_keys) == set()
+        and (base_keys - {"failure_code"}).issubset(receipt)
+        and present_current in (set(), current_keys),
+        "export_schema",
+    )
     require(
         receipt.get("schema_version") == 1 and receipt.get("secret_scan_passed") is True,
         "export",
@@ -121,10 +155,26 @@ def validate_export(export: object, project: str, repository_root: Path) -> Sour
         raise ManifestValidationError("export_ignore") from error
     require(re.search(r"(?m)^/?output/?$", ignored) is not None, "export_ignore")
     directory = safe_export_directory(repository_root, relative)
+    metadata_present = present_current == current_keys
+    if metadata_present:
+        absolute = string(receipt.get("export_directory_absolute"), "export_directory_absolute")
+        require(
+            Path(absolute).is_absolute() and Path(absolute) == directory,
+            "export_directory_absolute",
+        )
     listed = [_artifact_file(item) for item in _mappings(receipt.get("files"), "export_files")]
     paths = [item[0] for item in listed]
     require(len(paths) == len(set(paths)), "export_files")
     require(sum(item[2] for item in listed) <= MAX_TOTAL_BYTES, "export_total_size")
+    tree_payload = json.dumps(
+        [{"path": path, "sha256": digest, "size_bytes": size} for path, digest, size in listed],
+        separators=(",", ":"),
+    ).encode()
+    if metadata_present:
+        require(
+            receipt.get("export_tree_sha256") == hashlib.sha256(tree_payload).hexdigest(),
+            "export_tree",
+        )
     manifest_entry = _artifact_file(receipt.get("manifest"))
     require(
         bool(listed)
@@ -156,12 +206,22 @@ def validate_export(export: object, project: str, repository_root: Path) -> Sour
             raise ManifestValidationError("source_rejection") from error
         require(receipt_rejection == rejection, "source_rejection")
     screenshots = strings(receipt.get("screenshots"), "export_screenshots")
+    screenshots_absolute = (
+        strings(receipt.get("screenshots_absolute"), "export_screenshots_absolute")
+        if metadata_present
+        else []
+    )
     expected_screenshots = [path for path in paths if path.lower().endswith(".png")]
     require(
         screenshots == expected_screenshots and len(screenshots) == len(set(screenshots)),
         "export_screenshots",
     )
     require(not screenshots or project == "scripted-capture", "export_screenshots")
+    if metadata_present:
+        require(
+            screenshots_absolute == [str(directory / item) for item in screenshots],
+            "export_screenshots_absolute",
+        )
     require(
         rejection is None or (listed == [manifest_entry] and not screenshots),
         "source_rejection",

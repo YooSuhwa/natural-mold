@@ -56,6 +56,7 @@ def _payload(
     outcomes: list[NodeOutcome],
     runtime: dict[str, str] | None,
     failure: str | None,
+    attempt_id: str | None = None,
 ) -> JSONObject:
     by_id = {outcome.node_id: outcome for outcome in outcomes}
     nodes: list[JSONValue] = []
@@ -89,6 +90,7 @@ def _payload(
         "profile": profile,
         "base_sha": provenance.base_sha,
         "head_sha": provenance.head_sha,
+        **({"attempt_id": attempt_id} if attempt_id is not None else {}),
         "status": "passed" if passed else "failed",
         "failure_reason": failure,
         "runtime": runtime_payload,
@@ -121,7 +123,7 @@ def run_composite(
     inherited: dict[str, str],
 ) -> int:
     """Run one canonical wave and always finalize its reserved aggregate receipt."""
-    writer = AggregateWriter.create(manifest)
+    writer = AggregateWriter.create(manifest, repo_root, provenance.head_sha)
     environment = safe_environment(inherited, toolchain)
     outcomes: list[NodeOutcome] = []
     failure: str | None = None
@@ -144,12 +146,31 @@ def run_composite(
             verify_toolchain(toolchain)
             node = CATALOG[node_id]
             receipt = new_child_path(manifest, node_id, secrets.token_hex(8))
-            command, extra = command_for(node, receipt, repo_root, toolchain)
+            command, extra = command_for(
+                node,
+                receipt,
+                repo_root,
+                toolchain,
+                attempt_id=writer.attempt_id,
+                head_sha=writer.head_sha,
+            )
             try:
+                verify_provenance(provenance, repo_root)
+                writer.verify_binding()
                 exit_code = run_process(command, repo_root, environment | extra)
             except GateSignal as interrupted:
                 try:
-                    summary = validate_child(node, receipt, repo_root, 143, environment)
+                    if writer.attempt_id is None:
+                        summary = validate_child(node, receipt, repo_root, 143, environment | extra)
+                    else:
+                        summary = validate_child(
+                            node,
+                            receipt,
+                            repo_root,
+                            143,
+                            environment | extra,
+                            writer.parent_descriptor,
+                        )
                 except ProjectGateError:
                     outcomes.append(NodeOutcome(node_id, "invalid_receipt", 143, None))
                 else:
@@ -162,7 +183,19 @@ def run_composite(
                     failure = "repository_changed"
                 break
             try:
-                summary = validate_child(node, receipt, repo_root, exit_code, environment)
+                if writer.attempt_id is None:
+                    summary = validate_child(
+                        node, receipt, repo_root, exit_code, environment | extra
+                    )
+                else:
+                    summary = validate_child(
+                        node,
+                        receipt,
+                        repo_root,
+                        exit_code,
+                        environment | extra,
+                        writer.parent_descriptor,
+                    )
             except ProjectGateError:
                 outcomes.append(NodeOutcome(node_id, "invalid_receipt", exit_code, None))
                 failure = "invalid_child_receipt"
@@ -199,7 +232,17 @@ def run_composite(
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         try:
-            writer.write(_payload(profile, provenance, expected, outcomes, runtime, failure))
+            writer.write(
+                _payload(
+                    profile,
+                    provenance,
+                    expected,
+                    outcomes,
+                    runtime,
+                    failure,
+                    writer.attempt_id,
+                )
+            )
         finally:
             writer.close()
             signal.signal(signal.SIGINT, previous_interrupt)

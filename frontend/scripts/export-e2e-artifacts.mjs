@@ -66,6 +66,15 @@ function sha256(content) {
   return createHash('sha256').update(content).digest('hex')
 }
 
+function treeHash(files) {
+  const rows = files.map(({ path: filePath, sha256: hash, size_bytes: size }) => ({
+    path: filePath,
+    sha256: hash,
+    size_bytes: size,
+  }))
+  return sha256(Buffer.from(JSON.stringify(rows)))
+}
+
 function collectArtifacts(runRoot, sources, secrets, project) {
   const artifacts = []
   let total = 0
@@ -159,6 +168,11 @@ export function exportE2EArtifacts(options) {
   const date = dateInSeoul(options.now ?? new Date())
   const name = `${date.year}${date.month}${date.day}-${slug}`
   const destinationRelative = path.posix.join('output', 'e2e-captures', name)
+  const destinationAbsolute = path.join(repositoryRoot, ...destinationRelative.split('/'))
+  const attemptMatch = slug.match(
+    /^runtime-policy-final-([0-9a-f]{64})-(?:scripted|capture|live|f2-[0-9a-f]{16})$/,
+  )
+  const attemptId = attemptMatch?.[1] ?? null
   let artifacts
   let rejection
   try {
@@ -177,22 +191,30 @@ export function exportE2EArtifacts(options) {
     sha256: sha256(manifestContent),
     size_bytes: manifestContent.length,
   }
+  const files = [
+    manifestFile,
+    ...artifacts.map(({ path: artifactPath, sha256: hash, size_bytes: size }) => ({
+      path: artifactPath,
+      sha256: hash,
+      size_bytes: size,
+    })),
+  ]
+  const screenshots = artifacts
+    .filter((artifact) => artifact.screenshot)
+    .map((artifact) => artifact.path)
   const receipt = {
     schema_version: EXPORT_SCHEMA_VERSION,
     secret_scan_passed: true,
     export_directory: destinationRelative,
+    export_directory_absolute: destinationAbsolute,
+    attempt_id: attemptId,
+    export_tree_sha256: treeHash(files),
     manifest: manifestFile,
-    files: [
-      manifestFile,
-      ...artifacts.map(({ path: artifactPath, sha256: hash, size_bytes: size }) => ({
-        path: artifactPath,
-        sha256: hash,
-        size_bytes: size,
-      })),
-    ],
-    screenshots: artifacts
-      .filter((artifact) => artifact.screenshot)
-      .map((artifact) => artifact.path),
+    files,
+    screenshots,
+    screenshots_absolute: screenshots.map((artifactPath) =>
+      path.join(destinationAbsolute, ...artifactPath.split('/')),
+    ),
     ...(rejection ? { source_rejection: rejection } : {}),
   }
   let published = false

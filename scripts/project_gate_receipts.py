@@ -15,6 +15,7 @@ from e2e_failure_diagnostics import (
     parse_failure_diagnostics,
     parse_source_rejection,
 )
+from e2e_runner_manifest import FINAL_E2E_EXPORT_KEYS, FINAL_E2E_TOP_KEYS
 from project_gate_runtime import JSONObject, JSONValue, ProjectGateError
 
 MAX_RECEIPT_BYTES: Final = 4 * 1024 * 1024
@@ -57,12 +58,16 @@ def new_child_path(aggregate: Path, node_id: str, token: str) -> Path:
     return aggregate.with_name(f"{aggregate.stem}.{node_id}.{token}.json")
 
 
-def _read_receipt(path: Path) -> tuple[JSONObject, str]:
+def _read_receipt(path: Path, parent_descriptor: int | None = None) -> tuple[JSONObject, str]:
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     try:
-        descriptor = os.open(path, flags)
+        descriptor = os.open(
+            path if parent_descriptor is None else path.name,
+            flags,
+            dir_fd=parent_descriptor,
+        )
     except OSError as error:
         raise ProjectGateError("invalid_child_receipt") from error
     try:
@@ -70,11 +75,22 @@ def _read_receipt(path: Path) -> tuple[JSONObject, str]:
         if (
             not stat.S_ISREG(metadata.st_mode)
             or metadata.st_nlink != 1
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_mode & 0o022
             or metadata.st_size <= 0
             or metadata.st_size > MAX_RECEIPT_BYTES
         ):
             raise ProjectGateError("invalid_child_receipt")
         data = os.read(descriptor, metadata.st_size + 1)
+        named = path.lstat()
+        if (
+            (named.st_dev, named.st_ino) != (metadata.st_dev, metadata.st_ino)
+            or named.st_uid != os.geteuid()
+            or named.st_nlink != 1
+            or not stat.S_ISREG(named.st_mode)
+            or named.st_mode & 0o022
+        ):
+            raise ProjectGateError("invalid_child_receipt")
     finally:
         os.close(descriptor)
     try:
@@ -108,8 +124,10 @@ def _summary(
     }
 
 
-def validate_static(path: Path, repo_root: Path, expected_exit: int) -> ReceiptSummary:
-    payload, digest = _read_receipt(path)
+def validate_static(
+    path: Path, repo_root: Path, expected_exit: int, parent_descriptor: int | None = None
+) -> ReceiptSummary:
+    payload, digest = _read_receipt(path, parent_descriptor)
     valid = (
         set(payload) == STATIC_KEYS
         and payload.get("schema_version") == 1
@@ -124,8 +142,14 @@ def validate_static(path: Path, repo_root: Path, expected_exit: int) -> ReceiptS
     return _summary(path, repo_root, digest, cleanup=True)
 
 
-def validate_postgres(path: Path, repo_root: Path, mode: str, expected_exit: int) -> ReceiptSummary:
-    payload, digest = _read_receipt(path)
+def validate_postgres(
+    path: Path,
+    repo_root: Path,
+    mode: str,
+    expected_exit: int,
+    parent_descriptor: int | None = None,
+) -> ReceiptSummary:
+    payload, digest = _read_receipt(path, parent_descriptor)
     scenarios = payload.get("scenarios")
     scenario = scenarios[0] if isinstance(scenarios, list) and len(scenarios) == 1 else None
     receipt = scenario.get("test_receipt") if isinstance(scenario, dict) else None
@@ -183,6 +207,22 @@ def _safe_node_ids(value: JSONValue) -> list[str] | None:
     return [item for item in value if isinstance(item, str)]
 
 
+def _safe_skipped_ids(value: JSONValue, project: str) -> list[str] | None:
+    values = _safe_node_ids(value)
+    prefix = f"{project}::e2e/"
+    if values is None or len(values) != len(set(values)):
+        return None
+    if not all(
+        0 < len(item) <= 2048
+        and item.startswith(prefix)
+        and item.count("::") == 2
+        and not any(ord(character) < 32 or ord(character) == 127 for character in item)
+        for item in values
+    ):
+        return None
+    return values
+
+
 def validate_e2e(
     path: Path,
     repo_root: Path,
@@ -191,8 +231,11 @@ def validate_e2e(
     project: str,
     expected_spec: str | tuple[str, ...] | None,
     expected_screenshot_count: int | None = None,
+    parent_descriptor: int | None = None,
+    expected_attempt_id: str | None = None,
+    expected_head_sha: str | None = None,
 ) -> ReceiptSummary:
-    payload, digest = _read_receipt(path)
+    payload, digest = _read_receipt(path, parent_descriptor)
     selected = _safe_node_ids(payload.get("selected_ids"))
     executed = _safe_node_ids(payload.get("executed_ids"))
     export = payload.get("export")
@@ -216,6 +259,7 @@ def validate_e2e(
         else expected_spec
     )
     expected_prefixes = tuple(f"{project}::{spec}::" for spec in expected_specs)
+    skipped = _safe_skipped_ids(payload.get("skipped_ids"), project)
     selection_values = selected is not None and executed is not None
     selected_nodes = selected or []
     executed_nodes = executed or []
@@ -259,6 +303,22 @@ def validate_e2e(
     rejection_nodes_match = all(
         item.node_id in executed_strings for item in (() if rejection is None else rejection.tests)
     )
+    final_fields_match = expected_attempt_id is None or (
+        set(payload) == FINAL_E2E_TOP_KEYS
+        and isinstance(export, dict)
+        and set(export) == FINAL_E2E_EXPORT_KEYS
+        and payload.get("attempt_id") == expected_attempt_id
+        and payload.get("head_sha") == expected_head_sha
+        and payload.get("requested_specs") == list(expected_specs)
+        and skipped is not None
+        and not set(skipped) & set(selected_nodes)
+        and not set(skipped) & set(executed_nodes)
+        and (expected_exit != 0 or skipped == [])
+        and export.get("attempt_id") == expected_attempt_id
+        and isinstance(export.get("export_directory_absolute"), str)
+        and Path(str(export["export_directory_absolute"])).is_absolute()
+        and re.fullmatch(r"[0-9a-f]{64}", str(export.get("export_tree_sha256"))) is not None
+    )
     valid = (
         payload.get("runner") == "moldy-isolated-e2e"
         and payload.get("lane") == "scripted"
@@ -280,6 +340,7 @@ def validate_e2e(
         and rejection_matches_diagnostics
         and all(item.node_id in executed_strings for item in diagnostics)
         and rejection_nodes_match
+        and final_fields_match
         and isinstance(cleanup, dict)
         and all(cleanup.get(key) is True for key in E2E_CLEANUP_KEYS)
     )

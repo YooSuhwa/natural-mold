@@ -13,11 +13,15 @@ from e2e_runner_playwright import (
 
 def read_execution_receipt(
     path: Path, child_exit_code: int
-) -> tuple[tuple[str, ...], tuple[PlaywrightOutcome, ...]]:
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[PlaywrightOutcome, ...]]:
     try:
         report = parse_playwright_execution_json(path)
     except PlaywrightReceiptError:
         if child_exit_code == 0:
             raise
-        return (), ()
-    return tuple(node.node_id for node in report.nodes), report.unexpected_outcomes
+        return (), (), ()
+    return (
+        tuple(node.node_id for node in report.nodes),
+        tuple(node.node_id for node in report.skipped_nodes),
+        report.unexpected_outcomes,
+    )

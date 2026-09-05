@@ -340,6 +340,67 @@ CATALOG: Final[dict[str, GateNode]] = {
             ),
             24,
         ),
+        _isolated(
+            "todo22-frontend-quality",
+            "frontend",
+            "exec",
+            "vitest",
+            "run",
+            "src/lib/hooks/__tests__/use-approval-deadline.test.tsx",
+        ),
+        _isolated(
+            "todo23-governance-contracts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_coverage_governance.py",
+            "tests/test_plan_history.py",
+        ),
+        _isolated(
+            "todo23-backend-coverage", "backend", "../scripts/run_coverage_gate.py", "backend"
+        ),
+        _isolated(
+            "todo23-frontend-coverage", "backend", "../scripts/run_coverage_gate.py", "frontend"
+        ),
+        _isolated(
+            "todo24-docs-contracts",
+            "backend",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_docs_consistency.py",
+        ),
+        _isolated("todo24-docs-check", "backend", "../scripts/check_docs_consistency.py"),
+        _isolated("final-backend-ruff", "backend", "-m", "ruff", "check", "."),
+        _isolated(
+            "final-changed-python-types",
+            "backend",
+            "scripts/check_changed_python_types.py",
+            "--base",
+            "7a9cee88c772e29c830cd84fb5578d06d753e080",
+        ),
+        _isolated(
+            "final-changed-python-format",
+            "backend",
+            "scripts/check_changed_python_format.py",
+            "--base",
+            "7a9cee88c772e29c830cd84fb5578d06d753e080",
+        ),
+        _isolated("final-frontend-a11y", "frontend", "lint:a11y"),
+        _isolated("final-frontend-design", "frontend", "lint:design-system"),
+        _isolated(
+            "final-frontend-architecture",
+            "frontend",
+            "lint:frontend-architecture:strict",
+        ),
+        _isolated(
+            "final-cleanup-discovery",
+            "backend",
+            "../scripts/check-isolation-cleanup.py",
+            "--discover",
+            "../.omo/evidence/project-restart-consolidated-roadmap",
+        ),
     )
 }
 
@@ -392,9 +453,30 @@ WAVE_4: Final[tuple[str, ...]] = WAVE_3[:-1] + (
     "todo21-visual-capture",
     "scripted-full",
 )
+WAVE_5: Final[tuple[str, ...]] = WAVE_4[:-1] + (
+    "todo22-frontend-quality",
+    "todo23-governance-contracts",
+    "todo23-backend-coverage",
+    "todo23-frontend-coverage",
+    "todo24-docs-contracts",
+    "todo24-docs-check",
+    "scripted-full",
+)
+FINAL_STATIC: Final[tuple[str, ...]] = WAVE_5[:-1] + (
+    "final-backend-ruff",
+    "final-changed-python-types",
+    "final-changed-python-format",
+    "final-frontend-a11y",
+    "final-frontend-design",
+    "final-frontend-architecture",
+    "final-cleanup-discovery",
+    "scripted-full",
+)
 CANONICAL_WAVES: Final[dict[str, tuple[str, ...]]] = {
     "wave-1": WAVE_1,
     "wave-2": WAVE_2,
     "wave-3": WAVE_3,
     "wave-4": WAVE_4,
+    "wave-5": WAVE_5,
+    "final-static": FINAL_STATIC,
 }

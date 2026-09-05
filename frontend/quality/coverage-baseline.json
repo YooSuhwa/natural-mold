@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "source_commit": "a7abda470873ef45f291cf7f176c8b3d54445cf2",
+  "measurement_command": "pnpm test:coverage -- --run",
+  "reviewed_runs": 2,
+  "metrics": {
+    "statements": { "covered": 11801, "total": 18860, "minimum_percent": 62.571580063626726 },
+    "branches": { "covered": 8595, "total": 15594, "minimum_percent": 55.11735282801077 },
+    "functions": { "covered": 3146, "total": 5668, "minimum_percent": 55.5045871559633 },
+    "lines": { "covered": 10659, "total": 16553, "minimum_percent": 64.39316136047846 }
+  },
+  "update_policy": "reviewed-manual-only"
+}

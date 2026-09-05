@@ -9,10 +9,12 @@ from types import ModuleType
 import pytest
 
 from tests.project_gate_wave_support import (
+    EXPECTED_FINAL_STATIC,
     EXPECTED_WAVE_1,
     EXPECTED_WAVE_2,
     EXPECTED_WAVE_3,
     EXPECTED_WAVE_4,
+    EXPECTED_WAVE_5,
     SCRIPTS,
     config_path,
     load_module,
@@ -32,6 +34,8 @@ def test_config_loads_exact_canonical_wave_order(runner: ModuleType) -> None:
     assert profiles["wave-2"].nodes == EXPECTED_WAVE_2
     assert profiles["wave-3"].nodes == EXPECTED_WAVE_3
     assert profiles["wave-4"].nodes == EXPECTED_WAVE_4
+    assert profiles["wave-5"].nodes == EXPECTED_WAVE_5
+    assert profiles["final-static"].nodes == EXPECTED_FINAL_STATIC
     assert profiles["wave-1"].nodes != profiles["wave-2"].nodes
     assert profiles["wave-2"].nodes != profiles["wave-3"].nodes
     assert profiles["wave-3"].nodes != profiles["wave-4"].nodes
@@ -68,10 +72,10 @@ def test_config_rejects_noncanonical_wave_four_catalog(
 
 
 def test_config_rejects_future_wave_without_review(tmp_path: Path, runner: ModuleType) -> None:
-    """Given an undeclared future wave, when parsed, then the closed profile set rejects it."""
+    """Given an undeclared later wave, when parsed, then the closed profile set rejects it."""
     path = config_path(tmp_path, list(EXPECTED_WAVE_4), wave="wave-4")
     payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["profiles"]["wave-5"] = {
+    payload["profiles"]["wave-6"] = {
         "kind": "composite",
         "nodes": list(EXPECTED_WAVE_4),
     }

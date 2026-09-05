@@ -7,6 +7,7 @@ from e2e_runner_cli import run_cli
 from e2e_runner_contract import (
     E2eContractError,
     E2eDsns,
+    FinalE2eRun,
     Lane,
     Project,
     SelfTest,
@@ -21,7 +22,7 @@ from e2e_runner_playwright import (
     PlaywrightOutcome,
     PlaywrightReceiptError,
     assert_exact_selection,
-    parse_playwright_json,
+    parse_playwright_execution_json,
 )
 from e2e_runner_process import (
     OwnedProcessInterrupted,
@@ -59,11 +60,13 @@ def _run(
     project: Project,
     arguments: tuple[str, ...],
     self_test: SelfTest = "normal",
+    final_run: FinalE2eRun | None = None,
 ) -> tuple[dict[str, object], int]:
     resources: E2eResources | None = None
     proxy = None
     selected_ids: tuple[str, ...] = ()
     executed_ids: tuple[str, ...] = ()
+    skipped_ids: tuple[str, ...] = ()
     diagnostics: tuple[PlaywrightOutcome, ...] = ()
     export = ExportReceipt(False, None, (), ())
     cleanup: dict[str, bool | None] = empty_cleanup()
@@ -120,7 +123,9 @@ def _run(
         process_stopped = list_result.process_group_stopped
         if list_result.returncode != 0:
             raise RuntimeError("playwright_list_failed")
-        selected = parse_playwright_json(runner_dir / "selection.json")
+        selection = parse_playwright_execution_json(runner_dir / "selection.json")
+        selected = selection.nodes
+        skipped_ids = tuple(node.node_id for node in selection.skipped_nodes)
         if any(node.project != project for node in selected):
             raise PlaywrightReceiptError("project_selection_mismatch")
         if expected is not None:
@@ -156,8 +161,12 @@ def _run(
         execution_receipt = (
             resources.run_root / "frontend/test-results" / project / "execution.json"
         )
-        executed_ids, diagnostics = read_execution_receipt(execution_receipt, execution.returncode)
-        if execution.returncode == 0 and executed_ids != selected_ids:
+        executed_ids, executed_skips, diagnostics = read_execution_receipt(
+            execution_receipt, execution.returncode
+        )
+        if execution.returncode == 0 and (
+            executed_ids != selected_ids or executed_skips != skipped_ids
+        ):
             reason = "execution_selection_mismatch"
         elif execution.returncode == 0:
             status, reason, child_exit = "passed", None, 0
@@ -235,6 +244,12 @@ def _run(
             status = "failed"
             if reason in {None, "not_started"}:
                 reason = "artifact_export_failed"
+        if final_run is not None and (
+            export.attempt_id != final_run.attempt_id
+            or export.export_directory_absolute is None
+            or export.export_tree_sha256 is None
+        ):
+            status, reason = "failed", "final_export_binding_invalid"
         if lane == "live" and status == "passed" and not live_egress_passed(egress):
             status, reason = "failed", "egress_receipt_invalid"
     manifest = build_manifest(
@@ -246,12 +261,14 @@ def _run(
         self_test=self_test,
         selected_ids=selected_ids,
         executed_ids=executed_ids,
+        skipped_ids=skipped_ids,
         unexpected_failures=diagnostics,
         facts=resource_facts(resources, run_id),
         export=export,
         egress=egress,
         ownership=ownership,
         cleanup=cleanup,
+        final_run=final_run,
     )
     return manifest, child_exit if status == "interrupted" else (0 if status == "passed" else 1)
 
