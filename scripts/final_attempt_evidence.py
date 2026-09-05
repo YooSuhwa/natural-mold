@@ -31,7 +31,7 @@ from operation_ledger_fs import open_parent
 from operation_ledger_writer import current_evidence_lock
 from postgres_cleanup_checker import ManifestValidationError
 from project_gate_catalog import CATALOG
-from project_gate_receipts import validate_e2e, validate_postgres, validate_static
+from project_gate_receipts import validate_e2e, validate_legacy_static, validate_postgres
 from project_gate_runtime import ProjectGateError
 
 TERMINAL_FAILURES: Final = {
@@ -365,7 +365,11 @@ def _validated_f2_e2e_projects(
         try:
             match node.kind:
                 case "isolated":
-                    validated = validate_static(attempt_dir / path.name, repo_root, exit_code)
+                    validated = validate_legacy_static(
+                        attempt_dir / path.name,
+                        repo_root,
+                        exit_code,
+                    )
                 case "postgres":
                     validated = validate_postgres(
                         attempt_dir / path.name, repo_root, "+".join(node.argv), exit_code

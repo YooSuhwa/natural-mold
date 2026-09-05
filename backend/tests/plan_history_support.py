@@ -6,7 +6,6 @@ import hashlib
 import json
 import multiprocessing
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -19,10 +18,10 @@ if str(SCRIPTS) not in sys.path:
 
 from e2e_cleanup_contract import CLEANUP_FIELDS, LIVE_NODES  # noqa: E402
 from e2e_runner_contract import FINAL_CAPTURE_SPECS  # noqa: E402
-from final_attempt_io import _digest_json  # noqa: E402
+from final_attempt_io import _digest_json, _read_json  # noqa: E402
 from final_attempt_lifecycle import begin_final_attempt, seal_attempt  # noqa: E402
 from operation_ledger_format import JSONValue, LedgerError, canonical_line  # noqa: E402
-from operation_ledger_writer import append_operation  # noqa: E402
+from operation_ledger_writer import _active_attempt_from_lifecycle, append_operation  # noqa: E402
 from plan_history_contract import (  # noqa: E402
     PRIMARY_TRAILER,
     CommitRecord,
@@ -40,12 +39,61 @@ REVIEW_ROUND = "review-20260830T155022Z-4b86a0ac"
 HEAD = "f" * 40
 
 
+def copy_isolated_operations(destination: Path) -> None:
+    """Copy a verified ledger, excluding an unmatched source open attempt."""
+    source = EVIDENCE / "operations.ndjson"
+    entries = load_verified_operations(source)
+    source_bytes = source.read_bytes()
+    lines = source_bytes.splitlines(keepends=True)
+    if len(lines) != len(entries):
+        raise LedgerError("verified source ledger line count changed during fixture copy")
+
+    copied = source_bytes
+    pointer_path = EVIDENCE / "current-final-attempt.json"
+    if pointer_path.exists():
+        pointer = _read_json(pointer_path)
+        if pointer.get("status") == "open":
+            attempt_id = pointer.get("attempt_id")
+            head = pointer.get("head")
+            if not isinstance(attempt_id, str) or not isinstance(head, str):
+                raise LedgerError("source open final-attempt pointer is invalid")
+            expected_pointer: dict[str, JSONValue] = {
+                "schema_version": 1,
+                "attempt_id": attempt_id,
+                "attempt_dir": (
+                    ".omo/evidence/project-restart-consolidated-roadmap/final-attempts/"
+                    f"{attempt_id}"
+                ),
+                "status": "open",
+                "head": head,
+            }
+            if pointer != expected_pointer:
+                raise LedgerError("source open final-attempt pointer schema is invalid")
+            if _active_attempt_from_lifecycle(entries) != attempt_id:
+                raise LedgerError("source open pointer does not match the active lifecycle attempt")
+            matches = [
+                index
+                for index, entry in enumerate(entries)
+                if entry.get("action_class") == "final_attempt_started"
+                and entry.get("status") == "passed"
+                and entry.get("arguments") == {"attempt_id": attempt_id, "head": head}
+            ]
+            if len(matches) != 1:
+                raise LedgerError("source open final attempt must have one matching ledger entry")
+            copied = b"".join(lines[: matches[0]])
+
+    destination.write_bytes(copied)
+    copied_entries = load_verified_operations(destination)
+    if copied_entries != entries[: len(copied_entries)]:
+        raise LedgerError("isolated ledger copy is not a verified source prefix")
+
+
 def lifecycle_arguments(tmp_path: Path) -> dict[str, object]:
     """Create one isolated lifecycle layout backed by a verified ledger copy."""
     evidence = tmp_path / ".omo/evidence/project-restart-consolidated-roadmap"
     evidence.mkdir(parents=True)
     operations = evidence / "operations.ndjson"
-    shutil.copyfile(EVIDENCE / "operations.ndjson", operations)
+    copy_isolated_operations(operations)
     return {
         "repo_root": tmp_path,
         "contract": load_contract(CONTRACT_PATH),
@@ -239,7 +287,7 @@ def _write_failure_receipt(
             },
         }
     else:
-        artifact = _write_json(attempt_dir / "f3-scripted.json", {"status": "FAIL"})
+        artifact = _write_final_e2e_receipt(attempt_dir.parents[4], attempt_dir, attempt_id)
         artifact_content = artifact.read_bytes()
         evidence = {
             "failing_check": "scripted-full::artifact-contract",

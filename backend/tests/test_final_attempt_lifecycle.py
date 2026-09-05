@@ -5,7 +5,6 @@ import hashlib
 import json
 import multiprocessing
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -14,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import final_attempt_io as io_module
 import operation_ledger_writer as writer_module
+import plan_history_support as support_module
 import pytest
 from final_attempt_authority import (
     FinalAttemptAuthorityError,
@@ -47,6 +47,7 @@ from plan_history_support import (
     _write_failure_receipt,
     _write_json,
     _write_review_receipt,
+    copy_isolated_operations,
     lifecycle_arguments,
 )
 
@@ -75,6 +76,128 @@ def test_active_attempt_pointer_deletion_blocks_public_append(tmp_path: Path) ->
     assert operations.read_bytes() == before
 
 
+def test_lifecycle_fixture_excludes_open_source_attempt_without_mutating_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source_evidence = tmp_path / "source/.omo/evidence/project-restart-consolidated-roadmap"
+    source_evidence.mkdir(parents=True)
+    source_operations = source_evidence / "operations.ndjson"
+    source_operations.write_bytes((EVIDENCE / "operations.ndjson").read_bytes())
+    attempt_id = "a" * 64
+    _append_forged_lifecycle_entry(
+        source_operations,
+        action_class="final_attempt_started",
+        arguments={"attempt_id": attempt_id, "head": HEAD},
+    )
+    source_entries = load_verified_operations(source_operations)
+    start_index = len(source_entries) - 1
+    _write_json(
+        source_evidence / "current-final-attempt.json",
+        {
+            "schema_version": 1,
+            "attempt_id": attempt_id,
+            "attempt_dir": (
+                f".omo/evidence/project-restart-consolidated-roadmap/final-attempts/{attempt_id}"
+            ),
+            "status": "open",
+            "head": HEAD,
+        },
+    )
+    source_before = source_operations.read_bytes()
+    source_hash = hashlib.sha256(source_before).hexdigest()
+    expected = b"".join(source_before.splitlines(keepends=True)[:start_index])
+    monkeypatch.setattr(support_module, "EVIDENCE", source_evidence)
+
+    isolated = lifecycle_arguments(tmp_path / "isolated")
+
+    copied = Path(isolated["operations"])
+    assert copied.read_bytes() == expected
+    assert load_verified_operations(copied) == source_entries[:start_index]
+    assert source_operations.read_bytes() == source_before
+    assert hashlib.sha256(source_operations.read_bytes()).hexdigest() == source_hash
+
+
+def test_lifecycle_fixture_rejects_stale_open_source_pointer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source_evidence = tmp_path / "source/.omo/evidence/project-restart-consolidated-roadmap"
+    source_evidence.mkdir(parents=True)
+    source_operations = source_evidence / "operations.ndjson"
+    source_operations.write_bytes((EVIDENCE / "operations.ndjson").read_bytes())
+    entries = load_verified_operations(source_operations)
+    historic_start = next(
+        entry
+        for entry in entries
+        if entry["action_class"] == "final_attempt_started" and entry["status"] == "passed"
+    )
+    arguments = historic_start["arguments"]
+    assert isinstance(arguments, dict)
+    attempt_id = arguments["attempt_id"]
+    head = arguments["head"]
+    assert isinstance(attempt_id, str)
+    assert isinstance(head, str)
+    _write_json(
+        source_evidence / "current-final-attempt.json",
+        {
+            "schema_version": 1,
+            "attempt_id": attempt_id,
+            "attempt_dir": (
+                f".omo/evidence/project-restart-consolidated-roadmap/final-attempts/{attempt_id}"
+            ),
+            "status": "open",
+            "head": head,
+        },
+    )
+    destination = (
+        tmp_path / "isolated/.omo/evidence/project-restart-consolidated-roadmap/operations.ndjson"
+    )
+    destination.parent.mkdir(parents=True)
+    monkeypatch.setattr(support_module, "EVIDENCE", source_evidence)
+
+    with pytest.raises(LedgerError, match="active lifecycle"):
+        support_module.copy_isolated_operations(destination)
+
+    assert not destination.exists()
+
+
+def test_lifecycle_fixture_rejects_open_source_pointer_with_extra_field(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source_evidence = tmp_path / "source/.omo/evidence/project-restart-consolidated-roadmap"
+    source_evidence.mkdir(parents=True)
+    source_operations = source_evidence / "operations.ndjson"
+    source_operations.write_bytes((EVIDENCE / "operations.ndjson").read_bytes())
+    attempt_id = "b" * 64
+    _append_forged_lifecycle_entry(
+        source_operations,
+        action_class="final_attempt_started",
+        arguments={"attempt_id": attempt_id, "head": HEAD},
+    )
+    _write_json(
+        source_evidence / "current-final-attempt.json",
+        {
+            "schema_version": 1,
+            "attempt_id": attempt_id,
+            "attempt_dir": (
+                f".omo/evidence/project-restart-consolidated-roadmap/final-attempts/{attempt_id}"
+            ),
+            "status": "open",
+            "head": HEAD,
+            "unexpected": True,
+        },
+    )
+    destination = (
+        tmp_path / "isolated/.omo/evidence/project-restart-consolidated-roadmap/operations.ndjson"
+    )
+    destination.parent.mkdir(parents=True)
+    monkeypatch.setattr(support_module, "EVIDENCE", source_evidence)
+
+    with pytest.raises(LedgerError, match="pointer schema"):
+        support_module.copy_isolated_operations(destination)
+
+    assert not destination.exists()
+
+
 def test_begin_creates_one_open_hash_named_empty_attempt(lifecycle: dict[str, object]) -> None:
     pointer = _begin(lifecycle)
 
@@ -91,7 +214,7 @@ def test_begin_rejects_attempt_id_collision(lifecycle: dict[str, object]) -> Non
     Path(lifecycle["pointer_path"]).unlink()
     for journal in Path(lifecycle["journal_root"]).glob("*.json"):
         journal.unlink()
-    shutil.copyfile(EVIDENCE / "operations.ndjson", Path(lifecycle["operations"]))
+    copy_isolated_operations(Path(lifecycle["operations"]))
 
     with pytest.raises(LifecycleError, match="collides"):
         _begin(lifecycle)
@@ -545,6 +668,8 @@ def test_nonterminal_journal_blocks_public_append_but_exact_recovery_appends_onc
         entry
         for entry in _verify_bytes(operations.read_bytes())
         if entry["action_class"] == "final_attempt_abandoned"
+        and isinstance(entry["arguments"], dict)
+        and entry["arguments"].get("attempt_id") == pointer["attempt_id"]
     ]
 
     assert abandoned["status"] == "abandoned"
@@ -858,6 +983,8 @@ def test_abandon_recovers_each_side_effect_boundary_without_duplicate_ledger_ent
         entry
         for entry in load_verified_operations(Path(lifecycle["operations"]))
         if entry["action_class"] == "final_attempt_abandoned"
+        and isinstance(entry["arguments"], dict)
+        and entry["arguments"].get("attempt_id") == pointer["attempt_id"]
     ]
 
     assert result["status"] == "abandoned"
@@ -1011,10 +1138,17 @@ def test_every_lifecycle_fsync_boundary_is_exactly_recoverable(
         "reopen": "seal_reopened",
     }[transition]
     if action is not None:
+        attempt_id = (
+            str(pointer["attempt_id"])
+            if pointer is not None
+            else next(Path(lifecycle["attempt_root"]).iterdir()).name
+        )
         events = [
             entry
             for entry in load_verified_operations(Path(lifecycle["operations"]))
             if entry["action_class"] == action
+            and isinstance(entry["arguments"], dict)
+            and entry["arguments"].get("attempt_id") == attempt_id
         ]
         assert len(events) == 1
 
@@ -1120,7 +1254,7 @@ def test_read_only_final_attempt_authority_rejects_unproven_active_relation(
         forged.update({"status": "sealed", "seal_id": "a" * 64, "seal_sha256": "b" * 64})
         _write_json(pointer_path, forged)
     elif attack == "no-active":
-        shutil.copyfile(EVIDENCE / "operations.ndjson", operations)
+        copy_isolated_operations(operations)
     elif attack == "missing-ledger":
         operations.rename(operations.with_suffix(".missing"))
     elif attack == "forged-open":

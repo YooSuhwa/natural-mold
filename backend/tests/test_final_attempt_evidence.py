@@ -580,7 +580,10 @@ def test_seal_rejects_unreferenced_f2_child_and_final_skips(
         },
     )
 
-    with pytest.raises(LifecycleError, match="exact prerequisite set"):
+    with pytest.raises(
+        LifecycleError,
+        match="exact prerequisite set|exactly match aggregate references",
+    ):
         seal_attempt(**lifecycle, output=attempt_dir / "operations-seal.json")
 
     (attempt_dir / "f2-static.backend-full.0000000000000000.json").unlink()
