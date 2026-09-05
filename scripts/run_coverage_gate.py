@@ -19,6 +19,7 @@ from check_coverage_baseline import (
 from project_gate_toolchain import resolve_provenance, verify_provenance
 
 FRONTEND_COVERAGE_DIRECTORY = "MOLDY_VITEST_COVERAGE_DIRECTORY"
+GATE_UV_ENVIRONMENT_NAME = "MOLDY_GATE_UV"
 
 
 def _run_measurement(argv: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> None:
@@ -39,6 +40,31 @@ def _require_fresh_report(path: Path) -> None:
         raise CoverageContractError("coverage measurement did not create a fresh report")
 
 
+def _backend_uv() -> str:
+    """Return the reviewed gate uv path, or PATH lookup for standalone execution."""
+    configured = os.environ.get(GATE_UV_ENVIRONMENT_NAME)
+    if configured is None:
+        fallback = shutil.which("uv")
+        if fallback is None:
+            raise RuntimeError("uv is required for backend coverage")
+        return fallback
+    uv = Path(configured)
+    try:
+        metadata = uv.lstat()
+    except OSError as error:
+        raise RuntimeError("MOLDY_GATE_UV must name an executable absolute path") from error
+    unsafe_mode = metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+    if (
+        not uv.is_absolute()
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid not in {0, os.geteuid()}
+        or unsafe_mode
+        or not os.access(uv, os.X_OK)
+    ):
+        raise RuntimeError("MOLDY_GATE_UV must name an executable absolute path")
+    return str(uv)
+
+
 def run_gate(kind: str, repo_root: Path) -> None:
     baseline = repo_root / kind / "quality/coverage-baseline.json"
     source_commit = baseline_source_commit(baseline, kind)
@@ -47,9 +73,7 @@ def run_gate(kind: str, repo_root: Path) -> None:
         report_root = Path(temporary)
         if kind == "backend":
             report = report_root / "coverage.json"
-            uv = shutil.which("uv")
-            if uv is None:
-                raise RuntimeError("uv is required for backend coverage")
+            uv = _backend_uv()
             _run_measurement(
                 [uv, "run", "pytest", "--cov=app", f"--cov-report=json:{report}"],
                 cwd=repo_root / "backend",

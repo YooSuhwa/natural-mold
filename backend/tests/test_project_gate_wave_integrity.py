@@ -48,7 +48,7 @@ def test_runtime_preflight_rejects_wrong_python_or_node_major(
     python.parent.mkdir(parents=True)
     python.write_text("", encoding="utf-8")
     python.chmod(0o700)
-    selected = iter((Path("/trusted/node"), Path("/trusted/pnpm")))
+    selected = iter((Path("/trusted/node"), Path("/trusted/pnpm"), Path("/trusted/uv")))
     monkeypatch.setattr(toolchain, "_first_executable", lambda _candidates: next(selected))
     monkeypatch.setattr(
         toolchain.pwd,

@@ -19,6 +19,10 @@ import project_gate_composite  # noqa: E402
 from e2e_runner_contract import (  # noqa: E402
     FINAL_CAPTURE_SPECS,
     E2eContractError,
+    FinalE2eRun,
+    Lane,
+    Project,
+    SelfTest,
     parse_final_e2e_run,
 )
 from e2e_runner_manifest import FINAL_E2E_EXPORT_KEYS, FINAL_E2E_TOP_KEYS  # noqa: E402
@@ -35,14 +39,16 @@ from project_gate_catalog import CATALOG  # noqa: E402
 from project_gate_manifest import AggregateWriter  # noqa: E402
 from project_gate_process import command_for  # noqa: E402
 from project_gate_receipts import E2E_CLEANUP_KEYS, validate_e2e  # noqa: E402
-from project_gate_toolchain import TrustedToolchain  # noqa: E402
+from project_gate_toolchain import RepositoryProvenance, TrustedToolchain  # noqa: E402
 
 
 def _attempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, str, str]:
     repo = tmp_path / "repo"
     lifecycle = lifecycle_arguments(repo)
     pointer = _begin(lifecycle)
-    evidence = Path(lifecycle["operations"]).parent
+    operations = lifecycle["operations"]
+    assert isinstance(operations, Path)
+    evidence = operations.parent
     attempt_id = str(pointer["attempt_id"])
     head = HEAD
     monkeypatch.setattr(postgres_manifest_io, "_current_git_head", lambda _repo: head)
@@ -288,6 +294,7 @@ def test_f2_e2e_child_uses_collision_free_attempt_slug(tmp_path: Path) -> None:
         Path("/python"),
         Path("/node"),
         Path("/pnpm"),
+        Path("/uv"),
         tmp_path,
         "tester",
     )
@@ -443,8 +450,10 @@ def test_composite_revalidates_final_binding_before_child_callback(
 ) -> None:
     repo, evidence, attempt_id, head = _attempt(tmp_path, monkeypatch)
     destination = evidence / "final-attempts" / attempt_id / "f2-static.json"
-    provenance = type("Provenance", (), {"base_sha": head, "head_sha": head})()
-    toolchain = TrustedToolchain(Path("/python"), Path("/node"), Path("/pnpm"), repo, "x")
+    provenance = RepositoryProvenance(base_sha=head, head_sha=head)
+    toolchain = TrustedToolchain(
+        Path("/python"), Path("/node"), Path("/pnpm"), Path("/uv"), repo, "x"
+    )
     called = False
     original = project_gate_composite.command_for
 
@@ -491,8 +500,15 @@ def test_e2e_cli_revalidates_final_binding_before_resource_callback(
         _seal_pointer(evidence)
         return result
 
-    def runner(*_args: object) -> tuple[dict[str, object], int]:
+    def runner(
+        lane: Lane,
+        project: Project,
+        arguments: tuple[str, ...],
+        self_test: SelfTest,
+        final_run: FinalE2eRun | None,
+    ) -> tuple[dict[str, object], int]:
         nonlocal called
+        del lane, project, arguments, self_test, final_run
         called = True
         return {}, 0
 
@@ -574,7 +590,8 @@ def _final_gate_receipt(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     attempt_id = "a" * 64
     head = "b" * 40
     node = "scripted-full::e2e/smoke.spec.ts::works"
-    export = dict.fromkeys(FINAL_E2E_EXPORT_KEYS)
+    export: dict[str, object] = {}
+    export.update((key, None) for key in FINAL_E2E_EXPORT_KEYS)
     export.update(
         schema_version=1,
         secret_scan_passed=True,
@@ -587,7 +604,8 @@ def _final_gate_receipt(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         screenshots_absolute=[],
         screenshots=[],
     )
-    payload = dict.fromkeys(FINAL_E2E_TOP_KEYS)
+    payload: dict[str, object] = {}
+    payload.update((key, None) for key in FINAL_E2E_TOP_KEYS)
     payload.update(
         schema_version=1,
         runner="moldy-isolated-e2e",

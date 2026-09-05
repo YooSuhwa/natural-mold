@@ -49,6 +49,7 @@ class ExecutableIdentity:
     target_inode: int
     target_size: int
     target_mtime_ns: int
+    require_regular: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,7 @@ class TrustedToolchain:
     python: Path
     node: Path
     pnpm: Path
+    uv: Path
     home: Path
     user: str
     docker: Path = Path("/usr/local/bin/docker")
@@ -123,13 +125,25 @@ def _trusted_system_paths() -> tuple[str, ...]:
     return tuple(paths)
 
 
-def _capture_executable(path: Path) -> ExecutableIdentity:
-    try:
-        link = path.lstat()
-        target = path.resolve(strict=True)
-        metadata = target.stat()
-    except OSError as error:
-        raise ProjectGateError("runtime_preflight_failed") from error
+def _capture_executable(path: Path, *, require_regular: bool = False) -> ExecutableIdentity:
+    if require_regular:
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                metadata = os.fstat(descriptor)
+            finally:
+                os.close(descriptor)
+        except OSError as error:
+            raise ProjectGateError("runtime_preflight_failed") from error
+        target = path
+        link = metadata
+    else:
+        try:
+            link = path.lstat()
+            target = path.resolve(strict=True)
+            metadata = target.stat()
+        except OSError as error:
+            raise ProjectGateError("runtime_preflight_failed") from error
     valid_link = stat.S_ISREG(link.st_mode) or stat.S_ISLNK(link.st_mode)
     unsafe_mode = metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
     if (
@@ -149,6 +163,7 @@ def _capture_executable(path: Path) -> ExecutableIdentity:
         metadata.st_ino,
         metadata.st_size,
         metadata.st_mtime_ns,
+        require_regular,
     )
 
 
@@ -156,7 +171,12 @@ def verify_toolchain(toolchain: TrustedToolchain) -> None:
     """Fail closed when a reviewed executable path or target changes during a wave."""
     try:
         executable_changed = any(
-            _capture_executable(expected.path) != expected for expected in toolchain.identities
+            _capture_executable(
+                expected.path,
+                require_regular=expected.require_regular,
+            )
+            != expected
+            for expected in toolchain.identities
         )
         directory_changed = any(
             _capture_runtime_directory(
@@ -194,6 +214,16 @@ def resolve_toolchain(repo_root: Path) -> tuple[TrustedToolchain, dict[str, str]
             )
         )
     )
+    uv = _one_hop_executable(
+        _first_executable(
+            (
+                home / ".local/bin/uv",
+                home / ".cargo/bin/uv",
+                Path("/opt/homebrew/bin/uv"),
+                Path("/usr/local/bin/uv"),
+            )
+        )
+    )
     system_paths = _trusted_system_paths()
     docker_name = shutil.which("docker", path=os.pathsep.join(system_paths))
     if docker_name is None:
@@ -224,11 +254,18 @@ def resolve_toolchain(repo_root: Path) -> tuple[TrustedToolchain, dict[str, str]
         ),
         PNPM_VERSION,
     )
-    identities = tuple(_capture_executable(path) for path in (python, node, pnpm, docker))
+    identities = (
+        _capture_executable(python),
+        _capture_executable(node),
+        _capture_executable(pnpm),
+        _capture_executable(uv, require_regular=True),
+        _capture_executable(docker),
+    )
     toolchain = TrustedToolchain(
         python,
         node,
         pnpm,
+        uv,
         home,
         account.pw_name,
         docker,

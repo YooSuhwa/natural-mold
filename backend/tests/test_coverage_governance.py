@@ -341,6 +341,7 @@ def test_coverage_runner_accepts_older_ancestor_and_fresh_external_report(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kind: str
 ) -> None:
     repo, ancestor = _coverage_repo(tmp_path, kind)
+    monkeypatch.delenv(run_coverage_gate.GATE_UV_ENVIRONMENT_NAME, raising=False)
     calls: list[tuple[list[str], Path, dict[str, str] | None, Path]] = []
 
     def measure(argv: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> None:
@@ -438,4 +439,48 @@ def test_coverage_runner_rejects_missing_fresh_report(
     monkeypatch.setattr(run_coverage_gate, "_run_measurement", lambda *_args, **_kwargs: None)
 
     with pytest.raises(CoverageContractError, match="fresh report"):
+        run_coverage_gate.run_gate("backend", repo)
+
+
+def test_coverage_runner_prefers_validated_gate_uv_over_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Given a reviewed absolute uv, when coverage runs, then PATH lookup is not used."""
+    repo, _ = _coverage_repo(tmp_path, "backend")
+    uv = tmp_path / "uv"
+    uv.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    uv.chmod(0o700)
+    measured: list[list[str]] = []
+
+    def measure(argv: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> None:
+        measured.append(argv)
+        _write_measurement_report("backend", argv, env)
+
+    monkeypatch.setenv("MOLDY_GATE_UV", str(uv))
+    monkeypatch.setattr(run_coverage_gate.shutil, "which", lambda _command: None)
+    monkeypatch.setattr(run_coverage_gate, "_run_measurement", measure)
+
+    run_coverage_gate.run_gate("backend", repo)
+
+    assert measured[0][0] == str(uv)
+
+
+@pytest.mark.parametrize("override", ["relative", "missing", "non_executable"])
+def test_coverage_runner_rejects_invalid_gate_uv_without_path_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, override: str
+) -> None:
+    """Given a hostile override, when coverage runs, then it fails instead of PATH lookup."""
+    repo, _ = _coverage_repo(tmp_path, "backend")
+    non_executable = tmp_path / "not-executable-uv"
+    non_executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    non_executable.chmod(0o600)
+    configured = {
+        "relative": "uv",
+        "missing": str(tmp_path / "missing-uv"),
+        "non_executable": str(non_executable),
+    }[override]
+    monkeypatch.setenv(run_coverage_gate.GATE_UV_ENVIRONMENT_NAME, configured)
+    monkeypatch.setattr(run_coverage_gate.shutil, "which", lambda _command: "/fixture/uv")
+
+    with pytest.raises(RuntimeError, match="MOLDY_GATE_UV"):
         run_coverage_gate.run_gate("backend", repo)

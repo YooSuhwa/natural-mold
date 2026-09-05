@@ -31,6 +31,7 @@ def _trusted(toolchain: ModuleType, tmp_path: Path) -> TrustedToolchainLike:
         Path("/trusted/python"),
         Path("/trusted/node22/bin/node"),
         Path("/trusted/pnpm/bin/pnpm"),
+        Path("/trusted/uv"),
         tmp_path,
         "tester",
     )

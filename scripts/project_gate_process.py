@@ -35,6 +35,7 @@ def safe_environment(inherited: dict[str, str], toolchain: TrustedToolchain) -> 
         "LOGNAME": toolchain.user,
         "LC_ALL": "C",
         "MOLDY_GATE_PYTHON": str(toolchain.python),
+        "MOLDY_GATE_UV": str(toolchain.uv),
         "npm_config_manage_package_manager_versions": "false",
     }
     for name in ("CI", "DOCKER_HOST", "DOCKER_CONFIG", "DOCKER_CONTEXT"):

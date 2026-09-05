@@ -106,6 +106,7 @@ class TrustedToolchainLike(Protocol):
     python: Path
     node: Path
     pnpm: Path
+    uv: Path
     home: Path
     user: str
 
@@ -204,6 +205,7 @@ def composite_args(
         Path("/trusted/python"),
         Path("/trusted/node"),
         Path("/trusted/pnpm"),
+        Path("/trusted/uv"),
         tmp_path,
         "tester",
     )

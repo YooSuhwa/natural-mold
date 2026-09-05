@@ -199,6 +199,7 @@ def test_composite_environment_drops_secrets(tmp_path: Path, process: ModuleType
         Path("/trusted/python"),
         Path("/trusted/node22/bin/node"),
         Path("/trusted/pnpm/bin/pnpm"),
+        Path("/trusted/uv"),
         tmp_path,
         "tester",
     )
@@ -211,6 +212,7 @@ def test_composite_environment_drops_secrets(tmp_path: Path, process: ModuleType
             "NODE_OPTIONS": "--require=evil",
             "E2E_LLM_API_KEY": "secret",
             "MOLDY_GATE_PYTHON": "/untrusted/python",
+            "MOLDY_GATE_UV": "/untrusted/uv",
         },
         trusted,
     )
@@ -223,6 +225,7 @@ def test_composite_environment_drops_secrets(tmp_path: Path, process: ModuleType
         "LOGNAME": "tester",
         "LC_ALL": "C",
         "MOLDY_GATE_PYTHON": "/trusted/python",
+        "MOLDY_GATE_UV": "/trusted/uv",
         "npm_config_manage_package_manager_versions": "false",
         "DOCKER_HOST": "unix:///tmp/docker.sock",
     }
