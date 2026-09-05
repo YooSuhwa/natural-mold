@@ -30,6 +30,7 @@ def test_cleanup_docker_resolution_ignores_inherited_path(
     _write_executable(shadow)
     _write_executable(trusted)
     monkeypatch.setenv("PATH", str(shadow.parent))
+    monkeypatch.delenv(docker_trust.DOCKER_ENVIRONMENT_NAME, raising=False)
     monkeypatch.setattr(docker_trust, "_trusted_system_paths", lambda: (str(trusted.parent),))
 
     # When: the cleanup boundary resolves Docker.

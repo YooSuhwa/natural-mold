@@ -10,6 +10,19 @@ from pathlib import Path
 from tests.cleanup_discovery_support import CHECKER, discovery
 
 
+def _standalone_cli_environment() -> dict[str, str]:
+    """Remove outer-wrapper bindings from subprocesses that model standalone use."""
+    environment = dict(os.environ)
+    for name in (
+        "MOLDY_TEST_RUN_ROOT",
+        "MOLDY_BACKEND_SOURCE_ROOT",
+        "MOLDY_DISABLE_ENV_FILE",
+        "PYTHON_DOTENV_DISABLED",
+    ):
+        environment.pop(name, None)
+    return environment
+
+
 def test_cleanup_cli_rejects_missing_mixed_and_multiple_discovery_roots(tmp_path: Path) -> None:
     # Given: the cleanup checker CLI and two candidate roots.
     roots = [tmp_path / "one", tmp_path / "two"]
@@ -42,6 +55,7 @@ def test_cleanup_cli_reports_stable_discovery_failure(tmp_path: Path) -> None:
     # When: discovery rejects the malformed evidence through the public CLI.
     result = subprocess.run(  # noqa: S603 - fixed local checker
         [sys.executable, str(CHECKER), "--discover", str(root)],
+        env=_standalone_cli_environment(),
         capture_output=True,
         text=True,
         check=False,
@@ -61,6 +75,7 @@ def test_cleanup_cli_reports_stable_missing_root_failure(tmp_path: Path) -> None
     # When: the public CLI attempts bounded discovery.
     result = subprocess.run(  # noqa: S603 - fixed local checker
         [sys.executable, str(CHECKER), "--discover", str(root)],
+        env=_standalone_cli_environment(),
         capture_output=True,
         text=True,
         check=False,
