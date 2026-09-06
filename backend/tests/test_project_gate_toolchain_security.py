@@ -4,12 +4,204 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from tests.project_gate_wave_support import load_module
+
+
+def _write_executable(path: Path) -> None:
+    path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    path.chmod(0o700)
+
+
+def test_trusted_system_paths_skip_unsafe_optional_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: an optional reviewed prefix is unsafe but mandatory roots are safe.
+    toolchain = load_module("project_gate_toolchain")
+    candidates = ("/optional", "/usr/bin", "/bin")
+    metadata = {
+        "/optional": SimpleNamespace(st_mode=stat.S_IFDIR | stat.S_IWOTH, st_uid=0),
+        "/usr/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+        "/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+    }
+
+    class SystemPath:
+        def __init__(self, raw_path: str) -> None:
+            self.raw_path = raw_path
+
+        def stat(self) -> SimpleNamespace:
+            return metadata[self.raw_path]
+
+    monkeypatch.setattr(toolchain, "SYSTEM_PATH_CANDIDATES", candidates)
+    monkeypatch.setattr(toolchain, "Path", SystemPath)
+
+    # When: the project-gate environment is restricted to reviewed system paths.
+    trusted = toolchain._trusted_system_paths()
+
+    # Then: the unsafe optional root is unavailable to Docker and tool resolution.
+    assert trusted == ("/usr/bin", "/bin")
+
+
+def test_trusted_system_paths_reject_unsafe_mandatory_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: /usr/bin loses its mandatory safe-directory property.
+    toolchain = load_module("project_gate_toolchain")
+    candidates = ("/usr/local/bin", "/usr/bin", "/bin")
+    metadata = {
+        "/usr/local/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+        "/usr/bin": SimpleNamespace(st_mode=stat.S_IFDIR | stat.S_IWGRP, st_uid=0),
+        "/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+    }
+
+    class SystemPath:
+        def __init__(self, raw_path: str) -> None:
+            self.raw_path = raw_path
+
+        def stat(self) -> SimpleNamespace:
+            return metadata[self.raw_path]
+
+    monkeypatch.setattr(toolchain, "SYSTEM_PATH_CANDIDATES", candidates)
+    monkeypatch.setattr(toolchain, "Path", SystemPath)
+
+    # When/Then: the gate refuses to construct a PATH without a safe mandatory root.
+    with pytest.raises(toolchain.ProjectGateError, match=r"^runtime_preflight_failed$"):
+        toolchain._trusted_system_paths()
+
+
+def test_fixed_candidates_exclude_omitted_system_prefix() -> None:
+    # Given: /usr/local/bin was excluded while /usr/local/opt remains a separate fixed root.
+    toolchain = load_module("project_gate_toolchain")
+    candidates = (
+        Path("/usr/local/opt/node@22/bin/node"),
+        Path("/usr/local/bin/pnpm"),
+        Path("/usr/local/bin/uv"),
+        Path("/usr/bin/python3"),
+    )
+
+    # When: fixed tool candidates are restricted by the retained system roots.
+    trusted = toolchain._filter_candidates_for_system_paths(candidates, ("/usr/bin", "/bin"))
+
+    # Then: no candidate under the omitted /usr/local/bin root can be auto-selected.
+    assert trusted == (Path("/usr/local/opt/node@22/bin/node"), Path("/usr/bin/python3"))
+
+
+@pytest.mark.parametrize("tool_name", ["pnpm", "uv"])
+def test_selected_tool_symlink_cannot_target_omitted_system_prefix(
+    tmp_path: Path,
+    tool_name: str,
+) -> None:
+    # Given: a retained home candidate links into an omitted, unsafe system prefix.
+    toolchain = load_module("project_gate_toolchain")
+    launcher = tmp_path / tool_name
+    launcher.symlink_to(Path("/usr/local/bin") / tool_name)
+
+    # When: one reviewed symlink hop is resolved.
+    selected = toolchain._one_hop_executable(launcher)
+
+    # Then: the resolved target cannot re-enter the omitted system prefix.
+    with pytest.raises(toolchain.ProjectGateError, match=r"^runtime_preflight_failed$"):
+        toolchain._require_candidate_outside_omitted_system_paths(
+            selected,
+            ("/usr/bin", "/bin"),
+        )
+
+
+@pytest.mark.parametrize("tool_name", ["node", "pnpm", "docker"])
+def test_executable_identity_cannot_end_below_omitted_system_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+) -> None:
+    # Given: a selected launcher ultimately resolves into an omitted system root.
+    toolchain = load_module("project_gate_toolchain")
+    retained_root = tmp_path / "retained"
+    omitted_root = tmp_path / "omitted"
+    retained_root.mkdir()
+    omitted_root.mkdir()
+    target = omitted_root / tool_name
+    _write_executable(target)
+    intermediate = retained_root / f"{tool_name}-intermediate"
+    intermediate.symlink_to(target)
+    launcher = retained_root / tool_name
+    launcher.symlink_to(intermediate)
+    monkeypatch.setattr(
+        toolchain,
+        "SYSTEM_PATH_CANDIDATES",
+        (str(retained_root), str(omitted_root)),
+    )
+    identity = toolchain._capture_executable(launcher)
+
+    # When/Then: the captured final target cannot re-enter the omitted root.
+    with pytest.raises(toolchain.ProjectGateError, match=r"^runtime_preflight_failed$"):
+        toolchain._require_identity_targets_outside_omitted_system_paths(
+            (identity,),
+            (str(retained_root),),
+        )
+
+
+def test_trusted_system_paths_reject_optional_stat_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: an optional prefix cannot be inspected due to an I/O error.
+    toolchain = load_module("project_gate_toolchain")
+    candidates = ("/optional", "/usr/bin", "/bin")
+    metadata = {
+        "/usr/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+        "/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+    }
+
+    class SystemPath:
+        def __init__(self, raw_path: str) -> None:
+            self.raw_path = raw_path
+
+        def stat(self) -> SimpleNamespace:
+            if self.raw_path == "/optional":
+                raise PermissionError
+            return metadata[self.raw_path]
+
+    monkeypatch.setattr(toolchain, "SYSTEM_PATH_CANDIDATES", candidates)
+    monkeypatch.setattr(toolchain, "Path", SystemPath)
+
+    # When/Then: only an absent optional path may be skipped; inspection errors fail closed.
+    with pytest.raises(toolchain.ProjectGateError, match=r"^runtime_preflight_failed$"):
+        toolchain._trusted_system_paths()
+
+
+def test_resolve_toolchain_excludes_candidates_below_omitted_system_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: /usr/local/bin is excluded and automatic tool selection must continue safely.
+    toolchain = load_module("project_gate_toolchain")
+    selections: list[tuple[Path, ...]] = []
+    returned = iter((tmp_path / "node", tmp_path / "pnpm", tmp_path / "uv"))
+    account = SimpleNamespace(pw_dir=str(tmp_path / "home"), pw_name="tester")
+    monkeypatch.setattr(toolchain, "_trusted_system_paths", lambda: ("/usr/bin", "/bin"))
+    monkeypatch.setattr(toolchain.pwd, "getpwuid", lambda _uid: account)
+    monkeypatch.setattr(toolchain.os, "getuid", lambda: 1000)
+
+    def first_executable(candidates: tuple[Path, ...]) -> Path:
+        selections.append(candidates)
+        return next(returned)
+
+    monkeypatch.setattr(toolchain, "_first_executable", first_executable)
+    monkeypatch.setattr(toolchain.shutil, "which", lambda _command, *, path: None)
+
+    # When: the automatic project-gate toolchain lookup starts.
+    with pytest.raises(toolchain.ProjectGateError, match=r"^runtime_preflight_failed$"):
+        toolchain.resolve_toolchain(tmp_path)
+
+    # Then: direct pnpm/uv paths below the omitted root are never selectable.
+    assert Path("/usr/local/bin/pnpm") not in selections[1]
+    assert Path("/usr/local/bin/uv") not in selections[2]
+    assert Path("/usr/local/opt/node@22/bin/node") in selections[0]
 
 
 def test_direct_base_resolution_rejects_nonancestor_with_captured_git(

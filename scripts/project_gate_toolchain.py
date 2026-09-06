@@ -30,6 +30,7 @@ SYSTEM_PATH_CANDIDATES: Final = (
     "/usr/sbin",
     "/sbin",
 )
+MANDATORY_SYSTEM_PATHS: Final = frozenset({"/usr/bin", "/bin"})
 COMMIT_ID: Final = re.compile(r"^[0-9a-f]{40,64}$")
 PYTHON_VERSION: Final = re.compile(r"Python (?P<version>3\.12\.\d+)")
 NODE_VERSION: Final = re.compile(r"v(?P<version>22\.\d+\.\d+)")
@@ -124,11 +125,44 @@ def _trusted_system_paths() -> tuple[str, ...]:
             raise ProjectGateError("runtime_preflight_failed") from error
         unsafe_mode = metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
         if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != 0 or unsafe_mode:
-            raise ProjectGateError("runtime_preflight_failed")
+            if raw_path in MANDATORY_SYSTEM_PATHS:
+                raise ProjectGateError("runtime_preflight_failed")
+            continue
         paths.append(raw_path)
-    if "/usr/bin" not in paths or "/bin" not in paths:
+    if not MANDATORY_SYSTEM_PATHS.issubset(paths):
         raise ProjectGateError("runtime_preflight_failed")
     return tuple(paths)
+
+
+def _filter_candidates_for_system_paths(
+    candidates: tuple[Path, ...], system_paths: tuple[str, ...]
+) -> tuple[Path, ...]:
+    """Exclude fixed candidates below a system prefix omitted from trusted PATH."""
+    omitted_roots = tuple(
+        Path(raw_path) for raw_path in SYSTEM_PATH_CANDIDATES if raw_path not in system_paths
+    )
+    return tuple(
+        candidate
+        for candidate in candidates
+        if not any(candidate.is_relative_to(root) for root in omitted_roots)
+    )
+
+
+def _require_candidate_outside_omitted_system_paths(
+    candidate: Path, system_paths: tuple[str, ...]
+) -> Path:
+    """Reject a selected symlink target below an omitted system prefix."""
+    if not _filter_candidates_for_system_paths((candidate,), system_paths):
+        raise ProjectGateError("runtime_preflight_failed")
+    return candidate
+
+
+def _require_identity_targets_outside_omitted_system_paths(
+    identities: tuple[ExecutableIdentity, ...], system_paths: tuple[str, ...]
+) -> None:
+    """Reject executable identities whose final target uses an omitted prefix."""
+    for identity in identities:
+        _require_candidate_outside_omitted_system_paths(identity.target, system_paths)
 
 
 def _capture_target_contents(path: Path) -> tuple[os.stat_result, str]:
@@ -241,33 +275,49 @@ def resolve_toolchain(repo_root: Path) -> tuple[TrustedToolchain, dict[str, str]
     account = pwd.getpwuid(os.getuid())
     home = Path(account.pw_dir)
     python = repo_root / "backend" / ".venv" / "bin" / "python"
-    node_candidates = tuple(sorted((home / ".nvm/versions/node").glob("v22*/bin/node"))) + (
-        Path("/opt/homebrew/opt/node@22/bin/node"),
-        Path("/usr/local/opt/node@22/bin/node"),
+    system_paths = _trusted_system_paths()
+    node_candidates = _filter_candidates_for_system_paths(
+        tuple(sorted((home / ".nvm/versions/node").glob("v22*/bin/node")))
+        + (
+            Path("/opt/homebrew/opt/node@22/bin/node"),
+            Path("/usr/local/opt/node@22/bin/node"),
+        ),
+        system_paths,
     )
     node = _first_executable(node_candidates)
-    pnpm = _one_hop_executable(
-        _first_executable(
-            (
-                node.parent / "pnpm",
-                home / "Library/pnpm/pnpm",
-                home / ".local/share/pnpm/pnpm",
-                Path("/opt/homebrew/bin/pnpm"),
-                Path("/usr/local/bin/pnpm"),
+    pnpm = _require_candidate_outside_omitted_system_paths(
+        _one_hop_executable(
+            _first_executable(
+                _filter_candidates_for_system_paths(
+                    (
+                        node.parent / "pnpm",
+                        home / "Library/pnpm/pnpm",
+                        home / ".local/share/pnpm/pnpm",
+                        Path("/opt/homebrew/bin/pnpm"),
+                        Path("/usr/local/bin/pnpm"),
+                    ),
+                    system_paths,
+                )
             )
-        )
+        ),
+        system_paths,
     )
-    uv = _one_hop_executable(
-        _first_executable(
-            (
-                home / ".local/bin/uv",
-                home / ".cargo/bin/uv",
-                Path("/opt/homebrew/bin/uv"),
-                Path("/usr/local/bin/uv"),
+    uv = _require_candidate_outside_omitted_system_paths(
+        _one_hop_executable(
+            _first_executable(
+                _filter_candidates_for_system_paths(
+                    (
+                        home / ".local/bin/uv",
+                        home / ".cargo/bin/uv",
+                        Path("/opt/homebrew/bin/uv"),
+                        Path("/usr/local/bin/uv"),
+                    ),
+                    system_paths,
+                )
             )
-        )
+        ),
+        system_paths,
     )
-    system_paths = _trusted_system_paths()
     docker_name = shutil.which("docker", path=os.pathsep.join(system_paths))
     if docker_name is None:
         raise ProjectGateError("runtime_preflight_failed")
@@ -283,6 +333,15 @@ def resolve_toolchain(repo_root: Path) -> tuple[TrustedToolchain, dict[str, str]
     )
     runtime_paths = tuple(str(identity.path) for identity in directory_identities)
     runtime_path = os.pathsep.join((*runtime_paths, *system_paths))
+    identities = (
+        _capture_executable(python),
+        _capture_executable(node),
+        _capture_executable(pnpm),
+        _capture_executable(uv, require_regular=True),
+        _capture_executable(docker),
+        _capture_executable(GIT),
+    )
+    _require_identity_targets_outside_omitted_system_paths(identities, system_paths)
     python_version = _normalized_version(_version(python, repo_root), PYTHON_VERSION)
     node_version = _normalized_version(_version(node, repo_root), NODE_VERSION)
     # Homebrew's pnpm is a JavaScript entrypoint. Launch it with the reviewed
@@ -296,14 +355,6 @@ def resolve_toolchain(repo_root: Path) -> tuple[TrustedToolchain, dict[str, str]
             disable_package_manager_delegation=True,
         ),
         PNPM_VERSION,
-    )
-    identities = (
-        _capture_executable(python),
-        _capture_executable(node),
-        _capture_executable(pnpm),
-        _capture_executable(uv, require_regular=True),
-        _capture_executable(docker),
-        _capture_executable(GIT),
     )
     toolchain = TrustedToolchain(
         python,

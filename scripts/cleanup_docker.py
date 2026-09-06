@@ -22,6 +22,7 @@ SYSTEM_PATH_CANDIDATES: Final = (
     "/usr/sbin",
     "/sbin",
 )
+MANDATORY_SYSTEM_PATHS: Final = frozenset({"/usr/bin", "/bin"})
 DOCKER_ENVIRONMENT_NAME: Final = "MOLDY_GATE_DOCKER"
 DOCKER_IDENTITY_ENVIRONMENT_NAME: Final = "MOLDY_GATE_DOCKER_IDENTITY"
 IDENTITY_TOKEN: Final = re.compile(r"^[0-9a-f]{64}$")
@@ -104,16 +105,29 @@ def _trusted_system_paths() -> tuple[str, ...]:
             continue
         except OSError as error:
             _reject(error)
-        if (
+        is_unsafe_directory = (
             not stat.S_ISDIR(metadata.st_mode)
             or metadata.st_uid != 0
             or metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
-        ):
-            _reject()
+        )
+        if is_unsafe_directory:
+            if raw_path in MANDATORY_SYSTEM_PATHS:
+                _reject()
+            continue
         paths.append(raw_path)
-    if "/usr/bin" not in paths or "/bin" not in paths:
+    if not MANDATORY_SYSTEM_PATHS.issubset(paths):
         _reject()
     return tuple(paths)
+
+
+def _require_target_outside_omitted_system_paths(
+    target: Path, system_paths: tuple[str, ...]
+) -> None:
+    omitted_roots = tuple(
+        Path(raw_path) for raw_path in SYSTEM_PATH_CANDIDATES if raw_path not in system_paths
+    )
+    if any(target.is_relative_to(root) for root in omitted_roots):
+        _reject()
 
 
 def _capture_target_contents(target: Path) -> tuple[os.stat_result, str]:
@@ -249,7 +263,8 @@ def resolve_trusted_docker() -> str:
         or str(docker.parent) not in system_paths
     ):
         _reject()
-    capture_docker_identity(docker)
+    identity = capture_docker_identity(docker)
+    _require_target_outside_omitted_system_paths(identity.target, system_paths)
     return str(docker)
 
 

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import stat
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +20,176 @@ def _write_executable(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     path.chmod(0o700)
+
+
+def test_trusted_system_paths_skip_unsafe_optional_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: a reviewed optional prefix is writable while mandatory prefixes are safe.
+    docker_trust = load_module("cleanup_docker")
+    candidates = ("/optional", "/usr/bin", "/bin")
+    metadata = {
+        "/optional": SimpleNamespace(st_mode=stat.S_IFDIR | stat.S_IWOTH, st_uid=0),
+        "/usr/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+        "/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+    }
+
+    class SystemPath:
+        def __init__(self, raw_path: str) -> None:
+            self.raw_path = raw_path
+
+        def stat(self) -> SimpleNamespace:
+            return metadata[self.raw_path]
+
+    monkeypatch.setattr(docker_trust, "SYSTEM_PATH_CANDIDATES", candidates)
+    monkeypatch.setattr(docker_trust, "Path", SystemPath)
+
+    # When: Docker's reviewed system search path is built.
+    trusted = docker_trust._trusted_system_paths()
+
+    # Then: the unsafe optional directory cannot enter the Docker lookup path.
+    assert trusted == ("/usr/bin", "/bin")
+
+
+def test_trusted_system_paths_reject_unsafe_mandatory_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: mandatory /usr/bin is writable even though the other prefixes are safe.
+    docker_trust = load_module("cleanup_docker")
+    candidates = ("/usr/local/bin", "/usr/bin", "/bin")
+    metadata = {
+        "/usr/local/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+        "/usr/bin": SimpleNamespace(st_mode=stat.S_IFDIR | stat.S_IWGRP, st_uid=0),
+        "/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+    }
+
+    class SystemPath:
+        def __init__(self, raw_path: str) -> None:
+            self.raw_path = raw_path
+
+        def stat(self) -> SimpleNamespace:
+            return metadata[self.raw_path]
+
+    monkeypatch.setattr(docker_trust, "SYSTEM_PATH_CANDIDATES", candidates)
+    monkeypatch.setattr(docker_trust, "Path", SystemPath)
+
+    # When/Then: losing a mandatory trust root fails closed.
+    with pytest.raises(docker_trust.DockerTrustError, match=r"^docker_preflight_failed$"):
+        docker_trust._trusted_system_paths()
+
+
+def test_trusted_system_paths_reject_optional_stat_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: an optional reviewed prefix cannot be inspected.
+    docker_trust = load_module("cleanup_docker")
+    candidates = ("/optional", "/usr/bin", "/bin")
+    metadata = {
+        "/usr/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+        "/bin": SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0),
+    }
+
+    class SystemPath:
+        def __init__(self, raw_path: str) -> None:
+            self.raw_path = raw_path
+
+        def stat(self) -> SimpleNamespace:
+            if self.raw_path == "/optional":
+                raise PermissionError
+            return metadata[self.raw_path]
+
+    monkeypatch.setattr(docker_trust, "SYSTEM_PATH_CANDIDATES", candidates)
+    monkeypatch.setattr(docker_trust, "Path", SystemPath)
+
+    # When/Then: only absent optional directories are skipped; errors still fail closed.
+    with pytest.raises(docker_trust.DockerTrustError, match=r"^docker_preflight_failed$"):
+        docker_trust._trusted_system_paths()
+
+
+def test_trusted_system_paths_reject_missing_mandatory_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: /bin is absent from the reviewed system prefixes.
+    docker_trust = load_module("cleanup_docker")
+
+    class SystemPath:
+        def __init__(self, raw_path: str) -> None:
+            self.raw_path = raw_path
+
+        def stat(self) -> SimpleNamespace:
+            return SimpleNamespace(st_mode=stat.S_IFDIR, st_uid=0)
+
+    monkeypatch.setattr(docker_trust, "SYSTEM_PATH_CANDIDATES", ("/usr/bin",))
+    monkeypatch.setattr(docker_trust, "Path", SystemPath)
+
+    # When/Then: absence of a mandatory root fails closed.
+    with pytest.raises(docker_trust.DockerTrustError, match=r"^docker_preflight_failed$"):
+        docker_trust._trusted_system_paths()
+
+
+def test_cleanup_docker_rejects_override_below_omitted_optional_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: /usr/local/bin was excluded but an override points beneath it.
+    docker_trust = load_module("cleanup_docker")
+    monkeypatch.setattr(docker_trust, "_trusted_system_paths", lambda: ("/usr/bin", "/bin"))
+    monkeypatch.setenv(docker_trust.DOCKER_ENVIRONMENT_NAME, "/usr/local/bin/docker")
+
+    # When/Then: an override cannot restore the omitted optional root.
+    with pytest.raises(docker_trust.DockerTrustError, match=r"^docker_preflight_failed$"):
+        docker_trust.resolve_trusted_docker()
+
+
+def test_cleanup_docker_automatic_resolution_uses_retained_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: only the mandatory system prefixes remain trusted.
+    docker_trust = load_module("cleanup_docker")
+    captured: list[tuple[str, str]] = []
+    monkeypatch.setattr(docker_trust, "_trusted_system_paths", lambda: ("/usr/bin", "/bin"))
+    monkeypatch.delenv(docker_trust.DOCKER_ENVIRONMENT_NAME, raising=False)
+
+    def which(command: str, *, path: str) -> None:
+        captured.append((command, path))
+
+    monkeypatch.setattr(docker_trust.shutil, "which", which)
+
+    # When/Then: automatic lookup receives no omitted optional prefix.
+    with pytest.raises(docker_trust.DockerTrustError, match=r"^docker_preflight_failed$"):
+        docker_trust.resolve_trusted_docker()
+    assert captured == [("docker", "/usr/bin:/bin")]
+
+
+def test_cleanup_docker_rejects_symlink_target_below_omitted_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: Docker is selected from a retained root but resolves into an omitted root.
+    docker_trust = load_module("cleanup_docker")
+    retained_root = tmp_path / "retained"
+    omitted_root = tmp_path / "omitted"
+    retained_root.mkdir()
+    omitted_root.mkdir()
+    target = omitted_root / "docker"
+    _write_executable(target)
+    launcher = retained_root / "docker"
+    launcher.symlink_to(target)
+    monkeypatch.setattr(
+        docker_trust,
+        "SYSTEM_PATH_CANDIDATES",
+        (str(retained_root), str(omitted_root)),
+    )
+    monkeypatch.setattr(docker_trust, "_trusted_system_paths", lambda: (str(retained_root),))
+    monkeypatch.delenv(docker_trust.DOCKER_ENVIRONMENT_NAME, raising=False)
+    monkeypatch.setattr(
+        docker_trust.shutil,
+        "which",
+        lambda command, *, path: str(launcher) if command == "docker" else None,
+    )
+
+    # When/Then: final-target validation rejects the indirect omitted-root executable.
+    with pytest.raises(docker_trust.DockerTrustError, match=r"^docker_preflight_failed$"):
+        docker_trust.resolve_trusted_docker()
 
 
 def test_cleanup_docker_resolution_ignores_inherited_path(
