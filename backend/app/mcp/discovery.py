@@ -97,6 +97,7 @@ async def discover_tools(
                 name=name,
                 description=descriptor.get("description") or None,
                 input_schema=descriptor.get("input_schema") or {},
+                metadata_json=descriptor.get("metadata") or {},
                 enabled=True,
                 last_seen_at=now,
             )
@@ -104,6 +105,7 @@ async def discover_tools(
         else:
             row.description = descriptor.get("description") or row.description
             row.input_schema = descriptor.get("input_schema") or {}
+            row.metadata_json = descriptor.get("metadata") or {}
             row.last_seen_at = now
         persisted.append(row)
 

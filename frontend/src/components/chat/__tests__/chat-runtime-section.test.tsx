@@ -6,6 +6,7 @@ import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
 
 const mocks = vi.hoisted(() => ({
   dictationAdapter: { listen: vi.fn() },
+  createMoldyChatTools: vi.fn(() => ({})),
   resetDictationFailure: vi.fn(),
   useChatRuntime: vi.fn(),
   useMoldyLangGraphStream: vi.fn(),
@@ -57,6 +58,7 @@ vi.mock('../assistant-thread', () => ({
 
 vi.mock('@/lib/chat/tool-ui-registry', () => ({
   ALL_TOOLKIT: {},
+  createMoldyChatTools: mocks.createMoldyChatTools,
 }))
 
 const messages: Message[] = []

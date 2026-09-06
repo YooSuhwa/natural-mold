@@ -349,6 +349,12 @@ async def test_discover_persists_tools(client: AsyncClient, db: AsyncSession, mo
                     "name": "alpha",
                     "description": "alpha tool",
                     "input_schema": {"type": "object"},
+                    "metadata": {
+                        "ui": {
+                            "resourceUri": "ui://alpha/dashboard",
+                            "visibility": ["model", "app"],
+                        }
+                    },
                 },
                 {
                     "name": "beta",
@@ -368,6 +374,13 @@ async def test_discover_persists_tools(client: AsyncClient, db: AsyncSession, mo
 
     rows = (await db.execute(select(McpTool).where(McpTool.server_id == sid))).scalars().all()
     assert {r.name for r in rows} == {"alpha", "beta"}
+    alpha = next(row for row in rows if row.name == "alpha")
+    assert alpha.metadata_json == {
+        "ui": {
+            "resourceUri": "ui://alpha/dashboard",
+            "visibility": ["model", "app"],
+        }
+    }
 
 
 @pytest.mark.asyncio
@@ -457,6 +470,14 @@ async def test_connect_and_list_stdio_invokes_sdk(monkeypatch) -> None:
         name = "ping"
         description = "ping"
         inputSchema = {"type": "object"}
+        meta = {
+            "ui": {
+                "resourceUri": "ui://ping/dashboard",
+                "visibility": ["model", "app"],
+                "unknown": "drop",
+            },
+            "Authorization": "drop",
+        }
 
     class _StubTools:
         tools = [_StubTool()]
@@ -507,7 +528,17 @@ async def test_connect_and_list_stdio_invokes_sdk(monkeypatch) -> None:
 
     assert result["success"] is True
     assert result["tools"] == [
-        {"name": "ping", "description": "ping", "input_schema": {"type": "object"}}
+        {
+            "name": "ping",
+            "description": "ping",
+            "input_schema": {"type": "object"},
+            "metadata": {
+                "ui": {
+                    "resourceUri": "ui://ping/dashboard",
+                    "visibility": ["model", "app"],
+                }
+            },
+        }
     ]
     # StdioServerParameters carries the resolved command/args/env so the SDK
     # spawns the right child process.

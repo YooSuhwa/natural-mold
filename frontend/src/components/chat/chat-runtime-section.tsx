@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import {
   AuiConfig,
   AssistantRuntimeProvider,
-  Tools,
   type AssistantRuntime,
   type AttachmentAdapter,
   type DictationAdapter,
@@ -21,7 +20,7 @@ import {
 } from '@/lib/chat/langgraph-runtime/subagent-runtime'
 import { HiTLContext, type HiTLContextValue } from '@/lib/chat/hitl-context'
 import { ALL_DATA_UI } from '@/lib/chat/data-ui'
-import { ALL_TOOLKIT } from '@/lib/chat/tool-ui-registry'
+import { ALL_TOOLKIT, createMoldyChatTools } from '@/lib/chat/tool-ui-registry'
 import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
 import type { User } from '@/lib/types/user'
 import type { StreamChatOptions } from '@/lib/sse/stream-chat'
@@ -304,7 +303,9 @@ function RuntimeFrame({
   subagentStream,
   threadProps,
 }: RuntimeFrameProps) {
-  const config = AuiConfig({ tools: Tools({ toolkit: ALL_TOOLKIT }) })
+  const config = AuiConfig({
+    tools: createMoldyChatTools(ALL_TOOLKIT, threadProps.conversationId),
+  })
 
   return (
     <AssistantRuntimeProvider runtime={runtime} config={config}>

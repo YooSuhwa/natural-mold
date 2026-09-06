@@ -14,6 +14,7 @@ import { useLangGraphSubagentNamesEffects } from './subagent-names-events'
 import { useLangGraphUsageEffects } from './usage-events'
 import { convertMoldyLangChainMessage } from './langchain-message-conversion'
 import { useStableConvertedMessages } from './message-list'
+import { attachMcpAppsMetadata } from '@/lib/chat/mcp-apps/metadata'
 import {
   applyPendingEditConvertedBranchMetadata,
   suppressPendingEditConvertedDuplicate,
@@ -105,7 +106,8 @@ export function useStreamRuntimeMessages<StateType extends { messages?: readonly
     messages: conversionMessages,
     isRunning,
   })
-  const stable = useStableConvertedMessages(converted, withDataUI, isRunning)
+  const withMcpApps = useMemo(() => attachMcpAppsMetadata(converted), [converted])
+  const stable = useStableConvertedMessages(withMcpApps, withDataUI, isRunning)
   const branchMetadata = useMemo(
     () => applyPendingEditConvertedBranchMetadata(stable, pendingEdit),
     [pendingEdit, stable],

@@ -36,6 +36,7 @@ from app.models.marketplace import (
     MarketplaceVersion,
     SkillCredentialBinding,
 )
+from app.models.mcp_app_invocation import McpAppInvocationBinding
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.memory import (
@@ -104,6 +105,7 @@ __all__ = [
     "ArtifactVersion",
     "MemoryProposal",
     "MemoryRecord",
+    "McpAppInvocationBinding",
     "McpServer",
     "McpTool",
     "MessageAttachment",

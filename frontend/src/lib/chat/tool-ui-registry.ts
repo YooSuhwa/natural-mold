@@ -1,4 +1,10 @@
-import { defineToolkit, type ToolCallMessagePartComponent } from '@assistant-ui/react'
+import {
+  defineToolkit,
+  Tools,
+  type Toolkit,
+  type ToolCallMessagePartComponent,
+} from '@assistant-ui/react'
+import { createMoldyMcpAppRenderer } from '@/lib/chat/mcp-apps/renderer'
 import { PlanToolUI } from '@/components/chat/tool-ui/plan-tool-ui'
 import { UserInputUI } from '@/components/chat/tool-ui/user-input-ui'
 import { ApprovalCard } from '@/components/chat/tool-ui/approval-card'
@@ -84,3 +90,11 @@ export const BUILDER_TOOLKIT = defineToolkit({
   draft_config_card: backendRenderer(DraftConfigCardToolUI),
   draft_approval: backendRenderer(DraftApprovalToolUI),
 })
+
+/** Main-thread Tools resource with MCP Apps bound to the mounted conversation. */
+export function createMoldyChatTools(toolkit: Toolkit, conversationId?: string) {
+  return Tools({
+    toolkit,
+    ...(conversationId ? { mcpApp: createMoldyMcpAppRenderer({ conversationId }) } : {}),
+  })
+}

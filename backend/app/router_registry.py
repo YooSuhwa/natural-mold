@@ -22,6 +22,7 @@ def include_app_routers(app: FastAPI) -> None:
         health,
         marketplace,
         mcp,
+        mcp_apps,
         memory,
         models,
         shares,
@@ -59,6 +60,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(memory.router)
     app.include_router(mcp.router)
     app.include_router(mcp.catalog_router)
+    app.include_router(mcp_apps.router)
     app.include_router(models.router)
     app.include_router(shares.router)
     app.include_router(templates.router)
@@ -79,6 +81,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(usage.router)
 
     if settings.e2e_test_helpers_enabled:
-        from app.routers import e2e_chat_run_helpers
+        from app.routers import e2e_chat_run_helpers, e2e_mcp_apps_helpers
 
         app.include_router(e2e_chat_run_helpers.router)
+        app.include_router(e2e_mcp_apps_helpers.router)

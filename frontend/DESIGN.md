@@ -53,3 +53,18 @@
 - 등록되지 않은 tool은 grouped-parts fallback이 담당하고, search-shaped 결과의
   rich rendering을 유지한다. `DataUI`는 기존 `AssistantThread` 등록 경로를
   그대로 사용한다.
+
+## MCP Apps policy
+
+- MCP Apps의 resource 읽기와 tool 호출은 대화·run·tool-call에 결합된 서버 proxy만
+  사용한다. 브라우저의 URI, server ID, binding ID, URL, credential은 권한 근거가
+  아니다.
+- app iframe은 추가 form, popup, download 권한 없이 격리하고, resource CSP는
+  기본 거부 후 서버가 검증한 HTTPS origin만 허용한다.
+- 일반 링크 열기와 대화 메시지 전송은 Moldy host policy에서 항상 오류로 거부한다.
+  `@assistant-ui/react` 0.15.18의 공개 API는 handler를 생략하면 각각
+  `window.open`과 thread append 기본값을 활성화하고, 거부 handler를 주면
+  initialize 응답에 capability를 표시한다. 따라서 현재는 명시적인 거부 handler로
+  side effect를 차단하며, widget에 action이 보인 뒤 policy error가 반환될 수 있는
+  SDK 호환성 debt를 수용한다. 비공개 protocol shim이나 package patch는 사용하지
+  않는다.

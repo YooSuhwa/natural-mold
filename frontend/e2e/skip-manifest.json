@@ -10,7 +10,7 @@
       "category": "infrastructure",
       "owner": "quality-runtime",
       "expires": "2027-03-31",
-      "expected_count": 38
+      "expected_count": 39
     },
     {
       "id": "system-llm-required",
@@ -57,6 +57,16 @@
       "path_glob": "e2e/chat-run-lifecycle.spec.ts",
       "condition": "process.env.E2E_TEST_HELPERS_ENABLED !== 'true'",
       "reason": "Requires E2E_TEST_HELPERS_ENABLED=true for run seeding",
+      "category": "infrastructure",
+      "owner": "backend-runtime",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "mcp-apps-fixture-helper",
+      "path_glob": "e2e/chat-mcp-apps.spec.ts",
+      "condition": "process.env.E2E_TEST_HELPERS_ENABLED !== 'true'",
+      "reason": "Requires E2E_TEST_HELPERS_ENABLED=true for a real MCP invocation binding",
       "category": "infrastructure",
       "owner": "backend-runtime",
       "expires": "2027-03-31",

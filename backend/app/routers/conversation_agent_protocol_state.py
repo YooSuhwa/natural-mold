@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 from langchain_core.messages import BaseMessage
@@ -9,6 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.executor import _prepare_agent
+from app.agent_runtime.mcp_app_projection import (
+    extract_mcp_app_candidates,
+    project_verified_mcp_apps,
+    verified_mcp_app_artifacts,
+)
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.dependencies import CurrentUser
@@ -52,19 +58,21 @@ async def load_thread_history_response(
 
     checkpoints = await _collect_checkpoints(checkpointer, str(conversation.id))
     checkpoint_by_message_id = _checkpoint_by_message_id_from_checkpoints(checkpoints)
-    return [
-        _checkpoint_state_response(
-            conversation,
-            checkpoint=checkpoint,
-            checkpoint_by_message_id=checkpoint_by_message_id,
-            secret_values=secrets,
+    responses: list[dict[str, object]] = []
+    for checkpoint in _page_checkpoints(
+        checkpoints,
+        before=request.before,
+        limit=request.limit,
+    ):
+        responses.append(
+            await _checkpoint_state_response(
+                conversation,
+                checkpoint=checkpoint,
+                checkpoint_by_message_id=checkpoint_by_message_id,
+                secret_values=secrets,
+            )
         )
-        for checkpoint in _page_checkpoints(
-            checkpoints,
-            before=request.before,
-            limit=request.limit,
-        )
-    ]
+    return responses
 
 
 async def update_thread_state_response(
@@ -106,7 +114,7 @@ async def update_thread_state_response(
     # ADR-021 C2 — cfg was already resolved above; reuse its eager secret set
     # to mask the returned state values (this endpoint runs outside any run).
     secrets = tuple(collect_cfg_secret_values(cfg))
-    return _snapshot_state_response(conversation, updated, secret_values=secrets)
+    return await _snapshot_state_response(conversation, updated, secret_values=secrets)
 
 
 def _page_checkpoints(
@@ -150,14 +158,21 @@ def _checkpoint_by_message_id_from_checkpoints(
     return result
 
 
-def _checkpoint_state_response(
+async def _checkpoint_state_response(
     conversation: Conversation,
     *,
     checkpoint: _CheckpointSlim,
     checkpoint_by_message_id: dict[str, str],
     secret_values: Sequence[str] | None = None,
+    session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] | None = None,
 ) -> dict[str, object]:
     messages: list[dict[str, Any]] = []
+    verified_apps = await verified_mcp_app_artifacts(
+        checkpoint.messages,
+        expected_conversation_id=str(conversation.id),
+        session_factory=session_factory,
+    )
+    candidate_ids = {item.tool_call_id for item in extract_mcp_app_candidates(checkpoint.messages)}
     for message in checkpoint.messages:
         message_id = _message_id_from_message(message)
         introduced_by = (
@@ -166,10 +181,14 @@ def _checkpoint_state_response(
             else checkpoint.checkpoint_id
         )
         messages.append(
-            serialize_langchain_message(
-                message,
-                checkpoint_id=introduced_by or checkpoint.checkpoint_id,
-                secret_values=secret_values,
+            project_verified_mcp_apps(
+                serialize_langchain_message(
+                    message,
+                    checkpoint_id=introduced_by or checkpoint.checkpoint_id,
+                    secret_values=secret_values,
+                ),
+                verified_apps,
+                untrusted_tool_call_ids=candidate_ids,
             )
         )
     return state_response(
@@ -212,11 +231,12 @@ def _resolve_update_node(
     return DEFAULT_UPDATE_NODE
 
 
-def _snapshot_state_response(
+async def _snapshot_state_response(
     conversation: Conversation,
     snapshot: Any,
     *,
     secret_values: Sequence[str] | None = None,
+    session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] | None = None,
 ) -> dict[str, object]:
     configurable = _snapshot_configurable(snapshot)
     checkpoint_id = configurable.get("checkpoint_id")
@@ -225,6 +245,21 @@ def _snapshot_state_response(
         conversation,
         _snapshot_values(snapshot, secret_values=secret_values),
     )
+    messages = values.get("messages")
+    if isinstance(messages, list):
+        candidates = extract_mcp_app_candidates(messages)
+        values = {
+            **values,
+            "messages": project_verified_mcp_apps(
+                messages,
+                await verified_mcp_app_artifacts(
+                    messages,
+                    expected_conversation_id=str(conversation.id),
+                    session_factory=session_factory,
+                ),
+                untrusted_tool_call_ids={item.tool_call_id for item in candidates},
+            ),
+        }
     return state_response(
         conversation,
         values=values,
