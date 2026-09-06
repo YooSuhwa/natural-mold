@@ -48,3 +48,25 @@ def test_cli_prints_the_single_validated_artifact_scope(
 
     assert module.main() == 0
     assert capsys.readouterr().out == f"{scope}\n"
+
+
+def test_cli_rejects_discovery_combined_with_manifest_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _cleanup_cli()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "check-isolation-cleanup.py",
+            "--discover",
+            str(tmp_path),
+            str(tmp_path / "receipt.json"),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as caught:
+        module.main()
+
+    assert caught.value.code == 2

@@ -19,9 +19,7 @@ class NetworkFailureCode(StrEnum):
 
 
 NETWORK_FAILURE_ANNOTATION_TYPE: Final = "moldy.network-failure.v1"
-NETWORK_FAILURE_CODES: Final[frozenset[NetworkFailureCode]] = frozenset(
-    NetworkFailureCode
-)
+NETWORK_FAILURE_CODES: Final[frozenset[NetworkFailureCode]] = frozenset(NetworkFailureCode)
 NETWORK_FAILURE_CODE_BY_VALUE: Final[dict[str, NetworkFailureCode]] = {
     code.value: code for code in NetworkFailureCode
 }
@@ -67,9 +65,7 @@ def parse_network_failure_codes(value: object) -> tuple[NetworkFailureCode, ...]
     """Parse the persisted optional code list and reject all non-canonical shapes."""
     if not isinstance(value, list) or not 1 <= len(value) <= len(NETWORK_FAILURE_CODES):
         _fail()
-    parsed = tuple(
-        code for item in value if (code := _network_failure_code(item)) is not None
-    )
+    parsed = tuple(code for item in value if (code := _network_failure_code(item)) is not None)
     if len(parsed) != len(value):
         _fail()
     if value != sorted(set(value)):

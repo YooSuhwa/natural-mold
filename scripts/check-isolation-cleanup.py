@@ -228,12 +228,13 @@ def _validate_manifest(manifest: Path) -> ArtifactScope:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    sources = parser.add_mutually_exclusive_group(required=True)
-    sources.add_argument("manifests", nargs="*", type=Path)
-    sources.add_argument("--discover", type=Path)
+    parser.add_argument("manifests", nargs="*", type=Path)
+    parser.add_argument("--discover", type=Path)
     parser.add_argument("--print-artifact-scope", action="store_true")
     args = parser.parse_args()
     if args.discover is not None:
+        if args.manifests or args.print_artifact_scope:
+            parser.error("--discover cannot be combined with manifest validation")
         try:
             summary = discover_and_probe(
                 args.discover,
