@@ -138,6 +138,98 @@ def _manifest(
     }
 
 
+def _preexecution_manifest(repository: Path) -> dict[str, object]:
+    """Build the only export-free receipt allowed before scripted-smoke execution."""
+    payload = _manifest(repository)
+    shutil.rmtree(repository / "output")
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "node_major_mismatch",
+            "child_exit_code": 70,
+            "owned_run_root": True,
+            "owned_database": False,
+            "owned_backend": False,
+            "owned_frontend": False,
+            "owned_proxy": False,
+            "server_version_num": None,
+            "alembic_head": None,
+            "alembic_current": None,
+            "schema_fingerprint": None,
+            "second_upgrade_idempotent": False,
+            "selected_ids": [],
+            "executed_ids": [],
+            "unexpected_failures": [],
+            "export": {
+                "schema_version": 1,
+                "secret_scan_passed": False,
+                "failure_code": None,
+                "export_directory": None,
+                "manifest": None,
+                "files": [],
+                "screenshots": [],
+                "source_rejection": None,
+            },
+        }
+    )
+    cleanup = payload["cleanup"]
+    assert isinstance(cleanup, dict)
+    cleanup["foreign_containers_preserved"] = None
+    return payload
+
+
+def test_validate_payload_accepts_scripted_smoke_preexecution_diagnostic(tmp_path: Path) -> None:
+    """Given an empty controlled pre-execution receipt, when checked, then it remains failed."""
+    payload = _preexecution_manifest(tmp_path)
+
+    scope = validate_payload(payload, repository_root=tmp_path)
+
+    assert payload["status"] == "failed"
+    assert scope == "manifest-only"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("failure_reason", "password=not-for-a-receipt"),
+        ("failure_reason", "sk-abcdefghijklmnop"),
+        ("selected_ids", ["scripted-smoke::e2e/smoke.spec.ts::works"]),
+        ("attempt_id", "a" * 64),
+        ("owned_database", True),
+    ],
+)
+def test_validate_payload_rejects_untrusted_preexecution_diagnostic_values(
+    tmp_path: Path, field: str, value: str | list[str] | bool
+) -> None:
+    """Given one unsafe pre-execution field, when checked, then it cannot become a receipt."""
+    payload = _preexecution_manifest(tmp_path)
+    payload[field] = value
+
+    with pytest.raises(ManifestValidationError):
+        validate_payload(payload, repository_root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["malformed_export", "incomplete_cleanup"],
+)
+def test_validate_payload_rejects_incomplete_preexecution_receipts(
+    tmp_path: Path, mutation: str
+) -> None:
+    """Given a non-exact empty export or cleanup claim, when checked, then it fails closed."""
+    payload = _preexecution_manifest(tmp_path)
+    if mutation == "malformed_export":
+        export = payload["export"]
+        assert isinstance(export, dict)
+        export["secret_scan_passed"] = True
+    elif mutation == "incomplete_cleanup":
+        cleanup = payload["cleanup"]
+        assert isinstance(cleanup, dict)
+        cleanup["cleanup_run_root_removed"] = False
+    with pytest.raises(ManifestValidationError):
+        validate_payload(payload, repository_root=tmp_path)
+
+
 @pytest.mark.parametrize(
     ("target", "field"),
     [("export", "unexpected"), ("export", "attempt_id"), ("top", "attempt_id")],

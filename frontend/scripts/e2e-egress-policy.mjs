@@ -1,5 +1,7 @@
-import { closeSync, fsyncSync, openSync, writeFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { closeSync, fsyncSync, linkSync, openSync, unlinkSync, writeFileSync } from 'node:fs'
 import net, { isIP } from 'node:net'
+import { basename, dirname, join } from 'node:path'
 import tls from 'node:tls'
 
 const ENCODED_PATH_CONTROL = /%(?:2e|2f|5c)/i
@@ -178,12 +180,21 @@ export function createPinnedConnection(policy, pinned) {
 }
 
 export function writeExclusiveJson(target, value) {
-  const descriptor = openSync(target, 'wx', 0o600)
+  const temporary = join(
+    dirname(target),
+    `.${basename(target)}.${randomBytes(16).toString('hex')}.tmp`,
+  )
+  const descriptor = openSync(temporary, 'wx', 0o600)
   try {
-    writeFileSync(descriptor, `${JSON.stringify(value)}\n`, { encoding: 'utf8' })
-    fsyncSync(descriptor)
+    try {
+      writeFileSync(descriptor, `${JSON.stringify(value)}\n`, { encoding: 'utf8' })
+      fsyncSync(descriptor)
+    } finally {
+      closeSync(descriptor)
+    }
+    linkSync(temporary, target)
   } finally {
-    closeSync(descriptor)
+    unlinkSync(temporary)
   }
 }
 

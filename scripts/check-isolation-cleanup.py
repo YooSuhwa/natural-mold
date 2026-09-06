@@ -14,7 +14,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 from cleanup_discovery import DiscoverySummary, discover_claims
 from cleanup_discovery_claims import Claims
@@ -211,15 +211,19 @@ def discover_and_probe(
     return summary
 
 
-def _validate_manifest(manifest: Path) -> None:
+type ArtifactScope = Literal["manifest-only", "full"]
+
+
+def _validate_manifest(manifest: Path) -> ArtifactScope:
     """Dispatch only after the shared no-follow manifest read boundary parsed the runner."""
     payload = load_manifest(manifest)
     if payload.get("runner") == "moldy-isolated-e2e" and payload.get("schema_version") == 1:
-        validate_e2e_payload(payload, receipt_path=manifest)
+        scope = validate_e2e_payload(payload, receipt_path=manifest)
         validate_e2e_live_absence(payload)
-        return
+        return scope
     validate_payload(payload)
     validate_live_absence(payload)
+    return "full"
 
 
 def main() -> int:
@@ -227,6 +231,7 @@ def main() -> int:
     sources = parser.add_mutually_exclusive_group(required=True)
     sources.add_argument("manifests", nargs="*", type=Path)
     sources.add_argument("--discover", type=Path)
+    parser.add_argument("--print-artifact-scope", action="store_true")
     args = parser.parse_args()
     if args.discover is not None:
         try:
@@ -241,8 +246,12 @@ def main() -> int:
         return 0
     if not args.manifests:
         parser.error("one or more manifests are required")
-    for manifest in args.manifests:
-        _validate_manifest(manifest)
+    if args.print_artifact_scope and len(args.manifests) != 1:
+        parser.error("--print-artifact-scope requires exactly one manifest")
+    scopes = [_validate_manifest(manifest) for manifest in args.manifests]
+    if args.print_artifact_scope:
+        print(scopes[0])
+        return 0
     print(f"validated={len(args.manifests)}")
     return 0
 

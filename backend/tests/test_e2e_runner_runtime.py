@@ -111,7 +111,7 @@ def test_prepare_run_root_rejects_identity_replacement_after_preparation(
     with pytest.raises(ProvisioningError) as caught:
         runtime._prepare_run_root()
 
-    assert caught.value.reason == "RuntimeError"
+    assert caught.value.reason == "run_root_identity_changed"
     assert caught.value.cleanup["cleanup_run_root_removed"] is False
     assert len(cleanup_calls) == 1
     assert cleanup_calls[0][0] == run_root
@@ -119,3 +119,25 @@ def test_prepare_run_root_rejects_identity_replacement_after_preparation(
         displaced_root.stat().st_dev,
         displaced_root.stat().st_ino,
     )
+
+
+@pytest.mark.parametrize(
+    ("raw_reason", "expected_reason"),
+    [
+        ("docker_unavailable", "docker_unavailable"),
+        ("alembic_second_upgrade_failed", "alembic_second_upgrade_failed"),
+        ("password=not-for-a-receipt", "provisioning_failed"),
+    ],
+)
+def test_provisioning_error_preserves_only_allowlisted_failure_reasons(
+    raw_reason: str, expected_reason: str
+) -> None:
+    """Given a provisioning message, when recorded, then only an allowlisted code survives."""
+    error = ProvisioningError(
+        raw_reason,
+        {"cleanup_run_root_removed": True},
+        {"run_root": True, "database": False, "backend": False, "frontend": False, "proxy": False},
+    )
+
+    assert error.reason == expected_reason
+    assert "password" not in str(error)

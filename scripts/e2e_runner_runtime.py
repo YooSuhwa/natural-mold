@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Final
 
 import psycopg
+from e2e_cleanup_contract import provisioning_failure_reason
 from e2e_runner_contract import E2eDsns, Lane, Project, build_e2e_dsns, parse_e2e_dsns
 from e2e_runner_environment import build_lane_environment
 from postgres_manifest_io import RunnerInterrupted
@@ -66,8 +67,8 @@ class ProvisioningError(RuntimeError):
         ownership: dict[str, bool],
         signal_number: int | None = None,
     ) -> None:
-        super().__init__(reason)
-        self.reason = reason
+        self.reason = provisioning_failure_reason(reason)
+        super().__init__(self.reason)
         self.cleanup = cleanup
         self.ownership = ownership
         self.signal_number = signal_number
@@ -135,7 +136,7 @@ def _prepare_run_root() -> tuple[Path, os.stat_result]:
             root_removed = False
         cleanup = _partial_cleanup(root_removed=root_removed)
         raise ProvisioningError(
-            type(error).__name__,
+            provisioning_failure_reason(str(error)),
             cleanup,
             _partial_ownership(run_root=True, database=False),
             error.signal_number if isinstance(error, RunnerInterrupted) else None,
@@ -238,8 +239,8 @@ def provision_resources(lane: Lane, project: Project) -> E2eResources:
             foreign_preserved: bool | None = (
                 before.issubset(docker_ids()) if before is not None else None
             )
-        except BaseException:  # noqa: BLE001 - partial cleanup must return conservative facts
-            foreign_preserved = None
+        except BaseException:  # noqa: BLE001 - an attempted Docker snapshot must fail closed
+            foreign_preserved = False if before is not None else None
         try:
             identity_absent, label_absent, port_absent = verify_container_absence(owner)
             label_query = run_command(
@@ -263,4 +264,6 @@ def provision_resources(lane: Lane, project: Project) -> E2eResources:
             database=database_created,
         )
         signal_number = error.signal_number if isinstance(error, RunnerInterrupted) else None
-        raise ProvisioningError(type(error).__name__, cleanup, ownership, signal_number) from error
+        raise ProvisioningError(
+            provisioning_failure_reason(str(error)), cleanup, ownership, signal_number
+        ) from error

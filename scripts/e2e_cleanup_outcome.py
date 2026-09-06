@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from e2e_cleanup_contract import (
     CLEANUP_FIELDS,
     LIVE_NODES,
+    PREEXECUTION_FAILURE_REASONS,
     integer,
     mapping,
     require,
@@ -16,12 +17,17 @@ from e2e_cleanup_contract import (
 from postgres_cleanup_checker import ManifestValidationError
 
 
-def validate_cleanup(payload: dict[str, object], database_owned: bool) -> None:
+def validate_cleanup(
+    payload: dict[str, object], database_owned: bool, *, diagnostic_preexecution: bool = False
+) -> None:
     """Require every teardown claim and truthful foreign-container preservation."""
     cleanup = mapping(payload.get("cleanup"), "cleanup")
     require(all(cleanup.get(name) is True for name in CLEANUP_FIELDS), "cleanup")
     foreign = cleanup.get("foreign_containers_preserved")
-    require(foreign is True if database_owned else foreign is None, "foreign_container")
+    if diagnostic_preexecution:
+        require(foreign is None or foreign is True, "foreign_container")
+    else:
+        require(foreign is True if database_owned else foreign is None, "foreign_container")
 
 
 def validate_egress(value: object, lane: str) -> None:
@@ -63,7 +69,7 @@ def validate_egress(value: object, lane: str) -> None:
 
 def validate_outcome(
     payload: dict[str, object], lane: str, project: str, *, source_rejected: bool
-) -> None:
+) -> bool:
     """Validate success, forced-failure, and signal receipt semantics."""
     status = string(payload.get("status"), "status")
     self_test = string(payload.get("self_test"), "self_test")
@@ -87,6 +93,24 @@ def validate_outcome(
             ),
             "smoke_selection",
         )
+    diagnostic_preexecution = (
+        lane == "scripted"
+        and project == "scripted-smoke"
+        and status == "failed"
+        and self_test == "normal"
+        and isinstance(reason, str)
+        and reason in PREEXECUTION_FAILURE_REASONS
+        and exit_code == 70
+        and not selected
+        and not executed
+        and not source_rejected
+        and payload.get("owned_database") is False
+        and payload.get("owned_backend") is False
+        and payload.get("owned_frontend") is False
+        and payload.get("owned_proxy") is False
+    )
+    if diagnostic_preexecution:
+        return True
     if status == "passed":
         require(
             self_test == "normal" and reason is None and exit_code == 0 and not source_rejected,
@@ -95,7 +119,7 @@ def validate_outcome(
         require(bool(selected) and selected == executed, "node_execution_mismatch")
         if lane == "live":
             require(selected == list(LIVE_NODES), "live_selection")
-        return
+        return False
     if self_test == "normal":
         playwright_failed = reason == "playwright_failed" and exit_code == 1
         artifact_export_failed = (
@@ -108,14 +132,14 @@ def validate_outcome(
         require(bool(selected) and selected == executed, "node_execution_mismatch")
         if lane == "live":
             require(selected == list(LIVE_NODES), "live_selection")
-        return
+        return False
     if self_test == "sigint":
         require(
             status == "interrupted" and reason == "signal" and exit_code in {130, 143},
             "self_test",
         )
         require(not executed, "node_execution_mismatch")
-        return
+        return False
     match self_test:
         case "spec-failure":
             require(
@@ -135,3 +159,4 @@ def validate_outcome(
         case _:
             raise ManifestValidationError("self_test")
     require(not executed, "node_execution_mismatch")
+    return False

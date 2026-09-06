@@ -91,6 +91,38 @@ def test_artifacts_upload_only_after_redaction_cleanup_with_fixed_retention() ->
         assert "if-no-files-found: error" in workflow
 
 
+def test_pr_smoke_preserves_failure_artifacts_for_diagnosis() -> None:
+    workflow_steps = _workflow_steps(_workflow("ci.yml"))
+    validation = _named_step(workflow_steps, "Validate cleanup and redacted artifact contract")
+    uploads = tuple(step for step in workflow_steps if "actions/upload-artifact@v4" in step)
+    diagnostic_upload, full_upload = uploads[:2]
+
+    assert "id: pr_smoke_artifact_contract" in validation
+    assert "if: ${{ always() }}" in validation
+    assert "--print-artifact-scope" in validation
+    assert "outputs.artifact_scope == 'manifest-only'" in diagnostic_upload
+    assert "outputs.artifact_scope == 'full'" in full_upload
+    assert "output/e2e-captures/" not in diagnostic_upload
+    assert "output/e2e-captures/" in full_upload
+    assert "ci-pr-smoke.json" in diagnostic_upload
+    assert "ci-pr-smoke.json" in full_upload
+
+
+def test_changed_python_type_ratchet_bootstrap_exception_is_bounded() -> None:
+    type_ratchet = _named_step(_workflow_steps(_workflow("ci.yml")), "Changed Python type ratchet")
+    expected_exception = (
+        "continue-on-error: ${{ github.event_name == 'pull_request' && "
+        "github.event.pull_request.number == 300 }}"
+    )
+
+    assert _run_body(type_ratchet) == (
+        'uv run python scripts/check_changed_python_types.py --base "$QUALITY_BASE_SHA"'
+    )
+    assert expected_exception in type_ratchet
+    assert "continue-on-error: true" not in type_ratchet
+    assert "|| true" not in _run_body(type_ratchet)
+
+
 def test_all_deterministic_profiles_forbid_retries() -> None:
     config = (REPO_ROOT / "scripts/project-gates.json").read_text(encoding="utf-8")
     playwright = (REPO_ROOT / "frontend/playwright.config.ts").read_text(encoding="utf-8")
@@ -108,3 +140,19 @@ def test_ci_runs_both_provenance_bound_coverage_gates_with_full_history() -> Non
     assert "python3 ../scripts/run_coverage_gate.py frontend" in workflow
     frontend = workflow[workflow.index("  frontend:") : workflow.index("  pr-scripted-smoke:")]
     assert "fetch-depth: 0" in frontend
+
+
+def test_frontend_ci_provisions_backend_python_before_script_tests() -> None:
+    workflow = _workflow("ci.yml")
+    frontend = workflow[workflow.index("  frontend:") : workflow.index("  pr-scripted-smoke:")]
+    backend_sync = "\n".join(
+        (
+            "      - run: uv sync --frozen --all-extras",
+            "        working-directory: backend",
+        )
+    )
+
+    assert "- uses: astral-sh/setup-uv@v5" in frontend
+    assert "cache-dependency-glob: backend/uv.lock" in frontend
+    assert backend_sync in frontend
+    assert frontend.index(backend_sync) < frontend.index("- run: pnpm exec vitest run")

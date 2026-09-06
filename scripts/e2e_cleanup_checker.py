@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 from e2e_cleanup_contract import require
 from e2e_cleanup_export import SECRET, validate_export
@@ -18,6 +18,57 @@ from postgres_cleanup_checker import ManifestValidationError, load_manifest
 from project_gate_catalog import CATALOG
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[1]
+type ArtifactScope = Literal["manifest-only", "full"]
+_EMPTY_PREEXECUTION_EXPORT: Final = {
+    "schema_version": 1,
+    "secret_scan_passed": False,
+    "failure_code": None,
+    "export_directory": None,
+    "manifest": None,
+    "files": [],
+    "screenshots": [],
+    "source_rejection": None,
+}
+_PREEXECUTION_TOP_KEYS: Final = frozenset(
+    {
+        "schema_version",
+        "runner",
+        "lane",
+        "project",
+        "workers",
+        "retries",
+        "reuse_existing_server",
+        "status",
+        "failure_reason",
+        "child_exit_code",
+        "self_test",
+        "run_id",
+        "owned_run_root",
+        "owned_database",
+        "owned_backend",
+        "owned_frontend",
+        "owned_proxy",
+        "postgres_image",
+        "server_version_num",
+        "alembic_head",
+        "alembic_current",
+        "schema_fingerprint",
+        "second_upgrade_idempotent",
+        "frontend_port",
+        "backend_port",
+        "selected_ids",
+        "executed_ids",
+        "unexpected_failures",
+        "export",
+        "egress",
+        "cleanup",
+    }
+)
+
+
+def _empty_preexecution_export(export: object) -> bool:
+    """Recognize the only exporter-free receipt accepted before scripted-smoke selection."""
+    return isinstance(export, dict) and export == _EMPTY_PREEXECUTION_EXPORT
 
 
 def _final_selection(
@@ -79,7 +130,7 @@ def validate_payload(
     *,
     repository_root: Path = REPO_ROOT,
     receipt_path: Path | None = None,
-) -> None:
+) -> ArtifactScope:
     """Validate logical E2E facts and their persistent redacted export."""
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     require(SECRET.search(encoded) is None, "secret_material")
@@ -89,7 +140,10 @@ def validate_payload(
     )
     lane, project, database_owned = validate_lifecycle(payload)
     export_value = payload.get("export")
-    rejection = validate_export(export_value, project, repository_root)
+    diagnostic_export = _empty_preexecution_export(export_value)
+    rejection = (
+        None if diagnostic_export else validate_export(export_value, project, repository_root)
+    )
     export = export_value if isinstance(export_value, dict) else {}
     top_current_keys = {
         "attempt_id",
@@ -171,7 +225,13 @@ def validate_payload(
             == tuple((item.node_id, item.status) for item in diagnostics),
             "source_rejection",
         )
-    if payload.get("status") == "passed":
+    diagnostic_preexecution = validate_outcome(
+        payload, lane, project, source_rejected=rejection is not None
+    )
+    require(diagnostic_preexecution is diagnostic_export, "preexecution_export")
+    if diagnostic_preexecution:
+        require(set(payload) == _PREEXECUTION_TOP_KEYS, "preexecution_schema")
+    if diagnostic_preexecution or payload.get("status") == "passed":
         require(not diagnostics and rejection is None, "failure_diagnostics")
     elif payload.get("self_test") == "normal":
         if payload.get("failure_reason") == "artifact_export_failed":
@@ -180,14 +240,18 @@ def validate_payload(
             require(bool(diagnostics), "failure_diagnostics")
     else:
         require(rejection is None, "source_rejection")
-    validate_outcome(payload, lane, project, source_rejected=rejection is not None)
     executed = payload.get("executed_ids")
     require(
         isinstance(executed, list) and all(item.node_id in executed for item in diagnostics),
         "failure_diagnostics",
     )
     validate_egress(payload.get("egress"), lane)
-    validate_cleanup(payload, database_owned)
+    validate_cleanup(
+        payload,
+        database_owned,
+        diagnostic_preexecution=diagnostic_preexecution,
+    )
+    return "manifest-only" if diagnostic_preexecution else "full"
 
 
 def load_and_validate(path: Path, *, repository_root: Path = REPO_ROOT) -> None:

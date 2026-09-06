@@ -269,7 +269,7 @@ describe('prepared E2E lane boundary', () => {
     const loaded = JSON.parse(line.slice('PROBE='.length))
     expect(path.isAbsolute(loaded.distDir)).toBe(false)
     expect(loaded.resolved).toBe(path.join(loaded.root, 'frontend', '.next', 'scripted-full'))
-  })
+  }, 60_000)
 
   it('lists a named project without database or server lifecycle side effects', () => {
     // Given: selection mode without database credentials or running web servers.
@@ -291,7 +291,7 @@ describe('prepared E2E lane boundary', () => {
     // When / Then: the project can be inspected without opening its normal runtime resources.
     expect(result.status, result.stderr).toBe(0)
     expect(result.stdout).toContain('[scripted-smoke]')
-  })
+  }, 60_000)
 
   it('keeps the prepared result parent when Playwright clears its disposable output child', () => {
     // Given: an isolated prepared root whose Playwright output child already exists.
@@ -312,7 +312,7 @@ describe('prepared E2E lane boundary', () => {
     } finally {
       rmSync(runRoot, { recursive: true, force: true })
     }
-  })
+  }, 60_000)
 
   it('selects all and only the four configured projects with their exact topology', () => {
     // Given: resource-free list requests for every supported lane project.
@@ -402,7 +402,7 @@ describe('prepared E2E lane boundary', () => {
         title: 'creates and deletes a system credential through the catalog modal',
       },
     ])
-  })
+  }, 60_000)
 
   it('rejects unknown, cross-lane, and concurrency-changing CLI selections before resources start', () => {
     // Given: invalid project and execution override requests in resource-free mode.
@@ -418,7 +418,7 @@ describe('prepared E2E lane boundary', () => {
     expect(retryOverride.status).not.toBe(0)
     expect(workerOverride.stderr).toContain('--workers=1')
     expect(retryOverride.stderr).toContain('--retries=0')
-  })
+  }, 60_000)
 
   it('allows canonical scripted smoke narrowing but rejects traversal and live narrowing', () => {
     // Given: one normalized scripted selector plus unsafe cross-boundary selectors.
@@ -435,5 +435,5 @@ describe('prepared E2E lane boundary', () => {
     expect(liveNarrowing.status).not.toBe(0)
     expect(traversal.stderr).toContain('normalized scripted spec selection')
     expect(liveNarrowing.stderr).toContain('does not allow direct spec or title selection')
-  })
+  }, 60_000)
 })

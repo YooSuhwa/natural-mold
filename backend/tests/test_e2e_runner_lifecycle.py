@@ -12,6 +12,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import e2e_test_runner as runner  # noqa: E402
+from e2e_cleanup_checker import ManifestValidationError, validate_payload  # noqa: E402
 from e2e_runner_contract import build_e2e_dsns  # noqa: E402
 from e2e_runner_export import ExportFile, ExportReceipt  # noqa: E402
 from e2e_runner_process import ProcessResult  # noqa: E402
@@ -229,6 +230,138 @@ def test_node_guard_fails_before_resource_provision(
     assert exit_code == 1
     assert manifest["failure_reason"] == "node_major_mismatch"
     assert provisioned is False
+
+
+def test_preexecution_failure_emits_an_empty_diagnostic_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Given a scripted-smoke preflight failure, when run, then no execution is claimed."""
+    monkeypatch.setattr(
+        runner,
+        "assert_node22",
+        lambda: (_ for _ in ()).throw(runner.E2eContractError("node_major_mismatch")),
+    )
+
+    manifest, exit_code = runner._run("scripted", "scripted-smoke", ())
+
+    assert exit_code == 1
+    assert manifest["status"] == "failed"
+    assert manifest["failure_reason"] == "node_major_mismatch"
+    assert manifest["child_exit_code"] == 70
+    assert manifest["selected_ids"] == []
+    assert manifest["executed_ids"] == []
+    assert manifest["unexpected_failures"] == []
+    assert _manifest_section(manifest, "export") == {
+        "schema_version": 1,
+        "secret_scan_passed": False,
+        "failure_code": None,
+        "export_directory": None,
+        "manifest": None,
+        "files": [],
+        "screenshots": [],
+        "source_rejection": None,
+    }
+    validate_payload(manifest, repository_root=tmp_path)
+
+
+def test_preexecution_failure_redacts_an_arbitrary_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Given a raw preflight exception, when run, then its receipt reason is generic."""
+    monkeypatch.setattr(
+        runner,
+        "assert_node22",
+        lambda: (_ for _ in ()).throw(RuntimeError("password=not-for-a-receipt")),
+    )
+
+    manifest, _exit_code = runner._run("scripted", "scripted-smoke", ())
+
+    assert manifest["failure_reason"] == "runner_preflight_failed"
+    assert "password" not in str(manifest)
+
+
+def test_preexecution_incomplete_cleanup_remains_cleanup_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Given a run-root cleanup failure, when pre-execution ends, then it cannot be diagnostic."""
+    monkeypatch.setattr(runner, "assert_node22", lambda: None)
+    monkeypatch.setattr(runner, "assert_ports_available", lambda _ports: None)
+    cleanup: dict[str, bool | None] = {
+        "cleanup_container_removed": True,
+        "owned_label_absent": True,
+        "postgres_port_removed": True,
+        "owned_database_removed": True,
+        "backend_port_removed": True,
+        "frontend_port_removed": True,
+        "proxy_port_removed": True,
+        "process_group_stopped": True,
+        "cleanup_run_root_removed": False,
+        "foreign_containers_preserved": None,
+    }
+    ownership = {
+        "run_root": True,
+        "database": False,
+        "backend": False,
+        "frontend": False,
+        "proxy": False,
+    }
+
+    def provision(_lane: str, _project: str) -> None:
+        raise ProvisioningError("run_root_prepare_failed", cleanup, ownership)
+
+    monkeypatch.setattr(runner, "provision_resources", provision)
+
+    manifest, _exit_code = runner._run("scripted", "scripted-smoke", ())
+
+    assert manifest["failure_reason"] == "cleanup_failed"
+    with pytest.raises(ManifestValidationError):
+        validate_payload(manifest, repository_root=tmp_path)
+
+
+def test_preexecution_provisioning_failure_preserves_foreign_container_proof(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Given a completed Docker snapshot, its preservation proof remains required and visible."""
+    monkeypatch.setattr(runner, "assert_node22", lambda: None)
+    monkeypatch.setattr(runner, "assert_ports_available", lambda _ports: None)
+    cleanup: dict[str, bool | None] = {
+        "cleanup_container_removed": True,
+        "owned_label_absent": True,
+        "postgres_port_removed": True,
+        "owned_database_removed": True,
+        "backend_port_removed": True,
+        "frontend_port_removed": True,
+        "proxy_port_removed": True,
+        "process_group_stopped": True,
+        "cleanup_run_root_removed": True,
+        "foreign_containers_preserved": True,
+    }
+    ownership = {
+        "run_root": True,
+        "database": False,
+        "backend": False,
+        "frontend": False,
+        "proxy": False,
+    }
+
+    def provision(_lane: str, _project: str) -> None:
+        raise ProvisioningError("container_create_failed", cleanup, ownership)
+
+    monkeypatch.setattr(runner, "provision_resources", provision)
+
+    manifest, exit_code = runner._run("scripted", "scripted-smoke", ())
+
+    assert exit_code == 1
+    assert manifest["failure_reason"] == "container_create_failed"
+    assert _manifest_section(manifest, "cleanup")["foreign_containers_preserved"] is True
+    validate_payload(manifest, repository_root=tmp_path)
+
+    cleanup["foreign_containers_preserved"] = False
+    rejected, _exit_code = runner._run("scripted", "scripted-smoke", ())
+    assert rejected["failure_reason"] == "cleanup_failed"
+    with pytest.raises(ManifestValidationError):
+        validate_payload(rejected, repository_root=tmp_path)
 
 
 def test_signal_stops_child_then_exports_and_cleans(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+from e2e_cleanup_contract import preexecution_failure_reason
 from e2e_runner_cleanup import cleanup_resources
 from e2e_runner_cli import run_cli
 from e2e_runner_contract import (
@@ -78,6 +79,7 @@ def _run(
     ownership = initial_ownership()
     run_id = os.urandom(12).hex()
     inherited = dict(os.environ)
+
     try:
         assert_node22()
         assert_ports_available((3100, 8101) if lane == "scripted" else (3200, 8201))
@@ -206,9 +208,17 @@ def _run(
                 128 + error.signal_number,
             )
     except (E2eContractError, PlaywrightReceiptError, RuntimeError) as error:
-        reason = str(error)
+        reason = (
+            preexecution_failure_reason(str(error))
+            if resources is None and lane == "scripted" and project == "scripted-smoke"
+            else str(error)
+        )
     except OSError:
-        reason = "child_start_failed"
+        reason = (
+            "runner_preflight_failed"
+            if resources is None and lane == "scripted" and project == "scripted-smoke"
+            else "child_start_failed"
+        )
     finally:
         with defer_cleanup_signals() as deferred:
             try:
@@ -233,7 +243,10 @@ def _run(
         if deferred:
             strongest = max(deferred)
             status, reason, child_exit = "interrupted", "signal", 128 + strongest
-        if not cleanup_passed(cleanup, resources_acquired=any(ownership.values())):
+        foreign_observation_required = (
+            ownership["database"] or cleanup.get("foreign_containers_preserved") is not None
+        )
+        if not cleanup_passed(cleanup, resources_acquired=foreign_observation_required):
             status, reason = "failed", "cleanup_failed"
         export_failed = (
             not export.secret_scan_passed

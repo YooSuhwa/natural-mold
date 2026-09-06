@@ -43,7 +43,6 @@ import {
   resolveSkillNodeModulesDirectory,
 } from '../e2e/global-setup.mjs'
 import { collectJsonNodes, parseArguments, runIsolatedLane } from './run-e2e-lane.mjs'
-import './e2e-prepared-lane.test.mjs'
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 

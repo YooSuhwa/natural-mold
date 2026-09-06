@@ -29,7 +29,7 @@
     "test:e2e": "pnpm test:e2e:scripted",
     "test:e2e:scripted": "node scripts/run-e2e-lane.mjs scripted",
     "test:e2e:live": "node scripts/run-e2e-lane.mjs live",
-    "test:e2e:lane-contract": "vitest run scripts/e2e-lane-contract.test.mjs",
+    "test:e2e:lane-contract": "vitest run scripts/e2e-lane-contract.test.mjs scripts/e2e-prepared-lane.test.mjs",
     "test:e2e:legacy": "NEXT_PUBLIC_CHAT_RUNTIME=legacy node scripts/run-e2e-lane.mjs scripted",
     "test:e2e:langgraph-v3": "pnpm test:e2e:langgraph-v3:functional && pnpm test:e2e:langgraph-v3:capture",
     "test:e2e:langgraph-v3:functional": "NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 node scripts/run-e2e-lane.mjs scripted e2e/chat-langgraph-v3.spec.ts e2e/draft-conversation-langgraph-v3.spec.ts e2e/chat-transcript-stability.spec.ts",

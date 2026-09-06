@@ -34,6 +34,44 @@ LIVE_NODES: Final = (
     "live-manual::e2e/operator-screens.spec.ts::creates and deletes a system credential "
     "through the catalog modal",
 )
+PROVISIONING_FAILURE_REASONS: Final = frozenset(
+    {
+        "run_root_prepare_failed",
+        "run_root_identity_changed",
+        "container_create_failed",
+        "container_identity_mismatch",
+        "container_storage_or_port_mismatch",
+        "docker_preflight_failed",
+        "docker_identity_changed",
+        "docker_unavailable",
+        "unsafe_port_mapping",
+        "postgres_not_ready",
+        "alembic_head_count",
+        "alembic_upgrade_failed",
+        "alembic_current_mismatch",
+        "alembic_second_upgrade_failed",
+        "provisioning_failed",
+    }
+)
+PREEXECUTION_FAILURE_REASONS: Final = frozenset(
+    {
+        "node_version_unavailable",
+        "node_major_mismatch",
+        "lane_port_unavailable",
+        *PROVISIONING_FAILURE_REASONS,
+        "runner_preflight_failed",
+    }
+)
+
+
+def provisioning_failure_reason(value: str) -> str:
+    """Project a provisioning error onto a fixed receipt-safe reason."""
+    return value if value in PROVISIONING_FAILURE_REASONS else "provisioning_failed"
+
+
+def preexecution_failure_reason(value: str) -> str:
+    """Project a scripted-smoke pre-execution error onto a fixed receipt-safe reason."""
+    return value if value in PREEXECUTION_FAILURE_REASONS else "runner_preflight_failed"
 
 
 def require(condition: bool, reason: str) -> None:
