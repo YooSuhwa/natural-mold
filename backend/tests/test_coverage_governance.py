@@ -362,6 +362,7 @@ def test_coverage_runner_accepts_older_ancestor_and_fresh_external_report(
         assert cwd == repo / "backend"
         assert env is not None
         temporary_root = Path(env["TMPDIR"])
+        assert f"--basetemp={report.parent / 'pytest'}" in argv
         assert temporary_root == report.parent / "tmp"
         assert temporary_root.is_absolute()
         assert not temporary_root.is_relative_to(repo)
@@ -485,6 +486,10 @@ def test_coverage_runner_nests_temporary_tree_in_isolated_run_root(
         assert env is not None
         assert Path(env["TMPDIR"]).stat().st_mode & 0o777 == 0o700
         report = _write_measurement_report("backend", argv, env)
+        pytest_base_temp = report.parent / "pytest"
+        assert f"--basetemp={pytest_base_temp}" in argv
+        pytest_base_temp.mkdir(mode=0o700)
+        (pytest_base_temp / "owned-by-main-session").write_text("active", encoding="utf-8")
         calls.append((argv, cwd, env, report))
 
     monkeypatch.setenv(run_coverage_gate.ISOLATED_RUN_ROOT_ENVIRONMENT_NAME, str(run_root))

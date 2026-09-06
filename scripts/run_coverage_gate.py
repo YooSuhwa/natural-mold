@@ -110,12 +110,20 @@ def run_gate(kind: str, repo_root: Path) -> None:
         if kind == "backend":
             report = report_root / "coverage.json"
             pytest_temp_root = report_root / "tmp"
+            pytest_base_temp = report_root / "pytest"
             pytest_temp_root.mkdir(mode=0o700)
             environment = dict(os.environ)
             environment["TMPDIR"] = str(pytest_temp_root)
             uv = _backend_uv()
             _run_measurement(
-                [uv, "run", "pytest", "--cov=app", f"--cov-report=json:{report}"],
+                [
+                    uv,
+                    "run",
+                    "pytest",
+                    "--cov=app",
+                    f"--basetemp={pytest_base_temp}",
+                    f"--cov-report=json:{report}",
+                ],
                 cwd=repo_root / "backend",
                 env=environment,
             )
