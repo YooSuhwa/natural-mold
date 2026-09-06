@@ -33,9 +33,18 @@ from project_gate_catalog import CATALOG, FINAL_STATIC  # noqa: E402
 from project_gate_receipts import validate_e2e, validate_postgres, validate_static  # noqa: E402
 
 CONTRACT_PATH = SCRIPTS / "project-restart-plan-contract.json"
-EVIDENCE = REPO_ROOT / ".omo/evidence/project-restart-consolidated-roadmap"
+FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "project_restart_plan_history"
+# The roadmap evidence directory is intentionally ignored: it is live, mutable
+# operator output rather than a test dependency.  Lifecycle and history tests
+# need a reviewed, immutable snapshot instead so they remain reproducible in a
+# clean checkout and cannot race the active evidence writer.
+EVIDENCE = FIXTURE_ROOT
 PLAN_SHA = "4b86a0acc57c1309ca3f84b0726f09c31ea1893fbc0789dd4c2c09e12b46846e"
 REVIEW_ROUND = "review-20260830T155022Z-4b86a0ac"
+# The fixture ledger ends at this reviewed commit.  Later maintenance commits
+# are intentionally not part of the immutable plan-history fixture and do not
+# need roadmap trailers to exercise the historical contract.
+FIXTURE_HISTORY_HEAD = "87b0d1490b4bf5bbced34680298dd176948566d7"
 HEAD = "f" * 40
 
 
@@ -531,7 +540,7 @@ def _cross_process_append(path: str, queue: multiprocessing.Queue[str]) -> None:
 
 def _complete_history() -> tuple[object, tuple[CommitRecord, ...], list[dict[str, JSONValue]]]:
     contract = load_contract(CONTRACT_PATH)
-    commits = list(read_git_history(REPO_ROOT, contract.base_sha))
+    commits = list(read_git_history(REPO_ROOT, contract.base_sha, FIXTURE_HISTORY_HEAD))
     entries = load_verified_operations(EVIDENCE / "operations.ndjson")
     observed_primary = {
         item for commit in commits for item in PRIMARY_TRAILER.findall(commit.message)

@@ -1191,8 +1191,8 @@ def test_main_dispatches_mixed_postgres_and_e2e_manifests(
 def _configure_live_absence_probe(monkeypatch: pytest.MonkeyPatch, port: int) -> dict[str, object]:
     monkeypatch.setattr(lifecycle, "PORTS", {"scripted": (port,), "live": (port,)})
     monkeypatch.setattr(
-        lifecycle.subprocess,
-        "run",
+        lifecycle,
+        "probe_docker",
         lambda *_args, **_kwargs: subprocess.CompletedProcess(args=(), returncode=1),
     )
     return {"lane": "scripted", "run_id": "a" * 24}

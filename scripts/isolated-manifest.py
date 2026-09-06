@@ -20,7 +20,8 @@ from final_attempt_authority import (
     verify_open_final_attempt_authority,
 )
 
-type Identity = tuple[int, int]
+type ParentIdentity = tuple[int, int]
+type FileIdentity = tuple[int, int, int]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_ROOT = REPO_ROOT / ".omo/evidence/project-restart-consolidated-roadmap"
@@ -78,8 +79,13 @@ def _validate_path_scope(path: Path) -> None:
         raise OSError("final attempt binding is stale")
 
 
-def _identity(metadata: os.stat_result) -> Identity:
+def _identity(metadata: os.stat_result) -> ParentIdentity:
     return metadata.st_dev, metadata.st_ino
+
+
+def _file_identity(metadata: os.stat_result) -> FileIdentity:
+    """Bind a file generation as well as its filesystem object identity."""
+    return metadata.st_dev, metadata.st_ino, metadata.st_ctime_ns
 
 
 def _open_parent(path: Path) -> int:
@@ -115,7 +121,7 @@ def _write_all(descriptor: int, payload: bytes) -> None:
 
 
 def _revalidate_open_manifest(
-    parent_fd: int, name: str, file_fd: int, file_identity: Identity
+    parent_fd: int, name: str, file_fd: int, file_identity: FileIdentity
 ) -> None:
     """Require the visible manifest name to still designate the opened private file."""
     opened = os.fstat(file_fd)
@@ -125,7 +131,7 @@ def _revalidate_open_manifest(
         or opened.st_uid != os.geteuid()
         or opened.st_nlink != 1
         or opened.st_mode & 0o022
-        or _identity(opened) != file_identity
+        or _file_identity(opened) != file_identity
         or not stat.S_ISREG(named.st_mode)
         or named.st_mode != opened.st_mode
         or named.st_uid != os.geteuid()
@@ -133,12 +139,12 @@ def _revalidate_open_manifest(
         or named.st_nlink != 1
         or named.st_nlink != opened.st_nlink
         or named.st_mode & 0o022
-        or _identity(named) != _identity(opened)
+        or _file_identity(named) != _file_identity(opened)
     ):
         raise OSError("manifest identity changed")
 
 
-def prepare_manifest(path: Path) -> tuple[Identity, Identity]:
+def prepare_manifest(path: Path) -> tuple[ParentIdentity, FileIdentity]:
     """Create one private regular file and return parent/file identities."""
     parent_fd = _open_parent(path)
     try:
@@ -157,7 +163,7 @@ def prepare_manifest(path: Path) -> tuple[Identity, Identity]:
                 or metadata.st_mode & 0o022
             ):
                 raise OSError("manifest is not a private regular file")
-            file_identity = _identity(metadata)
+            file_identity = _file_identity(metadata)
             os.fsync(file_fd)
             _revalidate_open_manifest(parent_fd, path.name, file_fd, file_identity)
             os.fsync(parent_fd)
@@ -169,7 +175,9 @@ def prepare_manifest(path: Path) -> tuple[Identity, Identity]:
         os.close(parent_fd)
 
 
-def verify_manifest(path: Path, parent_identity: Identity, file_identity: Identity) -> None:
+def verify_manifest(
+    path: Path, parent_identity: ParentIdentity, file_identity: FileIdentity
+) -> None:
     """Revalidate the final-attempt binding and reserved receipt immediately pre-spawn."""
     parent_fd = _open_parent(path)
     try:
@@ -181,7 +189,7 @@ def verify_manifest(path: Path, parent_identity: Identity, file_identity: Identi
             or named.st_uid != os.geteuid()
             or named.st_nlink != 1
             or named.st_mode & 0o022
-            or _identity(named) != file_identity
+            or _file_identity(named) != file_identity
         ):
             raise OSError("manifest identity changed")
     finally:
@@ -189,7 +197,7 @@ def verify_manifest(path: Path, parent_identity: Identity, file_identity: Identi
 
 
 def finalize_manifest(
-    path: Path, parent_identity: Identity, file_identity: Identity, payload: bytes
+    path: Path, parent_identity: ParentIdentity, file_identity: FileIdentity, payload: bytes
 ) -> None:
     """Replace bytes only through the still-bound parent and regular file identity."""
     parent_fd = _open_parent(path)
@@ -206,19 +214,36 @@ def finalize_manifest(
             os.ftruncate(file_fd, 0)
             _write_all(file_fd, payload)
             os.fsync(file_fd)
-            _revalidate_open_manifest(parent_fd, path.name, file_fd, file_identity)
+            written_file_identity = _file_identity(os.fstat(file_fd))
+            _revalidate_open_manifest(parent_fd, path.name, file_fd, written_file_identity)
             _validate_path_scope(path)
             os.fsync(parent_fd)
-            _revalidate_open_manifest(parent_fd, path.name, file_fd, file_identity)
+            _revalidate_open_manifest(parent_fd, path.name, file_fd, written_file_identity)
         finally:
             os.close(file_fd)
     finally:
         os.close(parent_fd)
 
 
-def _parse_identity(value: str) -> Identity:
-    device, inode = value.split(":", 1)
-    return int(device), int(inode)
+def _serialize_identity(identity: ParentIdentity | FileIdentity) -> str:
+    return ":".join(str(part) for part in identity)
+
+
+def _parse_identity(value: str, parts: int) -> tuple[int, ...]:
+    fields = value.split(":")
+    if len(fields) != parts or any(re.fullmatch(r"[0-9]+", field) is None for field in fields):
+        raise ValueError("manifest identity is malformed")
+    return tuple(int(field) for field in fields)
+
+
+def _parse_parent_identity(value: str) -> ParentIdentity:
+    device, inode = _parse_identity(value, 2)
+    return device, inode
+
+
+def _parse_file_identity(value: str) -> FileIdentity:
+    device, inode, ctime_ns = _parse_identity(value, 3)
+    return device, inode, ctime_ns
 
 
 def main() -> int:
@@ -239,19 +264,19 @@ def main() -> int:
     try:
         if arguments.command == "prepare":
             parent, file = prepare_manifest(Path(arguments.path))
-            print(f"{parent[0]}:{parent[1]} {file[0]}:{file[1]}")
+            print(f"{_serialize_identity(parent)} {_serialize_identity(file)}")
         elif arguments.command == "finalize":
             finalize_manifest(
                 Path(arguments.path),
-                _parse_identity(arguments.parent_identity),
-                _parse_identity(arguments.file_identity),
+                _parse_parent_identity(arguments.parent_identity),
+                _parse_file_identity(arguments.file_identity),
                 arguments.payload.encode(),
             )
         else:
             verify_manifest(
                 Path(arguments.path),
-                _parse_identity(arguments.parent_identity),
-                _parse_identity(arguments.file_identity),
+                _parse_parent_identity(arguments.parent_identity),
+                _parse_file_identity(arguments.file_identity),
             )
     except (OSError, ValueError):
         print("manifest_failed")

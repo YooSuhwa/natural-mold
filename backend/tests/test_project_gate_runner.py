@@ -19,7 +19,8 @@ import pytest
 
 from tests.project_gate_wave_support import synthetic_docker_identity
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+SOURCE_REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = SOURCE_REPO_ROOT
 RUNNER_PATH = REPO_ROOT / "scripts" / "project_gate_runner.py"
 WRAPPER_PATH = REPO_ROOT / "scripts" / "run-project-gate.sh"
 EVIDENCE_ROOT = REPO_ROOT / ".omo" / "evidence" / "project-restart-consolidated-roadmap"
@@ -35,6 +36,35 @@ def project_gate_runner() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture(autouse=True)
+def isolated_project_gate_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run every public gate scenario in a disposable checkout-shaped repository.
+
+    The production evidence root is intentionally ignored and may be absent in
+    clean CI.  More importantly, mutating it from parallel test workers races
+    real lifecycle tests.  The runner still sees its exact on-disk contract;
+    only the test-owned repository root changes.
+    """
+    repo_root = tmp_path / "repo"
+    shutil.copytree(SOURCE_REPO_ROOT / "scripts", repo_root / "scripts")
+    python_path = repo_root / "backend" / ".venv" / "bin" / "python"
+    python_path.parent.mkdir(parents=True)
+    python_path.symlink_to(SOURCE_REPO_ROOT / "backend" / ".venv" / "bin" / "python")
+    (python_path.parent.parent / "pyvenv.cfg").symlink_to(
+        SOURCE_REPO_ROOT / "backend" / ".venv" / "pyvenv.cfg"
+    )
+    (python_path.parent.parent / "lib").symlink_to(SOURCE_REPO_ROOT / "backend" / ".venv" / "lib")
+    evidence_root = repo_root / ".omo" / "evidence" / "project-restart-consolidated-roadmap"
+    evidence_root.mkdir(parents=True)
+    (repo_root / ".gitignore").write_text("output/\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys.modules[__name__], "REPO_ROOT", repo_root)
+    monkeypatch.setattr(
+        sys.modules[__name__], "WRAPPER_PATH", repo_root / "scripts/run-project-gate.sh"
+    )
+    monkeypatch.setattr(sys.modules[__name__], "EVIDENCE_ROOT", evidence_root)
 
 
 def _write_executable(path: Path, content: str) -> None:

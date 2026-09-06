@@ -35,5 +35,5 @@ def test_scripted_capture_project_reaches_resource_provisioning(
     manifest, exit_code = runner._run("scripted", "scripted-capture", ())
 
     assert exit_code == 1
-    assert manifest["failure_reason"] == "stop_after_project_observation"
+    assert manifest["failure_reason"] == "provisioning_failed"
     assert observed == [("scripted", "scripted-capture")]

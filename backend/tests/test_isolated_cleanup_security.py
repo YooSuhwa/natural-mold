@@ -9,17 +9,28 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNNER = REPO_ROOT / "scripts" / "run-isolated-command.sh"
 CLEANUP_HELPER = REPO_ROOT / "scripts" / "cleanup-isolated-root.py"
+MANIFEST_HELPER = REPO_ROOT / "scripts" / "isolated-manifest.py"
 
 
 def _load_cleanup_helper() -> ModuleType:
     spec = importlib.util.spec_from_file_location("isolated_cleanup_security", CLEANUP_HELPER)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_manifest_helper(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+    monkeypatch.syspath_prepend(str(MANIFEST_HELPER.parent))
+    spec = importlib.util.spec_from_file_location("isolated_manifest_security", MANIFEST_HELPER)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -123,6 +134,40 @@ def test_manifest_replacement_during_child_is_preserved_and_finalize_fails(tmp_p
     assert result.returncode == 74
     assert manifest.read_text() == replacement
     assert "removed" not in result.stdout
+
+
+def test_manifest_verify_rejects_ctime_change_when_device_and_inode_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given: a prepared receipt and an observation that models reused device/inode values.
+    helper = _load_manifest_helper(monkeypatch)
+    manifest = tmp_path / "manifest.json"
+    parent_identity, file_identity = helper.prepare_manifest(manifest)
+    original_stat = helper.os.stat
+
+    def stat_with_reused_inode(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result | SimpleNamespace:
+        metadata = original_stat(path, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+        if path == manifest.name and dir_fd is not None and not follow_symlinks:
+            return SimpleNamespace(
+                st_ctime_ns=metadata.st_ctime_ns + 1,
+                st_dev=metadata.st_dev,
+                st_ino=metadata.st_ino,
+                st_mode=metadata.st_mode,
+                st_nlink=metadata.st_nlink,
+                st_uid=metadata.st_uid,
+            )
+        return metadata
+
+    monkeypatch.setattr(helper.os, "stat", stat_with_reused_inode)
+
+    # When/Then: an inode-reused replacement cannot pass the pre-spawn verification.
+    with pytest.raises(OSError, match="identity changed"):
+        helper.verify_manifest(manifest, parent_identity, file_identity)
 
 
 def test_manifest_success_is_private_regular_json(tmp_path: Path) -> None:

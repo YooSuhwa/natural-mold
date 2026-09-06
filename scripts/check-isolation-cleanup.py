@@ -21,7 +21,7 @@ from cleanup_discovery_claims import Claims
 from cleanup_docker import probe_docker
 from e2e_cleanup_checker import validate_live_absence as validate_e2e_live_absence
 from e2e_cleanup_checker import validate_payload as validate_e2e_payload
-from e2e_cleanup_contract import PORTS, require
+from e2e_cleanup_contract import CLEANUP_FIELDS, PORTS, require
 from e2e_cleanup_export_paths import _PinnedDirectory
 from postgres_cleanup_checker import (
     ManifestValidationError,
@@ -219,22 +219,127 @@ class ManifestValidationResult(NamedTuple):
     artifact_directory: str | None
 
 
+class ManifestDiagnosticError(ManifestValidationError):
+    def __init__(self, reason: str, diagnostic: str) -> None:
+        super().__init__(reason)
+        self.diagnostic = diagnostic
+
+
+def _bounded_state(value: object, allowed: frozenset[str]) -> str:
+    return value if isinstance(value, str) and value in allowed else "other"
+
+
+def _collection_state(value: object) -> str:
+    if not isinstance(value, list):
+        return "invalid"
+    return "empty" if not value else "present"
+
+
+def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
+    """Summarize only fixed enums and booleans; never reflect receipt values."""
+    if payload.get("runner") != "moldy-isolated-e2e":
+        return None
+    status = _bounded_state(payload.get("status"), frozenset({"passed", "failed", "interrupted"}))
+    self_test = _bounded_state(
+        payload.get("self_test"),
+        frozenset({"normal", "spec-failure", "server-failure", "dsn-failure", "sigint"}),
+    )
+    phases = {
+        "playwright_list_failed": "selection",
+        "playwright_failed": "execution",
+        "cleanup_failed": "cleanup",
+        "artifact_export_failed": "artifact-export",
+        "server_start_failed": "server-start",
+        "signal": "signal",
+    }
+    raw_reason = payload.get("failure_reason")
+    phase = phases.get(raw_reason, "other") if isinstance(raw_reason, str) else "other"
+    raw_exit = payload.get("child_exit_code")
+    exit_code = (
+        str(raw_exit) if type(raw_exit) is int and raw_exit in {0, 1, 70, 130, 143} else "other"
+    )
+    ownership_values = tuple(
+        payload.get(name)
+        for name in (
+            "owned_run_root",
+            "owned_database",
+            "owned_backend",
+            "owned_frontend",
+            "owned_proxy",
+        )
+    )
+    ownership = (
+        "".join("1" if value else "0" for value in ownership_values)
+        if all(isinstance(value, bool) for value in ownership_values)
+        else "invalid"
+    )
+    export = payload.get("export")
+    if isinstance(export, dict):
+        source_rejected = "yes" if export.get("source_rejection") is not None else "no"
+        export_state = "passed" if export.get("secret_scan_passed") is True else "not-passed"
+        files = export.get("files")
+        if isinstance(files, list):
+            paths = {item.get("path") for item in files if isinstance(item, dict)}
+            receipts = (
+                "complete"
+                if {"results/selection.json", "results/selection.log"}.issubset(paths)
+                else "missing"
+            )
+        else:
+            receipts = "invalid"
+    else:
+        source_rejected = "invalid"
+        export_state = "invalid"
+        receipts = "invalid"
+    cleanup = payload.get("cleanup")
+    cleanup_state = (
+        "complete"
+        if isinstance(cleanup, dict)
+        and all(cleanup.get(name) is True for name in CLEANUP_FIELDS)
+        and cleanup.get("foreign_containers_preserved") is True
+        else "incomplete"
+    )
+    return " ".join(
+        (
+            f"status={status}",
+            f"self_test={self_test}",
+            f"phase={phase}",
+            f"exit={exit_code}",
+            f"ownership={ownership}",
+            f"selected={_collection_state(payload.get('selected_ids'))}",
+            f"executed={_collection_state(payload.get('executed_ids'))}",
+            f"export={export_state}",
+            f"source_rejected={source_rejected}",
+            f"receipts={receipts}",
+            f"cleanup={cleanup_state}",
+        )
+    )
+
+
 def _validate_manifest(manifest: Path) -> ManifestValidationResult:
     """Dispatch only after the shared no-follow manifest read boundary parsed the runner."""
     payload = load_manifest(manifest)
-    if payload.get("runner") == "moldy-isolated-e2e" and payload.get("schema_version") == 1:
-        scope = validate_e2e_payload(payload, receipt_path=manifest)
-        validate_e2e_live_absence(payload)
-        export = payload.get("export")
-        directory = export.get("export_directory") if isinstance(export, dict) else None
-        require(
-            scope == "manifest-only" or isinstance(directory, str),
-            "artifact_directory",
-        )
-        return ManifestValidationResult(scope, directory if isinstance(directory, str) else None)
-    validate_payload(payload)
-    validate_live_absence(payload)
-    return ManifestValidationResult("full", None)
+    try:
+        if payload.get("runner") == "moldy-isolated-e2e" and payload.get("schema_version") == 1:
+            scope = validate_e2e_payload(payload, receipt_path=manifest)
+            validate_e2e_live_absence(payload)
+            export = payload.get("export")
+            directory = export.get("export_directory") if isinstance(export, dict) else None
+            require(
+                scope == "manifest-only" or isinstance(directory, str),
+                "artifact_directory",
+            )
+            return ManifestValidationResult(
+                scope, directory if isinstance(directory, str) else None
+            )
+        validate_payload(payload)
+        validate_live_absence(payload)
+        return ManifestValidationResult("full", None)
+    except ManifestValidationError as error:
+        diagnostic = _e2e_failure_diagnostic(payload)
+        if diagnostic is None:
+            raise
+        raise ManifestDiagnosticError(str(error), diagnostic) from error
 
 
 def main() -> int:
@@ -267,6 +372,8 @@ def main() -> int:
         results = [_validate_manifest(manifest) for manifest in args.manifests]
     except ManifestValidationError as error:
         print(f"manifest validation rejected: {error}", file=sys.stderr)
+        if isinstance(error, ManifestDiagnosticError):
+            print(f"e2e diagnostic: {error.diagnostic}", file=sys.stderr)
         return 1
     if args.print_artifact_scope:
         print(results[0].scope)

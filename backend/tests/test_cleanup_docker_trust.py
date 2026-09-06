@@ -73,12 +73,15 @@ def test_cleanup_docker_resolution_rejects_requested_path_outside_system_prefix(
 
 
 def test_cleanup_docker_probe_drops_endpoint_selectors(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Given: the caller tries to redirect a trusted Docker CLI to a clean daemon.
     docker_trust = load_module("cleanup_docker")
-    trusted = "/usr/local/bin/docker"
-    trusted_path = ("/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin")
+    trusted_executable = tmp_path / "trusted-system" / "docker"
+    _write_executable(trusted_executable)
+    trusted = str(trusted_executable)
+    trusted_path = (str(trusted_executable.parent),)
     captured: list[tuple[tuple[str, ...], dict[str, str]]] = []
     monkeypatch.setenv("PATH", "/shadow")
     monkeypatch.setenv("DOCKER_HOST", "tcp://127.0.0.1:65535")
