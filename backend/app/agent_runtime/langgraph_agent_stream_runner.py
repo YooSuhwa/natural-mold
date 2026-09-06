@@ -11,6 +11,8 @@ from langgraph.types import Command
 
 from app.agent_runtime.agent_stream_runner import _hook_ctx_for_agent, _hook_result_from_usage
 from app.agent_runtime.langgraph_streaming import stream_agent_response_langgraph
+from app.agent_runtime.run_metrics import RunMetricsAccumulator
+from app.agent_runtime.run_metrics_callback import configure_run_metrics_callback
 from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
 from app.agent_runtime.runtime_component_builder import _prepare_agent
 from app.agent_runtime.runtime_config import AgentConfig
@@ -33,6 +35,7 @@ async def _run_langgraph_agent_stream(
     artifact_recorder: Any | None = None,
     moldy_source: str = "chat",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
+    run_metrics: RunMetricsAccumulator | None = None,
 ) -> AsyncGenerator[str, None]:
     # ADR-021 C1 — install the run-scoped secret set BEFORE ``_prepare_agent``
     # (mirrors agent_stream_runner.py:119/144) so the lazy skill-credential
@@ -59,6 +62,7 @@ async def _run_langgraph_agent_stream(
             artifact_recorder=artifact_recorder,
             moldy_source=moldy_source,
             langfuse_sink=langfuse_sink,
+            run_metrics=run_metrics,
         ):
             yield chunk
     finally:
@@ -79,6 +83,7 @@ async def _stream_langgraph_with_secrets(
     artifact_recorder: Any | None = None,
     moldy_source: str = "chat",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
+    run_metrics: RunMetricsAccumulator | None = None,
 ) -> AsyncGenerator[str, None]:
     """Inner body — runs with the run-scoped secret ContextVar already set.
 
@@ -106,6 +111,8 @@ async def _stream_langgraph_with_secrets(
         source=moldy_source,
     )
     config = langfuse_ctx.configure_config(config)
+    if run_metrics is not None:
+        config = configure_run_metrics_callback(config, run_metrics)
     if langfuse_sink is not None and langfuse_ctx.trace is not None:
         langfuse_sink.append(langfuse_ctx.trace)
 
@@ -147,6 +154,7 @@ async def _stream_langgraph_with_secrets(
                 skill_draft_brief=cfg.skill_draft_brief,
                 # AD-4 — 인터럽트 review_configs에 세션 동의 옵션 플래그 주석.
                 session_consent_tools=cfg.skill_builder_consent_offer_tools,
+                run_metrics=run_metrics,
             ):
                 yield chunk
     except asyncio.CancelledError:
@@ -199,6 +207,7 @@ async def execute_agent_stream_langgraph(
     artifact_recorder: Any | None = None,
     moldy_source: str = "chat",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
+    run_metrics: RunMetricsAccumulator | None = None,
 ) -> AsyncGenerator[str, None]:
     if isinstance(messages_history, dict):
         async for chunk in _run_langgraph_agent_stream(
@@ -214,6 +223,7 @@ async def execute_agent_stream_langgraph(
             artifact_recorder=artifact_recorder,
             moldy_source=moldy_source,
             langfuse_sink=langfuse_sink,
+            run_metrics=run_metrics,
         ):
             yield chunk
         return
@@ -231,6 +241,7 @@ async def execute_agent_stream_langgraph(
         artifact_recorder=artifact_recorder,
         moldy_source=moldy_source,
         langfuse_sink=langfuse_sink,
+        run_metrics=run_metrics,
     ):
         yield chunk
 
@@ -248,6 +259,7 @@ async def resume_agent_stream_langgraph(
     artifact_recorder: Any | None = None,
     moldy_source: str = "resume",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
+    run_metrics: RunMetricsAccumulator | None = None,
 ) -> AsyncGenerator[str, None]:
     async for chunk in _run_langgraph_agent_stream(
         cfg,
@@ -262,5 +274,6 @@ async def resume_agent_stream_langgraph(
         artifact_recorder=artifact_recorder,
         moldy_source=moldy_source,
         langfuse_sink=langfuse_sink,
+        run_metrics=run_metrics,
     ):
         yield chunk

@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.runtime_config import AgentConfig
 from app.hooks import HookResult
 
@@ -200,6 +201,56 @@ async def test_execute_agent_stream_langgraph_passes_artifact_recorder(monkeypat
 
     assert chunks == ["protocol-chunk"]
     assert captured["kwargs"]["artifact_recorder"] is recorder
+
+
+@pytest.mark.asyncio
+async def test_execute_agent_stream_langgraph_attaches_metrics_callback_and_sink(
+    monkeypatch,
+) -> None:
+    from app.agent_runtime import langgraph_agent_stream_runner
+
+    captured: dict[str, Any] = {}
+    existing_callback = object()
+    metrics = RunMetricsAccumulator(started_at=0.0)
+
+    async def fake_prepare_agent(
+        _cfg: AgentConfig, *, messages_history, is_trigger_mode=False, run_id
+    ):
+        return (
+            "agent",
+            ["lc-message"],
+            {
+                "configurable": {"thread_id": "thread-runner"},
+                "callbacks": [existing_callback],
+            },
+        )
+
+    async def fake_stream(_agent, _input, config, **kwargs):
+        captured["config"] = config
+        captured["kwargs"] = kwargs
+        yield "protocol-chunk"
+
+    monkeypatch.setattr(langgraph_agent_stream_runner, "_prepare_agent", fake_prepare_agent)
+    monkeypatch.setattr(
+        langgraph_agent_stream_runner,
+        "stream_agent_response_langgraph",
+        fake_stream,
+    )
+
+    chunks = [
+        chunk
+        async for chunk in langgraph_agent_stream_runner.execute_agent_stream_langgraph(
+            _cfg(),
+            [{"role": "user", "content": "hello"}],
+            run_metrics=metrics,
+        )
+    ]
+
+    assert chunks == ["protocol-chunk"]
+    assert captured["config"]["callbacks"][0] is existing_callback
+    assert len(captured["config"]["callbacks"]) >= 2
+    assert captured["config"]["callbacks"][-1].__class__.__name__ == "RunMetricsCallback"
+    assert captured["kwargs"]["run_metrics"] is metrics
 
 
 @pytest.mark.asyncio

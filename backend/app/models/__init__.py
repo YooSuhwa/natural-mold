@@ -19,6 +19,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
+from app.models.conversation_run_metrics import ConversationRunMetrics
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.credential_default import CredentialDefault
@@ -85,6 +86,7 @@ __all__ = [
     "ConversationArtifact",
     "ConversationRun",
     "ConversationRunInput",
+    "ConversationRunMetrics",
     "Credential",
     "CredentialAuditLog",
     "CredentialDefault",

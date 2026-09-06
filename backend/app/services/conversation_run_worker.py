@@ -15,6 +15,8 @@ from app.agent_runtime import event_names
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.event_broker import BrokeredEvent
 from app.agent_runtime.protocol_redaction import REDACTED_SENSITIVE_FIELD
+from app.agent_runtime.run_metrics import RunMetricsAccumulator, RunMetricsSnapshot
+from app.agent_runtime.run_metrics_baseline import baseline_message_identities
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.config import settings
@@ -29,6 +31,7 @@ from app.services.conversation_run_interrupts import (
     has_interrupt_events,
     interrupt_id_from_events,
 )
+from app.services.conversation_run_metrics_service import persist_run_metrics_and_usage
 from app.services.conversation_stream_service import StreamCtx
 
 logger = logging.getLogger(__name__)
@@ -223,6 +226,8 @@ async def _transition(
     error_message: str | None = None,
     cancellation_ack_worker_id: str | None = None,
     allow_workerless_cancellation_ack: bool = False,
+    metrics_snapshot: RunMetricsSnapshot,
+    model_name: str,
 ) -> ConversationRun | None:
     async with _session_factory()() as session:
         run = await session.get(ConversationRun, run_id, with_for_update=True)
@@ -239,6 +244,12 @@ async def _transition(
                 error_message=error_message,
                 cancellation_ack_worker_id=cancellation_ack_worker_id,
                 allow_workerless_cancellation_ack=allow_workerless_cancellation_ack,
+            )
+            await persist_run_metrics_and_usage(
+                session,
+                run=run,
+                snapshot=metrics_snapshot,
+                model_name=model_name,
             )
             await session.commit()
         except ValueError:
@@ -480,6 +491,47 @@ async def _backfill_turn_attachments(
         await session.commit()
 
 
+async def _prepare_run_metrics(
+    *,
+    conversation_id: uuid.UUID,
+    cfg: AgentConfig,
+    started_at: float,
+) -> RunMetricsAccumulator:
+    """Capture the exact pre-input assistant IDs used to exclude checkpoint replay."""
+    try:
+        async with _session_factory()() as session:
+            conversation = await session.get(Conversation, conversation_id)
+            active_checkpoint_id = (
+                getattr(cfg, "checkpoint_id", None)
+                if getattr(cfg, "checkpoint_id", None) is not None
+                else conversation.active_branch_checkpoint_id
+                if conversation is not None
+                else None
+            )
+        tree = await thread_branch_service.build_message_tree(
+            get_checkpointer(),
+            str(conversation_id),
+            active_checkpoint_id=active_checkpoint_id,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "run metrics checkpoint baseline unavailable conversation_id=%s",
+            conversation_id,
+            exc_info=True,
+        )
+        return RunMetricsAccumulator(
+            started_at=started_at,
+            complete_event_capture=False,
+            observe_protocol_events=False,
+        )
+    return RunMetricsAccumulator(
+        started_at=started_at,
+        baseline_message_identities=baseline_message_identities(
+            node.message for node in tree.nodes
+        ),
+    )
+
+
 async def _run_conversation(
     *,
     run_id: uuid.UUID,
@@ -493,6 +545,8 @@ async def _run_conversation(
     registry: RunTaskRegistry,
     attachment_ids: list[uuid.UUID] | None = None,
 ) -> None:
+    metrics_started_at = time.monotonic()
+    run_metrics = RunMetricsAccumulator(started_at=metrics_started_at)
     final_status: conversation_run_service.RunStatus = "completed"
     failure: Exception | None = None
     error_code: str | None = None
@@ -539,8 +593,14 @@ async def _run_conversation(
             _heartbeat_until_terminal(run_id, registry),
             name=f"conversation-run-heartbeat-{run_id}",
         )
+        run_metrics = await _prepare_run_metrics(
+            conversation_id=conversation_id,
+            cfg=cfg,
+            started_at=metrics_started_at,
+        )
 
         stream_kwargs = ctx.as_stream_kwargs()
+        stream_kwargs["run_metrics"] = run_metrics
         stream_kwargs["artifact_recorder"] = stream_service.build_artifact_recorder(
             conversation_id=conversation_id,
             cfg=cfg,
@@ -596,6 +656,7 @@ async def _run_conversation(
         logger.exception("conversation run worker failed run_id=%s", run_id)
         await _publish_error(ctx, "에이전트 실행 중 오류가 발생했습니다.")
     finally:
+        metrics_snapshot = run_metrics.finalize(final_status)
         if heartbeat_task is not None:
             heartbeat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -611,6 +672,8 @@ async def _run_conversation(
                     interrupt_id=interrupt_id,
                     cancellation_ack_worker_id=registry.worker_instance_id,
                     allow_workerless_cancellation_ack=workerless_cancel_before_start,
+                    metrics_snapshot=metrics_snapshot,
+                    model_name=getattr(cfg, "model_name", "unknown"),
                 )
                 action = _audit_action_for_terminal_status(final_status)
                 if final_run is not None and action is not None:

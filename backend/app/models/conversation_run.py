@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.conversation_run_metrics import ConversationRunMetrics
 
 RUN_ACTIVE_STATUSES = ("queued", "running", "canceling")
 RUN_TERMINAL_STATUSES = ("completed", "failed", "interrupted", "canceled", "stale")
@@ -86,3 +89,9 @@ class ConversationRun(Base):
     runtime_policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     runtime_policy_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     runtime_policy_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    metrics: Mapped[ConversationRunMetrics | None] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        uselist=False,
+    )

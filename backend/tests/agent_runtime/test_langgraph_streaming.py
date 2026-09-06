@@ -28,7 +28,7 @@ async def test_langgraph_streaming_projects_usage_metadata_to_custom_event() -> 
             "data": {
                 "id": "assistant-usage-1",
                 "type": "AIMessageChunk",
-                "content": "",
+                "content": "done",
                 "usage_metadata": {
                     "input_tokens": 12,
                     "output_tokens": 5,
@@ -86,13 +86,16 @@ async def test_langgraph_streaming_projects_usage_metadata_to_custom_event() -> 
     assert isinstance(usage_payload["tokens_per_second"], float)
     assert isinstance(usage_payload["ttft_ms"], float)
     assert payloads[3]["params"]["data"] == {"event": "completed"}
-    assert usage_sink == {
+    for key, value in {
         "prompt_tokens": 12,
         "completion_tokens": 5,
         "cache_creation_tokens": 2,
         "cache_read_tokens": 3,
         "estimated_cost": 0.22,
-    }
+    }.items():
+        assert usage_sink[key] == value
+    for key in ("ttft_ms", "generation_ms", "tokens_per_second"):
+        assert usage_sink[key] == usage_payload[key]
 
 
 @pytest.mark.asyncio

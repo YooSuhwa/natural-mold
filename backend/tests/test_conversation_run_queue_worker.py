@@ -8,14 +8,18 @@ from typing import Any, cast
 
 import anyio
 import pytest
+from langchain_core.messages import AIMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.runtime_config import AgentConfig
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
+from app.models.conversation_run_metrics import ConversationRunMetrics
+from app.models.token_usage import TokenUsage
 from app.models.user import User
 from app.services import (
     conversation_run_queue_service,
@@ -25,6 +29,78 @@ from app.services import (
 )
 from tests.conftest import TEST_USER_ID, TestSession
 from tests.integration._seed import seed_conversation_with_agent
+
+
+@pytest.mark.asyncio
+async def test_worker_metrics_baseline_excludes_pre_input_checkpoint_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = await seed_conversation_with_agent()
+    checkpoint = object()
+    captured: dict[str, object] = {}
+
+    async def build_tree(
+        actual_checkpointer: object,
+        thread_id: str,
+        *,
+        active_checkpoint_id: str | None,
+    ) -> SimpleNamespace:
+        captured.update(
+            checkpointer=actual_checkpointer,
+            thread_id=thread_id,
+            active_checkpoint_id=active_checkpoint_id,
+        )
+        return SimpleNamespace(
+            nodes=[SimpleNamespace(message=AIMessage(content="old", id="assistant-old"))]
+        )
+
+    monkeypatch.setattr(conversation_run_worker, "get_checkpointer", lambda: checkpoint)
+    monkeypatch.setattr(
+        conversation_run_worker.thread_branch_service,
+        "build_message_tree",
+        build_tree,
+    )
+    metrics = await conversation_run_worker._prepare_run_metrics(
+        conversation_id=conversation_id,
+        cfg=cast(AgentConfig, SimpleNamespace(checkpoint_id="checkpoint-before-input")),
+        started_at=0.0,
+    )
+    metrics.observe(
+        {
+            "id": "values-1",
+            "run_id": "run-1",
+            "thread_id": str(conversation_id),
+            "seq": 1,
+            "method": "values",
+            "namespace": [],
+            "data": {
+                "messages": [
+                    {
+                        "id": "assistant-old",
+                        "type": "ai",
+                        "usage_metadata": {"input_tokens": 100, "output_tokens": 50},
+                    },
+                    {
+                        "id": "assistant-new",
+                        "type": "ai",
+                        "usage_metadata": {"input_tokens": 10, "output_tokens": 5},
+                    },
+                ]
+            },
+            "interrupts": [],
+            "checkpoint_id": None,
+            "checkpoint_ns": None,
+        }
+    )
+
+    snapshot = metrics.finalize("completed")
+    assert captured == {
+        "checkpointer": checkpoint,
+        "thread_id": str(conversation_id),
+        "active_checkpoint_id": "checkpoint-before-input",
+    }
+    assert snapshot.prompt_tokens == 10
+    assert snapshot.completion_tokens == 5
 
 
 @pytest.mark.asyncio
@@ -49,13 +125,39 @@ async def test_owner_worker_polls_durable_steer_and_acknowledges_terminal(
 
     entered = anyio.Event()
 
-    async def blocked_executor(*_args: Any, **_kwargs: Any) -> AsyncGenerator[str, None]:
+    async def blocked_executor(*_args: Any, **kwargs: Any) -> AsyncGenerator[str, None]:
+        metrics = kwargs["run_metrics"]
+        metrics.start_model_generation("cancel-model")
+        metrics.observe(
+            {
+                "id": "cancel-usage",
+                "run_id": str(run_id),
+                "thread_id": str(conversation_id),
+                "seq": 1,
+                "method": "messages",
+                "namespace": [],
+                "data": {
+                    "id": "assistant-cancel-partial",
+                    "type": "ai",
+                    "content": "partial",
+                    "usage_metadata": {"input_tokens": 7, "output_tokens": 2},
+                },
+                "interrupts": [],
+                "checkpoint_id": None,
+                "checkpoint_ns": None,
+            }
+        )
         entered.set()
         await anyio.sleep_forever()
         if False:
             yield ""
 
     monkeypatch.setattr(conversation_run_worker, "_heartbeat_interval_seconds", lambda: 0.01)
+
+    async def prepared_metrics(**kwargs: Any) -> RunMetricsAccumulator:
+        return RunMetricsAccumulator(started_at=kwargs["started_at"])
+
+    monkeypatch.setattr(conversation_run_worker, "_prepare_run_metrics", prepared_metrics)
     registry = conversation_run_worker.RunTaskRegistry(worker_instance_id="owning-worker")
     conversation_run_worker.reset_run_task_registry_for_tests(registry)
     await conversation_run_worker.start_conversation_run(
@@ -88,6 +190,105 @@ async def test_owner_worker_polls_durable_steer_and_acknowledges_terminal(
         assert terminal.status == "canceled"
         assert terminal.cancel_reason == "steer"
         assert terminal.cancellation_acknowledged_at is not None
+        metrics = await db.get(ConversationRunMetrics, run_id)
+        assert metrics is not None
+        assert metrics.terminal_state == "canceled"
+        assert metrics.prompt_tokens == 7
+        assert metrics.completion_tokens == 2
+        assert metrics.usage_complete is True
+        usage = await db.scalar(select(TokenUsage).where(TokenUsage.run_id == run_id))
+        assert usage is not None and usage.total_tokens == 9
+
+
+@pytest.mark.asyncio
+async def test_failed_worker_persists_partial_usage_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = await seed_conversation_with_agent()
+    async with TestSession() as db:
+        conversation = await db.get(Conversation, conversation_id)
+        assert conversation is not None
+        run = await conversation_run_service.create_run(
+            db,
+            conversation_id=conversation_id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            input_preview="fails after usage",
+        )
+        await db.commit()
+        run_id = run.id
+
+    async def failing_executor(*_args: Any, **kwargs: Any) -> AsyncGenerator[str, None]:
+        metrics = kwargs["run_metrics"]
+        metrics.start_model_generation("scripted")
+        metrics.observe(
+            {
+                "id": "event-1",
+                "run_id": str(run_id),
+                "thread_id": str(conversation_id),
+                "seq": 1,
+                "method": "messages",
+                "namespace": [],
+                "data": {
+                    "id": "assistant-partial",
+                    "type": "ai",
+                    "content": "partial",
+                    "usage_metadata": {"input_tokens": 9, "output_tokens": 3},
+                },
+                "interrupts": [],
+                "checkpoint_id": None,
+                "checkpoint_ns": None,
+            }
+        )
+        metrics.finish_model_generation("scripted")
+        raise RuntimeError("scripted failure")
+        if False:
+            yield ""
+
+    registry = conversation_run_worker.RunTaskRegistry(worker_instance_id="failure-worker")
+    conversation_run_worker.reset_run_task_registry_for_tests(registry)
+
+    async def prepared_metrics(**kwargs: Any) -> RunMetricsAccumulator:
+        return RunMetricsAccumulator(started_at=kwargs["started_at"])
+
+    monkeypatch.setattr(conversation_run_worker, "_prepare_run_metrics", prepared_metrics)
+    await conversation_run_worker.start_conversation_run(
+        run_id=run_id,
+        conversation_id=conversation_id,
+        cfg=cast(
+            AgentConfig,
+            SimpleNamespace(
+                secret_values=set(),
+                agent_id=None,
+                model_name="scripted-model",
+                checkpoint_id=None,
+            ),
+        ),
+        user=CurrentUser(id=TEST_USER_ID, email="owner@test", name="Owner"),
+        input_payload={"messages": [{"role": "user", "content": "active"}]},
+        moldy_source="chat",
+        executor_fn=failing_executor,
+        registry=registry,
+    )
+    task = registry.get(run_id)
+    assert task is not None
+    await task
+
+    async with TestSession() as db:
+        terminal = await db.get(ConversationRun, run_id)
+        metrics = await db.get(ConversationRunMetrics, run_id)
+        usages = (
+            (await db.execute(select(TokenUsage).where(TokenUsage.run_id == run_id)))
+            .scalars()
+            .all()
+        )
+        assert terminal is not None and terminal.status == "failed"
+        assert metrics is not None and metrics.terminal_state == "failed"
+        assert metrics.prompt_tokens == 9
+        assert metrics.completion_tokens == 3
+        assert len(usages) == 1
+        assert usages[0].total_tokens == 12
 
 
 @pytest.mark.asyncio
