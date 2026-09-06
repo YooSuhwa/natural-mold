@@ -118,6 +118,7 @@ test.describe('Smoke Test - Static Pages', () => {
     await page.waitForLoadState('domcontentloaded')
 
     await expect(page.getByRole('heading', { name: '모델' })).toBeVisible()
+    await expect(page.getByTestId('show-hidden')).toBeVisible()
     await expect(page.getByRole('button', { name: /새 모델|모델 추가/ }).first()).toBeVisible()
 
     expect(errors.console).toEqual([])
@@ -327,6 +328,7 @@ test.describe('Smoke Test - Chat Navigator', () => {
   test('agent search finds the seeded conversation', async ({ page, errors }) => {
     await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
     await page.waitForLoadState('domcontentloaded')
+    await expect(page.getByText('E2E Navigator Smoke Agent').first()).toBeVisible()
 
     await page.getByRole('button', { name: '에이전트 검색' }).click()
     await page
@@ -380,6 +382,7 @@ test.describe('Smoke Test - Dialogs', () => {
   test('models page - "모델 추가" dialog opens', async ({ page, errors }) => {
     await page.goto('/models')
     await page.waitForLoadState('domcontentloaded')
+    await expect(page.getByTestId('show-hidden')).toBeVisible()
 
     await page.getByRole('button', { name: '새 모델' }).click()
     // Verify dialog content
