@@ -6,6 +6,23 @@
 - **목적**: "에이전트가 도는 채팅"에서 **부족한 필수 기능 / 있으면 좋을 기능**을 근거(코드·문서)와 함께 정리하고 우선순위를 제안한다.
 - **방법**: 프론트 UI/컴포저, 백엔드 런 엔진, 문서/PRD/계획을 각각 인벤토리(병렬 탐색)한 뒤 "현재 있는 것 vs 없는 것"을 교차 대조.
 
+> **2026-09-07 현재 상태 부록.** 아래 G1–G16과 우선순위는 2026-06-30 discovery 기록이다. 이 부록은 그 기록을 삭제하거나 나머지 gap을 새로 감사하지 않고, 이번 modernized-chat 범위에서 확인된 상태만 표시한다.
+
+## 현재 상태 부록 (2026-09-07)
+
+| 영역 | 현재 상태 | 남은 한계 |
+| --- | --- | --- |
+| G2 retry/recovery | 정확한 failed durable input을 fresh request ID로 다시 접수하고 accepted-pending reconciliation을 한다. | 매칭되는 durable input이 없으면 retry를 제공하지 않는다. |
+| G3 Steer | cancel acknowledgement 뒤 committed state에서 priority correction의 **새 run**을 시작한다. | same-run Steer(현재 run을 보존하고 다음 agent step에서 새 지시를 소비)는 구현하지 않았다. 이는 in-flight provider request의 token 수정과도 별개다. |
+| G5/G6 export/search | export는 로드된 envelope의 Markdown/JSON, search는 rendered transcript 검색이다. | backend full-history/PDF export는 제공하지 않는다. |
+| G9 command/context | 실제 capability command와 authorized frozen text reference를 제공한다. | `/compact`는 수동 인증 endpoint가 없어 disabled이며 reference는 multimodal input이 아니다. |
+| run summary | terminal nullable metrics, root/descendant detail, bounded activity history를 표시한다. | missing capture는 0이 아닌 unknown이며 activity truncation을 표시한다. |
+| MCP Apps | provenance-bound sandbox/proxy와 ordinary tool fallback을 제공한다. | open-link/message-append는 명시적으로 deny되고 browser credential은 없다. |
+| side chat/pin | side chat은 app-shell 수명만, pin은 user-selected display snapshot만 가진다. | reload/cross-device side persistence, automatic summary, memory/prompt injection은 제공하지 않는다. |
+| G12 dictation | production은 browser `SpeechRecognition` adapter 결과를 editable composer에 넣고 auto-send하지 않는다. QA는 speech double을 사용한다. | 실제 microphone end-to-end는 검증하지 않았다. |
+
+현재 구현의 source anchors는 `use-moldy-langgraph-stream.ts`, `conversation_run_worker.py`, `chat_resource_context.py`, `mcp-apps/renderer.tsx`, `assistant-side-chat-provider.tsx`, `pinned-conversation-summary.tsx`, `use-browser-dictation.ts`이다. scripted-capture의 named catalog와 단일-spec 실행 계약은 ADR-006의 2026-09-07 부록을 따른다. 이 부록은 G1 multimodal, G4 structured output, G7 per-turn model, G8 manual compaction endpoint, G13 HITL 표준화 등 나머지 discovery 항목의 새로운 완료 주장이 아니다.
+
 ---
 
 ## 0. TL;DR
