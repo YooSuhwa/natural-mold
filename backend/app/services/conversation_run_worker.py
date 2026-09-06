@@ -16,7 +16,10 @@ from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.event_broker import BrokeredEvent
 from app.agent_runtime.protocol_redaction import REDACTED_SENSITIVE_FIELD
 from app.agent_runtime.run_metrics import RunMetricsAccumulator, RunMetricsSnapshot
-from app.agent_runtime.run_metrics_baseline import baseline_message_identities
+from app.agent_runtime.run_metrics_baseline import (
+    baseline_completed_tool_call_source_identities,
+    baseline_message_identities,
+)
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.config import settings
@@ -524,10 +527,12 @@ async def _prepare_run_metrics(
             complete_event_capture=False,
             observe_protocol_events=False,
         )
+    baseline_messages = tuple(node.message for node in tree.nodes)
     return RunMetricsAccumulator(
         started_at=started_at,
-        baseline_message_identities=baseline_message_identities(
-            node.message for node in tree.nodes
+        baseline_message_identities=baseline_message_identities(baseline_messages),
+        baseline_completed_tool_call_source_identities=(
+            baseline_completed_tool_call_source_identities(baseline_messages)
         ),
     )
 

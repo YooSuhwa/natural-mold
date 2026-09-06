@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections import defaultdict, deque
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
+from app.agent_runtime.run_metrics_baseline import ToolCallSourceIdentity
 
 
 def synthesize_tool_events_from_values(
     values_event: StoredProtocolEvent,
     *,
     seen_tool_call_ids: set[str] | None = None,
+    baseline_completed_tool_call_source_identities: Collection[ToolCallSourceIdentity] = (),
     first_seq: int | None = None,
 ) -> list[StoredProtocolEvent]:
     if values_event["method"] != "values" or not isinstance(values_event["data"], Mapping):
@@ -22,6 +25,7 @@ def synthesize_tool_events_from_values(
 
     seen = seen_tool_call_ids if seen_tool_call_ids is not None else set()
     synthesized: list[StoredProtocolEvent] = []
+    pending_sources: dict[str, deque[ToolCallSourceIdentity]] = defaultdict(deque)
     next_seq = values_event["seq"] if first_seq is None else first_seq
     for index, message in enumerate(messages):
         normalized = _serialize_value(message)
@@ -32,6 +36,10 @@ def synthesize_tool_events_from_values(
             source_event=values_event,
             index=index,
             seen=seen,
+            baseline_completed_tool_call_source_identities=(
+                baseline_completed_tool_call_source_identities
+            ),
+            pending_sources=pending_sources,
             first_seq=next_seq,
         )
         synthesized.extend(message_events)
@@ -45,6 +53,8 @@ def _synthesize_from_message(
     source_event: StoredProtocolEvent,
     index: int,
     seen: set[str],
+    baseline_completed_tool_call_source_identities: Collection[ToolCallSourceIdentity],
+    pending_sources: dict[str, deque[ToolCallSourceIdentity]],
     first_seq: int,
 ) -> list[StoredProtocolEvent]:
     events: list[StoredProtocolEvent] = []
@@ -55,7 +65,17 @@ def _synthesize_from_message(
             if not isinstance(call, Mapping):
                 continue
             call_id = _coerce_optional_str(call.get("id"))
-            if not call_id or _has_seen_tool_event(seen, kind="start", call_id=call_id):
+            source_message_id = _coerce_optional_str(message.get("id"))
+            if source_message_id and call_id:
+                source_identity = (tuple(source_event["namespace"]), source_message_id, call_id)
+                pending_sources[call_id].append(source_identity)
+            else:
+                source_identity = None
+            if (
+                not call_id
+                or source_identity in baseline_completed_tool_call_source_identities
+                or _has_seen_tool_event(seen, kind="start", call_id=call_id)
+            ):
                 continue
             _mark_seen_tool_event(seen, kind="start", call_id=call_id)
             events.append(
@@ -77,8 +97,14 @@ def _synthesize_from_message(
 
     tool_call_id = _coerce_optional_str(message.get("tool_call_id"))
     message_type = _coerce_optional_str(message.get("type"))
+    source_identity = (
+        pending_sources[tool_call_id].popleft()
+        if tool_call_id and pending_sources[tool_call_id]
+        else None
+    )
     if (
         tool_call_id
+        and source_identity not in baseline_completed_tool_call_source_identities
         and not _has_seen_tool_event(seen, kind="finish", call_id=tool_call_id)
         and message_type in {"tool", "ToolMessage"}
     ):

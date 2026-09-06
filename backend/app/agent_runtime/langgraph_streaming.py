@@ -205,6 +205,11 @@ async def stream_agent_response_langgraph(
                 for tool_event in synthesize_tool_events_from_values(
                     event,
                     seen_tool_call_ids=seen_synthesized_tool_call_ids,
+                    baseline_completed_tool_call_source_identities=(
+                        run_metrics.baseline_completed_tool_call_source_identities
+                        if run_metrics is not None
+                        else ()
+                    ),
                     first_seq=delivery.max_emitted_seq + 1,
                 ):
                     yield await emit(tool_event)

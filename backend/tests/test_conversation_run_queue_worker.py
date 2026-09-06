@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import anyio
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,7 +51,18 @@ async def test_worker_metrics_baseline_excludes_pre_input_checkpoint_usage(
             active_checkpoint_id=active_checkpoint_id,
         )
         return SimpleNamespace(
-            nodes=[SimpleNamespace(message=AIMessage(content="old", id="assistant-old"))]
+            nodes=[
+                SimpleNamespace(
+                    message=AIMessage(
+                        content="old",
+                        id="assistant-old",
+                        tool_calls=[{"id": "call-old", "name": "search", "args": {}}],
+                    )
+                ),
+                SimpleNamespace(
+                    message=ToolMessage(content="done", tool_call_id="call-old", name="search")
+                ),
+            ]
         )
 
     monkeypatch.setattr(conversation_run_worker, "get_checkpointer", lambda: checkpoint)
@@ -101,6 +112,9 @@ async def test_worker_metrics_baseline_excludes_pre_input_checkpoint_usage(
     }
     assert snapshot.prompt_tokens == 10
     assert snapshot.completion_tokens == 5
+    assert metrics.baseline_completed_tool_call_source_identities == frozenset(
+        {((), "assistant-old", "call-old")}
+    )
 
 
 @pytest.mark.asyncio

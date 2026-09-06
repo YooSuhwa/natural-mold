@@ -54,6 +54,7 @@ __all__ = [
     "event_has_model_content",
 ]
 from app.agent_runtime.run_metrics_activity import RunActivityAccumulator
+from app.agent_runtime.run_metrics_baseline import ToolCallSourceIdentity
 from app.agent_runtime.run_metrics_types import (
     MessageIdentity,
     RunMetricActivity,
@@ -82,6 +83,7 @@ class RunMetricsAccumulator:
         complete_event_capture: bool = True,
         observe_protocol_events: bool = True,
         baseline_message_identities: Collection[MessageIdentity] = (),
+        baseline_completed_tool_call_source_identities: Collection[ToolCallSourceIdentity] = (),
         activity_limit: int = 100,
     ) -> None:
         self._started_at = started_at
@@ -89,6 +91,9 @@ class RunMetricsAccumulator:
         self._complete_event_capture = complete_event_capture
         self._observe_protocol_events = observe_protocol_events
         self._baseline_message_identities = set(baseline_message_identities)
+        self.baseline_completed_tool_call_source_identities = frozenset(
+            baseline_completed_tool_call_source_identities
+        )
         self._terminal_state: TerminalRunState | None = None
         self._terminal_snapshot: RunMetricsSnapshot | None = None
         self._first_token_at: float | None = None
@@ -98,8 +103,7 @@ class RunMetricsAccumulator:
         self._usage_by_message: dict[MessageIdentity, UsageCandidate] = {}
         self._pending_model_messages: set[MessageIdentity] = set()
         self._activities = RunActivityAccumulator(
-            complete_event_capture=complete_event_capture,
-            activity_limit=activity_limit,
+            complete_event_capture=complete_event_capture, activity_limit=activity_limit
         )
 
     def observe(self, event: StoredProtocolEvent) -> None:
