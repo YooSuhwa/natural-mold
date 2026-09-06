@@ -5,6 +5,13 @@ import { getMessages, getTimeZone } from 'next-intl/server'
 type Messages = Record<string, unknown>
 
 export const ROOT_MESSAGE_NAMESPACES = [
+  // The retained assistant side chat is mounted by AppLayout, outside the
+  // agent route provider, and renders the same thread/tool surfaces.
+  'agent',
+  'chat',
+  'model',
+  'skill',
+  'usage',
   'appSettings',
   'auth',
   'common',

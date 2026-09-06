@@ -311,6 +311,12 @@ const POSITIONING_UTILITY_ALLOWLIST = [
       /(?:fixed inset-0 z-40|absolute inset-0|absolute inset-y-0 left-0 z-20|moldy-side-panel moldy-right-rail-mobile absolute inset-y-0 right-0)/,
     reason: 'chat right rail owns its resize handle and mobile modal layer',
   },
+  {
+    filePath: 'src/components/agent/assistant-side-chat-provider.tsx',
+    rulePattern: /^absolute-overlay-utility$/,
+    context: /moldy-side-panel absolute inset-y-0 right-0/,
+    reason: 'assistant side chat is a non-modal app-shell overlay below the 2xl inline breakpoint',
+  },
 ]
 
 const TYPOGRAPHY_UTILITY_ALLOWLIST = [

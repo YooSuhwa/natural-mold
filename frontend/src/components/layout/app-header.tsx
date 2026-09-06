@@ -2,6 +2,7 @@
 
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { BreadcrumbNav } from '@/components/layout/breadcrumb-nav'
+import { AssistantSideChatTrigger } from '@/components/agent/assistant-side-chat-trigger'
 
 export function AppHeader() {
   return (
@@ -9,6 +10,7 @@ export function AppHeader() {
       {/* Mobile only: sidebar trigger (desktop uses sidebar's built-in toggle) */}
       <SidebarTrigger className="md:hidden cursor-pointer" />
       <BreadcrumbNav />
+      <AssistantSideChatTrigger />
     </header>
   )
 }

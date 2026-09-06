@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { SparklesIcon } from 'lucide-react'
+import { SparklesIcon, XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
 import { AuiConfig, AssistantRuntimeProvider, Tools, useAui } from '@assistant-ui/react'
@@ -24,6 +24,14 @@ interface AssistantPanelProps {
   createMode?: boolean
   onCreateModeFirstMessage?: (msg: string) => Promise<void>
   initialMessage?: string
+  session?: AssistantPanelSession
+  onClose?: () => void
+}
+
+export interface AssistantPanelSession {
+  readonly sessionId: string
+  readonly messages: Message[]
+  readonly onMessagesCommit: (messages: Message[]) => void
 }
 
 export function AssistantPanel({
@@ -33,20 +41,32 @@ export function AssistantPanel({
   createMode = false,
   onCreateModeFirstMessage,
   initialMessage,
+  session,
+  onClose,
 }: AssistantPanelProps) {
   const config = AuiConfig({ tools: Tools({ toolkit: ALL_TOOLKIT }) })
   const t = useTranslations('agent.assistant')
+  const tc = useTranslations('common')
   const ts = useTranslations('agent.suggestion')
   const qc = useQueryClient()
 
-  const sessionId = useMemo(() => crypto.randomUUID(), [])
+  const generatedSessionId = useMemo(() => crypto.randomUUID(), [])
   const [localMessages, setLocalMessages] = useState<Message[]>([])
   const initialSentRef = useRef(false)
   const resumeMayMutateRef = useRef(false)
 
-  const onMessagesCommit = useCallback((msgs: Message[]) => {
-    setLocalMessages((prev) => [...prev, ...msgs])
-  }, [])
+  const onMessagesCommit = useCallback(
+    (msgs: Message[]) => {
+      if (session) {
+        session.onMessagesCommit(msgs)
+        return
+      }
+      setLocalMessages((prev) => [...prev, ...msgs])
+    },
+    [session],
+  )
+  const sessionId = session?.sessionId ?? generatedSessionId
+  const messages = session?.messages ?? localMessages
 
   // streamFn:
   // - createMode + agentId 비어있음 → 부모 콜백으로 createAgent + redirect 위임
@@ -108,7 +128,7 @@ export function AssistantPanel({
   )
 
   const { runtime, onResumeDecisions, registerDecision, sendMessage } = useChatRuntime({
-    messages: localMessages,
+    messages,
     streamFn,
     resumeFn,
     onStreamEnd,
@@ -141,6 +161,16 @@ export function AssistantPanel({
           <span className="text-xs text-muted-foreground">
             {t('description', { agentName: agentName || ' ' })}
           </span>
+          {onClose ? (
+            <button
+              type="button"
+              className="ml-auto inline-flex size-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onClose}
+              aria-label={tc('close')}
+            >
+              <XIcon className="size-4" />
+            </button>
+          ) : null}
         </div>
       )}
 

@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
-import { render, screen } from '../../test-utils'
+import { useState, type ReactNode } from 'react'
+import { act } from '@testing-library/react'
+import { render, screen, userEvent } from '../../test-utils'
 import { AssistantPanel } from '@/components/agent/assistant-panel'
 import { useHiTL } from '@/lib/chat/hitl-context'
 import type { Decision, SSEEvent } from '@/lib/types'
@@ -100,6 +101,8 @@ type ResumeFn = (
 ) => AsyncGenerator<SSEEvent>
 
 type ChatRuntimeOptions = {
+  messages?: Message[]
+  onMessagesCommit?: (messages: Message[]) => void
   resumeFn?: ResumeFn
   onStreamEnd?: (didMutate: boolean) => void
 }
@@ -181,5 +184,48 @@ describe('AssistantPanel', () => {
 
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['agents'] })
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['agents', 'agent-1'] })
+  })
+
+  it('사이드 채팅을 닫았다 다시 열어도 동일한 세션의 메시지를 유지한다', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(true)
+      const [messages, setMessages] = useState<Message[]>([])
+      return (
+        <>
+          <button type="button" onClick={() => setOpen((value) => !value)}>
+            toggle
+          </button>
+          {open ? (
+            <AssistantPanel
+              agentId="agent-1"
+              agentName="Test Agent"
+              session={{
+                sessionId: 'side-session-1',
+                messages,
+                onMessagesCommit: (committed) =>
+                  setMessages((current) => [...current, ...committed]),
+              }}
+            />
+          ) : null}
+        </>
+      )
+    }
+
+    const user = userEvent.setup()
+    render(<Harness />)
+    const firstOptions = mockUseChatRuntime.mock.calls[0]?.[0] as ChatRuntimeOptions
+    act(() => {
+      firstOptions.onMessagesCommit?.([
+        { id: 'side-message-1', role: 'assistant', content: 'retained' } as Message,
+      ])
+    })
+
+    await user.click(screen.getByRole('button', { name: 'toggle' }))
+    await user.click(screen.getByRole('button', { name: 'toggle' }))
+
+    const reopenedOptions = mockUseChatRuntime.mock.calls.at(-1)?.[0] as ChatRuntimeOptions
+    expect(reopenedOptions.messages).toEqual([
+      expect.objectContaining({ id: 'side-message-1', content: 'retained' }),
+    ])
   })
 })
