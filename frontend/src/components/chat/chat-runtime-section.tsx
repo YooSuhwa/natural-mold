@@ -7,10 +7,12 @@ import {
   Tools,
   type AssistantRuntime,
   type AttachmentAdapter,
+  type DictationAdapter,
   type FeedbackAdapter,
 } from '@assistant-ui/react'
 import type { AnyStream } from '@langchain/react'
 import { AssistantThread, type AssistantThreadProps } from '@/components/chat/assistant-thread'
+import { useBrowserDictation } from '@/components/chat/use-browser-dictation'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useMoldyLangGraphStream } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
 import {
@@ -38,10 +40,12 @@ type ThreadRenderProps = Pick<
   | 'composerHint'
   | 'conversationId'
   | 'contextWindow'
+  | 'dictationAvailability'
   | 'emptyContent'
   | 'modelName'
   | 'showContextGauge'
   | 'user'
+  | 'onDictationStart'
 >
 
 export interface ChatRuntimeSectionProps {
@@ -96,6 +100,7 @@ export function ChatRuntimeSection({
   useLangGraphRuntime,
   user,
 }: ChatRuntimeSectionProps) {
+  const dictation = useBrowserDictation()
   const threadProps = useMemo<ThreadRenderProps>(
     () => ({
       agentImageUrl,
@@ -103,10 +108,12 @@ export function ChatRuntimeSection({
       composerHint,
       conversationId: activeConversationId ?? undefined,
       contextWindow,
+      dictationAvailability: dictation.availability,
       emptyContent,
       modelName,
       showContextGauge,
       user,
+      onDictationStart: dictation.resetFailure,
     }),
     [
       activeConversationId,
@@ -114,6 +121,8 @@ export function ChatRuntimeSection({
       agentName,
       composerHint,
       contextWindow,
+      dictation.availability,
+      dictation.resetFailure,
       emptyContent,
       modelName,
       showContextGauge,
@@ -127,6 +136,7 @@ export function ChatRuntimeSection({
         agentId={agentId}
         attachmentAdapter={attachmentAdapter}
         conversationId={activeConversationId}
+        dictationAdapter={dictation.adapter}
         feedbackAdapter={feedbackAdapter}
         onBeforeNewMessage={onBeforeNewMessage}
         onNewMessageAccepted={onNewMessageAccepted}
@@ -143,6 +153,7 @@ export function ChatRuntimeSection({
       activeConversationId={activeConversationId}
       activeRun={activeRun}
       attachmentAdapter={attachmentAdapter}
+      dictationAdapter={dictation.adapter}
       feedbackAdapter={feedbackAdapter}
       latestRun={latestRun}
       messages={messages}
@@ -158,6 +169,7 @@ interface LegacyRuntimeSectionProps {
   readonly activeConversationId: string | null
   readonly activeRun: ConversationRun | null
   readonly attachmentAdapter?: AttachmentAdapter
+  readonly dictationAdapter?: DictationAdapter
   readonly feedbackAdapter?: FeedbackAdapter
   readonly latestRun: ConversationRun | null
   readonly messages: Message[]
@@ -171,6 +183,7 @@ function LegacyRuntimeSection({
   activeConversationId,
   activeRun,
   attachmentAdapter,
+  dictationAdapter,
   feedbackAdapter,
   latestRun,
   messages,
@@ -187,6 +200,7 @@ function LegacyRuntimeSection({
     conversationId: activeConversationId ?? undefined,
     feedbackAdapter,
     attachmentAdapter,
+    dictationAdapter,
     activeRun,
     latestRun,
   })
@@ -201,6 +215,7 @@ function LegacyRuntimeSection({
 interface LangGraphRuntimeSectionProps {
   readonly agentId: string
   readonly attachmentAdapter?: AttachmentAdapter
+  readonly dictationAdapter?: DictationAdapter
   readonly conversationId: string
   readonly feedbackAdapter?: FeedbackAdapter
   readonly onBeforeNewMessage?: () => void
@@ -214,6 +229,7 @@ interface LangGraphRuntimeSectionProps {
 function LangGraphRuntimeSection({
   agentId,
   attachmentAdapter,
+  dictationAdapter,
   conversationId,
   feedbackAdapter,
   onBeforeNewMessage,
@@ -235,6 +251,7 @@ function LangGraphRuntimeSection({
     conversationId,
     feedbackAdapter,
     attachmentAdapter,
+    dictationAdapter,
     onBeforeSubmit: onBeforeNewMessage,
     onRunStartAccepted: onNewMessageAccepted,
     serverMessages,

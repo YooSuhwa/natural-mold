@@ -17,6 +17,8 @@ import { useChatConversationId } from '@/components/chat/conversation-context'
 import { useInvalidateFilesOnRunComplete } from '@/components/chat/use-files-run-sync'
 import { formatComposerCost, TokenBar } from '@/components/chat/assistant-composer-usage'
 import { AttachmentChip } from '@/components/chat/assistant-composer-attachment'
+import { ComposerDictationControl } from '@/components/chat/composer-dictation-control'
+import type { DictationAvailability } from '@/components/chat/use-browser-dictation'
 import { followupEnabledAtom } from '@/lib/stores/chat-followup'
 import {
   chatCancelInFlightAtom,
@@ -34,6 +36,8 @@ export interface ThreadComposerProps {
   readonly compact?: boolean
   readonly enableAttachments?: boolean
   readonly focusKey?: string | null
+  readonly dictationAvailability?: DictationAvailability
+  readonly onDictationStart?: () => void
 }
 
 export function ThreadComposer({
@@ -44,6 +48,8 @@ export function ThreadComposer({
   compact,
   enableAttachments = false,
   focusKey,
+  dictationAvailability = 'unsupported',
+  onDictationStart = () => {},
 }: ThreadComposerProps) {
   const t = useTranslations('chat.input')
   const tMsg = useTranslations('chat.message')
@@ -126,6 +132,11 @@ export function ThreadComposer({
               </Button>
             </ComposerPrimitive.AddAttachment>
           )}
+          <ComposerDictationControl
+            availability={dictationAvailability}
+            focusKey={focusKey}
+            onStart={onDictationStart}
+          />
           {conversationId && (
             <Button
               type="button"

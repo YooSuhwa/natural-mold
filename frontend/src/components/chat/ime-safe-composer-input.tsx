@@ -59,6 +59,8 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     const aui = useAui()
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const compositionRef = useRef(false)
+    const compositionStartTextRef = useRef('')
+    const compositionStartSelectionRef = useRef({ end: 0, start: 0 })
     const effectiveSubmitMode = submitMode ?? (submitOnEnter === false ? 'none' : 'enter')
 
     const externalValue = useAuiState((state) =>
@@ -185,11 +187,40 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
         onCompositionStart={(event) => {
           onCompositionStart?.(event)
           compositionRef.current = true
+          compositionStartTextRef.current = event.currentTarget.value
+          compositionStartSelectionRef.current = {
+            end: event.currentTarget.selectionEnd,
+            start: event.currentTarget.selectionStart,
+          }
         }}
         onCompositionEnd={(event) => {
           onCompositionEnd?.(event)
           compositionRef.current = false
-          syncText(event.currentTarget.value)
+
+          const composedText = event.currentTarget.value
+          const compositionStartText = compositionStartTextRef.current
+          const { end, start } = compositionStartSelectionRef.current
+          const runtimeText = aui.composer.getState().text
+          const beforeComposition = compositionStartText.slice(0, start)
+          const afterComposition = compositionStartText.slice(end)
+          const compositionReplacement = composedText.slice(
+            beforeComposition.length,
+            composedText.length - afterComposition.length,
+          )
+
+          // Dictation updates the runtime while an IME owns the textarea. Reconcile only when
+          // the original context still surrounds the IME edit; otherwise the DOM is authoritative.
+          const canReconcileDictation =
+            composedText.startsWith(beforeComposition) &&
+            composedText.endsWith(afterComposition) &&
+            runtimeText.startsWith(beforeComposition)
+          const nextText = canReconcileDictation
+            ? `${beforeComposition}${compositionReplacement}${runtimeText.slice(
+                compositionStartText.length - afterComposition.length,
+              )}`
+            : composedText
+
+          syncText(nextText)
         }}
         onKeyDown={handleKeyDown}
         onPaste={(event) => {

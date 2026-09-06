@@ -5,6 +5,8 @@ import { ChatRuntimeSection } from '../chat-runtime-section'
 import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
 
 const mocks = vi.hoisted(() => ({
+  dictationAdapter: { listen: vi.fn() },
+  resetDictationFailure: vi.fn(),
   useChatRuntime: vi.fn(),
   useMoldyLangGraphStream: vi.fn(),
 }))
@@ -15,6 +17,14 @@ vi.mock('@/lib/chat/use-chat-runtime', () => ({
 
 vi.mock('@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream', () => ({
   useMoldyLangGraphStream: mocks.useMoldyLangGraphStream,
+}))
+
+vi.mock('../use-browser-dictation', () => ({
+  useBrowserDictation: () => ({
+    adapter: mocks.dictationAdapter,
+    availability: 'ready',
+    resetFailure: mocks.resetDictationFailure,
+  }),
 }))
 
 vi.mock('@assistant-ui/react', () => ({
@@ -113,6 +123,14 @@ describe('ChatRuntimeSection', () => {
     expect(document.querySelector('[data-runtime="legacy-runtime"]')).toBeInTheDocument()
   })
 
+  it('passes the browser dictation adapter to the legacy runtime', () => {
+    renderSection()
+
+    expect(mocks.useChatRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ dictationAdapter: mocks.dictationAdapter }),
+    )
+  })
+
   it('uses the LangGraph runtime when the flag is on for an existing conversation', () => {
     renderSection({ useLangGraphRuntime: true })
 
@@ -124,6 +142,14 @@ describe('ChatRuntimeSection', () => {
       }),
     )
     expect(document.querySelector('[data-runtime="langgraph-runtime"]')).toBeInTheDocument()
+  })
+
+  it('passes the browser dictation adapter to the LangGraph runtime', () => {
+    renderSection({ useLangGraphRuntime: true })
+
+    expect(mocks.useMoldyLangGraphStream).toHaveBeenCalledWith(
+      expect.objectContaining({ dictationAdapter: mocks.dictationAdapter }),
+    )
   })
 
   it('passes the draft commit callback to the LangGraph runtime', () => {

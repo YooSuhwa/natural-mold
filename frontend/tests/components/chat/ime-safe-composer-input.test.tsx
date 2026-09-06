@@ -11,15 +11,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@assistant-ui/react', () => ({
   useAui: () => ({
-    composer: () => ({
+    composer: {
       addAttachment: mocks.addAttachment,
-      getState: () => ({ isEditing: true, isEmpty: false }),
+      getState: () => ({ isEditing: true, isEmpty: false, text: mocks.composerText }),
       send: mocks.send,
       setText: mocks.setText,
-    }),
-    thread: () => ({
+    },
+    thread: {
       getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),
-    }),
+    },
   }),
   useAuiState: (selector: (state: unknown) => unknown) =>
     selector({
@@ -71,6 +71,40 @@ describe('ImeSafeComposerInput', () => {
     fireEvent.compositionEnd(textarea)
 
     expect(mocks.setText).toHaveBeenCalledWith('한')
+  })
+
+  it('inserts an IME syllable before a final dictated transcript that arrives during composition', () => {
+    mocks.composerText = '초안'
+    const { rerender } = render(<ImeSafeComposerInput placeholder="메시지 입력..." />)
+    const textarea = screen.getByPlaceholderText('메시지 입력...')
+
+    textarea.setSelectionRange(2, 2)
+    fireEvent.compositionStart(textarea)
+    fireEvent.change(textarea, { target: { value: '초안한' } })
+
+    mocks.composerText = '초안 음성'
+    rerender(<ImeSafeComposerInput placeholder="메시지 입력..." />)
+
+    fireEvent.compositionEnd(textarea)
+
+    expect(mocks.setText).toHaveBeenLastCalledWith('초안한 음성')
+  })
+
+  it('preserves a selected-text IME replacement when dictation updates during composition', () => {
+    mocks.composerText = '첫 초안 문장'
+    const { rerender } = render(<ImeSafeComposerInput placeholder="메시지 입력..." />)
+    const textarea = screen.getByPlaceholderText('메시지 입력...')
+
+    textarea.setSelectionRange(2, 4)
+    fireEvent.compositionStart(textarea)
+    fireEvent.change(textarea, { target: { value: '첫 대체 문장' } })
+
+    mocks.composerText = '첫 초안 문장 음성'
+    rerender(<ImeSafeComposerInput placeholder="메시지 입력..." />)
+
+    fireEvent.compositionEnd(textarea)
+
+    expect(mocks.setText).toHaveBeenLastCalledWith('첫 대체 문장 음성')
   })
 
   it('syncs ordinary changes immediately', () => {

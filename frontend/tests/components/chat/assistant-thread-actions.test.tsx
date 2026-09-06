@@ -69,6 +69,9 @@ vi.mock('@assistant-ui/react', () => {
       Send: childPassthrough,
       Attachments: () => null,
       AddAttachment: childPassthrough,
+      Dictate: childPassthrough,
+      StopDictation: childPassthrough,
+      DictationTranscript: () => null,
     },
     AttachmentPrimitive: {
       Root: passthrough,
@@ -97,16 +100,17 @@ vi.mock('@assistant-ui/react', () => {
         thread: { isDisabled: false },
       }),
     useAui: () => ({
-      composer: () => ({
+      composer: {
         addAttachment: vi.fn(),
         getState: () => ({ isEditing: true, isEmpty: true }),
         send: vi.fn(),
         setText: vi.fn(),
-      }),
-      thread: () => ({
+        stopDictation: vi.fn(),
+      },
+      thread: {
         cancelRun: vi.fn(),
         getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),
-      }),
+      },
     }),
     AuiIf: ({
       condition,

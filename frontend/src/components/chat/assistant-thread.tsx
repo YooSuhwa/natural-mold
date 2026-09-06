@@ -30,6 +30,7 @@ import {
 } from '@/components/chat/assistant-thread-context'
 import { ASSISTANT_THREAD_MESSAGE_COMPONENTS } from '@/components/chat/assistant-thread-message-renderers'
 import { ThreadComposer } from '@/components/chat/assistant-thread-composer'
+import type { DictationAvailability } from '@/components/chat/use-browser-dictation'
 import {
   BuilderComposer,
   BuilderComposerFallback,
@@ -69,6 +70,8 @@ export interface AssistantThreadProps {
   builderModelLabel?: string
   builderAgentSubtitle?: string
   composerHint?: ReactNode
+  dictationAvailability?: DictationAvailability
+  onDictationStart?: () => void
 }
 
 export function AssistantThread({
@@ -92,6 +95,8 @@ export function AssistantThread({
   builderModelLabel,
   builderAgentSubtitle,
   composerHint,
+  dictationAvailability,
+  onDictationStart,
 }: AssistantThreadProps) {
   const tPage = useTranslations('chat.page')
   const isBuilder = variant === 'builder'
@@ -203,6 +208,8 @@ export function AssistantThread({
                 compact={compact}
                 enableAttachments={enableAttachments}
                 focusKey={conversationId}
+                dictationAvailability={dictationAvailability}
+                onDictationStart={onDictationStart}
               />
             </div>
           )}

@@ -1427,7 +1427,14 @@
       "scrollToBottom": "맨 아래로 이동",
       "attachComingSoon": "파일 첨부 (준비 중)",
       "templateComingSoon": "템플릿에서 가져오기 (준비 중)",
-      "sessionCost": "세션 비용"
+      "sessionCost": "세션 비용",
+      "dictation": {
+        "start": "음성 입력 시작",
+        "stop": "음성 입력 중단",
+        "listening": "듣는 중",
+        "unsupported": "이 브라우저에서는 음성 입력을 지원하지 않습니다.",
+        "failed": "음성 입력을 시작하지 못했습니다. 마이크 권한과 브라우저 상태를 확인한 뒤 다시 시도하세요."
+      }
     },
     "tokenUsage": {
       "title": "토큰 사용량",

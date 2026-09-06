@@ -96,6 +96,7 @@ const runtimeWebServers = [
 
 const legacyCaptureSpecGlobs = [
   '**/captures/**/*.spec.ts',
+  '**/chat-dictation.spec.ts',
   '**/chat-langgraph-v3-visual-matrix.spec.ts',
 ]
 const runtimePolicyCaptureSpecGlobs = [

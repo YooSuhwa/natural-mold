@@ -1,7 +1,11 @@
 'use client'
 
 import { useRef, useState, useCallback, useMemo, useEffect } from 'react'
-import { useExternalStoreRuntime, useExternalMessageConverter } from '@assistant-ui/react'
+import {
+  useExternalStoreRuntime,
+  useExternalMessageConverter,
+  type DictationAdapter,
+} from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -344,6 +348,8 @@ interface UseChatRuntimeOptions {
   feedbackAdapter?: FeedbackAdapter
   /** Optional attachment adapter (P1-7). */
   attachmentAdapter?: AttachmentAdapter
+  /** Browser-only speech-to-text adapter for editable composer dictation. */
+  dictationAdapter?: DictationAdapter
   /** Durable active run discovered from conversation/message hydration. */
   activeRun?: ConversationRun | null
   /** envelope.latest_run — 최신 run (terminal 포함). 마지막 turn 의
@@ -370,6 +376,7 @@ export function useChatRuntime({
   resumeFn,
   feedbackAdapter,
   attachmentAdapter,
+  dictationAdapter,
   activeRun,
   latestRun,
 }: UseChatRuntimeOptions) {
@@ -1407,12 +1414,13 @@ export function useChatRuntime({
   )
 
   const adapters = useMemo(() => {
-    if (!feedbackAdapter && !attachmentAdapter) return undefined
+    if (!feedbackAdapter && !attachmentAdapter && !dictationAdapter) return undefined
     return {
       ...(feedbackAdapter ? { feedback: feedbackAdapter } : {}),
       ...(attachmentAdapter ? { attachments: attachmentAdapter } : {}),
+      ...(dictationAdapter ? { dictation: dictationAdapter } : {}),
     }
-  }, [feedbackAdapter, attachmentAdapter])
+  }, [feedbackAdapter, attachmentAdapter, dictationAdapter])
 
   const runtime = useExternalStoreRuntime({
     messages: threadMessages,

@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react'
 import {
   useExternalStoreRuntime,
   type AttachmentAdapter,
+  type DictationAdapter,
   type FeedbackAdapter,
 } from '@assistant-ui/react'
 import { HumanMessage } from '@langchain/core/messages'
@@ -37,6 +38,7 @@ interface UseMoldyLangGraphStreamOptions {
   conversationId: string
   feedbackAdapter?: FeedbackAdapter
   attachmentAdapter?: AttachmentAdapter
+  dictationAdapter?: DictationAdapter
   onBeforeSubmit?: () => void
   onRunStartAccepted?: () => void
   serverMessages?: readonly MoldyMessage[]
@@ -58,6 +60,7 @@ export function useMoldyLangGraphStream({
   conversationId,
   feedbackAdapter,
   attachmentAdapter,
+  dictationAdapter,
   onBeforeSubmit,
   onRunStartAccepted,
   serverMessages,
@@ -141,12 +144,13 @@ export function useMoldyLangGraphStream({
     runtimeIsRunning,
   } = runtimeMessages
   const adapters = useMemo(() => {
-    if (!feedbackAdapter && !attachmentAdapter) return undefined
+    if (!feedbackAdapter && !attachmentAdapter && !dictationAdapter) return undefined
     return {
       ...(feedbackAdapter ? { feedback: feedbackAdapter } : {}),
       ...(attachmentAdapter ? { attachments: attachmentAdapter } : {}),
+      ...(dictationAdapter ? { dictation: dictationAdapter } : {}),
     }
-  }, [feedbackAdapter, attachmentAdapter])
+  }, [feedbackAdapter, attachmentAdapter, dictationAdapter])
   const { onNew, onEdit, onReload, onCancel } = useStreamCommandController({
     conversationId,
     stream,

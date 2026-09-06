@@ -1427,7 +1427,14 @@
       "scrollToBottom": "Scroll to bottom",
       "attachComingSoon": "Attach Coming Soon",
       "templateComingSoon": "Template Coming Soon",
-      "sessionCost": "Session cost"
+      "sessionCost": "Session cost",
+      "dictation": {
+        "start": "Start voice input",
+        "stop": "Stop voice input",
+        "listening": "Listening",
+        "unsupported": "Voice input is not supported in this browser.",
+        "failed": "Voice input could not start. Check microphone permission and your browser state, then try again."
+      }
     },
     "tokenUsage": {
       "title": "Token Usage",
