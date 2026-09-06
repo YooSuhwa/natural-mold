@@ -1466,6 +1466,8 @@
       "editSave": "Save",
       "editCancel": "Cancel",
       "regenerate": "Regenerate",
+      "pinSummary": "Pin as conversation summary",
+      "unpinSummary": "Unpin conversation summary",
       "retry": "Retry",
       "feedbackUp": "Feedback Up",
       "feedbackDown": "Feedback Down",
@@ -1478,6 +1480,13 @@
       "artifacts": {
         "openLabel": "Open {name} file"
       }
+    },
+    "pinnedSummary": {
+      "heading": "Pinned conversation summary",
+      "unpin": "Unpin conversation summary",
+      "statusChanged": "Source message changed",
+      "statusDeleted": "Source message deleted",
+      "statusOtherBranch": "Message is on another conversation branch"
     },
     "markdown": {
       "copy": "Copy",

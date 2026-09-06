@@ -40,6 +40,7 @@ import { ChatRuntimeSection } from '@/components/chat/chat-runtime-section'
 import { ToolIconProvider } from '@/components/chat/tool-ui/tool-icon-context'
 import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
+import { PinnedConversationSummary } from '@/components/chat/pinned-conversation-summary'
 import { ChatRightRail } from '@/components/chat/right-rail/chat-right-rail'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -409,6 +410,7 @@ export default function ChatPage({
           onOpenTrace={handleOpenTrace}
           onToggleArtifacts={handleToggleArtifacts}
         />
+        <PinnedConversationSummary conversationId={activeConversationId} />
 
         {/* Thread */}
         {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||

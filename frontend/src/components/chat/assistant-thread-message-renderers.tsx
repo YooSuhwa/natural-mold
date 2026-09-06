@@ -23,6 +23,7 @@ import {
   FeedbackButtons,
   MessageMetaRow,
   MessageTimestamp,
+  PinSummaryButton,
   RegenerateButton,
   RetryButton,
   UserMessageEditor,
@@ -113,6 +114,7 @@ function AssistantMessage() {
     <MessageMetaRow>
       <BranchPicker />
       <CopyButton />
+      <PinSummaryButton />
       <RegenerateButton />
       <FeedbackButtons />
       <TokenUsagePopover />

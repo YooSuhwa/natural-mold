@@ -17,6 +17,7 @@ from app.models.audit_event import AuditEvent
 from app.models.builder_session import BuilderSession
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
+from app.models.conversation_pinned_summary import ConversationPinnedSummary
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.conversation_run_metrics import ConversationRunMetrics
@@ -85,6 +86,7 @@ __all__ = [
     "BuilderSession",
     "Conversation",
     "ConversationArtifact",
+    "ConversationPinnedSummary",
     "ConversationRun",
     "ConversationRunInput",
     "ConversationRunMetrics",

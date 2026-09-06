@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 import { copyTextToClipboard, getMessageCopyText } from '@/components/chat/message-copy'
 import { reportClientWarning } from '@/lib/logging/client-logger'
+import { useChatConversationId } from '@/components/chat/conversation-context'
+import { PinConversationSummaryButton } from '@/components/chat/pin-conversation-summary-button'
 import {
   MessageEditComposerInput,
   MessageEditComposerRoot,
@@ -124,6 +126,18 @@ export function RegenerateButton() {
       <RotateCcwIcon className="size-3" />
       <span className="sr-only">{t('regenerate')}</span>
     </ActionBarPrimitive.Reload>
+  )
+}
+
+export function PinSummaryButton() {
+  const conversationId = useChatConversationId()
+  const t = useTranslations('chat.message')
+  return (
+    <PinConversationSummaryButton
+      conversationId={conversationId}
+      pinLabel={t('pinSummary')}
+      unpinLabel={t('unpinSummary')}
+    />
   )
 }
 

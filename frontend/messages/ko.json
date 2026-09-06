@@ -1466,6 +1466,8 @@
       "editSave": "저장",
       "editCancel": "취소",
       "regenerate": "재생성",
+      "pinSummary": "대화 요약으로 고정",
+      "unpinSummary": "대화 요약 고정 해제",
       "retry": "다시 시도",
       "feedbackUp": "도움이 됨",
       "feedbackDown": "도움이 안 됨",
@@ -1478,6 +1480,13 @@
       "artifacts": {
         "openLabel": "{name} 파일 열기"
       }
+    },
+    "pinnedSummary": {
+      "heading": "고정된 대화 요약",
+      "unpin": "대화 요약 고정 해제",
+      "statusChanged": "원본 메시지가 변경됨",
+      "statusDeleted": "원본 메시지가 삭제됨",
+      "statusOtherBranch": "다른 대화 분기의 메시지"
     },
     "markdown": {
       "copy": "복사",
