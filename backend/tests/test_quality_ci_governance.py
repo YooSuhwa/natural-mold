@@ -80,6 +80,23 @@ def test_ci_lanes_are_exact_and_mutually_exclusive() -> None:
     assert _run_body(_named_step(steps, "Govern skips")) == "pnpm --dir frontend lint:e2e-skips"
 
 
+def test_all_browser_e2e_workflows_install_locked_chromium_before_execution() -> None:
+    execution_steps = {
+        "ci.yml": "Govern skips and run deterministic PR smoke",
+        "nightly-e2e.yml": "Govern skips and run deterministic full suite",
+        "live-e2e.yml": "Run the exact four-case live allowlist",
+    }
+    for workflow_name, execution_name in execution_steps.items():
+        steps = _workflow_steps(_workflow(workflow_name))
+        install = _named_step(steps, "Install Playwright Chromium")
+        execution = _named_step(steps, execution_name)
+
+        assert _run_body(install) == (
+            "pnpm --dir frontend exec playwright install --with-deps chromium"
+        )
+        assert steps.index(install) < steps.index(execution)
+
+
 def test_artifacts_upload_only_after_redaction_cleanup_with_fixed_retention() -> None:
     expected = {"ci.yml": "14", "nightly-e2e.yml": "30", "live-e2e.yml": "30"}
     for name, days in expected.items():

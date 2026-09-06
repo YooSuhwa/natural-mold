@@ -160,6 +160,8 @@ jobs:
       - run: uv sync --frozen --all-extras
         working-directory: backend
       - run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm --dir frontend exec playwright install --with-deps chromium
       - name: Govern skips and run deterministic PR smoke
         run: |
           pnpm --dir frontend lint:e2e-skips
