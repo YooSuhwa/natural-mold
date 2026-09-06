@@ -175,6 +175,42 @@ def test_child_failure_still_exports_and_cleans(
     assert _manifest_section(manifest, "export")["secret_scan_passed"] is True
 
 
+def test_selection_failure_preserves_receipts_without_claiming_server_ownership(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Given failed collection, then its bounded receipts survive for diagnosis."""
+    _install_common_fakes(monkeypatch, tmp_path)
+
+    def fake_process(
+        argv: list[str],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        stdout_path: Path,
+        stderr_path: Path,
+    ) -> ProcessResult:
+        del cwd, env
+        _write_receipt(argv, stdout_path, stderr_path, tmp_path)
+        return ProcessResult(70, True)
+
+    monkeypatch.setattr(runner, "run_owned_process", fake_process)
+
+    manifest, exit_code = runner._run("scripted", "scripted-smoke", ())
+
+    assert exit_code == 1
+    assert manifest["status"] == "failed"
+    assert manifest["failure_reason"] == "playwright_list_failed"
+    assert manifest["child_exit_code"] == 70
+    assert manifest["selected_ids"] == []
+    assert manifest["executed_ids"] == []
+    assert manifest["owned_run_root"] is True
+    assert manifest["owned_database"] is True
+    assert manifest["owned_backend"] is False
+    assert manifest["owned_frontend"] is False
+    assert (tmp_path / "frontend/test-results/scripted-smoke/selection.json").is_file()
+    assert (tmp_path / "frontend/test-results/scripted-smoke/selection.log").is_file()
+
+
 def test_export_failure_does_not_overwrite_playwright_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -23,6 +23,15 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
+      # Backend isolation tests exercise the real prepared frontend mirror and
+      # Next type-generation boundary, so the clean runner needs workspace deps.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
       # --all-extras: ruff lives in [project.optional-dependencies].dev,
       # not in the default dev dependency-group.
       - run: uv sync --frozen --all-extras
@@ -160,16 +169,10 @@ jobs:
         id: pr_smoke_artifact_contract
         if: ${{ always() }}
         run: |
-          artifact_scope="$(
-            backend/.venv/bin/python scripts/check-isolation-cleanup.py \
-              --print-artifact-scope \
-              .omo/evidence/project-restart-consolidated-roadmap/ci-pr-smoke.json
-          )"
-          case "$artifact_scope" in
-            manifest-only|full) ;;
-            *) exit 1 ;;
-          esac
-          printf 'artifact_scope=%s\n' "$artifact_scope" >> "$GITHUB_OUTPUT"
+          backend/.venv/bin/python scripts/check-isolation-cleanup.py \
+            --print-artifact-metadata \
+            .omo/evidence/project-restart-consolidated-roadmap/ci-pr-smoke.json \
+            >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         if: >-
           ${{ always() && steps.pr_smoke_artifact_contract.outcome == 'success' &&
@@ -187,6 +190,6 @@ jobs:
           name: pr-scripted-smoke
           path: |
             .omo/evidence/project-restart-consolidated-roadmap/ci-pr-smoke.json
-            output/e2e-captures/
+            ${{ steps.pr_smoke_artifact_contract.outputs.artifact_directory }}
           if-no-files-found: error
           retention-days: 14

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Literal
 from urllib.parse import urlsplit
 
 from e2e_cleanup_contract import (
@@ -15,6 +16,8 @@ from e2e_cleanup_contract import (
     strings,
 )
 from postgres_cleanup_checker import ManifestValidationError
+
+type OutcomeKind = Literal["standard", "preexecution", "selection-failure"]
 
 
 def validate_cleanup(
@@ -69,7 +72,7 @@ def validate_egress(value: object, lane: str) -> None:
 
 def validate_outcome(
     payload: dict[str, object], lane: str, project: str, *, source_rejected: bool
-) -> bool:
+) -> OutcomeKind:
     """Validate success, forced-failure, and signal receipt semantics."""
     status = string(payload.get("status"), "status")
     self_test = string(payload.get("self_test"), "self_test")
@@ -110,7 +113,7 @@ def validate_outcome(
         and payload.get("owned_proxy") is False
     )
     if diagnostic_preexecution:
-        return True
+        return "preexecution"
     if status == "passed":
         require(
             self_test == "normal" and reason is None and exit_code == 0 and not source_rejected,
@@ -119,8 +122,25 @@ def validate_outcome(
         require(bool(selected) and selected == executed, "node_execution_mismatch")
         if lane == "live":
             require(selected == list(LIVE_NODES), "live_selection")
-        return False
+        return "standard"
     if self_test == "normal":
+        selection_failed = (
+            lane == "scripted"
+            and project == "scripted-smoke"
+            and status == "failed"
+            and reason == "playwright_list_failed"
+            and exit_code == 70
+            and not selected
+            and not executed
+            and not source_rejected
+            and payload.get("owned_run_root") is True
+            and payload.get("owned_database") is True
+            and payload.get("owned_backend") is False
+            and payload.get("owned_frontend") is False
+            and payload.get("owned_proxy") is False
+        )
+        if selection_failed:
+            return "selection-failure"
         playwright_failed = reason == "playwright_failed" and exit_code == 1
         artifact_export_failed = (
             source_rejected and reason == "artifact_export_failed" and exit_code == 0
@@ -132,14 +152,14 @@ def validate_outcome(
         require(bool(selected) and selected == executed, "node_execution_mismatch")
         if lane == "live":
             require(selected == list(LIVE_NODES), "live_selection")
-        return False
+        return "standard"
     if self_test == "sigint":
         require(
             status == "interrupted" and reason == "signal" and exit_code in {130, 143},
             "self_test",
         )
         require(not executed, "node_execution_mismatch")
-        return False
+        return "standard"
     match self_test:
         case "spec-failure":
             require(
@@ -159,4 +179,4 @@ def validate_outcome(
         case _:
             raise ManifestValidationError("self_test")
     require(not executed, "node_execution_mismatch")
-    return False
+    return "standard"

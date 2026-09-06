@@ -225,13 +225,24 @@ def validate_payload(
             == tuple((item.node_id, item.status) for item in diagnostics),
             "source_rejection",
         )
-    diagnostic_preexecution = validate_outcome(
-        payload, lane, project, source_rejected=rejection is not None
-    )
+    outcome = validate_outcome(payload, lane, project, source_rejected=rejection is not None)
+    diagnostic_preexecution = outcome == "preexecution"
+    selection_failure = outcome == "selection-failure"
     require(diagnostic_preexecution is diagnostic_export, "preexecution_export")
     if diagnostic_preexecution:
         require(set(payload) == _PREEXECUTION_TOP_KEYS, "preexecution_schema")
-    if diagnostic_preexecution or payload.get("status") == "passed":
+    if selection_failure:
+        expected_keys = _PREEXECUTION_TOP_KEYS | present_top
+        require(set(payload) == expected_keys, "selection_failure_schema")
+        files = export.get("files")
+        if not isinstance(files, list):
+            raise ManifestValidationError("selection_artifacts")
+        exported_paths = {item.get("path") for item in files if isinstance(item, dict)}
+        require(
+            {"results/selection.json", "results/selection.log"}.issubset(exported_paths),
+            "selection_artifacts",
+        )
+    if diagnostic_preexecution or selection_failure or payload.get("status") == "passed":
         require(not diagnostics and rejection is None, "failure_diagnostics")
     elif payload.get("self_test") == "normal":
         if payload.get("failure_reason") == "artifact_export_failed":

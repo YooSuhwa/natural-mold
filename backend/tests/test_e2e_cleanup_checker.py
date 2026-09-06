@@ -178,6 +178,61 @@ def _preexecution_manifest(repository: Path) -> dict[str, object]:
     return payload
 
 
+def _selection_failure_manifest(repository: Path) -> dict[str, object]:
+    """Build a post-provision collection failure with exported bounded receipts."""
+    payload = _manifest(repository)
+    export = payload["export"]
+    assert isinstance(export, dict)
+    directory = repository / str(export["export_directory"])
+    exporter_manifest_path = directory / "export-manifest.json"
+    exporter_manifest = json.loads(exporter_manifest_path.read_text())
+    artifact_entries = exporter_manifest["files"]
+    assert isinstance(artifact_entries, list)
+    for relative, content in (
+        ("results/selection.json", b'{"suites":[]}\n'),
+        ("results/selection.log", b"Playwright collection failed before execution.\n"),
+    ):
+        target = directory.joinpath(*relative.split("/"))
+        target.write_bytes(content)
+        artifact_entries.append(
+            {
+                "path": relative,
+                "sha256": _sha256(content),
+                "size_bytes": len(content),
+            }
+        )
+    artifact_entries.sort(key=lambda item: str(item["path"]))
+    exporter_manifest["total"] = {
+        "file_count": len(artifact_entries),
+        "size_bytes": sum(int(item["size_bytes"]) for item in artifact_entries),
+    }
+    manifest_content = (json.dumps(exporter_manifest, sort_keys=True) + "\n").encode()
+    exporter_manifest_path.write_bytes(manifest_content)
+    manifest_entry = {
+        "path": "export-manifest.json",
+        "sha256": _sha256(manifest_content),
+        "size_bytes": len(manifest_content),
+    }
+    export["manifest"] = manifest_entry
+    export["files"] = [manifest_entry, *artifact_entries]
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "playwright_list_failed",
+            "child_exit_code": 70,
+            "selected_ids": [],
+            "executed_ids": [],
+            "unexpected_failures": [],
+            "owned_run_root": True,
+            "owned_database": True,
+            "owned_backend": False,
+            "owned_frontend": False,
+            "owned_proxy": False,
+        }
+    )
+    return payload
+
+
 def test_validate_payload_accepts_scripted_smoke_preexecution_diagnostic(tmp_path: Path) -> None:
     """Given an empty controlled pre-execution receipt, when checked, then it remains failed."""
     payload = _preexecution_manifest(tmp_path)
@@ -186,6 +241,70 @@ def test_validate_payload_accepts_scripted_smoke_preexecution_diagnostic(tmp_pat
 
     assert payload["status"] == "failed"
     assert scope == "manifest-only"
+
+
+def test_validate_payload_accepts_exported_scripted_smoke_selection_failure(
+    tmp_path: Path,
+) -> None:
+    payload = _selection_failure_manifest(tmp_path)
+
+    scope = validate_payload(payload, repository_root=tmp_path)
+
+    assert payload["status"] == "failed"
+    assert scope == "full"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("child_exit_code", 1),
+        ("selected_ids", ["scripted-smoke::e2e/smoke.spec.ts::works"]),
+        ("owned_database", False),
+        ("owned_backend", True),
+        ("unexpected_key", "unexpected"),
+    ],
+)
+def test_validate_payload_rejects_invalid_selection_failure_contract(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    payload = _selection_failure_manifest(tmp_path)
+    payload[field] = value
+
+    with pytest.raises(ManifestValidationError):
+        validate_payload(payload, repository_root=tmp_path)
+
+
+def test_validate_payload_rejects_selection_failure_without_collection_receipts(
+    tmp_path: Path,
+) -> None:
+    payload = _manifest(tmp_path)
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "playwright_list_failed",
+            "child_exit_code": 70,
+            "selected_ids": [],
+            "executed_ids": [],
+            "unexpected_failures": [],
+            "owned_backend": False,
+            "owned_frontend": False,
+        }
+    )
+
+    with pytest.raises(ManifestValidationError, match="selection_artifacts"):
+        validate_payload(payload, repository_root=tmp_path)
+
+
+def test_validate_payload_rejects_selection_failure_with_incomplete_cleanup(
+    tmp_path: Path,
+) -> None:
+    payload = _selection_failure_manifest(tmp_path)
+    cleanup = payload["cleanup"]
+    assert isinstance(cleanup, dict)
+    cleanup["cleanup_run_root_removed"] = False
+
+    with pytest.raises(ManifestValidationError, match="cleanup"):
+        validate_payload(payload, repository_root=tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -1052,7 +1171,9 @@ def test_main_dispatches_mixed_postgres_and_e2e_manifests(
         module, "validate_live_absence", lambda _payload: calls.append("postgres_live")
     )
     monkeypatch.setattr(
-        module, "validate_e2e_payload", lambda _payload, **_kwargs: calls.append("e2e")
+        module,
+        "validate_e2e_payload",
+        lambda _payload, **_kwargs: (calls.append("e2e"), "manifest-only")[1],
     )
     monkeypatch.setattr(
         module, "validate_e2e_live_absence", lambda _payload: calls.append("e2e_live")

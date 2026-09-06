@@ -14,7 +14,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Final, Literal
+from typing import Final, Literal, NamedTuple
 
 from cleanup_discovery import DiscoverySummary, discover_claims
 from cleanup_discovery_claims import Claims
@@ -214,16 +214,27 @@ def discover_and_probe(
 type ArtifactScope = Literal["manifest-only", "full"]
 
 
-def _validate_manifest(manifest: Path) -> ArtifactScope:
+class ManifestValidationResult(NamedTuple):
+    scope: ArtifactScope
+    artifact_directory: str | None
+
+
+def _validate_manifest(manifest: Path) -> ManifestValidationResult:
     """Dispatch only after the shared no-follow manifest read boundary parsed the runner."""
     payload = load_manifest(manifest)
     if payload.get("runner") == "moldy-isolated-e2e" and payload.get("schema_version") == 1:
         scope = validate_e2e_payload(payload, receipt_path=manifest)
         validate_e2e_live_absence(payload)
-        return scope
+        export = payload.get("export")
+        directory = export.get("export_directory") if isinstance(export, dict) else None
+        require(
+            scope == "manifest-only" or isinstance(directory, str),
+            "artifact_directory",
+        )
+        return ManifestValidationResult(scope, directory if isinstance(directory, str) else None)
     validate_payload(payload)
     validate_live_absence(payload)
-    return "full"
+    return ManifestValidationResult("full", None)
 
 
 def main() -> int:
@@ -231,9 +242,10 @@ def main() -> int:
     parser.add_argument("manifests", nargs="*", type=Path)
     parser.add_argument("--discover", type=Path)
     parser.add_argument("--print-artifact-scope", action="store_true")
+    parser.add_argument("--print-artifact-metadata", action="store_true")
     args = parser.parse_args()
     if args.discover is not None:
-        if args.manifests or args.print_artifact_scope:
+        if args.manifests or args.print_artifact_scope or args.print_artifact_metadata:
             parser.error("--discover cannot be combined with manifest validation")
         try:
             summary = discover_and_probe(
@@ -247,11 +259,23 @@ def main() -> int:
         return 0
     if not args.manifests:
         parser.error("one or more manifests are required")
-    if args.print_artifact_scope and len(args.manifests) != 1:
-        parser.error("--print-artifact-scope requires exactly one manifest")
-    scopes = [_validate_manifest(manifest) for manifest in args.manifests]
+    if args.print_artifact_scope and args.print_artifact_metadata:
+        parser.error("artifact output modes are mutually exclusive")
+    if (args.print_artifact_scope or args.print_artifact_metadata) and len(args.manifests) != 1:
+        parser.error("artifact output requires exactly one manifest")
+    try:
+        results = [_validate_manifest(manifest) for manifest in args.manifests]
+    except ManifestValidationError as error:
+        print(f"manifest validation rejected: {error}", file=sys.stderr)
+        return 1
     if args.print_artifact_scope:
-        print(scopes[0])
+        print(results[0].scope)
+        return 0
+    if args.print_artifact_metadata:
+        result = results[0]
+        print(f"artifact_scope={result.scope}")
+        if result.artifact_directory is not None:
+            print(f"artifact_directory={result.artifact_directory}")
         return 0
     print(f"validated={len(args.manifests)}")
     return 0

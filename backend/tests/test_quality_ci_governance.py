@@ -99,11 +99,12 @@ def test_pr_smoke_preserves_failure_artifacts_for_diagnosis() -> None:
 
     assert "id: pr_smoke_artifact_contract" in validation
     assert "if: ${{ always() }}" in validation
-    assert "--print-artifact-scope" in validation
+    assert "--print-artifact-metadata" in validation
     assert "outputs.artifact_scope == 'manifest-only'" in diagnostic_upload
     assert "outputs.artifact_scope == 'full'" in full_upload
     assert "output/e2e-captures/" not in diagnostic_upload
-    assert "output/e2e-captures/" in full_upload
+    assert "outputs.artifact_directory" in full_upload
+    assert "output/e2e-captures/" not in full_upload
     assert "ci-pr-smoke.json" in diagnostic_upload
     assert "ci-pr-smoke.json" in full_upload
 
@@ -156,3 +157,36 @@ def test_frontend_ci_provisions_backend_python_before_script_tests() -> None:
     assert "cache-dependency-glob: backend/uv.lock" in frontend
     assert backend_sync in frontend
     assert frontend.index(backend_sync) < frontend.index("- run: pnpm exec vitest run")
+
+
+def test_backend_ci_provisions_frontend_dependencies_before_isolated_pytest() -> None:
+    workflow = _workflow("ci.yml")
+    backend = workflow[workflow.index("  backend:") : workflow.index("  backend-typecheck:")]
+    workspace_install = "\n".join(
+        (
+            "      - run: pnpm install --frozen-lockfile",
+            "        working-directory: .",
+        )
+    )
+    isolated_pytest = (
+        "bash scripts/run-isolated-command.sh --cwd backend -- "
+        "uv run pytest -q -n 4 --ignore=tests/integration"
+    )
+
+    assert "- uses: pnpm/action-setup@v4" in backend
+    assert "- uses: actions/setup-node@v4" in backend
+    assert "node-version-file: .node-version" in backend
+    assert workspace_install in backend
+    assert backend.index(workspace_install) < backend.index(isolated_pytest)
+
+
+def test_pr_smoke_uploads_only_the_validated_export_directory() -> None:
+    workflow_steps = _workflow_steps(_workflow("ci.yml"))
+    validation = _named_step(workflow_steps, "Validate cleanup and redacted artifact contract")
+    uploads = tuple(step for step in workflow_steps if "actions/upload-artifact@v4" in step)
+    full_upload = uploads[1]
+
+    assert "--print-artifact-metadata" in validation
+    assert '>> "$GITHUB_OUTPUT"' in validation
+    assert "steps.pr_smoke_artifact_contract.outputs.artifact_directory" in full_upload
+    assert "output/e2e-captures/" not in full_upload
