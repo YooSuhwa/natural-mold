@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping
-from typing import Any
+
+from app.models.conversation_run_input import JsonValue
 
 
-def attachment_ids_from_protocol_input(input_payload: dict[str, Any] | None) -> list[uuid.UUID]:
+def attachment_ids_from_protocol_input(
+    input_payload: dict[str, JsonValue] | None,
+) -> list[uuid.UUID]:
     if not isinstance(input_payload, Mapping):
         return []
     attachments = input_payload.get("attachments")
@@ -31,7 +34,9 @@ def attachment_ids_from_protocol_input(input_payload: dict[str, Any] | None) -> 
     return attachment_ids
 
 
-def input_without_protocol_attachments(input_payload: dict[str, Any]) -> dict[str, Any]:
+def input_without_protocol_attachments(
+    input_payload: dict[str, JsonValue],
+) -> dict[str, JsonValue]:
     if "attachments" not in input_payload:
         return input_payload
     sanitized = dict(input_payload)

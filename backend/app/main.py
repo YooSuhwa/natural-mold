@@ -77,6 +77,7 @@ from app.scheduler import (
     get_scheduler,
     register_broker_eviction_job,
     register_catalog_update_job,
+    register_conversation_queue_recovery_job,
     register_conversation_run_stale_sweep_job,
     register_credential_rotation_job,
     register_draft_conversation_gc_job,
@@ -215,6 +216,9 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     register_default_hooks()
 
     await sweep_stale_conversation_runs()
+    from app.services.conversation_run_queue_worker import recover_conversation_queue
+
+    await recover_conversation_queue()
 
     if settings.skill_evaluation_enabled:
         await skill_evaluation_worker.start(async_session, reconcile_stale=True)
@@ -241,6 +245,7 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
         # W3-out M4 — EventBroker GC (60s interval, TTL 300s).
         register_broker_eviction_job()
         register_conversation_run_stale_sweep_job()
+        register_conversation_queue_recovery_job()
         # ADR-016 §4.2 — refresh-token whitelist GC (nightly).
         register_refresh_token_gc_job()
         # Orphan draft-conversation GC (hourly) — removes abandoned, message-less

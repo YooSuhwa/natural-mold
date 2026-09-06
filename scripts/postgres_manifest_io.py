@@ -420,6 +420,7 @@ def _validate_final_postgres_manifest(
         "migration-roundtrip": "postgres-migration-roundtrip",
         "stream-resume": "postgres-stream-resume",
         "run-lifecycle+stream-resume": "postgres-run-lifecycle-stream-resume",
+        "queue-concurrency": "postgres-queue-concurrency",
     }
     node = nodes.get(mode)
     matched = re.fullmatch(
@@ -463,6 +464,7 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
             "self-test",
             "stream-resume",
             "run-lifecycle+stream-resume",
+            "queue-concurrency",
         ),
     )
     parser.add_argument("--manifest", required=True, type=Path)
@@ -492,6 +494,7 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
                 "migration-roundtrip",
                 "stream-resume",
                 "run-lifecycle+stream-resume",
+                "queue-concurrency",
             }:
                 verify_evidence_directory(evidence)
                 scenarios = [
@@ -516,7 +519,12 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
             early_mode: ExternalScenarioKind = (
                 args.mode
                 if args.mode
-                in {"migration-roundtrip", "stream-resume", "run-lifecycle+stream-resume"}
+                in {
+                    "migration-roundtrip",
+                    "stream-resume",
+                    "run-lifecycle+stream-resume",
+                    "queue-concurrency",
+                }
                 else "all"
             )
             scenarios = [

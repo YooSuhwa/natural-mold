@@ -33,6 +33,8 @@ class ConversationRunResponse(BaseModel):
     runtime_policy_hash: str | None = None
     runtime_policy_source: str | None = None
     cancel_requested_at: UtcDatetime | None = None
+    cancel_reason: str | None = None
+    cancellation_acknowledged_at: UtcDatetime | None = None
     started_at: UtcDatetime | None = None
     heartbeat_at: UtcDatetime | None = None
     completed_at: UtcDatetime | None = None

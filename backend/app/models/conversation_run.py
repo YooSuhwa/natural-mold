@@ -66,6 +66,10 @@ class ConversationRun(Base):
     cancel_requested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=False), nullable=True
     )
+    cancel_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    cancellation_acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)

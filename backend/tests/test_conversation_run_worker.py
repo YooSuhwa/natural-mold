@@ -97,6 +97,7 @@ async def test_cancel_before_running_finalizes_run_as_canceled() -> None:
         assert refreshed.status == "canceled"
         assert refreshed.error_code is None
         assert refreshed.is_active is False
+        assert refreshed.cancellation_acknowledged_at is not None
 
 
 @pytest.mark.asyncio

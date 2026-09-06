@@ -47,8 +47,11 @@ from app.routers.conversation_agent_protocol_runtime import (
     command_multitask_strategy,
     input_preview,
 )
-from app.services import chat_service, conversation_run_service
-from app.services.conversation_audit_service import record_conversation_audit
+from app.services import chat_service, conversation_run_queue_service, conversation_run_service
+from app.services.conversation_audit_service import (
+    record_conversation_audit,
+    record_conversation_run_audit,
+)
 from app.services.conversation_stream_service import resolve_agent_context
 
 StartConversationRun = Callable[..., Awaitable[Any]]
@@ -109,6 +112,12 @@ async def _handle_run_start_command(
     resolved_checkpoint_id = checkpoint_id(command)
     runtime_input_payload = input_without_protocol_attachments(input_payload)
     run_source = "chat"
+    if strategy != "reject" and resolved_checkpoint_id:
+        return command_error(
+            command,
+            code="QUEUED_FORK_UNSUPPORTED",
+            message="Queued edit and regenerate requests are not supported.",
+        )
     if resolved_checkpoint_id:
         append_messages = _messages_from_protocol_input(runtime_input_payload)
         runtime_input_payload = await _fork_overwrite_input(
@@ -141,6 +150,100 @@ async def _handle_run_start_command(
             "source": "langgraph_protocol",
         },
     )
+    if strategy != "reject":
+        pending_interrupt = await conversation_run_service.get_latest_interrupted_run(
+            db,
+            conversation_id=conversation.id,
+            user_id=user.id,
+        )
+        if pending_interrupt is not None:
+            return command_error(
+                command,
+                code="QUEUE_HITL_PENDING",
+                message="Resolve the pending approval before queueing another input.",
+            )
+        client_request_id = command.params.client_request_id or str(
+            command.id if command.id is not None else uuid.uuid4()
+        )
+        enqueue_result = await conversation_run_queue_service.enqueue_input_with_result(
+            db,
+            conversation_id=conversation.id,
+            user_id=user.id,
+            client_request_id=client_request_id,
+            source="chat",
+            input_payload=runtime_input_payload,
+            attachment_ids=attachment_ids,
+            checkpoint_id=None,
+            priority=100 if strategy == "interrupt" else 0,
+        )
+        queued = enqueue_result.input
+        cfg = await resolve_agent_context(db, conversation.id, user)
+        if attachment_ids:
+            await chat_service.link_attachments_to_conversation(
+                db,
+                conversation_id=conversation.id,
+                user_id=user.id,
+                attachment_ids=attachment_ids,
+            )
+            if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
+                from app.services import skill_draft_workspace
+
+                await skill_draft_workspace.copy_conversation_attachments_to_inputs(
+                    db,
+                    storage_path=cfg.draft_workspace_path,
+                    attachment_ids=attachment_ids,
+                    user_id=user.id,
+                )
+        active = await conversation_run_service.get_active_run(
+            db,
+            conversation_id=conversation.id,
+            user_id=user.id,
+        )
+        if strategy == "interrupt" and enqueue_result.created and active is not None:
+            active = await conversation_run_service.get_run_for_user(
+                db,
+                conversation_id=conversation.id,
+                run_id=active.id,
+                user_id=user.id,
+                for_update=True,
+            )
+            if active is not None:
+                await conversation_run_service.request_cancel_run(
+                    db,
+                    active,
+                    reason="steer",
+                )
+                await record_conversation_run_audit(
+                    db,
+                    action="conversation.run_steer_request",
+                    run=active,
+                    user=user,
+                    request=request,
+                    status="canceling",
+                )
+        await db.commit()
+
+        if strategy == "interrupt" and enqueue_result.created and active is not None:
+            from app.services.conversation_run_worker import get_run_task_registry
+
+            get_run_task_registry().request_cancel(active.id, reason="steer")
+        else:
+            from app.services.conversation_run_queue_worker import (
+                dispatch_next_for_conversation,
+            )
+
+            await dispatch_next_for_conversation(conversation.id)
+            await db.refresh(queued)
+        return command_success(
+            command,
+            conversation=conversation,
+            thread_id=str(conversation.id),
+            run_id=str(queued.run_id) if queued.run_id is not None else None,
+            input_id=str(queued.id),
+            input_status=queued.status,
+            revision=queued.revision,
+            position=queued.position,
+        )
     try:
         run = await conversation_run_service.create_run(
             db,

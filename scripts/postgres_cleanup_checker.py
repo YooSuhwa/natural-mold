@@ -205,7 +205,11 @@ def validate_payload(payload: dict[str, object]) -> None:
     scenarios = _mapping_list(payload.get("scenarios"), "scenarios")
     match payload.get("mode"):
         case (
-            "all" | "migration-roundtrip" | "stream-resume" | "run-lifecycle+stream-resume"
+            "all"
+            | "migration-roundtrip"
+            | "stream-resume"
+            | "run-lifecycle+stream-resume"
+            | "queue-concurrency"
         ) as mode:
             _require(payload.get("concurrent_pair") is False, "concurrent_pair")
             if mode == "all":
@@ -214,6 +218,8 @@ def validate_payload(payload: dict[str, object]) -> None:
                 scenario_reason = "migration_roundtrip_scenarios"
             elif mode == "stream-resume":
                 scenario_reason = "stream_resume_scenarios"
+            elif mode == "queue-concurrency":
+                scenario_reason = "queue_concurrency_scenarios"
             else:
                 scenario_reason = "run_lifecycle_stream_resume_scenarios"
             _require(

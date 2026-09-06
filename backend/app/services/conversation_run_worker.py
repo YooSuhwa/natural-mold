@@ -4,9 +4,12 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 import uuid
 from collections.abc import AsyncGenerator, Callable
-from typing import Any, Literal
+from typing import Any, Literal, cast
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.agent_runtime import event_names
 from app.agent_runtime.checkpointer import get_checkpointer
@@ -32,7 +35,12 @@ logger = logging.getLogger(__name__)
 
 AgentStreamExecutor = Callable[..., AsyncGenerator[str, None]]
 async_session = None
-CancelReason = Literal["user", "shutdown"]
+CancelReason = Literal["stop", "steer", "shutdown"]
+_CANCEL_POLL_SECONDS = 0.25
+
+
+class RunTaskAlreadyRegisteredError(RuntimeError):
+    pass
 
 
 def _session_factory():
@@ -48,7 +56,8 @@ class RunTaskRegistry:
     def start(self, run_id: uuid.UUID, task: asyncio.Task[None]) -> None:
         existing = self._tasks.get(run_id)
         if existing is not None and not existing.done():
-            raise RuntimeError(f"run task already exists: {run_id}")
+            task.cancel()
+            raise RunTaskAlreadyRegisteredError(f"run task already exists: {run_id}")
         self._tasks[run_id] = task
 
         def _discard(done_task: asyncio.Task[None]) -> None:
@@ -71,7 +80,7 @@ class RunTaskRegistry:
         return {run_id for run_id, task in self._tasks.items() if not task.done()}
 
     def cancel(self, run_id: uuid.UUID) -> bool:
-        return self.request_cancel(run_id, reason="user")
+        return self.request_cancel(run_id, reason="stop")
 
     def request_cancel(self, run_id: uuid.UUID, *, reason: CancelReason) -> bool:
         task = self._tasks.get(run_id)
@@ -90,6 +99,10 @@ class RunTaskRegistry:
 
     async def shutdown(self, timeout_seconds: float = 10.0) -> None:
         items = [(run_id, task) for run_id, task in self._tasks.items() if not task.done()]
+        try:
+            await _persist_shutdown_intent([run_id for run_id, _task in items])
+        except SQLAlchemyError:
+            logger.exception("failed to persist conversation run shutdown intent")
         for run_id, task in items:
             self._cancel_reasons[run_id] = "shutdown"
             task.cancel()
@@ -208,6 +221,8 @@ async def _transition(
     interrupt_id: str | None = None,
     error_code: str | None = None,
     error_message: str | None = None,
+    cancellation_ack_worker_id: str | None = None,
+    allow_workerless_cancellation_ack: bool = False,
 ) -> ConversationRun | None:
     async with _session_factory()() as session:
         run = await session.get(ConversationRun, run_id, with_for_update=True)
@@ -222,6 +237,8 @@ async def _transition(
                 interrupt_id=interrupt_id,
                 error_code=error_code,
                 error_message=error_message,
+                cancellation_ack_worker_id=cancellation_ack_worker_id,
+                allow_workerless_cancellation_ack=allow_workerless_cancellation_ack,
             )
             await session.commit()
         except ValueError:
@@ -268,15 +285,44 @@ def _heartbeat_interval_seconds() -> float:
     return max(1.0, min(30.0, settings.chat_run_stale_after_seconds / 3))
 
 
-async def _heartbeat_until_terminal(run_id: uuid.UUID) -> None:
+async def _heartbeat_until_terminal(run_id: uuid.UUID, registry: RunTaskRegistry) -> None:
     interval = _heartbeat_interval_seconds()
+    next_heartbeat = time.monotonic()
     while True:
-        await asyncio.sleep(interval)
+        await asyncio.sleep(_CANCEL_POLL_SECONDS)
         async with _session_factory()() as session:
-            alive = await conversation_run_service.heartbeat_run(session, run_id)
-            await session.commit()
-            if not alive:
+            run = await session.get(ConversationRun, run_id)
+            if run is None or not run.is_active:
                 return
+            if run is not None and run.status == "canceling":
+                reason = (
+                    cast(CancelReason, run.cancel_reason)
+                    if run.cancel_reason in {"stop", "steer", "shutdown"}
+                    else "stop"
+                )
+                registry.request_cancel(run_id, reason=reason)
+                return
+            if time.monotonic() >= next_heartbeat:
+                alive = await conversation_run_service.heartbeat_run(session, run_id)
+                await session.commit()
+                if not alive:
+                    return
+                next_heartbeat = time.monotonic() + interval
+
+
+async def _persist_shutdown_intent(run_ids: list[uuid.UUID]) -> None:
+    if not run_ids:
+        return
+    async with _session_factory()() as session:
+        for run_id in run_ids:
+            run = await session.get(ConversationRun, run_id, with_for_update=True)
+            if run is not None and run.status in {"queued", "running"}:
+                await conversation_run_service.request_cancel_run(
+                    session,
+                    run,
+                    reason="shutdown",
+                )
+        await session.commit()
 
 
 def _redact_run_error_message(text: str, secret_values: set[str]) -> str | None:
@@ -458,6 +504,7 @@ async def _run_conversation(
     # trace finalize + terminal 전이를 건너뛴다 — 다른 경로가 이미 끝낸 run 을
     # 다시 finalize 하지 않기 위함.
     finalize_needed = True
+    workerless_cancel_before_start = False
     try:
         run, started = await _transition_to_running(
             run_id,
@@ -468,10 +515,11 @@ async def _run_conversation(
             finalize_needed = False
             return
         if not started:
-            if run.status == "canceling":
+            if run.status == "canceling" and run.worker_instance_id is None:
                 # Stop 요청이 워커 기동 전(queued)에 도착 — 실행 없이 canceled 로
                 # 종료한다. running 전이 실패를 failed 로 오분류하지 않는다.
                 final_status = "canceled"
+                workerless_cancel_before_start = True
                 await _publish_message_end(ctx, status="canceled")
             else:
                 logger.warning(
@@ -488,7 +536,7 @@ async def _run_conversation(
             status="running",
         )
         heartbeat_task = asyncio.create_task(
-            _heartbeat_until_terminal(run_id),
+            _heartbeat_until_terminal(run_id, registry),
             name=f"conversation-run-heartbeat-{run_id}",
         )
 
@@ -561,6 +609,8 @@ async def _run_conversation(
                     error_code=error_code,
                     error_message=error_message,
                     interrupt_id=interrupt_id,
+                    cancellation_ack_worker_id=registry.worker_instance_id,
+                    allow_workerless_cancellation_ack=workerless_cancel_before_start,
                 )
                 action = _audit_action_for_terminal_status(final_status)
                 if final_run is not None and action is not None:
@@ -619,10 +669,17 @@ async def _run_conversation(
 
         ctx.broker.close(error=failure)
         registry.discard(run_id)
+        if finalize_needed:
+            from app.services.conversation_run_queue_worker import (
+                dispatch_next_for_conversation,
+            )
+
+            await dispatch_next_for_conversation(conversation_id)
 
 
 __all__ = [
     "RunTaskRegistry",
+    "RunTaskAlreadyRegisteredError",
     "get_run_task_registry",
     "reset_run_task_registry_for_tests",
     "start_conversation_run",

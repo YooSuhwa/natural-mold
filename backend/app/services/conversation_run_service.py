@@ -19,6 +19,7 @@ from app.exceptions import ConflictError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, RUN_TERMINAL_STATUSES, ConversationRun
+from app.models.conversation_run_input import ConversationRunInput
 from app.models.user import User
 from app.services import trace_storage
 from app.services.artifact_service import finalize_artifacts_for_run
@@ -340,6 +341,8 @@ async def transition_run(
     error_code: str | None = None,
     error_message: str | None = None,
     last_event_id: str | None = None,
+    cancellation_ack_worker_id: str | None = None,
+    allow_workerless_cancellation_ack: bool = False,
 ) -> ConversationRun:
     """run 상태 전이의 단일 진입점.
 
@@ -369,6 +372,16 @@ async def transition_run(
     elif status in RUN_TERMINAL_STATUSES:
         run.is_active = False
         run.completed_at = run.completed_at or now
+        if run.cancel_requested_at is not None:
+            owner_ack = (
+                cancellation_ack_worker_id is not None
+                and run.worker_instance_id == cancellation_ack_worker_id
+            )
+            workerless_ack = allow_workerless_cancellation_ack and run.worker_instance_id is None
+            if owner_ack or workerless_ack:
+                run.cancellation_acknowledged_at = run.cancellation_acknowledged_at or now
+            elif cancellation_ack_worker_id is not None or allow_workerless_cancellation_ack:
+                raise ValueError("Cancellation acknowledgment requires the owning worker")
         if status == "interrupted" and interrupt_id:
             run.interrupt_id = interrupt_id
         if status in {"failed", "stale"}:
@@ -379,11 +392,17 @@ async def transition_run(
     return run
 
 
-async def request_cancel_run(db: AsyncSession, run: ConversationRun) -> ConversationRun:
+async def request_cancel_run(
+    db: AsyncSession,
+    run: ConversationRun,
+    *,
+    reason: str = "stop",
+) -> ConversationRun:
     if run.status in RUN_TERMINAL_STATUSES or run.status == "canceling":
         return run
     if run.status not in {"queued", "running"}:
         raise ValueError(f"Run cannot be canceled from status: {run.status}")
+    run.cancel_reason = reason
     return await transition_run(db, run, "canceling")
 
 
@@ -453,6 +472,7 @@ async def mark_stale_active_runs(
         ConversationRun.is_active.is_(True),
         ConversationRun.status.in_(RUN_ACTIVE_STATUSES),
         reference_time <= stale_before,
+        ConversationRun.status != "canceling",
     ]
     if conversation_id is not None:
         conditions.append(ConversationRun.conversation_id == conversation_id)
@@ -498,6 +518,57 @@ async def mark_stale_active_runs(
     return marked
 
 
+async def _pause_uncertain_owned_run_queues(
+    db: AsyncSession,
+    *,
+    stale_before: datetime,
+    protected_run_ids: Sequence[uuid.UUID],
+) -> None:
+    reference_time = func.coalesce(
+        ConversationRun.heartbeat_at,
+        ConversationRun.started_at,
+        ConversationRun.created_at,
+    )
+    pending_input_exists = (
+        select(ConversationRunInput.id)
+        .where(
+            ConversationRunInput.conversation_id == ConversationRun.conversation_id,
+            ConversationRunInput.status == "pending",
+        )
+        .exists()
+    )
+    conditions = [
+        ConversationRun.is_active.is_(True),
+        ConversationRun.worker_instance_id.is_not(None),
+        reference_time <= stale_before,
+        pending_input_exists,
+    ]
+    if protected_run_ids:
+        conditions.append(ConversationRun.id.notin_(list(protected_run_ids)))
+    conversation_ids = list(
+        (
+            await db.scalars(select(ConversationRun.conversation_id).where(*conditions).distinct())
+        ).all()
+    )
+    if not conversation_ids:
+        return
+    conversations = list(
+        (
+            await db.scalars(
+                select(Conversation)
+                .where(Conversation.id.in_(conversation_ids))
+                .order_by(Conversation.id)
+                .with_for_update()
+            )
+        ).all()
+    )
+    now = utc_now_naive()
+    for conversation in conversations:
+        conversation.queue_paused = True
+        conversation.queue_paused_at = conversation.queue_paused_at or now
+    await db.flush()
+
+
 async def sweep_stale_conversation_runs(
     *,
     session_factory: Callable[[], AsyncSession],
@@ -515,6 +586,11 @@ async def sweep_stale_conversation_runs(
     try:
         async with session_factory() as db:
             registry = get_run_task_registry()
+            await _pause_uncertain_owned_run_queues(
+                db,
+                stale_before=stale_before,
+                protected_run_ids=tuple(registry.active_run_ids()),
+            )
             marked = await mark_stale_active_runs(
                 db,
                 stale_before=stale_before,

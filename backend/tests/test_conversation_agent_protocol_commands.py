@@ -540,19 +540,19 @@ async def test_input_respond_command_rejects_unknown_batched_interrupt(
 
 
 @pytest.mark.asyncio
-async def test_run_start_command_rejects_sdk_camel_case_unsupported_multitask_strategy(
+async def test_run_start_command_accepts_sdk_camel_case_enqueue_strategy(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation = await _seed_protocol_conversation(db)
 
-    async def fail_start_conversation_run(**_kwargs):
-        raise AssertionError("unsupported multitaskStrategy must reject before worker start")
+    async def fake_dispatch(_conversation_id: uuid.UUID):
+        return None
 
     monkeypatch.setattr(
-        "app.routers.conversation_agent_protocol.start_conversation_run",
-        fail_start_conversation_run,
+        "app.services.conversation_run_queue_worker.dispatch_next_for_conversation",
+        fake_dispatch,
     )
 
     response = await client.post(
@@ -568,14 +568,10 @@ async def test_run_start_command_rejects_sdk_camel_case_unsupported_multitask_st
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "type": "error",
-        "id": "run-enqueue",
-        "error": {
-            "code": "UNSUPPORTED_MULTITASK_STRATEGY",
-            "message": "Unsupported multitask strategy: enqueue",
-        },
-    }
+    assert response.json()["result"]["multitask_strategy"] == "enqueue"
+    assert response.json()["result"]["input_status"] == "pending"
+    assert "input_id" in response.json()["result"]
+    assert "run_id" not in response.json()["result"]
 
 
 @pytest.mark.asyncio

@@ -804,7 +804,7 @@ async def test_cancel_endpoint_returns_existing_canceling_status_without_second_
 
 
 @pytest.mark.asyncio
-async def test_cancel_endpoint_finalizes_outputs_when_worker_task_is_missing(
+async def test_cancel_endpoint_waits_for_owner_ack_when_worker_task_is_missing(
     client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -851,26 +851,26 @@ async def test_cancel_endpoint_finalizes_outputs_when_worker_task_is_missing(
     resp = await client.post(f"/api/conversations/{conversation.id}/runs/{run.id}/cancel")
 
     assert resp.status_code == 200
-    assert resp.json()["status"] == "canceled"
+    assert resp.json()["status"] == "canceling"
     await db.refresh(run)
-    assert run.status == "canceled"
-    assert run.is_active is False
+    await db.refresh(conversation)
+    assert run.status == "canceling"
+    assert run.is_active is True
+    assert run.cancel_reason == "stop"
+    assert run.cancellation_acknowledged_at is None
+    assert conversation.queue_paused is True
 
     record = await trace_storage.get_trace_by_msg_id(db, str(run.id))
     assert record is not None
-    assert record.status == "completed"
-    assert any(
-        evt.get("event") == event_names.MESSAGE_END
-        and (evt.get("data") or {}).get("status") == "canceled"
-        for evt in record.events
-    )
+    assert record.status == "streaming"
+    assert not any(evt.get("event") == event_names.MESSAGE_END for evt in record.events)
 
     artifact = (
         await db.execute(
             select(ConversationArtifact).where(ConversationArtifact.assistant_msg_id == str(run.id))
         )
     ).scalar_one()
-    assert artifact.status == "failed"
+    assert artifact.status == "ready"
 
 
 @pytest.mark.asyncio

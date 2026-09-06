@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found, resume_not_found
 from app.models.conversation_run import ConversationRun
-from app.services import chat_service, conversation_run_service
+from app.services import chat_service, conversation_run_queue_service, conversation_run_service
 from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_run_worker import get_run_task_registry
 
@@ -35,6 +35,11 @@ async def cancel_owned_conversation_run(
     if conv is None:
         raise conversation_not_found()
 
+    queue_conversation = await conversation_run_queue_service.lock_owned_conversation(
+        db,
+        conversation_id=conversation_id,
+        user_id=user.id,
+    )
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,
@@ -46,8 +51,13 @@ async def cancel_owned_conversation_run(
         raise resume_not_found()
 
     previous_status = run.status
-    run = await conversation_run_service.request_cancel_run(db, run)
+    run = await conversation_run_service.request_cancel_run(db, run, reason="stop")
     cancel_requested = previous_status in {"queued", "running"} and run.status == "canceling"
+    if run.is_active:
+        queue_conversation.queue_paused = True
+        queue_conversation.queue_paused_at = (
+            queue_conversation.queue_paused_at or run.cancel_requested_at
+        )
     if cancel_requested:
         await record_conversation_run_audit(
             db,
@@ -61,26 +71,7 @@ async def cancel_owned_conversation_run(
 
     if cancel_requested:
         registry = get_run_task_registry()
-        local_cancel_sent = registry.request_cancel(run_id, reason="user")
-        if not local_cancel_sent:
-            await db.refresh(run, with_for_update=True)
-            if run.status == "canceling":
-                await conversation_run_service.transition_run(db, run, "canceled")
-                await conversation_run_service.finalize_run_outputs_for_status(
-                    db,
-                    run,
-                    "canceled",
-                    append_terminal_event=True,
-                )
-                await record_conversation_run_audit(
-                    db,
-                    action="conversation.run_canceled",
-                    run=run,
-                    user=user,
-                    request=request,
-                    status="canceled",
-                )
-                await db.commit()
+        registry.request_cancel(run_id, reason="stop")
 
     await db.refresh(run)
     return ConversationRunCancelResult(run=run)
