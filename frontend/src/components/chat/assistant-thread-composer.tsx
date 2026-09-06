@@ -1,8 +1,15 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { AuiIf, ComposerPrimitive, useAui } from '@assistant-ui/react'
-import { CoinsIcon, FolderOpenIcon, PaperclipIcon, SendIcon, WandSparklesIcon } from 'lucide-react'
+import { AuiIf, ComposerPrimitive, useAui, useAuiState } from '@assistant-ui/react'
+import {
+  CoinsIcon,
+  FastForwardIcon,
+  FolderOpenIcon,
+  PaperclipIcon,
+  SendIcon,
+  WandSparklesIcon,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { Button } from '@/components/ui/button'
@@ -19,6 +26,7 @@ import { formatComposerCost, TokenBar } from '@/components/chat/assistant-compos
 import { AttachmentChip } from '@/components/chat/assistant-composer-attachment'
 import { ComposerDictationControl } from '@/components/chat/composer-dictation-control'
 import type { DictationAvailability } from '@/components/chat/use-browser-dictation'
+import { ServerMessageQueuePanel } from '@/components/chat/message-queue/server-message-queue-panel'
 import { followupEnabledAtom } from '@/lib/stores/chat-followup'
 import {
   chatCancelInFlightAtom,
@@ -35,6 +43,7 @@ export interface ThreadComposerProps {
   readonly contextWindow?: number | null
   readonly compact?: boolean
   readonly enableAttachments?: boolean
+  readonly enableMessageQueue?: boolean
   readonly focusKey?: string | null
   readonly dictationAvailability?: DictationAvailability
   readonly onDictationStart?: () => void
@@ -47,6 +56,7 @@ export function ThreadComposer({
   contextWindow,
   compact,
   enableAttachments = false,
+  enableMessageQueue = false,
   focusKey,
   dictationAvailability = 'unsupported',
   onDictationStart = () => {},
@@ -55,6 +65,7 @@ export function ThreadComposer({
   const tMsg = useTranslations('chat.message')
   const tFiles = useTranslations('chat.files')
   const tFollowup = useTranslations('chat.followup')
+  const tQueue = useTranslations('chat.queue')
   const conversationId = useChatConversationId()
   const setRightRail = useSetAtom(chatRightRailAtom)
   useInvalidateFilesOnRunComplete(conversationId)
@@ -70,7 +81,10 @@ export function ThreadComposer({
   const ghostVisible = Boolean(ghostText) && !composing
   const openFilesPanel = () => {
     if (!conversationId) return
-    setRightRail({ mode: 'artifacts', artifacts: { conversationId, view: 'list' } })
+    setRightRail({
+      mode: 'artifacts',
+      artifacts: { conversationId, view: 'list' },
+    })
   }
   const tokenUsage = useAtomValue(sessionTokenUsageAtom)
   const latestTurnUsage = useAtomValue(latestTurnUsageAtom)
@@ -81,6 +95,27 @@ export function ThreadComposer({
 
   return (
     <ComposerPrimitive.Root className="moldy-chat-card @container">
+      {enableMessageQueue ? (
+        <ServerMessageQueuePanel
+          labels={{
+            title: tQueue('title'),
+            paused: tQueue('paused'),
+            resume: tQueue('resume'),
+            edit: tQueue('edit'),
+            save: tQueue('save'),
+            cancelEdit: tQueue('cancelEdit'),
+            remove: tQueue('remove'),
+            steer: tQueue('steer'),
+            moveUp: tQueue('moveUp'),
+            moveDown: tQueue('moveDown'),
+            sending: tQueue('sending'),
+            queued: tQueue('queued'),
+            applied: tQueue('applied'),
+            failed: tQueue('failed'),
+            restore: tQueue('restore'),
+          }}
+        />
+      ) : null}
       {topBarVisible && (
         <div className="flex items-center gap-3 border-b border-border/60 bg-primary/35 px-3.5 py-1.5 text-xs text-muted-foreground">
           {showTopModelName && <span className="font-medium text-foreground/70">{modelName}</span>}
@@ -191,12 +226,55 @@ export function ThreadComposer({
               </Button>
             </ComposerPrimitive.Send>
           </AuiIf>
+          <AuiIf condition={(s) => s.thread.isRunning && s.thread.capabilities.queue}>
+            <>
+              <QueueSendButton label={t('sendButton')} />
+              <QueueSteerButton label={tQueue('steerNew')} />
+            </>
+          </AuiIf>
           <AuiIf condition={(s) => s.thread.isRunning}>
             <StopButton />
           </AuiIf>
         </div>
       </div>
     </ComposerPrimitive.Root>
+  )
+}
+
+function QueueSendButton({ label }: { readonly label: string }) {
+  const aui = useAui()
+  const isEmpty = useAuiState((state) => state.composer.isEmpty)
+  return (
+    <Button
+      type="button"
+      size="icon-sm"
+      className="rounded-full"
+      disabled={isEmpty}
+      onClick={() => aui.composer.send({ steer: false })}
+    >
+      <SendIcon className="size-4" />
+      <span className="sr-only">{label}</span>
+    </Button>
+  )
+}
+
+function QueueSteerButton({ label }: { readonly label: string }) {
+  const aui = useAui()
+  const isEmpty = useAuiState((state) => state.composer.isEmpty)
+  return (
+    <Button
+      type="button"
+      size="icon-sm"
+      variant="outline"
+      className="rounded-full"
+      disabled={isEmpty}
+      aria-label={label}
+      title={label}
+      data-moldy-queue-steer-new
+      onClick={() => aui.composer.send({ steer: true })}
+    >
+      <FastForwardIcon className="size-4" />
+    </Button>
   )
 }
 

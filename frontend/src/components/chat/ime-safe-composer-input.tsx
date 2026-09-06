@@ -151,6 +151,10 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
 
       if (shouldSubmit) {
         event.preventDefault()
+        if (hasQueue) {
+          aui.composer.send({ steer: false })
+          return
+        }
         textareaRef.current?.closest('form')?.requestSubmit()
       }
     }

@@ -1436,6 +1436,24 @@
         "failed": "Voice input could not start. Check microphone permission and your browser state, then try again."
       }
     },
+    "queue": {
+      "title": "Queued messages",
+      "paused": "The queue is paused after stopping the response.",
+      "resume": "Resume queue",
+      "edit": "Edit queued message",
+      "save": "Save",
+      "cancelEdit": "Cancel editing",
+      "remove": "Remove queued message",
+      "steer": "Stop the current response and run this next",
+      "steerNew": "Stop the current response and send now",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "sending": "Saving to the server",
+      "queued": "Saved in the server queue",
+      "applied": "Started a new response",
+      "failed": "The queue action failed",
+      "restore": "Restore draft"
+    },
     "tokenUsage": {
       "title": "Token Usage",
       "total": "Total",

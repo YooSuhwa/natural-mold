@@ -35,6 +35,7 @@ interface UseStreamRuntimeMessagesOptions<StateType extends { messages?: readonl
   readonly stream: UseStreamReturn<StateType>
   readonly messagesWithInterrupts: readonly BaseMessage[]
   readonly interruptCount: number
+  readonly claimedQueueRunInFlight: boolean
   readonly threadRunNotice: ThreadRunNotice | null
   readonly terminalNoticeText: string
   readonly hydratedMessagesPresent: boolean
@@ -49,6 +50,7 @@ export function useStreamRuntimeMessages<StateType extends { messages?: readonly
   stream,
   messagesWithInterrupts,
   interruptCount,
+  claimedQueueRunInFlight,
   threadRunNotice,
   terminalNoticeText,
   hydratedMessagesPresent,
@@ -96,7 +98,7 @@ export function useStreamRuntimeMessages<StateType extends { messages?: readonly
   useLangGraphMemoryRecallEffects({ stream, conversationId })
   useLangGraphSkillBuilderEffects({ stream, conversationId })
   const isRunning =
-    stream.isLoading &&
+    (stream.isLoading || claimedQueueRunInFlight) &&
     interruptCount === 0 &&
     threadRunNotice?.status !== 'stale' &&
     threadRunNotice?.status !== 'failed'

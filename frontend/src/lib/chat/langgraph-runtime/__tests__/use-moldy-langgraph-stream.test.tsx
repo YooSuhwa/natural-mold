@@ -6,7 +6,12 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMoldyLangGraphStream } from '../use-moldy-langgraph-stream'
 import { dispatchMoldyBranchSwitched } from '../branch-switch-events'
-import type { AttachmentAdapter, CompleteAttachment, PendingAttachment } from '@assistant-ui/react'
+import type {
+  AppendMessage,
+  AttachmentAdapter,
+  CompleteAttachment,
+  PendingAttachment,
+} from '@assistant-ui/react'
 import { conversationRunKeys } from '@/lib/hooks/use-conversation-runs'
 import { conversationKeys } from '@/lib/hooks/use-conversations'
 import { conversationRuntimeStatusAtom } from '@/lib/stores/chat-navigator-store'
@@ -22,6 +27,12 @@ interface MockThreadInterrupt {
   interruptId: string
   namespace: string[]
   payload: unknown
+}
+
+interface MockThread {
+  interrupts: MockThreadInterrupt[]
+  subscribe: ReturnType<typeof vi.fn>
+  values: AsyncIterable<unknown>
 }
 
 interface MockStream {
@@ -50,6 +61,8 @@ interface MockTransport {
   onState?: (state: unknown) => void
   setStateHydrationListener: ReturnType<typeof vi.fn>
   setRunStartAcceptedListener: ReturnType<typeof vi.fn>
+  readState: ReturnType<typeof vi.fn>
+  submitQueuedInput: ReturnType<typeof vi.fn>
 }
 
 const mocks = vi.hoisted(() => {
@@ -74,9 +87,10 @@ const mocks = vi.hoisted(() => {
     [STREAM_CONTROLLER]: { messageMetadataStore: typeof metadataStore }
   }
   const lifecycleSubscription = { unsubscribe: vi.fn() }
-  const thread = {
+  const thread: MockThread = {
     interrupts: [] as MockThreadInterrupt[],
     subscribe: vi.fn(async () => lifecycleSubscription),
+    values: { async *[Symbol.asyncIterator]() {} },
   }
   stream.getThread.mockReturnValue(thread)
   return {
@@ -93,6 +107,8 @@ const mocks = vi.hoisted(() => {
         onState: undefined as ((state: unknown) => void) | undefined,
         setStateHydrationListener,
         setRunStartAcceptedListener: vi.fn(),
+        readState: vi.fn(async () => null),
+        submitQueuedInput: vi.fn(),
       } satisfies MockTransport
       setStateHydrationListener.mockImplementation((listener?: (state: unknown) => void) => {
         transport.onState = listener
@@ -178,11 +194,13 @@ describe('useMoldyLangGraphStream', () => {
     mocks.stream.getThread.mockClear()
     mocks.stream.getThread.mockReturnValue(mocks.thread)
     mocks.thread.interrupts = []
+    mocks.thread.values = { async *[Symbol.asyncIterator]() {} }
     mocks.thread.subscribe.mockClear()
     mocks.thread.subscribe.mockResolvedValue(mocks.lifecycleSubscription)
     mocks.lifecycleSubscription.unsubscribe.mockClear()
     mocks.metadataStore.getSnapshot.mockReturnValue(new Map())
     mocks.createMoldyAgentTransport.mockClear()
+    mocks.useStream.mockImplementation(() => mocks.stream)
     mocks.useChannelEffect.mockClear()
     mocks.useExternalMessageConverter.mockClear()
     mocks.useExternalStoreRuntime.mockClear()
@@ -252,6 +270,7 @@ describe('useMoldyLangGraphStream', () => {
       'activities',
       'assistantRuntime',
       'deepAgentsState',
+      'messageQueue',
       'onResumeDecisions',
       'registerDecision',
       'sendMessage',
@@ -828,7 +847,369 @@ describe('useMoldyLangGraphStream', () => {
     const listener = transport?.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
     expect(listener).toEqual(expect.any(Function))
     listener?.('run-2')
+    listener?.('run-2')
     expect(onRunStartAccepted).toHaveBeenCalledOnce()
+  })
+
+  it('projects busy lifecycle for a directly accepted run while the server stream is active', async () => {
+    let releaseTerminal!: () => void
+    const terminalGate = new Promise<void>((resolve) => {
+      releaseTerminal = resolve
+    })
+    const subscription = {
+      unsubscribe: vi.fn(async () => {}),
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'event',
+          event_id: 'run-direct:lifecycle:running',
+          seq: 1,
+          method: 'lifecycle',
+          params: { namespace: [], data: { event: 'running' } },
+        }
+        await terminalGate
+        yield {
+          type: 'event',
+          event_id: 'run-direct:lifecycle:completed',
+          seq: 2,
+          method: 'lifecycle',
+          params: { namespace: [], data: { event: 'completed' } },
+        }
+      },
+    }
+    mocks.thread.subscribe.mockResolvedValueOnce(subscription)
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-direct',
+          conversationId: 'conversation-direct',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    const listener = transport.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
+
+    act(() => listener?.('run-direct'))
+
+    await waitFor(() => {
+      const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+        isRunning: boolean
+      }
+      expect(currentRuntime.isRunning).toBe(true)
+    })
+    releaseTerminal()
+    await waitFor(() => {
+      const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+        isRunning: boolean
+      }
+      expect(currentRuntime.isRunning).toBe(false)
+    })
+  })
+
+  it('attaches the v3 projection to a directly claimed queue run without duplicate acceptance', async () => {
+    const onRunStartAccepted = vi.fn()
+    let releaseClaimedTerminal!: () => void
+    const claimedTerminalGate = new Promise<void>((resolve) => {
+      releaseClaimedTerminal = resolve
+    })
+    mocks.apiFetch.mockResolvedValue({ queue_paused: false, items: [] })
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-queue-claim',
+          conversationId: 'conversation-queue-claim',
+          onRunStartAccepted,
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    const claimedRunSubscription = {
+      unsubscribe: vi.fn(async () => {}),
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'event',
+          event_id: 'run-queue-claim:protocol:00000001',
+          seq: 1,
+          method: 'values',
+          params: {
+            namespace: [],
+            data: {
+              messages: [
+                { type: 'human', id: 'human-queue-claim', content: 'follow this claimed run' },
+                { type: 'ai', id: 'ai-queue-claim', content: 'claimed response' },
+              ],
+            },
+          },
+        }
+        await claimedTerminalGate
+        yield {
+          type: 'event',
+          event_id: 'run-queue-claim:lifecycle:completed',
+          seq: 2,
+          method: 'lifecycle',
+          params: { namespace: [], data: { event: 'completed' } },
+        }
+      },
+    }
+    mocks.thread.subscribe.mockResolvedValueOnce(claimedRunSubscription)
+    transport.submitQueuedInput.mockImplementation(async () => {
+      const listener = transport.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
+      listener?.('run-queue-claim')
+      return {
+        inputId: 'input-queue-claim',
+        inputStatus: 'claimed',
+        revision: 1,
+        position: 1,
+        runId: 'run-queue-claim',
+      }
+    })
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      queue: { steer(message: AppendMessage): void }
+    }
+
+    await act(async () => {
+      runtimeOptions.queue.steer({
+        role: 'user',
+        content: [{ type: 'text', text: 'follow this claimed run' }],
+        attachments: [],
+        createdAt: new Date('2026-09-06T00:00:00Z'),
+        parentId: null,
+        sourceId: null,
+        runConfig: {},
+        metadata: { custom: {} },
+      })
+      await transport.submitQueuedInput.mock.results[0]?.value
+    })
+
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+        messages: readonly { id?: string }[]
+      }
+      expect(converterOptions.messages.map((item) => item.id)).toEqual([
+        'human-queue-claim',
+        'ai-queue-claim',
+      ])
+      const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+        isRunning: boolean
+      }
+      expect(currentRuntime.isRunning).toBe(true)
+    })
+    expect(transport.submitQueuedInput).toHaveBeenCalledOnce()
+    expect(onRunStartAccepted).toHaveBeenCalledOnce()
+    releaseClaimedTerminal()
+    await waitFor(() => {
+      const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+        isRunning: boolean
+      }
+      expect(currentRuntime.isRunning).toBe(false)
+    })
+  })
+
+  it('hydrates final messages when a late claimed follow replays only its terminal lifecycle', async () => {
+    mocks.apiFetch.mockResolvedValue({ queue_paused: false, items: [] })
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-late-claim',
+          conversationId: 'conversation-late-claim',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    transport.readState.mockResolvedValue({
+      values: {
+        messages: [
+          { type: 'human', id: 'human-late-claim', content: 'explicit steer message' },
+          { type: 'ai', id: 'ai-late-claim', content: 'visible successor response' },
+        ],
+      },
+      next: [],
+    })
+    mocks.thread.subscribe.mockResolvedValueOnce({
+      unsubscribe: vi.fn(async () => {}),
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'event',
+          event_id: 'run-late-claim:lifecycle:completed',
+          method: 'lifecycle',
+          params: { namespace: [], data: { event: 'completed' } },
+        }
+      },
+    })
+    const listener = transport.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
+
+    act(() => listener?.('run-late-claim'))
+
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+        messages: readonly { id?: string }[]
+      }
+      expect(converterOptions.messages.map((item) => item.id)).toEqual([
+        'human-late-claim',
+        'ai-late-claim',
+      ])
+    })
+    expect(transport.readState).toHaveBeenCalledOnce()
+    const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      isRunning: boolean
+    }
+    expect(currentRuntime.isRunning).toBe(false)
+  })
+
+  it.each(['pending', 'rejected'] as const)(
+    'clears claimed busy state when the terminal state read is %s',
+    async (readOutcome) => {
+      mocks.apiFetch.mockResolvedValue({ queue_paused: false, items: [] })
+      renderHook(
+        () =>
+          useMoldyLangGraphStream({
+            agentId: `agent-terminal-read-${readOutcome}`,
+            conversationId: `conversation-terminal-read-${readOutcome}`,
+          }),
+        { wrapper: createQueryWrapper() },
+      )
+      const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+      transport.readState.mockImplementation(() =>
+        readOutcome === 'pending'
+          ? new Promise<never>(() => {})
+          : Promise.reject(new Error('terminal state unavailable')),
+      )
+      mocks.thread.subscribe.mockResolvedValueOnce({
+        unsubscribe: vi.fn(async () => {}),
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'event',
+            event_id: `run-terminal-read-${readOutcome}:lifecycle:completed`,
+            method: 'lifecycle',
+            params: { namespace: [], data: { event: 'completed' } },
+          }
+        },
+      })
+      const listener = transport.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
+
+      act(() => listener?.(`run-terminal-read-${readOutcome}`))
+
+      await waitFor(() => {
+        const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+          isRunning: boolean
+        }
+        expect(currentRuntime.isRunning).toBe(false)
+      })
+      expect(transport.readState).toHaveBeenCalledOnce()
+    },
+  )
+
+  it('does not read final state when a claimed subscription ends without an exact terminal', async () => {
+    mocks.apiFetch.mockResolvedValue({ queue_paused: false, items: [] })
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-claim-eof',
+          conversationId: 'conversation-claim-eof',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    mocks.thread.subscribe.mockResolvedValueOnce({
+      unsubscribe: vi.fn(async () => {}),
+      async *[Symbol.asyncIterator]() {},
+    })
+    const listener = transport.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
+
+    act(() => listener?.('run-claim-eof'))
+
+    await waitFor(() => {
+      const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+        isRunning: boolean
+      }
+      expect(currentRuntime.isRunning).toBe(false)
+    })
+    expect(transport.readState).not.toHaveBeenCalled()
+  })
+
+  it('ignores a predecessor final-state read that resolves after a successor projects values', async () => {
+    let resolvePredecessorState!: (state: unknown) => void
+    const predecessorState = new Promise<unknown>((resolve) => {
+      resolvePredecessorState = resolve
+    })
+    const successorOpen = new Promise<void>(() => {})
+    mocks.apiFetch.mockResolvedValue({ queue_paused: false, items: [] })
+    const { unmount } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-claim-race',
+          conversationId: 'conversation-claim-race',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    transport.readState.mockReturnValueOnce(predecessorState)
+    mocks.thread.subscribe
+      .mockResolvedValueOnce({
+        unsubscribe: vi.fn(async () => {}),
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'event',
+            event_id: 'run-predecessor:lifecycle:completed',
+            method: 'lifecycle',
+            params: { namespace: [], data: { event: 'completed' } },
+          }
+        },
+      })
+      .mockResolvedValueOnce({
+        unsubscribe: vi.fn(async () => {}),
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'event',
+            event_id: 'run-successor:protocol:00000001',
+            method: 'values',
+            params: {
+              namespace: [],
+              data: {
+                messages: [
+                  { type: 'human', id: 'human-successor', content: 'new prompt' },
+                  { type: 'ai', id: 'ai-successor', content: 'new response' },
+                ],
+              },
+            },
+          }
+          await successorOpen
+        },
+      })
+    const listener = transport.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
+
+    act(() => listener?.('run-predecessor'))
+    await waitFor(() => expect(transport.readState).toHaveBeenCalledOnce())
+    act(() => listener?.('run-successor'))
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+        messages: readonly { id?: string }[]
+      }
+      expect(converterOptions.messages.map((item) => item.id)).toEqual([
+        'human-successor',
+        'ai-successor',
+      ])
+    })
+    resolvePredecessorState({
+      values: {
+        messages: [
+          { type: 'human', id: 'human-predecessor', content: 'old prompt' },
+          { type: 'ai', id: 'ai-predecessor', content: 'old response' },
+        ],
+      },
+    })
+    await act(async () => {
+      await predecessorState
+    })
+
+    const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+      messages: readonly { id?: string }[]
+    }
+    expect(converterOptions.messages.map((item) => item.id)).toEqual([
+      'human-successor',
+      'ai-successor',
+    ])
+    unmount()
   })
 
   it('keeps the LangGraph transport stable when only the run-start callback changes', async () => {
@@ -862,6 +1243,104 @@ describe('useMoldyLangGraphStream', () => {
     listenerCall?.[0]()
     expect(firstCallback).not.toHaveBeenCalled()
     expect(secondCallback).toHaveBeenCalledOnce()
+    expect(mocks.thread.subscribe).not.toHaveBeenCalled()
+    const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      isRunning: boolean
+    }
+    expect(currentRuntime.isRunning).toBe(false)
+  })
+
+  it('keeps the server queue controller stable when the public useStream snapshot identity changes', async () => {
+    mocks.apiFetch.mockResolvedValue({ queue_paused: false, items: [] })
+    mocks.useStream.mockImplementation(() => ({ ...mocks.stream }))
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-stream-identity',
+          conversationId: 'conversation-stream-identity',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    await waitFor(() => expect(mocks.apiFetch).toHaveBeenCalledOnce())
+
+    rerender()
+    await act(async () => Promise.resolve())
+
+    expect(mocks.apiFetch).toHaveBeenCalledOnce()
+  })
+
+  it('ignores an old conversation acceptance after a new conversation run starts', async () => {
+    const acceptedA = vi.fn()
+    const acceptedB = vi.fn()
+    let releaseB!: () => void
+    const terminalB = new Promise<void>((resolve) => {
+      releaseB = resolve
+    })
+    const subscriptionB = {
+      unsubscribe: vi.fn(async () => {}),
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'event',
+          event_id: 'run-b:lifecycle:running',
+          seq: 1,
+          method: 'lifecycle',
+          params: { namespace: [], data: { event: 'running' } },
+        }
+        await terminalB
+        yield {
+          type: 'event',
+          event_id: 'run-b:lifecycle:completed',
+          seq: 2,
+          method: 'lifecycle',
+          params: { namespace: [], data: { event: 'completed' } },
+        }
+      },
+    }
+    mocks.thread.subscribe.mockResolvedValueOnce(subscriptionB)
+
+    const { rerender } = renderHook(
+      ({ conversationId, onAccepted }: { conversationId: string; onAccepted: () => void }) =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-switch-accepted',
+          conversationId,
+          onRunStartAccepted: onAccepted,
+        }),
+      {
+        initialProps: { conversationId: 'conversation-a', onAccepted: acceptedA },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const transportA = mocks.createMoldyAgentTransport.mock.results[0]?.value as MockTransport
+    const listenerA = transportA.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
+
+    await act(async () => {
+      rerender({ conversationId: 'conversation-b', onAccepted: acceptedB })
+    })
+    const transportB = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    const listenerB = transportB.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
+
+    act(() => listenerB?.('run-b'))
+    await waitFor(() => {
+      const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+        isRunning: boolean
+      }
+      expect(currentRuntime.isRunning).toBe(true)
+    })
+
+    act(() => listenerA?.('run-a-late'))
+
+    expect(acceptedA).not.toHaveBeenCalled()
+    expect(acceptedB).toHaveBeenCalledOnce()
+    expect(mocks.thread.subscribe).toHaveBeenCalledOnce()
+    expect(subscriptionB.unsubscribe).not.toHaveBeenCalled()
+
+    releaseB()
+    await waitFor(() => {
+      const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+        isRunning: boolean
+      }
+      expect(currentRuntime.isRunning).toBe(false)
+    })
   })
 
   it('keeps the completed assistant message when SDK history briefly shrinks to a prefix', () => {
@@ -1166,6 +1645,42 @@ describe('useMoldyLangGraphStream', () => {
     expect(mocks.stream.disconnect).not.toHaveBeenCalled()
   })
 
+  it('cancels the durable server run even when client stream stop never settles', async () => {
+    let resolveStop: (() => void) | undefined
+    mocks.stream.stop.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStop = resolve
+        }),
+    )
+    mocks.apiFetch
+      .mockResolvedValueOnce({ queue_paused: false, items: [] })
+      .mockResolvedValueOnce({ id: 'run-cancel', status: 'running', agent_id: 'agent-cancel' })
+      .mockResolvedValueOnce({ id: 'run-cancel', status: 'canceled', agent_id: 'agent-cancel' })
+
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-cancel',
+          conversationId: 'conversation-cancel',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onCancel: () => Promise<void>
+    }
+
+    const cancel = runtimeOptions.onCancel()
+    await waitFor(() =>
+      expect(mocks.apiFetch).toHaveBeenCalledWith(
+        '/api/conversations/conversation-cancel/runs/run-cancel/cancel',
+        { method: 'POST' },
+      ),
+    )
+    resolveStop?.()
+    await cancel
+  })
+
   it('clears the navigator run overlay and invalidates the canceled run list', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const store = createStore()
@@ -1234,6 +1749,7 @@ describe('useMoldyLangGraphStream', () => {
     queryClient.setQueryData(conversationKeys.list('agent-cancel'), [])
     store.set(conversationRuntimeStatusAtom, { 'conversation-cancel': 'running' })
     mocks.apiFetch
+      .mockResolvedValueOnce({ queue_paused: false, items: [] })
       .mockResolvedValueOnce({ id: 'run-cancel', status: 'running', agent_id: 'agent-cancel' })
       .mockRejectedValueOnce(new Error('cancel request failed'))
 
@@ -1818,7 +2334,7 @@ describe('useMoldyLangGraphStream', () => {
 
   it('hydrates branch-selected v3 messages after the shared branch picker switches checkpoint', async () => {
     mocks.stream.messages = [new AIMessage({ id: 'assistant-new', content: 'new answer' })]
-    mocks.apiFetch.mockResolvedValueOnce({
+    const branchState = {
       values: {
         messages: [
           { type: 'human', id: 'human-old', content: 'old question' },
@@ -1836,7 +2352,10 @@ describe('useMoldyLangGraphStream', () => {
           },
         ],
       },
-    })
+    }
+    mocks.apiFetch.mockImplementation((path: unknown) =>
+      String(path).endsWith('/run-inputs') ? { queue_paused: false, items: [] } : branchState,
+    )
 
     renderHook(
       () =>
@@ -1881,11 +2400,14 @@ describe('useMoldyLangGraphStream', () => {
 
   it('does not render branch-selected server messages after the conversation changes', async () => {
     mocks.stream.messages = [new AIMessage({ id: 'assistant-a', content: 'live answer A' })]
-    mocks.apiFetch.mockResolvedValueOnce({
+    const oldBranchState = {
       values: {
         messages: [{ type: 'ai', id: 'assistant-old-branch', content: 'old branch answer' }],
       },
-    })
+    }
+    mocks.apiFetch.mockImplementation((path: unknown) =>
+      String(path).endsWith('/run-inputs') ? { queue_paused: false, items: [] } : oldBranchState,
+    )
     const { rerender } = renderHook(
       ({ conversationId }: { conversationId: string }) =>
         useMoldyLangGraphStream({

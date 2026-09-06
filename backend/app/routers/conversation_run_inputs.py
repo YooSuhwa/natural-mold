@@ -10,10 +10,12 @@ from app.models.conversation import Conversation
 from app.schemas.conversation_run_input import (
     ConversationRunInputEditRequest,
     ConversationRunInputListResponse,
+    ConversationRunInputPromoteRequest,
     ConversationRunInputReorderRequest,
     ConversationRunInputResponse,
 )
 from app.services import chat_service, conversation_run_queue_service
+from app.services.conversation_run_queue_promotion import promote_pending_input
 from app.services.conversation_run_queue_worker import dispatch_next_for_conversation
 
 router = APIRouter(tags=["conversation-run-inputs"])
@@ -96,6 +98,36 @@ async def delete_conversation_run_input(
     )
     await db.commit()
     return ConversationRunInputResponse.model_validate(item)
+
+
+@router.post(
+    "/api/conversations/{conversation_id}/run-inputs/{input_id}/promote",
+    response_model=ConversationRunInputResponse,
+)
+async def promote_conversation_run_input(
+    conversation_id: uuid.UUID,
+    input_id: uuid.UUID,
+    payload: ConversationRunInputPromoteRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> ConversationRunInputResponse:
+    promoted = await promote_pending_input(
+        db,
+        conversation_id=conversation_id,
+        input_id=input_id,
+        user_id=user.id,
+        expected_revision=payload.expected_revision,
+    )
+    await db.commit()
+    if promoted.predecessor_run_id is not None:
+        from app.services.conversation_run_worker import get_run_task_registry
+
+        get_run_task_registry().request_cancel(promoted.predecessor_run_id, reason="steer")
+    else:
+        await dispatch_next_for_conversation(conversation_id)
+    await db.refresh(promoted.input)
+    return ConversationRunInputResponse.model_validate(promoted.input)
 
 
 @router.post(

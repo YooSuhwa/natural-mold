@@ -27,6 +27,8 @@ import {
   pendingEditBranchPickerSuppressionAtom,
 } from '@/lib/stores/chat-store'
 import type { Message as MoldyMessage } from '@/lib/types'
+import { useServerMessageQueue } from '@/lib/chat/message-queue/use-server-message-queue'
+import type { ServerMessageQueueOptions } from '@/lib/chat/message-queue/server-message-queue-contract'
 
 export { messagesFromServerMessages } from './stream-thread-state-projection'
 export {
@@ -85,6 +87,7 @@ export function useMoldyLangGraphStream({
     serverMessageMetadata,
     serverMessages: hydratedServerMessages,
     serverInterrupts,
+    claimedQueueRunInFlight,
     pendingEditRender,
     pendingReloadRender,
     postRunHydrationPending,
@@ -129,6 +132,7 @@ export function useMoldyLangGraphStream({
     stream,
     messagesWithInterrupts: interruptView.messagesWithInterrupts,
     interruptCount: interruptView.payloads.length,
+    claimedQueueRunInFlight,
     threadRunNotice,
     terminalNoticeText,
     hydratedMessagesPresent: hydratedServerMessages !== null,
@@ -163,6 +167,21 @@ export function useMoldyLangGraphStream({
     submitCheckpoint,
     reconciliation: reconciliation.commandActions,
   })
+  const submitQueuedTransport = reconciliation.submitQueuedInput
+  const handleClaimedQueueRun = reconciliation.handleClaimedQueueRun
+  const submitQueuedInput = useCallback<ServerMessageQueueOptions['submit']>(
+    (message, options) => submitQueuedTransport(message, options.strategy, options.requestId),
+    [submitQueuedTransport],
+  )
+  const { controller: messageQueue } = useServerMessageQueue({
+    conversationId,
+    submit: submitQueuedInput,
+    onClaimedRun: handleClaimedQueueRun,
+  })
+  const onCancelWithQueueRefresh = useCallback(async () => {
+    await onCancel()
+    await messageQueue.refresh()
+  }, [messageQueue, onCancel])
 
   const refreshLifecycle = useCallback(() => refreshThreadLifecycleStream(stream), [stream])
   const { onResumeDecisions, registerDecision } = useHitlDecisionController({
@@ -182,7 +201,8 @@ export function useMoldyLangGraphStream({
     onNew,
     onEdit,
     onReload,
-    onCancel,
+    onCancel: onCancelWithQueueRefresh,
+    queue: messageQueue.adapter,
   })
 
   const sendMessage = useCallback(
@@ -203,5 +223,6 @@ export function useMoldyLangGraphStream({
     sendMessage,
     onResumeDecisions,
     registerDecision,
+    messageQueue,
   }
 }

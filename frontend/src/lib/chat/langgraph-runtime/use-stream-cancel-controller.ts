@@ -66,7 +66,13 @@ export function useStreamCancelController<StateType extends object>({
     reconciliation.cancelPostRunHydration()
     setChatCancelInFlight(true)
     try {
-      await stream.stop()
+      try {
+        void Promise.resolve(stream.stop()).catch((caught: unknown) => {
+          reportRuntimeFailure(caught, 'cancel_stream_stop_failed')
+        })
+      } catch (caught) {
+        reportRuntimeFailure(caught, 'cancel_stream_stop_failed')
+      }
       try {
         activeRun = await conversationRunsApi.active(conversationId)
         activeLookupSucceeded = true

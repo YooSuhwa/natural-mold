@@ -1,8 +1,17 @@
 import { HttpAgentServerAdapter, type AgentServerAdapter } from '@langchain/react'
+import type { AppendMessage } from '@assistant-ui/react'
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
 import { csrfStore } from '@/lib/auth/csrf'
+import { queuedInputFromMessage } from '@/lib/chat/message-queue/queue-message-projection'
+import type { QueueRunStartAcceptance } from '@/lib/chat/message-queue/server-message-queue-contract'
 
 const MUTATION_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
+let queueCommandId = 0
+
+function nextQueueCommandId(): number {
+  queueCommandId += 1
+  return queueCommandId
+}
 
 export type RunStartAcceptedListener = (runId?: string) => void
 
@@ -26,8 +35,14 @@ type StateHydrationListener = (state: AgentServerState<unknown>) => void
 
 export interface MoldyAgentServerAdapter extends AgentServerAdapter {
   activateStateHydration(): () => void
+  readState<StateType = unknown>(): Promise<AgentServerState<StateType>>
   setStateHydrationListener(listener: MoldyAgentTransportOptions['onState']): void
   setRunStartAcceptedListener(listener: RunStartAcceptedListener | undefined): void
+  submitQueuedInput(
+    message: AppendMessage,
+    strategy: 'enqueue' | 'interrupt',
+    requestId: string,
+  ): Promise<QueueRunStartAcceptance>
 }
 
 function encodePathSegment(value: string): string {
@@ -65,12 +80,73 @@ type ProtocolSendResult = ReturnType<HttpAgentServerAdapter['send']>
 type EventStreamParams = Parameters<NonNullable<AgentServerAdapter['openEventStream']>>[0]
 type EventStreamHandle = ReturnType<NonNullable<AgentServerAdapter['openEventStream']>>
 
+function queuedRunStartCommand(
+  agentId: string,
+  message: AppendMessage,
+  strategy: 'enqueue' | 'interrupt',
+  requestId: string,
+): ProtocolCommand {
+  // Moldy's server extends the installed protocol's run.start params with
+  // durable queue fields that @langchain/protocol 0.0.19 does not type yet.
+  return {
+    id: nextQueueCommandId(),
+    method: 'run.start',
+    params: {
+      assistant_id: agentId,
+      input: queuedInputFromMessage(message),
+      multitask_strategy: strategy,
+      client_request_id: requestId,
+    },
+  } as ProtocolCommand
+}
+
 function acceptedRunId(value: unknown): string | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   if (!('type' in value) || value.type !== 'success') return undefined
   const result = 'result' in value ? value.result : undefined
   if (typeof result !== 'object' || result === null || !('run_id' in result)) return undefined
   return typeof result.run_id === 'string' && result.run_id.trim() ? result.run_id : undefined
+}
+
+function queuedRunStartAcceptance(value: unknown): QueueRunStartAcceptance {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('type' in value) ||
+    value.type !== 'success'
+  ) {
+    throw new Error('Queue submission was not accepted')
+  }
+  const result = 'result' in value ? value.result : undefined
+  if (typeof result !== 'object' || result === null) {
+    throw new Error('Queue submission response is missing its result')
+  }
+  const inputId = 'input_id' in result ? result.input_id : undefined
+  const inputStatus = 'input_status' in result ? result.input_status : undefined
+  const revision = 'revision' in result ? result.revision : undefined
+  const position = 'position' in result ? result.position : undefined
+  const runId = 'run_id' in result ? result.run_id : undefined
+  if (
+    typeof inputId !== 'string' ||
+    !inputId.trim() ||
+    (inputStatus !== 'pending' && inputStatus !== 'claimed') ||
+    typeof revision !== 'number' ||
+    !Number.isInteger(revision) ||
+    typeof position !== 'number' ||
+    !Number.isInteger(position) ||
+    revision < 1 ||
+    position < 1 ||
+    (runId != null && (typeof runId !== 'string' || !runId.trim()))
+  ) {
+    throw new Error('Queue submission response is malformed')
+  }
+  return {
+    inputId,
+    inputStatus,
+    revision,
+    position,
+    ...(typeof runId === 'string' && runId.trim() ? { runId } : {}),
+  }
 }
 
 function commandWithAgentId(command: ProtocolCommand, agentId: string): ProtocolCommand {
@@ -145,12 +221,27 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
     return value
   }
 
+  async submitQueuedInput(
+    message: AppendMessage,
+    strategy: 'enqueue' | 'interrupt',
+    requestId: string,
+  ): Promise<QueueRunStartAcceptance> {
+    const value = await this.send(
+      queuedRunStartCommand(this.#agentId, message, strategy, requestId),
+    )
+    return queuedRunStartAcceptance(value)
+  }
+
   events(): ReturnType<AgentServerAdapter['events']> {
     return this.#delegate.events()
   }
 
+  async readState<StateType = unknown>(): Promise<AgentServerState<StateType>> {
+    return (await this.#delegate.getState?.<StateType>()) ?? null
+  }
+
   async getState<StateType = unknown>(): Promise<AgentServerState<StateType>> {
-    const state = (await this.#delegate.getState?.<StateType>()) ?? null
+    const state = await this.readState<StateType>()
     this.#latestState = state as AgentServerState<unknown>
     for (const listener of this.#stateHydrationListeners) {
       listener(this.#latestState)

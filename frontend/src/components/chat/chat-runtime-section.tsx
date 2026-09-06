@@ -25,6 +25,8 @@ import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
 import type { User } from '@/lib/types/user'
 import type { StreamChatOptions } from '@/lib/sse/stream-chat'
 import type { ConversationRuntimeStatus } from '@/lib/stores/chat-navigator-store'
+import { ServerMessageQueueProvider } from '@/lib/chat/message-queue/server-message-queue-context'
+import type { ServerMessageQueueController } from '@/lib/chat/message-queue/server-message-queue-contract'
 
 type StreamFn = (
   content: string,
@@ -243,6 +245,7 @@ function LangGraphRuntimeSection({
     activities,
     deepAgentsState,
     stream,
+    messageQueue,
     onResumeDecisions,
     registerDecision,
   } = useMoldyLangGraphStream({
@@ -280,6 +283,7 @@ function LangGraphRuntimeSection({
       deepAgentsState={deepAgentsState}
       hitlValue={hitlValue}
       runtime={assistantRuntime}
+      messageQueue={messageQueue}
       subagentStream={stream}
       threadProps={threadProps}
     />
@@ -291,6 +295,7 @@ interface RuntimeFrameProps {
   readonly deepAgentsState?: AssistantThreadProps['deepAgentsState']
   readonly hitlValue: HiTLContextValue
   readonly runtime: AssistantRuntime
+  readonly messageQueue?: ServerMessageQueueController
   readonly subagentStream?: AnyStream | null
   readonly threadProps: ThreadRenderProps
 }
@@ -300,6 +305,7 @@ function RuntimeFrame({
   deepAgentsState,
   hitlValue,
   runtime,
+  messageQueue,
   subagentStream,
   threadProps,
 }: RuntimeFrameProps) {
@@ -307,21 +313,30 @@ function RuntimeFrame({
     tools: createMoldyChatTools(ALL_TOOLKIT, threadProps.conversationId),
   })
 
+  const thread = (
+    <HiTLContext.Provider value={hitlValue}>
+      <SubagentRuntimeProvider stream={subagentStream}>
+        <AssistantThread
+          {...threadProps}
+          activities={activities}
+          dataUI={ALL_DATA_UI}
+          deepAgentsState={deepAgentsState}
+          showTokenBar
+          showMessageTimestamp
+          enableAttachments
+          enableMessageQueue={Boolean(messageQueue)}
+        />
+      </SubagentRuntimeProvider>
+    </HiTLContext.Provider>
+  )
+
   return (
     <AssistantRuntimeProvider runtime={runtime} config={config}>
-      <HiTLContext.Provider value={hitlValue}>
-        <SubagentRuntimeProvider stream={subagentStream}>
-          <AssistantThread
-            {...threadProps}
-            activities={activities}
-            dataUI={ALL_DATA_UI}
-            deepAgentsState={deepAgentsState}
-            showTokenBar
-            showMessageTimestamp
-            enableAttachments
-          />
-        </SubagentRuntimeProvider>
-      </HiTLContext.Provider>
+      {messageQueue ? (
+        <ServerMessageQueueProvider controller={messageQueue}>{thread}</ServerMessageQueueProvider>
+      ) : (
+        thread
+      )}
     </AssistantRuntimeProvider>
   )
 }

@@ -126,6 +126,156 @@ describe('createMoldyAgentTransport', () => {
     expect(onRunStartAccepted).not.toHaveBeenCalled()
   })
 
+  it('persists queue input directly with strategy, request id, attachments, and context', async () => {
+    const onRunStartAccepted = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        type: 'success',
+        id: 'queue-request-1',
+        result: {
+          input_id: 'input-1',
+          input_status: 'pending',
+          revision: 1,
+          position: 2,
+        },
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-queue', 'agent-queue', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onRunStartAccepted,
+    })
+
+    const accepted = await transport.submitQueuedInput(
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'queued content' }],
+        attachments: [
+          {
+            id: 'attachment-1',
+            type: 'document',
+            name: 'queue.txt',
+            contentType: 'text/plain',
+            content: [],
+            status: { type: 'complete' },
+          },
+        ],
+        createdAt: new Date('2026-09-06T00:00:00Z'),
+        parentId: null,
+        sourceId: null,
+        runConfig: {},
+        metadata: { custom: { context: [{ kind: 'artifact', id: 'artifact-1' }] } },
+      },
+      'enqueue',
+      'queue-request-1',
+    )
+
+    expect(accepted).toEqual({
+      inputId: 'input-1',
+      inputStatus: 'pending',
+      revision: 1,
+      position: 2,
+    })
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body))
+    expect(body).toMatchObject({
+      id: expect.any(Number),
+      method: 'run.start',
+      params: {
+        assistant_id: 'agent-queue',
+        multitask_strategy: 'enqueue',
+        client_request_id: 'queue-request-1',
+        input: {
+          attachments: [{ id: 'attachment-1' }],
+          messages: [
+            {
+              role: 'user',
+              content: [{ type: 'text', text: 'queued content' }],
+              metadata: { context: [{ kind: 'artifact', id: 'artifact-1' }] },
+            },
+          ],
+        },
+      },
+    })
+    expect(onRunStartAccepted).not.toHaveBeenCalled()
+  })
+
+  it('keeps the accepted-run callback for a directly claimed interrupt input', async () => {
+    const onRunStartAccepted = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        type: 'success',
+        id: 'interrupt-request-1',
+        result: {
+          input_id: 'input-interrupt',
+          input_status: 'claimed',
+          revision: 2,
+          position: 1,
+          run_id: 'run-interrupt',
+        },
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-interrupt', 'agent-interrupt', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onRunStartAccepted,
+    })
+
+    const accepted = await transport.submitQueuedInput(
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'steer now' }],
+        attachments: [],
+        createdAt: new Date('2026-09-06T00:00:00Z'),
+        parentId: null,
+        sourceId: null,
+        runConfig: {},
+        metadata: { custom: {} },
+      },
+      'interrupt',
+      'interrupt-request-1',
+    )
+
+    expect(accepted).toMatchObject({ inputStatus: 'claimed', runId: 'run-interrupt' })
+    expect(onRunStartAccepted).toHaveBeenCalledExactlyOnceWith('run-interrupt')
+  })
+
+  it('rejects an array-valued queue status instead of coercing it to a pending literal', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        type: 'success',
+        id: 'malformed-status',
+        result: {
+          input_id: 'input-malformed',
+          input_status: ['pending'],
+          revision: 1,
+          position: 1,
+        },
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-malformed', 'agent-malformed', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+    })
+
+    await expect(
+      transport.submitQueuedInput(
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'reject malformed acceptance' }],
+          attachments: [],
+          createdAt: new Date('2026-09-06T00:00:00Z'),
+          parentId: null,
+          sourceId: null,
+          runConfig: {},
+          metadata: { custom: {} },
+        },
+        'enqueue',
+        'malformed-status',
+      ),
+    ).rejects.toThrow('Queue submission response is malformed')
+  })
+
   it('uses the state path for SDK hydration without adding CSRF to GET requests', async () => {
     csrfStore.set('csrf-2')
     const onState = vi.fn()
@@ -159,6 +309,32 @@ describe('createMoldyAgentTransport', () => {
       next: [],
       tasks: [],
     })
+    deactivate()
+  })
+
+  it('reads terminal state without notifying active hydration listeners', async () => {
+    const onState = vi.fn()
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        values: { messages: [{ id: 'message-terminal' }] },
+        next: [],
+        tasks: [],
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-terminal', 'agent-terminal', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+      onState,
+    })
+    const deactivate = transport.activateStateHydration()
+
+    await expect(transport.readState()).resolves.toEqual({
+      values: { messages: [{ id: 'message-terminal' }] },
+      next: [],
+      tasks: [],
+    })
+
+    expect(onState).not.toHaveBeenCalled()
     deactivate()
   })
 

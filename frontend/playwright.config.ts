@@ -105,6 +105,7 @@ const runtimePolicyCaptureSpecGlobs = [
   '**/runtime-filesystem-policy.spec.ts',
   '**/chat-compaction.spec.ts',
   '**/chat-mcp-apps.spec.ts',
+  '**/chat-message-queue.spec.ts',
 ]
 const scriptedFullIgnore = [
   ...LIVE_E2E_SPEC_GLOBS,

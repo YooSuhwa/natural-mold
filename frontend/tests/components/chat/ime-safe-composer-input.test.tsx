@@ -5,6 +5,8 @@ import { render, screen } from '../../test-utils'
 const mocks = vi.hoisted(() => ({
   addAttachment: vi.fn(),
   composerText: '',
+  hasQueue: false,
+  isRunning: false,
   send: vi.fn(),
   setText: vi.fn(),
 }))
@@ -18,7 +20,10 @@ vi.mock('@assistant-ui/react', () => ({
       setText: mocks.setText,
     },
     thread: {
-      getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),
+      getState: () => ({
+        capabilities: { attachments: false, queue: mocks.hasQueue },
+        isRunning: mocks.isRunning,
+      }),
     },
   }),
   useAuiState: (selector: (state: unknown) => unknown) =>
@@ -34,6 +39,8 @@ describe('ImeSafeComposerInput', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.composerText = ''
+    mocks.hasQueue = false
+    mocks.isRunning = false
   })
 
   it('focuses the composer input when auto focus is requested', () => {
@@ -115,5 +122,29 @@ describe('ImeSafeComposerInput', () => {
     })
 
     expect(mocks.setText).toHaveBeenCalledWith('hello')
+  })
+
+  it('marks ordinary Enter as non-steering when the server queue is available', () => {
+    mocks.hasQueue = true
+    mocks.isRunning = true
+    render(<ImeSafeComposerInput submitMode="enter" placeholder="메시지 입력..." />)
+
+    fireEvent.keyDown(screen.getByPlaceholderText('메시지 입력...'), { key: 'Enter' })
+
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith({ steer: false })
+  })
+
+  it('uses explicit steer only for Shift plus Ctrl Enter', () => {
+    mocks.hasQueue = true
+    mocks.isRunning = true
+    render(<ImeSafeComposerInput submitMode="enter" placeholder="메시지 입력..." />)
+
+    fireEvent.keyDown(screen.getByPlaceholderText('메시지 입력...'), {
+      key: 'Enter',
+      shiftKey: true,
+      ctrlKey: true,
+    })
+
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith({ steer: true })
   })
 })

@@ -47,3 +47,9 @@ class ConversationRunInputReorderRequest(BaseModel):
 
     ordered_input_ids: list[uuid.UUID]
     expected_revisions: dict[uuid.UUID, int]
+
+
+class ConversationRunInputPromoteRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    expected_revision: int = Field(ge=1)

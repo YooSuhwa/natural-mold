@@ -10,7 +10,7 @@
       "category": "infrastructure",
       "owner": "quality-runtime",
       "expires": "2027-03-31",
-      "expected_count": 39
+      "expected_count": 40
     },
     {
       "id": "system-llm-required",
@@ -40,7 +40,7 @@
       "category": "legacy-matrix",
       "owner": "chat-runtime",
       "expires": "2027-03-31",
-      "expected_count": 11
+      "expected_count": 12
     },
     {
       "id": "legacy-draft",
