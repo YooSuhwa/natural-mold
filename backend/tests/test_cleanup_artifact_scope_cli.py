@@ -126,6 +126,7 @@ def test_e2e_failure_diagnostic_never_reflects_receipt_values() -> None:
         "executed_ids": [],
         "export": {
             "secret_scan_passed": True,
+            "failure_code": "password=must-not-appear",
             "source_rejection": {"untrusted": "must-not-appear"},
             "files": [{"path": "results/selection.json"}],
         },
@@ -136,12 +137,61 @@ def test_e2e_failure_diagnostic_never_reflects_receipt_values() -> None:
 
     assert diagnostic == (
         "status=failed self_test=normal phase=other exit=70 ownership=11000 "
-        "selected=present executed=empty export=passed source_rejected=yes "
+        "selected=present executed=empty export=passed export_failure=invalid "
+        "source_rejected=yes "
         "receipts=missing cleanup=complete"
     )
     assert "password" not in diagnostic
     assert "token" not in diagnostic
     assert "must-not-appear" not in diagnostic
+
+
+@pytest.mark.parametrize(
+    "failure_code",
+    [
+        "bounds",
+        "export_adapter_exception",
+        "exporter_process_failed",
+        "internal",
+        "invalid_export_receipt",
+        "manifest_publish",
+        "secret_scan",
+        "source_topology",
+        "unsupported_artifact",
+    ],
+)
+def test_e2e_failure_diagnostic_reports_only_known_export_failure_codes(
+    failure_code: str,
+) -> None:
+    module = _cleanup_cli()
+    cleanup = dict.fromkeys(module.CLEANUP_FIELDS, True)
+    cleanup["foreign_containers_preserved"] = True
+    payload = {
+        "runner": "moldy-isolated-e2e",
+        "status": "failed",
+        "self_test": "normal",
+        "failure_reason": "artifact_export_failed",
+        "child_exit_code": 1,
+        "owned_run_root": True,
+        "owned_database": True,
+        "owned_backend": True,
+        "owned_frontend": True,
+        "owned_proxy": False,
+        "selected_ids": ["scripted-smoke::e2e/smoke.spec.ts::works"],
+        "executed_ids": [],
+        "export": {
+            "secret_scan_passed": False,
+            "failure_code": failure_code,
+            "source_rejection": None,
+            "files": [],
+        },
+        "cleanup": cleanup,
+    }
+
+    diagnostic = module._e2e_failure_diagnostic(payload)
+
+    assert diagnostic is not None
+    assert f"export_failure={failure_code}" in diagnostic
 
 
 def test_cli_prints_bounded_e2e_diagnostic_after_rejection(

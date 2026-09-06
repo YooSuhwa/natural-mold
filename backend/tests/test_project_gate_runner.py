@@ -889,6 +889,9 @@ def test_runner_uses_unique_safe_export_slug_for_reruns(
     [
         ("missing", "a" * 40, "safe.json", "ok", "unknown_profile"),
         ("smoke", "not-a-commit", "safe.json", "invalid", "base_not_commit"),
+        ("smoke", "a" * 39, "safe.json", "invalid", "base_not_commit"),
+        ("smoke", "a" * 65, "safe.json", "invalid", "base_not_commit"),
+        ("smoke", "A" * 40, "safe.json", "invalid", "base_not_commit"),
         ("smoke", "a" * 40, "../escape.json", "ok", "unsafe_manifest"),
     ],
 )

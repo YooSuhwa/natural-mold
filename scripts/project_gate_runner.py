@@ -23,12 +23,13 @@ from project_gate_runtime import (
 from project_gate_runtime import (
     run_profile_with_environment as _run_profile_with_environment,
 )
-from project_gate_toolchain import resolve_base_sha as _resolve_base_sha
 from project_gate_toolchain import (
+    COMMIT_ID,
     resolve_provenance,
     resolve_toolchain,
     verify_toolchain,
 )
+from project_gate_toolchain import resolve_base_sha as _resolve_base_sha
 
 PROFILE_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 PROJECT_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -137,7 +138,7 @@ def _parse_request(arguments: list[str], repo_root: Path) -> GateRequest:
     base_sha = arguments[2]
     if not PROFILE_NAME.fullmatch(profile_name):
         raise ProjectGateError("unknown_profile")
-    if not base_sha:
+    if COMMIT_ID.fullmatch(base_sha) is None:
         raise ProjectGateError("base_not_commit")
     manifest = _safe_new_manifest(repo_root, arguments[4], profile_name)
     return GateRequest(profile_name, base_sha, manifest)

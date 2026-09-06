@@ -235,6 +235,25 @@ def _collection_state(value: object) -> str:
     return "empty" if not value else "present"
 
 
+def _export_failure_state(value: object) -> str:
+    allowed = frozenset(
+        {
+            "bounds",
+            "export_adapter_exception",
+            "exporter_process_failed",
+            "internal",
+            "invalid_export_receipt",
+            "manifest_publish",
+            "secret_scan",
+            "source_topology",
+            "unsupported_artifact",
+        }
+    )
+    if value is None:
+        return "none"
+    return value if isinstance(value, str) and value in allowed else "invalid"
+
+
 def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
     """Summarize only fixed enums and booleans; never reflect receipt values."""
     if payload.get("runner") != "moldy-isolated-e2e":
@@ -277,6 +296,7 @@ def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
     if isinstance(export, dict):
         source_rejected = "yes" if export.get("source_rejection") is not None else "no"
         export_state = "passed" if export.get("secret_scan_passed") is True else "not-passed"
+        export_failure = _export_failure_state(export.get("failure_code"))
         files = export.get("files")
         if isinstance(files, list):
             paths = {item.get("path") for item in files if isinstance(item, dict)}
@@ -290,6 +310,7 @@ def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
     else:
         source_rejected = "invalid"
         export_state = "invalid"
+        export_failure = "invalid"
         receipts = "invalid"
     cleanup = payload.get("cleanup")
     cleanup_state = (
@@ -309,6 +330,7 @@ def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
             f"selected={_collection_state(payload.get('selected_ids'))}",
             f"executed={_collection_state(payload.get('executed_ids'))}",
             f"export={export_state}",
+            f"export_failure={export_failure}",
             f"source_rejected={source_rejected}",
             f"receipts={receipts}",
             f"cleanup={cleanup_state}",
