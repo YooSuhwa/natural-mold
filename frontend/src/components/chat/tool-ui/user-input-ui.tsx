@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback, useMemo, useRef } from 'react'
-import { makeAssistantToolUI } from '@assistant-ui/react'
+import { useState, useCallback, useId, useMemo } from 'react'
+import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { MessageSquareQuoteIcon, CheckCircle2Icon, SendIcon, Loader2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn, toggleSetItem } from '@/lib/utils'
@@ -221,9 +221,11 @@ function normalizeQuestions(args: AskUserArgs): UserInputQuestion[] {
   return []
 }
 
-export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
-  toolName: 'ask_user',
-  render: function AskUserRender({ args, result, status }) {
+export function UserInputUI({
+  args,
+  result,
+  status,
+}: ToolCallMessagePartProps<AskUserArgs, unknown>) {
     const t = useTranslations('chat.userInput')
     const hitl = useHiTL()
     const [answers, setAnswers] = useState<Answers>({})
@@ -246,7 +248,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
         }
         await hitl?.onResumeDecisions([decision], displayText)
       },
-      [args?.hitl_action_index, args?.hitl_interrupt_id, hitl],
+      [args, hitl],
     )
 
     const submitResponse = useCallback(
@@ -267,8 +269,8 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     )
 
     // 입력 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
-    const fallbackIdRef = useRef<string>(`ask-user-${Math.random().toString(36).slice(2)}`)
-    const approvalId = args?.approval_id ?? fallbackIdRef.current
+    const fallbackId = useId()
+    const approvalId = args?.approval_id ?? `ask-user-${fallbackId}`
 
     // requires-action 상태일 때만 timer 활성
     const isPending =
@@ -495,5 +497,4 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
         )}
       </div>
     )
-  },
-})
+}

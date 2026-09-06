@@ -15,7 +15,6 @@ import {
   ThreadPrimitive,
   useThreadViewport,
   type AssistantDataUI,
-  type AssistantToolUI,
 } from '@assistant-ui/react'
 import { ArrowDownIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -61,7 +60,6 @@ export interface AssistantThreadProps {
   compact?: boolean
   showMessageTimestamp?: boolean
   emptyContent?: ReactNode
-  toolUI?: readonly AssistantToolUI[]
   dataUI?: readonly AssistantDataUI[]
   activities?: readonly RunActivity[]
   deepAgentsState?: DeepAgentsStateSnapshot
@@ -85,7 +83,6 @@ export function AssistantThread({
   compact = false,
   showMessageTimestamp = false,
   emptyContent,
-  toolUI,
   dataUI,
   activities = [],
   deepAgentsState,
@@ -187,9 +184,6 @@ export function AssistantThread({
               <ScrollToBottomButton isAtBottom={isViewportAtBottom} />
             </ThreadPrimitive.ViewportFooter>
           </ThreadPrimitive.Viewport>
-          {toolUI?.map((ToolComponent, index) => (
-            <ToolComponent key={`tool-${index}`} />
-          ))}
           {dataUI?.map((DataComponent, index) => (
             <DataComponent key={`data-${index}`} />
           ))}

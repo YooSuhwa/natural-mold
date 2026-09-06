@@ -44,4 +44,12 @@
   사용하지 않는다.
 - LangChain 메시지 변환기는 0.0.29의 단일-message 반환 계약을 따르면서 Moldy의
   usage, branch, terminal notice, `moldy_ui` data part metadata를 보존한다.
-- Toolkit/AuiConfig 전환과 surface별 tool registry 재구성은 후속 작업 범위다.
+- tool renderer는 `defineToolkit` 도메인 registry로 선언하고 각 runtime
+  provider에 `AuiConfig({ tools: Tools({ toolkit }) })`로 주입한다. renderer는
+  backend가 실행한 tool call을 표시만 하며 client executor를 추가하지 않는다.
+- main chat과 Assistant Panel은 approval을 포함한 `ALL_TOOLKIT`, settings 테스트
+  chat은 paused-run HITL만 뺀 `SETTINGS_TEST_TOOLKIT`, Builder는 전용
+  `BUILDER_TOOLKIT`을 사용한다.
+- 등록되지 않은 tool은 grouped-parts fallback이 담당하고, search-shaped 결과의
+  rich rendering을 유지한다. `DataUI`는 기존 `AssistantThread` 등록 경로를
+  그대로 사용한다.

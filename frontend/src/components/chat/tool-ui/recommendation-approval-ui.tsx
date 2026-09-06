@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { makeAssistantToolUI } from '@assistant-ui/react'
+import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import {
   BlocksIcon,
@@ -304,7 +304,9 @@ function RecommendationApproval({
   )
 }
 
-export const RecommendationApprovalToolUI = makeAssistantToolUI<RecommendationArgs, unknown>({
-  toolName: 'recommendation_approval',
-  render: ({ args, status }) => <RecommendationApproval args={args} status={status.type} />,
-})
+export function RecommendationApprovalToolUI({
+  args,
+  status,
+}: ToolCallMessagePartProps<RecommendationArgs, unknown>) {
+  return <RecommendationApproval args={args} status={status.type} />
+}

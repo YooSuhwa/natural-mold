@@ -148,7 +148,7 @@ function BuilderAssistantTextPart() {
 
 /** Builder 전용 ToolFallback wrapper — 시각 표시는 기본 ToolFallback과 동일하게 유지.
  *
- * BUILDER_TOOL_UI에 등록된 tool들(phase_timeline / ask_user / recommendation_approval
+ * BUILDER_TOOLKIT에 등록된 tool들(phase_timeline / ask_user / recommendation_approval
  * 등)은 자체 ToolUI가 인터셉트하므로 이 fallback에 닿지 않는다. 안전망으로 기본
  * ToolFallbackPanel을 그대로 사용해 모르는 도구도 화면에 표시되게 한다. */
 function BuilderToolFallback(props: {
@@ -208,7 +208,7 @@ export function renderBuilderGroupedPart({ part, children }: GroupedRenderInfo):
     case 'text':
       return <BuilderAssistantTextPart />
     case 'tool-call': {
-      // 등록된 per-tool UI(BUILDER_TOOL_UI)는 leaf.toolUI로 흐른다. 미등록 도구는
+      // 등록된 per-tool UI(BUILDER_TOOLKIT)는 leaf.toolUI로 흐른다. 미등록 도구는
       // BuilderToolFallback이 안전망으로 표시 — 기존 tools.Fallback 동작과 동일.
       const leaf = part as Extract<EnrichedPartState, { type: 'tool-call' }>
       return (

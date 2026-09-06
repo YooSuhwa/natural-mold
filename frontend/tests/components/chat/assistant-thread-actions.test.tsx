@@ -116,7 +116,6 @@ vi.mock('@assistant-ui/react', () => {
       children?: ReactNode
     }) => (condition({ thread: { isRunning: false, isEmpty: false } }) ? <>{children}</> : null),
     getExternalStoreMessages: () => [],
-    makeAssistantToolUI: () => () => <div data-testid="tool-ui" />,
   }
 })
 

@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import {
+  AuiConfig,
   AssistantRuntimeProvider,
+  Tools,
   type AssistantRuntime,
   type AttachmentAdapter,
   type FeedbackAdapter,
@@ -17,7 +19,7 @@ import {
 } from '@/lib/chat/langgraph-runtime/subagent-runtime'
 import { HiTLContext, type HiTLContextValue } from '@/lib/chat/hitl-context'
 import { ALL_DATA_UI } from '@/lib/chat/data-ui'
-import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
+import { ALL_TOOLKIT } from '@/lib/chat/tool-ui-registry'
 import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
 import type { User } from '@/lib/types/user'
 import type { StreamChatOptions } from '@/lib/sse/stream-chat'
@@ -285,8 +287,10 @@ function RuntimeFrame({
   subagentStream,
   threadProps,
 }: RuntimeFrameProps) {
+  const config = AuiConfig({ tools: Tools({ toolkit: ALL_TOOLKIT }) })
+
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
+    <AssistantRuntimeProvider runtime={runtime} config={config}>
       <HiTLContext.Provider value={hitlValue}>
         <SubagentRuntimeProvider stream={subagentStream}>
           <AssistantThread
@@ -297,7 +301,6 @@ function RuntimeFrame({
             showTokenBar
             showMessageTimestamp
             enableAttachments
-            toolUI={ALL_TOOL_UI}
           />
         </SubagentRuntimeProvider>
       </HiTLContext.Provider>

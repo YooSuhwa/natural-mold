@@ -4,7 +4,6 @@ import { render, screen, userEvent } from '../../../../../tests/test-utils'
 import { SubAgentToolCard } from '../sub-agent-ui'
 
 const mocks = vi.hoisted(() => ({
-  makeAssistantToolUI: vi.fn((config: { render: unknown; toolName: string }) => config),
   useAuiState: vi.fn(),
   useMessages: vi.fn(),
   useToolCalls: vi.fn(),
@@ -14,7 +13,6 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@assistant-ui/react', () => ({
-  makeAssistantToolUI: mocks.makeAssistantToolUI,
   useAuiState: mocks.useAuiState,
 }))
 

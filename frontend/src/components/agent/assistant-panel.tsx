@@ -4,11 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
-import { AssistantRuntimeProvider, useAui } from '@assistant-ui/react'
+import { AuiConfig, AssistantRuntimeProvider, Tools, useAui } from '@assistant-ui/react'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import type { Decision, Message, SSEEvent } from '@/lib/types'
 import { HiTLContext } from '@/lib/chat/hitl-context'
-import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
+import { ALL_TOOLKIT } from '@/lib/chat/tool-ui-registry'
 import { streamAssistant, streamAssistantResume } from '@/lib/sse/stream-assistant'
 import { AssistantThread } from '@/components/chat/assistant-thread'
 import { FixHero } from '@/components/agent/fix-hero'
@@ -34,6 +34,7 @@ export function AssistantPanel({
   onCreateModeFirstMessage,
   initialMessage,
 }: AssistantPanelProps) {
+  const config = AuiConfig({ tools: Tools({ toolkit: ALL_TOOLKIT }) })
   const t = useTranslations('agent.assistant')
   const ts = useTranslations('agent.suggestion')
   const qc = useQueryClient()
@@ -144,7 +145,7 @@ export function AssistantPanel({
       )}
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <AssistantRuntimeProvider runtime={runtime}>
+        <AssistantRuntimeProvider runtime={runtime} config={config}>
           <HiTLContext.Provider value={hitlValue}>
             <AssistantThread
               agentImageUrl={heroImage}
@@ -159,7 +160,6 @@ export function AssistantPanel({
                   suggestions={suggestions}
                 />
               }
-              toolUI={ALL_TOOL_UI}
             />
           </HiTLContext.Provider>
         </AssistantRuntimeProvider>

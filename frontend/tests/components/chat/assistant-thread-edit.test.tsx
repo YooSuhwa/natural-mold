@@ -99,7 +99,6 @@ vi.mock('@assistant-ui/react', () => {
       condition: (s: { thread: { isRunning: boolean; isEmpty: boolean } }) => boolean
       children?: ReactNode
     }) => (condition({ thread: { isRunning: false, isEmpty: false } }) ? <>{children}</> : null),
-    makeAssistantToolUI: () => () => <div data-testid="tool-ui" />,
     useMessagePartText: () => ({ text: '' }),
   }
 })

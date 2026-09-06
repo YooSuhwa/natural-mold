@@ -5,10 +5,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { HiTLContext } from '@/lib/chat/hitl-context'
 import { UserInputUI } from '../user-input-ui'
 
-vi.mock('@assistant-ui/react', () => ({
-  makeAssistantToolUI: (config: unknown) => config,
-}))
-
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }))
@@ -27,12 +23,13 @@ type ToolUiRender = {
   }) => ReactNode
 }
 
+const renderUserInput = UserInputUI as unknown as ToolUiRender['render']
+
 describe('UserInputUI', () => {
   it('passes the LangGraph interrupt id when registering a user response', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    const toolUi = UserInputUI as unknown as ToolUiRender
     function UserInputUnderTest() {
-      return toolUi.render({
+      return renderUserInput({
         args: {
           question: 'Continue?',
           options: ['Yes'],
@@ -64,9 +61,8 @@ describe('UserInputUI', () => {
 
   it('returns a batched user response to idle when the shared resume is rejected', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockRejectedValue(new Error('stale'))
-    const toolUi = UserInputUI as unknown as ToolUiRender
     function UserInputUnderTest() {
-      return toolUi.render({
+      return renderUserInput({
         args: {
           question: 'Continue?',
           options: ['Yes'],

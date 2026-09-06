@@ -8,10 +8,6 @@ import type { Decision } from '@/lib/types'
 import { ApprovalCard } from '../approval-card'
 import { GroupedApprovalCard } from '../grouped-approval-card'
 
-vi.mock('@assistant-ui/react', () => ({
-  makeAssistantToolUI: (config: unknown) => config,
-}))
-
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }))
@@ -35,15 +31,16 @@ type ToolUiRender = {
   }) => ReactNode
 }
 
+const renderApproval = ApprovalCard as unknown as ToolUiRender['render']
+
 describe('ApprovalCard', () => {
   it('resumes approval even when the runtime cannot accept tool results', async () => {
     const onResumeDecisions = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     const unsupportedAddResult = vi.fn(() => {
       throw new Error('Runtime does not support tool results.')
     })
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: 'toolu-1',
           tool_name: 'write_file',
@@ -74,9 +71,8 @@ describe('ApprovalCard', () => {
   it('keeps the approval pending when resume fails', async () => {
     const onResumeDecisions = vi.fn<() => Promise<void>>().mockRejectedValue(new Error('stale'))
     const addResult = vi.fn()
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: 'toolu-1',
           tool_name: 'write_file',
@@ -102,9 +98,8 @@ describe('ApprovalCard', () => {
 
   it('passes the LangGraph interrupt id when registering an approval decision', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: 'interrupt-approval:0',
           tool_name: 'write_file',
@@ -137,9 +132,8 @@ describe('ApprovalCard', () => {
 
   it('keeps a rejected result visible after LangGraph resume accepts the decision', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: 'interrupt-approval:0',
           tool_name: 'execute_in_skill',
@@ -173,9 +167,8 @@ describe('ApprovalCard', () => {
   })
 
   it('gives the rejection reason textarea its translated accessible name', () => {
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: 'reject-name',
           tool_name: 'write_file',
@@ -197,9 +190,8 @@ describe('ApprovalCard', () => {
   })
 
   it('redacts sensitive approval descriptions and args before rendering', () => {
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: 'interrupt-approval:0',
           tool_name: 'execute_in_skill',
@@ -234,9 +226,8 @@ describe('ApprovalCard', () => {
   })
 
   it('renders tool args as a readable key/value list, not a raw JSON dump', () => {
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: 'toolu-kv',
           tool_name: 'write_file',
@@ -265,9 +256,8 @@ describe('ApprovalCard', () => {
   })
 
   it('drops the langchain boilerplate description (header/tool/args duplication)', () => {
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: 'toolu-boiler',
           tool_name: 'execute_in_skill',
@@ -293,9 +283,8 @@ describe('ApprovalCard', () => {
   })
 
   it('names the skill in the headline instead of the generic execute_in_skill', () => {
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: 'toolu-skill',
           tool_name: 'execute_in_skill',
@@ -327,9 +316,8 @@ describe('ApprovalCard', () => {
   // index (covered by test_hitl_wire.py).
   it('locks secret fields read-only and submits <redacted> for the backend to restore', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: 'interrupt-approval:0',
           tool_name: 'write_file',
@@ -384,9 +372,8 @@ describe('ApprovalCard', () => {
 
   it('submits an edit without a tool name (backend fills it by index)', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: {
           // No tool_name — a merged raw-model-call slot can arrive without it.
           // Edit must still submit (no invalidJson abort); the backend fills
@@ -427,9 +414,8 @@ describe('ApprovalCard', () => {
 
   // ── allowed_decisions 버튼 게이팅 ──────────────────────────────────
   function renderCard(args: Record<string, unknown>, hitl?: Record<string, unknown>) {
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function ApprovalUnderTest() {
-      return toolUi.render({
+      return renderApproval({
         args: args as never,
         status: { type: 'requires-action' },
       })
@@ -590,9 +576,8 @@ describe('ApprovalCard', () => {
           if (actionIndex === 1) resolveActionOne = resolve
         }),
     )
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function Card({ index }: { index: number }) {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: `intr:${index}`,
           tool_name: 'execute_in_skill',
@@ -658,9 +643,8 @@ describe('ApprovalCard', () => {
     })
     const registerDecision = (actionIndex: number, decision: Decision, displayText?: string) =>
       coordinator.registerDecision(actionIndex, decision, displayText)
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function Card({ index }: { index: number }) {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: `intr:${index}`,
           tool_name: 'execute_in_skill',
@@ -718,9 +702,8 @@ describe('ApprovalCard', () => {
 
   it('keeps reject and edit rows pending until their manual decisions resolve', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function Card({ index }: { index: number }) {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: `intr:${index}`,
           tool_name: 'execute_in_skill',
@@ -770,9 +753,8 @@ describe('ApprovalCard', () => {
 
   it('does not let "모두 승인" override a card the user put into reject mode', async () => {
     const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    const toolUi = ApprovalCard as unknown as ToolUiRender
     function Card({ index }: { index: number }) {
-      return toolUi.render({
+      return renderApproval({
         args: {
           approval_id: `intr:${index}`,
           tool_name: 'execute_in_skill',

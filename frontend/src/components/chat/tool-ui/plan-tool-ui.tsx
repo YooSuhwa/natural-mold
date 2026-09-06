@@ -1,6 +1,6 @@
 'use client'
 
-import { makeAssistantToolUI } from '@assistant-ui/react'
+import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import { CheckCircle2Icon, CircleDotIcon, CircleIcon } from 'lucide-react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
@@ -49,10 +49,9 @@ const STATUS_MAP = {
 // PlanToolUI — write_todos 도구
 // ──────────────────────────────────────────────
 
-export const PlanToolUI = makeAssistantToolUI<WriteTodosArgs, string>({
-  toolName: 'write_todos',
-  render: ({ args, status }) => <PlanToolView args={args} statusType={status.type} />,
-})
+export function PlanToolUI({ args, status }: ToolCallMessagePartProps<WriteTodosArgs, string>) {
+  return <PlanToolView args={args} statusType={status.type} />
+}
 
 // 스트리밍 중 tool-call args는 부분 JSON으로 도착한다 — `todos`가 배열이 되기
 // 전(문자열/객체 조각)에도 렌더가 호출되므로 Array.isArray + item shape 가드가

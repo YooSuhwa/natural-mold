@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { makeAssistantToolUI } from '@assistant-ui/react'
+import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { BrainIcon, CheckIcon, Loader2Icon, PencilIcon, SaveIcon, XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
@@ -341,33 +341,45 @@ function MemoryToolCard({
   )
 }
 
-export const ProposeMemoryToolUI = makeAssistantToolUI<MemoryToolArgs, unknown>({
-  toolName: 'propose_memory',
-  render: ({ args, result, status, addResult }) => (
+export function ProposeMemoryToolUI({
+  args,
+  result,
+  status,
+  addResult,
+}: ToolCallMessagePartProps<MemoryToolArgs, unknown>) {
+  return (
     <MemoryToolCard args={args} result={result} statusType={status.type} addResult={addResult} />
-  ),
-})
+  )
+}
 
-export const SaveUserMemoryToolUI = makeAssistantToolUI<MemoryToolArgs, unknown>({
-  toolName: 'save_user_memory',
-  render: ({ args, result, status, addResult }) => (
+export function SaveUserMemoryToolUI({
+  args,
+  result,
+  status,
+  addResult,
+}: ToolCallMessagePartProps<MemoryToolArgs, unknown>) {
+  return (
     <MemoryToolCard
       args={{ ...args, scope: 'user' }}
       result={result}
       statusType={status.type}
       addResult={addResult}
     />
-  ),
-})
+  )
+}
 
-export const SaveAgentMemoryToolUI = makeAssistantToolUI<MemoryToolArgs, unknown>({
-  toolName: 'save_agent_memory',
-  render: ({ args, result, status, addResult }) => (
+export function SaveAgentMemoryToolUI({
+  args,
+  result,
+  status,
+  addResult,
+}: ToolCallMessagePartProps<MemoryToolArgs, unknown>) {
+  return (
     <MemoryToolCard
       args={{ ...args, scope: 'agent' }}
       result={result}
       statusType={status.type}
       addResult={addResult}
     />
-  ),
-})
+  )
+}

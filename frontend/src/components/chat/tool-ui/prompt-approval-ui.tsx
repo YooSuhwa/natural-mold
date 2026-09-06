@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { makeAssistantToolUI } from '@assistant-ui/react'
+import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import { CheckIcon, FileTextIcon, PencilIcon, XIcon } from 'lucide-react'
 import {
@@ -112,7 +112,9 @@ function PromptApproval({
   )
 }
 
-export const PromptApprovalToolUI = makeAssistantToolUI<PromptApprovalArgs, unknown>({
-  toolName: 'prompt_approval',
-  render: ({ args, status }) => <PromptApproval args={args} status={status.type} />,
-})
+export function PromptApprovalToolUI({
+  args,
+  status,
+}: ToolCallMessagePartProps<PromptApprovalArgs, unknown>) {
+  return <PromptApproval args={args} status={status.type} />
+}

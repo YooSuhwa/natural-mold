@@ -18,6 +18,8 @@ vi.mock('@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream', () => ({
 }))
 
 vi.mock('@assistant-ui/react', () => ({
+  AuiConfig: (config: unknown) => config,
+  Tools: ({ toolkit }: { toolkit: Record<string, unknown> }) => ({ toolkit }),
   AssistantRuntimeProvider: ({ runtime, children }: { runtime: string; children: ReactNode }) => (
     <div data-runtime={runtime} data-testid="assistant-runtime-provider">
       {children}
@@ -44,7 +46,7 @@ vi.mock('../assistant-thread', () => ({
 }))
 
 vi.mock('@/lib/chat/tool-ui-registry', () => ({
-  ALL_TOOL_UI: [],
+  ALL_TOOLKIT: {},
 }))
 
 const messages: Message[] = []

@@ -6,7 +6,7 @@ import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { math } from '@streamdown/math'
 import { buildMarkdownComponents } from '@/components/chat/markdown-components'
 import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-streaming-plugins'
-import { ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
+import { GenericToolFallback } from '@/components/chat/tool-ui/generic-tool-ui'
 import { ToolGroupContainer } from '@/components/chat/tool-ui/tool-group-container'
 import { GroupedApprovalCard } from '@/components/chat/tool-ui/grouped-approval-card'
 import {
@@ -38,23 +38,27 @@ function AssistantTextPart() {
 }
 
 function ToolCallFallback({
+  toolCallId,
   toolName,
   args,
   result,
   status,
 }: {
+  readonly toolCallId: string
   readonly toolName: string
   readonly args: Record<string, unknown>
   readonly result?: unknown
   readonly status: { readonly type: string }
 }) {
-  const resolved =
-    status.type === 'running'
-      ? ('running' as const)
-      : status.type === 'complete'
-        ? ('complete' as const)
-        : ('error' as const)
-  return <ToolFallbackPanel toolName={toolName} args={args} result={result} status={resolved} />
+  return (
+    <GenericToolFallback
+      toolCallId={toolCallId}
+      toolName={toolName}
+      args={args}
+      result={result}
+      status={status}
+    />
+  )
 }
 
 function OrderedTextPart() {
@@ -67,12 +71,14 @@ function OrderedTextPart() {
 
 function OrderedToolCall({
   toolUI,
+  toolCallId,
   toolName,
   args,
   result,
   status,
 }: {
   readonly toolUI: ReactNode
+  readonly toolCallId: string
   readonly toolName: string
   readonly args: Record<string, unknown>
   readonly result?: unknown
@@ -81,7 +87,13 @@ function OrderedToolCall({
   return (
     <div className="order-1">
       {toolUI ?? (
-        <ToolCallFallback toolName={toolName} args={args} result={result} status={status} />
+        <ToolCallFallback
+          toolCallId={toolCallId}
+          toolName={toolName}
+          args={args}
+          result={result}
+          status={status}
+        />
       )}
     </div>
   )
@@ -125,6 +137,7 @@ export function renderGroupedAssistantPart({ part, children }: GroupedRenderInfo
       return (
         <OrderedToolCall
           toolUI={leaf.toolUI}
+          toolCallId={leaf.toolCallId}
           toolName={leaf.toolName}
           args={leaf.args as Record<string, unknown>}
           result={leaf.result}

@@ -26,8 +26,23 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 })
 
 vi.mock('@assistant-ui/react', () => ({
-  AssistantRuntimeProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-  useComposerRuntime: () => ({ setText: vi.fn() }),
+  AuiConfig: (config: unknown) => config,
+  Tools: ({ toolkit }: { toolkit: Record<string, unknown> }) => ({ toolkit }),
+  AssistantRuntimeProvider: ({
+    children,
+    config,
+  }: {
+    children: ReactNode
+    config: { tools: { toolkit: Record<string, unknown> } }
+  }) => (
+    <div
+      data-testid="assistant-runtime-provider"
+      data-tool-names={Object.keys(config.tools.toolkit).join(',')}
+    >
+      {children}
+    </div>
+  ),
+  useAui: () => ({ optional: { composer: { setText: vi.fn() } } }),
 }))
 
 vi.mock('@/lib/chat/use-chat-runtime', () => ({
@@ -35,23 +50,16 @@ vi.mock('@/lib/chat/use-chat-runtime', () => ({
 }))
 
 vi.mock('@/lib/chat/tool-ui-registry', () => ({
-  ALL_TOOL_UI: [{ toolName: 'request_approval' }, { toolName: 'ask_user' }],
+  ALL_TOOLKIT: { request_approval: {}, ask_user: {} },
 }))
 
 vi.mock('@/components/chat/assistant-thread', () => ({
-  AssistantThread: ({
-    emptyContent,
-    toolUI,
-  }: {
-    emptyContent: ReactNode
-    toolUI: readonly { toolName?: string }[]
-  }) => {
+  AssistantThread: ({ emptyContent }: { emptyContent: ReactNode }) => {
     const hitl = useHiTL()
     return (
       <div
         data-has-register-decision={String(typeof hitl?.registerDecision === 'function')}
         data-testid="assistant-thread"
-        data-tool-names={toolUI.map((ui) => ui.toolName).join(',')}
       >
         {emptyContent}
       </div>
@@ -121,8 +129,9 @@ describe('AssistantPanel', () => {
   it('쓰기 도구 승인 UI와 HiTL resume 컨텍스트를 AssistantThread에 제공한다', () => {
     render(<AssistantPanel agentId="agent-1" agentName="Test Agent" />)
 
+    const provider = screen.getByTestId('assistant-runtime-provider')
     const thread = screen.getByTestId('assistant-thread')
-    expect(thread).toHaveAttribute('data-tool-names', 'request_approval,ask_user')
+    expect(provider).toHaveAttribute('data-tool-names', 'request_approval,ask_user')
     expect(thread).toHaveAttribute('data-has-register-decision', 'true')
   })
 
