@@ -22,6 +22,14 @@ const mockUseAgentSummaries = vi.fn()
 const mockUseSession = vi.fn()
 const mockToggleFavorite = vi.fn()
 
+const greetingCases = [
+  { hour: 4, minute: 59, expectedGreeting: '늦은 밤이네요' },
+  { hour: 5, minute: 0, expectedGreeting: '좋은 아침이에요' },
+  { hour: 12, minute: 0, expectedGreeting: '좋은 오후예요' },
+  { hour: 18, minute: 0, expectedGreeting: '좋은 저녁이에요' },
+  { hour: 22, minute: 0, expectedGreeting: '오늘도 수고하셨어요' },
+] as const
+
 vi.mock('@/lib/hooks/use-agents', () => ({
   useAgentSummaries: () => mockUseAgentSummaries(),
   useToggleFavorite: () => ({ mutate: mockToggleFavorite }),
@@ -35,6 +43,10 @@ describe('DashboardPage', () => {
   beforeEach(() => {
     mockUseAgentSummaries.mockReturnValue({ data: undefined, isLoading: false })
     mockUseSession.mockReturnValue({ data: null })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('renders loading skeletons when agents are loading', () => {
@@ -71,15 +83,21 @@ describe('DashboardPage', () => {
     expect(templateLink).toHaveAttribute('href', '/agents/new/template')
   })
 
-  it('shows hero greeting with user name and subtitle with count', () => {
-    mockUseAgentSummaries.mockReturnValue({ data: mockAgentSummaryList, isLoading: false })
-    mockUseSession.mockReturnValue({ data: { id: 'u1', name: '수화', email: 'a@b.c' } })
-    render(<DashboardPage />)
-    // 시간대별 인사 5종 중 하나 + 사용자 이름 + 카운트 포함 subtitle.
-    expect(screen.getByText(/(좋은 아침이에요|좋은 오후예요|좋은 저녁이에요|늦은 밤이네요|오늘도 수고하셨어요),/)).toBeInTheDocument()
-    expect(screen.getByText(/수화님/)).toBeInTheDocument()
-    expect(screen.getByText(new RegExp(`현재 ${mockAgentSummaryList.length}개의 에이전트가 있어요`))).toBeInTheDocument()
-  })
+  it.each(greetingCases)(
+    'shows $expectedGreeting at $hour:$minute',
+    ({ hour, minute, expectedGreeting }) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(2026, 8, 6, hour, minute))
+      mockUseAgentSummaries.mockReturnValue({ data: mockAgentSummaryList, isLoading: false })
+      mockUseSession.mockReturnValue({ data: { id: 'u1', name: '수화', email: 'a@b.c' } })
+      render(<DashboardPage />)
+      expect(screen.getByText(`${expectedGreeting},`, { exact: true })).toBeInTheDocument()
+      expect(screen.getByText(/수화님/)).toBeInTheDocument()
+      expect(
+        screen.getByText(new RegExp(`현재 ${mockAgentSummaryList.length}개의 에이전트가 있어요`)),
+      ).toBeInTheDocument()
+    },
+  )
 
   it('prefers display name in the hero greeting', () => {
     mockUseAgentSummaries.mockReturnValue({ data: [], isLoading: false })

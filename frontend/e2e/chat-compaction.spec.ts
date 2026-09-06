@@ -1,7 +1,8 @@
-import type { APIRequestContext, Page } from '@playwright/test'
+import type { APIRequestContext, Page, TestInfo } from '@playwright/test'
 import {
   API_BASE,
   apiDeleteOk,
+  apiGetJson,
   apiPostJson,
   expect,
   isRecord,
@@ -9,7 +10,12 @@ import {
   test,
   type CsrfHeaders,
 } from './fixtures'
-import { sendMessage, stringField, waitForActiveRun, waitForRunStatus } from './langgraph-v3-helpers'
+import {
+  sendMessage,
+  sendMessageForRun,
+  stringField,
+  waitForRunStatus,
+} from './langgraph-v3-helpers'
 
 // Auto-compaction marker E2E (dev-plan-context-compaction-marker.md).
 //
@@ -36,12 +42,47 @@ const COMPACTION_RUNNING_TEXT = '이전 대화를 압축하는 중'
 const COMPACTION_SUMMARY_TEXT = '이전 대화를 요약해 컨텍스트를 정리했어요'
 // The scripted model's generic reply (app/agent_runtime/e2e_scripted_model.py).
 const SCRIPTED_GENERIC_REPLY = 'E2E scripted document model is ready.'
+const SCRIPTED_SLOW_REPLY = 'E2E slow stream completed after detached navigation.'
+const RUNTIME_POLICY_CAPTURE_VIEWPORTS = [375, 768, 1280] as const
+
+type SummarizationPolicy =
+  | { readonly mode: 'auto' }
+  | { readonly mode: 'preset'; readonly preset: 'balanced_context_v1' }
 
 interface CompactionSetup {
   readonly agentId: string
   readonly conversationId: string
   readonly modelId: string
   readonly csrfHeaders: CsrfHeaders
+}
+
+async function captureBoundedCompactionState(
+  page: Page,
+  testInfo: TestInfo,
+  summarization: SummarizationPolicy,
+): Promise<void> {
+  if (testInfo.project.name !== 'scripted-capture') return
+
+  const policyName = summarization.mode === 'auto' ? 'auto' : summarization.preset
+  for (const width of RUNTIME_POLICY_CAPTURE_VIEWPORTS) {
+    await page.setViewportSize({ width, height: 960 })
+    const summary = page.getByTestId('compaction-summary').first()
+    await summary.scrollIntoViewIfNeeded()
+    await expect(summary).toBeInViewport()
+    await page.screenshot({
+      path: testInfo.outputPath(`compaction-bounded-${policyName}-${width}.png`),
+      fullPage: false,
+    })
+  }
+}
+
+function runtimePolicy(summarization: SummarizationPolicy) {
+  return {
+    version: 1,
+    filesystem: { mode: 'artifact_write' as const },
+    todo: { enabled: true },
+    summarization,
+  }
 }
 
 async function createSmallContextScriptedModel(
@@ -66,7 +107,10 @@ async function createSmallContextScriptedModel(
   return stringField(model, 'id', 'compaction model')
 }
 
-async function setupCompactionAgent(request: APIRequestContext): Promise<CompactionSetup> {
+async function setupCompactionAgent(
+  request: APIRequestContext,
+  summarization: SummarizationPolicy,
+): Promise<CompactionSetup> {
   const csrfHeaders = await loginApi(request)
   const modelId = await createSmallContextScriptedModel(request, csrfHeaders)
   const unique = Date.now()
@@ -80,9 +124,12 @@ async function setupCompactionAgent(request: APIRequestContext): Promise<Compact
     skill_ids: [],
     sub_agent_ids: [],
     middleware_configs: [],
+    runtime_policy: runtimePolicy(summarization),
   })
   if (!isRecord(agent)) throw new Error('compaction agent create did not return an object')
   const agentId = stringField(agent, 'id', 'compaction agent')
+  expect(agent.runtime_policy_source).toBe('stored')
+  expect(agent.runtime_policy).toEqual(runtimePolicy(summarization))
   const conversation = await apiPostJson(
     request,
     `${API_BASE}/api/agents/${agentId}/conversations`,
@@ -101,7 +148,11 @@ async function setupCompactionAgent(request: APIRequestContext): Promise<Compact
 // Warm-up turns use the scripted model's instant generic reply, which finishes
 // faster than ``/runs/active`` can be polled — so completion is observed via the
 // UI (the Nth identical reply has rendered) rather than the run-status API.
-async function sendAndAwaitReply(page: Page, text: string, expectedReplyCount: number): Promise<void> {
+async function sendAndAwaitReply(
+  page: Page,
+  text: string,
+  expectedReplyCount: number,
+): Promise<void> {
   await sendMessage(page, text)
   await expect
     .poll(() => page.getByText(SCRIPTED_GENERIC_REPLY).count(), {
@@ -111,6 +162,21 @@ async function sendAndAwaitReply(page: Page, text: string, expectedReplyCount: n
     .toBeGreaterThanOrEqual(expectedReplyCount)
 }
 
+async function expectStoredRunPolicy(
+  request: APIRequestContext,
+  conversationId: string,
+  runId: string,
+): Promise<void> {
+  const run = await apiGetJson(
+    request,
+    `${API_BASE}/api/conversations/${conversationId}/runs/${runId}`,
+  )
+  if (!isRecord(run)) throw new Error('compaction run did not return an object')
+  expect(run.runtime_policy_source).toBe('stored')
+  expect(run.runtime_policy_version).toBe(1)
+  expect(run.runtime_policy_hash).toMatch(/^[a-f0-9]{64}$/)
+}
+
 test.describe('Auto-compaction marker', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
   test.skip(
@@ -118,13 +184,18 @@ test.describe('Auto-compaction marker', () => {
     'Skipped for the legacy chat runtime',
   )
 
-  test('shows the transient 압축 중 pill and the permanent compaction summary marker', async ({
-    page,
-    request,
-    errors,
-  }) => {
-    test.setTimeout(150_000)
-    const setup = await setupCompactionAgent(request)
+  async function runStoredCompactionScenario(
+    page: Page,
+    request: APIRequestContext,
+    testInfo: TestInfo,
+    errors: {
+      readonly console: readonly string[]
+      readonly network: readonly string[]
+      readonly page: readonly string[]
+    },
+    summarization: SummarizationPolicy,
+  ): Promise<void> {
+    const setup = await setupCompactionAgent(request, summarization)
 
     try {
       await page.goto(`/agents/${setup.agentId}/conversations/${setup.conversationId}`)
@@ -133,40 +204,92 @@ test.describe('Auto-compaction marker', () => {
       await sendAndAwaitReply(page, `${CONTEXT_PADDING} [warmup 1]`, 1)
       await sendAndAwaitReply(page, `${CONTEXT_PADDING} [warmup 2]`, 2)
 
-      // Capture turn: deepagents compacts before answering, then slow-streams.
-      await sendMessage(page, `${SLOW_STREAM_MARKER} ${CONTEXT_PADDING} [capture]`)
-      // Grab the run while it is still active so the slow stream can't finish
-      // before we start asserting on the (transient) pill.
-      const captureRunId = await waitForActiveRun(request, setup.conversationId)
+      // Capture the first compaction while the slow stream keeps the transient
+      // activity strip visible. ``run.start`` supplies the accepted id even when
+      // the backend completes a fast run before active-run polling begins.
+      const firstRunId = await sendMessageForRun(
+        page,
+        setup.conversationId,
+        `${SLOW_STREAM_MARKER} ${CONTEXT_PADDING} [capture 1]`,
+      )
 
-      // (a) Transient "압축 중…" pill in the run activity strip.
       const compactionPill = page
         .getByTestId('run-activity-strip')
         .locator('[data-kind="compaction"]')
       await expect(compactionPill).toBeVisible({ timeout: 30_000 })
       await expect(compactionPill).toContainText(COMPACTION_RUNNING_TEXT)
 
-      // Let the slow stream finish.
-      await waitForRunStatus(request, setup.conversationId, captureRunId, 'completed')
+      await waitForRunStatus(request, setup.conversationId, firstRunId, 'completed')
+      await expectStoredRunPolicy(request, setup.conversationId, firstRunId)
+      await expect(page.getByText(SCRIPTED_SLOW_REPLY, { exact: true })).toBeVisible({
+        timeout: 30_000,
+      })
 
-      // (b) Permanent compaction summary marker on the compacted assistant turn.
-      const compactionSummary = page.getByTestId('compaction-summary').first()
-      await expect(compactionSummary).toBeVisible({ timeout: 30_000 })
-      await expect(compactionSummary).toContainText(COMPACTION_SUMMARY_TEXT)
+      // A subsequent long turn must compact again. The permanently projected
+      // Korean marker is intentionally the only UI surface; upstream event data
+      // remains transport-only.
+      const secondRunId = await sendMessageForRun(
+        page,
+        setup.conversationId,
+        `${CONTEXT_PADDING} [capture 2]`,
+      )
+      await waitForRunStatus(request, setup.conversationId, secondRunId, 'completed')
+      await expectStoredRunPolicy(request, setup.conversationId, secondRunId)
+      await expect
+        .poll(() => page.getByTestId('compaction-summary').count(), {
+          timeout: 30_000,
+          intervals: [250, 500, 1000],
+        })
+        .toBeGreaterThanOrEqual(2)
+      await expect(page.getByTestId('compaction-summary').first()).toContainText(
+        COMPACTION_SUMMARY_TEXT,
+      )
+      await expect(page.getByText(SCRIPTED_GENERIC_REPLY, { exact: true })).toHaveCount(3)
+      await captureBoundedCompactionState(page, testInfo, summarization)
 
+      // A normal interaction after compaction must still finish safely rather
+      // than leaving the conversation at a summary/checkpoint boundary.
+      const followUpRunId = await sendMessageForRun(
+        page,
+        setup.conversationId,
+        'E2E post-compaction follow-up',
+      )
+      await waitForRunStatus(request, setup.conversationId, followUpRunId, 'completed')
+      await expectStoredRunPolicy(request, setup.conversationId, followUpRunId)
+      await expect(page.getByText(SCRIPTED_GENERIC_REPLY, { exact: true })).toHaveCount(4)
+
+      expect(await page.locator('body').textContent()).not.toContain('moldy.compaction')
+      expect(await page.locator('body').textContent()).not.toContain('offload_path')
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
+      expect(errors.page).toEqual([])
     } finally {
-      // Best-effort cleanup — by the time finally runs the API request context can
-      // already be torn down with the page ("browser has been closed"), so swallow
-      // teardown errors rather than flaking a green body. The throwaway DB is wiped
-      // per run regardless.
-      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.agentId}`, setup.csrfHeaders).catch(
-        () => {},
-      )
-      await apiDeleteOk(request, `${API_BASE}/api/models/${setup.modelId}`, setup.csrfHeaders).catch(
-        () => {},
-      )
+      // The fixture is dedicated to this test, so deleting the parent agent also
+      // removes its conversations. The isolated lane's throwaway database is an
+      // independent final cleanup boundary if a browser teardown interrupts this.
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.agentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/models/${setup.modelId}`, setup.csrfHeaders)
     }
+  }
+
+  test('stored auto policy shows bounded compaction projection for two compactions', async ({
+    page,
+    request,
+    errors,
+  }, testInfo) => {
+    test.setTimeout(210_000)
+    await runStoredCompactionScenario(page, request, testInfo, errors, { mode: 'auto' })
+  })
+
+  test('stored balanced preset shows bounded compaction projection for two compactions', async ({
+    page,
+    request,
+    errors,
+  }, testInfo) => {
+    test.setTimeout(210_000)
+    await runStoredCompactionScenario(page, request, testInfo, errors, {
+      mode: 'preset',
+      preset: 'balanced_context_v1',
+    })
   })
 })

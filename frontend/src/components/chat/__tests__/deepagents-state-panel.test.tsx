@@ -99,6 +99,20 @@ describe('DeepAgentsStatePanel', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  it('renders a file-only state without a Todo panel', () => {
+    render(
+      <DeepAgentsStatePanel
+        state={{
+          todos: [],
+          files: [{ id: 'file-1', name: 'off-policy.md', path: 'reports/off-policy.md' }],
+        }}
+      />,
+    )
+
+    expect(screen.queryByText('작업 목록')).not.toBeInTheDocument()
+    expect(screen.getByText('파일')).toBeInTheDocument()
+  })
+
   it('hides the todos section but keeps files when showTodos is false', () => {
     render(<DeepAgentsStatePanel state={state} showTodos={false} />)
 

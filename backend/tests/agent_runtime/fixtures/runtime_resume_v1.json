@@ -1,0 +1,85 @@
+{
+  "continuity": {
+    "history_lengths": [
+      1,
+      0
+    ],
+    "run_ids": [
+      "run-resume-contract-1",
+      "run-resume-contract-1"
+    ],
+    "same_agent": true,
+    "same_checkpointer": true,
+    "thread_ids": [
+      "thread-resume-contract-1",
+      "thread-resume-contract-1"
+    ],
+    "trigger_modes": [
+      false,
+      false
+    ]
+  },
+  "initial": {
+    "input_requested_count": 1,
+    "interrupt": {
+      "action": {
+        "args": {
+          "command": "node scripts/create_docx.cjs",
+          "skill_directory": "/skills/docx-document"
+        },
+        "description": "Tool execution requires approval\n\nTool: execute_in_skill\nArgs: {'skill_directory': '/skills/docx-document', 'command': 'node scripts/create_docx.cjs'}",
+        "name": "execute_in_skill"
+      },
+      "allowed_decisions": [
+        "approve",
+        "reject"
+      ]
+    },
+    "methods": [
+      "lifecycle",
+      "values",
+      "messages",
+      "values",
+      "tools",
+      "values",
+      "input.requested",
+      "lifecycle"
+    ],
+    "tool_execution_count": 0
+  },
+  "resume": {
+    "command": {
+      "module": "langgraph.types",
+      "name": "Command",
+      "resume": {
+        "decisions": [
+          {
+            "type": "approve"
+          }
+        ]
+      }
+    },
+    "final_response": "문서 생성이 완료되었습니다.",
+    "input_requested_count": 0,
+    "methods": [
+      "lifecycle",
+      "values",
+      "tools",
+      "values",
+      "tools",
+      "tools",
+      "values",
+      "tools",
+      "custom",
+      "messages",
+      "values",
+      "lifecycle"
+    ],
+    "tool_calls": [
+      {
+        "command": "node scripts/create_docx.cjs",
+        "skill_directory": "/skills/docx-document"
+      }
+    ]
+  }
+}

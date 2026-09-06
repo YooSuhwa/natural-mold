@@ -25,6 +25,7 @@ from app.agent_runtime.identity import (
 )
 from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.agent_runtime.subagents import build_subagents_config
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
@@ -236,6 +237,25 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             return run
 
         conversation = await trigger_service.resolve_schedule_conversation(db, trigger)
+        try:
+            runtime_policy = await trigger_service.ensure_schedule_conversation_runtime_policy(
+                db,
+                conversation.id,
+                current_trigger_run_id=run.id,
+            )
+            await db.commit()
+        except RuntimePolicySnapshotError as exc:
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=conversation,
+                status="failed",
+                error_message=exc.code,
+                thread_id=str(conversation.id),
+            )
+            await db.refresh(run)
+            return run
         now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
         logger.info(
             "Trigger %s executing in conversation %s at %s",
@@ -260,6 +280,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             system_prompt=effective_prompt,
             tools_config=tools_config,
             thread_id=str(conversation.id),
+            runtime_policy=runtime_policy,
             model_params=agent.model_params,
             middleware_configs=agent.middleware_configs,
             agent_skills=agent_skills or None,

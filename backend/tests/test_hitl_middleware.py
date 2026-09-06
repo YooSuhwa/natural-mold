@@ -108,7 +108,6 @@ async def test_hitl_policy_passed_through_top_level_when_interrupt_on_provided(
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.runtime_component_builder.build_agent")
 @patch("app.agent_runtime.runtime_component_builder.convert_to_langchain_messages")
@@ -120,7 +119,6 @@ async def test_hitl_middleware_not_injected_in_trigger_mode(
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_checkpointer: MagicMock,
-    mock_fs_backend_cls: MagicMock,
 ):
     """execute_agent_invoke (is_trigger_mode=True) → HiTL 강제 차단."""
     from app.agent_runtime.agent_stream_runner import execute_agent_invoke

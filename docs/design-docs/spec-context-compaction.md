@@ -9,10 +9,11 @@
 > 2. **수동 compact는 이번 범위에서 제외(후속 옵션)**. 자동만으로 기능 충분. 권장 범위 = **Phase 0(context_window 단일화) + 자동압축 인라인 마커**(Tier 2).
 > 3. **수동을 붙일 때도 자동 미들웨어 "제거"는 불필요**하다. `create_summarization_tool_middleware`는 도구 레이어만 추가하고 자동은 deepagents 기본이 유지된다(중복 없음, state 공유). 제거는 `model.profile`가 read-only라 임계값 교정을 명시 미들웨어로 해야 할 때의 폴백뿐.
 > 4. context_window 주입은 **옵션 A(프로필 주입)가 기본**, 옵션 B(제외+교체)는 폴백.
+> 5. **엔진은 deepagents `0.7.11`로 갱신됐다.** 압축 원본 경로는 더 이상 thread ID로 파생하지 않고, parent/subagent 기록 충돌을 막는 opaque `/conversation_history/session_<uuid>.md` 형식을 사용한다. UI와 프로토콜은 이 경로를 문자열로 전달하며 파일명 구조에 의존하지 않는다.
 
 ## 1. 배경 / 문제
 
-deepagents `0.6.9`는 `create_deep_agent` 기본 스택에 **`SummarizationMiddleware`를 자동 주입**한다(graph.py). 토큰 사용량이 **모델 컨텍스트의 85%**(`trigger=("fraction", 0.85)`)를 넘으면 오래된 메시지를 LLM 요약으로 대체하고 원본을 `/conversation_history/{thread_id}.md`로 오프로드한다. 우리는 이걸 끄지 않으므로 **자동 압축은 이미 활성**이다.
+deepagents `0.7.11`은 `create_deep_agent` 기본 스택에 **`SummarizationMiddleware`를 자동 주입**한다(graph.py). 토큰 사용량이 모델 프로필 기반 임계값을 넘으면 오래된 메시지를 LLM 요약으로 대체하고 원본을 invocation-scoped `/conversation_history/session_<uuid>.md`로 오프로드한다. 우리는 이걸 끄지 않으므로 **자동 압축은 이미 활성**이다.
 
 그러나 세 가지 공백이 있다:
 

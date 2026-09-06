@@ -5,13 +5,16 @@ import type { APIRequestContext } from '@playwright/test'
 // both render. System LLM is seed-configured (LiteLLM), so its slots show as
 // configured. System Credentials is exercised with a real create + delete
 // through the shared catalog modal, verified via /api/system-credentials.
-const API = process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
+const API =
+  process.env.E2E_API_BASE_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? '8001'}`
 const EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 
 async function login(request: APIRequestContext): Promise<Record<string, string>> {
-  const res = await request.post(`${API}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } })
+  const res = await request.post(`${API}/api/auth/login`, {
+    data: { email: EMAIL, password: PASSWORD },
+  })
   expect(res.ok()).toBeTruthy()
   return { 'X-CSRF-Token': (await res.json()).csrf_token as string }
 }
@@ -36,7 +39,8 @@ test.describe('Operator screens (super_user)', () => {
 
   test.afterAll(async ({ request }) => {
     for (const c of await listSystemCredentials(request)) {
-      if (c.name === credName) await request.delete(`${API}/api/system-credentials/${c.id}`, { headers: csrf })
+      if (c.name === credName)
+        await request.delete(`${API}/api/system-credentials/${c.id}`, { headers: csrf })
     }
   })
 
@@ -58,7 +62,10 @@ test.describe('Operator screens (super_user)', () => {
     expect(settings.find((s) => s.role === 'text_primary')?.configured).toBe(true)
   })
 
-  test('creates and deletes a system credential through the catalog modal', async ({ page, request }) => {
+  test('creates and deletes a system credential through the catalog modal', async ({
+    page,
+    request,
+  }) => {
     test.setTimeout(60_000)
     await page.goto('/settings/system-credentials')
 
@@ -70,7 +77,7 @@ test.describe('Operator screens (super_user)', () => {
 
     // 2. Name it uniquely and fill the only required (password) field.
     await dialog.getByLabel('이름').fill(credName)
-    await dialog.locator('input[type="password"]').first().fill('sk-e2e-system-key')
+    await dialog.locator('input[type="password"]').first().fill('e2e-fixture-input')
     await dialog.getByRole('button', { name: '자격증명 저장' }).click()
 
     // 3. It persists as a system credential and renders in the list.
@@ -78,10 +85,13 @@ test.describe('Operator screens (super_user)', () => {
     const row = page.locator('li').filter({ hasText: credName })
     await expect(row).toBeVisible()
     await expect
-      .poll(async () => {
-        const c = (await listSystemCredentials(request)).find((x) => x.name === credName)
-        return c ? `${c.definition_key}:${c.is_system}` : 'missing'
-      }, { timeout: 15_000 })
+      .poll(
+        async () => {
+          const c = (await listSystemCredentials(request)).find((x) => x.name === credName)
+          return c ? `${c.definition_key}:${c.is_system}` : 'missing'
+        },
+        { timeout: 15_000 },
+      )
       .toBe('openai:true')
 
     // 4. Delete it (native confirm) — the API drops it.

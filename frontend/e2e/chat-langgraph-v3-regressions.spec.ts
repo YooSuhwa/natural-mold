@@ -450,6 +450,8 @@ test.describe('LangGraph v3 regression coverage', () => {
       await expect(page.locator(`[data-moldy-run-spinner="${conversationId}"]`)).toBeVisible({
         timeout: 10_000,
       })
+      // Ensure reload happens after the durable active-run record is visible to the API.
+      await waitForActiveRun(request, conversationId)
 
       await page.reload()
       const restoredSpinner = page.locator(`[data-moldy-run-spinner="${conversationId}"]`)

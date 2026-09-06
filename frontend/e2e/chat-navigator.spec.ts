@@ -358,7 +358,11 @@ test.describe('Chat navigator consolidation', () => {
     const betaRow = page.locator('[data-chat-session-href="/agents/agent-2/conversations/conv-3"]')
     await expect(betaRow).toBeVisible()
     // 에이전트 이름은 아바타 hover 툴팁으로 노출된다
-    await betaRow.locator('[data-slot="tooltip-trigger"]').hover()
+    const betaAgentTrigger = betaRow
+      .locator('[data-slot="tooltip-trigger"]')
+      .filter({ hasText: 'Beta Agent' })
+    await expect(betaAgentTrigger).toHaveCount(1)
+    await betaAgentTrigger.hover()
     await expect(
       page.locator('[data-slot="tooltip-content"]').getByText('Beta Agent'),
     ).toBeVisible()

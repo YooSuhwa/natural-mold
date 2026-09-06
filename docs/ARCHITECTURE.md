@@ -1,8 +1,10 @@
 # Moldy Architecture Map
 
-> Last updated: 2026-06-13
-> Source basis: current working tree on `codex/fix-frontend-docker-lock-docs`,
-> recent runtime commits, and the files under `backend/app/`,
+<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+
+> Last updated: 2026-09-05
+> Source basis: current tracked repository source, recent runtime commits, and
+> the files under `backend/app/`,
 > `frontend/src/`, and `frontend/e2e/`.
 
 Moldy is a multi-user no-code AI agent builder. The current codebase is no
@@ -15,14 +17,14 @@ schedule productization.
 
 | Area | Current source state |
 |------|----------------------|
-| Backend | FastAPI app factory in `backend/app/main.py`, async SQLAlchemy services, 49 ORM tables |
+| Backend | FastAPI app factory in `backend/app/main.py` and async SQLAlchemy services |
 | Frontend | Next.js 16.2.2 + React 19.2.4 App Router, `next-intl`, TanStack Query, Jotai |
-| Runtime | LangChain 1.x + LangGraph 1.x + `deepagents>=0.6.8,<0.7.0` |
-| Database | PostgreSQL 16, Alembic head `m59_conversation_artifacts` |
+| Runtime | LangChain 1.x + LangGraph 1.x + `deepagents>=0.7.11,<0.8.0` (lock: 0.7.11) |
+| Database | PostgreSQL 16, Alembic head `m72_runtime_policy_snapshot` |
 | Auth | ADR-016 JWT HS256, HttpOnly cookies, CSRF double-submit, refresh rotation, `super_user` |
-| Credentials | Cipher V2, system/user split, 22 credential definitions registered |
+| Credentials | Cipher V2 and system/user credential separation |
 | Marketplace | Catalog, install, update, uninstall, publish, ACL, moderation/listing, k-skill importer |
-| Latest major feature | M59 generated conversation artifacts + artifact preview/library |
+| Latest major feature | Versioned runtime policy with immutable conversation snapshots and run provenance |
 
 ## System Overview
 
@@ -90,7 +92,7 @@ The backend keeps the Router -> Service -> Model direction:
 - `memory_service.py` resolves user/agent memory policies and stores records or
   approval proposals.
 - `artifact_service.py` and `artifact_storage.py` persist generated file metadata
-  and local artifact bytes introduced by M59.
+  and local artifact bytes introduced by `m59_conversation_artifacts`.
 
 ## Agent Runtime
 
@@ -165,6 +167,14 @@ Runtime details:
   instead of flattening metadata into the payload. Legacy SSE/AG-UI projections
   unwrap that shape at their own boundary.
 
+Runtime-policy ownership is split deliberately: an agent's `runtime_policy` is
+mutable configuration for future conversations, while a conversation owns the
+immutable effective snapshot used by every subsequent execution. Normal durable
+`ConversationRun` rows copy the snapshot version/hash/source for resume audit;
+Agent API and trigger paths resolve the same conversation snapshot. See
+[ADR-022](design-docs/adr-022-runtime-policy-lifecycle.md) for lifecycle,
+compatibility, rollback, and security boundaries.
+
 ### Skills and Filesystem
 
 The current skill runtime is selected-skill based, not a broad `/skills/` mount:
@@ -182,8 +192,7 @@ The current skill runtime is selected-skill based, not a broad `/skills/` mount:
 
 ## Data Model Groups
 
-Alembic head is `m59_conversation_artifacts`. The ORM currently exposes 49
-tables across these groups:
+Alembic head is `m72_runtime_policy_snapshot`. The ORM groups tables as follows:
 
 | Group | Tables / models |
 |-------|-----------------|
@@ -244,8 +253,9 @@ lib/sse/* and lib/chat/use-chat-runtime.ts for legacy streaming and resume
 lib/chat/langgraph-runtime/* for the feature-flagged LangGraph v3 runtime
 ```
 
-The LangGraph v3 frontend path is selected with
-`NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3`. `useMoldyLangGraphStream` owns a single
+The LangGraph v3 frontend transport path is selected with
+`NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3`. This switch does not select or override
+the effective runtime policy. `useMoldyLangGraphStream` owns a single
 `@langchain/react` stream per conversation/thread, bridges root messages into
 assistant-ui with `useExternalStoreRuntime`, keeps the raw stream available for
 DeepAgents selectors, and routes HITL resume through `stream.respond`.
@@ -274,14 +284,15 @@ See `docs/agent-api.md` for request examples.
 
 | Date | Commit | Change reflected in docs |
 |------|--------|--------------------------|
-| 2026-06-14 | pending | Add SDK top-level history hydration and harden LangGraph v3 assistant-ui/subagent message projection |
-| 2026-06-13 | pending | Add LangGraph v3 Agent Streaming Protocol BFF path, assistant-ui bridge, and deterministic v3 E2E |
+| 2026-09-05 | current source | Add RuntimePolicyV1 enforcement, first-writer-wins conversation snapshots, and run provenance through M71/M72 |
+| 2026-06-14 | implemented | Add SDK top-level history hydration and harden LangGraph v3 assistant-ui/subagent message projection |
+| 2026-06-13 | implemented | Add LangGraph v3 Agent Streaming Protocol BFF path, assistant-ui bridge, and deterministic v3 E2E |
 | 2026-06-07 | `e2178d6` | Split executor into facade + runtime component builder + stream runner + MCP/skill modules |
 | 2026-06-07 | `243b5db` | Split conversation router responsibilities into CRUD/messages/branches/files/traces |
 | 2026-06-07 | `6770ba7` | Extract frontend agent settings draft hook/lib |
 | 2026-06-07 | `ca54bdc` | Defer conversation creation until first message |
 | 2026-06-07 | `12c8b98` | Lazy-load heavy chat preview modules |
-| 2026-06-06 | `83bf67d` | Add generated file artifacts, M59, artifact preview/library |
+| 2026-06-06 | `83bf67d` | Add generated file artifacts, `m59_conversation_artifacts`, and artifact preview/library |
 | 2026-06-05 | `05e6ea6` | Wire subagent chat delegation and runtime identity |
 | 2026-06-05 | `def260b` | Add long-term memory controls, memory tools, settings UI |
 | 2026-06-05 | `d5fe960`, `08f5371` | Document E2E capture workflow and GitHub connector PR fallback |
@@ -290,7 +301,7 @@ See `docs/agent-api.md` for request examples.
 
 - Long-running concurrent worktrees can double-run scheduler jobs if multiple
   backend processes share the same DB and all acquire work over time.
-- Artifact and preview surfaces are new as of M59 and should keep getting E2E
+- Artifact and preview surfaces date from `m59_conversation_artifacts` and should keep getting E2E
   coverage around branch links, shares, and generated-file permissions.
 - Marketplace supports Skill Phase 1 deeply; MCP/Agent resource publishing is
   still a future expansion even though the schema is resource-type generic.

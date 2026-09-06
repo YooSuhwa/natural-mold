@@ -197,11 +197,11 @@ def _conversation_thread_id(messages: Sequence[BaseMessage]) -> str | None:
 
 
 def _tool_message_ids(messages: Sequence[BaseMessage]) -> set[str]:
-    ids: set[str] = set()
-    for message in messages:
-        if isinstance(message, ToolMessage) and message.tool_call_id:
-            ids.add(message.tool_call_id)
-    return ids
+    return {
+        message.tool_call_id
+        for message in messages
+        if isinstance(message, ToolMessage) and message.tool_call_id
+    }
 
 
 __all__ = [

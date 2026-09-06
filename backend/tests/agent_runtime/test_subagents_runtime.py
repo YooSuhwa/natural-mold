@@ -17,6 +17,7 @@ from app.agent_runtime.identity import (
     resolve_agent_run_identity,
 )
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.runtime_policy import resolve_runtime_policy
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.model import Model
@@ -124,11 +125,13 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
         is_trigger_mode: bool,
         include_ask_user: bool,
         include_agent_memory_file: bool,
+        scope_offload_backend: bool,
     ) -> SimpleNamespace:
         observed_cfgs.append(cfg)
         assert is_trigger_mode is False
         assert include_ask_user is False
         assert include_agent_memory_file is False
+        assert scope_offload_backend is False
         child_tool = MagicMock()
         child_tool.name = "child_only_tool"
         return SimpleNamespace(
@@ -185,3 +188,210 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
     assert observed_cfgs[0].provider == "anthropic"
     assert observed_cfgs[0].api_key == "child-key"
     assert observed_cfgs[0].credential_subject_user_id == str(caller_id)
+    assert observed_cfgs[0].runtime_policy is parent_cfg.runtime_policy
+
+
+def test_stored_policy_child_keeps_own_scope_without_memory_or_runnable_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deepagents.middleware.filesystem import _check_fs_permission
+
+    from app.agent_runtime.runtime_component_builder import _MOLDY_ACTOR_ID_KEY, build_agent
+    from app.agent_runtime.runtime_policy_capabilities import build_stored_filesystem_permissions
+
+    captured: dict[str, object] = {}
+    parent_permissions = build_stored_filesystem_permissions(
+        thread_id="thread-1",
+        agent_id="parent-agent",
+        user_id="owner",
+        selected_skill_slugs=["parent-skill"],
+        agent_runtime_name=None,
+        include_agent_memory_file=True,
+        mode="artifact_write",
+    )
+    child_permissions = build_stored_filesystem_permissions(
+        thread_id="thread-1",
+        agent_id="child-agent",
+        user_id="owner",
+        selected_skill_slugs=["child-skill"],
+        agent_runtime_name="agent_child",
+        include_agent_memory_file=False,
+        mode="artifact_write",
+    )
+    execute_tool = MagicMock()
+    execute_tool.name = "execute_in_skill"
+    read_tool = MagicMock()
+    read_tool.name = "read_file"
+    write_tool = MagicMock()
+    write_tool.name = "write_file"
+    task_tool = MagicMock()
+    task_tool.name = "task"
+    todo_tool = MagicMock()
+    todo_tool.name = "write_todos"
+    safe_tool = MagicMock()
+    safe_tool.name = "safe_search"
+
+    def capture_create(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        "app.agent_runtime.runtime_component_builder.create_deep_agent",
+        capture_create,
+    )
+    build_agent(
+        MagicMock(),
+        [],
+        "prompt",
+        permissions=parent_permissions,
+        subagents=[
+            {
+                "name": "agent_child",
+                "description": "child",
+                "system_prompt": "child",
+                "tools": [execute_tool, read_tool, write_tool, task_tool, todo_tool, safe_tool],
+                "permissions": child_permissions,
+                _MOLDY_ACTOR_ID_KEY: uuid.uuid4(),
+            }
+        ],
+        runtime_policy=resolve_runtime_policy(
+            {"version": 1, "filesystem": {"mode": "artifact_write"}}
+        ),
+    )
+
+    specs = cast(list[dict[str, object]], captured["subagents"])
+    general_purpose = next(spec for spec in specs if spec["name"] == "general-purpose")
+    general_permissions = general_purpose["permissions"]
+    assert isinstance(general_permissions, list)
+    assert (
+        _check_fs_permission(
+            general_permissions,
+            "read",
+            "/runtime/thread-1/skills/parent-skill/SKILL.md",
+        )
+        == "allow"
+    )
+    assert (
+        _check_fs_permission(
+            general_permissions,
+            "read",
+            "/agents/parent-agent/AGENTS.md",
+        )
+        == "deny"
+    )
+    child = next(spec for spec in specs if spec["name"] == "agent_child")
+    effective_permissions = child["permissions"]
+    assert isinstance(effective_permissions, list)
+    assert (
+        _check_fs_permission(
+            effective_permissions,
+            "read",
+            "/runtime/thread-1/agents/agent_child/skills/child-skill/SKILL.md",
+        )
+        == "allow"
+    )
+    assert (
+        _check_fs_permission(
+            effective_permissions,
+            "read",
+            "/agents/parent-agent/AGENTS.md",
+        )
+        == "deny"
+    )
+    assert (
+        _check_fs_permission(
+            effective_permissions,
+            "read",
+            "/agents/child-agent/AGENTS.md",
+        )
+        == "deny"
+    )
+    assert child["tools"] == [safe_tool]
+
+
+def test_stored_inspect_parent_caps_adversarial_child_write_capabilities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deepagents.middleware.filesystem import FilesystemMiddleware, _check_fs_permission
+
+    from app.agent_runtime.runtime_component_builder import _MOLDY_ACTOR_ID_KEY, build_agent
+    from app.agent_runtime.runtime_policy_capabilities import build_stored_filesystem_permissions
+
+    captured: dict[str, object] = {}
+    parent_permissions = build_stored_filesystem_permissions(
+        thread_id="thread-1",
+        agent_id="parent-agent",
+        user_id="owner",
+        selected_skill_slugs=[],
+        agent_runtime_name=None,
+        include_agent_memory_file=True,
+        mode="inspect",
+    )
+    broader_child_permissions = build_stored_filesystem_permissions(
+        thread_id="thread-1",
+        agent_id="child-agent",
+        user_id="owner",
+        selected_skill_slugs=["child-skill"],
+        agent_runtime_name="agent_child",
+        include_agent_memory_file=True,
+        mode="artifact_write",
+    )
+    write_tool = MagicMock()
+    write_tool.name = "write_file"
+    execute_tool = MagicMock()
+    execute_tool.name = "execute"
+
+    def capture_create(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        "app.agent_runtime.runtime_component_builder.create_deep_agent",
+        capture_create,
+    )
+    build_agent(
+        MagicMock(),
+        [],
+        "prompt",
+        permissions=parent_permissions,
+        subagents=[
+            {
+                "name": "agent_child",
+                "description": "child",
+                "system_prompt": "child",
+                "tools": [write_tool, execute_tool],
+                "permissions": broader_child_permissions,
+                _MOLDY_ACTOR_ID_KEY: uuid.uuid4(),
+            }
+        ],
+        runtime_policy=resolve_runtime_policy({"version": 1, "filesystem": {"mode": "inspect"}}),
+    )
+
+    specs = cast(list[dict[str, object]], captured["subagents"])
+    child = next(spec for spec in specs if spec["name"] == "agent_child")
+    effective_permissions = child["permissions"]
+    assert isinstance(effective_permissions, list)
+    assert (
+        _check_fs_permission(
+            effective_permissions,
+            "read",
+            "/runtime/thread-1/agents/agent_child/skills/child-skill/SKILL.md",
+        )
+        == "allow"
+    )
+    assert (
+        _check_fs_permission(
+            effective_permissions,
+            "write",
+            "/conversations/thread-1/escape.md",
+        )
+        == "deny"
+    )
+    assert child["tools"] == []
+    middleware = cast(list[FilesystemMiddleware], child["middleware"])
+    assert tuple(tool.name for tool in middleware[0].tools) == (
+        "ls",
+        "read_file",
+        "glob",
+        "grep",
+    )

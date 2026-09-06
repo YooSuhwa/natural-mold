@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
+
 from dotenv import load_dotenv
 
-load_dotenv()  # .env → OS 환경 변수 (LangSmith 등 외부 SDK용)
+if os.environ.get("MOLDY_DISABLE_ENV_FILE") != "true":
+    load_dotenv()  # .env → OS 환경 변수 (LangSmith 등 외부 SDK용)
 
-import os
 import ssl
 import uuid
 from collections.abc import AsyncGenerator
@@ -57,6 +59,7 @@ from app.exception_handlers import register_exception_handlers
 
 logger = logging.getLogger(__name__)
 
+
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -67,6 +70,7 @@ from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
 from app.models.template import Template
 from app.rate_limit import limiter
+from app.runtime_lifecycle import lifespan_cleanup_boundary, shutdown_runtime_resources
 from app.scheduler import (
     add_trigger_job,
     cleanup_skill_runtime_roots,
@@ -82,7 +86,6 @@ from app.scheduler import (
     register_refresh_token_gc_job,
     register_skill_draft_gc_job,
     register_skill_runtime_cleanup_job,
-    release_scheduler_leader,
     sweep_stale_conversation_runs,
     try_acquire_scheduler_leader,
 )
@@ -103,6 +106,15 @@ from app.services.spend_writer import spend_queue
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    # Keep teardown around startup entry as well as the serving lifetime: startup
+    # owners (checkpointer, workers, scheduler) may be acquired before a later
+    # startup step raises.
+    async with lifespan_cleanup_boundary(shutdown_runtime_resources), _lifespan_started(app):
+        yield
+
+
+@asynccontextmanager
+async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     # Refuse boot on insecure prod config; emit dev hints otherwise.
     # Covers JWT secret, cookie Secure flag, first-user-admin toggle,
     # CORS origins, encryption keys — all the things that are safe
@@ -257,44 +269,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await db.commit()
 
     yield
-    # Shutdown — order matters (rules/async-lifespan.md):
-    # 1. in-flight consumer (SSE listener) 에 sentinel 송신
-    # 2. asyncio.sleep(0) 으로 task switch 보장 → subscribe finally 실행
-    # 3. scheduler / background task 종료
-    # 4. persistent layer (DB / checkpointer) flush
-    import asyncio
-
-    from app.agent_runtime.event_broker import registry as broker_registry
-    from app.services.conversation_run_worker import get_run_task_registry
-
-    await skill_evaluation_worker.stop(timeout_seconds=10.0)
-    await get_run_task_registry().shutdown(timeout_seconds=10.0)
-
-    # 1. SSE listener 들에 sentinel 먼저. 이 순서가 뒤집히면 scheduler GC가
-    # 먼저 죽은 채로 listener 가 ``queue.get()`` 에 영원히 블록될 수 있다.
-    closed = broker_registry.close_all()
-    if closed:
-        logger.info("Shutdown: closed %d live EventBroker(s)", closed)
-    # 2. subscribe task 의 ``finally: listeners.discard(queue)`` 가 실제로
-    # 실행될 event loop 기회 보장. 한 번의 yield 면 충분하다.
-    await asyncio.sleep(0)
-
-    # 3. background scheduler 종료.
-    if scheduler.running:
-        scheduler.shutdown(wait=False)
-    await release_scheduler_leader()
-
-    # 4. Drain the spend queue so in-flight aggregates make it to the DB
-    # before the process exits. ``stop`` swallows its own errors.
-    await spend_queue.stop()
-
-    from app.agent_runtime.tool_factory import close_tool_http_client
-
-    await close_tool_http_client()
-
-    from app.agent_runtime.checkpointer import shutdown_checkpointer
-
-    await shutdown_checkpointer()
 
 
 def create_app() -> FastAPI:

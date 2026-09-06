@@ -1,0 +1,45 @@
+{
+  "edit": {
+    "checkpoint_id": "ck-before-edit",
+    "messages": [
+      "original question",
+      "original answer",
+      "edited question"
+    ],
+    "moldy_source": "edit",
+    "persisted_source": "edit"
+  },
+  "regenerate": {
+    "checkpoint_id": "ck-regenerate-leaf",
+    "messages": [
+      "regenerate question"
+    ],
+    "moldy_source": "regenerate",
+    "persisted_source": "regenerate"
+  },
+  "replay": {
+    "memory_content": "<redacted>",
+    "memory_id": "memory-public-1",
+    "offload_redacted": true,
+    "persisted_methods": [
+      "lifecycle",
+      "custom",
+      "values",
+      "lifecycle"
+    ],
+    "public_label": "stable-public-value",
+    "public_tag": "stable-pointer-tag",
+    "replay_event_ids": [
+      "40000000-0000-0000-0000-000000000008:lifecycle:running",
+      "40000000-0000-0000-0000-000000000008:memory_recalled",
+      "raw-redaction-values-1",
+      "40000000-0000-0000-0000-000000000008:lifecycle:completed"
+    ],
+    "secret_mask": "<redacted>",
+    "tail_event_ids": [
+      "40000000-0000-0000-0000-000000000008:memory_recalled",
+      "raw-redaction-values-1",
+      "40000000-0000-0000-0000-000000000008:lifecycle:completed"
+    ]
+  }
+}

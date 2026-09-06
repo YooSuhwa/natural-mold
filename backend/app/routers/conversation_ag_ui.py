@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import StreamingResponse
@@ -17,12 +17,15 @@ from app.agent_runtime.ag_ui_adapter import (
 )
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
+from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation
 from app.error_codes import resume_not_found
+from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun
 from app.models.message_event import MessageEvent
 from app.routers.conversation_runs import _retryable_attach_error, _run_is_stale
 from app.services import conversation_run_service, trace_storage
+from app.services.chat import secrets as chat_secrets
 from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_stream_service import sse_response
 
@@ -35,6 +38,7 @@ async def _broker_ag_ui_generator(
     *,
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
+    secret_values: Iterable[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     source_after_id = source_event_id_from_ag_ui(after_id)
     source_in_buffer = broker.has_event_id(source_after_id)
@@ -63,7 +67,16 @@ async def _broker_ag_ui_generator(
 
     async for evt in broker.subscribe(after_id=broker_after_id):
         for ag_ui_event in slice_ag_ui_events_after(
-            [evt],
+            [
+                {
+                    **evt,
+                    "data": project_and_redact_protocol_data(
+                        str(evt.get("event") or "ag_ui"),
+                        evt.get("data") or {},
+                        secret_values=secret_values,
+                    ),
+                }
+            ],
             None,
             thread_id=str(conversation_id),
             run_id=str(run_id),
@@ -81,9 +94,17 @@ async def _replay_ag_ui_generator(
     *,
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
+    secret_values: Iterable[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     for evt in slice_ag_ui_events_after(
-        record.events or [],
+        [
+            project_and_redact_protocol_data(
+                str(event.get("event") or "ag_ui"),
+                event,
+                secret_values=secret_values,
+            )
+            for event in record.events or []
+        ],
         after_id,
         thread_id=str(conversation_id),
         run_id=str(run_id),
@@ -117,7 +138,6 @@ def _headers(run_id: str, mode: str) -> dict[str, str]:
 
 @router.get(
     "/api/conversations/{conversation_id}/runs/{run_id}/ag-ui-stream",
-    dependencies=[Depends(owned_conversation)],
 )
 async def stream_conversation_run_ag_ui(
     conversation_id: uuid.UUID,
@@ -127,6 +147,7 @@ async def stream_conversation_run_ag_ui(
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    conversation: Conversation = Depends(owned_conversation),
 ) -> StreamingResponse:
     after_id = last_event_id or last_event_id_header
     run = await conversation_run_service.get_run_for_user(
@@ -139,6 +160,7 @@ async def stream_conversation_run_ag_ui(
         raise resume_not_found()
 
     run_id_str = str(run_id)
+    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
     broker = broker_registry.get(run_id_str)
     if broker is not None and not broker.is_closed:
         if broker.conversation_id != str(conversation_id):
@@ -149,6 +171,7 @@ async def stream_conversation_run_ag_ui(
                 after_id,
                 conversation_id=conversation_id,
                 run_id=run_id,
+                secret_values=secrets,
             ),
             extra_headers=_headers(run_id_str, "live"),
         )
@@ -187,6 +210,7 @@ async def stream_conversation_run_ag_ui(
             after_id,
             conversation_id=conversation_id,
             run_id=run_id,
+            secret_values=secrets,
         ),
         extra_headers=_headers(run_id_str, "replay"),
     )

@@ -11,18 +11,31 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.offload_storage import OffloadIdentity, ScopedOffloadStorage
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.conversation_run import ConversationRun
 from app.models.model import Model
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.services.user_service import cleanup_user_resources, delete_user
+from app.services.user_service import cleanup_user_resources
+
+
+@pytest.fixture(autouse=True)
+def _isolate_offload_data_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from app.agent_runtime import runtime_config
+
+    monkeypatch.setattr(runtime_config, "_DATA_DIR", tmp_path)
 
 
 async def _make_user(db: AsyncSession, *, email: str = "u1@test.com") -> User:
@@ -72,9 +85,7 @@ async def _make_conversation(db: AsyncSession, agent_id: uuid.UUID) -> Conversat
     return conv
 
 
-async def _make_refresh_token(
-    db: AsyncSession, user_id: uuid.UUID
-) -> RefreshToken:
+async def _make_refresh_token(db: AsyncSession, user_id: uuid.UUID) -> RefreshToken:
     tok = RefreshToken(
         id=uuid.uuid4(),
         user_id=user_id,
@@ -87,6 +98,28 @@ async def _make_refresh_token(
     return tok
 
 
+def _write_conversation_offloads(
+    data_root: Path,
+    *,
+    owner_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+) -> None:
+    backend = ScopedOffloadStorage(
+        data_dir=data_root,
+        identity=OffloadIdentity(
+            owner_id=str(owner_id),
+            conversation_id=str(conversation_id),
+            run_id="cleanup-test-run",
+        ),
+    ).for_actor(uuid.UUID("11111111-1111-4111-8111-111111111111"))
+    history = (
+        f"{backend.artifacts_root}/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    )
+    spill = f"{backend.artifacts_root}/large_tool_results/cleanup-test"
+    assert backend.write(history, "history").error is None
+    assert backend.write(spill, "spill").error is None
+
+
 @pytest.mark.asyncio
 async def test_cleanup_deletes_threads_for_each_conversation(db: AsyncSession):
     """Each conversation owned (via Agent.user_id) → one ``delete_thread`` call."""
@@ -97,9 +130,7 @@ async def test_cleanup_deletes_threads_for_each_conversation(db: AsyncSession):
     conv2 = await _make_conversation(db, agent.id)
 
     delete_thread_mock = AsyncMock()
-    with patch(
-        "app.agent_runtime.checkpointer.delete_thread", delete_thread_mock
-    ):
+    with patch("app.agent_runtime.checkpointer.delete_thread", delete_thread_mock):
         await cleanup_user_resources(db, user.id)
 
     called_with = sorted(c.args[0] for c in delete_thread_mock.call_args_list)
@@ -118,9 +149,7 @@ async def test_cleanup_skips_other_users_conversations(db: AsyncSession):
     other_conv = await _make_conversation(db, other_agent.id)
 
     delete_thread_mock = AsyncMock()
-    with patch(
-        "app.agent_runtime.checkpointer.delete_thread", delete_thread_mock
-    ):
+    with patch("app.agent_runtime.checkpointer.delete_thread", delete_thread_mock):
         await cleanup_user_resources(db, target.id)
 
     called = [c.args[0] for c in delete_thread_mock.call_args_list]
@@ -140,9 +169,7 @@ async def test_cleanup_revokes_active_refresh_tokens(db: AsyncSession):
     revoked_at_before = already_revoked.revoked_at
     assert revoked_at_before is not None
 
-    with patch(
-        "app.agent_runtime.checkpointer.delete_thread", AsyncMock()
-    ):
+    with patch("app.agent_runtime.checkpointer.delete_thread", AsyncMock()):
         await cleanup_user_resources(db, user.id)
 
     await db.refresh(active)
@@ -153,10 +180,7 @@ async def test_cleanup_revokes_active_refresh_tokens(db: AsyncSession):
     # tzinfo on round-trip so compare naive timestamps.
     already_revoked_at = already_revoked.revoked_at
     assert already_revoked_at is not None
-    assert (
-        already_revoked_at.replace(tzinfo=None)
-        == revoked_at_before.replace(tzinfo=None)
-    )
+    assert already_revoked_at.replace(tzinfo=None) == revoked_at_before.replace(tzinfo=None)
 
 
 @pytest.mark.asyncio
@@ -175,95 +199,49 @@ async def test_cleanup_handles_checkpointer_unavailable(db: AsyncSession):
         await cleanup_user_resources(db, user.id)
 
     rows = (
-        await db.execute(
-            select(RefreshToken).where(RefreshToken.user_id == user.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(RefreshToken).where(RefreshToken.user_id == user.id)))
+        .scalars()
+        .all()
+    )
     assert all(r.revoked_at is not None for r in rows)
 
 
 @pytest.mark.asyncio
-async def test_delete_user_cascades_to_agent(db: AsyncSession):
-    """``delete_user`` removes the User row; FK CASCADE removes their agents."""
+async def test_cleanup_rejects_active_run_before_mutating_external_or_owner_state(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Active work makes user cleanup fail closed before any side effect."""
 
     user = await _make_user(db)
     agent = await _make_agent(db, user.id)
-
-    with patch(
-        "app.agent_runtime.checkpointer.delete_thread", AsyncMock()
-    ):
-        await delete_user(db, user.id)
-
-    await db.commit()
-
-    assert (
-        await db.execute(select(User).where(User.id == user.id))
-    ).scalar_one_or_none() is None
-    assert (
-        await db.execute(select(Agent).where(Agent.id == agent.id))
-    ).scalar_one_or_none() is None
-
-
-@pytest.mark.asyncio
-async def test_delete_user_noop_for_unknown_id(db: AsyncSession):
-    """Unknown user → no-op, no exception."""
-
-    with patch(
-        "app.agent_runtime.checkpointer.delete_thread", AsyncMock()
-    ):
-        await delete_user(db, uuid.uuid4())
-
-
-@pytest.mark.asyncio
-async def test_delete_user_does_not_remove_system_credentials(db: AsyncSession):
-    """System credentials (``user_id=NULL``, ``is_system=True``) survive user deletion.
-
-    System rows belong to the operator and must outlive any one user; the
-    FK CASCADE on ``credentials.user_id`` only fires for non-system rows.
-    """
-
-    from app.models.credential import Credential
-
-    user = await _make_user(db, email="del@test.com")
-    sys_cred = Credential(
-        id=uuid.uuid4(),
-        user_id=None,
-        definition_key="anthropic",
-        name="op anthropic",
-        data_encrypted="opaque",
-        key_id="kv1",
-        is_system=True,
+    conversation = await _make_conversation(db, agent.id)
+    token = await _make_refresh_token(db, user.id)
+    db.add(
+        ConversationRun(
+            conversation_id=conversation.id,
+            agent_id=agent.id,
+            user_id=user.id,
+            source="chat",
+            status="running",
+            is_active=True,
+        )
     )
-    db.add(sys_cred)
     await db.flush()
 
-    with patch("app.agent_runtime.checkpointer.delete_thread", AsyncMock()):
-        await delete_user(db, user.id)
-    await db.commit()
+    from app.agent_runtime import checkpointer, offload_storage
 
-    surviving = (
-        await db.execute(select(Credential).where(Credential.id == sys_cred.id))
-    ).scalar_one_or_none()
-    assert surviving is not None
-    assert surviving.is_system is True
-    assert surviving.user_id is None
+    delete_thread = AsyncMock()
+    delete_offloads = AsyncMock()
+    monkeypatch.setattr(checkpointer, "delete_thread", delete_thread)
+    monkeypatch.setattr(offload_storage, "delete_conversation_offloads", delete_offloads)
 
+    with pytest.raises(RuntimeError, match="active conversation run"):
+        await cleanup_user_resources(db, user.id)
 
-@pytest.mark.asyncio
-async def test_delete_user_cascades_refresh_tokens(db: AsyncSession):
-    """RefreshToken FK CASCADE — rows must vanish when the user does."""
-
-    user = await _make_user(db, email="rt-cascade@test.com")
-    tok = await _make_refresh_token(db, user.id)
-    tok_id = tok.id
-
-    with patch("app.agent_runtime.checkpointer.delete_thread", AsyncMock()):
-        await delete_user(db, user.id)
-    await db.commit()
-
-    rows = (
-        await db.execute(
-            select(RefreshToken).where(RefreshToken.id == tok_id)
-        )
-    ).scalars().all()
-    assert rows == []
+    delete_thread.assert_not_awaited()
+    delete_offloads.assert_not_awaited()
+    await db.refresh(token)
+    assert token.revoked_at is None
+    assert await db.get(User, user.id) is not None
+    assert await db.get(Conversation, conversation.id) is not None

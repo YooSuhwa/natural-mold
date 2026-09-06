@@ -9,6 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.agent_runtime.event_broker import EventBroker
+from app.agent_runtime.runtime_config import runtime_data_dir
 from app.agent_runtime.streaming import (
     StreamErrorRecord,
     _is_tool_selector_json,
@@ -320,8 +322,25 @@ async def test_stream_memory_tool_result_emits_memory_event():
     )
     result_chunk = _make_tool_result_chunk("save_user_memory", result)
     agent = MockAgent([(result_chunk, {})])
+    broker = EventBroker("run-memory-redaction")
+    trace_sink: list[dict[str, Any]] = []
+    persisted: list[dict[str, Any]] = []
 
-    events = [e async for e in stream_agent_response(agent, [], {})]
+    async def persist(batch: list[dict[str, Any]]) -> None:
+        persisted.extend(batch)
+
+    events = [
+        e
+        async for e in stream_agent_response(
+            agent,
+            [],
+            {},
+            broker=broker,
+            persist_callback=persist,
+            run_id="run-memory-redaction",
+            trace_sink=trace_sink,
+        )
+    ]
 
     memory_events = [e for e in events if "event: memory_proposed" in e]
     assert len(memory_events) == 1
@@ -329,6 +348,21 @@ async def test_stream_memory_tool_result_emits_memory_event():
     assert data["id"] == "proposal-1"
     assert data["scope"] == "user"
     assert data["content"] == "The user prefers Korean."
+
+    shared_events = [
+        next(event for event in trace_sink if event["event"] == "memory_proposed"),
+        next(event for event in persisted if event["event"] == "memory_proposed"),
+        next(
+            event
+            for event in broker._buffer  # noqa: SLF001 - sink identity regression
+            if event["event"] == "memory_proposed"
+        ),
+    ]
+    for shared_event in shared_events:
+        assert shared_event["data"]["content"] == "<redacted>"
+        assert shared_event["data"]["reason"] == "<redacted>"
+    assert shared_events[0] is shared_events[1] is shared_events[2]
+    assert json.loads(result_chunk.content)["content"] == "The user prefers Korean."
 
 
 @pytest.mark.asyncio
@@ -729,6 +763,83 @@ async def test_stream_persist_callback_final_flush_in_finally():
     # 모든 캡처된 이벤트 id 는 ``run-y-`` 프리픽스.
     flat_ids = [evt["id"] for chunk in captured_chunks for evt in chunk]
     assert all(eid.startswith("run-y-") for eid in flat_ids)
+
+
+@pytest.mark.asyncio
+async def test_stream_projects_internal_offloads_for_all_egress_sinks() -> None:
+    from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
+
+    configured_secret = "legacy-stream-configured-secret-42"
+    history_path = "/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    legacy_spill_path = "/large_tool_results/call-1.json"
+    virtual_spill_path = (
+        f"/.moldy-offload/{'a' * 32}/{'b' * 32}/{'c' * 32}/large_tool_results/0123456789abcdef_json"
+    )
+    physical_spill_path = str(
+        runtime_data_dir() / ".moldy-internal/offload/spill/owner/conversation/run/actor/leaf"
+    )
+    raw_result = (
+        f"history={history_path}; legacy={legacy_spill_path}; "
+        f"virtual={virtual_spill_path}; physical={physical_spill_path}; artifact=report.md; "
+        f"credential={configured_secret}"
+    )
+    result_chunk = _make_tool_result_chunk("web_search", raw_result, tool_call_id="call-1")
+    agent = MockAgent([(result_chunk, {})])
+    broker = EventBroker("run-offload")
+    trace_sink: list[dict[str, Any]] = []
+    persisted: list[dict[str, Any]] = []
+
+    async def persist(batch: list[dict[str, Any]]) -> None:
+        persisted.extend(batch)
+
+    token = set_run_secrets({configured_secret})
+    try:
+        events = [
+            event
+            async for event in stream_agent_response(
+                agent,
+                [],
+                {},
+                broker=broker,
+                persist_callback=persist,
+                run_id="run-offload",
+                trace_sink=trace_sink,
+            )
+        ]
+    finally:
+        reset_run_secrets(token)
+
+    sse_result = next(
+        json.loads(event.split("data: ", 1)[1])
+        for event in events
+        if event.startswith("event: tool_call_result")
+    )
+    trace_result = next(
+        event["data"] for event in trace_sink if event["event"] == "tool_call_result"
+    )
+    persisted_result = next(
+        event["data"] for event in persisted if event["event"] == "tool_call_result"
+    )
+    broker_result = next(
+        event["data"]
+        for event in broker._buffer
+        if event["event"] == "tool_call_result"  # noqa: SLF001
+    )
+
+    all_outputs = [sse_result, trace_result, persisted_result, broker_result]
+    for output in all_outputs:
+        serialized = json.dumps(output, ensure_ascii=False)
+        assert configured_secret not in serialized
+        assert history_path not in serialized
+        assert legacy_spill_path not in serialized
+        assert virtual_spill_path not in serialized
+        assert physical_spill_path not in serialized
+        assert "history_" not in serialized
+        assert "spill_" not in serialized
+        assert "internal_reference_redacted" in serialized
+        assert "report.md" not in serialized
+    assert result_chunk.content == raw_result
+    assert trace_result is persisted_result is broker_result
 
 
 @pytest.mark.asyncio

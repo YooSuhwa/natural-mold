@@ -21,10 +21,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { SkillEvaluationSummaryBadge } from '@/components/skill/skill-evaluation-summary-badge'
 import { SkillHealthBadge } from '@/components/skill/skill-health-badge'
-import { ApiError } from '@/lib/api/errors'
-import { skillsApi } from '@/lib/api/skills'
 import { useAgents } from '@/lib/hooks/use-agents'
-import { useDeleteSkill } from '@/lib/hooks/use-skills'
+import { getSkillExportUrl, isSkillNotFoundError, useDeleteSkill } from '@/lib/hooks/use-skills'
 import { formatDisplayDate } from '@/lib/utils/display-format'
 import type { Skill } from '@/lib/types/skill'
 
@@ -105,7 +103,7 @@ export function SkillListTable({
       } catch (error) {
         // 404 = 멱등 성공 — 다른 탭/플로우에서 이미 삭제된 대상. 실패로 세면
         // 결과는 요청대로인데 "삭제 실패" 토스트가 오발한다 (규칙 ④, R5).
-        if (!(error instanceof ApiError && error.status === 404)) {
+        if (!isSkillNotFoundError(error)) {
           failures.push(skill.name)
         }
       }
@@ -385,7 +383,7 @@ function SkillRowActions({
           {skill.kind === 'package' ? (
             <DropdownMenuItem
               render={
-                <a href={skillsApi.exportUrl(skill.id)} download aria-label={list('rowExport')} />
+                <a href={getSkillExportUrl(skill.id)} download aria-label={list('rowExport')} />
               }
             >
               <Download className="size-4" />

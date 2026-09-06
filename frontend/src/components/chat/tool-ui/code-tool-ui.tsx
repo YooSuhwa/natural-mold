@@ -78,8 +78,24 @@ export function shouldFileToolDefaultExpand({
   status: PillStatus
   hasPreview: boolean
 }): boolean {
-  if (label === 'Read') return false
+  if (label === 'Read') return status === 'error' && hasPreview
   return status !== 'loading' && hasPreview
+}
+
+const FILESYSTEM_PERMISSION_DENIED_RESULT = 'Error: filesystem permission denied'
+
+export function isFilesystemPermissionDenied(result: unknown): boolean {
+  return result === FILESYSTEM_PERMISSION_DENIED_RESULT
+}
+
+export function isWriteFileUnavailable(result: unknown): boolean {
+  if (typeof result !== 'string') return false
+  const normalized = result.toLowerCase()
+  return (
+    normalized.includes('write_file is not a valid tool') ||
+    normalized.includes('unknown tool: write_file') ||
+    normalized.includes('write_file is unavailable')
+  )
 }
 
 // ──────────────────────────────────────────────
@@ -248,15 +264,25 @@ function ReadFileToolView({
   const filePath = args?.file_path ?? args?.path
   const filename = extractFilename(filePath)
   const content = typeof result === 'string' ? result : null
+  const permissionDenied = isFilesystemPermissionDenied(result)
 
   return (
     <FileToolPill
       icon={FileIcon}
       label={t('read')}
       filePath={filePath}
-      status={pillStatusFromAssistantUi(statusType)}
+      status={permissionDenied ? 'error' : pillStatusFromAssistantUi(statusType)}
     >
-      {content && <CodeBlock code={content} filename={filename} />}
+      {permissionDenied ? (
+        <p
+          className="moldy-status-surface moldy-status-warn p-2 moldy-ui-caption"
+          data-testid="filesystem-permission-denied"
+        >
+          {t('permissionDenied')}
+        </p>
+      ) : (
+        content && <CodeBlock code={content} filename={filename} />
+      )}
     </FileToolPill>
   )
 }
@@ -267,22 +293,42 @@ function ReadFileToolView({
 
 export const WriteFileToolUI = makeAssistantToolUI<WriteFileArgs, unknown>({
   toolName: 'write_file',
-  render: ({ args, status }) => <WriteFileToolView args={args} statusType={status.type} />,
+  render: ({ args, result, status }) => (
+    <WriteFileToolView args={args} result={result} statusType={status.type} />
+  ),
 })
 
-function WriteFileToolView({ args, statusType }: { args: WriteFileArgs; statusType: string }) {
+function WriteFileToolView({
+  args,
+  result,
+  statusType,
+}: {
+  args: WriteFileArgs
+  result: unknown
+  statusType: string
+}) {
   const t = useTranslations('chat.toolCall.file')
   const filePath = args?.file_path ?? args?.path
   const filename = extractFilename(filePath)
+  const permissionDenied = isFilesystemPermissionDenied(result) || isWriteFileUnavailable(result)
 
   return (
     <FileToolPill
       icon={FilePlusIcon}
       label={t('write')}
       filePath={filePath}
-      status={pillStatusFromAssistantUi(statusType)}
+      status={permissionDenied ? 'error' : pillStatusFromAssistantUi(statusType)}
     >
-      {args?.content && <CodeBlock code={args.content} filename={filename} />}
+      {permissionDenied ? (
+        <p
+          className="moldy-status-surface moldy-status-warn p-2 moldy-ui-caption"
+          data-testid="filesystem-write-denied"
+        >
+          {t('permissionDenied')}
+        </p>
+      ) : args?.content ? (
+        <CodeBlock code={args.content} filename={filename} />
+      ) : null}
     </FileToolPill>
   )
 }
@@ -293,24 +339,42 @@ function WriteFileToolView({ args, statusType }: { args: WriteFileArgs; statusTy
 
 export const EditFileToolUI = makeAssistantToolUI<EditFileArgs, unknown>({
   toolName: 'edit_file',
-  render: ({ args, status }) => <EditFileToolView args={args} statusType={status.type} />,
+  render: ({ args, result, status }) => (
+    <EditFileToolView args={args} result={result} statusType={status.type} />
+  ),
 })
 
-function EditFileToolView({ args, statusType }: { args: EditFileArgs; statusType: string }) {
+function EditFileToolView({
+  args,
+  result,
+  statusType,
+}: {
+  args: EditFileArgs
+  result: unknown
+  statusType: string
+}) {
   const t = useTranslations('chat.toolCall.file')
   const filePath = args?.file_path ?? args?.path
   const filename = extractFilename(filePath)
   const oldString = args?.old_string
   const newString = args?.new_string
+  const permissionDenied = isFilesystemPermissionDenied(result)
 
   return (
     <FileToolPill
       icon={FileEditIcon}
       label={t('edit')}
       filePath={filePath}
-      status={pillStatusFromAssistantUi(statusType)}
+      status={permissionDenied ? 'error' : pillStatusFromAssistantUi(statusType)}
     >
-      {typeof oldString === 'string' && typeof newString === 'string' ? (
+      {permissionDenied ? (
+        <p
+          className="moldy-status-surface moldy-status-warn p-2 moldy-ui-caption"
+          data-testid="filesystem-edit-denied"
+        >
+          {t('permissionDenied')}
+        </p>
+      ) : typeof oldString === 'string' && typeof newString === 'string' ? (
         <DiffBlock oldStr={oldString} newStr={newString} filename={filename} />
       ) : null}
     </FileToolPill>

@@ -17,9 +17,15 @@ import { MultiApprovalContext, type MultiApprovalContextValue } from './multi-ap
 export function GroupedApprovalCard({ count, children }: { count: number; children: ReactNode }) {
   const t = useTranslations('chat.approval')
   // Each compact card registers its approve callback here (keyed by action index)
-  // and unregisters once decided, so "모두 승인" only drives still-pending actions.
-  const approversRef = useRef(new Map<number, () => void>())
-  const [approvedAll, setApprovedAll] = useState(false)
+  // and unregisters when a row enters another decision flow, so "모두 승인"
+  // only drives rows that are still eligible for automatic approval.
+  const approversRef = useRef(new Map<number, () => Promise<boolean>>())
+  const [resolvedActionIndexes, setResolvedActionIndexes] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  )
+  const [approvingAll, setApprovingAll] = useState(false)
+  const remainingCount = Math.max(count - resolvedActionIndexes.size, 0)
+  const allActionsCompleted = remainingCount === 0
 
   const contextValue = useMemo<MultiApprovalContextValue>(
     () => ({
@@ -29,14 +35,25 @@ export function GroupedApprovalCard({ count, children }: { count: number; childr
       unregister: (idx) => {
         approversRef.current.delete(idx)
       },
+      resolve: (idx) => {
+        setResolvedActionIndexes((current) => {
+          if (current.has(idx)) return current
+          return new Set([...current, idx])
+        })
+      },
     }),
     [],
   )
 
-  const approveAll = useCallback(() => {
-    setApprovedAll(true)
-    for (const approve of approversRef.current.values()) approve()
-  }, [])
+  const approveAll = useCallback(async () => {
+    if (approvingAll || allActionsCompleted) return
+    setApprovingAll(true)
+    const approvals = [...approversRef.current.entries()]
+      .filter(([idx]) => !resolvedActionIndexes.has(idx))
+      .map(([, approve]) => approve())
+    await Promise.allSettled(approvals)
+    setApprovingAll(false)
+  }, [allActionsCompleted, approvingAll, resolvedActionIndexes])
 
   return (
     <MultiApprovalContext.Provider value={contextValue}>
@@ -44,14 +61,19 @@ export function GroupedApprovalCard({ count, children }: { count: number; childr
         className="moldy-chat-card moldy-status-surface moldy-status-warn w-full"
         data-testid="approval-group"
         data-hitl-total-actions={String(count)}
+        data-hitl-pending-actions={String(remainingCount)}
       >
         <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
           <ShieldCheckIcon className="moldy-status-icon size-4" />
-          <span className="text-sm font-medium">{t('pendingCount', { count })}</span>
+          <span className="text-sm font-medium">
+            {allActionsCompleted
+              ? t('allActionsCompleted')
+              : t('pendingCount', { count: remainingCount })}
+          </span>
           <button
             type="button"
-            onClick={approveAll}
-            disabled={approvedAll}
+            onClick={() => void approveAll()}
+            disabled={approvingAll || allActionsCompleted}
             data-testid="approval-approve-all-button"
             data-variant="solid"
             className="moldy-action-pill moldy-status-success ml-auto disabled:opacity-50"

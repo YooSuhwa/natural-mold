@@ -7,10 +7,14 @@ const mockUseSkills = vi.fn()
 const mockCreateDialog = vi.fn()
 const mockDeleteSkill = vi.fn()
 
-vi.mock('@/lib/hooks/use-skills', () => ({
-  useSkills: (...args: unknown[]) => mockUseSkills(...args),
-  useDeleteSkill: () => ({ mutateAsync: mockDeleteSkill, isPending: false }),
-}))
+vi.mock('@/lib/hooks/use-skills', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/hooks/use-skills')>()
+  return {
+    ...actual,
+    useSkills: (...args: unknown[]) => mockUseSkills(...args),
+    useDeleteSkill: () => ({ mutateAsync: mockDeleteSkill, isPending: false }),
+  }
+})
 
 vi.mock('@/components/skill/skill-create-dialog', () => ({
   SkillCreateDialog: (props: { readonly open: boolean; readonly initialTab?: string }) => {
@@ -151,7 +155,9 @@ describe('SkillsPage', () => {
 
     expect(screen.getByTestId('skill-bulk-bar')).toHaveTextContent('1개 선택됨')
 
-    await user.click(within(screen.getByTestId('skill-bulk-bar')).getByRole('button', { name: '삭제' }))
+    await user.click(
+      within(screen.getByTestId('skill-bulk-bar')).getByRole('button', { name: '삭제' }),
+    )
 
     // 확인 다이얼로그 — 검색으로 숨은 선택 행 방어를 위해 대상 이름을 명시한다.
     const dialog = screen.getByRole('alertdialog')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { selectDeepAgentsState } from '../deepagents-state'
+import { hasDeepAgentsState, selectDeepAgentsState } from '../deepagents-state'
 
 describe('selectDeepAgentsState', () => {
   it('normalizes todo statuses and labels from loose state values', () => {
@@ -16,6 +16,29 @@ describe('selectDeepAgentsState', () => {
       expect.objectContaining({ id: 'todo-2', content: 'Write draft', status: 'in_progress' }),
       expect.objectContaining({ id: 'todo-3', content: 'Review result', status: 'pending' }),
     ])
+  })
+
+  it('returns the empty snapshot for Todo-absent, partial, and malformed server values', () => {
+    const absent = selectDeepAgentsState({})
+    const malformed = selectDeepAgentsState({
+      todos: { id: 'not-an-array' },
+      files: [null, 42, false],
+      artifacts: 'not-a-file-collection',
+    })
+
+    expect(absent).toEqual({ todos: [], files: [] })
+    expect(malformed).toEqual({ todos: [], files: [] })
+    expect(hasDeepAgentsState(absent)).toBe(false)
+    expect(hasDeepAgentsState(malformed)).toBe(false)
+  })
+
+  it('normalizes a Todo-absent file state to an empty Todo list', () => {
+    const state = selectDeepAgentsState({
+      files: [{ path: 'reports/off-policy.md', content: 'No Todo state in this conversation.' }],
+    })
+
+    expect(state.todos).toEqual([])
+    expect(state.files).toEqual([expect.objectContaining({ path: 'reports/off-policy.md' })])
   })
 
   it('normalizes files from arrays and record maps', () => {

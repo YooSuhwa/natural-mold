@@ -14,6 +14,7 @@ from app.agent_runtime.message_utils import (
     langchain_messages_to_response,
     strip_json_blocks,
 )
+from app.agent_runtime.offload_storage_types import OffloadKind, logical_offload_id
 
 
 class TestConvertToLangchainMessages:
@@ -191,6 +192,69 @@ class TestLangchainMessagesToResponse:
         assert result[0].role == "tool"
         assert result[0].content == "결과"
         assert result[0].tool_call_id == "toolu_1"
+
+    def test_tool_message_projects_exact_large_result_pointer_without_mutating_source(self):
+        conv_id = uuid.uuid4()
+        tool_call_id = "call_a_b_c"
+        path = "/large_tool_results/call_a_b_c"
+        content = (
+            f"Tool result too large, the result of this tool call {tool_call_id} was saved in the "
+            f"filesystem at this path: {path}\n\n"
+        )
+        msg = ToolMessage(content=content, tool_call_id=tool_call_id)
+
+        [response] = langchain_messages_to_response([msg], conv_id)
+
+        assert response.content == content.replace(
+            path, logical_offload_id(OffloadKind.SPILL, path)
+        )
+        assert path not in response.content
+        assert msg.content == content
+
+    def test_human_summary_projects_history_path_and_unknown_marker_fails_closed(self):
+        conv_id = uuid.uuid4()
+        history_path = "/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+        raw_summary = f"Summary persisted at {history_path}"
+        unknown_internal = "/private/.moldy-internal/offload/history/secret"
+        summary = HumanMessage(content=raw_summary)
+        unknown = HumanMessage(content=f"Do not expose {unknown_internal}")
+
+        responses = langchain_messages_to_response([summary, unknown], conv_id)
+
+        assert responses[0].content == raw_summary.replace(
+            history_path, logical_offload_id(OffloadKind.HISTORY, history_path)
+        )
+        assert history_path not in responses[0].content
+        assert responses[1].content == "internal_reference_redacted"
+        assert summary.content == raw_summary
+        assert unknown.content == f"Do not expose {unknown_internal}"
+
+    def test_message_response_projects_tool_call_payload_without_mutating_source(self):
+        conv_id = uuid.uuid4()
+        path = "/large_tool_results/call_a_b_c"
+        msg = AIMessage(
+            content="tool request",
+            tool_calls=[
+                {
+                    "name": "read_large_result",
+                    "args": {"offload_path": path, "spill_id": "spoofed"},
+                    "id": "call_a_b_c",
+                    "type": "tool_call",
+                }
+            ],
+        )
+
+        [response] = langchain_messages_to_response([msg], conv_id)
+
+        assert response.tool_calls == [
+            {
+                "name": "read_large_result",
+                "args": {"spill_id": logical_offload_id(OffloadKind.SPILL, path)},
+                "id": "call_a_b_c",
+                "type": "tool_call",
+            }
+        ]
+        assert msg.tool_calls[0]["args"]["offload_path"] == path
 
 
 class TestUsageExtraction:

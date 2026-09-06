@@ -21,6 +21,7 @@ from app.agent_runtime.assistant.tools.write_tools import build_write_tools
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.model_factory import create_chat_model
 from app.agent_runtime.runtime_component_builder import build_agent
+from app.agent_runtime.runtime_policy import ASSISTANT_RUNTIME_POLICY
 from app.services.system_credential_resolver import resolve_system_model
 
 logger = logging.getLogger(__name__)
@@ -96,4 +97,5 @@ async def build_assistant_agent(
         interrupt_on=_assistant_write_interrupt_on(write_tools),
         checkpointer=get_checkpointer(),
         name=f"assistant_{str(agent_id)[:8]}",
+        runtime_policy=ASSISTANT_RUNTIME_POLICY,
     )

@@ -4,6 +4,8 @@ import { SectionInstructions } from './section-instructions'
 import { SectionSubAgents } from './section-sub-agents'
 import { SectionModel } from './section-model'
 import { ToolsMiddlewaresGrid } from './tools-middlewares-grid'
+import { RuntimePolicySettings } from '@/components/agent/runtime-policy-settings'
+import type { RuntimePolicyV1 } from '@/lib/types'
 
 interface FormModeProps {
   systemPrompt: string
@@ -34,6 +36,11 @@ interface FormModeProps {
   onToggleSkill: (id: string) => void
   selectedMiddlewareTypes: Set<string>
   onToggleMiddleware: (type: string) => void
+
+  /** Only manual creation exposes the optional advanced runtime policy. */
+  runtimePolicy?: RuntimePolicyV1 | null
+  onRuntimePolicyChange?: (value: RuntimePolicyV1 | null) => void
+  modelContextWindow?: number | null
 }
 
 export function FormMode({
@@ -61,6 +68,9 @@ export function FormMode({
   onToggleSkill,
   selectedMiddlewareTypes,
   onToggleMiddleware,
+  runtimePolicy,
+  onRuntimePolicyChange,
+  modelContextWindow,
 }: FormModeProps) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden p-4">
@@ -86,6 +96,15 @@ export function FormMode({
         fallbackIds={fallbackIds}
         onFallbackIdsChange={onFallbackIdsChange}
       />
+      {onRuntimePolicyChange ? (
+        <RuntimePolicySettings
+          value={runtimePolicy ?? null}
+          onValueChange={onRuntimePolicyChange}
+          contextWindow={modelContextWindow ?? null}
+          surface="new-agent"
+          collapsible
+        />
+      ) : null}
       <ToolsMiddlewaresGrid
         selectedToolIds={selectedToolIds}
         onToggleTool={onToggleTool}

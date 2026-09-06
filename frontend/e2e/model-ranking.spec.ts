@@ -173,13 +173,22 @@ test.describe('M11 — Model ranking column', () => {
   }) => {
     await page.goto('/models')
 
-    await page.getByTestId('only-with-ranking').click()
+    // Wait for the catalog rows before interacting with the client-side filter.
+    await expect(page.getByRole('row', { name: /Claude 3\.5 Sonnet/ })).toBeVisible()
+    await expect(page.getByRole('row', { name: /GPT-4o/ })).toBeVisible()
+    const mysteryRow = page.getByRole('row', { name: /Mystery Preview/ })
+    await expect(mysteryRow).toBeVisible()
+
+    const rankingToggle = page.getByTestId('only-with-ranking')
+    await expect(rankingToggle).toBeVisible()
+    await rankingToggle.click()
+    await expect(rankingToggle).toBeChecked()
 
     await expect(page.getByText('Claude 3.5 Sonnet')).toBeVisible()
     await expect(page.getByRole('row', { name: /GPT-4o/ })).toBeVisible()
-    await expect(page.getByText('Mystery Preview')).toBeHidden()
+    await expect(mysteryRow).toBeHidden()
 
     // Toggle remains rendered so the user can switch back.
-    await expect(page.getByTestId('only-with-ranking')).toBeVisible()
+    await expect(rankingToggle).toBeVisible()
   })
 })

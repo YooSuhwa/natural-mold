@@ -1,4 +1,5 @@
 import type { ArtifactSummary } from './artifact'
+import type { RuntimePolicyV1 } from './runtime-policy'
 
 // Re-exports for greenfield domain types. Legacy types (Connection, Provider,
 // CredentialFieldDef, etc.) were removed alongside the routers they mirrored.
@@ -17,6 +18,7 @@ export * from './memory'
 export * from './agent-api'
 export * from './audit'
 export * from './artifact'
+export * from './runtime-policy'
 
 // ---------- Agent ---------------------------------------------------------
 
@@ -105,6 +107,12 @@ export interface Agent {
    * Backend column is `agents.model_fallback_list` (Postgres ARRAY of UUID).
    */
   model_fallback_ids?: string[] | null
+  /** Stored portable policy; null is the legacy compatibility state. */
+  runtime_policy: RuntimePolicyV1 | null
+  /** Server-resolved policy for display only; never include it in writes. */
+  runtime_policy_effective: RuntimePolicyV1
+  /** Provenance of the stored/effective agent policy; never include it in writes. */
+  runtime_policy_source: 'legacy_compat' | 'stored'
 }
 
 export interface AgentSummary {
@@ -139,6 +147,7 @@ export interface AgentCreateRequest {
   opener_questions?: string[]
   llm_credential_id?: string | null
   model_fallback_ids?: string[] | null
+  runtime_policy?: RuntimePolicyV1 | null
 }
 
 export interface AgentUpdateRequest {
@@ -157,6 +166,7 @@ export interface AgentUpdateRequest {
   opener_questions?: string[]
   llm_credential_id?: string | null
   model_fallback_ids?: string[] | null
+  runtime_policy?: RuntimePolicyV1 | null
 }
 
 // ---------- Template ------------------------------------------------------

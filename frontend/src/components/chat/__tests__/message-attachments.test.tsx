@@ -3,9 +3,8 @@ import { render, screen, userEvent, within } from '../../../../tests/test-utils'
 import { MessageAttachmentItem, fileItemToBrief } from '@/components/chat/message-attachments'
 import type { FileItem, MessageAttachmentBrief } from '@/lib/types'
 
-vi.mock('@/lib/api/uploads', () => ({
-  uploadFile: vi.fn(),
-  getUploadTextContent: vi.fn(async () => ({
+vi.mock('@/lib/chat/attachment-preview', () => ({
+  getAttachmentTextPreview: vi.fn(async () => ({
     text: 'hello from a text attachment',
     truncated: false,
     mime_type: 'text/plain',

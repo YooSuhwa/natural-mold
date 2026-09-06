@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { HiTLContext } from '@/lib/chat/hitl-context'
+import { createHiTLDecisionCoordinator } from '@/lib/chat/standard-interrupt'
+import type { Decision } from '@/lib/types'
 import { ApprovalCard } from '../approval-card'
 import { GroupedApprovalCard } from '../grouped-approval-card'
 
@@ -168,6 +170,30 @@ describe('ApprovalCard', () => {
       )
     })
     expect(await screen.findByText('rejected')).toBeVisible()
+  })
+
+  it('gives the rejection reason textarea its translated accessible name', () => {
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'reject-name',
+          tool_name: 'write_file',
+          tool_args: { path: 'report.md' },
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn() }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('reject'))
+
+    expect(screen.getByRole('textbox', { name: 'rejectReasonLabel' })).toBeInTheDocument()
   })
 
   it('redacts sensitive approval descriptions and args before rendering', () => {
@@ -496,6 +522,18 @@ describe('ApprovalCard', () => {
     expect(screen.queryByTestId('approval-session-consent')).toBeNull()
   })
 
+  it('associates the session consent checkbox with its translated label', () => {
+    renderCard({
+      approval_id: 'consent-name',
+      tool_name: 'test_skill_draft',
+      tool_args: { command: 'python scripts/run.py' },
+      allowed_decisions: ['approve', 'reject'],
+      session_consent_eligible: true,
+    })
+
+    expect(screen.getByRole('checkbox', { name: 'allowForSession' })).toBeInTheDocument()
+  })
+
   it('동의 체크 후 승인하면 decision에 scope:session이 첨부된다', async () => {
     const onResumeDecisions = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     renderCard(
@@ -542,8 +580,16 @@ describe('ApprovalCard', () => {
   })
 
   // ── 멀티액션 그룹 카드 (모두 승인) ──────────────────────────────────
-  it('groups multi-action cards: compact rows + one "모두 승인" approves every action', async () => {
-    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+  it('marks the group complete only after every async approval resolves', async () => {
+    let resolveActionZero: (() => void) | undefined
+    let resolveActionOne: (() => void) | undefined
+    const registerDecision = vi.fn(
+      (actionIndex: number) =>
+        new Promise<void>((resolve) => {
+          if (actionIndex === 0) resolveActionZero = resolve
+          if (actionIndex === 1) resolveActionOne = resolve
+        }),
+    )
     const toolUi = ApprovalCard as unknown as ToolUiRender
     function Card({ index }: { index: number }) {
       return toolUi.render({
@@ -574,12 +620,152 @@ describe('ApprovalCard', () => {
     expect(screen.queryByText('approvalRequired')).toBeNull()
     expect(screen.getByText('approveAll')).toBeInTheDocument()
 
+    const group = screen.getByTestId('approval-group')
     fireEvent.click(screen.getByTestId('approval-approve-all-button'))
 
     await waitFor(() => {
       expect(registerDecision).toHaveBeenCalledWith(0, { type: 'approve' }, 'approved', 'intr')
       expect(registerDecision).toHaveBeenCalledWith(1, { type: 'approve' }, 'approved', 'intr')
     })
+    expect(group).toHaveAttribute('data-hitl-pending-actions', '2')
+    expect(screen.getByText('pendingCount')).toBeInTheDocument()
+    expect(screen.queryByText('allActionsCompleted')).toBeNull()
+
+    resolveActionZero?.()
+    await waitFor(() => {
+      expect(group).toHaveAttribute('data-hitl-pending-actions', '1')
+    })
+    expect(screen.queryByText('allActionsCompleted')).toBeNull()
+
+    resolveActionOne?.()
+    await waitFor(() => {
+      expect(screen.getByText('allActionsCompleted')).toBeInTheDocument()
+    })
+    expect(group).toHaveAttribute('data-hitl-pending-actions', '0')
+  })
+
+  it('retries the full coordinator batch after the final grouped approval resume fails', async () => {
+    const onResumeDecisions = vi
+      .fn<
+        (decisions: Decision[], displayText?: string, interruptId?: string | null) => Promise<void>
+      >()
+      .mockRejectedValueOnce(new Error('resume rejected'))
+      .mockResolvedValueOnce(undefined)
+    const coordinator = createHiTLDecisionCoordinator({
+      totalActions: 2,
+      interruptId: 'intr',
+      resume: onResumeDecisions,
+    })
+    const registerDecision = (actionIndex: number, decision: Decision, displayText?: string) =>
+      coordinator.registerDecision(actionIndex, decision, displayText)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function Card({ index }: { index: number }) {
+      return toolUi.render({
+        args: {
+          approval_id: `intr:${index}`,
+          tool_name: 'execute_in_skill',
+          tool_args: { command: `cmd-${index}` },
+          hitl_action_index: index,
+          hitl_total_actions: 2,
+          hitl_interrupt_id: 'intr',
+          allowed_decisions: ['approve', 'reject'],
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions, registerDecision }}>
+        <GroupedApprovalCard count={2}>
+          <Card index={0} />
+          <Card index={1} />
+        </GroupedApprovalCard>
+      </HiTLContext.Provider>,
+    )
+
+    const group = screen.getByTestId('approval-group')
+    const approveAll = screen.getByTestId('approval-approve-all-button')
+    fireEvent.click(approveAll)
+
+    expect(await screen.findAllByText('resumeFailed')).toHaveLength(2)
+    await waitFor(() => {
+      expect(group).toHaveAttribute('data-hitl-pending-actions', '2')
+      expect(approveAll).toBeEnabled()
+    })
+    expect(screen.getByText('pendingCount')).toBeInTheDocument()
+    expect(screen.queryByText('allActionsCompleted')).toBeNull()
+    expect(screen.queryByText('approved')).toBeNull()
+
+    expect(onResumeDecisions).toHaveBeenCalledWith(
+      [{ type: 'approve' }, { type: 'approve' }],
+      'approved | approved',
+      'intr',
+    )
+
+    fireEvent.click(approveAll)
+
+    await waitFor(() => {
+      expect(onResumeDecisions).toHaveBeenCalledTimes(2)
+      expect(screen.getByText('allActionsCompleted')).toBeInTheDocument()
+    })
+    expect(onResumeDecisions).toHaveBeenLastCalledWith(
+      [{ type: 'approve' }, { type: 'approve' }],
+      'approved | approved',
+      'intr',
+    )
+    expect(group).toHaveAttribute('data-hitl-pending-actions', '0')
+  })
+
+  it('keeps reject and edit rows pending until their manual decisions resolve', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function Card({ index }: { index: number }) {
+      return toolUi.render({
+        args: {
+          approval_id: `intr:${index}`,
+          tool_name: 'execute_in_skill',
+          tool_args: { command: `cmd-${index}` },
+          hitl_action_index: index,
+          hitl_total_actions: 3,
+          hitl_interrupt_id: 'intr',
+          allowed_decisions: index === 1 ? ['approve', 'edit', 'reject'] : ['approve', 'reject'],
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <GroupedApprovalCard count={3}>
+          <Card index={0} />
+          <Card index={1} />
+          <Card index={2} />
+        </GroupedApprovalCard>
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getAllByText('reject')[0])
+    fireEvent.click(screen.getByText('edit'))
+    fireEvent.click(screen.getByTestId('approval-approve-all-button'))
+
+    const group = screen.getByTestId('approval-group')
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(2, { type: 'approve' }, 'approved', 'intr')
+      expect(group).toHaveAttribute('data-hitl-pending-actions', '2')
+    })
+    expect(screen.getByText('pendingCount')).toBeInTheDocument()
+    expect(screen.queryByText('allActionsCompleted')).toBeNull()
+
+    fireEvent.click(screen.getByText('rejectConfirm'))
+    await waitFor(() => {
+      expect(group).toHaveAttribute('data-hitl-pending-actions', '1')
+    })
+
+    fireEvent.click(screen.getByText('editAndApprove'))
+    await waitFor(() => {
+      expect(screen.getByText('allActionsCompleted')).toBeInTheDocument()
+    })
+    expect(group).toHaveAttribute('data-hitl-pending-actions', '0')
   })
 
   it('does not let "모두 승인" override a card the user put into reject mode', async () => {

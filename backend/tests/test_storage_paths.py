@@ -46,3 +46,13 @@ def test_ensure_relative_rejects_absolute():
 def test_ensure_relative_rejects_empty():
     with pytest.raises(ValueError, match="empty storage_path"):
         ensure_relative("")
+
+
+@pytest.mark.parametrize("value", ["../outside", "skills/../../outside"])
+def test_relative_paths_cannot_escape_data_root(value, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "data_root", str(tmp_path))
+
+    with pytest.raises(ValueError, match="escape"):
+        resolve_data_path(value)
+    with pytest.raises(ValueError, match="escape"):
+        ensure_relative(value)

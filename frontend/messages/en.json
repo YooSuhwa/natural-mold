@@ -834,6 +834,41 @@
         "success": "Success",
         "failed": "Failed"
       },
+      "runtimePolicy": {
+        "advancedTitle": "Advanced runtime settings",
+        "title": "Runtime behavior",
+        "description": "Choose how the agent should work when a conversation starts.",
+        "modeLabel": "Runtime behavior mode",
+        "recommended": "Use recommended settings",
+        "custom": "Customize",
+        "sourceRecommended": "Recommended settings",
+        "sourceCustom": "Custom settings",
+        "todo": {
+          "title": "Task list",
+          "description": "Keep work steps visible in the conversation.",
+          "label": "Use task list"
+        },
+        "filesystem": {
+          "title": "File work",
+          "description": "Choose the agent's file-work scope during a conversation.",
+          "inspect": "Review only",
+          "artifactWrite": "Create artifacts"
+        },
+        "summarization": {
+          "title": "Long conversation context",
+          "description": "Keep useful context available as a conversation grows.",
+          "auto": "Automatic",
+          "balanced": "Balanced",
+          "unavailable": "Balanced mode needs context-length information for the selected model.",
+          "invalidCurrent": "The current choice is unavailable for this model. Change the model or switch to automatic."
+        },
+        "notice": {
+          "existingAgent": "This does not affect conversations that have already run. The updated setting applies to conversations that have not run yet and to new conversations.",
+          "newAgent": "The setting applies to new conversations."
+        }
+      },
+      "loadUnavailable": "The agent could not be found or you do not have permission to access it.",
+      "modelsUnavailable": "We could not load model information. Please try again shortly.",
       "save": "Save",
       "deleteAgent": "Delete Agent",
       "deleteDialog": {
@@ -1313,6 +1348,7 @@
       "approved": "Approved",
       "rejected": "Rejected",
       "editApproved": "Edit Approved",
+      "rejectReasonLabel": "Rejection reason",
       "rejectReasonPlaceholder": "Reject Reason Placeholder",
       "editArgsPlaceholder": "Edit Args Placeholder",
       "approve": "Approve",
@@ -1364,7 +1400,8 @@
       "complete": "Complete",
       "clear": "Clear",
       "selectionRange": "Select {min} to {max}",
-      "confirmSelection": "Confirm ({count})"
+      "confirmSelection": "Confirm ({count})",
+      "resumeFailed": "Could not send the response. Try again."
     },
     "clarifying": {
       "directInput": "Direct Input",
@@ -1572,7 +1609,8 @@
       "file": {
         "read": "Read",
         "write": "Write",
-        "edit": "Edit"
+        "edit": "Edit",
+        "permissionDenied": "This file operation was blocked by the current runtime behavior settings."
       },
       "expandToPanel": "Expand to panel"
     },
@@ -1693,9 +1731,7 @@
       "error": "Something went wrong"
     },
     "compaction": {
-      "summary": "Older messages were summarized to free up context",
-      "viewOriginal": "View original",
-      "copied": "Path copied"
+      "summary": "Older messages were summarized to free up context"
     },
     "subagents": {
       "progress": "{completed}/{total} sub-agents done",

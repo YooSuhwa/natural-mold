@@ -1,6 +1,13 @@
 import type { Locator, Page } from '@playwright/test'
 import { API_BASE, apiDeleteOk, expect, test } from './fixtures'
-import { sendMessage, setupLangGraphV3Agent } from './langgraph-v3-helpers'
+import { setFailurePhase } from './helpers/failure-phase-diagnostic'
+import {
+  sendMessage,
+  sendMessageForRun,
+  setupLangGraphV3Agent,
+  waitForRunStatus,
+} from './langgraph-v3-helpers'
+import { waitForAcceptedRunStartResponse } from './helpers/run-start'
 
 const FRONTEND =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`
@@ -10,7 +17,7 @@ const RICH_OUTPUT_PROMPT =
 const RICH_OUTPUT_TITLE = 'E2E rich output contract'
 const RICH_OUTPUT_IMAGE_ALT = 'E2E rich output image'
 const RICH_OUTPUT_REFERENCE_URL = 'https://example.com/e2e-chat-rich-output'
-const DRAFT_TO_CONVERSATION_URL = /\/agents\/[^/]+\/conversations\/[0-9a-f-]{36}$/
+const DRAFT_TO_CONVERSATION_URL = /\/agents\/[^/]+\/conversations\/([0-9a-f-]{36})$/
 
 type TranscriptStabilityWindow = Window & {
   __moldyAskUserActivityMaxRows?: number
@@ -169,40 +176,82 @@ test.describe('Chat transcript stability QA bundle', () => {
     page,
     request,
     errors,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(120_000)
+    setFailurePhase(testInfo.annotations, 'setup_agent')
     const setup = await setupLangGraphV3Agent(request)
     const prompt = '사과, 포도, 배 중에 하나 선택하는 ask user 해줘'
+    let bodySucceeded = false
 
     try {
+      setFailurePhase(testInfo.annotations, 'open_draft')
       await page.goto(`${FRONTEND}/agents/${setup.parentAgentId}/conversations/new`)
+      setFailurePhase(testInfo.annotations, 'verify_draft_route')
       await expect(page).toHaveURL(new RegExp(`/agents/${setup.parentAgentId}/conversations/new$`))
+      setFailurePhase(testInfo.annotations, 'install_prompt_observer')
       await installUserPromptStabilityObserver(page, prompt)
 
-      await sendMessage(page, prompt)
+      setFailurePhase(testInfo.annotations, 'submit_prompt')
+      const acceptedRun = await waitForAcceptedRunStartResponse(page, () =>
+        sendMessage(page, prompt),
+      )
+      setFailurePhase(testInfo.annotations, 'wait_draft_promotion')
       await expect(page).toHaveURL(DRAFT_TO_CONVERSATION_URL, { timeout: 30_000 })
+      const promotedConversationId = new URL(page.url()).pathname.match(
+        DRAFT_TO_CONVERSATION_URL,
+      )?.[1]
+      if (!promotedConversationId) {
+        throw new Error('Draft promotion did not produce a conversation id')
+      }
+      expect(promotedConversationId).toBe(acceptedRun.conversationId)
+      await waitForRunStatus(request, acceptedRun.conversationId, acceptedRun.runId, 'interrupted')
+      setFailurePhase(testInfo.annotations, 'wait_prompt')
       await expect(
         page.locator('[data-moldy-message-role="user"]').filter({ hasText: prompt }),
       ).toBeVisible({ timeout: 30_000 })
 
       const askUserCards = page.locator('[data-tool-ui-id]').filter({ hasText: '🍎 사과' })
+      setFailurePhase(testInfo.annotations, 'wait_ask_user_card')
       await expect(askUserCards).toHaveCount(1, { timeout: 30_000 })
       await expect(askUserCards.first().getByText('입력이 필요합니다')).toBeVisible()
+      setFailurePhase(testInfo.annotations, 'verify_prompt_stability')
       await expectNoUserPromptDisappearance(page)
 
       const askUserCard = askUserCards.first()
-      await askUserCard.getByRole('option', { name: /사과/ }).click()
-      await askUserCard.getByRole('button', { name: /선택 확인 \(1\)|Confirm \(1\)/ }).click()
+      setFailurePhase(testInfo.annotations, 'select_option')
+      const selectedOption = askUserCard.getByRole('option', { name: /사과/ })
+      await expect(selectedOption).toBeEnabled()
+      await selectedOption.click()
+      await expect(selectedOption).toHaveAttribute('aria-selected', 'true')
+      await expect(selectedOption).toBeEnabled()
+      setFailurePhase(testInfo.annotations, 'submit_decision')
+      const confirmButton = askUserCard.getByRole('button', { name: /선택 확인|Confirm/ })
+      await expect(confirmButton).toBeVisible()
+      await expect(confirmButton).toBeEnabled()
+      await confirmButton.click()
 
+      setFailurePhase(testInfo.annotations, 'wait_final_response')
       await expect(page.getByText(ASK_USER_FINAL_TEXT)).toBeVisible({ timeout: 60_000 })
+      setFailurePhase(testInfo.annotations, 'verify_final_prompt')
       await expect(
         page.locator('[data-moldy-message-role="user"]').filter({ hasText: prompt }),
       ).toBeVisible()
+      setFailurePhase(testInfo.annotations, 'verify_error_collectors')
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
+      bodySucceeded = true
     } finally {
+      if (bodySucceeded) {
+        setFailurePhase(testInfo.annotations, 'cleanup_parent_agent')
+      }
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      if (bodySucceeded) {
+        setFailurePhase(testInfo.annotations, 'cleanup_child_agent')
+      }
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+      if (bodySucceeded) {
+        setFailurePhase(testInfo.annotations, 'complete')
+      }
     }
   })
 
@@ -281,12 +330,15 @@ test.describe('Chat transcript stability QA bundle', () => {
       )
       await installUserPromptStabilityObserver(page, RICH_OUTPUT_PROMPT)
 
-      await sendMessage(page, RICH_OUTPUT_PROMPT)
+      const runId = await sendMessageForRun(page, setup.conversationId, RICH_OUTPUT_PROMPT)
+      await waitForRunStatus(request, setup.conversationId, runId, 'completed')
       await expect(
         page.locator('[data-moldy-message-role="user"]').filter({ hasText: RICH_OUTPUT_PROMPT }),
       ).toBeVisible({ timeout: 30_000 })
       await expectRichOutputRendered(page)
       await expectNoUserPromptDisappearance(page)
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
 
       const conversationUrl = page.url()
       await page.reload()

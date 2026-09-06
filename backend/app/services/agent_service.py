@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.agent_runtime.identity import make_agent_runtime_name, validate_identity_mode
+from app.agent_runtime.runtime_policy import runtime_policy_to_json
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.mcp_server import McpServer
@@ -422,6 +423,9 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         middleware_configs=[mc.model_dump() for mc in data.middleware_configs]
         if data.middleware_configs
         else None,
+        runtime_policy=(
+            runtime_policy_to_json(data.runtime_policy) if data.runtime_policy is not None else None
+        ),
         opener_questions=data.opener_questions,
         model_fallback_list=[str(fid) for fid in fallback_ids] if fallback_ids else None,
         template_id=data.template_id,
@@ -508,6 +512,10 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
         agent.model_params = data.model_params
     if data.middleware_configs is not None:
         agent.middleware_configs = [mc.model_dump() for mc in data.middleware_configs]
+    if "runtime_policy" in data.model_fields_set:
+        agent.runtime_policy = (
+            runtime_policy_to_json(data.runtime_policy) if data.runtime_policy is not None else None
+        )
     if data.opener_questions is not None:
         agent.opener_questions = data.opener_questions
     if data.model_fallback_ids is not None:

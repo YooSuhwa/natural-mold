@@ -1,0 +1,47 @@
+name: Manual credentialed live E2E
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: manual-live-e2e
+  cancel-in-progress: false
+
+jobs:
+  live-manual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: uv sync --frozen --all-extras
+        working-directory: backend
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm --dir frontend exec playwright install --with-deps chromium
+      - name: Govern skips
+        run: pnpm --dir frontend lint:e2e-skips
+      - name: Run the exact four-case live allowlist
+        env:
+          E2E_LLM_BASE_URL: ${{ secrets.E2E_LLM_BASE_URL }}
+          E2E_LLM_API_KEY: ${{ secrets.E2E_LLM_API_KEY }}
+          E2E_LLM_MODEL: ${{ secrets.E2E_LLM_MODEL }}
+        run: |
+          E2E_RUN_MANIFEST="$PWD/.omo/evidence/project-restart-consolidated-roadmap/ci-live-manual.json" \
+            pnpm --dir frontend test:e2e:live -- --project=live-manual --workers=1
+      - name: Validate cleanup and redacted artifact contract
+        run: >-
+          backend/.venv/bin/python scripts/check-isolation-cleanup.py
+          .omo/evidence/project-restart-consolidated-roadmap/ci-live-manual.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live-manual-redacted
+          path: |
+            .omo/evidence/project-restart-consolidated-roadmap/ci-live-manual.json
+            output/e2e-captures/
+          if-no-files-found: error
+          retention-days: 30

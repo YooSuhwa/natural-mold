@@ -211,7 +211,26 @@ export function mergeInterruptToolCalls(
 }
 
 export interface HiTLDecisionCoordinator {
+  readonly interruptId: string | null
+  cancel: (reason: unknown) => void
   registerDecision: (actionIndex: number, decision: Decision, displayText?: string) => Promise<void>
+}
+
+interface PendingDecisionBatch {
+  readonly promise: Promise<void>
+  readonly resolve: () => void
+  readonly reject: (reason: unknown) => void
+  started: boolean
+}
+
+function createPendingDecisionBatch(): PendingDecisionBatch {
+  let resolve!: () => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject, started: false }
 }
 
 export function createHiTLDecisionCoordinator({
@@ -226,23 +245,70 @@ export function createHiTLDecisionCoordinator({
   const decisions: Array<Decision | undefined> = Array.from({ length: totalActions })
   const displayTexts: Array<string | undefined> = Array.from({ length: totalActions })
   let resumed = false
+  let resumeInFlight: Promise<void> | null = null
+  let pendingBatch: PendingDecisionBatch | null = null
+  let cancelled = false
+  let cancellationReason: unknown = null
+
+  const resumeOnce = (nextDecisions: Decision[], displayText?: string): Promise<void> => {
+    if (resumed) return Promise.resolve()
+    if (resumeInFlight) return resumeInFlight
+
+    const attempt = Promise.resolve().then(() => resume(nextDecisions, displayText, interruptId))
+    const trackedAttempt = attempt.then(() => {
+      resumed = true
+    })
+    const cleanupAttempt = trackedAttempt.finally(() => {
+      if (resumeInFlight === cleanupAttempt) resumeInFlight = null
+    })
+    resumeInFlight = cleanupAttempt
+    return cleanupAttempt
+  }
 
   return {
+    interruptId,
+    cancel(reason) {
+      if (resumed || resumeInFlight || cancelled) return
+      cancelled = true
+      cancellationReason = reason
+      decisions.fill(undefined)
+      displayTexts.fill(undefined)
+      const batch = pendingBatch
+      pendingBatch = null
+      batch?.reject(reason)
+    },
     async registerDecision(actionIndex, decision, displayText) {
       if (resumed) return
+      if (cancelled) throw cancellationReason
       if (actionIndex < 0 || actionIndex >= totalActions) {
-        resumed = true
-        await resume([decision], displayText, interruptId)
-        return
+        throw new RangeError(`HiTL action index ${actionIndex} is outside the pending batch`)
       }
+
+      if (pendingBatch?.started) return pendingBatch.promise
+      if (decisions[actionIndex] !== undefined && pendingBatch) return pendingBatch.promise
 
       decisions[actionIndex] = decision
       displayTexts[actionIndex] = displayText
-      if (decisions.some((item) => item === undefined)) return
+      const batch = pendingBatch ?? createPendingDecisionBatch()
+      pendingBatch = batch
+      if (decisions.some((item) => item === undefined)) return batch.promise
 
-      resumed = true
       const combinedDisplayText = displayTexts.filter(Boolean).join(' | ') || undefined
-      await resume(decisions as Decision[], combinedDisplayText, interruptId)
+      const combinedDecisions = decisions.filter((item): item is Decision => item !== undefined)
+      batch.started = true
+      void resumeOnce(combinedDecisions, combinedDisplayText).then(
+        () => {
+          if (pendingBatch === batch) pendingBatch = null
+          batch.resolve()
+        },
+        (reason: unknown) => {
+          decisions.fill(undefined)
+          displayTexts.fill(undefined)
+          if (pendingBatch === batch) pendingBatch = null
+          batch.reject(reason)
+        },
+      )
+      return batch.promise
     },
   }
 }

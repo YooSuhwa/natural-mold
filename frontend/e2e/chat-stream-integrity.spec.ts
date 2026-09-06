@@ -1,5 +1,8 @@
 import { API_BASE, apiDeleteOk, expect, test } from './fixtures'
-import { expectNoUserTextFlicker, installUserTextStabilityObserver } from './helpers/stability-observers'
+import {
+  expectNoUserTextFlicker,
+  installUserTextStabilityObserver,
+} from './helpers/stability-observers'
 import { approveExecuteInSkill, sendMessage, setupLangGraphV3Agent } from './langgraph-v3-helpers'
 
 /**
@@ -14,7 +17,10 @@ import { approveExecuteInSkill, sendMessage, setupLangGraphV3Agent } from './lan
  */
 test.describe('Chat streaming render integrity', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
-  test.skip(process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy', 'Skipped for the legacy chat runtime')
+  test.skip(
+    process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy',
+    'Skipped for the legacy chat runtime',
+  )
 
   test('streams text with stable user prompt, no duplicate bubble, and witty loading that clears', async ({
     page,
@@ -308,13 +314,22 @@ test.describe('Chat streaming render integrity', () => {
     const approveButtons = page.locator('[data-testid="approval-approve-button"]')
     const userBubbles = page.locator('[data-moldy-message-role="user"]')
 
-    // Count resume commands. langchain batches both execute_in_skill calls into ONE
-    // interrupt with two action_requests, so the HiTL coordinator must collect both
-    // decisions and fire exactly ONE resume carrying both — never one resume per card.
-    let resumeCount = 0
+    // Capture only this conversation's input.respond commands. LangChain batches
+    // both execute_in_skill calls into ONE interrupt with two action_requests, so
+    // the coordinator must send exactly ONE ordered two-decision resume.
+    const resumeCommands: Record<string, unknown>[] = []
+    const commandsPath = `/api/conversations/${setup.conversationId}/langgraph/threads/${setup.conversationId}/commands`
     page.on('request', (req) => {
-      if (req.method() !== 'POST') return
-      if ((req.postData() ?? '').includes('"decisions"')) resumeCount += 1
+      if (req.method() !== 'POST' || new URL(req.url()).pathname !== commandsPath) return
+      let body: unknown
+      try {
+        body = req.postDataJSON() as unknown
+      } catch {
+        return
+      }
+      if (typeof body !== 'object' || body === null || Array.isArray(body)) return
+      const command = body as Record<string, unknown>
+      if (command.method === 'input.respond') resumeCommands.push(command)
     })
 
     const approveCard = async (index: number) => {
@@ -361,20 +376,35 @@ test.describe('Chat streaming render integrity', () => {
       await expectNoUserTextFlicker(page, 1000)
 
       // Approve only the FIRST card. The coordinator must NOT resume yet: the second
-      // card stays pending and the run stays interrupted (no final text).
+      // card stays pending and the run stays interrupted (no final text). The first
+      // card remains mounted in its processing state until the batched decision is
+      // accepted, so actionable controls—not row removal—represent pending work.
       await approveCard(0)
-      await expect(cards).toHaveCount(1, { timeout: 15_000 })
+      await expect(cards).toHaveCount(2, { timeout: 15_000 })
+      await expect(page.getByTestId('approval-action-0').getByText('처리 중…')).toBeVisible()
+      await expect(
+        page.getByTestId('approval-action-0').getByTestId('approval-approve-button'),
+      ).toHaveCount(0)
+      await expect(
+        page.getByTestId('approval-action-1').getByTestId('approval-approve-button'),
+      ).toBeEnabled()
       await expect(approveButtons).toHaveCount(1)
       await expect(page.getByText(FINAL_TEXT_PARTIAL)).toHaveCount(0)
-      expect(resumeCount, 'resume must not fire after only one of two approvals').toBe(0)
+      expect(resumeCommands, 'resume must not fire after only one of two approvals').toEqual([])
 
       // Approve the SECOND card → coordinator flushes both decisions in ONE resume.
       await approveCard(1)
-      await expect(cards).toHaveCount(0, { timeout: 30_000 })
-      await expect(approveButtons).toHaveCount(0)
+      await expect(approveButtons).toHaveCount(0, { timeout: 30_000 })
       await expect(page.getByText(FINAL_TEXT_PARTIAL).last()).toBeVisible({ timeout: 60_000 })
+      await expect(cards).toHaveCount(0, { timeout: 30_000 })
       await expect(userBubbles).toHaveCount(1)
-      expect(resumeCount, 'exactly one batched resume for both actions').toBe(1)
+      expect(resumeCommands, 'exactly one batched resume for both actions').toHaveLength(1)
+      expect(resumeCommands[0]).toMatchObject({
+        method: 'input.respond',
+        params: {
+          response: { decisions: [{ type: 'approve' }, { type: 'approve' }] },
+        },
+      })
 
       expect(errors.console, 'console errors during multi-action HITL').toEqual([])
     } finally {

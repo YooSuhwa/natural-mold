@@ -251,10 +251,7 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
         // label and its value renders plainly (mono only for non-scalar JSON).
         <dl className="space-y-1.5 border-t border-border/40 px-3 py-2">
           {entries.map(([key, value]) => (
-            <div
-              key={key}
-              className="grid grid-cols-[minmax(0,8rem)_1fr] gap-x-3 gap-y-0.5 text-xs"
-            >
+            <div key={key} className="moldy-approval-args-grid">
               <dt className="truncate font-mono font-medium text-muted-foreground" title={key}>
                 {key}
               </dt>
@@ -406,6 +403,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     // 그룹(멀티액션) 안에서 렌더될 때는 compact 모드 — 자체 헤더/카운트다운을 숨기고
     // (그룹 컨테이너가 대신 보여준다) "모두 승인"을 위해 승인 콜백을 등록한다.
     const grouped = Boolean(multi) && typeof args?.hitl_action_index === 'number'
+    const actionIndex = args?.hitl_action_index
 
     const resumeDecision = useCallback(
       async (standardDecision: StandardDecision, displayText?: string) => {
@@ -454,14 +452,31 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
           setResumeError(t('resumeFailed'))
           setSubmitting(false)
           setDecision(null)
-          return
+          return false
         }
         addApprovalResultIfSupported(addResult, response)
         setLocalResult(response)
         setSubmitting(false)
+        return true
       },
       [addResult, rejectReason, draft, t, styles, args, resumeDecision, consentSession],
     )
+
+    const visibleResult = result ?? localResult
+
+    // The group owns its heading. Count this action only after the runtime
+    // accepted a decision (or supplied an already-complete tool result), never
+    // when the user merely starts an approval, rejection, or edit flow.
+    useEffect(() => {
+      if (
+        grouped &&
+        multi &&
+        typeof actionIndex === 'number' &&
+        (status.type === 'complete' || visibleResult !== null)
+      ) {
+        multi.resolve(actionIndex)
+      }
+    }, [actionIndex, grouped, multi, status.type, visibleResult])
 
     // 만료 시 자동 reject — handleDecision 변동에 영향받지 않도록 ref로 보관
     const expireMessage = t('autoRejected')
@@ -509,7 +524,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
       ) {
         return
       }
-      multi.register(idx, () => void handleDecision('approved'))
+      multi.register(idx, () => handleDecision('approved'))
       return () => multi.unregister(idx)
     }, [
       grouped,
@@ -523,7 +538,6 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     ])
 
     // ── 완료 상태 ──
-    const visibleResult = result ?? localResult
     if (status.type === 'complete' || visibleResult !== null) {
       return <ApprovalBadge result={visibleResult} />
     }
@@ -572,6 +586,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
         {/* 거부 사유 입력 (거부 선택 시) */}
         {decision === 'rejected' && !submitting && (
           <textarea
+            aria-label={t('rejectReasonLabel')}
             value={rejectReason}
             onChange={(e) => {
               setRejectReason(e.target.value)
@@ -596,9 +611,11 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
               체크 후 승인하면 decisions에 scope:'session'이 첨부되어 이 세션의
               같은 도구는 이후 승인 카드 없이 실행된다. */}
         {args?.session_consent_eligible === true && canApprove && !submitting && (
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <input
+              id={`${approvalId}-session-consent`}
               type="checkbox"
+              aria-label={t('allowForSession')}
               checked={consentSession}
               onChange={(e) => {
                 setConsentSession(e.target.checked)
@@ -607,8 +624,10 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
               data-testid="approval-session-consent"
               className="size-3.5 accent-primary"
             />
-            {t('allowForSession')}
-          </label>
+            <label htmlFor={`${approvalId}-session-consent`} className="cursor-pointer">
+              {t('allowForSession')}
+            </label>
+          </div>
         )}
 
         {/* Action buttons */}

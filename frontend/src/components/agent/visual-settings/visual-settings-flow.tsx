@@ -8,6 +8,7 @@ import '@xyflow/react/dist/style.css'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useUpdateAgent, useCreateAgent } from '@/lib/hooks/use-agents'
+import { buildAgentCreateRequest } from '@/lib/agents/build-agent-create-request'
 import { useCreateTrigger, useDeleteTrigger, useUpdateTrigger } from '@/lib/hooks/use-triggers'
 import { toggleSetItem } from '@/lib/utils'
 import type {
@@ -346,22 +347,21 @@ export function VisualSettingsFlow({
   )
 
   async function handleSave() {
-    const payload = {
+    const payload = buildAgentCreateRequest({
       name: name || (mode === 'create' ? t('defaultName') : name),
       description: description || undefined,
-      system_prompt: systemPrompt,
-      model_id: modelId,
-      identity_mode: identityMode,
-      tool_ids: Array.from(selectedToolIds),
-      mcp_tool_ids: Array.from(selectedMcpToolIds),
-      skill_ids: Array.from(selectedSkillIds),
-      sub_agent_ids: Array.from(selectedSubAgentIds),
-      middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
-        type,
-        params: {},
-      })),
-      model_params: { temperature, top_p: topP, max_tokens: maxTokens },
-    }
+      systemPrompt,
+      modelId,
+      identityMode,
+      toolIds: selectedToolIds,
+      mcpToolIds: selectedMcpToolIds,
+      skillIds: selectedSkillIds,
+      subAgentIds: selectedSubAgentIds,
+      middlewareTypes: selectedMiddlewareTypes,
+      temperature,
+      topP,
+      maxTokens,
+    })
 
     try {
       if (mode === 'create') {

@@ -1,0 +1,653 @@
+schema_version: 1
+documents:
+  - path: .agents/skills/deep-agents-core/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/deep-agents-memory/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/deep-agents-orchestration/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/framework-selection/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/langchain-dependencies/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/langchain-fundamentals/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/langchain-middleware/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/langchain-rag/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/langgraph-fundamentals/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/langgraph-human-in-the-loop/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/langgraph-persistence/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: AGENTS.md
+    lifecycle: canonical-current
+    status: current
+  - path: CHECKPOINT.md
+    lifecycle: completed-plan
+    status: completed
+  - path: CLAUDE.md
+    lifecycle: canonical-current
+    status: current
+  - path: CONTRIBUTING.md
+    lifecycle: canonical-current
+    status: current
+  - path: HANDOFF.md
+    lifecycle: historical
+    status: archived
+  - path: NOTICES.md
+    lifecycle: canonical-current
+    status: current
+  - path: README.md
+    lifecycle: canonical-current
+    status: current
+  - path: README_KO.md
+    lifecycle: canonical-current
+    status: current
+  - path: SECURITY.md
+    lifecycle: canonical-current
+    status: current
+  - path: TASKS.md
+    lifecycle: canonical-current
+    status: current
+  - path: backend/README.md
+    lifecycle: canonical-current
+    status: current
+  - path: backend/app/agent_runtime/assistant/prompt.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/agent_runtime/builder/prompts/intent_analyzer.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/agent_runtime/builder/prompts/middleware_recommender.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/agent_runtime/builder/prompts/prompt_generator.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/agent_runtime/builder/prompts/tool_recommender.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/agent_runtime/skill_builder/prompt.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/seed/system_skill_packages/deep-research/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/seed/system_skill_packages/docx-document/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/seed/system_skill_packages/image-generation/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/seed/system_skill_packages/image-generation/references/image-studio-prompt.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/seed/system_skill_packages/openwiki/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/seed/system_skill_packages/patent-hwpx-generator/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/seed/system_skill_packages/patent-hwpx-generator/references/hwpx-xml-guide.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/seed/system_skill_packages/patent-hwpx-generator/references/patent-writing-guide.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/seed/system_skill_packages/pptx-presentation/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/app/seed/system_skill_packages/xlsx-spreadsheet/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: docs/ARCHITECTURE.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/PRD-screens.md
+    lifecycle: reference/spec
+    status: reference
+    index: references
+  - path: docs/PRD.md
+    lifecycle: canonical-current
+    status: current
+    index: references
+  - path: docs/QUALITY_SCORE.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: docs/agent-api.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/browser-e2e-porting-guide.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/chat-ui-performance-triage-2026-06-01.md
+    lifecycle: decision-record
+    status: accepted
+  - path: docs/deepagents-runtime-source-audit.md
+    lifecycle: historical
+    status: archived
+  - path: docs/design-docs/2026-04-17-mcp-server-grouping.md
+    lifecycle: decision-record
+    status: accepted
+  - path: docs/design-docs/2026-06-10-agent-mcp-blueprint-marketplace.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/ADR-010-ui-tokens-and-dialog-shell.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-001-deep-agent-engine.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-002-checkpointer.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-003-skills-memory.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-004-m4-cleanup.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-005-builder-assistant.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-006-assistant-ui-runtime.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-007-credentials-field-keys-cache.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-008-connection-entity.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-009-greenfield-credentials.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-011-sse-stream-resume.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-012-hitl-middleware-migration.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-013-service-llm-key-from-credentials.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-014-chat-model-factory-strategy.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-016-multiuser-auth.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-017-marketplace-resources.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-018-relative-storage-path.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-019-system-llm-settings.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-020-chat-run-ag-ui-adapter.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-021-value-based-trace-redaction.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/adr-022-runtime-policy-lifecycle.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
+  - path: docs/design-docs/agent-edit-workbench.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/design-docs/assistant-ui-builtin-adoption-review.md
+    lifecycle: reference/spec
+    status: reference
+  - path: docs/design-docs/assistant-ui-langgraph-runtime-spike.md
+    lifecycle: historical
+    status: archived
+  - path: docs/design-docs/builder-assistant-ui-spec.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/design-docs/builder-v3-architecture.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/design-docs/chat-attachments-analysis.md
+    lifecycle: historical
+    status: archived
+  - path: docs/design-docs/chat-attachments-dev-plan.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/chat-feature-gap-analysis.md
+    lifecycle: reference/spec
+    status: reference
+  - path: docs/design-docs/chat-generative-ui-dev-plan.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/chat-scroll-follow-streaming-ux-plan.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/design-docs/chat-subagent-streaming-visibility-plan.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/dev-plan-context-compaction-marker.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/dev-plan-context-compaction.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/generic-tool-call-grouping-plan.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/hitl-ask-user-standardization-plan.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/index.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/design-docs/langfuse-trace-debugger-plan.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/m5-connection-binding-dialog-spec.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/design-docs/m5-connections-page-redesign-spec.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/design-docs/m6-cleanup-migration-spec.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/design-docs/marketplace-module-contracts.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/design-docs/marketplace-ui-spec.md
+    lifecycle: reference/spec
+    status: reference
+  - path: docs/design-docs/multiuser-auth-ui-spec.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/design-docs/skill-execution-sandbox-isolation-plan.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/skill-studio-phase1-builder-chat-spec.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/skill-studio-phase2-studio-spec.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/skill-studio-phase3-benchmark-cost-spec.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/spec-context-compaction.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/design-docs/ux-improvement-spec.md
+    lifecycle: reference/spec
+    status: reference
+  - path: docs/e2e-coverage.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/exec-plans/active/backlog-c-field-keys-cache.md
+    lifecycle: active-plan
+    status: active
+    index: active-plan
+  - path: docs/exec-plans/active/backlog-e-connection-refactor.md
+    lifecycle: active-plan
+    status: active
+    index: active-plan
+  - path: docs/exec-plans/completed/hitl-phase2-contract.md
+    lifecycle: completed-plan
+    status: completed
+    index: completed-plan
+  - path: docs/exec-plans/index.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/lint-hardening-plan.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/marketplace-resources-prd.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/marketplace-resources-spec.md
+    lifecycle: reference/spec
+    status: reference
+  - path: docs/moldy-agent-builder-spec-v2.md
+    lifecycle: reference/spec
+    status: reference
+  - path: docs/operator-setup.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/1.md/1.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/2.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/Capabilities.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/Identity.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/Language.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/core_principles.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/critical_rules.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/decision_logic.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/out_of_scope.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/prompt_template.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/security_rules.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/prompt/tools.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/pyright-burndown-plan.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/qa/chat-transcript-stability.md
+    lifecycle: reference/spec
+    status: reference
+  - path: docs/refactoring-plan-2026-07.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/references/index.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/superpowers/plans/2026-05-31-deep-research-tavily.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-05-31-question-flow-option-list.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/superpowers/plans/2026-06-04-agent-api-deployment.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-06-05-artifact-preview-panel.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-06-05-audit-system.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/superpowers/plans/2026-06-05-chat-visual-export.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-06-07-document-skills-artifact-viewers.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/superpowers/plans/2026-06-07-executor-runtime-split.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-06-08-mcp-oauth-atlassian.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-06-10-durable-chat-run-lifecycle.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-06-13-assistant-ui-langgraph-v3-streaming.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-06-13-skill-builder-agent.md
+    lifecycle: completed-plan
+    status: completed
+  - path: docs/superpowers/plans/2026-06-16-skill-evaluation-precision-loop.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-06-16-skill-evaluation-roadmap.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-06-16-skill-evaluation-v2-foundation.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/plans/2026-06-17-frontend-modernization-refactor.md
+    lifecycle: active-plan
+    status: active
+  - path: docs/superpowers/specs/2026-06-03-memory-policy-design.md
+    lifecycle: reference/spec
+    status: reference
+  - path: docs/tool-setup-guide.md
+    lifecycle: reference/spec
+    status: reference
+    index: references
+  - path: frontend/AGENTS.md
+    lifecycle: canonical-current
+    status: current
+  - path: frontend/CLAUDE.md
+    lifecycle: canonical-current
+    status: current
+  - path: frontend/README.md
+    lifecycle: canonical-current
+    status: current
+  - path: tasks/archive-multiuser-auth-2026-05/CHECKPOINT.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive-multiuser-auth-2026-05/HANDOFF-race-in-race.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/2026-05-06-service-llm-key/CHECKPOINT.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/2026-05-06-service-llm-key/HANDOFF-prev.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/CHECKPOINT-agent-edit-workbench.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/CHECKPOINT-backlog-b.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/CHECKPOINT-backlog-e-m1.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/CHECKPOINT-backlog-e-m2.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/CHECKPOINT-backlog-e-m4.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/CHECKPOINT-backlog-e-m5.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/CHECKPOINT-backlog-e-m6.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/CHECKPOINT-greenfield-credentials.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/HANDOFF-greenfield-m0-m11.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/HANDOFF-prior-session.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/HANDOFF-w3-out-m3-m5.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/PLAN-greenfield-credentials.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/SPEC-deep-agent-migration.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/checkpoint-backlog-e-m3.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-builder-v3.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-c.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-chat-ui.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-e-m1.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-e-m2.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-e-m3.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-e-m4.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-e-m5.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-e-m6-1.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-e-m6.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-v2.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/deletion-analysis-workbench.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/full-verification-2026-04-26.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: tasks/archive/lessons-m6-1-archived-2026-04-26.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/m1-deletion-analysis.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/m2-deletion-analysis.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/m3-deletion-analysis.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/m4-deletion-analysis.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/archive/manual-e2e-e-m5.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: tasks/archive/manual-e2e-e-m6-1.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: tasks/archive/manual-e2e-e-m6.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: tasks/archive/verification-report-e-m6-1.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: tasks/archive/verification-workbench.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: tasks/captures-todo.md
+    lifecycle: active-plan
+    status: active
+  - path: tasks/chat-attachments-todo.md
+    lifecycle: completed-plan
+    status: completed
+  - path: tasks/chat-error-retry-todo.md
+    lifecycle: completed-plan
+    status: completed
+  - path: tasks/chat-export-search-todo.md
+    lifecycle: active-plan
+    status: active
+  - path: tasks/code-review-multiuser-auth.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: tasks/credentials-llm-key-sync-analysis.md
+    lifecycle: active-plan
+    status: active
+  - path: tasks/deletion-analysis-multiuser-auth.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/deletion-analysis-phase3.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/deletion-analysis.md
+    lifecycle: active-plan
+    status: active
+  - path: tasks/lessons.md
+    lifecycle: reference/spec
+    status: reference
+  - path: tasks/phase0-todo.md
+    lifecycle: completed-plan
+    status: completed
+  - path: tasks/phase2-todo.md
+    lifecycle: active-plan
+    status: active
+  - path: tasks/phase5-dependency-analysis.md
+    lifecycle: active-plan
+    status: active
+  - path: tasks/security-checklist-multiuser-auth.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: tasks/sheet-deletion-analysis.md
+    lifecycle: active-plan
+    status: active
+  - path: tasks/system-llm/CHECKPOINT.md
+    lifecycle: active-plan
+    status: active
+  - path: tasks/system-llm/deletion-analysis.md
+    lifecycle: active-plan
+    status: active
+  - path: tasks/todo.md
+    lifecycle: completed-plan
+    status: completed
+  - path: tasks/w3out-deletion-analysis.md
+    lifecycle: historical
+    status: archived
+  - path: tasks/w3out-m1m2-verification.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: tasks/wave2-todo.md
+    lifecycle: completed-plan
+    status: completed
+  - path: tasks/zuck-s3-implementation-plan.md
+    lifecycle: completed-plan
+    status: completed

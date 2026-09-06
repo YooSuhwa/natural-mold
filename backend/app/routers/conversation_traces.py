@@ -7,10 +7,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation
 from app.error_codes import (
     trace_not_found,
 )
+from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
 from app.observability.langfuse import is_langfuse_enabled
@@ -20,8 +22,29 @@ from app.schemas.conversation import (
     TurnTraceResponse,
 )
 from app.services import trace_debug_service, trace_storage
+from app.services.chat import secrets as chat_secrets
 
 router = APIRouter(tags=["conversations"])
+
+
+def _public_turn_trace(
+    record: MessageEvent,
+    *,
+    secret_values: Sequence[str] | None = None,
+) -> TurnTraceResponse:
+    """Copy a persisted trace into its browser-safe representation."""
+    return TurnTraceResponse(
+        assistant_msg_id=record.assistant_msg_id,
+        events=project_and_redact_protocol_data(
+            "traces",
+            record.events or [],
+            secret_values=secret_values,
+        ),
+        last_event_id=record.last_event_id,
+        linked_message_ids=record.linked_message_ids,
+        created_at=record.created_at,
+        completed_at=record.completed_at,
+    )
 
 
 async def _run_status_by_message_event_id(
@@ -45,27 +68,30 @@ async def _run_status_by_message_event_id(
 @router.get(
     "/api/conversations/{conversation_id}/traces",
     response_model=list[TurnTraceResponse],
-    dependencies=[Depends(owned_conversation)],
 )
 async def list_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    conversation: Conversation = Depends(owned_conversation),
 ):
-    return await trace_storage.get_traces_for_conversation(db, conversation_id)
+    records = await trace_storage.get_traces_for_conversation(db, conversation_id)
+    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+    return [_public_turn_trace(record, secret_values=secrets) for record in records]
 
 
 @router.get(
     "/api/conversations/{conversation_id}/debug/traces",
     response_model=DebugTraceListResponse,
-    dependencies=[Depends(owned_conversation)],
 )
 async def list_debug_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    conversation: Conversation = Depends(owned_conversation),
 ):
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
+    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
     run_statuses = await _run_status_by_message_event_id(db, records)
     langfuse_enabled = is_langfuse_enabled()
     fallback_reason = None if langfuse_enabled else "Langfuse disabled"
@@ -78,6 +104,7 @@ async def list_debug_traces(
                 record,
                 fallback_reason=(fallback_reason if not record.external_trace_id else None),
                 run_status=run_statuses.get(record.assistant_msg_id),
+                secret_values=secrets,
             )
             for record in records
         ],
@@ -87,13 +114,13 @@ async def list_debug_traces(
 @router.get(
     "/api/conversations/{conversation_id}/debug/traces/{trace_id}",
     response_model=DebugTraceDetailResponse,
-    dependencies=[Depends(owned_conversation)],
 )
 async def get_debug_trace_detail(
     conversation_id: uuid.UUID,
     trace_id: str,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    conversation: Conversation = Depends(owned_conversation),
 ):
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
     record = next(
@@ -104,9 +131,11 @@ async def get_debug_trace_detail(
         raise trace_not_found()
 
     run_statuses = await _run_status_by_message_event_id(db, [record])
+    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
     summary, spans, raw, fallback_reason = await trace_debug_service.build_debug_detail(
         record,
         run_status=run_statuses.get(record.assistant_msg_id),
+        secret_values=secrets,
     )
     return DebugTraceDetailResponse(
         conversation_id=conversation_id,

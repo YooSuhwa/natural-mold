@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "source_commit": "ea253c19de5549f79987e51fefde8a4ba017cb9e",
+  "measurement_command": "pnpm exec vitest --coverage --run",
+  "reviewed_runs": 2,
+  "metrics": {
+    "statements": { "covered": 11802, "total": 18860, "minimum_percent": 62.57688229056203 },
+    "branches": { "covered": 8596, "total": 15594, "minimum_percent": 55.123765550852895 },
+    "functions": { "covered": 3146, "total": 5668, "minimum_percent": 55.5045871559633 },
+    "lines": { "covered": 10660, "total": 16553, "minimum_percent": 64.39920256146922 }
+  },
+  "update_policy": "reviewed-manual-only"
+}

@@ -197,10 +197,18 @@ export function useGlobalConversationPages(
   })
 }
 
-export function useConversationDetail(conversationId: string, enabled = true) {
-  return useQuery({
+/** Detail query contract shared by consumers that need to prefill navigator cache. */
+export function conversationDetailQueryOptions(conversationId: string) {
+  return {
     queryKey: conversationKeys.detail(conversationId),
     queryFn: () => conversationsApi.get(conversationId),
+  }
+}
+
+export function useConversationDetail(conversationId: string, enabled = true) {
+  const query = conversationDetailQueryOptions(conversationId)
+  return useQuery({
+    ...query,
     enabled: enabled && !!conversationId && conversationId !== 'new',
   })
 }

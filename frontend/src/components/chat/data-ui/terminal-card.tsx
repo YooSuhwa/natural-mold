@@ -33,7 +33,7 @@ export function TerminalCard({ lines, exitCode, command }: TerminalCardProps) {
             <span
               className={cn(
                 'shrink-0 rounded px-1.5 py-0.5 font-mono text-xs tabular-nums',
-                exitCode === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive',
+                exitCode === 0 ? 'moldy-status-success moldy-status-text' : 'text-destructive',
               )}
             >
               exit {exitCode}

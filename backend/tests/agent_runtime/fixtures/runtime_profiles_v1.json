@@ -1,0 +1,124 @@
+{
+  "assistant": {
+    "checkpointer_attached": false,
+    "nodes": [
+      "HumanInTheLoopMiddleware.after_model",
+      "PatchToolCallsMiddleware.before_agent",
+      "TodoListMiddleware.after_model",
+      "__start__",
+      "model",
+      "tools"
+    ],
+    "tools": [
+      "assistant_clarify",
+      "assistant_read",
+      "assistant_write",
+      "edit_file",
+      "execute",
+      "glob",
+      "grep",
+      "ls",
+      "read_file",
+      "task",
+      "write_file",
+      "write_todos"
+    ]
+  },
+  "parent_child": {
+    "compiled": {
+      "checkpointer_attached": false,
+      "nodes": [
+        "HumanInTheLoopMiddleware.after_model",
+        "PatchToolCallsMiddleware.before_agent",
+        "TodoListMiddleware.after_model",
+        "__start__",
+        "model",
+        "tools"
+      ],
+      "tools": [
+        "edit_file",
+        "execute",
+        "glob",
+        "grep",
+        "ls",
+        "parent_tool",
+        "read_file",
+        "task",
+        "write_file",
+        "write_todos"
+      ]
+    },
+    "subagents": [
+      {
+        "has_nested_subagents": false,
+        "interrupt_inherited": true,
+        "name": "general-purpose",
+        "tools": ["parent_tool"]
+      },
+      {
+        "has_nested_subagents": false,
+        "interrupt_inherited": false,
+        "name": "child_runtime",
+        "tools": ["child_tool"]
+      }
+    ]
+  },
+  "skill_builder": {
+    "compiled_nodes": [
+      "HumanInTheLoopMiddleware.after_model",
+      "PatchToolCallsMiddleware.before_agent",
+      "TodoListMiddleware.after_model",
+      "__start__",
+      "model",
+      "tools"
+    ],
+    "interrupt_tools": ["ask_user", "execute"],
+    "memory_sources": [],
+    "middleware": ["retry", "provider"],
+    "permissions": {"conversation_write": "deny", "draft_write": "allow"},
+    "prompt": {"has_ask_user_tool_marker": true, "has_draft_workspace_path": true},
+    "skills_sources": [],
+    "tools": [
+      "validate_skill",
+      "generate_evals",
+      "current_datetime",
+      "resolve_relative_date",
+      "ask_user"
+    ]
+  },
+  "standard": {
+    "compiled_nodes": [
+      "HumanInTheLoopMiddleware.after_model",
+      "MemoryMiddleware.before_agent",
+      "PatchToolCallsMiddleware.before_agent",
+      "TodoListMiddleware.after_model",
+      "__start__",
+      "model",
+      "tools"
+    ],
+    "interrupt_tools": ["ask_user", "edit_file", "execute", "write_file"],
+    "memory_sources": ["/agents/profile-agent/AGENTS.md"],
+    "middleware": ["retry", "provider"],
+    "permissions": {"conversation_write": "allow", "runtime_read": "deny"},
+    "prompt": {"has_artifact_conversation_path": true, "has_ask_user_tool_marker": true},
+    "skills_sources": [],
+    "tools": ["current_datetime", "resolve_relative_date", "memory_search", "ask_user"]
+  },
+  "trigger": {
+    "compiled_nodes": [
+      "MemoryMiddleware.before_agent",
+      "PatchToolCallsMiddleware.before_agent",
+      "TodoListMiddleware.after_model",
+      "__start__",
+      "model",
+      "tools"
+    ],
+    "interrupt_tools": [],
+    "memory_sources": ["/agents/profile-agent/AGENTS.md"],
+    "middleware": ["retry", "provider"],
+    "permissions": {"conversation_write": "allow", "runtime_read": "deny"},
+    "prompt": {"has_artifact_conversation_path": true, "has_ask_user_tool_marker": false},
+    "skills_sources": [],
+    "tools": ["current_datetime", "resolve_relative_date", "memory_search"]
+  }
+}

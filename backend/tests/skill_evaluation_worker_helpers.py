@@ -29,9 +29,10 @@ from tests.conftest import TEST_USER_ID, TestSession
 class FailingEvaluator:
     async def evaluate(
         self,
-        _db: AsyncSession,
+        db: AsyncSession,
         context: SkillEvaluationContext,
     ) -> SkillEvaluationResult:
+        del db
         raise SkillEvaluationExecutionError(f"runner unavailable for {context.run_id}")
 
 
@@ -42,9 +43,10 @@ class BlockingEvaluator:
 
     async def evaluate(
         self,
-        _db: AsyncSession,
+        db: AsyncSession,
         context: SkillEvaluationContext,
     ) -> SkillEvaluationResult:
+        del db
         release = asyncio.Event()
         self.releases[context.run_id] = release
         await self.started.put(context.run_id)
@@ -59,9 +61,10 @@ class BlockingEvaluator:
 class HangingEvaluator:
     async def evaluate(
         self,
-        _db: AsyncSession,
+        db: AsyncSession,
         context: SkillEvaluationContext,
     ) -> SkillEvaluationResult:
+        del db
         await asyncio.sleep(10)
         return SkillEvaluationResult(
             summary={"case_count": len(context.evals), "pass_rate": 1},

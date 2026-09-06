@@ -20,6 +20,7 @@ from app.agent_runtime.memory_event_projection import (
     memory_event_from_tool_result,
 )
 from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
+from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.agent_runtime.usage_timing import compute_usage_timing
 from app.config import settings
@@ -315,7 +316,9 @@ async def stream_agent_response(
         # 에서 추가 변환 불필요. emit 이후 누구도 mutate하지 않으므로 공유
         # 안전 (리뷰: dict 1개만 allocate해서 메모리 절반). pyright invariant
         # 한계로 BrokeredEvent → dict[str, Any] cast 명시.
-        evt_dict: dict[str, Any] = {"id": event_id, "event": event, "data": data}
+        live_data = project_and_redact_protocol_data(event, data, redact_memory=False)
+        shared_data = project_and_redact_protocol_data(event, live_data)
+        evt_dict: dict[str, Any] = {"id": event_id, "event": event, "data": shared_data}
         if trace_sink is not None:
             trace_sink.append(evt_dict)
         if broker is not None:
@@ -338,7 +341,7 @@ async def stream_agent_response(
                 task = asyncio.create_task(_safe_persist(chunk))
                 background_persist_tasks.add(task)
                 task.add_done_callback(background_persist_tasks.discard)
-        return format_sse(event, data, event_id=event_id)
+        return format_sse(event, live_data, event_id=event_id)
 
     # None → LangGraph time-travel resume (no new input, just re-run from
     #   the configured checkpoint state). Used by regenerate to produce a
@@ -358,7 +361,7 @@ async def stream_agent_response(
     full_content = ""
     was_interrupted = False
     stream_failed = False
-    usage_data: dict[str, int] = {}
+    usage_data: dict[str, int | float] = {}
     # 스트리밍 timing — message_start 직전부터 첫 content 토큰까지(TTFT) + 총 생성시간.
     first_token_at: float | None = None
     # AIMessageChunk가 같은 tool_call을 partial state로 반복 emit하므로 dedupe.
@@ -431,7 +434,7 @@ async def stream_agent_response(
                         cost = (prompt * (cost_per_input_token or 0)) + (
                             completion * (cost_per_output_token or 0)
                         )
-                        usage_data["estimated_cost"] = round(cost, 8)  # type: ignore[assignment]
+                        usage_data["estimated_cost"] = round(cost, 8)
                     if usage_sink is not None:
                         usage_sink.update(usage_data)
                 # W6: AI 메시지의 raw id 수집 (caller가 sink 제공 시).
@@ -606,7 +609,7 @@ async def stream_agent_response(
             cost = (prompt * (cost_per_input_token or 0)) + (
                 completion * (cost_per_output_token or 0)
             )
-            usage_data["estimated_cost"] = round(cost, 8)  # type: ignore[assignment]  # SSE payload는 float 허용
+            usage_data["estimated_cost"] = round(cost, 8)
 
         # Surface captured usage to the caller (executor → hook framework).
         # timing은 hook이 쓰지 않으므로 sink 갱신 이후, SSE emit 직전에만 병합한다.
@@ -616,7 +619,7 @@ async def stream_agent_response(
         # 스트리밍 timing(TTFT/총시간/tok-s)을 usage payload에 같이 실어 보낸다.
         # 토큰이 있을 때만(=팝오버가 렌더되는 경우만) 의미가 있어 그 경우에 병합.
         if usage_data:
-            usage_data.update(  # type: ignore[arg-type]  # timing은 float, SSE payload 허용
+            usage_data.update(
                 compute_usage_timing(
                     started_at=stream_started_at,
                     first_token_at=first_token_at,

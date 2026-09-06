@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -79,3 +79,6 @@ class ConversationRun(Base):
         nullable=False,
     )
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    runtime_policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    runtime_policy_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    runtime_policy_source: Mapped[str | None] = mapped_column(String(20), nullable=True)

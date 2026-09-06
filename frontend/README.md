@@ -57,6 +57,47 @@ E2E_USER_EMAIL=e2e@moldy.local
 E2E_USER_PASSWORD=e2e-password-change-me
 ```
 
-권장 흐름은 `login → register fallback → login → e2e/.auth/user.json 저장`입니다.
-`e2e/.auth/`는 생성 산출물이므로 커밋하지 않습니다. `PW_SKIP_BACKEND=1`은
+권장 흐름은 `login → register fallback → login → e2e/.auth/<lane>-user.json 저장`입니다.
+scripted/live는 각각 `scripted-user.json`/`live-user.json`을 사용하며,
+`E2E_AUTH_STATE_PATH`로 명시적으로 덮어쓸 수 있습니다. `e2e/.auth/`는 생성
+산출물이므로 커밋하지 않습니다. `PW_SKIP_BACKEND=1`은
 모든 `/api/*` 요청을 mock하는 spec에서만 사용하세요.
+
+## Playwright E2E lanes
+
+Todo04의 lane runner가 PostgreSQL 16, backend/frontend, live egress proxy(live만)를
+포함한 disposable lifecycle을 소유합니다. 사용자가 DB를 만들거나 migration·서비스
+종료를 수동으로 수행하지 않습니다. 각 실행은 scripted `3100/8101`, live `3200/8201`,
+Playwright `workers=1`/`retries=0`, 기존 서버 재사용 금지로 고정되며 성공·실패·SIGINT
+뒤 owned resource를 정리합니다.
+
+```bash
+# scripted smoke
+pnpm test:e2e:scripted -- --project=scripted-smoke
+
+# scripted full (기본 scripted project)
+pnpm test:e2e:scripted -- --project=scripted-full
+
+# scripted capture (capture tour를 요청할 때만)
+E2E_CAPTURE_TOUR=1 pnpm test:e2e:scripted -- --project=scripted-capture
+
+# live manual — 아래 세 변수가 모두 필요
+E2E_LLM_BASE_URL='https://llm.example/v1' \
+E2E_LLM_API_KEY='...' \
+E2E_LLM_MODEL='...' \
+pnpm test:e2e:live -- --project=live-manual
+```
+
+`E2E_LLM_BASE_URL`, `E2E_LLM_API_KEY`, `E2E_LLM_MODEL` 중 하나라도 비어 있으면
+live lane은 실행되지 않습니다. `--list`를 붙인 live 실행은 실제 provider 호출 없이
+고정된 네 개의 live test만 선택하는지 확인할 때 사용합니다.
+scripted lane은 runner가 E2E scripted model을 활성화하며, 외부 LiteLLM 값은 전달하지
+않습니다.
+
+runner manifest는 `E2E_RUN_MANIFEST`로 지정할 수 있고, 기본값은
+`.omo/evidence/project-restart-consolidated-roadmap/e2e-<lane>-<pid>-<timestamp>.json`입니다.
+`E2E_EXPORT_SLUG`로 export slug를 지정할 수 있습니다. 실행 종료 전
+selection/execution receipt, JUnit/Playwright 결과와 capture를 secret scan한 뒤,
+`export-manifest.json`과 allowlist에 맞는 파일을
+`output/e2e-captures/<Asia-Seoul-date>-<E2E_EXPORT_SLUG>/`로 export합니다. Screenshot은
+`scripted-capture`에서만 export되며, export 후 run root도 제거됩니다.

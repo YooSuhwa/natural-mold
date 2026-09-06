@@ -229,6 +229,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     const [answers, setAnswers] = useState<Answers>({})
     const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted'>('idle')
     const [submittedDisplay, setSubmittedDisplay] = useState<string | null>(null)
+    const [submitError, setSubmitError] = useState(false)
 
     const questions = useMemo(() => normalizeQuestions(args ?? {}), [args])
     const optionListOptions = useMemo(() => normalizeOptions(args?.options) ?? [], [args?.options])
@@ -252,8 +253,15 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
       async (message: string, displayText: string) => {
         setSubmitState('submitting')
         setSubmittedDisplay(displayText)
-        await submitDecision(toRespond(message), displayText)
-        setSubmitState('submitted')
+        setSubmitError(false)
+        try {
+          await submitDecision(toRespond(message), displayText)
+          setSubmitState('submitted')
+        } catch {
+          setSubmittedDisplay(null)
+          setSubmitState('idle')
+          setSubmitError(true)
+        }
       },
       [submitDecision],
     )
@@ -284,6 +292,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
         })
 
         setSubmitState('submitting')
+        setSubmitError(false)
 
         // 질문이 1개면 값만 전송, 복수면 객체 전송
         const payload = questions.length === 1 ? Object.values(response)[0] : response
@@ -301,8 +310,14 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
 
         const message = typeof payload === 'string' ? payload : JSON.stringify(payload)
         setSubmittedDisplay(displayText)
-        await submitDecision(toRespond(message), displayText)
-        setSubmitState('submitted')
+        try {
+          await submitDecision(toRespond(message), displayText)
+          setSubmitState('submitted')
+        } catch {
+          setSubmittedDisplay(null)
+          setSubmitState('idle')
+          setSubmitError(true)
+        }
       },
       [answers, questions, submitDecision],
     )
@@ -377,6 +392,12 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
             className="ml-auto"
           />
         </div>
+
+        {submitError && (
+          <p role="alert" className="mb-3 text-xs text-destructive">
+            {t('resumeFailed')}
+          </p>
+        )}
 
         {/* Questions */}
         {args?.mode === 'question_flow' ? (

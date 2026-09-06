@@ -8,15 +8,21 @@ directory placement authoritative so a forgotten marker can't happen again.
 
 Interaction contract (see ``pyproject.toml`` ``addopts = "-m 'not
 integration'"``): the default run now skips this whole directory, so the
-serial runner MUST select it explicitly::
+canonical disposable PostgreSQL runner MUST select integration tests explicitly::
 
-    uv run pytest -q tests/integration -m integration
+    manifest=".omo/evidence/project-restart-consolidated-roadmap/local-postgres-$(date +%s).json"
+    bash scripts/run-isolated-postgres-tests.sh all --manifest "$manifest"
+    (cd backend && uv run python ../scripts/check-isolation-cleanup.py "../$manifest")
 
-(the trailing ``-m`` overrides addopts. Plain ``pytest tests/integration``
-deselects everything and exits 5 — loud in a dir-scoped CI step; the silent
-failure mode is a full-suite ``pytest tests/`` run, where passing sibling
-tests mask the deselection with exit 0. Guarded by
-``tests/test_integration_marker_hook.py``.)
+The runner invokes ``pytest tests -m integration`` so every marked integration
+node is included, including marked tests outside this directory. The trailing
+``-m`` overrides addopts. Plain ``pytest tests/integration`` deselects everything
+and exits 5 — loud in a dir-scoped debug run; the silent failure mode is a
+full-suite ``pytest tests/`` run, where passing sibling tests mask the
+deselection with exit 0. Guarded by ``tests/test_integration_marker_hook.py``.
+
+For focused debugging, ``uv run pytest -q tests/integration -m integration`` is
+still valid from ``backend/``, but it is not the canonical lifecycle gate.
 """
 
 from __future__ import annotations

@@ -31,11 +31,15 @@ async function* builderLegacyStreamUnsupported(): AsyncGenerator<SSEEvent> {
   throw new Error('skill builder chat requires the langgraph_v3 runtime')
 }
 
-export function SkillBuilderChatClient({ sessionId }: { readonly sessionId: string }) {
+export function SkillBuilderChatClient({
+  builderSessionId,
+}: {
+  readonly builderSessionId: string
+}) {
   const t = useTranslations('skill.builderChat')
   const queryClient = useQueryClient()
   const { data: user } = useSession()
-  const { data: session, isLoading, isError } = useSkillBuilderSession(sessionId)
+  const { data: session, isLoading, isError } = useSkillBuilderSession(builderSessionId)
   const [railMode, setRailMode] = useState<RailMode>('status')
 
   const conversationId = session?.conversation_id ?? null
@@ -51,10 +55,10 @@ export function SkillBuilderChatClient({ sessionId }: { readonly sessionId: stri
     if (conversationId) {
       queryClient.invalidateQueries({ queryKey: conversationKeys.messages(conversationId) })
     }
-    queryClient.invalidateQueries({ queryKey: skillBuilderKeys.detail(sessionId) })
-    queryClient.invalidateQueries({ queryKey: skillBuilderKeys.files(sessionId) })
+    queryClient.invalidateQueries({ queryKey: skillBuilderKeys.detail(builderSessionId) })
+    queryClient.invalidateQueries({ queryKey: skillBuilderKeys.files(builderSessionId) })
     queryClient.invalidateQueries({ queryKey: skillQueryKeys.all })
-  }, [conversationId, queryClient, sessionId])
+  }, [builderSessionId, conversationId, queryClient])
 
   // React Compiler가 자동 메모이즈 — 수동 useMemo는 컴파일러 추론과 충돌한다.
   const emptyContent = (

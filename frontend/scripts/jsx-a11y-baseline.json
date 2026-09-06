@@ -147,20 +147,6 @@
     "message": "A control must be associated with a text label."
   },
   {
-    "filePath": "src/components/chat/tool-ui/approval-card.tsx",
-    "line": 381,
-    "column": 13,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
-    "filePath": "src/components/chat/tool-ui/approval-card.tsx",
-    "line": 397,
-    "column": 15,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
     "filePath": "src/components/chat/tool-ui/approval-footer.tsx",
     "line": 57,
     "column": 7,

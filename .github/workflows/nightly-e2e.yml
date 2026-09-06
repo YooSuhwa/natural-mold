@@ -1,0 +1,44 @@
+name: Nightly scripted E2E
+
+on:
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-scripted-e2e
+  cancel-in-progress: false
+
+jobs:
+  scripted-full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: uv sync --frozen --all-extras
+        working-directory: backend
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm --dir frontend exec playwright install --with-deps chromium
+      - name: Govern skips and run deterministic full suite
+        run: |
+          pnpm --dir frontend lint:e2e-skips
+          E2E_RUN_MANIFEST="$PWD/.omo/evidence/project-restart-consolidated-roadmap/ci-nightly-full.json" \
+            pnpm --dir frontend test:e2e:scripted -- --project=scripted-full --workers=1
+      - name: Validate cleanup and redacted artifact contract
+        run: >-
+          backend/.venv/bin/python scripts/check-isolation-cleanup.py
+          .omo/evidence/project-restart-consolidated-roadmap/ci-nightly-full.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-scripted-full
+          path: |
+            .omo/evidence/project-restart-consolidated-roadmap/ci-nightly-full.json
+            output/e2e-captures/
+          if-no-files-found: error
+          retention-days: 30

@@ -142,7 +142,7 @@ function AttachedFileCard({ file }: { file: FileItem }) {
         size="icon-sm"
         className="shrink-0 text-muted-foreground"
         aria-label={t('download')}
-        render={<a href={downloadHref} download={file.name} />}
+        render={<a href={downloadHref} download={file.name} aria-label={t('download')} />}
       >
         <DownloadIcon className="size-4" />
       </Button>

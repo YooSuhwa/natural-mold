@@ -38,6 +38,13 @@ async function waitRunIdle(request: APIRequestContext, convId: string): Promise<
     .toBe(true)
 }
 
+async function fillComposer(page: Page, text: string): Promise<void> {
+  const composer = page.locator('textarea[data-moldy-composer-input="true"]:visible')
+  await expect(composer).toHaveCount(1)
+  await expect(composer).toBeVisible()
+  await composer.fill(text)
+}
+
 test.describe('Chat interactions', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
 
@@ -75,7 +82,7 @@ test.describe('Chat interactions', () => {
       })
     ).json()) as { id: string }
     await page.goto(`/agents/${agentId}/conversations/${conv.id}`)
-    await page.getByPlaceholder('메시지 입력...').fill(text)
+    await fillComposer(page, text)
     await page.getByRole('button', { name: /전송/ }).click()
     await expect(page.getByText(text).first()).toBeVisible()
     await expect
@@ -138,7 +145,7 @@ test.describe('Chat interactions', () => {
     const convId = await startTurn(page, request, 'First turn message')
 
     // Second turn into the same conversation.
-    await page.getByPlaceholder('메시지 입력...').fill('Second turn message')
+    await fillComposer(page, 'Second turn message')
     await page.getByRole('button', { name: /전송/ }).click()
     await expect(page.getByText('Second turn message').first()).toBeVisible()
     await expect

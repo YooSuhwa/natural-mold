@@ -156,9 +156,7 @@ async def _make_agent_item_with_dependencies(
                         "command": None,
                         "args": [],
                         "env_vars": {},
-                        "headers": {
-                            "Authorization": "={{ $credentials.access_token }}"
-                        },
+                        "headers": {"Authorization": "={{ $credentials.access_token }}"},
                     },
                 }
             ],
@@ -281,10 +279,335 @@ async def test_create_agent_from_installed_blueprint_materializes_runnable_agent
     assert agent is not None
     assert agent.user_id == TEST_USER_ID
     assert agent.name == "My Runnable Research Agent"
+    assert agent.runtime_policy is None
 
     blueprint = await db.get(AgentBlueprint, uuid.UUID(blueprint_id))
     assert blueprint is not None
+    assert "runtime_policy" not in blueprint.spec["agent"]
+    detail_response = await client.get(f"/api/agent-blueprints/{blueprint_id}")
+    assert detail_response.status_code == 200, detail_response.text
+    assert "runtime_policy" not in detail_response.json()["spec"]["agent"]
     assert blueprint.created_agent_count == 1
+
+
+@pytest.mark.asyncio
+async def test_publish_install_overwrite_and_create_preserve_runtime_policy(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    await _ensure_test_user(db)
+    model = Model(
+        id=uuid.uuid4(),
+        provider="openai",
+        model_name="gpt-5-mini",
+        display_name="GPT-5 Mini",
+        is_default=True,
+        is_visible=True,
+    )
+    agent_id = uuid.uuid4()
+    agent = Agent(
+        id=agent_id,
+        user_id=TEST_USER_ID,
+        name="Portable policy agent",
+        description="Portable runtime policy coverage",
+        system_prompt="Use the configured runtime behavior.",
+        runtime_name=make_agent_runtime_name(agent_id),
+        identity_mode="fixed",
+        model_id=model.id,
+        model=model,
+        runtime_policy={"version": 1, "todo": {"enabled": False}},
+    )
+    db.add_all([model, agent])
+    await db.commit()
+
+    publish_response = await client.post(
+        f"/api/marketplace/items/from-agent/{agent.id}",
+        json={"visibility": "private", "name": "Portable policy blueprint"},
+    )
+
+    assert publish_response.status_code == 201, publish_response.text
+    item_id = publish_response.json()["id"]
+    first_policy = {
+        "version": 1,
+        "filesystem": {"mode": "artifact_write"},
+        "todo": {"enabled": False},
+        "summarization": {"mode": "auto"},
+    }
+    first_version = await db.get(
+        MarketplaceVersion,
+        uuid.UUID(publish_response.json()["latest_version"]["id"]),
+    )
+    assert first_version is not None
+    assert first_version.payload["agent"]["runtime_policy"] == first_policy
+
+    install_response = await client.post(
+        f"/api/marketplace/items/{item_id}/install",
+        json={"install_mode": "new_copy"},
+    )
+
+    assert install_response.status_code == 201, install_response.text
+    blueprint_id = install_response.json()["installed_agent_blueprint_id"]
+    detail_response = await client.get(f"/api/agent-blueprints/{blueprint_id}")
+    assert detail_response.status_code == 200, detail_response.text
+    assert detail_response.json()["spec"]["agent"]["runtime_policy"] == first_policy
+
+    agent.runtime_policy = {
+        "version": 1,
+        "filesystem": {"mode": "inspect"},
+        "todo": {"enabled": False},
+    }
+    await db.commit()
+    version_response = await client.post(
+        f"/api/marketplace/items/{item_id}/versions/from-agent/{agent.id}",
+        json={"release_notes": "Keep policy metadata portable."},
+    )
+
+    assert version_response.status_code == 200, version_response.text
+    overwrite_response = await client.post(
+        f"/api/marketplace/items/{item_id}/install",
+        json={"install_mode": "overwrite_existing"},
+    )
+    assert overwrite_response.status_code == 201, overwrite_response.text
+    assert overwrite_response.json()["installed_agent_blueprint_id"] == blueprint_id
+    overwritten_detail = await client.get(f"/api/agent-blueprints/{blueprint_id}")
+    second_policy = {
+        "version": 1,
+        "filesystem": {"mode": "inspect"},
+        "todo": {"enabled": False},
+        "summarization": {"mode": "auto"},
+    }
+    assert overwritten_detail.status_code == 200, overwritten_detail.text
+    assert overwritten_detail.json()["spec"]["agent"]["runtime_policy"] == second_policy
+
+    create_response = await client.post(
+        f"/api/agent-blueprints/{blueprint_id}/create-agent",
+        json={"name": "Created portable policy agent", "model_id": str(model.id)},
+    )
+
+    assert create_response.status_code == 201, create_response.text
+    created = await db.get(Agent, uuid.UUID(create_response.json()["id"]))
+    assert created is not None
+    assert created.runtime_policy == second_policy
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "runtime_policy",
+    [
+        {"version": 1, "unknown": True},
+        {"version": 1, "todo": {"enabled": False, "token": "redacted"}},
+    ],
+)
+async def test_publish_rejects_nonportable_runtime_policy_payloads(
+    client: AsyncClient,
+    db: AsyncSession,
+    runtime_policy: dict[str, object],
+) -> None:
+    await _ensure_test_user(db)
+    model = Model(
+        id=uuid.uuid4(),
+        provider="openai",
+        model_name="gpt-5-mini",
+        display_name="GPT-5 Mini",
+        is_visible=True,
+    )
+    agent_id = uuid.uuid4()
+    agent = Agent(
+        id=agent_id,
+        user_id=TEST_USER_ID,
+        name="Invalid policy agent",
+        description=None,
+        system_prompt="Policy validation.",
+        runtime_name=make_agent_runtime_name(agent_id),
+        identity_mode="fixed",
+        model_id=model.id,
+        model=model,
+        runtime_policy=runtime_policy,
+    )
+    db.add_all([model, agent])
+    await db.commit()
+
+    response = await client.post(
+        f"/api/marketplace/items/from-agent/{agent.id}",
+        json={"visibility": "private", "name": "Invalid policy blueprint"},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "MARKETPLACE_INVALID_PACKAGE"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("runtime_metadata_key", "runtime_metadata_value"),
+    [
+        ("runtime_policy_source", "server_owned"),
+        ("runtime_policy_effective", {"version": "1"}),
+        ("runtime_policy_snapshot", {"version": "1"}),
+        ("runtime_policy_hash", "0" * 64),
+        ("runtime_policy_version", 1),
+        ("source", "server_owned"),
+        ("effective", {"version": "1"}),
+        ("snapshot", {"version": "1"}),
+        ("hash", "0" * 64),
+        ("server_owned", "server_owned"),
+        ("version", 1),
+    ],
+)
+async def test_install_rejects_nonportable_runtime_metadata_before_blueprint_persistence(
+    client: AsyncClient,
+    db: AsyncSession,
+    runtime_metadata_key: str,
+    runtime_metadata_value: str | int | dict[str, str],
+) -> None:
+    await _ensure_test_user(db)
+    item, version = await _make_agent_item(db)
+    version.payload = {
+        **version.payload,
+        "agent": {
+            **version.payload["agent"],
+            "runtime_policy": {
+                "version": 1,
+                "todo": {"enabled": False},
+            },
+            runtime_metadata_key: runtime_metadata_value,
+        },
+    }
+    await db.commit()
+
+    response = await client.post(
+        f"/api/marketplace/items/{item.id}/install",
+        json={"install_mode": "new_copy"},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "MARKETPLACE_INVALID_PACKAGE"
+    blueprints = (await db.execute(select(AgentBlueprint))).scalars().all()
+    installations = (await db.execute(select(MarketplaceInstallation))).scalars().all()
+    assert blueprints == []
+    assert installations == []
+
+
+@pytest.mark.asyncio
+async def test_install_rejects_malformed_runtime_policy_before_blueprint_persistence(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    await _ensure_test_user(db)
+    item, version = await _make_agent_item(db)
+    version.payload = {
+        **version.payload,
+        "agent": {
+            **version.payload["agent"],
+            "runtime_policy": {
+                "version": 1,
+                "todo": {"enabled": False, "token": "redacted"},
+            },
+        },
+    }
+    await db.commit()
+
+    response = await client.post(
+        f"/api/marketplace/items/{item.id}/install",
+        json={"install_mode": "new_copy"},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "MARKETPLACE_INVALID_PACKAGE"
+    blueprints = (await db.execute(select(AgentBlueprint))).scalars().all()
+    installations = (await db.execute(select(MarketplaceInstallation))).scalars().all()
+    assert blueprints == []
+    assert installations == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("runtime_metadata_key", "runtime_metadata_value"),
+    [
+        ("runtime_policy_source", "server_owned"),
+        ("runtime_policy_effective", {"version": "1"}),
+        ("runtime_policy_snapshot", {"version": "1"}),
+        ("runtime_policy_hash", "0" * 64),
+        ("runtime_policy_version", 1),
+        ("source", "server_owned"),
+        ("effective", {"version": "1"}),
+        ("snapshot", {"version": "1"}),
+        ("hash", "0" * 64),
+        ("server_owned", "server_owned"),
+        ("version", 1),
+    ],
+)
+async def test_install_rejects_relocated_runtime_metadata_before_blueprint_persistence(
+    client: AsyncClient,
+    db: AsyncSession,
+    runtime_metadata_key: str,
+    runtime_metadata_value: str | int | dict[str, str],
+) -> None:
+    await _ensure_test_user(db)
+    item, version = await _make_agent_item(db)
+    version.payload = {
+        **version.payload,
+        runtime_metadata_key: runtime_metadata_value,
+        "agent": {
+            **version.payload["agent"],
+            "runtime_policy": {"version": 1, "todo": {"enabled": False}},
+        },
+    }
+    await db.commit()
+
+    response = await client.post(
+        f"/api/marketplace/items/{item.id}/install",
+        json={"install_mode": "new_copy"},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "MARKETPLACE_INVALID_PACKAGE"
+    blueprints = (await db.execute(select(AgentBlueprint))).scalars().all()
+    installations = (await db.execute(select(MarketplaceInstallation))).scalars().all()
+    assert blueprints == []
+    assert installations == []
+
+
+@pytest.mark.asyncio
+async def test_install_and_create_preserve_explicit_null_runtime_policy(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    await _ensure_test_user(db)
+    model = Model(
+        id=uuid.uuid4(),
+        provider="openai",
+        model_name="gpt-5-mini",
+        display_name="GPT-5 Mini",
+        is_visible=True,
+    )
+    db.add(model)
+    item, version = await _make_agent_item(db)
+    version.payload = {
+        **version.payload,
+        "agent": {**version.payload["agent"], "runtime_policy": None},
+    }
+    await db.commit()
+
+    install_response = await client.post(
+        f"/api/marketplace/items/{item.id}/install",
+        json={"install_mode": "new_copy"},
+    )
+
+    assert install_response.status_code == 201, install_response.text
+    blueprint_id = install_response.json()["installed_agent_blueprint_id"]
+    detail_response = await client.get(f"/api/agent-blueprints/{blueprint_id}")
+    assert detail_response.status_code == 200, detail_response.text
+    assert detail_response.json()["spec"]["agent"]["runtime_policy"] is None
+
+    create_response = await client.post(
+        f"/api/agent-blueprints/{blueprint_id}/create-agent",
+        json={"model_id": str(model.id)},
+    )
+
+    assert create_response.status_code == 201, create_response.text
+    created = await db.get(Agent, uuid.UUID(create_response.json()["id"]))
+    assert created is not None
+    assert created.runtime_policy is None
 
 
 @pytest.mark.asyncio
@@ -317,9 +640,7 @@ async def test_create_agent_from_uninstalled_blueprint_is_blocked(
     blueprint_id = install_response.json()["installed_agent_blueprint_id"]
     installation_id = install_response.json()["id"]
 
-    uninstall_response = await client.delete(
-        f"/api/marketplace/installations/{installation_id}"
-    )
+    uninstall_response = await client.delete(f"/api/marketplace/installations/{installation_id}")
     assert uninstall_response.status_code in (200, 204), uninstall_response.text
 
     # Detail GET is hidden (404)…
@@ -523,7 +844,7 @@ async def test_create_agent_from_blueprint_materializes_unbound_tool_dependency(
                 "description": "Fallback name tool",
                 "definition_key": "tavily_search",
                 "parameters": {"mode": "fallback"},
-            }
+            },
         ],
         "skills": [],
         "mcp_tools": [],
@@ -790,9 +1111,7 @@ async def test_create_agent_from_blueprint_does_not_reuse_mcp_name_collision(
     assert create_response.status_code == 201, create_response.text
     agent_id = uuid.UUID(create_response.json()["id"])
     link = (
-        await db.execute(
-            select(AgentMcpToolLink).where(AgentMcpToolLink.agent_id == agent_id)
-        )
+        await db.execute(select(AgentMcpToolLink).where(AgentMcpToolLink.agent_id == agent_id))
     ).scalar_one()
     tool = await db.get(McpTool, link.mcp_tool_id)
     assert tool is not None
@@ -907,9 +1226,7 @@ async def test_create_agent_from_blueprint_does_not_reuse_mcp_with_different_cre
     assert create_response.status_code == 201, create_response.text
     agent_id = uuid.UUID(create_response.json()["id"])
     link = (
-        await db.execute(
-            select(AgentMcpToolLink).where(AgentMcpToolLink.agent_id == agent_id)
-        )
+        await db.execute(select(AgentMcpToolLink).where(AgentMcpToolLink.agent_id == agent_id))
     ).scalar_one()
     mcp_tool = await db.get(McpTool, link.mcp_tool_id)
     assert mcp_tool is not None
@@ -1556,6 +1873,7 @@ async def test_delete_agent_blueprint_installation_with_resource_removes_bluepri
     assert await db.get(AgentBlueprint, blueprint_id) is None
     assert await db.get(MarketplaceInstallation, installation_id) is None
 
+
 @pytest.mark.asyncio
 async def test_agent_blueprint_list_ignores_uninstalled_installation_rows(
     client: AsyncClient,
@@ -1636,17 +1954,13 @@ async def test_agent_blueprint_list_after_uninstall_and_reinstall(
     first_installation_id = first_response.json()["id"]
     first_blueprint_id = first_response.json()["installed_agent_blueprint_id"]
 
-    delete_response = await client.delete(
-        f"/api/marketplace/installations/{first_installation_id}"
-    )
+    delete_response = await client.delete(f"/api/marketplace/installations/{first_installation_id}")
     assert delete_response.status_code == 204, delete_response.text
 
     # The soft-uninstalled blueprint must vanish from list + detail.
     after_uninstall = await client.get("/api/agent-blueprints")
     assert after_uninstall.status_code == 200, after_uninstall.text
-    assert all(
-        row["id"] != first_blueprint_id for row in after_uninstall.json()
-    )
+    assert all(row["id"] != first_blueprint_id for row in after_uninstall.json())
     detail_404 = await client.get(f"/api/agent-blueprints/{first_blueprint_id}")
     assert detail_404.status_code == 404, detail_404.text
     assert detail_404.json()["error"]["code"] == "MARKETPLACE_ITEM_NOT_FOUND"
@@ -1803,9 +2117,7 @@ async def test_create_agent_from_blueprint_rejects_unknown_tool_definition_key(
     body = create_response.json()
     assert body["error"]["code"] == "MARKETPLACE_INVALID_PACKAGE"
     assert "registry:not_a_real_tool" in body["error"]["message"]
-    created = (
-        await db.execute(select(Tool).where(Tool.user_id == TEST_USER_ID))
-    ).scalars().all()
+    created = (await db.execute(select(Tool).where(Tool.user_id == TEST_USER_ID))).scalars().all()
     assert created == []
 
 
@@ -1859,13 +2171,17 @@ async def test_create_agent_from_blueprint_rejects_builtin_tool_without_system_r
     assert create_response.status_code == 422, create_response.text
     assert create_response.json()["error"]["code"] == "MARKETPLACE_INVALID_PACKAGE"
     copies = (
-        await db.execute(
-            select(Tool).where(
-                Tool.user_id == TEST_USER_ID,
-                Tool.definition_key == "builtin:current_datetime",
+        (
+            await db.execute(
+                select(Tool).where(
+                    Tool.user_id == TEST_USER_ID,
+                    Tool.definition_key == "builtin:current_datetime",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert copies == []
 
 
@@ -1887,9 +2203,7 @@ async def test_create_agent_from_blueprint_rejects_unknown_middleware_key(
     item, version = await _make_agent_item(db)
     payload = dict(version.payload)
     agent_spec = dict(payload["agent"])
-    agent_spec["middleware_configs"] = [
-        {"type": "totally_unknown_middleware", "params": {}}
-    ]
+    agent_spec["middleware_configs"] = [{"type": "totally_unknown_middleware", "params": {}}]
     payload["agent"] = agent_spec
     version.payload = payload
     await db.commit()

@@ -1,7 +1,18 @@
 import type { APIRequestContext, Page } from '@playwright/test'
 import { API_BASE, apiPostJson, expect, isRecord, test, type CsrfHeaders } from '../fixtures'
-import { sendMessage, setupLangGraphV3Agent, waitForActiveRun, waitForRunStatus } from '../langgraph-v3-helpers'
-import { capture, captureLocator, DESKTOP_VIEWPORT, settle, warmUpChatRoute } from './_capture-helpers'
+import {
+  sendMessageForRun,
+  setupLangGraphV3Agent,
+  waitForAcceptedRunStart,
+  waitForRunStatus,
+} from '../langgraph-v3-helpers'
+import {
+  capture,
+  captureLocator,
+  DESKTOP_VIEWPORT,
+  settle,
+  warmUpChatRoute,
+} from './_capture-helpers'
 
 /**
  * Wave — chat error + retry (G2). Drives the scripted-model ``E2E_ERROR`` marker
@@ -24,7 +35,8 @@ async function freshConversation(
     csrfHeaders,
     { title },
   )
-  if (!isRecord(convo) || typeof convo.id !== 'string') throw new Error('conversation create failed')
+  if (!isRecord(convo) || typeof convo.id !== 'string')
+    throw new Error('conversation create failed')
   return convo.id
 }
 
@@ -53,12 +65,16 @@ test.describe('Chat error + retry captures', () => {
     const setup = await setupLangGraphV3Agent(request)
     const { parentAgentId: agentId, csrfHeaders } = setup
 
-    const conversationId = await freshConversation(request, csrfHeaders, agentId, '에러 재시도 캡쳐')
+    const conversationId = await freshConversation(
+      request,
+      csrfHeaders,
+      agentId,
+      '에러 재시도 캡쳐',
+    )
     await gotoChat(page, agentId, conversationId)
 
-    // Force a genuine run failure via the scripted-model marker.
-    await sendMessage(page, 'E2E_ERROR 강제 실패 시나리오')
-    const runId = await waitForActiveRun(request, conversationId)
+    // Capture the accepted run id directly: E2E_ERROR can fail before active-run polling.
+    const runId = await sendMessageForRun(page, conversationId, 'E2E_ERROR 강제 실패 시나리오')
     await waitForRunStatus(request, conversationId, runId, 'failed')
 
     // The error bubble carries the always-visible retry button — gate on it so we
@@ -75,8 +91,11 @@ test.describe('Chat error + retry captures', () => {
 
     // Retry re-runs from the last user checkpoint (also fails again on the marker),
     // capturing the "retry pressed" transition.
-    await retryButton.click()
-    await page.waitForTimeout(1_000)
+    const retryRunId = await waitForAcceptedRunStart(page, conversationId, () =>
+      retryButton.click(),
+    )
+    expect(retryRunId).not.toBe(runId)
+    await waitForRunStatus(request, conversationId, retryRunId, 'failed')
     await capture(page, WAVE, '03-retry-clicked.png')
   })
 })

@@ -1,0 +1,85 @@
+"""Configuration and catalog contracts for canonical project-gate waves."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from types import ModuleType
+
+import pytest
+
+from tests.project_gate_wave_support import (
+    EXPECTED_FINAL_STATIC,
+    EXPECTED_WAVE_1,
+    EXPECTED_WAVE_2,
+    EXPECTED_WAVE_3,
+    EXPECTED_WAVE_4,
+    EXPECTED_WAVE_5,
+    SCRIPTS,
+    config_path,
+    load_module,
+)
+
+
+@pytest.fixture(scope="module")
+def runner() -> ModuleType:
+    return load_module("project_gate_runner")
+
+
+def test_config_loads_exact_canonical_wave_order(runner: ModuleType) -> None:
+    """Given tracked config, when loaded, then every reviewed wave retains canonical order."""
+    profiles = runner.load_profiles(SCRIPTS / "project-gates.json")
+
+    assert profiles["wave-1"].nodes == EXPECTED_WAVE_1
+    assert profiles["wave-2"].nodes == EXPECTED_WAVE_2
+    assert profiles["wave-3"].nodes == EXPECTED_WAVE_3
+    assert profiles["wave-4"].nodes == EXPECTED_WAVE_4
+    assert profiles["wave-5"].nodes == EXPECTED_WAVE_5
+    assert profiles["final-static"].nodes == EXPECTED_FINAL_STATIC
+    assert profiles["wave-1"].nodes != profiles["wave-2"].nodes
+    assert profiles["wave-2"].nodes != profiles["wave-3"].nodes
+    assert profiles["wave-3"].nodes != profiles["wave-4"].nodes
+    catalog = load_module("project_gate_catalog")
+    assert catalog.CATALOG["todo14-visual-capture"].expected_screenshot_count == 13
+    assert catalog.CATALOG["todo21-visual-capture"].expected_screenshot_count == 24
+
+
+@pytest.mark.parametrize("mutation", ["unknown", "duplicate", "reordered", "omitted", "argv"])
+def test_config_rejects_noncanonical_wave_four_catalog(
+    tmp_path: Path, runner: ModuleType, mutation: str
+) -> None:
+    """Given unreviewed composite data, when parsed, then it fails before execution."""
+    nodes: list[str] = list(EXPECTED_WAVE_4)
+    if mutation == "unknown":
+        nodes[-1] = "shell-command"
+    elif mutation == "duplicate":
+        nodes[-1] = nodes[0]
+    elif mutation == "reordered":
+        nodes[0], nodes[1] = nodes[1], nodes[0]
+    elif mutation == "omitted":
+        nodes.pop(3)
+    else:
+        path = config_path(tmp_path, nodes, wave="wave-4")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["profiles"]["wave-4"]["argv"] = ["sh", "-c", "touch pwned"]
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        with pytest.raises(runner.ProjectGateError, match="invalid_config"):
+            runner.load_profiles(path)
+        return
+
+    with pytest.raises(runner.ProjectGateError, match="invalid_config"):
+        runner.load_profiles(config_path(tmp_path, nodes, wave="wave-4"))
+
+
+def test_config_rejects_future_wave_without_review(tmp_path: Path, runner: ModuleType) -> None:
+    """Given an undeclared later wave, when parsed, then the closed profile set rejects it."""
+    path = config_path(tmp_path, list(EXPECTED_WAVE_4), wave="wave-4")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["profiles"]["wave-6"] = {
+        "kind": "composite",
+        "nodes": list(EXPECTED_WAVE_4),
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(runner.ProjectGateError, match="invalid_config"):
+        runner.load_profiles(path)

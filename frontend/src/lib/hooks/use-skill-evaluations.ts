@@ -143,7 +143,7 @@ export function useInvalidateSkillMetricsOnRunCompletion(
     if (hadActiveRef.current && !hasActive && skillId) {
       qc.invalidateQueries({ queryKey: skillEvaluationKeys.versionStats(skillId) })
       qc.invalidateQueries({ queryKey: skillQueryKeys.feedback(skillId) })
-      qc.invalidateQueries({ queryKey: ['skills', skillId, 'usage'] })
+      qc.invalidateQueries({ queryKey: skillQueryKeys.usageRoot(skillId) })
     }
     hadActiveRef.current = hasActive
   }, [qc, skillId, hasActive])

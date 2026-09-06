@@ -8,8 +8,8 @@ import type { BaseMessage } from '@langchain/core/messages'
  * Auto-compaction marker projection (dev-plan-context-compaction-marker.md).
  *
  * The backend emits a ``moldy.compaction`` custom event (running/done) when
- * deepagents summarizes older messages. The ``done`` event carries the offload
- * path but NOT a usable message id — its ``_summarization_event`` is committed
+ * deepagents summarizes older messages. The ``done`` event carries a logical
+ * history id but NOT a usable message id — its ``_summarization_event`` is committed
  * *after* the answer's ``message-start`` (verified ordering:
  * running → answer message-start → done). So we map each ``done`` to the LAST
  * ``message-start`` whose ``seq`` precedes it — that is the answer message for
@@ -17,7 +17,8 @@ import type { BaseMessage } from '@langchain/core/messages'
  */
 
 export interface CompactionMarker {
-  readonly offloadPath?: string
+  /** Opaque backend reference; never a physical or virtual storage path. */
+  readonly historyId?: string
   readonly cutoffIndex?: number
 }
 
@@ -73,9 +74,9 @@ function messagePayload(data: unknown): Record<string, unknown> | null {
 
 export function compactionMarkerFromPayload(payload: unknown): CompactionMarker | null {
   if (!isRecord(payload) || payload.state !== 'done') return null
-  const marker: { offloadPath?: string; cutoffIndex?: number } = {}
-  const offloadPath = textValue(payload.offload_path) ?? textValue(payload.offloadPath)
-  if (offloadPath) marker.offloadPath = offloadPath
+  const marker: { historyId?: string; cutoffIndex?: number } = {}
+  const historyId = textValue(payload.history_id) ?? textValue(payload.historyId)
+  if (historyId) marker.historyId = historyId
   const cutoffIndex = numberValue(payload.cutoff_index ?? payload.cutoffIndex)
   if (cutoffIndex !== undefined) marker.cutoffIndex = cutoffIndex
   return marker

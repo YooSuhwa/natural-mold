@@ -48,6 +48,10 @@ from app.marketplace.publish_common import (
     slugify,
     upsert_publication_link,
 )
+from app.marketplace.runtime_policy import (
+    canonicalize_agent_spec_runtime_policy,
+    canonicalize_portable_runtime_policy,
+)
 from app.marketplace.schemas import PublishAgentIn
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
@@ -94,6 +98,13 @@ def _fallback_model_ids(agent: Agent) -> list[uuid.UUID]:
         except (TypeError, ValueError):
             continue
     return ids
+
+
+def _portable_runtime_policy(agent: Agent) -> dict[str, Any] | None:
+    """Parse agent policy storage into the only portable policy contract."""
+    if agent.runtime_policy is None:
+        return None
+    return canonicalize_portable_runtime_policy(agent.runtime_policy)
 
 
 def _credential_requirement(
@@ -245,17 +256,20 @@ def build_agent_spec_payload(
         "resource": "agent_blueprint",
         "name": agent.name,
         "description": agent.description,
-        "agent": {
-            "name": agent.name,
-            "description": agent.description,
-            "system_prompt": agent.system_prompt,
-            "identity_mode": agent.identity_mode,
-            "model": _model_payload(agent.model),
-            "model_fallbacks": fallback_payloads,
-            "model_params": agent.model_params or {},
-            "middleware_configs": agent.middleware_configs or [],
-            "opener_questions": agent.opener_questions or [],
-        },
+        "agent": canonicalize_agent_spec_runtime_policy(
+            {
+                "name": agent.name,
+                "description": agent.description,
+                "system_prompt": agent.system_prompt,
+                "identity_mode": agent.identity_mode,
+                "model": _model_payload(agent.model),
+                "model_fallbacks": fallback_payloads,
+                "model_params": agent.model_params or {},
+                "middleware_configs": agent.middleware_configs or [],
+                "opener_questions": agent.opener_questions or [],
+                "runtime_policy": _portable_runtime_policy(agent),
+            }
+        ),
         "capabilities": {
             "tools": tools,
             "skills": skills,
@@ -367,9 +381,7 @@ async def _load_fallback_models(db: AsyncSession, *, agent: Agent) -> list[Model
     fallback_ids = _fallback_model_ids(agent)
     if not fallback_ids:
         return []
-    rows = (
-        await db.execute(select(Model).where(Model.id.in_(fallback_ids)))
-    ).scalars().all()
+    rows = (await db.execute(select(Model).where(Model.id.in_(fallback_ids)))).scalars().all()
     by_id = {model.id: model for model in rows}
     return [by_id[model_id] for model_id in fallback_ids if model_id in by_id]
 
@@ -387,9 +399,7 @@ def _reject_non_portable_skill_dependencies(agent: Agent, *, visibility: str) ->
 def _reject_non_portable_subagent_dependencies(agent: Agent, *, visibility: str) -> None:
     if visibility == "private" or not agent.sub_agent_links:
         return
-    names = ", ".join(
-        link.sub_agent.name for link in agent.sub_agent_links if link.sub_agent
-    )
+    names = ", ".join(link.sub_agent.name for link in agent.sub_agent_links if link.sub_agent)
     raise marketplace_invalid_package(
         "Agent Blueprints with subagent dependencies cannot be shared "
         f"outside private visibility yet: {names or 'unknown subagent'}"
@@ -478,9 +488,7 @@ async def publish_agent(
     agent = await _load_agent(db, agent_id=agent_id, user_id=user.id)
 
     if body.visibility not in ("private", "restricted", "public", "unlisted"):
-        raise marketplace_invalid_visibility(
-            f"unsupported publish visibility: {body.visibility}"
-        )
+        raise marketplace_invalid_visibility(f"unsupported publish visibility: {body.visibility}")
     if body.visibility == "restricted" and not body.acl_user_ids:
         raise marketplace_acl_required()
     _reject_non_portable_skill_dependencies(agent, visibility=body.visibility)
@@ -499,9 +507,7 @@ async def publish_agent(
         if not can_manage_item(item, user):
             raise marketplace_manage_forbidden()
         if item.resource_type != "agent":
-            raise marketplace_invalid_package(
-                "marketplace item is not an Agent item"
-            )
+            raise marketplace_invalid_package("marketplace item is not an Agent item")
     else:
         slug = _slugify(body.name)
         item = (
@@ -598,15 +604,17 @@ async def publish_agent(
             item.categories = list(body.categories)
 
     if body.visibility == "restricted":
-        await _create_acl(
-            db, item=item, user_ids=list(body.acl_user_ids), permission="install"
-        )
+        await _create_acl(db, item=item, user_ids=list(body.acl_user_ids), permission="install")
     else:
         existing_acl = (
-            await db.execute(
-                select(MarketplaceItemACL).where(MarketplaceItemACL.item_id == item.id)
+            (
+                await db.execute(
+                    select(MarketplaceItemACL).where(MarketplaceItemACL.item_id == item.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for row in existing_acl:
             await db.delete(row)
 

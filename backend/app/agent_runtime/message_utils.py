@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -8,7 +9,10 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
+from app.agent_runtime.offload_protocol_projection import project_offload_egress_data
 from app.schemas.conversation import MessageResponse, TokenUsageBreakdown
+
+logger = logging.getLogger(__name__)
 
 _TYPE_TO_ROLE = {"human": "user", "ai": "assistant", "tool": "tool"}
 _PRIVATE_REASONING_BLOCK_TYPES = frozenset(
@@ -19,6 +23,32 @@ _PRIVATE_REASONING_BLOCK_TYPES = frozenset(
         "redacted_thinking",
     }
 )
+
+
+def flatten_base_messages(value: Any, *, source: str) -> list[BaseMessage]:
+    """Return only ``BaseMessage`` instances from nested checkpoint containers.
+
+    This deliberately descends only through outer list containers: once a
+    ``BaseMessage`` is found, its ``content`` is left untouched even when that
+    content is itself a provider-specific list of blocks. LangGraph checkpoint
+    wrappers are handled at the checkpoint compatibility boundary.
+    """
+
+    flat: list[BaseMessage] = []
+    pending: list[Any] = [value]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, BaseMessage):
+            flat.append(current)
+        elif isinstance(current, list):
+            pending.extend(reversed(current))
+        elif current is not None:
+            logger.warning(
+                "Dropping malformed checkpoint message value from %s: %s",
+                source,
+                type(current).__name__,
+            )
+    return flat
 
 
 def parse_msg_id(raw_id: str | None, conversation_id: uuid.UUID, idx: int) -> uuid.UUID:
@@ -67,6 +97,20 @@ def content_to_text(content: Any) -> str:
     return str(content)
 
 
+def _project_message_display_values(msg: BaseMessage) -> tuple[Any, Any]:
+    """Copy browser-facing message fields through the offload egress boundary."""
+
+    tool_call_id = getattr(msg, "tool_call_id", None)
+    envelope: dict[str, Any] = {
+        "content": msg.content,
+        "tool_calls": getattr(msg, "tool_calls", None),
+    }
+    if isinstance(tool_call_id, str) and tool_call_id:
+        envelope["tool_call_id"] = tool_call_id
+    projected = project_offload_egress_data(envelope)
+    return projected["content"], projected["tool_calls"]
+
+
 def langchain_messages_to_response(
     messages: list[BaseMessage],
     conversation_id: uuid.UUID,
@@ -91,7 +135,8 @@ def langchain_messages_to_response(
 
     for idx, msg in enumerate(messages):
         role = _TYPE_TO_ROLE.get(msg.type, msg.type)
-        content = content_to_text(msg.content)
+        projected_content, projected_tool_calls = _project_message_display_values(msg)
+        content = content_to_text(projected_content)
 
         if timestamps is not None and idx < len(timestamps):
             created_at = timestamps[idx]
@@ -112,7 +157,7 @@ def langchain_messages_to_response(
                 conversation_id=conversation_id,
                 role=role,
                 content=content,
-                tool_calls=getattr(msg, "tool_calls", None) or None,
+                tool_calls=projected_tool_calls or None,
                 tool_call_id=getattr(msg, "tool_call_id", None),
                 created_at=created_at,
                 usage=usage,

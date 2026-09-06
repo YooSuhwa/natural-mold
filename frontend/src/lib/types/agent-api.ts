@@ -1,3 +1,5 @@
+import type { RuntimePolicyV1 } from './runtime-policy'
+
 export type AgentApiScope = 'invoke' | 'stream' | 'background' | 'read'
 export type AgentDeploymentIneligibleReasonCode = 'fixed_identity_required'
 
@@ -11,6 +13,8 @@ export interface AgentDeployment {
   allow_background: boolean
   rate_limit_per_minute: number | null
   daily_token_limit: number | null
+  /** Agent-owned portable policy only; no execution snapshot or provenance. */
+  runtime_policy: RuntimePolicyV1 | null
   created_at: string
   updated_at: string
 }
@@ -24,6 +28,8 @@ export interface AgentDeploymentCandidate {
   eligible: boolean
   ineligible_reason: string | null
   ineligible_reason_code: AgentDeploymentIneligibleReasonCode | null
+  /** Agent-owned portable policy only; no execution snapshot or provenance. */
+  runtime_policy: RuntimePolicyV1 | null
 }
 
 export interface AgentApiKeyDeploymentRef {
@@ -66,6 +72,15 @@ export interface AgentApiKeyCreated extends AgentApiKey {
 
 export interface AgentDeploymentCreateRequest {
   agent_id: string
+  allow_streaming?: boolean
+  allow_background?: boolean
+  rate_limit_per_minute?: number | null
+  daily_token_limit?: number | null
+}
+
+/** Only fields accepted by the deployment PATCH endpoint. */
+export interface AgentDeploymentUpdateRequest {
+  status?: 'active' | 'disabled'
   allow_streaming?: boolean
   allow_background?: boolean
   rate_limit_per_minute?: number | null

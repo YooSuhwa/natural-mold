@@ -1,0 +1,1387 @@
+{
+  "build_agent": {
+    "configured_none_keyword_keys": [
+      "checkpointer",
+      "memory",
+      "name",
+      "store"
+    ],
+    "defaults_none_keyword_keys": [
+      "checkpointer",
+      "interrupt_on",
+      "memory",
+      "name",
+      "permissions",
+      "skills",
+      "store"
+    ],
+    "filesystem_tools": [
+      "ls",
+      "read_file",
+      "write_file",
+      "edit_file",
+      "glob",
+      "grep",
+      "execute"
+    ],
+    "keyword_keys": [
+      "backend",
+      "checkpointer",
+      "interrupt_on",
+      "memory",
+      "middleware",
+      "model",
+      "name",
+      "permissions",
+      "skills",
+      "store",
+      "subagents",
+      "system_prompt",
+      "tools"
+    ],
+    "middleware_names": [
+      "FilesystemMiddleware",
+      "TodoListMiddleware",
+      "retained-first",
+      "retained-second"
+    ],
+    "permissions": [
+      {
+        "mode": "allow",
+        "operations": [
+          "read"
+        ],
+        "paths": [
+          "/contract/parent/**"
+        ]
+      }
+    ],
+    "subagents": [
+      {
+        "backend_is_parent": true,
+        "graph_id": null,
+        "has_skills": true,
+        "middleware": [
+          "FilesystemMiddleware",
+          "TodoListMiddleware"
+        ],
+        "name": "general-purpose",
+        "opaque_identity_preserved": false,
+        "permissions": [
+          {
+            "mode": "allow",
+            "operations": [
+              "read"
+            ],
+            "paths": [
+              "/contract/parent/**"
+            ]
+          }
+        ],
+        "tools": [
+          "tool-a"
+        ]
+      },
+      {
+        "backend_is_parent": true,
+        "graph_id": null,
+        "has_skills": false,
+        "middleware": [
+          "FilesystemMiddleware",
+          "TodoListMiddleware",
+          "retained-first",
+          "retained-second"
+        ],
+        "name": "child",
+        "opaque_identity_preserved": false,
+        "permissions": [
+          {
+            "mode": "interrupt",
+            "operations": [
+              "write"
+            ],
+            "paths": [
+              "/contract/child/**"
+            ]
+          }
+        ],
+        "tools": []
+      },
+      {
+        "backend_is_parent": false,
+        "graph_id": "contract-remote",
+        "has_skills": false,
+        "middleware": [],
+        "name": "remote",
+        "opaque_identity_preserved": true,
+        "permissions": [],
+        "tools": []
+      }
+    ]
+  },
+  "executor_exports": [
+    "AgentConfig",
+    "EmptyContentRetryMiddleware",
+    "MiddlewareModelCredentialRequiredError",
+    "RuntimeComponents",
+    "_DATA_DIR",
+    "_build_default_reliability_middleware",
+    "_build_mcp_tools",
+    "_build_model_candidates",
+    "_build_model_with_fallback",
+    "_configured_recursion_limit",
+    "_create_mcp_error_stub",
+    "_create_skill_execute_tool",
+    "_expand_shell_vars",
+    "_hook_ctx_for_agent",
+    "_hook_result_from_usage",
+    "_load_memory_context",
+    "_memory_write_policy_for_run",
+    "_prepare_agent",
+    "_prepare_runtime_components",
+    "_prepare_skill_subprocess_args",
+    "_resolve_middleware_model_params",
+    "_run_agent_stream",
+    "_skill_timeout_seconds",
+    "build_agent",
+    "execute_agent_invoke",
+    "execute_agent_stream",
+    "execute_agent_stream_langgraph",
+    "resume_agent_stream",
+    "resume_agent_stream_langgraph"
+  ],
+  "patch_points": {
+    "runtime_component_builder": {
+      "_DATA_DIR": true,
+      "_build_model_candidates": true,
+      "_load_memory_context": true,
+      "_memory_write_policy_for_run": true,
+      "build_agent": true,
+      "convert_to_langchain_messages": true,
+      "create_chat_model": true,
+      "create_deep_agent": true,
+      "create_tool_for_runtime": true
+    },
+    "runtime_config": {
+      "_DATA_DIR": true
+    }
+  },
+  "prepared": {
+    "permissions": [
+      {
+        "mode": "allow",
+        "operations": [
+          "read",
+          "write"
+        ],
+        "paths": [
+          "/conversations/contract-thread",
+          "/conversations/contract-thread/",
+          "/conversations/contract-thread/**"
+        ]
+      },
+      {
+        "mode": "deny",
+        "operations": [
+          "read",
+          "write"
+        ],
+        "paths": [
+          "/skills",
+          "/skills/",
+          "/skills/**"
+        ]
+      },
+      {
+        "mode": "deny",
+        "operations": [
+          "read",
+          "write"
+        ],
+        "paths": [
+          "/agents",
+          "/agents/",
+          "/agents/**"
+        ]
+      },
+      {
+        "mode": "deny",
+        "operations": [
+          "read",
+          "write"
+        ],
+        "paths": [
+          "/runtime",
+          "/runtime/",
+          "/runtime/**"
+        ]
+      },
+      {
+        "mode": "deny",
+        "operations": [
+          "read",
+          "write"
+        ],
+        "paths": [
+          "/conversations",
+          "/conversations/",
+          "/conversations/**"
+        ]
+      },
+      {
+        "mode": "deny",
+        "operations": [
+          "read",
+          "write"
+        ],
+        "paths": [
+          "/skill-drafts",
+          "/skill-drafts/",
+          "/skill-drafts/**"
+        ]
+      },
+      {
+        "mode": "deny",
+        "operations": [
+          "read",
+          "write"
+        ],
+        "paths": [
+          "/uploads",
+          "/uploads/",
+          "/uploads/**"
+        ]
+      },
+      {
+        "mode": "deny",
+        "operations": [
+          "read",
+          "write"
+        ],
+        "paths": [
+          "/artifacts",
+          "/artifacts/",
+          "/artifacts/**"
+        ]
+      },
+      {
+        "mode": "deny",
+        "operations": [
+          "read",
+          "write"
+        ],
+        "paths": [
+          "/.moldy-offload",
+          "/.moldy-offload/",
+          "/.moldy-offload/**"
+        ]
+      },
+      {
+        "mode": "deny",
+        "operations": [
+          "read",
+          "write"
+        ],
+        "paths": [
+          "/**"
+        ]
+      }
+    ],
+    "prompt_markers": [
+      "<temporal>",
+      "<base>",
+      "<artifact>",
+      "<interactive>"
+    ]
+  },
+  "signatures": {
+    "AgentConfig": {
+      "parameters": [
+        {
+          "annotation": "str",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "provider"
+        },
+        {
+          "annotation": "str",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "model_name"
+        },
+        {
+          "annotation": "str | None",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "api_key"
+        },
+        {
+          "annotation": "str | None",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "base_url"
+        },
+        {
+          "annotation": "str",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "system_prompt"
+        },
+        {
+          "annotation": "list[dict[str, Any]]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "tools_config"
+        },
+        {
+          "annotation": "str",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "thread_id"
+        },
+        {
+          "annotation": "dict[str, Any] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "model_params"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "middleware_configs"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "agent_skills"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "agent_id"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "agent_name"
+        },
+        {
+          "annotation": "dict[str, str | None] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "provider_api_keys"
+        },
+        {
+          "annotation": "float | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "cost_per_input_token"
+        },
+        {
+          "annotation": "float | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "cost_per_output_token"
+        },
+        {
+          "annotation": "int | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "context_window"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "user_id"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "model_id"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "llm_credential_id"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "agent_owner_user_id"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "caller_user_id"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "credential_subject_user_id"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "identity_mode"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "agent_runtime_name"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "subagents_config"
+        },
+        {
+          "annotation": "dict[str, str] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "subagent_display_names"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "recalled_memories"
+        },
+        {
+          "annotation": "str",
+          "default": "value:str",
+          "kind": "positional_or_keyword",
+          "name": "runtime_profile"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "skill_builder_session_id"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "draft_workspace_path"
+        },
+        {
+          "annotation": "dict[str, Any] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "skill_draft_brief"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "skill_builder_consented_tools"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "skill_builder_consent_offer_tools"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "model_fallback_chain"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "checkpoint_id"
+        },
+        {
+          "annotation": "set[str]",
+          "default": "value:_HAS_DEFAULT_FACTORY_CLASS",
+          "kind": "positional_or_keyword",
+          "name": "secret_values"
+        },
+        {
+          "annotation": "ResolvedRuntimePolicy",
+          "default": "value:ResolvedRuntimePolicy",
+          "kind": "keyword_only",
+          "name": "runtime_policy"
+        }
+      ],
+      "return": "None"
+    },
+    "EmptyContentRetryMiddleware": {
+      "parameters": [
+        {
+          "annotation": "int",
+          "default": "value:int",
+          "kind": "keyword_only",
+          "name": "max_retries"
+        }
+      ],
+      "return": "None"
+    },
+    "MiddlewareModelCredentialRequiredError": {
+      "parameters": [
+        {
+          "annotation": "str",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "provider"
+        }
+      ],
+      "return": "None"
+    },
+    "RuntimeComponents": {
+      "parameters": [
+        {
+          "annotation": "list[BaseChatModel]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "model_candidates"
+        },
+        {
+          "annotation": "BaseChatModel",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "model"
+        },
+        {
+          "annotation": "list[BaseTool]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "tools"
+        },
+        {
+          "annotation": "list[Any]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "middleware"
+        },
+        {
+          "annotation": "str",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "system_prompt"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "skills_sources"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "backend"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "memory_sources"
+        },
+        {
+          "annotation": "list[FilesystemPermission]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "permissions"
+        },
+        {
+          "annotation": "dict[str, Any] | None",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "interrupt_on"
+        }
+      ],
+      "return": "None"
+    },
+    "_build_default_reliability_middleware": {
+      "parameters": [
+        {
+          "annotation": "list[BaseChatModel]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "model_candidates"
+        },
+        {
+          "annotation": "set[str]",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "configured_types"
+        }
+      ],
+      "return": "list[Any]"
+    },
+    "_build_mcp_tools": {
+      "parameters": [
+        {
+          "annotation": "list[dict]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "mcp_configs"
+        }
+      ],
+      "return": "list[BaseTool]"
+    },
+    "_build_model_candidates": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        }
+      ],
+      "return": "list[BaseChatModel]"
+    },
+    "_build_model_with_fallback": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        }
+      ],
+      "return": "BaseChatModel"
+    },
+    "_configured_recursion_limit": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        }
+      ],
+      "return": "int | None"
+    },
+    "_create_mcp_error_stub": {
+      "parameters": [
+        {
+          "annotation": "str",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "name"
+        }
+      ],
+      "return": "BaseTool"
+    },
+    "_create_skill_execute_tool": {
+      "parameters": [
+        {
+          "annotation": "SkillToolContext",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "ctx"
+        }
+      ],
+      "return": "BaseTool"
+    },
+    "_expand_shell_vars": {
+      "parameters": [
+        {
+          "annotation": "str",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "value"
+        },
+        {
+          "annotation": "dict[str, str]",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "env"
+        },
+        {
+          "annotation": "dict[str, str]",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "local_vars"
+        }
+      ],
+      "return": "str"
+    },
+    "_hook_ctx_for_agent": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        }
+      ],
+      "return": "HookContext | None"
+    },
+    "_hook_result_from_usage": {
+      "parameters": [
+        {
+          "annotation": "int",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "duration_ms"
+        },
+        {
+          "annotation": "dict[str, Any]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "usage_sink"
+        }
+      ],
+      "return": "HookResult"
+    },
+    "_load_memory_context": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        }
+      ],
+      "return": "tuple[str, list[dict[str, Any]]]"
+    },
+    "_memory_write_policy_for_run": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        },
+        {
+          "annotation": "bool",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "is_trigger_mode"
+        }
+      ],
+      "return": "str"
+    },
+    "_prepare_agent": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        },
+        {
+          "annotation": "list[dict[str, str]]",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "messages_history"
+        },
+        {
+          "annotation": "bool",
+          "default": "value:bool",
+          "kind": "keyword_only",
+          "name": "is_trigger_mode"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_id"
+        }
+      ],
+      "return": "tuple[Any, list, dict]"
+    },
+    "_prepare_runtime_components": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        },
+        {
+          "annotation": "bool",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "is_trigger_mode"
+        },
+        {
+          "annotation": "bool",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "include_ask_user"
+        },
+        {
+          "annotation": "bool",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "include_agent_memory_file"
+        },
+        {
+          "annotation": "dict[str, int] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "timings"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_id"
+        },
+        {
+          "annotation": "bool",
+          "default": "value:bool",
+          "kind": "keyword_only",
+          "name": "scope_offload_backend"
+        }
+      ],
+      "return": "RuntimeComponents"
+    },
+    "_prepare_skill_subprocess_args": {
+      "parameters": [
+        {
+          "annotation": "str",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "command"
+        },
+        {
+          "annotation": "Path",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "resolved"
+        },
+        {
+          "annotation": "dict[str, str]",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "env"
+        }
+      ],
+      "return": "tuple[list[str] | None, str | None]"
+    },
+    "_resolve_middleware_model_params": {
+      "parameters": [
+        {
+          "annotation": "list[dict[str, Any]]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "configs"
+        },
+        {
+          "annotation": "dict[str, str | None]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "provider_api_keys"
+        }
+      ],
+      "return": "list[dict[str, Any]]"
+    },
+    "_run_agent_stream": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        },
+        {
+          "annotation": "list[dict[str, str]]",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "messages_history"
+        },
+        {
+          "annotation": "Any",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "stream_input"
+        },
+        {
+          "annotation": "dict[str, Any] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "hook_metadata_extra"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "trace_sink"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "msg_id_sink"
+        },
+        {
+          "annotation": "list[StreamErrorRecord] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "error_sink"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "broker"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "persist_callback"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_id"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "artifact_recorder"
+        },
+        {
+          "annotation": "str",
+          "default": "value:str",
+          "kind": "keyword_only",
+          "name": "moldy_source"
+        },
+        {
+          "annotation": "list[LangfuseTraceRecord] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "langfuse_sink"
+        }
+      ],
+      "return": "AsyncGenerator[str, None]"
+    },
+    "_skill_timeout_seconds": {
+      "parameters": [
+        {
+          "annotation": "SkillRuntimeDescriptor",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "descriptor"
+        }
+      ],
+      "return": "float"
+    },
+    "build_agent": {
+      "parameters": [
+        {
+          "annotation": "BaseChatModel",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "model"
+        },
+        {
+          "annotation": "list[BaseTool]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "tools"
+        },
+        {
+          "annotation": "str",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "system_prompt"
+        },
+        {
+          "annotation": "list | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "middleware"
+        },
+        {
+          "annotation": "dict[str, Any] | bool | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "interrupt_on"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "checkpointer"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "store"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "backend"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "skills"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "memory"
+        },
+        {
+          "annotation": "list[FilesystemPermission] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "permissions"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "name"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "subagents"
+        },
+        {
+          "annotation": "ResolvedRuntimePolicy | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "runtime_policy"
+        }
+      ],
+      "return": "Any"
+    },
+    "execute_agent_invoke": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        },
+        {
+          "annotation": "list[dict[str, str]]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "messages_history"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_id"
+        },
+        {
+          "annotation": "str",
+          "default": "value:str",
+          "kind": "keyword_only",
+          "name": "moldy_source"
+        }
+      ],
+      "return": "str"
+    },
+    "execute_agent_stream": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        },
+        {
+          "annotation": "list[dict[str, str]] | dict[str, Any]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "messages_history"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "trace_sink"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "msg_id_sink"
+        },
+        {
+          "annotation": "list[StreamErrorRecord] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "error_sink"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "broker"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "persist_callback"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_id"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "artifact_recorder"
+        },
+        {
+          "annotation": "str",
+          "default": "value:str",
+          "kind": "keyword_only",
+          "name": "moldy_source"
+        },
+        {
+          "annotation": "list[LangfuseTraceRecord] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "langfuse_sink"
+        }
+      ],
+      "return": "AsyncGenerator[str, None]"
+    },
+    "execute_agent_stream_langgraph": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        },
+        {
+          "annotation": "list[dict[str, str]] | dict[str, Any]",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "messages_history"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "trace_sink"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "msg_id_sink"
+        },
+        {
+          "annotation": "list[StreamErrorRecord] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "error_sink"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "broker"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "persist_callback"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_id"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "artifact_recorder"
+        },
+        {
+          "annotation": "str",
+          "default": "value:str",
+          "kind": "keyword_only",
+          "name": "moldy_source"
+        },
+        {
+          "annotation": "list[LangfuseTraceRecord] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "langfuse_sink"
+        }
+      ],
+      "return": "AsyncGenerator[str, None]"
+    },
+    "resume_agent_stream": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        },
+        {
+          "annotation": "Any",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "resume_value"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "trace_sink"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "msg_id_sink"
+        },
+        {
+          "annotation": "list[StreamErrorRecord] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "error_sink"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "broker"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "persist_callback"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_id"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "artifact_recorder"
+        },
+        {
+          "annotation": "str",
+          "default": "value:str",
+          "kind": "keyword_only",
+          "name": "moldy_source"
+        },
+        {
+          "annotation": "list[LangfuseTraceRecord] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "langfuse_sink"
+        }
+      ],
+      "return": "AsyncGenerator[str, None]"
+    },
+    "resume_agent_stream_langgraph": {
+      "parameters": [
+        {
+          "annotation": "AgentConfig",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "cfg"
+        },
+        {
+          "annotation": "Any",
+          "default": "required",
+          "kind": "positional_or_keyword",
+          "name": "resume_value"
+        },
+        {
+          "annotation": "list[dict[str, Any]] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "trace_sink"
+        },
+        {
+          "annotation": "list[str] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "msg_id_sink"
+        },
+        {
+          "annotation": "list[StreamErrorRecord] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "error_sink"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "broker"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "persist_callback"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_id"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "artifact_recorder"
+        },
+        {
+          "annotation": "str",
+          "default": "value:str",
+          "kind": "keyword_only",
+          "name": "moldy_source"
+        },
+        {
+          "annotation": "list[LangfuseTraceRecord] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "langfuse_sink"
+        }
+      ],
+      "return": "AsyncGenerator[str, None]"
+    }
+  }
+}

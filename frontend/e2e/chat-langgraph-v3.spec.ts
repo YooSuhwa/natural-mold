@@ -1,5 +1,3 @@
-import fs from 'node:fs/promises'
-import path from 'node:path'
 import type { Page } from '@playwright/test'
 import { API_BASE, apiDeleteOk, apiPostJson, expect, isRecord, test } from './fixtures'
 import {
@@ -9,6 +7,7 @@ import {
   approveExecuteInSkill,
   commandMethod,
   expectFinalTextVisible,
+  normalizeArtifactList,
   records,
   sendMessage,
   setupLangGraphV3Agent,
@@ -21,7 +20,6 @@ import { waitForThreadStateText } from './langgraph-v3-state-helpers'
 
 const FRONTEND =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`
-const CAPTURE_DIR = path.join('..', 'output', 'e2e-captures', '20260613-langgraph-v3-streaming')
 const DESKTOP_VIEWPORT = { width: 1280, height: 720 } as const
 const MOBILE_VIEWPORT = { width: 390, height: 844 } as const
 
@@ -51,7 +49,6 @@ test.describe('LangGraph v3 chat runtime', () => {
     errors,
   }) => {
     test.setTimeout(180_000)
-    await fs.mkdir(CAPTURE_DIR, { recursive: true })
     const setup = await setupLangGraphV3Agent(request)
     const runStartCommands: string[] = []
     page.on('request', (req) => {
@@ -67,7 +64,6 @@ test.describe('LangGraph v3 chat runtime', () => {
         timeout: 30_000,
       })
       await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible()
-      await page.screenshot({ path: path.join(CAPTURE_DIR, '01-live-state.png'), fullPage: true })
 
       await waitForThreadStateText(
         request,
@@ -94,36 +90,15 @@ test.describe('LangGraph v3 chat runtime', () => {
 
       await page.setViewportSize(MOBILE_VIEWPORT)
       await expectNoHorizontalOverflow(page)
-      await page.screenshot({
-        path: path.join(CAPTURE_DIR, '03-mobile-thread-state.png'),
-        fullPage: true,
-      })
       await page.setViewportSize(DESKTOP_VIEWPORT)
 
-      await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
-      const artifactRail = page.getByRole('complementary')
-      const reportArtifactButton = artifactRail
-        .getByRole('button', { name: new RegExp(REPORT_FILE) })
-        .last()
-      const notesArtifactButton = artifactRail
-        .getByRole('button', { name: new RegExp(NOTES_FILE) })
-        .last()
-      await expect(reportArtifactButton).toBeVisible()
-      await expect(notesArtifactButton).toBeVisible()
+      const { reportArtifactButton } = await normalizeArtifactList(page, REPORT_FILE, NOTES_FILE)
       await reportArtifactButton.click()
       await expect(
         page.getByRole('complementary').getByText('LangGraph v3 E2E Report'),
       ).toBeVisible({ timeout: 20_000 })
-      await page.screenshot({
-        path: path.join(CAPTURE_DIR, '02-artifact-rail.png'),
-        fullPage: true,
-      })
       await page.setViewportSize(MOBILE_VIEWPORT)
       await expectNoHorizontalOverflow(page)
-      await page.screenshot({
-        path: path.join(CAPTURE_DIR, '04-mobile-artifact-rail.png'),
-        fullPage: true,
-      })
       await page.setViewportSize(DESKTOP_VIEWPORT)
 
       const tokenButton = page.getByRole('button', { name: /토큰 사용량 보기|Toggle Aria/ }).last()

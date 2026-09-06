@@ -6,9 +6,10 @@ import logging
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.skill_builder.eval_cancellation import EvalRunCancelled
 from app.config import settings
@@ -43,7 +44,12 @@ from app.services.skill_evaluation_worker_types import (
 from app.services.skill_usage_service import record_evaluation_usage_nonfatal
 
 logger = logging.getLogger(__name__)
-type SkillEvaluationSessionFactory = async_sessionmaker[AsyncSession]
+
+
+class SkillEvaluationSessionFactory(Protocol):
+    """Construct an async session, including project-specific subclasses."""
+
+    def __call__(self) -> AsyncSession: ...
 
 
 class SkillEvaluationQueueFull(RuntimeError):

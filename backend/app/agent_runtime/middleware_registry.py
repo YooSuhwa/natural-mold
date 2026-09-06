@@ -442,11 +442,22 @@ def get_provider_middleware(provider: str) -> list:
 # 사용자 설정에서 중복 추가하면 AssertionError가 발생하므로 카탈로그/실행 시 제외.
 DEEPAGENT_AUTO_INJECTED_TYPES: frozenset[str] = frozenset(
     {
-        "todo_list",
         "filesystem",
         "subagent",
         "summarization",
         "anthropic_prompt_caching",
+    }
+)
+
+
+# Deep Agents 0.7부터 TodoListMiddleware는 기본 주입되지 않는다. Moldy는
+# 기존 todo stream 계약과 delete 없는 filesystem 표면을 build_agent()에서 직접
+# 주입한다. 이 타입들은 사용자 설정으로 재인스턴스화하면 안 되며, 카탈로그의
+# ``exclude_builtin`` 보기에서도 숨긴다.
+MOLDY_COMPAT_INJECTED_TYPES: frozenset[str] = frozenset(
+    {
+        "todo_list",
+        "filesystem",
     }
 )
 
@@ -464,12 +475,12 @@ EXPLICITLY_INSTANTIATED_TYPES: frozenset[str] = frozenset(
 )
 
 
-# Build 단계에서 제외되는 모든 타입 — auto-injected + explicit-instantiated.
+# Build 단계에서 제외되는 모든 타입 — deepagents auto + Moldy compat + explicit.
 # ``_prepare_agent`` 의 ``filtered_mw`` 가 사용자 ``middleware_configs`` 에서
 # 본 set 의 항목을 제거. auto-injected 는 deepagents 가, explicit 는 executor
 # 가 top-level 설정으로 처리하므로 build 시 중복 인스턴스화 방지가 목적.
 DEEPAGENT_BUILTIN_TYPES: frozenset[str] = (
-    DEEPAGENT_AUTO_INJECTED_TYPES | EXPLICITLY_INSTANTIATED_TYPES
+    DEEPAGENT_AUTO_INJECTED_TYPES | MOLDY_COMPAT_INJECTED_TYPES | EXPLICITLY_INSTANTIATED_TYPES
 )
 
 
@@ -480,13 +491,15 @@ def get_middleware_registry(*, exclude_builtin: bool = False) -> list[dict[str, 
     description, category, config_schema, provider_specific).
 
     Args:
-        exclude_builtin: True이면 deepagents가 자동 추가하는 타입(auto-injected)
-            을 카탈로그에서 제외한다. ``human_in_the_loop`` 같이 사용자가 도구별
-            ``interrupt_on`` 정책을 정의해야 동작하는 explicit 타입은 노출된다
-            — executor 가 사용자 설정을 읽어 top-level 정책으로 전달한다.
+        exclude_builtin: True이면 deepagents가 자동 추가하는 타입과 Moldy가
+            build_agent()에서 호환 목적으로 직접 주입하는 타입을 카탈로그에서
+            제외한다. ``human_in_the_loop`` 같이 사용자가 도구별 ``interrupt_on``
+            정책을 정의해야 동작하는 explicit 타입은 노출된다 — executor 가
+            사용자 설정을 읽어 top-level 정책으로 전달한다.
     """
     return [
         {"type": key, **entry}
         for key, entry in MIDDLEWARE_REGISTRY.items()
-        if not exclude_builtin or key not in DEEPAGENT_AUTO_INJECTED_TYPES
+        if not exclude_builtin
+        or key not in (DEEPAGENT_AUTO_INJECTED_TYPES | MOLDY_COMPAT_INJECTED_TYPES)
     ]

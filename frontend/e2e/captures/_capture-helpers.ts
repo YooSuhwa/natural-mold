@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { APIRequestContext, Browser, Locator, Page } from '@playwright/test'
+import { getE2EAuthStatePath } from '../../scripts/e2e-lane-contract.mjs'
 import {
   API_BASE,
   apiGetJson,
@@ -23,8 +24,9 @@ export const DESKTOP_VIEWPORT = { width: 1440, height: 960 } as const
 
 // Mirror playwright.config.ts: raw browser.newContext() does NOT inherit
 // use.baseURL, so the warm-up must reconstruct the dev-server origin itself.
-const WARMUP_FRONTEND_PORT = process.env.E2E_FRONTEND_PORT ?? '3000'
+const WARMUP_FRONTEND_PORT = process.env.E2E_FRONTEND_PORT ?? '3100'
 const WARMUP_BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${WARMUP_FRONTEND_PORT}`
+const WARMUP_AUTH_STATE_PATH = getE2EAuthStatePath(process.env.E2E_LANE ?? 'scripted', process.env)
 
 /**
  * Compile the heavy 'use client' chat conversation route ONCE, in its own context,
@@ -38,7 +40,7 @@ const WARMUP_BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${WARMUP_F
 export async function warmUpChatRoute(browser: Browser): Promise<void> {
   if (process.env.E2E_CAPTURE_TOUR !== '1') return
   const ctx = await browser.newContext({
-    storageState: './e2e/.auth/user.json',
+    storageState: WARMUP_AUTH_STATE_PATH,
     baseURL: WARMUP_BASE_URL,
   })
   const page = await ctx.newPage()

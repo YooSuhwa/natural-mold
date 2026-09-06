@@ -34,23 +34,50 @@ describe('frontend lazy-load boundaries', () => {
 
   it('does not load final-only markdown plugins in streaming chat', () => {
     const assistantThreadSource = readFrontendFile('src/components/chat/assistant-thread.tsx')
+    const assistantMessagePartsSource = readFrontendFile(
+      'src/components/chat/assistant-message-parts.tsx',
+    )
     const streamingPluginSource = readFrontendFile(
       'src/components/chat/markdown-streaming-plugins.ts',
     )
+    const streamingSurfaceSource = `${assistantThreadSource}\n${assistantMessagePartsSource}`
 
-    expect(assistantThreadSource).toContain('markdown-streaming-plugins')
-    expect(assistantThreadSource).not.toContain('markdown-plugins')
+    expect(assistantMessagePartsSource).toContain('markdown-streaming-plugins')
+    expect(streamingSurfaceSource).not.toContain("from '@/components/chat/markdown-plugins'")
     expect(streamingPluginSource).not.toContain('remark-math')
   })
 
   it('loads builder overrides only through a lazy boundary', () => {
     const assistantThreadSource = readFrontendFile('src/components/chat/assistant-thread.tsx')
+    const builderBoundarySource = readFrontendFile(
+      'src/components/chat/assistant-builder-overrides.tsx',
+    )
+    const threadRendererSource = readFrontendFile(
+      'src/components/chat/assistant-thread-message-renderers.tsx',
+    )
+    const assistantSurfaceSource = [
+      assistantThreadSource,
+      threadRendererSource,
+      builderBoundarySource,
+    ].join('\n')
 
-    expect(assistantThreadSource).not.toMatch(
+    expect(assistantSurfaceSource).not.toMatch(
       /import\s*\{[\s\S]*BuilderAssistantMessage[\s\S]*\}\s*from ['"]@\/components\/chat\/builder-overrides['"]/,
     )
-    expect(assistantThreadSource).toContain('lazy(')
-    expect(assistantThreadSource).toContain('builder-overrides')
+    expect(builderBoundarySource.match(/lazy\(\(\) =>/g)).toHaveLength(5)
+    expect(builderBoundarySource).toContain('builder-overrides')
+  })
+
+  it('keeps raw artifact and HITL payload fields out of assistant thread wrappers', () => {
+    const wrapperSources = [
+      readFrontendFile('src/components/chat/assistant-thread.tsx'),
+      readFrontendFile('src/components/chat/assistant-thread-message-renderers.tsx'),
+      readFrontendFile('src/components/chat/assistant-message-artifacts.tsx'),
+    ].join('\n')
+
+    expect(wrapperSources).not.toMatch(
+      /storage_path|download_url|raw_data|interrupt\.value|JSON\.stringify/,
+    )
   })
 
   it('loads zip and artifact data parsers only when those features are used', () => {

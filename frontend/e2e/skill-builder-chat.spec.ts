@@ -58,7 +58,7 @@ test.describe('skill builder chat', () => {
     })
 
     await expect(page.getByTestId('skill-builder-rail')).toBeVisible({ timeout: 60_000 })
-    const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
+    const composer = page.locator('textarea[data-moldy-composer-input="true"]:visible').last()
     await expect(composer).toBeVisible({ timeout: 60_000 })
 
     // 0) Phase 1.5 — 다이얼로그의 user_request가 자동 첫 메시지로 발화된다
@@ -77,9 +77,24 @@ test.describe('skill builder chat', () => {
     // (post-run 하이드레이션이 컴포저를 잠그던 결함의 근본 수정 검증 —
     // 폴백 없이 Enter만으로 값이 비워져야 한다).
     const sendMessage = async (text: string) => {
-      await composer.fill(text)
-      await composer.press('Enter')
-      await expect(composer).toHaveValue('', { timeout: 10_000 })
+      // 소스 레일 토글은 Builder를 다시 렌더할 수 있다. 현재 보이는 textarea를
+      // 다시 잡고, 실제로 편집/전송 가능한 상태가 된 뒤에만 Enter 경로를 검증한다.
+      // 클릭 폴백은 의도적으로 쓰지 않아 이 계약이 깨지면 즉시 실패한다.
+      const currentComposer = page
+        .locator('textarea[data-moldy-composer-input="true"]:visible')
+        .last()
+      const sendButton = page.getByRole('button', { name: '전송' }).last()
+      await expect(currentComposer).toBeVisible({ timeout: 45_000 })
+      await expect(currentComposer).toBeEnabled({ timeout: 45_000 })
+      // 응답 텍스트는 stream 종료보다 먼저 보일 수 있다. Builder 전송 버튼은
+      // thread.isRunning=false일 때만 렌더되므로 실제 입력 가능 상태를 기다린다.
+      // post-run 하이드레이션이 running을 잘못 유지하면 이 대기 자체가 실패한다.
+      await expect(sendButton).toBeVisible({ timeout: 45_000 })
+      await currentComposer.fill(text)
+      await expect(currentComposer).toHaveValue(text)
+      await expect(sendButton).toBeEnabled({ timeout: 45_000 })
+      await currentComposer.press('Enter')
+      await expect(currentComposer).toHaveValue('', { timeout: 10_000 })
     }
 
     // M8-2 회귀 가드: 백엔드가 인터럽트 전이를 trace보다 먼저 커밋하고 resume
@@ -87,9 +102,9 @@ test.describe('skill builder chat', () => {
     // 한다 (재시도 문구가 뜨면 레이스 회귀).
     const approve = async () => {
       await page.getByTestId('approval-approve-button').last().click()
-      await expect(
-        page.getByText('승인 응답을 전송하지 못했습니다. 다시 시도하세요.'),
-      ).toHaveCount(0)
+      await expect(page.getByText('승인 응답을 전송하지 못했습니다. 다시 시도하세요.')).toHaveCount(
+        0,
+      )
     }
 
     // 1) 점진 편집 — write_file 2건이 승인 카드 없이 실행된다 (AD-3 과승인 방지).
@@ -149,13 +164,15 @@ test.describe('skill builder chat', () => {
     await expect(page.getByTestId('builder-completed-banner')).toBeVisible({ timeout: 30_000 })
 
     // 6) 진짜 skills row + 세션 completed (스펙 §2-3).
-    const skills = (await (
-      await request.get(`${API}/api/skills`)
-    ).json()) as { slug: string; kind: string }[]
+    const skills = (await (await request.get(`${API}/api/skills`)).json()) as {
+      slug: string
+      kind: string
+    }[]
     expect(skills.some((s) => s.slug.startsWith('e2e-notes') && s.kind === 'package')).toBe(true)
-    const session = (await (
-      await request.get(`${API}/api/skill-builder/${sessionId}`)
-    ).json()) as { status: string; finalized_skill_id: string | null }
+    const session = (await (await request.get(`${API}/api/skill-builder/${sessionId}`)).json()) as {
+      status: string
+      finalized_skill_id: string | null
+    }
     expect(session.status).toBe('completed')
     expect(session.finalized_skill_id).toBeTruthy()
 
@@ -200,7 +217,8 @@ test.describe('skill builder chat', () => {
       headers: csrfLocal,
       data: {
         name: `e2e-conflict-${Date.now()}`,
-        content: '---\nname: e2e-conflict\ndescription: "Use when testing conflicts."\n---\n\noriginal\n',
+        content:
+          '---\nname: e2e-conflict\ndescription: "Use when testing conflicts."\n---\n\noriginal\n',
       },
     })
     expect(skillRes.ok(), `create skill → ${skillRes.status()}`).toBeTruthy()
@@ -216,7 +234,8 @@ test.describe('skill builder chat', () => {
     const putRes = await request.put(`${API}/api/skills/${skill.id}/content`, {
       headers: csrfLocal,
       data: {
-        content: '---\nname: e2e-conflict\ndescription: "Use when testing conflicts."\n---\n\nchanged outside the session\n',
+        content:
+          '---\nname: e2e-conflict\ndescription: "Use when testing conflicts."\n---\n\nchanged outside the session\n',
       },
     })
     expect(putRes.ok(), `mutate source → ${putRes.status()}`).toBeTruthy()

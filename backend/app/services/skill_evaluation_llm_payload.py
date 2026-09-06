@@ -94,15 +94,29 @@ def _skill_file_previews(context: SkillEvaluationContext) -> list[JsonObject]:
 
 
 def _iter_skill_files(root: Path) -> list[Path]:
+    if root.is_symlink():
+        return []
     if root.is_file():
         return [root]
-    if not root.exists():
+    if not root.is_dir():
         return []
-    return [
-        path
-        for path in sorted(root.rglob("*"))
-        if path.is_file() and not any(part.startswith(".") for part in path.parts)
-    ]
+    try:
+        resolved_root = root.resolve(strict=True)
+    except OSError:
+        return []
+
+    files: list[Path] = []
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if path.is_symlink() or any(part.startswith(".") for part in relative.parts):
+            continue
+        try:
+            resolved_path = path.resolve(strict=True)
+        except OSError:
+            continue
+        if resolved_path.is_file() and resolved_path.is_relative_to(resolved_root):
+            files.append(path)
+    return files
 
 
 def _read_preview(path: Path, remaining: int) -> str:

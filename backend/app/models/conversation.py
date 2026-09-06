@@ -37,8 +37,10 @@ class Conversation(Base):
     unread_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_read_at: Mapped[datetime | None] = mapped_column(nullable=True)
     last_unread_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    last_activity_source: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="user"
-    )
+    last_activity_source: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    runtime_policy_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    runtime_policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    runtime_policy_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    runtime_policy_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     agent: Mapped[Agent] = relationship(back_populates="conversations")  # type: ignore[name-defined]

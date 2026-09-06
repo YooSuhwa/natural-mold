@@ -1,0 +1,211 @@
+{
+  "artifact_kind": "post_todo02_precondition_baseline",
+  "baseline_status": "passed",
+  "frontend_guards": [
+    {
+      "checker": "frontend/scripts/check-frontend-architecture.mjs",
+      "command": "pnpm lint:frontend-architecture",
+      "counts": {
+        "total": 51
+      },
+      "cwd": "frontend",
+      "exit": 0,
+      "ledger_sequence": 147,
+      "matches_plan_baseline": true,
+      "observed_path_count": 43,
+      "output_sha256": "f6b0b361c56abcb4740c96502f4b1de38c25765637e557c11e0d1442c53e9a83"
+    },
+    {
+      "checker": "frontend/scripts/check-frontend-architecture.mjs",
+      "command": "pnpm lint:frontend-architecture:strict",
+      "counts": {
+        "strict_blocking": 7,
+        "total": 51
+      },
+      "cwd": "frontend",
+      "exit": 1,
+      "ledger_sequence": 148,
+      "matches_plan_baseline": true,
+      "observed_path_count": 43,
+      "output_sha256": "7558a53f2f6ee5f7a3d1505cb63715ca56e5b12218fae4f6fb2cefd1dd8c46ce"
+    },
+    {
+      "checker": "frontend/scripts/check-design-system.mjs",
+      "command": "pnpm lint:design-system",
+      "counts": {
+        "errors": 12,
+        "warning_candidates": 19
+      },
+      "cwd": "frontend",
+      "exit": 1,
+      "ledger_sequence": 149,
+      "matches_plan_baseline": true,
+      "observed_path_count": 6,
+      "output_sha256": "0fead6363b9a1983c82d302f124c3ee49263d093ccef36e0d6d5e02920b78ec3"
+    },
+    {
+      "checker": "frontend/scripts/check-jsx-a11y.mjs",
+      "command": "pnpm lint:a11y",
+      "counts": {
+        "new": 4,
+        "stale": 2,
+        "warnings": 40
+      },
+      "cwd": "frontend",
+      "exit": 1,
+      "ledger_sequence": 150,
+      "matches_plan_baseline": true,
+      "observed_path_count": 2,
+      "output_sha256": "a58f5abed286eea6a2ffc24299ab9f20ec11b73f4f047c61b01152cb2ebc5a5f"
+    }
+  ],
+  "generated_utc": "2026-08-30T21:37:59Z",
+  "latest_green_todo02": {
+    "commit": {
+      "sha": "a42a33c55a8de2bf8f4f239eb33695487f69cac0",
+      "subject": "feat(testing): isolate env and lane-owned storage",
+      "trailer": "Plan-Item: 02"
+    },
+    "final_ledger_review": {
+      "artifact": "operations.ndjson",
+      "entry_range": [
+        127,
+        131
+      ],
+      "goal_report": "task-02-review-round4-goal-recheck.md",
+      "receipt_count": 5
+    },
+    "primary_receipt": {
+      "id": "task-02-hermetic-run-root.md",
+      "sha256": "4aa9838a8bbb2b092d91f6d553d9422bd3b5a5c8c537c83e1c31ed7a90e17742"
+    },
+    "qa_receipt": {
+      "id": "task-02-independent-qa-round3-li01-cq02.md",
+      "sha256": "1eef414e814123651c1e46e87ba10a461a8c664b3ccdc730d52e60a9fa357970"
+    },
+    "review_receipts": [
+      {
+        "id": "task-02-review-round4-goal-recheck.md",
+        "sha256": "d5d4ebeedd1be87a44cede2cd4e492a224e51bd14a62681f06ee9c9ebe7e32c8"
+      },
+      {
+        "id": "task-02-review-round4-qa.md",
+        "sha256": "b36139f1d2265972751393ded32c400ea46785492aefc86ac1888645bb8b1032"
+      },
+      {
+        "id": "task-02-review-round4-code.md",
+        "sha256": "48c881ab48b5f794c0c324df46a83f1d69cb5a00673d1879f1c6ba70a7f6f7a9"
+      },
+      {
+        "id": "task-02-review-round4-local-integrity.md",
+        "sha256": "4760a85a830cdb60d3717c79a136294e2dad7c0771c94d36b62d95c71997bea8"
+      },
+      {
+        "id": "task-02-review-round4-context.md",
+        "sha256": "31072b1502fd4136894c6ae44888301dac6a60ee79a5f88a20242e19a1a878bc"
+      }
+    ]
+  },
+  "operations": {
+    "failed_attempt_preserved": {
+      "artifact": ".omo/evidence/project-restart-consolidated-roadmap/precondition-baseline-attempt-1-failed.json",
+      "artifact_sha256": "8280317a14c9a505fee2530172216708a1eccb98affce1898ade220a8442f04c",
+      "entry_hash": "711435257dfe024f8042224ad5aece8d22bb4ace7f66d99fb0cd45db9c7df459",
+      "sequence": 142
+    },
+    "fresh_probe_entry_range": [
+      143,
+      150
+    ],
+    "fresh_probe_tip_before_artifact": {
+      "entry_hash": "f0d0089bf2a477bc10ea219e4626e29dc49042d76c6acba0773a1c5920059fed",
+      "sequence": 150
+    },
+    "superseded_failed_attempt": {
+      "canonical_artifact_sha256": "8280317a14c9a505fee2530172216708a1eccb98affce1898ade220a8442f04c",
+      "canonical_failure_sequence": 141,
+      "preservation_sequence": 142,
+      "process_incident": "ruff_sync_one_package"
+    }
+  },
+  "pr300": {
+    "base_ref": "main",
+    "check_summary": {
+      "names": [
+        "backend",
+        "backend-typecheck",
+        "frontend"
+      ],
+      "success": 3,
+      "total": 3
+    },
+    "distinguished_from_development_commit": "a42a33c55a8de2bf8f4f239eb33695487f69cac0",
+    "draft": false,
+    "head_oid": "7a9cee88c772e29c830cd84fb5578d06d753e080",
+    "head_ref": "codex/project-restart-maintenance",
+    "ledger_sequence": 143,
+    "merge_state": "CLEAN",
+    "origin_main_to_pr_head": {
+      "ahead": 10,
+      "behind": 0,
+      "merge_base": "5c8b8de142840364c7d622f4a2215e94b86c37fa"
+    },
+    "state": "OPEN",
+    "url_sha256": "4a37138f036e84e38ab922ee660508310c9663ef7d7c79aa20c84e3908fae6b0"
+  },
+  "runtime_probes": {
+    "default_dev_test_listeners": 0,
+    "default_dev_test_ports_checked": [
+      3000,
+      3001,
+      3100,
+      3200,
+      8001,
+      8101,
+      8201,
+      5432,
+      5433
+    ],
+    "docker_relevant_moldy_default_ports": 0,
+    "docker_running_total": 20,
+    "ledger_sequence": 145
+  },
+  "schema_version": 1,
+  "source": {
+    "base_sha": "7a9cee88c772e29c830cd84fb5578d06d753e080",
+    "plan_id": "project-restart-consolidated-roadmap.md",
+    "plan_sha256": "4b86a0acc57c1309ca3f84b0726f09c31ea1893fbc0789dd4c2c09e12b46846e",
+    "review_round": "review-20260830T155022Z-4b86a0ac",
+    "worktree_branch": "codex/project-restart-development",
+    "worktree_commit": "a42a33c55a8de2bf8f4f239eb33695487f69cac0",
+    "worktree_tracked_status": "clean"
+  },
+  "storage_boundary": {
+    "contents_read": false,
+    "metadata_after_sha256": "04068c69b854a32343d7420d7f592b4211e1859ce4836c5b4caa22c58ee03288",
+    "metadata_before_sha256": "04068c69b854a32343d7420d7f592b4211e1859ce4836c5b4caa22c58ee03288",
+    "metadata_equal": true,
+    "targets_printed": false
+  },
+  "supersedes_failed_attempt": {
+    "artifact": ".omo/evidence/project-restart-consolidated-roadmap/precondition-baseline-attempt-1-failed.json",
+    "artifact_sha256": "8280317a14c9a505fee2530172216708a1eccb98affce1898ade220a8442f04c",
+    "ledger_sequence": 141,
+    "preserved_by_sequence": 142,
+    "reason": "failed_process_incident"
+  },
+  "tool_versions": {
+    "dependency_mutation": "none_in_retry",
+    "docker_client": "29.6.2",
+    "docker_server": "29.6.2",
+    "git": "2.53.0",
+    "ledger_sequence": 144,
+    "node22": "22.22.3",
+    "node22_path_sha256": "a4fc11ca6901ee29eaa3bafeb747e2949f53dfb1527479e0f23171a835d3c199",
+    "node_default": "25.8.1",
+    "pnpm": "9.15.9",
+    "python_project_runtime": "3.12.13",
+    "ruff_direct": "0.16.5",
+    "uv_direct": "0.10.12"
+  }
+}

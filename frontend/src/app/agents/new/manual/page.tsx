@@ -7,12 +7,14 @@ import { ArrowLeftIcon, ClipboardListIcon, Loader2Icon, WorkflowIcon } from 'luc
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { storeFixInitialMessage } from '@/lib/agents/fix-message-handoff'
+import { buildAgentCreateRequest } from '@/lib/agents/build-agent-create-request'
+import { isRuntimePolicyCompatibleWithContextWindow } from '@/lib/agents/runtime-policy-validation'
 import { useCreateAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
-import type { AgentIdentityMode } from '@/lib/types'
+import type { AgentIdentityMode, RuntimePolicyV1 } from '@/lib/types'
 import { toggleSetItem } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -53,7 +55,13 @@ const EMPTY_RESOURCE_LIST: never[] = []
 export default function ManualCreationPage() {
   const router = useRouter()
   const t = useTranslations('agent.settings')
-  const { data: models, isLoading: modelsLoading } = useModels()
+  const tCommon = useTranslations('common')
+  const {
+    data: models,
+    isLoading: modelsLoading,
+    isError: modelsError,
+    refetch: refetchModels,
+  } = useModels()
   const { data: tools } = useTools()
   const { data: skills } = useSkills()
   const { data: middlewares } = useMiddlewares()
@@ -73,6 +81,7 @@ export default function ManualCreationPage() {
   const [maxTokens, setMaxTokens] = useState(4096)
   const [selectedMiddlewareTypes, setSelectedMiddlewareTypes] = useState<Set<string>>(new Set())
   const [openerQuestions, setOpenerQuestions] = useState<string[]>([])
+  const [runtimePolicy, setRuntimePolicy] = useState<RuntimePolicyV1 | null>(null)
   const [leftTab, setLeftTab] = useState<LeftTab>('form')
   const [rightTab, setRightTab] = useState<RightTab>('fix')
 
@@ -169,29 +178,41 @@ export default function ManualCreationPage() {
   }, [models, modelId])
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const canSave = name.trim().length > 0 && modelId.length > 0
+  const selectedModelContextWindow = useMemo(
+    () => models?.find((model) => model.id === modelId)?.context_window ?? null,
+    [modelId, models],
+  )
+  const runtimePolicyCompatible = isRuntimePolicyCompatibleWithContextWindow(
+    runtimePolicy,
+    selectedModelContextWindow,
+  )
+  const canSave = name.trim().length > 0 && modelId.length > 0 && runtimePolicyCompatible
 
   function buildCreateRequest() {
-    return {
+    return buildAgentCreateRequest({
       name: name.trim() || t('defaultName'),
       description: description.trim() || undefined,
-      system_prompt: systemPrompt,
-      model_id: modelId,
-      identity_mode: identityMode,
-      tool_ids: Array.from(selectedToolIds),
-      mcp_tool_ids: Array.from(selectedMcpToolIds),
-      skill_ids: Array.from(selectedSkillIds),
-      sub_agent_ids: Array.from(selectedSubAgentIds),
-      middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
-        type,
-        params: {},
-      })),
-      model_params: { temperature, top_p: topP, max_tokens: maxTokens },
-      opener_questions: openerQuestions,
-    }
+      systemPrompt,
+      modelId,
+      identityMode,
+      toolIds: selectedToolIds,
+      mcpToolIds: selectedMcpToolIds,
+      skillIds: selectedSkillIds,
+      subAgentIds: selectedSubAgentIds,
+      middlewareTypes: selectedMiddlewareTypes,
+      temperature,
+      topP,
+      maxTokens,
+      openerQuestions,
+      runtimePolicy,
+    })
   }
 
   async function handleSave() {
+    if (!runtimePolicyCompatible) {
+      toast.error(t('runtimePolicy.summarization.invalidCurrent'))
+      return
+    }
     try {
       const created = await createAgent.mutateAsync(buildCreateRequest())
       toast.success(t('toast.saved'))
@@ -202,6 +223,10 @@ export default function ManualCreationPage() {
   }
 
   async function handleCreateModeFirstMessage(msg: string) {
+    if (!runtimePolicyCompatible) {
+      toast.error(t('runtimePolicy.summarization.invalidCurrent'))
+      return
+    }
     try {
       const created = await createAgent.mutateAsync(buildCreateRequest())
       storeFixInitialMessage(msg)
@@ -211,11 +236,25 @@ export default function ManualCreationPage() {
     }
   }
 
-  if (modelsLoading || !models?.length) {
+  if (modelsLoading) {
     return (
       <div className="flex flex-1 flex-col gap-4 p-6">
         <Skeleton className="h-10 w-full" />
         <Skeleton className="h-[calc(100vh-10rem)] w-full" />
+      </div>
+    )
+  }
+
+  if (modelsError || !models?.length) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <section className="moldy-panel flex w-full max-w-md flex-col items-center gap-3 p-6 text-center">
+          <h1 className="text-lg font-semibold">{tCommon('errorState.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('modelsUnavailable')}</p>
+          <Button type="button" variant="outline" onClick={() => void refetchModels()}>
+            {tCommon('errorState.retry')}
+          </Button>
+        </section>
       </div>
     )
   }
@@ -292,6 +331,9 @@ export default function ManualCreationPage() {
                 onToggleSkill={handleToggleSkill}
                 selectedMiddlewareTypes={selectedMiddlewareTypes}
                 onToggleMiddleware={handleToggleMiddleware}
+                runtimePolicy={runtimePolicy}
+                onRuntimePolicyChange={setRuntimePolicy}
+                modelContextWindow={selectedModelContextWindow}
               />
             </TabsContent>
             <TabsContent

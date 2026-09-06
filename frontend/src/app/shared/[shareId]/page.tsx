@@ -130,21 +130,29 @@ function Hero({ data, messageCount }: { data: SharedConversationView; messageCou
         </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-        <Badge variant="secondary">
-          <MessageSquareIcon />
-          {t('footer.messageCount', { count: messageCount })}
-        </Badge>
-        {data.agent.description ? (
-          <Badge variant="secondary" className="max-w-64 truncate" title={data.agent.description}>
-            {data.agent.description}
+      <div className="mt-6 flex flex-col items-center gap-2" data-slot="share-hero-metadata">
+        <div
+          className="flex flex-wrap items-center justify-center gap-3"
+          data-slot="share-hero-summary"
+        >
+          <Badge variant="secondary">
+            <MessageSquareIcon />
+            {t('footer.messageCount', { count: messageCount })}
           </Badge>
+          <Badge variant="secondary">
+            {readingMinutes < 1
+              ? t('readingTime.underOneMinute')
+              : t('readingTime.minutes', { minutes: readingMinutes })}
+          </Badge>
+        </div>
+        {data.agent.description ? (
+          <p
+            className="max-w-lg text-center text-xs leading-relaxed text-muted-foreground"
+            data-slot="share-hero-description"
+          >
+            {data.agent.description}
+          </p>
         ) : null}
-        <Badge variant="secondary">
-          {readingMinutes < 1
-            ? t('readingTime.underOneMinute')
-            : t('readingTime.minutes', { minutes: readingMinutes })}
-        </Badge>
       </div>
     </section>
   )

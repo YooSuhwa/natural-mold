@@ -9,6 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.runtime_policy import resolve_runtime_policy, runtime_policy_to_json
+from app.exceptions import ConflictError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ConversationArtifact
@@ -44,6 +46,126 @@ async def _seed_agent_and_conversation(
     db.add(conversation)
     await db.flush()
     return agent, conversation
+
+
+@pytest.mark.asyncio
+async def test_first_run_snapshots_current_agent_policy_and_copies_provenance(
+    db: AsyncSession,
+) -> None:
+    # Given a never-executed conversation whose agent has an explicit false policy.
+    agent, conversation = await _seed_agent_and_conversation(db)
+    agent.runtime_policy = {"version": 1, "todo": {"enabled": False}}
+
+    # When its first durable run is accepted.
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="first",
+    )
+
+    # Then conversation and run share the same immutable stored-policy tuple.
+    resolved = resolve_runtime_policy(agent.runtime_policy)
+    assert conversation.runtime_policy_snapshot == runtime_policy_to_json(resolved.effective)
+    assert (
+        conversation.runtime_policy_version,
+        conversation.runtime_policy_hash,
+        conversation.runtime_policy_source,
+    ) == (1, resolved.policy_hash, "stored")
+    assert (
+        run.runtime_policy_version,
+        run.runtime_policy_hash,
+        run.runtime_policy_source,
+    ) == (1, resolved.policy_hash, "stored")
+
+
+@pytest.mark.asyncio
+async def test_existing_conversation_snapshot_survives_agent_policy_edit(
+    db: AsyncSession,
+) -> None:
+    # Given a completed run that fixed a conversation's legacy policy.
+    agent, conversation = await _seed_agent_and_conversation(db)
+    first = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="first",
+    )
+    await conversation_run_service.transition_run(db, first, "failed")
+    original_tuple = (
+        conversation.runtime_policy_version,
+        conversation.runtime_policy_hash,
+        conversation.runtime_policy_source,
+    )
+    agent.runtime_policy = {"version": 1, "todo": {"enabled": False}}
+
+    # When a follow-up run is accepted after the agent edit.
+    follow_up = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="follow-up",
+    )
+
+    # Then it reuses the conversation tuple instead of mutable agent state.
+    assert (
+        follow_up.runtime_policy_version,
+        follow_up.runtime_policy_hash,
+        follow_up.runtime_policy_source,
+    ) == original_tuple
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field_name", "corrupted_value"),
+    [
+        ("runtime_policy_version", 2),
+        ("runtime_policy_hash", "0" * 64),
+        ("runtime_policy_source", "stored"),
+    ],
+)
+async def test_resume_rejects_parent_policy_tuple_mismatch_before_new_run(
+    db: AsyncSession,
+    field_name: str,
+    corrupted_value: int | str,
+) -> None:
+    # Given an interrupted parent whose source was corrupted after creation.
+    agent, conversation = await _seed_agent_and_conversation(db)
+    parent = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="approval",
+    )
+    await conversation_run_service.transition_run(db, parent, "running")
+    await conversation_run_service.transition_run(db, parent, "interrupted", interrupt_id="i-1")
+    setattr(parent, field_name, corrupted_value)
+
+    # When resume attempts to target the corrupted parent.
+    with pytest.raises(ConflictError) as exc:
+        await conversation_run_service.create_run(
+            db,
+            conversation_id=conversation.id,
+            agent_id=agent.id,
+            user_id=agent.user_id,
+            source="resume",
+            input_preview=None,
+            parent_run_id=parent.id,
+            interrupt_id="i-1",
+        )
+
+    # Then it fails closed with a stable bounded code before inserting a child.
+    assert exc.value.status == 409
+    assert exc.value.code == "RUNTIME_POLICY_SNAPSHOT_INVALID"
+    assert exc.value.message == "RUNTIME_POLICY_SNAPSHOT_INVALID"
 
 
 @pytest.mark.asyncio

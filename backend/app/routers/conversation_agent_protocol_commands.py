@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.executor import execute_agent_stream_langgraph, resume_agent_stream_langgraph
 from app.dependencies import CurrentUser
+from app.exceptions import ConflictError
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_attachments import (
     attachment_ids_from_protocol_input,
@@ -118,12 +119,6 @@ async def _handle_run_start_command(
         )
         run_source = "edit" if append_messages or attachment_ids else "regenerate"
     preview = input_preview(input_payload)
-    cfg = await resolve_agent_context(
-        db,
-        conversation.id,
-        user,
-        checkpoint_id=resolved_checkpoint_id,
-    )
     if conversation.source == "draft":
         await chat_service.promote_draft_conversation(
             db,
@@ -139,7 +134,7 @@ async def _handle_run_start_command(
         request=request,
         action="conversation.message_send",
         conversation_id=conversation.id,
-        agent_id=cfg_agent_uuid(conversation),
+        agent_id=conversation.agent_id,
         metadata={
             "content_length": len(preview or ""),
             "attachment_count": len(attachment_ids),
@@ -161,6 +156,13 @@ async def _handle_run_start_command(
                 "checkpoint_id": resolved_checkpoint_id,
             },
         )
+    except ConflictError as exc:
+        return command_error(
+            command,
+            code=exc.code,
+            message=exc.message,
+            status_code=exc.status,
+        )
     except HTTPException as exc:
         if exc.status_code == 409:
             return command_error(
@@ -170,6 +172,12 @@ async def _handle_run_start_command(
             )
         raise
     run_id = run.id
+    cfg = await resolve_agent_context(
+        db,
+        conversation.id,
+        user,
+        checkpoint_id=resolved_checkpoint_id,
+    )
     if attachment_ids:
         await chat_service.link_attachments_to_conversation(
             db,
@@ -317,7 +325,6 @@ async def _handle_input_respond_command(
         resume=resume,
         pending_interrupts=interrupts_from_tasks(tasks),
     )
-    cfg = await resolve_agent_context(db, conversation.id, user)
     try:
         input_payload = await restore_redacted_resume_payload(
             conversation=conversation,
@@ -339,7 +346,7 @@ async def _handle_input_respond_command(
         request=request,
         action="conversation.message_resume",
         conversation_id=conversation.id,
-        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        agent_id=conversation.agent_id,
         metadata={
             "source": "langgraph_protocol",
             "interrupt_id": run_interrupt_id,
@@ -363,11 +370,19 @@ async def _handle_input_respond_command(
                 "parent_run_id": str(parent_run.id),
             },
         )
+    except ConflictError as exc:
+        return command_error(
+            command,
+            code=exc.code,
+            message=exc.message,
+            status_code=exc.status,
+        )
     except HTTPException as exc:
         if exc.status_code == 409:
             return command_error(command, code="MULTITASK_REJECTED", message=str(exc.detail))
         raise
     run_id = run.id
+    cfg = await resolve_agent_context(db, conversation.id, user)
     await db.commit()
 
     await start_run(

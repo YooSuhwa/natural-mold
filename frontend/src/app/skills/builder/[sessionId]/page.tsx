@@ -6,5 +6,5 @@ export default async function SkillBuilderChatPage({
   params: Promise<{ sessionId: string }>
 }) {
   const { sessionId } = await params
-  return <SkillBuilderChatClient sessionId={sessionId} />
+  return <SkillBuilderChatClient builderSessionId={sessionId} />
 }

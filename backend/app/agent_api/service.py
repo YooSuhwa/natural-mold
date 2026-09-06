@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.agent_api.security import generate_api_key
 from app.agent_runtime.identity import AGENT_IDENTITY_FIXED
+from app.agent_runtime.runtime_policy import RuntimePolicyV1, resolve_runtime_policy
 from app.exceptions import NotFoundError, ValidationError
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_api import AgentApiKey, AgentApiKeyDeployment, AgentDeployment
@@ -28,6 +29,12 @@ def utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def _public_runtime_policy(agent: Agent) -> RuntimePolicyV1 | None:
+    """Return a typed, canonical portable policy without runtime provenance."""
+    resolved = resolve_runtime_policy(agent.runtime_policy)
+    return resolved.effective if agent.runtime_policy is not None else None
+
+
 def expires_at_from_days(days: int | None) -> datetime | None:
     if days is None:
         return None
@@ -45,6 +52,7 @@ def deployment_to_response(row: AgentDeployment) -> AgentDeploymentResponse:
         allow_background=row.allow_background,
         rate_limit_per_minute=row.rate_limit_per_minute,
         daily_token_limit=row.daily_token_limit,
+        runtime_policy=_public_runtime_policy(row.agent),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -69,9 +77,11 @@ def serialize_key_deployments(key: AgentApiKey) -> list[AgentApiKeyDeploymentRef
 
 
 def _key_options():
-    return selectinload(AgentApiKey.deployment_links).selectinload(
-        AgentApiKeyDeployment.deployment
-    ).selectinload(AgentDeployment.agent)
+    return (
+        selectinload(AgentApiKey.deployment_links)
+        .selectinload(AgentApiKeyDeployment.deployment)
+        .selectinload(AgentDeployment.agent)
+    )
 
 
 async def list_deployments(db: AsyncSession, user_id: uuid.UUID) -> list[AgentDeployment]:
@@ -100,9 +110,7 @@ async def list_deployment_candidates(
     deployments_result = await db.execute(
         select(AgentDeployment).where(AgentDeployment.user_id == user_id)
     )
-    deployments_by_agent = {
-        row.agent_id: row for row in deployments_result.scalars().all()
-    }
+    deployments_by_agent = {row.agent_id: row for row in deployments_result.scalars().all()}
 
     candidates: list[AgentDeploymentCandidateResponse] = []
     for agent in agents:
@@ -118,6 +126,7 @@ async def list_deployment_candidates(
                 eligible=eligible,
                 ineligible_reason=None,
                 ineligible_reason_code=None if eligible else FIXED_IDENTITY_REASON_CODE,
+                runtime_policy=_public_runtime_policy(agent),
             )
         )
     return candidates
@@ -259,9 +268,7 @@ async def list_api_keys(db: AsyncSession, user_id: uuid.UUID) -> list[AgentApiKe
     return list(result.scalars().all())
 
 
-async def revoke_api_key(
-    db: AsyncSession, user_id: uuid.UUID, key_id: uuid.UUID
-) -> AgentApiKey:
+async def revoke_api_key(db: AsyncSession, user_id: uuid.UUID, key_id: uuid.UUID) -> AgentApiKey:
     result = await db.execute(
         select(AgentApiKey)
         .where(AgentApiKey.id == key_id, AgentApiKey.user_id == user_id)

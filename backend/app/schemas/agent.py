@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
+from app.agent_runtime.runtime_policy import RuntimePolicySource, RuntimePolicyV1
 from app.schemas.skill import SkillBrief as SkillBrief  # noqa: F401 — used in AgentResponse
 
 MAX_OPENER_QUESTIONS = 12
@@ -22,9 +23,7 @@ def _validate_opener_questions(v: list[str] | None) -> list[str] | None:
     if v is None:
         return v
     if len(v) > MAX_OPENER_QUESTIONS:
-        raise ValueError(
-            f"opener_questions can have at most {MAX_OPENER_QUESTIONS} items"
-        )
+        raise ValueError(f"opener_questions can have at most {MAX_OPENER_QUESTIONS} items")
     cleaned: list[str] = []
     for idx, item in enumerate(v):
         if not isinstance(item, str):
@@ -33,9 +32,7 @@ def _validate_opener_questions(v: list[str] | None) -> list[str] | None:
         if not stripped:
             raise ValueError(f"opener_questions[{idx}] must not be empty")
         if len(stripped) > OPENER_QUESTION_MAX_LENGTH:
-            raise ValueError(
-                f"opener_questions[{idx}] must be ≤{OPENER_QUESTION_MAX_LENGTH} chars"
-            )
+            raise ValueError(f"opener_questions[{idx}] must be ≤{OPENER_QUESTION_MAX_LENGTH} chars")
         cleaned.append(stripped)
     return cleaned
 
@@ -89,6 +86,7 @@ class AgentCreate(BaseModel):
     # Optional ordered list of fallback model ids — see model_factory.
     model_fallback_ids: list[uuid.UUID] | None = None
     identity_mode: str = AGENT_IDENTITY_PER_USER
+    runtime_policy: RuntimePolicyV1 | None = None
 
     @field_validator("opener_questions")
     @classmethod
@@ -126,6 +124,7 @@ class AgentUpdate(BaseModel):
     opener_questions: list[str] | None = None
     model_fallback_ids: list[uuid.UUID] | None = None
     identity_mode: str | None = None
+    runtime_policy: RuntimePolicyV1 | None = None
 
     @field_validator("opener_questions")
     @classmethod
@@ -219,6 +218,9 @@ class AgentResponse(BaseModel):
     skills: list[SkillBrief] = []
     sub_agents: list[AgentBrief] = Field(default_factory=list)
     middleware_configs: list[dict[str, Any]] = []
+    runtime_policy: RuntimePolicyV1 | None = None
+    runtime_policy_effective: RuntimePolicyV1
+    runtime_policy_source: RuntimePolicySource
     status: str
     is_favorite: bool = False
     model_params: dict[str, Any] | None = None

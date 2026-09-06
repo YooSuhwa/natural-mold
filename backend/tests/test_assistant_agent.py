@@ -113,6 +113,9 @@ async def test_build_assistant_agent_requires_approval_for_write_tools_only():
     }
     assert "get_agent_config" not in captured["interrupt_on"]
     assert "ask_clarifying_question" not in captured["interrupt_on"]
+    from app.agent_runtime.runtime_policy import ASSISTANT_RUNTIME_POLICY
+
+    assert captured["runtime_policy"] is ASSISTANT_RUNTIME_POLICY
 
     mock_model = MagicMock()
     mock_read_tools = [MagicMock()]

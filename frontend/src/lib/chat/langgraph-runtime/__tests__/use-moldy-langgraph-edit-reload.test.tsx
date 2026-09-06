@@ -66,6 +66,7 @@ const mocks = vi.hoisted(() => {
         void options
         return {
           kind: 'transport',
+          setStateHydrationListener: vi.fn(),
           setRunStartAcceptedListener: vi.fn(),
         }
       },
@@ -136,6 +137,30 @@ function renderRuntimeOptions(): RuntimeOptions {
     { wrapper: createQueryWrapper() },
   )
   return mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as RuntimeOptions
+}
+
+function notifyRunStartAcceptedForTransport(transportIndex: number, runId: string): void {
+  const transport = mocks.createMoldyAgentTransport.mock.results[transportIndex]?.value as {
+    readonly setRunStartAcceptedListener: { readonly mock: { readonly calls: unknown[][] } }
+  }
+  const listener = transport.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
+  if (typeof listener === 'function') listener(runId)
+}
+
+function notifyLatestRunStartAccepted(runId: string): void {
+  notifyRunStartAcceptedForTransport(mocks.createMoldyAgentTransport.mock.results.length - 1, runId)
+}
+
+function notifyThreadStateForTransport(transportIndex: number, state: unknown): void {
+  const transport = mocks.createMoldyAgentTransport.mock.results[transportIndex]?.value as {
+    readonly setStateHydrationListener: { readonly mock: { readonly calls: unknown[][] } }
+  }
+  const listener = transport.setStateHydrationListener.mock.calls.at(-1)?.[0]
+  if (typeof listener === 'function') listener(state)
+}
+
+function notifyLatestThreadState(state: unknown): void {
+  notifyThreadStateForTransport(mocks.createMoldyAgentTransport.mock.results.length - 1, state)
 }
 
 function messageWithCheckpoint(id: string, checkpointId: string): BaseMessage {
@@ -510,11 +535,9 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    const transportOptions = mocks.createMoldyAgentTransport.mock.calls.at(-1)?.[2] as
-      | { onState?: (state: unknown) => void }
-      | undefined
+    const transportIndex = mocks.createMoldyAgentTransport.mock.results.length - 1
     act(() => {
-      transportOptions?.onState?.({
+      notifyThreadStateForTransport(transportIndex, {
         values: {
           messages: [
             {
@@ -622,11 +645,9 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
       })
     })
 
-    const transportOptions = mocks.createMoldyAgentTransport.mock.calls.at(-1)?.[2] as
-      | { onState?: (state: unknown) => void }
-      | undefined
+    const transportIndex = mocks.createMoldyAgentTransport.mock.results.length - 1
     act(() => {
-      transportOptions?.onState?.({
+      notifyThreadStateForTransport(transportIndex, {
         values: {
           messages: [
             {
@@ -787,7 +808,7 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
     rerender()
 
     mocks.apiFetch.mockClear()
-    mocks.apiFetch.mockResolvedValueOnce({
+    mocks.apiFetch.mockResolvedValue({
       values: {
         messages: [
           {
@@ -1328,6 +1349,405 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
           content: 'visual stream fixture complete.',
         }),
       ])
+    })
+  })
+
+  it('hydrates a failed reload without requiring a replacement assistant message', async () => {
+    const userMessage = new HumanMessage({
+      id: 'reload-failed-user',
+      content: 'prompt that will fail on retry',
+    })
+    const staleAssistantMessage = new AIMessage({
+      id: 'reload-failed-assistant',
+      content: 'previous answer remains retryable',
+    })
+    mocks.stream.messages = [userMessage, staleAssistantMessage]
+    mocks.convertedMessages = [
+      { id: 'reload-failed-user', role: 'user' },
+      { id: 'reload-failed-assistant', role: 'assistant' },
+    ]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['reload-failed-assistant', { parentCheckpointId: 'ck-after-reload-failed-user' }]]),
+    )
+    mocks.apiFetch.mockResolvedValue({
+      values: {
+        messages: [
+          { id: 'reload-failed-user', type: 'human', content: 'prompt that will fail on retry' },
+          {
+            id: 'reload-failed-assistant',
+            type: 'ai',
+            content: 'previous answer remains retryable',
+          },
+        ],
+      },
+      metadata: {
+        latest_run: {
+          id: 'reload-failed-run',
+          status: 'failed',
+          error_message: 'retry model request failed',
+        },
+      },
+    })
+
+    const runtimeOptions = renderRuntimeOptions()
+    mocks.stream.submit.mockImplementationOnce(async () => {
+      notifyLatestRunStartAccepted('reload-failed-run')
+    })
+    await act(async () => {
+      await runtimeOptions.onReload('reload-failed-assistant')
+    })
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { readonly messages: readonly BaseMessage[] }
+        | undefined
+      expect(converterOptions?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'reload-failed-assistant',
+            content: 'previous answer remains retryable',
+          }),
+          expect.objectContaining({
+            id: 'moldy-failed-reload-failed-run',
+            content: 'retry model request failed',
+            additional_kwargs: expect.objectContaining({
+              metadata: expect.objectContaining({ moldy_terminal_notice: 'failed' }),
+            }),
+          }),
+        ]),
+      )
+    })
+  })
+
+  it('applies a failed reload state received while the stream is still loading', async () => {
+    const userMessage = new HumanMessage({
+      id: 'reload-failed-loading-user',
+      content: 'prompt with an in-flight retry',
+    })
+    const staleAssistantMessage = new AIMessage({
+      id: 'reload-failed-loading-assistant',
+      content: 'retryable prior answer',
+    })
+    mocks.stream.isLoading = true
+    mocks.stream.messages = [userMessage, staleAssistantMessage]
+    mocks.convertedMessages = [
+      { id: 'reload-failed-loading-user', role: 'user' },
+      { id: 'reload-failed-loading-assistant', role: 'assistant' },
+    ]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([
+        [
+          'reload-failed-loading-assistant',
+          { parentCheckpointId: 'ck-after-reload-failed-loading-user' },
+        ],
+      ]),
+    )
+
+    const runtimeOptions = renderRuntimeOptions()
+    await act(async () => {
+      await runtimeOptions.onReload('reload-failed-loading-assistant')
+    })
+    act(() => {
+      // The accepted command response and terminal state may arrive before
+      // React commits a rerender between the two transport callbacks.
+      notifyLatestRunStartAccepted('reload-failed-while-loading')
+      notifyLatestThreadState({
+        values: {
+          messages: [
+            {
+              id: 'reload-failed-loading-user',
+              type: 'human',
+              content: 'prompt with an in-flight retry',
+            },
+            {
+              id: 'reload-failed-loading-assistant',
+              type: 'ai',
+              content: 'retryable prior answer',
+            },
+          ],
+        },
+        metadata: {
+          latest_run: {
+            id: 'reload-failed-while-loading',
+            status: 'failed',
+            error_message: 'retry failed before a replacement response',
+          },
+        },
+      })
+    })
+
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { readonly messages: readonly BaseMessage[]; readonly isRunning: boolean }
+        | undefined
+      expect(converterOptions?.isRunning).toBe(false)
+      expect(converterOptions?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'reload-failed-loading-assistant',
+            content: 'retryable prior answer',
+          }),
+          expect.objectContaining({
+            id: 'moldy-failed-reload-failed-while-loading',
+            content: 'retry failed before a replacement response',
+          }),
+        ]),
+      )
+    })
+  })
+
+  it('ignores a previous failed run after retry starts and hydrates the current success', async () => {
+    const userMessage = new HumanMessage({
+      id: 'reload-correlation-user',
+      content: 'prompt for a correlated retry',
+    })
+    const staleAssistantMessage = new AIMessage({
+      id: 'reload-correlation-stale-assistant',
+      content: 'answer before the failed retry',
+    })
+    const successfulAssistantMessage = new AIMessage({
+      id: 'reload-correlation-success-assistant',
+      content: 'answer from the current retry',
+    })
+    mocks.stream.messages = [userMessage, staleAssistantMessage]
+    mocks.convertedMessages = [
+      { id: 'reload-correlation-user', role: 'user' },
+      { id: 'reload-correlation-stale-assistant', role: 'assistant' },
+    ]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([
+        [
+          'reload-correlation-stale-assistant',
+          { parentCheckpointId: 'ck-after-reload-correlation-user' },
+        ],
+      ]),
+    )
+
+    const { rerender } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-1',
+          conversationId: 'conversation-reload-correlation',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const transportIndex = mocks.createMoldyAgentTransport.mock.results.length - 1
+    const previousFailure = {
+      values: {
+        messages: [
+          {
+            id: 'reload-correlation-user',
+            type: 'human',
+            content: 'prompt for a correlated retry',
+          },
+          {
+            id: 'reload-correlation-stale-assistant',
+            type: 'ai',
+            content: 'answer before the failed retry',
+          },
+        ],
+      },
+      metadata: {
+        latest_run: {
+          id: 'reload-correlation-previous-failure',
+          status: 'failed',
+          error_message: 'previous failed retry',
+        },
+      },
+    }
+    act(() => {
+      notifyLatestRunStartAccepted('reload-correlation-previous-failure')
+    })
+    act(() => {
+      notifyThreadStateForTransport(transportIndex, previousFailure)
+    })
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { readonly messages: readonly BaseMessage[] }
+        | undefined
+      expect(converterOptions?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'moldy-failed-reload-correlation-previous-failure' }),
+        ]),
+      )
+    })
+
+    mocks.stream.isLoading = true
+    rerender()
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as RuntimeOptions
+    await act(async () => {
+      await runtimeOptions.onReload('reload-correlation-stale-assistant')
+    })
+    // A delayed old snapshot can arrive before the new command response provides its run id.
+    act(() => {
+      notifyThreadStateForTransport(transportIndex, previousFailure)
+    })
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { readonly messages: readonly BaseMessage[] }
+        | undefined
+      expect(converterOptions?.messages).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'moldy-failed-reload-correlation-previous-failure' }),
+        ]),
+      )
+    })
+    act(() => {
+      notifyLatestRunStartAccepted('reload-correlation-current-success')
+    })
+    // The same stale snapshot remains invalid after the new run id is known.
+    act(() => {
+      notifyThreadStateForTransport(transportIndex, previousFailure)
+    })
+
+    mocks.apiFetch.mockResolvedValueOnce({
+      values: {
+        messages: [
+          {
+            id: 'reload-correlation-user',
+            type: 'human',
+            content: 'prompt for a correlated retry',
+          },
+          {
+            id: 'reload-correlation-success-assistant',
+            type: 'ai',
+            content: 'answer from the current retry',
+            additional_kwargs: {
+              metadata: {
+                branches: [
+                  'reload-correlation-stale-assistant',
+                  'reload-correlation-success-assistant',
+                ],
+                siblingCheckpointIds: ['ck-stale', 'ck-current-success'],
+                branchIndex: 1,
+                branchTotal: 2,
+              },
+            },
+          },
+        ],
+      },
+      metadata: { latest_run: { id: 'reload-correlation-current-success', status: 'complete' } },
+    })
+    mocks.stream.isLoading = false
+    mocks.stream.messages = [userMessage, successfulAssistantMessage]
+    mocks.convertedMessages = [
+      { id: 'reload-correlation-user', role: 'user' },
+      { id: 'reload-correlation-success-assistant', role: 'assistant' },
+    ]
+    rerender()
+
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { readonly messages: readonly BaseMessage[] }
+        | undefined
+      expect(converterOptions?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'reload-correlation-success-assistant',
+            content: 'answer from the current retry',
+          }),
+        ]),
+      )
+      expect(converterOptions?.messages).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'moldy-failed-reload-correlation-previous-failure' }),
+        ]),
+      )
+    })
+  })
+
+  it('keeps retry correlation when another hook for the same conversation unmounts', async () => {
+    const userMessage = new HumanMessage({
+      id: 'reload-owner-user',
+      content: 'prompt owned by runtime A',
+    })
+    const staleAssistantMessage = new AIMessage({
+      id: 'reload-owner-assistant',
+      content: 'answer from A previous failed run',
+    })
+    mocks.stream.messages = [userMessage, staleAssistantMessage]
+    mocks.convertedMessages = [
+      { id: 'reload-owner-user', role: 'user' },
+      { id: 'reload-owner-assistant', role: 'assistant' },
+    ]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['reload-owner-assistant', { parentCheckpointId: 'ck-after-reload-owner-user' }]]),
+    )
+    const transportIndexA = mocks.createMoldyAgentTransport.mock.calls.length
+    const runtimeA = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-a',
+          conversationId: 'conversation-reload-owner',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const runtimeOptionsA = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as RuntimeOptions
+    const oldFailure = {
+      values: {
+        messages: [
+          { id: 'reload-owner-user', type: 'human', content: 'prompt owned by runtime A' },
+          {
+            id: 'reload-owner-assistant',
+            type: 'ai',
+            content: 'answer from A previous failed run',
+          },
+        ],
+      },
+      metadata: {
+        latest_run: {
+          id: 'reload-owner-old-run',
+          status: 'failed',
+          error_message: 'old failure must stay stale',
+        },
+      },
+    }
+    act(() => {
+      notifyRunStartAcceptedForTransport(transportIndexA, 'reload-owner-old-run')
+    })
+    act(() => {
+      notifyThreadStateForTransport(transportIndexA, oldFailure)
+    })
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { readonly messages: readonly BaseMessage[] }
+        | undefined
+      expect(converterOptions?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'moldy-failed-reload-owner-old-run' }),
+        ]),
+      )
+    })
+
+    mocks.stream.isLoading = true
+    runtimeA.rerender()
+    const runtimeB = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-b',
+          conversationId: 'conversation-reload-owner',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    await act(async () => {
+      await runtimeOptionsA.onReload('reload-owner-assistant')
+    })
+    await act(async () => {
+      notifyRunStartAcceptedForTransport(transportIndexA, 'reload-owner-current-run')
+    })
+    runtimeB.unmount()
+    act(() => {
+      notifyThreadStateForTransport(transportIndexA, oldFailure)
+    })
+
+    await waitFor(() => {
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { readonly messages: readonly BaseMessage[] }
+        | undefined
+      expect(converterOptions?.messages).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'moldy-failed-reload-owner-old-run' }),
+        ]),
+      )
     })
   })
 
@@ -1929,5 +2349,142 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
     await runtimeOptions.onReload('user-1')
 
     expect(mocks.stream.submit).not.toHaveBeenCalled()
+  })
+
+  it('clears a rejected edit from A without clearing B after an A-B-A switch', async () => {
+    const originalUser = new HumanMessage({
+      id: 'switch-edit-user',
+      content: 'original prompt',
+      additional_kwargs: { metadata: { checkpoint_id: 'ck-switch-edit' } },
+    })
+    const originalAssistant = new AIMessage({ id: 'switch-edit-assistant', content: 'answer' })
+    mocks.stream.messages = [originalUser, originalAssistant]
+    mocks.convertedMessages = [
+      { id: 'switch-edit-user', role: 'user' },
+      { id: 'switch-edit-assistant', role: 'assistant' },
+    ]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['switch-edit-user', { parentCheckpointId: 'ck-before-switch-edit' }]]),
+    )
+    let rejectEdit: ((reason: Error) => void) | undefined
+    mocks.stream.submit.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectEdit = reject
+        }),
+    )
+    const { rerender } = renderHook(
+      ({ conversationId }: { conversationId: string }) =>
+        useMoldyLangGraphStream({ agentId: 'agent-edit-switch', conversationId }),
+      {
+        initialProps: { conversationId: 'conversation-edit-a' },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const runtimeA = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as RuntimeOptions
+    const edit = runtimeA.onEdit({
+      content: [{ type: 'text', text: 'edited prompt' }],
+      parentId: 'switch-edit-user',
+      sourceId: 'switch-edit-user',
+    })
+
+    rerender({ conversationId: 'conversation-edit-b' })
+    await act(async () => {
+      rejectEdit?.(new Error('edit failed'))
+      await expect(edit).rejects.toThrow('edit failed')
+    })
+    rerender({ conversationId: 'conversation-edit-a' })
+
+    await waitFor(() => {
+      const options = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+        messages: readonly BaseMessage[]
+      }
+      expect(options.messages.some((message) => message.content === 'edited prompt')).toBe(false)
+      expect(options.messages).toContain(originalUser)
+    })
+  })
+
+  it('clears a rejected reload from A without clearing B after an A-B-A switch', async () => {
+    const originalUser = new HumanMessage({
+      id: 'switch-reload-user',
+      content: 'prompt',
+      additional_kwargs: { metadata: { checkpoint_id: 'ck-switch-reload' } },
+    })
+    const originalAssistant = new AIMessage({ id: 'switch-reload-assistant', content: 'answer' })
+    mocks.stream.messages = [originalUser, originalAssistant]
+    mocks.convertedMessages = [
+      { id: 'switch-reload-user', role: 'user' },
+      { id: 'switch-reload-assistant', role: 'assistant' },
+    ]
+    mocks.metadataStore.getSnapshot.mockReturnValue(
+      new Map([['switch-reload-assistant', { parentCheckpointId: 'ck-switch-reload' }]]),
+    )
+    let rejectReload: ((reason: Error) => void) | undefined
+    mocks.stream.submit.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectReload = reject
+        }),
+    )
+    const { rerender } = renderHook(
+      ({ conversationId }: { conversationId: string }) =>
+        useMoldyLangGraphStream({ agentId: 'agent-reload-switch', conversationId }),
+      {
+        initialProps: { conversationId: 'conversation-reload-a' },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const runtimeA = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as RuntimeOptions
+    const reload = runtimeA.onReload('switch-reload-user')
+
+    rerender({ conversationId: 'conversation-reload-b' })
+    await act(async () => {
+      rejectReload?.(new Error('reload failed'))
+      await expect(reload).rejects.toThrow('reload failed')
+    })
+    rerender({ conversationId: 'conversation-reload-a' })
+
+    await waitFor(() => {
+      const options = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+        messages: readonly BaseMessage[]
+      }
+      expect(options.messages).toContain(originalAssistant)
+    })
+  })
+
+  it('does not publish a late A cancellation after an A-B-A switch', async () => {
+    let resolveStop: (() => void) | undefined
+    mocks.stream.stop.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStop = resolve
+        }),
+    )
+    const { rerender } = renderHook(
+      ({ conversationId }: { conversationId: string }) =>
+        useMoldyLangGraphStream({ agentId: 'agent-cancel-switch', conversationId }),
+      {
+        initialProps: { conversationId: 'conversation-cancel-a' },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const runtimeA = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as RuntimeOptions
+    const cancel = runtimeA.onCancel()
+
+    rerender({ conversationId: 'conversation-cancel-b' })
+    await act(async () => {
+      resolveStop?.()
+      await cancel
+    })
+    rerender({ conversationId: 'conversation-cancel-a' })
+
+    await waitFor(() => {
+      const options = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as {
+        messages: readonly BaseMessage[]
+      }
+      expect(
+        options.messages.some((message) => String(message.id).startsWith('moldy-canceled-local-')),
+      ).toBe(false)
+    })
   })
 })

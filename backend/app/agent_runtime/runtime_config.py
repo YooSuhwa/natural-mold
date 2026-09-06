@@ -8,7 +8,25 @@ from deepagents.middleware.filesystem import FilesystemPermission
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+from app.agent_runtime.runtime_policy import LEGACY_RUNTIME_POLICY, ResolvedRuntimePolicy
+from app.config import settings
+
+_configured_data_root = Path(settings.data_root)
+_DATA_DIR = (
+    _configured_data_root
+    if _configured_data_root.is_absolute()
+    else Path(__file__).resolve().parents[2] / _configured_data_root
+)
+
+
+def runtime_data_dir() -> Path:
+    """Return the current agent-runtime data root.
+
+    Tests patch ``_DATA_DIR`` per isolated lane, so callers intentionally read
+    it through this function at operation time rather than import time.
+    """
+
+    return _DATA_DIR
 
 
 @dataclass
@@ -30,6 +48,13 @@ class AgentConfig:
     system_prompt: str
     tools_config: list[dict[str, Any]]
     thread_id: str
+    # Additive public-facade field. Keep it keyword-only so legacy callers that
+    # pass ``model_params`` (and later fields) positionally retain their exact
+    # argument mapping.
+    runtime_policy: ResolvedRuntimePolicy = field(
+        default=LEGACY_RUNTIME_POLICY,
+        kw_only=True,
+    )
     model_params: dict[str, Any] | None = None
     middleware_configs: list[dict[str, Any]] | None = None
     agent_skills: list[dict[str, Any]] | None = None

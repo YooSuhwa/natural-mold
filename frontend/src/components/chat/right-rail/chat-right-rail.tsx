@@ -121,12 +121,12 @@ export function ChatRightRail({ className, conversationId }: Props) {
 
   return (
     <>
-      {/* 데스크톱: inline split */}
+      {/* 넓은 데스크톱: inline split */}
       <aside
         data-slot="chat-right-rail"
         data-collapse-preview={isCollapsePreview ? 'true' : undefined}
         className={cn(
-          'relative hidden shrink-0 overflow-hidden bg-muted/30 transition-[width] duration-200 md:block',
+          'relative hidden shrink-0 overflow-hidden bg-muted/30 transition-[width] duration-200 xl:block',
           className,
         )}
         style={rightRailStyle}
@@ -136,7 +136,7 @@ export function ChatRightRail({ className, conversationId }: Props) {
           <>
             <HorizontalResizeHandle
               ariaLabel={t('resizePanel')}
-              className="absolute inset-y-0 left-0 z-20 hidden md:flex"
+              className="absolute inset-y-0 left-0 z-20 hidden xl:flex"
               collapsedValueText={t('collapsedPanel')}
               collapseThreshold={RIGHT_RAIL_COLLAPSE_THRESHOLD_PX}
               maxWidth={maxWidth}
@@ -155,9 +155,9 @@ export function ChatRightRail({ className, conversationId }: Props) {
         ) : null}
       </aside>
 
-      {/* 모바일: artifact는 독립 full-screen layer, 그 외 rail은 기존 drawer */}
+      {/* mobile/tablet: artifact는 독립 full-screen layer, 그 외 rail은 기존 drawer */}
       {isOpen ? (
-        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-40 xl:hidden" role="dialog" aria-modal="true">
           {state.mode === 'artifacts' ? (
             <div className="moldy-artifact-mobile-layer absolute inset-0">
               <RailFrame state={state} className="h-full w-full" onClose={closeRightRail} />
@@ -217,7 +217,7 @@ function RailFrame({ state, className, onClose }: RailFrameProps) {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="md:hidden"
+            className="xl:hidden"
             onClick={onClose}
             aria-label={t('closePanel')}
           >
@@ -227,7 +227,7 @@ function RailFrame({ state, className, onClose }: RailFrameProps) {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="hidden md:inline-flex"
+            className="hidden xl:inline-flex"
             onClick={onClose}
             aria-label={t('closePanel')}
           >
@@ -342,14 +342,14 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
       <Button
         variant="ghost"
         size="icon-sm"
-        className="md:hidden"
+        className="xl:hidden"
         onClick={onClose}
         aria-label={t('closePanel')}
       >
         <XIcon className="size-4" />
       </Button>
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <div className="hidden shrink-0 items-center gap-1 md:flex">
+        <div className="hidden shrink-0 items-center gap-1 xl:flex">
           <Button
             variant={previewMode === 'preview' ? 'secondary' : 'ghost'}
             size="icon-sm"
@@ -369,7 +369,7 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
           </Button>
         </div>
         <h2 className="truncate text-sm font-semibold text-foreground">{title}</h2>
-        <span className="hidden shrink-0 text-xs text-muted-foreground md:inline">
+        <span className="hidden shrink-0 text-xs text-muted-foreground xl:inline">
           · {artifact.extension?.toUpperCase() ?? tArtifacts(`kinds.${artifact.artifact_kind}`)}
         </span>
       </div>
@@ -377,7 +377,7 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
         <Button
           variant="ghost"
           size="icon-sm"
-          className="hidden md:inline-flex"
+          className="hidden xl:inline-flex"
           aria-label={tArtifacts('download')}
           render={
             <a href={resolveImageUrl(artifact.download_url) ?? artifact.download_url} download />
@@ -418,7 +418,7 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
         <Button
           variant="ghost"
           size="icon-sm"
-          className="hidden md:inline-flex"
+          className="hidden xl:inline-flex"
           aria-label={tArtifacts('refreshPreview')}
           onClick={handleRefresh}
         >
@@ -427,7 +427,7 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
         <Button
           variant="ghost"
           size="icon-sm"
-          className="hidden md:inline-flex"
+          className="hidden xl:inline-flex"
           onClick={onClose}
           aria-label={t('closePanel')}
         >

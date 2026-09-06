@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import stored_protocol_event
+from app.database import async_session
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
@@ -17,10 +21,14 @@ from app.models.user import User
 from app.services import trace_storage
 from tests.conftest import TEST_USER_ID, TestSession
 
+SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
-async def _seed_conversation(*, owner_id: uuid.UUID = TEST_USER_ID) -> uuid.UUID:
+
+async def _seed_conversation(
+    *, owner_id: uuid.UUID = TEST_USER_ID, session_factory: SessionFactory = TestSession
+) -> uuid.UUID:
     """Insert minimal User + Model + Agent + Conversation, return conversation_id."""
-    async with TestSession() as db:
+    async with session_factory() as db:
         existing_user = await db.get(User, owner_id)
         if existing_user is None:
             db.add(User(id=owner_id, email=f"{owner_id}@test.com", name="Test"))
@@ -216,6 +224,69 @@ async def test_get_traces_endpoint_returns_protocol_events(client: AsyncClient) 
 
 
 @pytest.mark.asyncio
+async def test_get_traces_endpoint_projects_legacy_offload_paths_without_mutating_storage(
+    client: AsyncClient,
+) -> None:
+    """Trace egress replaces every legacy offload path while preserving the DB event."""
+    conv_id = await _seed_conversation()
+    message_id = "legacy-offload-trace"
+    configured_secret = "trace-configured-secret-42"
+    history_path = "/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    spill_path = "/large_tool_results/tool-call.json"
+    virtual_path = (
+        "/.moldy-offload/owner/conversation/actor/"
+        "conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    )
+    physical_path = (
+        "/tmp/moldy/.moldy-internal/offload/spill/owner/run/actor/large_tool_results/tool-call.json"
+    )
+    events = [
+        {
+            "id": f"{message_id}-1",
+            "event": "message_start",
+            "data": {
+                "id": message_id,
+                "history": history_path,
+                "spill": spill_path,
+                "virtual": virtual_path,
+                "physical": physical_path,
+                "note": f"path={history_path}; credential={configured_secret}",
+                "_summarization_event": {"file_path": history_path},
+            },
+        }
+    ]
+
+    async with TestSession() as db:
+        await trace_storage.record_turn(db, conversation_id=conv_id, events=events)
+        await db.commit()
+
+    with patch(
+        "app.services.chat.secrets.collect_conversation_secret_values",
+        new=AsyncMock(return_value={configured_secret}),
+    ):
+        response = await client.get(f"/api/conversations/{conv_id}/traces")
+
+    assert response.status_code == 200
+    rendered = repr(response.json())
+    assert configured_secret not in rendered
+    for path in (history_path, spill_path, virtual_path, physical_path):
+        assert path not in rendered
+    assert "/conversation_history/" not in rendered
+    assert "/large_tool_results/" not in rendered
+    assert "/.moldy-offload/" not in rendered
+    assert "/.moldy-internal/offload/" not in rendered
+    assert "history_" in rendered
+    assert "spill_" not in rendered
+    assert "internal_reference_redacted" in rendered
+    assert "file_path" not in rendered
+
+    async with TestSession() as db:
+        stored = await trace_storage.get_trace_by_msg_id(db, message_id)
+        assert stored is not None
+        assert stored.events == events
+
+
+@pytest.mark.asyncio
 async def test_get_traces_endpoint_requires_auth(raw_client: AsyncClient) -> None:
     conv_id = await _seed_conversation()
     async with TestSession() as db:
@@ -381,14 +452,14 @@ async def test_message_event_cascade_delete_with_conversation() -> None:
     ``ondelete='CASCADE'``가 무시된다. 마이그레이션에 선언된 cascade가 실제로
     동작하는지 검증하려면 라이브 PG가 필요하므로 integration 마커를 단다.
     """
-    conv_id = await _seed_conversation()
-    async with TestSession() as db:
+    conv_id = await _seed_conversation(session_factory=async_session)
+    async with async_session() as db:
         await trace_storage.record_turn(
             db, conversation_id=conv_id, events=_events_for_msg("msg-x")
         )
         await db.commit()
 
-    async with TestSession() as db:
+    async with async_session() as db:
         # 직접 SQL로 conversation 삭제
         from sqlalchemy import select
 
@@ -398,7 +469,7 @@ async def test_message_event_cascade_delete_with_conversation() -> None:
         await db.delete(conv)
         await db.commit()
 
-    async with TestSession() as db:
+    async with async_session() as db:
         from sqlalchemy import select
 
         rows = (await db.execute(select(MessageEvent))).scalars().all()

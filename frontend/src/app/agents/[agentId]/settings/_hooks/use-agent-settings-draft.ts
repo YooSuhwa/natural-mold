@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer } from 'react'
-import type { Agent, AgentIdentityMode } from '@/lib/types'
+import type { Agent, AgentIdentityMode, RuntimePolicyV1 } from '@/lib/types'
 import { toggleSetItem } from '@/lib/utils'
 import {
   buildAgentSettingsDraftFromAgent,
@@ -37,6 +37,7 @@ type DraftAction =
   | { type: 'resetModelParams' }
   | { type: 'toggleMiddleware'; middlewareType: string }
   | { type: 'setOpenerQuestions'; value: string[] }
+  | { type: 'setRuntimePolicy'; value: RuntimePolicyV1 | null }
 
 export type AgentSettingsDraftActions = {
   setName: (value: string) => void
@@ -55,6 +56,7 @@ export type AgentSettingsDraftActions = {
   resetModelParams: () => void
   toggleMiddleware: (middlewareType: string) => void
   setOpenerQuestions: (value: string[]) => void
+  setRuntimePolicy: (value: RuntimePolicyV1 | null) => void
 }
 
 const INITIAL_STATE: DraftState = {
@@ -153,6 +155,8 @@ function agentSettingsDraftReducer(state: DraftState, action: DraftAction): Draf
       }
     case 'setOpenerQuestions':
       return { ...state, draft: { ...state.draft, openerQuestions: [...action.value] } }
+    case 'setRuntimePolicy':
+      return { ...state, draft: { ...state.draft, runtimePolicy: action.value } }
   }
 }
 
@@ -182,6 +186,7 @@ export function useAgentSettingsDraft(agent: Agent | undefined) {
       resetModelParams: () => dispatch({ type: 'resetModelParams' }),
       toggleMiddleware: (middlewareType) => dispatch({ type: 'toggleMiddleware', middlewareType }),
       setOpenerQuestions: (value) => dispatch({ type: 'setOpenerQuestions', value }),
+      setRuntimePolicy: (value) => dispatch({ type: 'setRuntimePolicy', value }),
     }),
     [],
   )

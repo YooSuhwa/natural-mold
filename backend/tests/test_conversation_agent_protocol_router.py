@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
+from langchain_core.messages import HumanMessage
+from langgraph.types import Send
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +18,11 @@ from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_events import stored_protocol_event
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.runtime_policy import (
+    RuntimePolicySnapshotError,
+    resolve_runtime_policy,
+    runtime_policy_to_json,
+)
 from app.main import create_app
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -24,23 +31,31 @@ from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from app.routers.conversation_agent_protocol_runtime import protocol_events_from_broker
+from app.routers.conversation_agent_protocol_state_snapshot import project_todo_policy_values
 from app.services import trace_storage
 from tests.conftest import TEST_USER_ID
 
 
 class _FakeSnapshot:
-    def __init__(self, *, values: dict[str, Any], checkpoint_id: str | None) -> None:
+    def __init__(
+        self,
+        *,
+        values: dict[str, Any],
+        checkpoint_id: str | None,
+        tasks: tuple[dict[str, Any], ...] = (),
+    ) -> None:
         self.values = values
         self.config = {"configurable": {"checkpoint_id": checkpoint_id}}
         self.next: tuple[str, ...] = ()
-        self.tasks: tuple[dict[str, Any], ...] = ()
+        self.tasks = tasks
         self.metadata: dict[str, Any] = {}
         self.created_at: str | None = None
 
 
 class _FakeStateGraph:
-    def __init__(self) -> None:
+    def __init__(self, *, updated_tasks: tuple[dict[str, Any], ...] = ()) -> None:
         self.snapshot = _FakeSnapshot(values={}, checkpoint_id=None)
+        self.updated_tasks = updated_tasks
         self.updates: list[tuple[dict[str, Any], dict[str, Any], str | None, str | None]] = []
 
     async def aget_state(self, _config: dict[str, Any]) -> _FakeSnapshot:
@@ -55,7 +70,57 @@ class _FakeStateGraph:
         task_id: str | None = None,
     ) -> None:
         self.updates.append((config, values, as_node, task_id))
-        self.snapshot = _FakeSnapshot(values=values, checkpoint_id="ck-updated")
+        self.snapshot = _FakeSnapshot(
+            values=values,
+            checkpoint_id="ck-updated",
+            tasks=self.updated_tasks,
+        )
+
+
+def _patch_state_graph(
+    monkeypatch: pytest.MonkeyPatch,
+    conversation: Conversation,
+    graph: _FakeStateGraph,
+) -> None:
+    async def fake_resolve_agent_context(
+        _db: AsyncSession,
+        conversation_id: uuid.UUID,
+        _user: Any,
+        *,
+        checkpoint_id: str | None = None,
+    ) -> AgentConfig:
+        assert checkpoint_id is None
+        return AgentConfig(
+            provider="openai",
+            model_name="gpt-4o",
+            api_key=None,
+            base_url=None,
+            system_prompt="You are helpful.",
+            tools_config=[],
+            thread_id=str(conversation_id),
+            agent_id=str(conversation.agent_id),
+            user_id=str(TEST_USER_ID),
+        )
+
+    async def fake_prepare_agent(
+        cfg: AgentConfig,
+        *,
+        messages_history: list[dict[str, str]],
+        is_trigger_mode: bool = False,
+    ) -> tuple[_FakeStateGraph, list[Any], dict[str, Any]]:
+        assert cfg.thread_id == str(conversation.id)
+        assert messages_history == []
+        assert is_trigger_mode is False
+        return graph, [], {"configurable": {"thread_id": cfg.thread_id}}
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state.resolve_agent_context",
+        fake_resolve_agent_context,
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state._prepare_agent",
+        fake_prepare_agent,
+    )
 
 
 class _FakeDeltaCheckpointer:
@@ -104,9 +169,53 @@ async def _seed_conversation(
     return conversation
 
 
+async def _store_conversation_todo_policy(
+    db: AsyncSession,
+    conversation: Conversation,
+    *,
+    enabled: bool,
+) -> None:
+    resolved = resolve_runtime_policy({"version": 1, "todo": {"enabled": enabled}})
+    conversation.runtime_policy_snapshot = runtime_policy_to_json(resolved.effective)
+    conversation.runtime_policy_version = resolved.effective.version
+    conversation.runtime_policy_hash = resolved.policy_hash
+    conversation.runtime_policy_source = resolved.source
+    await db.commit()
+
+
 async def _close_broker_after_subscribe(broker: EventBroker) -> None:
     await asyncio.wait_for(broker.wait_until_subscribed(), timeout=1)
     broker.close()
+
+
+def test_todo_policy_projection_rejects_invalid_conversation_snapshot() -> None:
+    # Given an incomplete persisted policy tuple.
+    conversation = Conversation(agent_id=uuid.uuid4(), title="Invalid policy")
+    conversation.runtime_policy_snapshot = {"version": 1}
+    conversation.runtime_policy_version = 1
+    conversation.runtime_policy_hash = "not-a-runtime-policy-hash"
+    conversation.runtime_policy_source = "stored"
+
+    # When state egress resolves the immutable conversation snapshot.
+    with pytest.raises(RuntimePolicySnapshotError):
+        project_todo_policy_values(conversation, {"todos": [{"id": "stale"}]})
+
+
+def test_todo_policy_projection_preserves_server_owned_snapshot() -> None:
+    # Given the server-owned default snapshot that always has Todo enabled.
+    resolved = resolve_runtime_policy(None)
+    conversation = Conversation(agent_id=uuid.uuid4(), title="Server policy")
+    conversation.runtime_policy_snapshot = runtime_policy_to_json(resolved.effective)
+    conversation.runtime_policy_version = resolved.effective.version
+    conversation.runtime_policy_hash = resolved.policy_hash
+    conversation.runtime_policy_source = "server_owned"
+    values = {"todos": [{"id": "server-todo"}]}
+
+    # When protocol state is projected.
+    projected = project_todo_policy_values(conversation, values)
+
+    # Then server-owned Todo state remains available.
+    assert projected == values
 
 
 def test_agent_protocol_routes_registered_from_conversation_facade() -> None:
@@ -417,54 +526,19 @@ async def test_command_rejects_unknown_methods_with_agent_protocol_error(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stored_todo_enabled", [None, True])
 async def test_thread_state_and_history_use_sdk_compatible_shapes(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
+    stored_todo_enabled: bool | None,
 ) -> None:
     conversation = await _seed_conversation(db)
+    if stored_todo_enabled is not None:
+        await _store_conversation_todo_policy(db, conversation, enabled=stored_todo_enabled)
     state_url = f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
     fake_graph = _FakeStateGraph()
-
-    async def fake_resolve_agent_context(
-        _db: AsyncSession,
-        conversation_id: uuid.UUID,
-        _user: Any,
-        *,
-        checkpoint_id: str | None = None,
-    ) -> AgentConfig:
-        assert checkpoint_id is None
-        return AgentConfig(
-            provider="openai",
-            model_name="gpt-4o",
-            api_key=None,
-            base_url=None,
-            system_prompt="You are helpful.",
-            tools_config=[],
-            thread_id=str(conversation_id),
-            agent_id=str(conversation.agent_id),
-            user_id=str(TEST_USER_ID),
-        )
-
-    async def fake_prepare_agent(
-        cfg: AgentConfig,
-        *,
-        messages_history: list[dict[str, str]],
-        is_trigger_mode: bool = False,
-    ) -> tuple[_FakeStateGraph, list[Any], dict[str, Any]]:
-        assert cfg.thread_id == str(conversation.id)
-        assert messages_history == []
-        assert is_trigger_mode is False
-        return fake_graph, [], {"configurable": {"thread_id": cfg.thread_id}}
-
-    monkeypatch.setattr(
-        "app.routers.conversation_agent_protocol_state.resolve_agent_context",
-        fake_resolve_agent_context,
-    )
-    monkeypatch.setattr(
-        "app.routers.conversation_agent_protocol_state._prepare_agent",
-        fake_prepare_agent,
-    )
+    _patch_state_graph(monkeypatch, conversation, fake_graph)
 
     state_response = await client.get(state_url)
     update_response = await client.post(
@@ -502,6 +576,234 @@ async def test_thread_state_and_history_use_sdk_compatible_shapes(
 
     assert history_response.status_code == 200
     assert history_response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_thread_state_strips_stale_todos_from_disabled_stored_snapshot(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given a stored explicit-off conversation with an old checkpoint Todo value.
+    conversation = await _seed_conversation(db)
+    await _store_conversation_todo_policy(db, conversation, enabled=False)
+    agent = await db.get(Agent, conversation.agent_id)
+    assert agent is not None
+    agent.runtime_policy = {"version": 1, "todo": {"enabled": True}}
+    await db.commit()
+    checkpoint_values = {
+        "messages": [HumanMessage(id="stale-user", content="keep the message")],
+        "todos": [{"id": "stale-todo", "content": "do not expose"}],
+    }
+
+    class _FakeCheckpointer:
+        async def alist(self, _config: dict[str, Any]) -> Any:
+            yield type(
+                "CheckpointTuple",
+                (),
+                {
+                    "config": {"configurable": {"checkpoint_id": "ck-stale"}},
+                    "parent_config": None,
+                    "checkpoint": {"channel_values": checkpoint_values},
+                },
+            )()
+
+        async def aget_tuple(self, _config: dict[str, Any]) -> Any:
+            return type(
+                "CheckpointTuple",
+                (),
+                {
+                    "config": {"configurable": {"checkpoint_id": "ck-stale"}},
+                    "checkpoint": {"channel_values": checkpoint_values},
+                    "pending_writes": [],
+                },
+            )()
+
+    fake_checkpointer = _FakeCheckpointer()
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: fake_checkpointer,
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state.get_checkpointer",
+        lambda: fake_checkpointer,
+    )
+    state_url = f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+
+    # When state and history are projected through the public protocol routes.
+    state_response = await client.get(state_url)
+    history_response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/history",
+        json={"limit": 1},
+    )
+
+    # Then projection omits the stale Todo without changing stored checkpoint data.
+    assert state_response.status_code == 200
+    state_values = state_response.json()["values"]
+    assert "todos" not in state_values
+    assert state_values["messages"][0]["content"] == "keep the message"
+    assert history_response.status_code == 200
+    assert "todos" not in history_response.json()[0]["values"]
+    assert checkpoint_values["todos"] == [{"id": "stale-todo", "content": "do not expose"}]
+
+
+@pytest.mark.asyncio
+async def test_thread_state_update_drops_todos_for_disabled_stored_snapshot(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given a stored explicit-off conversation and a state update containing Todos.
+    conversation = await _seed_conversation(db)
+    await _store_conversation_todo_policy(db, conversation, enabled=False)
+    fake_graph = _FakeStateGraph()
+    _patch_state_graph(monkeypatch, conversation, fake_graph)
+    state_url = f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+
+    # When the state update reaches the protocol boundary.
+    response = await client.post(
+        state_url,
+        json={"values": {"messages": [], "todos": [{"id": "todo-dropped", "content": "drop"}]}},
+    )
+
+    # Then both the graph input and response omit Todo state.
+    assert response.status_code == 200
+    assert response.json()["values"] == {"messages": []}
+    assert fake_graph.updates[0][1] == {"messages": []}
+
+
+@pytest.mark.asyncio
+async def test_update_thread_state_redacts_task_secrets_paths_and_memory_without_mutation(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_conversation(db)
+    state_url = f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    secret = "opaque-route-state-secret-42"
+    session_name = "session_0123456789abcdef0123456789abcdef.md"
+    scope = f"/.moldy-offload/{'a' * 32}/{'b' * 32}/{'c' * 32}"
+    history_path = f"{scope}/conversation_history/{session_name}"
+    raw_task = {
+        "id": f"task-{secret}",
+        "name": f"agent-{secret}",
+        "error": f"history={history_path}; credential={secret}",
+        "interrupts": [
+            {"value": secret, "path": history_path},
+            {
+                "method": "custom:moldy.memory_recalled",
+                "params": {
+                    "data": {
+                        "payload": {
+                            "memories": [{"id": "m-task", "content": "private task memory body"}]
+                        }
+                    }
+                },
+            },
+        ],
+        "checkpoint": {"checkpoint_id": f"cp-{secret}", "history": history_path},
+        "state": Send("delegate", {"credential": secret, "history": history_path}),
+    }
+    fake_graph = _FakeStateGraph(updated_tasks=(raw_task,))
+
+    async def fake_resolve_agent_context(
+        _db: AsyncSession,
+        conversation_id: uuid.UUID,
+        _user: Any,
+        *,
+        checkpoint_id: str | None = None,
+    ) -> AgentConfig:
+        assert checkpoint_id is None
+        return AgentConfig(
+            provider="openai",
+            model_name="gpt-4o",
+            api_key=secret,
+            base_url=None,
+            system_prompt="You are helpful.",
+            tools_config=[],
+            thread_id=str(conversation_id),
+            agent_id=str(conversation.agent_id),
+            user_id=str(TEST_USER_ID),
+        )
+
+    async def fake_prepare_agent(
+        cfg: AgentConfig,
+        *,
+        messages_history: list[dict[str, str]],
+        is_trigger_mode: bool = False,
+    ) -> tuple[_FakeStateGraph, list[Any], dict[str, Any]]:
+        assert messages_history == []
+        assert is_trigger_mode is False
+        return fake_graph, [], {"configurable": {"thread_id": cfg.thread_id}}
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state.resolve_agent_context",
+        fake_resolve_agent_context,
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state._prepare_agent",
+        fake_prepare_agent,
+    )
+
+    response = await client.post(
+        state_url,
+        json={
+            "values": {
+                "credential_echo": secret,
+                "event": {
+                    "name": "moldy.memory_recalled",
+                    "payload": {
+                        "id": "memory-route-1",
+                        "content": "private route memory body",
+                        "reason": "private route memory reason",
+                    },
+                },
+                "legacy": {
+                    "event": "memory_saved",
+                    "data": {
+                        "content": "private legacy state body",
+                        "reason": "private legacy state reason",
+                    },
+                },
+                "wire": {
+                    "method": "custom:moldy.memory_recalled",
+                    "params": {
+                        "data": {
+                            "payload": {
+                                "memories": [{"id": "m-wire", "content": "private wire state body"}]
+                            }
+                        }
+                    },
+                },
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    rendered = repr(response.json())
+    assert secret not in rendered
+    assert history_path not in rendered
+    assert "/.moldy-offload/" not in rendered
+    assert "private route memory body" not in rendered
+    assert "private route memory reason" not in rendered
+    assert "private legacy state body" not in rendered
+    assert "private legacy state reason" not in rendered
+    assert "private wire state body" not in rendered
+    assert "private task memory body" not in rendered
+    assert "<redacted>" in rendered
+    assert "history_" in rendered
+
+    assert fake_graph.snapshot.values["credential_echo"] == secret
+    assert fake_graph.snapshot.values["event"]["payload"]["content"] == (
+        "private route memory body"
+    )
+    assert fake_graph.snapshot.values["legacy"]["data"]["content"] == ("private legacy state body")
+    assert (
+        fake_graph.snapshot.values["wire"]["params"]["data"]["payload"]["memories"][0]["content"]
+        == "private wire state body"
+    )
+    assert raw_task["error"] == f"history={history_path}; credential={secret}"
+    assert raw_task["state"].arg == {"credential": secret, "history": history_path}
 
 
 @pytest.mark.asyncio

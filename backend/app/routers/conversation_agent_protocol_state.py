@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.executor import _prepare_agent
-from app.agent_runtime.protocol_redaction import redact_protocol_data
+from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
@@ -22,6 +22,7 @@ from app.routers.conversation_agent_protocol_contracts import (
 )
 from app.routers.conversation_agent_protocol_state_snapshot import (
     collect_state_secret_values,
+    project_todo_policy_values,
     serialize_langchain_message,
 )
 from app.services.conversation_stream_service import resolve_agent_context
@@ -86,7 +87,7 @@ async def update_thread_state_response(
         checkpoint=request.checkpoint,
     )
     snapshot = await agent.aget_state(update_config)
-    values = request.values or {"messages": []}
+    values = project_todo_policy_values(conversation, request.values or {"messages": []})
     await agent.aupdate_state(
         update_config,
         values,
@@ -173,7 +174,7 @@ def _checkpoint_state_response(
         )
     return state_response(
         conversation,
-        values={"messages": messages},
+        values=project_todo_policy_values(conversation, {"messages": messages}),
         checkpoint_id=checkpoint.checkpoint_id,
         checkpoint_by_message_id=checkpoint_by_message_id,
         metadata_source="moldy_checkpointer_history",
@@ -220,12 +221,15 @@ def _snapshot_state_response(
     configurable = _snapshot_configurable(snapshot)
     checkpoint_id = configurable.get("checkpoint_id")
     checkpoint_ns = configurable.get("checkpoint_ns")
-    values = _snapshot_values(snapshot, secret_values=secret_values)
+    values = project_todo_policy_values(
+        conversation,
+        _snapshot_values(snapshot, secret_values=secret_values),
+    )
     return state_response(
         conversation,
         values=values,
         next_nodes=_string_list(getattr(snapshot, "next", None)),
-        tasks=_snapshot_tasks(snapshot),
+        tasks=_snapshot_tasks(snapshot, secret_values=secret_values),
         checkpoint_id=checkpoint_id if isinstance(checkpoint_id, str) else None,
         checkpoint_ns=checkpoint_ns if isinstance(checkpoint_ns, str) else "",
         metadata_source="langgraph_state",
@@ -236,7 +240,7 @@ def _snapshot_state_response(
 def _snapshot_values(
     snapshot: Any, *, secret_values: Sequence[str] | None = None
 ) -> dict[str, Any]:
-    values = redact_protocol_data(
+    values = project_and_redact_protocol_data(
         "values",
         _serialize_value(getattr(snapshot, "values", {}) or {}),
         secret_values=secret_values,
@@ -244,7 +248,11 @@ def _snapshot_values(
     return values if isinstance(values, dict) else {}
 
 
-def _snapshot_tasks(snapshot: Any) -> list[dict[str, Any]]:
+def _snapshot_tasks(
+    snapshot: Any,
+    *,
+    secret_values: Sequence[str] | None = None,
+) -> list[dict[str, Any]]:
     raw_tasks = getattr(snapshot, "tasks", ()) or ()
     tasks: list[dict[str, Any]] = []
     for task in raw_tasks:
@@ -258,7 +266,12 @@ def _snapshot_tasks(snapshot: Any) -> list[dict[str, Any]]:
                 "state": _serialize_value(_task_value(task, "state")),
             }
         )
-    return tasks
+    projected = project_and_redact_protocol_data(
+        "tasks",
+        tasks,
+        secret_values=secret_values,
+    )
+    return projected if isinstance(projected, list) else []
 
 
 def _task_value(task: Any, key: str) -> Any:

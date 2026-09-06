@@ -36,6 +36,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { SearchInput } from '@/components/shared/search-input'
 import { EmptyState } from '@/components/shared/empty-state'
+import { reportClientWarning } from '@/lib/logging/client-logger'
 
 export interface FilterDef {
   /** column id (must match a column.accessorKey/id in the columns array) */
@@ -187,7 +188,8 @@ export function DataTable<T>({
     !getRowId &&
     data.some((row) => (row as unknown as { id?: string }).id === undefined)
   ) {
-    console.warn(
+    reportClientWarning(
+      'DataTable',
       'DataTable: enableRowSelection with id-less rows needs an explicit getRowId — index fallback ids are unstable when the data reorders.',
     )
   }
@@ -245,7 +247,8 @@ export function DataTable<T>({
     process.env.NODE_ENV !== 'production' &&
     (rowSelectionState === undefined) !== (onRowSelectionStateChange === undefined)
   ) {
-    console.warn(
+    reportClientWarning(
+      'DataTable',
       'DataTable: rowSelectionState and onRowSelectionStateChange must be passed together.',
     )
   }

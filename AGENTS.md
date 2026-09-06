@@ -1,5 +1,7 @@
 # Moldy — AI Agent Builder
 
+<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+
 노코드로 AI 에이전트를 만들고, 채팅하고, 스케줄링하는 웹 애플리케이션.
 **ADR-016에 따라 멀티유저 인증 적용 완료** (JWT + super_user). 운영자(super_user)와 일반 사용자 권한이 분리되어 있다.
 
@@ -12,13 +14,14 @@
 | Frontend | Next.js (App Router) + React + TailwindCSS v4 + shadcn/ui | Next 16, React 19 |
 | 상태관리 | TanStack Query (서버), Jotai (클라이언트) | |
 | Backend | FastAPI + SQLAlchemy (async) + Alembic | FastAPI 0.115+, SA 2.0+ |
-| AI Runtime | LangChain 1.x + LangGraph 1.x + **deepagents** + LangSmith | `create_deep_agent` 기반 |
+| AI Runtime | LangChain 1.x + LangGraph 1.x + **deepagents** 0.7.11 + LangSmith | `create_deep_agent` 기반 |
 | 인증 | JWT (HS256) + HttpOnly Cookie + CSRF double-submit | ADR-016 |
 | 암호화 | Cipher V2 — HKDF-SHA256 + AES-256-GCM, multi-key rotation | ADR-009 |
 | DB | PostgreSQL 16 (docker-compose) | |
 | 스케줄러 | APScheduler 3.x | |
 | 패키지 매니저 | uv (backend), pnpm (frontend) | |
 | 런타임 버전 | Python 3.12 (uv 자동 설치), Node 22 (`.node-version`) | |
+| 백엔드 개발 도구 | Ruff `ruff>=0.16.5,<0.17.0` (lock: 0.16.5) | |
 
 ---
 
@@ -74,7 +77,7 @@ natural-mold/
 │   │   │   ├── google_tools.py  # Google Custom Search 도구
 │   │   │   └── google_workspace_tools.py # Gmail, Calendar, Chat Webhook
 │   │   └── seed/                # 시드 데이터 (모델, 템플릿, 시스템 도구, bootstrap_from_env)
-│   ├── alembic/                 # DB 마이그레이션 (M1 ~ M63)
+│   ├── alembic/                 # DB 마이그레이션 (head: m72_runtime_policy_snapshot)
 │   ├── tests/                   # pytest (aiosqlite in-memory)
 │   ├── scripts/                 # 유틸리티 (migrate_mock_to_real_user, google_oauth_setup, ...)
 │   ├── pyproject.toml
@@ -93,7 +96,7 @@ natural-mold/
 │   ├── PRD.md                   # 제품 요구사항 정의서
 │   ├── PRD-screens.md           # 화면별 와이어프레임
 │   ├── ARCHITECTURE.md          # 시스템 아키텍처
-│   ├── design-docs/             # ADR + 설계 스펙 (adr-001 ~ adr-019, 멀티유저 UI spec 등)
+│   ├── design-docs/             # ADR + 설계 스펙 (ADR-001~014, ADR-016~021 등)
 │   ├── tool-setup-guide.md      # 프리빌트 도구 API 키 설정 가이드
 │   └── marketplace-resources-prd.md # Agent/MCP/Skill 마켓플레이스 PRD + 구현 상태
 │
@@ -153,21 +156,23 @@ dev 환경에서 backend가 시작되면 `seed_e2e_user`가 위 계정을 DB에 
 기본 포트(3000/8001/5432)를 다른 프로젝트가 점유 중이면 throwaway 스택으로 격리해 실행한다:
 
 ```bash
-# 1) throwaway Postgres (예: 호스트 5433)
-docker run -d --name moldy-e2e-pg -p 5433:5432 \
-  -e POSTGRES_DB=moldy -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy postgres:16-alpine
+# 1) scripted throwaway Postgres (예: 호스트 5433, DB명은 lane prefix 필수)
+docker run -d --name moldy-e2e-scripted-pg -p 5433:5432 \
+  -e POSTGRES_DB=moldy_e2e_scripted_local -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy postgres:16-alpine
+until docker exec moldy-e2e-scripted-pg pg_isready -U moldy -d moldy_e2e_scripted_local; do sleep 1; done
 
 # 2) 마이그레이션 — throwaway DB에만 직접 실행 (공유/main DB 금지)
-cd backend && DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy' \
-  uv run alembic upgrade head
+(cd backend && \
+  DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
+  uv run alembic upgrade head)
 
 # 3) E2E 실행 (playwright webServer가 backend+frontend 자체 기동)
-cd frontend && \
-E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
-DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy' \
-DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5433/moldy' \
-RATE_LIMIT_ENABLED=false E2E_TEST_HELPERS_ENABLED=true \
-pnpm exec playwright test e2e/<spec>.spec.ts
+(cd frontend && \
+  E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
+  DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
+  DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
+  RATE_LIMIT_ENABLED=false E2E_TEST_HELPERS_ENABLED=true \
+  pnpm exec playwright test e2e/<spec>.spec.ts)
 ```
 
 주의:
@@ -176,6 +181,13 @@ pnpm exec playwright test e2e/<spec>.spec.ts
   (`backend/app/config.py`). LangGraph checkpointer가 이 값을 쓰므로 **둘 다**
   오버라이드해야 한다. 하나만 바꾸면 checkpointer가 기존 DB를 바라보다
   PoolTimeout으로 백엔드 기동에 실패한다.
+- E2E lane은 `DATABASE_URL=postgresql+asyncpg://...`,
+  `DATABASE_URL_SYNC=postgresql://...` 형식을 요구하며 둘은 같은 host/port/database를
+  가리켜야 한다. scripted 기본 포트는 `3100/8101`, live 기본 포트는 `3200/8201`이다.
+  DB 이름은 각각 `moldy_e2e_scripted`/`moldy_e2e_scripted_*`,
+  `moldy_e2e_live`/`moldy_e2e_live_*` 형식이어야 한다. live는
+  `E2E_LLM_BASE_URL`, `E2E_LLM_API_KEY`, `E2E_LLM_MODEL`을 모두 설정한 뒤
+  `pnpm test:e2e:live`로 실행한다.
 - checkpointer의 psycopg `AsyncConnectionPool`은 `CHECKPOINTER_POOL_MIN_SIZE`
   / `CHECKPOINTER_POOL_MAX_SIZE`로 조정된다(기본 1/10). 슬로우 스트리밍 런이나
   평가 런이 동시에 많이 돌면 백엔드 전체가 직렬화되어 무관한 요청까지 timeout
@@ -274,7 +286,7 @@ docker-compose up -d postgres
 cd backend
 cp .env.example .env  # API 키 + ENCRYPTION_KEYS / JWT_SECRET 설정
 uv sync               # 의존성 설치 (.venv 자동 생성)
-uv run alembic upgrade head   # DB 마이그레이션 (M63까지)
+uv run alembic upgrade head   # DB 마이그레이션 (head: m72_runtime_policy_snapshot)
 uv run uvicorn app.main:app --reload --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 # 시작 시 시드 데이터 자동 삽입 (모델, 템플릿, ENV → system credentials bootstrap)
@@ -354,7 +366,7 @@ trigger_executor           → 스케줄 트리거 (invoke 모드, ask_user/HiTL
 - 도구 타입: `builtin:*` (web_search, web_scraper, current_datetime), `registry`(Tool 모델의 definition_key 기반), `mcp`(AgentMcpToolLink)
 - Skill 시스템: 선택된 skill만 `/runtime/<thread_id>/.../skills/` 가상 경로에 노출한다. LLM은 `read_file`로 `SKILL.md`를 먼저 읽고 지시를 따른다.
 - Skill subprocess 실행: **`execute_in_skill` 도구**는 `skill_executor.py`에 있으며 Python 스크립트 allowlist, timeout, output dir, credential env injection, redaction 계약을 사용한다.
-- Generated file 규칙: user-visible 파일은 `/conversations/<thread_id>/...` 아래에 쓰게 유도하고 M59 `conversation_artifacts`로 인덱싱한다.
+- Generated file 규칙: user-visible 파일은 `/conversations/<thread_id>/...` 아래에 쓰게 유도하고 `conversation_artifacts`로 인덱싱한다.
 
 ### Frontend: API Client → TanStack Query → Component
 
@@ -398,7 +410,7 @@ lib/types/      → Backend 스키마와 1:1 대응하는 TS 타입
 | `conversations` | 대화 세션 + active branch checkpoint |
 | `message_events`, `message_event_chunks` | SSE 이벤트 스트림, streaming resume, trace correlation |
 | `message_attachments`, `message_feedback` | 첨부/피드백 |
-| `conversation_artifacts`, `artifact_versions` | 생성 파일 artifact와 버전 (M59) |
+| `conversation_artifacts`, `artifact_versions` | 생성 파일 artifact와 버전 |
 | `share_links` | 대화 공유 링크 (M30/M31) |
 | `token_usages` | 토큰 사용량 추적 |
 | `templates` | 에이전트 템플릿 |
@@ -409,7 +421,7 @@ lib/types/      → Backend 스키마와 1:1 대응하는 TS 타입
 | `audit_events`, `daily_spend_*`, `health_check_history` | 감사, 비용 집계, health history |
 | `system_llm_settings` | Builder/Assistant/Image role별 system model 설정 |
 
-마이그레이션: `backend/alembic/versions/` (Alembic). 최신 head는 M63 (`chat_navigator_indexes`).
+마이그레이션: `backend/alembic/versions/` (Alembic). 최신 head는 `m72_runtime_policy_snapshot`이다.
 
 `is_system` 플래그가 있는 테이블 공통 제약: `CHECK ((is_system = false) OR (user_id IS NULL))`. 시스템 리소스는 user_id가 반드시 NULL.
 
@@ -481,7 +493,7 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 
 - 타입 힌트 필수 (함수 시그니처, 반환 타입)
 - async/await 패턴, `select()` 구문
-- 린터: ruff (line-length=100, target=py312)
+- 린터: Ruff `ruff>=0.16.5,<0.17.0` (lock: 0.16.5, line-length=100, target=py312)
 - 테스트: pytest + aiosqlite in-memory (PostgreSQL 불필요)
 - 새 테이블 추가 시 Alembic 마이그레이션 필수
 - Ownership 검증: enumeration oracle 방지 — 없음(404)과 권한 없음(403) 응답을 외부로 동일하게 통일
@@ -525,6 +537,9 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 | ADR-017 | Marketplace Resources | Skill/MCP/Agent 공유 레이어, Phase 1 Skill |
 | ADR-018 | Relative Storage Path | worktree 간 data 경로 안정화 |
 | ADR-019 | System LLM Settings | 역할별 모델 선택 + base_url 주입 |
+| ADR-020 | Chat Run AG-UI Adapter | LangGraph v3 run/stream protocol adapter |
+| ADR-021 | Value-Based Trace Redaction | 값 기반 trace secret 마스킹 |
+| ADR-022 | Runtime Policy Lifecycle | versioned agent policy, immutable conversation snapshot, run provenance |
 
 각 ADR 본문은 `docs/design-docs/`에 있다.
 
@@ -532,8 +547,8 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 
 ## 현재 상태 요약
 
-- **백엔드**: M63까지 마이그레이션 적용. 멀티유저 인증, marketplace skill publish/install, System LLM settings, schedule productization, Agent API, memory controls, audit events, generated artifacts, credential OAuth states, conversation runs, agent blueprints, chat navigator indexes, subagent runtime, executor split 반영.
+- **백엔드**: Alembic head `m72_runtime_policy_snapshot` 적용. 멀티유저 인증, marketplace skill publish/install, System LLM settings, schedule productization, Agent API, memory controls, audit events, generated artifacts, credential OAuth states, conversation runs, agent blueprints, chat navigation indexes, subagent runtime, executor split, skill usage and feedback, conversation runtime policy snapshot 반영.
 - **프론트엔드**: 멀티유저 로그인/회원가입 UI, MCP 서버 관리, Skill/Credential/Marketplace 관리, 채팅 SSE 스트리밍, artifact preview/right rail/library, memory/settings, Agent API settings, 트리거 스케줄링, Builder 마법사.
-- **다음 단계**: MCP/Agent marketplace 확장, artifact/share E2E 강화, long-running scheduler/worktree 운영 안정화.
+- **다음 단계**: MCP/Agent marketplace 확장, profile/MCP attach/marketplace moderation E2E, long-running scheduler/worktree 운영 안정화.
 - 자세한 태스크 현황은 `TASKS.md` 참조
 - 기능 명세는 `docs/PRD.md` + `docs/PRD-screens.md` 참조

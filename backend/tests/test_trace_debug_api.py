@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -10,7 +11,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.model import Model
 from app.models.user import User
-from app.services import trace_storage
+from app.services import trace_debug_service, trace_storage
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -38,7 +39,9 @@ async def _seed_conversation(*, owner_id: uuid.UUID = TEST_USER_ID) -> uuid.UUID
 
 def _events(msg_id: str, *, failed: bool = False, secret: str | None = None) -> list[dict]:
     tool_args = {"query": "moldy"}
-    input_payload = {"messages": [{"role": "user", "content": "debug this trace"}]}
+    input_payload: dict[str, list[dict[str, str]] | dict[str, str]] = {
+        "messages": [{"role": "user", "content": "debug this trace"}]
+    }
     if secret is not None:
         tool_args["api_key"] = secret
         input_payload["headers"] = {
@@ -81,6 +84,36 @@ def _events(msg_id: str, *, failed: bool = False, secret: str | None = None) -> 
         }
     )
     return body
+
+
+def _legacy_offload_paths() -> tuple[str, str, str, str]:
+    """Return persisted path shapes that must never cross trace egress."""
+    return (
+        "/conversation_history/session_0123456789abcdef0123456789abcdef.md",
+        "/large_tool_results/tool-call.json",
+        (
+            "/.moldy-offload/owner/conversation/actor/"
+            "conversation_history/session_0123456789abcdef0123456789abcdef.md"
+        ),
+        (
+            "/tmp/moldy/.moldy-internal/offload/spill/owner/run/actor/"
+            "large_tool_results/tool-call.json"
+        ),
+    )
+
+
+def _assert_offload_paths_are_projected(rendered: str, paths: tuple[str, str, str, str]) -> None:
+    """Assert public trace data contains only opaque history/spill identifiers."""
+    for path in paths:
+        assert path not in rendered
+    assert "/conversation_history/" not in rendered
+    assert "/large_tool_results/" not in rendered
+    assert "/.moldy-offload/" not in rendered
+    assert "/.moldy-internal/offload/" not in rendered
+    assert "history_" in rendered
+    assert "spill_" not in rendered
+    assert "internal_reference_redacted" in rendered
+    assert "file_path" not in rendered
 
 
 async def _seed_trace(
@@ -230,6 +263,102 @@ async def test_debug_trace_detail_falls_back_to_message_events(
         "messages": [{"role": "user", "content": "debug this trace"}]
     }
     assert any(span["kind"] == "error" for span in body["spans"])
+
+
+@pytest.mark.asyncio
+async def test_debug_trace_detail_projects_legacy_offload_paths_without_mutating_events(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fallback spans apply offload projection before the normal secret redaction."""
+    conv_id = await _seed_conversation()
+    message_id = "legacy-debug-offload"
+    trace_id = "lf-trace-legacy-debug-offload"
+    history_path, spill_path, virtual_path, physical_path = _legacy_offload_paths()
+    configured_secret = "debug-trace-configured-secret-42"
+    events = _events(message_id)
+    events[0]["data"]["input"] = {
+        "history": history_path,
+        "spill": spill_path,
+        "virtual": virtual_path,
+        "physical": physical_path,
+        "note": f"path={history_path}; credential={configured_secret}",
+        "_summarization_event": {"file_path": history_path},
+    }
+    events[0]["data"]["source"] = physical_path
+    events[1]["data"]["args"] = {"result_path": physical_path}
+    events[1]["id"] = f"{history_path}:span-id:{configured_secret}"
+    events[1]["data"]["name"] = f"{history_path}:span-name:{configured_secret}"
+
+    async with TestSession() as db:
+        await trace_storage.record_turn(
+            db,
+            conversation_id=conv_id,
+            events=events,
+            external_trace_provider="langfuse",
+            external_trace_id=trace_id,
+        )
+        await db.commit()
+
+    async def _fake_fetch(*_args, **_kwargs):
+        return [], "langfuse unavailable"
+
+    monkeypatch.setattr("app.services.trace_debug_service.is_langfuse_enabled", lambda: True)
+    monkeypatch.setattr("app.services.trace_debug_service.fetch_langfuse_observations", _fake_fetch)
+
+    with patch(
+        "app.services.chat.secrets.collect_conversation_secret_values",
+        new=AsyncMock(return_value={configured_secret}),
+    ):
+        list_response = await client.get(f"/api/conversations/{conv_id}/debug/traces")
+        response = await client.get(f"/api/conversations/{conv_id}/debug/traces/{trace_id}")
+
+    assert list_response.status_code == 200
+    assert configured_secret not in repr(list_response.json())
+    for path in _legacy_offload_paths():
+        assert path not in repr(list_response.json())
+    assert list_response.json()["traces"][0]["source"] == "internal_reference_redacted"
+    assert list_response.json()["traces"][0]["name"] == "agent.internal_reference_redacted"
+    assert response.status_code == 200
+    assert configured_secret not in repr(response.json())
+    _assert_offload_paths_are_projected(repr(response.json()), _legacy_offload_paths())
+    tool_span = next(span for span in response.json()["spans"] if span["kind"] == "tool")
+    assert "history_" in tool_span["id"]
+    assert "<redacted>" in tool_span["id"]
+    assert "history_" in tool_span["name"]
+    assert "<redacted>" in tool_span["name"]
+
+    async with TestSession() as db:
+        stored = await trace_storage.get_trace_by_msg_id(db, message_id)
+        assert stored is not None
+        assert stored.events == events
+
+
+def test_debug_observation_spans_project_legacy_offload_paths_without_mutating_input() -> None:
+    """Langfuse observation projection copies the source row before trace egress."""
+    history_path, spill_path, virtual_path, physical_path = _legacy_offload_paths()
+    rows = [
+        {
+            "id": "legacy-offload-observation",
+            "input": {
+                "history": history_path,
+                "spill": spill_path,
+                "virtual": virtual_path,
+                "physical": physical_path,
+                "_summarization_event": {"file_path": history_path},
+            },
+            "output": physical_path,
+            "metadata": {"source_path": spill_path},
+        }
+    ]
+
+    spans = trace_debug_service.spans_from_observations(rows)
+
+    _assert_offload_paths_are_projected(
+        repr([span.model_dump() for span in spans]),
+        _legacy_offload_paths(),
+    )
+    assert rows[0]["input"]["_summarization_event"]["file_path"] == history_path
 
 
 @pytest.mark.asyncio

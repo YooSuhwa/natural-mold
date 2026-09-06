@@ -43,16 +43,30 @@ async def init_checkpointer(
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from psycopg_pool import AsyncConnectionPool
 
+    if _pool is not None or _checkpointer is not None:
+        raise RuntimeError("Checkpointer already initialized")
     pool_size_kwargs = _pool_size_kwargs(min_size=min_size, max_size=max_size)
-    _pool = AsyncConnectionPool(
+    candidate_pool: AsyncConnectionPool = AsyncConnectionPool(
         conninfo=conn_string,
         open=False,
-        **pool_size_kwargs,
+        min_size=pool_size_kwargs["min_size"],
+        max_size=pool_size_kwargs["max_size"],
         kwargs={"autocommit": True, "prepare_threshold": 0},
     )
-    await _pool.open()
-    _checkpointer = AsyncPostgresSaver(conn=_pool)  # type: ignore[arg-type]  # Pool도 Conn 인터페이스 호환
-    await _checkpointer.setup()
+    try:
+        await candidate_pool.open()
+        candidate_checkpointer = AsyncPostgresSaver(
+            conn=candidate_pool  # type: ignore[arg-type]  # Pool도 Conn 인터페이스 호환
+        )
+        await candidate_checkpointer.setup()
+    except BaseException:  # noqa: BLE001 - ownership boundary must close on cancellation too
+        try:
+            await candidate_pool.close()
+        except Exception:  # noqa: BLE001 - preserve the original setup/open failure
+            logger.exception("Failed to close unsuccessful checkpointer candidate")
+        raise
+    _pool = candidate_pool
+    _checkpointer = candidate_checkpointer
     logger.info(
         "Checkpointer initialized (PostgreSQL, pool_min=%s, pool_max=%s)",
         pool_size_kwargs["min_size"],
@@ -63,8 +77,9 @@ async def init_checkpointer(
 async def shutdown_checkpointer() -> None:
     """앱 종료 시 connection pool 정리. lifespan에서 호출."""
     global _pool, _checkpointer
-    if _pool:
-        await _pool.close()
+    pool = _pool
+    if pool:
+        await pool.close()
     _pool = None
     _checkpointer = None
     logger.info("Checkpointer shut down")

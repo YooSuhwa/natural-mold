@@ -13,7 +13,10 @@ from app.agent_runtime.identity import (
     make_agent_runtime_name,
 )
 from app.agent_runtime.run_secrets import collect_cfg_secret_values
-from app.agent_runtime.runtime_component_builder import _prepare_runtime_components
+from app.agent_runtime.runtime_component_builder import (
+    _MOLDY_ACTOR_ID_KEY,
+    _prepare_runtime_components,
+)
 from app.agent_runtime.runtime_config import AgentConfig
 from app.models.agent import Agent
 from app.services import chat_service
@@ -114,6 +117,7 @@ async def build_subagents_config(
             system_prompt=_subagent_system_prompt(child),
             tools_config=child_tools_config,
             thread_id=parent_cfg.thread_id,
+            runtime_policy=parent_cfg.runtime_policy,
             model_params=child.model_params,
             middleware_configs=child.middleware_configs,
             agent_skills=chat_service.build_agent_skills(child) or None,
@@ -144,6 +148,7 @@ async def build_subagents_config(
             is_trigger_mode=is_trigger_mode,
             include_ask_user=False,
             include_agent_memory_file=False,
+            scope_offload_backend=False,
         )
 
         spec: dict[str, Any] = {
@@ -152,6 +157,7 @@ async def build_subagents_config(
             "system_prompt": components.system_prompt,
             "model": components.model,
             "tools": components.tools,
+            _MOLDY_ACTOR_ID_KEY: child_identity.agent_id,
         }
         if components.middleware:
             spec["middleware"] = components.middleware

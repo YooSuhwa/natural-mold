@@ -168,13 +168,20 @@ def state_response(
     }
 
 
-def command_error(command: AgentCommandRequest, *, code: str, message: str) -> JSONResponse:
+def command_error(
+    command: AgentCommandRequest,
+    *,
+    code: str,
+    message: str,
+    status_code: int = 200,
+) -> JSONResponse:
     return JSONResponse(
         {
             "type": "error",
             "id": command.id,
             "error": {"code": code, "message": message},
         },
+        status_code=status_code,
         headers=protocol_headers(),
     )
 

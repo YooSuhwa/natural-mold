@@ -45,6 +45,11 @@ async def close_session_shielded(session: AsyncSession) -> None:
         await session.close()
 
 
+async def shutdown_database() -> None:
+    """Dispose the application engine after all DB-backed owners stop."""
+    await engine.dispose()
+
+
 def is_postgres(db: AsyncSession) -> bool:
     """True when the session's engine is Postgres.
 

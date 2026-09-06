@@ -13,6 +13,7 @@ from app.agent_runtime.skill_builder.agent import (
     SkillBuilderChatModel,
     build_skill_builder_chat_model,
 )
+from app.config import settings
 from app.models.skill import Skill
 from app.schemas.skill_builder import JsonValue
 from app.services.skill_evaluation_file_adapter import (
@@ -113,6 +114,14 @@ def _skill_payload(skill: Skill) -> JsonObject:
 def _skill_file_previews(skill: Skill) -> list[JsonObject]:
     if not skill.storage_path:
         return []
+    stored_path = Path(skill.storage_path)
+    lexical_root = (
+        stored_path
+        if stored_path.is_absolute()
+        else Path(settings.data_root).resolve() / stored_path
+    )
+    if lexical_root.is_symlink():
+        return []
     root = resolve_data_path(skill.storage_path)
     paths = _preview_paths(root)
     previews: list[JsonObject] = []
@@ -127,17 +136,32 @@ def _skill_file_previews(skill: Skill) -> list[JsonObject]:
 
 
 def _preview_paths(root: Path) -> list[Path]:
+    if root.is_symlink():
+        return []
     if root.is_file():
         return [root]
+    if not root.is_dir():
+        return []
+    try:
+        resolved_root = root.resolve(strict=True)
+    except OSError:
+        return []
+
     skill_md = root / "SKILL.md"
-    paths = [skill_md] if skill_md.is_file() else []
-    paths.extend(
-        path
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
-        and path != skill_md
-        and not any(part.startswith(".") for part in path.parts)
-    )
+    paths: list[Path] = []
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if path.is_symlink() or any(part.startswith(".") for part in relative.parts):
+            continue
+        try:
+            resolved_path = path.resolve(strict=True)
+        except OSError:
+            continue
+        if resolved_path.is_file() and resolved_path.is_relative_to(resolved_root):
+            paths.append(path)
+    if skill_md in paths:
+        paths.remove(skill_md)
+        paths.insert(0, skill_md)
     return paths
 
 

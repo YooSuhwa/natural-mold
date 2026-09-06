@@ -5,8 +5,9 @@ import { toast } from 'sonner'
 import { ImagePlusIcon, RefreshCwIcon, Loader2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { RuntimePolicySettings } from '@/components/agent/runtime-policy-settings'
 import { useGenerateAgentImage } from '@/lib/hooks/use-agents'
-import type { AgentIdentityMode } from '@/lib/types'
+import type { AgentIdentityMode, RuntimePolicyV1 } from '@/lib/types'
 import { AgentMemorySettingsSection } from './agent-memory-settings-section'
 import { IdentitySettingsSection } from './identity-settings-section'
 
@@ -16,6 +17,9 @@ interface SettingsPanelProps {
   name: string
   identityMode: AgentIdentityMode
   onIdentityModeChange: (mode: AgentIdentityMode) => void
+  runtimePolicy: RuntimePolicyV1 | null
+  onRuntimePolicyChange?: (value: RuntimePolicyV1 | null) => void
+  modelContextWindow: number | null
 }
 
 export function SettingsPanel({
@@ -24,6 +28,9 @@ export function SettingsPanel({
   name,
   identityMode,
   onIdentityModeChange,
+  runtimePolicy,
+  onRuntimePolicyChange,
+  modelContextWindow,
 }: SettingsPanelProps) {
   const t = useTranslations('agent.settings')
   const tc = useTranslations('common')
@@ -88,6 +95,14 @@ export function SettingsPanel({
         identityMode={identityMode}
         onIdentityModeChange={onIdentityModeChange}
       />
+      {onRuntimePolicyChange ? (
+        <RuntimePolicySettings
+          value={runtimePolicy}
+          onValueChange={onRuntimePolicyChange}
+          contextWindow={modelContextWindow}
+          surface="existing-agent"
+        />
+      ) : null}
       <AgentMemorySettingsSection agentId={agentId} />
     </div>
   )

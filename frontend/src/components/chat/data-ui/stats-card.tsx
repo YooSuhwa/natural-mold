@@ -3,6 +3,7 @@
 import { ArrowDownIcon, ArrowUpIcon } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { formatDisplayNumber } from '@/lib/utils/display-format'
 
 export interface StatItem {
   label: string
@@ -16,7 +17,7 @@ export interface StatsCardProps {
 }
 
 function formatValue(value: string | number, unit?: string): string {
-  const base = typeof value === 'number' ? value.toLocaleString() : value
+  const base = typeof value === 'number' ? formatDisplayNumber(value) : value
   return unit ? `${base}${unit}` : base
 }
 
@@ -41,7 +42,7 @@ export function StatsCard({ items }: StatsCardProps) {
             <span
               className={cn(
                 'inline-flex items-center gap-0.5 text-xs tabular-nums',
-                item.delta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive',
+                item.delta >= 0 ? 'moldy-status-success moldy-status-text' : 'text-destructive',
               )}
             >
               {item.delta >= 0 ? (

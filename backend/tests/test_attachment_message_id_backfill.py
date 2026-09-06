@@ -14,12 +14,14 @@ output is echoed on the correct user bubble.
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.offload_storage_types import OffloadKind, logical_offload_id
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message_attachment import MessageAttachment
@@ -102,9 +104,7 @@ async def test_resolver_id_matches_read_path_and_echoes_on_last_user_bubble(
     db.add(att)
     await db.flush()
 
-    responses = await list_messages_from_checkpointer(
-        db, conv, user_id=TEST_USER_ID, tree=tree
-    )
+    responses = await list_messages_from_checkpointer(db, conv, user_id=TEST_USER_ID, tree=tree)
     user_msgs = [r for r in responses if r.role == "user"]
     last_user = user_msgs[-1]
     assert str(last_user.id) == resolved
@@ -137,6 +137,38 @@ async def test_share_view_excludes_attachments(db: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_share_message_read_projects_history_then_masks_configured_secret(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shared message-read seam projects paths before masking known values."""
+    conv = await _seed_conversation(db)
+    secret = "opaque-message-secret-42"
+    history_path = "/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    raw_content = f"Summary at {history_path}; credential={secret}"
+    tree = _tree(
+        [
+            HumanMessage(content="ordinary message", id=str(uuid.uuid4())),
+            AIMessage(content=raw_content, id=str(uuid.uuid4())),
+        ]
+    )
+    monkeypatch.setattr(
+        "app.services.chat.messages.collect_conversation_secret_values",
+        AsyncMock(return_value={secret}),
+    )
+
+    responses = await list_messages_from_checkpointer(db, conv, user_id=None, tree=tree)
+
+    assert responses[0].content == "ordinary message"
+    assert responses[1].content == (
+        f"Summary at {logical_offload_id(OffloadKind.HISTORY, history_path)}; credential=<redacted>"
+    )
+    assert history_path not in responses[1].content
+    assert secret not in responses[1].content
+    assert tree.nodes[1].message.content == raw_content
+
+
+@pytest.mark.asyncio
 async def test_resolver_matches_read_path_for_idless_human(db: AsyncSession) -> None:
     """When the checkpoint message has no id, both sides fall back to the
     same ``uuid5(conversation_id, idx)`` — so idx alignment must match too."""
@@ -150,9 +182,7 @@ async def test_resolver_matches_read_path_for_idless_human(db: AsyncSession) -> 
     )
 
     resolved = await resolve_turn_user_message_id(db, conv, tree=tree)
-    responses = await list_messages_from_checkpointer(
-        db, conv, user_id=TEST_USER_ID, tree=tree
-    )
+    responses = await list_messages_from_checkpointer(db, conv, user_id=TEST_USER_ID, tree=tree)
     last_user = [r for r in responses if r.role == "user"][-1]
     assert resolved == str(last_user.id)
     # Derived deterministically from (conversation_id, idx=0), not a random uuid.
@@ -180,8 +210,7 @@ async def test_link_attachments_only_stamps_null_rows(db: AsyncSession) -> None:
     assert updated == 1
 
     rows = {
-        r.id: r.message_id
-        for r in (await db.execute(select(MessageAttachment))).scalars().all()
+        r.id: r.message_id for r in (await db.execute(select(MessageAttachment))).scalars().all()
     }
     assert rows[fresh.id] == "this-turn-msg"
     # An already-linked row (e.g. a stale orphan from a failed finalize) is

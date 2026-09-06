@@ -1,20 +1,56 @@
-import { test, expect } from './fixtures'
+import { expect, isRecord, loginApi, test } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '../src/lib/auth/session-flags'
 
 const BACKEND_PORT = process.env.E2E_BACKEND_PORT ?? '8001'
 const API_BASE = process.env.E2E_API_BASE_URL ?? `http://localhost:${BACKEND_PORT}`
-const E2E_EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
-const E2E_PASSWORD =
-  process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
+const SCRIPTED_PROVIDER = 'e2e_scripted'
+const SCRIPTED_MODEL_NAME = 'document-artifact-scripted'
 
-async function loginApi(request: APIRequestContext): Promise<Record<string, string>> {
-  const res = await request.post(`${API_BASE}/api/auth/login`, {
-    data: { email: E2E_EMAIL, password: E2E_PASSWORD },
+async function getScriptedModelId(request: APIRequestContext): Promise<string> {
+  const modelsRes = await request.get(`${API_BASE}/api/models`)
+  expect(modelsRes.ok(), `GET ${API_BASE}/api/models → ${modelsRes.status()}`).toBeTruthy()
+
+  const body: unknown = await modelsRes.json()
+  if (!Array.isArray(body)) {
+    throw new Error('E2E model seed response must be an array')
+  }
+
+  const scriptedModel = body.find((item: unknown) => {
+    if (!isRecord(item)) return false
+    return (
+      item.provider === SCRIPTED_PROVIDER &&
+      item.model_name === SCRIPTED_MODEL_NAME &&
+      typeof item.id === 'string'
+    )
   })
-  expect(res.ok()).toBeTruthy()
-  const body = (await res.json()) as { csrf_token: string }
-  return { 'X-CSRF-Token': body.csrf_token }
+  if (!isRecord(scriptedModel) || typeof scriptedModel.id !== 'string') {
+    throw new Error(
+      `Required E2E seed model is missing: ${SCRIPTED_PROVIDER}/${SCRIPTED_MODEL_NAME}`,
+    )
+  }
+  return scriptedModel.id
 }
+
+async function getEntityId(responseBody: unknown, resource: string): Promise<string> {
+  if (!isRecord(responseBody) || typeof responseBody.id !== 'string') {
+    throw new Error(`E2E ${resource} response did not include an id`)
+  }
+  return responseBody.id
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(
+    ({ onboardingDismissedFlag, superUserWelcomedFlag }) => {
+      window.sessionStorage.setItem(onboardingDismissedFlag, '1')
+      window.sessionStorage.setItem(superUserWelcomedFlag, '1')
+    },
+    {
+      onboardingDismissedFlag: ONBOARDING_DISMISSED_FLAG,
+      superUserWelcomedFlag: SUPER_USER_WELCOMED_FLAG,
+    },
+  )
+})
 
 // ---------------------------------------------------------------------------
 // Smoke Test - Static Pages
@@ -82,6 +118,7 @@ test.describe('Smoke Test - Static Pages', () => {
     await page.waitForLoadState('domcontentloaded')
 
     await expect(page.getByRole('heading', { name: '모델' })).toBeVisible()
+    await expect(page.getByTestId('show-hidden')).toBeVisible()
     await expect(page.getByRole('button', { name: /새 모델|모델 추가/ }).first()).toBeVisible()
 
     expect(errors.console).toEqual([])
@@ -113,12 +150,7 @@ test.describe('Smoke Test - Dynamic Pages', () => {
   test.beforeAll(async ({ request }) => {
     csrfHeaders = await loginApi(request)
 
-    // Fetch available models
-    const modelsRes = await request.get(`${API_BASE}/api/models`)
-    expect(modelsRes.ok()).toBeTruthy()
-    const models = await modelsRes.json()
-    expect(models.length).toBeGreaterThan(0)
-    const modelId = models[0].id
+    const modelId = await getScriptedModelId(request)
 
     // Create test agent
     const agentRes = await request.post(`${API_BASE}/api/agents`, {
@@ -130,8 +162,7 @@ test.describe('Smoke Test - Dynamic Pages', () => {
       },
     })
     expect(agentRes.ok()).toBeTruthy()
-    const agent = await agentRes.json()
-    agentId = agent.id
+    agentId = await getEntityId(await agentRes.json(), 'agent')
 
     // Create conversation
     const convRes = await request.post(`${API_BASE}/api/agents/${agentId}/conversations`, {
@@ -139,15 +170,16 @@ test.describe('Smoke Test - Dynamic Pages', () => {
       data: {},
     })
     expect(convRes.ok()).toBeTruthy()
-    const conversation = await convRes.json()
-    conversationId = conversation.id
+    conversationId = await getEntityId(await convRes.json(), 'conversation')
   })
 
   test.afterAll(async ({ request }) => {
     if (agentId) {
-      await request.delete(`${API_BASE}/api/agents/${agentId}`, {
-        headers: csrfHeaders ?? (await loginApi(request)),
+      const cleanupHeaders = await loginApi(request)
+      const deleteRes = await request.delete(`${API_BASE}/api/agents/${agentId}`, {
+        headers: cleanupHeaders,
       })
+      expect(deleteRes.ok(), `DELETE agent ${agentId} → ${deleteRes.status()}`).toBeTruthy()
     }
   })
 
@@ -222,32 +254,33 @@ test.describe('Smoke Test - Chat Navigator', () => {
   test.beforeAll(async ({ request }) => {
     csrfHeaders = await loginApi(request)
 
-    const modelsRes = await request.get(`${API_BASE}/api/models`)
-    const models = await modelsRes.json()
+    const modelId = await getScriptedModelId(request)
     const agentRes = await request.post(`${API_BASE}/api/agents`, {
       headers: csrfHeaders,
       data: {
         name: 'E2E Navigator Smoke Agent',
         system_prompt: 'Test agent for chat navigator smoke tests.',
-        model_id: models[0].id,
+        model_id: modelId,
       },
     })
-    const agent = await agentRes.json()
-    agentId = agent.id
+    expect(agentRes.ok()).toBeTruthy()
+    agentId = await getEntityId(await agentRes.json(), 'agent')
 
     const convRes = await request.post(`${API_BASE}/api/agents/${agentId}/conversations`, {
       headers: csrfHeaders,
       data: { title: 'Navigator smoke session' },
     })
-    const conversation = await convRes.json()
-    conversationId = conversation.id
+    expect(convRes.ok()).toBeTruthy()
+    conversationId = await getEntityId(await convRes.json(), 'conversation')
   })
 
   test.afterAll(async ({ request }) => {
     if (agentId) {
-      await request.delete(`${API_BASE}/api/agents/${agentId}`, {
-        headers: csrfHeaders ?? (await loginApi(request)),
+      const cleanupHeaders = await loginApi(request)
+      const deleteRes = await request.delete(`${API_BASE}/api/agents/${agentId}`, {
+        headers: cleanupHeaders,
       })
+      expect(deleteRes.ok(), `DELETE agent ${agentId} → ${deleteRes.status()}`).toBeTruthy()
     }
   })
 
@@ -295,6 +328,7 @@ test.describe('Smoke Test - Chat Navigator', () => {
   test('agent search finds the seeded conversation', async ({ page, errors }) => {
     await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
     await page.waitForLoadState('domcontentloaded')
+    await expect(page.getByText('E2E Navigator Smoke Agent').first()).toBeVisible()
 
     await page.getByRole('button', { name: '에이전트 검색' }).click()
     await page
@@ -322,31 +356,33 @@ test.describe('Smoke Test - Dialogs', () => {
   test.beforeAll(async ({ request }) => {
     csrfHeaders = await loginApi(request)
 
-    const modelsRes = await request.get(`${API_BASE}/api/models`)
-    const models = await modelsRes.json()
+    const modelId = await getScriptedModelId(request)
     const agentRes = await request.post(`${API_BASE}/api/agents`, {
       headers: csrfHeaders,
       data: {
         name: 'E2E Dialog Agent',
         system_prompt: 'Test agent for dialog smoke tests.',
-        model_id: models[0].id,
+        model_id: modelId,
       },
     })
-    const agent = await agentRes.json()
-    agentId = agent.id
+    expect(agentRes.ok()).toBeTruthy()
+    agentId = await getEntityId(await agentRes.json(), 'agent')
   })
 
   test.afterAll(async ({ request }) => {
     if (agentId) {
-      await request.delete(`${API_BASE}/api/agents/${agentId}`, {
-        headers: csrfHeaders ?? (await loginApi(request)),
+      const cleanupHeaders = await loginApi(request)
+      const deleteRes = await request.delete(`${API_BASE}/api/agents/${agentId}`, {
+        headers: cleanupHeaders,
       })
+      expect(deleteRes.ok(), `DELETE agent ${agentId} → ${deleteRes.status()}`).toBeTruthy()
     }
   })
 
   test('models page - "모델 추가" dialog opens', async ({ page, errors }) => {
     await page.goto('/models')
     await page.waitForLoadState('domcontentloaded')
+    await expect(page.getByTestId('show-hidden')).toBeVisible()
 
     await page.getByRole('button', { name: '새 모델' }).click()
     // Verify dialog content
@@ -385,15 +421,13 @@ test.describe('Smoke Test - Dialogs', () => {
     await page.goto('/tools')
     await page.waitForLoadState('domcontentloaded')
 
-    // Find a prebuilt tool with a key config button.
-    const authButton = page.getByRole('button', { name: /키 설정|개별 키 설정|키 변경/ }).first()
+    // Find a prebuilt tool with a key config button. The seeded catalog may not
+    // contain one; that is a valid no-credential state, not a skipped test.
+    const authButtons = page.getByRole('button', { name: /키 설정|개별 키 설정|키 변경/ })
 
-    const hasAuthButton = await authButton
-      .waitFor({ state: 'visible', timeout: 5_000 })
-      .then(() => true)
-      .catch(() => false)
-
-    if (hasAuthButton) {
+    if ((await authButtons.count()) > 0) {
+      const authButton = authButtons.first()
+      await expect(authButton).toBeVisible()
       // Normal click opens both the Card's detail Sheet and the auth Dialog.
       await authButton.click()
 
@@ -433,20 +467,25 @@ test.describe('Smoke Test - Dialogs', () => {
       // Close any open overlays
       await page.keyboard.press('Escape')
     } else {
-      test.skip(true, 'Credential action button is unavailable for this seeded tool card')
+      // Verify the page itself is healthy when no credential-backed tool is
+      // seeded for this lane.
+      await expect(page.getByRole('heading', { name: '도구' })).toBeVisible()
     }
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
   })
 
-  // "AI로 수정하기" 다이얼로그는 AssistantPanel이 settings 우측 패널로 통합되면서
-  // 별도 트리거 버튼이 사라짐. 패널 자체의 동작은 manual QA 또는 후속 e2e로.
-  test('settings page - "AI로 수정하기" dialog opens', async () => {
-    test.skip(
-      true,
-      'AssistantPanel is now integrated into the settings right rail; cover with a focused follow-up E2E',
-    )
+  test('settings page - Fix right rail renders', async ({ page, errors }) => {
+    await page.goto(`/agents/${agentId}/settings`)
+    await page.waitForLoadState('domcontentloaded')
+
+    await expect(page.getByRole('tab', { name: 'Fix 에이전트' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'E2E Dialog Agent 수정' })).toBeVisible()
+    await expect(page.getByText('자연어로 에이전트를 수정하세요')).toBeVisible()
+
+    expect(errors.console).toEqual([])
+    expect(errors.network).toEqual([])
   })
 
   test('settings page - "에이전트 삭제" confirmation dialog opens', async ({ page, errors }) => {

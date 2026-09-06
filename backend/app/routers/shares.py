@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.message_utils import parse_msg_id
+from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.error_codes import share_not_found
@@ -31,7 +32,7 @@ from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
 from app.rate_limit import limiter
 from app.schemas.artifact import ArtifactSummary
-from app.schemas.conversation import MessageResponse, MessagesEnvelope
+from app.schemas.conversation import MessageResponse, MessagesEnvelope, TurnTraceResponse
 from app.schemas.share import (
     SharedAgentBrief,
     SharedConversationView,
@@ -50,6 +51,7 @@ from app.services.artifact_service import (
     ArtifactNotFoundError,
     is_text_preview_artifact,
 )
+from app.services.chat import secrets as chat_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -103,17 +105,38 @@ def _is_trace_visible_in_share(
     return not candidate_message_ids.isdisjoint(visible_message_ids)
 
 
+def _public_share_trace(
+    trace: MessageEvent,
+    *,
+    secret_values: tuple[str, ...] | None = None,
+) -> TurnTraceResponse:
+    """Copy a persisted trace into its anonymous-public representation."""
+    return TurnTraceResponse(
+        assistant_msg_id=trace.assistant_msg_id,
+        events=project_and_redact_protocol_data(
+            "share_traces",
+            trace.events or [],
+            secret_values=secret_values,
+        ),
+        last_event_id=trace.last_event_id,
+        linked_message_ids=trace.linked_message_ids,
+        created_at=trace.created_at,
+        completed_at=trace.completed_at,
+    )
+
+
 def _filter_public_share_traces(
     traces: list[MessageEvent],
     *,
     conversation_id: uuid.UUID,
     messages: list[MessageResponse],
-) -> list[MessageEvent]:
+    secret_values: tuple[str, ...] | None = None,
+) -> list[TurnTraceResponse]:
     visible_message_ids = {str(message.id) for message in messages}
     if not visible_message_ids:
         return []
     return [
-        trace
+        _public_share_trace(trace, secret_values=secret_values)
         for trace in traces
         if _is_trace_visible_in_share(
             trace,
@@ -284,12 +307,14 @@ async def get_public_share(
         return cached
 
     messages = await chat_service.list_messages_from_checkpointer(db, conversation, user_id=None)
+    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
     # W6: turn별 SSE event trace를 함께 노출 → 공개 페이지에서 도구/Skill
     # 칩 렌더용. trace가 없는(W5 이전에 만든) 대화는 빈 list로 응답.
     traces = _filter_public_share_traces(
         await trace_storage.get_traces_for_conversation(db, conversation.id),
         conversation_id=conversation.id,
         messages=messages,
+        secret_values=secrets,
     )
 
     snapshot = SharedConversationView(
@@ -306,7 +331,7 @@ async def get_public_share(
             ),
         ),
         messages=messages,
-        traces=traces,  # type: ignore[arg-type]  # ORM rows → Pydantic via from_attributes
+        traces=traces,
         shared_at=link.created_at,
     )
     share_cache.put_snapshot(share_token, checkpoint_id, snapshot)

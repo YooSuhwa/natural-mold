@@ -36,6 +36,8 @@ vi.mock('react', async () => {
 })
 
 const mockUseAgent = vi.fn()
+const mockUseModels = vi.fn()
+const mockRefetchAgent = vi.fn()
 
 const mockUpdateAgent = vi.fn().mockResolvedValue({})
 const mockDeleteAgent = vi.fn().mockResolvedValue({})
@@ -49,6 +51,10 @@ vi.mock('@/lib/hooks/use-agents', () => ({
   useDeleteAgent: () => ({ mutateAsync: mockDeleteAgent, isPending: false }),
   useToggleFavorite: () => ({ mutate: vi.fn() }),
   useGenerateAgentImage: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+
+vi.mock('@/lib/hooks/use-models', () => ({
+  useModels: () => mockUseModels(),
 }))
 
 const mockUseTools = vi.fn()
@@ -100,8 +106,18 @@ const mockUseTriggers = vi.fn()
 
 // Mock ModelSelect to avoid complex providers dependency
 vi.mock('@/components/model/model-select', () => ({
-  ModelSelect: ({ value, onValueChange }: { value: string; onValueChange: (v: string) => void }) => (
-    <select data-testid="model-select" value={value} onChange={(e) => onValueChange(e.target.value)}>
+  ModelSelect: ({
+    value,
+    onValueChange,
+  }: {
+    value: string
+    onValueChange: (v: string) => void
+  }) => (
+    <select
+      data-testid="model-select"
+      value={value}
+      onChange={(e) => onValueChange(e.target.value)}
+    >
       <option value="model-1">GPT-4o</option>
       <option value="model-2">Claude Sonnet 4</option>
     </select>
@@ -191,7 +207,14 @@ const fullAgent = {
 describe('AgentSettingsPage', () => {
   beforeEach(() => {
     mockUpdateAgent.mockClear()
-    mockUseAgent.mockReturnValue({ data: undefined, isLoading: false })
+    mockRefetchAgent.mockClear()
+    mockUseAgent.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchAgent,
+    })
+    mockUseModels.mockReturnValue({ data: [] })
     mockUseTools.mockReturnValue({ data: undefined })
     mockUseAllMcpTools.mockReturnValue({ data: [], isLoading: false })
     mockUseTriggers.mockReturnValue({ data: undefined })
@@ -206,6 +229,31 @@ describe('AgentSettingsPage', () => {
     )
     const skeletons = container.querySelectorAll("[data-slot='skeleton']")
     expect(skeletons.length).toBeGreaterThan(0)
+  })
+
+  it('keeps the editor hidden behind one generic error surface and retries the agent query', async () => {
+    mockUseAgent.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch: mockRefetchAgent,
+    })
+    const user = userEvent.setup()
+
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('문제가 발생했습니다')
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '에이전트를 찾을 수 없거나 접근 권한이 없습니다.',
+    )
+    expect(screen.queryByRole('tab', { name: '폼' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(mockRefetchAgent).toHaveBeenCalledOnce()
   })
 
   it('renders header with name + description inputs filled from agent data', () => {
@@ -269,6 +317,9 @@ describe('AgentSettingsPage', () => {
         name="Test Agent"
         identityMode="per_user"
         onIdentityModeChange={vi.fn()}
+        runtimePolicy={null}
+        onRuntimePolicyChange={vi.fn()}
+        modelContextWindow={null}
       />,
     )
 
@@ -289,10 +340,8 @@ describe('AgentSettingsPage', () => {
     const nameInput = screen.getByDisplayValue('Test Agent')
     await user.clear(nameInput)
     await user.type(nameInput, 'Updated Agent')
-    await user.click(screen.getByRole('button', { name: '저장' }))
-    expect(mockUpdateAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Updated Agent' }),
-    )
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: '저장' }))
+    expect(mockUpdateAgent).toHaveBeenCalledWith(expect.objectContaining({ name: 'Updated Agent' }))
   })
 
   it('calls updateAgent when only MCP tool selection changes', async () => {
@@ -344,6 +393,187 @@ describe('AgentSettingsPage', () => {
     expect(mockUpdateAgent).toHaveBeenCalledWith(
       expect.objectContaining({ mcp_tool_ids: ['mcp-tool-1'] }),
     )
+  })
+
+  it('uses the draft-owned runtime policy with the selected model context window', async () => {
+    mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
+    mockUseModels.mockReturnValue({ data: [{ id: 'model-1', context_window: 128000 }] })
+    mockUseTools.mockReturnValue({ data: mockToolList })
+    mockUseTriggers.mockReturnValue({ data: [] })
+    const user = userEvent.setup()
+
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+
+    await user.click(screen.getByRole('tab', { name: '설정' }))
+
+    expect(screen.getByText('권장 설정')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        '이미 실행된 대화에는 영향을 주지 않습니다. 아직 실행하지 않은 대화와 새 대화에는 변경된 설정이 적용됩니다.',
+      ),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '직접 설정' }))
+    await user.click(screen.getByRole('switch', { name: '할 일 목록 사용' }))
+    await user.click(screen.getByRole('button', { name: '검토만' }))
+    const balancedButton = screen.getByRole('button', { name: '균형' })
+    expect(balancedButton).toBeEnabled()
+    await user.click(balancedButton)
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: '저장' }))
+
+    expect(mockUpdateAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtime_policy: {
+          version: 1,
+          filesystem: { mode: 'inspect' },
+          todo: { enabled: false },
+          summarization: { mode: 'preset', preset: 'balanced_context_v1' },
+        },
+      }),
+    )
+  })
+
+  it('restores the recommended policy through the same settings-page draft', async () => {
+    const storedPolicy = {
+      version: 1 as const,
+      filesystem: { mode: 'artifact_write' as const },
+      todo: { enabled: false },
+      summarization: { mode: 'auto' as const },
+    }
+    mockUseAgent.mockReturnValue({
+      data: { ...fullAgent, runtime_policy: storedPolicy },
+      isLoading: false,
+    })
+    mockUseTools.mockReturnValue({ data: mockToolList })
+    mockUseTriggers.mockReturnValue({ data: [] })
+    const user = userEvent.setup()
+
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+
+    await user.click(screen.getByRole('tab', { name: '설정' }))
+    expect(screen.getByText('직접 설정', { selector: '[data-slot="badge"]' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '권장 설정 사용' }))
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: '저장' }))
+
+    expect(mockUpdateAgent).toHaveBeenCalledWith(expect.objectContaining({ runtime_policy: null }))
+  })
+
+  it('uses the current agent model context window when the catalog is unavailable', async () => {
+    mockUseAgent.mockReturnValue({
+      data: {
+        ...fullAgent,
+        model: { id: 'model-1', display_name: 'GPT-4o', context_window: 64_000 },
+      },
+      isLoading: false,
+    })
+    mockUseModels.mockReturnValue({ data: undefined })
+    mockUseTools.mockReturnValue({ data: mockToolList })
+    mockUseTriggers.mockReturnValue({ data: [] })
+    const user = userEvent.setup()
+
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+
+    await user.click(screen.getByRole('tab', { name: '설정' }))
+    await user.click(screen.getByRole('button', { name: '직접 설정' }))
+    const balancedButton = screen.getByRole('button', { name: '균형' })
+    expect(balancedButton).toBeEnabled()
+    await user.click(balancedButton)
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: '저장' }))
+
+    expect(mockUpdateAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtime_policy: expect.objectContaining({
+          summarization: { mode: 'preset', preset: 'balanced_context_v1' },
+        }),
+      }),
+    )
+  })
+
+  it.each([null, 0])(
+    'blocks a stale balanced policy without a positive model context window until it is changed',
+    async (contextWindow) => {
+      const staleBalancedPolicy = {
+        version: 1 as const,
+        filesystem: { mode: 'artifact_write' as const },
+        todo: { enabled: true },
+        summarization: { mode: 'preset' as const, preset: 'balanced_context_v1' as const },
+      }
+      mockUseAgent.mockReturnValue({
+        data: { ...fullAgent, runtime_policy: staleBalancedPolicy },
+        isLoading: false,
+      })
+      mockUseModels.mockReturnValue({ data: [{ id: 'model-1', context_window: contextWindow }] })
+      mockUseTools.mockReturnValue({ data: mockToolList })
+      mockUseTriggers.mockReturnValue({ data: [] })
+      const user = userEvent.setup()
+
+      render(
+        <AgentSettingsPage
+          params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+        />,
+      )
+
+      await user.click(screen.getByRole('tab', { name: '설정' }))
+      const saveButton = within(screen.getByRole('banner')).getByRole('button', { name: '저장' })
+      expect(saveButton).toBeDisabled()
+      await user.click(saveButton)
+      expect(mockUpdateAgent).not.toHaveBeenCalled()
+
+      await user.click(screen.getByRole('button', { name: '자동' }))
+      expect(saveButton).toBeEnabled()
+      await user.click(saveButton)
+      expect(mockUpdateAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtime_policy: expect.objectContaining({ summarization: { mode: 'auto' } }),
+        }),
+      )
+    },
+  )
+
+  it('fails closed for a stale balanced policy when the selected model is unknown', async () => {
+    const staleBalancedPolicy = {
+      version: 1 as const,
+      filesystem: { mode: 'artifact_write' as const },
+      todo: { enabled: true },
+      summarization: { mode: 'preset' as const, preset: 'balanced_context_v1' as const },
+    }
+    mockUseAgent.mockReturnValue({
+      data: {
+        ...fullAgent,
+        model: null,
+        runtime_policy: staleBalancedPolicy,
+      },
+      isLoading: false,
+    })
+    mockUseModels.mockReturnValue({ data: undefined })
+    mockUseTools.mockReturnValue({ data: mockToolList })
+    mockUseTriggers.mockReturnValue({ data: [] })
+    const user = userEvent.setup()
+
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+
+    await user.click(screen.getByRole('tab', { name: '설정' }))
+    const saveButton = within(screen.getByRole('banner')).getByRole('button', { name: '저장' })
+    expect(saveButton).toBeDisabled()
+    await user.click(saveButton)
+    expect(mockUpdateAgent).not.toHaveBeenCalled()
   })
 
   // FormMode 내부 동작(모델 셀렉트, 도구 체크박스 토글, 트리거 CRUD 등)은

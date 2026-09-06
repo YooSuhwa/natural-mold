@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures'
-import type { APIRequestContext } from '@playwright/test'
+import type { APIRequestContext, Locator, Page, TestInfo } from '@playwright/test'
 
 // Real agent-settings journeys against the live backend (no LLM needed):
 // edit the system prompt and attach a sub-agent, then verify each persisted
@@ -10,6 +10,31 @@ const API =
 const EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
+const RUNTIME_POLICY_CAPTURE_VIEWPORTS = [375, 768, 1280] as const
+
+async function captureRuntimePolicySettings(
+  page: Page,
+  testInfo: TestInfo,
+  state: string,
+  section: Locator,
+  evidence: Locator,
+): Promise<void> {
+  if (testInfo.project.name !== 'scripted-capture') return
+
+  for (const width of RUNTIME_POLICY_CAPTURE_VIEWPORTS) {
+    await page.setViewportSize({ width, height: 960 })
+    await page.getByRole('tab', { name: '설정', exact: true }).scrollIntoViewIfNeeded()
+    await section.evaluate((element) =>
+      element.scrollIntoView({ block: 'center', inline: 'nearest' }),
+    )
+    await expect(section).toBeInViewport()
+    await expect(evidence).toBeInViewport()
+    await page.screenshot({
+      path: testInfo.outputPath(`runtime-settings-${state}-${width}.png`),
+      fullPage: false,
+    })
+  }
+}
 
 async function login(request: APIRequestContext): Promise<Record<string, string>> {
   const res = await request.post(`${API}/api/auth/login`, {
@@ -36,6 +61,9 @@ test.describe('Agent settings — edit & attach', () => {
   let skillName: string
   let toolId: string
   let toolName: string
+  let contextModelId = ''
+  let noContextModelId = ''
+  let noContextModelName = ''
 
   test.beforeAll(async ({ request }) => {
     csrf = await login(request)
@@ -45,13 +73,51 @@ test.describe('Agent settings — edit & attach', () => {
     }[]
     const scripted = models.find((m) => m.provider === 'e2e_scripted')
     if (!scripted) throw new Error('e2e_scripted model should be seeded')
+    const unique = Date.now()
+    const contextModelResponse = await request.post(`${API}/api/models`, {
+      headers: csrf,
+      data: {
+        provider: 'e2e_scripted',
+        model_name: `runtime-settings-context-${unique}`,
+        display_name: `E2E Runtime Settings Context ${unique}`,
+        context_window: 4096,
+        cost_per_input_token: 0,
+        cost_per_output_token: 0,
+        supports_function_calling: true,
+        input_modalities: ['text'],
+        output_modalities: ['text'],
+        source: 'manual',
+        is_visible: true,
+      },
+    })
+    expect(contextModelResponse.ok()).toBeTruthy()
+    contextModelId = (await contextModelResponse.json()).id as string
+    noContextModelName = `E2E Runtime Settings No Context ${unique}`
+    const noContextModelResponse = await request.post(`${API}/api/models`, {
+      headers: csrf,
+      data: {
+        provider: 'e2e_scripted',
+        model_name: `runtime-settings-no-context-${unique}`,
+        display_name: noContextModelName,
+        context_window: null,
+        cost_per_input_token: 0,
+        cost_per_output_token: 0,
+        supports_function_calling: true,
+        input_modalities: ['text'],
+        output_modalities: ['text'],
+        source: 'manual',
+        is_visible: true,
+      },
+    })
+    expect(noContextModelResponse.ok()).toBeTruthy()
+    noContextModelId = (await noContextModelResponse.json()).id as string
     const main = (await (
       await request.post(`${API}/api/agents`, {
         headers: csrf,
         data: {
           name: 'E2E Settings Agent',
           system_prompt: 'Original prompt.',
-          model_id: scripted.id,
+          model_id: contextModelId,
         },
       })
     ).json()) as { id: string }
@@ -92,6 +158,9 @@ test.describe('Agent settings — edit & attach', () => {
     for (const id of [agentId, childId]) {
       if (id) await request.delete(`${API}/api/agents/${id}`, { headers: csrf })
     }
+    for (const id of [contextModelId, noContextModelId]) {
+      if (id) await request.delete(`${API}/api/models/${id}`, { headers: csrf })
+    }
     if (skillId) await request.delete(`${API}/api/skills/${skillId}`, { headers: csrf })
     if (toolId) await request.delete(`${API}/api/tools/${toolId}`, { headers: csrf })
   })
@@ -108,6 +177,180 @@ test.describe('Agent settings — edit & attach', () => {
     await expect
       .poll(async () => (await getAgent(request, agentId)).system_prompt, { timeout: 15_000 })
       .toBe(newPrompt)
+  })
+
+  test('runtime behavior custom, reset, reload, model constraint, and keyboard controls persist safely', async ({
+    page,
+    request,
+  }, testInfo) => {
+    await page.goto(`/agents/${agentId}/settings`)
+    await page.getByRole('tab', { name: '설정', exact: true }).click()
+    const runtimeSettings = page
+      .getByRole('heading', { name: '실행 동작' })
+      .locator('xpath=ancestor::section[1]')
+    const sourceBadge = runtimeSettings.locator('[data-slot="badge"]')
+    const headerSave = page.locator('header').getByRole('button', { name: '저장', exact: true })
+    await expect(sourceBadge).toHaveText('권장 설정')
+
+    const custom = runtimeSettings.getByRole('button', { name: '직접 설정', exact: true })
+    await custom.focus()
+    await page.keyboard.press('Enter')
+    await expect(sourceBadge).toHaveText('직접 설정')
+
+    const todoSwitch = runtimeSettings.getByRole('switch', { name: '할 일 목록 사용' })
+    await todoSwitch.focus()
+    await page.keyboard.press('Space')
+    await expect(todoSwitch).toHaveAttribute('aria-checked', 'false')
+    await runtimeSettings.getByRole('button', { name: '검토만', exact: true }).click()
+    await runtimeSettings.getByRole('button', { name: '균형', exact: true }).click()
+    await expect(runtimeSettings).toContainText(
+      '이미 실행된 대화에는 영향을 주지 않습니다. 아직 실행하지 않은 대화와 새 대화에는 변경된 설정이 적용됩니다.',
+    )
+
+    await page.getByRole('tab', { name: '비주얼', exact: true }).click()
+    await page.getByRole('tab', { name: '폼', exact: true }).click()
+    await expect(todoSwitch).toHaveAttribute('aria-checked', 'false')
+    await expect(
+      runtimeSettings.getByRole('button', { name: '검토만', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true')
+
+    await headerSave.click()
+    const expectedCustomPolicy = {
+      version: 1,
+      filesystem: { mode: 'inspect' },
+      todo: { enabled: false },
+      summarization: { mode: 'preset', preset: 'balanced_context_v1' },
+    }
+    await expect
+      .poll(async () => (await getAgent(request, agentId)).runtime_policy, { timeout: 15_000 })
+      .toEqual(expectedCustomPolicy)
+
+    await page.reload()
+    await page.getByRole('tab', { name: '설정', exact: true }).click()
+    await expect(sourceBadge).toHaveText('직접 설정')
+    await expect(todoSwitch).toHaveAttribute('aria-checked', 'false')
+    await expect(
+      runtimeSettings.getByRole('button', { name: '균형', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await captureRuntimePolicySettings(
+      page,
+      testInfo,
+      'custom-reload',
+      runtimeSettings,
+      runtimeSettings.getByRole('button', { name: '균형', exact: true }),
+    )
+
+    await page.getByRole('tab', { name: '폼', exact: true }).click()
+    await page.getByRole('button', { name: '모델 설정', exact: true }).click()
+    const modelDialog = page.getByRole('dialog')
+    await expect(modelDialog).toBeVisible()
+    await modelDialog.getByRole('combobox').click()
+    const noContextOption = page
+      .locator('[data-slot="select-content"]:visible')
+      .locator('[data-slot="select-item"]')
+      .filter({ hasText: noContextModelName })
+    await expect(noContextOption).toBeVisible({ timeout: 10_000 })
+    await noContextOption.click()
+    await modelDialog.getByRole('button', { name: '완료', exact: true }).click()
+    await page.getByRole('tab', { name: '설정', exact: true }).click()
+    await page.getByRole('tab', { name: '설정', exact: true }).click()
+    const balanced = runtimeSettings.getByRole('button', { name: '균형', exact: true })
+    await expect(balanced).toBeDisabled()
+    await expect(runtimeSettings).toContainText(
+      '현재 선택은 이 모델에서 사용할 수 없습니다. 모델을 바꾸거나 자동으로 전환하세요.',
+    )
+    await captureRuntimePolicySettings(
+      page,
+      testInfo,
+      'balanced-invalid-current',
+      runtimeSettings,
+      runtimeSettings.getByText(
+        '현재 선택은 이 모델에서 사용할 수 없습니다. 모델을 바꾸거나 자동으로 전환하세요.',
+        { exact: true },
+      ),
+    )
+    await expect(headerSave).toBeDisabled()
+    await expect
+      .poll(async () => (await getAgent(request, agentId)).runtime_policy, { timeout: 15_000 })
+      .toEqual(expectedCustomPolicy)
+    await runtimeSettings.getByRole('button', { name: '자동', exact: true }).click()
+    await expect(runtimeSettings).toContainText(
+      '선택한 모델의 컨텍스트 길이 정보가 있어야 균형 모드를 사용할 수 있어요.',
+    )
+    await expect(headerSave).toBeEnabled()
+
+    await runtimeSettings.getByRole('button', { name: '권장 설정 사용', exact: true }).click()
+    await headerSave.click()
+    await expect
+      .poll(async () => (await getAgent(request, agentId)).runtime_policy, { timeout: 15_000 })
+      .toBeNull()
+    await page.reload()
+    await page.getByRole('tab', { name: '설정', exact: true }).click()
+    await expect(sourceBadge).toHaveText('권장 설정')
+    await captureRuntimePolicySettings(
+      page,
+      testInfo,
+      'recommended-reset',
+      runtimeSettings,
+      runtimeSettings.getByRole('heading', { name: '실행 동작' }),
+    )
+  })
+
+  test('manual form and visual mode retain the pending runtime behavior choice through creation', async ({
+    page,
+    request,
+  }) => {
+    const name = `E2E Runtime Manual ${Date.now()}`
+    let createdAgentId: string | null = null
+
+    try {
+      await page.goto('/agents/new/manual')
+      await page.getByPlaceholder('에이전트 이름').fill(name)
+      await page.locator('summary').filter({ hasText: '실행 동작 고급 설정' }).click()
+      const runtimeSettings = page
+        .getByRole('heading', { name: '실행 동작' })
+        .locator('xpath=ancestor::section[1]')
+      await runtimeSettings.getByRole('button', { name: '직접 설정', exact: true }).click()
+      await runtimeSettings.getByRole('button', { name: '검토만', exact: true }).click()
+
+      await page.getByRole('tab', { name: '비주얼', exact: true }).click()
+      await page.getByRole('tab', { name: '폼', exact: true }).click()
+      await page.locator('summary').filter({ hasText: '실행 동작 고급 설정' }).click()
+      await expect(
+        runtimeSettings.getByRole('button', { name: '검토만', exact: true }),
+      ).toHaveAttribute('aria-pressed', 'true')
+
+      await page.getByRole('button', { name: '저장', exact: true }).click()
+      await expect(page).toHaveURL(/\/agents\/[^/]+\/settings$/)
+      const match = page.url().match(/\/agents\/([^/]+)\/settings$/)
+      if (!match?.[1])
+        throw new Error('manual creation did not navigate to the agent settings route')
+      createdAgentId = match[1]
+      const persistedAgentId = createdAgentId
+      await expect
+        .poll(async () => (await getAgent(request, persistedAgentId)).runtime_policy, {
+          timeout: 15_000,
+        })
+        .toEqual({
+          version: 1,
+          filesystem: { mode: 'inspect' },
+          todo: { enabled: true },
+          summarization: { mode: 'auto' },
+        })
+    } finally {
+      if (createdAgentId) {
+        await request.delete(`${API}/api/agents/${createdAgentId}`, { headers: csrf })
+      }
+    }
+  })
+
+  test('renders a generic inaccessible-agent state without runtime controls', async ({ page }) => {
+    await page.goto('/agents/00000000-0000-4000-8000-000000000000/settings')
+    await expect(
+      page.getByText('에이전트를 찾을 수 없거나 접근 권한이 없습니다.', { exact: true }),
+    ).toBeVisible()
+    await expect(page.getByRole('textbox', { name: '에이전트 이름' })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: '실행 동작' })).toHaveCount(0)
   })
 
   test('attaching a sub-agent and saving persists the delegation link', async ({

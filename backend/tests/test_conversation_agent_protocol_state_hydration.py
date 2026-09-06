@@ -683,6 +683,67 @@ async def test_thread_state_redacts_sensitive_tool_args_without_losing_usage_met
 
 
 @pytest.mark.asyncio
+async def test_thread_state_routes_project_internal_offload_references_without_mutating_checkpoint(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """State hydration exposes logical offload IDs while checkpoint state stays raw."""
+
+    conversation = await _seed_protocol_conversation(db)
+    scope = f"/.moldy-offload/{'a' * 32}/{'b' * 32}/{'c' * 32}"
+    history_path = f"{scope}/conversation_history/session_0123456789abcdef0123456789abcdef.md"
+    spill_path = f"{scope}/large_tool_results/0123456789abcdef_json"
+    raw_values = {
+        "messages": [
+            AIMessage(
+                id="assistant-offload-1",
+                content=f"History is at {history_path}; spill is at {spill_path}",
+                additional_kwargs={
+                    "_summarization_event": {"file_path": history_path, "cutoff_index": 2}
+                },
+            )
+        ],
+        "offload_path": spill_path,
+        "_summarization_event": {"file_path": history_path, "cutoff_index": 2},
+    }
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck-offload",
+        parent_checkpoint_id=None,
+        messages=raw_values["messages"],
+    )
+    fake_checkpointer = _FakeCheckpointer(
+        [leaf],
+        values_by_checkpoint={"ck-offload": raw_values},
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: fake_checkpointer,
+    )
+
+    thread_response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+    compat_response = await client.get(f"/api/conversations/{conversation.id}/langgraph/state")
+
+    assert thread_response.status_code == 200
+    assert compat_response.status_code == 200
+    for payload in (thread_response.json(), compat_response.json()):
+        rendered = repr(payload)
+        assert history_path not in rendered
+        assert spill_path not in rendered
+        assert "/.moldy-offload/" not in rendered
+        assert "file_path" not in rendered
+        assert "history_" in rendered
+        assert "spill_" in rendered
+
+    # Projection is egress-only: the fake checkpoint's raw graph values retain
+    # the physical references for persistence/resume behavior.
+    assert raw_values["offload_path"] == spill_path
+    assert raw_values["_summarization_event"]["file_path"] == history_path
+
+
+@pytest.mark.asyncio
 async def test_thread_state_marks_running_run_as_active_for_protocol_hydration(
     client: AsyncClient,
     db: AsyncSession,
