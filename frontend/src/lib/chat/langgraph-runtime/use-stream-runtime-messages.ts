@@ -98,8 +98,9 @@ export function useStreamRuntimeMessages<StateType extends { messages?: readonly
   useLangGraphMemoryRecallEffects({ stream, conversationId })
   useLangGraphSkillBuilderEffects({ stream, conversationId })
   const isRunning =
-    (stream.isLoading || claimedQueueRunInFlight) &&
+    (stream.isLoading || claimedQueueRunInFlight || threadRunNotice?.status === 'canceling') &&
     interruptCount === 0 &&
+    threadRunNotice?.status !== 'canceled' &&
     threadRunNotice?.status !== 'stale' &&
     threadRunNotice?.status !== 'failed'
   const conversionMessages = useMemo(() => [...withDataUI], [withDataUI])

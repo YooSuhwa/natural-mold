@@ -182,6 +182,13 @@ function createQueryWrapper(
   }
 }
 
+function mockRunResponses(...responses: readonly unknown[]): void {
+  const pending = [...responses]
+  mocks.apiFetch.mockImplementation(async (path: string) =>
+    path.endsWith('/run-inputs') ? { queue_paused: false, items: [] } : pending.shift(),
+  )
+}
+
 describe('useMoldyLangGraphStream', () => {
   beforeEach(() => {
     mocks.stream.messages = []
@@ -244,7 +251,9 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith('conversation-1', 'agent-1')
+    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith('conversation-1', 'agent-1', {
+      onReconnectStateChange: expect.any(Function),
+    })
     expect(mocks.useStream).toHaveBeenCalledWith(
       expect.objectContaining({
         transport: expect.objectContaining({
@@ -278,6 +287,7 @@ describe('useMoldyLangGraphStream', () => {
       'retryFailedInput',
       'sendMessage',
       'stream',
+      'threadRunNotice',
     ])
     expect(result.current).toEqual(
       expect.objectContaining({
@@ -288,6 +298,7 @@ describe('useMoldyLangGraphStream', () => {
         sendMessage: expect.any(Function),
         onResumeDecisions: expect.any(Function),
         registerDecision: expect.any(Function),
+        threadRunNotice: null,
       }),
     )
   })
@@ -843,7 +854,9 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith('conversation-2', 'agent-2')
+    expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith('conversation-2', 'agent-2', {
+      onReconnectStateChange: expect.any(Function),
+    })
     const transport = mocks.createMoldyAgentTransport.mock.results[0]?.value as
       | MockTransport
       | undefined
@@ -1650,6 +1663,7 @@ describe('useMoldyLangGraphStream', () => {
 
   it('cancels the durable server run even when client stream stop never settles', async () => {
     let resolveStop: (() => void) | undefined
+    mocks.stream.isLoading = true
     mocks.stream.stop.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
@@ -1680,8 +1694,112 @@ describe('useMoldyLangGraphStream', () => {
         { method: 'POST' },
       ),
     )
+    await waitFor(() => {
+      expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+        expect.objectContaining({ isRunning: false }),
+      )
+    })
     resolveStop?.()
     await cancel
+  })
+
+  it('keeps assistant-ui running while the server reports canceling', async () => {
+    mocks.stream.isLoading = false
+    mockRunResponses(
+      { id: 'run-cancel', status: 'running', agent_id: 'agent-cancel' },
+      { id: 'run-cancel', status: 'canceling', agent_id: 'agent-cancel' },
+      { id: 'run-cancel', status: 'canceling', agent_id: 'agent-cancel' },
+    )
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-cancel',
+          conversationId: 'conversation-cancel',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onCancel: () => Promise<void>
+    }
+
+    await act(async () => runtimeOptions.onCancel())
+
+    expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({ isRunning: true }),
+    )
+  })
+
+  it('settles assistant-ui with the exact failed terminal after cancellation is accepted', async () => {
+    mocks.stream.isLoading = false
+    mockRunResponses(
+      { id: 'run-cancel', status: 'running', agent_id: 'agent-cancel' },
+      { id: 'run-cancel', status: 'canceling', agent_id: 'agent-cancel' },
+      {
+        id: 'run-cancel',
+        status: 'failed',
+        agent_id: 'agent-cancel',
+        error_message: 'terminal failure',
+      },
+    )
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-cancel',
+          conversationId: 'conversation-cancel',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onCancel: () => Promise<void>
+    }
+
+    await act(async () => runtimeOptions.onCancel())
+
+    await waitFor(() => {
+      expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+        expect.objectContaining({ isRunning: false }),
+      )
+    })
+    const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0]
+    expect(converterOptions?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'moldy-failed-run-cancel', content: 'terminal failure' }),
+      ]),
+    )
+  })
+
+  it('settles assistant-ui without a canceled notice when the exact run completed', async () => {
+    mocks.stream.isLoading = false
+    mockRunResponses(
+      { id: 'run-cancel', status: 'running', agent_id: 'agent-cancel' },
+      { id: 'run-cancel', status: 'canceling', agent_id: 'agent-cancel' },
+      { id: 'run-cancel', status: 'completed', agent_id: 'agent-cancel' },
+    )
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-cancel',
+          conversationId: 'conversation-cancel',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onCancel: () => Promise<void>
+    }
+
+    await act(async () => runtimeOptions.onCancel())
+
+    await waitFor(() => {
+      expect(mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0]).toEqual(
+        expect.objectContaining({ isRunning: false }),
+      )
+    })
+    const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0]
+    expect(converterOptions?.messages).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: expect.stringContaining('moldy-canceled-') }),
+      ]),
+    )
   })
 
   it('clears the navigator run overlay and invalidates the canceled run list', async () => {
@@ -1689,9 +1807,10 @@ describe('useMoldyLangGraphStream', () => {
     const store = createStore()
     queryClient.setQueryData(conversationKeys.list('agent-cancel'), [])
     store.set(conversationRuntimeStatusAtom, { 'conversation-cancel': 'running' })
-    mocks.apiFetch
-      .mockResolvedValueOnce({ id: 'run-cancel', status: 'running', agent_id: 'agent-cancel' })
-      .mockResolvedValueOnce({ id: 'run-cancel', status: 'canceled', agent_id: 'agent-cancel' })
+    mockRunResponses(
+      { id: 'run-cancel', status: 'running', agent_id: 'agent-cancel' },
+      { id: 'run-cancel', status: 'canceled', agent_id: 'agent-cancel' },
+    )
 
     renderHook(
       () =>
@@ -1710,18 +1829,20 @@ describe('useMoldyLangGraphStream', () => {
       await runtimeOptions.onCancel()
     })
 
-    expect(store.get(conversationRuntimeStatusAtom)['conversation-cancel']).toBe('idle')
+    await waitFor(() => {
+      expect(store.get(conversationRuntimeStatusAtom)['conversation-cancel']).toBe('idle')
+    })
     expect(queryClient.getQueryState(conversationKeys.list('agent-cancel'))?.isInvalidated).toBe(
       true,
     )
   })
 
-  it('clears the navigator run overlay when the canceled run already finished', async () => {
+  it('settles the navigator without fabricating canceled when no active run exists', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const store = createStore()
     queryClient.setQueryData(conversationRunKeys.active('conversation-cancel'), null)
     store.set(conversationRuntimeStatusAtom, { 'conversation-cancel': 'running' })
-    mocks.apiFetch.mockResolvedValueOnce(null)
+    mockRunResponses(null)
 
     renderHook(
       () =>
@@ -1740,7 +1861,9 @@ describe('useMoldyLangGraphStream', () => {
       await runtimeOptions.onCancel()
     })
 
-    expect(store.get(conversationRuntimeStatusAtom)['conversation-cancel']).toBe('idle')
+    await waitFor(() => {
+      expect(store.get(conversationRuntimeStatusAtom)['conversation-cancel']).toBe('idle')
+    })
     expect(
       queryClient.getQueryState(conversationRunKeys.active('conversation-cancel'))?.isInvalidated,
     ).toBe(true)
@@ -1777,7 +1900,12 @@ describe('useMoldyLangGraphStream', () => {
     )
   })
 
-  it('adds a local canceled notice after assistant-ui stops a v3 run', async () => {
+  it('adds a canceled notice after the server confirms cancellation', async () => {
+    mockRunResponses(
+      { id: 'run-cancel', status: 'running', agent_id: 'agent-cancel' },
+      { id: 'run-cancel', status: 'canceling', agent_id: 'agent-cancel' },
+      { id: 'run-cancel', status: 'canceled', agent_id: 'agent-cancel' },
+    )
     renderHook(
       () =>
         useMoldyLangGraphStream({
@@ -1802,11 +1930,37 @@ describe('useMoldyLangGraphStream', () => {
       expect(converterOptions?.messages).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            id: 'moldy-canceled-local-conversation-cancel',
+            id: 'moldy-canceled-run-cancel',
             content: 'canceled',
           }),
         ]),
       )
+    })
+  })
+
+  it('settles the navigator when hydrated state confirms cancellation', async () => {
+    const store = createStore()
+    store.set(conversationRuntimeStatusAtom, { 'conversation-cancel': 'running' })
+    renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-cancel',
+          conversationId: 'conversation-cancel',
+        }),
+      { wrapper: createQueryWrapper(undefined, store) },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as
+      | MockTransport
+      | undefined
+
+    act(() => {
+      transport?.onState?.({
+        metadata: { latest_run: { id: 'run-cancel', status: 'canceled' } },
+      })
+    })
+
+    await waitFor(() => {
+      expect(store.get(conversationRuntimeStatusAtom)['conversation-cancel']).toBe('idle')
     })
   })
 
@@ -1850,7 +2004,7 @@ describe('useMoldyLangGraphStream', () => {
     // (threadRunNotice.status !== 'failed' 가드 회귀 방어). 가드가 없으면 isLoading이
     // true라 isRunning이 true가 되어 아래 isRunning 단언이 실패한다.
     mocks.stream.isLoading = true
-    renderHook(
+    const { result } = renderHook(
       () =>
         useMoldyLangGraphStream({
           agentId: 'agent-failed',
@@ -1875,6 +2029,11 @@ describe('useMoldyLangGraphStream', () => {
     })
 
     await waitFor(() => {
+      expect(result.current.threadRunNotice).toEqual({
+        id: 'run-failed',
+        status: 'failed',
+        errorMessage: '모델 제공자 요청이 실패했습니다.',
+      })
       const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
         | { messages: readonly unknown[]; isRunning: boolean }
         | undefined

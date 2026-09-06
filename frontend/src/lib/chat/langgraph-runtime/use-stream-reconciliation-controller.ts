@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useStream } from '@langchain/react'
+import { useSetAtom } from 'jotai'
 import type { BaseMessage } from '@langchain/core/messages'
 import type { AppendMessage } from '@assistant-ui/react'
 import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
@@ -25,6 +26,8 @@ import {
   followClaimedQueueRunValues,
 } from '@/lib/chat/message-queue/follow-claimed-queue-run'
 import type { MoldySubmitState } from './use-checkpoint-fork-handlers'
+import { reconnectStateAtom } from '@/lib/stores/chat-store'
+import { conversationRuntimeStatusAtom } from '@/lib/stores/chat-navigator-store'
 
 interface MoldyGraphState extends MoldySubmitState {
   messages: BaseMessage[]
@@ -56,6 +59,8 @@ export function useStreamReconciliationController({
   clearBranchPickerSuppression,
 }: UseStreamReconciliationControllerOptions) {
   const lifetime = useMemo(() => ({ conversationId }), [conversationId])
+  const setReconnectState = useSetAtom(reconnectStateAtom)
+  const setConversationRuntimeStatus = useSetAtom(conversationRuntimeStatusAtom)
   const lifetimeRef = useRef(lifetime)
   const onRunStartAcceptedRef = useRef(onRunStartAccepted)
   const acceptedRunIdsRef = useRef(new Set<string>())
@@ -154,6 +159,14 @@ export function useStreamReconciliationController({
         return
       }
       const terminalRunFailed = terminalRunNotice?.status === 'failed'
+      if (
+        terminalRunNotice?.status === 'canceled' ||
+        terminalRunNotice?.status === 'stale' ||
+        terminalRunFailed
+      ) {
+        setReconnectState('idle')
+        setConversationRuntimeStatus((current) => ({ ...current, [conversationId]: 'idle' }))
+      }
       setThreadRunNoticeState({ conversationId, value: terminalRunNotice })
       setServerMessageMetadataState({
         conversationId,
@@ -169,12 +182,22 @@ export function useStreamReconciliationController({
         clearPendingReload(conversationId)
       }
     },
-    [clearPendingReload, conversationId, lifetime, reloadRunCorrelationRef],
+    [
+      clearPendingReload,
+      conversationId,
+      lifetime,
+      reloadRunCorrelationRef,
+      setConversationRuntimeStatus,
+      setReconnectState,
+    ],
   )
 
   const transport = useMemo(
-    () => createMoldyAgentTransport(conversationId, agentId),
-    [agentId, conversationId],
+    () =>
+      createMoldyAgentTransport(conversationId, agentId, {
+        onReconnectStateChange: setReconnectState,
+      }),
+    [agentId, conversationId, setReconnectState],
   )
   const handleRunStartAccepted = useCallback(
     (runId?: string): void => {

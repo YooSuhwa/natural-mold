@@ -5,6 +5,11 @@
   word-break: break-word;
 }
 
+.moldy-chat-failed-notice-content .prose-chat {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 /* Tables (GFM) */
 .prose-chat table {
   width: 100%;

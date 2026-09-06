@@ -131,19 +131,19 @@ describe('artifact right rail toggles', () => {
     expect(RIGHT_RAIL_COLLAPSE_THRESHOLD_PX).toBe(280)
   })
 
-  it('clamps right rail width with explicit viewport sizes', () => {
+  it('clamps right rail width with explicit split parent sizes', () => {
     expect(clampRightRailWidth(900, 1366)).toBe(720)
     expect(clampRightRailWidth(900, 1024)).toBe(504)
     expect(clampRightRailWidth(900, 1000)).toBe(480)
     expect(clampRightRailWidth(120, 1024)).toBe(320)
   })
 
-  it('uses window.innerWidth only when no viewport is passed', () => {
+  it('uses only rail defaults until a split parent has been measured', () => {
     stubInnerWidth(1024)
-    expect(clampRightRailWidth(900)).toBe(504)
+    expect(clampRightRailWidth(900)).toBe(720)
 
     stubInnerWidth(1000)
-    expect(clampRightRailWidth(900)).toBe(480)
+    expect(clampRightRailWidth(900)).toBe(720)
   })
 
   it('persists a clamped right rail width preference', () => {

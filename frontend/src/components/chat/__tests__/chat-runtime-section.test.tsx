@@ -219,6 +219,7 @@ describe('ChatRuntimeSection', () => {
       retryFailedInput,
       onResumeDecisions: vi.fn(),
       registerDecision: vi.fn(),
+      threadRunNotice: { id: 'run-failed', status: 'failed' },
     })
 
     renderSection({

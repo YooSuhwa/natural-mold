@@ -1,9 +1,10 @@
 'use client'
 
 import { useAui } from '@assistant-ui/react'
-import { BookOpenIcon, PlugIcon, SparklesIcon, WrenchIcon } from 'lucide-react'
+import { BookOpenIcon, PlugIcon, SparklesIcon, TerminalIcon, WrenchIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { requestThreadComposerFocus } from '@/components/chat/composer-focus'
 import { useTemplates } from '@/lib/hooks/use-templates'
 import type { Agent } from '@/lib/types'
 
@@ -71,6 +72,17 @@ export function ChatEmptyState({ agent, fallback }: ChatEmptyStateProps) {
         <SparklesIcon className="size-3.5" />
         <span>{fallback}</span>
       </div>
+      <button
+        type="button"
+        className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-primary-strong/20 bg-background/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+        onClick={() => {
+          composer?.setText('/')
+          requestThreadComposerFocus()
+        }}
+      >
+        <TerminalIcon className="size-3.5" aria-hidden />
+        {t('emptyState.commandDiscovery')}
+      </button>
       {capabilities.length > 0 && (
         <div className="mt-5 flex max-w-2xl flex-col items-center gap-2">
           <span className="moldy-ui-caption text-muted-foreground">{t('emptyState.canDo')}</span>

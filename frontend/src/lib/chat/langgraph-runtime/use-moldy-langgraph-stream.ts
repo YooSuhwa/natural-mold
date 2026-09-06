@@ -127,7 +127,9 @@ export function useMoldyLangGraphStream({
       ? tReconnect('stale')
       : threadRunNotice?.status === 'failed'
         ? (threadRunNotice.errorMessage ?? tPage('runFailed'))
-        : tPage('canceled')
+        : threadRunNotice?.status === 'canceling'
+          ? tPage('canceling')
+          : tPage('canceled')
   const runtimeMessages = useStreamRuntimeMessages({
     conversationId,
     stream,
@@ -242,5 +244,6 @@ export function useMoldyLangGraphStream({
     registerDecision,
     messageQueue,
     retryFailedInput,
+    threadRunNotice,
   }
 }

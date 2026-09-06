@@ -13,6 +13,16 @@
       "expected_count": 41
     },
     {
+      "id": "scripted-backend-lane",
+      "path_glob": "e2e/chat-recovery-discovery.spec.ts",
+      "condition": "process.env.PW_SKIP_BACKEND === '1'",
+      "reason": "Requires the scripted backend lane",
+      "category": "infrastructure",
+      "owner": "quality-runtime",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
       "id": "system-llm-required",
       "path_glob": "e2e/builder.spec.ts",
       "condition": "process.env.PW_SKIP_BACKEND === '1'",

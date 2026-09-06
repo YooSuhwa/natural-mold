@@ -62,6 +62,8 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     const triggerInput = useChatComposerTriggerInput()
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const compositionRef = useRef(false)
+    const inputTextSyncRef = useRef(false)
+    const setTriggerCursorPositionRef = useRef(triggerInput.setCursorPosition)
     const compositionStartTextRef = useRef('')
     const compositionStartSelectionRef = useRef({ end: 0, start: 0 })
     const effectiveSubmitMode = submitMode ?? (submitOnEnter === false ? 'none' : 'enter')
@@ -84,6 +86,10 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     )
 
     useEffect(() => {
+      setTriggerCursorPositionRef.current = triggerInput.setCursorPosition
+    }, [triggerInput.setCursorPosition])
+
+    useEffect(() => {
       if (!autoFocus || isDisabled) return
       const textarea = textareaRef.current
       if (!textarea) return
@@ -93,8 +99,17 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     useEffect(() => {
       if (compositionRef.current) return
       const textarea = textareaRef.current
-      if (!textarea || textarea.value === externalValue) return
-      textarea.value = externalValue
+      if (!textarea) return
+      if (textarea.value !== externalValue) textarea.value = externalValue
+      const wasLocalTextSync = inputTextSyncRef.current
+      inputTextSyncRef.current = false
+      if (wasLocalTextSync) return
+
+      const cursorPosition = externalValue.length
+      const timeout = window.setTimeout(() => {
+        setTriggerCursorPositionRef.current(cursorPosition)
+      }, 0)
+      return () => window.clearTimeout(timeout)
     }, [externalValue])
 
     useEffect(() => {
@@ -119,6 +134,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     const syncText = useCallback(
       (next: string) => {
         if (!aui.composer.getState().isEditing) return
+        inputTextSyncRef.current = true
         aui.composer.setText(next)
       },
       [aui],

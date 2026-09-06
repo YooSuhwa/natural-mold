@@ -1264,6 +1264,7 @@
     "defaultAgentName": "Default Agent Name",
     "emptyState": {
       "canDo": "What this agent can do",
+      "commandDiscovery": "Browse commands",
       "moreCapabilities": "+{count} more"
     },
     "search": {
@@ -1437,6 +1438,7 @@
       "newConversation": "New Conversation",
       "emptyState": "Empty State",
       "error": "Error",
+      "canceling": "Canceling",
       "canceled": "Canceled",
       "runFailed": "The request couldn't be completed. Please try again.",
       "interruptStateLost": "Interrupt State Lost",

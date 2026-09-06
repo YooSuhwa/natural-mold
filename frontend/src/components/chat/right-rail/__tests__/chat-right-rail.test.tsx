@@ -1,5 +1,5 @@
 import { Provider, createStore } from 'jotai'
-import { fireEvent } from '@testing-library/react'
+import { fireEvent, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '../../../../../tests/test-utils'
 import { chatArtifactsAtom } from '@/lib/stores/chat-artifacts'
@@ -10,6 +10,62 @@ import { ChatRightRail } from '../chat-right-rail'
 vi.mock('../artifact-panel-content', () => ({
   ArtifactPanelContent: () => <div data-testid="artifact-panel-content" />,
 }))
+
+let splitParentWidth = 1366
+let resizeObservers: ControlledResizeObserver[] = []
+let resizeObserverDisconnects: ReturnType<typeof vi.fn>[] = []
+
+class ControlledResizeObserver implements ResizeObserver {
+  readonly observedTargets = new Set<Element>()
+  readonly disconnect = vi.fn(() => {
+    this.observedTargets.clear()
+  })
+  readonly observe = vi.fn((target: Element) => {
+    this.observedTargets.add(target)
+  })
+  readonly unobserve = vi.fn((target: Element) => {
+    this.observedTargets.delete(target)
+  })
+
+  constructor(readonly callback: ResizeObserverCallback) {
+    resizeObservers.push(this)
+    resizeObserverDisconnects.push(this.disconnect)
+  }
+
+  deliver(target: Element): boolean {
+    if (!this.observedTargets.has(target)) return false
+    this.callback([], this)
+    return true
+  }
+}
+
+function splitParentRect(width: number): DOMRect {
+  return {
+    bottom: 0,
+    height: 0,
+    left: 0,
+    right: width,
+    toJSON: () => ({}),
+    top: 0,
+    width,
+    x: 0,
+    y: 0,
+  }
+}
+
+function renderInSplitParent(store: ReturnType<typeof createStore>) {
+  return render(
+    <div data-testid="rail-split-parent">
+      <Provider store={store}>
+        <ChatRightRail conversationId="conversation-1" />
+      </Provider>
+    </div>,
+  )
+}
+
+function notifySplitParentResize(target: Element): number {
+  return resizeObservers.filter((observer) => observer.deliver(target)).length
+}
 
 function installAnimationFrameStub(): void {
   Object.defineProperty(window, 'requestAnimationFrame', {
@@ -67,6 +123,17 @@ describe('ChatRightRail', () => {
   beforeEach(() => {
     installAnimationFrameStub()
     window.localStorage.clear()
+    splitParentWidth = 1366
+    resizeObservers = []
+    resizeObserverDisconnects = []
+    vi.stubGlobal('ResizeObserver', ControlledResizeObserver)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.dataset.testid === 'rail-split-parent'
+        ? splitParentRect(splitParentWidth)
+        : splitParentRect(0)
+    })
   })
 
   it('uses the selected file name as the artifact preview title', () => {
@@ -224,7 +291,7 @@ describe('ChatRightRail', () => {
     expect(window.localStorage.getItem('moldy.chatRightRail.widthPx')).toBe('544')
   })
 
-  it('reclamps the desktop rail when the viewport narrows', () => {
+  it('clamps the desktop rail by its split parent instead of a wider browser viewport', async () => {
     const store = createStore()
     store.set(chatRightRailWidthAtom, 720)
     store.set(chatRightRailAtom, {
@@ -235,26 +302,79 @@ describe('ChatRightRail', () => {
       },
     })
 
-    const { container } = render(
-      <Provider store={store}>
-        <ChatRightRail conversationId="conversation-1" />
-      </Provider>,
-    )
+    splitParentWidth = 1000
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 })
+    const { container } = renderInSplitParent(store)
 
     const aside = container.querySelector('aside')
-    expect(aside).toHaveStyle({ '--chat-right-rail-width': '720px' })
-
-    Object.defineProperty(window, 'innerWidth', {
-      configurable: true,
-      value: 1000,
+    await waitFor(() => {
+      expect(aside).toHaveStyle({ '--chat-right-rail-width': '480px' })
     })
-    fireEvent(window, new Event('resize'))
-
-    expect(aside).toHaveStyle({ '--chat-right-rail-width': '480px' })
     expect(screen.getByRole('separator', { name: '파일 패널 크기 조절' })).toHaveAttribute(
       'aria-valuemax',
       '480',
     )
+  })
+
+  it('reclamps on split parent shrink and grow without a window resize', async () => {
+    const store = createStore()
+    store.set(chatRightRailWidthAtom, 720)
+    store.set(chatRightRailAtom, {
+      mode: 'artifacts',
+      artifacts: { conversationId: 'conversation-1', view: 'list' },
+    })
+    splitParentWidth = 1100
+    const { container } = renderInSplitParent(store)
+    const aside = container.querySelector('aside')
+    const splitParent = screen.getByTestId('rail-split-parent')
+
+    await waitFor(() => {
+      expect(aside).toHaveStyle({ '--chat-right-rail-width': '580px' })
+    })
+    expect(resizeObservers).toHaveLength(1)
+    expect(resizeObservers[0]?.observe).toHaveBeenCalledExactlyOnceWith(splitParent)
+
+    splitParentWidth = 1000
+    expect(notifySplitParentResize(document.body)).toBe(0)
+    expect(aside).toHaveStyle({ '--chat-right-rail-width': '580px' })
+    expect(notifySplitParentResize(splitParent)).toBe(1)
+    await waitFor(() => {
+      expect(aside).toHaveStyle({ '--chat-right-rail-width': '480px' })
+    })
+
+    splitParentWidth = 1300
+    expect(notifySplitParentResize(splitParent)).toBe(1)
+    await waitFor(() => {
+      expect(aside).toHaveStyle({ '--chat-right-rail-width': '720px' })
+    })
+  })
+
+  it('uses the existing overlay shell when the split parent cannot fit chat and rail minimums', async () => {
+    const store = createStore()
+    store.set(chatRightRailAtom, {
+      mode: 'artifacts',
+      artifacts: { conversationId: 'conversation-1', view: 'list' },
+    })
+    splitParentWidth = 800
+    const { container } = renderInSplitParent(store)
+
+    await waitFor(() => {
+      expect(container.querySelector('aside')).toHaveClass('hidden')
+      expect(container.querySelector('aside')).not.toHaveClass('xl:block')
+      expect(container.querySelector('[role="dialog"]')).not.toHaveClass('xl:hidden')
+    })
+  })
+
+  it('disconnects its split parent observer when the rail unmounts', () => {
+    const store = createStore()
+    const { unmount } = renderInSplitParent(store)
+    const splitParent = screen.getByTestId('rail-split-parent')
+
+    unmount()
+
+    expect(resizeObserverDisconnects).toHaveLength(1)
+    expect(resizeObserverDisconnects[0]).toHaveBeenCalledOnce()
+    expect(notifySplitParentResize(splitParent)).toBe(0)
   })
 
   it('closes below the collapse threshold without overwriting the last stable width', () => {

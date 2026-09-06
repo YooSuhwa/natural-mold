@@ -9,6 +9,7 @@ export type RuntimeFailureCode =
   | 'queue_claim_projection_failed'
   | 'cancel_stream_stop_failed'
   | 'cancel_active_lookup_failed'
+  | 'cancel_terminal_follow_failed'
   | 'hitl_flush_failed'
   | 'hitl_refresh_failed'
 

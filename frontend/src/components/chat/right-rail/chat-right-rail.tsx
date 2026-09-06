@@ -1,10 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
-import { useViewportWidth } from '@/hooks/use-viewport-width'
 import {
   CheckIcon,
   CodeIcon,
@@ -34,6 +33,7 @@ import { chatArtifactsAtom, type ChatArtifactsState } from '@/lib/stores/chat-ar
 import {
   chatRightRailAtom,
   chatRightRailWidthAtom,
+  CHAT_MIN_WIDTH_PX,
   clampRightRailWidth,
   RIGHT_RAIL_COLLAPSE_THRESHOLD_PX,
   RIGHT_RAIL_WIDTH_DEFAULT_PX,
@@ -66,8 +66,9 @@ export function ChatRightRail({ className, conversationId }: Props) {
   const [state, setState] = useAtom(chatRightRailAtom)
   const [storedWidth, setStoredWidth] = useAtom(chatRightRailWidthAtom)
   const [previewWidth, setPreviewWidth] = useState<number | null>(null)
+  const rightRailRef = useRef<HTMLElement>(null)
+  const [splitParentWidth, setSplitParentWidth] = useState<number | null>(null)
   const stateConversationId = conversationIdForState(state)
-  const viewportWidth = useViewportWidth()
   const isStaleConversation =
     state.mode !== 'none' &&
     conversationId !== undefined &&
@@ -76,9 +77,12 @@ export function ChatRightRail({ className, conversationId }: Props) {
     stateConversationId !== null &&
     stateConversationId !== conversationId
   const isOpen = state.mode !== 'none' && !isStaleConversation
-  const maxWidth = clampRightRailWidth(RIGHT_RAIL_WIDTH_MAX_PX, viewportWidth)
-  const stableWidth = clampRightRailWidth(storedWidth, viewportWidth)
-  const effectiveWidth = isOpen ? Math.min(previewWidth ?? stableWidth, maxWidth) : 0
+  const isInlineRailAvailable =
+    splitParentWidth === null || splitParentWidth >= RIGHT_RAIL_WIDTH_MIN_PX + CHAT_MIN_WIDTH_PX
+  const maxWidth = clampRightRailWidth(RIGHT_RAIL_WIDTH_MAX_PX, splitParentWidth ?? undefined)
+  const stableWidth = clampRightRailWidth(storedWidth, splitParentWidth ?? undefined)
+  const effectiveWidth =
+    isOpen && isInlineRailAvailable ? Math.min(previewWidth ?? stableWidth, maxWidth) : 0
   const isCollapsePreview = previewWidth !== null && previewWidth < RIGHT_RAIL_COLLAPSE_THRESHOLD_PX
   const rightRailStyle = useMemo<CSSProperties & { '--chat-right-rail-width': string }>(
     () => ({
@@ -98,11 +102,11 @@ export function ChatRightRail({ className, conversationId }: Props) {
 
   const commitRightRailWidth = useCallback(
     (width: number) => {
-      const nextWidth = clampRightRailWidth(width, viewportWidth)
+      const nextWidth = clampRightRailWidth(width, splitParentWidth ?? undefined)
       setPreviewWidth(null)
       setStoredWidth(nextWidth)
     },
-    [setStoredWidth, viewportWidth],
+    [setStoredWidth, splitParentWidth],
   )
 
   const closeRightRail = useCallback(() => {
@@ -119,20 +123,38 @@ export function ChatRightRail({ className, conversationId }: Props) {
     }
   }, [isStaleConversation, setState])
 
+  useEffect(() => {
+    const splitParent = rightRailRef.current?.parentElement
+    if (!splitParent || typeof ResizeObserver === 'undefined') return
+
+    const updateSplitParentWidth = () => {
+      const width = splitParent.getBoundingClientRect().width
+      if (width <= 0) return
+      setSplitParentWidth((previousWidth) => (previousWidth === width ? previousWidth : width))
+    }
+    const observer = new ResizeObserver(updateSplitParentWidth)
+
+    updateSplitParentWidth()
+    observer.observe(splitParent)
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <>
       {/* 넓은 데스크톱: inline split */}
       <aside
+        ref={rightRailRef}
         data-slot="chat-right-rail"
         data-collapse-preview={isCollapsePreview ? 'true' : undefined}
         className={cn(
-          'relative hidden shrink-0 overflow-hidden bg-muted/30 transition-[width] duration-200 xl:block',
+          'relative hidden shrink-0 overflow-hidden bg-muted/30 transition-[width] duration-200',
+          isInlineRailAvailable && 'xl:block',
           className,
         )}
         style={rightRailStyle}
-        aria-hidden={!isOpen}
+        aria-hidden={!isOpen || !isInlineRailAvailable}
       >
-        {isOpen ? (
+        {isOpen && isInlineRailAvailable ? (
           <>
             <HorizontalResizeHandle
               ariaLabel={t('resizePanel')}
@@ -157,7 +179,11 @@ export function ChatRightRail({ className, conversationId }: Props) {
 
       {/* mobile/tablet: artifact는 독립 full-screen layer, 그 외 rail은 기존 drawer */}
       {isOpen ? (
-        <div className="fixed inset-0 z-40 xl:hidden" role="dialog" aria-modal="true">
+        <div
+          className={cn('fixed inset-0 z-40', isInlineRailAvailable && 'xl:hidden')}
+          role="dialog"
+          aria-modal="true"
+        >
           {state.mode === 'artifacts' ? (
             <div className="moldy-artifact-mobile-layer absolute inset-0">
               <RailFrame state={state} className="h-full w-full" onClose={closeRightRail} />

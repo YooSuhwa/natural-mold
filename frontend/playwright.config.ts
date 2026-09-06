@@ -108,6 +108,7 @@ const runtimePolicyCaptureSpecGlobs = [
   '**/chat-commands-context.spec.ts',
   '**/chat-message-queue.spec.ts',
   '**/chat-run-summary.spec.ts',
+  '**/chat-recovery-discovery.spec.ts',
 ]
 const scriptedFullIgnore = [
   ...LIVE_E2E_SPEC_GLOBS,

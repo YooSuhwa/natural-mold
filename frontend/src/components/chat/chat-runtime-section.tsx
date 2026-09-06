@@ -19,6 +19,7 @@ import {
 } from '@assistant-ui/react'
 import type { AnyStream } from '@langchain/react'
 import { AssistantThread, type AssistantThreadProps } from '@/components/chat/assistant-thread'
+import { FailedMessageRetryProvider } from '@/components/chat/failed-message-retry'
 import { useBrowserDictation } from '@/components/chat/use-browser-dictation'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useMoldyLangGraphStream } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
@@ -283,6 +284,7 @@ function LangGraphRuntimeSection({
     stream,
     messageQueue,
     retryFailedInput,
+    threadRunNotice,
     onResumeDecisions,
     registerDecision,
   } = useMoldyLangGraphStream({
@@ -322,6 +324,7 @@ function LangGraphRuntimeSection({
       runtime={assistantRuntime}
       messageQueue={messageQueue}
       retryFailedInput={retryFailedInput}
+      failedRunId={threadRunNotice?.status === 'failed' ? threadRunNotice.id : undefined}
       subagentStream={stream}
       threadProps={threadProps}
     />
@@ -333,6 +336,7 @@ interface RuntimeFrameProps {
   readonly deepAgentsState?: AssistantThreadProps['deepAgentsState']
   readonly hitlValue: HiTLContextValue
   readonly runtime: AssistantRuntime
+  readonly failedRunId?: string
   readonly messageQueue?: ServerMessageQueueController
   readonly retryFailedInput?: (input: ConversationRunInput) => Promise<void>
   readonly subagentStream?: AnyStream | null
@@ -342,6 +346,7 @@ interface RuntimeFrameProps {
 function RuntimeFrame({
   activities,
   deepAgentsState,
+  failedRunId,
   hitlValue,
   runtime,
   messageQueue,
@@ -355,15 +360,15 @@ function RuntimeFrame({
     () => null,
   )
   useEffect(() => {
-    if (!messageQueue || !threadProps.retryLastFailedRunId) return
+    if (!messageQueue || !failedRunId) return
     void messageQueue.refresh()
-  }, [messageQueue, threadProps.retryLastFailedRunId])
+  }, [failedRunId, messageQueue])
   const operation = queueSnapshot?.lastOperation
   const queueAcceptanceKey =
     operation?.kind === 'queued' || operation?.kind === 'applied' ? operation.inputId : null
   const retryLastFailedInput = useFailedInputRetryAction(
     queueSnapshot?.items ?? [],
-    threadProps.retryLastFailedRunId,
+    failedRunId,
     retryFailedInput,
   )
   const { retryLastFailedRunId: _retryLastFailedRunId, ...assistantThreadProps } = threadProps
@@ -375,21 +380,28 @@ function RuntimeFrame({
   const thread = (
     <HiTLContext.Provider value={hitlValue}>
       <SubagentRuntimeProvider stream={subagentStream}>
-        <AssistantThread
-          {...assistantThreadProps}
-          commandActions={{
-            ...assistantThreadProps.commandActions,
-            retryLastFailedInput,
+        <FailedMessageRetryProvider
+          value={{
+            failedRunId,
+            retryAction: retryLastFailedInput,
           }}
-          resourceContextResetKey={queueAcceptanceKey ?? threadProps.resourceContextResetKey}
-          activities={activities}
-          dataUI={ALL_DATA_UI}
-          deepAgentsState={deepAgentsState}
-          showTokenBar
-          showMessageTimestamp
-          enableAttachments
-          enableMessageQueue={Boolean(messageQueue)}
-        />
+        >
+          <AssistantThread
+            {...assistantThreadProps}
+            commandActions={{
+              ...assistantThreadProps.commandActions,
+              retryLastFailedInput,
+            }}
+            resourceContextResetKey={queueAcceptanceKey ?? threadProps.resourceContextResetKey}
+            activities={activities}
+            dataUI={ALL_DATA_UI}
+            deepAgentsState={deepAgentsState}
+            showTokenBar
+            showMessageTimestamp
+            enableAttachments
+            enableMessageQueue={Boolean(messageQueue)}
+          />
+        </FailedMessageRetryProvider>
       </SubagentRuntimeProvider>
     </HiTLContext.Provider>
   )

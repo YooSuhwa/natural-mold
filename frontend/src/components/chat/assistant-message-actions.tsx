@@ -19,6 +19,10 @@ import { reportClientWarning } from '@/lib/logging/client-logger'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { PinConversationSummaryButton } from '@/components/chat/pin-conversation-summary-button'
 import {
+  FailedMessageRetryButton,
+  useFailedMessageRetryAction,
+} from '@/components/chat/failed-message-retry'
+import {
   MessageEditComposerInput,
   MessageEditComposerRoot,
   useMessageEditComposerControls,
@@ -143,14 +147,33 @@ export function PinSummaryButton() {
 
 export function RetryButton() {
   const t = useTranslations('chat.message')
+  const messageId = useAuiState((s) => s.message?.id)
+  const retryResolution = useFailedMessageRetryAction(messageId)
+  const content = (
+    <>
+      <RotateCcwIcon className="size-3.5 shrink-0" />
+      <span>{t('retry')}</span>
+    </>
+  )
+  if (retryResolution.kind === 'unavailable') return null
+  if (retryResolution.kind === 'available') {
+    return (
+      <FailedMessageRetryButton
+        className={RETRY_BUTTON_CLASS}
+        label={t('retry')}
+        messageId={messageId}
+      >
+        {content}
+      </FailedMessageRetryButton>
+    )
+  }
   return (
     <ActionBarPrimitive.Reload
       className={RETRY_BUTTON_CLASS}
       aria-label={t('retry')}
       title={t('retry')}
     >
-      <RotateCcwIcon className="size-3.5 shrink-0" />
-      <span>{t('retry')}</span>
+      {content}
     </ActionBarPrimitive.Reload>
   )
 }

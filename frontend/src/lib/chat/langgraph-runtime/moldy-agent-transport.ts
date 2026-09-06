@@ -1,4 +1,8 @@
-import { HttpAgentServerAdapter, type AgentServerAdapter } from '@langchain/react'
+import {
+  ProtocolSseTransportAdapter,
+  type ProtocolSseTransportOptions,
+} from '@langchain/langgraph-sdk'
+import type { AgentServerAdapter } from '@langchain/react'
 import type { AppendMessage } from '@assistant-ui/react'
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
 import { csrfStore } from '@/lib/auth/csrf'
@@ -8,6 +12,7 @@ import { withResourceContextRunInput } from '@/lib/chat/context/resource-context
 import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
 
 const MUTATION_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
+const MAX_RECONNECT_ATTEMPTS = 5
 let queueCommandId = 0
 
 function nextQueueCommandId(): number {
@@ -22,6 +27,8 @@ export interface MoldyAgentTransportOptions {
   fetch?: typeof fetch
   onState?: (state: AgentServerState<unknown>) => void
   onRunStartAccepted?: RunStartAcceptedListener
+  onReconnectStateChange?: (state: 'idle' | 'reconnecting') => void
+  reconnectDelayMs?: ProtocolSseTransportOptions['reconnectDelayMs']
 }
 
 type AgentServerState<StateType = unknown> = {
@@ -78,8 +85,8 @@ function withMoldyAuth(baseFetch: typeof fetch): typeof fetch {
   }
 }
 
-type ProtocolCommand = Parameters<HttpAgentServerAdapter['send']>[0]
-type ProtocolSendResult = ReturnType<HttpAgentServerAdapter['send']>
+type ProtocolCommand = Parameters<ProtocolSseTransportAdapter['send']>[0]
+type ProtocolSendResult = ReturnType<ProtocolSseTransportAdapter['send']>
 type EventStreamParams = Parameters<NonNullable<AgentServerAdapter['openEventStream']>>[0]
 type EventStreamHandle = ReturnType<NonNullable<AgentServerAdapter['openEventStream']>>
 
@@ -212,27 +219,43 @@ function registerLangGraphClientDefaults(apiUrl: string, fetchImpl: typeof fetch
 
 class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   readonly #agentId: string
-  readonly #delegate: HttpAgentServerAdapter
+  readonly #delegate: ProtocolSseTransportAdapter
   #onState: MoldyAgentTransportOptions['onState']
   #onRunStartAccepted: MoldyAgentTransportOptions['onRunStartAccepted']
+  readonly #onReconnectStateChange: MoldyAgentTransportOptions['onReconnectStateChange']
   readonly #stateHydrationListeners = new Set<StateHydrationListener>()
   #latestState: AgentServerState<unknown> | undefined
+  #reconnecting = false
   threadId: string
 
   constructor(
     agentId: string,
-    options: ConstructorParameters<typeof HttpAgentServerAdapter>[0],
+    options: ProtocolSseTransportOptions,
     onState?: MoldyAgentTransportOptions['onState'],
     onRunStartAccepted?: MoldyAgentTransportOptions['onRunStartAccepted'],
+    onReconnectStateChange?: MoldyAgentTransportOptions['onReconnectStateChange'],
   ) {
     this.#agentId = agentId
-    this.#delegate = new HttpAgentServerAdapter(options)
+    this.#delegate = new ProtocolSseTransportAdapter({
+      ...options,
+      maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
+      onReconnect: () => this.#setReconnectState('reconnecting'),
+    })
     this.#onState = onState
     this.#onRunStartAccepted = onRunStartAccepted
+    this.#onReconnectStateChange = onReconnectStateChange
     this.threadId = this.#delegate.threadId
   }
 
+  #setReconnectState(state: 'idle' | 'reconnecting'): void {
+    const reconnecting = state === 'reconnecting'
+    if (this.#reconnecting === reconnecting) return
+    this.#reconnecting = reconnecting
+    this.#onReconnectStateChange?.(state)
+  }
+
   setThreadId(threadId: string): void {
+    this.#setReconnectState('idle')
     this.#delegate.setThreadId(threadId)
     this.threadId = this.#delegate.threadId
   }
@@ -310,11 +333,33 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   }
 
   openEventStream(params: EventStreamParams): EventStreamHandle {
-    return this.#delegate.openEventStream(params)
+    this.#setReconnectState('idle')
+    const handle = this.#delegate.openEventStream(params)
+    const settleReconnect = (): void => this.#setReconnectState('idle')
+    return {
+      ready: handle.ready,
+      events: {
+        async *[Symbol.asyncIterator]() {
+          try {
+            for await (const event of handle.events) {
+              settleReconnect()
+              yield event
+            }
+          } finally {
+            settleReconnect()
+          }
+        },
+      },
+      close: () => {
+        handle.close()
+        settleReconnect()
+      },
+    }
   }
 
   close(): Promise<void> {
     this.#stateHydrationListeners.clear()
+    this.#setReconnectState('idle')
     return this.#delegate.close()
   }
 }
@@ -331,7 +376,8 @@ export function createMoldyAgentTransport(
     {
       apiUrl: options.apiBase ?? API_BASE,
       threadId: conversationId,
-      fetch: authedFetch,
+      fetchFactory: () => authedFetch,
+      reconnectDelayMs: options.reconnectDelayMs,
       paths: {
         commands: (threadId) => langGraphThreadPath(conversationId, threadId, '/commands'),
         stream: (threadId) => langGraphThreadPath(conversationId, threadId, '/stream/events'),
@@ -340,5 +386,6 @@ export function createMoldyAgentTransport(
     },
     options.onState,
     options.onRunStartAccepted,
+    options.onReconnectStateChange,
   )
 }
