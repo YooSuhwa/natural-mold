@@ -12,13 +12,15 @@ from app.agent_runtime import langgraph_event_projection as projection
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.langgraph_event_delivery import ProtocolEventDelivery
 from app.agent_runtime.langgraph_lifecycle_events import (
+    error_protocol_event,
     lifecycle_protocol_event,
     terminal_lifecycle_event,
 )
+from app.agent_runtime.langgraph_message_identity import collect_root_ai_message_id
 from app.agent_runtime.langgraph_pending_inputs import pending_input_requested_events
 from app.agent_runtime.langgraph_tool_event_synthesis import synthesize_tool_events_from_values
 from app.agent_runtime.offload_protocol_projection import project_offload_egress_data
-from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
+from app.agent_runtime.protocol_events import StoredProtocolEvent
 from app.agent_runtime.protocol_side_effects import (
     collect_protocol_side_effect_events,
     prepare_artifact_recorder,
@@ -41,22 +43,6 @@ def _project_offload_egress_data(data: Any) -> Any:
     return project_offload_egress_data(data)
 
 
-def _error_event(
-    *,
-    run_id: str,
-    thread_id: str,
-    seq: int,
-    exc: Exception,
-) -> StoredProtocolEvent:
-    return stored_protocol_event(
-        run_id=run_id,
-        thread_id=thread_id,
-        seq=seq,
-        method="error",
-        data={"message": public_stream_error_message(exc)},
-    )
-
-
 async def stream_agent_response_langgraph(
     agent: Any,
     input_: list[Any] | Command | dict[str, Any] | None,
@@ -66,6 +52,7 @@ async def stream_agent_response_langgraph(
     cost_per_input_token: float | None = None,
     cost_per_output_token: float | None = None,
     usage_sink: dict[str, Any] | None = None,
+    msg_id_sink: list[str] | None = None,
     error_sink: list[StreamErrorRecord] | None = None,
     broker: EventBroker | None = None,
     persist_callback: PersistCallback | None = None,
@@ -187,6 +174,7 @@ async def stream_agent_response_langgraph(
                         )
                     )
 
+            collect_root_ai_message_id(event, msg_id_sink)
             yield await emit(event)
             for chunk in await delivery.emit_canonical_interrupts(event):
                 yield chunk
@@ -263,7 +251,7 @@ async def stream_agent_response_langgraph(
             )
         )
         yield await emit(
-            _error_event(
+            error_protocol_event(
                 run_id=msg_id,
                 thread_id=thread_id,
                 seq=delivery.max_emitted_seq + 1,

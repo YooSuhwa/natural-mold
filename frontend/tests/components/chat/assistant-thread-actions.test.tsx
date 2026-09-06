@@ -111,7 +111,8 @@ vi.mock('@assistant-ui/react', () => {
     useAuiState: (selector: (state: unknown) => unknown) =>
       selector({
         composer: { dictation: null, isEditing: true, runConfig: {}, text: '' },
-        thread: { isDisabled: false },
+        message: { id: 'assistant-message-1' },
+        thread: { isDisabled: false, messages: [{ id: 'assistant-message-1' }] },
       }),
     useAui: () => ({
       composer: {
@@ -123,7 +124,11 @@ vi.mock('@assistant-ui/react', () => {
       },
       thread: {
         cancelRun: vi.fn(),
-        getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),
+        getState: () => ({
+          capabilities: { attachments: false, queue: false },
+          isRunning: false,
+          messages: [{ id: 'assistant-message-1', role: 'assistant' }],
+        }),
       },
     }),
     AuiIf: ({

@@ -140,6 +140,7 @@ async def _stream_langgraph_with_secrets(
                 cost_per_input_token=cfg.cost_per_input_token,
                 cost_per_output_token=cfg.cost_per_output_token,
                 usage_sink=usage_sink,
+                msg_id_sink=msg_id_sink,
                 error_sink=stream_errors,
                 broker=broker,
                 persist_callback=persist_callback,

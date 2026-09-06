@@ -1786,7 +1786,22 @@
       "responding": "응답을 작성하는 중",
       "reconnecting": "스트림을 다시 연결하는 중",
       "done": "완료됨",
-      "error": "문제가 발생했습니다"
+      "error": "문제가 발생했습니다",
+      "summaryAria": "실행 요약",
+      "elapsedUnknown": "시간 정보 없음",
+      "durationSeconds": "{count}초",
+      "durationMinutesSeconds": "{minutes}분 {seconds}초",
+      "toolTotal": "도구 총 {count}",
+      "subagentTotal": "서브 에이전트 총 {count}",
+      "rootTools": "메인 도구",
+      "descendantTools": "하위 도구",
+      "rootSubagents": "메인 서브 에이전트",
+      "descendantSubagents": "하위 서브 에이전트",
+      "showDetails": "활동 보기",
+      "hideDetails": "활동 닫기",
+      "history": "활동 내역",
+      "truncated": "이전 활동 일부가 생략되었습니다.",
+      "activityElapsed": "실행 후 {value}"
     },
     "compaction": {
       "summary": "이전 대화를 요약해 컨텍스트를 정리했어요"

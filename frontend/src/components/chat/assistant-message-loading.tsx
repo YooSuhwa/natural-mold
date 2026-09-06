@@ -111,7 +111,7 @@ export function StreamingMessageLoadingIndicator({
         >
           {filesState ? <DeepAgentsStatePanel state={filesState} showTodos={false} /> : null}
           {hasSubagentProgress ? <SubagentProgress summary={subagentProgress} /> : null}
-          {hasActivities ? <RunActivityStrip activities={progressActivities} /> : null}
+          {hasActivities ? <RunActivityStrip activities={semanticActivities} /> : null}
         </div>
       ) : (
         <WittyLoadingMessage className={cn('pointer-events-none mb-1 px-1', className)} />

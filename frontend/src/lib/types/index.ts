@@ -200,6 +200,34 @@ export type ConversationRunStatus =
   | 'failed'
   | 'stale'
 
+export interface ConversationRunActivityMetric {
+  kind: string
+  namespace: string[]
+  call_id: string | null
+  name: string | null
+  elapsed_ms: number | null
+}
+
+export interface ConversationRunMetrics {
+  terminal_state: string | null
+  elapsed_ms: number | null
+  ttft_ms: number | null
+  generation_ms: number | null
+  tokens_per_second: number | null
+  prompt_tokens: number | null
+  completion_tokens: number | null
+  cache_creation_tokens: number | null
+  cache_read_tokens: number | null
+  estimated_cost: number | null
+  usage_complete: boolean
+  root_tool_calls: number | null
+  descendant_tool_calls: number | null
+  root_subagent_calls: number | null
+  descendant_subagent_calls: number | null
+  activity_json: ConversationRunActivityMetric[]
+  activity_truncated: boolean
+}
+
 export interface ConversationRun {
   id: string
   conversation_id: string
@@ -219,6 +247,7 @@ export interface ConversationRun {
   completed_at: string | null
   created_at: string
   updated_at: string
+  metrics: ConversationRunMetrics | null
 }
 
 export interface Conversation {

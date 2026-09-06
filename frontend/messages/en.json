@@ -1786,7 +1786,22 @@
       "responding": "Writing response",
       "reconnecting": "Reconnecting stream",
       "done": "Done",
-      "error": "Something went wrong"
+      "error": "Something went wrong",
+      "summaryAria": "Run summary",
+      "elapsedUnknown": "Time unavailable",
+      "durationSeconds": "{count}s",
+      "durationMinutesSeconds": "{minutes}m {seconds}s",
+      "toolTotal": "Total tools {count}",
+      "subagentTotal": "Total sub-agents {count}",
+      "rootTools": "Main tools",
+      "descendantTools": "Descendant tools",
+      "rootSubagents": "Main sub-agents",
+      "descendantSubagents": "Descendant sub-agents",
+      "showDetails": "Show activity",
+      "hideDetails": "Hide activity",
+      "history": "Activity history",
+      "truncated": "Some earlier activity was omitted.",
+      "activityElapsed": "At {value}"
     },
     "compaction": {
       "summary": "Older messages were summarized to free up context"

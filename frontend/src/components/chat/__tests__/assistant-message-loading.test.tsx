@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
 import { render, screen } from '../../../../tests/test-utils'
 import { StreamingMessageLoadingIndicator } from '../assistant-message-loading'
 import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
@@ -183,6 +184,34 @@ describe('StreamingMessageLoadingIndicator', () => {
     expect(screen.getByTestId('run-activity-strip')).toBeInTheDocument()
     expect(screen.getByText('web_search 실행 중')).toBeInTheDocument()
     expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
+  })
+
+  it('keeps completed current-run activity in expanded history while another activity runs', async () => {
+    const user = userEvent.setup()
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:tool:completed-search',
+            kind: 'tool',
+            status: 'complete',
+            title: 'completed_search',
+          }),
+          activity({
+            id: 'run-1:tool:running-fetch',
+            kind: 'tool',
+            status: 'running',
+            title: 'running_fetch',
+          }),
+        ]}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '활동 보기' }))
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByText('completed_search')).toBeInTheDocument()
+    expect(screen.getByText('running_fetch')).toBeInTheDocument()
   })
 
   it('shows the live panel for files but defers todos to the message plan card', () => {
