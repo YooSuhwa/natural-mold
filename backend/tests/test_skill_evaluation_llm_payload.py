@@ -4,10 +4,19 @@ import uuid
 from pathlib import Path
 
 import pytest
+from langchain_core.messages import HumanMessage
 
+import app.services.skill_evaluation_llm_payload as payload_module
 from app.marketplace.skill_runtime import SkillRuntimeDescriptor, SkillToolContext
-from app.services.skill_evaluation_llm_payload import skill_payload
-from app.services.skill_evaluation_worker_types import SkillEvaluationContext
+from app.services.skill_evaluation_llm_payload import (
+    json_object_from_text,
+    message_text,
+    skill_payload,
+)
+from app.services.skill_evaluation_worker_types import (
+    SkillEvaluationContext,
+    SkillEvaluationExecutionError,
+)
 
 
 def test_skill_payload_previews_attached_runtime_file(tmp_path: Path) -> None:
@@ -76,7 +85,9 @@ def test_skill_payload_previews_attached_runtime_file(tmp_path: Path) -> None:
     assert "external secret value" not in str(payload)
 
 
-def test_skill_payload_previews_single_file_under_hidden_ancestor(tmp_path: Path) -> None:
+def test_skill_payload_falls_back_to_original_single_file_under_hidden_ancestor(
+    tmp_path: Path,
+) -> None:
     skill_id = uuid.uuid4()
     skill_file = tmp_path / ".hidden-parent" / "single-skill" / "SKILL.md"
     skill_file.parent.mkdir(parents=True)
@@ -88,7 +99,7 @@ def test_skill_payload_previews_single_file_under_hidden_ancestor(tmp_path: Path
         name="Single Skill",
         description="Single file preview test",
         original_storage_path=skill_file,
-        runtime_storage_path=skill_file,
+        runtime_storage_path=tmp_path / "missing-runtime-file",
     )
     runtime_context = SkillToolContext(
         thread_id="single-file-run",
@@ -161,3 +172,113 @@ def test_skill_payload_rejects_symlinked_skill_root(
 
     assert payload["files"] == []
     assert "external root secret" not in str(payload)
+
+
+def test_skill_payload_stops_after_total_preview_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(payload_module, "_MAX_SKILL_FILE_CHARS", 3)
+    monkeypatch.setattr(payload_module, "_MAX_TOTAL_SKILL_CHARS", 3)
+    skill_id = uuid.uuid4()
+    skill_root = tmp_path / "budget-skill"
+    skill_root.mkdir()
+    (skill_root / "first.txt").write_text("one", encoding="utf-8")
+    (skill_root / "second.txt").write_text("two", encoding="utf-8")
+    descriptor = SkillRuntimeDescriptor(
+        id=skill_id,
+        slug="budget-skill",
+        name="Budget Skill",
+        description="Preview budget test",
+        original_storage_path=skill_root,
+        runtime_storage_path=skill_root,
+    )
+    runtime_context = SkillToolContext(
+        thread_id="budget-run",
+        output_dir=tmp_path / "outputs",
+        runtime_root=tmp_path,
+        descriptors={descriptor.slug: descriptor},
+    )
+    context = SkillEvaluationContext(
+        run_id=uuid.uuid4(),
+        skill_id=skill_id,
+        evaluation_set_id=uuid.uuid4(),
+        skill_version="1.0.0",
+        skill_content_hash="budget-content-hash",
+        evals=[],
+        runtime_context=runtime_context,
+    )
+
+    payload = skill_payload(context)
+
+    assert payload["files"] == [
+        {
+            "skill_slug": "budget-skill",
+            "path": "first.txt",
+            "content": "one",
+        }
+    ]
+
+
+def test_read_preview_reports_file_read_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preview_path = tmp_path / "unreadable.txt"
+
+    def raise_permission_error(
+        _path: Path,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> str:
+        del encoding, errors
+        raise PermissionError("preview denied")
+
+    monkeypatch.setattr(Path, "read_text", raise_permission_error)
+
+    preview = payload_module._read_preview(preview_path, remaining=10)
+
+    assert preview == "Error reading file preview: preview denied"
+
+
+def test_read_preview_truncates_to_available_budget(tmp_path: Path) -> None:
+    preview_path = tmp_path / "preview.txt"
+    preview_path.write_text("long-content", encoding="utf-8")
+
+    preview = payload_module._read_preview(preview_path, remaining=4)
+
+    assert preview == "long\n...[truncated]"
+
+
+def test_json_object_from_text_parses_fenced_object() -> None:
+    result = json_object_from_text('```json\n{"score": 1, "items": []}\n```')
+
+    assert result == {"score": 1, "items": []}
+
+
+@pytest.mark.parametrize("text", ["not-json", "[1, 2]"])
+def test_json_object_from_text_rejects_invalid_or_non_object_payload(text: str) -> None:
+    with pytest.raises(SkillEvaluationExecutionError):
+        json_object_from_text(text)
+
+
+def test_json_object_from_text_rejects_unclosed_json_fence() -> None:
+    with pytest.raises(SkillEvaluationExecutionError):
+        json_object_from_text('```json\n{"score": 1}')
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        (HumanMessage(content="plain response"), "plain response"),
+        (
+            HumanMessage(content=[{"type": "text", "text": "structured response"}]),
+            '[{"type": "text", "text": "structured response"}]',
+        ),
+    ],
+)
+def test_message_text_serializes_string_and_structured_content(
+    message: HumanMessage,
+    expected: str,
+) -> None:
+    assert message_text(message) == expected
