@@ -79,6 +79,7 @@ function preparedRoot() {
     'frontend/auth/scripted-full',
     'frontend/.next/scripted-full',
     'frontend/test-results/scripted-full',
+    'frontend/playwright-artifacts/scripted-full',
   ]) {
     mkdirSync(path.join(runRoot, relative), { recursive: true })
   }
@@ -293,11 +294,11 @@ describe('prepared E2E lane boundary', () => {
     expect(result.stdout).toContain('[scripted-smoke]')
   }, 60_000)
 
-  it('keeps the prepared result parent when Playwright clears its disposable output child', () => {
+  it('keeps the prepared artifact parent when Playwright clears its disposable output child', () => {
     // Given: an isolated prepared root whose Playwright output child already exists.
     const runRoot = preparedRoot()
-    const resultRoot = path.join(runRoot, 'frontend/test-results/scripted-full')
-    const outputChild = path.join(resultRoot, 'playwright-artifacts')
+    const artifactRoot = path.join(runRoot, 'frontend/playwright-artifacts')
+    const outputChild = path.join(artifactRoot, 'scripted-full')
     mkdirSync(outputChild, { recursive: true })
     try {
       // When: the actual Playwright config loads through a resource-free project list.
@@ -308,7 +309,7 @@ describe('prepared E2E lane boundary', () => {
 
       // Then: the prepared parent survives Playwright's output-directory lifecycle.
       expect(result.status, result.stderr).toBe(0)
-      expect(existsSync(resultRoot)).toBe(true)
+      expect(existsSync(artifactRoot)).toBe(true)
     } finally {
       rmSync(runRoot, { recursive: true, force: true })
     }

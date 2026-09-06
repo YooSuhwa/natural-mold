@@ -20,6 +20,7 @@ IGNORED_DIRECTORIES = {
     ".next",
     "node_modules",
     "output",
+    "playwright-artifacts",
     "playwright-report",
     "test-results",
 }
@@ -45,6 +46,9 @@ PREPARED_DIRECTORIES = (
     "frontend/test-results/scripted-full",
     "frontend/test-results/scripted-capture",
     "frontend/test-results/live-manual",
+    "frontend/playwright-artifacts/scripted-smoke",
+    "frontend/playwright-artifacts/scripted-full",
+    "frontend/playwright-artifacts/live-manual",
     "output/captures",
     "output/e2e-captures",
 )

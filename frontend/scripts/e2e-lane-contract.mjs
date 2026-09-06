@@ -1,6 +1,7 @@
-import path from 'node:path'
-
-import { getPreparedE2ERunPaths } from './e2e-lane-paths.mjs'
+import {
+  getPreparedE2ERunPaths,
+  getPreparedPlaywrightArtifactsDirectory,
+} from './e2e-lane-paths.mjs'
 import {
   assertE2ELaneNodeVersion,
   buildBackendWebServerCommand,
@@ -57,7 +58,8 @@ export function getE2EAuthStatePath(lane, environment, project) {
 }
 
 export function getPlaywrightArtifactsDirectory(lane, environment, project) {
-  return path.join(getE2ERunPaths(lane, environment, project).resultsDir, 'playwright-artifacts')
+  const e2eProject = resolveE2EProject(lane, project ?? environment.E2E_PROJECT)
+  return getPreparedPlaywrightArtifactsDirectory(lane, environment, e2eProject)
 }
 
 export function buildLaneEnvironment(lane, inheritedEnvironment, project) {

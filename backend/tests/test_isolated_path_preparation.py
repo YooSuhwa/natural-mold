@@ -21,7 +21,9 @@ def test_backend_run_has_prepared_lane_tree_under_system_temp(tmp_path: Path) ->
         "names=['backend/data','frontend/auth','frontend/.next',"
         "'frontend/.next/scripted-smoke','frontend/.next/scripted-full',"
         "'frontend/.next/scripted-capture','frontend/.next/live-manual',"
-        "'frontend/test-results','output/e2e-captures']; "
+        "'frontend/test-results','frontend/playwright-artifacts/scripted-smoke',"
+        "'frontend/playwright-artifacts/scripted-full',"
+        "'frontend/playwright-artifacts/live-manual','output/e2e-captures']; "
         f"pathlib.Path({str(receipt)!r}).write_text(json.dumps("
         "{'root':str(root),'ready':all((root/name).is_dir() for name in names),"
         "'legacy_next':(root/'frontend/next').exists()}))"
@@ -75,6 +77,40 @@ def test_frontend_child_runs_from_disposable_source_mirror(tmp_path: Path) -> No
     assert payload["package"] is True
     assert payload["source"] is True
     assert payload["modules"] is True
+
+
+def test_preparation_ignores_stale_playwright_artifacts_from_source_tree(tmp_path: Path) -> None:
+    # Given: a source frontend containing stale Playwright output and a wrapper-owned run root.
+    source_root = tmp_path / "source"
+    source_frontend = source_root / "frontend"
+    source_frontend.mkdir(parents=True)
+    (source_frontend / "package.json").write_text("{}")
+    (source_frontend / "node_modules").mkdir()
+    stale_output = source_frontend / "playwright-artifacts/scripted-smoke/stale.txt"
+    stale_output.parent.mkdir(parents=True)
+    stale_output.write_text("untrusted")
+    run_root = tmp_path / ".moldy-test-run.artifact-isolation"
+    run_root.mkdir()
+
+    # When: the isolated-run preparer copies the source tree.
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/prepare-isolated-run.py"),
+            str(run_root),
+            str(source_root),
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    # Then: the prepared empty artifact directory survives without mirroring stale source output.
+    prepared_output = run_root / "frontend/playwright-artifacts/scripted-smoke"
+    assert result.returncode == 0, result.stderr
+    assert prepared_output.is_dir()
+    assert not (prepared_output / stale_output.name).exists()
 
 
 def test_real_next_type_setup_writes_only_inside_frontend_mirror(tmp_path: Path) -> None:

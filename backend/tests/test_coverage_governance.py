@@ -65,7 +65,10 @@ def test_backend_coverage_rejects_ratio_regression(tmp_path: Path) -> None:
         tmp_path / "report.json", {"totals": {"covered_lines": 159, "num_statements": 200}}
     )
 
-    with pytest.raises(CoverageContractError):
+    with pytest.raises(
+        CoverageContractError,
+        match=r"line coverage regressed \(actual=159/200, expected=80/100\)",
+    ):
         check_backend(baseline, report)
 
 
@@ -170,7 +173,10 @@ def test_frontend_coverage_rejects_one_regressed_metric(tmp_path: Path) -> None:
     report_metrics["branches"] = {"covered": 79, "total": 100}
     report = _write(tmp_path / "summary.json", {"total": report_metrics})
 
-    with pytest.raises(CoverageContractError, match="branches coverage regressed"):
+    with pytest.raises(
+        CoverageContractError,
+        match=r"branches coverage regressed \(actual=79/100, expected=80/100\)",
+    ):
         check_frontend(baseline, report)
 
 

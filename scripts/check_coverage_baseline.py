@@ -196,7 +196,11 @@ def _assert_no_regression(name: str, expected: Metric, actual: Metric) -> None:
         or actual.covered > actual.total
         or actual.covered * expected.total < expected.covered * actual.total
     ):
-        raise CoverageContractError(f"{name} coverage regressed")
+        raise CoverageContractError(
+            f"{name} coverage regressed "
+            f"(actual={actual.covered}/{actual.total}, "
+            f"expected={expected.covered}/{expected.total})"
+        )
 
 
 def main() -> int:

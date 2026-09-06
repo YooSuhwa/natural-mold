@@ -21,8 +21,9 @@ from cleanup_discovery_claims import Claims
 from cleanup_docker import probe_docker
 from e2e_cleanup_checker import validate_live_absence as validate_e2e_live_absence
 from e2e_cleanup_checker import validate_payload as validate_e2e_payload
-from e2e_cleanup_contract import CLEANUP_FIELDS, PORTS, require
+from e2e_cleanup_contract import CLEANUP_FIELDS, PORTS, PROJECTS, require
 from e2e_cleanup_export_paths import _PinnedDirectory
+from e2e_failure_diagnostics import FailureDiagnosticError, parse_failure_diagnostics
 from postgres_cleanup_checker import (
     ManifestValidationError,
     load_manifest,
@@ -58,6 +59,9 @@ _WRAPPER_COMMAND_PREFIX: Final = (
     "--cwd",
     "backend",
     "--",
+)
+_KNOWN_E2E_PROJECTS: Final = frozenset(
+    project for lane_projects in PROJECTS.values() for project in lane_projects
 )
 
 
@@ -254,6 +258,31 @@ def _export_failure_state(value: object) -> str:
     return value if isinstance(value, str) and value in allowed else "invalid"
 
 
+def _failure_metadata_state(payload: dict[str, object]) -> tuple[str, str, str, str]:
+    """Project parsed failures onto bounded count, enums, and location cardinality."""
+    project = payload.get("project")
+    if not isinstance(project, str) or project not in _KNOWN_E2E_PROJECTS:
+        return "invalid", "invalid", "invalid", "invalid"
+    try:
+        diagnostics = parse_failure_diagnostics(payload.get("unexpected_failures"), project)
+    except FailureDiagnosticError:
+        return "invalid", "invalid", "invalid", "invalid"
+    phases = sorted(
+        {diagnostic.failure_phase.value for diagnostic in diagnostics if diagnostic.failure_phase}
+    )
+    network_failure_codes = sorted(
+        {code.value for diagnostic in diagnostics for code in diagnostic.network_failure_codes}
+    )
+    located = sum(diagnostic.location is not None for diagnostic in diagnostics)
+    location = "none" if located == 0 else "one" if located == 1 else "multiple"
+    return (
+        str(len(diagnostics)),
+        ",".join(phases) if phases else "none",
+        ",".join(network_failure_codes) if network_failure_codes else "none",
+        location,
+    )
+
+
 def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
     """Summarize only fixed enums and booleans; never reflect receipt values."""
     if payload.get("runner") != "moldy-isolated-e2e":
@@ -320,6 +349,9 @@ def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
         and cleanup.get("foreign_containers_preserved") is True
         else "incomplete"
     )
+    failure_count, failure_phases, network_failure_codes, location = _failure_metadata_state(
+        payload
+    )
     return " ".join(
         (
             f"status={status}",
@@ -334,6 +366,10 @@ def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
             f"source_rejected={source_rejected}",
             f"receipts={receipts}",
             f"cleanup={cleanup_state}",
+            f"failures={failure_count}",
+            f"failure_phases={failure_phases}",
+            f"network_failure_codes={network_failure_codes}",
+            f"location={location}",
         )
     )
 

@@ -4,7 +4,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
@@ -489,33 +491,65 @@ describe('E2E lane contract', () => {
     expect(() => collectJsonNodes(report)).toThrow('duplicate live selection identity')
   })
 
-  it('keeps Playwright-owned output beneath the prepared result root', () => {
-    // Given: a prepared isolated result root and a removed Playwright child directory.
+  it('isolates non-capture Playwright output from exportable results', () => {
+    // Given: a prepared isolated root with both exportable and disposable artifact directories.
     const runRoot = mkdtempSync(path.join(os.tmpdir(), 'moldy-artifact-output-'))
-    const resultRoot = path.join(runRoot, 'frontend/test-results/scripted-smoke')
     for (const relative of [
       'frontend/auth/scripted-smoke',
       'frontend/.next/scripted-smoke',
       'frontend/test-results/scripted-smoke',
+      'frontend/auth/scripted-capture',
+      'frontend/.next/scripted-capture',
+      'frontend/test-results/scripted-capture',
+      'frontend/playwright-artifacts/scripted-smoke',
     ]) {
       mkdirSync(path.join(runRoot, relative), { recursive: true })
     }
     const environment = { MOLDY_TEST_RUN_ROOT: runRoot }
-    const outputDir = getPlaywrightArtifactsDirectory('scripted', environment, 'scripted-smoke')
-    mkdirSync(outputDir, { recursive: true })
-    rmSync(outputDir, { recursive: true })
 
-    // When: configuration resolves its paths after Playwright owns and clears its child.
-    const resolvedOutputDir = getPlaywrightArtifactsDirectory(
+    // When: configuration resolves one non-capture and one capture project output directory.
+    const isolatedOutput = getPlaywrightArtifactsDirectory(
+      'scripted',
+      environment,
+      'scripted-smoke',
+    )
+    const captureOutput = getPlaywrightArtifactsDirectory(
+      'scripted',
+      environment,
+      'scripted-capture',
+    )
+
+    // Then: only capture retains the exportable result-tree output convention.
+    const resolvedRunRoot = realpathSync(runRoot)
+    expect(isolatedOutput).toBe(
+      path.join(resolvedRunRoot, 'frontend/playwright-artifacts/scripted-smoke'),
+    )
+    expect(isolatedOutput).not.toContain('frontend/test-results/scripted-smoke')
+    expect(captureOutput).toBe(
+      path.join(resolvedRunRoot, 'frontend/test-results/scripted-capture/playwright-artifacts'),
+    )
+
+    // When: Playwright clears the disposable non-capture leaf before its configuration reload.
+    rmSync(isolatedOutput, { recursive: true })
+    const recreatedOutput = getPlaywrightArtifactsDirectory(
       'scripted',
       environment,
       'scripted-smoke',
     )
 
-    // Then: the prepared parent still validates and the disposable child is recovered by Playwright.
-    expect(path.dirname(resolvedOutputDir)).toBe(path.dirname(outputDir))
-    expect(resolvedOutputDir).toBe(outputDir)
-    expect(existsSync(resultRoot)).toBe(true)
+    // Then: the prepared parent remains trusted while Playwright can recreate its owned leaf.
+    expect(recreatedOutput).toBe(isolatedOutput)
+
+    // When / Then: an attacker cannot replace that leaf with a file or symbolic link.
+    writeFileSync(recreatedOutput, 'not-a-directory')
+    expect(() =>
+      getPlaywrightArtifactsDirectory('scripted', environment, 'scripted-smoke'),
+    ).toThrow('without symbolic links')
+    rmSync(recreatedOutput)
+    symlinkSync(path.join(runRoot, 'frontend/test-results/scripted-smoke'), recreatedOutput, 'dir')
+    expect(() =>
+      getPlaywrightArtifactsDirectory('scripted', environment, 'scripted-smoke'),
+    ).toThrow('without symbolic links')
     rmSync(runRoot, { recursive: true, force: true })
   })
 
@@ -974,6 +1008,9 @@ describe('E2E lane contract', () => {
       buildDir: '.next',
       resultsDir: 'test-results/live',
     })
+    expect(getPlaywrightArtifactsDirectory('live', {}, 'live-manual')).toBe(
+      'test-results/live/playwright-artifacts',
+    )
     expect(overridden.authStatePath).toBe('./tmp/live-auth.json')
   })
 })

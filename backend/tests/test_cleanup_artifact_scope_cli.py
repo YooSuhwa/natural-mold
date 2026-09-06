@@ -139,11 +139,262 @@ def test_e2e_failure_diagnostic_never_reflects_receipt_values() -> None:
         "status=failed self_test=normal phase=other exit=70 ownership=11000 "
         "selected=present executed=empty export=passed export_failure=invalid "
         "source_rejected=yes "
-        "receipts=missing cleanup=complete"
+        "receipts=missing cleanup=complete failures=invalid failure_phases=invalid "
+        "network_failure_codes=invalid location=invalid"
     )
     assert "password" not in diagnostic
     assert "token" not in diagnostic
     assert "must-not-appear" not in diagnostic
+
+
+def test_e2e_failure_diagnostic_projects_only_safe_failure_metadata() -> None:
+    module = _cleanup_cli()
+    payload = {
+        "runner": "moldy-isolated-e2e",
+        "status": "failed",
+        "self_test": "normal",
+        "project": "scripted-full",
+        "failure_reason": "playwright_failed",
+        "child_exit_code": 1,
+        "owned_run_root": True,
+        "owned_database": True,
+        "owned_backend": True,
+        "owned_frontend": True,
+        "owned_proxy": False,
+        "selected_ids": [],
+        "executed_ids": [],
+        "unexpected_failures": [
+            {
+                "node_id": ("scripted-full::e2e/token-secretvalue.spec.ts::title-secretvalue"),
+                "status": "failed",
+                "location": {
+                    "file": "e2e/token-secretvalue.spec.ts",
+                    "line": 42,
+                    "column": 7,
+                },
+                "network_failure_codes": [
+                    "api_request_failure",
+                    "other_response_failure",
+                ],
+                "failure_phase": "open_draft",
+            }
+        ],
+    }
+
+    diagnostic = module._e2e_failure_diagnostic(payload)
+
+    assert diagnostic is not None
+    assert "failures=1" in diagnostic
+    assert "failure_phases=open_draft" in diagnostic
+    assert "network_failure_codes=api_request_failure,other_response_failure" in diagnostic
+    assert "location=one" in diagnostic
+    for canary in ("token-secretvalue", "title-secretvalue", "42", "7"):
+        assert canary not in diagnostic
+
+
+@pytest.mark.parametrize(
+    "unexpected_failures",
+    [
+        [{"node_id": "scripted-full::/etc/token.spec.ts::title", "status": "failed"}],
+        [{"node_id": "scripted-full::e2e/../token.spec.ts::title", "status": "failed"}],
+        [{"node_id": r"scripted-full::e2e\\token.spec.ts::title", "status": "failed"}],
+        [
+            {
+                "node_id": "scripted-full::e2e/token.spec.ts::title",
+                "status": "failed",
+                "location": {"file": "e2e/token.spec.ts", "line": True, "column": 1},
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-full::e2e/token.spec.ts::title",
+                "status": "failed",
+                "location": {"file": "e2e/other.spec.ts", "line": 1, "column": 1},
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-full::e2e/token.spec.ts::title",
+                "status": "failed",
+                "failure_phase": "phase=token-secretvalue",
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-full::e2e/token.spec.ts::title",
+                "status": "failed",
+                "network_failure_codes": ["code=token-secretvalue"],
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-full::e2e/token.spec.ts::title",
+                "status": "failed",
+                "unexpected": "raw-error-token-secretvalue",
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-full::e2e/token.spec.ts::title",
+                "status": "failed",
+                "location": {"file": "e2e/token.spec.ts", "line": 0, "column": 1},
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-full::e2e/token.spec.ts::title",
+                "status": "failed",
+                "location": {
+                    "file": "e2e/token.spec.ts",
+                    "line": 1_000_001,
+                    "column": 1,
+                },
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-full::e2e/token-secretvalue.spec.ts::title",
+                "status": "failed",
+                "location": {
+                    "file": "e2e/token-secretvalue.spec.ts\x00",
+                    "line": 1,
+                    "column": 1,
+                },
+            }
+        ],
+        [
+            {
+                "node_id": "scripted-full::e2e/token.spec.ts::title",
+                "status": "failed",
+            },
+            {
+                "node_id": "scripted-full::e2e/token.spec.ts::title",
+                "status": "failed",
+            },
+        ],
+        [
+            *[
+                {
+                    "node_id": f"scripted-full::e2e/token-{index}.spec.ts::title",
+                    "status": "failed",
+                }
+                for index in range(17)
+            ]
+        ],
+    ],
+)
+def test_e2e_failure_diagnostic_rejects_malformed_failure_metadata(
+    unexpected_failures: list[dict[str, object]],
+) -> None:
+    module = _cleanup_cli()
+    payload = {
+        "runner": "moldy-isolated-e2e",
+        "status": "failed",
+        "self_test": "normal",
+        "project": "scripted-full",
+        "unexpected_failures": unexpected_failures,
+    }
+
+    diagnostic = module._e2e_failure_diagnostic(payload)
+
+    assert diagnostic is not None
+    assert "failures=invalid" in diagnostic
+    assert "failure_phases=invalid" in diagnostic
+    assert "network_failure_codes=invalid" in diagnostic
+    assert "location=invalid" in diagnostic
+    assert "token-secretvalue" not in diagnostic
+    assert "raw-error-token-secretvalue" not in diagnostic
+
+
+@pytest.mark.parametrize(
+    ("unexpected_failures", "expected_location"),
+    [
+        ([], "none"),
+        (
+            [
+                {
+                    "node_id": "scripted-full::e2e/token.spec.ts::title",
+                    "status": "failed",
+                }
+            ],
+            "none",
+        ),
+        (
+            [
+                {
+                    "node_id": "scripted-full::e2e/token.spec.ts::title",
+                    "status": "failed",
+                    "location": {"file": "e2e/token.spec.ts", "line": 1, "column": 1},
+                }
+            ],
+            "one",
+        ),
+        (
+            [
+                {
+                    "node_id": f"scripted-full::e2e/token-{index}.spec.ts::title",
+                    "status": "failed",
+                    "location": {
+                        "file": f"e2e/token-{index}.spec.ts",
+                        "line": 1,
+                        "column": 1,
+                    },
+                }
+                for index in range(2)
+            ],
+            "multiple",
+        ),
+        (
+            [
+                {
+                    "node_id": "scripted-full::e2e/token.spec.ts::title",
+                    "status": "failed",
+                    "location": {"file": "e2e/token.spec.ts", "line": 1, "column": 1},
+                },
+                {
+                    "node_id": "scripted-full::e2e/other.spec.ts::title",
+                    "status": "failed",
+                },
+            ],
+            "one",
+        ),
+    ],
+)
+def test_e2e_failure_diagnostic_reports_location_cardinality(
+    unexpected_failures: list[dict[str, object]],
+    expected_location: str,
+) -> None:
+    module = _cleanup_cli()
+    payload = {
+        "runner": "moldy-isolated-e2e",
+        "project": "scripted-full",
+        "unexpected_failures": unexpected_failures,
+    }
+
+    diagnostic = module._e2e_failure_diagnostic(payload)
+
+    assert diagnostic is not None
+    assert f"location={expected_location}" in diagnostic
+
+
+def test_e2e_failure_diagnostic_requires_a_known_project() -> None:
+    module = _cleanup_cli()
+    payload = {
+        "runner": "moldy-isolated-e2e",
+        "status": "failed",
+        "self_test": "normal",
+        "project": "project=token-secretvalue",
+        "unexpected_failures": [],
+    }
+
+    diagnostic = module._e2e_failure_diagnostic(payload)
+
+    assert diagnostic is not None
+    assert "failures=invalid" in diagnostic
+    assert "failure_phases=invalid" in diagnostic
+    assert "network_failure_codes=invalid" in diagnostic
+    assert "location=invalid" in diagnostic
+    assert "token-secretvalue" not in diagnostic
 
 
 @pytest.mark.parametrize(

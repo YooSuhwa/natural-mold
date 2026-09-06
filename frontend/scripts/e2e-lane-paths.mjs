@@ -49,6 +49,19 @@ function resolvePreparedFile(runRoot, candidate) {
   return resolved
 }
 
+function resolvePreparedDisposableDirectory(runRoot, candidate) {
+  const parent = requirePreparedDirectory(runRoot, path.dirname(candidate))
+  const resolved = path.join(parent, path.basename(candidate))
+  if (!existsSync(resolved)) return resolved
+  const metadata = lstatSync(resolved)
+  if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+    throw new Error(
+      'Frontend Playwright artifact directory must be a directory without symbolic links.',
+    )
+  }
+  return realpathSync(resolved)
+}
+
 function hasNonEmptyValue(environment, name) {
   return typeof environment[name] === 'string' && environment[name].trim().length > 0
 }
@@ -91,4 +104,18 @@ export function getPreparedE2ERunPaths(lane, environment, project) {
         : path.join(frontendRoot, 'test-results', project),
     ),
   }
+}
+
+export function getPreparedPlaywrightArtifactsDirectory(lane, environment, project) {
+  const runPaths = getPreparedE2ERunPaths(lane, environment, project)
+  const runRoot = hasNonEmptyValue(environment, 'MOLDY_TEST_RUN_ROOT')
+    ? environment.MOLDY_TEST_RUN_ROOT
+    : undefined
+  if (!runRoot || project === 'scripted-capture') {
+    return path.join(runPaths.resultsDir, 'playwright-artifacts')
+  }
+  return resolvePreparedDisposableDirectory(
+    runRoot,
+    path.join(runRoot, 'frontend', 'playwright-artifacts', project),
+  )
 }
