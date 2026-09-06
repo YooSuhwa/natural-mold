@@ -74,6 +74,16 @@ describe('RunSummaryPanel', () => {
     expect(result.getByText('1m 5s')).toBeInTheDocument()
   })
 
+  it.each([
+    [59_999, '60초'],
+    [60_000, '1분 0초'],
+    [119_600, '2분 0초'],
+  ])('renders %dms as %s at the minute boundary', (elapsedMs, expected) => {
+    render(<RunSummaryPanel summary={summary({ elapsedMs })} />)
+
+    expect(screen.getByText(expected)).toBeInTheDocument()
+  })
+
   it('labels missing historical metrics honestly instead of displaying zeros', async () => {
     const user = userEvent.setup()
     render(

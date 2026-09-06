@@ -20,8 +20,9 @@ function formatRunDuration(
       count: seconds < 10 ? Number(seconds.toFixed(1)) : Math.round(seconds),
     })
   }
-  const minutes = Math.floor(seconds / 60)
-  const remaining = Math.round(seconds % 60)
+  const totalSeconds = Math.round(seconds)
+  const minutes = Math.floor(totalSeconds / 60)
+  const remaining = totalSeconds % 60
   return t('durationMinutesSeconds', { minutes, seconds: remaining })
 }
 
