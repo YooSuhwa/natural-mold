@@ -1,6 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 import {
   AuiConfig,
   AssistantRuntimeProvider,
@@ -27,12 +35,19 @@ import type { StreamChatOptions } from '@/lib/sse/stream-chat'
 import type { ConversationRuntimeStatus } from '@/lib/stores/chat-navigator-store'
 import { ServerMessageQueueProvider } from '@/lib/chat/message-queue/server-message-queue-context'
 import type { ServerMessageQueueController } from '@/lib/chat/message-queue/server-message-queue-contract'
+import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
+import type { SkillBrief } from '@/lib/types'
+import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
+import { useFailedInputRetryAction } from '@/lib/chat/commands/failed-input-retry'
 
 type StreamFn = (
   content: string,
   signal: AbortSignal,
   options?: StreamChatOptions,
 ) => AsyncGenerator<SSEEvent>
+
+const EMPTY_SUBSCRIBE = (): (() => void) => () => {}
+const EMPTY_QUEUE_SNAPSHOT = (): null => null
 
 type ThreadRenderProps = Pick<
   AssistantThreadProps,
@@ -47,7 +62,10 @@ type ThreadRenderProps = Pick<
   | 'showContextGauge'
   | 'user'
   | 'onDictationStart'
->
+  | 'commandActions'
+  | 'linkedSkills'
+  | 'resourceContextResetKey'
+> & { readonly retryLastFailedRunId?: string }
 
 export interface ChatRuntimeSectionProps {
   readonly activeConversationId: string | null
@@ -75,6 +93,8 @@ export interface ChatRuntimeSectionProps {
   readonly totalCost?: number
   readonly useLangGraphRuntime: boolean
   readonly user?: User | null
+  readonly commandActions?: ChatCommandActions
+  readonly linkedSkills?: readonly SkillBrief[]
 }
 
 export function ChatRuntimeSection({
@@ -100,8 +120,15 @@ export function ChatRuntimeSection({
   totalCost,
   useLangGraphRuntime,
   user,
+  commandActions,
+  linkedSkills,
 }: ChatRuntimeSectionProps) {
   const dictation = useBrowserDictation()
+  const [acceptedSubmission, setAcceptedSubmission] = useState(0)
+  const handleNewMessageAccepted = useCallback(() => {
+    setAcceptedSubmission((current) => current + 1)
+    onNewMessageAccepted?.()
+  }, [onNewMessageAccepted])
   const threadProps = useMemo<ThreadRenderProps>(
     () => ({
       agentImageUrl,
@@ -114,6 +141,10 @@ export function ChatRuntimeSection({
       modelName,
       showContextGauge,
       user,
+      commandActions,
+      linkedSkills,
+      retryLastFailedRunId: latestRun?.status === 'failed' ? latestRun.id : undefined,
+      resourceContextResetKey: `${latestRun?.id ?? 'none'}:${acceptedSubmission}`,
       onDictationStart: dictation.resetFailure,
     }),
     [
@@ -128,6 +159,11 @@ export function ChatRuntimeSection({
       modelName,
       showContextGauge,
       user,
+      commandActions,
+      linkedSkills,
+      latestRun?.id,
+      latestRun?.status,
+      acceptedSubmission,
     ],
   )
 
@@ -140,7 +176,7 @@ export function ChatRuntimeSection({
         dictationAdapter={dictation.adapter}
         feedbackAdapter={feedbackAdapter}
         onBeforeNewMessage={onBeforeNewMessage}
-        onNewMessageAccepted={onNewMessageAccepted}
+        onNewMessageAccepted={handleNewMessageAccepted}
         onRuntimeStatusChange={onRuntimeStatusChange}
         onStreamEnd={onStreamEnd}
         serverMessages={messages}
@@ -246,6 +282,7 @@ function LangGraphRuntimeSection({
     deepAgentsState,
     stream,
     messageQueue,
+    retryFailedInput,
     onResumeDecisions,
     registerDecision,
   } = useMoldyLangGraphStream({
@@ -284,6 +321,7 @@ function LangGraphRuntimeSection({
       hitlValue={hitlValue}
       runtime={assistantRuntime}
       messageQueue={messageQueue}
+      retryFailedInput={retryFailedInput}
       subagentStream={stream}
       threadProps={threadProps}
     />
@@ -296,6 +334,7 @@ interface RuntimeFrameProps {
   readonly hitlValue: HiTLContextValue
   readonly runtime: AssistantRuntime
   readonly messageQueue?: ServerMessageQueueController
+  readonly retryFailedInput?: (input: ConversationRunInput) => Promise<void>
   readonly subagentStream?: AnyStream | null
   readonly threadProps: ThreadRenderProps
 }
@@ -306,9 +345,29 @@ function RuntimeFrame({
   hitlValue,
   runtime,
   messageQueue,
+  retryFailedInput,
   subagentStream,
   threadProps,
 }: RuntimeFrameProps) {
+  const queueSnapshot = useSyncExternalStore(
+    messageQueue?.subscribe ?? EMPTY_SUBSCRIBE,
+    messageQueue?.getSnapshot ?? EMPTY_QUEUE_SNAPSHOT,
+    () => null,
+  )
+  useEffect(() => {
+    if (!messageQueue || !threadProps.retryLastFailedRunId) return
+    void messageQueue.refresh()
+  }, [messageQueue, threadProps.retryLastFailedRunId])
+  const operation = queueSnapshot?.lastOperation
+  const queueAcceptanceKey =
+    operation?.kind === 'queued' || operation?.kind === 'applied' ? operation.inputId : null
+  const retryLastFailedInput = useFailedInputRetryAction(
+    queueSnapshot?.items ?? [],
+    threadProps.retryLastFailedRunId,
+    retryFailedInput,
+  )
+  const { retryLastFailedRunId: _retryLastFailedRunId, ...assistantThreadProps } = threadProps
+  void _retryLastFailedRunId
   const config = AuiConfig({
     tools: createMoldyChatTools(ALL_TOOLKIT, threadProps.conversationId),
   })
@@ -317,7 +376,12 @@ function RuntimeFrame({
     <HiTLContext.Provider value={hitlValue}>
       <SubagentRuntimeProvider stream={subagentStream}>
         <AssistantThread
-          {...threadProps}
+          {...assistantThreadProps}
+          commandActions={{
+            ...assistantThreadProps.commandActions,
+            retryLastFailedInput,
+          }}
+          resourceContextResetKey={queueAcceptanceKey ?? threadProps.resourceContextResetKey}
           activities={activities}
           dataUI={ALL_DATA_UI}
           deepAgentsState={deepAgentsState}

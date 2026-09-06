@@ -163,8 +163,19 @@ describe('createMoldyAgentTransport', () => {
         createdAt: new Date('2026-09-06T00:00:00Z'),
         parentId: null,
         sourceId: null,
-        runConfig: {},
-        metadata: { custom: { context: [{ kind: 'artifact', id: 'artifact-1' }] } },
+        runConfig: {
+          custom: {
+            resource_context: [
+              {
+                kind: 'artifact',
+                id: '11111111-1111-4111-8111-111111111111',
+                version_id: '22222222-2222-4222-8222-222222222222',
+                label: 'Pinned artifact',
+              },
+            ],
+          },
+        },
+        metadata: { custom: {} },
       },
       'enqueue',
       'queue-request-1',
@@ -187,11 +198,19 @@ describe('createMoldyAgentTransport', () => {
         client_request_id: 'queue-request-1',
         input: {
           attachments: [{ id: 'attachment-1' }],
+          resource_context: [
+            {
+              kind: 'artifact',
+              id: '11111111-1111-4111-8111-111111111111',
+              version_id: '22222222-2222-4222-8222-222222222222',
+              label: 'Pinned artifact',
+            },
+          ],
           messages: [
             {
               role: 'user',
               content: [{ type: 'text', text: 'queued content' }],
-              metadata: { context: [{ kind: 'artifact', id: 'artifact-1' }] },
+              metadata: {},
             },
           ],
         },
@@ -274,6 +293,173 @@ describe('createMoldyAgentTransport', () => {
         'malformed-status',
       ),
     ).rejects.toThrow('Queue submission response is malformed')
+  })
+
+  it('retries the durable failed input instead of the prior successful assistant turn', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        type: 'success',
+        id: 'retry-attempt-new',
+        result: {
+          input_id: 'input-retry-new',
+          input_status: 'claimed',
+          revision: 1,
+          position: 1,
+          run_id: 'run-retry-new',
+        },
+      }),
+    )
+    const transport = createMoldyAgentTransport('conversation-retry', 'agent-retry', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+    })
+    const durableFailedInput = {
+      id: 'input-failed-original',
+      conversation_id: 'conversation-retry',
+      run_id: 'run-failed-original',
+      client_request_id: 'request-original',
+      source: 'user',
+      status: 'claimed' as const,
+      priority: 0,
+      position: 1,
+      revision: 1,
+      input_payload: {
+        messages: [
+          { role: 'user', content: [{ type: 'text', text: 'successful earlier question' }] },
+          { role: 'assistant', content: [{ type: 'text', text: 'prior successful answer' }] },
+          { role: 'user', content: [{ type: 'text', text: 'the input that actually failed' }] },
+        ],
+      },
+      resource_context: [
+        {
+          kind: 'file' as const,
+          id: '11111111-1111-4111-8111-111111111111',
+          label: 'Failure context',
+        },
+      ],
+      attachment_ids: [],
+      checkpoint_id: null,
+      claimed_at: '2026-09-06T00:00:00Z',
+      created_at: '2026-09-06T00:00:00Z',
+      updated_at: '2026-09-06T00:00:00Z',
+    }
+
+    await transport.retryFailedInput(durableFailedInput, 'retry-attempt-new')
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body))
+    expect(body.params.client_request_id).toBe('retry-attempt-new')
+    expect(body.params.client_request_id).not.toBe(durableFailedInput.client_request_id)
+    expect(body.params.input.messages).toEqual(durableFailedInput.input_payload.messages)
+    expect(body.params.input.messages.at(-1)).toEqual({
+      role: 'user',
+      content: [{ type: 'text', text: 'the input that actually failed' }],
+    })
+    expect(body.params.input.resource_context).toEqual(durableFailedInput.resource_context)
+  })
+
+  it('never retries a still-pending accepted input', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    const transport = createMoldyAgentTransport('conversation-pending', 'agent-pending', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+    })
+
+    await expect(
+      transport.retryFailedInput(
+        {
+          id: 'input-pending',
+          conversation_id: 'conversation-pending',
+          run_id: null,
+          client_request_id: 'request-pending',
+          source: 'user',
+          status: 'pending',
+          priority: 0,
+          position: 1,
+          revision: 1,
+          input_payload: { messages: [] },
+          resource_context: [],
+          attachment_ids: [],
+          checkpoint_id: null,
+          claimed_at: null,
+          created_at: '2026-09-06T00:00:00Z',
+          updated_at: '2026-09-06T00:00:00Z',
+        },
+        'retry-pending-new',
+      ),
+    ).rejects.toThrow('Only an accepted failed run input can be retried')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a server-only resource snapshot before retrying an input without public refs', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    const transport = createMoldyAgentTransport('conversation-dirty-retry', 'agent-dirty', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+    })
+
+    await expect(
+      transport.retryFailedInput(
+        {
+          id: 'input-dirty',
+          conversation_id: 'conversation-dirty-retry',
+          run_id: 'run-dirty',
+          client_request_id: 'request-dirty',
+          source: 'user',
+          status: 'failed',
+          priority: 0,
+          position: 1,
+          revision: 1,
+          input_payload: {
+            messages: [],
+            _moldy_resource_context_v1: { snapshots: ['server-only'] },
+          },
+          resource_context: [],
+          attachment_ids: [],
+          checkpoint_id: null,
+          claimed_at: '2026-09-06T00:00:00Z',
+          created_at: '2026-09-06T00:00:00Z',
+          updated_at: '2026-09-06T00:00:00Z',
+        },
+        'retry-dirty-new',
+      ),
+    ).rejects.toThrow('Resource context cannot be retried: reserved-server-field')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects dirty resource references before issuing run.start', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    const transport = createMoldyAgentTransport('conversation-dirty', 'agent-dirty', {
+      apiBase: 'http://api.test',
+      fetch: fetchMock,
+    })
+
+    const submission = transport.submitQueuedInput(
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'do not send this' }],
+        attachments: [],
+        createdAt: new Date('2026-09-06T00:00:00Z'),
+        parentId: null,
+        sourceId: null,
+        runConfig: {
+          custom: {
+            resource_context: [
+              {
+                kind: 'file',
+                id: '11111111-1111-4111-8111-111111111111',
+                path: '/tmp/private',
+              },
+            ],
+          },
+        },
+        metadata: { custom: {} },
+      },
+      'enqueue',
+      'queue-dirty',
+    )
+
+    await expect(submission).rejects.toThrow('Resource context cannot be submitted: malformed')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('uses the state path for SDK hydration without adding CSRF to GET requests', async () => {

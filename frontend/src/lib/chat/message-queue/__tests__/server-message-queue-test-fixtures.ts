@@ -36,6 +36,7 @@ export const queuedInput = (
   position: 1,
   revision: 1,
   input_payload: { messages: [{ role: 'user', content: 'queued' }] },
+  resource_context: [],
   attachment_ids: ['attachment-1'],
   checkpoint_id: null,
   claimed_at: null,

@@ -1273,6 +1273,30 @@
       "next": "다음 결과",
       "close": "검색 닫기"
     },
+    "commands": {
+      "ariaLabel": "채팅 명령어",
+      "unavailable": "이 대화에서는 사용할 수 없습니다",
+      "unknown": "알 수 없는 명령어입니다",
+      "argumentsNotSupported": "이 명령어에는 인수를 넣을 수 없습니다",
+      "search": { "label": "/search", "description": "이 대화에서 검색" },
+      "export": { "label": "/export", "description": "내보내기 형식 선택" },
+      "files": { "label": "/files", "description": "대화 파일 열기" },
+      "attach": { "label": "/attach", "description": "첨부할 파일 선택" },
+      "new": { "label": "/new", "description": "새 대화 시작" },
+      "retry": { "label": "/retry", "description": "마지막 실패 실행 다시 시도" },
+      "compact": { "label": "/compact", "description": "대화 컨텍스트 압축" },
+      "stop": { "label": "/stop", "description": "실행 중지 및 대기열 일시 정지" },
+      "help": { "label": "/help", "description": "사용 가능한 명령어 보기" }
+    },
+    "resourceContext": {
+      "ariaLabel": "컨텍스트 추가",
+      "limit": "컨텍스트는 최대 8개까지 추가할 수 있습니다.",
+      "remove": "{label} 제거",
+      "file": "파일",
+      "artifact": "산출물",
+      "skill": "스킬",
+      "conversation": "대화"
+    },
     "toolGroup": {
       "count": "{count}회",
       "sourceCount": "출처 {count}개",

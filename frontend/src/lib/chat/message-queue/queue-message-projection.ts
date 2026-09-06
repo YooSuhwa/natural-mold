@@ -2,6 +2,7 @@ import type { AppendMessage, QueueItemState } from '@assistant-ui/react'
 import { z } from 'zod'
 
 import type { ConversationRunInput, JsonValue } from '@/lib/api/conversation-run-inputs'
+import { withResourceContextReferences } from '@/lib/chat/context/resource-context-payload'
 
 function jsonRecord(value: JsonValue | undefined): Readonly<Record<string, JsonValue>> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : null
@@ -68,6 +69,7 @@ export function queueItemText(item: QueueItemState): string {
 export function editableInputFromMessage(
   message: AppendMessage,
   currentInput: Readonly<Record<string, JsonValue>>,
+  resourceContext: ConversationRunInput['resource_context'] = [],
 ): Readonly<Record<string, JsonValue>> {
   const content: JsonValue[] = []
   for (const part of message.content) {
@@ -96,7 +98,7 @@ export function editableInputFromMessage(
   const previousMessage = latestUserInputMessage(currentInput)
   const previousMetadata = jsonRecord(previousMessage?.metadata)
   const submittedMetadata = metadata.success ? jsonRecord(metadata.data) : null
-  return {
+  const editedInput = {
     ...currentInput,
     messages: [
       {
@@ -110,6 +112,12 @@ export function editableInputFromMessage(
       },
     ],
   }
+  if (resourceContext.length === 0) return editedInput
+  const contextualInput = withResourceContextReferences(editedInput, resourceContext)
+  if (contextualInput.kind === 'invalid') {
+    throw new Error('Authoritative resource context is malformed')
+  }
+  return contextualInput.input
 }
 
 export function queuedInputFromMessage(

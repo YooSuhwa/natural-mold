@@ -17,6 +17,7 @@ const pendingInput = {
   position: 1,
   revision: 3,
   input_payload: { messages: [{ role: 'user', content: 'queued' }] },
+  resource_context: [],
   attachment_ids: ['attachment-1'],
   checkpoint_id: null,
   claimed_at: null,
@@ -103,6 +104,47 @@ describe('conversationRunInputsApi', () => {
 
     // Then parsing fails instead of admitting an unusable queue item.
     await expect(result).rejects.toMatchObject({ name: 'ZodError' })
+  })
+
+  it('parses only bounded public resource references outside the sanitized input payload', async () => {
+    const reference = {
+      kind: 'artifact',
+      id: '11111111-1111-4111-8111-111111111111',
+      version_id: '22222222-2222-4222-8222-222222222222',
+      label: 'Pinned report',
+    } as const
+    apiFetch.mockResolvedValue({
+      queue_paused: false,
+      items: [{ ...pendingInput, resource_context: [reference] }],
+    })
+
+    const result = await conversationRunInputsApi.list('conversation/one')
+
+    expect(result.items[0]?.resource_context).toEqual([reference])
+    expect(result.items[0]?.input_payload).not.toHaveProperty('resource_context')
+  })
+
+  it('rejects private, path-bearing, or non-artifact version references', async () => {
+    apiFetch.mockResolvedValue({
+      queue_paused: false,
+      items: [
+        {
+          ...pendingInput,
+          resource_context: [
+            {
+              kind: 'file',
+              id: '11111111-1111-4111-8111-111111111111',
+              version_id: '22222222-2222-4222-8222-222222222222',
+              path: '/tmp/private',
+            },
+          ],
+        },
+      ],
+    })
+
+    await expect(conversationRunInputsApi.list('conversation/one')).rejects.toMatchObject({
+      name: 'ZodError',
+    })
   })
 
   it('resumes the durable queue through its explicit owner-scoped endpoint', async () => {

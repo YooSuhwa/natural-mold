@@ -29,6 +29,7 @@ import {
 import type { Message as MoldyMessage } from '@/lib/types'
 import { useServerMessageQueue } from '@/lib/chat/message-queue/use-server-message-queue'
 import type { ServerMessageQueueOptions } from '@/lib/chat/message-queue/server-message-queue-contract'
+import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
 
 export { messagesFromServerMessages } from './stream-thread-state-projection'
 export {
@@ -182,6 +183,22 @@ export function useMoldyLangGraphStream({
     await onCancel()
     await messageQueue.refresh()
   }, [messageQueue, onCancel])
+  const retryFailedInput = useCallback(
+    async (input: ConversationRunInput) => {
+      const requestId = crypto.randomUUID()
+      try {
+        const accepted = await reconciliation.retryFailedInput(input, requestId)
+        if (accepted.runId) reconciliation.handleClaimedQueueRun(accepted.runId)
+      } catch (error) {
+        const reconciled = await messageQueue.reconcileRequest(requestId)
+        if (!reconciled) throw error
+        if (reconciled.run_id) reconciliation.handleClaimedQueueRun(reconciled.run_id)
+        return
+      }
+      await messageQueue.refresh()
+    },
+    [messageQueue, reconciliation],
+  )
 
   const refreshLifecycle = useCallback(() => refreshThreadLifecycleStream(stream), [stream])
   const { onResumeDecisions, registerDecision } = useHitlDecisionController({
@@ -224,5 +241,6 @@ export function useMoldyLangGraphStream({
     onResumeDecisions,
     registerDecision,
     messageQueue,
+    retryFailedInput,
   }
 }

@@ -79,6 +79,7 @@ function controller(): ServerMessageQueueController {
     position: index + 1,
     revision: 1,
     input_payload: { messages: [{ role: 'user', content: item.prompt }] },
+    resource_context: [],
     attachment_ids: [],
     checkpoint_id: null,
     claimed_at: null,
@@ -165,7 +166,7 @@ describe('ServerMessageQueuePanel', () => {
       createdAt: new Date('2026-09-06T00:00:00Z'),
       parentId: null,
       sourceId: null,
-      runConfig: { custom: { context: ['original'], retained: true } },
+      runConfig: { custom: { resource_context: ['original'], retained: true } },
       metadata: { custom: {} },
     }
     vi.spyOn(queue, 'getSnapshot').mockReturnValue({
@@ -187,7 +188,7 @@ describe('ServerMessageQueuePanel', () => {
 
     expect(mocks.setText).toHaveBeenCalledWith('recover this draft\nnewer draft')
     expect(mocks.setRunConfig).toHaveBeenCalledWith({
-      custom: { context: ['original'], retained: true, newer: true },
+      custom: { resource_context: ['original'], retained: true, newer: true },
     })
     expect(mocks.addAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'attachment-1', name: 'notes.txt' }),

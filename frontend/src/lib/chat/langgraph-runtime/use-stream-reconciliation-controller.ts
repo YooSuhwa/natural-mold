@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useStream } from '@langchain/react'
 import type { BaseMessage } from '@langchain/core/messages'
 import type { AppendMessage } from '@assistant-ui/react'
+import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import {
   EMPTY_SERVER_MESSAGE_METADATA,
@@ -23,8 +24,9 @@ import {
   claimedQueueRunIdAfterTransition,
   followClaimedQueueRunValues,
 } from '@/lib/chat/message-queue/follow-claimed-queue-run'
+import type { MoldySubmitState } from './use-checkpoint-fork-handlers'
 
-interface MoldyGraphState {
+interface MoldyGraphState extends MoldySubmitState {
   messages: BaseMessage[]
   todos?: unknown
   files?: unknown
@@ -190,6 +192,11 @@ export function useStreamReconciliationController({
       transport.submitQueuedInput(message, strategy, requestId),
     [transport],
   )
+  const retryFailedInput = useCallback(
+    (input: ConversationRunInput, requestId: string) =>
+      transport.retryFailedInput(input, requestId),
+    [transport],
+  )
 
   useEffect(() => {
     transport.setStateHydrationListener(handleThreadState)
@@ -344,6 +351,7 @@ export function useStreamReconciliationController({
     getPendingReloadAttemptId,
     commandActions,
     submitQueuedInput,
+    retryFailedInput,
     handleClaimedQueueRun,
   }
 }

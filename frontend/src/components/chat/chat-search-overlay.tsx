@@ -14,6 +14,7 @@ import {
 
 interface ChatSearchOverlayProps {
   onClose: () => void
+  initialQuery?: string
   /** 검색 스코프. 여러 thread가 마운트된 페이지(설정 fix/test 탭)에서 이 thread의
    *  viewport로 한정한다. ref로 받아 렌더 중 .current 접근을 피한다(핸들러에서 읽음).
    *  없으면 document 전역. */
@@ -25,9 +26,13 @@ interface ChatSearchOverlayProps {
  * 하고, 매치를 ``jumpToMessage``로 스크롤 + 하이라이트한다. Enter/Shift+Enter로
  * 다음/이전, Esc로 닫는다.
  */
-export function ChatSearchOverlay({ onClose, searchRootRef }: ChatSearchOverlayProps) {
+export function ChatSearchOverlay({
+  initialQuery = '',
+  onClose,
+  searchRootRef,
+}: ChatSearchOverlayProps) {
   const t = useTranslations('chat.search')
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   const [matchIds, setMatchIds] = useState<readonly string[]>([])
   const [rangeMap, setRangeMap] = useState<ReadonlyMap<string, Range[]>>(() => new Map())
   const [current, setCurrent] = useState(0)
@@ -49,6 +54,17 @@ export function ChatSearchOverlay({ onClose, searchRootRef }: ChatSearchOverlayP
     applySearchHighlights(ranges, ids[0])
     if (ids.length > 0) jumpToMessage(ids[0])
   }
+
+  useEffect(() => {
+    if (!initialQuery) return
+    const ranges = collectMatchRanges(initialQuery, searchRootRef?.current ?? document)
+    const ids = Array.from(ranges.keys())
+    setMatchIds(ids)
+    setRangeMap(ranges)
+    setCurrent(0)
+    applySearchHighlights(ranges, ids[0])
+    if (ids.length > 0) jumpToMessage(ids[0])
+  }, [initialQuery, searchRootRef])
 
   const go = useCallback(
     (delta: number) => {

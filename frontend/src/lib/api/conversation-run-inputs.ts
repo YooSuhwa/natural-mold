@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { apiFetch } from './client'
+import { resourceContextResponseReferencesSchema } from '@/lib/chat/context/resource-context'
 
 const runInputStatusSchema = z.enum(['pending', 'claimed', 'canceled', 'failed'])
 const jsonObjectSchema = z.record(z.string(), z.json())
@@ -17,6 +18,7 @@ const conversationRunInputSchema = z
     position: z.number().int().positive(),
     revision: z.number().int().positive(),
     input_payload: jsonObjectSchema,
+    resource_context: resourceContextResponseReferencesSchema,
     attachment_ids: z.array(z.string().min(1)).readonly(),
     checkpoint_id: z.string().nullable(),
     claimed_at: z.string().nullable(),

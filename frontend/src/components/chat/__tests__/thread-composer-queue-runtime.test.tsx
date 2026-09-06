@@ -54,6 +54,7 @@ const promotedSnapshot: ServerMessageQueueSnapshot = {
       position: 1,
       revision: 2,
       input_payload: { messages: [{ role: 'user', content: promotedQueueItem.prompt }] },
+      resource_context: [],
       attachment_ids: [],
       checkpoint_id: null,
       claimed_at: null,

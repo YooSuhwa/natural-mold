@@ -149,7 +149,7 @@ export function createServerMessageQueue(
         () =>
           options.api.edit(options.conversationId, inputId, {
             expectedRevision: input.revision,
-            input: editableInputFromMessage(message, input.input_payload),
+            input: editableInputFromMessage(message, input.input_payload, input.resource_context),
           }),
         inputId,
       )

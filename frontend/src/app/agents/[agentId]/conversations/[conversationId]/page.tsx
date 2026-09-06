@@ -41,6 +41,7 @@ import { ToolIconProvider } from '@/components/chat/tool-ui/tool-icon-context'
 import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
 import { PinnedConversationSummary } from '@/components/chat/pinned-conversation-summary'
+import { ExportDialog } from '@/components/chat/export-dialog'
 import { ChatRightRail } from '@/components/chat/right-rail/chat-right-rail'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -82,6 +83,7 @@ export default function ChatPage({
   const [suppressEmptyStateForConversationId, setSuppressEmptyStateForConversationId] = useState<
     string | null
   >(null)
+  const [exportOpen, setExportOpen] = useState(false)
   const { data: agent } = useAgent(agentId)
   const { data: user } = useSession()
   const messageEnvelopeConversationId = routeConversationId
@@ -449,6 +451,12 @@ export default function ChatPage({
               totalCost={envelope?.total_estimated_cost}
               useLangGraphRuntime={useLangGraphRuntime}
               user={user}
+              linkedSkills={agent?.skills}
+              commandActions={{
+                createNewConversation: handleNewConversation,
+                openFilesRail: handleToggleArtifacts,
+                ...(activeConversationId ? { openExportChooser: () => setExportOpen(true) } : {}),
+              }}
             />
           </ToolIconProvider>
         )}
@@ -459,6 +467,14 @@ export default function ChatPage({
         conversationId={activeConversationId}
         className="moldy-panel overflow-hidden"
       />
+      {activeConversationId ? (
+        <ExportDialog
+          open={exportOpen}
+          onOpenChange={setExportOpen}
+          conversationId={activeConversationId}
+          title={currentTitle}
+        />
+      ) : null}
     </div>
   )
 }

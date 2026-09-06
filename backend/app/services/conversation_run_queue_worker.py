@@ -17,6 +17,10 @@ from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.user import User
 from app.services import conversation_run_queue_service, conversation_run_service
+from app.services.chat_resource_context_integration import (
+    reauthorize_resource_context_payload,
+)
+from app.services.chat_resource_context_sources import ResourceContextScope
 from app.services.conversation_run_cancellation_recovery import (
     finalize_workerless_cancel_before_start,
 )
@@ -61,6 +65,7 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
             return None
         run = await db.get(ConversationRun, queued.run_id)
         user = await db.get(User, queued.user_id)
+        input_payload = queued.input_payload
         if run is None:
             return None
         if user is None or not user.is_active:
@@ -84,8 +89,25 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
                     exc_info=True,
                 )
                 error_code = "queue_rehydrate_failed"
+            if error_code is None:
+                try:
+                    input_payload = await reauthorize_resource_context_payload(
+                        db,
+                        ResourceContextScope(
+                            user_id=queued.user_id,
+                            agent_id=queued.agent_id,
+                            conversation_id=queued.conversation_id,
+                        ),
+                        input_payload,
+                    )
+                except HTTPException:
+                    logger.warning(
+                        "queued resource context unavailable input_id=%s",
+                        input_id,
+                        exc_info=True,
+                    )
+                    error_code = "queue_resource_context_unavailable"
         attachment_ids = [uuid.UUID(value) for value in queued.attachment_ids]
-        input_payload = queued.input_payload
         conversation_id = queued.conversation_id
         run_id = run.id
         source = queued.source

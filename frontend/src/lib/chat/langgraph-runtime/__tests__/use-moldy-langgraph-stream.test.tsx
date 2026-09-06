@@ -63,6 +63,7 @@ interface MockTransport {
   setRunStartAcceptedListener: ReturnType<typeof vi.fn>
   readState: ReturnType<typeof vi.fn>
   submitQueuedInput: ReturnType<typeof vi.fn>
+  retryFailedInput: ReturnType<typeof vi.fn>
 }
 
 const mocks = vi.hoisted(() => {
@@ -109,6 +110,7 @@ const mocks = vi.hoisted(() => {
         setRunStartAcceptedListener: vi.fn(),
         readState: vi.fn(async () => null),
         submitQueuedInput: vi.fn(),
+        retryFailedInput: vi.fn(),
       } satisfies MockTransport
       setStateHydrationListener.mockImplementation((listener?: (state: unknown) => void) => {
         transport.onState = listener
@@ -273,6 +275,7 @@ describe('useMoldyLangGraphStream', () => {
       'messageQueue',
       'onResumeDecisions',
       'registerDecision',
+      'retryFailedInput',
       'sendMessage',
       'stream',
     ])
@@ -2270,6 +2273,66 @@ describe('useMoldyLangGraphStream', () => {
         }),
       )
     })
+  })
+
+  it('reconciles an uncertain failed-input retry by one stable request id without resubmitting', async () => {
+    const retryRequestId = '11111111-1111-4111-8111-111111111111'
+    const randomUuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue(retryRequestId)
+    const onRunStartAccepted = vi.fn()
+    const failedInput = {
+      id: 'input-failed',
+      conversation_id: 'conversation-retry-uncertain',
+      run_id: 'run-failed',
+      client_request_id: 'request-failed',
+      source: 'user',
+      status: 'failed' as const,
+      priority: 0,
+      position: 1,
+      revision: 2,
+      input_payload: { messages: [{ role: 'user', content: 'retry me' }] },
+      resource_context: [],
+      attachment_ids: ['attachment-1'],
+      checkpoint_id: 'checkpoint-before-failure',
+      claimed_at: '2026-09-06T00:00:00Z',
+      created_at: '2026-09-06T00:00:00Z',
+      updated_at: '2026-09-06T00:00:00Z',
+    }
+    const reconciledInput = {
+      ...failedInput,
+      id: 'input-retry-accepted',
+      run_id: 'run-retry-accepted',
+      client_request_id: retryRequestId,
+      status: 'claimed' as const,
+      revision: 1,
+    }
+    mocks.apiFetch.mockResolvedValue({ queue_paused: false, items: [reconciledInput] })
+
+    try {
+      const { result } = renderHook(
+        () =>
+          useMoldyLangGraphStream({
+            agentId: 'agent-retry-uncertain',
+            conversationId: 'conversation-retry-uncertain',
+            onRunStartAccepted,
+          }),
+        { wrapper: createQueryWrapper() },
+      )
+      const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+      transport.retryFailedInput.mockRejectedValue(new TypeError('response lost'))
+
+      await act(async () => result.current.retryFailedInput(failedInput))
+
+      expect(transport.retryFailedInput).toHaveBeenCalledExactlyOnceWith(
+        failedInput,
+        retryRequestId,
+      )
+      expect(mocks.apiFetch).toHaveBeenCalledWith(
+        '/api/conversations/conversation-retry-uncertain/run-inputs',
+      )
+      expect(onRunStartAccepted).toHaveBeenCalledExactlyOnceWith()
+    } finally {
+      randomUuid.mockRestore()
+    }
   })
 
   it('does not render a lone blank assistant placeholder before the optimistic user message arrives', () => {

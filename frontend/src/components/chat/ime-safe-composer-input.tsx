@@ -13,6 +13,7 @@ import {
 import { useAui, useAuiState } from '@assistant-ui/react'
 
 import { reportClientError } from '@/lib/logging/client-logger'
+import { useChatComposerTriggerInput } from '@/lib/chat/context/use-chat-composer-trigger-input'
 import { cn } from '@/lib/utils'
 import { autoFocusComposerInput, focusTextareaAtEnd } from './composer-focus'
 
@@ -47,6 +48,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       onCompositionStart,
       onKeyDown,
       onPaste,
+      onSelect,
       submitMode,
       submitOnEnter,
       addAttachmentOnPaste = true,
@@ -57,6 +59,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     forwardedRef,
   ) => {
     const aui = useAui()
+    const triggerInput = useChatComposerTriggerInput()
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const compositionRef = useRef(false)
     const compositionStartTextRef = useRef('')
@@ -122,6 +125,9 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     )
 
     const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (!isDisabled && !event.nativeEvent.isComposing && !compositionRef.current) {
+        if (triggerInput.handleKeyDown(event)) return
+      }
       onKeyDown?.(event)
       if (event.defaultPrevented || isDisabled) return
       if (event.nativeEvent.isComposing || compositionRef.current) return
@@ -177,6 +183,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     return (
       <textarea
         {...props}
+        {...triggerInput.ariaProps}
         data-moldy-composer-input="true"
         ref={setTextareaRef}
         defaultValue={externalValue}
@@ -187,6 +194,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
           if (event.defaultPrevented) return
           if (compositionRef.current) return
           syncText(event.currentTarget.value)
+          triggerInput.setCursorPosition(event.currentTarget.selectionStart)
         }}
         onCompositionStart={(event) => {
           onCompositionStart?.(event)
@@ -225,10 +233,16 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
             : composedText
 
           syncText(nextText)
+          triggerInput.setCursorPosition(event.currentTarget.selectionStart)
         }}
         onKeyDown={handleKeyDown}
         onPaste={(event) => {
           void handlePaste(event)
+        }}
+        onSelect={(event) => {
+          onSelect?.(event)
+          if (event.defaultPrevented) return
+          triggerInput.setCursorPosition(event.currentTarget.selectionStart)
         }}
       />
     )

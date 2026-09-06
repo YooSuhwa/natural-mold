@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@assistant-ui/react', () => ({
+  unstable_useTriggerPopoverAriaProps: () => ({}),
+  unstable_useTriggerPopoverRootContextOptional: () => null,
   useAui: () => ({
     composer: {
       addAttachment: mocks.addAttachment,
@@ -28,7 +30,7 @@ vi.mock('@assistant-ui/react', () => ({
   }),
   useAuiState: (selector: (state: unknown) => unknown) =>
     selector({
-      composer: { dictation: null, isEditing: true, text: mocks.composerText },
+      composer: { dictation: null, isEditing: true, runConfig: {}, text: mocks.composerText },
       thread: { isDisabled: false },
     }),
 }))

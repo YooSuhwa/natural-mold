@@ -33,6 +33,14 @@ describe('createServerMessageQueue mutations', () => {
   it('edits, reorders, and removes pending items with their current server revisions', async () => {
     // Given two authoritative pending items.
     const first = queuedInput({
+      resource_context: [
+        {
+          kind: 'artifact',
+          id: '11111111-1111-4111-8111-111111111111',
+          version_id: '22222222-2222-4222-8222-222222222222',
+          label: 'Pinned artifact',
+        },
+      ],
       input_payload: {
         messages: [
           {
@@ -86,6 +94,14 @@ describe('createServerMessageQueue mutations', () => {
               retained: 'server-value',
               context: [{ kind: 'artifact', id: 'artifact-1' }],
             },
+          },
+        ],
+        resource_context: [
+          {
+            kind: 'artifact',
+            id: '11111111-1111-4111-8111-111111111111',
+            version_id: '22222222-2222-4222-8222-222222222222',
+            label: 'Pinned artifact',
           },
         ],
       },

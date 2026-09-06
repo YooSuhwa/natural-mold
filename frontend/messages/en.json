@@ -1273,6 +1273,30 @@
       "next": "Next match",
       "close": "Close search"
     },
+    "commands": {
+      "ariaLabel": "Chat commands",
+      "unavailable": "Unavailable in this conversation",
+      "unknown": "Unknown command",
+      "argumentsNotSupported": "This command does not accept arguments",
+      "search": { "label": "/search", "description": "Search this conversation" },
+      "export": { "label": "/export", "description": "Open the export chooser" },
+      "files": { "label": "/files", "description": "Open conversation files" },
+      "attach": { "label": "/attach", "description": "Choose a file to attach" },
+      "new": { "label": "/new", "description": "Start a new conversation" },
+      "retry": { "label": "/retry", "description": "Retry the last failed run" },
+      "compact": { "label": "/compact", "description": "Compact conversation context" },
+      "stop": { "label": "/stop", "description": "Stop the run and pause its queue" },
+      "help": { "label": "/help", "description": "Show available commands" }
+    },
+    "resourceContext": {
+      "ariaLabel": "Add context",
+      "limit": "You can add up to 8 references.",
+      "remove": "Remove {label}",
+      "file": "File",
+      "artifact": "Artifact",
+      "skill": "Skill",
+      "conversation": "Conversation"
+    },
     "toolGroup": {
       "count": "{count} calls",
       "sourceCount": "{count} sources",

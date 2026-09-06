@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
 import type { MessageMetadataMap, UseStreamReturn } from '@langchain/react'
 import type { AppendMessage } from '@assistant-ui/react'
-import { useCheckpointForkHandlers } from '../use-checkpoint-fork-handlers'
+import { useCheckpointForkHandlers, type MoldySubmitState } from '../use-checkpoint-fork-handlers'
 import type { ServerCheckpointContext } from '../thread-state-checkpoints'
 
 const mocks = vi.hoisted(() => ({
@@ -66,7 +66,7 @@ function renderHandlers(stream: MutableStream) {
   return renderHook(() =>
     useCheckpointForkHandlers({
       conversationId: 'conversation-1',
-      stream: stream as unknown as UseStreamReturn<Record<string, unknown>>,
+      stream: stream as unknown as UseStreamReturn<MoldySubmitState>,
       // 로컬 checkpoint를 찾지 못하게 빈 가시 메시지/메시지 목록을 준다 →
       // 서버 폴링 경로로 떨어진다.
       visibleMessages: [],
@@ -82,6 +82,57 @@ function editMessage(): AppendMessage {
     sourceId: 'missing-source',
   } as unknown as AppendMessage
 }
+
+describe('useCheckpointForkHandlers resource context', () => {
+  it('places strict run-config references beside messages in idle stream input', async () => {
+    const stream = createStream()
+    const { result } = renderHandlers(stream)
+    const reference = {
+      kind: 'conversation',
+      id: '11111111-1111-4111-8111-111111111111',
+      label: 'Prior chat',
+    } as const
+
+    await act(() =>
+      result.current.onNew({
+        content: [{ type: 'text', text: 'Use this context' }],
+        attachments: [],
+        runConfig: { custom: { resource_context: [reference] } },
+      } as unknown as AppendMessage),
+    )
+
+    expect(stream.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource_context: [reference],
+        messages: [expect.any(HumanMessage)],
+      }),
+    )
+  })
+
+  it('rejects malformed run-config references without submitting', async () => {
+    const stream = createStream()
+    const { result } = renderHandlers(stream)
+
+    await expect(
+      result.current.onNew({
+        content: [{ type: 'text', text: 'Do not send' }],
+        attachments: [],
+        runConfig: {
+          custom: {
+            resource_context: [
+              {
+                kind: 'file',
+                id: '11111111-1111-4111-8111-111111111111',
+                path: '/tmp/private',
+              },
+            ],
+          },
+        },
+      } as unknown as AppendMessage),
+    ).rejects.toThrow('Resource context cannot be submitted: malformed')
+    expect(stream.submit).not.toHaveBeenCalled()
+  })
+})
 
 describe('useCheckpointForkHandlers abortable server checkpoint polling', () => {
   beforeEach(() => {
@@ -213,7 +264,7 @@ describe('useCheckpointForkHandlers retry fork excludes synthetic notice bubbles
     const { result } = renderHook(() =>
       useCheckpointForkHandlers({
         conversationId: 'conversation-1',
-        stream: stream as unknown as UseStreamReturn<Record<string, unknown>>,
+        stream: stream as unknown as UseStreamReturn<MoldySubmitState>,
         // user 다음에 합성 실패 버블(assistant role, checkpoint 없음)이 온다.
         visibleMessages: [
           { id: userId, role: 'user' },

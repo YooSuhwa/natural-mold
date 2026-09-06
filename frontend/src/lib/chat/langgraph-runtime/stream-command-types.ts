@@ -5,6 +5,7 @@ import type { PendingEditRenderState, PendingReloadRenderState } from './stream-
 import type { ConvertedMessage, VisibleMessageWithId } from './stream-message-types'
 import type { PendingNewSubmitState } from './use-submit-checkpoint-controller'
 import type { ThreadRunNotice } from './stream-thread-state-projection'
+import type { MoldySubmitState } from './use-checkpoint-fork-handlers'
 
 export interface SubmitCheckpointActions {
   readonly pendingSubmit: PendingNewSubmitState | null
@@ -41,9 +42,9 @@ export interface ReconciliationActions {
   }
 }
 
-export interface UseStreamCommandControllerOptions<StateType extends object> {
+export interface UseStreamCommandControllerOptions {
   readonly conversationId: string
-  readonly stream: UseStreamReturn<StateType>
+  readonly stream: UseStreamReturn<MoldySubmitState>
   readonly visibleMessages: readonly (Pick<ThreadMessage, 'id'> & VisibleMessageWithId)[]
   readonly langChainMessages: readonly BaseMessage[]
   readonly convertedMessages: readonly ConvertedMessage[]

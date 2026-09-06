@@ -4,6 +4,8 @@ import { API_BASE, fireSessionExpired } from '@/lib/api/client'
 import { csrfStore } from '@/lib/auth/csrf'
 import { queuedInputFromMessage } from '@/lib/chat/message-queue/queue-message-projection'
 import type { QueueRunStartAcceptance } from '@/lib/chat/message-queue/server-message-queue-contract'
+import { withResourceContextRunInput } from '@/lib/chat/context/resource-context-payload'
+import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
 
 const MUTATION_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 let queueCommandId = 0
@@ -43,6 +45,7 @@ export interface MoldyAgentServerAdapter extends AgentServerAdapter {
     strategy: 'enqueue' | 'interrupt',
     requestId: string,
   ): Promise<QueueRunStartAcceptance>
+  retryFailedInput(input: ConversationRunInput, requestId: string): Promise<QueueRunStartAcceptance>
 }
 
 function encodePathSegment(value: string): string {
@@ -86,6 +89,13 @@ function queuedRunStartCommand(
   strategy: 'enqueue' | 'interrupt',
   requestId: string,
 ): ProtocolCommand {
+  const contextualInput = withResourceContextRunInput(
+    queuedInputFromMessage(message),
+    message.runConfig?.custom,
+  )
+  if (contextualInput.kind === 'invalid') {
+    throw new Error(`Resource context cannot be submitted: ${contextualInput.reason}`)
+  }
   // Moldy's server extends the installed protocol's run.start params with
   // durable queue fields that @langchain/protocol 0.0.19 does not type yet.
   return {
@@ -93,8 +103,35 @@ function queuedRunStartCommand(
     method: 'run.start',
     params: {
       assistant_id: agentId,
-      input: queuedInputFromMessage(message),
+      input: contextualInput.input,
       multitask_strategy: strategy,
+      client_request_id: requestId,
+    },
+  } as ProtocolCommand
+}
+
+function failedInputRunStartCommand(
+  agentId: string,
+  input: ConversationRunInput,
+  requestId: string,
+): ProtocolCommand {
+  if (!input.run_id || (input.status !== 'claimed' && input.status !== 'failed')) {
+    throw new Error('Only an accepted failed run input can be retried')
+  }
+  const contextualInput = withResourceContextRunInput(
+    input.input_payload,
+    input.resource_context.length > 0 ? { resource_context: input.resource_context } : undefined,
+  )
+  if (contextualInput.kind === 'invalid') {
+    throw new Error(`Resource context cannot be retried: ${contextualInput.reason}`)
+  }
+  return {
+    id: nextQueueCommandId(),
+    method: 'run.start',
+    params: {
+      assistant_id: agentId,
+      input: contextualInput.input,
+      multitask_strategy: 'enqueue',
       client_request_id: requestId,
     },
   } as ProtocolCommand
@@ -229,6 +266,14 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
     const value = await this.send(
       queuedRunStartCommand(this.#agentId, message, strategy, requestId),
     )
+    return queuedRunStartAcceptance(value)
+  }
+
+  async retryFailedInput(
+    input: ConversationRunInput,
+    requestId: string,
+  ): Promise<QueueRunStartAcceptance> {
+    const value = await this.send(failedInputRunStartCommand(this.#agentId, input, requestId))
     return queuedRunStartAcceptance(value)
   }
 

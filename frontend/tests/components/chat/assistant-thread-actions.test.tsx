@@ -17,6 +17,10 @@ vi.mock('@assistant-ui/react', () => {
     <div className={className}>{children}</div>
   )
   const childPassthrough = ({ children }: { children?: ReactNode }) => <>{children}</>
+  const triggerPopover = Object.assign(childPassthrough, {
+    Action: () => null,
+    Directive: () => null,
+  })
   const actionButton = ({
     children,
     className,
@@ -34,6 +38,10 @@ vi.mock('@assistant-ui/react', () => {
   )
 
   return {
+    unstable_useTriggerPopoverAriaProps: () => ({}),
+    unstable_useTriggerPopoverRootContextOptional: () => null,
+    unstable_useSlashCommandAdapter: () => ({ adapter: {}, action: {} }),
+    unstable_useMentionAdapter: () => ({ adapter: {}, directive: {} }),
     ThreadPrimitive: {
       Root: passthrough,
       Viewport: passthrough,
@@ -72,6 +80,12 @@ vi.mock('@assistant-ui/react', () => {
       Dictate: childPassthrough,
       StopDictation: childPassthrough,
       DictationTranscript: () => null,
+      Unstable_TriggerPopoverRoot: childPassthrough,
+      Unstable_TriggerPopover: triggerPopover,
+      Unstable_TriggerPopoverItems: () => null,
+      Unstable_TriggerPopoverItem: childPassthrough,
+      Unstable_TriggerPopoverCategories: () => null,
+      Unstable_TriggerPopoverCategoryItem: childPassthrough,
     },
     AttachmentPrimitive: {
       Root: passthrough,
@@ -96,7 +110,7 @@ vi.mock('@assistant-ui/react', () => {
       }),
     useAuiState: (selector: (state: unknown) => unknown) =>
       selector({
-        composer: { dictation: null, isEditing: true, text: '' },
+        composer: { dictation: null, isEditing: true, runConfig: {}, text: '' },
         thread: { isDisabled: false },
       }),
     useAui: () => ({

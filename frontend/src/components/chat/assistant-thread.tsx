@@ -40,6 +40,8 @@ import { cn } from '@/lib/utils'
 import type { User } from '@/lib/types/user'
 import type { DeepAgentsStateSnapshot } from '@/lib/chat/langgraph-runtime/deepagents-state'
 import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
+import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
+import type { SkillBrief } from '@/lib/types'
 import 'katex/dist/katex.min.css'
 import './markdown-styles.css'
 
@@ -73,6 +75,10 @@ export interface AssistantThreadProps {
   composerHint?: ReactNode
   dictationAvailability?: DictationAvailability
   onDictationStart?: () => void
+  commandActions?: ChatCommandActions
+  linkedSkills?: readonly SkillBrief[]
+  retryLastFailedInput?: ChatCommandActions['retryLastFailedInput']
+  resourceContextResetKey?: string | number | null
 }
 
 export function AssistantThread({
@@ -99,6 +105,10 @@ export function AssistantThread({
   composerHint,
   dictationAvailability,
   onDictationStart,
+  commandActions,
+  linkedSkills,
+  retryLastFailedInput,
+  resourceContextResetKey,
 }: AssistantThreadProps) {
   const tPage = useTranslations('chat.page')
   const isBuilder = variant === 'builder'
@@ -131,7 +141,7 @@ export function AssistantThread({
       user,
     ],
   )
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState<string | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -139,7 +149,7 @@ export function AssistantThread({
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
         if (viewportRef.current?.offsetParent == null) return
         event.preventDefault()
-        setSearchOpen(true)
+        setSearchQuery('')
       }
     }
     window.addEventListener('keydown', handleGlobalKeyDown)
@@ -160,8 +170,12 @@ export function AssistantThread({
             className="min-h-0 flex-1 overflow-y-auto"
             onScroll={handleViewportScroll}
           >
-            {searchOpen ? (
-              <ChatSearchOverlay onClose={() => setSearchOpen(false)} searchRootRef={viewportRef} />
+            {searchQuery !== null ? (
+              <ChatSearchOverlay
+                initialQuery={searchQuery}
+                onClose={() => setSearchQuery(null)}
+                searchRootRef={viewportRef}
+              />
             ) : null}
             <AuiIf condition={(state) => state.thread.isEmpty}>
               {emptyContent ?? (
@@ -213,6 +227,13 @@ export function AssistantThread({
                 focusKey={conversationId}
                 dictationAvailability={dictationAvailability}
                 onDictationStart={onDictationStart}
+                commandActions={{
+                  ...commandActions,
+                  openTranscriptSearch: (argument) => setSearchQuery(argument),
+                }}
+                linkedSkills={linkedSkills}
+                retryLastFailedInput={retryLastFailedInput}
+                resourceContextResetKey={resourceContextResetKey}
               />
             </div>
           )}

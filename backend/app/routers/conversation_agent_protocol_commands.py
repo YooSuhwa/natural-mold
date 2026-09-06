@@ -48,6 +48,17 @@ from app.routers.conversation_agent_protocol_runtime import (
     input_preview,
 )
 from app.services import chat_service, conversation_run_queue_service, conversation_run_service
+from app.services.chat_resource_context_integration import (
+    QueuedResourceContextInput,
+    freeze_queued_resource_context_payload,
+    freeze_resource_context_payload,
+)
+from app.services.chat_resource_context_payload import (
+    apply_frozen_resource_context,
+    frozen_resource_context_from_payload,
+    resource_context_user_message,
+)
+from app.services.chat_resource_context_sources import ResourceContextScope
 from app.services.conversation_audit_service import (
     record_conversation_audit,
     record_conversation_run_audit,
@@ -63,6 +74,16 @@ AgentStreamExecutor = Callable[..., Any]
 # 짧게 기다린다 (활성 run이 아예 없으면 진짜 not-found — 즉시 포기).
 _RESUME_INTERRUPT_WAIT_TIMEOUT_S = 2.0
 _RESUME_INTERRUPT_WAIT_INTERVAL_S = 0.05
+
+
+def _resource_context_error(command: AgentCommandRequest, exc: HTTPException) -> JSONResponse:
+    code = "RESOURCE_CONTEXT_NOT_FOUND" if exc.status_code == 404 else "RESOURCE_CONTEXT_INVALID"
+    return command_error(
+        command,
+        code=code,
+        message=str(exc.detail),
+        status_code=exc.status_code,
+    )
 
 
 async def _wait_for_interrupted_parent_run(
@@ -111,6 +132,20 @@ async def _handle_run_start_command(
     attachment_ids = attachment_ids_from_protocol_input(input_payload)
     resolved_checkpoint_id = checkpoint_id(command)
     runtime_input_payload = input_without_protocol_attachments(input_payload)
+    context_scope = ResourceContextScope(
+        user_id=user.id,
+        agent_id=conversation.agent_id,
+        conversation_id=conversation.id,
+    )
+    direct_context = None
+    if strategy == "reject":
+        try:
+            runtime_input_payload = await freeze_resource_context_payload(
+                db, context_scope, runtime_input_payload
+            )
+        except HTTPException as exc:
+            return _resource_context_error(command, exc)
+        direct_context = frozen_resource_context_from_payload(runtime_input_payload)
     run_source = "chat"
     if strategy != "reject" and resolved_checkpoint_id:
         return command_error(
@@ -126,6 +161,10 @@ async def _handle_run_start_command(
             append_messages=append_messages,
             drop_trailing_assistant=not append_messages and not attachment_ids,
         )
+        if direct_context is not None:
+            runtime_input_payload = apply_frozen_resource_context(
+                runtime_input_payload, direct_context
+            )
         run_source = "edit" if append_messages or attachment_ids else "regenerate"
     preview = input_preview(input_payload)
     if conversation.source == "draft":
@@ -165,6 +204,18 @@ async def _handle_run_start_command(
         client_request_id = command.params.client_request_id or str(
             command.id if command.id is not None else uuid.uuid4()
         )
+        try:
+            runtime_input_payload = await freeze_queued_resource_context_payload(
+                db,
+                context_scope,
+                QueuedResourceContextInput(
+                    conversation_id=conversation.id,
+                    client_request_id=client_request_id,
+                    input_payload=runtime_input_payload,
+                ),
+            )
+        except HTTPException as exc:
+            return _resource_context_error(command, exc)
         enqueue_result = await conversation_run_queue_service.enqueue_input_with_result(
             db,
             conversation_id=conversation.id,
@@ -300,6 +351,8 @@ async def _handle_run_start_command(
                 user_id=user.id,
             )
     await db.commit()
+
+    runtime_input_payload = resource_context_user_message(runtime_input_payload)
 
     await start_run(
         run_id=run_id,

@@ -18,7 +18,7 @@ import {
 import { useStreamCancelController } from './use-stream-cancel-controller'
 import type { UseStreamCommandControllerOptions } from './stream-command-types'
 
-export function useStreamCommandController<StateType extends object>({
+export function useStreamCommandController({
   conversationId,
   stream,
   visibleMessages,
@@ -29,7 +29,7 @@ export function useStreamCommandController<StateType extends object>({
   clearBranchPickerSuppression,
   submitCheckpoint,
   reconciliation,
-}: UseStreamCommandControllerOptions<StateType>) {
+}: UseStreamCommandControllerOptions) {
   const activeEditAttemptRef = useRef<number | null>(null)
   const refinePendingEdit = useCallback(
     (edit: PendingCheckpointEditSubmit): void => {
