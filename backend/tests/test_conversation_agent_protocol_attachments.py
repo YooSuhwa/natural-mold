@@ -5,10 +5,12 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.conversation_run_input import ConversationRunInput
 from app.models.message_attachment import MessageAttachment
 from app.models.model import Model
 from app.models.user import User
@@ -104,3 +106,9 @@ async def test_run_start_command_links_attachments_and_forwards_ids_for_backfill
     assert started["attachment_ids"] == [attachment.id]
     assert started["moldy_source"] == "chat"
     assert uuid.UUID(response.json()["result"]["run_id"]) == started["run_id"]
+    persisted = await db.scalar(
+        select(ConversationRunInput).where(ConversationRunInput.run_id == started["run_id"])
+    )
+    assert persisted is not None
+    assert persisted.attachment_ids == [str(attachment.id)]
+    assert persisted.input_payload == started["input_payload"]

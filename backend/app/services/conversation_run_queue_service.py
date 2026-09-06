@@ -132,6 +132,49 @@ async def enqueue_input_with_result(
     return EnqueuedConversationInput(input=queued, created=True)
 
 
+async def persist_direct_input(
+    db: AsyncSession,
+    *,
+    run: ConversationRun,
+    client_request_id: str,
+    input_payload: dict[str, JsonValue],
+    attachment_ids: list[uuid.UUID],
+) -> ConversationRunInput:
+    """Bind an accepted direct chat input to its already-created run."""
+    existing = await db.scalar(
+        select(ConversationRunInput.id).where(
+            ConversationRunInput.conversation_id == run.conversation_id,
+            ConversationRunInput.client_request_id == client_request_id,
+        )
+    )
+    if existing is not None:
+        raise _conflict("Client request id was already used for a conversation input")
+    max_position = await db.scalar(
+        select(func.max(ConversationRunInput.position)).where(
+            ConversationRunInput.conversation_id == run.conversation_id
+        )
+    )
+    persisted = ConversationRunInput(
+        conversation_id=run.conversation_id,
+        agent_id=run.agent_id,
+        user_id=run.user_id,
+        run_id=run.id,
+        client_request_id=client_request_id,
+        source="chat",
+        status="claimed",
+        priority=0,
+        position=(max_position or 0) + 1,
+        revision=1,
+        input_payload=input_payload,
+        attachment_ids=[str(item) for item in attachment_ids],
+        checkpoint_id=None,
+        claimed_at=utc_now_naive(),
+    )
+    db.add(persisted)
+    await db.flush()
+    return persisted
+
+
 async def claim_next_input(
     db: AsyncSession,
     *,
@@ -224,6 +267,7 @@ __all__ = [
     "list_inputs",
     "lock_owned_conversation",
     "pause_queue",
+    "persist_direct_input",
     "queue_input_not_found",
     "reorder_pending_inputs",
     "resume_queue",

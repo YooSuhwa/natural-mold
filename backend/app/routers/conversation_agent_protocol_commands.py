@@ -310,6 +310,14 @@ async def _handle_run_start_command(
                 "checkpoint_id": resolved_checkpoint_id,
             },
         )
+        if resolved_checkpoint_id is None:
+            await conversation_run_queue_service.persist_direct_input(
+                db,
+                run=run,
+                client_request_id=command.params.client_request_id or str(uuid.uuid4()),
+                input_payload=runtime_input_payload,
+                attachment_ids=attachment_ids,
+            )
     except ConflictError as exc:
         return command_error(
             command,

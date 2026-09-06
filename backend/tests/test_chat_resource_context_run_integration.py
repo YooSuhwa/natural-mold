@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -116,3 +117,11 @@ async def test_direct_run_start_injects_context_only_as_user_input(
     assert INTERNAL_RESOURCE_CONTEXT_KEY not in runtime_payload
     assert runtime_payload["messages"][0]["role"] == "user"
     assert runtime_payload["messages"][1]["content"] == "use context"
+    run_id = uuid.UUID(response.json()["result"]["run_id"])
+    persisted = await db.scalar(
+        select(ConversationRunInput).where(ConversationRunInput.run_id == run_id)
+    )
+    assert persisted is not None
+    frozen = frozen_resource_context_from_payload(persisted.input_payload)
+    assert frozen is not None
+    assert frozen.resources[0].text == "enqueue snapshot"
