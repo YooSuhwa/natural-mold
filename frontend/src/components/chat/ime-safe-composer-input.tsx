@@ -113,8 +113,8 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
 
     const syncText = useCallback(
       (next: string) => {
-        if (!aui.composer().getState().isEditing) return
-        aui.composer().setText(next)
+        if (!aui.composer.getState().isEditing) return
+        aui.composer.setText(next)
       },
       [aui],
     )
@@ -125,7 +125,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       if (event.nativeEvent.isComposing || compositionRef.current) return
       if (event.key !== 'Enter') return
 
-      const threadState = aui.thread().getState()
+      const threadState = aui.thread.getState()
       const hasQueue = threadState.capabilities.queue
 
       if (
@@ -133,10 +133,10 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
         (event.ctrlKey || event.metaKey) &&
         hasQueue &&
         effectiveSubmitMode !== 'none' &&
-        !aui.composer().getState().isEmpty
+        !aui.composer.getState().isEmpty
       ) {
         event.preventDefault()
-        aui.composer().send({ steer: true })
+        aui.composer.send({ steer: true })
         return
       }
 
@@ -158,11 +158,11 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       if (event.defaultPrevented || !addAttachmentOnPaste) return
 
       const files = Array.from(event.clipboardData?.files || [])
-      if (!files.length || !aui.thread().getState().capabilities.attachments) return
+      if (!files.length || !aui.thread.getState().capabilities.attachments) return
 
       try {
         event.preventDefault()
-        await Promise.all(files.map((file) => aui.composer().addAttachment(file)))
+        await Promise.all(files.map((file) => aui.composer.addAttachment(file)))
       } catch (error) {
         reportClientError('ImeSafeComposerInput', 'add attachment error:', error)
       }

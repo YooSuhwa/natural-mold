@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
-import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
+import { AssistantRuntimeProvider, useAui } from '@assistant-ui/react'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import type { Decision, Message, SSEEvent } from '@/lib/types'
 import { HiTLContext } from '@/lib/chat/hitl-context'
@@ -176,8 +176,8 @@ interface EmptyContentProps {
 }
 
 function EmptyContent({ title, subtitle, suggestions, imageSrc }: EmptyContentProps) {
-  // useComposerRuntime는 AssistantRuntimeProvider 컨텍스트 안에서만 동작
-  const composer = useComposerRuntime({ optional: true })
+  // AssistantRuntimeProvider 안에서만 composer scope가 제공된다.
+  const composer = useAui().optional.composer
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-4 py-8 text-center">

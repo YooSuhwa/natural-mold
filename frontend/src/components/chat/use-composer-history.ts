@@ -60,7 +60,7 @@ export function useComposerHistory(conversationId: string | null): {
   const applyText = useCallback(
     (textarea: HTMLTextAreaElement, next: string) => {
       lastAppliedRef.current = next
-      aui.composer().setText(next)
+      aui.composer.setText(next)
       // setText → 외부값 동기화 이후 캐럿을 끝으로.
       requestAnimationFrame(() => focusTextareaAtEnd(textarea))
     },

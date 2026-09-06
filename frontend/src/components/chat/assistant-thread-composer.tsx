@@ -196,7 +196,7 @@ function StopButton() {
   const handleStop = () => {
     if (isCanceling) return
     try {
-      aui.thread().cancelRun()
+      aui.thread.cancelRun()
     } catch (error) {
       reportClientWarning('StopButton', 'cancelRun error:', error)
     }

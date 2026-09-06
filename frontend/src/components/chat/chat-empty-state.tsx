@@ -1,6 +1,6 @@
 'use client'
 
-import { useComposerRuntime } from '@assistant-ui/react'
+import { useAui } from '@assistant-ui/react'
 import { BookOpenIcon, PlugIcon, SparklesIcon, WrenchIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
@@ -37,7 +37,7 @@ function CapabilityIcon({ kind }: { kind: CapabilityChip['kind'] }) {
 
 export function ChatEmptyState({ agent, fallback }: ChatEmptyStateProps) {
   const t = useTranslations('chat')
-  const composer = useComposerRuntime({ optional: true })
+  const composer = useAui().optional.composer
   const openerQuestions = agent?.opener_questions ?? []
 
   // 스타터 폴백: 에이전트에 큐레이션된 opener가 없을 때만 템플릿의

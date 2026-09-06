@@ -298,7 +298,7 @@ function BuilderStopButton() {
   const handleStop = () => {
     if (isCanceling) return
     try {
-      aui.thread().cancelRun()
+      aui.thread.cancelRun()
     } catch (err) {
       reportClientWarning('BuilderStopButton', 'cancelRun error:', err)
     }

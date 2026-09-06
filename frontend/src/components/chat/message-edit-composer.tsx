@@ -56,10 +56,10 @@ export function MessageEditComposerRoot({
     if (event.defaultPrevented) return
 
     event.preventDefault()
-    const composer = aui.message().composer()
+    const composer = aui.message.composer()
     const state = composer.getState()
     if (!state.isEditing || state.isEmpty) return
-    const message = aui.message().getState()
+    const message = aui.message.getState()
     setPendingBranchPickerSuppression({
       conversationId,
       messageId: typeof message.id === 'string' ? message.id : null,
@@ -88,7 +88,7 @@ export function useMessageEditComposerControls() {
   )
 
   const cancel = useCallback(() => {
-    const composer = aui.message().composer()
+    const composer = aui.message.composer()
     if (composer.getState().canCancel) {
       composer.cancel()
       setPendingBranchPickerSuppression(null)
@@ -160,10 +160,10 @@ export const MessageEditComposerInput = forwardRef<
 
     const syncText = useCallback(
       (next: string) => {
-        const composer = aui.message().composer()
+        const composer = aui.message.composer()
         if (!composer.getState().isEditing) return
         composer.setText(next)
-        const message = aui.message().getState()
+        const message = aui.message.getState()
         setPendingBranchPickerSuppression({
           conversationId,
           messageId: typeof message.id === 'string' ? message.id : null,
@@ -179,7 +179,7 @@ export const MessageEditComposerInput = forwardRef<
       if (event.nativeEvent.isComposing || compositionRef.current) return
       if (event.key !== 'Enter') return
 
-      const threadState = aui.thread().getState()
+      const threadState = aui.thread.getState()
       if (event.shiftKey) return
       if (threadState.isRunning && !threadState.capabilities.queue) return
 
@@ -198,11 +198,11 @@ export const MessageEditComposerInput = forwardRef<
       if (event.defaultPrevented || !addAttachmentOnPaste) return
 
       const files = Array.from(event.clipboardData?.files || [])
-      if (!files.length || !aui.thread().getState().capabilities.attachments) return
+      if (!files.length || !aui.thread.getState().capabilities.attachments) return
 
       try {
         event.preventDefault()
-        const composer = aui.message().composer()
+        const composer = aui.message.composer()
         await Promise.all(files.map((file) => composer.addAttachment(file)))
       } catch (error) {
         reportClientError('MessageEditComposerInput', 'add attachment error:', error)

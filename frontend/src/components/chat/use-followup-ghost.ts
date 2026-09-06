@@ -41,7 +41,7 @@ export function useFollowupGhost(
 
   const acceptGhost = useCallback(() => {
     if (!ghostText || !conversationId) return
-    aui.composer().setText(ghostText)
+    aui.composer.setText(ghostText)
     // 수락된 제안은 소진 — 같은 제안이 비운 뒤 다시 뜨지 않게.
     setFollowup({ conversationId, suggestion: null })
     requestAnimationFrame(() => focusTextareaAtEnd(textareaRef.current))

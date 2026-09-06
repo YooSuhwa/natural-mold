@@ -101,7 +101,7 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
       }
       try {
         // SuggestionTrigger와 동일한 패턴 — thread에 직접 user message append
-        aui.thread().append({
+        aui.thread.append({
           content: [{ type: 'text', text: opt }],
         })
       } catch (err) {
