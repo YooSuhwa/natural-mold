@@ -1,5 +1,6 @@
 import { expect, isRecord, loginApi, test } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '../src/lib/auth/session-flags'
 
 const BACKEND_PORT = process.env.E2E_BACKEND_PORT ?? '8001'
 const API_BASE = process.env.E2E_API_BASE_URL ?? `http://localhost:${BACKEND_PORT}`
@@ -37,6 +38,19 @@ async function getEntityId(responseBody: unknown, resource: string): Promise<str
   }
   return responseBody.id
 }
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(
+    ({ onboardingDismissedFlag, superUserWelcomedFlag }) => {
+      window.sessionStorage.setItem(onboardingDismissedFlag, '1')
+      window.sessionStorage.setItem(superUserWelcomedFlag, '1')
+    },
+    {
+      onboardingDismissedFlag: ONBOARDING_DISMISSED_FLAG,
+      superUserWelcomedFlag: SUPER_USER_WELCOMED_FLAG,
+    },
+  )
+})
 
 // ---------------------------------------------------------------------------
 // Smoke Test - Static Pages
