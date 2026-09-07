@@ -109,15 +109,16 @@
 
 ---
 
-## D. 타입 안전성 게이트 부재 — 🟠 P1
+## D. 타입 안전성 게이트 — ✅ basic 완료 / standard 검토 잔여
 
-- **증거**: pyright `basic` + CI `backend-typecheck` 잡이 `|| true`(non-blocking, 968 백로그 때문). `--select ANN`(어노테이션 강제)은 **477건**. CLAUDE.md는 "타입 힌트 필수" 컨벤션을 명시하나 강제 도구 없음.
+- **완료 증거(2026-09-07)**: pyright `basic` 전체 0 errors. CI `backend-typecheck`의
+  `|| true`를 제거해 blocking 게이트로 승격했다.
 - **조치**(순서):
-  1. `docs/pyright-burndown-plan.md`의 B/C/D 단계 진행 → 968→0.
-  2. 0 도달 후 CI `|| true` 제거(하드 게이트).
-  3. 그 다음 `typeCheckingMode = "standard"` 승격 검토.
+  1. ✅ `docs/pyright-burndown-plan.md`의 B/C/D 단계 완료 → 최신 기준 1,258→0.
+  2. ✅ CI `|| true` 제거(하드 게이트).
+  3. `typeCheckingMode = "standard"` 승격은 별도 작업으로 검토.
   4. `ANN`은 신규 코드부터 점진(`per-file-ignores`로 기존 파일 baseline, 신규 파일만 강제)하거나, 함수 시그니처 위주(`ANN001`/`ANN201`)만 우선.
-- **공수**: L (번다운과 연동)
+- **잔여 공수**: standard/ANN 범위 결정 후 재산정
 
 ---
 
@@ -191,7 +192,7 @@
 4. **B-1** — 백엔드 `check_router_errors.py`(raw HTTPException 금지).
 5. **G** — integration 마커 자동부여.
 6. **F** — 억제 부채 가시화(`PGH`).
-7. **D** — pyright 하드 게이트(968 번다운 완료 후).
+7. ✅ **D** — 2026-09-07 Pyright basic 1,258→0 및 CI 하드 게이트 전환 완료.
 
 각 항목은 독립 PR. 룰 추가 PR은 "룰 켜기 + 위반 트리아지"를 한 커밋에 담아 CI가 그린이 되게 한다(빨간 룰을 남기지 않는다).
 
