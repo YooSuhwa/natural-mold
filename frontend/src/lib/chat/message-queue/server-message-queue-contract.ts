@@ -67,6 +67,9 @@ export type ServerMessageQueueSnapshot = {
 
 export interface ServerMessageQueueController {
   readonly adapter: ExternalThreadQueueAdapter
+  updateCallbacks(
+    callbacks: Pick<ServerMessageQueueOptions, 'submit' | 'createRequestId' | 'onClaimedRun'>,
+  ): void
   enqueue(message: AppendMessage): Promise<void>
   steer(message: AppendMessage): Promise<void>
   edit(inputId: string, message: AppendMessage): Promise<void>

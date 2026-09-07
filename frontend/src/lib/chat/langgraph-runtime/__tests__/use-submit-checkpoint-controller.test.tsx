@@ -3,6 +3,23 @@ import { describe, expect, it } from 'vitest'
 import { useSubmitCheckpointController } from '../use-submit-checkpoint-controller'
 
 describe('useSubmitCheckpointController', () => {
+  it('correlates a pending submit with its accepted run id', () => {
+    const { result } = renderHook(() => useSubmitCheckpointController('submit-controller-accepted'))
+
+    act(() => {
+      result.current.beginPendingSubmit('cancel me', 0)
+      expect(result.current.acceptPendingSubmit('run-accepted')).toBe(true)
+    })
+
+    expect(result.current.pendingSubmit).toEqual(
+      expect.objectContaining({
+        content: 'cancel me',
+        acceptedRunId: 'run-accepted',
+      }),
+    )
+    act(() => result.current.clearConversationPendingSubmit())
+  })
+
   it('keeps one conversation-keyed singleton store with FIFO eviction at 50 entries', () => {
     const conversationIds = Array.from({ length: 51 }, (_, index) => `submit-controller-${index}`)
     const { result, rerender } = renderHook(

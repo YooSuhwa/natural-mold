@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AIMessage } from '@langchain/core/messages'
 import type { AnyStream } from '@langchain/react'
@@ -59,11 +59,11 @@ function artifact(overrides: Partial<FileEventPayload> = {}): FileEventPayload {
   }
 }
 
-function protocolEvent(payload: FileEventPayload) {
+function protocolEvent(payload: FileEventPayload, eventId = 'event-file-1') {
   return {
     type: 'event',
     method: 'custom',
-    event_id: 'event-file-1',
+    event_id: eventId,
     seq: 7,
     run_id: 'run-1',
     params: {
@@ -98,7 +98,7 @@ describe('useLangGraphArtifactEffects', () => {
     mocks.useChannelEffect.mockReset()
   })
 
-  it('applies v3 artifact custom events to stores, right rail, queries, and live messages', () => {
+  it('applies v3 artifact custom events to stores, right rail, queries, and live messages', async () => {
     const store = createStore()
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
@@ -140,9 +140,70 @@ describe('useLangGraphArtifactEffects', () => {
         view: 'preview',
       },
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: artifactKeys.all })
+    await waitFor(() => {
+      expect(queryClient.getQueryData(artifactKeys.conversation('conversation-1'))).toEqual([
+        artifactSummary(artifact()),
+      ])
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: artifactKeys.conversation('conversation-1'),
+        exact: true,
+      })
+    })
     expect((result.current[0] as { artifacts?: unknown[] }).artifacts).toEqual([
       artifactSummary(artifact()),
     ])
+  })
+
+  it('keeps consecutive stream artifacts in the conversation query cache', async () => {
+    const store = createStore()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const stream = { kind: 'stream' } as unknown as AnyStream
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <Provider store={store}>{children}</Provider>
+      </QueryClientProvider>
+    )
+
+    renderHook(
+      () =>
+        useLangGraphArtifactEffects({
+          stream,
+          conversationId: 'conversation-1',
+          messages: [],
+        }),
+      { wrapper },
+    )
+
+    const effectOptions = mocks.useChannelEffect.mock.calls[0]?.[2] as
+      | ChannelEffectOptions
+      | undefined
+    const report = artifact()
+    const notes = artifact({
+      id: 'artifact-2',
+      path: 'notes.txt',
+      display_name: 'notes.txt',
+      version_id: 'version-2',
+      extension: 'txt',
+      mime_type: 'text/plain',
+      artifact_kind: 'document',
+    })
+
+    act(() => {
+      effectOptions?.onEvent(protocolEvent(report, 'event-file-1'))
+      effectOptions?.onEvent(protocolEvent(notes, 'event-file-2'))
+    })
+
+    await waitFor(() => {
+      const cached = queryClient.getQueryData<FileEventPayload[]>(
+        artifactKeys.conversation('conversation-1'),
+      )
+      expect(cached?.map((item) => item.id).sort()).toEqual(['artifact-1', 'artifact-2'])
+    })
+    expect(
+      store
+        .get(chatArtifactsAtom)
+        ['conversation-1']?.items.map((item) => item.id)
+        .sort(),
+    ).toEqual(['artifact-1', 'artifact-2'])
   })
 })

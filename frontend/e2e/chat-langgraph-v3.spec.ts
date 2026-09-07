@@ -81,7 +81,8 @@ test.describe('LangGraph v3 chat runtime', () => {
       await expect(page.getByText('docx-document').last()).toBeVisible({ timeout: 30_000 })
       expect(runStartCommands).toHaveLength(1)
 
-      await approveExecuteInSkill(page)
+      const resumeRunId = await approveExecuteInSkill(page)
+      await waitForRunStatus(request, setup.conversationId, resumeRunId, 'completed')
       await waitForArtifact(request, setup.conversationId, REPORT_FILE)
       await waitForArtifact(request, setup.conversationId, NOTES_FILE)
       await expectFinalTextVisible(page)

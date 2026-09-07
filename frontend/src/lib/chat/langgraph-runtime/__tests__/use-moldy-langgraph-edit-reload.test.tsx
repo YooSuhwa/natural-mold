@@ -339,7 +339,16 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
       readonly messages: readonly BaseMessage[]
     }
     expect(converterOptions.messages).toEqual(
-      expect.arrayContaining([originalUserMessage, staleAssistantMessage]),
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: originalUserMessage.id,
+          content: originalUserMessage.content,
+        }),
+        expect.objectContaining({
+          id: staleAssistantMessage.id,
+          content: staleAssistantMessage.content,
+        }),
+      ]),
     )
     expect(converterOptions.messages.some((message) => message.content === 'edited prompt')).toBe(
       false,

@@ -11,6 +11,87 @@ const payload: StandardInterruptPayload = {
 }
 
 describe('useHitlDecisionController', () => {
+  it('waits for stream hydration before responding to a restored interrupt', async () => {
+    let resolveHydration: (() => void) | undefined
+    const stream = {
+      hydrationPromise: new Promise<void>((resolve) => {
+        resolveHydration = resolve
+      }),
+      respond: vi.fn(async () => undefined),
+      respondAll: vi.fn(async () => undefined),
+    }
+    const payloadsById = new Map([[payload.interrupt_id, payload]])
+    const { result } = renderHook(() =>
+      useHitlDecisionController({
+        conversationId: 'conversation-restored',
+        stream,
+        interruptPayloads: [payload],
+        interruptPayloadsById: payloadsById,
+        allInterruptPayloadsById: payloadsById,
+        refreshLifecycle: vi.fn(async () => undefined),
+        updateResolvedInterrupts: vi.fn(),
+      }),
+    )
+
+    const resume = result.current.onResumeDecisions(
+      [{ type: 'approve' }],
+      'approve',
+      payload.interrupt_id,
+    )
+    await Promise.resolve()
+    expect(stream.respond).not.toHaveBeenCalled()
+
+    resolveHydration?.()
+    await resume
+
+    expect(stream.respond).toHaveBeenCalledOnce()
+  })
+
+  it('waits for stream hydration before responding to a restored interrupt batch', async () => {
+    let resolveHydration: (() => void) | undefined
+    const stream = {
+      hydrationPromise: new Promise<void>((resolve) => {
+        resolveHydration = resolve
+      }),
+      respond: vi.fn(async () => undefined),
+      respondAll: vi.fn(async () => undefined),
+    }
+    const payloads = [
+      { ...payload, interrupt_id: 'interrupt-a' },
+      { ...payload, interrupt_id: 'interrupt-b' },
+    ]
+    const payloadsById = new Map(payloads.map((item) => [item.interrupt_id, item]))
+    const { result } = renderHook(() =>
+      useHitlDecisionController({
+        conversationId: 'conversation-restored',
+        stream,
+        interruptPayloads: payloads,
+        interruptPayloadsById: payloadsById,
+        allInterruptPayloadsById: payloadsById,
+        refreshLifecycle: vi.fn(async () => undefined),
+        updateResolvedInterrupts: vi.fn(),
+      }),
+    )
+
+    const first = result.current.onResumeDecisions(
+      [{ type: 'approve' }],
+      'approve a',
+      'interrupt-a',
+    )
+    const second = result.current.onResumeDecisions(
+      [{ type: 'approve' }],
+      'approve b',
+      'interrupt-b',
+    )
+    await Promise.resolve()
+    expect(stream.respondAll).not.toHaveBeenCalled()
+
+    resolveHydration?.()
+    await Promise.all([first, second])
+
+    expect(stream.respondAll).toHaveBeenCalledOnce()
+  })
+
   it('drops completion side effects after the conversation lifetime changes', async () => {
     let resolveRespond: (() => void) | undefined
     const stream = {

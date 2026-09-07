@@ -14,6 +14,7 @@ import {
 import {
   classifyRequestFailure,
   classifyResponseFailure,
+  isExpectedNextRscPrefetchAbort,
   recordNetworkFailure,
   type NetworkFailureCode,
 } from './helpers/network-failure-diagnostic'
@@ -124,7 +125,6 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
     const errors: ErrorCollector = { console: [], page: [], network: [] }
     const mainFrameRequestGenerations = new WeakMap<Request, number>()
     let mainFrameNavigationGeneration = 0
-    let mainFrameNavigationStartedAt = Number.NEGATIVE_INFINITY
 
     page.on('request', (request) => {
       const observation = observeAndRecordMainFrameRequestAtStart(
@@ -135,9 +135,6 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
       )
       if (observation === undefined) return
       mainFrameNavigationGeneration = observation.navigationGeneration
-      if (observation.mainFrameNavigationBegan) {
-        mainFrameNavigationStartedAt = Date.now()
-      }
     })
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
@@ -179,11 +176,18 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
       const expectedRouteTransitionAbort =
         errorText.includes('net::ERR_ABORTED') &&
         req.method() === 'GET' &&
-        (/\/api\/auth\/me$/.test(url) ||
+        (/\/api\/agents\/summary(?:\?.*)?$/.test(url) ||
+          /\/api\/artifacts(?:\?.*)?$/.test(url) ||
+          /\/api\/auth\/me$/.test(url) ||
+          /\/api\/conversations\/page(?:\?.*)?$/.test(url) ||
           /\/api\/artifacts\/[^/]+\/content(?:\?.*)?$/.test(url) ||
           /\/api\/conversations\/[^/?]+(?:\?.*)?$/.test(url) ||
           /\/api\/conversations\/[^/]+\/artifacts(?:\?.*)?$/.test(url) ||
           /\/api\/conversations\/[^/]+\/files(?:\?.*)?$/.test(url) ||
+          /\/api\/conversations\/[^/]+\/messages(?:\?.*)?$/.test(url) ||
+          /\/api\/conversations\/[^/]+\/pinned-summary(?:\?.*)?$/.test(url) ||
+          /\/api\/conversations\/[^/]+\/run-message-links(?:\?.*)?$/.test(url) ||
+          /\/api\/conversations\/[^/]+\/run-inputs(?:\?.*)?$/.test(url) ||
           /\/api\/conversations\/[^/]+\/langgraph\/threads\/[^/]+\/state(?:\?.*)?$/.test(url) ||
           /\/api\/agents\/[^/]+(?:$|\/conversations(?:\/page)?(?:\?.*)?$)/.test(url))
       // Follow-up generation is an auxiliary request started after a completed
@@ -193,7 +197,6 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
       const expectedFollowupTransitionAbort =
         errorText.includes('net::ERR_ABORTED') &&
         req.method() === 'POST' &&
-        Date.now() - mainFrameNavigationStartedAt < 1_000 &&
         /\/api\/conversations\/[^/]+\/followup-suggestion(?:\?.*)?$/.test(url)
       const expectedLangGraphSdkTransitionAbort =
         errorText.includes('net::ERR_ABORTED') &&
@@ -224,6 +227,13 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         requestUrl: url,
         currentPageUrl: page.url(),
       })
+      const expectedNextRscPrefetchAbort = isExpectedNextRscPrefetchAbort({
+        errorText,
+        method: req.method(),
+        resourceType: req.resourceType(),
+        requestUrl: url,
+        currentPageUrl: page.url(),
+      })
       if (
         !url.includes('favicon') &&
         !expectedStreamDetach &&
@@ -233,7 +243,8 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         !expectedLangGraphSdkTransitionAbort &&
         !expectedBranchSwitchAbort &&
         !expectedConversationDeleteAbort &&
-        !expectedNextStaticChunkAbort
+        !expectedNextStaticChunkAbort &&
+        !expectedNextRscPrefetchAbort
       ) {
         recordNetworkFailure(
           errors.network,

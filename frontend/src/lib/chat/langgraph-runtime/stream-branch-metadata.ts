@@ -2,7 +2,10 @@ import { AIMessage, type BaseMessage } from '@langchain/core/messages'
 import { isAssistantMessage, messageContentEqualsText } from './stream-message-content'
 import { isRecord } from './stream-message-utilities'
 import { stableString } from './message-list'
-import { TERMINAL_NOTICE_METADATA_KEY } from './terminal-notice'
+import {
+  TERMINAL_NOTICE_BOUNDARY_METADATA_KEY,
+  TERMINAL_NOTICE_METADATA_KEY,
+} from './terminal-notice'
 import type {
   ServerMessageMetadataSnapshot,
   ThreadRunNotice,
@@ -179,8 +182,18 @@ export function appendTerminalRunNotice(
   if (!notice) return [...messages]
   const id = `moldy-${notice.status}-${notice.id}`
   if (messages.some((message) => message.id === id)) return [...messages]
+  const nextMessages = [...messages]
+  const precedingAssistantIndex = nextMessages.findLastIndex(isAssistantMessage)
+  if (precedingAssistantIndex >= 0) {
+    const precedingAssistant = nextMessages[precedingAssistantIndex]
+    if (precedingAssistant) {
+      nextMessages[precedingAssistantIndex] = withAdditionalMessageMetadata(precedingAssistant, {
+        [TERMINAL_NOTICE_BOUNDARY_METADATA_KEY]: true,
+      })
+    }
+  }
   return [
-    ...messages,
+    ...nextMessages,
     new AIMessage({
       id,
       content: text,

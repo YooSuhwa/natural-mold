@@ -26,20 +26,29 @@ describe('useServerMessageQueue', () => {
     const submit = vi.fn()
     const onClaimedRun = vi.fn()
     const createRequestId = () => 'request-1'
-    const { result, rerender } = renderHook(() =>
-      useServerMessageQueue({
-        conversationId: 'conversation-1',
-        submit,
-        onClaimedRun,
-        createRequestId,
-      }),
+    const { result, rerender } = renderHook(
+      (props: {
+        submit: typeof submit
+        onClaimedRun: typeof onClaimedRun
+        createRequestId: typeof createRequestId
+      }) =>
+        useServerMessageQueue({
+          conversationId: 'conversation-1',
+          ...props,
+        }),
+      { initialProps: { submit, onClaimedRun, createRequestId } },
     )
 
     await waitFor(() => expect(mocks.list).toHaveBeenCalledWith('conversation-1'))
     const controller = result.current.controller
-    rerender()
+    rerender({
+      submit: vi.fn(),
+      onClaimedRun: vi.fn(),
+      createRequestId: () => 'request-2',
+    })
 
     expect(result.current.controller).toBe(controller)
+    expect(mocks.list).toHaveBeenCalledOnce()
     expect(result.current.snapshot).toMatchObject({ queuePaused: false, items: [] })
   })
 

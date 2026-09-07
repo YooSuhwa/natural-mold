@@ -20,8 +20,9 @@ const TABLET_VIEWPORT = { width: 768, height: 900 } as const
 const DESKTOP_VIEWPORT = { width: 1440, height: 900 } as const
 
 async function capture(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  if (process.env.E2E_CAPTURE_TOUR !== '1') return
   const file = testInfo.outputPath(name)
-  await page.screenshot({ path: file, fullPage: false, animations: 'disabled' })
+  await page.screenshot({ path: file, fullPage: false, animations: 'disabled', timeout: 15_000 })
   await testInfo.attach(name, { path: file, contentType: 'image/png' })
 }
 

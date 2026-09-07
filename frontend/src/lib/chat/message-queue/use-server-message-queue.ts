@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useSyncExternalStore } from 'react'
 
 import { conversationRunInputsApi } from '@/lib/api/conversation-run-inputs'
 import { createServerMessageQueue } from './server-message-queue'
@@ -20,6 +20,11 @@ function randomRequestId(): string {
   return crypto.randomUUID()
 }
 
+const uninitializedSubmit: ServerMessageQueueOptions['submit'] = async () => {
+  throw new Error('Server message queue callbacks are not initialized')
+}
+const ignoreClaimedRun: ServerMessageQueueOptions['onClaimedRun'] = () => undefined
+
 export function useServerMessageQueue({
   conversationId,
   submit,
@@ -32,12 +37,15 @@ export function useServerMessageQueue({
       createServerMessageQueue({
         conversationId,
         api: conversationRunInputsApi,
-        submit,
-        onClaimedRun,
-        createRequestId,
+        submit: uninitializedSubmit,
+        onClaimedRun: ignoreClaimedRun,
+        createRequestId: randomRequestId,
       }),
-    [conversationId, createRequestId, onClaimedRun, submit],
+    [conversationId],
   )
+  useLayoutEffect(() => {
+    controller.updateCallbacks({ submit, onClaimedRun, createRequestId })
+  }, [controller, createRequestId, onClaimedRun, submit])
   const snapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,

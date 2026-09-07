@@ -77,15 +77,17 @@ describe('E2E lane contract', () => {
     expect(() => assertE2ELaneNodeVersion('not-a-version')).toThrow('E2E lanes require Node.js 22.')
   })
 
-  it('uses webpack for the isolated frontend web server command', () => {
+  it('builds once with webpack and serves the isolated production frontend', () => {
     // Given: the configured chat runtime, backend origin, and frontend port.
     const command = buildFrontendWebServerCommand('langgraph_v3', 'http://localhost:8101', '3100')
 
-    // When / Then: Next runs in webpack mode while preserving the required startup environment.
+    // When / Then: both build and server preserve the required startup environment.
     expect(command).toContain('pnpm prepare:assets')
-    expect(command).toContain('NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3')
-    expect(command).toContain('NEXT_PUBLIC_API_BASE_URL=http://localhost:8101')
-    expect(command).toContain('pnpm exec next dev --webpack --port 3100')
+    expect(command.match(/NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3/g)).toHaveLength(2)
+    expect(command.match(/NEXT_PUBLIC_API_BASE_URL=http:\/\/localhost:8101/g)).toHaveLength(2)
+    expect(command).toContain('pnpm exec next build --webpack')
+    expect(command).toContain('pnpm exec next start --port 3100')
+    expect(command).not.toContain('next dev')
   })
 
   it('keeps each project artifact policy compatible with export rules', () => {

@@ -15,6 +15,7 @@ const knownConsoleError: ConsoleErrorObservation = {
 const knownRequestFailure: RequestFailureObservation = {
   url: KNOWN_SHIM_BEACON_URL,
   errorText: 'net::ERR_NAME_NOT_RESOLVED',
+  method: 'GET',
   resourceType: 'script',
   frameUrl: `https://fixture.scf.auiusercontent.com/hash/shim.html?origin=${APP_ORIGIN}`,
 }
@@ -41,5 +42,17 @@ describe('MCP Apps optional shim telemetry classifier', () => {
     expect(unexpectedMcpAppsBrowserErrors([], [unrelated], APP_ORIGIN).requestFailures).toEqual([
       unrelated,
     ])
+  })
+
+  it('accepts canceled same-origin Next.js RSC prefetches from the app frame', () => {
+    const prefetch: RequestFailureObservation = {
+      url: `${APP_ORIGIN}/marketplace?_rsc=fixture`,
+      errorText: 'net::ERR_ABORTED',
+      method: 'GET',
+      resourceType: 'fetch',
+      frameUrl: `${APP_ORIGIN}/agents/agent-1/conversations/conversation-1`,
+    }
+
+    expect(unexpectedMcpAppsBrowserErrors([], [prefetch], APP_ORIGIN).requestFailures).toEqual([])
   })
 })

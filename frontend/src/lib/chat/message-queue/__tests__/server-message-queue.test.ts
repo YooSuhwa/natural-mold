@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createServerMessageQueue,
+  shouldRouteComposerToServerQueue,
   type QueueRunStartAcceptance,
   type ServerMessageQueueApi,
 } from '../server-message-queue'
@@ -167,5 +168,47 @@ describe('createServerMessageQueue mutations', () => {
     // Then the server-provided resumed state replaces the paused snapshot.
     expect(api.resume).toHaveBeenCalledWith('conversation-1')
     expect(queue.getSnapshot().queuePaused).toBe(false)
+  })
+})
+
+describe('shouldRouteComposerToServerQueue', () => {
+  const idleSnapshot = {
+    queuePaused: false,
+    items: [],
+    lastOperation: { kind: 'idle' as const },
+    reconciliationError: null,
+    rejectedSubmission: null,
+  }
+
+  it('keeps an idle empty composer on the official run submission path', () => {
+    expect(shouldRouteComposerToServerQueue(idleSnapshot, false)).toBe(false)
+  })
+
+  it('uses the durable queue while a run or pending input needs queue semantics', () => {
+    expect(shouldRouteComposerToServerQueue(idleSnapshot, true)).toBe(true)
+    expect(
+      shouldRouteComposerToServerQueue({ ...idleSnapshot, items: [queuedInput()] }, false),
+    ).toBe(true)
+    expect(shouldRouteComposerToServerQueue({ ...idleSnapshot, queuePaused: true }, false)).toBe(
+      true,
+    )
+  })
+
+  it('does not trap later idle sends on a completed applied operation', () => {
+    expect(
+      shouldRouteComposerToServerQueue(
+        {
+          ...idleSnapshot,
+          items: [queuedInput({ status: 'claimed', run_id: 'run-1' })],
+          lastOperation: {
+            kind: 'applied',
+            requestId: 'request-1',
+            inputId: 'input-1',
+            runId: 'run-1',
+          },
+        },
+        false,
+      ),
+    ).toBe(false)
   })
 })

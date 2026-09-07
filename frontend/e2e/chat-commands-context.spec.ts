@@ -92,7 +92,7 @@ test.describe('Chat commands and authoritative resource context', () => {
 
       await composer.fill('/files')
       await composer.press('Enter')
-      await expect(page.getByRole('heading', { name: /파일|Files/ })).toBeVisible()
+      await expect(page.getByRole('heading', { name: /^(파일|Files)$/, level: 2 })).toBeVisible()
 
       await page.reload()
       const reloadedComposer = page.locator('textarea[data-moldy-composer-input="true"]').last()

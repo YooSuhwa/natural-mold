@@ -8,9 +8,9 @@ import {
   loginApi,
   type CsrfHeaders,
 } from './fixtures'
-import { waitForAcceptedRunStart } from './helpers/run-start'
+import { commandMethod, waitForAcceptedRunStart } from './helpers/run-start'
 
-export { commandMethod, waitForAcceptedRunStart } from './helpers/run-start'
+export { commandMethod, waitForAcceptedRunStart }
 
 export const DOCX_SKILL_SLUG = 'docx-document'
 export const SCRIPTED_PROVIDER = 'e2e_scripted'
@@ -268,7 +268,7 @@ export async function normalizeArtifactList(page: Page, reportFile: string, note
   return { reportArtifactButton }
 }
 
-export async function approveExecuteInSkill(page: Page): Promise<void> {
+export async function approveExecuteInSkill(page: Page): Promise<string> {
   await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible({
     timeout: 30_000,
   })
@@ -278,6 +278,19 @@ export async function approveExecuteInSkill(page: Page): Promise<void> {
       intervals: [250, 500, 1000],
     })
     .toBeGreaterThan(0)
+  const responsePromise = page.waitForResponse(
+    (response) => {
+      const request = response.request()
+      return (
+        request.method() === 'POST' &&
+        /\/api\/conversations\/[^/]+\/langgraph\/threads\/[^/]+\/commands$/.test(
+          new URL(response.url()).pathname,
+        ) &&
+        commandMethod(request) === 'input.respond'
+      )
+    },
+    { timeout: 15_000 },
+  )
   await expect(async () => {
     const clicked = await page.evaluate(() => {
       const buttons = Array.from(
@@ -290,4 +303,22 @@ export async function approveExecuteInSkill(page: Page): Promise<void> {
     })
     expect(clicked).toBe(true)
   }).toPass({ timeout: 10_000, intervals: [250, 500, 1000] })
+  const response = await Promise.race([
+    responsePromise,
+    page
+      .getByText(
+        /승인 응답을 전송하지 못했습니다\. 다시 시도하세요\.|Could not send the approval response\. Try again\./,
+      )
+      .last()
+      .waitFor({ state: 'visible', timeout: 15_000 })
+      .then(() => {
+        throw new Error('Approval UI rejected the resume before sending input.respond')
+      }),
+  ])
+  const runId = await response.headerValue('X-Run-Id')
+  if (!response.ok() || !runId) {
+    const body = await response.text().catch(() => '<unavailable>')
+    throw new Error(`input.respond was not accepted (${response.status()}): ${body}`)
+  }
+  return runId
 }

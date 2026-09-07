@@ -352,8 +352,10 @@ async function verifyRightRailResize(page: Page, filename: string): Promise<void
   const initialChatWidth = await locatorWidth(chatPanel)
 
   await dragHorizontally(page, handle, -160)
-  await expect.poll(() => locatorWidth(rail)).toBeGreaterThan(initialRailWidth + 120)
-  await expect.poll(() => locatorWidth(chatPanel)).toBeLessThan(initialChatWidth - 120)
+  // The 1280px E2E viewport caps the rail at 504px to preserve the 520px chat minimum.
+  // A 160px drag therefore grows the default 384px rail by exactly 120px.
+  await expect.poll(() => locatorWidth(rail)).toBeGreaterThan(initialRailWidth + 100)
+  await expect.poll(() => locatorWidth(chatPanel)).toBeLessThan(initialChatWidth - 100)
   const stableExpandedWidth = await locatorWidth(rail)
 
   await dragHorizontally(page, handle, 420)

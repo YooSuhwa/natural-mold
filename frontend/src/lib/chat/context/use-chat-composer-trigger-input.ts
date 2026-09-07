@@ -20,6 +20,14 @@ export function useChatComposerTriggerInput(): ChatComposerTriggerInputBridge {
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
       if (event.nativeEvent.isComposing || !root) return false
+      const activeAria = root.getActiveAria()
+      if (
+        event.key === 'Enter' &&
+        activeAria !== null &&
+        activeAria.highlightedItemId === undefined
+      ) {
+        return false
+      }
       for (const trigger of root.getTriggers().values()) {
         if (trigger.resource.handleKeyDown(event)) return true
       }

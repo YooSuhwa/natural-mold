@@ -36,10 +36,33 @@ export type ResponseFailureDiagnosticInput = {
   readonly requestUrl: string
 }
 
+type NextRscPrefetchAbortInput = Pick<
+  RequestFailureDiagnosticInput,
+  'currentPageUrl' | 'errorText' | 'method' | 'requestUrl' | 'resourceType'
+>
+
 function isApiUrl(value: string): boolean {
   try {
     const path = new URL(value).pathname
     return path === '/api' || path.startsWith('/api/')
+  } catch {
+    return false
+  }
+}
+
+/** Ignore only canceled, same-origin Next.js RSC prefetches; response failures remain observable. */
+export function isExpectedNextRscPrefetchAbort(input: NextRscPrefetchAbortInput): boolean {
+  if (
+    input.errorText !== 'net::ERR_ABORTED' ||
+    input.method !== 'GET' ||
+    input.resourceType !== 'fetch'
+  ) {
+    return false
+  }
+  try {
+    const requestUrl = new URL(input.requestUrl)
+    const currentPageUrl = new URL(input.currentPageUrl)
+    return requestUrl.origin === currentPageUrl.origin && requestUrl.searchParams.has('_rsc')
   } catch {
     return false
   }

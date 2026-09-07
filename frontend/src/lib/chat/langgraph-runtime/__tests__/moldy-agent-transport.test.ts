@@ -52,7 +52,7 @@ describe('createMoldyAgentTransport', () => {
     expect('apiUrl' in transport).toBe(false)
   })
 
-  it('notifies with the accepted run id after a run.start command succeeds', async () => {
+  it('leaves ordinary run.start acceptance to the official stream callback', async () => {
     const onRunStartAccepted = vi.fn()
     const fetchMock = vi.fn<typeof fetch>(async () =>
       jsonResponse({
@@ -73,7 +73,7 @@ describe('createMoldyAgentTransport', () => {
       params: { assistant_id: '_', input: { messages: [] } },
     })
 
-    expect(onRunStartAccepted).toHaveBeenCalledExactlyOnceWith('run-1')
+    expect(onRunStartAccepted).not.toHaveBeenCalled()
   })
 
   it('does not notify when a protocol error response includes a run-like value', async () => {

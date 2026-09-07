@@ -15,6 +15,7 @@ import type {
 import { conversationRunKeys } from '@/lib/hooks/use-conversation-runs'
 import { conversationKeys } from '@/lib/hooks/use-conversations'
 import { conversationRuntimeStatusAtom } from '@/lib/stores/chat-navigator-store'
+import type { ConversationRun } from '@/lib/types'
 
 type JotaiStore = ReturnType<typeof createStore>
 
@@ -353,6 +354,169 @@ describe('useMoldyLangGraphStream', () => {
     } finally {
       consoleError.mockRestore()
     }
+  })
+
+  it('restores a canceled notice from the durable latest run after remount', () => {
+    const runId = '11111111-1111-4111-8111-111111111111'
+
+    const { result } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-canceled',
+          conversationId: 'conversation-canceled',
+          serverLatestRun: {
+            id: runId,
+            status: 'canceled',
+            error_message: null,
+          } as ConversationRun,
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+      | { messages: readonly { id?: string; content?: unknown }[] }
+      | undefined
+    expect(converterOptions?.messages).toEqual([
+      expect.objectContaining({ id: `moldy-canceled-${runId}`, content: 'canceled' }),
+    ])
+    expect(result.current.threadRunNotice).toEqual({ id: runId, status: 'canceled' })
+  })
+
+  it('promotes the matching durable terminal over an in-memory canceling notice', async () => {
+    const runId = '22222222-2222-4222-8222-222222222222'
+    const { result, rerender } = renderHook(
+      ({ latestRun }: { latestRun: ConversationRun | null }) =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-canceling',
+          conversationId: 'conversation-canceling',
+          serverLatestRun: latestRun,
+        }),
+      {
+        initialProps: { latestRun: null as ConversationRun | null },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as
+      | MockTransport
+      | undefined
+
+    act(() => {
+      transport?.onState?.({
+        metadata: { latest_run: { id: runId, status: 'canceling' } },
+      })
+    })
+    await waitFor(() => {
+      expect(result.current.threadRunNotice).toEqual({ id: runId, status: 'canceling' })
+    })
+
+    rerender({
+      latestRun: {
+        id: runId,
+        status: 'canceled',
+        error_message: null,
+      } as ConversationRun,
+    })
+
+    await waitFor(() => {
+      expect(result.current.threadRunNotice).toEqual({ id: runId, status: 'canceled' })
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { messages: readonly { id?: string }[]; isRunning: boolean }
+        | undefined
+      expect(converterOptions?.isRunning).toBe(false)
+      expect(converterOptions?.messages).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: `moldy-canceled-${runId}` })]),
+      )
+    })
+  })
+
+  it('shows only the terminal run correlated to an unpersisted pending submit', async () => {
+    const previousRunId = '33333333-3333-4333-8333-333333333333'
+    const acceptedRunId = '44444444-4444-4444-8444-444444444444'
+    const { result, rerender } = renderHook(
+      ({ latestRun }: { latestRun: ConversationRun | null }) =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-pending-cancel',
+          conversationId: 'conversation-pending-cancel',
+          serverLatestRun: latestRun,
+        }),
+      {
+        initialProps: { latestRun: null as ConversationRun | null },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onNew: (message: { content: { type: string; text: string }[] }) => Promise<void>
+    }
+
+    await act(async () => {
+      await runtimeOptions.onNew({ content: [{ type: 'text', text: '빠르게 취소' }] })
+    })
+    const streamOptions = mocks.useStream.mock.calls.at(-1)?.[0] as MockUseStreamOptions
+    act(() => streamOptions.onCreated?.({ runId: acceptedRunId }))
+
+    rerender({
+      latestRun: {
+        id: previousRunId,
+        status: 'canceled',
+        error_message: null,
+      } as ConversationRun,
+    })
+    expect(result.current.threadRunNotice).toBeNull()
+
+    rerender({
+      latestRun: {
+        id: acceptedRunId,
+        status: 'canceled',
+        error_message: null,
+      } as ConversationRun,
+    })
+
+    await waitFor(() => {
+      expect(result.current.threadRunNotice).toEqual({ id: acceptedRunId, status: 'canceled' })
+      const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+        | { messages: readonly { id?: string }[] }
+        | undefined
+      expect(converterOptions?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: `moldy-canceled-${acceptedRunId}` }),
+        ]),
+      )
+    })
+  })
+
+  it('correlates an unpersisted pending submit from the durable run input preview', async () => {
+    const runId = '55555555-5555-4555-8555-555555555555'
+    const { result, rerender } = renderHook(
+      ({ latestRun }: { latestRun: ConversationRun | null }) =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-preview-cancel',
+          conversationId: 'conversation-preview-cancel',
+          serverLatestRun: latestRun,
+        }),
+      {
+        initialProps: { latestRun: null as ConversationRun | null },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
+      onNew: (message: { content: { type: string; text: string }[] }) => Promise<void>
+    }
+
+    await act(async () => {
+      await runtimeOptions.onNew({ content: [{ type: 'text', text: '미영속 취소 입력' }] })
+    })
+    rerender({
+      latestRun: {
+        id: runId,
+        status: 'canceled',
+        input_preview: '미영속 취소 입력',
+        error_message: null,
+      } as ConversationRun,
+    })
+
+    await waitFor(() => {
+      expect(result.current.threadRunNotice).toEqual({ id: runId, status: 'canceled' })
+    })
   })
 
   it('keeps assistant-ui running while a submitted user turn is waiting for the first assistant token', () => {
@@ -841,7 +1005,7 @@ describe('useMoldyLangGraphStream', () => {
     })
   })
 
-  it('passes a run-start accepted callback to the LangGraph transport', () => {
+  it('passes ordinary run acceptance to the official LangGraph stream callback', () => {
     const onRunStartAccepted = vi.fn()
 
     renderHook(
@@ -857,13 +1021,10 @@ describe('useMoldyLangGraphStream', () => {
     expect(mocks.createMoldyAgentTransport).toHaveBeenCalledWith('conversation-2', 'agent-2', {
       onReconnectStateChange: expect.any(Function),
     })
-    const transport = mocks.createMoldyAgentTransport.mock.results[0]?.value as
-      | MockTransport
-      | undefined
-    const listener = transport?.setRunStartAcceptedListener.mock.calls.at(-1)?.[0]
-    expect(listener).toEqual(expect.any(Function))
-    listener?.('run-2')
-    listener?.('run-2')
+    const streamOptions = mocks.useStream.mock.calls.at(-1)?.[0] as MockUseStreamOptions | undefined
+    expect(streamOptions?.onCreated).toEqual(expect.any(Function))
+    streamOptions?.onCreated?.({ runId: 'run-2' })
+    streamOptions?.onCreated?.({ runId: 'run-2' })
     expect(onRunStartAccepted).toHaveBeenCalledOnce()
   })
 
@@ -929,7 +1090,8 @@ describe('useMoldyLangGraphStream', () => {
       releaseClaimedTerminal = resolve
     })
     mocks.apiFetch.mockResolvedValue({ queue_paused: false, items: [] })
-    renderHook(
+    mocks.stream.isLoading = true
+    const { rerender } = renderHook(
       () =>
         useMoldyLangGraphStream({
           agentId: 'agent-queue-claim',
@@ -1012,6 +1174,8 @@ describe('useMoldyLangGraphStream', () => {
     })
     expect(transport.submitQueuedInput).toHaveBeenCalledOnce()
     expect(onRunStartAccepted).toHaveBeenCalledOnce()
+    mocks.stream.isLoading = false
+    rerender()
     releaseClaimedTerminal()
     await waitFor(() => {
       const currentRuntime = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
@@ -1936,6 +2100,33 @@ describe('useMoldyLangGraphStream', () => {
         ]),
       )
     })
+
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as
+      | MockTransport
+      | undefined
+    act(() => {
+      transport?.onState?.({ metadata: {}, values: { messages: [] } })
+    })
+
+    const converterOptions = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+      | { messages: readonly unknown[] }
+      | undefined
+    expect(converterOptions?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'moldy-canceled-run-cancel', content: 'canceled' }),
+      ]),
+    )
+
+    const streamOptions = mocks.useStream.mock.calls.at(-1)?.[0] as MockUseStreamOptions
+    act(() => streamOptions.onCreated?.({ runId: 'run-cancel' }))
+    const afterLateAcceptance = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0] as
+      | { messages: readonly unknown[] }
+      | undefined
+    expect(afterLateAcceptance?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'moldy-canceled-run-cancel', content: 'canceled' }),
+      ]),
+    )
   })
 
   it('settles the navigator when hydrated state confirms cancellation', async () => {

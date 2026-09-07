@@ -138,6 +138,7 @@ test.describe('Chat MCP Apps', () => {
       requestFailures.push({
         url: request_.url(),
         errorText: request_.failure()?.errorText ?? null,
+        method: request_.method(),
         resourceType: request_.resourceType(),
         frameUrl,
       })
@@ -204,7 +205,11 @@ test.describe('Chat MCP Apps', () => {
       expect(unexpectedErrors).toEqual({ consoleErrors: [], requestFailures: [] })
       expect(errors.console).toEqual(consoleErrors.map((error) => error.text))
       expect(errors.page).toEqual([])
-      expect(errors.network).toEqual(requestFailures.length === 0 ? [] : ['other_request_failure'])
+      // The shared finite-code collector cannot retain iframe provenance, so
+      // the exact optional shim beacon rejected above appears here as one
+      // generic non-API failure. The raw classifier still rejects every other
+      // request failure before this aggregate assertion.
+      expect(errors.network).toEqual(['other_request_failure'])
     } finally {
       await fixture?.stop()
       if (seeded) {

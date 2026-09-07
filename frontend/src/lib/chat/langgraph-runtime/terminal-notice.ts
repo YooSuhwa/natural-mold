@@ -13,6 +13,7 @@ import type { BaseMessage } from '@langchain/core/messages'
  * 승격하지 않으므로 명시적 attach가 필요하다.
  */
 export const TERMINAL_NOTICE_METADATA_KEY = 'moldy_terminal_notice'
+export const TERMINAL_NOTICE_BOUNDARY_METADATA_KEY = 'moldy_terminal_notice_boundary'
 
 export type TerminalNoticeStatus = 'canceled' | 'canceling' | 'stale' | 'failed'
 

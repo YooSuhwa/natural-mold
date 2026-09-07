@@ -138,7 +138,11 @@ test.describe('Spend Dashboard', () => {
 
     await page.goto('/usage')
 
-    await expect(page.getByText('아직 사용 내역이 없습니다.')).toBeVisible()
+    // The chart and raw-data table each expose their own empty state.
+    const emptyStates = page.getByText('아직 사용 내역이 없습니다.')
+    await expect(emptyStates).toHaveCount(2)
+    await expect(emptyStates.first()).toBeVisible()
+    await expect(emptyStates.last()).toBeVisible()
     await expect(page.getByTestId('usage-csv-download')).toBeDisabled()
   })
 })

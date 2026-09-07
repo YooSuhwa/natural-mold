@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
 import { conversationRuntimeStatusAtom } from '@/lib/stores/chat-navigator-store'
-import type { ConversationRun, ConversationRunStatus } from '@/lib/types'
+import type { ConversationRun, ConversationRunStatus, MessagesEnvelope } from '@/lib/types'
 import { useStreamCancelController } from '../use-stream-cancel-controller'
 
 vi.mock('@/lib/api/conversation-runs', () => ({
@@ -60,6 +60,7 @@ function renderCancelController() {
   store.set(conversationRuntimeStatusAtom, { conversation: 'running' })
   const lifetime = {}
   const notices = vi.fn()
+  const acceptPendingSubmit = vi.fn(() => true)
   const stop = vi.fn()
   const stream = { stop }
   const { result } = renderHook(
@@ -77,13 +78,12 @@ function renderCancelController() {
           getPendingEditAttemptId: () => null,
           getPendingReloadAttemptId: () => null,
         },
-        pendingSubmit: null,
-        clearPendingSubmit: vi.fn(),
+        acceptPendingSubmit,
         setChatCancelInFlight: vi.fn(),
       }),
     { wrapper: createWrapper(queryClient, store) },
   )
-  return { result, notices, stop, store }
+  return { result, notices, acceptPendingSubmit, stop, store, queryClient }
 }
 
 describe('useStreamCancelController', () => {
@@ -123,6 +123,40 @@ describe('useStreamCancelController', () => {
     })
     expect(notices).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'canceled' }))
     expect(store.get(conversationRuntimeStatusAtom).conversation).toBe('idle')
+  })
+
+  it('correlates the pending submit with the exact active run before cancellation', async () => {
+    vi.mocked(conversationRunsApi.active).mockResolvedValueOnce(conversationRun('running'))
+    vi.mocked(conversationRunsApi.cancel).mockResolvedValueOnce(conversationRun('canceled'))
+    const { result, acceptPendingSubmit } = renderCancelController()
+
+    await act(async () => result.current())
+
+    expect(acceptPendingSubmit).toHaveBeenCalledExactlyOnceWith('run-1')
+  })
+
+  it('publishes the exact terminal into the active messages envelope cache', async () => {
+    vi.mocked(conversationRunsApi.active).mockResolvedValueOnce(conversationRun('running'))
+    const canceled = conversationRun('canceled')
+    vi.mocked(conversationRunsApi.cancel).mockResolvedValueOnce(canceled)
+    const { result, queryClient } = renderCancelController()
+    queryClient.setQueryData(['conversations', 'conversation', 'messages'], {
+      messages: [],
+      active_run: conversationRun('running'),
+      latest_run: conversationRun('completed', { id: 'previous-run' }),
+      total_estimated_cost: 0,
+    })
+
+    await act(async () => result.current())
+
+    expect(
+      queryClient.getQueryData<MessagesEnvelope>(['conversations', 'conversation', 'messages']),
+    ).toEqual(
+      expect.objectContaining({
+        active_run: null,
+        latest_run: canceled,
+      }),
+    )
   })
 
   it('settles an exact completed terminal without a cancellation notice', async () => {

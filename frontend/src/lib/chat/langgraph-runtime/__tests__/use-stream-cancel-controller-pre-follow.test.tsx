@@ -67,8 +67,6 @@ function renderController() {
           getPendingEditAttemptId: () => null,
           getPendingReloadAttemptId: () => null,
         },
-        pendingSubmit: null,
-        clearPendingSubmit: vi.fn(),
         setChatCancelInFlight: vi.fn(),
       }),
     { wrapper },

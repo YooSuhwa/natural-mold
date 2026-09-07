@@ -202,8 +202,7 @@ export function useStreamCommandController({
     conversationId,
     stream,
     reconciliation,
-    pendingSubmit: submitCheckpoint.pendingSubmit,
-    clearPendingSubmit: submitCheckpoint.clearPendingSubmit,
+    acceptPendingSubmit: submitCheckpoint.acceptPendingSubmit,
     setChatCancelInFlight,
   })
   return { onNew, onEdit, onReload, onCancel }

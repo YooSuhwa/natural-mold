@@ -1,8 +1,8 @@
 import { test, expect } from './fixtures'
 
 const ISO = '2026-06-04T00:00:00.000Z'
-const AGENT_ID = 'agent-token-usage'
-const CONVERSATION_ID = 'conversation-token-usage'
+const AGENT_ID = '10000000-0000-4000-8000-000000000001'
+const CONVERSATION_ID = '20000000-0000-4000-8000-000000000001'
 
 const FAKE_AGENT = {
   id: AGENT_ID,
@@ -164,6 +164,15 @@ test.describe('Chat token usage hover', () => {
       route.fulfill({ json: FAKE_CONVERSATION }),
     )
     await page.route(`**/api/conversations/${CONVERSATION_ID}/files`, (route) =>
+      route.fulfill({ json: [] }),
+    )
+    await page.route(`**/api/conversations/${CONVERSATION_ID}/pinned-summary`, (route) =>
+      route.fulfill({ json: { summary: null } }),
+    )
+    await page.route(`**/api/conversations/${CONVERSATION_ID}/run-inputs`, (route) =>
+      route.fulfill({ json: { queue_paused: false, items: [] } }),
+    )
+    await page.route(`**/api/conversations/${CONVERSATION_ID}/run-message-links**`, (route) =>
       route.fulfill({ json: [] }),
     )
     await page.route(`**/api/conversations/${CONVERSATION_ID}/messages`, (route) =>

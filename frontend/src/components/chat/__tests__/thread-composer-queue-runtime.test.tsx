@@ -81,6 +81,7 @@ const promotedController: ServerMessageQueueController = {
     edit: vi.fn(),
     remove: vi.fn(),
   },
+  updateCallbacks: vi.fn(),
   enqueue: vi.fn(),
   steer: vi.fn(),
   edit: vi.fn(),

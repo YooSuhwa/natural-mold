@@ -1,3 +1,5 @@
+import { isExpectedNextRscPrefetchAbort } from './network-failure-diagnostic'
+
 export const KNOWN_SHIM_BEACON_URL =
   'https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495'
 
@@ -9,6 +11,7 @@ export interface ConsoleErrorObservation {
 export interface RequestFailureObservation {
   readonly url: string
   readonly errorText: string | null
+  readonly method: string
   readonly resourceType: string
   readonly frameUrl: string | null
 }
@@ -47,6 +50,19 @@ export function isKnownShimRequestFailure(
   )
 }
 
+function isExpectedMcpAppsRscPrefetchAbort(
+  observation: RequestFailureObservation,
+  appOrigin: string,
+): boolean {
+  return isExpectedNextRscPrefetchAbort({
+    currentPageUrl: observation.frameUrl ?? appOrigin,
+    errorText: observation.errorText ?? '',
+    method: observation.method,
+    requestUrl: observation.url,
+    resourceType: observation.resourceType,
+  })
+}
+
 export function unexpectedMcpAppsBrowserErrors(
   consoleErrors: readonly ConsoleErrorObservation[],
   requestFailures: readonly RequestFailureObservation[],
@@ -58,7 +74,9 @@ export function unexpectedMcpAppsBrowserErrors(
   return {
     consoleErrors: consoleErrors.filter((error) => !isKnownShimConsoleError(error)),
     requestFailures: requestFailures.filter(
-      (failure) => !isKnownShimRequestFailure(failure, appOrigin),
+      (failure) =>
+        !isKnownShimRequestFailure(failure, appOrigin) &&
+        !isExpectedMcpAppsRscPrefetchAbort(failure, appOrigin),
     ),
   }
 }
