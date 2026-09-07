@@ -18,10 +18,11 @@ from app.agent_runtime.mcp_tool_loader import _build_mcp_tools
 from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.mcp.client import connect_and_list
-from app.models.conversation import Conversation
-from app.models.mcp_server import McpServer
-from app.models.mcp_tool import AgentMcpToolLink, McpTool
-from app.services import conversation_run_service
+from app.schemas.conversation_refs import conversation_ref
+from app.services.e2e_mcp_apps_fixture_service import (
+    complete_fixture_run,
+    create_fixture_records,
+)
 
 router = APIRouter(tags=["e2e"])
 
@@ -72,68 +73,35 @@ async def create_e2e_mcp_apps_fixture(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
-    conversation: Conversation = Depends(owned_conversation),
+    conversation: object = Depends(owned_conversation),
 ) -> E2EMcpAppsFixtureResponse:
     """Create a real MCP ToolNode checkpoint and its trusted invocation binding."""
 
     if user.email != settings.e2e_user_email:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    conversation = conversation_ref(conversation)
     _require_loopback_fixture(data.server_url)
     discovery = await connect_and_list(transport="streamable_http", url=data.server_url)
     if not discovery.get("success"):
         raise HTTPException(status_code=502, detail="E2E MCP fixture discovery failed")
-    descriptors = {
-        item.get("name"): item
-        for item in discovery.get("tools", [])
-        if isinstance(item, dict) and isinstance(item.get("name"), str)
-    }
+    descriptors: dict[str, dict[str, Any]] = {}
+    for item in discovery.get("tools", []):
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if isinstance(name, str):
+            descriptors[name] = item
     if "weather" not in descriptors or "refresh_weather" not in descriptors:
         raise HTTPException(status_code=422, detail="E2E MCP fixture tools are missing")
 
-    server = McpServer(
-        user_id=user.id,
-        name=f"MCP Apps E2E {uuid.uuid4().hex[:8]}",
-        transport="streamable_http",
-        url=data.server_url,
-        status="connected",
-    )
-    db.add(server)
-    await db.flush()
-    tools: dict[str, McpTool] = {}
-    for name in ("weather", "refresh_weather"):
-        descriptor = descriptors[name]
-        tool = McpTool(
-            server_id=server.id,
-            name=name,
-            description=descriptor.get("description"),
-            input_schema=descriptor.get("input_schema") or {},
-            metadata_json=descriptor.get("metadata"),
-            enabled=True,
-        )
-        db.add(tool)
-        tools[name] = tool
-    await db.flush()
-    db.add_all(
-        [
-            AgentMcpToolLink(agent_id=conversation.agent_id, mcp_tool_id=tool.id)
-            for tool in tools.values()
-        ]
-    )
-    run = await conversation_run_service.create_run(
+    records = await create_fixture_records(
         db,
         conversation_id=conversation.id,
         agent_id=conversation.agent_id,
         user_id=user.id,
-        source="chat",
-        input_preview="Show the weather app.",
+        server_url=data.server_url,
+        descriptors=descriptors,
     )
-    await conversation_run_service.transition_run(
-        db,
-        run,
-        "running",
-        worker_instance_id="e2e-mcp-apps-helper",
-    )
-    await db.commit()
 
     runtime_tools = await _build_mcp_tools(
         [
@@ -141,7 +109,7 @@ async def create_e2e_mcp_apps_fixture(
                 "definition_key": "mcp",
                 "name": tool.name,
                 "mcp_server_url": data.server_url,
-                "mcp_server_id": str(server.id),
+                "mcp_server_id": str(records.server_id),
                 "mcp_tool_id": str(tool.id),
                 "mcp_tool_name": tool.name,
                 "mcp_transport_headers": {},
@@ -150,7 +118,7 @@ async def create_e2e_mcp_apps_fixture(
                 "agent_id": str(conversation.agent_id),
                 "credential_subject_user_id": str(user.id),
             }
-            for tool in tools.values()
+            for tool in records.tools
         ]
     )
     origin = next((tool for tool in runtime_tools if tool.name == "weather"), None)
@@ -183,7 +151,7 @@ async def create_e2e_mcp_apps_fixture(
         config={
             "configurable": {
                 "thread_id": str(conversation.id),
-                "moldy_run_id": str(run.id),
+                "moldy_run_id": str(records.run_id),
             }
         },
     )
@@ -198,19 +166,12 @@ async def create_e2e_mcp_apps_fixture(
     if message is None or not isinstance(message.artifact, dict):
         raise HTTPException(status_code=502, detail="E2E MCP fixture binding failed")
 
-    await db.refresh(run)
-    await conversation_run_service.transition_run(
-        db,
-        run,
-        "completed",
-        worker_instance_id="e2e-mcp-apps-helper",
-    )
-    await db.commit()
+    await complete_fixture_run(db, records.run_id)
     return E2EMcpAppsFixtureResponse(
         agent_id=conversation.agent_id,
         conversation_id=conversation.id,
-        run_id=run.id,
-        mcp_server_id=server.id,
+        run_id=records.run_id,
+        mcp_server_id=records.server_id,
         tool_call_id=tool_call_id,
         artifact=message.artifact,
     )

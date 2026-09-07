@@ -11,8 +11,8 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent
+from app.mcp.apps_projection_store import load_verified_artifact
 from app.schemas.mcp_apps import McpAppArtifact
-from app.services.mcp_apps_projection_service import load_verified_artifact
 
 _MAX_SCAN_DEPTH = 8
 _MAX_CANDIDATES = 32

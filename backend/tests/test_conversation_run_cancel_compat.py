@@ -62,4 +62,5 @@ async def test_langgraph_sdk_cancel_path_uses_conversation_run_cancel(
         user_id=TEST_USER_ID,
     )
     assert run is not None
-    assert run.status == "canceled"
+    assert run.status == "canceling"
+    assert run.cancel_reason == "stop"

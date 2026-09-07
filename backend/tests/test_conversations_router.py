@@ -22,6 +22,7 @@ from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
+from app.services import trace_storage
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -991,7 +992,8 @@ async def test_send_message_stream_error_marks_trace_failed(
             await db.execute(select(MessageEvent).where(MessageEvent.conversation_id == conv_id))
         ).scalar_one()
         assert record.status == "failed"
-        assert record.events[-1]["data"]["status"] == "failed"
+        persisted_events = await trace_storage.load_events(db, record)
+        assert persisted_events[-1]["data"]["status"] == "failed"
 
 
 # ---------------------------------------------------------------------------

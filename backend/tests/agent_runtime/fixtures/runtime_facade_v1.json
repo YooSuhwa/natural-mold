@@ -1237,6 +1237,12 @@
           "default": "none",
           "kind": "keyword_only",
           "name": "langfuse_sink"
+        },
+        {
+          "annotation": "RunMetricsAccumulator | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_metrics"
         }
       ],
       "return": "AsyncGenerator[str, None]"
@@ -1379,6 +1385,12 @@
           "default": "none",
           "kind": "keyword_only",
           "name": "langfuse_sink"
+        },
+        {
+          "annotation": "RunMetricsAccumulator | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_metrics"
         }
       ],
       "return": "AsyncGenerator[str, None]"

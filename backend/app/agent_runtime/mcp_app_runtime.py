@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from app.mcp.apps_binding_store import record_runtime_binding
 from app.mcp.domain import McpAppRuntimeContext
 
 
@@ -71,8 +72,6 @@ async def record_mcp_app_binding(
     result_meta: dict[str, Any] | None,
     structured_content: dict[str, Any] | None,
 ) -> str | None:
-    from app.services.mcp_apps_service import record_runtime_binding
-
     return await record_runtime_binding(
         context,
         run_id,

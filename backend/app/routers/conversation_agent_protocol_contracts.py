@@ -7,8 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.agent_runtime.protocol_events import SubscribeParams
-from app.models.conversation import Conversation
-from app.models.conversation_run_input import JsonValue
+from app.schemas.conversation_refs import JsonValue, conversation_ref
 
 LANGGRAPH_PROTOCOL_HEADER = "langgraph_v3"
 SUPPORTED_COMMAND_METHODS = {"run.start", "input.respond"}
@@ -131,7 +130,7 @@ def protocol_headers(*, mode: str | None = None, run_id: str | None = None) -> d
 
 
 def state_response(
-    conversation: Conversation,
+    conversation: object,
     *,
     values: dict[str, Any] | None = None,
     next_nodes: list[str] | None = None,
@@ -146,6 +145,7 @@ def state_response(
     created_at: str | None = None,
     parent_checkpoint: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    conversation = conversation_ref(conversation)
     state_values = dict(values or {})
     state_values.setdefault("messages", [])
     runtime_state: dict[str, Any] = {}
@@ -208,7 +208,7 @@ def command_error(
 def command_success(
     command: AgentCommandRequest,
     *,
-    conversation: Conversation,
+    conversation: object,
     thread_id: str,
     run_id: str | None = None,
     input_id: str | None = None,
@@ -216,6 +216,7 @@ def command_success(
     revision: int | None = None,
     position: int | None = None,
 ) -> JSONResponse:
+    conversation = conversation_ref(conversation)
     strategy = command.params.multitask_strategy or "reject"
     result: CommandSuccessResult = {
         "status": "accepted",

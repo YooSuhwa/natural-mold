@@ -10,12 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.message_utils import content_to_text
 from app.dependencies import get_db, owned_conversation, verify_csrf
-from app.models.conversation import Conversation
 from app.schemas.conversation_pinned_summary import (
     PinConversationSummaryRequest,
     PinnedConversationSummaryEnvelope,
     PinnedConversationSummaryResponse,
 )
+from app.schemas.conversation_refs import conversation_ref
 from app.services.conversation_pinned_summary_service import (
     InvalidPinnedSummarySourceError,
     MessageRole,
@@ -131,12 +131,15 @@ async def _load_sources(
 async def read_pinned_summary(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    conv: Conversation = Depends(owned_conversation),
+    conv: object = Depends(owned_conversation),
 ) -> PinnedConversationSummaryEnvelope:
     row = await get_summary(db, conversation_id)
     if row is None:
         return PinnedConversationSummaryEnvelope(summary=None)
-    active, historical = await _load_sources(conversation_id, conv.active_branch_checkpoint_id)
+    active, historical = await _load_sources(
+        conversation_id,
+        conversation_ref(conv).active_branch_checkpoint_id,
+    )
     return PinnedConversationSummaryEnvelope(summary=serialize_summary(row, active, historical))
 
 
@@ -148,10 +151,13 @@ async def write_pinned_summary(
     conversation_id: uuid.UUID,
     data: PinConversationSummaryRequest,
     db: AsyncSession = Depends(get_db),
-    conv: Conversation = Depends(owned_conversation),
+    conv: object = Depends(owned_conversation),
     _csrf: None = Depends(verify_csrf),
 ) -> PinnedConversationSummaryResponse:
-    active, historical = await _load_sources(conversation_id, conv.active_branch_checkpoint_id)
+    active, historical = await _load_sources(
+        conversation_id,
+        conversation_ref(conv).active_branch_checkpoint_id,
+    )
     try:
         row = await pin_summary(db, conversation_id, data.message_id, active)
     except InvalidPinnedSummarySourceError as exc:
@@ -170,7 +176,7 @@ async def write_pinned_summary(
 async def delete_pinned_summary(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _conv: Conversation = Depends(owned_conversation),
+    _conv: object = Depends(owned_conversation),
     _csrf: None = Depends(verify_csrf),
 ) -> Response:
     await unpin_summary(db, conversation_id)

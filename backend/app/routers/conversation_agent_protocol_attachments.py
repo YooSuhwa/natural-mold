@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 
-from app.models.conversation_run_input import JsonValue
+from app.schemas.conversation_refs import JsonValue
 
 
 def attachment_ids_from_protocol_input(

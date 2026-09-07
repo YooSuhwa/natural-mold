@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
-from app.models.conversation import Conversation
+from app.schemas.conversation_refs import ConversationRef, conversation_ref
 from app.schemas.conversation_run_input import (
     ConversationRunInputEditRequest,
     ConversationRunInputListResponse,
@@ -27,11 +27,11 @@ async def _owned_conversation(
     db: AsyncSession,
     conversation_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> Conversation:
+) -> ConversationRef:
     conversation = await chat_service.get_owned_conversation(db, conversation_id, user_id)
     if conversation is None:
         raise conversation_run_queue_service.queue_input_not_found()
-    return conversation
+    return conversation_ref(conversation)
 
 
 @router.get(
