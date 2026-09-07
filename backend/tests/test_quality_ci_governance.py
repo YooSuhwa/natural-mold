@@ -203,14 +203,16 @@ def test_backend_ci_validates_postgres_receipt_and_cleanup_after_lane_failure() 
     receipt = _named_step(steps, "Validate PostgreSQL integration receipt")
     cleanup = _named_step(steps, "Verify PostgreSQL integration cleanup")
 
+    assert "id: postgres_lane" in execution
     assert _run_body(execution).splitlines() == [
         "bash scripts/run-isolated-postgres-tests.sh all \\",
         "  --manifest .omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json",
     ]
-    assert "if: ${{ always() }}" in receipt
+    expected_followup_condition = "if: ${{ always() && steps.postgres_lane.outcome != 'skipped' }}"
+    assert expected_followup_condition in receipt
     assert "check-isolation-cleanup.py" in _run_body(receipt)
     assert "ci-postgres.json" in _run_body(receipt)
-    assert "if: ${{ always() }}" in cleanup
+    assert expected_followup_condition in cleanup
     assert "--discover" in _run_body(cleanup)
     assert steps.index(execution) < steps.index(receipt) < steps.index(cleanup)
 

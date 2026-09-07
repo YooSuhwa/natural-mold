@@ -66,7 +66,7 @@ _KNOWN_E2E_PROJECTS: Final = frozenset(
 
 
 def _run_probe(argv: tuple[str, ...], timeout: float) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 - fixed internal argv, never a shell command
         argv, capture_output=True, text=True, timeout=timeout, check=False
     )
 
@@ -291,9 +291,7 @@ def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
     """Summarize only fixed enums and booleans; never reflect receipt values."""
     if payload.get("runner") != "moldy-isolated-e2e":
         return None
-    status = _bounded_state(
-        payload.get("status"), frozenset({"passed", "failed", "interrupted"})
-    )
+    status = _bounded_state(payload.get("status"), frozenset({"passed", "failed", "interrupted"}))
     self_test = _bounded_state(
         payload.get("self_test"),
         frozenset({"normal", "spec-failure", "server-failure", "dsn-failure", "sigint"}),
@@ -399,9 +397,7 @@ def _postgres_failure_diagnostic(payload: dict[str, object]) -> str | None:
         ),
     )
     scenarios = payload.get("scenarios")
-    scenario = (
-        scenarios[0] if isinstance(scenarios, list) and len(scenarios) == 1 else {}
-    )
+    scenario = scenarios[0] if isinstance(scenarios, list) and len(scenarios) == 1 else {}
     scenario = scenario if isinstance(scenario, dict) else {}
     scenario_name = _bounded_state(
         scenario.get("scenario"),
@@ -447,8 +443,7 @@ def _postgres_failure_diagnostic(payload: dict[str, object]) -> str | None:
     observed = scenario.get("foreign_containers_observed")
     preserved = scenario.get("foreign_containers_preserved")
     cleanup_complete = all(scenario.get(name) is True for name in cleanup_fields) and (
-        (observed is True and preserved is True)
-        or (observed is False and preserved is None)
+        (observed is True and preserved is True) or (observed is False and preserved is None)
     )
     return " ".join(
         (

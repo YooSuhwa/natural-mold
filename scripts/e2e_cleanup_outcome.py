@@ -26,7 +26,10 @@ type OutcomeKind = Literal[
 
 
 def validate_cleanup(
-    payload: dict[str, object], database_owned: bool, *, diagnostic_preexecution: bool = False
+    payload: dict[str, object],
+    database_owned: bool,
+    *,
+    diagnostic_preexecution: bool = False,
 ) -> None:
     """Require every teardown claim and truthful foreign-container preservation."""
     cleanup = mapping(payload.get("cleanup"), "cleanup")

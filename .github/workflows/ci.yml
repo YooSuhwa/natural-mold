@@ -73,18 +73,19 @@ jobs:
       - name: Enforce reviewed backend coverage floor
         run: uv run python ../scripts/run_coverage_gate.py backend
       - name: Run disposable PostgreSQL integration lane
+        id: postgres_lane
         working-directory: .
         run: |
           bash scripts/run-isolated-postgres-tests.sh all \
             --manifest .omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json
       - name: Validate PostgreSQL integration receipt
-        if: ${{ always() }}
+        if: ${{ always() && steps.postgres_lane.outcome != 'skipped' }}
         working-directory: backend
         run: |
           uv run python ../scripts/check-isolation-cleanup.py \
             ../.omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json
       - name: Verify PostgreSQL integration cleanup
-        if: ${{ always() }}
+        if: ${{ always() && steps.postgres_lane.outcome != 'skipped' }}
         working-directory: backend
         run: |
           uv run python ../scripts/check-isolation-cleanup.py \

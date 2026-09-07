@@ -183,7 +183,10 @@ def validate_payload(
             payload.get("export_tree_sha256") == export.get("export_tree_sha256"),
             "export_tree",
         )
-        require(payload.get("screenshots") == export.get("screenshots_absolute"), "screenshots")
+        require(
+            payload.get("screenshots") == export.get("screenshots_absolute"),
+            "screenshots",
+        )
         if final_variant:
             attempt_id = export.get("attempt_id")
             expected_specs = (
@@ -241,9 +244,7 @@ def validate_payload(
         exported_paths = {item.get("path") for item in files if isinstance(item, dict)}
         required_paths = {"results/selection.json", "results/selection.log"}
         if execution_startup_failure:
-            required_paths.update(
-                {"results/execution.log", "results/execution.stderr.log"}
-            )
+            required_paths.update({"results/execution.log", "results/execution.stderr.log"})
         require(required_paths.issubset(exported_paths), "selection_artifacts")
     if (
         diagnostic_preexecution
