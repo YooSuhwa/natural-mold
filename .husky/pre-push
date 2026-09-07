@@ -12,10 +12,13 @@
 set -e
 
 ROOT="$(git rev-parse --show-toplevel)"
+GIT_LOCAL_ENV_VARS="$(git rev-parse --local-env-vars)"
+# Git emits one trusted variable name per line; word splitting is intentional.
+unset $GIT_LOCAL_ENV_VARS
 
 echo "▶ backend pytest"
 cd "$ROOT/backend"
-uv run pytest tests/ -q --tb=line
+uv run --locked --extra dev pytest tests/ -q --tb=line
 
 echo ""
 echo "▶ frontend vitest"
