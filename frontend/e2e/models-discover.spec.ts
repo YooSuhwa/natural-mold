@@ -206,6 +206,9 @@ test.describe('Models page', () => {
 
     await page.goto('/models')
 
+    // The empty state is data-backed and proves the client page hydrated.
+    await expect(page.getByText('아직 모델이 없어요')).toBeVisible()
+
     await page
       .getByRole('button', { name: /새 모델|모델 추가/ })
       .first()

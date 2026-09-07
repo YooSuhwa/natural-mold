@@ -689,6 +689,7 @@ async function expectBranchPickerVisible(
   await expect
     .poll(
       async () => {
+        await message.last().hover().catch(() => undefined)
         const snapshot = await branchPickerSnapshot(message)
         return snapshot.label === expectedLabel ? (snapshot.rowOpacity ?? 0) : 0
       },
@@ -705,6 +706,7 @@ async function expectBranchPickerVisibleWhileRunning(
   await expect
     .poll(
       async () => {
+        await message.last().hover().catch(() => undefined)
         const snapshot = await branchPickerSnapshot(message)
         const text = await message
           .last()

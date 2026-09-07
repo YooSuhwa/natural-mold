@@ -177,7 +177,8 @@ export function buildExactLiveTitleFilter(cases = LIVE_E2E_CASES) {
 }
 
 export function buildFrontendWebServerCommand(chatRuntime, apiBaseURL, frontendPort) {
-  return `pnpm prepare:assets && NEXT_PUBLIC_CHAT_RUNTIME=${chatRuntime} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL} pnpm exec next dev --webpack --port ${frontendPort}`
+  const runtimeEnvironment = `NEXT_PUBLIC_CHAT_RUNTIME=${chatRuntime} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL}`
+  return `pnpm prepare:assets && ${runtimeEnvironment} pnpm exec next build --webpack && ${runtimeEnvironment} pnpm exec next start --port ${frontendPort}`
 }
 
 export function buildBackendWebServerCommand(

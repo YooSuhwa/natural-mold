@@ -143,6 +143,10 @@ test.describe('MCP server wizard — From Registry', () => {
 
     await page.goto('/mcp-servers')
 
+    // Wait for the client query to replace the server-rendered loading shell.
+    // Clicking the SSR button before hydration can lose the state update.
+    await expect(page.getByText('아직 MCP 서버가 없어요')).toBeVisible()
+
     await page
       .getByRole('button', { name: /새 MCP 서버|서버 추가/ })
       .first()

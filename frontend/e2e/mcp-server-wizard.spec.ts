@@ -73,6 +73,11 @@ test.describe('MCP server wizard', () => {
     )
 
     await page.goto('/mcp-servers')
+
+    // Wait until the client query has replaced the server-rendered loading
+    // shell. The CTA is present in the SSR shell, but clicking it before
+    // hydration can lose the dialog state update.
+    await expect(page.getByText('아직 MCP 서버가 없어요')).toBeVisible()
     await page
       .getByRole('button', { name: /새 MCP 서버|서버 추가/ })
       .first()

@@ -184,6 +184,10 @@ async function mockApi(route: Route) {
     })
     return
   }
+  if (pathname.endsWith('/files')) {
+    await route.fulfill({ json: [] })
+    return
+  }
   await route.fulfill({ json: { items: [], total: 0 } })
 }
 

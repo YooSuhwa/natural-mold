@@ -338,7 +338,6 @@ test.describe('LangGraph v3 regression coverage', () => {
     // subagent card body, so it is only visible when that card is expanded —
     // exactly the state the reload-hydration regression collapsed.
     const subagentResult = page.getByText('E2E subagent scoped result ready.').first()
-
     try {
       await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
       await sendMessage(page, `E2E_LANGGRAPH_V3 subagent=${setup.childRuntimeName}`)
@@ -386,6 +385,10 @@ test.describe('LangGraph v3 regression coverage', () => {
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
     } finally {
+      // Stop background hydration before deleting the displayed conversation.
+      // Otherwise its final reads race the cascading agent cleanup and report
+      // expected 404 responses as product network failures.
+      await page.close()
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
     }
