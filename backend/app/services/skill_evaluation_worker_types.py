@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, Protocol
 
@@ -17,6 +17,11 @@ from app.agent_runtime.skill_builder.eval_cancellation import (
 from app.agent_runtime.skill_builder.eval_runner import EvalRuntimePolicyError
 from app.marketplace.skill_runtime import SkillToolContext
 from app.schemas.skill_builder import JsonValue
+from app.schemas.skill_evaluation_result import (
+    JsonObject,
+    SkillEvaluationBenchmark,
+    SkillEvaluationSummary,
+)
 
 DEFAULT_RUNNER_VERSION: Final = "deterministic-1"
 DEFAULT_GRADER_PROMPT_VERSION: Final = "deterministic-grader-1"
@@ -40,11 +45,11 @@ class SkillEvaluationContext:
     baseline_comparison: bool = True
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class SkillEvaluationResult:
-    summary: dict[str, JsonValue]
-    benchmark: dict[str, JsonValue] | None = None
-    case_results: list[JsonValue] | None = None
+    summary: SkillEvaluationSummary
+    benchmark: SkillEvaluationBenchmark
+    case_results: list[JsonObject]
     runner_model: str | None = None
     runner_version: str = DEFAULT_RUNNER_VERSION
     grader_prompt_version: str = DEFAULT_GRADER_PROMPT_VERSION
@@ -53,12 +58,34 @@ class SkillEvaluationResult:
     # no model calls (deterministic runner) or predates measurement.
     usage: dict[str, JsonValue] | None = None
 
+    def __init__(
+        self,
+        *,
+        summary: Mapping[str, JsonValue],
+        benchmark: Mapping[str, JsonValue],
+        case_results: list[JsonObject],
+        runner_model: str | None = None,
+        runner_version: str = DEFAULT_RUNNER_VERSION,
+        grader_prompt_version: str = DEFAULT_GRADER_PROMPT_VERSION,
+        eval_schema_version: int = 1,
+        usage: dict[str, JsonValue] | None = None,
+    ) -> None:
+        object.__setattr__(self, "summary", SkillEvaluationSummary(summary))
+        object.__setattr__(self, "benchmark", SkillEvaluationBenchmark(benchmark))
+        object.__setattr__(self, "case_results", case_results)
+        object.__setattr__(self, "runner_model", runner_model)
+        object.__setattr__(self, "runner_version", runner_version)
+        object.__setattr__(self, "grader_prompt_version", grader_prompt_version)
+        object.__setattr__(self, "eval_schema_version", eval_schema_version)
+        object.__setattr__(self, "usage", usage)
+
 
 class SkillEvaluationEvaluator(Protocol):
     async def evaluate(
         self,
         db: AsyncSession,
         context: SkillEvaluationContext,
+        /,
     ) -> SkillEvaluationResult: ...
 
 

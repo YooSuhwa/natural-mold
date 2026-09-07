@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import desc, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation import Conversation
@@ -213,11 +215,11 @@ async def save_trigger_eval_result(
     db: AsyncSession,
     session: SkillBuilderSession,
     *,
-    result: dict[str, Any],
-    draft: dict[str, Any],
+    result: Mapping[str, Any],
+    draft: Mapping[str, Any],
 ) -> SkillBuilderSession:
-    session.trigger_eval_result = result
-    session.draft_package = draft
+    session.trigger_eval_result = dict(result)
+    session.draft_package = dict(draft)
     session.updated_at = _now()
     await db.flush()
     return session
@@ -228,14 +230,17 @@ async def claim_for_confirming(
     session_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> bool:
-    result = await db.execute(
-        update(SkillBuilderSession)
-        .where(
-            SkillBuilderSession.id == session_id,
-            SkillBuilderSession.user_id == user_id,
-            SkillBuilderSession.status == SkillBuilderStatus.REVIEW.value,
-        )
-        .values(status=SkillBuilderStatus.CONFIRMING.value, updated_at=_now())
+    result = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(SkillBuilderSession)
+            .where(
+                SkillBuilderSession.id == session_id,
+                SkillBuilderSession.user_id == user_id,
+                SkillBuilderSession.status == SkillBuilderStatus.REVIEW.value,
+            )
+            .values(status=SkillBuilderStatus.CONFIRMING.value, updated_at=_now())
+        ),
     )
     await db.commit()
     return result.rowcount == 1

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from functools import partial
 from typing import Any, assert_never
 
-import anyio
+from anyio.to_thread import run_sync
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,7 +71,7 @@ async def _merge_workspace_binary_secret_issues(
 
     from app.services import skill_draft_workspace as workspace
 
-    extra = await anyio.to_thread.run_sync(
+    extra = await run_sync(
         partial(workspace.binary_secret_scan_issues, storage_path, known_paths=known_paths)
     )
     if not extra:
@@ -169,7 +169,7 @@ async def _confirm_create(
     slug = await unique_skill_slug(db, user_id=user_id, requested=draft.slug)
     # zip 빌드는 디스크 순회 + 압축이라 이벤트 루프에서 돌리지 않는다
     # (improve의 replace_skill_storage 오프로드와 대칭).
-    zip_bytes = await anyio.to_thread.run_sync(
+    zip_bytes = await run_sync(
         partial(_draft_zip_bytes, session, draft, slug=slug, zip_from_workspace=zip_from_workspace)
     )
     skill = await skill_service.create_package_skill(
@@ -232,10 +232,10 @@ async def _confirm_improve(
         requested=draft.slug,
         exclude_skill_id=skill.id,
     )
-    zip_bytes = await anyio.to_thread.run_sync(
+    zip_bytes = await run_sync(
         partial(_draft_zip_bytes, session, draft, slug=slug, zip_from_workspace=zip_from_workspace)
     )
-    replacement = await anyio.to_thread.run_sync(
+    replacement = await run_sync(
         partial(
             replace_skill_storage,
             skill_id=skill.id,

@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.dependencies import CurrentUser
 from app.models.marketplace import SkillCredentialBinding
 from app.models.skill import Skill
 from app.services import skill_response_enrichment
-
-
-@dataclass(frozen=True, slots=True)
-class _User:
-    id: uuid.UUID
 
 
 def _skill(*, user_id: uuid.UUID, slug: str, requirement_key: str = "openai") -> Skill:
@@ -45,7 +40,7 @@ async def test_build_skill_quality_map_batches_required_credential_bindings(
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    user = _User(uuid.uuid4())
+    user = CurrentUser(id=uuid.uuid4(), email="test@example.com", name="Test User")
     missing_skill = _skill(user_id=user.id, slug="missing")
     bound_skill = _skill(user_id=user.id, slug="bound")
     db.add_all([missing_skill, bound_skill])

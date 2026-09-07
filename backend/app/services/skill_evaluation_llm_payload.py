@@ -46,11 +46,12 @@ _MAX_TOTAL_SKILL_CHARS: Final = 24000
 
 
 def skill_payload(context: SkillEvaluationContext) -> JsonObject:
+    files: list[JsonValue] = list(_skill_file_previews(context))
     return {
         "skill_id": str(context.skill_id),
         "skill_version": context.skill_version,
         "skill_content_hash": context.skill_content_hash,
-        "files": _skill_file_previews(context),
+        "files": files,
     }
 
 

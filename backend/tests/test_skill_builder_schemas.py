@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 import pytest
 from pydantic import ValidationError
@@ -48,7 +49,7 @@ def test_revision_summary_uses_typed_operation_values() -> None:
         revision_number=1,
         operation=SkillRevisionOperation.CREATE,
         content_hash="a" * 64,
-        created_at="2026-06-15T00:00:00Z",
+        created_at=datetime.fromisoformat("2026-06-15T00:00:00+00:00"),
     )
 
     assert summary.operation is SkillRevisionOperation.CREATE

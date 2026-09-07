@@ -152,8 +152,17 @@ def test_add_skill_secrets_unions_into_cfg_secret_values() -> None:
     from types import SimpleNamespace
 
     from app.agent_runtime.runtime_component_builder import _add_skill_secrets_to_run
+    from app.agent_runtime.runtime_config import AgentConfig
 
-    cfg = SimpleNamespace(secret_values=set())
+    cfg = AgentConfig(
+        provider="openai",
+        model_name="test-model",
+        api_key=None,
+        base_url=None,
+        system_prompt="",
+        tools_config=[],
+        thread_id="test-thread",
+    )
     skill_ctx = SimpleNamespace(
         descriptors={
             "s1": SimpleNamespace(

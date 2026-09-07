@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import anyio
+from anyio import CancelScope
+from anyio.lowlevel import checkpoint
 
 from app import database
 
@@ -21,12 +22,12 @@ async def test_close_session_shielded_finishes_under_outer_cancellation(
 
     async def close() -> None:
         nonlocal closed
-        await anyio.lowlevel.checkpoint()
+        await checkpoint()
         closed = True
 
     monkeypatch.setattr(session, "close", close)
 
-    with anyio.CancelScope() as scope:
+    with CancelScope() as scope:
         scope.cancel()
         await database.close_session_shielded(session)
 

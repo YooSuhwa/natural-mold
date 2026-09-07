@@ -17,13 +17,14 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Never
 
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_FILES = 200
 GIT_TIMEOUT_SECONDS = 60
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> Never:
     print(json.dumps({"error": message}, ensure_ascii=False))
     sys.exit(1)
 

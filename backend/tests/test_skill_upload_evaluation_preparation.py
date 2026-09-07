@@ -60,8 +60,12 @@ async def test_upload_package_with_claude_evals_creates_evaluation_set(
     evaluation_set = await _latest_evaluation_set(db, skill_id)
     assert evaluation_set is not None
     assert evaluation_set.source_kind == "package_import"
-    assert evaluation_set.evals[0]["input"] == "Extract action items."
-    assert evaluation_set.evals[0]["metadata"]["source_schema"] == "claude_skill_creator"
+    eval_case = evaluation_set.evals[0]
+    assert isinstance(eval_case, dict)
+    assert eval_case["input"] == "Extract action items."
+    metadata = eval_case["metadata"]
+    assert isinstance(metadata, dict)
+    assert metadata["source_schema"] == "claude_skill_creator"
     audit_event = await _latest_audit_event(db, "skill_evaluation_set.imported")
     assert audit_event is not None
     assert audit_event.target_id == str(skill_id)

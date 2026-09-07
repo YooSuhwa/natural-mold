@@ -82,7 +82,8 @@ def _agent_blueprint_payload_with_requirements(
 ) -> dict[str, Any]:
     payload = dict(version.payload or {})
     if version.credential_requirements:
-        setup = payload.get("setup") if isinstance(payload.get("setup"), dict) else {}
+        raw_setup = payload.get("setup")
+        setup = raw_setup if isinstance(raw_setup, dict) else {}
         payload["setup"] = {
             **setup,
             "required_credentials": list(version.credential_requirements or []),
@@ -189,11 +190,11 @@ async def _materialize_mcp_tool_snapshot(
     the scheduler/health-poll discovery path reconciles the truth later.
     """
 
-    snapshot_present = isinstance(payload.get("tool_snapshot"), list)
-    snapshot = payload.get("tool_snapshot") if snapshot_present else []
-    install_defaults = (
-        payload.get("install_defaults") if isinstance(payload.get("install_defaults"), dict) else {}
-    )
+    raw_snapshot = payload.get("tool_snapshot")
+    snapshot_present = isinstance(raw_snapshot, list)
+    snapshot = raw_snapshot if snapshot_present else []
+    raw_install_defaults = payload.get("install_defaults")
+    install_defaults = raw_install_defaults if isinstance(raw_install_defaults, dict) else {}
     raw_enabled_names = install_defaults.get("enabled_tool_names")
     enabled_names: set[str] | None = (
         {str(name) for name in raw_enabled_names} if isinstance(raw_enabled_names, list) else None

@@ -93,7 +93,9 @@ async def test_worker_persists_llm_evaluation_result(
     assert completed.summary["pass_rate"] == 1
     assert completed.summary["schema_version"] == 2
     assert completed.case_results is not None
-    assert completed.case_results[0]["baseline_status"] == "failed"
+    completed_case = completed.case_results[0]
+    assert isinstance(completed_case, dict)
+    assert completed_case["baseline_status"] == "failed"
 
     # Phase 3 §5.1 — measured usage rollup persists on the run in-transaction.
     # FakeListChatModel reports no usage_metadata, so tokens stay 0 and cost

@@ -21,6 +21,7 @@ from app.routers.skill_evaluations_support import (
     record_evaluation_audit,
     require_evaluation_system_llm,
 )
+from app.schemas.skill_builder import JsonValue
 from app.schemas.skill_evaluation import (
     SkillEvaluationRunCancelRequest,
     SkillEvaluationRunCreateRequest,
@@ -203,6 +204,7 @@ async def create_skill_evaluation_run(
     )
     missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
     if missing:
+        missing_requirement_keys: list[JsonValue] = list(missing)
         await record_evaluation_audit(
             db,
             user=user,
@@ -211,7 +213,7 @@ async def create_skill_evaluation_run(
             skill_id=skill.id,
             evaluation_set_id=evaluation_set.id,
             outcome="denied",
-            metadata={"missing_requirement_keys": missing},
+            metadata={"missing_requirement_keys": missing_requirement_keys},
         )
         await db.commit()
         raise marketplace_credential_required(

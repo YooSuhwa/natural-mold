@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Iterator, Mapping
-from typing import Any, Final, Literal, TypedDict
+from typing import Any, Final, Literal, TypedDict, cast
 
 from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import BrokeredEvent, slice_events_after
@@ -127,7 +127,7 @@ def _ag_ui_event_type(value: object) -> AgUiEventType | None:
             | "TOOL_CALL_RESULT"
             | "CUSTOM"
         ):
-            return value
+            return cast(AgUiEventType, value)
         case _:
             return None
 

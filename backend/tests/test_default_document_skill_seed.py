@@ -53,6 +53,8 @@ async def test_seed_default_document_skills_create_system_items(
 
     version = await db.get(MarketplaceVersion, item.latest_version_id)
     assert version is not None
+    assert version.payload is not None
+    assert version.execution_profile is not None
     assert version.payload["name"] == slug
     assert version.payload["kind"] == "package"
     assert runner in version.execution_profile["runners"]

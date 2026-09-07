@@ -60,7 +60,7 @@ async def load_pending_interrupt_tasks(
         for event in await load_protocol_events(db, conversation.id)
         if event["run_id"] == run_id
     ]
-    interrupts = _pending_interrupts_for_events(events)
+    interrupts: list[ThreadInterrupt] = _pending_interrupts_for_events(events)
     if not interrupts:
         interrupts = [
             {
@@ -74,7 +74,8 @@ async def load_pending_interrupt_tasks(
         ]
     if not interrupts:
         return []
-    return [{"id": run_id, "name": "interrupted", "interrupts": interrupts}]
+    task: ThreadTask = {"id": run_id, "name": "interrupted", "interrupts": interrupts}
+    return [task]
 
 
 def interrupts_from_tasks(tasks: list[ThreadTask]) -> list[ThreadInterrupt]:

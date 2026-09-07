@@ -18,7 +18,7 @@ import io
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, BinaryIO, Final
+from typing import IO, Any, Final
 
 from app.config import settings
 from app.skills.inspector import SkillMetadataError, parse_skill_md
@@ -218,8 +218,8 @@ def _copy_member_stream(
 
 
 def _copy_limited_stream(
-    source: BinaryIO,
-    destination: BinaryIO,
+    source: IO[bytes],
+    destination: IO[bytes],
     total_bytes: int,
 ) -> int:
     written_bytes = 0

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Mapping, Sequence
 
 from app.agent_runtime import event_names
 
 
-def interrupt_id_from_events(events: list[dict[str, Any]]) -> str | None:
+def interrupt_id_from_events(events: Sequence[Mapping[str, object]]) -> str | None:
     for event in reversed(events):
         if event.get("method") == "input.requested":
             data = event.get("data")
@@ -24,7 +23,7 @@ def interrupt_id_from_events(events: list[dict[str, Any]]) -> str | None:
     return None
 
 
-def has_interrupt_events(events: list[dict[str, Any]]) -> bool:
+def has_interrupt_events(events: Sequence[Mapping[str, object]]) -> bool:
     for event in events:
         if event.get("method") == "input.requested":
             return True

@@ -58,7 +58,7 @@
 | SEC-3 | ✅ 트리거 run-now 경로 중복실행 가드 부재 — Phase 0 완료 | 신뢰성 | S~M |
 | BE-P4 | ✅ bcrypt가 이벤트 루프 250ms 블로킹 → `asyncio.to_thread` — Phase 0 완료 | 성능 | S |
 | FE-D1 | ✅ 채팅/공유/대시보드 라우트 에러 바운더리 전무 — Phase 0 완료 | 신뢰성 | M |
-| IX-1 | ✅ CI 파이프라인 부재 — Phase 0 완료 (pyright는 968 기존 에러로 non-blocking 잡) | DevX | M |
+| IX-1 | ✅ CI 파이프라인 + Pyright basic 하드 게이트 완료 (2026-09-07, 0 errors) | DevX | M |
 
 ### P1 — 임팩트 최대 (1~2 스프린트)
 
@@ -145,7 +145,7 @@
 
 ### ▶ 현 시점 실행 순서 (2026-07-10, 미완료만) — 새 세션은 여기부터
 
-> **사용법**: `/clear` 후 새 세션에서 **"이 문서 실행 순서에서 다음 미완료 항목 진행해줘"** 한 문장이면 된다. 항목을 콕 집으려면 아래 번호의 프롬프트를 그대로 복붙. 공통 규칙: worktree에서 origin/main 기준 새 브랜치, 한 PR = 한 항목, 기능 변화 0(순수 이동은 facade), 검증 그린 후 PR. (백엔드 검증 = `ruff` + `pytest -n 4 --ignore=tests/integration` + `pytest tests/integration -m integration` 직렬(마커 자동부여 후 `-m integration` 필수 — 없으면 전량 deselect: dir-scoped는 exit 5 red, `pytest tests/` 전체 실행에선 조용히 제외됨), 푸시 시 `SKILL_EVALUATION_ENABLED=true`. pyright는 전체 968 백로그라 수정 파일 단위로만.)
+> **사용법**: `/clear` 후 새 세션에서 **"이 문서 실행 순서에서 다음 미완료 항목 진행해줘"** 한 문장이면 된다. 항목을 콕 집으려면 아래 번호의 프롬프트를 그대로 복붙. 공통 규칙: worktree에서 origin/main 기준 새 브랜치, 한 PR = 한 항목, 기능 변화 0(순수 이동은 facade), 검증 그린 후 PR. (백엔드 검증 = `ruff` + `pyright` + `pytest -n 4 --ignore=tests/integration` + `pytest tests/integration -m integration` 직렬(마커 자동부여 후 `-m integration` 필수 — 없으면 전량 deselect: dir-scoped는 exit 5 red, `pytest tests/` 전체 실행에선 조용히 제외됨), 푸시 시 `SKILL_EVALUATION_ENABLED=true`.)
 > 완료하면 이 목록에서 해당 줄에 ✅와 PR 번호를 남겨 다음 세션이 이어받게 할 것.
 
 **Stage 0 — 자동 게이트 먼저 (이후 모든 작업이 자동 검증받음. 최대 레버리지)**
@@ -186,8 +186,10 @@
 - 인프라: IX-3(docker)·IX-5(구조화 로깅)·IX-4(squash)
 
 **Stage 7 — 타입 게이트 (대형, 마지막)**
-21. **pyright 번다운** — `docs/pyright-burndown-plan.md` B→C → D(CI `|| true` 제거, 하드 게이트).
-22. **린트 D·B** — pyright standard 승격 + 백엔드 커스텀 가드(raw HTTPException 금지 스크립트).
+21. ✅ **pyright 번다운** — 2026-09-07 완료. 1,258→0, CI `|| true` 제거,
+    basic-mode 하드 게이트 전환. 상세는 `docs/pyright-burndown-plan.md`.
+22. **린트 D·B 잔여** — pyright standard 승격 여부 결정 + 백엔드 커스텀
+    가드(raw HTTPException 금지 스크립트). basic 0 달성과 분리해서 진행한다.
 
 **순서 근거**: Stage 0을 먼저 = 이후 20여 PR이 자동 검증(이번 리팩토링 세션 최대 교훈). BE-S2가 BE-S9의 선행, 갓모듈(3)은 레이어 정리(2) 후 안전. BE-S4는 여러 갓모듈의 함수-로컬 import 냄새 근본이라 분해 후 마무리. 타입게이트(7)는 968 번다운 선행이라 맨 뒤.
 
@@ -197,7 +199,7 @@
 
 의존 관계와 리스크를 고려한 순서. 각 Phase는 독립 브랜치/PR 묶음으로 진행하고, Phase 간 순서는 지키되 Phase 내부는 병렬 가능.
 
-- **Phase 0 — 안전망 (1주)**: SEC-1·2·3 + BE-P4 + FE-D1 + IX-1(CI). CI가 먼저 서야 이후 모든 리팩토링 PR이 자동 검증된다. 주의: 전체 pyright는 968개 기존 에러(초기 "통과" 판단은 파이프라인 exit 코드 착오) — ruff+pytest만 하드 게이트, pyright는 non-blocking 잡.
+- **Phase 0 — 안전망 (1주)**: SEC-1·2·3 + BE-P4 + FE-D1 + IX-1(CI). CI가 먼저 서야 이후 모든 리팩토링 PR이 자동 검증된다. 당시 Pyright 968개 기존 에러로 typecheck는 non-blocking이었으나, 2026-09-07 번다운 완료 후 blocking으로 전환했다.
 - **Phase 1 — hot path 성능 (1~2주)**: BE-P1 → BE-P3 → BE-P5 → BE-P6 → BE-P7 + Quick Wins 일괄. 전부 소규모 diff라 회귀 리스크 낮고 체감 효과 즉시.
 - **Phase 2 — 레이어링·경계 (2주)**: BE-S2 → BE-S7 → BE-D1 → BE-D2 → BE-D4. "명확한 정답"류라 리뷰 부담 적음. 이때 트랜잭션 정책(서비스 flush / 라우터 commit)을 전역 결정.
 - **Phase 3 — 갓 모듈 분해 (2~3주)**: BE-S1 → BE-S3 → FE-S2 → FE-S3 → FE-S4 → BE-S5. 전부 facade 기반 순수 이동 전략이라 기능 변화 0을 유지. 병행: FE-P1(컨텍스트 분리).
@@ -1126,6 +1128,8 @@
 ---
 
 ### [IX-1] CI 파이프라인 완전 부재 — 모든 게이트가 로컬 수동 실행에 의존
+- **현재 상태(2026-09-07)**: CI 도입과 Pyright basic 0 달성이 모두 완료됐으며
+  `backend-typecheck`는 blocking이다. 아래 내용은 최초 조사 당시의 기록이다.
 - **우선순위 제안**: **P0** — 이 문서의 모든 리팩토링 PR이 CI 없이는 "전체 그린" 보장을 사람 손에 의존하게 됨. 리팩토링 착수 전 최우선.
 - **카테고리**: DevX
 - **증거**: `.github/workflows/` 디렉토리 없음(직접 확인). `.pre-commit-config.yaml`도 없음. 반면 게이트로 쓸 도구는 전부 준비됨: ruff(설정 존재), pyright(전체 968 기존 에러 — non-blocking 잡으로 시작, 신규/수정 파일은 파일 단위 클린 유지), pytest 2,500+, vitest 1,183+, eslint 커스텀 가드(`lint:design-system`, `lint:a11y`, `lint:i18n`, `lint:frontend-architecture`).
@@ -1419,7 +1423,7 @@
 ```bash
 # 백엔드 (backend/)
 uv run ruff check .                          # 린트
-uv run pyright                               # 타입체크 — 전체 968 기존 에러: 수정 파일 단위로만 게이트, CI는 non-blocking
+uv run pyright                               # 타입체크 — basic-mode 전체 0 유지, CI blocking
 uv run --with pytest-xdist pytest -q -n 4    # 전체 테스트 (aiosqlite, DB 불필요)
 uv run pytest -m integration                 # live PG 필요 시 (docker compose up -d postgres 선행)
 

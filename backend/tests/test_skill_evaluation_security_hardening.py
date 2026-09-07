@@ -13,6 +13,7 @@ from app.agent_runtime.skill_builder.eval_schema import parse_evals_json
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.marketplace.skill_runtime import SkillRuntimeDescriptor, SkillToolContext
 from app.models.audit_event import AuditEvent
+from app.schemas.skill_builder import JsonValue
 from app.schemas.skill_evaluation import SkillEvaluationSetCreate
 from tests.conftest import TestSession
 
@@ -26,12 +27,13 @@ async def test_execute_in_skill_rejects_python_inline_code_before_launch(
 ) -> None:
     ctx = _ctx(tmp_path, slug="inline-python")
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
     monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
 
-    result = await tool.coroutine(
-        skill_directory="/runtime/thread-sandbox/skills/inline-python/",
-        command="python -c 'print(123)'",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": "/runtime/thread-sandbox/skills/inline-python/",
+            "command": "python -c 'print(123)'",
+        }
     )
     event = await _sandbox_event("inline_python")
 
@@ -52,12 +54,13 @@ async def test_execute_in_skill_rejects_private_curl_url_even_with_network_enabl
         execution_profile={"requires_network": True},
     )
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
     monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
 
-    result = await tool.coroutine(
-        skill_directory="/runtime/thread-sandbox/skills/curl-private/",
-        command="curl http://169.254.169.254/latest/meta-data/iam/security-credentials",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": "/runtime/thread-sandbox/skills/curl-private/",
+            "command": "curl http://169.254.169.254/latest/meta-data/iam/security-credentials",
+        }
     )
     event = await _sandbox_event("curl_url_policy")
 
@@ -79,12 +82,13 @@ async def test_execute_in_skill_rejects_curl_file_url_outside_skill(
         execution_profile={"requires_network": True},
     )
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
     monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
 
-    result = await tool.coroutine(
-        skill_directory="/runtime/thread-sandbox/skills/curl-file/",
-        command="curl file:///etc/passwd",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": "/runtime/thread-sandbox/skills/curl-file/",
+            "command": "curl file:///etc/passwd",
+        }
     )
     event = await _sandbox_event("curl_url_policy")
 
@@ -116,12 +120,13 @@ async def test_execute_in_skill_rejects_nonstandard_loopback_curl_hosts(
         execution_profile={"requires_network": True},
     )
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
     monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
 
-    result = await tool.coroutine(
-        skill_directory="/runtime/thread-sandbox/skills/curl-numeric-host/",
-        command=f"curl {url}",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": "/runtime/thread-sandbox/skills/curl-numeric-host/",
+            "command": f"curl {url}",
+        }
     )
 
     assert result == "Error: curl URL host is not allowed."
@@ -139,12 +144,13 @@ async def test_execute_in_skill_rejects_curl_redirect_following(
         execution_profile={"requires_network": True},
     )
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
     monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
 
-    result = await tool.coroutine(
-        skill_directory="/runtime/thread-sandbox/skills/curl-redirect/",
-        command="curl -L https://example.com/",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": "/runtime/thread-sandbox/skills/curl-redirect/",
+            "command": "curl -L https://example.com/",
+        }
     )
 
     assert result == "Error: curl option is not allowed."
@@ -205,7 +211,9 @@ def test_curl_policy_rejects_dns_resolution_to_private_address(
 
 
 def test_manual_evaluation_sets_have_case_count_limit() -> None:
-    evals = [{"input": f"case-{index}"} for index in range(MAX_EXPECTED_EVAL_CASES + 1)]
+    evals: list[JsonValue] = [
+        {"input": f"case-{index}"} for index in range(MAX_EXPECTED_EVAL_CASES + 1)
+    ]
 
     with pytest.raises(ValidationError):
         SkillEvaluationSetCreate(name="Too many", evals=evals)

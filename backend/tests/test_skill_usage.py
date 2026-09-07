@@ -220,11 +220,14 @@ async def _run_tool(ctx) -> str:
     from app.agent_runtime.skill_executor import _create_skill_execute_tool
 
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
-    return await tool.coroutine(
-        skill_directory=f"/runtime/{ctx.thread_id}/skills/counter/",
-        command="python scripts/ok.py",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": f"/runtime/{ctx.thread_id}/skills/counter/",
+            "command": "python scripts/ok.py",
+        }
     )
+    assert isinstance(result, str)
+    return result
 
 
 @pytest.mark.parametrize(
@@ -325,10 +328,11 @@ async def test_executor_does_not_record_failed_execution(
     monkeypatch.setattr(skill_usage_service, "record_chat_execution_nonfatal", _fake_record)
 
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
-    await tool.coroutine(
-        skill_directory=f"/runtime/{ctx.thread_id}/skills/counter/",
-        command="python scripts/boom.py",
+    await tool.ainvoke(
+        {
+            "skill_directory": f"/runtime/{ctx.thread_id}/skills/counter/",
+            "command": "python scripts/boom.py",
+        }
     )
 
     assert recorded == []  # failed script → no usage event

@@ -245,11 +245,11 @@ def build_agent_spec_payload(
     mcp_tools = [_mcp_tool_payload(link) for link in agent.mcp_tool_links]
     subagents = [_subagent_payload(link) for link in agent.sub_agent_links]
     credential_requirements = _build_credential_requirements(agent)
-    fallback_payloads = [
-        payload
-        for model in (fallback_models or [])
-        if (payload := _model_payload(model)) is not None
-    ]
+    fallback_payloads: list[dict[str, Any]] = []
+    for model in fallback_models or []:
+        fallback_payload = _model_payload(model)
+        if fallback_payload is not None:
+            fallback_payloads.append(fallback_payload)
 
     payload: dict[str, Any] = {
         "schema_version": 1,

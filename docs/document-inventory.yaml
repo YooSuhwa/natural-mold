@@ -387,8 +387,8 @@ documents:
     lifecycle: canonical-current
     status: current
   - path: docs/pyright-burndown-plan.md
-    lifecycle: active-plan
-    status: active
+    lifecycle: completed-plan
+    status: completed
   - path: docs/qa/chat-transcript-stability.md
     lifecycle: reference/spec
     status: reference

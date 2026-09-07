@@ -23,8 +23,9 @@ async def _run_scraper(monkeypatch: pytest.MonkeyPatch, handler, url: str) -> st
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         monkeypatch.setattr(tool_factory, "get_tool_http_client", lambda: client)
         tool = _build_web_scraper_tool()
-        assert tool.coroutine is not None
-        return await tool.coroutine(url=url)
+        result = await tool.ainvoke({"url": url})
+        assert isinstance(result, str)
+        return result
 
 
 # ---------------------------------------------------------------------------

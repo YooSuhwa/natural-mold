@@ -9,8 +9,8 @@ from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-import anyio
 import yaml
+from anyio.to_thread import run_sync
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -144,12 +144,12 @@ async def rollback_to_revision(
     skill = await lock_skill_for_mutation(db, skill=skill)
     parent_revision_id = skill.current_revision_id
     try:
-        zip_bytes = await anyio.to_thread.run_sync(_read_revision_bytes, revision.object_key)
+        zip_bytes = await run_sync(_read_revision_bytes, revision.object_key)
     except FileNotFoundError as exc:
         raise SkillRevisionSnapshotMissing("revision snapshot file is missing") from exc
     if skill.kind == "text":
         try:
-            content = await anyio.to_thread.run_sync(_read_skill_md, zip_bytes)
+            content = await run_sync(_read_skill_md, zip_bytes)
         except (zipfile.BadZipFile, zlib.error, KeyError, UnicodeDecodeError) as exc:
             # UnicodeDecodeError: CRC는 멀쩡한데 비 UTF-8 바이트인 스냅샷 —
             # decode는 zip read가 아니라 여기서 터진다 (R7).
@@ -172,8 +172,8 @@ async def rollback_to_revision(
         # 존재를 검증한다. 교체 후 실패하면 디스크는 이미 바뀌었는데 DB만
         # 롤백되는 발산이 남으므로, "스냅샷 불가" 부류는 전부 여기서 걸러
         # 무변경 409로 끝낸다 (R5).
-        await anyio.to_thread.run_sync(_validate_package_snapshot, zip_bytes)
-        await anyio.to_thread.run_sync(_replace_package_files, skill.storage_path, zip_bytes)
+        await run_sync(_validate_package_snapshot, zip_bytes)
+        await run_sync(_replace_package_files, skill.storage_path, zip_bytes)
         refresh_package_metadata(skill)
         sync_frontmatter(skill, skill_service.get_file_bytes(skill, "SKILL.md"))
         _sync_moldy_runtime_columns(skill)
@@ -217,7 +217,7 @@ async def list_revision_files(revision: SkillRevision) -> list[tuple[str, int, b
     처리해 500 대신 명시 응답을 낸다).
     """
 
-    return await anyio.to_thread.run_sync(_list_revision_files_sync, revision.object_key)
+    return await run_sync(_list_revision_files_sync, revision.object_key)
 
 
 async def load_revision_file_content(revision: SkillRevision, relative_path: str) -> str | None:
@@ -228,9 +228,7 @@ async def load_revision_file_content(revision: SkillRevision, relative_path: str
     상한 정본은 app.skills.display_limits).
     """
 
-    return await anyio.to_thread.run_sync(
-        _load_revision_file_content_sync, revision.object_key, relative_path
-    )
+    return await run_sync(_load_revision_file_content_sync, revision.object_key, relative_path)
 
 
 def _list_revision_files_sync(object_key: str) -> list[tuple[str, int, bool]] | None:

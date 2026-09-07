@@ -40,7 +40,7 @@ def test_stored_event_yields_protocol_shape() -> None:
     ]
     assert "timestamp" not in wire["params"]
     assert wire["seq"] == 1
-    assert wire["event_id"] == "evt-1"
+    assert wire.get("event_id") == "evt-1"
 
 
 def test_format_protocol_sse_uses_protocol_message_event() -> None:

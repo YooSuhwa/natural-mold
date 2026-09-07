@@ -6,7 +6,9 @@ import json
 import multiprocessing
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
@@ -41,6 +43,7 @@ from plan_history_support import (
     HEAD,
     PLAN_SHA,
     REVIEW_ROUND,
+    LifecycleArguments,
     _begin,
     _cross_process_append,
     _seal,
@@ -49,11 +52,12 @@ from plan_history_support import (
     _write_review_receipt,
     copy_isolated_operations,
     lifecycle_arguments,
+    terminal_lifecycle_arguments,
 )
 
 
 @pytest.fixture
-def lifecycle(tmp_path: Path) -> dict[str, object]:
+def lifecycle(tmp_path: Path) -> LifecycleArguments:
     return lifecycle_arguments(tmp_path)
 
 
@@ -198,7 +202,7 @@ def test_lifecycle_fixture_rejects_open_source_pointer_with_extra_field(
     assert not destination.exists()
 
 
-def test_begin_creates_one_open_hash_named_empty_attempt(lifecycle: dict[str, object]) -> None:
+def test_begin_creates_one_open_hash_named_empty_attempt(lifecycle: LifecycleArguments) -> None:
     pointer = _begin(lifecycle)
 
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -209,7 +213,7 @@ def test_begin_creates_one_open_hash_named_empty_attempt(lifecycle: dict[str, ob
         _begin(lifecycle)
 
 
-def test_begin_rejects_attempt_id_collision(lifecycle: dict[str, object]) -> None:
+def test_begin_rejects_attempt_id_collision(lifecycle: LifecycleArguments) -> None:
     _begin(lifecycle)
     Path(lifecycle["pointer_path"]).unlink()
     for journal in Path(lifecycle["journal_root"]).glob("*.json"):
@@ -221,12 +225,12 @@ def test_begin_rejects_attempt_id_collision(lifecycle: dict[str, object]) -> Non
 
 
 def test_abandon_freezes_attempt_and_rejects_repeat_or_changed_inventory(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     receipt = _write_failure_receipt(attempt_dir, str(pointer["attempt_id"]), "F3")
-    arguments = {key: value for key, value in lifecycle.items() if key != "head"}
+    arguments = terminal_lifecycle_arguments(lifecycle)
 
     abandoned = abandon_final_attempt(**arguments, failure_receipt=receipt)
 
@@ -239,14 +243,12 @@ def test_abandon_freezes_attempt_and_rejects_repeat_or_changed_inventory(
 
 
 def test_seal_blocks_append_and_detects_wrong_head_or_mutation(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     output = attempt_dir / "operations-seal.json"
-    common = dict(lifecycle)
-
-    sealed = _seal(common, output)
+    sealed = _seal(lifecycle, output)
 
     assert sealed["status"] == "sealed"
     with pytest.raises(LedgerError, match="externally sealed"):
@@ -259,7 +261,7 @@ def test_seal_blocks_append_and_detects_wrong_head_or_mutation(
         )
 
 
-def test_cross_process_append_cannot_commit_across_seal(lifecycle: dict[str, object]) -> None:
+def test_cross_process_append_cannot_commit_across_seal(lifecycle: LifecycleArguments) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     output = attempt_dir / "operations-seal.json"
@@ -339,14 +341,14 @@ def test_cross_process_append_cannot_commit_across_seal(lifecycle: dict[str, obj
 
 
 def test_reopen_requires_terminal_f1_or_f4_and_allows_new_attempt(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     output = attempt_dir / "operations-seal.json"
     _seal(lifecycle, output)
     review = _write_review_receipt(attempt_dir, str(pointer["attempt_id"]), "F1")
-    arguments = {key: value for key, value in lifecycle.items() if key != "head"}
+    arguments = terminal_lifecycle_arguments(lifecycle)
 
     reopened = reopen_seal(**arguments, failure_receipt=review)
 
@@ -367,7 +369,7 @@ def test_reopen_requires_terminal_f1_or_f4_and_allows_new_attempt(
     ],
 )
 def test_ledger_writer_rejects_malformed_external_pointer_values(
-    lifecycle: dict[str, object], field: str, value: str
+    lifecycle: LifecycleArguments, field: str, value: str
 ) -> None:
     pointer_path = Path(lifecycle["pointer_path"])
     pointer: dict[str, JSONValue] = {
@@ -392,7 +394,7 @@ def test_ledger_writer_rejects_malformed_external_pointer_values(
 
 
 def test_ledger_append_allows_initial_absent_final_attempt_pointer(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     append_operation(
         Path(lifecycle["operations"]),
@@ -404,7 +406,7 @@ def test_ledger_append_allows_initial_absent_final_attempt_pointer(
 
 
 def test_ledger_append_rejects_deleted_pointer_for_active_attempt(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     _begin(lifecycle)
     pointer = Path(lifecycle["pointer_path"])
@@ -425,12 +427,12 @@ def test_ledger_append_rejects_deleted_pointer_for_active_attempt(
 
 
 def test_ledger_append_allows_deleted_pointer_after_committed_abandon(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     receipt = _write_failure_receipt(attempt_dir, str(pointer["attempt_id"]), "F2")
-    arguments = {key: value for key, value in lifecycle.items() if key != "head"}
+    arguments = terminal_lifecycle_arguments(lifecycle)
     abandon_final_attempt(**arguments, failure_receipt=receipt)
     Path(lifecycle["pointer_path"]).unlink()
 
@@ -444,13 +446,13 @@ def test_ledger_append_allows_deleted_pointer_after_committed_abandon(
 
 
 def test_ledger_append_allows_deleted_pointer_after_committed_reopen(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     _seal(lifecycle, attempt_dir / "operations-seal.json")
     review = _write_review_receipt(attempt_dir, str(pointer["attempt_id"]), "F1")
-    arguments = {key: value for key, value in lifecycle.items() if key != "head"}
+    arguments = terminal_lifecycle_arguments(lifecycle)
     reopen_seal(**arguments, failure_receipt=review)
     Path(lifecycle["pointer_path"]).unlink()
 
@@ -464,7 +466,7 @@ def test_ledger_append_allows_deleted_pointer_after_committed_reopen(
 
 
 def test_deleted_sealed_pointer_blocks_public_append_without_mutating_ledger(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -486,7 +488,7 @@ def test_deleted_sealed_pointer_blocks_public_append_without_mutating_ledger(
 
 
 def test_pointer_deletion_rejects_duplicate_lifecycle_start_relation(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_id = str(pointer["attempt_id"])
@@ -522,7 +524,7 @@ def test_pointer_deletion_rejects_duplicate_lifecycle_start_relation(
 
 
 def test_intact_pointer_rejects_duplicate_lifecycle_start_relation(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_id = str(pointer["attempt_id"])
@@ -557,7 +559,7 @@ def test_intact_pointer_rejects_duplicate_lifecycle_start_relation(
 
 
 def test_intact_pointer_rejects_lifecycle_closer_for_another_attempt(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     _begin(lifecycle)
     operations = Path(lifecycle["operations"])
@@ -586,7 +588,7 @@ def test_intact_pointer_rejects_lifecycle_closer_for_another_attempt(
 
 
 def test_missing_pointer_rejects_malformed_lifecycle_event_before_mutation(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     operations = Path(lifecycle["operations"])
     _append_forged_lifecycle_entry(
@@ -610,12 +612,12 @@ def test_missing_pointer_rejects_malformed_lifecycle_event_before_mutation(
 
 
 def test_nonterminal_journal_blocks_public_append_but_exact_recovery_appends_once(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     receipt = _write_failure_receipt(attempt_dir, str(pointer["attempt_id"]), "F2")
-    arguments = {key: value for key, value in lifecycle.items() if key != "head"}
+    arguments = terminal_lifecycle_arguments(lifecycle)
 
     def crash(boundary: str) -> None:
         if boundary == "journal:prepared:parent_fsync":
@@ -638,8 +640,9 @@ def test_nonterminal_journal_blocks_public_append_but_exact_recovery_appends_onc
 
     journal = json.loads(next(Path(lifecycle["journal_root"]).glob("abandon-*.json")).read_bytes())
     action_class, exact_arguments = writer_module._expected_journal_event(journal)
+    unchecked_append = cast(Callable[..., object], append_operation_locked)
     with evidence_writer_lock(operations) as lock, pytest.raises(TypeError):
-        append_operation_locked(
+        unchecked_append(
             operations,
             evidence_lock=lock,
             task_id="forged-private-transition",
@@ -652,7 +655,7 @@ def test_nonterminal_journal_blocks_public_append_but_exact_recovery_appends_onc
 
     assert not hasattr(writer_module, "append_final_attempt_lifecycle_operation")
     with evidence_writer_lock(operations) as lock, pytest.raises(TypeError):
-        append_operation_locked(
+        unchecked_append(
             operations,
             evidence_lock=lock,
             task_id="forged-replacement-transition",
@@ -678,7 +681,7 @@ def test_nonterminal_journal_blocks_public_append_but_exact_recovery_appends_onc
 
 @pytest.mark.parametrize("mode", [0o660, 0o666])
 def test_ledger_append_rejects_writable_pointer_before_mutation(
-    lifecycle: dict[str, object], mode: int
+    lifecycle: LifecycleArguments, mode: int
 ) -> None:
     _begin(lifecycle)
     pointer = Path(lifecycle["pointer_path"])
@@ -700,7 +703,7 @@ def test_ledger_append_rejects_writable_pointer_before_mutation(
 
 @pytest.mark.parametrize("mode", [0o660, 0o666])
 def test_ledger_append_rejects_writable_writer_lock_before_mutation(
-    lifecycle: dict[str, object], mode: int
+    lifecycle: LifecycleArguments, mode: int
 ) -> None:
     operations = Path(lifecycle["operations"])
     writer_lock = operations.parent / ".evidence-writer.lock"
@@ -722,7 +725,7 @@ def test_ledger_append_rejects_writable_writer_lock_before_mutation(
 
 @pytest.mark.parametrize("mode", [0o660, 0o666])
 def test_ledger_append_rejects_writable_committed_journal_before_mutation(
-    lifecycle: dict[str, object], mode: int
+    lifecycle: LifecycleArguments, mode: int
 ) -> None:
     _begin(lifecycle)
     journal = next(Path(lifecycle["journal_root"]).glob("begin-*.json"))
@@ -743,7 +746,7 @@ def test_ledger_append_rejects_writable_committed_journal_before_mutation(
 
 
 def test_ledger_append_detects_pointer_replacement_during_descriptor_read(
-    lifecycle: dict[str, object], monkeypatch: pytest.MonkeyPatch
+    lifecycle: LifecycleArguments, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _begin(lifecycle)
     pointer = Path(lifecycle["pointer_path"])
@@ -779,7 +782,7 @@ def test_ledger_append_detects_pointer_replacement_during_descriptor_read(
 
 
 def test_ledger_append_detects_journal_replacement_during_descriptor_read(
-    lifecycle: dict[str, object], monkeypatch: pytest.MonkeyPatch
+    lifecycle: LifecycleArguments, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _begin(lifecycle)
     journal = next(Path(lifecycle["journal_root"]).glob("begin-*.json"))
@@ -815,7 +818,7 @@ def test_ledger_append_detects_journal_replacement_during_descriptor_read(
 
 
 def test_ledger_append_detects_writer_lock_replacement_before_commit(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     operations = Path(lifecycle["operations"])
     append_operation(
@@ -965,12 +968,12 @@ def test_seal_journal_shape_rejects_unknown_or_malformed_attestation(
     ],
 )
 def test_abandon_recovers_each_side_effect_boundary_without_duplicate_ledger_entry(
-    lifecycle: dict[str, object], boundary: str
+    lifecycle: LifecycleArguments, boundary: str
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     receipt = _write_failure_receipt(attempt_dir, str(pointer["attempt_id"]), "F2")
-    arguments = {key: value for key, value in lifecycle.items() if key != "head"}
+    arguments = terminal_lifecycle_arguments(lifecycle)
 
     def crash(name: str) -> None:
         if name == boundary:
@@ -992,7 +995,7 @@ def test_abandon_recovers_each_side_effect_boundary_without_duplicate_ledger_ent
 
 
 def test_multiple_or_impossible_nonterminal_journals_fail_closed(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     journal_root = Path(lifecycle["journal_root"])
     journal_root.mkdir(parents=True)
@@ -1084,7 +1087,7 @@ CRASH_BOUNDARIES = {
     ],
 )
 def test_every_lifecycle_fsync_boundary_is_exactly_recoverable(
-    lifecycle: dict[str, object], transition: str, boundary: str
+    lifecycle: LifecycleArguments, transition: str, boundary: str
 ) -> None:
     pointer: dict[str, JSONValue] | None = None
     failure_receipt: Path | None = None
@@ -1106,15 +1109,21 @@ def test_every_lifecycle_fsync_boundary_is_exactly_recoverable(
         if name == boundary:
             raise RuntimeError("injected")
 
-    arguments = {key: value for key, value in lifecycle.items() if key != "head"}
-    operation = {
-        "begin": lambda hook: begin_final_attempt(**lifecycle, hook=hook),
-        "abandon": lambda hook: abandon_final_attempt(
-            **arguments, failure_receipt=failure_receipt, hook=hook
-        ),
-        "seal": lambda hook: _seal(lifecycle, output, hook=hook),
-        "reopen": lambda hook: reopen_seal(**arguments, failure_receipt=failure_receipt, hook=hook),
-    }[transition]
+    arguments = terminal_lifecycle_arguments(lifecycle)
+
+    def operation(hook: Callable[[str], None] | None) -> dict[str, JSONValue]:
+        if transition == "begin":
+            return begin_final_attempt(**lifecycle, hook=hook)
+        if transition == "abandon":
+            assert failure_receipt is not None
+            return abandon_final_attempt(**arguments, failure_receipt=failure_receipt, hook=hook)
+        if transition == "seal":
+            assert output is not None
+            return _seal(lifecycle, output, hook=hook)
+        assert transition == "reopen"
+        assert failure_receipt is not None
+        return reopen_seal(**arguments, failure_receipt=failure_receipt, hook=hook)
+
     with pytest.raises(RuntimeError, match="injected"):
         operation(crash)
 
@@ -1155,7 +1164,7 @@ def test_every_lifecycle_fsync_boundary_is_exactly_recoverable(
 
 @pytest.mark.parametrize("mode", [0o660, 0o666])
 def test_lifecycle_rejects_writable_pointer_and_ledger(
-    lifecycle: dict[str, object], mode: int
+    lifecycle: LifecycleArguments, mode: int
 ) -> None:
     _begin(lifecycle)
     pointer = Path(lifecycle["pointer_path"])
@@ -1179,7 +1188,7 @@ def test_lifecycle_rejects_writable_pointer_and_ledger(
 
 @pytest.mark.parametrize("root_name", ["journal_root", "attempt_root"])
 def test_lifecycle_rejects_symlinked_mutation_roots_before_redirected_write(
-    lifecycle: dict[str, object], tmp_path: Path, root_name: str
+    lifecycle: LifecycleArguments, tmp_path: Path, root_name: str
 ) -> None:
     root = Path(lifecycle[root_name])
     outside = tmp_path / f"outside-{root_name}"
@@ -1193,7 +1202,7 @@ def test_lifecycle_rejects_symlinked_mutation_roots_before_redirected_write(
 
 
 def test_lifecycle_detects_journal_parent_inode_swap_after_replace(
-    lifecycle: dict[str, object], tmp_path: Path
+    lifecycle: LifecycleArguments, tmp_path: Path
 ) -> None:
     journal_root = Path(lifecycle["journal_root"])
     outside = tmp_path / "outside-inode-swap"
@@ -1212,7 +1221,7 @@ def test_lifecycle_detects_journal_parent_inode_swap_after_replace(
 
 
 def test_atomic_json_detects_post_parent_fsync_name_swap_and_preserves_foreign_inode(
-    lifecycle: dict[str, object], tmp_path: Path
+    lifecycle: LifecycleArguments, tmp_path: Path
 ) -> None:
     replacement = tmp_path / "foreign-journal.json"
     foreign = canonical_line({"foreign": True})
@@ -1237,7 +1246,7 @@ def test_atomic_json_detects_post_parent_fsync_name_swap_and_preserves_foreign_i
     ["nonterminal", "sealed", "no-active", "missing-ledger", "forged-open"],
 )
 def test_read_only_final_attempt_authority_rejects_unproven_active_relation(
-    lifecycle: dict[str, object], attack: str
+    lifecycle: LifecycleArguments, attack: str
 ) -> None:
     pointer = _begin(lifecycle)
     evidence_root = Path(lifecycle["operations"]).parent
@@ -1276,7 +1285,7 @@ def test_read_only_final_attempt_authority_rejects_unproven_active_relation(
 
 
 def test_read_only_final_attempt_authority_accepts_exact_open_active_relation(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     evidence_root = Path(lifecycle["operations"]).parent
@@ -1298,7 +1307,7 @@ def test_read_only_final_attempt_authority_accepts_exact_open_active_relation(
 
 @pytest.mark.parametrize("post_seal_action", [None, "verification"])
 def test_read_only_final_attempt_authority_rejects_external_ledger_seal(
-    lifecycle: dict[str, object], post_seal_action: str | None
+    lifecycle: LifecycleArguments, post_seal_action: str | None
 ) -> None:
     pointer = _begin(lifecycle)
     operations = Path(lifecycle["operations"])
@@ -1330,7 +1339,7 @@ def test_read_only_final_attempt_authority_rejects_external_ledger_seal(
 
 
 def test_lifecycle_rejects_same_uid_evidence_root_replacement_before_mutation(
-    lifecycle: dict[str, object], monkeypatch: pytest.MonkeyPatch
+    lifecycle: LifecycleArguments, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     operations = Path(lifecycle["operations"])
     evidence_root = operations.parent
@@ -1356,7 +1365,7 @@ def test_lifecycle_rejects_same_uid_evidence_root_replacement_before_mutation(
 
 
 def test_lifecycle_rejects_multiple_and_mismatched_pending_journals(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     _begin(lifecycle)
     journal_root = Path(lifecycle["journal_root"])

@@ -4,7 +4,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-import anyio
+from anyio.to_thread import run_sync
 
 from app.config import settings
 from app.models.skill import Skill
@@ -28,8 +28,8 @@ async def write_skill_revision_snapshot(
 ) -> SkillRevisionSnapshot:
     files = await _snapshot_files(skill)
     object_key, path = _revision_path(skill, revision_number)
-    await anyio.to_thread.run_sync(_write_zip, path, files)
-    size_bytes = await anyio.to_thread.run_sync(_file_size, path)
+    await run_sync(_write_zip, path, files)
+    size_bytes = await run_sync(_file_size, path)
     return SkillRevisionSnapshot(
         storage_provider="local",
         object_key=object_key,
@@ -41,7 +41,7 @@ async def write_skill_revision_snapshot(
 
 async def delete_skill_revision_snapshot(object_key: str) -> None:
     path = _object_path(object_key)
-    await anyio.to_thread.run_sync(_unlink_missing_ok, path)
+    await run_sync(_unlink_missing_ok, path)
 
 
 async def _snapshot_files(skill: Skill) -> list[tuple[str, bytes]]:

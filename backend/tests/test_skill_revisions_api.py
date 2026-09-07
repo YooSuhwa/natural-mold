@@ -7,6 +7,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.skill_builder import JsonValue
 from app.services import skill_revision_service
 from app.skills import service as skill_service
 from tests.conftest import TEST_USER_ID
@@ -61,7 +62,7 @@ async def test_get_revision_returns_detail_metadata(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
-    compatibility = {"targets": {"openai_codex": {"status": "ok"}}}
+    compatibility: dict[str, JsonValue] = {"targets": {"openai_codex": {"status": "ok"}}}
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         skill = await skill_service.create_text_skill(
             db,

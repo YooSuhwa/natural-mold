@@ -12,8 +12,10 @@ import os
 import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any, cast
 
 from sqlalchemy import and_, func, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
@@ -373,13 +375,16 @@ async def finalize_artifacts_for_run(
     if run_status not in {"canceled", "stale", "failed"}:
         return 0
 
-    result = await db.execute(
-        update(ConversationArtifact)
-        .where(
-            ConversationArtifact.conversation_id == conversation_id,
-            ConversationArtifact.assistant_msg_id == assistant_msg_id,
-            ConversationArtifact.status.in_(("writing", "ready")),
-        )
-        .values(status="failed")
+    result = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(ConversationArtifact)
+            .where(
+                ConversationArtifact.conversation_id == conversation_id,
+                ConversationArtifact.assistant_msg_id == assistant_msg_id,
+                ConversationArtifact.status.in_(("writing", "ready")),
+            )
+            .values(status="failed")
+        ),
     )
     return int(result.rowcount or 0)

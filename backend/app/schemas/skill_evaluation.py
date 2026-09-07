@@ -60,7 +60,11 @@ def _bounded_eval_cases(value: list[JsonValue]) -> list[JsonValue]:
     try:
         validate_evaluation_case_sizes(value)
     except SkillEvaluationCaseSizeError as exc:
-        raise PydanticCustomError("skill_eval_case_too_large", str(exc)) from exc
+        raise PydanticCustomError(
+            "skill_eval_case_too_large",
+            "Evaluation case exceeds size limits: {reason}",
+            {"reason": str(exc)},
+        ) from exc
     return value
 
 

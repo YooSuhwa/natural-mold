@@ -317,11 +317,13 @@ async def test_mcp_probe_writes_audit_with_outcome(client, db: AsyncSession, mon
     assert ok_row.target_type == "mcp_server_probe"
     assert ok_row.outcome == "success"
     assert ok_row.reason_code is None
+    assert ok_row.event_metadata is not None
     assert ok_row.event_metadata["transport"] == "streamable_http"
     assert ok_row.event_metadata["tool_count"] == 1
     assert fail_row.outcome == "failure"
     assert fail_row.reason_code == "mcp_probe_failed"
     assert fail_row.reason_message == "boom"
+    assert fail_row.event_metadata is not None
     assert fail_row.event_metadata["tool_count"] == 0
 
 
@@ -360,6 +362,7 @@ async def test_mcp_import_writes_audit_with_error_metadata(client, db: AsyncSess
     # 일부라도 created/updated가 있으면 success + mcp_import_errors reason
     assert partial_row.outcome == "success"
     assert partial_row.reason_code == "mcp_import_errors"
+    assert partial_row.event_metadata is not None
     assert partial_row.event_metadata["created"] == 1
     assert partial_row.event_metadata["error_count"] == 1
     assert partial_row.event_metadata["entry_count"] == 2

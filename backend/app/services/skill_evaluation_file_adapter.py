@@ -23,11 +23,12 @@ def normalize_evaluation_file_payload(payload: Mapping[str, JsonValue]) -> JsonO
         validate_evaluation_case_sizes(normalized_evals)
     except SkillEvaluationCaseSizeError as exc:
         raise SkillEvaluationFileAdapterError(str(exc)) from exc
+    normalized_evals_json: list[JsonValue] = list(normalized_evals)
     return {
         "schema_version": _schema_version(payload.get("schema_version")),
         "name": _name(payload),
         "description": _optional_str(payload.get("description")),
-        "evals": normalized_evals,
+        "evals": normalized_evals_json,
     }
 
 

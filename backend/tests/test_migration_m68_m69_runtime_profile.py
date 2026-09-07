@@ -46,7 +46,9 @@ def test_m68_revision_chain() -> None:
 
 
 @pytest.mark.asyncio
-async def test_m67_upgrade_downgrade_roundtrip_sqlite() -> None:
+async def test_m67_upgrade_downgrade_roundtrip_sqlite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
     from sqlalchemy import create_engine
@@ -61,7 +63,7 @@ async def test_m67_upgrade_downgrade_roundtrip_sqlite() -> None:
             conn.exec_driver_sql("INSERT INTO agents (id, name) VALUES ('a1', 'A')")
 
             ctx = MigrationContext.configure(conn)
-            alembic_op._proxy = Operations(ctx)
+            monkeypatch.setattr(alembic_op, "_proxy", Operations(ctx), raising=False)
 
             mod.upgrade()
             columns = {c["name"] for c in inspect(conn).get_columns("agents")}
@@ -80,7 +82,9 @@ async def test_m67_upgrade_downgrade_roundtrip_sqlite() -> None:
 
 
 @pytest.mark.asyncio
-async def test_m68_upgrade_downgrade_roundtrip_sqlite() -> None:
+async def test_m68_upgrade_downgrade_roundtrip_sqlite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
     from sqlalchemy import create_engine
@@ -95,7 +99,7 @@ async def test_m68_upgrade_downgrade_roundtrip_sqlite() -> None:
             conn.exec_driver_sql("CREATE TABLE skill_builder_sessions (id TEXT PRIMARY KEY)")
 
             ctx = MigrationContext.configure(conn)
-            alembic_op._proxy = Operations(ctx)
+            monkeypatch.setattr(alembic_op, "_proxy", Operations(ctx), raising=False)
 
             mod.upgrade()
             inspector = inspect(conn)

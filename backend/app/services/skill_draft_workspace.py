@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.skill_builder_session import SkillBuilderSession
-from app.schemas.skill_builder import SkillDraftFile
+from app.schemas.skill_builder import SkillDraftFile, SkillDraftFileRole
 from app.skills.display_limits import DISPLAY_TEXT_SNIFF_BYTES, MAX_DISPLAY_TEXT_BYTES
 from app.storage.paths import ensure_relative, resolve_data_path
 
@@ -84,6 +84,11 @@ def seed_workspace_from_skill(skill: Skill, session_id: uuid.UUID) -> str:
     if target.exists():
         shutil.rmtree(target, ignore_errors=True)
     target.parent.mkdir(parents=True, exist_ok=True)
+
+    if not skill.storage_path:
+        logger.warning("skill draft seed skipped — source path missing: skill=%s", skill.slug)
+        target.mkdir(parents=True, exist_ok=True)
+        return storage_path
 
     src = resolve_data_path(skill.storage_path)
     if not src.exists():
@@ -440,9 +445,14 @@ def build_skill_draft_brief(session: SkillBuilderSession) -> dict[str, object]:
     files = load_draft_files(session.draft_workspace_path) if session.draft_workspace_path else []
     base_files: dict[str, str] = {}
     base_snapshot = session.base_snapshot or {}
-    for raw in base_snapshot.get("files") or []:
-        if isinstance(raw, dict) and isinstance(raw.get("path"), str):
-            base_files[raw["path"]] = str(raw.get("content") or "")
+    raw_files = base_snapshot.get("files")
+    if isinstance(raw_files, list):
+        for raw in raw_files:
+            if not isinstance(raw, dict):
+                continue
+            raw_path = raw.get("path")
+            if isinstance(raw_path, str):
+                base_files[raw_path] = str(raw.get("content") or "")
 
     current_paths = {f.path for f in files}
     changed = sum(1 for f in files if f.path not in base_files or base_files[f.path] != f.content)
@@ -602,7 +612,7 @@ async def _gc_orphan_workspace_dirs(db: AsyncSession, *, cutoff: datetime) -> in
     return removed
 
 
-def role_for_path(path: str) -> str:
+def role_for_path(path: str) -> SkillDraftFileRole:
     """드래프트 파일 경로 → SkillDraftFile.role (정본 — 스냅샷 로더도 위임)."""
 
     if path == "SKILL.md":

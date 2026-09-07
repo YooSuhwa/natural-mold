@@ -130,12 +130,13 @@ async def test_execute_in_skill_kills_subprocess_on_cancellation(tmp_path: Path)
         descriptors={"sleeper": descriptor},
     )
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
 
     task = asyncio.create_task(
-        tool.coroutine(
-            skill_directory="/runtime/thread-cancel/skills/sleeper/",
-            command="python scripts/sleep_forever.py",
+        tool.ainvoke(
+            {
+                "skill_directory": "/runtime/thread-cancel/skills/sleeper/",
+                "command": "python scripts/sleep_forever.py",
+            }
         )
     )
     # subprocess 가 실제로 시작될 때까지 대기 (스크립트가 PID 파일을 씀)

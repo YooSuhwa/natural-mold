@@ -3,6 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from app.schemas.skill_builder import JsonValue
+from app.schemas.skill_evaluation_result import (
+    JsonObject,
+    SkillEvaluationBenchmark,
+    SkillEvaluationBenchmarkComparison,
+    SkillEvaluationKpis,
+    SkillEvaluationSummary,
+)
 from app.services.skill_evaluation_result_cases import (
     baseline_count,
     mean_metric,
@@ -13,7 +20,6 @@ from app.services.skill_evaluation_result_values import (
     HIGHER_IS_BETTER,
     LOWER_IS_BETTER,
     STATUS_PASSED,
-    JsonObject,
     delta,
     delta_rate,
     dict_value,
@@ -31,7 +37,7 @@ def normalize_skill_evaluation_result(
     raw_case_results: Sequence[JsonValue],
     raw_summary: Mapping[str, JsonValue] | None = None,
     raw_benchmark: Mapping[str, JsonValue] | None = None,
-) -> tuple[JsonObject, JsonObject, list[JsonObject]]:
+) -> tuple[SkillEvaluationSummary, SkillEvaluationBenchmark, list[JsonObject]]:
     case_results = normalize_case_results(evals=evals, raw_case_results=raw_case_results)
     benchmark = _benchmark(raw_benchmark=raw_benchmark, case_results=case_results)
     summary = _summary(
@@ -45,10 +51,10 @@ def normalize_skill_evaluation_result(
 def _summary(
     *,
     raw_summary: Mapping[str, JsonValue] | None,
-    benchmark: JsonObject,
+    benchmark: SkillEvaluationBenchmark,
     case_results: list[JsonObject],
-) -> JsonObject:
-    summary: JsonObject = dict(raw_summary or {})
+) -> SkillEvaluationSummary:
+    summary = SkillEvaluationSummary(raw_summary)
     case_count = len(case_results)
     passed_count = sum(1 for row in case_results if row["status"] == STATUS_PASSED)
     failed_count = case_count - passed_count
@@ -85,10 +91,10 @@ def _benchmark(
     *,
     raw_benchmark: Mapping[str, JsonValue] | None,
     case_results: list[JsonObject],
-) -> JsonObject:
-    benchmark: JsonObject = {
-        key: _json_value_without_nonfinite(value) for key, value in (raw_benchmark or {}).items()
-    }
+) -> SkillEvaluationBenchmark:
+    benchmark = SkillEvaluationBenchmark(
+        {key: _json_value_without_nonfinite(value) for key, value in (raw_benchmark or {}).items()}
+    )
     with_pass_rate = rate(status_count(case_results, "status", STATUS_PASSED), len(case_results))
     baseline_total = baseline_count(case_results)
     baseline_pass_rate = (
@@ -135,7 +141,7 @@ def _kpis(
     baseline_duration: int | float | None,
     tokens: int | float | None,
     baseline_tokens: int | float | None,
-) -> JsonObject:
+) -> SkillEvaluationKpis:
     case_count = len(case_results)
     passed_count = status_count(case_results, "status", STATUS_PASSED)
     baseline_total = baseline_count(case_results)
@@ -146,62 +152,68 @@ def _kpis(
         else None
     )
     token_delta = delta(tokens, baseline_tokens)
-    return {
-        "pass_rate": {
-            "value": rate(passed_count, case_count),
-            "passed": passed_count,
-            "total": case_count,
-            "delta": number_or_none(benchmark.get("pass_rate_delta")),
-            "direction": HIGHER_IS_BETTER,
-        },
-        "trigger_accuracy": _trigger_kpi(case_results),
-        "average_duration_ms": {
-            "value": duration,
-            "baseline_value": baseline_duration,
-            "delta": delta(duration, baseline_duration),
-            "direction": LOWER_IS_BETTER,
-        },
-        "average_tokens": {
-            "value": tokens,
-            "baseline_value": baseline_tokens,
-            "delta": token_delta,
-            "delta_rate": delta_rate(token_delta, baseline_tokens),
-            "direction": LOWER_IS_BETTER,
-        },
-        "error_count": {
-            "value": error_count,
-            "baseline_value": baseline_errors,
-            "delta": delta(error_count, baseline_errors),
-            "direction": LOWER_IS_BETTER,
-        },
-    }
+    return SkillEvaluationKpis(
+        {
+            "pass_rate": {
+                "value": rate(passed_count, case_count),
+                "passed": passed_count,
+                "total": case_count,
+                "delta": number_or_none(benchmark.get("pass_rate_delta")),
+                "direction": HIGHER_IS_BETTER,
+            },
+            "trigger_accuracy": _trigger_kpi(case_results),
+            "average_duration_ms": {
+                "value": duration,
+                "baseline_value": baseline_duration,
+                "delta": delta(duration, baseline_duration),
+                "direction": LOWER_IS_BETTER,
+            },
+            "average_tokens": {
+                "value": tokens,
+                "baseline_value": baseline_tokens,
+                "delta": token_delta,
+                "delta_rate": delta_rate(token_delta, baseline_tokens),
+                "direction": LOWER_IS_BETTER,
+            },
+            "error_count": {
+                "value": error_count,
+                "baseline_value": baseline_errors,
+                "delta": delta(error_count, baseline_errors),
+                "direction": LOWER_IS_BETTER,
+            },
+        }
+    )
 
 
-def _comparison(*, benchmark: JsonObject, case_results: list[JsonObject]) -> JsonObject:
+def _comparison(
+    *, benchmark: SkillEvaluationBenchmark, case_results: list[JsonObject]
+) -> SkillEvaluationBenchmarkComparison:
     duration = mean_metric(case_results, "duration_ms")
     baseline_duration = mean_metric(case_results, "baseline_duration_ms")
     tokens = mean_metric(case_results, "tokens")
     baseline_tokens = mean_metric(case_results, "baseline_tokens")
-    return {
-        "pass_rate": {
-            "with_skill": number_or_none(benchmark.get("with_skill_pass_rate")),
-            "baseline": number_or_none(benchmark.get("without_skill_pass_rate")),
-            "delta": number_or_none(benchmark.get("pass_rate_delta")),
-            "direction": HIGHER_IS_BETTER,
-        },
-        "duration_ms": {
-            "with_skill": duration,
-            "baseline": baseline_duration,
-            "delta": delta(duration, baseline_duration),
-            "direction": LOWER_IS_BETTER,
-        },
-        "tokens": {
-            "with_skill": tokens,
-            "baseline": baseline_tokens,
-            "delta": delta(tokens, baseline_tokens),
-            "direction": LOWER_IS_BETTER,
-        },
-    }
+    return SkillEvaluationBenchmarkComparison(
+        {
+            "pass_rate": {
+                "with_skill": number_or_none(benchmark.get("with_skill_pass_rate")),
+                "baseline": number_or_none(benchmark.get("without_skill_pass_rate")),
+                "delta": number_or_none(benchmark.get("pass_rate_delta")),
+                "direction": HIGHER_IS_BETTER,
+            },
+            "duration_ms": {
+                "with_skill": duration,
+                "baseline": baseline_duration,
+                "delta": delta(duration, baseline_duration),
+                "direction": LOWER_IS_BETTER,
+            },
+            "tokens": {
+                "with_skill": tokens,
+                "baseline": baseline_tokens,
+                "delta": delta(tokens, baseline_tokens),
+                "direction": LOWER_IS_BETTER,
+            },
+        }
+    )
 
 
 def _trigger_kpi(case_results: list[JsonObject]) -> JsonObject:

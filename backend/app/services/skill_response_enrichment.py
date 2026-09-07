@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from typing import cast
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,11 @@ from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.marketplace import SkillCredentialBinding
 from app.models.skill import AgentSkillLink, Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
-from app.schemas.skill import SkillHealthSummary, SkillLatestEvaluationSummary
+from app.schemas.skill import (
+    SkillHealthSummary,
+    SkillLatestEvaluationStatus,
+    SkillLatestEvaluationSummary,
+)
 from app.services.skill_health_service import calculate_skill_health
 
 
@@ -177,12 +182,12 @@ def _summary_status(
     skill: Skill,
     run: SkillEvaluationRun,
     pass_rate: float | None,
-) -> str:
+) -> SkillLatestEvaluationStatus:
     if run.skill_content_hash != skill.content_hash:
         return "stale"
     if run.status == "completed":
         return "passed" if pass_rate is not None and pass_rate >= 0.8 else "partial"
-    return run.status
+    return cast(SkillLatestEvaluationStatus, run.status)
 
 
 def _pass_rate(run: SkillEvaluationRun) -> float | None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.agent_runtime.skill_builder.eval_schema import SkillEvalCase
 from app.agent_runtime.skill_builder.eval_templates import EvalTemplate
+from app.schemas.skill_builder import JsonValue
 
 
 def generate_eval_cases(
@@ -19,7 +20,7 @@ def generate_eval_cases(
 
 
 def _structured_cases(intent: str, template: EvalTemplate) -> list[SkillEvalCase]:
-    expected = {
+    expected: dict[str, JsonValue] = {
         "format": "structured",
         "required_fields": ["task", "owner", "deadline"],
     }
@@ -32,7 +33,7 @@ def _structured_cases(intent: str, template: EvalTemplate) -> list[SkillEvalCase
 
 
 def _research_cases(intent: str, template: EvalTemplate) -> list[SkillEvalCase]:
-    expected = {
+    expected: dict[str, JsonValue] = {
         "format": "answer_with_citations",
         "minimum_sources": 2,
     }
@@ -45,7 +46,7 @@ def _research_cases(intent: str, template: EvalTemplate) -> list[SkillEvalCase]:
 
 
 def _general_cases(intent: str, template: EvalTemplate) -> list[SkillEvalCase]:
-    expected = {"format": "useful_answer"}
+    expected: dict[str, JsonValue] = {"format": "useful_answer"}
     inputs = (
         "사용자의 원래 의도를 보존하면서 결과를 개선하세요.",
         "모호한 입력에는 필요한 가정을 짧게 밝히고 실행 가능한 결과를 내세요.",
@@ -57,7 +58,7 @@ def _case(
     intent: str,
     template: EvalTemplate,
     input_text: str,
-    expected: dict[str, str | int | list[str]],
+    expected: dict[str, JsonValue],
     tags: list[str],
 ) -> SkillEvalCase:
     return SkillEvalCase(

@@ -43,7 +43,9 @@ async def test_manual_prepare_creates_eval_set_for_existing_skill(
     assert body["case_count"] == 1
     evaluation_set = await db.get(SkillEvaluationSet, uuid.UUID(body["evaluation_set_id"]))
     assert evaluation_set is not None
-    assert evaluation_set.evals[0]["input"] == "Summarize."
+    eval_case = evaluation_set.evals[0]
+    assert isinstance(eval_case, dict)
+    assert eval_case["input"] == "Summarize."
     audit_event = await _latest_audit_event(db, "skill_evaluation_set.imported")
     assert audit_event is not None
     assert audit_event.target_id == str(skill.id)

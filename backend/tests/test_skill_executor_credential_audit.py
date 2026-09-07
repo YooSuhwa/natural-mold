@@ -72,11 +72,12 @@ async def test_execute_in_skill_records_credential_audit_without_secret_payload(
         run_id=run_id,
     )
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
 
-    result = await tool.coroutine(
-        skill_directory="/runtime/thread-audit/skills/audited/",
-        command="python scripts/echo.py",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": "/runtime/thread-audit/skills/audited/",
+            "command": "python scripts/echo.py",
+        }
     )
 
     async with TestSession() as db:
@@ -142,11 +143,12 @@ async def test_execute_in_skill_blocks_undeclared_network_and_audits(
         run_id="eval-run-1",
     )
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
 
-    result = await tool.coroutine(
-        skill_directory="/runtime/thread-network/skills/networked/",
-        command="curl https://example.com/private?token=raw",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": "/runtime/thread-network/skills/networked/",
+            "command": "curl https://example.com/private?token=raw",
+        }
     )
 
     async with TestSession() as db:

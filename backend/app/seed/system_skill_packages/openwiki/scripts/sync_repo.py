@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Never
 
 CLONE_DEPTH_DEFAULT = 200
 GIT_TIMEOUT_SECONDS = 300
@@ -22,7 +23,7 @@ MAX_EVIDENCE_CHARS = 8000
 FALLBACK_LOG_COMMITS = 20
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> Never:
     print(json.dumps({"error": message}, ensure_ascii=False))
     sys.exit(1)
 

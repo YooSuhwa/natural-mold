@@ -23,6 +23,7 @@ from app.models.skill_builder_session import SkillBuilderSession
 from app.routers.conversation_agent_protocol_consent import (
     apply_session_consent_decisions,
 )
+from app.routers.conversation_agent_protocol_interrupts import ThreadInterrupt
 from app.services import skill_draft_workspace as workspace
 from tests.conftest import TEST_USER_ID, TestSession
 
@@ -86,7 +87,7 @@ def _resume(decisions: list[dict[str, object]]):
     )
 
 
-def _pending(action_names: list[str]):
+def _pending(action_names: list[str]) -> list[ThreadInterrupt]:
     return [
         {
             "id": "int-1",
@@ -131,7 +132,9 @@ async def test_consent_recorded_and_scope_stripped(db: AsyncSession) -> None:
 
     await db.refresh(session)
     assert session.tool_consents is not None
-    assert session.tool_consents["test_skill_draft"]["scope"] == "session"
+    consent = session.tool_consents["test_skill_draft"]
+    assert isinstance(consent, dict)
+    assert consent["scope"] == "session"
 
 
 async def test_consent_not_recorded_for_finalize_skill(db: AsyncSession) -> None:

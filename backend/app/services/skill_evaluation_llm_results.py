@@ -52,30 +52,31 @@ def summary_payload(
     # — never report phantom without-skill runs the worker did not execute.
     without_skill_runs = case_count if baseline_enabled else 0
     model_call_count = case_count * (3 if baseline_enabled else 2)
-    grader_result = validate_grader_result(
-        {
-            "expectations": [_case_field(case, "expected") for case in evals],
-            "summary": {
-                "runner_version": runner_version,
-                "case_count": case_count,
-                "passed_count": passed_count,
-                "failed_count": failed_count,
-                "pass_rate": _pass_rate(passed_count, case_count),
-            },
-            "execution_metrics": {
-                "with_skill_runs": case_count,
-                "without_skill_runs": without_skill_runs,
-                "model_call_count": model_call_count,
-                "tool_calls": _tool_call_count(case_results),
-            },
-            "timing": {
-                "case_timeout_seconds": settings.skill_evaluation_case_timeout_seconds,
-                "timeout_seconds": settings.skill_evaluation_run_timeout_seconds,
-            },
-            "claims": _claims(payload, case_results),
-            "eval_feedback": _feedback(payload, case_results),
-        }
-    )
+    claims: list[JsonValue] = list(_claims(payload, case_results))
+    feedback: list[JsonValue] = list(_feedback(payload, case_results))
+    grader_input: JsonObject = {
+        "expectations": [_case_field(case, "expected") for case in evals],
+        "summary": {
+            "runner_version": runner_version,
+            "case_count": case_count,
+            "passed_count": passed_count,
+            "failed_count": failed_count,
+            "pass_rate": _pass_rate(passed_count, case_count),
+        },
+        "execution_metrics": {
+            "with_skill_runs": case_count,
+            "without_skill_runs": without_skill_runs,
+            "model_call_count": model_call_count,
+            "tool_calls": _tool_call_count(case_results),
+        },
+        "timing": {
+            "case_timeout_seconds": settings.skill_evaluation_case_timeout_seconds,
+            "timeout_seconds": settings.skill_evaluation_run_timeout_seconds,
+        },
+        "claims": claims,
+        "eval_feedback": feedback,
+    }
+    grader_result = validate_grader_result(grader_input)
     summary = dict(grader_result)
     summary["runner_version"] = runner_version
     summary["case_count"] = case_count
@@ -94,7 +95,7 @@ def scores_from_case_results(
     score_key = "baseline_score" if baseline else "score"
     return [
         EvalCaseResult(
-            case_index=int(row["case_index"]),
+            case_index=_case_index(row),
             passed=row[status_key] == "passed",
             score=_score(row.get(score_key)),
         )
