@@ -25,7 +25,11 @@ BACKEND_ROOT: Final = REPO_ROOT / "backend"
 OWNER_LABEL: Final = "dev.moldy.postgres-test-owner"
 IMAGE: Final = "postgres:16-alpine"
 ExternalScenarioKind = Literal[
-    "all", "migration-roundtrip", "stream-resume", "run-lifecycle+stream-resume", "queue-concurrency"
+    "all",
+    "migration-roundtrip",
+    "stream-resume",
+    "run-lifecycle+stream-resume",
+    "queue-concurrency",
 ]
 ScenarioKind = Literal[
     "all",

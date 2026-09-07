@@ -180,7 +180,8 @@ def _run_scenario(
                 "warning_hits": warnings,
                 "warning_scan_complete": True,
                 "test_receipt": json.loads(receipt.read_text())
-                if kind in {"all", "stream-resume", "run-lifecycle+stream-resume", "queue-concurrency"}
+                if kind
+                in {"all", "stream-resume", "run-lifecycle+stream-resume", "queue-concurrency"}
                 else None,
                 "tmpfs_storage": tmpfs_owned,
             }
