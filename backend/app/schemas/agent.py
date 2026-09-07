@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
-from app.agent_runtime.runtime_policy import RuntimePolicySource, RuntimePolicyV1
+from app.agent_runtime.runtime_policy import RuntimePolicySnapshotSource, RuntimePolicyV1
 from app.schemas.skill import SkillBrief as SkillBrief  # noqa: F401 — used in AgentResponse
 
 MAX_OPENER_QUESTIONS = 12
@@ -220,7 +220,7 @@ class AgentResponse(BaseModel):
     middleware_configs: list[dict[str, Any]] = []
     runtime_policy: RuntimePolicyV1 | None = None
     runtime_policy_effective: RuntimePolicyV1
-    runtime_policy_source: RuntimePolicySource
+    runtime_policy_source: RuntimePolicySnapshotSource
     status: str
     is_favorite: bool = False
     model_params: dict[str, Any] | None = None

@@ -21,6 +21,7 @@ from final_attempt_lifecycle import (
 from operation_ledger_format import JSONValue
 from plan_history_support import (
     HEAD,
+    LifecycleArguments,
     _begin,
     _prepare_seal_prerequisites,
     _seal,
@@ -30,11 +31,12 @@ from plan_history_support import (
     _write_json,
     _write_review_receipt,
     lifecycle_arguments,
+    terminal_lifecycle_arguments,
 )
 
 
 @pytest.fixture
-def lifecycle(tmp_path: Path) -> dict[str, object]:
+def lifecycle(tmp_path: Path) -> LifecycleArguments:
     return lifecycle_arguments(tmp_path)
 
 
@@ -50,21 +52,21 @@ def test_inventory_rejects_writable_regular_evidence(tmp_path: Path, mode: int) 
         evidence_module._inventory(root)
 
 
-def test_abandon_requires_terminal_f2_or_f3_receipt(lifecycle: dict[str, object]) -> None:
+def test_abandon_requires_terminal_f2_or_f3_receipt(lifecycle: LifecycleArguments) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     receipt = _write_failure_receipt(attempt_dir, str(pointer["attempt_id"]), "F2", terminal="PASS")
 
     with pytest.raises(LifecycleError, match="not terminal"):
         abandon_final_attempt(
-            **{key: value for key, value in lifecycle.items() if key != "head"},
+            **terminal_lifecycle_arguments(lifecycle),
             failure_receipt=receipt,
         )
 
 
 @pytest.mark.parametrize("mutation", ["minimal", "unknown", "cross-kind", "empty"])
 def test_abandon_rejects_forged_or_mixed_typed_failure_receipts(
-    lifecycle: dict[str, object], mutation: str
+    lifecycle: LifecycleArguments, mutation: str
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -82,14 +84,14 @@ def test_abandon_rejects_forged_or_mixed_typed_failure_receipts(
 
     with pytest.raises(LifecycleError, match="schema|evidence"):
         abandon_final_attempt(
-            **{key: value for key, value in lifecycle.items() if key != "head"},
+            **terminal_lifecycle_arguments(lifecycle),
             failure_receipt=receipt,
         )
 
 
 @pytest.mark.parametrize("mutation", ["mismatch", "missing", "alias"])
 def test_failure_receipt_rejects_unbound_artifact_hashes(
-    lifecycle: dict[str, object], mutation: str
+    lifecycle: LifecycleArguments, mutation: str
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -107,13 +109,13 @@ def test_failure_receipt_rejects_unbound_artifact_hashes(
 
     with pytest.raises(LifecycleError, match="evidence"):
         abandon_final_attempt(
-            **{key: value for key, value in lifecycle.items() if key != "head"},
+            **terminal_lifecycle_arguments(lifecycle),
             failure_receipt=receipt,
         )
 
 
 def test_reopen_rejects_markdown_with_unbound_or_cross_gate_terminal_metadata(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -123,14 +125,14 @@ def test_reopen_rejects_markdown_with_unbound_or_cross_gate_terminal_metadata(
 
     with pytest.raises(LifecycleError, match="binding"):
         reopen_seal(
-            **{key: value for key, value in lifecycle.items() if key != "head"},
+            **terminal_lifecycle_arguments(lifecycle),
             failure_receipt=review,
         )
 
 
 @pytest.mark.parametrize("mutation", ["mismatch", "missing", "alias"])
 def test_review_receipt_rejects_unbound_gate_artifact(
-    lifecycle: dict[str, object], mutation: str
+    lifecycle: LifecycleArguments, mutation: str
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -151,13 +153,13 @@ def test_review_receipt_rejects_unbound_gate_artifact(
 
     with pytest.raises(LifecycleError):
         reopen_seal(
-            **{key: value for key, value in lifecycle.items() if key != "head"},
+            **terminal_lifecycle_arguments(lifecycle),
             failure_receipt=review,
         )
 
 
 def test_lifecycle_rejects_symlink_hardlink_and_export_namespace_attacks(
-    lifecycle: dict[str, object], tmp_path: Path
+    lifecycle: LifecycleArguments, tmp_path: Path
 ) -> None:
     pointer = _begin(lifecycle)
     pointer_path = Path(lifecycle["pointer_path"])
@@ -302,7 +304,7 @@ def test_inventory_detects_descendant_rename_replacement_during_traversal(
 
 
 def test_lifecycle_rejects_full_valid_export_receipt_from_arbitrary_tmp_parent(
-    lifecycle: dict[str, object], tmp_path: Path
+    lifecycle: LifecycleArguments, tmp_path: Path
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -505,7 +507,7 @@ def test_external_exports_rejects_expected_e2e_receipt_with_wrong_runner(tmp_pat
 
 
 def test_lifecycle_seals_exact_direct_child_final_attempt_export(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     repo_root = Path(lifecycle["repo_root"])
@@ -532,7 +534,7 @@ def test_lifecycle_seals_exact_direct_child_final_attempt_export(
     )
 
 
-def test_seal_rejects_shape_only_prerequisites(lifecycle: dict[str, object]) -> None:
+def test_seal_rejects_shape_only_prerequisites(lifecycle: LifecycleArguments) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     _prepare_seal_prerequisites(attempt_dir)
@@ -551,7 +553,7 @@ def test_seal_rejects_shape_only_prerequisites(lifecycle: dict[str, object]) -> 
     ],
 )
 def test_seal_rejects_exact_review_footer_mutations(
-    lifecycle: dict[str, object], name: str, old: str, new: str, reason: str
+    lifecycle: LifecycleArguments, name: str, old: str, new: str, reason: str
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -564,7 +566,7 @@ def test_seal_rejects_exact_review_footer_mutations(
 
 
 def test_seal_rejects_unreferenced_f2_child_and_final_skips(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -596,7 +598,7 @@ def test_seal_rejects_unreferenced_f2_child_and_final_skips(
 
 
 def test_lifecycle_rejects_unlisted_secret_file_in_retained_export(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     repo_root = Path(lifecycle["repo_root"])

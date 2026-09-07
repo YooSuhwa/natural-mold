@@ -27,7 +27,7 @@ from app.models.mcp_tool import McpTool
 from app.models.model import Model
 from app.models.skill import Skill
 from app.models.tool import Tool
-from app.schemas.agent import AgentCreate
+from app.schemas.agent import AgentCreate, MiddlewareConfigEntry
 from app.services import agent_service
 from app.tools.registry import registry as tool_registry
 
@@ -49,8 +49,10 @@ async def _resolve_model_id(
             raise marketplace_invalid_package("requested model is not available")
         return model.id
 
-    agent_spec = spec.get("agent") if isinstance(spec.get("agent"), dict) else {}
-    model_spec = agent_spec.get("model") if isinstance(agent_spec.get("model"), dict) else {}
+    raw_agent_spec = spec.get("agent")
+    agent_spec = raw_agent_spec if isinstance(raw_agent_spec, dict) else {}
+    raw_model_spec = agent_spec.get("model")
+    model_spec = raw_model_spec if isinstance(raw_model_spec, dict) else {}
     model_id = await _resolve_model_descriptor(db, model_spec=model_spec)
     if model_id is not None:
         return model_id
@@ -105,12 +107,10 @@ async def _resolve_model_fallback_ids(
     if requested_model_fallback_ids is not None:
         return requested_model_fallback_ids
 
-    agent_spec = spec.get("agent") if isinstance(spec.get("agent"), dict) else {}
-    rows = (
-        agent_spec.get("model_fallbacks")
-        if isinstance(agent_spec.get("model_fallbacks"), list)
-        else []
-    )
+    raw_agent_spec = spec.get("agent")
+    agent_spec = raw_agent_spec if isinstance(raw_agent_spec, dict) else {}
+    raw_rows = agent_spec.get("model_fallbacks")
+    rows = raw_rows if isinstance(raw_rows, list) else []
     fallback_ids: list[uuid.UUID] = []
     for row in rows:
         if not isinstance(row, dict):
@@ -128,7 +128,7 @@ def _capabilities(spec: dict[str, Any]) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _validated_middleware_configs(agent_spec: dict[str, Any]) -> list[dict[str, Any]]:
+def _validated_middleware_configs(agent_spec: dict[str, Any]) -> list[MiddlewareConfigEntry]:
     """Validate publisher-controlled middleware configs against the catalog.
 
     Unknown keys are rejected with ``marketplace_invalid_package`` (naming
@@ -141,6 +141,7 @@ def _validated_middleware_configs(agent_spec: dict[str, Any]) -> list[dict[str, 
         return []
     if not isinstance(configs, list):
         raise marketplace_invalid_package("middleware configs are malformed")
+    validated: list[MiddlewareConfigEntry] = []
     unknown: list[str] = []
     for row in configs:
         if not isinstance(row, dict):
@@ -148,11 +149,13 @@ def _validated_middleware_configs(agent_spec: dict[str, Any]) -> list[dict[str, 
         key = str(row.get("type") or "")
         if key not in MIDDLEWARE_REGISTRY:
             unknown.append(key or "<missing type>")
+            continue
+        validated.append(MiddlewareConfigEntry.model_validate(row))
     if unknown:
         raise marketplace_invalid_package(
             f"unknown middleware keys: {', '.join(sorted(set(unknown)))}"
         )
-    return configs
+    return validated
 
 
 def _validated_runtime_policy(agent_spec: dict[str, Any]) -> RuntimePolicyV1 | None:
@@ -188,12 +191,10 @@ def _first_tool_with_parameters(
 
 
 def _credential_requirements(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    setup = spec.get("setup") if isinstance(spec.get("setup"), dict) else {}
-    rows = (
-        setup.get("required_credentials")
-        if isinstance(setup.get("required_credentials"), list)
-        else []
-    )
+    raw_setup = spec.get("setup")
+    setup = raw_setup if isinstance(raw_setup, dict) else {}
+    raw_rows = setup.get("required_credentials")
+    rows = raw_rows if isinstance(raw_rows, list) else []
     return {str(row.get("key")): row for row in rows if isinstance(row, dict) and row.get("key")}
 
 
@@ -568,13 +569,15 @@ async def _resolve_mcp_tool_ids(
     credential_bindings: dict[str, uuid.UUID],
 ) -> list[uuid.UUID]:
     tool_ids: list[uuid.UUID] = []
-    rows = capabilities.get("mcp_tools") if isinstance(capabilities.get("mcp_tools"), list) else []
+    raw_rows = capabilities.get("mcp_tools")
+    rows = raw_rows if isinstance(raw_rows, list) else []
     for row in rows:
         if not isinstance(row, dict):
             continue
         name = str(row.get("name") or "").strip()
-        server_spec = row.get("server") if isinstance(row.get("server"), dict) else {}
-        if not name or not isinstance(server_spec, dict):
+        raw_server_spec = row.get("server")
+        server_spec = raw_server_spec if isinstance(raw_server_spec, dict) else {}
+        if not name:
             continue
         server = await _find_or_create_mcp_server(
             db,
@@ -620,7 +623,8 @@ async def _resolve_sub_agent_ids(
     blueprint references land instead of extending it.
     """
 
-    rows = capabilities.get("subagents") if isinstance(capabilities.get("subagents"), list) else []
+    raw_rows = capabilities.get("subagents")
+    rows = raw_rows if isinstance(raw_rows, list) else []
     sorted_rows = sorted(
         rows,
         key=lambda row: int(row.get("position") or 0) if isinstance(row, dict) else 0,
@@ -724,7 +728,8 @@ async def create_agent_from_blueprint(
         bindings=_merged_credential_bindings(blueprint=blueprint, body=body),
         user_id=user_id,
     )
-    agent_spec = spec.get("agent") if isinstance(spec.get("agent"), dict) else {}
+    raw_agent_spec = spec.get("agent")
+    agent_spec = raw_agent_spec if isinstance(raw_agent_spec, dict) else {}
     model_id = await _resolve_model_id(
         db,
         spec=spec,

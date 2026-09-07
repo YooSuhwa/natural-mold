@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeGuard
 
 from app.agent_runtime import event_names
-from app.agent_runtime.legacy_event_projection import project_protocol_event_to_legacy
+from app.agent_runtime.legacy_event_projection import (
+    LegacySSEEvent,
+    project_protocol_event_to_legacy,
+)
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
 
 
@@ -63,7 +66,7 @@ def _project_protocol_event(
 def _legacy_events_from_protocol(
     event: StoredProtocolEvent,
     data: Mapping[str, Any],
-) -> list[dict[str, Any]]:
+) -> list[LegacySSEEvent]:
     legacy_events = list(project_protocol_event_to_legacy(event))
     if legacy_events or event["method"] != "messages":
         return legacy_events
@@ -200,7 +203,7 @@ def _as_dict(value: object) -> dict[str, Any]:
     return {}
 
 
-def _is_payload_metadata_pair(value: object) -> bool:
+def _is_payload_metadata_pair(value: object) -> TypeGuard[Sequence[object]]:
     return (
         isinstance(value, Sequence)
         and not isinstance(value, str | bytes | bytearray)

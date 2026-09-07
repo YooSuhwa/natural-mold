@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from app.schemas.skill_builder import JsonValue
 from app.services.skill_evaluation_result_schema import normalize_skill_evaluation_result
 
 
 def test_summary_v2_keeps_legacy_fields_and_adds_kpis() -> None:
     # Given: one passed case and legacy grader summary metadata.
-    evals = [{"input": "Extract action items.", "expected": "Action item table."}]
+    evals: list[JsonValue] = [{"input": "Extract action items.", "expected": "Action item table."}]
     raw_case_results = [
         {
             "case_index": 0,
@@ -66,7 +67,7 @@ def test_summary_v2_keeps_legacy_fields_and_adds_kpis() -> None:
 
 def test_benchmark_v2_keeps_legacy_fields_and_adds_comparison() -> None:
     # Given: legacy benchmark fields and per-case duration/token metrics.
-    evals = [{"input": "Summarize.", "expected": "Short summary."}]
+    evals: list[JsonValue] = [{"input": "Summarize.", "expected": "Short summary."}]
     raw_case_results = [
         {
             "case_index": 0,
@@ -128,7 +129,7 @@ def test_benchmark_v2_keeps_legacy_fields_and_adds_comparison() -> None:
 
 def test_case_results_v2_adds_review_and_metric_defaults() -> None:
     # Given: a minimal legacy case result.
-    evals = [{"input": "Find facts.", "expected": "Cited facts."}]
+    evals: list[JsonValue] = [{"input": "Find facts.", "expected": "Cited facts."}]
     raw_case_results = [{"case_index": 0, "status": "failed", "score": 0.3}]
 
     # When: case results are normalized.
@@ -166,7 +167,7 @@ def test_case_results_v2_adds_review_and_metric_defaults() -> None:
 
 def test_case_results_v2_preserves_execution_compatibility_fields() -> None:
     # Given: a deterministic script-backed case result with legacy execution data.
-    evals = [{"input": "Run the probe.", "expected": "A redacted preview."}]
+    evals: list[JsonValue] = [{"input": "Run the probe.", "expected": "A redacted preview."}]
     raw_case_results = [
         {
             "case_index": 0,
@@ -196,7 +197,7 @@ def test_case_results_v2_preserves_execution_compatibility_fields() -> None:
 
 def test_result_schema_accepts_missing_duration_and_token_metrics() -> None:
     # Given: a passed result without runtime metrics.
-    evals = [{"input": "Classify.", "expected": "A label."}]
+    evals: list[JsonValue] = [{"input": "Classify.", "expected": "A label."}]
     raw_case_results = [{"case_index": 0, "status": "passed", "score": 0.8}]
 
     # When: the result is normalized.
@@ -229,7 +230,7 @@ def test_result_schema_accepts_missing_duration_and_token_metrics() -> None:
 
 def test_result_schema_clamps_scores_and_normalizes_statuses() -> None:
     # Given: invalid scores and unknown status values from a grader.
-    evals = [{"input": "Parse.", "expected": "JSON."}]
+    evals: list[JsonValue] = [{"input": "Parse.", "expected": "JSON."}]
     raw_case_results = [
         {
             "case_index": 0,

@@ -19,6 +19,19 @@ from app.marketplace.schemas import (
     ResourcePublicationSummaryOut,
 )
 
+type SkillLatestEvaluationStatus = Literal[
+    "queued",
+    "running",
+    "grading",
+    "completed",
+    "failed",
+    "cancelled",
+    "missing",
+    "stale",
+    "partial",
+    "passed",
+]
+
 
 class SkillCreate(BaseModel):
     """Create a text-kind skill via JSON.
@@ -59,18 +72,7 @@ class SkillFileEntry(BaseModel):
 
 
 class SkillLatestEvaluationSummary(BaseModel):
-    status: Literal[
-        "queued",
-        "running",
-        "grading",
-        "completed",
-        "failed",
-        "cancelled",
-        "missing",
-        "stale",
-        "partial",
-        "passed",
-    ]
+    status: SkillLatestEvaluationStatus
     latest_run_id: uuid.UUID | None = None
     evaluation_set_id: uuid.UUID | None = None
     pass_rate: float | None = None

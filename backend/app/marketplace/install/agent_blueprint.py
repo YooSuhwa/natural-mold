@@ -104,7 +104,8 @@ async def _install_agent_blueprint_item(
     install_status = "needs_setup" if missing else "active"
 
     payload = _agent_blueprint_payload_with_requirements(version)
-    agent_spec = payload.get("agent") if isinstance(payload.get("agent"), dict) else {}
+    raw_agent_spec = payload.get("agent")
+    agent_spec = raw_agent_spec if isinstance(raw_agent_spec, dict) else {}
     name = body.name_override or agent_spec.get("name") or payload.get("name") or item.name
 
     if (
@@ -249,7 +250,8 @@ async def _overwrite_agent_blueprint_installation(
         raise marketplace_item_not_found()
 
     payload = _agent_blueprint_payload_with_requirements(latest)
-    agent_spec = payload.get("agent") if isinstance(payload.get("agent"), dict) else {}
+    raw_agent_spec = payload.get("agent")
+    agent_spec = raw_agent_spec if isinstance(raw_agent_spec, dict) else {}
     name = agent_spec.get("name") or payload.get("name") or item.name
     install_status, credential_bindings = await _agent_blueprint_status_from_bindings(
         db,

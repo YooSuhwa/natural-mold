@@ -10,6 +10,7 @@ from pydantic_core import PydanticCustomError
 
 type JsonScalar = str | int | float | bool | None
 type JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
+type SkillDraftFileRole = Literal["skill", "script", "reference", "asset", "metadata", "eval"]
 
 
 class SkillBuilderMode(StrEnum):
@@ -54,7 +55,7 @@ class SkillDraftFile(BaseModel):
     path: str = Field(..., min_length=1, max_length=500)
     content: str
     media_type: str = "text/plain"
-    role: Literal["skill", "script", "reference", "asset", "metadata", "eval"] = "skill"
+    role: SkillDraftFileRole = "skill"
 
 
 class SkillBuilderFileEntry(BaseModel):

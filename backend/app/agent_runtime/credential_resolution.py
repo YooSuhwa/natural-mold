@@ -79,7 +79,7 @@ async def resolve_llm_api_key_for_agent(
         logger.info(
             "agent %s: keyless dev model provider=%s",
             agent.id,
-            model.provider,
+            getattr(model, "provider", None),
         )
         return None
 

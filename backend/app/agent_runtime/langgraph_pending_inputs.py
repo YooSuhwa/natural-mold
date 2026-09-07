@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
-from typing import Any, TypedDict
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any, TypedDict, cast
 
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
@@ -25,12 +25,11 @@ class PendingInputStateUnavailable(RuntimeError):
     pass
 
 
-def _next_protocol_seq(events: list[dict[str, Any]]) -> int:
-    seq_values = [event.get("seq") for event in events if isinstance(event.get("seq"), int)]
-    return max(seq_values, default=0) + 1
+def _next_protocol_seq(events: list[StoredProtocolEvent]) -> int:
+    return max((event["seq"] for event in events), default=0) + 1
 
 
-def _seen_interrupt_ids(events: list[dict[str, Any]]) -> set[str]:
+def _seen_interrupt_ids(events: list[StoredProtocolEvent]) -> set[str]:
     seen: set[str] = set()
     for event in events:
         for interrupt in protocol_interrupts_from_event(event):
@@ -213,11 +212,12 @@ async def pending_input_requested_events(
     *,
     run_id: str,
     thread_id: str,
-    emitted: list[dict[str, Any]],
+    emitted: list[StoredProtocolEvent],
 ) -> list[StoredProtocolEvent]:
-    get_state = getattr(agent, "aget_state", None)
-    if not callable(get_state):
+    raw_get_state = getattr(agent, "aget_state", None)
+    if not callable(raw_get_state):
         return []
+    get_state = cast(Callable[[dict[str, Any]], Awaitable[Any]], raw_get_state)
     try:
         state = await get_state(config)
     except Exception as exc:

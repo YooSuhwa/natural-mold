@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 
+from app.schemas.skill_builder import JsonValue
 from app.services.skill_evaluation_result_schema import normalize_skill_evaluation_result
 
 
 def test_result_schema_drops_non_finite_numbers() -> None:
     # Given: a grader result containing Python-parsed NaN and infinity values.
-    evals = [{"input": "Parse.", "expected": "JSON."}]
+    evals: list[JsonValue] = [{"input": "Parse.", "expected": "JSON."}]
     raw_case_results = [
         {
             "case_index": 0,
@@ -18,7 +19,7 @@ def test_result_schema_drops_non_finite_numbers() -> None:
             "tokens": float("nan"),
         }
     ]
-    raw_benchmark = {"without_skill_pass_rate": float("nan")}
+    raw_benchmark: dict[str, JsonValue] = {"without_skill_pass_rate": float("nan")}
     raw_benchmark["with_skill_mean_score"] = float("nan")
     raw_benchmark["with_skill_stddev_score"] = float("inf")
     raw_benchmark["comparison"] = {"pass_rate": {"delta": float("-inf")}}
@@ -47,7 +48,7 @@ def test_result_schema_drops_non_finite_numbers() -> None:
 
 def test_trigger_accuracy_kpi_uses_case_count_as_total() -> None:
     # Given: only one of two cases reports trigger data.
-    evals = [
+    evals: list[JsonValue] = [
         {"input": "A", "expected": "A"},
         {"input": "B", "expected": "B"},
     ]

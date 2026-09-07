@@ -34,9 +34,18 @@ def test_actual_history_plus_remaining_primaries_satisfies_strict_contract() -> 
     result = validate_history(contract, commits, entries)
 
     assert result["primary_sequence"] == list(contract.primary_sequence)
-    assert len(result["repairs"]) > 3
-    legacy = [repair for repair in result["repairs"] if repair["legacy"] is True]
-    assert {repair["commit_sha"] for repair in legacy} == {
+    repairs = result["repairs"]
+    assert isinstance(repairs, list)
+    assert len(repairs) > 3
+    legacy_commit_shas: set[str] = set()
+    for repair in repairs:
+        assert isinstance(repair, dict)
+        if repair.get("legacy") is not True:
+            continue
+        commit_sha = repair.get("commit_sha")
+        assert isinstance(commit_sha, str)
+        legacy_commit_shas.add(commit_sha)
+    assert legacy_commit_shas == {
         "ee624b6272140567672f29a184daa7abf869df0d",
         "1024beab13a914cd78c98cfa552c6a76cc9e3237",
         "3846b6b4e05fbed479fd9d0521bc9b757550cbd3",

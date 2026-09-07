@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.schemas.skill_builder import JsonValue
 from app.services.skill_evaluation_file_adapter import (
     SkillEvaluationFileAdapterError,
     normalize_evaluation_file_payload,
@@ -10,7 +11,7 @@ from app.services.skill_evaluation_file_adapter import (
 
 def test_normalizes_moldy_eval_file() -> None:
     # Given: a Moldy-native eval file payload.
-    payload = {
+    payload: dict[str, JsonValue] = {
         "schema_version": 1,
         "name": "Smoke",
         "description": "Basic checks",
@@ -45,7 +46,7 @@ def test_normalizes_moldy_eval_file() -> None:
 
 def test_strips_execute_in_skill_from_moldy_eval_file_metadata() -> None:
     # Given: a Moldy eval file imported from an untrusted package.
-    payload = {
+    payload: dict[str, JsonValue] = {
         "evals": [
             {
                 "input": "Run the smoke check.",
@@ -62,13 +63,18 @@ def test_strips_execute_in_skill_from_moldy_eval_file_metadata() -> None:
     normalized = normalize_evaluation_file_payload(payload)
 
     # Then: portable metadata remains, but imported execution commands are removed.
-    metadata = normalized["evals"][0]["metadata"]
+    normalized_evals = normalized["evals"]
+    assert isinstance(normalized_evals, list)
+    normalized_case = normalized_evals[0]
+    assert isinstance(normalized_case, dict)
+    metadata = normalized_case["metadata"]
+    assert isinstance(metadata, dict)
     assert metadata == {"priority": "high", "source_schema": "moldy"}
 
 
 def test_normalizes_claude_skill_creator_eval_file() -> None:
     # Given: a Claude Code skill-creator eval file payload.
-    payload = {
+    payload: dict[str, JsonValue] = {
         "skill_name": "meeting-notes",
         "evals": [
             {
@@ -108,7 +114,7 @@ def test_normalizes_claude_skill_creator_eval_file() -> None:
 
 def test_rejects_empty_eval_file() -> None:
     # Given: an eval file with no cases.
-    payload = {"evals": []}
+    payload: dict[str, JsonValue] = {"evals": []}
 
     # When/Then: normalization rejects it.
     with pytest.raises(SkillEvaluationFileAdapterError, match="at least one case"):
@@ -117,7 +123,7 @@ def test_rejects_empty_eval_file() -> None:
 
 def test_rejects_eval_file_without_prompt_or_input() -> None:
     # Given: a case that is neither Moldy nor Claude compatible.
-    payload = {"evals": [{"expected": "A useful answer."}]}
+    payload: dict[str, JsonValue] = {"evals": [{"expected": "A useful answer."}]}
 
     # When/Then: normalization rejects the missing task input.
     with pytest.raises(SkillEvaluationFileAdapterError, match="input or prompt"):
@@ -126,7 +132,7 @@ def test_rejects_eval_file_without_prompt_or_input() -> None:
 
 def test_preserves_expectations_and_files_metadata() -> None:
     # Given: a Claude eval case with file and expectation metadata.
-    payload = {
+    payload: dict[str, JsonValue] = {
         "skill_name": "research",
         "evals": [
             {
@@ -143,7 +149,12 @@ def test_preserves_expectations_and_files_metadata() -> None:
     normalized = normalize_evaluation_file_payload(payload)
 
     # Then: portable metadata remains attached to the normalized case.
-    metadata = normalized["evals"][0]["metadata"]
+    normalized_evals = normalized["evals"]
+    assert isinstance(normalized_evals, list)
+    normalized_case = normalized_evals[0]
+    assert isinstance(normalized_case, dict)
+    metadata = normalized_case["metadata"]
+    assert isinstance(metadata, dict)
     assert metadata["external_id"] == "near-miss"
     assert metadata["files"] == ["sources/a.md", "sources/b.md"]
     assert metadata["expectations"] == [{"contains_citation": True}]

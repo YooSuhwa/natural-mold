@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,14 +71,19 @@ def _ledger(writer: ModuleType, path: Path) -> Path:
     return path
 
 
-def _append(writer: ModuleType, ledger: Path, **extra: JSONValue) -> None:
+def _append(
+    writer: ModuleType,
+    ledger: Path,
+    *,
+    interruption_hook: Callable[[str], None] | None = None,
+) -> None:
     writer.append_operation(
         ledger,
         task_id="02",
         action_class="durability_test",
         arguments={"case": "fixture"},
         status="passed",
-        **extra,
+        interruption_hook=interruption_hook,
     )
 
 

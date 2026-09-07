@@ -328,7 +328,11 @@ async def test_stale_sweep_preserves_live_registry_tasks(
     run = await _seed_run_for_stale_sweep(db, worker_instance_id=registry.worker_instance_id)
     await db.commit()
     blocker = asyncio.Event()
-    task = asyncio.create_task(blocker.wait())
+
+    async def wait_for_blocker() -> None:
+        await blocker.wait()
+
+    task = asyncio.create_task(wait_for_blocker())
     registry.start(run.id, task)
 
     try:

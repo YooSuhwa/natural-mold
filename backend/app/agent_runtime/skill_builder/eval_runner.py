@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import shlex
+from collections.abc import Mapping
 from dataclasses import dataclass
 from math import sqrt
 from pathlib import Path
 from typing import Final
 
-import anyio
+from anyio.to_thread import run_sync
 
 from app.agent_runtime.skill_builder.eval_limits import MAX_EVAL_COMMAND_CHARS
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
@@ -84,13 +85,12 @@ async def run_eval_skill_command(
     if (skill_slug is None) == (skill_directory is None):
         raise EvalRuntimePolicyError("provide exactly one skill slug or skill directory")
     tool = _create_skill_execute_tool(ctx)
-    coroutine = tool.coroutine
-    if not callable(coroutine):
-        raise EvalRuntimePolicyError("execute_in_skill coroutine is unavailable")
     directory = skill_directory or f"/runtime/{ctx.thread_id}/skills/{skill_slug}/"
-    result = await coroutine(
-        skill_directory=directory,
-        command=command,
+    result = await tool.ainvoke(
+        {
+            "skill_directory": directory,
+            "command": command,
+        }
     )
     return str(result)
 
@@ -99,7 +99,7 @@ async def run_eval_runtime_policy_probe(ctx: SkillToolContext) -> None:
     if not ctx.descriptors:
         return
     skill_slug, descriptor = next(iter(ctx.descriptors.items()))
-    await anyio.to_thread.run_sync(
+    await run_sync(
         _write_policy_probe_script,
         descriptor.runtime_storage_path / _POLICY_PROBE_SCRIPT,
     )
@@ -142,7 +142,9 @@ def _write_policy_probe_script(path: Path) -> None:
     path.write_text(_POLICY_PROBE_CODE, encoding="utf-8")
 
 
-def validate_grader_result(result: dict[str, JsonValue]) -> dict[str, JsonValue]:
+def validate_grader_result[GraderResultT: Mapping[str, object]](
+    result: GraderResultT,
+) -> GraderResultT:
     missing = [key for key in REQUIRED_GRADER_RESULT_KEYS if key not in result]
     if missing:
         raise GraderResultError(f"grader result missing keys: {', '.join(missing)}")

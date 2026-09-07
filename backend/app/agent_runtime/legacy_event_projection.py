@@ -127,7 +127,8 @@ def _project_custom_event(event: StoredProtocolEvent) -> list[LegacySSEEvent]:
     if event["method"] == "custom":
         name = _as_str(data.get("name") or data.get("channel"))
 
-    payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
+    raw_payload = data.get("payload")
+    payload = raw_payload if isinstance(raw_payload, dict) else data
     if name in {"artifact", "file", "file_event"}:
         return [_legacy(event, event_names.FILE_EVENT, dict(payload))]
     if name in {

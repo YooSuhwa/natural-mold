@@ -11,6 +11,7 @@ from app.agent_runtime.runtime_policy import (
     runtime_policy_to_json,
     validate_runtime_policy_snapshot,
 )
+from app.schemas.conversation_refs import JsonValue
 
 
 def test_snapshot_validator_accepts_complete_stored_tuple_with_explicit_false() -> None:
@@ -46,7 +47,7 @@ def test_snapshot_validator_accepts_complete_stored_tuple_with_explicit_false() 
     ],
 )
 def test_snapshot_validator_rejects_partial_or_mismatched_tuple(
-    values: tuple[dict[str, object] | None, int | None, str | None, str | None],
+    values: tuple[dict[str, JsonValue] | None, int | None, str | None, str | None],
 ) -> None:
     # Given a partial or internally inconsistent persisted tuple.
     # When it crosses the snapshot boundary.

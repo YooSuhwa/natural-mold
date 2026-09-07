@@ -39,7 +39,9 @@ def test_m70_revision_chain() -> None:
 
 
 @pytest.mark.asyncio
-async def test_m70_upgrade_downgrade_roundtrip_sqlite() -> None:
+async def test_m70_upgrade_downgrade_roundtrip_sqlite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
     from sqlalchemy import create_engine
@@ -58,7 +60,7 @@ async def test_m70_upgrade_downgrade_roundtrip_sqlite() -> None:
             conn.exec_driver_sql("CREATE TABLE skill_evaluation_runs (id TEXT PRIMARY KEY)")
 
             ctx = MigrationContext.configure(conn)
-            alembic_op._proxy = Operations(ctx)
+            monkeypatch.setattr(alembic_op, "_proxy", Operations(ctx), raising=False)
 
             mod.upgrade()
             inspector = inspect(conn)

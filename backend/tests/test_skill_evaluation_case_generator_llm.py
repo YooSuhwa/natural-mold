@@ -56,9 +56,15 @@ async def test_llm_generator_returns_normalized_eval_payload(
     # Then: the output is normalized and marked as generated.
     assert generated.model_name == "fake-smoke-model"
     assert generated.payload["name"] == "Generated smoke evaluation"
-    assert generated.payload["evals"][0]["input"] == "Summarize these meeting notes."
-    assert generated.payload["evals"][0]["metadata"]["generated"] is True
-    assert generated.payload["evals"][0]["metadata"]["source_schema"] == "moldy"
+    evals = generated.payload["evals"]
+    assert isinstance(evals, list)
+    eval_case = evals[0]
+    assert isinstance(eval_case, dict)
+    assert eval_case["input"] == "Summarize these meeting notes."
+    metadata = eval_case["metadata"]
+    assert isinstance(metadata, dict)
+    assert metadata["generated"] is True
+    assert metadata["source_schema"] == "moldy"
 
 
 async def test_llm_generator_rejects_invalid_model_json(
@@ -92,7 +98,9 @@ async def test_llm_generator_caps_case_count(
         generated = await generate_skill_smoke_eval_payload(db, skill=skill, model_builder=model)
 
     # Then: the returned payload is capped to five cases.
-    assert len(generated.payload["evals"]) == 5
+    evals = generated.payload["evals"]
+    assert isinstance(evals, list)
+    assert len(evals) == 5
 
 
 async def test_llm_generator_previews_only_visible_regular_skill_files(

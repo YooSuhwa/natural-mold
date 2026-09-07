@@ -20,14 +20,18 @@ from app.agent_runtime.skill_builder.eval_runner import (
 )
 from app.marketplace.skill_runtime import SkillToolContext
 from app.schemas.skill_builder import JsonValue
+from app.schemas.skill_evaluation_result import (
+    SkillEvaluationBenchmark,
+    SkillEvaluationSummary,
+)
 from app.services.skill_evaluation_result_schema import normalize_skill_evaluation_result
 
 
 @dataclass(frozen=True, slots=True)
 class DeterministicEvaluationPayload:
-    summary: dict[str, JsonValue]
-    benchmark: dict[str, JsonValue]
-    case_results: list[JsonValue]
+    summary: SkillEvaluationSummary
+    benchmark: SkillEvaluationBenchmark
+    case_results: list[dict[str, JsonValue]]
 
 
 async def run_deterministic_evaluation(

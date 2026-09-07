@@ -51,7 +51,7 @@ class ProtocolEventDelivery:
         self.session_consent_tools = session_consent_tools
         self.max_emitted_seq = -1
         self.input_requested_emitted = False
-        self.emitted: list[dict[str, object]] = []
+        self.emitted: list[StoredProtocolEvent] = []
         self._persist_buffer: list[dict[str, object]] = []
         self._last_persist_flush_at = time.monotonic()
         self._background_persist_tasks: set[asyncio.Task[None]] = set()
@@ -98,9 +98,8 @@ class ProtocolEventDelivery:
         if wire_event["method"] == "input.requested":
             self.input_requested_emitted = True
 
-        event_dict = dict(wire_event)
         persistable = dict(projected.persistable_event)
-        self.emitted.append(event_dict)
+        self.emitted.append(wire_event)
         self._persist_buffer.append(persistable)
         if self.trace_sink is not None:
             self.trace_sink.append(persistable)

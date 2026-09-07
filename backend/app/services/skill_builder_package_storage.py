@@ -43,10 +43,11 @@ def replace_skill_storage(
 
 
 def package_metadata(info: PackageInfo, name: str) -> dict[str, JsonValue]:
+    files: list[JsonValue] = list(info.files)
     return {
         "name": name,
         "version": info.version,
-        "files": info.files,
+        "files": files,
         "has_scripts": info.has_scripts,
         "frontmatter": info.metadata,
     }

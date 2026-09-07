@@ -429,7 +429,10 @@ async def _post_token(
     close_client = client is None
     active_client = client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
     try:
-        response = await active_client.post(token_endpoint, data=data, auth=auth)
+        if auth is None:
+            response = await active_client.post(token_endpoint, data=data)
+        else:
+            response = await active_client.post(token_endpoint, data=data, auth=auth)
         response.raise_for_status()
         body = response.json()
     finally:

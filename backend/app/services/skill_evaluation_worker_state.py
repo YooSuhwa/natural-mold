@@ -4,8 +4,10 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_config import AgentConfig
@@ -136,26 +138,29 @@ async def mark_completed(
     result: SkillEvaluationResult,
 ) -> bool:
     completed_at = _now()
-    result_row = await db.execute(
-        update(SkillEvaluationRun)
-        .where(
-            SkillEvaluationRun.id == run.id,
-            SkillEvaluationRun.status != "cancelled",
-            SkillEvaluationRun.cancellation_requested_at.is_(None),
-        )
-        .values(
-            status="completed",
-            summary=result.summary,
-            benchmark=result.benchmark,
-            case_results=result.case_results,
-            runner_model=result.runner_model,
-            runner_version=result.runner_version,
-            grader_prompt_version=result.grader_prompt_version,
-            eval_schema_version=result.eval_schema_version,
-            usage=result.usage,
-            error_message=None,
-            completed_at=completed_at,
-        )
+    result_row = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(SkillEvaluationRun)
+            .where(
+                SkillEvaluationRun.id == run.id,
+                SkillEvaluationRun.status != "cancelled",
+                SkillEvaluationRun.cancellation_requested_at.is_(None),
+            )
+            .values(
+                status="completed",
+                summary=result.summary,
+                benchmark=result.benchmark,
+                case_results=result.case_results,
+                runner_model=result.runner_model,
+                runner_version=result.runner_version,
+                grader_prompt_version=result.grader_prompt_version,
+                eval_schema_version=result.eval_schema_version,
+                usage=result.usage,
+                error_message=None,
+                completed_at=completed_at,
+            )
+        ),
     )
     await db.flush()
     await db.refresh(run)

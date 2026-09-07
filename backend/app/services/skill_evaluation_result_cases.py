@@ -4,8 +4,8 @@ from collections.abc import Sequence
 from typing import Final
 
 from app.schemas.skill_builder import JsonValue
+from app.schemas.skill_evaluation_result import JsonObject
 from app.services.skill_evaluation_result_values import (
-    JsonObject,
     bool_or_none,
     first_present,
     json_object,

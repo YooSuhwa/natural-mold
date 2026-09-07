@@ -44,7 +44,9 @@ async def test_marketplace_install_with_embedded_evals_creates_evaluation_set(
     evaluation_set = await _latest_evaluation_set(db, installed_skill_id)
     assert evaluation_set is not None
     assert evaluation_set.source_kind == "marketplace_import"
-    assert evaluation_set.evals[0]["input"] == "Extract marketplace action items."
+    eval_case = evaluation_set.evals[0]
+    assert isinstance(eval_case, dict)
+    assert eval_case["input"] == "Extract marketplace action items."
     audit_event = await _latest_audit_event(db, "skill_evaluation_set.imported")
     assert audit_event is not None
     assert audit_event.target_id == str(installed_skill_id)

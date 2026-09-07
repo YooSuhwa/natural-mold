@@ -4,8 +4,7 @@ import math
 from typing import Final
 
 from app.schemas.skill_builder import JsonValue
-
-type JsonObject = dict[str, JsonValue]
+from app.schemas.skill_evaluation_result import JsonObject
 
 STATUS_PASSED: Final = "passed"
 STATUS_FAILED: Final = "failed"

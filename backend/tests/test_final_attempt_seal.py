@@ -26,6 +26,7 @@ from plan_history_support import (  # noqa: E402
     HEAD,
     PLAN_SHA,
     REVIEW_ROUND,
+    LifecycleArguments,
     _begin,
     _prepare_seal_prerequisites,
     _seal,
@@ -35,12 +36,12 @@ from plan_history_support import (  # noqa: E402
 
 
 @pytest.fixture
-def lifecycle(tmp_path: Path) -> dict[str, object]:
+def lifecycle(tmp_path: Path) -> LifecycleArguments:
     return lifecycle_arguments(tmp_path)
 
 
 def test_validate_seal_rejects_prerequisite_mutation_but_allows_exact_later_outputs(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -76,7 +77,7 @@ def test_validate_seal_rejects_prerequisite_mutation_but_allows_exact_later_outp
 
 
 def test_seal_detects_prerequisite_mutation_between_durable_phases(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
@@ -92,7 +93,7 @@ def test_seal_detects_prerequisite_mutation_between_durable_phases(
         seal_attempt(**lifecycle, output=output, hook=mutate_after_seal_write)
 
 
-def test_seal_rejects_empty_nested_attempt_directory(lifecycle: dict[str, object]) -> None:
+def test_seal_rejects_empty_nested_attempt_directory(lifecycle: LifecycleArguments) -> None:
     pointer = _begin(lifecycle)
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     _prepare_seal_prerequisites(attempt_dir)
@@ -103,7 +104,7 @@ def test_seal_rejects_empty_nested_attempt_directory(lifecycle: dict[str, object
 
 
 def test_seal_recovery_rejects_self_consistent_forged_base_against_tracked_contract(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
 ) -> None:
     pointer = _begin(lifecycle)
     repo_root = Path(lifecycle["repo_root"])

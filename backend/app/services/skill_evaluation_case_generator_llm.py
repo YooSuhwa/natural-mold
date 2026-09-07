@@ -101,13 +101,14 @@ def _normalize_generated_payload(text: str) -> JsonObject:
 
 
 def _skill_payload(skill: Skill) -> JsonObject:
+    files: list[JsonValue] = list(_skill_file_previews(skill))
     return {
         "id": str(skill.id),
         "name": skill.name,
         "description": skill.description,
         "version": skill.version,
         "kind": skill.kind,
-        "files": _skill_file_previews(skill),
+        "files": files,
     }
 
 

@@ -64,8 +64,13 @@ async def test_prepare_imports_embedded_claude_evals_for_package_skill(
     assert evaluation_set is not None
     assert evaluation_set.source_kind == "package_import"
     assert evaluation_set.name == "meeting-notes imported evals"
-    assert evaluation_set.evals[0]["input"] == "Extract action items."
-    assert evaluation_set.evals[0]["metadata"]["source_schema"] == "claude_skill_creator"
+    eval_case = evaluation_set.evals[0]
+    assert isinstance(eval_case, dict)
+    assert eval_case["input"] == "Extract action items."
+    metadata = eval_case["metadata"]
+    assert isinstance(metadata, dict)
+    assert metadata["source_schema"] == "claude_skill_creator"
+    assert evaluation_set.generation_strategy is not None
     assert evaluation_set.generation_strategy["payload_hash"] == result.payload_hash
 
 
@@ -100,7 +105,11 @@ async def test_prepare_imports_embedded_moldy_evals_for_package_skill(
     assert evaluation_set is not None
     assert evaluation_set.name == "Smoke"
     assert evaluation_set.description == "Imported smoke cases"
-    assert evaluation_set.evals[0]["metadata"]["source_schema"] == "moldy"
+    eval_case = evaluation_set.evals[0]
+    assert isinstance(eval_case, dict)
+    metadata = eval_case["metadata"]
+    assert isinstance(metadata, dict)
+    assert metadata["source_schema"] == "moldy"
 
 
 async def test_prepare_skips_duplicate_payload(
@@ -228,7 +237,12 @@ async def test_prepare_generates_smoke_evals_when_embedded_file_missing(
     assert result.status is SkillEvaluationPreparationStatus.CREATED
     assert evaluation_set is not None
     assert evaluation_set.source_kind == "llm_generated"
-    assert evaluation_set.evals[0]["metadata"]["generated"] is True
+    eval_case = evaluation_set.evals[0]
+    assert isinstance(eval_case, dict)
+    metadata = eval_case["metadata"]
+    assert isinstance(metadata, dict)
+    assert metadata["generated"] is True
+    assert evaluation_set.generation_strategy is not None
     assert evaluation_set.generation_strategy["model_name"] == "fake-smoke-model"
 
 

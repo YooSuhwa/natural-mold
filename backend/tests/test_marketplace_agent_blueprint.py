@@ -2264,4 +2264,5 @@ async def test_create_agent_from_blueprint_accepts_known_middleware_config(
     assert create_response.status_code == 201, create_response.text
     agent = await db.get(Agent, uuid.UUID(create_response.json()["id"]))
     assert agent is not None
+    assert agent.middleware_configs is not None
     assert [row["type"] for row in agent.middleware_configs] == ["summarization"]

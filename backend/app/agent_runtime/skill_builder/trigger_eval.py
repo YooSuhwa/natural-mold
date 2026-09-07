@@ -4,16 +4,52 @@ import json
 import random
 import re
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, NotRequired, TypedDict
 
-from app.schemas.skill_builder import JsonValue, SkillDraftFile, SkillDraftPackage
+from app.schemas.skill_builder import SkillDraftFile, SkillDraftPackage
 
 SEED: Final = 42
 RUNS_PER_QUERY: Final = 3
 MAX_DESCRIPTION_LENGTH: Final = 1024
 WORD_RE: Final = re.compile(r"[\w가-힣]{3,}")
 
-type JsonObject = dict[str, JsonValue]
+
+class TriggerExamplePayload(TypedDict):
+    query: str
+    should_trigger: bool
+
+
+class TriggerQueryResult(TriggerExamplePayload):
+    runs: list[bool]
+    trigger_rate: float
+    correct: bool
+
+
+class TriggerScoreResult(TypedDict):
+    score: float
+    results: list[TriggerQueryResult]
+
+
+class TriggerCandidateResult(TypedDict):
+    label: str
+    description: str
+    train_score: float
+    test_score: float
+    train_results: NotRequired[list[TriggerQueryResult]]
+    test_results: NotRequired[list[TriggerQueryResult]]
+
+
+class TriggerQuerySets(TypedDict):
+    train: list[TriggerExamplePayload]
+    test: list[TriggerExamplePayload]
+
+
+class TriggerEvaluationResult(TypedDict):
+    seed: int
+    runs_per_query: int
+    query_sets: TriggerQuerySets
+    candidates: list[TriggerCandidateResult]
+    selected: TriggerCandidateResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +68,7 @@ def optimize_trigger_description(
     *,
     draft: SkillDraftPackage,
     intent: str,
-) -> tuple[SkillDraftPackage, JsonObject]:
+) -> tuple[SkillDraftPackage, TriggerEvaluationResult]:
     examples = generate_trigger_examples(
         name=draft.name,
         description=draft.description,
@@ -100,10 +136,10 @@ def classify_trigger(*, name: str, description: str, query: str) -> bool:
     return name_hit or overlap >= 2
 
 
-def select_best_candidate(candidates: list[JsonObject]) -> JsonObject:
+def select_best_candidate(candidates: list[TriggerCandidateResult]) -> TriggerCandidateResult:
     return max(
         candidates,
-        key=lambda item: (float(item["test_score"]), float(item["train_score"])),
+        key=lambda item: (item["test_score"], item["train_score"]),
     )
 
 
@@ -123,7 +159,7 @@ def _candidate_result(
     *,
     draft: SkillDraftPackage,
     split: TriggerSplit,
-) -> JsonObject:
+) -> TriggerCandidateResult:
     train = _score_examples(name=draft.name, description=description, examples=split.train)
     test = _score_examples(name=draft.name, description=description, examples=split.test)
     return {
@@ -141,7 +177,7 @@ def _score_examples(
     name: str,
     description: str,
     examples: list[TriggerExample],
-) -> JsonObject:
+) -> TriggerScoreResult:
     results = [
         _run_query(name=name, description=description, example=example) for example in examples
     ]
@@ -150,7 +186,7 @@ def _score_examples(
     return {"score": round(score, 6), "results": results}
 
 
-def _run_query(*, name: str, description: str, example: TriggerExample) -> JsonObject:
+def _run_query(*, name: str, description: str, example: TriggerExample) -> TriggerQueryResult:
     runs = [
         classify_trigger(name=name, description=description, query=example.query)
         for _index in range(RUNS_PER_QUERY)
@@ -216,5 +252,5 @@ def _tokens(text: str) -> list[str]:
     return tokens
 
 
-def _example_json(example: TriggerExample) -> JsonObject:
+def _example_json(example: TriggerExample) -> TriggerExamplePayload:
     return {"query": example.query, "should_trigger": example.should_trigger}

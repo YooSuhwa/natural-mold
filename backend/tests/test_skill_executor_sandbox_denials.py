@@ -21,12 +21,13 @@ async def test_execute_in_skill_audits_unsupported_executable_before_launch(
 ) -> None:
     ctx = _ctx(tmp_path, slug="unsupported")
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
     monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
 
-    result = await tool.coroutine(
-        skill_directory="/runtime/thread-sandbox/skills/unsupported/",
-        command="bash scripts/run.sh --token=raw-secret",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": "/runtime/thread-sandbox/skills/unsupported/",
+            "command": "bash scripts/run.sh --token=raw-secret",
+        }
     )
     event = await _sandbox_event("unsupported_executable")
 
@@ -44,12 +45,13 @@ async def test_execute_in_skill_audits_script_path_traversal_before_launch(
 ) -> None:
     ctx = _ctx(tmp_path, slug="traversal")
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
     monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
 
-    result = await tool.coroutine(
-        skill_directory="/runtime/thread-sandbox/skills/traversal/",
-        command="python ../escape.py",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": "/runtime/thread-sandbox/skills/traversal/",
+            "command": "python ../escape.py",
+        }
     )
     event = await _sandbox_event("path_traversal")
 
@@ -73,12 +75,13 @@ async def test_execute_in_skill_audits_timeout_policy_violation_before_launch(
         script=f"import pathlib\npathlib.Path({str(marker)!r}).write_text('ran')\n",
     )
     tool = _create_skill_execute_tool(ctx)
-    assert tool.coroutine is not None
     monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
 
-    result = await tool.coroutine(
-        skill_directory="/runtime/thread-sandbox/skills/timeout/",
-        command="python scripts/run.py",
+    result = await tool.ainvoke(
+        {
+            "skill_directory": "/runtime/thread-sandbox/skills/timeout/",
+            "command": "python scripts/run.py",
+        }
     )
     event = await _sandbox_event("timeout_policy")
 

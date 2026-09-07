@@ -45,7 +45,7 @@ async def test_materialize_messages_flattens_nested_delta_seed_and_writes(caplog
     from langgraph.checkpoint.serde.types import _DeltaSnapshot
 
     seed = _msg("user", "u1", "seed")
-    nested_content = [{"type": "text", "text": "multi-block content"}]
+    nested_content: list[str | dict[Any, Any]] = [{"type": "text", "text": "multi-block content"}]
     appended = AIMessage(content=nested_content, id="a1")
 
     class _DeltaCheckpointer:

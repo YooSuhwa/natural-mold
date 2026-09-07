@@ -20,6 +20,7 @@ from app.schemas.skill import (
     SkillResponse,
     SkillTextContentResponse,
 )
+from app.schemas.skill_builder import JsonValue
 from app.schemas.skill_feedback import (
     SkillFeedbackMineResponse,
     SkillFeedbackSummaryResponse,
@@ -122,6 +123,7 @@ async def patch_skill_metadata(
         user_id=user.id,
     )
     changed_fields = sorted(data.model_fields_set)
+    changed_fields_json: list[JsonValue] = list(changed_fields)
     updated = await skill_service.update_metadata(
         db,
         skill=skill,
@@ -135,7 +137,7 @@ async def patch_skill_metadata(
         user_id=user.id,
         operation="manual_metadata_update",
         parent_revision_id=revision_parent.parent_revision_id,
-        metadata_json={"changed_fields": changed_fields},
+        metadata_json={"changed_fields": changed_fields_json},
     )
     await db.commit()
     await db.refresh(updated)

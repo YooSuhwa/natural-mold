@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import TypedDict
 
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,10 +14,20 @@ from app.schemas.skill_builder import JsonValue, SkillBuilderMode
 from app.services import skill_revision_audit
 
 
+class ConfirmAuditMetadata(TypedDict, total=False):
+    file_count: int
+    credential_requirement_count: int
+    old_hash: str | None
+    new_hash: str | None
+    changed_file_count: int
+    added_file_count: int
+    deleted_file_count: int
+
+
 def confirm_audit_metadata(
     session: SkillBuilderSession,
     skill: Skill,
-) -> dict[str, object]:
+) -> ConfirmAuditMetadata:
     draft_files = _path_content_map(session.draft_package)
     base_files = _path_content_map(session.base_snapshot)
     added = draft_files.keys() - base_files.keys()
@@ -26,7 +37,7 @@ def confirm_audit_metadata(
         for path in draft_files.keys() & base_files.keys()
         if draft_files[path] != base_files[path]
     }
-    metadata: dict[str, object] = {
+    metadata: ConfirmAuditMetadata = {
         "file_count": len(draft_files),
         "credential_requirement_count": len(skill.credential_requirements or []),
         "old_hash": session.base_content_hash,

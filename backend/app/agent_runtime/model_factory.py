@@ -186,7 +186,8 @@ def _apply_context_window_profile(model: BaseChatModel, context_window: int | No
         return
     try:
         existing = getattr(model, "profile", None) or {}
-        model.profile = {**existing, "max_input_tokens": cw}
+        # Provider chat models expose this optional runtime attribute dynamically.
+        setattr(model, "profile", {**existing, "max_input_tokens": cw})  # noqa: B010
     except Exception:  # noqa: BLE001 — profile write is best-effort
         logger.debug("context_window profile injection failed", exc_info=True)
 

@@ -4,9 +4,10 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import desc, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
@@ -428,18 +429,21 @@ async def cancel_run(
     if run.status not in CANCELLABLE_STATUSES:
         raise SkillEvaluationRunNotCancellable(f"run status is not cancellable: {run.status}")
     now = _now()
-    result = await db.execute(
-        update(SkillEvaluationRun)
-        .where(
-            SkillEvaluationRun.id == run.id,
-            SkillEvaluationRun.status.in_(CANCELLABLE_STATUSES),
-        )
-        .values(
-            status="cancelled",
-            cancellation_requested_at=now,
-            cancellation_reason=reason[:120],
-            completed_at=now,
-        )
+    result = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(SkillEvaluationRun)
+            .where(
+                SkillEvaluationRun.id == run.id,
+                SkillEvaluationRun.status.in_(CANCELLABLE_STATUSES),
+            )
+            .values(
+                status="cancelled",
+                cancellation_requested_at=now,
+                cancellation_reason=reason[:120],
+                completed_at=now,
+            )
+        ),
     )
     await db.flush()
     if result.rowcount != 1:

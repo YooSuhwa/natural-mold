@@ -22,6 +22,7 @@ from plan_history_support import (
     HEAD,
     PLAN_SHA,
     REVIEW_ROUND,
+    LifecycleArguments,
     _begin,
     _cli_path,
     _seal,
@@ -30,7 +31,7 @@ from plan_history_support import (
 
 
 @pytest.fixture
-def lifecycle(tmp_path: Path) -> dict[str, object]:
+def lifecycle(tmp_path: Path) -> LifecycleArguments:
     return lifecycle_arguments(tmp_path)
 
 
@@ -38,7 +39,8 @@ def test_seal_parser_requires_attempt_root() -> None:
     parser = _parser()
     option_strings = {
         option
-        for action in parser._subparsers._group_actions  # noqa: SLF001
+        for action in parser._actions  # noqa: SLF001
+        if isinstance(action, argparse._SubParsersAction)  # noqa: SLF001
         for choice in action.choices.values()
         if choice.prog.endswith(" seal")
         for item in choice._actions  # noqa: SLF001
@@ -300,7 +302,7 @@ def test_cli_rejects_symlinked_canonical_evidence_ancestor(tmp_path: Path) -> No
 
 
 def _prepare_verify_run(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
     monkeypatch: pytest.MonkeyPatch,
     output_name: str,
 ) -> tuple[argparse.Namespace, Path, Path]:
@@ -330,7 +332,7 @@ def _prepare_verify_run(
 
 @pytest.mark.parametrize("output_name", ["f1-history.json", "f4-scope.json"])
 def test_verify_cli_writes_through_bound_current_attempt_directory(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
     monkeypatch: pytest.MonkeyPatch,
     output_name: str,
 ) -> None:
@@ -346,7 +348,7 @@ def test_verify_cli_writes_through_bound_current_attempt_directory(
 @pytest.mark.parametrize("substitution", ["directory", "symlink"])
 @pytest.mark.parametrize("replacement_check", [3, 4, 5])
 def test_verify_cli_rejects_attempt_directory_replacement_after_binding(
-    lifecycle: dict[str, object],
+    lifecycle: LifecycleArguments,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     output_name: str,
@@ -386,7 +388,7 @@ def test_verify_cli_rejects_attempt_directory_replacement_after_binding(
 
 
 def test_bound_final_gate_writer_rejects_zero_progress_write(
-    lifecycle: dict[str, object], monkeypatch: pytest.MonkeyPatch
+    lifecycle: LifecycleArguments, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     args, repo_root, attempt_dir = _prepare_verify_run(
         lifecycle,

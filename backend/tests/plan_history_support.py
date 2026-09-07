@@ -8,6 +8,7 @@ import multiprocessing
 import os
 import sys
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 
@@ -25,12 +26,18 @@ from operation_ledger_writer import _active_attempt_from_lifecycle, append_opera
 from plan_history_contract import (  # noqa: E402
     PRIMARY_TRAILER,
     CommitRecord,
+    PlanContract,
     load_contract,
     load_verified_operations,
     read_git_history,
 )
 from project_gate_catalog import CATALOG, FINAL_STATIC  # noqa: E402
-from project_gate_receipts import validate_e2e, validate_postgres, validate_static  # noqa: E402
+from project_gate_receipts import (  # noqa: E402
+    ReceiptSummary,
+    validate_e2e,
+    validate_postgres,
+    validate_static,
+)
 
 CONTRACT_PATH = SCRIPTS / "project-restart-plan-contract.json"
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "project_restart_plan_history"
@@ -46,6 +53,38 @@ REVIEW_ROUND = "review-20260830T155022Z-4b86a0ac"
 # need roadmap trailers to exercise the historical contract.
 FIXTURE_HISTORY_HEAD = "87b0d1490b4bf5bbced34680298dd176948566d7"
 HEAD = "f" * 40
+
+
+class TerminalLifecycleArguments(TypedDict):
+    """Exact keyword arguments shared by terminal lifecycle operations."""
+
+    repo_root: Path
+    contract: PlanContract
+    plan_sha: str
+    review_round: str
+    operations: Path
+    attempt_root: Path
+    pointer_path: Path
+    journal_root: Path
+
+
+class LifecycleArguments(TerminalLifecycleArguments):
+    """Terminal lifecycle arguments plus the immutable Git head."""
+
+    head: str
+
+
+def _receipt_summary_json(summary: ReceiptSummary) -> dict[str, JSONValue]:
+    """Project a typed receipt summary into the recursive ledger JSON contract."""
+    return {
+        "relative_path": summary["relative_path"],
+        "sha256": summary["sha256"],
+        "cleanup_passed": summary["cleanup_passed"],
+        "secret_scan_passed": summary["secret_scan_passed"],
+        "workers": summary["workers"],
+        "retries": summary["retries"],
+        "screenshot_count": summary["screenshot_count"],
+    }
 
 
 def copy_isolated_operations(destination: Path) -> None:
@@ -97,7 +136,7 @@ def copy_isolated_operations(destination: Path) -> None:
         raise LedgerError("isolated ledger copy is not a verified source prefix")
 
 
-def lifecycle_arguments(tmp_path: Path) -> dict[str, object]:
+def lifecycle_arguments(tmp_path: Path) -> LifecycleArguments:
     """Create one isolated lifecycle layout backed by a verified ledger copy."""
     evidence = tmp_path / ".omo/evidence/project-restart-consolidated-roadmap"
     evidence.mkdir(parents=True)
@@ -113,6 +152,22 @@ def lifecycle_arguments(tmp_path: Path) -> dict[str, object]:
         "attempt_root": evidence / "final-attempts",
         "pointer_path": evidence / "current-final-attempt.json",
         "journal_root": evidence / "lifecycle-journals",
+    }
+
+
+def terminal_lifecycle_arguments(
+    lifecycle: LifecycleArguments,
+) -> TerminalLifecycleArguments:
+    """Project the full fixture onto the terminal transition contract."""
+    return {
+        "repo_root": lifecycle["repo_root"],
+        "contract": lifecycle["contract"],
+        "plan_sha": lifecycle["plan_sha"],
+        "review_round": lifecycle["review_round"],
+        "operations": lifecycle["operations"],
+        "attempt_root": lifecycle["attempt_root"],
+        "pointer_path": lifecycle["pointer_path"],
+        "journal_root": lifecycle["journal_root"],
     }
 
 
@@ -168,8 +223,10 @@ def _write_e2e_receipt(
         screenshot.parent.mkdir(parents=True, exist_ok=True)
         screenshot.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([index]))
     artifact_files: list[dict[str, JSONValue]] = []
+    artifact_size_bytes = 0
     for relative in screenshot_paths:
         content = (export_dir / relative).read_bytes()
+        artifact_size_bytes += len(content)
         artifact_files.append(
             {
                 "path": relative,
@@ -187,10 +244,10 @@ def _write_e2e_receipt(
             "max_total_bytes": 50 * 1024 * 1024,
         },
         "secret_scan": {"passed": True, "exact_secret_count": 0},
-        "files": artifact_files,
+        "files": list(artifact_files),
         "total": {
             "file_count": len(artifact_files),
-            "size_bytes": sum(int(item["size_bytes"]) for item in artifact_files),
+            "size_bytes": artifact_size_bytes,
         },
     }
     content = (json.dumps(exporter_manifest, sort_keys=True) + "\n").encode()
@@ -214,8 +271,8 @@ def _write_e2e_receipt(
         "export_directory_absolute": str(export_dir),
         "export_tree_sha256": tree_hash,
         "manifest": files[0],
-        "files": files,
-        "screenshots": screenshot_paths,
+        "files": list(files),
+        "screenshots": list(screenshot_paths),
         "screenshots_absolute": [str(export_dir / item) for item in screenshot_paths],
         "source_rejection": None,
     }
@@ -422,7 +479,12 @@ def _prepare_seal_prerequisites(attempt_dir: Path) -> None:
                 expected_head_sha=HEAD,
             )
         summaries.append(
-            {"node_id": node_id, "status": "passed", "exit_code": 0, "receipt": dict(summary)}
+            {
+                "node_id": node_id,
+                "status": "passed",
+                "exit_code": 0,
+                "receipt": _receipt_summary_json(summary),
+            }
         )
     aggregate = _write_json(
         attempt_dir / "f2-static.json",
@@ -438,7 +500,7 @@ def _prepare_seal_prerequisites(attempt_dir: Path) -> None:
             "runtime": {"python": "3.12.11", "node": "22.22.0", "pnpm": "10.0.0"},
             "expected_node_ids": list(FINAL_STATIC),
             "executed_node_ids": list(FINAL_STATIC),
-            "nodes": summaries,
+            "nodes": list(summaries),
             "cleanup_passed": True,
             "secret_scan_passed": True,
         },
@@ -515,7 +577,7 @@ def _prepare_seal_prerequisites(attempt_dir: Path) -> None:
     (attempt_dir / "f3-manual-qa.md").write_text(manual, encoding="utf-8")
 
 
-def _seal(lifecycle: dict[str, object], output: Path, hook=None) -> dict[str, JSONValue]:
+def _seal(lifecycle: LifecycleArguments, output: Path, hook=None) -> dict[str, JSONValue]:
     pointer = json.loads(Path(lifecycle["pointer_path"]).read_bytes())
     attempt_dir = Path(lifecycle["repo_root"]) / str(pointer["attempt_dir"])
     _prepare_seal_prerequisites(attempt_dir)
@@ -538,7 +600,9 @@ def _cross_process_append(path: str, queue: multiprocessing.Queue[str]) -> None:
         queue.put("accepted")
 
 
-def _complete_history() -> tuple[object, tuple[CommitRecord, ...], list[dict[str, JSONValue]]]:
+def _complete_history() -> tuple[
+    PlanContract, tuple[CommitRecord, ...], list[dict[str, JSONValue]]
+]:
     contract = load_contract(CONTRACT_PATH)
     commits = list(read_git_history(REPO_ROOT, contract.base_sha, FIXTURE_HISTORY_HEAD))
     entries = load_verified_operations(EVIDENCE / "operations.ndjson")
@@ -571,10 +635,10 @@ def _complete_history() -> tuple[object, tuple[CommitRecord, ...], list[dict[str
 
 
 @pytest.fixture
-def lifecycle(tmp_path: Path) -> dict[str, object]:
+def lifecycle(tmp_path: Path) -> LifecycleArguments:
     """Provide an isolated final-attempt lifecycle layout."""
     return lifecycle_arguments(tmp_path)
 
 
-def _begin(lifecycle: dict[str, object], hook=None) -> dict[str, JSONValue]:
+def _begin(lifecycle: LifecycleArguments, hook=None) -> dict[str, JSONValue]:
     return begin_final_attempt(**lifecycle, hook=hook)

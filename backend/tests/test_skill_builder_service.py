@@ -78,7 +78,11 @@ async def test_create_improve_session_snapshots_owned_skill(db: AsyncSession) ->
     assert session.base_content_hash == skill.content_hash
     assert session.base_snapshot is not None
     assert session.base_snapshot["kind"] == "text"
-    assert session.base_snapshot["files"][0]["path"] == "SKILL.md"
+    base_files = session.base_snapshot["files"]
+    assert isinstance(base_files, list)
+    base_file = base_files[0]
+    assert isinstance(base_file, dict)
+    assert base_file["path"] == "SKILL.md"
 
 
 @pytest.mark.asyncio
@@ -125,7 +129,9 @@ async def test_append_message_and_save_draft(db: AsyncSession) -> None:
     await db.commit()
 
     assert session.messages is not None
-    assert session.messages[0]["role"] == "user"
+    first_message = session.messages[0]
+    assert isinstance(first_message, dict)
+    assert first_message["role"] == "user"
     assert session.draft_package == {"name": "notes", "files": [{"path": "SKILL.md"}]}
     assert session.status == SkillBuilderStatus.REVIEW.value
 
