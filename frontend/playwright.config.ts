@@ -12,6 +12,7 @@ import {
   getE2ERunPaths,
   getLaneDefaultPorts,
   getPlaywrightExecutionPolicy,
+  getPlaywrightWebServerTimeout,
   getPlaywrightArtifactsDirectory,
   LIVE_E2E_SPEC_GLOBS,
   resolveConfiguredE2EProject,
@@ -39,6 +40,7 @@ const playwrightArtifactsDirectory = getPlaywrightArtifactsDirectory(
   e2eProject,
 )
 const executionPolicy = getPlaywrightExecutionPolicy()
+const webServerTimeout = getPlaywrightWebServerTimeout()
 const backendSourceRoot = process.env.MOLDY_BACKEND_SOURCE_ROOT ?? path.resolve('../backend')
 if (process.env.MOLDY_TEST_RUN_ROOT && !path.isAbsolute(backendSourceRoot)) {
   throw new Error('MOLDY_BACKEND_SOURCE_ROOT must be absolute in isolated mode.')
@@ -85,12 +87,14 @@ const runtimeWebServers = [
           cwd: backendSourceRoot,
           port: backendPort,
           reuseExistingServer: false,
+          timeout: webServerTimeout,
         },
       ]),
   {
     command: buildFrontendWebServerCommand(chatRuntime, apiBaseURL, frontendPort),
     port: frontendPort,
     reuseExistingServer: false,
+    timeout: webServerTimeout,
   },
 ]
 

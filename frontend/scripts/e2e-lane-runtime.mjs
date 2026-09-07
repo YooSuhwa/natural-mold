@@ -210,6 +210,10 @@ export function getPlaywrightExecutionPolicy() {
   return { workers: 1, retries: 0 }
 }
 
+export function getPlaywrightWebServerTimeout() {
+  return 180_000
+}
+
 export function validateCaptureTour(lane, project, environment) {
   if (!hasNonEmptyValue(environment, 'E2E_CAPTURE_TOUR')) return
   if (environment.E2E_CAPTURE_TOUR !== '1') {
