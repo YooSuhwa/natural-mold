@@ -125,6 +125,21 @@ describe('ChatComposerTriggers official trigger integration', () => {
     expect(screen.queryByRole('listbox', { name: 'Commands' })).not.toBeInTheDocument()
   })
 
+  it('does not swallow Enter when a slash query has no matching command', async () => {
+    const execute = vi.fn()
+    render(<Harness commands={[enabledCommand(execute)]} />)
+    const input = screen.getByRole('textbox', { name: 'Message' })
+
+    fireEvent.change(input, {
+      target: { value: 'read /skill-drafts/example', selectionStart: 26, selectionEnd: 26 },
+    })
+
+    await waitFor(() => expect(screen.getByRole('listbox', { name: 'Commands' })).toBeVisible())
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(true)
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   it('selects a typed resource without leaving a prompt-only mention token', async () => {
     const onResourceSelect = vi.fn()
     render(<Harness commands={[]} onResourceSelect={onResourceSelect} />)
