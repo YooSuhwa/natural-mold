@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@assistant-ui/react', () => ({
   useAui: () => ({
-    message: () => ({
+    message: {
       composer: () => ({
         cancel: mocks.cancel,
         getState: () => ({ canCancel: true, isEditing: true, isEmpty: false }),
@@ -18,7 +18,7 @@ vi.mock('@assistant-ui/react', () => ({
         setText: mocks.setText,
       }),
       getState: () => ({ id: 'msg-1' }),
-    }),
+    },
     thread: () => ({
       getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),
     }),

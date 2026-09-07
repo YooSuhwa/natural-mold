@@ -22,6 +22,11 @@ const RUNTIME_POLICY_CAPTURE_FILES = Object.freeze([
   'runtime-todo-policy.spec.ts',
   'runtime-filesystem-policy.spec.ts',
   'chat-compaction.spec.ts',
+  'chat-mcp-apps.spec.ts',
+  'chat-commands-context.spec.ts',
+  'chat-message-queue.spec.ts',
+  'chat-run-summary.spec.ts',
+  'chat-recovery-discovery.spec.ts',
 ])
 
 function collectListedNodes(report) {
@@ -356,6 +361,7 @@ describe('prepared E2E lane boundary', () => {
       capture.every(
         (node) =>
           node.file.startsWith('captures/') ||
+          node.file === 'chat-dictation.spec.ts' ||
           node.file === 'chat-langgraph-v3-visual-matrix.spec.ts' ||
           RUNTIME_POLICY_CAPTURE_FILES.includes(node.file),
       ),

@@ -11,6 +11,7 @@ import {
   type RunMessageLink,
   type RunSummary,
 } from '@/lib/chat/run-summary-model'
+import { conversationQueryKeys } from '@/lib/query-keys/conversations'
 
 interface MessageRunSummaryResult {
   readonly summary: RunSummary | null
@@ -37,17 +38,11 @@ export function useMessageRunSummary(
   const linkQueryEnabled = Boolean(conversationId && !terminalRunId && messageIdBatch.length > 0)
   const resolutionPhase = threadIsRunning ? 'live' : 'terminal'
   const lifecycleKey = useMemo(
-    () => ['conversations', conversationId ?? 'none', 'run-message-links-lifecycle'] as const,
+    () => conversationQueryKeys.runMessageLinksLifecycle(conversationId),
     [conversationId],
   )
   const messageIdentityKey = useMemo(
-    () =>
-      [
-        'conversations',
-        conversationId ?? 'none',
-        'run-message-link-identity',
-        messageId ?? 'none',
-      ] as const,
+    () => conversationQueryKeys.runMessageLinkIdentity(conversationId, messageId),
     [conversationId, messageId],
   )
   const initialLifecycle = useMemo<RunMessageLinkLifecycle>(
@@ -84,14 +79,12 @@ export function useMessageRunSummary(
   }, [conversationId, initialLifecycle, lifecycleKey, queryClient, threadIsRunning])
 
   const linksQuery = useQuery({
-    queryKey: [
-      'conversations',
-      conversationId ?? 'none',
-      'run-message-links',
+    queryKey: conversationQueryKeys.runMessageLinks(
+      conversationId,
       messageIdBatch,
       resolutionPhase,
       terminalGeneration,
-    ],
+    ),
     queryFn: () => {
       const params = new URLSearchParams()
       for (const id of messageIdBatch) params.append('message_id', id)

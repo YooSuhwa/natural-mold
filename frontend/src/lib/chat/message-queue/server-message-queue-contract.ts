@@ -7,6 +7,8 @@ import type {
   ConversationRunInputRevision,
 } from '@/lib/api/conversation-run-inputs'
 
+export type { ConversationRunInput }
+
 export type QueueRunStartAcceptance = {
   readonly inputId: string
   readonly inputStatus: 'pending' | 'claimed'

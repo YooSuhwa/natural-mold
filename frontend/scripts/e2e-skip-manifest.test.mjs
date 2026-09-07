@@ -27,8 +27,8 @@ const manifest = (rules) => ({ schema_version: 1, as_of: '2026-09-05', rules })
 describe('E2E skip manifest', () => {
   it('classifies every current repository skip exactly once', async () => {
     await expect(checkRepository(process.cwd(), '2026-09-05')).resolves.toEqual({
-      ruleCount: 8,
-      skipCount: 75,
+      ruleCount: 10,
+      skipCount: 82,
     })
   })
 

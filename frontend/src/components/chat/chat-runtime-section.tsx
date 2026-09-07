@@ -35,10 +35,12 @@ import type { User } from '@/lib/types/user'
 import type { StreamChatOptions } from '@/lib/sse/stream-chat'
 import type { ConversationRuntimeStatus } from '@/lib/stores/chat-navigator-store'
 import { ServerMessageQueueProvider } from '@/lib/chat/message-queue/server-message-queue-context'
-import type { ServerMessageQueueController } from '@/lib/chat/message-queue/server-message-queue-contract'
+import type {
+  ConversationRunInput,
+  ServerMessageQueueController,
+} from '@/lib/chat/message-queue/server-message-queue-contract'
 import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
 import type { SkillBrief } from '@/lib/types'
-import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
 import { useFailedInputRetryAction } from '@/lib/chat/commands/failed-input-retry'
 
 type StreamFn = (

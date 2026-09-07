@@ -64,7 +64,15 @@ describe('useServerMessageQueue', () => {
     } as const
     mocks.list.mockResolvedValueOnce({ queue_paused: false, items: [pending] }).mockResolvedValue({
       queue_paused: false,
-      items: [{ ...pending, status: 'claimed', run_id: 'run-1', revision: 2 }],
+      items: [
+        {
+          ...pending,
+          status: 'claimed',
+          run_id: 'run-1',
+          revision: 2,
+          claimed_at: '2026-09-06T00:00:01Z',
+        },
+      ],
     })
     const onClaimedRun = vi.fn()
     const submit = vi.fn()
