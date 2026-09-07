@@ -211,7 +211,17 @@ def _is_pending_interrupt(events: list[dict[str, Any]] | None) -> bool:
         return False
     pending = False
     for event in events:
-        if event.get("event") == event_names.MESSAGE_END or _is_protocol_terminal_event(event):
+        if event.get("event") == event_names.MESSAGE_END:
+            data = event.get("data")
+            status = data.get("status") if isinstance(data, Mapping) else None
+            # An interrupted owner terminal closes the transport, but the
+            # graph is still waiting for a resume input. Legacy message_end
+            # events without an explicit status keep their historical
+            # non-pending interpretation.
+            if status != "interrupted":
+                pending = False
+            continue
+        if _is_protocol_terminal_event(event):
             pending = False
             continue
         if event.get("event") == event_names.INTERRUPT or event.get("method") == "input.requested":

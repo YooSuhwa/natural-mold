@@ -20,8 +20,8 @@ async def test_postgres_json_projection_omits_ambiguous_and_retains_same_run_lin
     if raw_url is None:
         pytest.skip("INTEGRATION_DATABASE_URL is required")
     parsed_url = make_url(raw_url)
-    if parsed_url.database != "moldy_pg_lane_run_links":
-        pytest.fail("run-link PostgreSQL test requires its dedicated disposable database")
+    if not (parsed_url.database or "").startswith("moldy_pg_lane_"):
+        pytest.fail("run-link PostgreSQL test requires a disposable lane database")
     engine = create_async_engine(parsed_url.set(drivername="postgresql+asyncpg"))
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:

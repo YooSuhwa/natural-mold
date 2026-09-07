@@ -51,7 +51,7 @@ def _events(run_id: str, *, content: str = "ok") -> list[dict[str, Any]]:
         {
             "id": f"{run_id}-3",
             "event": event_names.MESSAGE_END,
-            "data": {"content": content, "usage": {}},
+            "data": {"content": content, "usage": {}, "status": "completed"},
         },
     ]
 

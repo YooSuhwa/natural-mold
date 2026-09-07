@@ -59,9 +59,7 @@ from tests.integration._seed import seed_conversation_with_agent
 
 
 async def _seed_conv() -> uuid.UUID:
-    return await seed_conversation_with_agent(
-        agent_name="Resume Agent", conv_title="Resume Conv"
-    )
+    return await seed_conversation_with_agent(agent_name="Resume Agent", conv_title="Resume Conv")
 
 
 def _parse_sse_events(body: str) -> list[dict[str, str]]:
@@ -95,30 +93,28 @@ async def test_resume_live_broker_replays_buffer_and_streams_tail(
     conv_id = await _seed_conv()
     run_id = str(uuid.uuid4())
 
-    broker = event_broker.registry.get_or_create(
-        run_id, conversation_id=str(conv_id)
-    )
+    broker = event_broker.registry.get_or_create(run_id, conversation_id=str(conv_id))
     # Pre-publish two events so the GET request can replay them on subscribe.
     broker.publish_nowait(
-        {"id": f"{run_id}-1", "event": "message_start",
-         "data": {"id": run_id, "role": "assistant"}}
+        {"id": f"{run_id}-1", "event": "message_start", "data": {"id": run_id, "role": "assistant"}}
     )
     broker.publish_nowait(
-        {"id": f"{run_id}-2", "event": "content_delta",
-         "data": {"delta": "hello"}}
+        {"id": f"{run_id}-2", "event": "content_delta", "data": {"delta": "hello"}}
     )
 
     async def push_tail() -> None:
         # Let the GET request register its listener before we publish more.
         await asyncio.sleep(0.05)
         broker.publish_nowait(
-            {"id": f"{run_id}-3", "event": "content_delta",
-             "data": {"delta": " world"}}
+            {"id": f"{run_id}-3", "event": "content_delta", "data": {"delta": " world"}}
         )
         await asyncio.sleep(0.01)
         broker.publish_nowait(
-            {"id": f"{run_id}-4", "event": "message_end",
-             "data": {"content": "hello world", "usage": {}}}
+            {
+                "id": f"{run_id}-4",
+                "event": "message_end",
+                "data": {"content": "hello world", "usage": {}},
+            }
         )
         # Close so the subscribe iterator exits.
         broker.close()
@@ -138,11 +134,7 @@ async def test_resume_live_broker_replays_buffer_and_streams_tail(
         await pusher
 
     events = _parse_sse_events(body.decode())
-    deltas = [
-        json.loads(e["data"])["delta"]
-        for e in events
-        if e.get("event") == "content_delta"
-    ]
+    deltas = [json.loads(e["data"])["delta"] for e in events if e.get("event") == "content_delta"]
     assert deltas == ["hello", " world"]
     assert any(e.get("event") == "message_end" for e in events)
 
@@ -155,19 +147,10 @@ async def test_resume_live_broker_after_id_skips_already_seen(
     conv_id = await _seed_conv()
     run_id = str(uuid.uuid4())
 
-    broker = event_broker.registry.get_or_create(
-        run_id, conversation_id=str(conv_id)
-    )
-    broker.publish_nowait(
-        {"id": f"{run_id}-1", "event": "message_start",
-         "data": {"id": run_id}}
-    )
-    broker.publish_nowait(
-        {"id": f"{run_id}-2", "event": "content_delta", "data": {"delta": "a"}}
-    )
-    broker.publish_nowait(
-        {"id": f"{run_id}-3", "event": "content_delta", "data": {"delta": "b"}}
-    )
+    broker = event_broker.registry.get_or_create(run_id, conversation_id=str(conv_id))
+    broker.publish_nowait({"id": f"{run_id}-1", "event": "message_start", "data": {"id": run_id}})
+    broker.publish_nowait({"id": f"{run_id}-2", "event": "content_delta", "data": {"delta": "a"}})
+    broker.publish_nowait({"id": f"{run_id}-3", "event": "content_delta", "data": {"delta": "b"}})
 
     # Close after the GET subscribes — closing first would route the request
     # to the DB-replay branch (broker.is_closed → broker miss).
@@ -188,11 +171,7 @@ async def test_resume_live_broker_after_id_skips_already_seen(
         await closer
 
     events = _parse_sse_events(body.decode())
-    deltas = [
-        json.loads(e["data"])["delta"]
-        for e in events
-        if e.get("event") == "content_delta"
-    ]
+    deltas = [json.loads(e["data"])["delta"] for e in events if e.get("event") == "content_delta"]
     assert deltas == ["b"], "should only emit events after last_event_id"
 
 
@@ -206,12 +185,13 @@ async def test_resume_replay_completed_row(client: AsyncClient) -> None:
     conv_id = await _seed_conv()
     run_id = str(uuid.uuid4())
     events_payload = [
-        {"id": f"{run_id}-1", "event": "message_start",
-         "data": {"id": run_id, "role": "assistant"}},
-        {"id": f"{run_id}-2", "event": "content_delta",
-         "data": {"delta": "hello"}},
-        {"id": f"{run_id}-3", "event": "message_end",
-         "data": {"content": "hello", "usage": {}}},
+        {
+            "id": f"{run_id}-1",
+            "event": "message_start",
+            "data": {"id": run_id, "role": "assistant"},
+        },
+        {"id": f"{run_id}-2", "event": "content_delta", "data": {"delta": "hello"}},
+        {"id": f"{run_id}-3", "event": "message_end", "data": {"content": "hello", "usage": {}}},
     ]
 
     async with TestSession() as db:
@@ -238,9 +218,7 @@ async def test_resume_replay_completed_row(client: AsyncClient) -> None:
         body = await resp.aread()
 
     events = _parse_sse_events(body.decode())
-    assert [e.get("event") for e in events] == [
-        "message_start", "content_delta", "message_end"
-    ]
+    assert [e.get("event") for e in events] == ["message_start", "content_delta", "message_end"]
     assert all(e.get("event") != "stale" for e in events)
 
 
@@ -254,8 +232,7 @@ async def test_resume_replay_after_id_slices_correctly(
         {"id": f"{run_id}-1", "event": "message_start", "data": {"id": run_id}},
         {"id": f"{run_id}-2", "event": "content_delta", "data": {"delta": "a"}},
         {"id": f"{run_id}-3", "event": "content_delta", "data": {"delta": "b"}},
-        {"id": f"{run_id}-4", "event": "message_end",
-         "data": {"content": "ab", "usage": {}}},
+        {"id": f"{run_id}-4", "event": "message_end", "data": {"content": "ab", "usage": {}}},
     ]
     async with TestSession() as db:
         db.add(
@@ -280,9 +257,7 @@ async def test_resume_replay_after_id_slices_correctly(
 
     events = _parse_sse_events(body.decode())
     deltas = [
-        json.loads(e["data"]).get("delta")
-        for e in events
-        if e.get("event") == "content_delta"
+        json.loads(e["data"]).get("delta") for e in events if e.get("event") == "content_delta"
     ]
     assert deltas == ["b"]
 
@@ -323,9 +298,7 @@ async def test_resume_replay_header_is_case_insensitive(
 
     events = _parse_sse_events(body.decode())
     deltas = [
-        json.loads(e["data"]).get("delta")
-        for e in events
-        if e.get("event") == "content_delta"
+        json.loads(e["data"]).get("delta") for e in events if e.get("event") == "content_delta"
     ]
     assert deltas == ["b"]
 
@@ -366,9 +339,7 @@ async def test_resume_replay_uses_last_event_id_header_fallback(
 
     events = _parse_sse_events(body.decode())
     deltas = [
-        json.loads(e["data"]).get("delta")
-        for e in events
-        if e.get("event") == "content_delta"
+        json.loads(e["data"]).get("delta") for e in events if e.get("event") == "content_delta"
     ]
     assert deltas == ["b"]
 
@@ -419,9 +390,7 @@ async def test_resume_replay_skips_corrupt_event_without_name(
     events = _parse_sse_events(body.decode())
     # corrupt evt 는 emit 안 됨 — message_start + content_delta(ok) 만.
     assert [e.get("event") for e in events] == ["message_start", "content_delta"]
-    assert any(
-        "stream_resume skip corrupt evt" in r.message for r in caplog.records
-    )
+    assert any("stream_resume skip corrupt evt" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -549,8 +518,7 @@ async def test_resume_interrupt_pending_returns_409(
     run_id = str(uuid.uuid4())
     events_payload = [
         {"id": f"{run_id}-1", "event": "message_start", "data": {"id": run_id}},
-        {"id": f"{run_id}-2", "event": "interrupt",
-         "data": {"interrupt_id": "abc"}},
+        {"id": f"{run_id}-2", "event": "interrupt", "data": {"interrupt_id": "abc"}},
     ]
     async with TestSession() as db:
         db.add(
@@ -601,8 +569,7 @@ async def test_resume_db_row_belongs_to_other_conversation_returns_404(
             MessageEvent(
                 conversation_id=conv_a,
                 assistant_msg_id=run_id,
-                events=[{"id": f"{run_id}-1", "event": "message_start",
-                          "data": {"id": run_id}}],
+                events=[{"id": f"{run_id}-1", "event": "message_start", "data": {"id": run_id}}],
                 last_event_id=f"{run_id}-1",
                 status="completed",
                 completed_at=datetime.now(UTC).replace(tzinfo=None),
@@ -628,9 +595,7 @@ async def test_resume_live_broker_belongs_to_other_conversation_returns_404(
     conv_b = await _seed_conv()
     run_id = str(uuid.uuid4())
     # conv_a 에 live broker 등록.
-    event_broker.registry.get_or_create(
-        run_id, conversation_id=str(conv_a)
-    )
+    event_broker.registry.get_or_create(run_id, conversation_id=str(conv_a))
     # conv_b URL 로 GET → broker live 분기에서 conv_id mismatch.
     resp = await client.get(
         f"/api/conversations/{conv_b}/stream",
@@ -687,8 +652,7 @@ async def test_resume_unknown_conversation_logs_unowned_reason(
     )
     assert resp.status_code == 404
     assert any(
-        "stream_resume reject" in r.message
-        and "reason=conv_unowned_or_missing" in r.message
+        "stream_resume reject" in r.message and "reason=conv_unowned_or_missing" in r.message
         for r in caplog.records
     )
 
@@ -740,14 +704,14 @@ async def test_resume_logs_reject_reason(
 def _build_events(run_id: str) -> list[dict[str, Any]]:
     """E2E 시나리오 공용 — 4-event happy path."""
     return [
-        {"id": f"{run_id}-1", "event": MESSAGE_START,
-         "data": {"id": run_id, "role": "assistant"}},
-        {"id": f"{run_id}-2", "event": CONTENT_DELTA,
-         "data": {"delta": "hi"}},
-        {"id": f"{run_id}-3", "event": CONTENT_DELTA,
-         "data": {"delta": " world"}},
-        {"id": f"{run_id}-4", "event": MESSAGE_END,
-         "data": {"content": "hi world", "usage": {}}},
+        {"id": f"{run_id}-1", "event": MESSAGE_START, "data": {"id": run_id, "role": "assistant"}},
+        {"id": f"{run_id}-2", "event": CONTENT_DELTA, "data": {"delta": "hi"}},
+        {"id": f"{run_id}-3", "event": CONTENT_DELTA, "data": {"delta": " world"}},
+        {
+            "id": f"{run_id}-4",
+            "event": MESSAGE_END,
+            "data": {"content": "hi world", "usage": {}, "status": "completed"},
+        },
     ]
 
 
@@ -776,7 +740,9 @@ def _make_executor_simulator(
         trace_sink = kwargs["trace_sink"]
         run_id = kwargs["run_id"]
         if captured is not None:
-            captured["broker"] = broker
+            registered_broker = event_broker.registry.get(run_id)
+            assert registered_broker is not None
+            captured["broker"] = registered_broker
 
         events = events_factory(run_id)
         try:
@@ -784,9 +750,7 @@ def _make_executor_simulator(
                 broker.publish_nowait(evt)
                 trace_sink.append(evt)
                 await persist_cb([evt])
-                yield format_sse(
-                    evt["event"], evt["data"], event_id=evt["id"]
-                )
+                yield format_sse(evt["event"], evt["data"], event_id=evt["id"])
                 if pause_after is not None and idx + 1 == pause_after:
                     assert pause_event is not None
                     await pause_event.wait()
@@ -820,9 +784,7 @@ def patch_async_session(monkeypatch: pytest.MonkeyPatch):
     교체. 미patch 시 partial flush 가 production DB(설정 안 됨)로 향해 silent
     drop → GET resume 가 row 를 못 찾아 RESUME_NOT_FOUND 로 빠진다.
     """
-    monkeypatch.setattr(
-        "app.services.conversation_stream_service.async_session", TestSession
-    )
+    monkeypatch.setattr("app.services.conversation_stream_service.async_session", TestSession)
 
 
 async def _drive_post_to_completion(
@@ -833,9 +795,7 @@ async def _drive_post_to_completion(
     content: str = "go",
 ) -> None:
     """B/C/D 공용 — patch + POST + aread 한 번에. 4번 반복되던 시퀀스 통합."""
-    with patch(
-        "app.routers.conversation_messages.execute_agent_stream", side_effect=mock_stream
-    ):
+    with patch("app.routers.conversation_messages.execute_agent_stream", side_effect=mock_stream):
         async with client.stream(
             "POST",
             f"/api/conversations/{conv_id}/messages",
@@ -876,17 +836,14 @@ async def test_e2e_post_inflight_get_attaches_live_and_receives_tail(
                 pass
 
     get_task: asyncio.Task[bytes] | None = None
-    with patch(
-        "app.routers.conversation_messages.execute_agent_stream", side_effect=mock_stream
-    ):
+    with patch("app.routers.conversation_messages.execute_agent_stream", side_effect=mock_stream):
         post_task = asyncio.create_task(consume_post())
         try:
             # mock 이 message_start + content_delta 두 개 를 publish 하고 pause 에
             # 걸렸는지 확인 — 이 시점에 broker buffer 는 2 events, broker live.
             await _wait_for(
                 lambda: (
-                    "broker" in captured
-                    and len(captured["broker"]._buffer) >= 2  # noqa: SLF001
+                    "broker" in captured and len(captured["broker"]._buffer) >= 2  # noqa: SLF001
                 )
             )
             broker_live = captured["broker"]
@@ -950,9 +907,7 @@ async def test_e2e_post_inflight_get_attaches_live_and_receives_tail(
 
     sse_events = _parse_sse_events(get_body.decode())
     deltas = [
-        json.loads(e["data"]).get("delta")
-        for e in sse_events
-        if e.get("event") == CONTENT_DELTA
+        json.loads(e["data"]).get("delta") for e in sse_events if e.get("event") == CONTENT_DELTA
     ]
     # buffer replay (hi) + 라이브 tail ( world) — 둘 다 GET 에 도달.
     assert deltas == ["hi", " world"]
@@ -995,12 +950,13 @@ async def test_e2e_post_completed_then_broker_evicted_get_replays_from_db(
 
     sse_events = _parse_sse_events(body.decode())
     assert [e.get("event") for e in sse_events] == [
-        MESSAGE_START, CONTENT_DELTA, CONTENT_DELTA, MESSAGE_END
+        MESSAGE_START,
+        CONTENT_DELTA,
+        CONTENT_DELTA,
+        MESSAGE_END,
     ]
     deltas = [
-        json.loads(e["data"]).get("delta")
-        for e in sse_events
-        if e.get("event") == CONTENT_DELTA
+        json.loads(e["data"]).get("delta") for e in sse_events if e.get("event") == CONTENT_DELTA
     ]
     assert deltas == ["hi", " world"]
     assert all(e.get("event") != STALE for e in sse_events)
@@ -1023,17 +979,21 @@ async def test_e2e_post_killed_before_finalize_get_emits_stale(
     async def _no_finalize(*args: Any, **kwargs: Any) -> None:
         return None
 
-    monkeypatch.setattr(
-        "app.services.conversation_stream_service.finalize_trace", _no_finalize
-    )
+    async def _no_transition(*args: Any, **kwargs: Any) -> tuple[None, str]:
+        return None, "completed"
+
+    monkeypatch.setattr("app.services.conversation_stream_service.finalize_trace", _no_finalize)
+    monkeypatch.setattr("app.services.conversation_run_worker._transition", _no_transition)
 
     def events_no_end(run_id: str) -> list[dict[str, Any]]:
         # message_end 누락 — 백엔드가 도중에 죽은 것을 시뮬레이션.
         return [
-            {"id": f"{run_id}-1", "event": MESSAGE_START,
-             "data": {"id": run_id, "role": "assistant"}},
-            {"id": f"{run_id}-2", "event": CONTENT_DELTA,
-             "data": {"delta": "partial"}},
+            {
+                "id": f"{run_id}-1",
+                "event": MESSAGE_START,
+                "data": {"id": run_id, "role": "assistant"},
+            },
+            {"id": f"{run_id}-2", "event": CONTENT_DELTA, "data": {"delta": "partial"}},
         ]
 
     mock_stream = _make_executor_simulator(events_no_end, captured=captured)
@@ -1052,11 +1012,7 @@ async def test_e2e_post_killed_before_finalize_get_emits_stale(
         from sqlalchemy import select
 
         record = (
-            await db.execute(
-                select(MessageEvent).where(
-                    MessageEvent.assistant_msg_id == run_id
-                )
-            )
+            await db.execute(select(MessageEvent).where(MessageEvent.assistant_msg_id == run_id))
         ).scalar_one()
         assert record.status == "streaming"
 
@@ -1090,15 +1046,19 @@ async def test_e2e_post_emits_interrupt_then_get_returns_409(
 
     def events_with_interrupt(run_id: str) -> list[dict[str, Any]]:
         return [
-            {"id": f"{run_id}-1", "event": MESSAGE_START,
-             "data": {"id": run_id, "role": "assistant"}},
-            {"id": f"{run_id}-2", "event": INTERRUPT,
-             "data": {"interrupt_id": "abc", "value": "approve?"}},
+            {
+                "id": f"{run_id}-1",
+                "event": MESSAGE_START,
+                "data": {"id": run_id, "role": "assistant"},
+            },
+            {
+                "id": f"{run_id}-2",
+                "event": INTERRUPT,
+                "data": {"interrupt_id": "abc", "value": "approve?"},
+            },
         ]
 
-    mock_stream = _make_executor_simulator(
-        events_with_interrupt, captured=captured
-    )
+    mock_stream = _make_executor_simulator(events_with_interrupt, captured=captured)
 
     await _drive_post_to_completion(client, conv_id, mock_stream, content="do thing")
 
