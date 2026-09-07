@@ -36,6 +36,7 @@ interface UseLangGraphDataUIEffectsOptions {
 }
 
 const DATA_UI_CHANNELS = ['custom'] as const
+const EMPTY_DATA_UI_BY_MESSAGE_ID: DataUIByMessageId = {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -212,7 +213,8 @@ export function useLangGraphDataUIEffects({
     conversationId,
     items: {},
   })
-  const dataUIByMessageId = store.conversationId === conversationId ? store.items : {}
+  const dataUIByMessageId =
+    store.conversationId === conversationId ? store.items : EMPTY_DATA_UI_BY_MESSAGE_ID
 
   const handleEvent = useCallback(
     (event: Event) => {

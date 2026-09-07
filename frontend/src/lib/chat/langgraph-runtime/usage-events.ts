@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChannel, type AnyStream } from '@langchain/react'
 import type { BaseMessage } from '@langchain/core/messages'
 import { useSetAtom } from 'jotai'
-import { latestTurnUsageAtom, sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
+import {
+  latestTurnUsageAtom,
+  sessionTokenUsageAtom,
+  type TokenUsage,
+} from '@/lib/stores/chat-store'
 import type { TokenUsageBreakdown } from '@/lib/types'
 import {
   isRecord,
@@ -502,9 +506,12 @@ export function useLangGraphUsageEffects({
     () => messagesWithUsageFingerprint(messages, usagesByMessageId),
     [messages, usagesByMessageId],
   )
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const attachedMessages = useMemo(
     () => attachUsageToMessages(messages, usagesByMessageId),
+    // Object identities can churn while their render-relevant values remain
+    // equivalent. The semantic fingerprint intentionally owns invalidation so
+    // replayed stream state preserves converted message identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [attachedFingerprint],
   )
 
