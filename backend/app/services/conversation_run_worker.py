@@ -204,7 +204,7 @@ def _publish_yielded_chunk_if_needed(
         event: BrokeredEvent = {"id": resolved_id, "event": event_name, "data": data}
         target_broker.publish_nowait(event)
         if emitted_events is not None:
-            emitted_events.append(event)
+            emitted_events.append(dict(event))
     return compat_seq
 
 
@@ -422,8 +422,9 @@ async def _publish_message_end(ctx: StreamCtx, *, status: str) -> None:
         "data": {"usage": {}, "content": "", "status": status},
     }
     ctx.broker.publish_nowait(event)
-    await ctx.persist_cb([event])
-    ctx.trace_sink.append(event)
+    persisted_event: dict[str, Any] = dict(event)
+    await ctx.persist_cb([persisted_event])
+    ctx.trace_sink.append(persisted_event)
 
 
 async def _publish_stale(ctx: StreamCtx, *, reason: str) -> None:
@@ -438,8 +439,9 @@ async def _publish_stale(ctx: StreamCtx, *, reason: str) -> None:
         },
     }
     ctx.broker.publish_nowait(event)
-    await ctx.persist_cb([event])
-    ctx.trace_sink.append(event)
+    persisted_event: dict[str, Any] = dict(event)
+    await ctx.persist_cb([persisted_event])
+    ctx.trace_sink.append(persisted_event)
 
 
 def _audit_action_for_terminal_status(status: conversation_run_service.RunStatus) -> str | None:
@@ -507,7 +509,9 @@ async def _activate_latest_branch_leaf_if_needed(
         await session.commit()
 
 
-def _trace_status_for_run(status: conversation_run_service.RunStatus) -> str:
+def _trace_status_for_run(
+    status: conversation_run_service.RunStatus,
+) -> Literal["completed", "failed"]:
     if status in {"completed", "interrupted", "canceled"}:
         return "completed"
     return "failed"

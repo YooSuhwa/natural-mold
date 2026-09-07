@@ -7,6 +7,7 @@ from typing import Literal
 import anyio
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 
@@ -17,7 +18,8 @@ async def test_committed_tool_result_survives_cancellation_handoff_without_repla
     tool_calls = 0
     blocked = anyio.Event()
 
-    async def tool_effect(_state: MessagesState) -> dict[str, list[ToolMessage]]:
+    async def tool_effect(state: MessagesState) -> dict[str, list[ToolMessage]]:
+        del state
         nonlocal tool_calls
         tool_calls += 1
         return {
@@ -30,12 +32,14 @@ async def test_committed_tool_result_survives_cancellation_handoff_without_repla
             ]
         }
 
-    async def blocked_model(_state: MessagesState) -> dict[str, list[AIMessage]]:
+    async def blocked_model(state: MessagesState) -> dict[str, list[AIMessage]]:
+        del state
         blocked.set()
         await anyio.sleep_forever()
         return {"messages": []}
 
-    async def corrected_model(_state: MessagesState) -> dict[str, list[AIMessage]]:
+    async def corrected_model(state: MessagesState) -> dict[str, list[AIMessage]]:
+        del state
         return {"messages": [AIMessage(content="corrected answer")]}
 
     def route_from_committed_state(state: MessagesState) -> Literal["tool", "corrected"]:
@@ -52,7 +56,7 @@ async def test_committed_tool_result_survives_cancellation_handoff_without_repla
     builder.add_edge("blocked", END)
     builder.add_edge("corrected", END)
     graph = builder.compile(checkpointer=InMemorySaver())
-    config = {"configurable": {"thread_id": "queue-checkpoint-handoff"}}
+    config: RunnableConfig = {"configurable": {"thread_id": "queue-checkpoint-handoff"}}
 
     first = asyncio.create_task(
         graph.ainvoke({"messages": [HumanMessage(content="initial request")]}, config)

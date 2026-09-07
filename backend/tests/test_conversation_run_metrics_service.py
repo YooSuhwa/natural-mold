@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
+from typing import cast
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import Table, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.agent_runtime.run_metrics import RunMetricActivity, RunMetricsSnapshot
@@ -51,6 +52,10 @@ def _snapshot() -> RunMetricsSnapshot:
     )
 
 
+CONVERSATION_RUN_TABLE = cast(Table, ConversationRun.__table__)
+CONVERSATION_RUN_METRICS_TABLE = cast(Table, ConversationRunMetrics.__table__)
+
+
 @pytest.mark.asyncio
 async def test_persisted_metrics_reload_with_run_association(tmp_path) -> None:
     # Given: isolated storage with only the explicitly imported run metrics model.
@@ -59,10 +64,10 @@ async def test_persisted_metrics_reload_with_run_association(tmp_path) -> None:
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with engine.begin() as connection:
         await connection.run_sync(
-            lambda sync_connection: ConversationRun.__table__.create(sync_connection)
+            lambda sync_connection: CONVERSATION_RUN_TABLE.create(sync_connection)
         )
         await connection.run_sync(
-            lambda sync_connection: ConversationRunMetrics.__table__.create(sync_connection)
+            lambda sync_connection: CONVERSATION_RUN_METRICS_TABLE.create(sync_connection)
         )
 
     # When: a terminal partial snapshot is persisted and loaded from a fresh session.
@@ -99,10 +104,10 @@ async def test_finalizer_retry_keeps_exactly_one_metrics_row(tmp_path) -> None:
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with engine.begin() as connection:
         await connection.run_sync(
-            lambda sync_connection: ConversationRun.__table__.create(sync_connection)
+            lambda sync_connection: CONVERSATION_RUN_TABLE.create(sync_connection)
         )
         await connection.run_sync(
-            lambda sync_connection: ConversationRunMetrics.__table__.create(sync_connection)
+            lambda sync_connection: CONVERSATION_RUN_METRICS_TABLE.create(sync_connection)
         )
 
     # When: a conflicting retry attempts to replace the frozen terminal truth.
@@ -152,10 +157,10 @@ async def test_unmeasured_values_persist_as_null_instead_of_zero(tmp_path) -> No
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with engine.begin() as connection:
         await connection.run_sync(
-            lambda sync_connection: ConversationRun.__table__.create(sync_connection)
+            lambda sync_connection: CONVERSATION_RUN_TABLE.create(sync_connection)
         )
         await connection.run_sync(
-            lambda sync_connection: ConversationRunMetrics.__table__.create(sync_connection)
+            lambda sync_connection: CONVERSATION_RUN_METRICS_TABLE.create(sync_connection)
         )
 
     # When: the incomplete snapshot is persisted and reloaded.

@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from langgraph.prebuilt import ToolNode
 
@@ -241,7 +242,7 @@ async def test_mcp_app_binding_is_minted_from_actual_toolnode_call() -> None:
         from langchain.tools import ToolRuntime
         from langgraph._internal._constants import CONFIG_KEY_RUNTIME
 
-        config = {"configurable": {"moldy_run_id": run_id}}
+        config: RunnableConfig = {"configurable": {"moldy_run_id": run_id}}
         runtime = ToolRuntime(
             state={},
             context=None,

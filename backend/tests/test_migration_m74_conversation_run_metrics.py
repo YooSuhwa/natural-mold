@@ -5,6 +5,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from sqlalchemy import Column
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 MIGRATION_PATH = BACKEND_ROOT / "alembic" / "versions" / "m74_conversation_run_metrics.py"
@@ -42,7 +43,8 @@ def test_m74_is_linear_and_creates_run_association_constraints(
     assert migration.down_revision == "m73_conversation_run_inputs"
     assert calls[0][0] == "create_table"
     assert calls[0][1][0] == "conversation_run_metrics"
-    assert {column.name for column in calls[0][1][1:]} >= {
+    columns = [column for column in calls[0][1][1:] if isinstance(column, Column)]
+    assert {column.name for column in columns} >= {
         "run_id",
         "terminal_state",
         "usage_complete",
@@ -50,7 +52,9 @@ def test_m74_is_linear_and_creates_run_association_constraints(
     }
     assert calls[1][0] == "add_column"
     assert calls[1][1][0] == "token_usages"
-    assert calls[1][1][1].name == "run_id"
+    run_id_column = calls[1][1][1]
+    assert isinstance(run_id_column, Column)
+    assert run_id_column.name == "run_id"
     assert calls[2] == (
         "create_foreign_key",
         (

@@ -79,6 +79,7 @@ async def test_worker_metrics_baseline_excludes_pre_input_checkpoint_usage(
     metrics.observe(
         {
             "id": "values-1",
+            "upstream_event_id": None,
             "run_id": "run-1",
             "thread_id": str(conversation_id),
             "seq": 1,
@@ -98,7 +99,7 @@ async def test_worker_metrics_baseline_excludes_pre_input_checkpoint_usage(
                     },
                 ]
             },
-            "interrupts": [],
+            "timestamp": None,
             "checkpoint_id": None,
             "checkpoint_ns": None,
         }
@@ -622,6 +623,7 @@ async def test_startup_sweep_then_recovery_finishes_workerless_cancel_before_sta
     )
     assert claimed is not None
     await conversation_run_service.request_cancel_run(db, claimed.run, reason="steer")
+    assert claimed.run.cancel_requested_at is not None
     claimed.run.created_at = claimed.run.cancel_requested_at - timedelta(hours=1)
     await conversation_run_queue_service.enqueue_input(
         db,
@@ -765,6 +767,7 @@ async def test_startup_recovers_workerless_direct_cancel_then_dispatches_once(
         input_preview="direct before crash",
     )
     await conversation_run_service.request_cancel_run(db, direct, reason="stop")
+    assert direct.cancel_requested_at is not None
     direct.created_at = direct.cancel_requested_at - timedelta(hours=1)
     await conversation_run_queue_service.enqueue_input(
         db,

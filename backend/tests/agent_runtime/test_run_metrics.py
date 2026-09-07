@@ -5,7 +5,7 @@ from __future__ import annotations
 from langchain_core.messages import AIMessage
 
 from app.agent_runtime.langgraph_protocol_adapter import adapt_v3_protocol_event
-from app.agent_runtime.protocol_events import stored_protocol_event
+from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
 
 
@@ -26,7 +26,7 @@ def _message_event(
     usage: dict[str, int | float] | None = None,
     content: str = "",
     namespace: list[str] | None = None,
-) -> dict[str, object]:
+) -> StoredProtocolEvent:
     message: dict[str, object] = {"id": message_id, "type": "ai", "content": content}
     if usage is not None:
         message["usage_metadata"] = usage
@@ -46,7 +46,7 @@ def _tool_event(
     call_id: str,
     name: str,
     namespace: list[str] | None = None,
-) -> dict[str, object]:
+) -> StoredProtocolEvent:
     return stored_protocol_event(
         run_id="run-1",
         thread_id="thread-1",

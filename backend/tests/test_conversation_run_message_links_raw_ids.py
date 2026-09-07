@@ -142,14 +142,17 @@ async def test_v3_root_ai_message_id_survives_stream_finalize_and_owned_link_que
         },
         {
             "method": "messages",
-            "params": {"namespace": [], "data": HumanMessage("current-user", id="user-id")},
+            "params": {
+                "namespace": [],
+                "data": HumanMessage(content="current-user", id="user-id"),
+            },
             "seq": 2,
         },
         {
             "method": "messages",
             "params": {
                 "namespace": ["child-agent"],
-                "data": AIMessageChunk("child", id="child-ai"),
+                "data": AIMessageChunk(content="child", id="child-ai"),
             },
             "seq": 3,
         },
@@ -157,18 +160,24 @@ async def test_v3_root_ai_message_id_survives_stream_finalize_and_owned_link_que
             "method": "messages",
             "params": {
                 "namespace": [],
-                "data": ToolMessage("tool", tool_call_id="call-1", id="tool-id"),
+                "data": ToolMessage(content="tool", tool_call_id="call-1", id="tool-id"),
             },
             "seq": 4,
         },
         {
             "method": "messages",
-            "params": {"namespace": [], "data": AIMessageChunk("done", id=raw_message_id)},
+            "params": {
+                "namespace": [],
+                "data": AIMessageChunk(content="done", id=raw_message_id),
+            },
             "seq": 5,
         },
         {
             "method": "messages",
-            "params": {"namespace": [], "data": AIMessageChunk("", id=raw_message_id)},
+            "params": {
+                "namespace": [],
+                "data": AIMessageChunk(content="", id=raw_message_id),
+            },
             "seq": 6,
         },
     ]
