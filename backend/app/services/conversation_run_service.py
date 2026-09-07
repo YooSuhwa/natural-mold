@@ -421,25 +421,28 @@ async def finalize_run_outputs_for_status(
     status: RunStatus,
     *,
     append_terminal_event: bool = False,
+    terminal_event: dict[str, Any] | None = None,
 ) -> None:
-    if status not in {"canceled", "stale", "failed"}:
-        return
-    if append_terminal_event and status == "canceled":
+    if terminal_event is None and append_terminal_event and status == "canceled":
         event_id = f"{run.id}-canceled"
+        terminal_event = {
+            "id": event_id,
+            "event": event_names.MESSAGE_END,
+            "data": {"usage": {}, "content": "", "status": "canceled"},
+        }
+    if terminal_event is not None:
+        event_id = terminal_event.get("id")
         await trace_storage.append_events(
             db,
             conversation_id=run.conversation_id,
             assistant_msg_id=str(run.id),
-            events_chunk=[
-                {
-                    "id": event_id,
-                    "event": event_names.MESSAGE_END,
-                    "data": {"usage": {}, "content": "", "status": "canceled"},
-                }
-            ],
-            status="streaming",
+            events_chunk=[terminal_event],
+            status="completed" if status in {"completed", "interrupted", "canceled"} else "failed",
         )
-        run.last_event_id = event_id
+        if isinstance(event_id, str) and event_id:
+            run.last_event_id = event_id
+    if status not in {"canceled", "stale", "failed"}:
+        return
     await trace_storage.finalize_turn(
         db,
         assistant_msg_id=str(run.id),

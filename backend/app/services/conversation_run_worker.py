@@ -13,13 +13,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.agent_runtime import event_names
 from app.agent_runtime.checkpointer import get_checkpointer
-from app.agent_runtime.event_broker import BrokeredEvent
+from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
 from app.agent_runtime.protocol_redaction import REDACTED_SENSITIVE_FIELD
-from app.agent_runtime.run_metrics import RunMetricsAccumulator, RunMetricsSnapshot
+from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.run_metrics_baseline import (
     baseline_completed_tool_call_source_identities,
     baseline_message_identities,
 )
+from app.agent_runtime.run_metrics_types import TerminalRunState
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.config import settings
@@ -35,6 +36,7 @@ from app.services.conversation_run_interrupts import (
     interrupt_id_from_events,
 )
 from app.services.conversation_run_metrics_service import persist_run_metrics_and_usage
+from app.services.conversation_run_terminal_delivery import OwnerTerminalDelivery
 from app.services.conversation_stream_service import StreamCtx
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,23 @@ class RunTaskAlreadyRegisteredError(RuntimeError):
 
 def _session_factory():
     return async_session or stream_service.async_session
+
+
+def _effective_terminal_status(
+    run: ConversationRun,
+    proposed_status: TerminalRunState,
+    *,
+    cancellation_ack_worker_id: str | None,
+    allow_workerless_cancellation_ack: bool,
+) -> TerminalRunState:
+    owner_ack = (
+        cancellation_ack_worker_id is not None
+        and run.worker_instance_id == cancellation_ack_worker_id
+    )
+    workerless_ack = allow_workerless_cancellation_ack and run.worker_instance_id is None
+    if proposed_status != "stale" and run.status == "canceling" and (owner_ack or workerless_ack):
+        return "canceled"
+    return proposed_status
 
 
 class RunTaskRegistry:
@@ -170,17 +189,20 @@ def _publish_yielded_chunk_if_needed(
     chunk: str,
     compat_seq: int,
     emitted_events: list[dict[str, Any]] | None = None,
+    *,
+    broker: EventBroker | OwnerTerminalDelivery | None = None,
 ) -> int:
+    target_broker = broker or ctx.broker
     for event_name, event_id, data in _parse_sse_chunk(chunk):
         if event_id:
             resolved_id = event_id
         else:
             compat_seq += 1
             resolved_id = f"{ctx.run_id}-compat-{compat_seq}"
-        if ctx.broker.last_event_id == resolved_id:
+        if target_broker.last_event_id == resolved_id:
             continue
         event: BrokeredEvent = {"id": resolved_id, "event": event_name, "data": data}
-        ctx.broker.publish_nowait(event)
+        target_broker.publish_nowait(event)
         if emitted_events is not None:
             emitted_events.append(event)
     return compat_seq
@@ -221,7 +243,7 @@ async def start_conversation_run(
 
 async def _transition(
     run_id: uuid.UUID,
-    status: conversation_run_service.RunStatus,
+    status: TerminalRunState,
     *,
     worker_instance_id: str | None = None,
     interrupt_id: str | None = None,
@@ -229,18 +251,39 @@ async def _transition(
     error_message: str | None = None,
     cancellation_ack_worker_id: str | None = None,
     allow_workerless_cancellation_ack: bool = False,
-    metrics_snapshot: RunMetricsSnapshot,
+    run_metrics: RunMetricsAccumulator,
     model_name: str,
-) -> ConversationRun | None:
+    terminal_event_for_status: Callable[[TerminalRunState], dict[str, Any]] | None = None,
+) -> tuple[ConversationRun | None, TerminalRunState]:
     async with _session_factory()() as session:
         run = await session.get(ConversationRun, run_id, with_for_update=True)
         if run is None:
-            return None
+            return None, status
+        effective_status = _effective_terminal_status(
+            run,
+            status,
+            cancellation_ack_worker_id=cancellation_ack_worker_id,
+            allow_workerless_cancellation_ack=allow_workerless_cancellation_ack,
+        )
         try:
+            metrics_snapshot = run_metrics.finalize(effective_status)
+            terminal_event = (
+                terminal_event_for_status(effective_status)
+                if terminal_event_for_status is not None
+                else None
+            )
+            if terminal_event is not None or effective_status == "canceled":
+                await conversation_run_service.finalize_run_outputs_for_status(
+                    session,
+                    run,
+                    effective_status,
+                    append_terminal_event=terminal_event is None,
+                    terminal_event=terminal_event,
+                )
             await conversation_run_service.transition_run(
                 session,
                 run,
-                status,
+                effective_status,
                 worker_instance_id=worker_instance_id,
                 interrupt_id=interrupt_id,
                 error_code=error_code,
@@ -260,10 +303,10 @@ async def _transition(
             logger.exception(
                 "invalid conversation run transition run_id=%s status=%s",
                 run_id,
-                status,
+                effective_status,
             )
             raise
-        return run
+        return run, effective_status
 
 
 async def _transition_to_running(
@@ -552,7 +595,7 @@ async def _run_conversation(
 ) -> None:
     metrics_started_at = time.monotonic()
     run_metrics = RunMetricsAccumulator(started_at=metrics_started_at)
-    final_status: conversation_run_service.RunStatus = "completed"
+    final_status: TerminalRunState = "completed"
     failure: Exception | None = None
     error_code: str | None = None
     error_message: str | None = None
@@ -564,6 +607,13 @@ async def _run_conversation(
     # 다시 finalize 하지 않기 위함.
     finalize_needed = True
     workerless_cancel_before_start = False
+    executor_exhausted_normally = False
+    terminal_delivery = OwnerTerminalDelivery(
+        run_id=ctx.run_id,
+        broker=ctx.broker,
+        persist_callback=ctx.persist_cb,
+        trace_sink=ctx.trace_sink,
+    )
     try:
         run, started = await _transition_to_running(
             run_id,
@@ -605,6 +655,8 @@ async def _run_conversation(
         )
 
         stream_kwargs = ctx.as_stream_kwargs()
+        stream_kwargs["broker"] = terminal_delivery
+        stream_kwargs["persist_callback"] = terminal_delivery.persist
         stream_kwargs["run_metrics"] = run_metrics
         stream_kwargs["artifact_recorder"] = stream_service.build_artifact_recorder(
             conversation_id=conversation_id,
@@ -618,7 +670,13 @@ async def _run_conversation(
             moldy_source=moldy_source,
             **stream_kwargs,
         ):
-            compat_seq = _publish_yielded_chunk_if_needed(ctx, chunk, compat_seq)
+            compat_seq = _publish_yielded_chunk_if_needed(
+                ctx,
+                chunk,
+                compat_seq,
+                broker=terminal_delivery,
+            )
+        executor_exhausted_normally = True
 
         if ctx.has_stream_error():
             final_status = "failed"
@@ -661,50 +719,17 @@ async def _run_conversation(
         logger.exception("conversation run worker failed run_id=%s", run_id)
         await _publish_error(ctx, "에이전트 실행 중 오류가 발생했습니다.")
     finally:
-        metrics_snapshot = run_metrics.finalize(final_status)
         if heartbeat_task is not None:
             heartbeat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
 
-        async def _finalize_run_status() -> None:
-            try:
-                final_run = await _transition(
-                    run_id,
-                    final_status,
-                    error_code=error_code,
-                    error_message=error_message,
-                    interrupt_id=interrupt_id,
-                    cancellation_ack_worker_id=registry.worker_instance_id,
-                    allow_workerless_cancellation_ack=workerless_cancel_before_start,
-                    metrics_snapshot=metrics_snapshot,
-                    model_name=getattr(cfg, "model_name", "unknown"),
-                )
-                action = _audit_action_for_terminal_status(final_status)
-                if final_run is not None and action is not None:
-                    await _record_run_audit(
-                        action=action,
-                        run=final_run,
-                        user=user,
-                        status=final_status,
-                    )
-                await _activate_latest_branch_leaf_if_needed(
-                    conversation_id=conversation_id,
-                    moldy_source=moldy_source,
-                    final_status=final_status,
-                )
-            except Exception:
-                logger.exception("conversation run status finalization failed run_id=%s", run_id)
+        if executor_exhausted_normally:
+            terminal_delivery.remove_staged_terminal_from_trace()
 
-        if finalize_needed:
-            # 인터럽트 런은 상태 전이를 trace 영속화보다 먼저 커밋한다(M8-2) —
-            # 승인 카드는 스트림 도중 이미 클라이언트에 flush되어 있어, 느린
-            # finalize_trace 뒤에 전이하면 그 사이 도착한 resume이 부모 run을
-            # 못 찾아(RESUME_NOT_FOUND) 튕긴다. 그 외 상태는 기존 순서 유지
-            # (trace 완결 후 terminal 전이).
-            if final_status == "interrupted":
-                await _finalize_run_status()
-
+        async def _finalize_trace_for_status(
+            effective_status: TerminalRunState,
+        ) -> None:
             try:
                 await stream_service.finalize_trace(
                     conversation_id,
@@ -712,12 +737,63 @@ async def _run_conversation(
                     ctx.trace_sink,
                     ctx.msg_id_sink,
                     ctx.langfuse_sink,
-                    success=final_status == "completed",
-                    status=_trace_status_for_run(final_status),
-                    run_status=final_status,
+                    success=effective_status == "completed",
+                    status=_trace_status_for_run(effective_status),
+                    run_status=effective_status,
                 )
             except Exception:
                 logger.exception("conversation run trace finalization failed run_id=%s", run_id)
+
+        async def _finalize_run_status() -> TerminalRunState:
+            try:
+                final_run, effective_status = await _transition(
+                    run_id,
+                    final_status,
+                    error_code=error_code,
+                    error_message=error_message,
+                    interrupt_id=interrupt_id,
+                    cancellation_ack_worker_id=registry.worker_instance_id,
+                    allow_workerless_cancellation_ack=workerless_cancel_before_start,
+                    run_metrics=run_metrics,
+                    model_name=getattr(cfg, "model_name", "unknown"),
+                    terminal_event_for_status=(
+                        lambda status: terminal_delivery.terminal_events_for_status(status)[1]
+                    )
+                    if executor_exhausted_normally
+                    else None,
+                )
+                if final_run is not None and executor_exhausted_normally:
+                    live_terminal, persisted_terminal = (
+                        terminal_delivery.terminal_events_for_status(effective_status)
+                    )
+                    terminal_delivery.publish_terminal(live_terminal, persisted_terminal)
+                action = _audit_action_for_terminal_status(effective_status)
+                if final_run is not None and action is not None:
+                    await _record_run_audit(
+                        action=action,
+                        run=final_run,
+                        user=user,
+                        status=effective_status,
+                    )
+                await _activate_latest_branch_leaf_if_needed(
+                    conversation_id=conversation_id,
+                    moldy_source=moldy_source,
+                    final_status=effective_status,
+                )
+            except Exception:
+                logger.exception("conversation run status finalization failed run_id=%s", run_id)
+                return final_status
+            return effective_status
+
+        if finalize_needed:
+            effective_status = final_status
+            # Interrupted runs still commit before trace finalization so resume can
+            # find the parent. Other runs keep trace first; a late cancellation is
+            # reconciled inside the subsequent locked transition before queue dispatch.
+            if final_status == "interrupted":
+                effective_status = await _finalize_run_status()
+
+            await _finalize_trace_for_status(effective_status)
 
             if final_status != "interrupted":
                 await _finalize_run_status()
