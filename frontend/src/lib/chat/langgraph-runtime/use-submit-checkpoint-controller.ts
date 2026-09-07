@@ -6,6 +6,7 @@ import { useCallback, useSyncExternalStore } from 'react'
 export interface PendingNewSubmitState {
   readonly conversationId: string
   readonly attemptId?: number
+  readonly acceptedRunId?: string
   readonly content: string
   readonly baseMessageCount: number
   readonly message: HumanMessage
@@ -58,6 +59,17 @@ export function useSubmitCheckpointController(conversationId: string) {
     [conversationId],
   )
 
+  const acceptPendingSubmit = useCallback(
+    (runId: string): boolean => {
+      const current = pendingSubmitsByConversation.get(conversationId)
+      if (!current || current.acceptedRunId === runId) return Boolean(current)
+      pendingSubmitsByConversation.set(conversationId, { ...current, acceptedRunId: runId })
+      emitChange()
+      return true
+    },
+    [conversationId],
+  )
+
   const clearConversationPendingSubmit = useCallback((): void => {
     if (!pendingSubmitsByConversation.delete(conversationId)) return
     emitChange()
@@ -66,6 +78,7 @@ export function useSubmitCheckpointController(conversationId: string) {
   return {
     pendingSubmit,
     beginPendingSubmit,
+    acceptPendingSubmit,
     clearPendingSubmit,
     clearConversationPendingSubmit,
   }

@@ -26,8 +26,9 @@ import {
   chatCancelInFlightAtom,
   pendingEditBranchPickerSuppressionAtom,
 } from '@/lib/stores/chat-store'
-import type { Message as MoldyMessage } from '@/lib/types'
+import type { ConversationRun, Message as MoldyMessage } from '@/lib/types'
 import { useServerMessageQueue } from '@/lib/chat/message-queue/use-server-message-queue'
+import { shouldRouteComposerToServerQueue } from '@/lib/chat/message-queue/server-message-queue'
 import type { ServerMessageQueueOptions } from '@/lib/chat/message-queue/server-message-queue-contract'
 import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
 
@@ -44,6 +45,8 @@ interface UseMoldyLangGraphStreamOptions {
   dictationAdapter?: DictationAdapter
   onBeforeSubmit?: () => void
   onRunStartAccepted?: () => void
+  serverLatestRun?: ConversationRun | null
+  serverRunIsActive?: boolean
   serverMessages?: readonly MoldyMessage[]
 }
 
@@ -66,6 +69,8 @@ export function useMoldyLangGraphStream({
   dictationAdapter,
   onBeforeSubmit,
   onRunStartAccepted,
+  serverLatestRun = null,
+  serverRunIsActive = false,
   serverMessages,
 }: UseMoldyLangGraphStreamOptions) {
   const setChatCancelInFlight = useSetAtom(chatCancelInFlightAtom)
@@ -76,10 +81,18 @@ export function useMoldyLangGraphStream({
     () => setPendingBranchPickerSuppression(null),
     [setPendingBranchPickerSuppression],
   )
+  const submitCheckpoint = useSubmitCheckpointController(conversationId)
+  const handleRunStartAccepted = useCallback(
+    (runId?: string): void => {
+      if (runId) submitCheckpoint.acceptPendingSubmit(runId)
+      onRunStartAccepted?.()
+    },
+    [onRunStartAccepted, submitCheckpoint],
+  )
   const reconciliation = useStreamReconciliationController({
     agentId,
     conversationId,
-    onRunStartAccepted,
+    onRunStartAccepted: handleRunStartAccepted,
     clearBranchPickerSuppression,
   })
   const {
@@ -93,8 +106,62 @@ export function useMoldyLangGraphStream({
     pendingReloadRender,
     postRunHydrationPending,
   } = reconciliation
-  const submitCheckpoint = useSubmitCheckpointController(conversationId)
   const { pendingSubmit: cachedPendingNewSubmit, clearPendingSubmit } = submitCheckpoint
+  const durableThreadRunNotice = useMemo(() => {
+    const pendingSubmitMatchesLatestRun =
+      cachedPendingNewSubmit !== null &&
+      serverLatestRun !== null &&
+      (cachedPendingNewSubmit.acceptedRunId === serverLatestRun.id ||
+        cachedPendingNewSubmit.content === serverLatestRun.input_preview)
+    if (
+      threadRunNotice?.status === 'canceling' &&
+      serverLatestRun &&
+      serverLatestRun.id === threadRunNotice.id &&
+      (serverLatestRun.status === 'canceled' ||
+        serverLatestRun.status === 'stale' ||
+        serverLatestRun.status === 'failed')
+    ) {
+      return {
+        id: serverLatestRun.id,
+        status: serverLatestRun.status,
+        ...(serverLatestRun.status === 'failed' && serverLatestRun.error_message
+          ? { errorMessage: serverLatestRun.error_message }
+          : {}),
+      }
+    }
+    if (threadRunNotice) return threadRunNotice
+    if (
+      stream.isLoading ||
+      claimedQueueRunInFlight ||
+      (cachedPendingNewSubmit && !pendingSubmitMatchesLatestRun) ||
+      serverRunIsActive ||
+      !serverLatestRun
+    ) {
+      return null
+    }
+    if (
+      serverLatestRun.status !== 'canceled' &&
+      serverLatestRun.status !== 'canceling' &&
+      serverLatestRun.status !== 'stale' &&
+      serverLatestRun.status !== 'failed'
+    ) {
+      return null
+    }
+    return {
+      id: serverLatestRun.id,
+      status: serverLatestRun.status,
+      ...(serverLatestRun.status === 'failed' && serverLatestRun.error_message
+        ? { errorMessage: serverLatestRun.error_message }
+        : {}),
+    }
+  }, [
+    cachedPendingNewSubmit,
+    claimedQueueRunInFlight,
+    serverLatestRun,
+    serverRunIsActive,
+    stream.isLoading,
+    threadRunNotice,
+  ])
   const activityEvents = useChannel(stream, ACTIVITY_CHANNELS, undefined, { bufferSize: 300 })
   const activities = useMemo(
     () =>
@@ -123,11 +190,11 @@ export function useMoldyLangGraphStream({
     messages: visible.messages,
   })
   const terminalNoticeText =
-    threadRunNotice?.status === 'stale'
+    durableThreadRunNotice?.status === 'stale'
       ? tReconnect('stale')
-      : threadRunNotice?.status === 'failed'
-        ? (threadRunNotice.errorMessage ?? tPage('runFailed'))
-        : threadRunNotice?.status === 'canceling'
+      : durableThreadRunNotice?.status === 'failed'
+        ? (durableThreadRunNotice.errorMessage ?? tPage('runFailed'))
+        : durableThreadRunNotice?.status === 'canceling'
           ? tPage('canceling')
           : tPage('canceled')
   const runtimeMessages = useStreamRuntimeMessages({
@@ -136,7 +203,7 @@ export function useMoldyLangGraphStream({
     messagesWithInterrupts: interruptView.messagesWithInterrupts,
     interruptCount: interruptView.payloads.length,
     claimedQueueRunInFlight,
-    threadRunNotice,
+    threadRunNotice: durableThreadRunNotice,
     terminalNoticeText,
     hydratedMessagesPresent: hydratedServerMessages !== null,
     pendingEdit: pendingEditRender,
@@ -176,7 +243,7 @@ export function useMoldyLangGraphStream({
     (message, options) => submitQueuedTransport(message, options.strategy, options.requestId),
     [submitQueuedTransport],
   )
-  const { controller: messageQueue } = useServerMessageQueue({
+  const { controller: messageQueue, snapshot: messageQueueSnapshot } = useServerMessageQueue({
     conversationId,
     submit: submitQueuedInput,
     onClaimedRun: handleClaimedQueueRun,
@@ -221,7 +288,12 @@ export function useMoldyLangGraphStream({
     onEdit,
     onReload,
     onCancel: onCancelWithQueueRefresh,
-    queue: messageQueue.adapter,
+    queue: shouldRouteComposerToServerQueue(
+      messageQueueSnapshot,
+      runtimeIsRunning || serverRunIsActive,
+    )
+      ? messageQueue.adapter
+      : undefined,
   })
 
   const sendMessage = useCallback(
@@ -244,6 +316,6 @@ export function useMoldyLangGraphStream({
     registerDecision,
     messageQueue,
     retryFailedInput,
-    threadRunNotice,
+    threadRunNotice: durableThreadRunNotice,
   }
 }

@@ -9,6 +9,7 @@ import type { ResolvedInterruptToolCall } from './hitl-interrupts'
 import { reportRuntimeFailure } from './runtime-warning'
 
 interface HitlStreamActions {
+  readonly hydrationPromise?: Promise<void>
   respond(
     response: { readonly decisions: Decision[] },
     options?: { readonly interruptId: string; readonly namespace?: string[] },
@@ -182,6 +183,7 @@ export function useHitlDecisionController({
               deletePendingDecisionIfOwned(pendingDecisionsRef.current, payloadKey, concurrentBatch)
             }
           }
+          if (stream.hydrationPromise) await stream.hydrationPromise
           await stream.respond({ decisions }, options)
           if (concurrentBatch && !concurrentBatch.settled) {
             concurrentBatch.settled = true
@@ -215,6 +217,7 @@ export function useHitlDecisionController({
             deletePendingDecisionIfOwned(pendingDecisionsRef.current, payloadKey, concurrentBatch)
           }
         }
+        if (stream.hydrationPromise) await stream.hydrationPromise
         await stream.respondAll(responsesById)
         if (concurrentBatch && !concurrentBatch.settled) {
           concurrentBatch.settled = true
@@ -349,6 +352,7 @@ export function useHitlDecisionController({
       const options = payload.namespace
         ? { interruptId: targetId, namespace: payload.namespace }
         : { interruptId: targetId }
+      if (stream.hydrationPromise) await stream.hydrationPromise
       await stream.respond({ decisions }, options)
       try {
         await refreshLifecycle()

@@ -25,9 +25,27 @@ export type {
   ServerMessageQueueController,
 } from './server-message-queue-contract'
 
+export function shouldRouteComposerToServerQueue(
+  snapshot: ServerMessageQueueSnapshot,
+  runtimeIsRunning: boolean,
+): boolean {
+  if (runtimeIsRunning || snapshot.queuePaused || snapshot.rejectedSubmission !== null) return true
+  if (snapshot.items.some((item) => item.status === 'pending')) return true
+  return (
+    snapshot.lastOperation.kind === 'sending' ||
+    snapshot.lastOperation.kind === 'reconciling' ||
+    snapshot.lastOperation.kind === 'queued'
+  )
+}
+
 export function createServerMessageQueue(
   options: ServerMessageQueueOptions,
 ): ServerMessageQueueController {
+  let callbacks = {
+    submit: options.submit,
+    createRequestId: options.createRequestId,
+    onClaimedRun: options.onClaimedRun,
+  }
   let serverInputs: readonly ConversationRunInput[] = []
   let queuePaused = false
   let lastOperation: QueueOperationState = { kind: 'idle' }
@@ -40,7 +58,7 @@ export function createServerMessageQueue(
     reconciliationError,
     rejectedSubmission,
   }
-  const claimedRuns = createClaimedRunTracker(options.onClaimedRun)
+  const claimedRuns = createClaimedRunTracker((runId) => callbacks.onClaimedRun(runId))
   const listeners = new Set<() => void>()
 
   const emit = (): void => {
@@ -82,10 +100,10 @@ export function createServerMessageQueue(
     message: AppendMessage,
     strategy: 'enqueue' | 'interrupt',
   ): Promise<void> => {
-    const requestId = options.createRequestId()
+    const requestId = callbacks.createRequestId()
     setOperation({ kind: 'sending', requestId })
     try {
-      const accepted = await options.submit(message, { strategy, requestId })
+      const accepted = await callbacks.submit(message, { strategy, requestId })
       rejectedSubmission = null
       setOperation(claimedRuns.recordAccepted(accepted, requestId))
       try {
@@ -137,6 +155,9 @@ export function createServerMessageQueue(
 
   const controller: ServerMessageQueueController = {
     adapter,
+    updateCallbacks: (nextCallbacks) => {
+      callbacks = nextCallbacks
+    },
     enqueue: (message) => submit(message, 'enqueue'),
     steer: (message) => submit(message, 'interrupt'),
     edit: async (inputId, message) => {

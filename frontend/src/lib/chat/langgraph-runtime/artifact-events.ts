@@ -180,7 +180,18 @@ export function useLangGraphArtifactEffects({
 
       upsertArtifact(payload)
       setArtifactsByMessageId((current) => updateMessageArtifactMap(current, payload))
-      queryClient.invalidateQueries({ queryKey: artifactKeys.all })
+      const conversationArtifactKey = artifactKeys.conversation(conversationId)
+      void queryClient
+        .cancelQueries({ queryKey: conversationArtifactKey, exact: true })
+        .then(() => {
+          queryClient.setQueryData<ArtifactSummary[]>(conversationArtifactKey, (current) =>
+            upsertArtifactList(current ?? [], payload),
+          )
+          return queryClient.invalidateQueries({
+            queryKey: conversationArtifactKey,
+            exact: true,
+          })
+        })
 
       if (payload.op !== 'deleted') {
         setRightRail({

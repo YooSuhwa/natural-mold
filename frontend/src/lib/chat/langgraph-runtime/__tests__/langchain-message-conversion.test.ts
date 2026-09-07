@@ -1,6 +1,8 @@
 import { AIMessage } from '@langchain/core/messages'
+import { unstable_convertExternalMessages } from '@assistant-ui/react'
 import { describe, expect, it } from 'vitest'
 import { convertMoldyLangChainMessage } from '../langchain-message-conversion'
+import { appendTerminalRunNotice } from '../stream-branch-metadata'
 import { TERMINAL_NOTICE_METADATA_KEY } from '../terminal-notice'
 
 type ConvertedWithCustom = {
@@ -172,5 +174,27 @@ describe('convertMoldyLangChainMessage', () => {
     )
 
     expect(customMetadata(converted).terminalNotice).toBeUndefined()
+  })
+
+  it('keeps a terminal notice as its own assistant-ui message after a partial assistant', () => {
+    const source = appendTerminalRunNotice(
+      [new AIMessage({ id: 'assistant-partial', content: 'partial response' })],
+      { id: 'run-canceled', status: 'canceled' },
+      'canceled',
+    )
+
+    const converted = unstable_convertExternalMessages(
+      source,
+      convertMoldyLangChainMessage,
+      false,
+      {},
+    )
+
+    expect(converted).toHaveLength(2)
+    expect(converted.map((message) => message.id)).toEqual([
+      'assistant-partial',
+      'moldy-canceled-run-canceled',
+    ])
+    expect(converted[1]?.metadata.custom.terminalNotice).toBe('canceled')
   })
 })

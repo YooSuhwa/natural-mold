@@ -144,9 +144,39 @@ describe('ChatRuntimeSection', () => {
       expect.objectContaining({
         agentId: 'agent-1',
         conversationId: 'conversation-1',
+        serverRunIsActive: false,
       }),
     )
     expect(document.querySelector('[data-runtime="langgraph-runtime"]')).toBeInTheDocument()
+  })
+
+  it('marks a durable active run for immediate queue routing after hydration', () => {
+    renderSection({
+      activeRun: {
+        id: 'run-active',
+        conversation_id: 'conversation-1',
+        status: 'running',
+      } as ConversationRun,
+      useLangGraphRuntime: true,
+    })
+
+    expect(mocks.useMoldyLangGraphStream).toHaveBeenCalledWith(
+      expect.objectContaining({ serverRunIsActive: true }),
+    )
+  })
+
+  it('passes the latest durable run to the LangGraph runtime', () => {
+    const latestRun = {
+      id: 'run-canceled',
+      conversation_id: 'conversation-1',
+      status: 'canceled',
+    } as ConversationRun
+
+    renderSection({ latestRun, useLangGraphRuntime: true })
+
+    expect(mocks.useMoldyLangGraphStream).toHaveBeenCalledWith(
+      expect.objectContaining({ serverLatestRun: latestRun }),
+    )
   })
 
   it('passes the browser dictation adapter to the LangGraph runtime', () => {

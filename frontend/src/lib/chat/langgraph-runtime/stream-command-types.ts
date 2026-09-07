@@ -10,6 +10,7 @@ import type { MoldySubmitState } from './use-checkpoint-fork-handlers'
 export interface SubmitCheckpointActions {
   readonly pendingSubmit: PendingNewSubmitState | null
   readonly beginPendingSubmit: (content: string, baseMessageCount: number) => PendingNewSubmitState
+  readonly acceptPendingSubmit: (runId: string) => boolean
   readonly clearPendingSubmit: (content: string, attemptId: number) => boolean
   readonly clearConversationPendingSubmit: () => void
 }

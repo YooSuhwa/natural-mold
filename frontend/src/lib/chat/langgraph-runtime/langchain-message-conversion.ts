@@ -7,7 +7,11 @@ import type { TokenUsageBreakdown } from '@/lib/types'
 import type { UIDataItem } from '@/lib/types/ui-data'
 import { MOLDY_UI_DATA_PART_NAME } from '@/lib/chat/data-ui-registry'
 import { compactionFromMessage, type CompactionMarker } from './compaction-events'
-import { terminalNoticeFromMessage, type TerminalNoticeStatus } from './terminal-notice'
+import {
+  TERMINAL_NOTICE_BOUNDARY_METADATA_KEY,
+  terminalNoticeFromMessage,
+  type TerminalNoticeStatus,
+} from './terminal-notice'
 import { isRecord, usageFromMessage } from './usage-normalization'
 
 type ConvertedMessage = useExternalMessageConverter.Message
@@ -88,6 +92,23 @@ function attachTerminalNoticeMetadata(
   } as ConvertedMessage
 }
 
+function attachTerminalNoticeBoundary(
+  converted: ConvertedMessage,
+  message: BaseMessage,
+): ConvertedMessage {
+  const additionalKwargs = isRecord(message.additional_kwargs) ? message.additional_kwargs : {}
+  const metadata = isRecord(additionalKwargs.metadata) ? additionalKwargs.metadata : {}
+  if (metadata[TERMINAL_NOTICE_BOUNDARY_METADATA_KEY] !== true) return converted
+  if (converted.role === 'tool') return converted
+  return {
+    ...converted,
+    convertConfig: {
+      ...converted.convertConfig,
+      joinStrategy: 'none',
+    },
+  } as ConvertedMessage
+}
+
 function attachUIDataParts(
   converted: ConvertedMessage,
   uiData: readonly UIDataItem[] | null,
@@ -120,11 +141,14 @@ export function convertMoldyLangChainMessage(
   const terminalNotice = terminalNoticeFromMessage(message)
   const uiData = (message as BaseMessage & { uiData?: UIDataItem[] | null }).uiData ?? null
   const converted = convertLangChainBaseMessage(message, metadata)
-  return attachUIDataParts(
-    attachTerminalNoticeMetadata(
-      attachCompactionMetadata(attachUsageMetadata(converted, usage), compaction),
-      terminalNotice,
+  return attachTerminalNoticeBoundary(
+    attachUIDataParts(
+      attachTerminalNoticeMetadata(
+        attachCompactionMetadata(attachUsageMetadata(converted, usage), compaction),
+        terminalNotice,
+      ),
+      uiData,
     ),
-    uiData,
+    message,
   )
 }

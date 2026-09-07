@@ -144,14 +144,6 @@ function failedInputRunStartCommand(
   } as ProtocolCommand
 }
 
-function acceptedRunId(value: unknown): string | undefined {
-  if (typeof value !== 'object' || value === null) return undefined
-  if (!('type' in value) || value.type !== 'success') return undefined
-  const result = 'result' in value ? value.result : undefined
-  if (typeof result !== 'object' || result === null || !('run_id' in result)) return undefined
-  return typeof result.run_id === 'string' && result.run_id.trim() ? result.run_id : undefined
-}
-
 function queuedRunStartAcceptance(value: unknown): QueueRunStartAcceptance {
   if (
     typeof value !== 'object' ||
@@ -273,12 +265,7 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   }
 
   async send(command: ProtocolCommand): Promise<Awaited<ProtocolSendResult>> {
-    const value = await this.#delegate.send(commandWithAgentId(command, this.#agentId))
-    const runId = command.method === 'run.start' ? acceptedRunId(value) : undefined
-    if (runId) {
-      this.#onRunStartAccepted?.(runId)
-    }
-    return value
+    return this.#delegate.send(commandWithAgentId(command, this.#agentId))
   }
 
   async submitQueuedInput(
@@ -289,7 +276,9 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
     const value = await this.send(
       queuedRunStartCommand(this.#agentId, message, strategy, requestId),
     )
-    return queuedRunStartAcceptance(value)
+    const accepted = queuedRunStartAcceptance(value)
+    if (accepted.runId) this.#onRunStartAccepted?.(accepted.runId)
+    return accepted
   }
 
   async retryFailedInput(
@@ -297,7 +286,9 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
     requestId: string,
   ): Promise<QueueRunStartAcceptance> {
     const value = await this.send(failedInputRunStartCommand(this.#agentId, input, requestId))
-    return queuedRunStartAcceptance(value)
+    const accepted = queuedRunStartAcceptance(value)
+    if (accepted.runId) this.#onRunStartAccepted?.(accepted.runId)
+    return accepted
   }
 
   events(): ReturnType<AgentServerAdapter['events']> {

@@ -42,6 +42,7 @@ import type {
 import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
 import type { SkillBrief } from '@/lib/types'
 import { useFailedInputRetryAction } from '@/lib/chat/commands/failed-input-retry'
+import { isActiveRunStatus } from '@/lib/chat-runs/status'
 
 type StreamFn = (
   content: string,
@@ -182,6 +183,8 @@ export function ChatRuntimeSection({
         onNewMessageAccepted={handleNewMessageAccepted}
         onRuntimeStatusChange={onRuntimeStatusChange}
         onStreamEnd={onStreamEnd}
+        serverLatestRun={latestRun}
+        serverRunIsActive={isActiveRunStatus(activeRun?.status)}
         serverMessages={messages}
         threadProps={threadProps}
       />
@@ -262,6 +265,8 @@ interface LangGraphRuntimeSectionProps {
   readonly onNewMessageAccepted?: () => void
   readonly onRuntimeStatusChange: (status: ConversationRuntimeStatus) => void
   readonly onStreamEnd: (didMutate: boolean) => void
+  readonly serverLatestRun: ConversationRun | null
+  readonly serverRunIsActive: boolean
   readonly serverMessages: readonly Message[]
   readonly threadProps: ThreadRenderProps
 }
@@ -276,6 +281,8 @@ function LangGraphRuntimeSection({
   onNewMessageAccepted,
   onRuntimeStatusChange,
   onStreamEnd,
+  serverLatestRun,
+  serverRunIsActive,
   serverMessages,
   threadProps,
 }: LangGraphRuntimeSectionProps) {
@@ -297,6 +304,8 @@ function LangGraphRuntimeSection({
     dictationAdapter,
     onBeforeSubmit: onBeforeNewMessage,
     onRunStartAccepted: onNewMessageAccepted,
+    serverLatestRun,
+    serverRunIsActive,
     serverMessages,
   })
   const wasRunningRef = useRef(false)

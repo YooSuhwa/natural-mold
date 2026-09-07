@@ -47,20 +47,28 @@ export function useStreamVisibleMessages({
   pendingEdit,
   pendingReload,
 }: UseStreamVisibleMessagesOptions) {
-  const acknowledged =
+  const streamAcknowledged =
     pendingSubmit !== null &&
     streamMessages.some(
       (message) =>
         isHumanMessage(message) && messageContentEqualsText(message, pendingSubmit.content),
     )
+  const serverAcknowledged =
+    pendingSubmit !== null &&
+    (serverMessages ?? []).some(
+      (message) => message.role === 'user' && message.content === pendingSubmit.content,
+    )
   useEffect(() => {
-    if (!pendingSubmit || !acknowledged || pendingSubmit.attemptId === undefined) return
+    // A values snapshot can briefly include the user message and then regress
+    // during run promotion or interruption. Keep the optimistic checkpoint
+    // until the independently fetched message envelope confirms persistence.
+    if (!pendingSubmit || !serverAcknowledged || pendingSubmit.attemptId === undefined) return
     clearPendingSubmit(pendingSubmit.content, pendingSubmit.attemptId)
-  }, [acknowledged, clearPendingSubmit, pendingSubmit])
+  }, [clearPendingSubmit, pendingSubmit, serverAcknowledged])
 
   const visibleWithPending = useMemo(
-    () => appendPendingNewSubmitMessage(streamMessages, acknowledged ? null : pendingSubmit),
-    [acknowledged, pendingSubmit, streamMessages],
+    () => appendPendingNewSubmitMessage(streamMessages, streamAcknowledged ? null : pendingSubmit),
+    [pendingSubmit, streamAcknowledged, streamMessages],
   )
   const visible = useMemo(
     () =>
@@ -73,9 +81,14 @@ export function useStreamVisibleMessages({
   const fallback = useMemo(() => messagesFromServerMessages(serverMessages), [serverMessages])
   const settling = isLoading || postRunHydrationPending
   const reconciled = useMemo(() => {
-    if (settling || fallback.length === 0) return visible
+    if (fallback.length === 0) return visible
+    // A live interrupt can publish a thread-state snapshot before the durable
+    // message envelope catches up. Preserve any user message already confirmed
+    // by that envelope, while edit/reload projections continue to own their
+    // intentionally shorter branch during settlement.
+    if (settling && (pendingEdit !== null || pendingReload !== null)) return visible
     return messageListIsDegraded(visible, fallback) ? fallback : visible
-  }, [fallback, settling, visible])
+  }, [fallback, pendingEdit, pendingReload, settling, visible])
   const renderable = useMemo(
     () => suppressRunningEmptyAssistantPlaceholder(reconciled, isLoading),
     [isLoading, reconciled],

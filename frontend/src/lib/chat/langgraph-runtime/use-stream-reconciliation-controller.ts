@@ -48,7 +48,7 @@ interface ThreadStateHydrationOptions {
 interface UseStreamReconciliationControllerOptions {
   readonly agentId: string
   readonly conversationId: string
-  readonly onRunStartAccepted?: () => void
+  readonly onRunStartAccepted?: (runId?: string) => void
   readonly clearBranchPickerSuppression: () => void
 }
 
@@ -167,7 +167,12 @@ export function useStreamReconciliationController({
         setReconnectState('idle')
         setConversationRuntimeStatus((current) => ({ ...current, [conversationId]: 'idle' }))
       }
-      setThreadRunNoticeState({ conversationId, value: terminalRunNotice })
+      // A late state read can still describe the pre-cancel checkpoint after the
+      // run API has already confirmed a terminal result. Do not let that stale,
+      // notice-less snapshot erase the exact terminal notice settled above.
+      if (terminalRunNotice) {
+        setThreadRunNoticeState({ conversationId, value: terminalRunNotice })
+      }
       setServerMessageMetadataState({
         conversationId,
         value: messageMetadataFromThreadState(state),
@@ -204,11 +209,24 @@ export function useStreamReconciliationController({
       if (runId && acceptedRunIdsRef.current.has(runId)) return
       if (runId) acceptedRunIdsRef.current.add(runId)
       if (runId && lifetimeRef.current === lifetime) {
+        setThreadRunNoticeState((current) => {
+          if (
+            current?.conversationId === conversationId &&
+            current.value?.id === runId &&
+            (current.value.status === 'canceling' ||
+              current.value.status === 'canceled' ||
+              current.value.status === 'stale' ||
+              current.value.status === 'failed')
+          ) {
+            return current
+          }
+          return { conversationId, value: null }
+        })
         acceptReloadRun(runId)
       }
-      onRunStartAcceptedRef.current?.()
+      onRunStartAcceptedRef.current?.(runId)
     },
-    [acceptReloadRun, lifetime],
+    [acceptReloadRun, conversationId, lifetime],
   )
   const submitQueuedInput = useCallback(
     (message: AppendMessage, strategy: 'enqueue' | 'interrupt', requestId: string) =>
@@ -226,7 +244,11 @@ export function useStreamReconciliationController({
     return () => transport.setStateHydrationListener(undefined)
   }, [handleThreadState, transport])
 
-  const stream = useStream<MoldyGraphState>({ transport, threadId: conversationId })
+  const stream = useStream<MoldyGraphState>({
+    transport,
+    threadId: conversationId,
+    onCreated: ({ runId }) => handleRunStartAccepted(runId),
+  })
   const streamRef = useRef(stream)
   useLayoutEffect(() => {
     streamRef.current = stream

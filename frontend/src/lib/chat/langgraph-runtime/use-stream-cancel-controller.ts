@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { UseStreamReturn } from '@langchain/react'
 import { useSetAtom } from 'jotai'
-import type { PendingNewSubmitState } from './use-submit-checkpoint-controller'
 import type { ThreadRunNotice } from './stream-thread-state-projection'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
 import { conversationRunKeys } from '@/lib/hooks/use-conversation-runs'
@@ -12,7 +11,7 @@ import { conversationKeys, invalidateConversationNavigators } from '@/lib/hooks/
 import { conversationRuntimeStatusAtom } from '@/lib/stores/chat-navigator-store'
 import { isActiveRunStatus } from '@/lib/chat-runs/status'
 import { reportRuntimeFailure } from './runtime-warning'
-import type { ConversationRun } from '@/lib/types'
+import type { ConversationRun, MessagesEnvelope } from '@/lib/types'
 import { followExactRunToTerminal } from './cancel-run-reconciliation'
 
 interface CancelReconciliationActions {
@@ -30,8 +29,7 @@ interface UseStreamCancelControllerOptions<StateType extends object> {
   readonly conversationId: string
   readonly stream: Pick<UseStreamReturn<StateType>, 'stop'>
   readonly reconciliation: CancelReconciliationActions
-  readonly pendingSubmit: PendingNewSubmitState | null
-  readonly clearPendingSubmit: (content: string, attemptId: number) => boolean
+  readonly acceptPendingSubmit?: (runId: string) => boolean
   readonly setChatCancelInFlight: (inFlight: boolean) => void
 }
 
@@ -39,8 +37,7 @@ export function useStreamCancelController<StateType extends object>({
   conversationId,
   stream,
   reconciliation,
-  pendingSubmit,
-  clearPendingSubmit,
+  acceptPendingSubmit,
   setChatCancelInFlight,
 }: UseStreamCancelControllerOptions<StateType>) {
   const nextCancelAttemptRef = useRef(1)
@@ -81,7 +78,18 @@ export function useStreamCancelController<StateType extends object>({
         return
       }
       setConversationRuntimeStatus((current) => ({ ...current, [conversationId]: 'idle' }))
-      queryClient.invalidateQueries({ queryKey: conversationKeys.messages(conversationId) })
+      const messagesKey = conversationKeys.messages(conversationId)
+      void queryClient.cancelQueries({ queryKey: messagesKey, exact: true })
+      queryClient.setQueryData<MessagesEnvelope>(messagesKey, (current) =>
+        current
+          ? {
+              ...current,
+              active_run: null,
+              latest_run: run,
+            }
+          : current,
+      )
+      queryClient.invalidateQueries({ queryKey: messagesKey, exact: true })
       queryClient.invalidateQueries({ queryKey: conversationRunKeys.active(conversationId) })
       queryClient.invalidateQueries({
         queryKey: conversationRunKeys.detail(conversationId, expectedRunId),
@@ -120,6 +128,7 @@ export function useStreamCancelController<StateType extends object>({
         throw caught
       }
       if (!isCurrentAttempt()) return
+      if (activeRun) acceptPendingSubmit?.(activeRun.id)
       if (activeRun?.status === 'queued' || activeRun?.status === 'running') {
         cancelResponse = await conversationRunsApi.cancel(conversationId, activeRun.id)
       }
@@ -168,17 +177,13 @@ export function useStreamCancelController<StateType extends object>({
       if (reloadAttemptId !== null) {
         reconciliation.clearPendingReload(conversationId, reloadAttemptId)
       }
-      if (pendingSubmit?.attemptId !== undefined) {
-        clearPendingSubmit(pendingSubmit.content, pendingSubmit.attemptId)
-      }
       if (activeCancelRef.current === owner) {
         setChatCancelInFlight(false)
       }
     }
   }, [
-    clearPendingSubmit,
     conversationId,
-    pendingSubmit,
+    acceptPendingSubmit,
     queryClient,
     reconciliation,
     settleRun,
