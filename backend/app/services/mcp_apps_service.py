@@ -30,7 +30,7 @@ from app.services.mcp_apps_binding_service import (
 )
 
 MCP_APP_MIME_TYPE: Final = "text/html;profile=mcp-app"
-MAX_APP_HTML_BYTES: Final = 512 * 1024
+MAX_APP_HTML_BYTES: Final = 640 * 1024
 MAX_TOOL_ARGUMENT_BYTES: Final = 64 * 1024
 
 
