@@ -197,6 +197,24 @@ def test_backend_ci_provisions_frontend_dependencies_before_isolated_pytest() ->
     assert backend.index(workspace_install) < backend.index(isolated_pytest)
 
 
+def test_backend_ci_validates_postgres_receipt_and_cleanup_after_lane_failure() -> None:
+    steps = _workflow_steps(_workflow("ci.yml"))
+    execution = _named_step(steps, "Run disposable PostgreSQL integration lane")
+    receipt = _named_step(steps, "Validate PostgreSQL integration receipt")
+    cleanup = _named_step(steps, "Verify PostgreSQL integration cleanup")
+
+    assert _run_body(execution).splitlines() == [
+        "bash scripts/run-isolated-postgres-tests.sh all \\",
+        "  --manifest .omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json",
+    ]
+    assert "if: ${{ always() }}" in receipt
+    assert "check-isolation-cleanup.py" in _run_body(receipt)
+    assert "ci-postgres.json" in _run_body(receipt)
+    assert "if: ${{ always() }}" in cleanup
+    assert "--discover" in _run_body(cleanup)
+    assert steps.index(execution) < steps.index(receipt) < steps.index(cleanup)
+
+
 def test_pr_smoke_uploads_only_the_validated_export_directory() -> None:
     workflow_steps = _workflow_steps(_workflow("ci.yml"))
     validation = _named_step(workflow_steps, "Validate cleanup and redacted artifact contract")

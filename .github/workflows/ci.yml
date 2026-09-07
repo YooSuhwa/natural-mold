@@ -72,15 +72,23 @@ jobs:
         working-directory: .
       - name: Enforce reviewed backend coverage floor
         run: uv run python ../scripts/run_coverage_gate.py backend
-      - name: Disposable PostgreSQL integration lane
+      - name: Run disposable PostgreSQL integration lane
         working-directory: .
         run: |
           bash scripts/run-isolated-postgres-tests.sh all \
             --manifest .omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json
-          (cd backend && uv run python ../scripts/check-isolation-cleanup.py \
-            ../.omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json)
-          (cd backend && uv run python ../scripts/check-isolation-cleanup.py \
-            --discover ../.omo/evidence/project-restart-consolidated-roadmap)
+      - name: Validate PostgreSQL integration receipt
+        if: ${{ always() }}
+        working-directory: backend
+        run: |
+          uv run python ../scripts/check-isolation-cleanup.py \
+            ../.omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json
+      - name: Verify PostgreSQL integration cleanup
+        if: ${{ always() }}
+        working-directory: backend
+        run: |
+          uv run python ../scripts/check-isolation-cleanup.py \
+            --discover ../.omo/evidence/project-restart-consolidated-roadmap
 
   # Project-wide Pyright is a blocking basic-mode gate. Keep standard-mode
   # promotion as a separate decision so the zero-error baseline stays stable.

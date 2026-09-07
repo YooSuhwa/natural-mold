@@ -66,7 +66,7 @@ _KNOWN_E2E_PROJECTS: Final = frozenset(
 
 
 def _run_probe(argv: tuple[str, ...], timeout: float) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 - fixed internal argv, never a shell command
+    return subprocess.run(
         argv, capture_output=True, text=True, timeout=timeout, check=False
     )
 
@@ -229,6 +229,10 @@ class ManifestDiagnosticError(ManifestValidationError):
         self.diagnostic = diagnostic
 
 
+class PostgresManifestDiagnosticError(ManifestDiagnosticError):
+    """A rejected PostgreSQL receipt with a bounded, nonsecret diagnostic."""
+
+
 def _bounded_state(value: object, allowed: frozenset[str]) -> str:
     return value if isinstance(value, str) and value in allowed else "other"
 
@@ -287,7 +291,9 @@ def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
     """Summarize only fixed enums and booleans; never reflect receipt values."""
     if payload.get("runner") != "moldy-isolated-e2e":
         return None
-    status = _bounded_state(payload.get("status"), frozenset({"passed", "failed", "interrupted"}))
+    status = _bounded_state(
+        payload.get("status"), frozenset({"passed", "failed", "interrupted"})
+    )
     self_test = _bounded_state(
         payload.get("self_test"),
         frozenset({"normal", "spec-failure", "server-failure", "dsn-failure", "sigint"}),
@@ -374,6 +380,91 @@ def _e2e_failure_diagnostic(payload: dict[str, object]) -> str | None:
     )
 
 
+def _postgres_failure_diagnostic(payload: dict[str, object]) -> str | None:
+    """Project a PostgreSQL failure receipt onto fixed enums and collection states."""
+    if payload.get("schema_version") != 1 or "scenarios" not in payload:
+        return None
+    status = _bounded_state(payload.get("status"), frozenset({"passed", "failed", "interrupted"}))
+    mode = _bounded_state(
+        payload.get("mode"),
+        frozenset(
+            {
+                "all",
+                "migration-roundtrip",
+                "self-test",
+                "stream-resume",
+                "run-lifecycle+stream-resume",
+                "queue-concurrency",
+            }
+        ),
+    )
+    scenarios = payload.get("scenarios")
+    scenario = (
+        scenarios[0] if isinstance(scenarios, list) and len(scenarios) == 1 else {}
+    )
+    scenario = scenario if isinstance(scenario, dict) else {}
+    scenario_name = _bounded_state(
+        scenario.get("scenario"),
+        frozenset(
+            {
+                "all",
+                "migration-roundtrip",
+                "stream-resume",
+                "run-lifecycle+stream-resume",
+                "queue-concurrency",
+                "success",
+                "child_failure",
+                "sigint",
+            }
+        ),
+    )
+    reason = _bounded_state(
+        scenario.get("failure_reason"),
+        frozenset(
+            {
+                "not_started",
+                "child_exit",
+                "signal",
+                "cleanup_failed",
+                "RunnerError",
+                "RuntimeError",
+                "FileNotFoundError",
+                "JSONDecodeError",
+            }
+        ),
+    )
+    raw_exit = scenario.get("child_exit_code")
+    exit_code = str(raw_exit) if type(raw_exit) is int and 0 <= raw_exit <= 255 else "other"
+    receipt = scenario.get("test_receipt")
+    receipt = receipt if isinstance(receipt, dict) else {}
+    cleanup_fields = (
+        "cleanup_container_removed",
+        "owned_label_absent",
+        "port_mapping_removed",
+        "process_group_stopped",
+        "cleanup_run_root_removed",
+    )
+    observed = scenario.get("foreign_containers_observed")
+    preserved = scenario.get("foreign_containers_preserved")
+    cleanup_complete = all(scenario.get(name) is True for name in cleanup_fields) and (
+        (observed is True and preserved is True)
+        or (observed is False and preserved is None)
+    )
+    return " ".join(
+        (
+            f"status={status}",
+            f"mode={mode}",
+            f"scenario={scenario_name}",
+            f"reason={reason}",
+            f"exit={exit_code}",
+            f"selected={_collection_state(receipt.get('selected_node_ids'))}",
+            f"executed={_collection_state(receipt.get('executed_node_ids'))}",
+            f"failed={_collection_state(receipt.get('failed_node_ids'))}",
+            f"cleanup={'complete' if cleanup_complete else 'incomplete'}",
+        )
+    )
+
+
 def _validate_manifest(manifest: Path) -> ManifestValidationResult:
     """Dispatch only after the shared no-follow manifest read boundary parsed the runner."""
     payload = load_manifest(manifest)
@@ -394,9 +485,13 @@ def _validate_manifest(manifest: Path) -> ManifestValidationResult:
         validate_live_absence(payload)
         return ManifestValidationResult("full", None)
     except ManifestValidationError as error:
-        diagnostic = _e2e_failure_diagnostic(payload)
+        e2e_diagnostic = _e2e_failure_diagnostic(payload)
+        postgres_diagnostic = _postgres_failure_diagnostic(payload)
+        diagnostic = e2e_diagnostic or postgres_diagnostic
         if diagnostic is None:
             raise
+        if postgres_diagnostic is not None and e2e_diagnostic is None:
+            raise PostgresManifestDiagnosticError(str(error), diagnostic) from error
         raise ManifestDiagnosticError(str(error), diagnostic) from error
 
 
@@ -430,7 +525,9 @@ def main() -> int:
         results = [_validate_manifest(manifest) for manifest in args.manifests]
     except ManifestValidationError as error:
         print(f"manifest validation rejected: {error}", file=sys.stderr)
-        if isinstance(error, ManifestDiagnosticError):
+        if isinstance(error, PostgresManifestDiagnosticError):
+            print(f"postgres diagnostic: {error.diagnostic}", file=sys.stderr)
+        elif isinstance(error, ManifestDiagnosticError):
             print(f"e2e diagnostic: {error.diagnostic}", file=sys.stderr)
         return 1
     if args.print_artifact_scope:
