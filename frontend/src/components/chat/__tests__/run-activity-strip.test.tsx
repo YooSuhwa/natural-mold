@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act } from 'react'
 import { render, screen } from '../../../../tests/test-utils'
 import { RunActivityStrip } from '../run-activity-strip'
 import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
@@ -16,13 +17,15 @@ function activity(overrides: Partial<RunActivity>): RunActivity {
 }
 
 describe('RunActivityStrip', () => {
+  afterEach(() => vi.useRealTimers())
+
   it('renders nothing when there is no semantic activity', () => {
     const { container } = render(<RunActivityStrip activities={[]} />)
 
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('renders compact translated activity rows and limits the visible set', () => {
+  it('renders a concise summary and exposes the complete current-run history', async () => {
     render(
       <RunActivityStrip
         activities={[
@@ -39,19 +42,61 @@ describe('RunActivityStrip', () => {
       />,
     )
 
-    expect(screen.getByText('계획을 세우는 중')).toBeInTheDocument()
-    expect(screen.getByText('web_search 실행 중')).toBeInTheDocument()
-    expect(screen.getByText('researcher 작업 중')).toBeInTheDocument()
-    expect(screen.queryByText('파일을 준비하는 중')).not.toBeInTheDocument()
+    expect(screen.getByText('도구 총 1')).toBeInTheDocument()
+    expect(screen.getByText('서브 에이전트 총 1')).toBeInTheDocument()
+
+    await screen.getByRole('button', { name: '활동 보기' }).click()
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(4)
+    expect(screen.getByText('web_search')).toBeInTheDocument()
+    expect(screen.getByText('researcher')).toBeInTheDocument()
+    expect(screen.getByText('Artifact')).toBeInTheDocument()
   })
 
-  it('marks error activity rows with error status', () => {
+  it('keeps a terminal activity visible without inventing elapsed time', async () => {
     render(
       <RunActivityStrip
         activities={[activity({ id: 'error', kind: 'error', status: 'error', title: 'Error' })]}
       />,
     )
 
-    expect(screen.getByText('문제가 발생했습니다').closest('[data-status="error"]')).not.toBeNull()
+    expect(screen.getByText('시간 정보 없음')).toBeInTheDocument()
+    await screen.getByRole('button', { name: '활동 보기' }).click()
+    expect(screen.getByText('Error')).toBeInTheDocument()
+  })
+
+  it('advances the bounded live timer and freezes it at the terminal event', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-06T00:00:02.000Z'))
+    const running = activity({
+      id: 'timed-tool',
+      kind: 'tool',
+      title: 'search',
+      startedAt: '2026-09-06T00:00:00.000Z',
+    })
+    const { rerender } = render(<RunActivityStrip activities={[running]} />)
+
+    expect(screen.getByText('2초')).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(1_000)
+    })
+    expect(screen.getByText('3초')).toBeInTheDocument()
+
+    rerender(
+      <RunActivityStrip
+        activities={[
+          {
+            ...running,
+            status: 'complete',
+            endedAt: '2026-09-06T00:00:03.500Z',
+          },
+        ]}
+      />,
+    )
+    expect(screen.getByText('3.5초')).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(5_000)
+    })
+    expect(screen.getByText('3.5초')).toBeInTheDocument()
   })
 })

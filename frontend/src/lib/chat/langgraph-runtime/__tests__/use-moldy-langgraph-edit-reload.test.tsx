@@ -11,6 +11,7 @@ interface MockStream {
   values: { messages: BaseMessage[] }
   interrupts: never[]
   isLoading: boolean
+  getThread: ReturnType<typeof vi.fn>
   submit: ReturnType<typeof vi.fn>
   respond: ReturnType<typeof vi.fn>
   stop: ReturnType<typeof vi.fn>
@@ -40,6 +41,7 @@ const mocks = vi.hoisted(() => {
     values: { messages: [] },
     interrupts: [],
     isLoading: false,
+    getThread: vi.fn(() => undefined),
     submit: vi.fn(),
     respond: vi.fn(),
     stop: vi.fn(),
@@ -76,7 +78,14 @@ const mocks = vi.hoisted(() => {
     useChannelEffect: vi.fn(),
     useExternalMessageConverter: vi.fn((options: { messages: readonly unknown[] }) => {
       void options
-      return mocks.convertedMessages
+      return mocks.convertedMessages.map((message) => ({
+        ...message,
+        content: Array.isArray(message.content)
+          ? message.content
+          : typeof message.content === 'string'
+            ? [{ type: 'text', text: message.content }]
+            : [],
+      }))
     }),
     useExternalStoreRuntime: vi.fn((options: unknown) => ({ kind: 'runtime', options })),
     convertLangChainBaseMessage: vi.fn(),
@@ -175,6 +184,8 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
     mocks.stream.messages = []
     mocks.stream.values = { messages: [] }
     mocks.stream.isLoading = false
+    mocks.stream.getThread.mockReset()
+    mocks.stream.getThread.mockReturnValue(undefined)
     mocks.stream.submit.mockReset()
     mocks.apiFetch.mockReset()
     mocks.apiFetch.mockResolvedValue({ metadata: {} })
@@ -2127,6 +2138,8 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
     vi.useFakeTimers()
     try {
       mocks.convertedMessages = [{ id: 'user-1' }, { id: 'assistant-1' }]
+      const runtimeOptions = renderRuntimeOptions()
+      mocks.apiFetch.mockReset()
       mocks.apiFetch.mockResolvedValueOnce({ metadata: {} }).mockResolvedValueOnce({
         values: {
           messages: [
@@ -2140,14 +2153,19 @@ describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
         },
       })
 
-      const runtimeOptions = renderRuntimeOptions()
-      const editPromise = runtimeOptions.onEdit({
-        content: [{ type: 'text', text: 'edited first prompt' }],
-        parentId: 'user-1',
-        sourceId: 'user-1',
+      let editPromise: Promise<void> | undefined
+      await act(async () => {
+        editPromise = runtimeOptions.onEdit({
+          content: [{ type: 'text', text: 'edited first prompt' }],
+          parentId: 'user-1',
+          sourceId: 'user-1',
+        })
+        await Promise.resolve()
       })
-      await vi.advanceTimersByTimeAsync(250)
-      await editPromise
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(250)
+        await editPromise
+      })
 
       expect(mocks.apiFetch.mock.calls.length).toBeGreaterThanOrEqual(2)
       expect(mocks.stream.submit).toHaveBeenCalledWith(

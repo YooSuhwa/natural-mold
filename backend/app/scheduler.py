@@ -576,6 +576,27 @@ _BROKER_EVICTION_INTERVAL_SECONDS = 60
 _BROKER_EVICTION_TTL_SECONDS = 300
 
 CONVERSATION_RUN_STALE_SWEEP_JOB_ID = "conversation_run_stale_sweep"
+CONVERSATION_QUEUE_RECOVERY_JOB_ID = "conversation_queue_recovery"
+
+
+async def recover_conversation_queue() -> None:
+    from app.services.conversation_run_queue_worker import recover_conversation_queue as recover
+
+    await recover()
+
+
+def register_conversation_queue_recovery_job() -> None:
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        return
+    scheduler.add_job(
+        recover_conversation_queue,
+        IntervalTrigger(seconds=5),
+        id=CONVERSATION_QUEUE_RECOVERY_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
 
 
 async def sweep_stale_conversation_runs() -> None:

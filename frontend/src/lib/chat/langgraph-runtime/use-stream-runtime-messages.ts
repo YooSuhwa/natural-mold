@@ -14,6 +14,7 @@ import { useLangGraphSubagentNamesEffects } from './subagent-names-events'
 import { useLangGraphUsageEffects } from './usage-events'
 import { convertMoldyLangChainMessage } from './langchain-message-conversion'
 import { useStableConvertedMessages } from './message-list'
+import { attachMcpAppsMetadata } from '@/lib/chat/mcp-apps/metadata'
 import {
   applyPendingEditConvertedBranchMetadata,
   suppressPendingEditConvertedDuplicate,
@@ -34,6 +35,7 @@ interface UseStreamRuntimeMessagesOptions<StateType extends { messages?: readonl
   readonly stream: UseStreamReturn<StateType>
   readonly messagesWithInterrupts: readonly BaseMessage[]
   readonly interruptCount: number
+  readonly claimedQueueRunInFlight: boolean
   readonly threadRunNotice: ThreadRunNotice | null
   readonly terminalNoticeText: string
   readonly hydratedMessagesPresent: boolean
@@ -48,6 +50,7 @@ export function useStreamRuntimeMessages<StateType extends { messages?: readonly
   stream,
   messagesWithInterrupts,
   interruptCount,
+  claimedQueueRunInFlight,
   threadRunNotice,
   terminalNoticeText,
   hydratedMessagesPresent,
@@ -95,8 +98,9 @@ export function useStreamRuntimeMessages<StateType extends { messages?: readonly
   useLangGraphMemoryRecallEffects({ stream, conversationId })
   useLangGraphSkillBuilderEffects({ stream, conversationId })
   const isRunning =
-    stream.isLoading &&
+    (stream.isLoading || claimedQueueRunInFlight || threadRunNotice?.status === 'canceling') &&
     interruptCount === 0 &&
+    threadRunNotice?.status !== 'canceled' &&
     threadRunNotice?.status !== 'stale' &&
     threadRunNotice?.status !== 'failed'
   const conversionMessages = useMemo(() => [...withDataUI], [withDataUI])
@@ -105,7 +109,8 @@ export function useStreamRuntimeMessages<StateType extends { messages?: readonly
     messages: conversionMessages,
     isRunning,
   })
-  const stable = useStableConvertedMessages(converted, withDataUI, isRunning)
+  const withMcpApps = useMemo(() => attachMcpAppsMetadata(converted), [converted])
+  const stable = useStableConvertedMessages(withMcpApps, withDataUI, isRunning)
   const branchMetadata = useMemo(
     () => applyPendingEditConvertedBranchMetadata(stable, pendingEdit),
     [pendingEdit, stable],

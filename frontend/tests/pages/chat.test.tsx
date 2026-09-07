@@ -120,6 +120,14 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     fetchNextPage: vi.fn(),
     isFetchingNextPage: false,
   }),
+  useGlobalConversationPages: () => ({
+    data: { pages: [{ items: [], next_cursor: null, has_more: false }] },
+    isLoading: false,
+    isError: false,
+    hasNextPage: false,
+    fetchNextPage: vi.fn(),
+    isFetchingNextPage: false,
+  }),
   useConversationDebugTraces: () => ({
     data: { conversation_id: 'conv-1', langfuse_enabled: false, traces: [], fallback_reason: null },
     isLoading: false,

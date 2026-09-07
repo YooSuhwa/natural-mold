@@ -120,28 +120,11 @@ export function convertMoldyLangChainMessage(
   const terminalNotice = terminalNoticeFromMessage(message)
   const uiData = (message as BaseMessage & { uiData?: UIDataItem[] | null }).uiData ?? null
   const converted = convertLangChainBaseMessage(message, metadata)
-  if (Array.isArray(converted)) {
-    const withMeta = converted.map((item) =>
-      attachTerminalNoticeMetadata(
-        attachCompactionMetadata(attachUsageMetadata(item, usage), compaction),
-        terminalNotice,
-      ),
-    )
-    // Inject the data part into the LAST assistant entry only — appending to
-    // every assistant element would double-render the component if one source
-    // message ever converts to multiple assistant messages.
-    const lastAssistant = withMeta.findLastIndex(
-      (item) => (item as MetadataCarrier).role === 'assistant',
-    )
-    return withMeta.map((item, index) =>
-      index === lastAssistant ? attachUIDataParts(item, uiData) : item,
-    ) as ConvertedMessageResult
-  }
   return attachUIDataParts(
     attachTerminalNoticeMetadata(
       attachCompactionMetadata(attachUsageMetadata(converted, usage), compaction),
       terminalNotice,
     ),
     uiData,
-  ) as ConvertedMessageResult
+  )
 }

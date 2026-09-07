@@ -1,7 +1,7 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { makeAssistantToolUI, useAuiState } from '@assistant-ui/react'
+import { useAuiState, type ToolCallMessagePartProps } from '@assistant-ui/react'
 import { CheckIcon, SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { BuilderHeaderIcon, BuilderMuted, BuilderTitle } from './builder-primitives'
@@ -166,7 +166,9 @@ export function PhaseTimelineRender({
   )
 }
 
-export const PhaseTimelineToolUI = makeAssistantToolUI<TimelineArgs, unknown>({
-  toolName: PHASE_TIMELINE_TOOL_NAME,
-  render: ({ toolCallId, args }) => <PhaseTimelineRender toolCallId={toolCallId} args={args} />,
-})
+export function PhaseTimelineToolUI({
+  toolCallId,
+  args,
+}: ToolCallMessagePartProps<TimelineArgs, unknown>) {
+  return <PhaseTimelineRender toolCallId={toolCallId} args={args} />
+}

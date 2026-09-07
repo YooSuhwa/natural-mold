@@ -9,17 +9,12 @@ import {
   shouldFileToolDefaultExpand,
 } from '../code-tool-ui'
 
-vi.mock('@assistant-ui/react', () => ({
-  makeAssistantToolUI: (config: unknown) => config,
-}))
-
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) =>
     key === 'permissionDenied' ? 'Localized permission denial' : key,
 }))
 
-interface EditToolUi {
-  readonly render: (props: {
+type EditToolRenderer = (props: {
     readonly args: {
       readonly file_path?: string
       readonly path?: string
@@ -29,24 +24,8 @@ interface EditToolUi {
     readonly result: unknown
     readonly status: { readonly type: string }
   }) => ReactNode
-}
 
-function isEditToolUi(value: unknown): value is EditToolUi {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'render' in value &&
-    typeof value.render === 'function'
-  )
-}
-
-function editToolUi(): EditToolUi {
-  const candidate: unknown = EditFileToolUI
-  if (!isEditToolUi(candidate)) {
-    throw new Error('EditFileToolUI test fixture did not expose a render function')
-  }
-  return candidate
-}
+const renderEditTool = EditFileToolUI as unknown as EditToolRenderer
 
 describe('code tool UI expansion policy', () => {
   it('keeps read_file results collapsed by default', () => {
@@ -102,7 +81,7 @@ describe('code tool UI expansion policy', () => {
     const rawDeniedResult = 'Error: filesystem permission denied'
 
     render(
-      editToolUi().render({
+      renderEditTool({
         args: {
           file_path: '/conversations/thread-1/blocked.md',
           old_string: proposedOldContent,

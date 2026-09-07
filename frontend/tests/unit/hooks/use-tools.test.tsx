@@ -43,16 +43,16 @@ describe('useCreateTool', () => {
       response = await result.current.mutateAsync({
         definition_key: 'custom_http',
         name: 'My Tool',
-        config: { api_url: 'https://api.example.com' },
-      } as unknown as Parameters<typeof result.current.mutateAsync>[0])
+        parameters: { api_url: 'https://api.example.com' },
+      })
     })
 
-    expect(response).toMatchObject({ id: 'tool-new', type: 'custom' })
+    expect(response).toMatchObject({ id: 'tool-new', definition_key: 'custom_http' })
   })
 })
 
 describe('useUpdateTool', () => {
-  it('updates tool connection_id and returns response', async () => {
+  it('updates the tool credential binding and returns the response', async () => {
     const wrapper = createWrapper()
     const { result } = renderHook(() => useUpdateTool(), { wrapper })
     let response: unknown
@@ -60,11 +60,11 @@ describe('useUpdateTool', () => {
     await act(async () => {
       response = await result.current.mutateAsync({
         id: 'tool-1',
-        data: { connection_id: 'conn-custom-1' },
+        data: { credential_id: 'cred-1' },
       })
     })
 
-    expect(response).toMatchObject({ id: 'tool-1', connection_id: 'conn-custom-1' })
+    expect(response).toMatchObject({ id: 'tool-1', credential_id: 'cred-1' })
   })
 })
 

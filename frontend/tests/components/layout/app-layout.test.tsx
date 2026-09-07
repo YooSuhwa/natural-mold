@@ -18,8 +18,19 @@ vi.mock('next/link', () => ({
 }))
 
 vi.mock('@/lib/hooks/use-agents', () => ({
+  useAgent: () => ({ data: null }),
   useAgentSummaries: () => ({ data: [], isLoading: false }),
   useAgents: () => ({ data: [], isLoading: false }),
+}))
+
+vi.mock('@/components/agent/assistant-side-chat-provider', () => ({
+  AssistantSideChatProvider: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="assistant-side-chat-provider">{children}</div>
+  ),
+}))
+
+vi.mock('@/components/agent/assistant-side-chat-trigger', () => ({
+  AssistantSideChatTrigger: () => null,
 }))
 
 vi.mock('@/lib/hooks/use-triggers', () => ({
@@ -91,9 +102,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DropdownMenuCheckboxItem: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
+  DropdownMenuCheckboxItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuRadioGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuRadioItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuSub: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -119,5 +128,14 @@ describe('AppLayout', () => {
       </AppLayout>,
     )
     expect(screen.getByTestId('sidebar-provider')).toBeInTheDocument()
+  })
+
+  it('keeps the assistant side chat provider mounted in the authenticated app shell', () => {
+    render(
+      <AppLayout>
+        <div>Content</div>
+      </AppLayout>,
+    )
+    expect(screen.getByTestId('assistant-side-chat-provider')).toBeInTheDocument()
   })
 })

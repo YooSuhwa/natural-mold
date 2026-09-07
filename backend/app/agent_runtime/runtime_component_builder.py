@@ -805,7 +805,10 @@ async def _prepare_agent(
 
     lc_messages = convert_to_langchain_messages(messages_history)
     mark_timing("messages_ms")
-    config: dict[str, Any] = {"configurable": {"thread_id": cfg.thread_id}}
+    configurable: dict[str, Any] = {"thread_id": cfg.thread_id}
+    if run_id is not None:
+        configurable["moldy_run_id"] = run_id
+    config: dict[str, Any] = {"configurable": configurable}
     recursion_limit = _configured_recursion_limit(cfg)
     if recursion_limit is not None:
         config["recursion_limit"] = recursion_limit

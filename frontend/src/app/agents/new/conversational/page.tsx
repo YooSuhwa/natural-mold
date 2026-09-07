@@ -4,14 +4,14 @@ import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeftIcon, ChevronRightIcon, HomeIcon, SparklesIcon } from 'lucide-react'
-import { AssistantRuntimeProvider } from '@assistant-ui/react'
+import { AuiConfig, AssistantRuntimeProvider, Tools } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 
 import { AssistantThread } from '@/components/chat/assistant-thread'
 import { Button } from '@/components/ui/button'
 import { builderApi } from '@/lib/api/builder'
 import { HiTLContext } from '@/lib/chat/hitl-context'
-import { BUILDER_TOOL_UI } from '@/lib/chat/tool-ui-registry'
+import { BUILDER_TOOLKIT } from '@/lib/chat/tool-ui-registry'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
 import { streamBuilderMessage } from '@/lib/sse/stream-builder-message'
@@ -39,6 +39,7 @@ export default function ConversationalCreationPage({
 }: {
   searchParams: Promise<{ initialMessage?: string }>
 }) {
+  const config = AuiConfig({ tools: Tools({ toolkit: BUILDER_TOOLKIT }) })
   const { initialMessage } = use(searchParams)
   const t = useTranslations('agent.conversational')
   const router = useRouter()
@@ -167,7 +168,7 @@ export default function ConversationalCreationPage({
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <AssistantRuntimeProvider runtime={runtime}>
+        <AssistantRuntimeProvider runtime={runtime} config={config}>
           <HiTLContext.Provider value={hitlValue}>
             <AssistantThread
               variant="builder"
@@ -175,7 +176,6 @@ export default function ConversationalCreationPage({
               builderAgentSubtitle={t('builderAgentSubtitle')}
               agentName={t('builderAgentName')}
               emptyContent={<WelcomeContent />}
-              toolUI={BUILDER_TOOL_UI}
             />
           </HiTLContext.Provider>
         </AssistantRuntimeProvider>

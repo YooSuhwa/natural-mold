@@ -33,7 +33,6 @@ const mocks = vi.hoisted(() => {
 })
 
 vi.mock('@assistant-ui/react', () => ({
-  makeAssistantToolUI: (config: unknown) => config,
   useAuiState: <T,>(selector: (state: AuiState) => T): T => selector(mocks.state),
 }))
 

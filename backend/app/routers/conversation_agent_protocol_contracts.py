@@ -1,16 +1,28 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from fastapi.responses import JSONResponse
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.agent_runtime.protocol_events import SubscribeParams
-from app.models.conversation import Conversation
+from app.schemas.conversation_refs import JsonValue, conversation_ref
 
 LANGGRAPH_PROTOCOL_HEADER = "langgraph_v3"
 SUPPORTED_COMMAND_METHODS = {"run.start", "input.respond"}
+
+
+class CommandSuccessResult(TypedDict):
+    status: str
+    conversation_id: str
+    thread_id: str
+    multitask_strategy: str
+    run_id: NotRequired[str]
+    input_id: NotRequired[str]
+    input_status: NotRequired[str | None]
+    revision: NotRequired[int | None]
+    position: NotRequired[int | None]
 
 
 class ThreadCheckpoint(BaseModel):
@@ -41,13 +53,19 @@ class AgentCommandParams(BaseModel):
     model_config = ConfigDict(extra="allow", frozen=True)
 
     assistant_id: str | None = None
-    input: dict[str, Any] | None = None
+    input: dict[str, JsonValue] | None = None
     config: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     checkpoint: ThreadCheckpoint | None = None
     multitask_strategy: str | None = Field(
         default=None,
         validation_alias=AliasChoices("multitask_strategy", "multitaskStrategy"),
+    )
+    client_request_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        validation_alias=AliasChoices("client_request_id", "clientRequestId"),
     )
     namespace: list[str] | None = None
     interrupt_id: str | None = None
@@ -112,7 +130,7 @@ def protocol_headers(*, mode: str | None = None, run_id: str | None = None) -> d
 
 
 def state_response(
-    conversation: Conversation,
+    conversation: object,
     *,
     values: dict[str, Any] | None = None,
     next_nodes: list[str] | None = None,
@@ -127,6 +145,7 @@ def state_response(
     created_at: str | None = None,
     parent_checkpoint: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    conversation = conversation_ref(conversation)
     state_values = dict(values or {})
     state_values.setdefault("messages", [])
     runtime_state: dict[str, Any] = {}
@@ -189,12 +208,17 @@ def command_error(
 def command_success(
     command: AgentCommandRequest,
     *,
-    conversation: Conversation,
+    conversation: object,
     thread_id: str,
     run_id: str | None = None,
+    input_id: str | None = None,
+    input_status: str | None = None,
+    revision: int | None = None,
+    position: int | None = None,
 ) -> JSONResponse:
+    conversation = conversation_ref(conversation)
     strategy = command.params.multitask_strategy or "reject"
-    result = {
+    result: CommandSuccessResult = {
         "status": "accepted",
         "conversation_id": str(conversation.id),
         "thread_id": thread_id,
@@ -202,6 +226,11 @@ def command_success(
     }
     if run_id is not None:
         result["run_id"] = run_id
+    if input_id is not None:
+        result["input_id"] = input_id
+        result["input_status"] = input_status
+        result["revision"] = revision
+        result["position"] = position
     return JSONResponse(
         {
             "type": "success",

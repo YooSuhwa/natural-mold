@@ -75,11 +75,6 @@
     },
     {
       "rule": "routers_to_models",
-      "importer": "app.routers.conversation_agent_protocol_contracts",
-      "imported": "app.models.conversation"
-    },
-    {
-      "rule": "routers_to_models",
       "importer": "app.routers.conversation_agent_protocol_interrupts",
       "imported": "app.models.conversation"
     },

@@ -4,8 +4,8 @@ import type { ConversationRun } from '@/lib/types'
 export const conversationRunsApi = {
   active: (conversationId: string) =>
     apiFetch<ConversationRun | null>(`/api/conversations/${conversationId}/runs/active`),
-  get: (conversationId: string, runId: string) =>
-    apiFetch<ConversationRun>(`/api/conversations/${conversationId}/runs/${runId}`),
+  get: (conversationId: string, runId: string, signal?: AbortSignal) =>
+    apiFetch<ConversationRun>(`/api/conversations/${conversationId}/runs/${runId}`, { signal }),
   cancel: (conversationId: string, runId: string) =>
     apiFetch<ConversationRun>(`/api/conversations/${conversationId}/runs/${runId}/cancel`, {
       method: 'POST',

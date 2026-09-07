@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Final, Literal, NotRequired, TypedDict
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
+from app.agent_runtime.stream_error_messages import public_stream_error_message
 
 LifecycleEventName = Literal["running", "completed", "failed", "interrupted"]
 TerminalLifecycleEventName = Literal["completed", "failed", "interrupted"]
@@ -19,6 +20,22 @@ class LifecycleError(TypedDict):
 class LifecycleData(TypedDict):
     event: LifecycleEventName
     error: NotRequired[LifecycleError]
+
+
+def error_protocol_event(
+    *,
+    run_id: str,
+    thread_id: str,
+    seq: int,
+    exc: Exception,
+) -> StoredProtocolEvent:
+    return stored_protocol_event(
+        run_id=run_id,
+        thread_id=thread_id,
+        seq=seq,
+        method="error",
+        data={"message": public_stream_error_message(exc)},
+    )
 
 
 def lifecycle_protocol_event(

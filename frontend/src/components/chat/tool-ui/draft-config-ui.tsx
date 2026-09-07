@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { makeAssistantToolUI } from '@assistant-ui/react'
+import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import {
   BlocksIcon,
@@ -150,10 +150,11 @@ function DraftConfigCardView({ args }: { args: DraftConfigArgs }) {
   )
 }
 
-export const DraftConfigCardToolUI = makeAssistantToolUI<DraftConfigArgs, unknown>({
-  toolName: 'draft_config_card',
-  render: ({ args }) => <DraftConfigCardView args={args} />,
-})
+export function DraftConfigCardToolUI({
+  args,
+}: ToolCallMessagePartProps<DraftConfigArgs, unknown>) {
+  return <DraftConfigCardView args={args} />
+}
 
 // ---------------------------------------------------------------------------
 // Phase 8 — 최종 승인 (interrupt approval) — 민트 button + frozen footer
@@ -279,7 +280,9 @@ function DraftApprovalView({
   )
 }
 
-export const DraftApprovalToolUI = makeAssistantToolUI<DraftConfigArgs, unknown>({
-  toolName: 'draft_approval',
-  render: ({ args, status }) => <DraftApprovalView args={args} status={status.type} />,
-})
+export function DraftApprovalToolUI({
+  args,
+  status,
+}: ToolCallMessagePartProps<DraftConfigArgs, unknown>) {
+  return <DraftApprovalView args={args} status={status.type} />
+}

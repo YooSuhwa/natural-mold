@@ -459,6 +459,9 @@ documents:
   - path: frontend/CLAUDE.md
     lifecycle: canonical-current
     status: current
+  - path: frontend/DESIGN.md
+    lifecycle: reference/spec
+    status: reference
   - path: frontend/README.md
     lifecycle: canonical-current
     status: current

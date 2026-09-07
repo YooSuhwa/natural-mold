@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
-import { render, screen } from '../../test-utils'
+import { useState, type ReactNode } from 'react'
+import { act } from '@testing-library/react'
+import { render, screen, userEvent } from '../../test-utils'
 import { AssistantPanel } from '@/components/agent/assistant-panel'
 import { useHiTL } from '@/lib/chat/hitl-context'
 import type { Decision, SSEEvent } from '@/lib/types'
@@ -26,8 +27,23 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 })
 
 vi.mock('@assistant-ui/react', () => ({
-  AssistantRuntimeProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-  useComposerRuntime: () => ({ setText: vi.fn() }),
+  AuiConfig: (config: unknown) => config,
+  Tools: ({ toolkit }: { toolkit: Record<string, unknown> }) => ({ toolkit }),
+  AssistantRuntimeProvider: ({
+    children,
+    config,
+  }: {
+    children: ReactNode
+    config: { tools: { toolkit: Record<string, unknown> } }
+  }) => (
+    <div
+      data-testid="assistant-runtime-provider"
+      data-tool-names={Object.keys(config.tools.toolkit).join(',')}
+    >
+      {children}
+    </div>
+  ),
+  useAui: () => ({ optional: { composer: { setText: vi.fn() } } }),
 }))
 
 vi.mock('@/lib/chat/use-chat-runtime', () => ({
@@ -35,23 +51,16 @@ vi.mock('@/lib/chat/use-chat-runtime', () => ({
 }))
 
 vi.mock('@/lib/chat/tool-ui-registry', () => ({
-  ALL_TOOL_UI: [{ toolName: 'request_approval' }, { toolName: 'ask_user' }],
+  ALL_TOOLKIT: { request_approval: {}, ask_user: {} },
 }))
 
 vi.mock('@/components/chat/assistant-thread', () => ({
-  AssistantThread: ({
-    emptyContent,
-    toolUI,
-  }: {
-    emptyContent: ReactNode
-    toolUI: readonly { toolName?: string }[]
-  }) => {
+  AssistantThread: ({ emptyContent }: { emptyContent: ReactNode }) => {
     const hitl = useHiTL()
     return (
       <div
         data-has-register-decision={String(typeof hitl?.registerDecision === 'function')}
         data-testid="assistant-thread"
-        data-tool-names={toolUI.map((ui) => ui.toolName).join(',')}
       >
         {emptyContent}
       </div>
@@ -92,6 +101,8 @@ type ResumeFn = (
 ) => AsyncGenerator<SSEEvent>
 
 type ChatRuntimeOptions = {
+  messages?: Message[]
+  onMessagesCommit?: (messages: Message[]) => void
   resumeFn?: ResumeFn
   onStreamEnd?: (didMutate: boolean) => void
 }
@@ -121,8 +132,9 @@ describe('AssistantPanel', () => {
   it('쓰기 도구 승인 UI와 HiTL resume 컨텍스트를 AssistantThread에 제공한다', () => {
     render(<AssistantPanel agentId="agent-1" agentName="Test Agent" />)
 
+    const provider = screen.getByTestId('assistant-runtime-provider')
     const thread = screen.getByTestId('assistant-thread')
-    expect(thread).toHaveAttribute('data-tool-names', 'request_approval,ask_user')
+    expect(provider).toHaveAttribute('data-tool-names', 'request_approval,ask_user')
     expect(thread).toHaveAttribute('data-has-register-decision', 'true')
   })
 
@@ -172,5 +184,48 @@ describe('AssistantPanel', () => {
 
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['agents'] })
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['agents', 'agent-1'] })
+  })
+
+  it('사이드 채팅을 닫았다 다시 열어도 동일한 세션의 메시지를 유지한다', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(true)
+      const [messages, setMessages] = useState<Message[]>([])
+      return (
+        <>
+          <button type="button" onClick={() => setOpen((value) => !value)}>
+            toggle
+          </button>
+          {open ? (
+            <AssistantPanel
+              agentId="agent-1"
+              agentName="Test Agent"
+              session={{
+                sessionId: 'side-session-1',
+                messages,
+                onMessagesCommit: (committed) =>
+                  setMessages((current) => [...current, ...committed]),
+              }}
+            />
+          ) : null}
+        </>
+      )
+    }
+
+    const user = userEvent.setup()
+    render(<Harness />)
+    const firstOptions = mockUseChatRuntime.mock.calls[0]?.[0] as ChatRuntimeOptions
+    act(() => {
+      firstOptions.onMessagesCommit?.([
+        { id: 'side-message-1', role: 'assistant', content: 'retained' } as Message,
+      ])
+    })
+
+    await user.click(screen.getByRole('button', { name: 'toggle' }))
+    await user.click(screen.getByRole('button', { name: 'toggle' }))
+
+    const reopenedOptions = mockUseChatRuntime.mock.calls.at(-1)?.[0] as ChatRuntimeOptions
+    expect(reopenedOptions.messages).toEqual([
+      expect.objectContaining({ id: 'side-message-1', content: 'retained' }),
+    ])
   })
 })

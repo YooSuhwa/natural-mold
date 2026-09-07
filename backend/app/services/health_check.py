@@ -17,11 +17,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.credentials import service as credential_service
@@ -202,7 +204,7 @@ async def check_mcp_server(
 async def check_all_active(
     db: AsyncSession,
     *,
-    session_factory: async_sessionmaker[AsyncSession] | None = None,
+    session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] | None = None,
 ) -> dict[str, int]:
     """Probe every active model + MCP server. Used by the cron job.
 

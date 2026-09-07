@@ -47,8 +47,22 @@ from app.routers.conversation_agent_protocol_runtime import (
     command_multitask_strategy,
     input_preview,
 )
-from app.services import chat_service, conversation_run_service
-from app.services.conversation_audit_service import record_conversation_audit
+from app.services import chat_service, conversation_run_queue_service, conversation_run_service
+from app.services.chat_resource_context_integration import (
+    QueuedResourceContextInput,
+    freeze_queued_resource_context_payload,
+    freeze_resource_context_payload,
+)
+from app.services.chat_resource_context_payload import (
+    apply_frozen_resource_context,
+    frozen_resource_context_from_payload,
+    resource_context_user_message,
+)
+from app.services.chat_resource_context_sources import ResourceContextScope
+from app.services.conversation_audit_service import (
+    record_conversation_audit,
+    record_conversation_run_audit,
+)
 from app.services.conversation_stream_service import resolve_agent_context
 
 StartConversationRun = Callable[..., Awaitable[Any]]
@@ -60,6 +74,16 @@ AgentStreamExecutor = Callable[..., Any]
 # 짧게 기다린다 (활성 run이 아예 없으면 진짜 not-found — 즉시 포기).
 _RESUME_INTERRUPT_WAIT_TIMEOUT_S = 2.0
 _RESUME_INTERRUPT_WAIT_INTERVAL_S = 0.05
+
+
+def _resource_context_error(command: AgentCommandRequest, exc: HTTPException) -> JSONResponse:
+    code = "RESOURCE_CONTEXT_NOT_FOUND" if exc.status_code == 404 else "RESOURCE_CONTEXT_INVALID"
+    return command_error(
+        command,
+        code=code,
+        message=str(exc.detail),
+        status_code=exc.status_code,
+    )
 
 
 async def _wait_for_interrupted_parent_run(
@@ -108,7 +132,27 @@ async def _handle_run_start_command(
     attachment_ids = attachment_ids_from_protocol_input(input_payload)
     resolved_checkpoint_id = checkpoint_id(command)
     runtime_input_payload = input_without_protocol_attachments(input_payload)
+    context_scope = ResourceContextScope(
+        user_id=user.id,
+        agent_id=conversation.agent_id,
+        conversation_id=conversation.id,
+    )
+    direct_context = None
+    if strategy == "reject":
+        try:
+            runtime_input_payload = await freeze_resource_context_payload(
+                db, context_scope, runtime_input_payload
+            )
+        except HTTPException as exc:
+            return _resource_context_error(command, exc)
+        direct_context = frozen_resource_context_from_payload(runtime_input_payload)
     run_source = "chat"
+    if strategy != "reject" and resolved_checkpoint_id:
+        return command_error(
+            command,
+            code="QUEUED_FORK_UNSUPPORTED",
+            message="Queued edit and regenerate requests are not supported.",
+        )
     if resolved_checkpoint_id:
         append_messages = _messages_from_protocol_input(runtime_input_payload)
         runtime_input_payload = await _fork_overwrite_input(
@@ -117,6 +161,10 @@ async def _handle_run_start_command(
             append_messages=append_messages,
             drop_trailing_assistant=not append_messages and not attachment_ids,
         )
+        if direct_context is not None:
+            runtime_input_payload = apply_frozen_resource_context(
+                runtime_input_payload, direct_context
+            )
         run_source = "edit" if append_messages or attachment_ids else "regenerate"
     preview = input_preview(input_payload)
     if conversation.source == "draft":
@@ -141,6 +189,112 @@ async def _handle_run_start_command(
             "source": "langgraph_protocol",
         },
     )
+    if strategy != "reject":
+        pending_interrupt = await conversation_run_service.get_latest_interrupted_run(
+            db,
+            conversation_id=conversation.id,
+            user_id=user.id,
+        )
+        if pending_interrupt is not None:
+            return command_error(
+                command,
+                code="QUEUE_HITL_PENDING",
+                message="Resolve the pending approval before queueing another input.",
+            )
+        client_request_id = command.params.client_request_id or str(
+            command.id if command.id is not None else uuid.uuid4()
+        )
+        try:
+            runtime_input_payload = await freeze_queued_resource_context_payload(
+                db,
+                context_scope,
+                QueuedResourceContextInput(
+                    conversation_id=conversation.id,
+                    client_request_id=client_request_id,
+                    input_payload=runtime_input_payload,
+                ),
+            )
+        except HTTPException as exc:
+            return _resource_context_error(command, exc)
+        enqueue_result = await conversation_run_queue_service.enqueue_input_with_result(
+            db,
+            conversation_id=conversation.id,
+            user_id=user.id,
+            client_request_id=client_request_id,
+            source="chat",
+            input_payload=runtime_input_payload,
+            attachment_ids=attachment_ids,
+            checkpoint_id=None,
+            priority=100 if strategy == "interrupt" else 0,
+        )
+        queued = enqueue_result.input
+        cfg = await resolve_agent_context(db, conversation.id, user)
+        if attachment_ids:
+            await chat_service.link_attachments_to_conversation(
+                db,
+                conversation_id=conversation.id,
+                user_id=user.id,
+                attachment_ids=attachment_ids,
+            )
+            if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
+                from app.services import skill_draft_workspace
+
+                await skill_draft_workspace.copy_conversation_attachments_to_inputs(
+                    db,
+                    storage_path=cfg.draft_workspace_path,
+                    attachment_ids=attachment_ids,
+                    user_id=user.id,
+                )
+        active = await conversation_run_service.get_active_run(
+            db,
+            conversation_id=conversation.id,
+            user_id=user.id,
+        )
+        if strategy == "interrupt" and enqueue_result.created and active is not None:
+            active = await conversation_run_service.get_run_for_user(
+                db,
+                conversation_id=conversation.id,
+                run_id=active.id,
+                user_id=user.id,
+                for_update=True,
+            )
+            if active is not None:
+                await conversation_run_service.request_cancel_run(
+                    db,
+                    active,
+                    reason="steer",
+                )
+                await record_conversation_run_audit(
+                    db,
+                    action="conversation.run_steer_request",
+                    run=active,
+                    user=user,
+                    request=request,
+                    status="canceling",
+                )
+        await db.commit()
+
+        if strategy == "interrupt" and enqueue_result.created and active is not None:
+            from app.services.conversation_run_worker import get_run_task_registry
+
+            get_run_task_registry().request_cancel(active.id, reason="steer")
+        else:
+            from app.services.conversation_run_queue_worker import (
+                dispatch_next_for_conversation,
+            )
+
+            await dispatch_next_for_conversation(conversation.id)
+            await db.refresh(queued)
+        return command_success(
+            command,
+            conversation=conversation,
+            thread_id=str(conversation.id),
+            run_id=str(queued.run_id) if queued.run_id is not None else None,
+            input_id=str(queued.id),
+            input_status=queued.status,
+            revision=queued.revision,
+            position=queued.position,
+        )
     try:
         run = await conversation_run_service.create_run(
             db,
@@ -156,6 +310,14 @@ async def _handle_run_start_command(
                 "checkpoint_id": resolved_checkpoint_id,
             },
         )
+        if resolved_checkpoint_id is None:
+            await conversation_run_queue_service.persist_direct_input(
+                db,
+                run=run,
+                client_request_id=command.params.client_request_id or str(uuid.uuid4()),
+                input_payload=runtime_input_payload,
+                attachment_ids=attachment_ids,
+            )
     except ConflictError as exc:
         return command_error(
             command,
@@ -197,6 +359,8 @@ async def _handle_run_start_command(
                 user_id=user.id,
             )
     await db.commit()
+
+    runtime_input_payload = resource_context_user_message(runtime_input_payload)
 
     await start_run(
         run_id=run_id,

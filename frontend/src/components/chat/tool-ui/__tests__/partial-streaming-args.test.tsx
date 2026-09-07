@@ -11,10 +11,6 @@ import { UserInputUI } from '../user-input-ui'
 // 렌더 크래시(에러 바운더리로 채팅 전체 다운)가 난다. scripted 모델은 완성
 // args만 방출해 이 크래시를 재현하지 못한다 (실 LLM 투어에서 발견).
 
-vi.mock('@assistant-ui/react', () => ({
-  makeAssistantToolUI: (config: unknown) => config,
-}))
-
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }))
@@ -27,22 +23,23 @@ type ToolUiRender = {
   }) => ReactNode
 }
 
+const renderPlan = PlanToolUI as unknown as ToolUiRender['render']
+const renderUserInput = UserInputUI as unknown as ToolUiRender['render']
+
 describe('부분 스트리밍 args 방어 (M8-4)', () => {
   it('write_todos: todos가 문자열 조각이어도 크래시 없이 렌더된다', () => {
-    const toolUi = PlanToolUI as unknown as ToolUiRender
     expect(() =>
       render(
-        <>{toolUi.render({ args: { todos: '회의록에서 담' }, status: { type: 'running' } })}</>,
+        <>{renderPlan({ args: { todos: '회의록에서 담' }, status: { type: 'running' } })}</>,
       ),
     ).not.toThrow()
   })
 
   it('write_todos: item.status가 부분 문자열이면 pending으로 폴백한다', () => {
-    const toolUi = PlanToolUI as unknown as ToolUiRender
     expect(() =>
       render(
         <>
-          {toolUi.render({
+          {renderPlan({
             args: { todos: [{ content: '초안 작성', status: 'in_prog' }] },
             status: { type: 'running' },
           })}
@@ -52,11 +49,10 @@ describe('부분 스트리밍 args 방어 (M8-4)', () => {
   })
 
   it('write_todos: content 없는 조각 아이템은 걸러진다', () => {
-    const toolUi = PlanToolUI as unknown as ToolUiRender
     expect(() =>
       render(
         <>
-          {toolUi.render({
+          {renderPlan({
             args: { todos: [{}, { content: '검증 실행' }] },
             status: { type: 'running' },
           })}
@@ -66,13 +62,12 @@ describe('부분 스트리밍 args 방어 (M8-4)', () => {
   })
 
   it('ask_user: questions/options가 문자열 조각이어도 크래시 없이 렌더된다', () => {
-    const toolUi = UserInputUI as unknown as ToolUiRender
     const hitl = { onResumeDecisions: vi.fn(), registerDecision: vi.fn() }
     // render fn이 훅을 직접 호출하므로 컴포넌트로 감싸 React render 단계에서 실행.
     function AskUserUnderTest() {
       return (
         <>
-          {toolUi.render({
+          {renderUserInput({
             args: { questions: '어떤 형식', options: '표' },
             status: { type: 'running' },
           })}

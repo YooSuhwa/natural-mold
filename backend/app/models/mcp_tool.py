@@ -60,6 +60,9 @@ class McpTool(Base):
 
     # The remote tool's input JSON Schema as reported by ``list_tools``.
     input_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
+    # Bounded MCP Apps discovery metadata. Only standard ``_meta.ui`` fields
+    # are retained by app.mcp.client; transport/auth metadata never enters it.
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
 
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 

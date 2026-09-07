@@ -1,6 +1,6 @@
 'use client'
 
-import { makeAssistantToolUI } from '@assistant-ui/react'
+import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import { ExternalLinkIcon, GlobeIcon, SearchIcon, SparklesIcon } from 'lucide-react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
@@ -199,6 +199,6 @@ export const SEARCH_TOOL_UI_NAMES = [
   'google_news_search',
 ] as const
 
-export const SEARCH_TOOL_UIS = SEARCH_TOOL_UI_NAMES.map((toolName) =>
-  makeAssistantToolUI<SearchArgs, unknown>({ toolName, render: SearchRender }),
-)
+export function SearchToolUI(props: ToolCallMessagePartProps<SearchArgs, unknown>) {
+  return <SearchRender {...props} />
+}

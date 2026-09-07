@@ -13,10 +13,11 @@ from app.agent_runtime.runtime_policy import LEGACY_RUNTIME_POLICY
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.conversation_run_input import ConversationRunInput
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
-from app.services import conversation_run_service
+from app.services import conversation_run_queue_worker, conversation_run_service
 from tests.conftest import TEST_USER_ID
 
 
@@ -540,19 +541,19 @@ async def test_input_respond_command_rejects_unknown_batched_interrupt(
 
 
 @pytest.mark.asyncio
-async def test_run_start_command_rejects_sdk_camel_case_unsupported_multitask_strategy(
+async def test_run_start_command_accepts_sdk_camel_case_enqueue_strategy(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation = await _seed_protocol_conversation(db)
 
-    async def fail_start_conversation_run(**_kwargs):
-        raise AssertionError("unsupported multitaskStrategy must reject before worker start")
+    async def fake_dispatch(_conversation_id: uuid.UUID):
+        return None
 
     monkeypatch.setattr(
-        "app.routers.conversation_agent_protocol.start_conversation_run",
-        fail_start_conversation_run,
+        "app.services.conversation_run_queue_worker.dispatch_next_for_conversation",
+        fake_dispatch,
     )
 
     response = await client.post(
@@ -568,14 +569,155 @@ async def test_run_start_command_rejects_sdk_camel_case_unsupported_multitask_st
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "type": "error",
-        "id": "run-enqueue",
-        "error": {
-            "code": "UNSUPPORTED_MULTITASK_STRATEGY",
-            "message": "Unsupported multitask strategy: enqueue",
+    assert response.json()["result"]["multitask_strategy"] == "enqueue"
+    assert response.json()["result"]["input_status"] == "pending"
+    assert "input_id" in response.json()["result"]
+    assert "run_id" not in response.json()["result"]
+
+
+@pytest.mark.asyncio
+async def test_run_start_command_persists_direct_input_for_failed_run_retry(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    submitted_input = {"messages": [{"role": "user", "content": "retry this exact input"}]}
+
+    async def fake_start_conversation_run(**_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fake_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": "direct-accepted",
+            "method": "run.start",
+            "params": {
+                "client_request_id": "direct-request",
+                "input": submitted_input,
+            },
         },
+    )
+
+    assert response.status_code == 200
+    run_id = uuid.UUID(response.json()["result"]["run_id"])
+    persisted = (
+        await db.execute(
+            select(ConversationRunInput).where(
+                ConversationRunInput.client_request_id == "direct-request"
+            )
+        )
+    ).scalar_one()
+    assert persisted.run_id == run_id
+    assert persisted.status == "claimed"
+    assert persisted.input_payload == submitted_input
+
+    recovered_payloads = []
+
+    async def fake_recovery_start(**kwargs):
+        recovered_payloads.append(kwargs["input_payload"])
+
+    monkeypatch.setattr(
+        conversation_run_queue_worker,
+        "start_conversation_run",
+        fake_recovery_start,
+    )
+    assert await conversation_run_queue_worker.recover_conversation_queue() == 1
+    assert recovered_payloads == [submitted_input]
+
+    run = await db.get(ConversationRun, run_id, with_for_update=True)
+    assert run is not None
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="test")
+    await conversation_run_service.transition_run(db, run, "failed", error_code="stream_error")
+    await db.commit()
+
+    listed = await client.get(f"/api/conversations/{conversation.id}/run-inputs")
+    assert listed.status_code == 200
+    item = next(item for item in listed.json()["items"] if item["run_id"] == str(run_id))
+    assert item["status"] == "claimed"
+    assert item["input_payload"] == submitted_input
+
+    endpoint = f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands"
+    later = await client.post(
+        endpoint,
+        json={
+            "id": "direct-accepted",
+            "method": "run.start",
+            "params": {"input": {"messages": [{"role": "user", "content": "later"}]}},
+        },
+    )
+    later_run_id = uuid.UUID(later.json()["result"]["run_id"])
+    later_input = await db.scalar(
+        select(ConversationRunInput).where(ConversationRunInput.run_id == later_run_id)
+    )
+    assert later.status_code == 200
+    assert later_input is not None
+    assert later_input.client_request_id not in {"direct-accepted", "direct-request"}
+
+
+@pytest.mark.asyncio
+async def test_run_start_command_rejects_reused_explicit_direct_input_identity(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+
+    async def fake_start_conversation_run(**_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fake_start_conversation_run,
+    )
+    endpoint = f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands"
+    params = {
+        "client_request_id": "stable-direct-request",
+        "input": {"messages": [{"role": "user", "content": "first"}]},
     }
+
+    first = await client.post(
+        endpoint,
+        json={"id": "first", "method": "run.start", "params": params},
+    )
+    first_run = await db.get(
+        ConversationRun,
+        uuid.UUID(first.json()["result"]["run_id"]),
+        with_for_update=True,
+    )
+    assert first_run is not None
+    await conversation_run_service.transition_run(
+        db,
+        first_run,
+        "running",
+        worker_instance_id="test",
+    )
+    await conversation_run_service.transition_run(db, first_run, "completed")
+    await db.commit()
+
+    replay = await client.post(
+        endpoint,
+        json={"id": "replay", "method": "run.start", "params": params},
+    )
+
+    assert replay.status_code == 200
+    assert replay.json()["error"] == {
+        "code": "MULTITASK_REJECTED",
+        "message": "Client request id was already used for a conversation input",
+    }
+    runs = list(
+        (
+            await db.execute(
+                select(ConversationRun).where(ConversationRun.conversation_id == conversation.id)
+            )
+        ).scalars()
+    )
+    assert runs == [first_run]
 
 
 @pytest.mark.asyncio
@@ -661,6 +803,10 @@ async def test_run_start_command_forwards_edit_source_to_worker(
     run = await db.get(ConversationRun, uuid.UUID(response.json()["result"]["run_id"]))
     assert run is not None
     assert run.source == "edit"
+    persisted = await db.scalar(
+        select(ConversationRunInput).where(ConversationRunInput.run_id == run.id)
+    )
+    assert persisted is None
 
 
 @pytest.mark.asyncio

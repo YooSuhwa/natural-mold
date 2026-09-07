@@ -1,6 +1,6 @@
 'use client'
 
-import { useComposerRuntime } from '@assistant-ui/react'
+import { useAui } from '@assistant-ui/react'
 import { CheckIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -13,7 +13,7 @@ import { useTranslations } from 'next-intl'
  */
 export function SkillBuilderTryHint() {
   const t = useTranslations('skill.builderChat')
-  const composer = useComposerRuntime()
+  const composer = useAui().composer
 
   return (
     <button

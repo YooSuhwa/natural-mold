@@ -13,41 +13,26 @@ import type {
   TriggerRun,
   TriggerSummary,
   UsageSummary,
-  CreationSession,
-  Connection,
   Credential,
   BuilderSession,
   BuilderDraftConfig,
 } from '@/lib/types'
 import type { MarketplaceItem, MarketplaceItemsPage } from '@/lib/types/marketplace'
 
-// Legacy type — was in @/lib/api/creation-session (removed in v2)
-export interface CreationMessageResult {
-  role: string
-  content: string
-  current_phase: number
-  phase_result: unknown
-  question: string
-  draft_config: {
-    name: string
-    description: string
-    system_prompt: string
-    is_ready: boolean
-  } | null
-  suggested_replies: { options: string[]; multi_select: boolean } | null
-  recommended_tools: Array<{ name: string; description: string }>
-}
-
 // ── Agent ──────────────────────────────────────────────────────────
 
 export const mockAgent: Agent = {
   id: 'agent-1',
+  runtime_name: 'test-agent',
+  identity_mode: 'fixed',
   name: 'Test Agent',
   description: 'A test agent',
   system_prompt: 'You are a helpful assistant.',
   model: { id: 'model-1', display_name: 'GPT-4o' },
   tools: [{ id: 'tool-1', name: 'Web Search' }],
+  mcp_tools: [],
   skills: [],
+  sub_agents: [],
   status: 'active',
   is_favorite: false,
   model_params: null,
@@ -56,6 +41,14 @@ export const mockAgent: Agent = {
   image_url: null,
   opener_questions: null,
   unread_count: 0,
+  runtime_policy: null,
+  runtime_policy_effective: {
+    version: 1,
+    filesystem: { mode: 'inspect' },
+    todo: { enabled: true },
+    summarization: { mode: 'auto' },
+  },
+  runtime_policy_source: 'legacy_compat',
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }
@@ -112,8 +105,20 @@ export const mockModel: Model = {
   display_name: 'GPT-4o',
   base_url: null,
   is_default: true,
+  is_visible: true,
   cost_per_input_token: 0.0025,
   cost_per_output_token: 0.01,
+  context_window: null,
+  max_output_tokens: null,
+  input_modalities: null,
+  output_modalities: null,
+  supports_vision: null,
+  supports_function_calling: null,
+  supports_reasoning: null,
+  source: 'manual',
+  default_credential_id: null,
+  agent_count: 0,
+  rankings: null,
   created_at: '2026-01-01T00:00:00Z',
 }
 
@@ -133,19 +138,16 @@ export const mockModelList: Model[] = [
 
 export const mockTool: Tool = {
   id: 'tool-1',
-  type: 'prebuilt',
-  is_system: true,
-  provider_name: 'naver',
+  user_id: null,
+  definition_key: 'web_search',
   name: 'Web Search',
   description: 'Search the web using DuckDuckGo',
-  parameters_schema: null,
-  api_url: null,
-  http_method: null,
-  auth_type: null,
-  tags: ['search', 'web', 'free'],
-  connection_id: null,
-  agent_count: 1,
+  parameters: {},
+  credential_id: null,
+  enabled: true,
+  last_used_at: null,
   created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
 }
 
 export const mockToolList: Tool[] = [
@@ -153,66 +155,28 @@ export const mockToolList: Tool[] = [
   {
     ...mockTool,
     id: 'tool-2',
-    type: 'custom',
-    is_system: false,
-    provider_name: null,
+    user_id: 'user-1',
+    definition_key: 'custom_http',
     name: 'My Custom API',
     description: 'A custom tool',
-    api_url: 'https://example.com/api',
-    http_method: 'POST',
-    connection_id: 'conn-custom-1',
+    parameters: { api_url: 'https://example.com/api', http_method: 'POST' },
   },
 ]
-
-// ── Connection (ADR-008) ───────────────────────────────────────────
-
-export const mockCustomConnection: Connection = {
-  id: 'conn-custom-1',
-  user_id: 'user-1',
-  type: 'custom',
-  provider_name: 'custom_api_key',
-  display_name: 'My Custom API',
-  credential_id: 'cred-1',
-  extra_config: null,
-  is_default: false,
-  status: 'active',
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
-}
-
-export const mockMcpConnection: Connection = {
-  id: 'conn-mcp-1',
-  user_id: 'user-1',
-  type: 'mcp',
-  provider_name: 'mcp_custom',
-  display_name: 'Test MCP',
-  credential_id: 'cred-2',
-  extra_config: {
-    url: 'https://example.com/mcp',
-    auth_type: 'bearer',
-    header_keys: null,
-    env_var_keys: ['Authorization'],
-    transport: null,
-    timeout: null,
-  },
-  is_default: false,
-  status: 'active',
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
-}
-
-export const mockConnectionList: Connection[] = [mockCustomConnection, mockMcpConnection]
 
 // ── Credential ─────────────────────────────────────────────────────
 
 export const mockCredential: Credential = {
   id: 'cred-1',
+  user_id: 'user-1',
+  definition_key: 'custom_api_key',
   name: 'My API Key',
-  credential_type: 'api_key',
-  provider_name: 'custom_api_key',
-  is_active: true,
-  has_data: true,
   field_keys: ['api_key'],
+  is_shared: false,
+  status: 'active',
+  key_id: 'key-1',
+  last_used_at: null,
+  last_tested_at: null,
+  last_test_result: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }
@@ -236,6 +200,7 @@ export const mockTemplate: Template = {
   category: 'productivity',
   system_prompt: 'You are a research assistant.',
   recommended_tools: ['Web Search'],
+  recommended_skill_slugs: null,
   recommended_model_id: 'model-1',
   usage_example: 'Find the latest news about AI',
   created_at: '2026-01-01T00:00:00Z',
@@ -421,35 +386,6 @@ export const mockUsageSummary: UsageSummary = {
       estimated_cost: 0.4,
     },
   ],
-}
-
-// ── Creation Session ───────────────────────────────────────────────
-
-export const mockCreationSession: CreationSession = {
-  id: 'session-1',
-  status: 'in_progress',
-  conversation_history: [
-    { role: 'assistant', content: 'What kind of agent would you like to create?' },
-  ],
-  draft_config: null,
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
-}
-
-export const mockCreationMessageResult: CreationMessageResult = {
-  role: 'assistant',
-  content: 'Great! Let me help you set that up.',
-  current_phase: 2,
-  phase_result: null,
-  question: 'What tools should the agent have?',
-  draft_config: {
-    name: 'My Agent',
-    description: 'A helpful agent',
-    system_prompt: 'You are helpful.',
-    is_ready: false,
-  },
-  suggested_replies: { options: ['Web Search', 'Custom Tool'], multi_select: true },
-  recommended_tools: [{ name: 'Web Search', description: 'Search the web' }],
 }
 
 // ── Builder v2 ────────────────────────────────────────────────────

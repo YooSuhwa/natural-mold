@@ -4,8 +4,7 @@ import { render, screen, userEvent } from '../../../../../tests/test-utils'
 import { SubAgentToolCard } from '../sub-agent-ui'
 
 const mocks = vi.hoisted(() => ({
-  makeAssistantToolUI: vi.fn((config: { render: unknown; toolName: string }) => config),
-  useMessage: vi.fn(),
+  useAuiState: vi.fn(),
   useMessages: vi.fn(),
   useToolCalls: vi.fn(),
   useSubagentInlinePolicy: vi.fn(),
@@ -14,8 +13,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@assistant-ui/react', () => ({
-  makeAssistantToolUI: mocks.makeAssistantToolUI,
-  useMessage: mocks.useMessage,
+  useAuiState: mocks.useAuiState,
 }))
 
 vi.mock('@langchain/react', () => ({
@@ -62,13 +60,15 @@ function renderCard(statusType = 'running') {
 describe('SubAgentToolCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.useMessage.mockImplementation(
-      (selector: (message: { content: readonly unknown[] }) => unknown) =>
+    mocks.useAuiState.mockImplementation(
+      (selector: (state: { message: { content: readonly unknown[] } }) => unknown) =>
         selector({
-          content: [
-            { type: 'tool-call', toolName: 'task', toolCallId: 'tc-task-1' },
-            { type: 'tool-call', toolName: 'web_search', toolCallId: 'tc-search-1' },
-          ],
+          message: {
+            content: [
+              { type: 'tool-call', toolName: 'task', toolCallId: 'tc-task-1' },
+              { type: 'tool-call', toolName: 'web_search', toolCallId: 'tc-search-1' },
+            ],
+          },
         }),
     )
     mocks.useSubagentSnapshot.mockReturnValue(researcherSnapshot)
@@ -94,13 +94,15 @@ describe('SubAgentToolCard', () => {
 
   it('selects a stable task tool id key from the assistant-ui message snapshot', () => {
     let selected: unknown
-    mocks.useMessage.mockImplementationOnce(
-      (selector: (message: { content: readonly unknown[] }) => unknown) => {
+    mocks.useAuiState.mockImplementationOnce(
+      (selector: (state: { message: { content: readonly unknown[] } }) => unknown) => {
         selected = selector({
-          content: [
-            { type: 'tool-call', toolName: 'task', toolCallId: 'tc-task-1' },
-            { type: 'tool-call', toolName: 'task', toolCallId: 'tc-task-2' },
-          ],
+          message: {
+            content: [
+              { type: 'tool-call', toolName: 'task', toolCallId: 'tc-task-1' },
+              { type: 'tool-call', toolName: 'task', toolCallId: 'tc-task-2' },
+            ],
+          },
         })
         return selected
       },

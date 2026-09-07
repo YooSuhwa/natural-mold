@@ -7,7 +7,7 @@ const appendMock = vi.fn()
 let mockThreadEmpty = true
 
 vi.mock('@assistant-ui/react', () => ({
-  useAui: () => ({ thread: () => ({ append: appendMock }) }),
+  useAui: () => ({ thread: { append: appendMock } }),
   useAuiState: (selector: (s: { thread?: { isEmpty: boolean } }) => unknown) =>
     selector({ thread: { isEmpty: mockThreadEmpty } }),
 }))

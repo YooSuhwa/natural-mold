@@ -1,6 +1,6 @@
 'use client'
 
-import { makeAssistantToolUI } from '@assistant-ui/react'
+import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import { BookOpenIcon, FileIcon } from 'lucide-react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
@@ -128,7 +128,8 @@ function SkillExecutionRender({
   )
 }
 
-export const SkillExecutionToolUI = makeAssistantToolUI<SkillExecutionArgs, unknown>({
-  toolName: 'execute_in_skill',
-  render: SkillExecutionRender,
-})
+export function SkillExecutionToolUI(
+  props: ToolCallMessagePartProps<SkillExecutionArgs, unknown>,
+) {
+  return <SkillExecutionRender {...props} />
+}

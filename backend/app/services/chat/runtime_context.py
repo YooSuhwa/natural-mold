@@ -272,9 +272,12 @@ async def build_tools_config(
                 # _build_mcp_tools branches on these keys (see executor.py
                 # ``mcp_server_url``).
                 "mcp_server_url": server.url,
+                "mcp_server_id": str(server.id),
+                "mcp_tool_id": str(mcp_tool.id),
                 "mcp_tool_name": mcp_tool.name,
                 "mcp_transport_headers": mcp_headers,
                 "credentials": mcp_credentials,
+                "conversation_id": conversation_id,
                 "user_id": str(runtime_actor_user_id),
                 "agent_id": str(agent.id),
                 "credential_subject_user_id": str(credential_subject_user_id),

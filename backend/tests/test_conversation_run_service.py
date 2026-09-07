@@ -283,6 +283,7 @@ async def test_canceling_can_transition_to_canceled(db: AsyncSession) -> None:
     assert run.status == "canceled"
     assert run.is_active is False
     assert run.cancel_requested_at is not None
+    assert run.cancellation_acknowledged_at is None
     assert run.completed_at is not None
 
 

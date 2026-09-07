@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
+from app.agent_runtime.run_metrics import RunMetricsSnapshot
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ConversationArtifact
@@ -21,6 +22,7 @@ from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from app.services import conversation_run_service, trace_storage
+from app.services.conversation_run_metrics_service import persist_run_metrics
 from tests.conftest import TEST_USER_ID
 
 
@@ -133,6 +135,55 @@ async def test_run_detail_returns_not_found_for_other_user(
     resp = await client.get(f"/api/conversations/{conversation.id}/runs/{run.id}")
 
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_owned_run_detail_reloads_persisted_metrics(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    agent, conversation = await _seed_agent_conversation(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="measured",
+    )
+    await persist_run_metrics(
+        db,
+        run_id=run.id,
+        snapshot=RunMetricsSnapshot(
+            terminal_state="completed",
+            elapsed_ms=2_500.0,
+            ttft_ms=300.0,
+            generation_ms=1_200.0,
+            tokens_per_second=5.0,
+            prompt_tokens=20,
+            completion_tokens=6,
+            cache_creation_tokens=0,
+            cache_read_tokens=4,
+            estimated_cost=0.004,
+            usage_complete=True,
+            root_tool_calls=1,
+            descendant_tool_calls=0,
+            root_subagent_calls=0,
+            descendant_subagent_calls=0,
+            activity=(),
+            activity_truncated=False,
+        ),
+    )
+    await db.commit()
+
+    response = await client.get(f"/api/conversations/{conversation.id}/runs/{run.id}")
+
+    assert response.status_code == 200
+    metrics = response.json()["metrics"]
+    assert metrics["elapsed_ms"] == 2_500.0
+    assert metrics["prompt_tokens"] == 20
+    assert metrics["completion_tokens"] == 6
+    assert metrics["usage_complete"] is True
 
 
 @pytest.mark.asyncio
@@ -804,7 +855,7 @@ async def test_cancel_endpoint_returns_existing_canceling_status_without_second_
 
 
 @pytest.mark.asyncio
-async def test_cancel_endpoint_finalizes_outputs_when_worker_task_is_missing(
+async def test_cancel_endpoint_waits_for_owner_ack_when_worker_task_is_missing(
     client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -851,26 +902,26 @@ async def test_cancel_endpoint_finalizes_outputs_when_worker_task_is_missing(
     resp = await client.post(f"/api/conversations/{conversation.id}/runs/{run.id}/cancel")
 
     assert resp.status_code == 200
-    assert resp.json()["status"] == "canceled"
+    assert resp.json()["status"] == "canceling"
     await db.refresh(run)
-    assert run.status == "canceled"
-    assert run.is_active is False
+    await db.refresh(conversation)
+    assert run.status == "canceling"
+    assert run.is_active is True
+    assert run.cancel_reason == "stop"
+    assert run.cancellation_acknowledged_at is None
+    assert conversation.queue_paused is True
 
     record = await trace_storage.get_trace_by_msg_id(db, str(run.id))
     assert record is not None
-    assert record.status == "completed"
-    assert any(
-        evt.get("event") == event_names.MESSAGE_END
-        and (evt.get("data") or {}).get("status") == "canceled"
-        for evt in record.events
-    )
+    assert record.status == "streaming"
+    assert not any(evt.get("event") == event_names.MESSAGE_END for evt in record.events)
 
     artifact = (
         await db.execute(
             select(ConversationArtifact).where(ConversationArtifact.assistant_msg_id == str(run.id))
         )
     ).scalar_one()
-    assert artifact.status == "failed"
+    assert artifact.status == "ready"
 
 
 @pytest.mark.asyncio

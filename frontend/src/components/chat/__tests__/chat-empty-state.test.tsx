@@ -12,7 +12,7 @@ vi.mock('next-intl', () => ({
 }))
 
 vi.mock('@assistant-ui/react', () => ({
-  useComposerRuntime: () => ({ setText }),
+  useAui: () => ({ optional: { composer: { setText } } }),
 }))
 
 vi.mock('@/components/agent/agent-avatar', () => ({

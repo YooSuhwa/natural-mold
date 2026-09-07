@@ -96,6 +96,7 @@ const runtimeWebServers = [
 
 const legacyCaptureSpecGlobs = [
   '**/captures/**/*.spec.ts',
+  '**/chat-dictation.spec.ts',
   '**/chat-langgraph-v3-visual-matrix.spec.ts',
 ]
 const runtimePolicyCaptureSpecGlobs = [
@@ -103,6 +104,11 @@ const runtimePolicyCaptureSpecGlobs = [
   '**/runtime-todo-policy.spec.ts',
   '**/runtime-filesystem-policy.spec.ts',
   '**/chat-compaction.spec.ts',
+  '**/chat-mcp-apps.spec.ts',
+  '**/chat-commands-context.spec.ts',
+  '**/chat-message-queue.spec.ts',
+  '**/chat-run-summary.spec.ts',
+  '**/chat-recovery-discovery.spec.ts',
 ]
 const scriptedFullIgnore = [
   ...LIVE_E2E_SPEC_GLOBS,

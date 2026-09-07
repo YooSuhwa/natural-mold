@@ -19,12 +19,7 @@ import {
   mockTriggerRun,
   mockTriggerSummary,
   mockUsageSummary,
-  mockCreationSession,
-  mockCreationMessageResult,
   mockBuilderSession,
-  mockConnectionList,
-  mockCustomConnection,
-  mockMcpConnection,
   mockCredentialList,
   mockCredential,
   mockMarketplaceItemsPage,
@@ -101,75 +96,26 @@ export const handlers = [
   // ``POST /api/tools`` (이전 ``/api/tools/custom``)로 통합. definition_key 기반.
   http.post(`${API_BASE}/api/tools`, async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
-    const config = (body.config ?? {}) as Record<string, unknown>
     return HttpResponse.json({
       ...mockTool,
       id: 'tool-new',
-      type: 'custom',
-      is_system: false,
+      definition_key: body.definition_key,
       name: body.name,
-      api_url: config.api_url ?? body.api_url,
+      parameters: body.parameters,
     })
   }),
 
   http.patch(`${API_BASE}/api/tools/:id`, async ({ params, request }) => {
-    const body = (await request.json()) as { connection_id?: string | null }
+    const body = (await request.json()) as Record<string, unknown>
     return HttpResponse.json({
       ...mockTool,
       id: params.id,
-      type: 'custom',
-      is_system: false,
-      connection_id: body.connection_id ?? null,
+      ...body,
     })
   }),
 
   http.delete(`${API_BASE}/api/tools/:id`, () => {
     return new HttpResponse(null, { status: 204 })
-  }),
-
-  // ── Connections (ADR-008) ──────────────────────────────────────
-  http.get(`${API_BASE}/api/connections`, ({ request }) => {
-    const url = new URL(request.url)
-    const type = url.searchParams.get('type')
-    const list = type ? mockConnectionList.filter((c) => c.type === type) : mockConnectionList
-    return HttpResponse.json(list)
-  }),
-
-  http.get(`${API_BASE}/api/connections/:id`, ({ params }) => {
-    const found = mockConnectionList.find((c) => c.id === params.id)
-    return found
-      ? HttpResponse.json(found)
-      : HttpResponse.json({ detail: 'Connection not found' }, { status: 404 })
-  }),
-
-  http.post(`${API_BASE}/api/connections`, async ({ request }) => {
-    const body = (await request.json()) as Record<string, unknown>
-    return HttpResponse.json(
-      {
-        ...(body.type === 'mcp' ? mockMcpConnection : mockCustomConnection),
-        id: 'conn-new',
-        ...body,
-      },
-      { status: 201 },
-    )
-  }),
-
-  http.patch(`${API_BASE}/api/connections/:id`, async ({ params, request }) => {
-    const body = (await request.json()) as Record<string, unknown>
-    const base = mockConnectionList.find((c) => c.id === params.id) ?? mockCustomConnection
-    return HttpResponse.json({ ...base, ...body, id: params.id })
-  }),
-
-  http.delete(`${API_BASE}/api/connections/:id`, () => {
-    return new HttpResponse(null, { status: 204 })
-  }),
-
-  http.post(`${API_BASE}/api/connections/:id/discover-tools`, ({ params }) => {
-    return HttpResponse.json({
-      connection_id: params.id,
-      server_info: { name: 'Test MCP', version: '1.0' },
-      items: [{ tool: { ...mockTool, type: 'mcp', name: 'discovered_tool' }, status: 'created' }],
-    })
   }),
 
   // ── Credentials ────────────────────────────────────────────────
@@ -340,23 +286,6 @@ export const handlers = [
 
   http.get(`${API_BASE}/api/marketplace/items`, () => {
     return HttpResponse.json(mockMarketplaceItemsPage.items)
-  }),
-
-  // ── Creation Session ───────────────────────────────────────────
-  http.post(`${API_BASE}/api/agents/create-session`, () => {
-    return HttpResponse.json(mockCreationSession)
-  }),
-
-  http.get(`${API_BASE}/api/agents/create-session/:id`, ({ params }) => {
-    return HttpResponse.json({ ...mockCreationSession, id: params.id })
-  }),
-
-  http.post(`${API_BASE}/api/agents/create-session/:id/message`, () => {
-    return HttpResponse.json(mockCreationMessageResult)
-  }),
-
-  http.post(`${API_BASE}/api/agents/create-session/:id/confirm`, () => {
-    return HttpResponse.json({ ...mockAgent, id: 'agent-from-session' })
   }),
 
   // ── Builder v2 ──────────────────────────────────────────────────

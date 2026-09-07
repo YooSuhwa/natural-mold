@@ -1264,6 +1264,7 @@
     "defaultAgentName": "에이전트",
     "emptyState": {
       "canDo": "이 에이전트가 할 수 있는 것",
+      "commandDiscovery": "명령어 찾아보기",
       "moreCapabilities": "+{count}개"
     },
     "search": {
@@ -1272,6 +1273,30 @@
       "previous": "이전 결과",
       "next": "다음 결과",
       "close": "검색 닫기"
+    },
+    "commands": {
+      "ariaLabel": "채팅 명령어",
+      "unavailable": "이 대화에서는 사용할 수 없습니다",
+      "unknown": "알 수 없는 명령어입니다",
+      "argumentsNotSupported": "이 명령어에는 인수를 넣을 수 없습니다",
+      "search": { "label": "/search", "description": "이 대화에서 검색" },
+      "export": { "label": "/export", "description": "내보내기 형식 선택" },
+      "files": { "label": "/files", "description": "대화 파일 열기" },
+      "attach": { "label": "/attach", "description": "첨부할 파일 선택" },
+      "new": { "label": "/new", "description": "새 대화 시작" },
+      "retry": { "label": "/retry", "description": "마지막 실패 실행 다시 시도" },
+      "compact": { "label": "/compact", "description": "대화 컨텍스트 압축" },
+      "stop": { "label": "/stop", "description": "실행 중지 및 대기열 일시 정지" },
+      "help": { "label": "/help", "description": "사용 가능한 명령어 보기" }
+    },
+    "resourceContext": {
+      "ariaLabel": "컨텍스트 추가",
+      "limit": "컨텍스트는 최대 8개까지 추가할 수 있습니다.",
+      "remove": "{label} 제거",
+      "file": "파일",
+      "artifact": "산출물",
+      "skill": "스킬",
+      "conversation": "대화"
     },
     "toolGroup": {
       "count": "{count}회",
@@ -1413,6 +1438,7 @@
       "newConversation": "새 대화",
       "emptyState": "대화를 시작해보세요.",
       "error": "에이전트 실행 중 오류가 발생했습니다",
+      "canceling": "중단 요청 중",
       "canceled": "중단됨",
       "runFailed": "요청을 처리하지 못했어요. 다시 시도해 주세요.",
       "interruptStateLost": "응답이 일시정지되었지만 상세 정보를 불러올 수 없습니다. 새로고침해 주세요.",
@@ -1427,7 +1453,32 @@
       "scrollToBottom": "맨 아래로 이동",
       "attachComingSoon": "파일 첨부 (준비 중)",
       "templateComingSoon": "템플릿에서 가져오기 (준비 중)",
-      "sessionCost": "세션 비용"
+      "sessionCost": "세션 비용",
+      "dictation": {
+        "start": "음성 입력 시작",
+        "stop": "음성 입력 중단",
+        "listening": "듣는 중",
+        "unsupported": "이 브라우저에서는 음성 입력을 지원하지 않습니다.",
+        "failed": "음성 입력을 시작하지 못했습니다. 마이크 권한과 브라우저 상태를 확인한 뒤 다시 시도하세요."
+      }
+    },
+    "queue": {
+      "title": "대기 메시지",
+      "paused": "중단되어 대기열이 멈췄습니다.",
+      "resume": "계속 실행",
+      "edit": "대기 메시지 수정",
+      "save": "저장",
+      "cancelEdit": "수정 취소",
+      "remove": "대기 메시지 삭제",
+      "steer": "현재 응답을 중단하고 먼저 실행",
+      "steerNew": "현재 응답을 중단하고 바로 전송",
+      "moveUp": "위로 이동",
+      "moveDown": "아래로 이동",
+      "sending": "서버에 저장 중",
+      "queued": "서버 대기열에 저장됨",
+      "applied": "새 응답을 시작함",
+      "failed": "대기열 작업을 완료하지 못함",
+      "restore": "초안 복원"
     },
     "tokenUsage": {
       "title": "토큰 사용량",
@@ -1459,6 +1510,8 @@
       "editSave": "저장",
       "editCancel": "취소",
       "regenerate": "재생성",
+      "pinSummary": "대화 요약으로 고정",
+      "unpinSummary": "대화 요약 고정 해제",
       "retry": "다시 시도",
       "feedbackUp": "도움이 됨",
       "feedbackDown": "도움이 안 됨",
@@ -1471,6 +1524,13 @@
       "artifacts": {
         "openLabel": "{name} 파일 열기"
       }
+    },
+    "pinnedSummary": {
+      "heading": "고정된 대화 요약",
+      "unpin": "대화 요약 고정 해제",
+      "statusChanged": "원본 메시지가 변경됨",
+      "statusDeleted": "원본 메시지가 삭제됨",
+      "statusOtherBranch": "다른 대화 분기의 메시지"
     },
     "markdown": {
       "copy": "복사",
@@ -1728,7 +1788,22 @@
       "responding": "응답을 작성하는 중",
       "reconnecting": "스트림을 다시 연결하는 중",
       "done": "완료됨",
-      "error": "문제가 발생했습니다"
+      "error": "문제가 발생했습니다",
+      "summaryAria": "실행 요약",
+      "elapsedUnknown": "시간 정보 없음",
+      "durationSeconds": "{count}초",
+      "durationMinutesSeconds": "{minutes}분 {seconds}초",
+      "toolTotal": "도구 총 {count}",
+      "subagentTotal": "서브 에이전트 총 {count}",
+      "rootTools": "메인 도구",
+      "descendantTools": "하위 도구",
+      "rootSubagents": "메인 서브 에이전트",
+      "descendantSubagents": "하위 서브 에이전트",
+      "showDetails": "활동 보기",
+      "hideDetails": "활동 닫기",
+      "history": "활동 내역",
+      "truncated": "이전 활동 일부가 생략되었습니다.",
+      "activityElapsed": "실행 후 {value}"
     },
     "compaction": {
       "summary": "이전 대화를 요약해 컨텍스트를 정리했어요"

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { makeAssistantToolUI } from '@assistant-ui/react'
+import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import {
   CopyIcon,
@@ -244,12 +244,15 @@ function FileToolPill({
 // ReadFileToolUI
 // ──────────────────────────────────────────────
 
-export const ReadFileToolUI = makeAssistantToolUI<ReadFileArgs, unknown>({
-  toolName: 'read_file',
-  render: ({ args, result, status }) => (
+export function ReadFileToolUI({
+  args,
+  result,
+  status,
+}: ToolCallMessagePartProps<ReadFileArgs, unknown>) {
+  return (
     <ReadFileToolView args={args} result={result} statusType={status.type} />
-  ),
-})
+  )
+}
 
 function ReadFileToolView({
   args,
@@ -291,12 +294,15 @@ function ReadFileToolView({
 // WriteFileToolUI
 // ──────────────────────────────────────────────
 
-export const WriteFileToolUI = makeAssistantToolUI<WriteFileArgs, unknown>({
-  toolName: 'write_file',
-  render: ({ args, result, status }) => (
+export function WriteFileToolUI({
+  args,
+  result,
+  status,
+}: ToolCallMessagePartProps<WriteFileArgs, unknown>) {
+  return (
     <WriteFileToolView args={args} result={result} statusType={status.type} />
-  ),
-})
+  )
+}
 
 function WriteFileToolView({
   args,
@@ -337,12 +343,15 @@ function WriteFileToolView({
 // EditFileToolUI
 // ──────────────────────────────────────────────
 
-export const EditFileToolUI = makeAssistantToolUI<EditFileArgs, unknown>({
-  toolName: 'edit_file',
-  render: ({ args, result, status }) => (
+export function EditFileToolUI({
+  args,
+  result,
+  status,
+}: ToolCallMessagePartProps<EditFileArgs, unknown>) {
+  return (
     <EditFileToolView args={args} result={result} statusType={status.type} />
-  ),
-})
+  )
+}
 
 function EditFileToolView({
   args,

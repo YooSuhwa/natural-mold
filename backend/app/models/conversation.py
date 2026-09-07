@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -42,5 +42,11 @@ class Conversation(Base):
     runtime_policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     runtime_policy_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     runtime_policy_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    queue_paused: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    queue_paused_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
 
     agent: Mapped[Agent] = relationship(back_populates="conversations")  # type: ignore[name-defined]

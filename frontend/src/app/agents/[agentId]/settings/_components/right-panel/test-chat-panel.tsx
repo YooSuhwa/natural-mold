@@ -3,10 +3,10 @@
 import { useMemo, useCallback, useState } from 'react'
 import { MessageSquareIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { AssistantRuntimeProvider } from '@assistant-ui/react'
+import { AuiConfig, AssistantRuntimeProvider, Tools } from '@assistant-ui/react'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import type { Message } from '@/lib/types'
-import { TOOL_UI_WITHOUT_HITL } from '@/lib/chat/tool-ui-registry'
+import { SETTINGS_TEST_TOOLKIT } from '@/lib/chat/tool-ui-registry'
 import { streamAssistant } from '@/lib/sse/stream-assistant'
 import { AssistantThread } from '@/components/chat/assistant-thread'
 
@@ -23,6 +23,7 @@ interface TestChatPanelProps {
  * 엔드포인트가 생기면 streamFn만 교체하면 된다.
  */
 export function TestChatPanel({ agentId, agentName, agentImageUrl }: TestChatPanelProps) {
+  const config = AuiConfig({ tools: Tools({ toolkit: SETTINGS_TEST_TOOLKIT }) })
   const t = useTranslations('agent.settings')
   const sessionId = useMemo(() => crypto.randomUUID(), [])
   const [localMessages, setLocalMessages] = useState<Message[]>([])
@@ -55,13 +56,12 @@ export function TestChatPanel({ agentId, agentName, agentImageUrl }: TestChatPan
         {t('testWarning')}
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-        <AssistantRuntimeProvider runtime={runtime}>
+        <AssistantRuntimeProvider runtime={runtime} config={config}>
           <AssistantThread
             agentImageUrl={agentImageUrl}
             agentName={agentName}
             compact
             emptyContent={emptyContent}
-            toolUI={TOOL_UI_WITHOUT_HITL}
           />
         </AssistantRuntimeProvider>
       </div>

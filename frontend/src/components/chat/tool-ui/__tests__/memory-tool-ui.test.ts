@@ -11,10 +11,6 @@ import {
   shouldMemoryToolDefaultExpand,
 } from '../memory-tool-ui'
 
-vi.mock('@assistant-ui/react', () => ({
-  makeAssistantToolUI: (config: unknown) => config,
-}))
-
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }))
@@ -41,6 +37,8 @@ type ToolUiRender = {
     addResult?: (result: unknown) => void
   }) => ReactNode
 }
+
+const renderSaveUserMemory = SaveUserMemoryToolUI as unknown as ToolUiRender['render']
 
 describe('memory tool UI result bridge', () => {
   it('does not throw when the current assistant runtime cannot accept tool results', () => {
@@ -107,7 +105,6 @@ describe('memory tool UI result bridge', () => {
   })
 
   it('syncs the editable draft when a streaming proposal result resolves content', () => {
-    const toolUi = SaveUserMemoryToolUI as unknown as ToolUiRender
     const proposalResult = JSON.stringify({
       memory_event: 'memory_proposed',
       id: 'proposal-1',
@@ -117,7 +114,7 @@ describe('memory tool UI result bridge', () => {
     })
 
     const view = render(
-      toolUi.render({
+      renderSaveUserMemory({
         args: { content: '' },
         result: undefined,
         status: { type: 'running' },
@@ -125,7 +122,7 @@ describe('memory tool UI result bridge', () => {
     )
 
     view.rerender(
-      toolUi.render({
+      renderSaveUserMemory({
         args: { content: '' },
         result: proposalResult,
         status: { type: 'complete' },

@@ -15,13 +15,23 @@ import {
 import { sourceMessageIdFromThreadMessageId } from './message-list'
 import { isTerminalNoticeMessageId } from './terminal-notice'
 import { reportClientWarning } from '@/lib/logging/client-logger'
+import {
+  parseResourceContextReferences,
+  type ResourceContextReference,
+} from '@/lib/chat/context/resource-context'
 
 const CHECKPOINT_CONTEXT_RETRY_INTERVAL_MS = 250
 const CHECKPOINT_CONTEXT_RETRY_TIMEOUT_MS = 10_000
 
-interface UseCheckpointForkHandlersOptions<StateType extends object> {
+export interface MoldySubmitState {
+  messages: BaseMessage[]
+  attachments?: readonly { readonly id: string }[]
+  resource_context?: readonly ResourceContextReference[]
+}
+
+interface UseCheckpointForkHandlersOptions {
   conversationId: string
-  stream: UseStreamReturn<StateType>
+  stream: UseStreamReturn<MoldySubmitState>
   visibleMessages: readonly VisibleMessageReference[]
   langChainMessages: readonly BaseMessage[]
   onBeforeEditSubmit?: (edit: PendingCheckpointEditSubmit) => void
@@ -33,7 +43,7 @@ type VisibleMessageReference = Pick<ThreadMessage, 'id'> & {
   readonly role?: unknown
 }
 
-type SubmitInput<StateType extends object> = Parameters<UseStreamReturn<StateType>['submit']>[0]
+type SubmitInput = Parameters<UseStreamReturn<MoldySubmitState>['submit']>[0]
 
 interface ServerCheckpointAttempt {
   readonly checkpointId: string | null
@@ -48,13 +58,13 @@ export interface PendingCheckpointEditSubmit {
   readonly targetIndex: number | null
 }
 
-export function useCheckpointForkHandlers<StateType extends object>({
+export function useCheckpointForkHandlers({
   conversationId,
   stream,
   visibleMessages,
   langChainMessages,
   onBeforeEditSubmit,
-}: UseCheckpointForkHandlersOptions<StateType>) {
+}: UseCheckpointForkHandlersOptions) {
   const metadataByMessageId = useMessageMetadataSnapshot(stream)
   const checkpointByMessageId = useMemo(
     () => checkpointByMessageIdFromMessages(langChainMessages),
@@ -98,7 +108,7 @@ export function useCheckpointForkHandlers<StateType extends object>({
       const content = appendMessageText(message).trim()
       const attachments = attachmentRefs(message)
       if (!content && attachments.length === 0) return
-      await stream.submit(humanInput<StateType>(content, attachments))
+      await stream.submit(humanInput(content, attachments, undefined, resourceContextRefs(message)))
     },
     [stream],
   )
@@ -135,7 +145,7 @@ export function useCheckpointForkHandlers<StateType extends object>({
         targetIndex: target.index,
       })
       await stream.submit(
-        humanInput<StateType>(
+        humanInput(
           content,
           attachments,
           sourceMessageIdForVisibleCandidate(
@@ -195,15 +205,29 @@ function appendMessageText(message: {
     .join('')
 }
 
-function humanInput<StateType extends object>(
+function humanInput(
   content: string,
   attachments: readonly { id: string }[],
   id?: string,
-): SubmitInput<StateType> {
+  resourceContext?: readonly ResourceContextReference[],
+): SubmitInput {
   return {
     messages: [new HumanMessage({ content, ...(id ? { id } : {}) })],
     ...(attachments.length > 0 ? { attachments } : {}),
-  } as unknown as SubmitInput<StateType>
+    ...(resourceContext && resourceContext.length > 0
+      ? { resource_context: resourceContext.map((reference) => ({ ...reference })) }
+      : {}),
+  }
+}
+
+function resourceContextRefs(
+  message: AppendMessage,
+): readonly ResourceContextReference[] | undefined {
+  const custom = message.runConfig?.custom
+  if (!custom || !Object.hasOwn(custom, 'resource_context')) return undefined
+  const parsed = parseResourceContextReferences(custom.resource_context)
+  if (!parsed.success) throw new Error('Resource context cannot be submitted: malformed')
+  return parsed.data
 }
 
 function attachmentRefs(message: { attachments?: readonly { id?: unknown }[] }): { id: string }[] {

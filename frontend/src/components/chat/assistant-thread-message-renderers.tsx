@@ -23,6 +23,7 @@ import {
   FeedbackButtons,
   MessageMetaRow,
   MessageTimestamp,
+  PinSummaryButton,
   RegenerateButton,
   RetryButton,
   UserMessageEditor,
@@ -32,6 +33,7 @@ import {
   AssistantCompactionMarker,
 } from '@/components/chat/assistant-message-artifacts'
 import { AssistantMessageParts } from '@/components/chat/assistant-message-parts'
+import { MessageRunSummary } from '@/components/chat/run-summary'
 import { useAssistantThreadDynamicContext } from '@/components/chat/assistant-thread-context'
 import type { TerminalNoticeStatus } from '@/lib/chat/langgraph-runtime/terminal-notice'
 
@@ -113,6 +115,7 @@ function AssistantMessage() {
     <MessageMetaRow>
       <BranchPicker />
       <CopyButton />
+      <PinSummaryButton />
       <RegenerateButton />
       <FeedbackButtons />
       <TokenUsagePopover />
@@ -152,8 +155,9 @@ function AssistantMessage() {
         {isFailedNotice ? (
           <div className="moldy-status-surface moldy-status-danger flex items-start gap-2 rounded-lg px-3 py-2.5 leading-normal">
             <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
-            <div className="min-w-0 flex-1 space-y-2">
+            <div className="moldy-chat-failed-notice-content min-w-0 flex-1 space-y-2">
               <AssistantMessageParts />
+              <MessageRunSummary />
               <RetryButton />
             </div>
           </div>
@@ -162,6 +166,7 @@ function AssistantMessage() {
             <AssistantMessageParts />
             <AssistantArtifactCards />
             <AssistantCompactionMarker />
+            <MessageRunSummary />
           </>
         )}
         {metaRow}

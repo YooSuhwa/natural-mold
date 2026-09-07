@@ -15,7 +15,6 @@ import {
   ThreadPrimitive,
   useThreadViewport,
   type AssistantDataUI,
-  type AssistantToolUI,
 } from '@assistant-ui/react'
 import { ArrowDownIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -31,6 +30,7 @@ import {
 } from '@/components/chat/assistant-thread-context'
 import { ASSISTANT_THREAD_MESSAGE_COMPONENTS } from '@/components/chat/assistant-thread-message-renderers'
 import { ThreadComposer } from '@/components/chat/assistant-thread-composer'
+import type { DictationAvailability } from '@/components/chat/use-browser-dictation'
 import {
   BuilderComposer,
   BuilderComposerFallback,
@@ -40,6 +40,8 @@ import { cn } from '@/lib/utils'
 import type { User } from '@/lib/types/user'
 import type { DeepAgentsStateSnapshot } from '@/lib/chat/langgraph-runtime/deepagents-state'
 import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
+import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
+import type { SkillBrief } from '@/lib/types'
 import 'katex/dist/katex.min.css'
 import './markdown-styles.css'
 
@@ -61,16 +63,22 @@ export interface AssistantThreadProps {
   compact?: boolean
   showMessageTimestamp?: boolean
   emptyContent?: ReactNode
-  toolUI?: readonly AssistantToolUI[]
   dataUI?: readonly AssistantDataUI[]
   activities?: readonly RunActivity[]
   deepAgentsState?: DeepAgentsStateSnapshot
   enableAttachments?: boolean
+  enableMessageQueue?: boolean
   conversationId?: string
   variant?: 'default' | 'builder'
   builderModelLabel?: string
   builderAgentSubtitle?: string
   composerHint?: ReactNode
+  dictationAvailability?: DictationAvailability
+  onDictationStart?: () => void
+  commandActions?: ChatCommandActions
+  linkedSkills?: readonly SkillBrief[]
+  retryLastFailedInput?: ChatCommandActions['retryLastFailedInput']
+  resourceContextResetKey?: string | number | null
 }
 
 export function AssistantThread({
@@ -85,16 +93,22 @@ export function AssistantThread({
   compact = false,
   showMessageTimestamp = false,
   emptyContent,
-  toolUI,
   dataUI,
   activities = [],
   deepAgentsState,
   enableAttachments = false,
+  enableMessageQueue = false,
   conversationId,
   variant = 'default',
   builderModelLabel,
   builderAgentSubtitle,
   composerHint,
+  dictationAvailability,
+  onDictationStart,
+  commandActions,
+  linkedSkills,
+  retryLastFailedInput,
+  resourceContextResetKey,
 }: AssistantThreadProps) {
   const tPage = useTranslations('chat.page')
   const isBuilder = variant === 'builder'
@@ -127,7 +141,7 @@ export function AssistantThread({
       user,
     ],
   )
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState<string | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -135,7 +149,7 @@ export function AssistantThread({
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
         if (viewportRef.current?.offsetParent == null) return
         event.preventDefault()
-        setSearchOpen(true)
+        setSearchQuery('')
       }
     }
     window.addEventListener('keydown', handleGlobalKeyDown)
@@ -156,8 +170,12 @@ export function AssistantThread({
             className="min-h-0 flex-1 overflow-y-auto"
             onScroll={handleViewportScroll}
           >
-            {searchOpen ? (
-              <ChatSearchOverlay onClose={() => setSearchOpen(false)} searchRootRef={viewportRef} />
+            {searchQuery !== null ? (
+              <ChatSearchOverlay
+                initialQuery={searchQuery}
+                onClose={() => setSearchQuery(null)}
+                searchRootRef={viewportRef}
+              />
             ) : null}
             <AuiIf condition={(state) => state.thread.isEmpty}>
               {emptyContent ?? (
@@ -187,9 +205,6 @@ export function AssistantThread({
               <ScrollToBottomButton isAtBottom={isViewportAtBottom} />
             </ThreadPrimitive.ViewportFooter>
           </ThreadPrimitive.Viewport>
-          {toolUI?.map((ToolComponent, index) => (
-            <ToolComponent key={`tool-${index}`} />
-          ))}
           {dataUI?.map((DataComponent, index) => (
             <DataComponent key={`data-${index}`} />
           ))}
@@ -208,7 +223,17 @@ export function AssistantThread({
                 contextWindow={contextWindow}
                 compact={compact}
                 enableAttachments={enableAttachments}
+                enableMessageQueue={enableMessageQueue}
                 focusKey={conversationId}
+                dictationAvailability={dictationAvailability}
+                onDictationStart={onDictationStart}
+                commandActions={{
+                  ...commandActions,
+                  openTranscriptSearch: (argument) => setSearchQuery(argument),
+                }}
+                linkedSkills={linkedSkills}
+                retryLastFailedInput={retryLastFailedInput}
+                resourceContextResetKey={resourceContextResetKey}
               />
             </div>
           )}

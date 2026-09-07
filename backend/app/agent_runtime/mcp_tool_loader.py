@@ -9,6 +9,12 @@ from urllib.parse import urlparse
 
 from langchain_core.tools import BaseTool, StructuredTool
 
+from app.agent_runtime.mcp_app_runtime import (
+    ResultMetaInterceptor,
+    mcp_app_context,
+    record_mcp_app_binding,
+)
+from app.mcp.apps import normalize_tool_ui_meta, tool_allows_visibility
 from app.tools.risk import attach_tool_risk, mcp_tool_risk
 
 logger = logging.getLogger(__name__)
@@ -126,7 +132,9 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
         auth_param_keys.update(auth.keys())
 
     # interceptor: MCP tools/call 직전에 auth 값을 arguments에 주입
-    interceptors = [_AuthInjectorInterceptor(tool_auth)] if tool_auth else None
+    interceptors: list[Any] = [ResultMetaInterceptor()]
+    if tool_auth:
+        interceptors.insert(0, _AuthInjectorInterceptor(tool_auth))
 
     # 2. 서버별로 도구 로딩 + 필터링 — (tool, origin) 쌍으로 추적
     collected: list[tuple[BaseTool, str]] = []
@@ -168,11 +176,25 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
                     if t.description and not risk_config.get("description"):
                         risk_config["description"] = t.description
                     metadata = getattr(t, "metadata", None)
+                    raw_meta = metadata.get("_meta") if isinstance(metadata, dict) else None
+                    tool_ui_meta = normalize_tool_ui_meta(raw_meta)
+                    if tool_ui_meta is not None and not tool_allows_visibility(
+                        tool_ui_meta, "model"
+                    ):
+                        continue
+                    app_context = mcp_app_context(
+                        tool_configs.get((key, t.name)),
+                        tool_ui_meta,
+                    )
                     wrapped = MCPToolWithRetry(
                         t,
                         max_retries=2,
                         retry_delay=0.25,
                         timeout_seconds=float(_settings.mcp_connection_timeout),
+                        mcp_app_context=app_context,
+                        binding_recorder=(
+                            record_mcp_app_binding if app_context is not None else None
+                        ),
                     )
                     attach_tool_risk(
                         wrapped,

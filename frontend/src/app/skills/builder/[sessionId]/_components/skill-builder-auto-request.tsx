@@ -51,7 +51,7 @@ export function SkillBuilderAutoRequest({ text }: { readonly text: string | null
     sentRef.current = true
     try {
       // clarifying-question-ui와 동일 패턴 — thread에 직접 user message append.
-      aui.thread().append({ content: [{ type: 'text', text }] })
+      aui.thread.append({ content: [{ type: 'text', text }] })
     } catch (err) {
       reportClientWarning('skill-builder', 'auto first message append error:', err)
     }

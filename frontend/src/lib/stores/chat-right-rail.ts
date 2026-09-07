@@ -6,7 +6,7 @@ export const RIGHT_RAIL_WIDTH_MIN_PX = 320
 export const RIGHT_RAIL_WIDTH_MAX_PX = 720
 export const RIGHT_RAIL_COLLAPSE_THRESHOLD_PX = 280
 
-const CHAT_MIN_WIDTH_PX = 520
+export const CHAT_MIN_WIDTH_PX = 520
 
 export type RightRailMode = 'none' | 'subagent' | 'tool-result' | 'outline' | 'artifacts'
 
@@ -104,11 +104,12 @@ export function toggleArtifactListRailState(
   }
 }
 
-export function clampRightRailWidth(width: number, viewportWidth?: number): number {
-  const resolvedViewportWidth =
-    viewportWidth ?? (typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerWidth)
-  const viewportMax = Math.min(RIGHT_RAIL_WIDTH_MAX_PX, resolvedViewportWidth - CHAT_MIN_WIDTH_PX)
-  const max = Math.max(RIGHT_RAIL_WIDTH_MIN_PX, viewportMax)
+export function clampRightRailWidth(
+  width: number,
+  splitParentWidth = Number.POSITIVE_INFINITY,
+): number {
+  const splitParentMax = Math.min(RIGHT_RAIL_WIDTH_MAX_PX, splitParentWidth - CHAT_MIN_WIDTH_PX)
+  const max = Math.max(RIGHT_RAIL_WIDTH_MIN_PX, splitParentMax)
 
   return clampPanelWidth(width, {
     min: RIGHT_RAIL_WIDTH_MIN_PX,

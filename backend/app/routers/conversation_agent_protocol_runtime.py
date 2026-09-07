@@ -25,7 +25,7 @@ from app.routers.conversation_agent_protocol_legacy import (
 )
 from app.services import chat_service
 
-SUPPORTED_MULTITASK_STRATEGIES = {"reject"}
+SUPPORTED_MULTITASK_STRATEGIES = {"reject", "enqueue", "interrupt"}
 
 
 async def get_owned_thread(

@@ -212,6 +212,9 @@ def _serialize_value(value: Any) -> Any:
         return [_serialize_value(item) for item in value]
     if is_dataclass(value) and not isinstance(value, type):
         return _serialize_value(asdict(value))
+    message = _serialize_message_like(value)
+    if message is not None:
+        return message
     dumped = _method_result(value, "model_dump")
     if dumped is not None:
         return _serialize_value(dumped)
@@ -222,10 +225,6 @@ def _serialize_value(value: Any) -> Any:
     interrupt = _serialize_interrupt_like(value)
     if interrupt is not None:
         return interrupt
-
-    message = _serialize_message_like(value)
-    if message is not None:
-        return message
 
     return repr(value)
 

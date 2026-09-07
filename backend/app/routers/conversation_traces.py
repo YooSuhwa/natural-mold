@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,10 +22,36 @@ from app.schemas.conversation import (
     DebugTraceListResponse,
     TurnTraceResponse,
 )
+from app.schemas.conversation_run_message_links import (
+    ConversationRunMessageKey,
+    ConversationRunMessageLinkResponse,
+)
 from app.services import trace_debug_service, trace_storage
 from app.services.chat import secrets as chat_secrets
+from app.services.conversation_run_message_links import RunMessageLinkQuery, list_run_message_links
 
 router = APIRouter(tags=["conversations"])
+
+
+@router.get(
+    "/api/conversations/{conversation_id}/run-message-links",
+    response_model=list[ConversationRunMessageLinkResponse],
+)
+async def get_conversation_run_message_links(
+    conversation_id: uuid.UUID,
+    message_id: Annotated[list[ConversationRunMessageKey], Query(min_length=1, max_length=50)],
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _conversation: Conversation = Depends(owned_conversation),
+) -> list[ConversationRunMessageLinkResponse]:
+    return await list_run_message_links(
+        db,
+        RunMessageLinkQuery(
+            conversation_id=conversation_id,
+            user_id=user.id,
+            message_ids=message_id,
+        ),
+    )
 
 
 def _public_turn_trace(

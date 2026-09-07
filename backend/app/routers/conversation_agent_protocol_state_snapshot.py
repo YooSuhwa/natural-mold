@@ -7,6 +7,11 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
+from app.agent_runtime.mcp_app_projection import (
+    extract_mcp_app_candidates,
+    project_verified_mcp_apps,
+    verified_mcp_app_artifacts,
+)
 from app.agent_runtime.message_utils import parse_msg_id
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.models.conversation import Conversation
@@ -139,6 +144,14 @@ async def load_thread_state_snapshot(
         values = {}
     values = project_todo_policy_values(conversation, values)
     messages: list[dict[str, Any]] = []
+    raw_messages = [node.message for node in tree.nodes]
+    verified_apps = await verified_mcp_app_artifacts(
+        raw_messages,
+        expected_conversation_id=str(conversation.id),
+    )
+    untrusted_app_tool_call_ids = {
+        item.tool_call_id for item in extract_mcp_app_candidates(raw_messages)
+    }
     for idx, node in enumerate(tree.nodes):
         aliases = _message_id_aliases(node.message, conversation, idx)
         message_id = aliases[0] if aliases else None
@@ -158,6 +171,11 @@ async def load_thread_state_snapshot(
             checkpoint_id=checkpoint_id,
             metadata=branch_metadata,
             secret_values=secrets,
+        )
+        payload = project_verified_mcp_apps(
+            payload,
+            verified_apps,
+            untrusted_tool_call_ids=untrusted_app_tool_call_ids,
         )
         if message_id is not None:
             payload = {**payload, "id": message_id}

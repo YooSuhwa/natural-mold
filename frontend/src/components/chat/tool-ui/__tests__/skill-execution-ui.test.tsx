@@ -44,14 +44,9 @@ describe('SkillExecutionToolUI render', () => {
     result?: unknown
     statusType?: string
   }) {
-    // makeAssistantToolUI 래퍼는 assistant-ui 런타임 컨텍스트가 필요하므로
-    // 내부 render 함수를 직접 렌더한다 (SearchRender 테스트와 동일 접근).
+    // 현재 Toolkit에 등록되는 실제 렌더러를 직접 호출한다.
     const { SkillExecutionToolUI } = await import('../skill-execution-ui')
-    const renderFn = (
-      SkillExecutionToolUI as unknown as {
-        unstable_tool: { render: (p: unknown) => ReactNode }
-      }
-    ).unstable_tool.render
+    const renderFn = SkillExecutionToolUI as unknown as (props: unknown) => ReactNode
     // renderFn을 Provider "아래의" 컴포넌트 렌더 중에 호출해야
     // useChatConversationId가 provider 값을 읽는다 (Wrapper 본문에서 직접
     // 호출하면 provider 바깥 fiber에서 훅이 실행된다).

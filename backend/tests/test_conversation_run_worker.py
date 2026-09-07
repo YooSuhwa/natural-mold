@@ -97,6 +97,7 @@ async def test_cancel_before_running_finalizes_run_as_canceled() -> None:
         assert refreshed.status == "canceled"
         assert refreshed.error_code is None
         assert refreshed.is_active is False
+        assert refreshed.cancellation_acknowledged_at is not None
 
 
 @pytest.mark.asyncio
@@ -361,9 +362,11 @@ async def test_interrupted_run_transitions_before_trace_finalization(
     async def fake_finalize_trace(*_args: Any, **_kwargs: Any) -> None:
         call_order.append("finalize_trace")
 
-    async def fake_transition(*_args: Any, **_kwargs: Any) -> None:
+    async def fake_transition(
+        *_args: Any, **_kwargs: Any
+    ) -> tuple[None, conversation_run_service.RunStatus]:
         call_order.append("transition")
-        return
+        return None, "interrupted"
 
     async def fake_activate(**_kwargs: Any) -> None:
         call_order.append("activate")
@@ -435,9 +438,11 @@ async def test_completed_run_keeps_trace_before_transition_order(
     async def fake_finalize_trace(*_args: Any, **_kwargs: Any) -> None:
         call_order.append("finalize_trace")
 
-    async def fake_transition(*_args: Any, **_kwargs: Any) -> None:
+    async def fake_transition(
+        *_args: Any, **_kwargs: Any
+    ) -> tuple[None, conversation_run_service.RunStatus]:
         call_order.append("transition")
-        return
+        return None, "completed"
 
     async def fake_activate(**_kwargs: Any) -> None:
         call_order.append("activate")

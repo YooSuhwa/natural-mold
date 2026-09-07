@@ -13,6 +13,7 @@ import {
 import { useAui, useAuiState } from '@assistant-ui/react'
 
 import { reportClientError } from '@/lib/logging/client-logger'
+import { useChatComposerTriggerInput } from '@/lib/chat/context/use-chat-composer-trigger-input'
 import { cn } from '@/lib/utils'
 import { autoFocusComposerInput, focusTextareaAtEnd } from './composer-focus'
 
@@ -47,6 +48,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       onCompositionStart,
       onKeyDown,
       onPaste,
+      onSelect,
       submitMode,
       submitOnEnter,
       addAttachmentOnPaste = true,
@@ -57,8 +59,13 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     forwardedRef,
   ) => {
     const aui = useAui()
+    const triggerInput = useChatComposerTriggerInput()
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const compositionRef = useRef(false)
+    const inputTextSyncRef = useRef(false)
+    const setTriggerCursorPositionRef = useRef(triggerInput.setCursorPosition)
+    const compositionStartTextRef = useRef('')
+    const compositionStartSelectionRef = useRef({ end: 0, start: 0 })
     const effectiveSubmitMode = submitMode ?? (submitOnEnter === false ? 'none' : 'enter')
 
     const externalValue = useAuiState((state) =>
@@ -79,6 +86,10 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     )
 
     useEffect(() => {
+      setTriggerCursorPositionRef.current = triggerInput.setCursorPosition
+    }, [triggerInput.setCursorPosition])
+
+    useEffect(() => {
       if (!autoFocus || isDisabled) return
       const textarea = textareaRef.current
       if (!textarea) return
@@ -88,8 +99,17 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     useEffect(() => {
       if (compositionRef.current) return
       const textarea = textareaRef.current
-      if (!textarea || textarea.value === externalValue) return
-      textarea.value = externalValue
+      if (!textarea) return
+      if (textarea.value !== externalValue) textarea.value = externalValue
+      const wasLocalTextSync = inputTextSyncRef.current
+      inputTextSyncRef.current = false
+      if (wasLocalTextSync) return
+
+      const cursorPosition = externalValue.length
+      const timeout = window.setTimeout(() => {
+        setTriggerCursorPositionRef.current(cursorPosition)
+      }, 0)
+      return () => window.clearTimeout(timeout)
     }, [externalValue])
 
     useEffect(() => {
@@ -113,19 +133,23 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
 
     const syncText = useCallback(
       (next: string) => {
-        if (!aui.composer().getState().isEditing) return
-        aui.composer().setText(next)
+        if (!aui.composer.getState().isEditing) return
+        inputTextSyncRef.current = true
+        aui.composer.setText(next)
       },
       [aui],
     )
 
     const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (!isDisabled && !event.nativeEvent.isComposing && !compositionRef.current) {
+        if (triggerInput.handleKeyDown(event)) return
+      }
       onKeyDown?.(event)
       if (event.defaultPrevented || isDisabled) return
       if (event.nativeEvent.isComposing || compositionRef.current) return
       if (event.key !== 'Enter') return
 
-      const threadState = aui.thread().getState()
+      const threadState = aui.thread.getState()
       const hasQueue = threadState.capabilities.queue
 
       if (
@@ -133,10 +157,10 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
         (event.ctrlKey || event.metaKey) &&
         hasQueue &&
         effectiveSubmitMode !== 'none' &&
-        !aui.composer().getState().isEmpty
+        !aui.composer.getState().isEmpty
       ) {
         event.preventDefault()
-        aui.composer().send({ steer: true })
+        aui.composer.send({ steer: true })
         return
       }
 
@@ -149,6 +173,10 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
 
       if (shouldSubmit) {
         event.preventDefault()
+        if (hasQueue) {
+          aui.composer.send({ steer: false })
+          return
+        }
         textareaRef.current?.closest('form')?.requestSubmit()
       }
     }
@@ -158,11 +186,11 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       if (event.defaultPrevented || !addAttachmentOnPaste) return
 
       const files = Array.from(event.clipboardData?.files || [])
-      if (!files.length || !aui.thread().getState().capabilities.attachments) return
+      if (!files.length || !aui.thread.getState().capabilities.attachments) return
 
       try {
         event.preventDefault()
-        await Promise.all(files.map((file) => aui.composer().addAttachment(file)))
+        await Promise.all(files.map((file) => aui.composer.addAttachment(file)))
       } catch (error) {
         reportClientError('ImeSafeComposerInput', 'add attachment error:', error)
       }
@@ -171,6 +199,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     return (
       <textarea
         {...props}
+        {...triggerInput.ariaProps}
         data-moldy-composer-input="true"
         ref={setTextareaRef}
         defaultValue={externalValue}
@@ -181,19 +210,55 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
           if (event.defaultPrevented) return
           if (compositionRef.current) return
           syncText(event.currentTarget.value)
+          triggerInput.setCursorPosition(event.currentTarget.selectionStart)
         }}
         onCompositionStart={(event) => {
           onCompositionStart?.(event)
           compositionRef.current = true
+          compositionStartTextRef.current = event.currentTarget.value
+          compositionStartSelectionRef.current = {
+            end: event.currentTarget.selectionEnd,
+            start: event.currentTarget.selectionStart,
+          }
         }}
         onCompositionEnd={(event) => {
           onCompositionEnd?.(event)
           compositionRef.current = false
-          syncText(event.currentTarget.value)
+
+          const composedText = event.currentTarget.value
+          const compositionStartText = compositionStartTextRef.current
+          const { end, start } = compositionStartSelectionRef.current
+          const runtimeText = aui.composer.getState().text
+          const beforeComposition = compositionStartText.slice(0, start)
+          const afterComposition = compositionStartText.slice(end)
+          const compositionReplacement = composedText.slice(
+            beforeComposition.length,
+            composedText.length - afterComposition.length,
+          )
+
+          // Dictation updates the runtime while an IME owns the textarea. Reconcile only when
+          // the original context still surrounds the IME edit; otherwise the DOM is authoritative.
+          const canReconcileDictation =
+            composedText.startsWith(beforeComposition) &&
+            composedText.endsWith(afterComposition) &&
+            runtimeText.startsWith(beforeComposition)
+          const nextText = canReconcileDictation
+            ? `${beforeComposition}${compositionReplacement}${runtimeText.slice(
+                compositionStartText.length - afterComposition.length,
+              )}`
+            : composedText
+
+          syncText(nextText)
+          triggerInput.setCursorPosition(event.currentTarget.selectionStart)
         }}
         onKeyDown={handleKeyDown}
         onPaste={(event) => {
           void handlePaste(event)
+        }}
+        onSelect={(event) => {
+          onSelect?.(event)
+          if (event.defaultPrevented) return
+          triggerInput.setCursorPosition(event.currentTarget.selectionStart)
         }}
       />
     )

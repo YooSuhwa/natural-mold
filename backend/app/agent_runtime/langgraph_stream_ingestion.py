@@ -11,6 +11,7 @@ from app.agent_runtime.langgraph_protocol_adapter import (
     adapt_stream_mode_chunk,
     adapt_v3_protocol_event,
 )
+from app.agent_runtime.mcp_app_projection import attach_verified_mcp_apps
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_custom_protocol_event
 
 StreamSource = Literal["v3", "stream-mode"]
@@ -85,12 +86,18 @@ async def iter_ingested_protocol_events(
         async for raw_chunk in stream:
             seq += 1
             chunk = raw_chunk if isinstance(raw_chunk, tuple | list) else ("custom", raw_chunk)
+            event = adapt_stream_mode_chunk(
+                chunk,
+                run_id=run_id,
+                thread_id=thread_id,
+                seq=seq,
+            )
             yield IngestedProtocolEvent(
-                event=adapt_stream_mode_chunk(
-                    chunk,
-                    run_id=run_id,
-                    thread_id=thread_id,
-                    seq=seq,
+                event=await attach_verified_mcp_apps(
+                    event,
+                    raw_chunk,
+                    expected_conversation_id=thread_id,
+                    expected_run_id=run_id,
                 ),
                 source="stream-mode",
             )
@@ -100,6 +107,12 @@ async def iter_ingested_protocol_events(
     async for raw_event in stream:
         if isinstance(raw_event, Mapping):
             event = adapt_v3_protocol_event(raw_event, run_id=run_id, thread_id=thread_id)
+            event = await attach_verified_mcp_apps(
+                event,
+                raw_event,
+                expected_conversation_id=thread_id,
+                expected_run_id=run_id,
+            )
         else:
             malformed_seq += 1
             event = stored_custom_protocol_event(

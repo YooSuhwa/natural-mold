@@ -162,6 +162,7 @@ def _run_scenario(
             "migration-roundtrip": 0,
             "stream-resume": 0,
             "run-lifecycle+stream-resume": 0,
+            "queue-concurrency": 0,
             "success": 0,
             "child_failure": 23,
             "sigint": 130,
@@ -179,7 +180,8 @@ def _run_scenario(
                 "warning_hits": warnings,
                 "warning_scan_complete": True,
                 "test_receipt": json.loads(receipt.read_text())
-                if kind in {"all", "stream-resume", "run-lifecycle+stream-resume"}
+                if kind
+                in {"all", "stream-resume", "run-lifecycle+stream-resume", "queue-concurrency"}
                 else None,
                 "tmpfs_storage": tmpfs_owned,
             }

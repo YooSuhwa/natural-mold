@@ -472,5 +472,9 @@ async def test_message_event_cascade_delete_with_conversation() -> None:
     async with async_session() as db:
         from sqlalchemy import select
 
-        rows = (await db.execute(select(MessageEvent))).scalars().all()
+        rows = (
+            (await db.execute(select(MessageEvent).where(MessageEvent.conversation_id == conv_id)))
+            .scalars()
+            .all()
+        )
         assert list(rows) == []

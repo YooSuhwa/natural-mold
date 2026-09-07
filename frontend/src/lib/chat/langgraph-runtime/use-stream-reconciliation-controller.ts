@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useStream } from '@langchain/react'
+import { useSetAtom } from 'jotai'
 import type { BaseMessage } from '@langchain/core/messages'
+import type { AppendMessage } from '@assistant-ui/react'
+import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import {
   EMPTY_SERVER_MESSAGE_METADATA,
@@ -17,8 +20,16 @@ import {
 import type { LangGraphInterruptLike } from './hitl-interrupts'
 import { useStreamHydrationEffects } from './use-stream-hydration-effects'
 import { useReconciliationOperationState } from './use-reconciliation-operation-state'
+import { reportRuntimeFailure } from './runtime-warning'
+import {
+  claimedQueueRunIdAfterTransition,
+  followClaimedQueueRunValues,
+} from '@/lib/chat/message-queue/follow-claimed-queue-run'
+import type { MoldySubmitState } from './use-checkpoint-fork-handlers'
+import { reconnectStateAtom } from '@/lib/stores/chat-store'
+import { conversationRuntimeStatusAtom } from '@/lib/stores/chat-navigator-store'
 
-interface MoldyGraphState {
+interface MoldyGraphState extends MoldySubmitState {
   messages: BaseMessage[]
   todos?: unknown
   files?: unknown
@@ -48,10 +59,27 @@ export function useStreamReconciliationController({
   clearBranchPickerSuppression,
 }: UseStreamReconciliationControllerOptions) {
   const lifetime = useMemo(() => ({ conversationId }), [conversationId])
+  const setReconnectState = useSetAtom(reconnectStateAtom)
+  const setConversationRuntimeStatus = useSetAtom(conversationRuntimeStatusAtom)
   const lifetimeRef = useRef(lifetime)
+  const onRunStartAcceptedRef = useRef(onRunStartAccepted)
+  const acceptedRunIdsRef = useRef(new Set<string>())
+  const claimedQueueRunFollowRef = useRef<{
+    readonly runId: string
+    readonly abort: AbortController
+  } | null>(null)
   useLayoutEffect(() => {
+    claimedQueueRunFollowRef.current?.abort.abort()
+    claimedQueueRunFollowRef.current = null
     lifetimeRef.current = lifetime
+    acceptedRunIdsRef.current.clear()
+    return () => {
+      claimedQueueRunFollowRef.current?.abort.abort()
+    }
   }, [lifetime])
+  useLayoutEffect(() => {
+    onRunStartAcceptedRef.current = onRunStartAccepted
+  }, [onRunStartAccepted])
 
   const [threadRunNoticeState, setThreadRunNoticeState] =
     useState<TaggedValue<ThreadRunNotice | null> | null>(null)
@@ -63,6 +91,7 @@ export function useStreamReconciliationController({
   const [serverInterruptsState, setServerInterruptsState] = useState<TaggedValue<
     readonly LangGraphInterruptLike[]
   > | null>(null)
+  const [claimedQueueRunState, setClaimedQueueRunState] = useState<TaggedValue<string> | null>(null)
   const operations = useReconciliationOperationState(conversationId, clearBranchPickerSuppression)
   const {
     pendingEditState,
@@ -95,6 +124,7 @@ export function useStreamReconciliationController({
     serverStateMessages?.conversationId === conversationId ? serverStateMessages.value : null
   const serverInterrupts =
     serverInterruptsState?.conversationId === conversationId ? serverInterruptsState.value : []
+  const claimedQueueRunInFlight = claimedQueueRunState?.conversationId === conversationId
   const setThreadRunNotice = useCallback(
     (notice: ThreadRunNotice | null): void => {
       if (lifetimeRef.current !== lifetime) return
@@ -129,6 +159,14 @@ export function useStreamReconciliationController({
         return
       }
       const terminalRunFailed = terminalRunNotice?.status === 'failed'
+      if (
+        terminalRunNotice?.status === 'canceled' ||
+        terminalRunNotice?.status === 'stale' ||
+        terminalRunFailed
+      ) {
+        setReconnectState('idle')
+        setConversationRuntimeStatus((current) => ({ ...current, [conversationId]: 'idle' }))
+      }
       setThreadRunNoticeState({ conversationId, value: terminalRunNotice })
       setServerMessageMetadataState({
         conversationId,
@@ -144,33 +182,112 @@ export function useStreamReconciliationController({
         clearPendingReload(conversationId)
       }
     },
-    [clearPendingReload, conversationId, lifetime, reloadRunCorrelationRef],
+    [
+      clearPendingReload,
+      conversationId,
+      lifetime,
+      reloadRunCorrelationRef,
+      setConversationRuntimeStatus,
+      setReconnectState,
+    ],
   )
 
   const transport = useMemo(
-    () => createMoldyAgentTransport(conversationId, agentId),
-    [agentId, conversationId],
+    () =>
+      createMoldyAgentTransport(conversationId, agentId, {
+        onReconnectStateChange: setReconnectState,
+      }),
+    [agentId, conversationId, setReconnectState],
   )
   const handleRunStartAccepted = useCallback(
     (runId?: string): void => {
+      if (runId && acceptedRunIdsRef.current.has(runId)) return
+      if (runId) acceptedRunIdsRef.current.add(runId)
       if (runId && lifetimeRef.current === lifetime) {
         acceptReloadRun(runId)
       }
-      onRunStartAccepted?.()
+      onRunStartAcceptedRef.current?.()
     },
-    [acceptReloadRun, lifetime, onRunStartAccepted],
+    [acceptReloadRun, lifetime],
+  )
+  const submitQueuedInput = useCallback(
+    (message: AppendMessage, strategy: 'enqueue' | 'interrupt', requestId: string) =>
+      transport.submitQueuedInput(message, strategy, requestId),
+    [transport],
+  )
+  const retryFailedInput = useCallback(
+    (input: ConversationRunInput, requestId: string) =>
+      transport.retryFailedInput(input, requestId),
+    [transport],
   )
 
-  useEffect(() => {
-    transport.setRunStartAcceptedListener(handleRunStartAccepted)
-    return () => transport.setRunStartAcceptedListener(undefined)
-  }, [handleRunStartAccepted, transport])
   useEffect(() => {
     transport.setStateHydrationListener(handleThreadState)
     return () => transport.setStateHydrationListener(undefined)
   }, [handleThreadState, transport])
 
   const stream = useStream<MoldyGraphState>({ transport, threadId: conversationId })
+  const streamRef = useRef(stream)
+  useLayoutEffect(() => {
+    streamRef.current = stream
+  }, [stream])
+  const handleClaimedQueueRun = useCallback(
+    (runId?: string): void => {
+      if (lifetimeRef.current !== lifetime) return
+      handleRunStartAccepted(runId)
+      if (!runId) return
+      const currentFollow = claimedQueueRunFollowRef.current
+      if (currentFollow?.runId === runId && !currentFollow.abort.signal.aborted) return
+      const thread = streamRef.current.getThread()
+      if (!thread) return
+      currentFollow?.abort.abort()
+      const abort = new AbortController()
+      const follow = { runId, abort }
+      claimedQueueRunFollowRef.current = follow
+      const isCurrentFollow = (): boolean =>
+        lifetimeRef.current === lifetime &&
+        claimedQueueRunFollowRef.current === follow &&
+        !abort.signal.aborted
+      void followClaimedQueueRunValues(
+        thread,
+        runId,
+        (values) => handleThreadState({ values }, { replaceMessages: true }),
+        isCurrentFollow,
+        (inFlight) => {
+          if (lifetimeRef.current !== lifetime) return
+          if (inFlight) {
+            setClaimedQueueRunState({ conversationId, value: runId })
+            return
+          }
+          setClaimedQueueRunState((current) => {
+            if (current?.conversationId !== conversationId) return current
+            const nextRunId = claimedQueueRunIdAfterTransition(current.value, runId, false)
+            return nextRunId === null ? null : { conversationId, value: nextRunId }
+          })
+        },
+        abort.signal,
+      )
+        .then(async (outcome) => {
+          if (outcome !== 'terminal') return
+          if (!isCurrentFollow()) return
+          const state = await transport.readState()
+          if (!isCurrentFollow()) return
+          handleThreadState(state, { replaceMessages: true })
+        })
+        .catch((caught: unknown) => {
+          reportRuntimeFailure(caught, 'queue_claim_projection_failed')
+        })
+        .finally(() => {
+          if (claimedQueueRunFollowRef.current === follow) claimedQueueRunFollowRef.current = null
+        })
+    },
+    [conversationId, handleRunStartAccepted, handleThreadState, lifetime, transport],
+  )
+
+  useEffect(() => {
+    transport.setRunStartAcceptedListener(handleClaimedQueueRun)
+    return () => transport.setRunStartAcceptedListener(undefined)
+  }, [handleClaimedQueueRun, transport])
 
   const activateTransportHydration = useCallback(
     () => transport.activateStateHydration?.(),
@@ -232,6 +349,7 @@ export function useStreamReconciliationController({
     serverMessageMetadata,
     serverMessages,
     serverInterrupts,
+    claimedQueueRunInFlight,
     pendingEditRender,
     pendingReloadRender,
     pendingEditAttemptId:
@@ -255,5 +373,8 @@ export function useStreamReconciliationController({
     getPendingEditAttemptId,
     getPendingReloadAttemptId,
     commandActions,
+    submitQueuedInput,
+    retryFailedInput,
+    handleClaimedQueueRun,
   }
 }

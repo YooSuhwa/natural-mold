@@ -10,6 +10,8 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import select as _select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
@@ -52,16 +54,34 @@ async def save_token_usage(
     completion_tokens: int,
     total_tokens: int,
     estimated_cost: float | None = None,
+    run_id: uuid.UUID | None = None,
+    commit: bool = True,
 ) -> TokenUsage:
-    usage = TokenUsage(
-        conversation_id=conversation_id,
-        agent_id=agent_id,
-        model_name=model_name,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        total_tokens=total_tokens,
-        estimated_cost=estimated_cost,
-    )
-    db.add(usage)
-    await db.commit()
+    values = {
+        "conversation_id": conversation_id,
+        "agent_id": agent_id,
+        "model_name": model_name,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "estimated_cost": estimated_cost,
+        "run_id": run_id,
+    }
+    if run_id is None:
+        usage = TokenUsage(**values)
+        db.add(usage)
+        await db.flush()
+    else:
+        dialect_name = db.get_bind().dialect.name
+        statement = (
+            postgresql_insert(TokenUsage)
+            if dialect_name == "postgresql"
+            else sqlite_insert(TokenUsage)
+        ).values(values)
+        await db.execute(statement.on_conflict_do_nothing(index_elements=["run_id"]))
+        usage = (
+            await db.execute(_select(TokenUsage).where(TokenUsage.run_id == run_id))
+        ).scalar_one()
+    if commit:
+        await db.commit()
     return usage

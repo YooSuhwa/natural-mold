@@ -25,13 +25,18 @@ BACKEND_ROOT: Final = REPO_ROOT / "backend"
 OWNER_LABEL: Final = "dev.moldy.postgres-test-owner"
 IMAGE: Final = "postgres:16-alpine"
 ExternalScenarioKind = Literal[
-    "all", "migration-roundtrip", "stream-resume", "run-lifecycle+stream-resume"
+    "all",
+    "migration-roundtrip",
+    "stream-resume",
+    "run-lifecycle+stream-resume",
+    "queue-concurrency",
 ]
 ScenarioKind = Literal[
     "all",
     "migration-roundtrip",
     "stream-resume",
     "run-lifecycle+stream-resume",
+    "queue-concurrency",
     "success",
     "child_failure",
     "sigint",
@@ -298,6 +303,15 @@ def run_test_child(env: dict[str, str], kind: ScenarioKind) -> tuple[int, str]:
             "tests.postgres_execution_plugin",
             "tests/integration/test_conversation_run_lifecycle.py",
             "tests/integration/test_stream_resume.py",
+            "-m",
+            "integration",
+        ],
+        "queue-concurrency": [
+            str(BACKEND_ROOT / ".venv/bin/pytest"),
+            "-q",
+            "-p",
+            "tests.postgres_execution_plugin",
+            "tests/integration/test_conversation_queue_concurrency.py",
             "-m",
             "integration",
         ],

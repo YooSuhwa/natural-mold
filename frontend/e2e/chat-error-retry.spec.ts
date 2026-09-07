@@ -10,11 +10,11 @@ import {
  * G2 — chat error + retry contract. Drives the scripted-model ``E2E_ERROR`` marker
  * so a run genuinely fails (run.status="failed"), asserts the failed run surfaces an
  * error bubble with a retry button, and that clicking retry drives a fresh run
- * command (fork re-run from the last user checkpoint). Requires the scripted model
- * (E2E_SCRIPTED_MODEL_ENABLED=true).
+ * command for the exact failed durable input, using a fresh request identity rather
+ * than a checkpoint fork. Requires the scripted model (E2E_SCRIPTED_MODEL_ENABLED=true).
  */
 test.describe('Chat error retry (v3, G2)', () => {
-  test('failed run shows an error bubble and retry re-runs from the last user turn', async ({
+  test('failed run shows an error bubble and retry re-runs the exact failed durable input', async ({
     page,
     request,
   }) => {
@@ -50,8 +50,8 @@ test.describe('Chat error retry (v3, G2)', () => {
     const retryButton = page.getByRole('button', { name: '다시 시도' })
     await expect(retryButton).toBeVisible({ timeout: 30_000 })
 
-    // Clicking retry must send a fresh run command to the backend (fork re-run). If
-    // the retry were a no-op (e.g. missing checkpoint), no command request fires.
+    // Clicking retry must send a fresh run command for the failed durable input. If
+    // the retry were a no-op (e.g. unavailable failed input), no command request fires.
     const retryRunId = await waitForAcceptedRunStart(page, conversationId, () =>
       retryButton.click(),
     )

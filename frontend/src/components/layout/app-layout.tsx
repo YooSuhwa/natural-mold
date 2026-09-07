@@ -9,6 +9,7 @@ import { AppSidebar } from '@/components/layout/app-sidebar'
 import { SettingsSidebar } from '@/components/layout/settings-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 import { OnboardingDialog } from '@/components/auth/OnboardingDialog'
+import { AssistantSideChatProvider } from '@/components/agent/assistant-side-chat-provider'
 
 /** Routes that must render bare (no sidebar/header) — public visitor pages. */
 const BARE_ROUTE_PREFIXES = ['/shared/'] as const
@@ -38,13 +39,18 @@ export function AppLayout({
         {isBare ? (
           children
         ) : (
-          <SidebarProvider initialSidebarWidth={initialSidebarWidth}>
-            {isSettingsRoute ? <SettingsSidebar /> : <AppSidebar />}
-            <SidebarInset>
-              <AppHeader />
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
-              <OnboardingDialog />
-            </SidebarInset>
+          <SidebarProvider
+            initialSidebarWidth={initialSidebarWidth}
+            className="relative overflow-hidden"
+          >
+            <AssistantSideChatProvider>
+              {isSettingsRoute ? <SettingsSidebar /> : <AppSidebar />}
+              <SidebarInset>
+                <AppHeader />
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+                <OnboardingDialog />
+              </SidebarInset>
+            </AssistantSideChatProvider>
           </SidebarProvider>
         )}
       </TooltipProvider>

@@ -26,6 +26,7 @@ from typing import Any
 from app.config import settings
 from app.credentials.interpolation import resolve_deep
 from app.hooks import HookContext, HookResult, hooks
+from app.mcp.apps import normalize_tool_ui_meta
 from app.mcp.domain import McpServerInfo, McpToolDescriptor
 
 MOLDY_CREDENTIAL_HEADER = "X-Moldy-Credential"
@@ -190,6 +191,7 @@ async def connect_and_list(
                     name=t.name,
                     description=t.description or "",
                     input_schema=dict(t.inputSchema or {}),
+                    metadata=normalize_tool_ui_meta(getattr(t, "meta", None)) or {},
                 )
                 for t in tools_result.tools
             ]
@@ -284,6 +286,7 @@ async def _connect_stdio(
                     name=t.name,
                     description=t.description or "",
                     input_schema=dict(t.inputSchema or {}),
+                    metadata=normalize_tool_ui_meta(getattr(t, "meta", None)) or {},
                 )
                 for t in tools_result.tools
             ]

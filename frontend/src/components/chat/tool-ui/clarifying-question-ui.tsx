@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
-import { makeAssistantToolUI, useAui } from '@assistant-ui/react'
+import { useCallback, useId, useMemo, useState } from 'react'
+import { useAui, type ToolCallMessagePartProps } from '@assistant-ui/react'
 import { MessageCircleQuestionIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { reportClientWarning } from '@/lib/logging/client-logger'
@@ -40,9 +40,11 @@ interface ClarifyingResult {
  * HITL이 아니라 backend pause가 없으므로 만료 시 별도 액션 없이
  * 옵션 버튼만 disabled 처리하여 시각적 urgency만 표현.
  */
-export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>({
-  toolName: 'ask_clarifying_question',
-  render: function ClarifyingRender({ args, result, status }) {
+export function ClarifyingQuestionUI({
+  args,
+  result,
+  status,
+}: ToolCallMessagePartProps<ClarifyingArgs, string>) {
     const t = useTranslations('chat.clarifying')
     const aui = useAui()
     const [picked, setPicked] = useState<string | null>(null)
@@ -68,8 +70,8 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
       ) as string[])
 
     // 카드 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
-    const fallbackIdRef = useRef<string>(`clarifying-${Math.random().toString(36).slice(2)}`)
-    const approvalId = args?.approval_id ?? fallbackIdRef.current
+    const fallbackId = useId()
+    const approvalId = args?.approval_id ?? `clarifying-${fallbackId}`
 
     // 만료는 시각적 신호만 — backend가 paused 상태가 아니므로 별도 resume 불필요
     const handleExpire = useCallback(() => {
@@ -101,7 +103,7 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
       }
       try {
         // SuggestionTrigger와 동일한 패턴 — thread에 직접 user message append
-        aui.thread().append({
+        aui.thread.append({
           content: [{ type: 'text', text: opt }],
         })
       } catch (err) {
@@ -148,5 +150,4 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
         </div>
       </div>
     )
-  },
-})
+}

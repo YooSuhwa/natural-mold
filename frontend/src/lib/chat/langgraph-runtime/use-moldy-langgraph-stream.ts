@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react'
 import {
   useExternalStoreRuntime,
   type AttachmentAdapter,
+  type DictationAdapter,
   type FeedbackAdapter,
 } from '@assistant-ui/react'
 import { HumanMessage } from '@langchain/core/messages'
@@ -26,6 +27,9 @@ import {
   pendingEditBranchPickerSuppressionAtom,
 } from '@/lib/stores/chat-store'
 import type { Message as MoldyMessage } from '@/lib/types'
+import { useServerMessageQueue } from '@/lib/chat/message-queue/use-server-message-queue'
+import type { ServerMessageQueueOptions } from '@/lib/chat/message-queue/server-message-queue-contract'
+import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
 
 export { messagesFromServerMessages } from './stream-thread-state-projection'
 export {
@@ -37,6 +41,7 @@ interface UseMoldyLangGraphStreamOptions {
   conversationId: string
   feedbackAdapter?: FeedbackAdapter
   attachmentAdapter?: AttachmentAdapter
+  dictationAdapter?: DictationAdapter
   onBeforeSubmit?: () => void
   onRunStartAccepted?: () => void
   serverMessages?: readonly MoldyMessage[]
@@ -58,6 +63,7 @@ export function useMoldyLangGraphStream({
   conversationId,
   feedbackAdapter,
   attachmentAdapter,
+  dictationAdapter,
   onBeforeSubmit,
   onRunStartAccepted,
   serverMessages,
@@ -82,6 +88,7 @@ export function useMoldyLangGraphStream({
     serverMessageMetadata,
     serverMessages: hydratedServerMessages,
     serverInterrupts,
+    claimedQueueRunInFlight,
     pendingEditRender,
     pendingReloadRender,
     postRunHydrationPending,
@@ -120,12 +127,15 @@ export function useMoldyLangGraphStream({
       ? tReconnect('stale')
       : threadRunNotice?.status === 'failed'
         ? (threadRunNotice.errorMessage ?? tPage('runFailed'))
-        : tPage('canceled')
+        : threadRunNotice?.status === 'canceling'
+          ? tPage('canceling')
+          : tPage('canceled')
   const runtimeMessages = useStreamRuntimeMessages({
     conversationId,
     stream,
     messagesWithInterrupts: interruptView.messagesWithInterrupts,
     interruptCount: interruptView.payloads.length,
+    claimedQueueRunInFlight,
     threadRunNotice,
     terminalNoticeText,
     hydratedMessagesPresent: hydratedServerMessages !== null,
@@ -141,12 +151,13 @@ export function useMoldyLangGraphStream({
     runtimeIsRunning,
   } = runtimeMessages
   const adapters = useMemo(() => {
-    if (!feedbackAdapter && !attachmentAdapter) return undefined
+    if (!feedbackAdapter && !attachmentAdapter && !dictationAdapter) return undefined
     return {
       ...(feedbackAdapter ? { feedback: feedbackAdapter } : {}),
       ...(attachmentAdapter ? { attachments: attachmentAdapter } : {}),
+      ...(dictationAdapter ? { dictation: dictationAdapter } : {}),
     }
-  }, [feedbackAdapter, attachmentAdapter])
+  }, [feedbackAdapter, attachmentAdapter, dictationAdapter])
   const { onNew, onEdit, onReload, onCancel } = useStreamCommandController({
     conversationId,
     stream,
@@ -159,6 +170,37 @@ export function useMoldyLangGraphStream({
     submitCheckpoint,
     reconciliation: reconciliation.commandActions,
   })
+  const submitQueuedTransport = reconciliation.submitQueuedInput
+  const handleClaimedQueueRun = reconciliation.handleClaimedQueueRun
+  const submitQueuedInput = useCallback<ServerMessageQueueOptions['submit']>(
+    (message, options) => submitQueuedTransport(message, options.strategy, options.requestId),
+    [submitQueuedTransport],
+  )
+  const { controller: messageQueue } = useServerMessageQueue({
+    conversationId,
+    submit: submitQueuedInput,
+    onClaimedRun: handleClaimedQueueRun,
+  })
+  const onCancelWithQueueRefresh = useCallback(async () => {
+    await onCancel()
+    await messageQueue.refresh()
+  }, [messageQueue, onCancel])
+  const retryFailedInput = useCallback(
+    async (input: ConversationRunInput) => {
+      const requestId = crypto.randomUUID()
+      try {
+        const accepted = await reconciliation.retryFailedInput(input, requestId)
+        if (accepted.runId) reconciliation.handleClaimedQueueRun(accepted.runId)
+      } catch (error) {
+        const reconciled = await messageQueue.reconcileRequest(requestId)
+        if (!reconciled) throw error
+        if (reconciled.run_id) reconciliation.handleClaimedQueueRun(reconciled.run_id)
+        return
+      }
+      await messageQueue.refresh()
+    },
+    [messageQueue, reconciliation],
+  )
 
   const refreshLifecycle = useCallback(() => refreshThreadLifecycleStream(stream), [stream])
   const { onResumeDecisions, registerDecision } = useHitlDecisionController({
@@ -178,7 +220,8 @@ export function useMoldyLangGraphStream({
     onNew,
     onEdit,
     onReload,
-    onCancel,
+    onCancel: onCancelWithQueueRefresh,
+    queue: messageQueue.adapter,
   })
 
   const sendMessage = useCallback(
@@ -199,5 +242,8 @@ export function useMoldyLangGraphStream({
     sendMessage,
     onResumeDecisions,
     registerDecision,
+    messageQueue,
+    retryFailedInput,
+    threadRunNotice,
   }
 }

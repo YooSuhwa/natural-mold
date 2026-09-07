@@ -17,6 +17,10 @@ vi.mock('@assistant-ui/react', () => {
     <div className={className}>{children}</div>
   )
   const childPassthrough = ({ children }: { children?: ReactNode }) => <>{children}</>
+  const triggerPopover = Object.assign(childPassthrough, {
+    Action: () => null,
+    Directive: () => null,
+  })
   const actionButton = ({
     children,
     className,
@@ -34,6 +38,10 @@ vi.mock('@assistant-ui/react', () => {
   )
 
   return {
+    unstable_useTriggerPopoverAriaProps: () => ({}),
+    unstable_useTriggerPopoverRootContextOptional: () => null,
+    unstable_useSlashCommandAdapter: () => ({ adapter: {}, action: {} }),
+    unstable_useMentionAdapter: () => ({ adapter: {}, directive: {} }),
     ThreadPrimitive: {
       Root: passthrough,
       Viewport: passthrough,
@@ -69,6 +77,15 @@ vi.mock('@assistant-ui/react', () => {
       Send: childPassthrough,
       Attachments: () => null,
       AddAttachment: childPassthrough,
+      Dictate: childPassthrough,
+      StopDictation: childPassthrough,
+      DictationTranscript: () => null,
+      Unstable_TriggerPopoverRoot: childPassthrough,
+      Unstable_TriggerPopover: triggerPopover,
+      Unstable_TriggerPopoverItems: () => null,
+      Unstable_TriggerPopoverItem: childPassthrough,
+      Unstable_TriggerPopoverCategories: () => null,
+      Unstable_TriggerPopoverCategoryItem: childPassthrough,
     },
     AttachmentPrimitive: {
       Root: passthrough,
@@ -93,20 +110,26 @@ vi.mock('@assistant-ui/react', () => {
       }),
     useAuiState: (selector: (state: unknown) => unknown) =>
       selector({
-        composer: { dictation: null, isEditing: true, text: '' },
-        thread: { isDisabled: false },
+        composer: { dictation: null, isEditing: true, runConfig: {}, text: '' },
+        message: { id: 'assistant-message-1' },
+        thread: { isDisabled: false, messages: [{ id: 'assistant-message-1' }] },
       }),
     useAui: () => ({
-      composer: () => ({
+      composer: {
         addAttachment: vi.fn(),
         getState: () => ({ isEditing: true, isEmpty: true }),
         send: vi.fn(),
         setText: vi.fn(),
-      }),
-      thread: () => ({
+        stopDictation: vi.fn(),
+      },
+      thread: {
         cancelRun: vi.fn(),
-        getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),
-      }),
+        getState: () => ({
+          capabilities: { attachments: false, queue: false },
+          isRunning: false,
+          messages: [{ id: 'assistant-message-1', role: 'assistant' }],
+        }),
+      },
     }),
     AuiIf: ({
       condition,
@@ -116,7 +139,6 @@ vi.mock('@assistant-ui/react', () => {
       children?: ReactNode
     }) => (condition({ thread: { isRunning: false, isEmpty: false } }) ? <>{children}</> : null),
     getExternalStoreMessages: () => [],
-    makeAssistantToolUI: () => () => <div data-testid="tool-ui" />,
   }
 })
 

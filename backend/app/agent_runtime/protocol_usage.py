@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 from typing import Any, NotRequired, TypedDict
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_custom_protocol_event
+from app.agent_runtime.protocol_usage_normalization import (
+    UsageCandidate,
+    usage_candidate_from_event,
+)
 from app.agent_runtime.usage_timing import compute_usage_timing
 
 
@@ -24,15 +27,6 @@ class UsagePayload(UsageMetricsPayload):
     assistant_msg_id: NotRequired[str]
 
 
-class _UsageCandidate(TypedDict):
-    prompt_tokens: int
-    completion_tokens: int
-    cache_creation_tokens: int
-    cache_read_tokens: int
-    assistant_msg_id: str | None
-    estimated_cost: float | None
-
-
 def collect_protocol_usage_event(
     event: StoredProtocolEvent,
     *,
@@ -44,7 +38,7 @@ def collect_protocol_usage_event(
     started_at: float | None = None,
     first_token_at: float | None = None,
 ) -> tuple[StoredProtocolEvent | None, int]:
-    candidate = _usage_candidate_from_event(
+    candidate = usage_candidate_from_event(
         event,
         cost_per_input_token=cost_per_input_token,
         cost_per_output_token=cost_per_output_token,
@@ -65,6 +59,17 @@ def collect_protocol_usage_event(
     seen_keys.add(key)
 
     sink_payload = _sink_payload(candidate)
+    if started_at is not None:
+        timing = compute_usage_timing(
+            started_at=started_at,
+            first_token_at=first_token_at,
+            completion_tokens=candidate["completion_tokens"],
+        )
+        if "ttft_ms" in timing:
+            sink_payload["ttft_ms"] = timing["ttft_ms"]
+        sink_payload["generation_ms"] = timing["generation_ms"]
+        if first_token_at is not None and "tokens_per_second" in timing:
+            sink_payload["tokens_per_second"] = timing["tokens_per_second"]
     if usage_sink is not None:
         usage_sink.update(sink_payload)
 
@@ -80,16 +85,12 @@ def collect_protocol_usage_event(
         payload["estimated_cost"] = sink_payload["estimated_cost"]
     if candidate["assistant_msg_id"] is not None:
         payload["assistant_msg_id"] = candidate["assistant_msg_id"]
-
-    # 스트리밍 timing — usage 이벤트가 증분 발행되므로 매 발행마다 현재 elapsed를
-    # 실으면 마지막(최종 토큰) 이벤트가 최종 timing이 된다(특수 처리 불필요).
-    if started_at is not None:
-        timing = compute_usage_timing(
-            started_at=started_at,
-            first_token_at=first_token_at,
-            completion_tokens=candidate["completion_tokens"],
-        )
-        payload.update(timing)  # type: ignore[typeddict-item]  # NotRequired float keys
+    if "ttft_ms" in sink_payload:
+        payload["ttft_ms"] = sink_payload["ttft_ms"]
+    if "generation_ms" in sink_payload:
+        payload["generation_ms"] = sink_payload["generation_ms"]
+    if "tokens_per_second" in sink_payload:
+        payload["tokens_per_second"] = sink_payload["tokens_per_second"]
 
     event_id = f"{event['id']}:usage"
     return (
@@ -108,160 +109,7 @@ def collect_protocol_usage_event(
     )
 
 
-def _usage_candidate_from_event(
-    event: StoredProtocolEvent,
-    *,
-    cost_per_input_token: float | None,
-    cost_per_output_token: float | None,
-) -> _UsageCandidate | None:
-    if event["method"] not in {"messages", "values"}:
-        return None
-    return _usage_candidate_from_value(
-        event["data"],
-        cost_per_input_token=cost_per_input_token,
-        cost_per_output_token=cost_per_output_token,
-    )
-
-
-def _usage_candidate_from_value(
-    value: Any,
-    *,
-    cost_per_input_token: float | None,
-    cost_per_output_token: float | None,
-) -> _UsageCandidate | None:
-    if isinstance(value, Mapping):
-        direct = _usage_candidate_from_mapping(
-            value,
-            cost_per_input_token=cost_per_input_token,
-            cost_per_output_token=cost_per_output_token,
-        )
-        if direct is not None:
-            return direct
-        for child in _message_like_children(value):
-            found = _usage_candidate_from_value(
-                child,
-                cost_per_input_token=cost_per_input_token,
-                cost_per_output_token=cost_per_output_token,
-            )
-            if found is not None:
-                return found
-        return None
-
-    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
-        for child in reversed(value):
-            found = _usage_candidate_from_value(
-                child,
-                cost_per_input_token=cost_per_input_token,
-                cost_per_output_token=cost_per_output_token,
-            )
-            if found is not None:
-                return found
-    return None
-
-
-def _usage_candidate_from_mapping(
-    value: Mapping[str, Any],
-    *,
-    cost_per_input_token: float | None,
-    cost_per_output_token: float | None,
-) -> _UsageCandidate | None:
-    metadata = value.get("usage_metadata")
-    if isinstance(metadata, Mapping):
-        return _candidate_from_usage_mapping(
-            metadata,
-            assistant_msg_id=_text_value(value.get("id")),
-            cost_per_input_token=cost_per_input_token,
-            cost_per_output_token=cost_per_output_token,
-        )
-
-    usage = value.get("usage")
-    if isinstance(usage, Mapping):
-        return _candidate_from_usage_mapping(
-            usage,
-            assistant_msg_id=_text_value(value.get("id") or value.get("assistant_msg_id")),
-            cost_per_input_token=cost_per_input_token,
-            cost_per_output_token=cost_per_output_token,
-        )
-
-    response_metadata = value.get("response_metadata")
-    if isinstance(response_metadata, Mapping):
-        token_usage = response_metadata.get("token_usage")
-        if isinstance(token_usage, Mapping):
-            return _candidate_from_usage_mapping(
-                token_usage,
-                assistant_msg_id=_text_value(value.get("id")),
-                cost_per_input_token=cost_per_input_token,
-                cost_per_output_token=cost_per_output_token,
-            )
-    return None
-
-
-def _candidate_from_usage_mapping(
-    usage: Mapping[str, Any],
-    *,
-    assistant_msg_id: str | None,
-    cost_per_input_token: float | None,
-    cost_per_output_token: float | None,
-) -> _UsageCandidate | None:
-    input_details = _mapping_value(usage.get("input_token_details"))
-    prompt_details = _mapping_value(usage.get("prompt_tokens_details"))
-    prompt = _int_value(
-        usage.get("input_tokens")
-        or usage.get("prompt_tokens")
-        or usage.get("tokens_in")
-        or usage.get("total_input_tokens")
-    )
-    completion = _int_value(
-        usage.get("output_tokens")
-        or usage.get("completion_tokens")
-        or usage.get("tokens_out")
-        or usage.get("total_output_tokens")
-    )
-    cache_creation = _int_value(
-        input_details.get("cache_creation")
-        or input_details.get("cache_creation_tokens")
-        or usage.get("cache_creation_tokens")
-    )
-    cache_read = _int_value(
-        input_details.get("cache_read")
-        or input_details.get("cache_read_tokens")
-        or prompt_details.get("cached_tokens")
-        or usage.get("cache_read_tokens")
-    )
-    if prompt == 0 and completion == 0 and cache_creation == 0 and cache_read == 0:
-        return None
-
-    estimated_cost = _estimated_cost(
-        usage,
-        prompt_tokens=prompt,
-        completion_tokens=completion,
-        cost_per_input_token=cost_per_input_token,
-        cost_per_output_token=cost_per_output_token,
-    )
-    return {
-        "assistant_msg_id": assistant_msg_id,
-        "prompt_tokens": prompt,
-        "completion_tokens": completion,
-        "cache_creation_tokens": cache_creation,
-        "cache_read_tokens": cache_read,
-        "estimated_cost": estimated_cost,
-    }
-
-
-def _message_like_children(value: Mapping[str, Any]) -> list[Any]:
-    children: list[Any] = []
-    # "metadata" is included because the v3 messages adapter flattens the SDK
-    # ``[payload, metadata]`` tuple into a single mapping, nesting stream metadata
-    # (which may carry usage) under ``payload["metadata"]``. Without traversing it,
-    # usage living only in stream metadata would be unreachable.
-    for key in ("messages", "message", "chunk", "payload", "metadata"):
-        child = value.get(key)
-        if child is not None:
-            children.append(child)
-    return list(reversed(children))
-
-
-def _sink_payload(candidate: _UsageCandidate) -> UsageMetricsPayload:
+def _sink_payload(candidate: UsageCandidate) -> UsageMetricsPayload:
     payload: UsageMetricsPayload = {
         "prompt_tokens": candidate["prompt_tokens"],
         "completion_tokens": candidate["completion_tokens"],
@@ -271,41 +119,3 @@ def _sink_payload(candidate: _UsageCandidate) -> UsageMetricsPayload:
     if candidate["estimated_cost"] is not None:
         payload["estimated_cost"] = candidate["estimated_cost"]
     return payload
-
-
-def _estimated_cost(
-    usage: Mapping[str, Any],
-    *,
-    prompt_tokens: int,
-    completion_tokens: int,
-    cost_per_input_token: float | None,
-    cost_per_output_token: float | None,
-) -> float | None:
-    if cost_per_input_token is not None or cost_per_output_token is not None:
-        cost = (prompt_tokens * (cost_per_input_token or 0)) + (
-            completion_tokens * (cost_per_output_token or 0)
-        )
-        return round(cost, 8) if cost > 0 else 0.0
-    return _float_value(usage.get("estimated_cost") or usage.get("cost_usd"))
-
-
-def _mapping_value(value: Any) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _int_value(value: Any) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _float_value(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _text_value(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None

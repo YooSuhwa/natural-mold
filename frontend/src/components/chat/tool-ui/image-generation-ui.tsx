@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { makeAssistantToolUI } from '@assistant-ui/react'
+import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import {
   AlertTriangleIcon,
@@ -197,10 +197,12 @@ function ImageChoice({
   )
 }
 
-export const ImageChoiceToolUI = makeAssistantToolUI<ImageChoiceArgs, unknown>({
-  toolName: 'image_choice',
-  render: ({ args, status }) => <ImageChoice args={args} status={status.type} />,
-})
+export function ImageChoiceToolUI({
+  args,
+  status,
+}: ToolCallMessagePartProps<ImageChoiceArgs, unknown>) {
+  return <ImageChoice args={args} status={status.type} />
+}
 
 // ---------------------------------------------------------------------------
 // Phase 6 2차: 미리보기 + 확정/재생성/skip
@@ -322,7 +324,9 @@ function ImageApproval({
   )
 }
 
-export const ImageApprovalToolUI = makeAssistantToolUI<ImageApprovalArgs, unknown>({
-  toolName: 'image_approval',
-  render: ({ args, status }) => <ImageApproval args={args} status={status.type} />,
-})
+export function ImageApprovalToolUI({
+  args,
+  status,
+}: ToolCallMessagePartProps<ImageApprovalArgs, unknown>) {
+  return <ImageApproval args={args} status={status.type} />
+}

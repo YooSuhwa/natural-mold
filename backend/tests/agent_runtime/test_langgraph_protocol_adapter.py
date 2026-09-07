@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from langchain_core.messages import ToolMessage
 from langgraph.types import Interrupt
 
 from app.agent_runtime.langgraph_protocol_adapter import (
@@ -73,6 +74,40 @@ def test_v3_message_tuple_flattens_sdk_payload_and_preserves_metadata() -> None:
             "checkpoint_ns": "model",
         },
     }
+
+
+def test_tool_message_does_not_project_unverified_mcp_app_artifact() -> None:
+    message = ToolMessage(
+        content="weather",
+        tool_call_id="tool-call-1",
+        artifact={
+            "structured_content": {"temperature": 72},
+            "mcp_app": {
+                "version": 1,
+                "binding_id": "11111111-1111-1111-1111-111111111111",
+                "run_id": "22222222-2222-2222-2222-222222222222",
+                "resource_uri": "ui://weather/dashboard",
+                "tool_meta": {
+                    "ui": {
+                        "resourceUri": "ui://weather/dashboard",
+                        "visibility": ["model", "app"],
+                    }
+                },
+                "result_meta": {"viewUUID": "view-1"},
+            },
+            "transport_headers": {"Authorization": "Bearer must-not-leak"},
+        },
+    )
+
+    event = adapt_stream_mode_chunk(
+        ("messages", (message, {"langgraph_node": "tools"})),
+        run_id="run-1",
+        thread_id="thread-1",
+        seq=3,
+    )
+
+    assert "artifact" not in event["data"]
+    assert "must-not-leak" not in str(event["data"])
 
 
 def test_v3_reasoning_content_is_redacted_before_storage() -> None:

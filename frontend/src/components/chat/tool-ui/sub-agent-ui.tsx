@@ -1,6 +1,6 @@
 'use client'
 
-import { makeAssistantToolUI, useMessage } from '@assistant-ui/react'
+import { useAuiState, type ToolCallMessagePartProps } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import { useMemo } from 'react'
 import { SubagentCard } from '@/components/chat/subagent-card'
@@ -64,7 +64,9 @@ interface SubAgentToolCardProps {
 
 export function SubAgentToolCard({ toolCallId, args, statusType }: SubAgentToolCardProps) {
   const t = useTranslations('chat.toolUi.subAgent')
-  const turnToolCallIdKey = useMessage((message) => currentTurnTaskToolCallIdKey(message.content))
+  const turnToolCallIdKey = useAuiState((state) =>
+    currentTurnTaskToolCallIdKey(state.message.content),
+  )
   const turnToolCallIds = useMemo(
     () => taskToolCallIdsFromKey(turnToolCallIdKey),
     [turnToolCallIdKey],
@@ -89,9 +91,12 @@ export function SubAgentToolCard({ toolCallId, args, statusType }: SubAgentToolC
  * deepagents의 sub-agent 호출은 표준 `task` 도구로 들어온다.
  * (backend/app/agent_runtime/executor.py 참조 — task tool의 subagent_type 인자)
  */
-export const SubAgentToolUI = makeAssistantToolUI<SubagentArgs, unknown>({
-  toolName: 'task',
-  render: ({ args, status, toolCallId }) => (
+export function SubAgentToolUI({
+  args,
+  status,
+  toolCallId,
+}: ToolCallMessagePartProps<SubagentArgs, unknown>) {
+  return (
     <SubAgentToolCard toolCallId={toolCallId} args={args} statusType={status?.type} />
-  ),
-})
+  )
+}

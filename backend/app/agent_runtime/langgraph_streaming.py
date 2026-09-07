@@ -12,18 +12,21 @@ from app.agent_runtime import langgraph_event_projection as projection
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.langgraph_event_delivery import ProtocolEventDelivery
 from app.agent_runtime.langgraph_lifecycle_events import (
+    error_protocol_event,
     lifecycle_protocol_event,
     terminal_lifecycle_event,
 )
+from app.agent_runtime.langgraph_message_identity import collect_root_ai_message_id
 from app.agent_runtime.langgraph_pending_inputs import pending_input_requested_events
 from app.agent_runtime.langgraph_tool_event_synthesis import synthesize_tool_events_from_values
 from app.agent_runtime.offload_protocol_projection import project_offload_egress_data
-from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
+from app.agent_runtime.protocol_events import StoredProtocolEvent
 from app.agent_runtime.protocol_side_effects import (
     collect_protocol_side_effect_events,
     prepare_artifact_recorder,
 )
 from app.agent_runtime.protocol_usage import collect_protocol_usage_event
+from app.agent_runtime.run_metrics import RunMetricsAccumulator, event_has_model_content
 from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.agent_runtime.streaming import (
     ArtifactEventRecorder,
@@ -40,22 +43,6 @@ def _project_offload_egress_data(data: Any) -> Any:
     return project_offload_egress_data(data)
 
 
-def _error_event(
-    *,
-    run_id: str,
-    thread_id: str,
-    seq: int,
-    exc: Exception,
-) -> StoredProtocolEvent:
-    return stored_protocol_event(
-        run_id=run_id,
-        thread_id=thread_id,
-        seq=seq,
-        method="error",
-        data={"message": public_stream_error_message(exc)},
-    )
-
-
 async def stream_agent_response_langgraph(
     agent: Any,
     input_: list[Any] | Command | dict[str, Any] | None,
@@ -65,6 +52,7 @@ async def stream_agent_response_langgraph(
     cost_per_input_token: float | None = None,
     cost_per_output_token: float | None = None,
     usage_sink: dict[str, Any] | None = None,
+    msg_id_sink: list[str] | None = None,
     error_sink: list[StreamErrorRecord] | None = None,
     broker: EventBroker | None = None,
     persist_callback: PersistCallback | None = None,
@@ -74,6 +62,7 @@ async def stream_agent_response_langgraph(
     recalled_memories: list[dict[str, Any]] | None = None,
     skill_draft_brief: dict[str, Any] | None = None,
     session_consent_tools: list[str] | None = None,
+    run_metrics: RunMetricsAccumulator | None = None,
 ) -> AsyncGenerator[str, None]:
     msg_id = run_id or str(uuid.uuid4())
     thread_id = langgraph_stream_ingestion.thread_id_from_config(config, msg_id)
@@ -94,10 +83,15 @@ async def stream_agent_response_langgraph(
     first_token_at: float | None = None
     artifact_recorder = await prepare_artifact_recorder(artifact_recorder, run_id=msg_id)
 
+    async def emit(event: StoredProtocolEvent) -> str:
+        if run_metrics is not None:
+            run_metrics.observe(event)
+        return await delivery.emit(event)
+
     async def emit_head_event(name: str, payload: dict[str, Any], suffix: str) -> str:
         nonlocal side_effect_seq
         side_effect_seq += 1
-        return await delivery.emit(
+        return await emit(
             projection.head_custom_event(
                 run_id=msg_id,
                 thread_id=thread_id,
@@ -109,7 +103,7 @@ async def stream_agent_response_langgraph(
         )
 
     try:
-        yield await delivery.emit(
+        yield await emit(
             lifecycle_protocol_event(
                 run_id=msg_id,
                 thread_id=thread_id,
@@ -157,7 +151,7 @@ async def stream_agent_response_langgraph(
                     if not compaction_running_emitted:
                         compaction_running_emitted = True
                         side_effect_seq += 1
-                        yield await delivery.emit(
+                        yield await emit(
                             projection.compaction_event(
                                 run_id=msg_id,
                                 thread_id=thread_id,
@@ -169,7 +163,7 @@ async def stream_agent_response_langgraph(
                 if signal == "committed" and not compaction_done_emitted:
                     compaction_done_emitted = True
                     side_effect_seq += 1
-                    yield await delivery.emit(
+                    yield await emit(
                         projection.compaction_event(
                             run_id=msg_id,
                             thread_id=thread_id,
@@ -180,10 +174,11 @@ async def stream_agent_response_langgraph(
                         )
                     )
 
-            yield await delivery.emit(event)
+            collect_root_ai_message_id(event, msg_id_sink)
+            yield await emit(event)
             for chunk in await delivery.emit_canonical_interrupts(event):
                 yield chunk
-            if first_token_at is None and event["method"] == "messages":
+            if first_token_at is None and event_has_model_content(event):
                 first_token_at = time.monotonic()
 
             usage_event, side_effect_seq = collect_protocol_usage_event(
@@ -197,29 +192,34 @@ async def stream_agent_response_langgraph(
                 first_token_at=first_token_at,
             )
             if usage_event is not None:
-                yield await delivery.emit(usage_event)
+                yield await emit(usage_event)
             side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
                 event,
                 artifact_recorder=artifact_recorder,
                 next_seq=side_effect_seq,
             )
             for side_effect_event in side_effect_events:
-                yield await delivery.emit(side_effect_event)
+                yield await emit(side_effect_event)
 
             if ingested.source == "v3":
                 for tool_event in synthesize_tool_events_from_values(
                     event,
                     seen_tool_call_ids=seen_synthesized_tool_call_ids,
+                    baseline_completed_tool_call_source_identities=(
+                        run_metrics.baseline_completed_tool_call_source_identities
+                        if run_metrics is not None
+                        else ()
+                    ),
                     first_seq=delivery.max_emitted_seq + 1,
                 ):
-                    yield await delivery.emit(tool_event)
+                    yield await emit(tool_event)
                     tool_side_effects, side_effect_seq = await collect_protocol_side_effect_events(
                         tool_event,
                         artifact_recorder=artifact_recorder,
                         next_seq=side_effect_seq,
                     )
                     for side_effect_event in tool_side_effects:
-                        yield await delivery.emit(side_effect_event)
+                        yield await emit(side_effect_event)
 
         pending_events = await pending_input_requested_events(
             agent,
@@ -229,10 +229,10 @@ async def stream_agent_response_langgraph(
             emitted=delivery.emitted,
         )
         for pending_event in pending_events:
-            yield await delivery.emit(pending_event)
+            yield await emit(pending_event)
         if not pending_events and deferred_empty_input_requested is not None:
-            yield await delivery.emit(deferred_empty_input_requested)
-        yield await delivery.emit(
+            yield await emit(deferred_empty_input_requested)
+        yield await emit(
             lifecycle_protocol_event(
                 run_id=msg_id,
                 thread_id=thread_id,
@@ -246,7 +246,7 @@ async def stream_agent_response_langgraph(
         record = StreamErrorRecord(error=exc, message=public_stream_error_message(exc))
         if error_sink is not None:
             error_sink.append(record)
-        yield await delivery.emit(
+        yield await emit(
             lifecycle_protocol_event(
                 run_id=msg_id,
                 thread_id=thread_id,
@@ -255,8 +255,8 @@ async def stream_agent_response_langgraph(
                 error_message=record.message,
             )
         )
-        yield await delivery.emit(
-            _error_event(
+        yield await emit(
+            error_protocol_event(
                 run_id=msg_id,
                 thread_id=thread_id,
                 seq=delivery.max_emitted_seq + 1,
