@@ -1,6 +1,10 @@
 # ADR-008: Connection 엔티티 — Credential 바인딩 통합
 
-## 상태: 제안됨
+## 상태: 폐기 승계 (Superseded by ADR-009)
+
+2026-09-08 정리: 아래는 당시 설계 기록이다. 현재 구조는
+[ADR-009](adr-009-greenfield-credentials.md)의 Credential 직결 방식이며
+Connection 엔티티 재도입을 승인한 문서가 아니다.
 
 ## 날짜: 2026-04-18
 
@@ -279,7 +283,7 @@ credential 자체를 provider 바인딩까지 포함하게 확장.
 
 ## 관련 문서
 
-- 실행 계획: `docs/exec-plans/active/backlog-e-connection-refactor.md`
+- 종료된 실행 기록: `docs/exec-plans/completed/backlog-e-connection-refactor.md` (ADR-009로 폐기 승계)
 - 선행 ADR: ADR-007 (credentials field_keys 캐시), ADR-005 (Builder/Assistant)
 - 후속 작업: 멀티 유저 인증 도입 (E 완료 후 별도 ADR)
 - 유사 서비스 UX 참고: MCP `JSON 가져오기` (Claude Desktop mcpServers config import) — M5 UX 확장 후보로 footnote

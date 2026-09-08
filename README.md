@@ -18,7 +18,7 @@
 
 [Overview](#-overview) · [Quick Answers](#-quick-answers) · [Quick Start](#-quick-start) · [Trust](#-quality-security-and-documentation-signals) · [Features](#-features) · [Architecture](#-architecture)
 
-<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+<!-- project-current-source: migration=m76_pinned_conv_summaries; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-08 -->
 
 **Last updated:** September 5, 2026 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
 
@@ -55,7 +55,7 @@ triggers, and usage tracking.
 | Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
 | AI runtime | LangGraph 1.x + `deepagents` 0.7.11 via `create_deep_agent` |
 | Runtime policy | Agent policy is mutable for new conversations; each existing conversation keeps an immutable effective-policy snapshot |
-| Database | PostgreSQL 16, Alembic head `m72_runtime_policy_snapshot` |
+| Database | PostgreSQL 16, Alembic head `m76_pinned_conv_summaries` |
 | Authentication | JWT HS256, HttpOnly cookies, CSRF double-submit, refresh-token rotation, `super_user` |
 | License | MIT |
 
@@ -135,7 +135,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # set ENCRYPTION_KEYS / JWT_SECRET (LLM keys via UI)
 uv sync                               # install dependencies (+ Python 3.12 if missing)
-uv run alembic upgrade head           # run migrations (head: m72_runtime_policy_snapshot)
+uv run alembic upgrade head           # run migrations (head: m76_pinned_conv_summaries)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
@@ -453,7 +453,7 @@ process separately before probing those presets.
 - **Credential binding** — Map skill-required credentials to your own keys at install time
 - **Tool dependency surfacing** — The install wizard shows tools a skill needs
   (e.g. Tavily) and auto-injects them at runtime
-- **Moderation** — super_user reviews submissions at `/marketplace/admin/moderation`
+- **Moderation** — super_user reviews submissions at `/settings/marketplace-admin`
 
 </details>
 
@@ -518,7 +518,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + domain
 │   │   ├── agent_runtime/       # AI execution engine
 │   │   └── seed/                # seed data
-│   ├── alembic/versions/        # migrations (head: m72_runtime_policy_snapshot)
+│   ├── alembic/versions/        # migrations (head: m76_pinned_conv_summaries)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
@@ -604,7 +604,7 @@ official profiles or documentation URLs exist.
       "operatingSystem": "Web",
       "isAccessibleForFree": true,
       "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
-      "softwareVersion": "development snapshot, migration head m72_runtime_policy_snapshot",
+      "softwareVersion": "development snapshot, migration head m76_pinned_conv_summaries",
       "dateModified": "2026-09-01",
       "author": {
         "@id": "https://github.com/YooSuhwa/natural-mold#organization"

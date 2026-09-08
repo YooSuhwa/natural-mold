@@ -1,16 +1,17 @@
 # Execution Plans Index
 
 This index mirrors the tracked execution-plan directories. The wording after
-each link is taken from the plan's declared state when present; folder placement
-determines the Active and Completed sections.
+each link records its declared state; Completed also holds closed/superseded
+plans, explicitly labeled below. Current product follow-ups live in `../../TASKS.md`.
 
 ## Active
 
-- [백로그 C — credentials list N+1 복호화 제거](active/backlog-c-field-keys-cache.md) — explicit status not declared.
-- [백로그 E — Connection 엔티티 통합 리팩토링](active/backlog-e-connection-refactor.md) — M0 완료 (ADR-008 승인 대기) — M1 대기.
+No approved execution plan is active in this directory.
 
 ## Completed
 
+- [백로그 C — credentials list N+1 복호화 제거](completed/backlog-c-field-keys-cache.md) — implemented; current field_keys cache verified 2026-09-08.
+- [백로그 E — Connection 엔티티 통합 리팩토링](completed/backlog-e-connection-refactor.md) — closed/superseded by ADR-009, not pending work.
 - [HiTL Phase 2 — Wire Contract](completed/hitl-phase2-contract.md) — APPROVED — 후속 마일스톤(M1·M2) 진입 게이트.
 
 ## Deferred programs
@@ -30,6 +31,6 @@ gates before it can move into `Active`.
 <!-- future-program: async-subagents; status=deferred -->
 - Async subagents
 <!-- future-program: store-composite-backend-adoption; status=deferred -->
-- Store/Composite backend adoption
+- General StoreBackend adoption (CompositeBackend already powers scoped offloads)
 <!-- future-program: observation-window-removal; status=deferred -->
 - Observation-window removal

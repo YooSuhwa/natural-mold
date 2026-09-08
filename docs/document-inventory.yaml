@@ -320,14 +320,14 @@ documents:
   - path: docs/e2e-coverage.md
     lifecycle: canonical-current
     status: current
-  - path: docs/exec-plans/active/backlog-c-field-keys-cache.md
-    lifecycle: active-plan
-    status: active
-    index: active-plan
-  - path: docs/exec-plans/active/backlog-e-connection-refactor.md
-    lifecycle: active-plan
-    status: active
-    index: active-plan
+  - path: docs/exec-plans/completed/backlog-c-field-keys-cache.md
+    lifecycle: completed-plan
+    status: completed
+    index: completed-plan
+  - path: docs/exec-plans/completed/backlog-e-connection-refactor.md
+    lifecycle: completed-plan
+    status: completed
+    index: completed-plan
   - path: docs/exec-plans/completed/hitl-phase2-contract.md
     lifecycle: completed-plan
     status: completed

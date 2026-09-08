@@ -1,7 +1,7 @@
 # natural-mold Marketplace Resources PRD
 
 > 작성일: 2026-05-18
-> 버전: v0.3 (2026-06-07 source-aligned status 반영)
+> 버전: v0.4 (2026-09-08 source-aligned status 반영)
 > 베이스: `/Users/chester/dev/natural-mold/docs/maketplace/marketplace-resources-prd.md` v0.3, `marketplace-resources-spec.md` v0.3
 > 범위: Agent / MCP / Skill 공유 마켓플레이스 + built-in k-skill 카탈로그 + credential 연결 UX
 
@@ -9,17 +9,18 @@
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
+| v0.4 | 2026-09-08 | MCP/Agent publish/install 구현과 공용 wizard를 현재 상태에 반영. 아래 Phase 1~4 목록은 도입 당시 설계 순서이며 미구현 목록이 아님. E2E 상태는 `e2e-coverage.md`에서 관리. |
 | v0.3 | 2026-06-07 | 실제 소스 기준 구현 상태 갱신. M40~M44 marketplace/skill lineage/relative storage, M59 artifact 연계 시점 기준으로 catalog/install/update/uninstall/publish/ACL/admin listed state/secret scan/k-skill importer/skill credential binding/selected-skill runtime mount/credential env injection/redaction이 구현되어 있음을 반영. 남은 범위는 MCP/Agent resource publish 확장과 E2E/운영 hardening 중심. |
 | v0.2 | 2026-05-18 | natural-mold 소스코드 심층 분석 결과 반영. **execute_in_skill subprocess runner는 이미 도입되어 있음**을 정정(이전 v0.1의 잘못된 가정 폐기). 빈 구멍은 (a) credential env 주입 없음, (b) broad skill mount(`/skills/`), (c) packager에 secret scan 없음, (d) AgentSkillLink에 config 필드 없음, (e) Skill 모델에 source/dirty/origin 컬럼 없음. 14개 기존 credential definition 목록 명시 + k-skill용 신규 정의 추가 필요. ADR-007/009/013/016과의 정확한 매핑. |
 | v0.1 | 2026-05-18 | (폐기됨) 초기 적용본. 잘못된 가정 다수 포함. |
 
 ---
 
-## 2026-06-07 Current Implementation Status
+## 2026-09-08 Current Implementation Status
 
 이 문서의 v0.2 본문은 2026-05-18 기준 설계 baseline을 많이 보존한다. 현재
-소스 기준으로는 Phase 1 Skill marketplace의 핵심 백엔드와 프론트 화면이
-이미 들어와 있으므로, 아래 상태표를 우선 신뢰한다.
+소스 기준으로는 Skill뿐 아니라 MCP template과 Agent spec의 게시·설치 및
+공용 wizard까지 들어와 있으므로, 아래 상태표를 우선 신뢰한다.
 
 | Area | Status in source |
 |------|------------------|
@@ -34,7 +35,10 @@
 | Redaction | Implemented in marketplace/runtime paths for credential-bearing skill execution |
 | k-skill importer | Implemented in `k_skill_importer.py`, `k_skill_requirements.py`, and `app/scripts/sync_k_skill.py` |
 | Frontend | Implemented marketplace catalog/detail/admin moderation routes and origin/publication UX surfaces |
-| Remaining expansion | MCP/Agent publishing/install UX beyond Skill Phase 1, broader E2E coverage, operational hardening |
+| MCP templates | `mcp_server.py`, `install/mcp.py`: publish/version/install, requirements and secret stripping |
+| Agent blueprints | `agent_spec.py`, `install/agent_blueprint.py`: spec/dependency snapshots, blueprint install and credential rebinding |
+| Shared UI | `publish-wizard.tsx`, `install-wizard.tsx` support Skill/MCP/Agent; moderation is `/settings/marketplace-admin` |
+| Remaining validation | External OAuth, complex dependency/update/binding combinations and operational hardening; current E2E scope is in `e2e-coverage.md` |
 
 ## Decision Summary
 
@@ -53,11 +57,11 @@
 | 설치 방식 | marketplace version을 사용자 소유 installed resource로 복사 | 원본 결정 유지 |
 | 버전 정책 | published version immutable | 원본 결정 유지 |
 | 업데이트 | 자동 업데이트 금지, 사용자가 명시적으로 적용 | 원본 결정 유지 |
-| 출처 표시 | 모든 installed Agent/MCP/Skill에 origin과 publication state 표시 | Skill lineage/origin/publication summary 구현. MCP/Agent 확장은 후속 범위 |
+| 출처 표시 | 모든 installed Agent/MCP/Skill에 origin과 publication state 표시 | Skill lineage 및 MCP/Agent projection 구현. 조합별 E2E 커버리지는 별도 관리 |
 
 ## MVP Product Bet
 
-Phase 1의 목표는 "사용자가 built-in k-skill을 골라 자기 Skill로 설치하고, 필요한 경우 credential을 연결한 뒤 agent에 붙여 실행할 수 있다"였다. 2026-06-07 현재 이 흐름의 핵심 backend/runtime/frontend가 구현되어 있으며, 남은 product bet은 같은 구조를 MCP/Agent resource publishing까지 확장하고 운영/E2E 신뢰도를 높이는 것이다.
+Phase 1의 목표는 "사용자가 built-in k-skill을 골라 자기 Skill로 설치하고, 필요한 경우 credential을 연결한 뒤 agent에 붙여 실행할 수 있다"였다. 이 흐름은 구현됐으며 MCP/Agent 게시·설치에도 확장됐다. 현재 남은 과제는 새 구현으로 취급하는 것이 아니라 운영/E2E 신뢰도를 높이는 것이다.
 
 MVP에서 반드시 보여야 하는 경험:
 

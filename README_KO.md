@@ -18,7 +18,7 @@
 
 [Overview](#-overview) · [빠른 답변](#-빠른-답변) · [Quick Start](#-quick-start) · [신뢰 근거](#-품질보안문서화-신호) · [기능](#-주요-기능) · [아키텍처](#-아키텍처)
 
-<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+<!-- project-current-source: migration=m76_pinned_conv_summaries; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-08 -->
 
 **마지막 업데이트:** 2026년 9월 5일 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
 
@@ -54,7 +54,7 @@ skill 패키지, 마켓플레이스 설치, 스케줄 트리거, 사용량 추�
 | Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
 | AI runtime | LangGraph 1.x + `create_deep_agent` 기반 `deepagents` 0.7.11 |
 | Runtime policy | 에이전트 정책 변경은 새 대화에 적용되며, 기존 대화는 최초 확정된 유효 정책 snapshot을 유지 |
-| Database | PostgreSQL 16, Alembic head는 `m72_runtime_policy_snapshot` |
+| Database | PostgreSQL 16, Alembic head는 `m76_pinned_conv_summaries` |
 | 인증 | JWT HS256, HttpOnly cookie, CSRF double-submit, refresh token rotation, `super_user` |
 | License | MIT |
 
@@ -129,7 +129,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # ENCRYPTION_KEYS / JWT_SECRET 등 입력 (LLM 키는 UI에서 등록)
 uv sync                               # 의존성 설치 (+ Python 3.12 없으면 자동 다운로드)
-uv run alembic upgrade head           # DB 마이그레이션 (head: m72_runtime_policy_snapshot)
+uv run alembic upgrade head           # DB 마이그레이션 (head: m76_pinned_conv_summaries)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
@@ -440,7 +440,7 @@ credential 필드를 보간할 수 있습니다.
 - **Credential 바인딩** — Skill별 필요 credential을 설치 시점에 사용자 계정 키로 매핑
 - **Tool dependency 표시** — Skill이 요구하는 도구(예: Tavily)를 설치 마법사에서
   안내하고 실행 시 자동 주입
-- **모더레이션** — super_user가 `/marketplace/admin/moderation`에서 공개 심사
+- **모더레이션** — super_user가 `/settings/marketplace-admin`에서 공개 심사
 
 </details>
 
@@ -505,7 +505,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + 도메인
 │   │   ├── agent_runtime/       # AI 실행 엔진
 │   │   └── seed/                # 시드 데이터
-│   ├── alembic/versions/        # 마이그레이션 (head: m72_runtime_policy_snapshot)
+│   ├── alembic/versions/        # 마이그레이션 (head: m76_pinned_conv_summaries)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
@@ -590,7 +590,7 @@ Moldy README를 프로젝트 홈페이지, 문서 사이트, 제품 페이지에
       "operatingSystem": "Web",
       "isAccessibleForFree": true,
       "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
-      "softwareVersion": "development snapshot, migration head m72_runtime_policy_snapshot",
+      "softwareVersion": "development snapshot, migration head m76_pinned_conv_summaries",
       "dateModified": "2026-09-01",
       "author": {
         "@id": "https://github.com/YooSuhwa/natural-mold#organization"

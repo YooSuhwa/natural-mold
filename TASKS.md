@@ -1,18 +1,18 @@
 # Moldy — TASKS
 
-<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+<!-- project-current-source: migration=m76_pinned_conv_summaries; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-08 -->
 
-> Last updated: 2026-09-05
-> Source-aligned snapshot: Alembic head `m72_runtime_policy_snapshot`. The
+> Last updated: 2026-09-08
+> Source-aligned snapshot: Alembic head `m76_pinned_conv_summaries`. The
 > original Phase 0~14 list below is preserved as historical build-up context;
 > M59 remains the feature-origin point for generated artifacts, not the current
 > migration head.
 
-## Current Source Snapshot (2026-09-05)
+## Current Source Snapshot (2026-09-08)
 
 - [x] Multi-user auth and operator split (ADR-016): JWT, HttpOnly cookies, CSRF,
   refresh-token rotation, `super_user`, system/user resource separation.
-- [x] Marketplace Phase 1: schema M40~M44, skill lineage, `agent_skills.config`,
+- [x] Marketplace foundation: schema M40~M44, skill lineage, `agent_skills.config`,
   catalog/detail/version, install/update/uninstall, publish/version/ACL/admin,
   secret scan, k-skill importer, credential requirements and bindings.
 - [x] System LLM settings (ADR-019): role-based model slots for builder,
@@ -40,21 +40,33 @@
   move stream responsibilities into services.
 - [x] Frontend performance and state cleanup: lazy chat preview modules, scoped
   i18n payloads, agent settings draft hook/lib.
+- [x] MCP and Agent marketplace publishing/install UI and backend: MCP templates,
+  agent blueprints, dependency snapshots, credential rebinding, shared publish/install wizards.
+- [x] assistant-ui 0.15.18 and chat features: queued input (M73), persisted run
+  metrics (M74), MCP Apps provenance (M75), pinned conversation summaries (M76).
+  Direct injection into the currently running run is not implemented.
+- [x] Backend Pyright basic-mode debt cleared and made blocking in CI (PR #302);
+  see `docs/pyright-burndown-plan.md`. This is not a claim of strict-mode coverage.
+- [x] Scripted E2E stabilization (PR #303) and smoke CI fixes (PR #304) merged.
+- [x] Profile personalization (2), agent MCP attachment (1), and marketplace
+  publish/moderation (3) E2E scenarios added. Focused capture run passed all six;
+  validation scope and remaining visual gaps are recorded in `docs/e2e-coverage.md`.
 
 ## Active Follow-ups
 
-- [ ] Extend marketplace publishing/install UX beyond Skill Phase 1 for MCP and
-  Agent resources.
-- [ ] Add E2E coverage for profile personalization, MCP tool attachment, and
-  marketplace publish/moderation. Existing artifact, share, marketplace
-  install, memory-control, and Agent API settings paths are covered.
+- [ ] Address narrow-viewport tool/skill dialog clipping and Korean text wrapping
+  observed in the new resource captures; desktop functional E2E is not responsive certification.
+- [ ] Extend marketplace validation to external OAuth and complex
+  dependency/update/credential-binding combinations.
 - [ ] Harden multi-worktree scheduler behavior when several backends share one DB.
 - [ ] Keep `docs/ARCHITECTURE.md`, `docs/PRD.md`, `AGENTS.md`, and README files
   synchronized after migrations or runtime module splits.
 - [ ] Treat Rubric, total technical-debt cleanup, domain relocation,
-  attachment/video expansion, async subagents, Store/Composite backend
-  adoption, and observation-window removal as separately approved programs;
+  attachment/video expansion, async subagents, general StoreBackend adoption,
+  and observation-window removal as separately approved programs;
   none is a current commitment in this snapshot.
+  `ScopedOffloadBackend` already uses CompositeBackend for scoped offloads;
+  this is not a pending wholesale backend replacement.
 
 ---
 
@@ -85,7 +97,7 @@
 - [x] agent_runtime/streaming.py (LangGraph → SSE)
 - [x] agent_runtime/token_tracker.py
 - [x] Conversation API (4 endpoints) + LangGraph PostgresSaver
-- [ ] 채팅 엔진 통합 테스트
+- [x] 채팅 엔진 통합 테스트 — `backend/tests/integration/test_stream_resume.py` 및 scripted chat E2E
 
 ## Phase 3: Backend — MCP + 대화형 생성 + 사용량
 
@@ -205,7 +217,7 @@
 
 ## Phase 6: 통합 + 폴리시
 
-- [ ] E2E 시나리오 검증 (PRD 섹션 4)
+- [x] Scripted E2E 회귀 검증 — 현재 범위/수동 제외 항목은 `docs/e2e-coverage.md` 참조
 - [x] 에러 핸들링, loading skeleton, empty state
 - [x] Docker Compose 전체 구동 설정 (Dockerfile + docker-compose.yml)
 - [ ] 접근성, 키보드 네비게이션, 성능 검증
@@ -292,4 +304,4 @@
 - [ ] 미들웨어 프리셋 원클릭 적용 ("기본"/"스마트"/"고급")
 - [ ] 미들웨어 실행 순서 드래그 앤 드롭 (LangChain middleware 리스트 순서 = 실행 순서)
 - [ ] Provider 자동 감지 UI (모델 선택 시 Anthropic/OpenAI 전용 미들웨어 추천)
-- [ ] HumanInTheLoopMiddleware 인터럽트 → 프론트엔드 승인 UI (SSE 양방향)
+- [x] HumanInTheLoopMiddleware 인터럽트 → 프론트엔드 승인/거절 UI 및 E2E

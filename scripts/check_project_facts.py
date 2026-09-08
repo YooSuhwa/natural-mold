@@ -36,9 +36,10 @@ RUNTIME_POLICY_CONTRACT: Final = re.compile(
     r"migration=([\w-]+); status=accepted -->"
 )
 E2E_CURRENT_CONTRACT: Final = re.compile(
-    r"<!-- e2e-current-source: profile-personalization=(untested); "
+    r"<!-- e2e-current-source: profile-personalization=(untested|covered); "
     r"refreshed=(\d{4}-\d{2}-\d{2}) -->"
 )
+PROFILE_E2E_SPEC: Final = "frontend/e2e/profile-personalization.spec.ts"
 FUTURE_PROGRAM: Final = re.compile(r"<!-- future-program: ([a-z0-9-]+); status=([a-z]+) -->")
 DEFERRED_PROGRAMS: Final = frozenset(
     {
@@ -366,9 +367,18 @@ def _validate_document_contracts(
     e2e_matches = E2E_CURRENT_CONTRACT.findall(_text(texts, "docs/e2e-coverage.md"))
     if len(e2e_matches) != 1 or e2e_matches[0][1] not in refresh_dates:
         raise RuntimeError("E2E current-source contract is stale or missing")
+    if e2e_matches[0][0] == "covered":
+        # Source existence is checkable here; pass/fail belongs to the E2E runner.
+        _text(texts, PROFILE_E2E_SPEC)
 
     adr_matches = RUNTIME_POLICY_CONTRACT.findall(_text(texts, RUNTIME_POLICY_ADR))
-    if adr_matches != [head]:
+    known_revisions = {
+        _literal_revision(source, str(path))[0]
+        for path, source in texts.items()
+        if path.match("backend/alembic/versions/*.py")
+    }
+    # ADRs record the introducing migration, not the ever-changing current head.
+    if len(adr_matches) != 1 or adr_matches[0] not in known_revisions:
         raise RuntimeError("ADR-022 runtime-policy contract is stale or missing")
 
     future_markers = FUTURE_PROGRAM.findall(_text(texts, "docs/exec-plans/index.md"))
@@ -400,6 +410,7 @@ def _tracked_texts(root: Path) -> tuple[dict[PurePosixPath, str], frozenset[Pure
         for path in (
             *CURRENT_CONTRACT_SURFACES,
             "docs/e2e-coverage.md",
+            PROFILE_E2E_SPEC,
             "backend/pyproject.toml",
             "backend/uv.lock",
         )

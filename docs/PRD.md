@@ -1,17 +1,18 @@
 # Moldy PRD
 
-<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+<!-- project-current-source: migration=m76_pinned_conv_summaries; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-08 -->
 
-> Last updated: 2026-09-05
-> Version: v0.5
+> Last updated: 2026-09-08
+> Version: v0.6
 > Source basis: current source tree and Alembic head
-> `m72_runtime_policy_snapshot`. M59 is retained below only as the historical
+> `m76_pinned_conv_summaries`. M59 is retained below only as the historical
 > origin of generated artifacts.
 
 ## Changelog
 
 | Version | Date | Change |
 |---------|------|--------|
+| v0.6 | 2026-09-08 | Aligned with M76, assistant-ui 0.15.18, implemented MCP/Agent publishing/install and blocking Pyright CI. Kept same-run Steer and broader storage adoption out of scope. |
 | v0.5 | 2026-09-05 | Refreshed current source state for Deep Agents 0.7.11, the LangGraph v3 runtime path, and versioned runtime-policy snapshots. |
 | v0.4 | 2026-06-07 | Rebased PRD on actual source. Replaced single-user PoC assumptions with ADR-016 multi-user auth, marketplace, memory, Agent API, artifacts, audit, subagents, and runtime split status. |
 | v0.3 | 2026-05-26 | Reflected System LLM settings and UI-managed LLM credentials. |
@@ -25,6 +26,9 @@
 | Deep Agents 0.7 migration | Runtime dependency and compatibility boundary updated to 0.7.11 | `backend/pyproject.toml`, `backend/uv.lock`, `backend/app/agent_runtime/runtime_component_builder.py` |
 | Isolated test lanes | Backend, frontend, scripted E2E, and live E2E have distinct runner/database contracts | `scripts/run-isolated-command.sh`, `frontend/scripts/run-e2e-lane.mjs` |
 | Runtime policy M71/M72 | Agent policy plus immutable conversation snapshot and `ConversationRun` provenance implemented; legacy conversations retain compatibility semantics | `backend/app/agent_runtime/runtime_policy.py`, `backend/app/services/conversation_runtime_policy.py`, migrations M71/M72, ADR-022 |
+| Chat M73~M76 | Queued inputs, persisted run metrics, MCP Apps provenance and pinned summaries; assistant-ui 0.15.18 with Moldy transport retained | migrations M73~M76, `frontend/package.json`, `frontend/src/lib/chat/langgraph-runtime/` |
+| MCP/Agent marketplace | Template/spec publishing, dependency snapshots, install/rebinding and shared UI wizards implemented | `backend/app/marketplace/agent_spec.py`, `mcp_server.py`, `install/`, `frontend/src/components/marketplace/` |
+| Backend types | Pyright basic-mode errors cleared; CI blocks regressions. This does not imply strict mode or a Pydantic rewrite | `docs/pyright-burndown-plan.md`, `.github/workflows/ci.yml` |
 
 ## 1. Product Overview
 
@@ -36,7 +40,7 @@ resources through a marketplace.
 Current product stage is beyond the original PoC. The codebase supports
 multi-user operation, operator-managed system resources, external Agent API
 calls, generated file artifacts, audit logs, memory policy controls, subagent
-delegation, and marketplace installation/publishing for skills.
+delegation, and marketplace installation/publishing for Skill, MCP and Agent resources.
 
 ## 2. Users and Permissions
 
@@ -302,8 +306,8 @@ Current source markers:
 - Full sandbox isolation for arbitrary package code beyond the current
   allowlist, timeout, filesystem permission, and redaction controls.
 - Tool marketplace for user-defined tools. Tools remain code/registry/system
-  resources; marketplace currently focuses on skills and lays schema groundwork
-  for MCP/Agent resources.
+  resources; Skill, MCP and Agent marketplace resources are already implemented.
+- Direct Steer injection into an active run; current priority input cancels and restarts.
 - Mobile-native app.
 
 ## 5. Key Data Model Groups
