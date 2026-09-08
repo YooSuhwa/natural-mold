@@ -47,12 +47,10 @@ async def shutdown_runtime_resources() -> list[BaseException]:
     from app.agent_runtime.event_broker import registry as broker_registry
     from app.agent_runtime.tool_factory import close_tool_http_client
     from app.database import shutdown_database
-    from app.scheduler import get_scheduler, release_scheduler_leader
+    from app.scheduler import release_scheduler_leader, stop_scheduler
     from app.services.conversation_run_worker import get_run_task_registry
     from app.services.skill_evaluation_worker import skill_evaluation_worker
     from app.services.spend_writer import spend_queue
-
-    scheduler = get_scheduler()
 
     async def close_skill_worker() -> None:
         await skill_evaluation_worker.stop(timeout_seconds=10.0)
@@ -67,8 +65,7 @@ async def shutdown_runtime_resources() -> list[BaseException]:
         await checkpoint()
 
     async def close_scheduler() -> None:
-        if scheduler.running:
-            scheduler.shutdown(wait=False)
+        stop_scheduler()
         await release_scheduler_leader()
 
     return await run_shutdown_steps(

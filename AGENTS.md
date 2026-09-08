@@ -266,7 +266,10 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8010 pnpm dev -- --port 3010
 - frontend가 실제로 뜬 origin이 backend의 `CORS_ALLOWED_ORIGINS`에 포함되는지 확인
 - frontend의 `NEXT_PUBLIC_API_BASE_URL`이 실제 backend port를 가리키는지 확인
 - Next.js가 포트 충돌로 자동 선택한 임의 포트를 그대로 쓰지 말고 `pnpm dev -- --port <port>`로 고정
-- 여러 backend를 같은 DB에 동시에 붙이면 APScheduler/trigger 작업이 중복 실행될 수 있으므로 장시간 동시 실행은 피하거나 scheduler 비활성화 옵션을 별도로 둔다
+- 여러 backend를 같은 DB에 동시에 붙여도 PostgreSQL advisory-lock 리더를
+  `SCHEDULER_LEADERSHIP_POLL_SECONDS` 주기로 재검증한다. 리더 연결이 끊기면 기존
+  scheduler를 중지하고 다른 backend가 자동 승계하며, 비리더를 통해 변경된 trigger도
+  같은 주기로 리더가 재조정한다
 
 ### 1. 런타임 준비
 
@@ -550,6 +553,7 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 - **백엔드**: Alembic head `m76_pinned_conv_summaries` 적용. 멀티유저 인증, marketplace skill publish/install, System LLM settings, schedule productization, Agent API, memory controls, audit events, generated artifacts, credential OAuth states, conversation runs, agent blueprints, chat navigation indexes, subagent runtime, executor split, skill usage and feedback, conversation runtime policy snapshot 반영.
 - **프론트엔드**: 멀티유저 로그인/회원가입 UI, MCP 서버 관리, Skill/Credential/Marketplace 관리, 채팅 SSE 스트리밍, artifact preview/right rail/library, memory/settings, Agent API settings, 트리거 스케줄링, Builder 마법사.
 - **구현됨**: MCP/Agent marketplace 게시·설치 및 공용 wizard, assistant-ui 0.15.18, 입력 큐·실행 지표·MCP Apps·고정 요약(M73~M76), Pyright basic-mode 오류 0 및 차단 CI. 현재 run에 직접 주입하는 Steer는 미구현.
-- **다음 단계**: E2E 범위·실행 결과는 `docs/e2e-coverage.md`에서 관리. long-running scheduler/worktree 운영 안정화, 외부 OAuth 및 복잡한 marketplace 설치 조합의 추가 검증은 후속 범위.
+- **다음 단계**: E2E 범위·실행 결과는 `docs/e2e-coverage.md`에서 관리. 외부 OAuth 및
+  복잡한 marketplace 설치 조합, 접근성·키보드·성능 검증은 후속 범위.
 - 자세한 태스크 현황은 `TASKS.md` 참조
 - 기능 명세는 `docs/PRD.md` + `docs/PRD-screens.md` 참조

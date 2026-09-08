@@ -58,7 +58,8 @@ Backend (FastAPI)
 - system credential bootstrap from environment in non-production
 - LangGraph checkpointer initialization
 - hook registration and spend writer startup
-- scheduler leadership via Postgres advisory lock
+- continuously monitored scheduler leadership via a Postgres advisory lock, with
+  automatic takeover and shared trigger reconciliation across backend processes
 - recurring jobs for credential rotation, model/MCP health, model catalog updates,
   EventBroker GC, refresh-token GC, and skill runtime cleanup
 
@@ -309,8 +310,10 @@ See `docs/agent-api.md` for request examples.
 
 ## Open Technical Risks
 
-- Long-running concurrent worktrees can double-run scheduler jobs if multiple
-  backend processes share the same DB and all acquire work over time.
+- Scheduler leadership is continuously fenced and retried when concurrent
+  worktrees share one PostgreSQL database. The active leader reconciles trigger
+  definitions written through non-leader processes without resetting unchanged
+  interval schedules; scheduled trigger execution rechecks lock ownership.
 - Artifact and preview surfaces date from `m59_conversation_artifacts` and should keep getting E2E
   coverage around branch links, shares, and generated-file permissions.
 - Marketplace MCP/Agent publish/install is implemented; external authentication,

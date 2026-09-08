@@ -143,8 +143,11 @@ async def test_runtime_shutdown_disposes_database_after_checkpointer_close_failu
     async def stop_run_registry(*_args: object, **_kwargs: object) -> None:
         calls.append("run_registry")
 
+    def stop_scheduler() -> None:
+        calls.append("scheduler_stop")
+
     async def release_leader() -> None:
-        calls.append("scheduler")
+        calls.append("scheduler_release")
 
     async def stop_spend_queue() -> None:
         calls.append("spend_queue")
@@ -163,9 +166,6 @@ async def test_runtime_shutdown_disposes_database_after_checkpointer_close_failu
         async def shutdown(self, **_kwargs: object) -> None:
             await stop_run_registry()
 
-    class Scheduler:
-        running = False
-
     class SkillWorker:
         async def stop(self, *_args: object, **_kwargs: object) -> None:
             await stop_skill_worker()
@@ -180,7 +180,12 @@ async def test_runtime_shutdown_disposes_database_after_checkpointer_close_failu
     monkeypatch.setattr(skill_evaluation_worker_module, "skill_evaluation_worker", SkillWorker())
     monkeypatch.setattr(conversation_run_worker, "get_run_task_registry", lambda: RunRegistry())
     monkeypatch.setattr(event_broker.registry, "close_all", lambda: 0)
-    monkeypatch.setattr(scheduler_module, "get_scheduler", lambda: Scheduler())
+
+    def unexpected_scheduler_creation() -> None:
+        raise AssertionError("shutdown must not create a scheduler")
+
+    monkeypatch.setattr(scheduler_module, "get_scheduler", unexpected_scheduler_creation)
+    monkeypatch.setattr(scheduler_module, "stop_scheduler", stop_scheduler)
     monkeypatch.setattr(scheduler_module, "release_scheduler_leader", release_leader)
     monkeypatch.setattr(spend_writer, "spend_queue", SpendQueue())
     monkeypatch.setattr(tool_factory, "close_tool_http_client", close_tool_client)
@@ -194,7 +199,8 @@ async def test_runtime_shutdown_disposes_database_after_checkpointer_close_failu
     assert calls == [
         "skill_worker",
         "run_registry",
-        "scheduler",
+        "scheduler_stop",
+        "scheduler_release",
         "spend_queue",
         "tool_http_client",
         "checkpointer",
