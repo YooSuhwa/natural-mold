@@ -147,6 +147,69 @@ def test_e2e_failure_diagnostic_never_reflects_receipt_values() -> None:
     assert "must-not-appear" not in diagnostic
 
 
+def test_postgres_failure_diagnostic_projects_only_bounded_states() -> None:
+    module = _cleanup_cli()
+    payload = {
+        "schema_version": 1,
+        "mode": "all",
+        "status": "failed",
+        "scenarios": [
+            {
+                "scenario": "all",
+                "status": "failed",
+                "failure_reason": "child_exit",
+                "child_exit_code": 1,
+                "container_id": "secret-container-id",
+                "test_receipt": {
+                    "selected_node_ids": ["tests/secret_test.py::test_secret"],
+                    "executed_node_ids": ["tests/secret_test.py::test_secret"],
+                    "failed_node_ids": ["tests/secret_test.py::test_secret"],
+                },
+                "cleanup_container_removed": True,
+                "owned_label_absent": True,
+                "port_mapping_removed": True,
+                "process_group_stopped": True,
+                "cleanup_run_root_removed": True,
+                "foreign_containers_observed": False,
+                "foreign_containers_preserved": None,
+            }
+        ],
+    }
+
+    diagnostic = module._postgres_failure_diagnostic(payload)
+
+    assert diagnostic == (
+        "status=failed mode=all scenario=all reason=child_exit exit=1 "
+        "selected=present executed=present failed=present cleanup=complete"
+    )
+    assert "secret" not in diagnostic
+
+
+def test_postgres_failure_diagnostic_never_reflects_unknown_values() -> None:
+    module = _cleanup_cli()
+    payload = {
+        "schema_version": 1,
+        "mode": "password=must-not-appear",
+        "status": "token=must-not-appear",
+        "scenarios": [
+            {
+                "scenario": "cookie=must-not-appear",
+                "failure_reason": "authorization=must-not-appear",
+                "child_exit_code": "secret-exit",
+            }
+        ],
+    }
+
+    diagnostic = module._postgres_failure_diagnostic(payload)
+
+    assert diagnostic == (
+        "status=other mode=other scenario=other reason=other exit=other "
+        "selected=invalid executed=invalid failed=invalid cleanup=incomplete"
+    )
+    assert "must-not-appear" not in diagnostic
+    assert "secret-exit" not in diagnostic
+
+
 def test_e2e_failure_diagnostic_projects_only_safe_failure_metadata() -> None:
     module = _cleanup_cli()
     payload = {
@@ -473,6 +536,29 @@ def test_cli_prints_bounded_e2e_diagnostic_after_rejection(
     assert captured.out == ""
     assert captured.err == (
         f"manifest validation rejected: self_test\ne2e diagnostic: {diagnostic}\n"
+    )
+
+
+def test_cli_prints_bounded_postgres_diagnostic_after_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = _cleanup_cli()
+    manifest = tmp_path / "receipt.json"
+    diagnostic = "status=failed mode=all scenario=all reason=child_exit exit=1"
+
+    def reject(_path: Path) -> None:
+        raise module.PostgresManifestDiagnosticError("manifest_status", diagnostic)
+
+    monkeypatch.setattr(module, "_validate_manifest", reject)
+    monkeypatch.setattr(sys, "argv", ["check-isolation-cleanup.py", str(manifest)])
+
+    assert module.main() == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"manifest validation rejected: manifest_status\npostgres diagnostic: {diagnostic}\n"
     )
 
 

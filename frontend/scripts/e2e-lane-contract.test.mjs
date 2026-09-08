@@ -30,6 +30,7 @@ import {
   getE2ERunPaths,
   getLaneDefaultPorts,
   getPlaywrightExecutionPolicy,
+  getPlaywrightWebServerTimeout,
   getPlaywrightArtifactsDirectory,
   LIVE_E2E_CASES,
   LIVE_E2E_SPECS,
@@ -103,6 +104,16 @@ describe('E2E lane contract', () => {
     expect(captureUse).toEqual({ browserName: 'chromium' })
     expect(liveUse).toEqual({ browserName: 'chromium', trace: 'off', screenshot: 'off' })
     expect(getPlaywrightExecutionPolicy()).toEqual({ workers: 1, retries: 0 })
+  })
+
+  it('gives production web servers enough time to build on a cold CI runner', () => {
+    // Given: the production E2E lane builds Next.js before Playwright can connect.
+    const config = readFileSync(path.join(frontendRoot, 'playwright.config.ts'), 'utf8')
+
+    // When / Then: both owned servers use an explicit budget instead of Playwright's 60s default.
+    expect(getPlaywrightWebServerTimeout()).toBe(180_000)
+    expect(config).toContain('const webServerTimeout = getPlaywrightWebServerTimeout()')
+    expect(config.match(/timeout: webServerTimeout/g)).toHaveLength(2)
   })
 
   it('validates CLI project selection only in the coordinator and trusts the worker project', () => {

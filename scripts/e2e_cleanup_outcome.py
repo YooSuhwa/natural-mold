@@ -17,11 +17,19 @@ from e2e_cleanup_contract import (
 )
 from postgres_cleanup_checker import ManifestValidationError
 
-type OutcomeKind = Literal["standard", "preexecution", "selection-failure"]
+type OutcomeKind = Literal[
+    "standard",
+    "preexecution",
+    "selection-failure",
+    "execution-startup-failure",
+]
 
 
 def validate_cleanup(
-    payload: dict[str, object], database_owned: bool, *, diagnostic_preexecution: bool = False
+    payload: dict[str, object],
+    database_owned: bool,
+    *,
+    diagnostic_preexecution: bool = False,
 ) -> None:
     """Require every teardown claim and truthful foreign-container preservation."""
     cleanup = mapping(payload.get("cleanup"), "cleanup")
@@ -141,6 +149,23 @@ def validate_outcome(
         )
         if selection_failed:
             return "selection-failure"
+        execution_startup_failed = (
+            lane == "scripted"
+            and project == "scripted-smoke"
+            and status == "failed"
+            and reason == "playwright_failed"
+            and exit_code == 1
+            and bool(selected)
+            and not executed
+            and not source_rejected
+            and payload.get("owned_run_root") is True
+            and payload.get("owned_database") is True
+            and payload.get("owned_backend") is True
+            and payload.get("owned_frontend") is True
+            and payload.get("owned_proxy") is False
+        )
+        if execution_startup_failed:
+            return "execution-startup-failure"
         playwright_failed = reason == "playwright_failed" and exit_code == 1
         artifact_export_failed = (
             source_rejected and reason == "artifact_export_failed" and exit_code == 0

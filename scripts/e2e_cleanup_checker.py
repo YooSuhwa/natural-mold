@@ -183,7 +183,10 @@ def validate_payload(
             payload.get("export_tree_sha256") == export.get("export_tree_sha256"),
             "export_tree",
         )
-        require(payload.get("screenshots") == export.get("screenshots_absolute"), "screenshots")
+        require(
+            payload.get("screenshots") == export.get("screenshots_absolute"),
+            "screenshots",
+        )
         if final_variant:
             attempt_id = export.get("attempt_id")
             expected_specs = (
@@ -228,21 +231,27 @@ def validate_payload(
     outcome = validate_outcome(payload, lane, project, source_rejected=rejection is not None)
     diagnostic_preexecution = outcome == "preexecution"
     selection_failure = outcome == "selection-failure"
+    execution_startup_failure = outcome == "execution-startup-failure"
     require(diagnostic_preexecution is diagnostic_export, "preexecution_export")
     if diagnostic_preexecution:
         require(set(payload) == _PREEXECUTION_TOP_KEYS, "preexecution_schema")
-    if selection_failure:
+    if selection_failure or execution_startup_failure:
         expected_keys = _PREEXECUTION_TOP_KEYS | present_top
         require(set(payload) == expected_keys, "selection_failure_schema")
         files = export.get("files")
         if not isinstance(files, list):
             raise ManifestValidationError("selection_artifacts")
         exported_paths = {item.get("path") for item in files if isinstance(item, dict)}
-        require(
-            {"results/selection.json", "results/selection.log"}.issubset(exported_paths),
-            "selection_artifacts",
-        )
-    if diagnostic_preexecution or selection_failure or payload.get("status") == "passed":
+        required_paths = {"results/selection.json", "results/selection.log"}
+        if execution_startup_failure:
+            required_paths.update({"results/execution.log", "results/execution.stderr.log"})
+        require(required_paths.issubset(exported_paths), "selection_artifacts")
+    if (
+        diagnostic_preexecution
+        or selection_failure
+        or execution_startup_failure
+        or payload.get("status") == "passed"
+    ):
         require(not diagnostics and rejection is None, "failure_diagnostics")
     elif payload.get("self_test") == "normal":
         if payload.get("failure_reason") == "artifact_export_failed":

@@ -233,6 +233,59 @@ def _selection_failure_manifest(repository: Path) -> dict[str, object]:
     return payload
 
 
+def _execution_startup_failure_manifest(repository: Path) -> dict[str, object]:
+    """Build a Playwright web-server failure after selection but before test execution."""
+    payload = _manifest(repository)
+    export = payload["export"]
+    assert isinstance(export, dict)
+    directory = repository / str(export["export_directory"])
+    exporter_manifest_path = directory / "export-manifest.json"
+    exporter_manifest = json.loads(exporter_manifest_path.read_text())
+    artifact_entries = exporter_manifest["files"]
+    assert isinstance(artifact_entries, list)
+    for relative, content in (
+        ("results/selection.json", b'{"suites":[{"title":"smoke"}]}\n'),
+        ("results/selection.log", b"One scripted smoke test selected.\n"),
+        ("results/execution.log", b"Playwright stopped before its first test.\n"),
+        ("results/execution.stderr.log", b"Web server startup timed out.\n"),
+    ):
+        target = directory.joinpath(*relative.split("/"))
+        target.write_bytes(content)
+        artifact_entries.append(
+            {
+                "path": relative,
+                "sha256": _sha256(content),
+                "size_bytes": len(content),
+            }
+        )
+    artifact_entries.sort(key=lambda item: str(item["path"]))
+    exporter_manifest["total"] = {
+        "file_count": len(artifact_entries),
+        "size_bytes": sum(int(item["size_bytes"]) for item in artifact_entries),
+    }
+    manifest_content = (json.dumps(exporter_manifest, sort_keys=True) + "\n").encode()
+    exporter_manifest_path.write_bytes(manifest_content)
+    manifest_entry = {
+        "path": "export-manifest.json",
+        "sha256": _sha256(manifest_content),
+        "size_bytes": len(manifest_content),
+    }
+    export["manifest"] = manifest_entry
+    export["files"] = [manifest_entry, *artifact_entries]
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "playwright_failed",
+            "child_exit_code": 1,
+            "executed_ids": [],
+            "unexpected_failures": [],
+            "owned_backend": True,
+            "owned_frontend": True,
+        }
+    )
+    return payload
+
+
 def test_validate_payload_accepts_scripted_smoke_preexecution_diagnostic(tmp_path: Path) -> None:
     """Given an empty controlled pre-execution receipt, when checked, then it remains failed."""
     payload = _preexecution_manifest(tmp_path)
@@ -251,6 +304,16 @@ def test_validate_payload_accepts_exported_scripted_smoke_selection_failure(
     scope = validate_payload(payload, repository_root=tmp_path)
 
     assert payload["status"] == "failed"
+    assert scope == "full"
+
+
+def test_validate_payload_accepts_exported_execution_startup_failure(tmp_path: Path) -> None:
+    payload = _execution_startup_failure_manifest(tmp_path)
+
+    scope = validate_payload(payload, repository_root=tmp_path)
+
+    assert payload["selected_ids"]
+    assert payload["executed_ids"] == []
     assert scope == "full"
 
 
@@ -1114,7 +1177,6 @@ def test_validate_payload_rejects_normal_playwright_failure_contract_mutations(
     ("selected", "executed"),
     [
         ([], []),
-        (["scripted-smoke::e2e/smoke.spec.ts::works"], []),
         (
             ["scripted-smoke::e2e/smoke.spec.ts::works"],
             ["scripted-smoke::e2e/smoke.spec.ts::other"],
@@ -1124,7 +1186,7 @@ def test_validate_payload_rejects_normal_playwright_failure_contract_mutations(
 def test_validate_payload_rejects_normal_playwright_execution_mismatch(
     tmp_path: Path, selected: list[str], executed: list[str]
 ) -> None:
-    # Given a normal Playwright failure with empty, partial, or mismatched execution.
+    # Given a normal Playwright failure with empty or mismatched execution.
     payload = _manifest(tmp_path)
     payload.update(
         {
@@ -1147,6 +1209,22 @@ def test_validate_payload_rejects_normal_playwright_execution_mismatch(
         validate_payload(payload, repository_root=tmp_path)
 
     # Then a normal failure must prove a nonempty exact selected/executed set.
+
+
+def test_validate_payload_rejects_execution_startup_failure_without_logs(tmp_path: Path) -> None:
+    payload = _manifest(tmp_path)
+    payload.update(
+        {
+            "status": "failed",
+            "failure_reason": "playwright_failed",
+            "child_exit_code": 1,
+            "executed_ids": [],
+            "unexpected_failures": [],
+        }
+    )
+
+    with pytest.raises(ManifestValidationError, match="selection_artifacts"):
+        validate_payload(payload, repository_root=tmp_path)
 
 
 def test_main_dispatches_mixed_postgres_and_e2e_manifests(
