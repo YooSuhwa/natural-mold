@@ -1,8 +1,8 @@
 # Moldy Architecture Map
 
-<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+<!-- project-current-source: migration=m76_pinned_conv_summaries; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-08 -->
 
-> Last updated: 2026-09-05
+> Last updated: 2026-09-08
 > Source basis: current tracked repository source, recent runtime commits, and
 > the files under `backend/app/`,
 > `frontend/src/`, and `frontend/e2e/`.
@@ -20,7 +20,7 @@ schedule productization.
 | Backend | FastAPI app factory in `backend/app/main.py` and async SQLAlchemy services |
 | Frontend | Next.js 16.2.2 + React 19.2.4 App Router, `next-intl`, TanStack Query, Jotai |
 | Runtime | LangChain 1.x + LangGraph 1.x + `deepagents>=0.7.11,<0.8.0` (lock: 0.7.11) |
-| Database | PostgreSQL 16, Alembic head `m72_runtime_policy_snapshot` |
+| Database | PostgreSQL 16, Alembic head `m76_pinned_conv_summaries` |
 | Auth | ADR-016 JWT HS256, HttpOnly cookies, CSRF double-submit, refresh rotation, `super_user` |
 | Credentials | Cipher V2 and system/user credential separation |
 | Marketplace | Catalog, install, update, uninstall, publish, ACL, moderation/listing, k-skill importer |
@@ -192,7 +192,7 @@ The current skill runtime is selected-skill based, not a broad `/skills/` mount:
 
 ## Data Model Groups
 
-Alembic head is `m72_runtime_policy_snapshot`. The ORM groups tables as follows:
+Alembic head is `m76_pinned_conv_summaries`. The ORM groups tables as follows:
 
 | Group | Tables / models |
 |-------|-----------------|
@@ -214,18 +214,21 @@ rendering, and artifact linkage.
 
 ## Marketplace
 
-ADR-017 Phase 1 is implemented beyond the original planning baseline:
+ADR-017's Skill foundation now also supports MCP and Agent resources:
 
 - marketplace tables landed in M40, skill lineage in M41, `agent_skills.config`
   in M42, skill credential bindings in M43, relative storage in M44;
 - catalog list/detail/version APIs are implemented;
 - install/update/uninstall flows copy immutable version snapshots into the
-  user's installed skills;
-- publish flows snapshot user skills, perform secret scan, manage ACL, and
+  user's installed skills, MCP servers, or agent blueprints;
+- publish flows snapshot user skills/MCP templates/agent specs, perform secret scan, manage ACL, and
   create immutable versions;
 - super_user admin actions can toggle listing and disable items;
 - k-skill import and requirement mapping exist in `backend/app/marketplace/`;
 - frontend marketplace routes include catalog, item detail, and admin moderation.
+- MCP template handling lives in `marketplace/mcp_server.py` and `install/mcp.py`;
+  Agent snapshots and blueprint installation live in `agent_spec.py` and
+  `install/agent_blueprint.py`. The shared publish/install wizards support all three types.
 
 Tool marketplace remains out of scope. Runtime tools are still seeded or defined
 through code/registry and attached to agents, MCP servers, or skills.
@@ -238,7 +241,7 @@ through code/registry and attached to agents, MCP servers, or skills.
 - agents: list/detail, chat, settings, visual settings, manual/template/conversational creation
 - chat traces: `/agents/[agentId]/conversations/[conversationId]/traces`
 - resources: `/tools`, `/skills`, `/mcp-servers`, `/credentials`, `/models`
-- marketplace: `/marketplace`, detail pages, `/marketplace/admin/moderation`
+- marketplace: `/marketplace`, detail pages, `/settings/marketplace-admin`
 - settings: system credentials, system LLM, Agent API, memory, schedules, audit,
   security, usage, artifacts, appearance
 - shared conversations: `/shared/[shareId]`
@@ -259,6 +262,13 @@ the effective runtime policy. `useMoldyLangGraphStream` owns a single
 `@langchain/react` stream per conversation/thread, bridges root messages into
 assistant-ui with `useExternalStoreRuntime`, keeps the raw stream available for
 DeepAgents selectors, and routes HITL resume through `stream.respond`.
+
+The assistant-ui package is 0.15.18. Moldy's transport is retained; no AG-UI
+protocol migration or right-rail document viewer replacement was made. M73~M76
+persist queued inputs, run metrics, MCP Apps provenance and pinned summaries.
+Queued priority input can cancel and restart a run; it is not same-run Steer.
+`ScopedOffloadBackend` already subclasses CompositeBackend for scoped offloads;
+general StoreBackend-backed memory and async subagent execution remain separate work.
 
 Recent frontend refactors:
 
@@ -303,7 +313,7 @@ See `docs/agent-api.md` for request examples.
   backend processes share the same DB and all acquire work over time.
 - Artifact and preview surfaces date from `m59_conversation_artifacts` and should keep getting E2E
   coverage around branch links, shares, and generated-file permissions.
-- Marketplace supports Skill Phase 1 deeply; MCP/Agent resource publishing is
-  still a future expansion even though the schema is resource-type generic.
+- Marketplace MCP/Agent publish/install is implemented; external authentication,
+  complex dependency/binding combinations and long-running operations need broader coverage.
 - `CHECKPOINT.md` and older execution notes are historical records, not current
   architecture references.

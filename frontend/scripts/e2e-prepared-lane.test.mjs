@@ -28,6 +28,11 @@ const RUNTIME_POLICY_CAPTURE_FILES = Object.freeze([
   'chat-run-summary.spec.ts',
   'chat-recovery-discovery.spec.ts',
 ])
+const RESOURCE_CAPTURE_FILES = Object.freeze([
+  'profile-personalization.spec.ts',
+  'agent-mcp-attachment.spec.ts',
+  'marketplace-publish-moderation.spec.ts',
+])
 
 function collectListedNodes(report) {
   const nodes = []
@@ -351,7 +356,7 @@ describe('prepared E2E lane boundary', () => {
     expect(full.every((node) => !LIVE_E2E_SPECS.includes(`e2e/${node.file}`))).toBe(true)
     const fullFiles = new Set(full.map((node) => node.file))
     const captureFiles = new Set(capture.map((node) => node.file))
-    for (const file of RUNTIME_POLICY_CAPTURE_FILES) {
+    for (const file of [...RUNTIME_POLICY_CAPTURE_FILES, ...RESOURCE_CAPTURE_FILES]) {
       expect(captureFiles.has(file)).toBe(true)
       expect(fullFiles.has(file)).toBe(true)
     }
@@ -363,7 +368,8 @@ describe('prepared E2E lane boundary', () => {
           node.file.startsWith('captures/') ||
           node.file === 'chat-dictation.spec.ts' ||
           node.file === 'chat-langgraph-v3-visual-matrix.spec.ts' ||
-          RUNTIME_POLICY_CAPTURE_FILES.includes(node.file),
+          RUNTIME_POLICY_CAPTURE_FILES.includes(node.file) ||
+          RESOURCE_CAPTURE_FILES.includes(node.file),
       ),
     ).toBe(true)
     const visualMatrixNodes = capture.filter(

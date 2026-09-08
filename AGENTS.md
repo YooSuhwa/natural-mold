@@ -1,6 +1,6 @@
 # Moldy — AI Agent Builder
 
-<!-- project-current-source: migration=m72_runtime_policy_snapshot; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-05 -->
+<!-- project-current-source: migration=m76_pinned_conv_summaries; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-08 -->
 
 노코드로 AI 에이전트를 만들고, 채팅하고, 스케줄링하는 웹 애플리케이션.
 **ADR-016에 따라 멀티유저 인증 적용 완료** (JWT + super_user). 운영자(super_user)와 일반 사용자 권한이 분리되어 있다.
@@ -77,7 +77,7 @@ natural-mold/
 │   │   │   ├── google_tools.py  # Google Custom Search 도구
 │   │   │   └── google_workspace_tools.py # Gmail, Calendar, Chat Webhook
 │   │   └── seed/                # 시드 데이터 (모델, 템플릿, 시스템 도구, bootstrap_from_env)
-│   ├── alembic/                 # DB 마이그레이션 (head: m72_runtime_policy_snapshot)
+│   ├── alembic/                 # DB 마이그레이션 (head: m76_pinned_conv_summaries)
 │   ├── tests/                   # pytest (aiosqlite in-memory)
 │   ├── scripts/                 # 유틸리티 (migrate_mock_to_real_user, google_oauth_setup, ...)
 │   ├── pyproject.toml
@@ -286,7 +286,7 @@ docker-compose up -d postgres
 cd backend
 cp .env.example .env  # API 키 + ENCRYPTION_KEYS / JWT_SECRET 설정
 uv sync               # 의존성 설치 (.venv 자동 생성)
-uv run alembic upgrade head   # DB 마이그레이션 (head: m72_runtime_policy_snapshot)
+uv run alembic upgrade head   # DB 마이그레이션 (head: m76_pinned_conv_summaries)
 uv run uvicorn app.main:app --reload --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 # 시작 시 시드 데이터 자동 삽입 (모델, 템플릿, ENV → system credentials bootstrap)
@@ -421,7 +421,7 @@ lib/types/      → Backend 스키마와 1:1 대응하는 TS 타입
 | `audit_events`, `daily_spend_*`, `health_check_history` | 감사, 비용 집계, health history |
 | `system_llm_settings` | Builder/Assistant/Image role별 system model 설정 |
 
-마이그레이션: `backend/alembic/versions/` (Alembic). 최신 head는 `m72_runtime_policy_snapshot`이다.
+마이그레이션: `backend/alembic/versions/` (Alembic). 최신 head는 `m76_pinned_conv_summaries`이다.
 
 `is_system` 플래그가 있는 테이블 공통 제약: `CHECK ((is_system = false) OR (user_id IS NULL))`. 시스템 리소스는 user_id가 반드시 NULL.
 
@@ -547,8 +547,9 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 
 ## 현재 상태 요약
 
-- **백엔드**: Alembic head `m72_runtime_policy_snapshot` 적용. 멀티유저 인증, marketplace skill publish/install, System LLM settings, schedule productization, Agent API, memory controls, audit events, generated artifacts, credential OAuth states, conversation runs, agent blueprints, chat navigation indexes, subagent runtime, executor split, skill usage and feedback, conversation runtime policy snapshot 반영.
+- **백엔드**: Alembic head `m76_pinned_conv_summaries` 적용. 멀티유저 인증, marketplace skill publish/install, System LLM settings, schedule productization, Agent API, memory controls, audit events, generated artifacts, credential OAuth states, conversation runs, agent blueprints, chat navigation indexes, subagent runtime, executor split, skill usage and feedback, conversation runtime policy snapshot 반영.
 - **프론트엔드**: 멀티유저 로그인/회원가입 UI, MCP 서버 관리, Skill/Credential/Marketplace 관리, 채팅 SSE 스트리밍, artifact preview/right rail/library, memory/settings, Agent API settings, 트리거 스케줄링, Builder 마법사.
-- **다음 단계**: MCP/Agent marketplace 확장, profile/MCP attach/marketplace moderation E2E, long-running scheduler/worktree 운영 안정화.
+- **구현됨**: MCP/Agent marketplace 게시·설치 및 공용 wizard, assistant-ui 0.15.18, 입력 큐·실행 지표·MCP Apps·고정 요약(M73~M76), Pyright basic-mode 오류 0 및 차단 CI. 현재 run에 직접 주입하는 Steer는 미구현.
+- **다음 단계**: E2E 범위·실행 결과는 `docs/e2e-coverage.md`에서 관리. long-running scheduler/worktree 운영 안정화, 외부 OAuth 및 복잡한 marketplace 설치 조합의 추가 검증은 후속 범위.
 - 자세한 태스크 현황은 `TASKS.md` 참조
 - 기능 명세는 `docs/PRD.md` + `docs/PRD-screens.md` 참조

@@ -1,6 +1,6 @@
 # E2E Coverage Matrix
 
-<!-- e2e-current-source: profile-personalization=untested; refreshed=2026-09-05 -->
+<!-- e2e-current-source: profile-personalization=covered; refreshed=2026-09-08 -->
 
 Living record of Playwright E2E coverage across Moldy's feature surface.
 Update this whenever you add/change a spec or ship a user-facing feature.
@@ -9,28 +9,28 @@ Update this whenever you add/change a spec or ship a user-facing feature.
 > Mocks (`page.route`) are used only where determinism requires it (e.g. token
 > usage numbers, third-party error paths); real third-party OAuth stays manual.
 
-## How to run (throwaway stack, port/DB isolated)
+## How to run (owned throwaway stack)
+
+Use Node 22, install locked dependencies (`uv sync --frozen` in backend,
+`pnpm install --frozen-lockfile` at the root), and start Docker. From the repo root:
 
 ```bash
-# 1) scripted throwaway Postgres on :5433 (DB name must carry the lane prefix)
-docker run -d --name moldy-e2e-scripted-pg -p 5433:5432 \
-  -e POSTGRES_DB=moldy_e2e_scripted_local -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy postgres:16-alpine
-until docker exec moldy-e2e-scripted-pg pg_isready -U moldy -d moldy_e2e_scripted_local; do sleep 1; done
+# Focused work: run only the changed feature specs first.
+bash scripts/run-isolated-e2e-tests.sh scripted --project scripted-full \
+  --manifest .omo/evidence/project-restart-consolidated-roadmap/profile-check-r1.json \
+  -- e2e/profile-personalization.spec.ts
 
-# 2) migrate only the disposable DB
-(cd backend && \
-  DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
-  uv run alembic upgrade head)
-
-# 3) run; scripted defaults to frontend/backend 3100/8101 and clears E2E_LLM_*
-(cd frontend && \
-  DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
-  DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5433/moldy_e2e_scripted_local' \
-  pnpm test:e2e:scripted -- --grep-invert "Manual Atlassian")
-
-# 4) cleanup
-docker rm -f moldy-e2e-scripted-pg
+# Once implementation is complete: one full scripted regression run.
+bash scripts/run-isolated-e2e-tests.sh scripted --project scripted-full \
+  --manifest .omo/evidence/project-restart-consolidated-roadmap/full-regression-r1.json
 ```
+
+Manifest filenames must be new (the runner refuses to overwrite evidence).
+The runner creates/migrates an owned PostgreSQL database, builds/starts isolated
+backend and frontend processes, then removes owned resources even after failures.
+Its manifest records selected/executed tests, failures and cleanup checks. Logs
+are exported under `output/e2e-captures/`; they are not committed. No shared/main
+DB migration, reused development server, or production credential is needed.
 
 ## Run model
 
@@ -64,7 +64,7 @@ docker rm -f moldy-e2e-scripted-pg
 |---|---|---|---|---|
 | Session bootstrap | — | `auth` | `e2e/global-setup.mjs` (API login) | ✅ infra |
 | Signup / login / logout UI | `(auth)/login`, `(auth)/register` | `auth` | `auth` | ✅ |
-| Profile personalization | `/settings` | `auth` | — | ❌ |
+| Profile personalization | `/settings` | `auth` | `profile-personalization` | ✅ name/initials/color/reset + avatar upload/render/delete |
 | Dashboard / static pages | `/`, `/tools`, `/models`, `/usage` | — | `smoke` | 🟦 |
 | Agent creation pages | `/agents/new{,/manual,/template,/conversational}` | `agents`, `builder` | `smoke` | 🟦 |
 | Conversational builder (real flow) | `/agents/new/conversational` | `builder` | `builder` | ✅ |
@@ -72,7 +72,7 @@ docker rm -f moldy-e2e-scripted-pg
 | Attach sub-agent | `/agents/[id]/settings` | `agent_subagents` | `agent-settings` | ✅ |
 | Attach skill | `/agents/[id]/settings` | `agent_skills` | `agent-settings` | ✅ |
 | Attach tool | `/agents/[id]/settings` | `agent_tools` | `agent-settings` | ✅ |
-| Attach MCP tool | `/agents/[id]/settings` | `agent_mcp_tools` | — | ❌ (needs an MCP server) |
+| Attach MCP tool | `/agents/[id]/settings` | `agent_mcp_tools` | `agent-mcp-attachment` | ✅ local MCP discovery, attach/reload/detach |
 | **Subagent delegation run** | chat | `agents`, agent-runtime | `chat-langgraph-v3` | ✅ |
 | Chat run lifecycle | `/agents/[id]/conversations/[cid]` | `conversation_runs` | `chat-run-lifecycle` | ✅ |
 | Chat navigator + sort/view | sidebar | `conversations` | `chat-navigator`, `chat-navigator-live`, `smoke` | ✅ |
@@ -92,7 +92,7 @@ docker rm -f moldy-e2e-scripted-pg
 | Schedules / triggers | `/agents/[id]/settings` (schedule tab) | `triggers` | `agent-triggers` | ✅ (create + render) |
 | Public share link | `/shared/[id]` | `shares` | `share-link` | ✅ |
 | Marketplace browse + install | `/marketplace` | `marketplace` | `marketplace` | ✅ (install via API) |
-| Marketplace publish/moderation | `/marketplace/admin` | `marketplace` | — | ❌ |
+| Marketplace publish/moderation | `/`, `/mcp-servers`, `/settings/marketplace-admin` | `marketplace` | `marketplace-publish-moderation` | ✅ Agent publish/approve, MCP publish/disable, member denial |
 | Memory controls | `/settings/memory` | `memory` | `memory-controls` | ✅ |
 | Agent API deployment | `/settings/agent-api` | `agent_api` | `agent-api` | ✅ |
 | Audit trail | `/settings/audit` | `audit` | `audit-trail` | ✅ |
@@ -101,7 +101,7 @@ docker rm -f moldy-e2e-scripted-pg
 ## Status & next up
 
 **Done (real E2E, green):** auth (login/signup/logout) · conversational builder
-(LiteLLM) · agent-settings (system prompt + attach tool/skill/sub-agent) ·
+(scripted System LLM) · agent-settings (system prompt + attach tool/skill/sub-agent) ·
 agent-triggers (interval) · share-link (publish + logged-out read-only + revoke)
 · marketplace (catalog + install) · **agent-api (deploy + issue key + revoke)** ·
 **memory-controls (record CRUD + write-policy)** · **audit-trail (agent.create
@@ -111,12 +111,53 @@ on send)** · **hitl-approval (reject an execute_in_skill interrupt)** · the 4
 stale fixes · **chat-langgraph-v3 (LangGraph v3/Deep Agents runtime path: state, HITL approve,
 subagent delegation, artifacts, usage, replay, history, share)**.
 
-**Next up (remaining ❌, rough priority):**
-1. Profile personalization (`/settings`) — no user-profile E2E exists yet
-2. MCP tool attach — needs a running MCP server (first-party `localhost:18001-4`);
-   most setup-heavy, defer unless an MCP server is available
-3. Marketplace publish/moderation (`/marketplace/admin`) — super_user moderation
-   queue (publish → approve listing)
+**New coverage (2026-09-08):** profile personalization uses a separately registered
+member, not the shared seed account. MCP attachment uses the local FastMCP fixture
+with real discovery, not an external MCP dependency. Marketplace tests drive
+Agent/MCP publish wizards and operator decisions, and reject ordinary-member
+access in both UI and API. Passing these does not prove every install/update/ACL
+combination or external OAuth flow.
+
+**Remaining validation:** external OAuth/live LLM quality, broader marketplace
+dependency and credential-binding combinations, and long-running multi-worktree
+scheduler behavior. These are not part of the scripted-full completion claim.
+
+### Resource regression evidence (2026-09-08)
+
+- Focused `scripted-capture`: **6 passed, 0 failed, 0 skipped, 0 flaky**.
+  Manifest: `.omo/evidence/project-restart-consolidated-roadmap/docs-e2e-resources-r4.json`.
+  The runner confirmed secret-safe export and full owned-resource cleanup.
+- Captures: seven states at 375/768/1280 × 960, **21 PNGs**, under
+  `output/e2e-captures/20260908-docs-e2e-resources-r4-9a227ad7da47/`.
+  These are viewport-resize snapshots of desktop-driven flows, not three
+  independent mobile interaction runs or pixel-regression baselines.
+- Fixed during the new tests: owner-readable disabled marketplace items remained
+  in the operator approval queue after a successful disable and refetch.
+  `useModerationQueue` now projects published candidates only; the raw owner
+  catalog data is preserved. The new hook suite was red before this fix and
+  green afterward (3 tests); browser disable → reload → absence also passes.
+- **Responsive follow-up completed:** `DialogShell` now retains a 1rem viewport
+  gutter, the tool/skill picker changes to one column below 1024px, and the current
+  selection height stays bounded so discovery remains reachable. Profile and
+  moderation copy preserve Korean word boundaries, narrow moderation actions reflow,
+  and the last settings admin item no longer overlaps the fixed utility footer.
+- Final focused `scripted-capture`: **6 passed, 0 failed, 0 skipped, 0 flaky**.
+  Manifest:
+  `.omo/evidence/project-restart-consolidated-roadmap/mobile-tablet-resources-final-r2.json`.
+  Captures: **21 PNGs** at 375/768/1280 × 960 under
+  `output/e2e-captures/20260908-scripted-capture-d8351b67dfb8/`. Automated checks
+  enforce document/dialog horizontal containment and settings-sidebar tail
+  containment. Two fresh, independent visual reviews inspected all 21 images and
+  returned PASS. This is focused responsive evidence, not a full-suite rerun or a
+  pixel-regression baseline.
+- One full `scripted-full` pass selected 149 runnable tests plus three declared
+  skips: **148 passed, 3 skipped, 1 timed out** in 8.9 minutes. The sole failure
+  was `model-fallback`: its native `<summary>` was repeatedly replaced while a
+  pointer click waited for geometric stability. The spec now uses retry-bounded
+  native keyboard activation (no sleep or forced click); its isolated rerun
+  passed **1/1 in 49.9 seconds**. Per the agreed validation policy, the expensive
+  full lane was not repeated after this test-only stabilization. Manifests:
+  `docs-e2e-final-full-r1.json` and `docs-e2e-model-fallback-stable-r1.json`.
 
 **Notes for the remaining HITL/attachment nuances:**
 - HITL *approve* is exercised by `document-artifact-viewers` (`approveExecuteInSkill`);
@@ -127,15 +168,12 @@ subagent delegation, artifacts, usage, replay, history, share)**.
   the messages API never echoes them; verify the upload write + retrievability
   instead of a message-linked attachment.
 
-**How to continue (fresh session):** read this file top-to-bottom, then bring up
-the stack with the recipe above (throwaway PG :5433, backend :8101, frontend
-:3100). `backend/.env` (symlinked to main) already has `E2E_LLM_*`, so the
-LiteLLM System LLM + the scripted model are auto-provisioned on boot — no manual
-DB/UI setup. Pick the next item, add a spec under `frontend/e2e/`, run it with
-the recipe, iterate against the live app (Playwright `error-context.md` dumps the
-DOM on failure), then update this matrix + changelog. Keep mocks only where
-determinism requires (token usage, third-party errors); everything else drives
-the live backend (scripted model for keyless chat, LiteLLM for builder).
+**How to continue (fresh session):** use the owned runner above. It clears live
+LLM configuration for scripted runs and seeds the scripted System LLM; do not
+depend on main `.env` contents. Add a spec under `frontend/e2e/`, run its focused
+scenario, and update this matrix. Inspect the exported execution logs on failure.
+Keep mocks only where determinism requires them. Do not repeat the full suite
+after each individual edit.
 
 ## Gotchas
 
@@ -150,17 +188,20 @@ the live backend (scripted model for keyless chat, LiteLLM for builder).
 
 ## Constraints
 
-- **Builder still needs a real LLM for full semantic coverage.** The
-  conversational builder and the Assistant use the `builder_*`/`assistant_*`
-  model (default Anthropic), NOT the keyless `e2e_scripted` model. Subagent
-  delegation now has deterministic coverage through `chat-langgraph-v3`, but
-  builder/assistant judgment quality still needs either a real key or scripted
-  support before it can be fully deterministic.
+- **Scripted tests do not measure LLM judgment quality.** The isolated lane seeds
+  a scripted `text_primary` System LLM via `seed/e2e_scripted_model.py` for builder
+  availability. Actual builder/assistant generation quality needs a separate live
+  evaluation with valid `E2E_LLM_*` credentials. Manual/live/capture-only scenarios
+  are excluded by the project catalog, not silently treated as scripted passes.
 - Everything that does not require an LLM *decision* (CRUD, attach/detach,
   navigation, schedules, share, marketplace install) is fully real via the live
   throwaway backend.
 
 ## Changelog
+
+- 2026-09-08: added six UI/API-backed scenarios for profile personalization (2),
+  MCP attachment (1), and marketplace publication/moderation (3). Updated the
+  runner instructions and corrected stale marketplace route/System LLM claims.
 
 - Added `chat-langgraph-v3` spec: creates scripted parent/child agents, drives
   the `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3` path through live todos, HITL

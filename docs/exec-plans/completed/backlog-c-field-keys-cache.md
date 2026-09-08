@@ -1,5 +1,10 @@
 # 백로그 C — credentials list N+1 복호화 제거
 
+**상태**: 완료 — 2026-09-08 소스 대조 후 active 목록에서 보관으로 이동.
+현재 구현은 `backend/app/credentials/service.py`의 field_keys 캐시와
+`backend/app/models/credential.py`를 참조한다. 아래 Fernet 및 legacy service
+경로는 도입 당시 기록이며, 현재 암호화는 ADR-009의 Cipher V2다.
+
 ## Context
 
 `GET /api/credentials`가 각 credential 행의 `data_encrypted` 값을 하나씩 Fernet 복호화 + JSON 파싱해 `field_keys` 배열을 추출한다. DB 쿼리는 1회지만 Fernet 복호화가 N번 발생하는 **N+1 복호화** 구조다.

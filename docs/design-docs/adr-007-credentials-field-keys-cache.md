@@ -52,5 +52,5 @@ Alembic 마이그레이션(`m7_add_credential_field_keys`)의 `upgrade()`에서 
 ## 관련 문서
 
 - 플랜: `~/.claude/plans/c-credentials-list-glistening-kurzweil.md`
-- 실행 계획: `docs/exec-plans/active/backlog-c-field-keys-cache.md`
+- 완료된 실행 기록: `docs/exec-plans/completed/backlog-c-field-keys-cache.md`
 - 이전 ADR: ADR-005(Builder/Assistant), ADR-003(스킬+메모리)

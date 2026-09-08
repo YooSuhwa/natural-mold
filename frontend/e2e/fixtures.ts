@@ -43,17 +43,19 @@ export const E2E_PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 
 export type CsrfHeaders = Record<string, string>
+// Browser responses and APIRequestContext responses share this read-only contract.
+type JsonResponse = Pick<APIResponse, 'ok' | 'status' | 'text' | 'json'>
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export async function failWithBody(label: string, response: APIResponse): Promise<never> {
+export async function failWithBody(label: string, response: JsonResponse): Promise<never> {
   const body = await response.text().catch(() => '')
   throw new Error(`${label} failed (${response.status()}): ${body.slice(0, 800)}`)
 }
 
-export async function apiJson(response: APIResponse, label: string): Promise<unknown> {
+export async function apiJson(response: JsonResponse, label: string): Promise<unknown> {
   if (!response.ok()) {
     await failWithBody(label, response)
   }

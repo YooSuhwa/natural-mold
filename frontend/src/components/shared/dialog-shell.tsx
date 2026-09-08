@@ -27,7 +27,7 @@ function Root({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          'moldy-dialog-shell flex max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-none',
+          'moldy-dialog-shell flex min-w-0 max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[calc(100%-2rem)]',
           DIALOG_SIZE[size],
           DIALOG_HEIGHT[height],
           className,
@@ -80,7 +80,7 @@ function Header({ icon, title, description, actions, className, srOnly }: Header
       <div className="min-w-0 flex-1">
         <DialogTitle className="text-base font-semibold text-foreground">{title}</DialogTitle>
         {description ? (
-          <DialogDescription className="mt-1 text-sm text-muted-foreground">
+          <DialogDescription className="mt-1 break-keep text-pretty text-sm text-muted-foreground">
             {description}
           </DialogDescription>
         ) : null}
@@ -99,7 +99,7 @@ function Body({ className, children }: BodyProps) {
   return (
     <div
       className={cn(
-        'moldy-dialog-body flex-1 space-y-6 overflow-y-auto px-6 py-5 [&_label]:text-xs [&_label]:font-medium [&_label]:text-muted-foreground',
+        'moldy-dialog-body min-h-0 min-w-0 flex-1 space-y-6 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 [&_label]:text-xs [&_label]:font-medium [&_label]:text-muted-foreground',
         className,
       )}
     >

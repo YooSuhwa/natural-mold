@@ -21,6 +21,15 @@
 - artifact와 subagent 상세는 기존 right rail에서 연다. 모바일 artifact layer와
   rail 너비/resize 동작은 별도 Moldy surface 계약으로 유지한다.
 - surface, radius, shadow, status는 `moldy-*` 클래스와 semantic token을 사용한다.
+- `DialogShell`은 지정된 크기와 관계없이 viewport 좌우 1rem gutter 안에 머물러야
+  한다. 두 열 선택기는 1024px 미만에서 한 열로 전환하고, 현재 선택 목록의 높이를
+  제한해 다음 탐색 영역과 닫기 동작을 같은 스크롤 흐름에서 사용할 수 있어야 한다.
+- 한국어 설명 문구는 단어 내부의 마지막 음절이 고립되지 않도록 `break-keep`과
+  균형 잡힌 wrapping을 사용한다. URL, 이메일, 사용자 입력처럼 긴 비분절 값은
+  별도의 `break-words` 또는 가로 스크롤 경계를 둔다.
+- 설정 사이드바의 navigation 영역과 하단 utility footer는 서로 겹치지 않는다.
+  메뉴가 늘어나면 navigation 스크롤을 유지하고 마지막 항목이 footer 경계에서
+  부분적으로 잘리지 않도록 그룹 밀도와 하단 경계를 함께 검증한다.
 
 ## Interaction contract
 

@@ -8,6 +8,7 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useAllMcpTools } from '@/lib/hooks/use-mcp-servers'
+import { cn } from '@/lib/utils'
 
 import { CatalogPanel } from './tools-skills-catalog-panel'
 import { CurrentColumn } from './tools-skills-current-column'
@@ -104,7 +105,7 @@ export function ToolsSkillsDialog({
         description={t(descriptionKey)}
       />
       <DialogShell.Body className="flex flex-col">
-        <div className="grid min-h-0 flex-1 gap-6 md:grid-cols-2">
+        <div className="grid min-h-0 min-w-0 flex-1 gap-6 lg:grid-cols-2">
           <CurrentColumn
             total={totalSelected}
             tools={showToolsAndMcp ? selectedTools : []}
@@ -115,7 +116,7 @@ export function ToolsSkillsDialog({
             onRemoveSkill={onToggleSkill}
           />
 
-          <section className="flex min-h-0 flex-col">
+          <section className="flex min-h-0 min-w-0 flex-col">
             {mode === 'skills' ? (
               <SkillsPanel
                 allSkills={allSkills}
@@ -128,19 +129,24 @@ export function ToolsSkillsDialog({
                 onValueChange={(value) => setTab(coerceDialogTab(value))}
                 className="flex min-h-0 w-full flex-1 flex-col"
               >
-                <LineTabsList className="w-full justify-start">
-                  <LineTabsTrigger value="catalog">
-                    <PackageIcon className="size-3.5" /> {t('tabs.catalog')}
+                <LineTabsList
+                  className={cn(
+                    'grid w-full justify-stretch gap-0 sm:gap-1',
+                    mode === 'all' ? 'grid-cols-4' : 'grid-cols-3',
+                  )}
+                >
+                  <LineTabsTrigger value="catalog" className="min-w-0 px-1.5 sm:px-4">
+                    <PackageIcon className="hidden size-3.5 sm:block" /> {t('tabs.catalog')}
                   </LineTabsTrigger>
-                  <LineTabsTrigger value="tools">
-                    <WrenchIcon className="size-3.5" /> {t('tabs.tools')}
+                  <LineTabsTrigger value="tools" className="min-w-0 px-1.5 sm:px-4">
+                    <WrenchIcon className="hidden size-3.5 sm:block" /> {t('tabs.tools')}
                   </LineTabsTrigger>
-                  <LineTabsTrigger value="mcp">
-                    <ServerIcon className="size-3.5" /> {t('tabs.mcp')}
+                  <LineTabsTrigger value="mcp" className="min-w-0 px-1.5 sm:px-4">
+                    <ServerIcon className="hidden size-3.5 sm:block" /> {t('tabs.mcp')}
                   </LineTabsTrigger>
                   {mode === 'all' ? (
-                    <LineTabsTrigger value="skills">
-                      <SparklesIcon className="size-3.5" /> {t('tabs.skills')}
+                    <LineTabsTrigger value="skills" className="min-w-0 px-1.5 sm:px-4">
+                      <SparklesIcon className="hidden size-3.5 sm:block" /> {t('tabs.skills')}
                     </LineTabsTrigger>
                   ) : null}
                 </LineTabsList>

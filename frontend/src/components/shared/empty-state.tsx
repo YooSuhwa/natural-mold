@@ -28,9 +28,9 @@ export function EmptyState({
       ) : iconId ? (
         <EmptyStateIcon iconId={iconId} fallback={iconFallback} />
       ) : null}
-      <div className="space-y-1">
+      <div className="min-w-0 space-y-1 break-keep text-pretty">
         <p className="text-sm font-semibold text-foreground">{title}</p>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        {description && <p className="text-sm leading-6 text-muted-foreground">{description}</p>}
       </div>
       {action}
     </div>

@@ -79,6 +79,8 @@ export function useModerationQueue(enabled = true) {
   return useQuery({
     queryKey: marketplaceQueryKeys.moderation,
     queryFn: () => marketplaceApi.moderationQueue(),
+    // Owners/operators can read disabled items; those are not approval candidates.
+    select: (items) => items.filter((item) => item.status === 'published'),
     enabled,
     staleTime: 15_000,
   })

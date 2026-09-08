@@ -96,24 +96,28 @@ export default function MarketplaceAdminPage() {
                 {queue.map((item) => (
                   <li
                     key={item.id}
-                    className="flex flex-wrap items-center justify-between gap-2 py-3"
+                    className="flex flex-col items-stretch gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0 flex-1">
                       <Link
                         href={`/marketplace/${item.id}`}
-                        className="text-sm font-medium hover:text-primary-strong"
+                        className="break-words text-sm font-medium hover:text-primary-strong"
                       >
                         {item.name}
                       </Link>
-                      <p className="text-xs text-muted-foreground">
-                        {item.resource_type} · {formatMediumDate(item.created_at)}
+                      <p className="flex flex-wrap gap-x-1 text-xs text-muted-foreground">
+                        <span>{item.resource_type}</span>
+                        <span aria-hidden>·</span>
+                        <span className="whitespace-nowrap">
+                          {formatMediumDate(item.created_at)}
+                        </span>
                       </p>
                       <div className="mt-1 flex flex-wrap items-center gap-1">
                         <OriginBadge summary={item.origin_summary} />
                         <PublicationBadge summary={item.publication_summary} />
                       </div>
                     </div>
-                    <div className="flex shrink-0 gap-1">
+                    <div className="flex flex-wrap gap-1 sm:shrink-0">
                       <Button
                         size="sm"
                         variant="outline"
@@ -167,8 +171,12 @@ export default function MarketplaceAdminPage() {
             ) : (
               <p className="text-muted-foreground">{t('loading')}</p>
             )}
-            <pre className="rounded-md bg-muted px-3 py-2 text-xs">{t('sync.command')}</pre>
-            <p className="text-xs text-muted-foreground">{t('sync.cliOnly')}</p>
+            <pre className="overflow-x-auto rounded-md bg-muted px-3 py-2 text-xs">
+              {t('sync.command')}
+            </pre>
+            <p className="break-keep text-pretty text-xs text-muted-foreground">
+              {t('sync.cliOnly')}
+            </p>
           </CardContent>
         </Card>
       </div>

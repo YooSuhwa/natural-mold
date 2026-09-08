@@ -542,11 +542,11 @@ def test_inspect_project_facts_rejects_future_program_as_committed_work(
 def test_inspect_project_facts_rejects_runtime_policy_adr_contract_drift(
     fixture_repository: Path,
 ) -> None:
-    # Given ADR-022 no longer identifies the source-derived migration contract.
+    # Given ADR-022 identifies a migration that never existed in this repository.
     checker = _load_checker()
     adr = fixture_repository / "docs/design-docs/adr-022-runtime-policy-lifecycle.md"
     adr.write_text(
-        adr.read_text(encoding="utf-8").replace("migration=m71_current", "migration=m70_current"),
+        adr.read_text(encoding="utf-8").replace("migration=m71_current", "migration=m99_missing"),
         encoding="utf-8",
     )
 
@@ -558,19 +558,55 @@ def test_inspect_project_facts_rejects_runtime_policy_adr_contract_drift(
 def test_inspect_project_facts_rejects_false_profile_e2e_coverage(
     fixture_repository: Path,
 ) -> None:
-    # Given the E2E matrix claims the still-uncovered profile flow is tested.
+    # Given the E2E matrix claims coverage without a tracked profile spec.
     checker = _load_checker()
     coverage = fixture_repository / "docs/e2e-coverage.md"
     coverage.write_text(
         coverage.read_text(encoding="utf-8").replace(
-            "profile-personalization=untested", "profile-personalization=tested"
+            "profile-personalization=untested", "profile-personalization=covered"
         ),
         encoding="utf-8",
     )
 
     # When current facts are checked, the false coverage marker is rejected.
-    with pytest.raises(RuntimeError, match="E2E current-source contract"):
+    with pytest.raises(RuntimeError, match="profile-personalization"):
         checker.inspect_project_facts(fixture_repository)
+
+
+def test_historical_runtime_policy_migration_remains_valid_after_later_migrations(
+    fixture_repository: Path,
+) -> None:
+    checker = _load_checker()
+    adr = fixture_repository / "docs/design-docs/adr-022-runtime-policy-lifecycle.md"
+    adr.write_text(
+        adr.read_text(encoding="utf-8").replace("migration=m71_current", "migration=m70_current"),
+        encoding="utf-8",
+    )
+    assert checker.inspect_project_facts(fixture_repository)[2] == "m71_current"
+
+
+def test_profile_coverage_marker_requires_a_tracked_spec(fixture_repository: Path) -> None:
+    checker = _load_checker()
+    coverage = fixture_repository / "docs/e2e-coverage.md"
+    coverage.write_text(
+        coverage.read_text(encoding="utf-8").replace(
+            "profile-personalization=untested", "profile-personalization=covered"
+        ),
+        encoding="utf-8",
+    )
+    spec = fixture_repository / "frontend/e2e/profile-personalization.spec.ts"
+    spec.parent.mkdir(parents=True)
+    spec.write_text(
+        "// Profile E2E source; execution is validated by the E2E lane.\n", encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="profile-personalization"):
+        checker.inspect_project_facts(fixture_repository)
+    subprocess.run(
+        ["/usr/bin/git", "add", str(spec.relative_to(fixture_repository))],
+        cwd=fixture_repository,
+        check=True,
+    )
+    assert checker.inspect_project_facts(fixture_repository)[2] == "m71_current"
 
 
 def test_inspect_project_facts_allows_explicit_historical_provenance(

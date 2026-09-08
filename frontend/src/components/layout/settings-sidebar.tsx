@@ -132,7 +132,7 @@ export function SettingsSidebar() {
       />
 
       <SidebarContent className="min-h-0 px-1">
-        <SidebarGroup>
+        <SidebarGroup className="py-1.5">
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
               <SidebarMenuItem>
@@ -151,7 +151,7 @@ export function SettingsSidebar() {
 
         <SidebarSeparator />
 
-        <nav aria-label={tSettings('navLabel')}>
+        <nav aria-label={tSettings('navLabel')} className="[&_[data-sidebar=group]]:py-1.5">
           {sections.map((section) => (
             <SidebarNavSection
               key={section.label}
