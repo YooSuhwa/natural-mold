@@ -76,12 +76,20 @@ test('discovered MCP tool attaches, survives reload and detaches from agent sett
     await page.reload()
     await page.getByRole('button', { name: '추가', exact: true }).first().click()
     await expect(dialog.getByRole('button', { name: 'weather 제거', exact: true })).toBeVisible()
-    await captureResourcePage(
+    await captureResourcePage({
       page,
       testInfo,
-      'agent-mcp-attached',
-      dialog.getByRole('button', { name: 'weather 제거', exact: true }),
-    )
+      state: 'agent-mcp-attached',
+      evidence: dialog.getByRole('button', { name: 'weather 제거', exact: true }),
+      surface: dialog,
+      horizontalBoundary: dialog.locator('.moldy-dialog-body'),
+      verify: async () => {
+        await expect(dialog.getByRole('tab', { name: 'MCP', exact: true })).toBeVisible()
+        await expect(
+          dialog.getByRole('button', { name: 'weather 제거', exact: true }),
+        ).toBeVisible()
+      },
+    })
     await dialog.getByRole('button', { name: 'weather 제거', exact: true }).click()
     await dialog.getByRole('button', { name: '닫기', exact: true }).click()
     const detached = page.waitForResponse(

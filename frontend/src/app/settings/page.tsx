@@ -53,7 +53,7 @@ export default function SettingsPage() {
 
   return (
     <SettingsShell>
-      <div className="space-y-4">
+      <div className="space-y-4 break-keep">
         <section className="space-y-1">
           <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
           <p className="text-sm leading-6 text-muted-foreground">{t('description')}</p>

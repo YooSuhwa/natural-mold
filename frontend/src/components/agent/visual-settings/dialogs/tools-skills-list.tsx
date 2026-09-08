@@ -49,7 +49,7 @@ export function AvailableRow({
   const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
 
   return (
-    <div className="flex items-start gap-3 rounded-lg border p-3">
+    <div className="flex min-w-0 items-start gap-3 rounded-lg border p-3">
       <KindIcon kind={kind} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{name}</p>
@@ -77,7 +77,7 @@ export function AvailableRow({
 
 export function EmptyBox({ children }: { readonly children: ReactNode }) {
   return (
-    <div className="flex h-32 items-center justify-center rounded-lg border border-dashed text-center text-sm text-muted-foreground">
+    <div className="flex h-32 items-center justify-center rounded-lg border border-dashed px-4 text-center text-sm text-muted-foreground break-keep text-pretty">
       {children}
     </div>
   )

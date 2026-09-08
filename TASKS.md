@@ -54,8 +54,10 @@
 
 ## Active Follow-ups
 
-- [ ] Address narrow-viewport tool/skill dialog clipping and Korean text wrapping
-  observed in the new resource captures; desktop functional E2E is not responsive certification.
+- [x] Address narrow-viewport tool/skill dialog clipping, Korean text wrapping,
+  and settings-sidebar footer overlap observed in the resource captures. The focused
+  375/768/1280 capture run and two independent visual reviews passed; see
+  `docs/e2e-coverage.md`.
 - [ ] Extend marketplace validation to external OAuth and complex
   dependency/update/credential-binding combinations.
 - [ ] Harden multi-worktree scheduler behavior when several backends share one DB.

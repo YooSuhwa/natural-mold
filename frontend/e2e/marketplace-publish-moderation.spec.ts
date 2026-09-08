@@ -92,11 +92,25 @@ test('agent UI publication waits for operator approval and becomes listed', asyn
     itemId = item.id
     expect(item.resource_type).toBe('agent')
     await page.goto('/settings/marketplace-admin')
+    const sidebarNavigationBoundary = page.locator('[data-sidebar="content"]')
+    const adminNavigationTail = page.getByRole('link', {
+      name: '전체 활동 기록',
+      exact: true,
+    })
     const row = page
       .getByRole('listitem')
       .filter({ has: page.getByRole('link', { name, exact: true }) })
     await expect(row).toBeVisible()
-    await captureResourcePage(page, testInfo, 'marketplace-agent-pending', row)
+    await captureResourcePage({
+      page,
+      testInfo,
+      state: 'marketplace-agent-pending',
+      evidence: row,
+      verticalContainment: {
+        target: adminNavigationTail,
+        boundary: sidebarNavigationBoundary,
+      },
+    })
     const approved = page.waitForResponse(
       (res) =>
         res.url().endsWith(`/api/marketplace/admin/items/${item.id}/listed`) &&
@@ -119,12 +133,16 @@ test('agent UI publication waits for operator approval and becomes listed', asyn
         ),
       )
     expect(listed.map((entry) => entry.id)).toContain(item.id)
-    await captureResourcePage(
+    await captureResourcePage({
       page,
       testInfo,
-      'marketplace-agent-approved',
-      page.getByRole('heading', { name: '마켓플레이스 운영', exact: true }),
-    )
+      state: 'marketplace-agent-approved',
+      evidence: page.getByRole('heading', { name: '마켓플레이스 운영', exact: true }),
+      verticalContainment: {
+        target: adminNavigationTail,
+        boundary: sidebarNavigationBoundary,
+      },
+    })
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
   } finally {
@@ -159,10 +177,24 @@ test('MCP UI publication can be disabled by moderation and stays unlisted', asyn
     itemId = item.id
     expect(item.resource_type).toBe('mcp')
     await page.goto('/settings/marketplace-admin')
+    const sidebarNavigationBoundary = page.locator('[data-sidebar="content"]')
+    const adminNavigationTail = page.getByRole('link', {
+      name: '전체 활동 기록',
+      exact: true,
+    })
     const row = page
       .getByRole('listitem')
       .filter({ has: page.getByRole('link', { name, exact: true }) })
-    await captureResourcePage(page, testInfo, 'marketplace-mcp-pending', row)
+    await captureResourcePage({
+      page,
+      testInfo,
+      state: 'marketplace-mcp-pending',
+      evidence: row,
+      verticalContainment: {
+        target: adminNavigationTail,
+        boundary: sidebarNavigationBoundary,
+      },
+    })
     const disabled = page.waitForResponse(
       (res) =>
         res.url().endsWith(`/api/marketplace/items/${item.id}/disable`) &&
@@ -179,12 +211,16 @@ test('MCP UI publication can be disabled by moderation and stays unlisted', asyn
       page.getByRole('heading', { name: '마켓플레이스 운영', exact: true }),
     ).toBeVisible()
     await expect(row).toHaveCount(0)
-    await captureResourcePage(
+    await captureResourcePage({
       page,
       testInfo,
-      'marketplace-mcp-disabled',
-      page.getByRole('heading', { name: '마켓플레이스 운영', exact: true }),
-    )
+      state: 'marketplace-mcp-disabled',
+      evidence: page.getByRole('heading', { name: '마켓플레이스 운영', exact: true }),
+      verticalContainment: {
+        target: adminNavigationTail,
+        boundary: sidebarNavigationBoundary,
+      },
+    })
     expect(
       itemSchema.parse(await apiGetJson(request, `${API_BASE}/api/marketplace/items/${item.id}`)),
     ).toMatchObject({ status: 'disabled', is_listed: false })
@@ -209,12 +245,12 @@ test('ordinary member cannot access moderation controls or listing approval API'
   await page.goto('/settings/marketplace-admin')
   await expect(page.getByText('운영자 전용 페이지', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '승인', exact: true })).toHaveCount(0)
-  await captureResourcePage(
+  await captureResourcePage({
     page,
     testInfo,
-    'marketplace-member-denied',
-    page.getByText('운영자 전용 페이지', { exact: true }),
-  )
+    state: 'marketplace-member-denied',
+    evidence: page.getByText('운영자 전용 페이지', { exact: true }),
+  })
   const denied = await page.request.post(
     `${API_BASE}/api/marketplace/admin/items/${randomUUID()}/listed`,
     {

@@ -34,9 +34,9 @@ export function CurrentColumn({
   const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
 
   return (
-    <section className="flex min-h-0 flex-col">
+    <section className="flex min-h-0 min-w-0 flex-col">
       <h3 className="mb-3 text-sm font-medium">{t('current', { count: total })}</h3>
-      <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1 sm:h-[60vh]">
+      <div className="max-h-52 space-y-2 overflow-y-auto pr-1 lg:h-[60vh] lg:max-h-[60vh]">
         {total === 0 ? (
           <EmptyBox>{t('selectedEmpty')}</EmptyBox>
         ) : (
@@ -92,7 +92,7 @@ function SelectedRow({
   const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border p-3">
+    <div className="flex min-w-0 items-center gap-3 rounded-lg border p-3">
       <KindIcon kind={kind} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{name}</p>

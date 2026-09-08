@@ -47,12 +47,12 @@ test('profile name, initials and color survive reload; automatic identity can be
   await expect(page.getByRole('img', { name: '프로필 검증 프로필 아이콘' }).first()).toContainText(
     '검증',
   )
-  await captureResourcePage(
+  await captureResourcePage({
     page,
     testInfo,
-    'profile-personalized',
-    page.getByLabel('표시 이름', { exact: true }),
-  )
+    state: 'profile-personalized',
+    evidence: page.getByLabel('표시 이름', { exact: true }),
+  })
 
   await page.getByLabel('표시 이름', { exact: true }).fill('')
   await page.getByRole('button', { name: '자동', exact: true }).click()

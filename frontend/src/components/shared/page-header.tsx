@@ -19,7 +19,7 @@ export function PageHeader({ title, description, action, className }: PageHeader
           <h1 className="moldy-page-title leading-tight">{title}</h1>
         </div>
         {description && (
-          <p className="max-w-3xl text-sm leading-6 text-pretty text-muted-foreground">
+          <p className="max-w-3xl break-keep text-pretty text-sm leading-6 text-muted-foreground">
             {description}
           </p>
         )}

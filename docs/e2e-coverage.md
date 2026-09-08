@@ -136,10 +136,20 @@ scheduler behavior. These are not part of the scripted-full completion claim.
   `useModerationQueue` now projects published candidates only; the raw owner
   catalog data is preserved. The new hook suite was red before this fix and
   green afterward (3 tests); browser disable → reload → absence also passes.
-- **Visual follow-ups remain:** the existing tool/skill dialog clips horizontally
-  after resize to 375/768; narrow profile/moderation text has awkward Korean line
-  breaks. Functional assertions passing must not be reported as responsive QA
-  passing. No layout or copy changes were made in this follow-up.
+- **Responsive follow-up completed:** `DialogShell` now retains a 1rem viewport
+  gutter, the tool/skill picker changes to one column below 1024px, and the current
+  selection height stays bounded so discovery remains reachable. Profile and
+  moderation copy preserve Korean word boundaries, narrow moderation actions reflow,
+  and the last settings admin item no longer overlaps the fixed utility footer.
+- Final focused `scripted-capture`: **6 passed, 0 failed, 0 skipped, 0 flaky**.
+  Manifest:
+  `.omo/evidence/project-restart-consolidated-roadmap/mobile-tablet-resources-final-r2.json`.
+  Captures: **21 PNGs** at 375/768/1280 × 960 under
+  `output/e2e-captures/20260908-scripted-capture-d8351b67dfb8/`. Automated checks
+  enforce document/dialog horizontal containment and settings-sidebar tail
+  containment. Two fresh, independent visual reviews inspected all 21 images and
+  returned PASS. This is focused responsive evidence, not a full-suite rerun or a
+  pixel-regression baseline.
 - One full `scripted-full` pass selected 149 runnable tests plus three declared
   skips: **148 passed, 3 skipped, 1 timed out** in 8.9 minutes. The sole failure
   was `model-fallback`: its native `<summary>` was repeatedly replaced while a
