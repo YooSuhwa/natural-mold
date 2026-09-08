@@ -25,6 +25,10 @@ from e2e_cleanup_checker import (  # noqa: E402
 
 _LIVE_NODES = [
     (
+        "live-manual::e2e/agent-live-quality.spec.ts::"
+        "follows a bounded instruction through a live model chat"
+    ),
+    (
         "live-manual::e2e/agent-triggers.spec.ts::"
         "a created interval trigger renders in the settings triggers tab"
     ),
@@ -713,8 +717,8 @@ def test_validate_payload_rejects_cross_lane_project_pairing(tmp_path: Path) -> 
         validate_payload(payload, repository_root=tmp_path)
 
 
-def test_validate_payload_accepts_exact_four_live_cases(tmp_path: Path) -> None:
-    # Given the live lane's exact four selected and executed cases plus aggregate egress.
+def test_validate_payload_accepts_exact_live_cases(tmp_path: Path) -> None:
+    # Given the live lane's exact selected and executed cases plus aggregate egress.
     payload = _manifest(tmp_path, lane="live", project="live-manual")
     nodes = list(_LIVE_NODES)
     payload.update(
@@ -731,7 +735,14 @@ def test_validate_payload_accepts_exact_four_live_cases(tmp_path: Path) -> None:
                         "path_class": "chat_completions",
                         "status": 200,
                         "count": 1,
-                    }
+                    },
+                    {
+                        "method": "POST",
+                        "origin": "https://api.example.com",
+                        "path_class": "chat_completions",
+                        "status": 429,
+                        "count": 2,
+                    },
                 ],
             },
         }
@@ -740,13 +751,40 @@ def test_validate_payload_accepts_exact_four_live_cases(tmp_path: Path) -> None:
     # When the bounded live receipt is checked.
     validate_payload(payload, repository_root=tmp_path)
 
-    # Then the four-case and aggregate-only policy is accepted.
+    # Then the exact-case and aggregate-only policy is accepted.
 
 
-def test_validate_payload_rejects_forged_live_four_set(tmp_path: Path) -> None:
-    # Given four nodes that have the right count but one is not in the approved live inventory.
+def test_validate_payload_rejects_live_egress_with_only_rate_limits(tmp_path: Path) -> None:
     payload = _manifest(tmp_path, lane="live", project="live-manual")
-    nodes = [*_LIVE_NODES[:3], "live-manual::e2e/forged.spec.ts::not an approved live node"]
+    nodes = list(_LIVE_NODES)
+    payload.update(
+        {
+            "selected_ids": nodes,
+            "executed_ids": nodes,
+            "egress": {
+                "enabled": True,
+                "clean_stop": True,
+                "records": [
+                    {
+                        "method": "POST",
+                        "origin": "https://api.example.com",
+                        "path_class": "chat_completions",
+                        "status": 429,
+                        "count": 2,
+                    }
+                ],
+            },
+        }
+    )
+
+    with pytest.raises(ManifestValidationError, match="egress_record"):
+        validate_payload(payload, repository_root=tmp_path)
+
+
+def test_validate_payload_rejects_forged_live_set(tmp_path: Path) -> None:
+    # Given nodes that have the right count but one is not in the approved live inventory.
+    payload = _manifest(tmp_path, lane="live", project="live-manual")
+    nodes = [*_LIVE_NODES[:-1], "live-manual::e2e/forged.spec.ts::not an approved live node"]
     payload["selected_ids"] = nodes
     payload["executed_ids"] = nodes
     payload["egress"] = {

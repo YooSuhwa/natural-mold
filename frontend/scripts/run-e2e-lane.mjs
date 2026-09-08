@@ -115,7 +115,7 @@ function runResourceFreeLiveList(project, forwarded) {
   const expected = LIVE_E2E_CASES.map(({ spec, title }) => `${project}::${spec}::${title}`).sort()
   const actual = collectJsonNodes(JSON.parse(result.stdout))
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error('The live E2E list did not select exactly the four configured cases.')
+    throw new Error('The live E2E list did not select exactly the configured cases.')
   }
   process.stdout.write(result.stdout)
   return 0

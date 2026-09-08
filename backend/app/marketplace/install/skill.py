@@ -184,6 +184,33 @@ async def _install_skill_item(
     return installation
 
 
+async def _refresh_skill_installation_bindings(
+    db: AsyncSession,
+    *,
+    installation: MarketplaceInstallation,
+    skill: Skill,
+    user: CurrentUser,
+    body: InstallMarketplaceItemIn,
+) -> MarketplaceInstallation:
+    """Apply setup-wizard bindings to an existing skill installation.
+
+    ``reuse_or_update`` is also the install wizard's retry path for a
+    ``needs_setup`` installation. Returning the existing row without applying
+    the submitted bindings leaves that UI in a permanent setup loop.
+    """
+
+    await _persist_bindings(db, skill=skill, user=user, bindings=body.credential_bindings)
+    missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
+    if missing and body.install_missing_credentials == "reject":
+        raise marketplace_credential_required(
+            f"missing required credential bindings: {', '.join(missing)}"
+        )
+    installation.install_status = "needs_setup" if missing else "active"
+    installation.updated_at = _now()
+    await db.flush()
+    return installation
+
+
 async def _overwrite_skill_installation(
     db: AsyncSession,
     *,

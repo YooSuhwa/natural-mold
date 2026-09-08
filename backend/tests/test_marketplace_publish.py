@@ -61,14 +61,7 @@ async def _ensure_test_user(db: AsyncSession) -> None:
 
 
 def _skill_md(name: str = "demo") -> str:
-    return (
-        "---\n"
-        f"name: {name}\n"
-        'description: "demo skill"\n'
-        'version: "1.0.0"\n'
-        "---\n\n"
-        "# Demo body\n"
-    )
+    return f'---\nname: {name}\ndescription: "demo skill"\nversion: "1.0.0"\n---\n\n# Demo body\n'
 
 
 def _zip_with(files: dict[str, str | bytes]) -> bytes:
@@ -80,9 +73,7 @@ def _zip_with(files: dict[str, str | bytes]) -> bytes:
     return buf.getvalue()
 
 
-async def _make_user_skill(
-    db: AsyncSession, *, tmp_path: Path, name: str = "demo"
-) -> Skill:
+async def _make_user_skill(db: AsyncSession, *, tmp_path: Path, name: str = "demo") -> Skill:
     """Create a real on-disk skill via the service so storage_path is
     populated (publish service reads it)."""
 
@@ -148,9 +139,7 @@ async def test_publish_creates_item_version_and_publication_link(
 
     link = (
         await db.execute(
-            select(MarketplacePublicationLink).where(
-                MarketplacePublicationLink.item_id == item.id
-            )
+            select(MarketplacePublicationLink).where(MarketplacePublicationLink.item_id == item.id)
         )
     ).scalar_one_or_none()
     assert link is not None
@@ -183,6 +172,40 @@ async def test_publish_dedup_reuses_version_for_unchanged_skill(
     v2 = r2.json()["latest_version"]["id"]
     # Same content hash → dedup → same version id.
     assert v1 == v2
+
+
+@pytest.mark.asyncio
+async def test_publish_new_version_response_projects_the_new_latest_version(
+    client: AsyncClient, db: AsyncSession, tmp_path: Path
+) -> None:
+    await _ensure_test_user(db)
+    skill = await _make_user_skill(db, tmp_path=tmp_path)
+    await db.commit()
+
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        first = await client.post(
+            f"/api/marketplace/items/from-skill/{skill.id}",
+            json={"visibility": "public", "name": "Fresh Latest Demo"},
+        )
+        item_id = first.json()["id"]
+        first_version_id = first.json()["latest_version"]["id"]
+        await skill_service.update_text_content(
+            db,
+            skill=skill,
+            content=_skill_md("fresh-latest") + "\nVersion two body.\n",
+        )
+        skill.version = "2.0.0"
+        await db.commit()
+
+        response = await client.post(
+            f"/api/marketplace/items/{item_id}/versions/from-skill/{skill.id}",
+            json={"release_notes": "version two"},
+        )
+
+    assert response.status_code == 200, response.text
+    latest = response.json()["latest_version"]
+    assert latest["id"] != first_version_id
+    assert latest["version_label"] == "2.0.0"
 
 
 @pytest.mark.asyncio
@@ -289,9 +312,7 @@ async def test_upload_allows_placeholder_sk_example(
 
 
 @pytest.mark.asyncio
-async def test_patch_item_metadata(
-    client: AsyncClient, db: AsyncSession, tmp_path: Path
-) -> None:
+async def test_patch_item_metadata(client: AsyncClient, db: AsyncSession, tmp_path: Path) -> None:
     await _ensure_test_user(db)
     skill = await _make_user_skill(db, tmp_path=tmp_path)
     await db.commit()
@@ -337,9 +358,7 @@ async def test_disable_blocks_install(
         )
         item_id = r1.json()["id"]
 
-        r2 = await client.post(
-            f"/api/marketplace/items/{item_id}/disable"
-        )
+        r2 = await client.post(f"/api/marketplace/items/{item_id}/disable")
 
     assert r2.status_code == 200
     assert r2.json()["status"] == "disabled"

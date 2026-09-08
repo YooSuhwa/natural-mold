@@ -395,6 +395,11 @@ describe('prepared E2E lane boundary', () => {
     expect(captureFiles.has('skill-studio.spec.ts')).toBe(false)
     expect(live).toEqual([
       {
+        file: 'agent-live-quality.spec.ts',
+        project: 'live-manual',
+        title: 'follows a bounded instruction through a live model chat',
+      },
+      {
         file: 'agent-triggers.spec.ts',
         project: 'live-manual',
         title: 'a created interval trigger renders in the settings triggers tab',

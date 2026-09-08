@@ -90,8 +90,9 @@ DB migration, reused development server, or production credential is needed.
 | MCP Atlassian OAuth | `/mcp-servers` | `mcp` | `manual-atlassian-oauth` | 🔒 |
 | Spend dashboard | `/usage` | `usage` | `spend-dashboard` | 🟨 |
 | Schedules / triggers | `/agents/[id]/settings` (schedule tab) | `triggers` | `agent-triggers` | ✅ (create + render) |
+| Live LLM instruction quality | chat | `conversation_runs`, agent-runtime | `agent-live-quality` | ✅ exact marker + required Korean terms, persisted and rendered |
 | Public share link | `/shared/[id]` | `shares` | `share-link` | ✅ |
-| Marketplace browse + install | `/marketplace` | `marketplace` | `marketplace` | ✅ (install via API) |
+| Marketplace browse + install/update | `/marketplace` | `marketplace` | `marketplace`, `marketplace-install-lifecycle` | ✅ catalog install + credential setup recovery + dirty overwrite |
 | Marketplace publish/moderation | `/`, `/mcp-servers`, `/settings/marketplace-admin` | `marketplace` | `marketplace-publish-moderation` | ✅ Agent publish/approve, MCP publish/disable, member denial |
 | Memory controls | `/settings/memory` | `memory` | `memory-controls` | ✅ |
 | Agent API deployment | `/settings/agent-api` | `agent_api` | `agent-api` | ✅ |
@@ -114,14 +115,41 @@ subagent delegation, artifacts, usage, replay, history, share)**.
 **New coverage (2026-09-08):** profile personalization uses a separately registered
 member, not the shared seed account. MCP attachment uses the local FastMCP fixture
 with real discovery, not an external MCP dependency. Marketplace tests drive
-Agent/MCP publish wizards and operator decisions, and reject ordinary-member
-access in both UI and API. Passing these does not prove every install/update/ACL
-combination or external OAuth flow.
+Agent/MCP publish wizards and operator decisions, reject ordinary-member access,
+recover a skill installation from `needs_setup` with a credential binding, and
+require explicit overwrite before replacing dirty local edits. The live lane also
+persists and renders a constrained real-model response with an exact marker and
+required Korean terms.
 
-**Remaining validation:** external OAuth/live LLM quality and broader marketplace
-dependency and credential-binding combinations. Long-running multi-worktree
-scheduler ownership is covered separately by focused unit and disposable-PostgreSQL
-leadership-handoff tests; it is not a browser E2E surface.
+**Remaining validation:** a real third-party OAuth consent/callback run remains
+manual. Automated tests cover OAuth state, PKCE, callback/token handling and
+ownership guards, and the backend suite covers broader Agent/MCP/Skill Marketplace
+dependency and credential-binding combinations; not every provider-specific
+consent screen or Marketplace permutation has its own browser scenario. Long-running
+multi-worktree scheduler ownership is covered separately by focused unit and
+disposable-PostgreSQL leadership-handoff tests; it is not a browser E2E surface.
+
+### Marketplace and live-LLM evidence (2026-09-08)
+
+- Focused `marketplace-install-lifecycle`: **1 passed, 0 failed, 0 skipped** in
+  61.3 seconds. It creates a credential-requiring package skill, installs it as
+  `needs_setup`, reuses the same installation/resource after binding a credential,
+  marks the installed copy dirty through a real file edit, publishes version 2,
+  and explicitly overwrites the local edit. Manifest:
+  `.omo/evidence/project-restart-consolidated-roadmap/e2e-scripted-33800-1788864693241.json`.
+- Focused Marketplace/OAuth backend contracts: **302 passed**. This includes
+  install/update/concurrency, Agent/MCP/Skill payload and secret policies, OAuth
+  state/PKCE/callback/token handling, MCP OAuth, and ownership boundaries.
+- `live-manual`: **5 passed, 0 failed, 0 skipped, 0 flaky** in 65.7 seconds,
+  including `agent-live-quality`. The egress receipt recorded successful real
+  chat-completion calls; bounded 429s from optional concurrent generation are
+  accepted only when at least one 2xx exists. Manifest:
+  `.omo/evidence/project-restart-consolidated-roadmap/e2e-live-69553-1788865842244.json`.
+- The live runner had two stale contracts fixed during validation: the canonical
+  inventory still required four cases after the fifth was added, and the egress
+  child was given an explicitly invalid dynamic-port value. The proxy now sends
+  fixed non-secret `Accept`/`User-Agent` headers required by the upstream WAF while
+  continuing to strip arbitrary client headers and keep the API key proxy-owned.
 
 ### Resource regression evidence (2026-09-08)
 
@@ -200,6 +228,11 @@ after each individual edit.
 
 ## Changelog
 
+- 2026-09-08: added Marketplace credential-setup and dirty-update lifecycle E2E,
+  a real-model instruction-quality gate, five-case live-lane contracts, and
+  CloudFront-compatible secret-isolating egress headers. External provider OAuth
+  consent remains manual; its internal state/PKCE/callback/token contracts are
+  automated.
 - 2026-09-08: added six UI/API-backed scenarios for profile personalization (2),
   MCP attachment (1), and marketplace publication/moderation (3). Updated the
   runner instructions and corrected stale marketplace route/System LLM claims.

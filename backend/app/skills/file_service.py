@@ -43,6 +43,7 @@ async def set_skill_file(
     await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
     await asyncio.to_thread(target.write_bytes, content)
     refresh_package_metadata(skill)
+    skill.is_dirty = True
     skill.last_modified_at = _now()
     if rel_path.lstrip("./").lower() in {"skill.md", "skill.markdown"}:
         sync_frontmatter(skill, content)
@@ -67,6 +68,7 @@ async def delete_skill_file(
     else:
         await asyncio.to_thread(target.unlink, missing_ok=True)
     refresh_package_metadata(skill)
+    skill.is_dirty = True
     skill.last_modified_at = _now()
     await db.flush()
     return skill

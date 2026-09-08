@@ -278,6 +278,53 @@ async def test_install_reuse_returns_existing_installation(
 
 
 @pytest.mark.asyncio
+async def test_install_reuse_applies_missing_credential_binding(
+    client: AsyncClient, db: AsyncSession, tmp_path: Path
+) -> None:
+    await _ensure_test_user(db)
+    credential = Credential(
+        id=uuid.uuid4(),
+        user_id=TEST_USER_ID,
+        definition_key="srt_account",
+        name="setup-srt",
+        data_encrypted="opaque",
+        key_id="kv1",
+        field_keys=["username", "password"],
+        is_shared=False,
+        is_system=False,
+        status="active",
+    )
+    db.add(credential)
+    await db.flush()
+
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+        item, _ = await _make_published_skill_item(
+            db,
+            storage_path=tmp_path / "setup-v1",
+            requirements=[_SRT_REQUIREMENT],
+        )
+        await db.commit()
+
+        first = await client.post(
+            f"/api/marketplace/items/{item.id}/install",
+            json={"install_mode": "reuse_or_update"},
+        )
+        configured = await client.post(
+            f"/api/marketplace/items/{item.id}/install",
+            json={
+                "install_mode": "reuse_or_update",
+                "credential_bindings": {"srt_login": str(credential.id)},
+            },
+        )
+
+    assert first.status_code == 201, first.text
+    assert first.json()["install_status"] == "needs_setup"
+    assert configured.status_code == 201, configured.text
+    assert configured.json()["id"] == first.json()["id"]
+    assert configured.json()["install_status"] == "active"
+
+
+@pytest.mark.asyncio
 async def test_delete_installation_soft_then_hard(
     client: AsyncClient, db: AsyncSession, tmp_path: Path
 ) -> None:

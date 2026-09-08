@@ -26,6 +26,8 @@ CLEANUP_FIELDS: Final = (
     "cleanup_run_root_removed",
 )
 LIVE_NODES: Final = (
+    "live-manual::e2e/agent-live-quality.spec.ts::follows a bounded instruction through a "
+    "live model chat",
     "live-manual::e2e/agent-triggers.spec.ts::a created interval trigger renders in the "
     "settings triggers tab",
     "live-manual::e2e/builder.spec.ts::starts a session and runs the build pipeline from an "

@@ -189,6 +189,7 @@ export async function waitForRunStatus(
   conversationId: string,
   runId: string,
   status: string,
+  timeout = 45_000,
 ): Promise<void> {
   await expect
     .poll(
@@ -199,7 +200,7 @@ export async function waitForRunStatus(
         )
         return isRecord(run) && typeof run.status === 'string' ? run.status : null
       },
-      { timeout: 45_000, intervals: [500, 1000, 2000] },
+      { timeout, intervals: [500, 1000, 2000] },
     )
     .toBe(status)
 }
