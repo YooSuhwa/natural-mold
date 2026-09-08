@@ -121,6 +121,11 @@ const scriptedFullIgnore = [
   '**/manual/**',
   '**/manual*.spec.ts',
 ]
+const resourceCaptureSpecGlobs = [
+  '**/profile-personalization.spec.ts',
+  '**/agent-mcp-attachment.spec.ts',
+  '**/marketplace-publish-moderation.spec.ts',
+]
 const projects = [
   {
     name: E2E_PROJECTS[0],
@@ -134,7 +139,11 @@ const projects = [
   },
   {
     name: E2E_PROJECTS[2],
-    testMatch: [...legacyCaptureSpecGlobs, ...runtimePolicyCaptureSpecGlobs],
+    testMatch: [
+      ...legacyCaptureSpecGlobs,
+      ...runtimePolicyCaptureSpecGlobs,
+      ...resourceCaptureSpecGlobs,
+    ],
     use: buildPlaywrightProjectUse(E2E_PROJECTS[2]),
   },
   {

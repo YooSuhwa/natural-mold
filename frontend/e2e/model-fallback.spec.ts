@@ -126,19 +126,13 @@ test.describe('Model Fallback', () => {
     let lastPatchBody: Record<string, unknown> | null = null
     let agentSnapshot: typeof FAKE_AGENT = { ...FAKE_AGENT }
 
-    await page.route(/\/api\/models(?:\?.*)?$/, (route) =>
-      route.fulfill({ json: FAKE_MODELS }),
-    )
+    await page.route(/\/api\/models(?:\?.*)?$/, (route) => route.fulfill({ json: FAKE_MODELS }))
     await page.route('**/api/tools', (route) => route.fulfill({ json: [] }))
     await page.route('**/api/skills**', (route) => route.fulfill({ json: [] }))
     await page.route('**/api/middlewares', (route) => route.fulfill({ json: [] }))
     await page.route('**/api/credentials', (route) => route.fulfill({ json: [] }))
-    await page.route('**/api/credential-types', (route) =>
-      route.fulfill({ json: [] }),
-    )
-    await page.route(`**/api/agents/${AGENT_ID}/triggers`, (route) =>
-      route.fulfill({ json: [] }),
-    )
+    await page.route('**/api/credential-types', (route) => route.fulfill({ json: [] }))
+    await page.route(`**/api/agents/${AGENT_ID}/triggers`, (route) => route.fulfill({ json: [] }))
 
     await page.route(`**/api/agents/${AGENT_ID}`, (route) => {
       const method = route.request().method()
@@ -146,9 +140,7 @@ test.describe('Model Fallback', () => {
         lastPatchBody = route.request().postDataJSON() as Record<string, unknown>
         agentSnapshot = {
           ...agentSnapshot,
-          model_fallback_ids: (lastPatchBody.model_fallback_ids ?? null) as
-            | string[]
-            | null,
+          model_fallback_ids: (lastPatchBody.model_fallback_ids ?? null) as string[] | null,
         }
         return route.fulfill({ json: agentSnapshot })
       }
@@ -171,9 +163,18 @@ test.describe('Model Fallback', () => {
 
     // Section is closed by default when there are no fallbacks — open it.
     const summary = fallbackSection.locator('summary')
-    await summary.click()
-
     const addButton = page.getByTestId('fallback-add-button')
+    // The dialog can re-render while its model query settles. A pointer click waits
+    // for geometric stability and may chase a replaced <summary> indefinitely in
+    // the full lane. Keyboard activation exercises the same native <details>
+    // control while reacquiring the locator across those harmless re-renders.
+    await expect(async () => {
+      const isOpen = await fallbackSection.evaluate(
+        (element) => element instanceof HTMLDetailsElement && element.open,
+      )
+      if (!isOpen) await summary.press('Enter')
+      await expect(addButton).toBeVisible()
+    }).toPass({ timeout: 10_000 })
     await expect(addButton).toBeEnabled()
     await addButton.click()
 
