@@ -16,9 +16,15 @@ GIT_LOCAL_ENV_VARS="$(git rev-parse --local-env-vars)"
 # Git emits one trusted variable name per line; word splitting is intentional.
 unset $GIT_LOCAL_ENV_VARS
 
+PYTEST_BASETEMP="$(mktemp -d "${TMPDIR:-/tmp}/moldy-pre-push-pytest.XXXXXX")"
+cleanup_pytest_basetemp() {
+  rm -rf -- "$PYTEST_BASETEMP"
+}
+trap cleanup_pytest_basetemp EXIT
+
 echo "▶ backend pytest"
 cd "$ROOT/backend"
-uv run --locked --extra dev pytest tests/ -q --tb=line
+uv run --locked --extra dev pytest tests/ -q --tb=line "--basetemp=$PYTEST_BASETEMP"
 
 echo ""
 echo "▶ frontend vitest"

@@ -17,6 +17,8 @@ def test_pre_push_hook_isolates_nested_git_and_installs_locked_dev_tools(
     # Given Git-local variables from a linked-worktree push and harmless tool stubs.
     capture_dir = tmp_path / "captures"
     capture_dir.mkdir()
+    private_tmp = tmp_path / "private-tmp"
+    private_tmp.mkdir()
     stub_bin = tmp_path / "bin"
     stub_bin.mkdir()
     for command in ("uv", "pnpm"):
@@ -35,6 +37,7 @@ def test_pre_push_hook_isolates_nested_git_and_installs_locked_dev_tools(
         "GIT_DIR": str(REPO_ROOT / ".git"),
         "GIT_WORK_TREE": str(REPO_ROOT),
         "PATH": f"{stub_bin}{os.pathsep}{os.environ['PATH']}",
+        "TMPDIR": str(private_tmp),
     }
 
     # When the real hook runs through its normal shell entry point.
@@ -52,7 +55,10 @@ def test_pre_push_hook_isolates_nested_git_and_installs_locked_dev_tools(
     assert result.returncode == 0, result.stderr
     assert (capture_dir / "uv-env").read_text().splitlines() == ["unset", "unset"]
     assert (capture_dir / "pnpm-env").read_text().splitlines() == ["unset", "unset"]
-    assert (capture_dir / "uv-args").read_text().splitlines() == [
+    uv_arguments = (capture_dir / "uv-args").read_text().splitlines()
+    pytest_basetemp_argument = uv_arguments[-1]
+    assert pytest_basetemp_argument.startswith("--basetemp=")
+    assert uv_arguments[:-1] == [
         "run",
         "--locked",
         "--extra",
@@ -62,3 +68,6 @@ def test_pre_push_hook_isolates_nested_git_and_installs_locked_dev_tools(
         "-q",
         "--tb=line",
     ]
+    pytest_basetemp = pytest_basetemp_argument.removeprefix("--basetemp=")
+    assert pytest_basetemp.startswith(f"{private_tmp}/moldy-pre-push-pytest.")
+    assert not Path(pytest_basetemp).exists()
