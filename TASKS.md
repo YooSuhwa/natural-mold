@@ -60,7 +60,10 @@
   `docs/e2e-coverage.md`.
 - [ ] Extend marketplace validation to external OAuth and complex
   dependency/update/credential-binding combinations.
-- [ ] Harden multi-worktree scheduler behavior when several backends share one DB.
+- [x] Harden multi-worktree scheduler behavior when several backends share one DB:
+  continuously validate/retry the PostgreSQL advisory-lock leader, fence stale
+  scheduled triggers, and reconcile shared trigger definitions without resetting
+  unchanged interval cadence. Unit and disposable-PostgreSQL handoff tests cover it.
 - [ ] Keep `docs/ARCHITECTURE.md`, `docs/PRD.md`, `AGENTS.md`, and README files
   synchronized after migrations or runtime module splits.
 - [ ] Treat Rubric, total technical-debt cleanup, domain relocation,

@@ -67,6 +67,8 @@ class Settings(BaseSettings):
 
     # Credential rotation cron (APScheduler crontab format; default: weekly Sun 03:00)
     credential_rotation_cron: str = "0 3 * * 0"
+    # Retry/fencing cadence for the PostgreSQL scheduler leader lease.
+    scheduler_leadership_poll_seconds: float = 5.0
 
     # Daily health check sweep (APScheduler crontab format; default: 04:00 UTC)
     health_check_cron: str = "0 4 * * *"

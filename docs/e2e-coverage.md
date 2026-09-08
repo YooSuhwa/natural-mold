@@ -118,9 +118,10 @@ Agent/MCP publish wizards and operator decisions, and reject ordinary-member
 access in both UI and API. Passing these does not prove every install/update/ACL
 combination or external OAuth flow.
 
-**Remaining validation:** external OAuth/live LLM quality, broader marketplace
-dependency and credential-binding combinations, and long-running multi-worktree
-scheduler behavior. These are not part of the scripted-full completion claim.
+**Remaining validation:** external OAuth/live LLM quality and broader marketplace
+dependency and credential-binding combinations. Long-running multi-worktree
+scheduler ownership is covered separately by focused unit and disposable-PostgreSQL
+leadership-handoff tests; it is not a browser E2E surface.
 
 ### Resource regression evidence (2026-09-08)
 

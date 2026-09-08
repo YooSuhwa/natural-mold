@@ -1,30 +1,52 @@
 from __future__ import annotations
 
+import json
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import anyio
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.config import settings
 from app.database import async_session, engine
+from app.scheduler_job_ids import LeaderSchedulerJobId
 
 logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
 _scheduler_leader_connection: AsyncConnection | None = None
+_scheduler_leader_guard: anyio.Lock | None = None
 _SCHEDULER_ADVISORY_LOCK_ID = 0x4D4F4C4459534348
+_SCHEDULER_LOCK_CLASS_ID = _SCHEDULER_ADVISORY_LOCK_ID >> 32
+_SCHEDULER_LOCK_OBJECT_ID = _SCHEDULER_ADVISORY_LOCK_ID & 0xFFFFFFFF
 
 
-async def try_acquire_scheduler_leader() -> bool:
+async def _close_leader_connection(conn: AsyncConnection) -> None:
+    try:
+        await conn.close()
+    except SQLAlchemyError:
+        logger.warning("Scheduler leader connection close failed", exc_info=True)
+
+
+def _get_scheduler_leader_guard() -> anyio.Lock:
+    global _scheduler_leader_guard
+    if _scheduler_leader_guard is None:
+        _scheduler_leader_guard = anyio.Lock()
+    return _scheduler_leader_guard
+
+
+async def _try_acquire_scheduler_leader_unlocked() -> bool:
     """Acquire a process-level scheduler leader lock.
 
     PostgreSQL uses a session advisory lock so only one backend process
@@ -39,17 +61,27 @@ async def try_acquire_scheduler_leader() -> bool:
         logger.info("Scheduler leader lock skipped for dialect=%s", engine.dialect.name)
         return True
 
-    conn = await engine.connect()
-    acquired = bool(
-        (
-            await conn.execute(
-                text("select pg_try_advisory_lock(:lock_id)"),
-                {"lock_id": _SCHEDULER_ADVISORY_LOCK_ID},
-            )
-        ).scalar()
-    )
+    try:
+        conn = await engine.connect()
+    except SQLAlchemyError:
+        logger.warning("Scheduler leader database connection failed; will retry", exc_info=True)
+        return False
+    try:
+        acquired = bool(
+            (
+                await conn.execute(
+                    text("select pg_try_advisory_lock(:lock_id)"),
+                    {"lock_id": _SCHEDULER_ADVISORY_LOCK_ID},
+                )
+            ).scalar()
+        )
+        await conn.commit()
+    except SQLAlchemyError:
+        await _close_leader_connection(conn)
+        logger.warning("Scheduler leader lock attempt failed; will retry", exc_info=True)
+        return False
     if not acquired:
-        await conn.close()
+        await _close_leader_connection(conn)
         logger.warning("Scheduler leader lock not acquired; skipping scheduler jobs")
         return False
     _scheduler_leader_connection = conn
@@ -57,7 +89,63 @@ async def try_acquire_scheduler_leader() -> bool:
     return True
 
 
-async def release_scheduler_leader() -> None:
+async def try_acquire_scheduler_leader() -> bool:
+    """Serialise process-local attempts to acquire scheduler leadership."""
+
+    async with _get_scheduler_leader_guard():
+        return await _try_acquire_scheduler_leader_unlocked()
+
+
+async def _scheduler_leader_is_healthy_unlocked() -> bool:
+    """Return whether this process still owns its PostgreSQL advisory lock."""
+
+    global _scheduler_leader_connection
+    if engine.dialect.name != "postgresql":
+        return True
+    conn = _scheduler_leader_connection
+    if conn is None:
+        return False
+    try:
+        result = await conn.execute(
+            text(
+                """
+                select exists (
+                    select 1
+                    from pg_locks
+                    where locktype = 'advisory'
+                      and pid = pg_backend_pid()
+                      and classid::bigint = :class_id
+                      and objid::bigint = :object_id
+                      and objsubid = 1
+                      and granted
+                )
+                """
+            ),
+            {
+                "class_id": _SCHEDULER_LOCK_CLASS_ID,
+                "object_id": _SCHEDULER_LOCK_OBJECT_ID,
+            },
+        )
+        lock_is_held = bool(result.scalar())
+        await conn.commit()
+    except SQLAlchemyError:
+        lock_is_held = False
+    if lock_is_held:
+        return True
+    _scheduler_leader_connection = None
+    await _close_leader_connection(conn)
+    logger.warning("Scheduler leader lock lost; scheduler will be fenced")
+    return False
+
+
+async def scheduler_leader_is_healthy() -> bool:
+    """Serialise health checks against the lock-holding connection."""
+
+    async with _get_scheduler_leader_guard():
+        return await _scheduler_leader_is_healthy_unlocked()
+
+
+async def _release_scheduler_leader_unlocked() -> None:
     """Release the process-level scheduler leader lock if held."""
 
     global _scheduler_leader_connection
@@ -71,8 +159,16 @@ async def release_scheduler_leader() -> None:
                 text("select pg_advisory_unlock(:lock_id)"),
                 {"lock_id": _SCHEDULER_ADVISORY_LOCK_ID},
             )
+            await conn.commit()
     finally:
-        await conn.close()
+        await _close_leader_connection(conn)
+
+
+async def release_scheduler_leader() -> None:
+    """Serialise scheduler leadership release within this process."""
+
+    async with _get_scheduler_leader_guard():
+        await _release_scheduler_leader_unlocked()
 
 
 def get_scheduler() -> AsyncIOScheduler:
@@ -90,8 +186,24 @@ def get_scheduler() -> AsyncIOScheduler:
     return _scheduler
 
 
+def stop_scheduler() -> None:
+    """Stop and discard the process-local scheduler instance."""
+
+    global _scheduler
+    scheduler = _scheduler
+    _scheduler = None
+    if scheduler is not None and scheduler.running:
+        scheduler.shutdown(wait=False)
+
+
 def _job_id(trigger_id: uuid.UUID) -> str:
     return f"trigger_{trigger_id}"
+
+
+def _leader_job_runner() -> Callable[[LeaderSchedulerJobId], Awaitable[None]]:
+    from app.scheduler_runtime import run_leader_scheduler_job
+
+    return run_leader_scheduler_job
 
 
 def _naive_utc(dt: datetime | None) -> datetime | None:
@@ -110,12 +222,49 @@ def get_trigger_job_next_run_at(trigger_id: uuid.UUID) -> datetime | None:
     return _naive_utc(job.next_run_time)
 
 
+def build_trigger_schedule_fingerprint(
+    trigger_type: str,
+    schedule_config: dict[str, Any],
+) -> str:
+    """Return a stable identity for one persisted trigger schedule."""
+
+    return json.dumps(
+        {"schedule_config": schedule_config, "trigger_type": trigger_type},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def get_trigger_job_schedule_fingerprint(trigger_id: uuid.UUID) -> str | None:
+    """Read the schedule identity stored with a process-local trigger job."""
+
+    job = get_scheduler().get_job(_job_id(trigger_id))
+    if job is None:
+        return None
+    match job.args:
+        case [str() as persisted_trigger_id, str() as fingerprint] if persisted_trigger_id == str(
+            trigger_id
+        ):
+            return fingerprint
+        case _:
+            return None
+
+
+async def execute_scheduled_trigger(trigger_id: str, _schedule_fingerprint: str) -> None:
+    """Fence a scheduled trigger immediately when this process loses leadership."""
+
+    if not await scheduler_leader_is_healthy():
+        logger.warning("Scheduled trigger skipped after scheduler leadership loss: %s", trigger_id)
+        return
+    from app.agent_runtime.trigger_executor import execute_trigger
+
+    await execute_trigger(trigger_id)
+
+
 def add_trigger_job(
     trigger_id: uuid.UUID, trigger_type: str, schedule_config: dict[str, Any]
 ) -> datetime | None:
     """Register a scheduled job for a trigger."""
-    from app.agent_runtime.trigger_executor import execute_trigger
-
     scheduler = get_scheduler()
     if not scheduler.running:
         logger.debug("Scheduler not running; skipping job registration for %s", trigger_id)
@@ -124,15 +273,16 @@ def add_trigger_job(
     job_id = _job_id(trigger_id)
     timezone_name = str(schedule_config.get("timezone") or "Asia/Seoul")
     timezone = ZoneInfo(timezone_name)
+    schedule_fingerprint = build_trigger_schedule_fingerprint(trigger_type, schedule_config)
     job = None
 
     if trigger_type == "interval":
         minutes = schedule_config.get("interval_minutes", 10)
         job = scheduler.add_job(
-            execute_trigger,
+            execute_scheduled_trigger,
             IntervalTrigger(minutes=minutes, timezone=timezone),
             id=job_id,
-            args=[str(trigger_id)],
+            args=[str(trigger_id), schedule_fingerprint],
             replace_existing=True,
             coalesce=True,
             max_instances=1,
@@ -142,10 +292,10 @@ def add_trigger_job(
     elif trigger_type == "cron":
         expr = schedule_config.get("cron_expression", "0 * * * *")
         job = scheduler.add_job(
-            execute_trigger,
+            execute_scheduled_trigger,
             CronTrigger.from_crontab(expr, timezone=timezone),
             id=job_id,
-            args=[str(trigger_id)],
+            args=[str(trigger_id), schedule_fingerprint],
             replace_existing=True,
             coalesce=True,
             max_instances=1,
@@ -161,10 +311,10 @@ def add_trigger_job(
         if run_at.tzinfo is None:
             run_at = run_at.replace(tzinfo=timezone)
         job = scheduler.add_job(
-            execute_trigger,
+            execute_scheduled_trigger,
             DateTrigger(run_date=run_at, timezone=timezone),
             id=job_id,
-            args=[str(trigger_id)],
+            args=[str(trigger_id), schedule_fingerprint],
             replace_existing=True,
             coalesce=True,
             max_instances=1,
@@ -235,7 +385,6 @@ async def rotate_credentials_to_active_key() -> int:
 def _register_cron_job(
     *,
     job_id: str,
-    func: Any,
     cron_expr: str,
     cron_setting_name: str,
     log_label: str,
@@ -260,9 +409,10 @@ def _register_cron_job(
         logger.exception("invalid %s=%r; %s not scheduled", cron_setting_name, cron_expr, log_label)
         return
     scheduler.add_job(
-        func,
+        _leader_job_runner(),
         trigger,
         id=job_id,
+        args=[LeaderSchedulerJobId(job_id)],
         replace_existing=True,
         coalesce=True,
         max_instances=1,
@@ -273,7 +423,6 @@ def _register_cron_job(
 def register_credential_rotation_job() -> None:
     _register_cron_job(
         job_id=CREDENTIAL_ROTATION_JOB_ID,
-        func=rotate_credentials_to_active_key,
         cron_expr=settings.credential_rotation_cron,
         cron_setting_name="credential_rotation_cron",
         log_label="credential rotation job",
@@ -303,7 +452,6 @@ async def update_model_catalog() -> dict[str, Any]:
 def register_catalog_update_job() -> None:
     _register_cron_job(
         job_id=CATALOG_UPDATE_JOB_ID,
-        func=update_model_catalog,
         cron_expr=settings.catalog_update_cron,
         cron_setting_name="catalog_update_cron",
         log_label="model catalog update",
@@ -330,9 +478,10 @@ def _register_catalog_bootstrap_job_if_missing() -> None:
         return
 
     scheduler.add_job(
-        update_model_catalog,
+        _leader_job_runner(),
         DateTrigger(run_date=datetime.now(UTC)),
         id=CATALOG_BOOTSTRAP_JOB_ID,
+        args=[LeaderSchedulerJobId.CATALOG_BOOTSTRAP],
         replace_existing=True,
         coalesce=True,
         max_instances=1,
@@ -367,7 +516,6 @@ async def health_check_all_active() -> dict[str, int]:
 def register_health_check_job() -> None:
     _register_cron_job(
         job_id=HEALTH_CHECK_JOB_ID,
-        func=health_check_all_active,
         cron_expr=settings.health_check_cron,
         cron_setting_name="health_check_cron",
         log_label="health check sweep",
@@ -399,7 +547,6 @@ async def refresh_token_gc_run() -> int:
 def register_refresh_token_gc_job() -> None:
     _register_cron_job(
         job_id=REFRESH_TOKEN_GC_JOB_ID,
-        func=refresh_token_gc_run,
         cron_expr=settings.refresh_token_gc_cron,
         cron_setting_name="refresh_token_gc_cron",
         log_label="refresh-token GC",
@@ -439,7 +586,6 @@ async def draft_conversation_gc_run() -> int:
 def register_draft_conversation_gc_job() -> None:
     _register_cron_job(
         job_id=DRAFT_CONVERSATION_GC_JOB_ID,
-        func=draft_conversation_gc_run,
         cron_expr=settings.draft_conversation_gc_cron,
         cron_setting_name="draft_conversation_gc_cron",
         log_label="draft conversation GC",
@@ -478,7 +624,6 @@ async def skill_draft_gc_run() -> int:
 def register_skill_draft_gc_job() -> None:
     _register_cron_job(
         job_id=SKILL_DRAFT_GC_JOB_ID,
-        func=skill_draft_gc_run,
         cron_expr=settings.skill_draft_gc_cron,
         cron_setting_name="skill_draft_gc_cron",
         log_label="skill draft workspace GC",
@@ -513,7 +658,6 @@ async def orphan_attachment_gc_run() -> int:
 def register_orphan_attachment_gc_job() -> None:
     _register_cron_job(
         job_id=ORPHAN_ATTACHMENT_GC_JOB_ID,
-        func=orphan_attachment_gc_run,
         cron_expr=settings.orphan_attachment_gc_cron,
         cron_setting_name="orphan_attachment_gc_cron",
         log_label="orphan attachment GC",
@@ -557,9 +701,10 @@ def register_mcp_health_job() -> None:
         return
     minutes = max(int(settings.mcp_health_check_interval_minutes or 5), 1)
     scheduler.add_job(
-        poll_mcp_servers_health,
+        _leader_job_runner(),
         IntervalTrigger(minutes=minutes),
         id=MCP_HEALTH_JOB_ID,
+        args=[LeaderSchedulerJobId.MCP_HEALTH],
         replace_existing=True,
         coalesce=True,
         max_instances=1,
@@ -590,9 +735,10 @@ def register_conversation_queue_recovery_job() -> None:
     if not scheduler.running:
         return
     scheduler.add_job(
-        recover_conversation_queue,
+        _leader_job_runner(),
         IntervalTrigger(seconds=5),
         id=CONVERSATION_QUEUE_RECOVERY_JOB_ID,
+        args=[LeaderSchedulerJobId.CONVERSATION_QUEUE_RECOVERY],
         replace_existing=True,
         coalesce=True,
         max_instances=1,
@@ -636,9 +782,10 @@ def register_conversation_run_stale_sweep_job() -> None:
         return
     seconds = max(int(settings.chat_run_stale_sweep_interval_seconds or 60), 1)
     scheduler.add_job(
-        sweep_stale_conversation_runs,
+        _leader_job_runner(),
         IntervalTrigger(seconds=seconds),
         id=CONVERSATION_RUN_STALE_SWEEP_JOB_ID,
+        args=[LeaderSchedulerJobId.CONVERSATION_RUN_STALE_SWEEP],
         replace_existing=True,
         coalesce=True,
         max_instances=1,
@@ -686,9 +833,10 @@ def register_skill_runtime_cleanup_job() -> None:
         logger.debug("Scheduler not running; skipping skill runtime cleanup registration")
         return
     scheduler.add_job(
-        cleanup_skill_runtime_roots,
+        _leader_job_runner(),
         IntervalTrigger(seconds=_SKILL_RUNTIME_CLEANUP_INTERVAL_SECONDS),
         id=SKILL_RUNTIME_CLEANUP_JOB_ID,
+        args=[LeaderSchedulerJobId.SKILL_RUNTIME_CLEANUP],
         replace_existing=True,
         coalesce=True,
         max_instances=1,
@@ -713,9 +861,10 @@ def register_broker_eviction_job() -> None:
         logger.debug("Scheduler not running; skipping broker eviction registration")
         return
     scheduler.add_job(
-        evict_expired_brokers,
+        _leader_job_runner(),
         IntervalTrigger(seconds=_BROKER_EVICTION_INTERVAL_SECONDS),
         id=BROKER_EVICTION_JOB_ID,
+        args=[LeaderSchedulerJobId.BROKER_EVICTION],
         replace_existing=True,
         coalesce=True,
         max_instances=1,

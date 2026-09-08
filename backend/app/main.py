@@ -66,30 +66,12 @@ from slowapi.errors import RateLimitExceeded
 from app.config import settings
 from app.database import async_session
 from app.hooks import register_default_hooks
-from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
 from app.models.template import Template
 from app.rate_limit import limiter
 from app.runtime_lifecycle import lifespan_cleanup_boundary, shutdown_runtime_resources
-from app.scheduler import (
-    add_trigger_job,
-    cleanup_skill_runtime_roots,
-    get_scheduler,
-    register_broker_eviction_job,
-    register_catalog_update_job,
-    register_conversation_queue_recovery_job,
-    register_conversation_run_stale_sweep_job,
-    register_credential_rotation_job,
-    register_draft_conversation_gc_job,
-    register_health_check_job,
-    register_mcp_health_job,
-    register_orphan_attachment_gc_job,
-    register_refresh_token_gc_job,
-    register_skill_draft_gc_job,
-    register_skill_runtime_cleanup_job,
-    sweep_stale_conversation_runs,
-    try_acquire_scheduler_leader,
-)
+from app.scheduler import sweep_stale_conversation_runs
+from app.scheduler_runtime import scheduler_leadership_runtime
 from app.security.production_check import enforce_production_safety
 from app.seed.bootstrap_from_env import bootstrap_system_credentials
 from app.seed.default_marketplace_skills import seed_default_marketplace_skills
@@ -227,53 +209,11 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     # without blocking agent runs. Must start before any hook is invoked.
     await spend_queue.start()
 
-    # Start scheduler and reload active triggers. In multi-process deploys,
-    # only the process holding the Postgres advisory lock registers jobs.
-    scheduler = get_scheduler()
-    scheduler_is_leader = await try_acquire_scheduler_leader()
-    if scheduler_is_leader:
-        scheduler.start()
-
-        # Recurring credential key rotation (re-encrypts rows under stale keys).
-        register_credential_rotation_job()
-        # Recurring health check for active models / MCP servers.
-        register_health_check_job()
-        # Recurring multi-source model catalog rebuild.
-        register_catalog_update_job()
-        # Lightweight per-server MCP health polling (refreshes health_status only).
-        register_mcp_health_job()
-        # W3-out M4 — EventBroker GC (60s interval, TTL 300s).
-        register_broker_eviction_job()
-        register_conversation_run_stale_sweep_job()
-        register_conversation_queue_recovery_job()
-        # ADR-016 §4.2 — refresh-token whitelist GC (nightly).
-        register_refresh_token_gc_job()
-        # Orphan draft-conversation GC (hourly) — removes abandoned, message-less
-        # ``source="draft"`` rows the UI can never surface or delete.
-        register_draft_conversation_gc_job()
-        # Orphan attachment GC (hourly) — removes never-sent uploads
-        # (``message_attachments.message_id IS NULL``) + their on-disk blobs.
-        register_orphan_attachment_gc_job()
-        # Skill draft workspace GC (hourly) — session-state based sweep of
-        # data/skill-drafts/ (active/confirming preserved, spec AD-2).
-        register_skill_draft_gc_job()
-        # ADR-017 Slice E — per-thread skill runtime root cleanup
-        # (10m interval, 1h retention). Also run once at startup to clear
-        # anything left over from a previous server crash.
-        cleanup_skill_runtime_roots()
-        register_skill_runtime_cleanup_job()
-
-        async with async_session() as db:
-            result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))
-            for trigger in result.scalars():
-                trigger.next_run_at = add_trigger_job(
-                    trigger.id,
-                    trigger.trigger_type,
-                    {**trigger.schedule_config, "timezone": trigger.timezone},
-                )
-            await db.commit()
-
-    yield
+    # One backend owns shared jobs at a time. Every process keeps checking the
+    # PostgreSQL advisory lock so leadership fails over and DB-authored trigger
+    # changes are reconciled even when they came through a non-leader worktree.
+    async with scheduler_leadership_runtime():
+        yield
 
 
 def create_app() -> FastAPI:
