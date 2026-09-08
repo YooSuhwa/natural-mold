@@ -37,19 +37,30 @@ async function attachedFileId(
   conversationId: string,
   filename: string,
 ): Promise<string> {
-  const files = await apiGetJson(request, `${API_BASE}/api/conversations/${conversationId}/files`)
-  if (!Array.isArray(files)) throw new Error('Conversation files response was not an array')
-  const file = files.find(
-    (candidate) =>
-      isRecord(candidate) &&
-      candidate.source === 'attached' &&
-      candidate.name === filename &&
-      typeof candidate.id === 'string',
-  )
-  if (!isRecord(file) || typeof file.id !== 'string') {
-    throw new Error('Attached context file was not indexed')
-  }
-  return file.id
+  let indexedId: string | null = null
+  await expect
+    .poll(
+      async () => {
+        const files = await apiGetJson(
+          request,
+          `${API_BASE}/api/conversations/${conversationId}/files`,
+        )
+        if (!Array.isArray(files)) throw new Error('Conversation files response was not an array')
+        const file = files.find(
+          (candidate) =>
+            isRecord(candidate) &&
+            candidate.source === 'attached' &&
+            candidate.name === filename &&
+            typeof candidate.id === 'string',
+        )
+        indexedId = isRecord(file) && typeof file.id === 'string' ? file.id : null
+        return indexedId
+      },
+      { timeout: 15_000, intervals: [250, 500, 1000] },
+    )
+    .not.toBeNull()
+  if (indexedId === null) throw new Error('Attached context file was not indexed')
+  return indexedId
 }
 
 test.describe('Chat commands and authoritative resource context', () => {

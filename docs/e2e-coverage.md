@@ -150,6 +150,13 @@ disposable-PostgreSQL leadership-handoff tests; it is not a browser E2E surface.
   child was given an explicitly invalid dynamic-port value. The proxy now sends
   fixed non-secret `Accept`/`User-Agent` headers required by the upstream WAF while
   continuing to strip arbitrary client headers and keep the API key proxy-owned.
+- The final post-change `scripted-full` run completed with **154 passed, 3 skipped,
+  1 failed** in 8.3 minutes. Its only failure was an immediate `/files` lookup racing
+  the attachment-to-message indexing transaction in `chat-commands-context`; the
+  helper now uses a bounded state poll, and the focused rerun passed **1/1** with
+  complete cleanup. Per the validation policy, the expensive full lane was not
+  repeated. Manifests: `e2e-scripted-88939-1788866457514.json` and
+  `e2e-scripted-5641-1788867080905.json` under the evidence directory above.
 
 ### Resource regression evidence (2026-09-08)
 
