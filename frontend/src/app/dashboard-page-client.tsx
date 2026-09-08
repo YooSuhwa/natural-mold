@@ -128,7 +128,7 @@ export default function DashboardPage() {
       </section>
 
       {/* Quick actions — 1.4fr + 1fr asymmetric grid */}
-      <div className="grid shrink-0 grid-cols-1 gap-4 md:grid-cols-[1.4fr_1fr]">
+      <div className="grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
         {/* Primary: 대화로 만들기 */}
         <Link href="/agents/new" className="moldy-card-link group">
           <Card className={cn('moldy-dashboard-action-primary h-full min-h-40 gap-3 p-1.5 ring-0')}>

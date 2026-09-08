@@ -92,7 +92,7 @@ function ThemeCard() {
               className={cn(
                 'flex h-10 w-full items-center justify-between rounded-lg border px-3 text-sm font-medium transition-[background-color,border-color,color]',
                 active
-                  ? 'border-primary bg-primary/10 text-primary-strong'
+                  ? 'border-primary bg-primary/10 text-primary-foreground'
                   : 'border-border bg-background text-foreground hover:bg-muted',
               )}
             >
@@ -142,7 +142,7 @@ function LanguageCard() {
               className={cn(
                 'flex h-10 w-full items-center justify-between rounded-lg border px-3 text-sm font-medium transition-[background-color,border-color,color]',
                 active
-                  ? 'border-primary bg-primary/10 text-primary-strong'
+                  ? 'border-primary bg-primary/10 text-primary-foreground'
                   : 'border-border bg-background text-foreground hover:bg-muted',
               )}
             >

@@ -70,13 +70,6 @@
     "message": "A control must be associated with a text label."
   },
   {
-    "filePath": "src/app/settings/page.tsx",
-    "line": 213,
-    "column": 17,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
     "filePath": "src/components/agent/visual-settings/nodes/agent-node.tsx",
     "line": 121,
     "column": 19,

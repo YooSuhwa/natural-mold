@@ -2,13 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { APIRequestContext, Browser, Locator, Page } from '@playwright/test'
 import { getE2EAuthStatePath } from '../../scripts/e2e-lane-contract.mjs'
-import {
-  API_BASE,
-  apiGetJson,
-  apiPostJson,
-  isRecord,
-  type CsrfHeaders,
-} from '../fixtures'
+import { API_BASE, apiGetJson, apiPostJson, isRecord, type CsrfHeaders } from '../fixtures'
 
 /**
  * Shared helpers for the full-app capture tour (tasks/captures-todo.md).
@@ -63,6 +57,13 @@ export async function capture(page: Page, wave: string, filename: string): Promi
   await page.screenshot({ path: path.join(dir, filename), fullPage: true })
 }
 
+/** Capture the current viewport, including fixed overlays such as keyboard skip links. */
+export async function captureViewport(page: Page, wave: string, filename: string): Promise<void> {
+  const dir = path.join(CAPTURE_ROOT, wave)
+  await fs.mkdir(dir, { recursive: true })
+  await page.screenshot({ path: path.join(dir, filename) })
+}
+
 /**
  * Element-scoped capture. The chat thread lives inside a nested ``overflow-y-auto``
  * viewport that auto-scrolls to the bottom, so ``fullPage`` page screenshots clip the
@@ -85,7 +86,9 @@ export async function scriptedModelId(request: APIRequestContext): Promise<strin
   if (!Array.isArray(models)) throw new Error('models did not return an array')
   const model = models.find(
     (row) =>
-      isRecord(row) && row.provider === 'e2e_scripted' && row.model_name === 'document-artifact-scripted',
+      isRecord(row) &&
+      row.provider === 'e2e_scripted' &&
+      row.model_name === 'document-artifact-scripted',
   )
   if (!isRecord(model) || typeof model.id !== 'string') {
     throw new Error('E2E scripted model is not seeded')
@@ -278,7 +281,8 @@ export async function createConfiguredAgent(
     skill_ids: skillId ? [skillId] : [],
     sub_agent_ids: childId ? [childId] : [],
   })
-  if (!isRecord(agent) || typeof agent.id !== 'string') throw new Error('configured agent create failed')
+  if (!isRecord(agent) || typeof agent.id !== 'string')
+    throw new Error('configured agent create failed')
   return { agentId: agent.id, childId }
 }
 
@@ -308,7 +312,8 @@ export async function createConversation(
     csrfHeaders,
     { title },
   )
-  if (!isRecord(convo) || typeof convo.id !== 'string') throw new Error('conversation create failed')
+  if (!isRecord(convo) || typeof convo.id !== 'string')
+    throw new Error('conversation create failed')
   return convo.id
 }
 

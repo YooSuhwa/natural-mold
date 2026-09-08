@@ -175,7 +175,7 @@ function ProfileForm({
                 <CardDescription>{t('profileSettingsDescription')}</CardDescription>
               </div>
               {user.is_super_user ? (
-                <Badge variant="secondary" className="bg-status-accent/15 text-status-accent">
+                <Badge variant="secondary" className="moldy-status-accent moldy-status-surface">
                   <ShieldIcon className="size-3" aria-hidden />
                   {t('adminBadge')}
                 </Badge>
@@ -214,6 +214,7 @@ function ProfileForm({
                   ref={fileInputRef}
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
+                  aria-label={t('uploadImage')}
                   className="sr-only"
                   onChange={handleFileChange}
                 />
@@ -341,7 +342,7 @@ function AvatarModeButton({
       className={cn(
         'h-7 rounded-md border px-2 text-xs font-medium transition-[background-color,border-color,color]',
         active
-          ? 'border-primary bg-primary/10 text-primary-strong'
+          ? 'border-primary bg-primary/10 text-primary-foreground'
           : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
       )}
     >
