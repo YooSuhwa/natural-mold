@@ -22,7 +22,7 @@
   },
   {
     "filePath": "src/components/chat/right-rail/chat-right-rail.tsx",
-    "line": 383,
+    "line": 409,
     "column": 13,
     "ruleId": "jsx-a11y/anchor-has-content",
     "message": "Anchors must have content and the content must be accessible by a screen reader."
@@ -141,7 +141,7 @@
   },
   {
     "filePath": "src/components/chat/right-rail/chat-right-rail.tsx",
-    "line": 383,
+    "line": 409,
     "column": 13,
     "ruleId": "jsx-a11y/control-has-associated-label",
     "message": "A control must be associated with a text label."
