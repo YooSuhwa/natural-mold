@@ -129,7 +129,7 @@ def _fake_commands(
         "        lane = 'live' if project == 'live-manual' else 'scripted'\n"
         "        spec = next(value for value in sys.argv[1:] if value.startswith('e2e/'))\n"
         "        if lane == 'live':\n"
-        "            nodes = ['live-manual::e2e/agent-triggers.spec.ts::a created interval trigger renders in the settings triggers tab', 'live-manual::e2e/builder.spec.ts::starts a session and runs the build pipeline from an initial message', 'live-manual::e2e/operator-screens.spec.ts::System LLM shows the seed-configured role slots', 'live-manual::e2e/operator-screens.spec.ts::creates and deletes a system credential through the catalog modal']\n"  # noqa: E501
+        "            nodes = ['live-manual::e2e/agent-live-quality.spec.ts::follows a bounded instruction through a live model chat', 'live-manual::e2e/agent-triggers.spec.ts::a created interval trigger renders in the settings triggers tab', 'live-manual::e2e/builder.spec.ts::starts a session and runs the build pipeline from an initial message', 'live-manual::e2e/operator-screens.spec.ts::System LLM shows the seed-configured role slots', 'live-manual::e2e/operator-screens.spec.ts::creates and deletes a system credential through the catalog modal']\n"  # noqa: E501
         "        else:\n"
         "            nodes = [f'{project}::e2e/{spec.split(\"/\", 1)[1]}::works']\n"
         '        artifact = b\'{"result":"passed"}\\n\'\n'

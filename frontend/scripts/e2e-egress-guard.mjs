@@ -130,7 +130,9 @@ export async function startE2EEgressGuard(options) {
       createConnection: createPinnedConnection(policy, pinned),
       headers: {
         authorization: `Bearer ${options.upstreamApiKey}`,
+        accept: 'application/json, text/event-stream',
         'content-type': 'application/json',
+        'user-agent': 'moldy-e2e-egress/1.0',
       },
       timeout: limits.timeoutMs,
     })

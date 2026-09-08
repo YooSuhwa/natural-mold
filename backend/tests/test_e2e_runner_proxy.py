@@ -95,6 +95,7 @@ def test_proxy_forwards_only_exact_owned_loopback_opt_in(
     proxy = start_live_proxy(SimpleNamespace(run_root=tmp_path), inherited)  # type: ignore[arg-type]
 
     assert captured_environment["E2E_EGRESS_ALLOW_OWNED_LOOPBACK"] == "1"
+    assert "E2E_EGRESS_PORT" not in captured_environment
     assert "OPENAI_API_KEY" not in captured_environment
     assert "E2E_LLM_MODEL_EXTRA" not in captured_environment
     assert proxy.base_url == "http://127.0.0.1:43123/v1"

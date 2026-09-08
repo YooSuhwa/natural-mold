@@ -49,6 +49,10 @@ export const LIVE_E2E_CASES = Object.freeze([
     spec: 'e2e/agent-triggers.spec.ts',
     title: 'a created interval trigger renders in the settings triggers tab',
   }),
+  Object.freeze({
+    spec: 'e2e/agent-live-quality.spec.ts',
+    title: 'follows a bounded instruction through a live model chat',
+  }),
 ])
 
 export const LIVE_E2E_SPECS = Object.freeze([...new Set(LIVE_E2E_CASES.map(({ spec }) => spec))])

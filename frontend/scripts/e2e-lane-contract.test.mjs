@@ -638,7 +638,7 @@ describe('E2E lane contract', () => {
     )
   })
 
-  it('contains only the four explicitly selected live scenarios', () => {
+  it('contains only the five explicitly selected live scenarios', () => {
     // Given / When: the live suite contract is read.
 
     // Then: it cannot silently expand to every scripted scenario.
@@ -659,21 +659,27 @@ describe('E2E lane contract', () => {
         spec: 'e2e/agent-triggers.spec.ts',
         title: 'a created interval trigger renders in the settings triggers tab',
       },
+      {
+        spec: 'e2e/agent-live-quality.spec.ts',
+        title: 'follows a bounded instruction through a live model chat',
+      },
     ])
     expect(LIVE_E2E_SPECS).toEqual([
       'e2e/builder.spec.ts',
       'e2e/operator-screens.spec.ts',
       'e2e/agent-triggers.spec.ts',
+      'e2e/agent-live-quality.spec.ts',
     ])
     expect(LIVE_E2E_SPEC_GLOBS).toEqual([
       '**/builder.spec.ts',
       '**/operator-screens.spec.ts',
       '**/agent-triggers.spec.ts',
+      '**/agent-live-quality.spec.ts',
     ])
   })
 
   it('creates a regex-escaped, end-anchored filter for every exact live title', () => {
-    // Given: the checked four-case manifest and a title containing regex metacharacters.
+    // Given: the checked live-case manifest and a title containing regex metacharacters.
     const customCases = [{ spec: 'e2e/example.spec.ts', title: 'keeps (only) $5 [safe]?' }]
 
     // When: the runner filter is derived.

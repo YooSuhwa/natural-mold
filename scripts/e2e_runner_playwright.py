@@ -69,6 +69,10 @@ CANONICAL_LIVE_CASES = (
         "e2e/agent-triggers.spec.ts",
         "a created interval trigger renders in the settings triggers tab",
     ),
+    (
+        "e2e/agent-live-quality.spec.ts",
+        "follows a bounded instruction through a live model chat",
+    ),
 )
 
 
@@ -270,7 +274,7 @@ def parse_live_cases(raw: str, project: str) -> tuple[PlaywrightNode, ...]:
         if node in nodes:
             raise PlaywrightReceiptError("duplicate_playwright_node")
         nodes.add(node)
-    if len(nodes) != 4:
+    if len(nodes) != len(CANONICAL_LIVE_CASES):
         raise PlaywrightReceiptError("live_case_count")
     return tuple(sorted(nodes))
 

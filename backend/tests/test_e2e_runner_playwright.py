@@ -242,7 +242,7 @@ def test_receipt_accepts_playwright_interrupted_status(tmp_path: Path) -> None:
     )
 
 
-def test_live_cases_require_exactly_four_unique_cases() -> None:
+def test_live_cases_require_exactly_the_canonical_number_of_unique_cases() -> None:
     """Given a broadened case set, when parsed, then the live gate fails."""
     raw = json.dumps([{"spec": "e2e/a.spec.ts", "title": "one"}])
 
@@ -507,7 +507,7 @@ def test_canonical_live_contract_cannot_be_redefined_by_environment(
     monkeypatch.setenv("E2E_LIVE_CASES_JSON", '[{"spec":"e2e/forged.spec.ts","title":"x"}]')
     monkeypatch.setenv("E2E_LIVE_TITLE_FILTER", ".*")
 
-    assert len(canonical_live_nodes("live-manual")) == 4
+    assert len(canonical_live_nodes("live-manual")) == 5
     assert json.loads(canonical_live_cases_json()) == [
         {"spec": spec, "title": title} for spec, title in CANONICAL_LIVE_CASES
     ]

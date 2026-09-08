@@ -33,6 +33,10 @@
 
 ## Interaction contract
 
+- 반복 탐색 앞에는 키보드로 초점 가능한 본문 건너뛰기 링크를 두고, 앱 셸의
+  `main` landmark는 페이지당 하나만 유지한다.
+- `primary-strong` 배경 위 텍스트는 테마별 `primary-strong-foreground` 토큰을
+  사용하며, 작은 상태 배지와 사이드바 캡션도 WCAG AA 명도 대비를 만족해야 한다.
 - Enter는 전송, Shift+Enter는 줄바꿈이며 한국어 IME 조합 중에는 전송하지 않는다.
 - 실행 중에는 Stop이 현재 run 취소 경로를 사용한다. 실패 메시지는 transcript에
   남고 재시도 affordance를 제공한다.

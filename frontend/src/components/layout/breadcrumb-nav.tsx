@@ -127,6 +127,7 @@ export function BreadcrumbNav() {
     <nav aria-label={ta('breadcrumb')} className="flex items-center gap-1.5 text-sm min-w-0">
       <Link
         href="/"
+        aria-label={t('sidebar.nav.home')}
         className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
       >
         <HomeIcon className="size-4" />

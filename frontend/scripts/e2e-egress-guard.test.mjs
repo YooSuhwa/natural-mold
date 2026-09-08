@@ -211,7 +211,7 @@ describe('live E2E egress guard', () => {
     const observations = []
     const upstream = await listen((request, response) => {
       // prettier-ignore
-      observations.push({ url: request.url, authorization: request.headers.authorization, leaked: request.headers['x-external-key'] })
+      observations.push({ url: request.url, authorization: request.headers.authorization, accept: request.headers.accept, userAgent: request.headers['user-agent'], leaked: request.headers['x-external-key'] })
       if (observations.length === 1) {
         response.writeHead(200, { 'content-type': 'text/event-stream' })
         response.write('data: first\n\n')
@@ -234,8 +234,8 @@ describe('live E2E egress guard', () => {
     expect(await ordinary.json()).toEqual({ mode: 'ordinary' })
     // prettier-ignore
     expect(observations).toEqual([
-      { url: '/v1/chat/completions', authorization: 'Bearer upstream-key-not-for-client', leaked: undefined },
-      { url: '/v1/chat/completions', authorization: 'Bearer upstream-key-not-for-client', leaked: undefined },
+      { url: '/v1/chat/completions', authorization: 'Bearer upstream-key-not-for-client', accept: 'application/json, text/event-stream', userAgent: 'moldy-e2e-egress/1.0', leaked: undefined },
+      { url: '/v1/chat/completions', authorization: 'Bearer upstream-key-not-for-client', accept: 'application/json, text/event-stream', userAgent: 'moldy-e2e-egress/1.0', leaked: undefined },
     ])
   })
 

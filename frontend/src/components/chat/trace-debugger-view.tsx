@@ -194,7 +194,7 @@ function TraceRunLayout({
   return (
     <>
       <RunInfoPanel traces={traces} spans={metricSpans} />
-      <main className="moldy-trace-panel flex min-h-0 flex-col px-5 py-4">
+      <div className="moldy-trace-panel flex min-h-0 flex-col px-5 py-4">
         <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <h2 className="font-heading text-lg font-semibold">{t('spanDetails')}</h2>
           <span className="text-xs text-muted-foreground">
@@ -216,7 +216,7 @@ function TraceRunLayout({
             showHeader={false}
           />
         </div>
-      </main>
+      </div>
       <aside className="moldy-trace-rail min-h-0 p-4">
         {selectedSpan ? (
           <DetailsView data={selectedSpan} className="moldy-card bg-background" />

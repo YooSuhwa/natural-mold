@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import uuid
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +10,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.skill import Skill
 from app.services import skill_revision_service
 from app.skills import service as skill_service
 from tests.conftest import TEST_USER_ID
@@ -101,6 +103,7 @@ async def test_first_legacy_content_mutation_creates_baseline_then_update_revisi
 
 async def test_metadata_and_package_file_mutations_create_revisions(
     client: AsyncClient,
+    db: AsyncSession,
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
@@ -137,12 +140,16 @@ async def test_metadata_and_package_file_mutations_create_revisions(
             files={"file": ("guide.md", b"reference\n", "text/markdown")},
         )
         revisions = await client.get(f"/api/skills/{skill_id}/revisions")
+        skill = await db.get(Skill, uuid.UUID(skill_id))
+        assert skill is not None
+        await db.refresh(skill)
 
     assert created.status_code == 201, created.text
     assert metadata_response.status_code == 200, metadata_response.text
     assert put_response.status_code == 200, put_response.text
     assert delete_response.status_code == 200, delete_response.text
     assert upload_response.status_code == 201, upload_response.text
+    assert skill.is_dirty is True
     assert [item["operation"] for item in revisions.json()] == [
         "manual_file_update",
         "manual_file_update",

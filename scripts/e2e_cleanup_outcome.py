@@ -52,6 +52,7 @@ def validate_egress(value: object, lane: str) -> None:
     if not isinstance(records, list):
         raise ManifestValidationError("egress_records")
     require(0 < len(records) <= 100, "egress_records")
+    saw_success = False
     for record_value in records:
         record = mapping(record_value, "egress_records")
         require(
@@ -69,13 +70,16 @@ def validate_egress(value: object, lane: str) -> None:
             and not parsed.fragment,
             "egress_record",
         )
+        status = integer(record.get("status"), "egress_record")
         require(
             record.get("method") == "POST"
             and record.get("path_class") == "chat_completions"
-            and 200 <= integer(record.get("status"), "egress_record") < 300
+            and (200 <= status < 300 or status == 429)
             and integer(record.get("count"), "egress_record") >= 1,
             "egress_record",
         )
+        saw_success = saw_success or 200 <= status < 300
+    require(saw_success, "egress_record")
 
 
 def validate_outcome(

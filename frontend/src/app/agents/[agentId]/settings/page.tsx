@@ -251,7 +251,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         </div>
       </header>
 
-      <main className="grid flex-1 grid-cols-1 content-start gap-3 overflow-x-hidden overflow-y-auto p-3 lg:grid-cols-2 lg:content-stretch lg:overflow-hidden">
+      <div className="grid flex-1 grid-cols-1 content-start gap-3 overflow-x-hidden overflow-y-auto p-3 lg:grid-cols-2 lg:content-stretch lg:overflow-hidden">
         <section className="moldy-panel flex min-h-176 min-w-0 flex-col overflow-hidden lg:min-h-0">
           <Tabs
             value={leftTab}
@@ -345,7 +345,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             createMode={justCreated}
           />
         </section>
-      </main>
+      </div>
 
       <DeleteConfirmDialog
         open={deleteAgentConfirmOpen}

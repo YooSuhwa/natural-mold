@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { QueryProvider } from '@/lib/providers/query-provider'
@@ -24,6 +25,7 @@ export function AppLayout({
   initialSidebarWidth?: number | null
 }) {
   const pathname = usePathname()
+  const t = useTranslations('common.a11y')
   const isBare =
     (pathname ? BARE_ROUTES.has(pathname) : false) ||
     BARE_ROUTE_PREFIXES.some((prefix) => pathname?.startsWith(prefix))
@@ -44,8 +46,11 @@ export function AppLayout({
             className="relative overflow-hidden"
           >
             <AssistantSideChatProvider>
+              <a href="#main-content" className="moldy-popover moldy-skip-link">
+                {t('skipToMain')}
+              </a>
               {isSettingsRoute ? <SettingsSidebar /> : <AppSidebar />}
-              <SidebarInset>
+              <SidebarInset id="main-content" tabIndex={-1}>
                 <AppHeader />
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
                 <OnboardingDialog />

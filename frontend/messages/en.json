@@ -198,7 +198,8 @@
       "resizeSidebar": "Resize sidebar",
       "collapsedPanel": "Collapsed",
       "resetPanelWidth": "Reset panel width",
-      "breadcrumb": "Breadcrumb"
+      "breadcrumb": "Breadcrumb",
+      "skipToMain": "Skip to main content"
     }
   },
   "sidebar": {

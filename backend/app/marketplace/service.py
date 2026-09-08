@@ -171,9 +171,7 @@ def _catalog_stmt(user: CurrentUser, filters: MarketplaceItemListFilters):
     stmt = _apply_filters(stmt, filters)
     if filters.installed is not None:
         exists_clause = _installed_for_user_exists(user.id)
-        stmt = stmt.where(
-            exists_clause if filters.installed else ~exists_clause
-        )
+        stmt = stmt.where(exists_clause if filters.installed else ~exists_clause)
     return stmt
 
 
@@ -246,8 +244,7 @@ async def _apply_post_load_filters(
         filtered = [
             i
             for i in filtered
-            if isinstance(i.categories, list)
-            and any(c in i.categories for c in filters.category)
+            if isinstance(i.categories, list) and any(c in i.categories for c in filters.category)
         ]
 
     return filtered
@@ -276,9 +273,7 @@ async def _project_item(
             latest_version_summary = MarketplaceVersionSummary.model_validate(lv)
 
     requirements = (
-        item.latest_version.credential_requirements
-        if item.latest_version is not None
-        else None
+        item.latest_version.credential_requirements if item.latest_version is not None else None
     )
     credential_summary: CredentialSummaryOut = derive_credential_summary(requirements)
 
@@ -345,9 +340,7 @@ async def _project_item(
         latest_version=latest_version_summary,
         credential_summary=credential_summary,
         execution_profile=(
-            item.latest_version.execution_profile
-            if item.latest_version is not None
-            else None
+            item.latest_version.execution_profile if item.latest_version is not None else None
         ),
         origin_summary=None,
         publication_summary=publication,
@@ -371,12 +364,16 @@ async def _bulk_publication_link_item_ids(
     if not owner_item_ids:
         return set()
     rows = (
-        await db.execute(
-            select(MarketplacePublicationLink.item_id).where(
-                MarketplacePublicationLink.item_id.in_(owner_item_ids)
+        (
+            await db.execute(
+                select(MarketplacePublicationLink.item_id).where(
+                    MarketplacePublicationLink.item_id.in_(owner_item_ids)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return set(rows)
 
 
@@ -412,11 +409,7 @@ def _publication_state_for_owner(item: MarketplaceItem) -> str:
         if item.visibility == "restricted":
             return "published_restricted"
         if item.visibility == "public":
-            return (
-                "published_public_listed"
-                if item.is_listed
-                else "published_public_unlisted"
-            )
+            return "published_public_listed" if item.is_listed else "published_public_unlisted"
         if item.visibility == "unlisted":
             return "published_unlisted"
     return "not_published"
@@ -435,12 +428,8 @@ async def list_items(
     limit: int = 50,
     offset: int = 0,
 ) -> Sequence[MarketplaceItemOut]:
-    rows = await _fetch_catalog_rows(
-        db, user=user, filters=filters, limit=limit, offset=offset
-    )
-    rows = await _apply_post_load_filters(
-        db, rows=rows, user=user, filters=filters
-    )
+    rows = await _fetch_catalog_rows(db, user=user, filters=filters, limit=limit, offset=offset)
+    rows = await _apply_post_load_filters(db, rows=rows, user=user, filters=filters)
     return await _project_items(db, rows, user)
 
 
@@ -560,6 +549,10 @@ async def get_item(
             selectinload(MarketplaceItem.latest_version),
             selectinload(MarketplaceItem.acl_entries),
         )
+        # Publish/update routes may have loaded this item earlier in the same
+        # session. Refresh relationships so the response cannot project the
+        # previous latest_version from the identity map.
+        .execution_options(populate_existing=True)
     )
     item = (await db.execute(stmt)).scalar_one_or_none()
     if item is None:

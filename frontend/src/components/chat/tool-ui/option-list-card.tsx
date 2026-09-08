@@ -108,7 +108,7 @@ export function OptionListCard({
                   'mt-0.5 flex size-4 shrink-0 items-center justify-center border-2',
                   selectionMode === 'single' ? 'rounded-full' : 'rounded',
                   checked
-                    ? 'border-primary-strong bg-primary-strong text-white'
+                    ? 'border-primary-strong bg-primary-strong text-primary-strong-foreground'
                     : 'border-muted-foreground/50',
                 )}
               >

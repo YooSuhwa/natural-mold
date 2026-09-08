@@ -41,6 +41,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
   --color-primary-strong: var(--primary-strong);
+  --color-primary-strong-foreground: var(--primary-strong-foreground);
   --color-status-success: var(--status-success);
   --color-status-info: var(--status-info);
   --color-status-warn: var(--status-warn);
@@ -169,6 +170,7 @@
   --primary: oklch(0.95 0.052 163.051);
   --primary-foreground: oklch(0.262 0.051 172.552);
   --primary-strong: oklch(0.596 0.145 163.225);
+  --primary-strong-foreground: oklch(0.145 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -291,6 +293,7 @@
   --primary: oklch(0.378 0.077 168.94);
   --primary-foreground: oklch(0.95 0.052 163.051);
   --primary-strong: oklch(0.765 0.177 163.223);
+  --primary-strong-foreground: oklch(0.145 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -1027,6 +1030,33 @@
     background: var(--popover);
     color: var(--popover-foreground);
     box-shadow: var(--moldy-shadow-card);
+  }
+
+  .moldy-skip-link {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .moldy-skip-link:focus {
+    position: fixed;
+    inset-block-start: 0.75rem;
+    inset-inline-start: 0.75rem;
+    z-index: 50;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    overflow: visible;
+    clip: auto;
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: normal;
   }
 
   .moldy-side-panel {
@@ -2082,7 +2112,7 @@
   .moldy-resource-subtext {
     margin-top: 0.5rem;
     overflow: hidden;
-    color: color-mix(in oklch, var(--muted-foreground) 80%, transparent);
+    color: var(--muted-foreground);
     font-size: 0.6875rem;
     font-weight: 500;
     line-height: 1rem;

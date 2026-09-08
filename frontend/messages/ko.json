@@ -198,7 +198,8 @@
       "resizeSidebar": "사이드바 크기 조절",
       "collapsedPanel": "접힘",
       "resetPanelWidth": "패널 폭 초기화",
-      "breadcrumb": "탐색 경로"
+      "breadcrumb": "탐색 경로",
+      "skipToMain": "본문으로 건너뛰기"
     }
   },
   "sidebar": {

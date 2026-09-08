@@ -59,6 +59,7 @@ from app.marketplace.install.mcp import _install_mcp_item, _overwrite_mcp_instal
 from app.marketplace.install.skill import (
     _install_skill_item,
     _overwrite_skill_installation,
+    _refresh_skill_installation_bindings,
 )
 from app.marketplace.install.snapshot import _rmtree_skill_storage
 from app.marketplace.install_locks import lock_marketplace_item_install
@@ -163,9 +164,18 @@ async def install_item(
     existing = await _existing_installation(db, item=item, user=user)
     if existing is not None:
         if body.install_mode == "reuse_or_update":
-            # State refresh only — bindings update flow lives in the
-            # dedicated PUT bindings endpoint.
-            return existing
+            if existing.installed_skill_id is None:
+                raise marketplace_item_not_found()
+            skill = await db.get(Skill, existing.installed_skill_id)
+            if skill is None:
+                raise marketplace_item_not_found()
+            return await _refresh_skill_installation_bindings(
+                db,
+                installation=existing,
+                skill=skill,
+                user=user,
+                body=body,
+            )
         if body.install_mode == "overwrite_existing":
             # Delete the existing skill + installation, then re-install.
             await _remove_install_artifacts(db, existing)

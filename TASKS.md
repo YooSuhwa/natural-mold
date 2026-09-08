@@ -58,8 +58,13 @@
   and settings-sidebar footer overlap observed in the resource captures. The focused
   375/768/1280 capture run and two independent visual reviews passed; see
   `docs/e2e-coverage.md`.
-- [ ] Extend marketplace validation to external OAuth and complex
-  dependency/update/credential-binding combinations.
+- [x] Extend marketplace validation to credential-bound setup recovery and
+  dirty in-place updates. The browser flow covers `needs_setup` → active with
+  the same installation/resource, then an explicit overwrite of local edits;
+  broader backend Marketplace/OAuth contracts are green.
+- [ ] Complete a manual third-party OAuth consent/callback run against a real
+  provider account. State, PKCE, callback, token, and ownership guards are
+  automated, but the external consent screen remains intentionally manual.
 - [x] Harden multi-worktree scheduler behavior when several backends share one DB:
   continuously validate/retry the PostgreSQL advisory-lock leader, fence stale
   scheduled triggers, and reconcile shared trigger definitions without resetting

@@ -54,7 +54,6 @@ def start_live_proxy(resources: E2eResources, inherited: dict[str, str]) -> Prox
             "E2E_EGRESS_PROXY_TOKEN": token,
             "E2E_EGRESS_READY_FILE": str(ready),
             "E2E_EGRESS_RECEIPT_FILE": str(receipt),
-            "E2E_EGRESS_PORT": "0",
         }
     )
     process, log_file = start_owned_process(

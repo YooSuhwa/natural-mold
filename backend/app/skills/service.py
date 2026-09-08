@@ -202,6 +202,7 @@ async def update_metadata(
         skill.description = description
     if version is not None:
         skill.version = version
+    skill.is_dirty = True
     skill.last_modified_at = _now()
     await db.flush()
     return skill
@@ -217,6 +218,7 @@ async def update_text_content(db: AsyncSession, *, skill: Skill, content: str) -
     await asyncio.to_thread(resolve_data_path(skill.storage_path).write_bytes, body_bytes)
     skill.content_hash = hashlib.sha256(body_bytes).hexdigest()
     skill.size_bytes = len(body_bytes)
+    skill.is_dirty = True
     skill.last_modified_at = _now()
     sync_frontmatter(skill, body_bytes)
     await db.flush()

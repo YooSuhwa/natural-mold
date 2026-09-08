@@ -58,7 +58,7 @@ function SingleSelectInput({
             className={cn(
               'rounded-full border px-3 py-1.5 text-xs transition-[background-color,border-color,color,box-shadow]',
               selected === opt.label
-                ? 'border-primary bg-primary/10 text-primary-strong ring-1 ring-primary/30'
+                ? 'border-primary bg-primary/10 text-primary-foreground ring-1 ring-primary/30'
                 : 'border-border hover:border-primary/50 hover:bg-accent',
             )}
           >
@@ -226,275 +226,275 @@ export function UserInputUI({
   result,
   status,
 }: ToolCallMessagePartProps<AskUserArgs, unknown>) {
-    const t = useTranslations('chat.userInput')
-    const hitl = useHiTL()
-    const [answers, setAnswers] = useState<Answers>({})
-    const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted'>('idle')
-    const [submittedDisplay, setSubmittedDisplay] = useState<string | null>(null)
-    const [submitError, setSubmitError] = useState(false)
+  const t = useTranslations('chat.userInput')
+  const hitl = useHiTL()
+  const [answers, setAnswers] = useState<Answers>({})
+  const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted'>('idle')
+  const [submittedDisplay, setSubmittedDisplay] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState(false)
 
-    const questions = useMemo(() => normalizeQuestions(args ?? {}), [args])
-    const optionListOptions = useMemo(() => normalizeOptions(args?.options) ?? [], [args?.options])
-    const submitDecision = useCallback(
-      async (decision: ReturnType<typeof toRespond>, displayText?: string) => {
-        if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
-          await hitl.registerDecision(
-            args.hitl_action_index,
-            decision,
-            displayText,
-            args.hitl_interrupt_id,
-          )
-          return
+  const questions = useMemo(() => normalizeQuestions(args ?? {}), [args])
+  const optionListOptions = useMemo(() => normalizeOptions(args?.options) ?? [], [args?.options])
+  const submitDecision = useCallback(
+    async (decision: ReturnType<typeof toRespond>, displayText?: string) => {
+      if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
+        await hitl.registerDecision(
+          args.hitl_action_index,
+          decision,
+          displayText,
+          args.hitl_interrupt_id,
+        )
+        return
+      }
+      await hitl?.onResumeDecisions([decision], displayText)
+    },
+    [args, hitl],
+  )
+
+  const submitResponse = useCallback(
+    async (message: string, displayText: string) => {
+      setSubmitState('submitting')
+      setSubmittedDisplay(displayText)
+      setSubmitError(false)
+      try {
+        await submitDecision(toRespond(message), displayText)
+        setSubmitState('submitted')
+      } catch {
+        setSubmittedDisplay(null)
+        setSubmitState('idle')
+        setSubmitError(true)
+      }
+    },
+    [submitDecision],
+  )
+
+  // 입력 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
+  const fallbackId = useId()
+  const approvalId = args?.approval_id ?? `ask-user-${fallbackId}`
+
+  // requires-action 상태일 때만 timer 활성
+  const isPending =
+    submitState === 'idle' &&
+    result === undefined &&
+    status.type !== 'complete' &&
+    status.type !== 'running'
+
+  const handleSubmit = useCallback(
+    async (opts?: { skipReason?: string }) => {
+      // 응답 직렬화
+      const response: Record<string, unknown> = {}
+      questions.forEach((q, i) => {
+        const key = q.question ?? q.label ?? q.id ?? `question_${i + 1}`
+        const val = answers[i]
+        if (val instanceof Set) {
+          response[key] = Array.from(val)
+        } else {
+          response[key] = val ?? ''
         }
-        await hitl?.onResumeDecisions([decision], displayText)
-      },
-      [args, hitl],
-    )
+      })
 
-    const submitResponse = useCallback(
-      async (message: string, displayText: string) => {
-        setSubmitState('submitting')
-        setSubmittedDisplay(displayText)
-        setSubmitError(false)
-        try {
-          await submitDecision(toRespond(message), displayText)
-          setSubmitState('submitted')
-        } catch {
-          setSubmittedDisplay(null)
-          setSubmitState('idle')
-          setSubmitError(true)
-        }
-      },
-      [submitDecision],
-    )
+      setSubmitState('submitting')
+      setSubmitError(false)
 
-    // 입력 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
-    const fallbackId = useId()
-    const approvalId = args?.approval_id ?? `ask-user-${fallbackId}`
+      // 질문이 1개면 값만 전송, 복수면 객체 전송
+      const payload = questions.length === 1 ? Object.values(response)[0] : response
 
-    // requires-action 상태일 때만 timer 활성
-    const isPending =
-      submitState === 'idle' &&
-      result === undefined &&
-      status.type !== 'complete' &&
-      status.type !== 'running'
+      // 화면 표시용 텍스트
+      const displayText =
+        opts?.skipReason ??
+        questions
+          .map((_, i) => {
+            const val = answers[i]
+            if (val instanceof Set) return Array.from(val).join(', ')
+            return String(val ?? '')
+          })
+          .join(' | ')
 
-    const handleSubmit = useCallback(
-      async (opts?: { skipReason?: string }) => {
-        // 응답 직렬화
-        const response: Record<string, unknown> = {}
-        questions.forEach((q, i) => {
-          const key = q.question ?? q.label ?? q.id ?? `question_${i + 1}`
-          const val = answers[i]
-          if (val instanceof Set) {
-            response[key] = Array.from(val)
-          } else {
-            response[key] = val ?? ''
-          }
-        })
+      const message = typeof payload === 'string' ? payload : JSON.stringify(payload)
+      setSubmittedDisplay(displayText)
+      try {
+        await submitDecision(toRespond(message), displayText)
+        setSubmitState('submitted')
+      } catch {
+        setSubmittedDisplay(null)
+        setSubmitState('idle')
+        setSubmitError(true)
+      }
+    },
+    [answers, questions, submitDecision],
+  )
 
-        setSubmitState('submitting')
-        setSubmitError(false)
+  // 만료 시 빈 답변으로 자동 제출 — 에이전트 graph가 무한히 paused되지 않도록
+  const expireMessage = t('autoSkipped')
+  const handleExpire = useCallback(() => {
+    if (submitState !== 'idle') return
+    void submitResponse(expireMessage, expireMessage)
+  }, [submitResponse, submitState, expireMessage])
 
-        // 질문이 1개면 값만 전송, 복수면 객체 전송
-        const payload = questions.length === 1 ? Object.values(response)[0] : response
+  const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
+    approvalId,
+    initialTimeoutSeconds: args?.timeout_seconds,
+    onExpire: handleExpire,
+    active: isPending,
+  })
 
-        // 화면 표시용 텍스트
-        const displayText =
-          opts?.skipReason ??
-          questions
-            .map((_, i) => {
-              const val = answers[i]
-              if (val instanceof Set) return Array.from(val).join(', ')
-              return String(val ?? '')
-            })
-            .join(' | ')
+  const updateAnswer = useCallback(
+    (idx: number, value: unknown) => {
+      setAnswers((prev) => ({ ...prev, [idx]: value }))
+      extend()
+    },
+    [extend],
+  )
 
-        const message = typeof payload === 'string' ? payload : JSON.stringify(payload)
-        setSubmittedDisplay(displayText)
-        try {
-          await submitDecision(toRespond(message), displayText)
-          setSubmitState('submitted')
-        } catch {
-          setSubmittedDisplay(null)
-          setSubmitState('idle')
-          setSubmitError(true)
-        }
-      },
-      [answers, questions, submitDecision],
-    )
+  const toggleMulti = useCallback(
+    (idx: number, label: string) => {
+      setAnswers((prev) => {
+        const current = (prev[idx] as Set<string>) ?? new Set<string>()
+        return { ...prev, [idx]: toggleSetItem(current, label) }
+      })
+      extend()
+    },
+    [extend],
+  )
 
-    // 만료 시 빈 답변으로 자동 제출 — 에이전트 graph가 무한히 paused되지 않도록
-    const expireMessage = t('autoSkipped')
-    const handleExpire = useCallback(() => {
-      if (submitState !== 'idle') return
-      void submitResponse(expireMessage, expireMessage)
-    }, [submitResponse, submitState, expireMessage])
+  // ── 완료 상태 ──
+  if (status.type === 'complete' || result !== undefined || submitState === 'submitted') {
+    return <CompletedBadge result={submittedDisplay ?? result ?? answers[0]} />
+  }
 
-    const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
-      approvalId,
-      initialTimeoutSeconds: args?.timeout_seconds,
-      onExpire: handleExpire,
-      active: isPending,
-    })
-
-    const updateAnswer = useCallback(
-      (idx: number, value: unknown) => {
-        setAnswers((prev) => ({ ...prev, [idx]: value }))
-        extend()
-      },
-      [extend],
-    )
-
-    const toggleMulti = useCallback(
-      (idx: number, label: string) => {
-        setAnswers((prev) => {
-          const current = (prev[idx] as Set<string>) ?? new Set<string>()
-          return { ...prev, [idx]: toggleSetItem(current, label) }
-        })
-        extend()
-      },
-      [extend],
-    )
-
-    // ── 완료 상태 ──
-    if (status.type === 'complete' || result !== undefined || submitState === 'submitted') {
-      return <CompletedBadge result={submittedDisplay ?? result ?? answers[0]} />
-    }
-
-    // ── 로딩 상태 ──
-    if (status.type === 'running') {
-      return (
-        <div className="moldy-chat-card flex items-center gap-2 px-3 py-2 text-xs">
-          <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
-          <span className="text-muted-foreground">{t('preparing')}</span>
-        </div>
-      )
-    }
-
-    // ── requires-action: 입력 UI ──
-    const allAnswered = questions.every((_, i) => {
-      const val = answers[i]
-      if (val instanceof Set) return val.size > 0
-      return val !== undefined && val !== ''
-    })
-
+  // ── 로딩 상태 ──
+  if (status.type === 'running') {
     return (
-      <div className="moldy-chat-card w-full p-4">
-        {/* Header */}
-        <div className="mb-3 flex items-center gap-2">
-          <MessageSquareQuoteIcon className="size-4 moldy-builder-color-primary-bg-strong" />
-          <span className="text-sm font-medium">{t('inputRequired')}</span>
-          <CountdownBadge
-            formatted={formatted}
-            isUrgent={isUrgent}
-            expired={remaining <= 0}
-            label={t('expiresIn')}
-            expiredLabel={t('expired')}
-            className="ml-auto"
-          />
-        </div>
-
-        {submitError && (
-          <p role="alert" className="mb-3 text-xs text-destructive">
-            {t('resumeFailed')}
-          </p>
-        )}
-
-        {/* Questions */}
-        {args?.mode === 'question_flow' ? (
-          <QuestionFlowCard
-            id={approvalId}
-            title={args.title}
-            questions={questions}
-            submitting={submitState === 'submitting'}
-            onInteract={extend}
-            onSubmit={(response) => submitResponse(response.message, response.displayText)}
-          />
-        ) : args?.mode === 'option_list' ? (
-          <OptionListCard
-            id={approvalId}
-            title={args.title}
-            options={optionListOptions}
-            minSelections={args.minSelections}
-            maxSelections={args.maxSelections}
-            submitting={submitState === 'submitting'}
-            onInteract={extend}
-            onSubmit={(response) => submitResponse(response.message, response.displayText)}
-          />
-        ) : (
-          <>
-            <div className="space-y-4">
-              {questions.map((q, i) => {
-                switch (q.type) {
-                  case 'single_select':
-                    return (
-                      <SingleSelectInput
-                        key={i}
-                        question={q}
-                        selected={(answers[i] as string) ?? null}
-                        onSelect={(v) => {
-                          updateAnswer(i, v)
-                          // 질문 1개 + single_select → 즉시 제출
-                          if (questions.length === 1) {
-                            void submitResponse(v, v)
-                          }
-                        }}
-                      />
-                    )
-                  case 'multi_select':
-                    return (
-                      <MultiSelectInput
-                        key={i}
-                        question={q}
-                        selected={(answers[i] as Set<string>) ?? new Set<string>()}
-                        onToggle={(v) => toggleMulti(i, v)}
-                      />
-                    )
-                  case 'text':
-                  default:
-                    return (
-                      <TextInput
-                        key={i}
-                        question={q}
-                        value={(answers[i] as string) ?? ''}
-                        onChange={(v) => updateAnswer(i, v)}
-                        onFocus={extend}
-                        placeholder={t('placeholder')}
-                      />
-                    )
-                }
-              })}
-            </div>
-
-            {/* Submit */}
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => handleSubmit()}
-                disabled={!allAnswered || submitState === 'submitting'}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-[background-color,color,opacity]',
-                  allAnswered && submitState === 'idle'
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'cursor-not-allowed bg-muted text-muted-foreground',
-                )}
-              >
-                {submitState === 'submitting' ? (
-                  <>
-                    <Loader2Icon className="size-3 animate-spin" />
-                    {t('sending')}
-                  </>
-                ) : (
-                  <>
-                    <SendIcon className="size-3" />
-                    {t('confirm')}
-                  </>
-                )}
-              </button>
-            </div>
-          </>
-        )}
+      <div className="moldy-chat-card flex items-center gap-2 px-3 py-2 text-xs">
+        <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
+        <span className="text-muted-foreground">{t('preparing')}</span>
       </div>
     )
+  }
+
+  // ── requires-action: 입력 UI ──
+  const allAnswered = questions.every((_, i) => {
+    const val = answers[i]
+    if (val instanceof Set) return val.size > 0
+    return val !== undefined && val !== ''
+  })
+
+  return (
+    <div className="moldy-chat-card w-full p-4">
+      {/* Header */}
+      <div className="mb-3 flex items-center gap-2">
+        <MessageSquareQuoteIcon className="size-4 moldy-builder-color-primary-bg-strong" />
+        <span className="text-sm font-medium">{t('inputRequired')}</span>
+        <CountdownBadge
+          formatted={formatted}
+          isUrgent={isUrgent}
+          expired={remaining <= 0}
+          label={t('expiresIn')}
+          expiredLabel={t('expired')}
+          className="ml-auto"
+        />
+      </div>
+
+      {submitError && (
+        <p role="alert" className="mb-3 text-xs text-destructive">
+          {t('resumeFailed')}
+        </p>
+      )}
+
+      {/* Questions */}
+      {args?.mode === 'question_flow' ? (
+        <QuestionFlowCard
+          id={approvalId}
+          title={args.title}
+          questions={questions}
+          submitting={submitState === 'submitting'}
+          onInteract={extend}
+          onSubmit={(response) => submitResponse(response.message, response.displayText)}
+        />
+      ) : args?.mode === 'option_list' ? (
+        <OptionListCard
+          id={approvalId}
+          title={args.title}
+          options={optionListOptions}
+          minSelections={args.minSelections}
+          maxSelections={args.maxSelections}
+          submitting={submitState === 'submitting'}
+          onInteract={extend}
+          onSubmit={(response) => submitResponse(response.message, response.displayText)}
+        />
+      ) : (
+        <>
+          <div className="space-y-4">
+            {questions.map((q, i) => {
+              switch (q.type) {
+                case 'single_select':
+                  return (
+                    <SingleSelectInput
+                      key={i}
+                      question={q}
+                      selected={(answers[i] as string) ?? null}
+                      onSelect={(v) => {
+                        updateAnswer(i, v)
+                        // 질문 1개 + single_select → 즉시 제출
+                        if (questions.length === 1) {
+                          void submitResponse(v, v)
+                        }
+                      }}
+                    />
+                  )
+                case 'multi_select':
+                  return (
+                    <MultiSelectInput
+                      key={i}
+                      question={q}
+                      selected={(answers[i] as Set<string>) ?? new Set<string>()}
+                      onToggle={(v) => toggleMulti(i, v)}
+                    />
+                  )
+                case 'text':
+                default:
+                  return (
+                    <TextInput
+                      key={i}
+                      question={q}
+                      value={(answers[i] as string) ?? ''}
+                      onChange={(v) => updateAnswer(i, v)}
+                      onFocus={extend}
+                      placeholder={t('placeholder')}
+                    />
+                  )
+              }
+            })}
+          </div>
+
+          {/* Submit */}
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={() => handleSubmit()}
+              disabled={!allAnswered || submitState === 'submitting'}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-[background-color,color,opacity]',
+                allAnswered && submitState === 'idle'
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : 'cursor-not-allowed bg-muted text-muted-foreground',
+              )}
+            >
+              {submitState === 'submitting' ? (
+                <>
+                  <Loader2Icon className="size-3 animate-spin" />
+                  {t('sending')}
+                </>
+              ) : (
+                <>
+                  <SendIcon className="size-3" />
+                  {t('confirm')}
+                </>
+              )}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
 }

@@ -288,7 +288,7 @@ export default function ManualCreationPage() {
         </div>
       </header>
 
-      <main className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
+      <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
         <section className="flex min-h-0 flex-col overflow-hidden border-b lg:border-b-0 lg:border-r">
           <Tabs
             value={leftTab}
@@ -370,7 +370,7 @@ export default function ManualCreationPage() {
             onCreateModeFirstMessage={handleCreateModeFirstMessage}
           />
         </section>
-      </main>
+      </div>
     </div>
   )
 }

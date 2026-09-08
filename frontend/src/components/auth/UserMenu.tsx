@@ -43,7 +43,7 @@ export function UserMenu({ user, onLogout }: Props) {
           <span className="flex items-center gap-1.5 truncate text-sm font-medium">
             <span className="truncate">{label}</span>
             {user.is_super_user ? (
-              <span className="inline-flex h-4 items-center rounded-full bg-status-accent/15 px-1.5 moldy-ui-micro font-medium uppercase tracking-wider text-status-accent">
+              <span className="moldy-status-accent moldy-status-surface inline-flex h-4 items-center rounded-full px-1.5 moldy-ui-micro font-medium uppercase tracking-wider">
                 {t('adminBadge')}
               </span>
             ) : null}
