@@ -249,7 +249,16 @@ type MutableToolCall = {
 }
 
 function stripHitLMetadata(args: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(args).filter(([key]) => !HITL_METADATA_KEYS.has(key)))
+  return Object.fromEntries(
+    Object.entries(args).filter(
+      ([key, value]) =>
+        !HITL_METADATA_KEYS.has(key) &&
+        // ask_user text prompts are serialized both as `{ question }` and as
+        // `{ question, options: [] }`. The empty optional field must not create
+        // a second synthetic card during checkpoint hydration.
+        !(key === 'options' && Array.isArray(value) && value.length === 0),
+    ),
+  )
 }
 
 function equivalentToolArgs(

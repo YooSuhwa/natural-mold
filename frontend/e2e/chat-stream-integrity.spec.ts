@@ -302,7 +302,7 @@ test.describe('Chat streaming render integrity', () => {
     }
   })
 
-  test('renders two HITL approval cards (multi-action) and resumes once after approving both', async ({
+  test('pages through a multi-action HITL batch and resumes once after approving both', async ({
     page,
     request,
     errors,
@@ -345,12 +345,15 @@ test.describe('Chat streaming render integrity', () => {
       const prompt = 'E2E_HITL_MULTI 멀티 승인 카드 무결성'
       await sendMessage(page, prompt)
 
-      // One AIMessage with two execute_in_skill calls → ONE interrupt → TWO compact
-      // approval cards inside ONE grouped container ("승인 대기 2건" + 모두 승인).
+      // One AIMessage with two execute_in_skill calls → ONE interrupt → TWO mounted
+      // approval decisions inside ONE grouped container. Only the current action
+      // is visible, matching the ask_user question-flow interaction.
       // The grouped container replaces the standalone "승인이 필요합니다" headline.
       await expect(page.getByText('승인 대기 2건').first()).toBeVisible({ timeout: 30_000 })
       await expect(cards).toHaveCount(2, { timeout: 15_000 })
       await expect(approveButtons).toHaveCount(2)
+      await expect(page.getByTestId('approval-action-0')).toBeVisible()
+      await expect(page.getByTestId('approval-action-1')).toBeHidden()
 
       // Each card is scoped to its action index and advertises the total action count.
       await expect(page.getByTestId('approval-action-0')).toHaveAttribute(
@@ -368,20 +371,21 @@ test.describe('Chat streaming render integrity', () => {
       ).toBeVisible()
       await expect(
         page.getByTestId('approval-action-1').getByText('docx-document', { exact: true }),
-      ).toBeVisible()
+      ).toBeHidden()
       await expect(userBubbles).toHaveCount(1, { timeout: 15_000 })
 
       // User prompt stays stable while both cards render (no flicker/disappearance).
       await installUserTextStabilityObserver(page, [prompt])
       await expectNoUserTextFlicker(page, 1000)
 
-      // Approve only the FIRST card. The coordinator must NOT resume yet: the second
-      // card stays pending and the run stays interrupted (no final text). The first
-      // card remains mounted in its processing state until the batched decision is
-      // accepted, so actionable controls—not row removal—represent pending work.
+      // Approve only the FIRST card. The second card becomes the active step and
+      // the run stays interrupted (no final text). The first decision is staged
+      // locally until the complete batch can resume.
       await approveCard(0)
       await expect(cards).toHaveCount(2, { timeout: 15_000 })
-      await expect(page.getByTestId('approval-action-0').getByText('처리 중…')).toBeVisible()
+      await expect(page.getByTestId('approval-action-0')).toBeHidden()
+      await expect(page.getByTestId('approval-action-1')).toBeVisible()
+      await expect(page.getByText('승인 대기 1건').first()).toBeVisible()
       await expect(
         page.getByTestId('approval-action-0').getByTestId('approval-approve-button'),
       ).toHaveCount(0)
@@ -396,7 +400,9 @@ test.describe('Chat streaming render integrity', () => {
       await approveCard(1)
       await expect(approveButtons).toHaveCount(0, { timeout: 30_000 })
       await expect(page.getByText(FINAL_TEXT_PARTIAL).last()).toBeVisible({ timeout: 60_000 })
-      await expect(cards).toHaveCount(0, { timeout: 30_000 })
+      await expect(cards).toHaveCount(2, { timeout: 30_000 })
+      await expect(page.getByText('승인됨', { exact: true })).toHaveCount(2)
+      await expect(page.getByText('모든 액션을 결정했습니다', { exact: true })).toBeVisible()
       await expect(userBubbles).toHaveCount(1)
       expect(resumeCommands, 'exactly one batched resume for both actions').toHaveLength(1)
       expect(resumeCommands[0]).toMatchObject({

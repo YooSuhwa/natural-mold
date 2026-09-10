@@ -1455,6 +1455,8 @@
       "next": "Next",
       "complete": "Complete",
       "clear": "Clear",
+      "customAnswer": "Custom answer",
+      "customAnswerPlaceholder": "Type your own answer…",
       "selectionRange": "Select {min} to {max}",
       "confirmSelection": "Confirm ({count})",
       "resumeFailed": "Could not send the response. Try again."

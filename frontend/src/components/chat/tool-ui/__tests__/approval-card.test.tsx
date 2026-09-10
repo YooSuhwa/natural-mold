@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -34,6 +34,44 @@ type ToolUiRender = {
 const renderApproval = ApprovalCard as unknown as ToolUiRender['render']
 
 describe('ApprovalCard', () => {
+  it('uses neutral card surfaces for single and grouped pending approvals', () => {
+    function ApprovalUnderTest() {
+      return renderApproval({
+        args: {
+          approval_id: 'neutral-approval',
+          tool_name: 'write_file',
+          tool_args: { path: 'report.md' },
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    const { rerender } = render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn() }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    const singleCard = screen.getByText('approvalRequired').closest('.moldy-chat-card')
+    expect(singleCard).toHaveClass('border-border', 'bg-card', 'text-foreground')
+    expect(singleCard).not.toHaveClass('moldy-status-surface')
+
+    rerender(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn() }}>
+        <GroupedApprovalCard count={2}>
+          <div>pending actions</div>
+        </GroupedApprovalCard>
+      </HiTLContext.Provider>,
+    )
+
+    expect(screen.getByTestId('approval-group')).toHaveClass(
+      'border-border',
+      'bg-card',
+      'text-foreground',
+    )
+    expect(screen.getByTestId('approval-group')).not.toHaveClass('moldy-status-surface')
+  })
+
   it('resumes approval even when the runtime cannot accept tool results', async () => {
     const onResumeDecisions = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     const unsupportedAddResult = vi.fn(() => {
@@ -566,6 +604,47 @@ describe('ApprovalCard', () => {
   })
 
   // ── 멀티액션 그룹 카드 (모두 승인) ──────────────────────────────────
+  it('shows one approval at a time and flushes the existing decision batch on the last step', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    function Card({ index }: { index: number }) {
+      return renderApproval({
+        args: {
+          approval_id: `intr:${index}`,
+          tool_name: `tool-${index + 1}`,
+          tool_args: { command: `cmd-${index + 1}` },
+          hitl_action_index: index,
+          hitl_total_actions: 2,
+          hitl_interrupt_id: 'intr',
+          allowed_decisions: ['approve', 'reject'],
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <GroupedApprovalCard count={2}>
+          <Card index={0} />
+          <Card index={1} />
+        </GroupedApprovalCard>
+      </HiTLContext.Provider>,
+    )
+
+    expect(screen.getByTestId('approval-action-0')).toBeVisible()
+    expect(screen.getByTestId('approval-action-1')).not.toBeVisible()
+
+    fireEvent.click(screen.getAllByTestId('approval-approve-button')[0])
+    await waitFor(() => expect(screen.getByTestId('approval-action-1')).toBeVisible())
+    expect(registerDecision).not.toHaveBeenCalled()
+
+    fireEvent.click(
+      within(screen.getByTestId('approval-action-1')).getByTestId('approval-approve-button'),
+    )
+    await waitFor(() => expect(registerDecision).toHaveBeenCalledTimes(2))
+    expect(registerDecision).toHaveBeenNthCalledWith(1, 0, { type: 'approve' }, 'approved', 'intr')
+    expect(registerDecision).toHaveBeenNthCalledWith(2, 1, { type: 'approve' }, 'approved', 'intr')
+  })
+
   it('marks the group complete only after every async approval resolves', async () => {
     let resolveActionZero: (() => void) | undefined
     let resolveActionOne: (() => void) | undefined
@@ -612,7 +691,9 @@ describe('ApprovalCard', () => {
       expect(registerDecision).toHaveBeenCalledWith(0, { type: 'approve' }, 'approved', 'intr')
       expect(registerDecision).toHaveBeenCalledWith(1, { type: 'approve' }, 'approved', 'intr')
     })
-    expect(group).toHaveAttribute('data-hitl-pending-actions', '2')
+    await waitFor(() => {
+      expect(group).toHaveAttribute('data-hitl-pending-actions', '1')
+    })
     expect(screen.getByText('pendingCount')).toBeInTheDocument()
     expect(screen.queryByText('allActionsCompleted')).toBeNull()
 
@@ -671,7 +752,7 @@ describe('ApprovalCard', () => {
     const approveAll = screen.getByTestId('approval-approve-all-button')
     fireEvent.click(approveAll)
 
-    expect(await screen.findAllByText('resumeFailed')).toHaveLength(2)
+    expect(await screen.findByRole('alert')).toHaveTextContent('resumeFailed')
     await waitFor(() => {
       expect(group).toHaveAttribute('data-hitl-pending-actions', '2')
       expect(approveAll).toBeEnabled()
@@ -727,27 +808,26 @@ describe('ApprovalCard', () => {
       </HiTLContext.Provider>,
     )
 
-    fireEvent.click(screen.getAllByText('reject')[0])
-    fireEvent.click(screen.getByText('edit'))
-    fireEvent.click(screen.getByTestId('approval-approve-all-button'))
-
     const group = screen.getByTestId('approval-group')
+    fireEvent.click(screen.getByTestId('approval-action-0').querySelectorAll('button')[2])
+    fireEvent.click(screen.getByText('rejectConfirm'))
     await waitFor(() => {
-      expect(registerDecision).toHaveBeenCalledWith(2, { type: 'approve' }, 'approved', 'intr')
       expect(group).toHaveAttribute('data-hitl-pending-actions', '2')
     })
-    expect(screen.getByText('pendingCount')).toBeInTheDocument()
-    expect(screen.queryByText('allActionsCompleted')).toBeNull()
+    expect(registerDecision).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByText('rejectConfirm'))
+    fireEvent.click(screen.getByText('edit'))
+    fireEvent.click(screen.getByText('editAndApprove'))
     await waitFor(() => {
       expect(group).toHaveAttribute('data-hitl-pending-actions', '1')
     })
+    expect(registerDecision).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByText('editAndApprove'))
+    fireEvent.click(screen.getByTestId('approval-approve-button'))
     await waitFor(() => {
       expect(screen.getByText('allActionsCompleted')).toBeInTheDocument()
     })
+    expect(registerDecision).toHaveBeenCalledTimes(3)
     expect(group).toHaveAttribute('data-hitl-pending-actions', '0')
   })
 
@@ -782,9 +862,13 @@ describe('ApprovalCard', () => {
     // Approve all.
     fireEvent.click(screen.getByTestId('approval-approve-all-button'))
 
-    await waitFor(() => {
-      expect(registerDecision).toHaveBeenCalledWith(1, { type: 'approve' }, 'approved', 'intr')
-    })
+    await waitFor(() =>
+      expect(screen.getByTestId('approval-group')).toHaveAttribute(
+        'data-hitl-pending-actions',
+        '1',
+      ),
+    )
+    expect(registerDecision).not.toHaveBeenCalled()
     // Card 0 (mid-reject) must NOT have been silently approved.
     expect(registerDecision).not.toHaveBeenCalledWith(
       0,
@@ -792,5 +876,10 @@ describe('ApprovalCard', () => {
       expect.anything(),
       expect.anything(),
     )
+
+    fireEvent.click(screen.getByText('rejectConfirm'))
+    await waitFor(() => expect(registerDecision).toHaveBeenCalledTimes(2))
+    expect(registerDecision).toHaveBeenCalledWith(0, { type: 'reject' }, 'rejected', 'intr')
+    expect(registerDecision).toHaveBeenCalledWith(1, { type: 'approve' }, 'approved', 'intr')
   })
 })

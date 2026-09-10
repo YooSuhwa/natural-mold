@@ -1455,6 +1455,8 @@
       "next": "다음",
       "complete": "완료",
       "clear": "초기화",
+      "customAnswer": "직접 입력",
+      "customAnswerPlaceholder": "원하는 답변을 직접 입력하세요…",
       "selectionRange": "{min}개 이상 {max}개 이하 선택",
       "confirmSelection": "선택 확인 ({count})",
       "resumeFailed": "답변을 전송하지 못했습니다. 다시 시도하세요."

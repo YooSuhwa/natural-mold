@@ -48,6 +48,8 @@ export function QuestionFlowCard({
   const t = useTranslations('chat.userInput')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answers, setAnswers] = useState<AnswersByQuestion>({})
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({})
+  const [customQuestionIds, setCustomQuestionIds] = useState<ReadonlySet<string>>(() => new Set())
 
   const total = questions.length
   const currentQuestion = questions[currentIndex]
@@ -59,8 +61,13 @@ export function QuestionFlowCard({
     currentQuestion?.type ?? (currentOptions.length > 0 ? 'single_select' : 'text')
   const required = currentQuestion?.required ?? true
   const currentText = answers[currentId]?.[0] ?? ''
+  const customActive = customQuestionIds.has(currentId)
+  const customAnswer = customAnswers[currentId] ?? ''
   const canProceed =
-    !required || (currentType === 'text' ? currentText.trim() !== '' : selected.size > 0)
+    !required ||
+    (currentType === 'text'
+      ? currentText.trim() !== ''
+      : selected.size > 0 || (customActive && customAnswer.trim() !== ''))
 
   const updateAnswer = useCallback(
     (questionKey: string, values: string[]) => {
@@ -75,6 +82,12 @@ export function QuestionFlowCard({
       if (!currentQuestion || option.disabled) return
       const oid = optionId(option)
       if (currentType === 'single_select') {
+        setCustomQuestionIds((current) => {
+          const next = new Set(current)
+          next.delete(currentId)
+          return next
+        })
+        setCustomAnswers((current) => ({ ...current, [currentId]: '' }))
         updateAnswer(currentId, selected.has(oid) ? [] : [oid])
         return
       }
@@ -98,8 +111,24 @@ export function QuestionFlowCard({
       onInteract()
       return
     }
-    void onSubmit(serializeQuestionFlowResponse(questions, answers))
-  }, [answers, canProceed, isLast, onInteract, onSubmit, questions, total])
+    const answersWithCustom = { ...answers }
+    questions.forEach((question, index) => {
+      const key = questionId(question, index)
+      const custom = customQuestionIds.has(key) ? customAnswers[key]?.trim() : ''
+      if (custom) answersWithCustom[key] = [...(answersWithCustom[key] ?? []), custom]
+    })
+    void onSubmit(serializeQuestionFlowResponse(questions, answersWithCustom))
+  }, [
+    answers,
+    canProceed,
+    customAnswers,
+    customQuestionIds,
+    isLast,
+    onInteract,
+    onSubmit,
+    questions,
+    total,
+  ])
 
   if (!currentQuestion) return null
 
@@ -110,6 +139,7 @@ export function QuestionFlowCard({
         <div
           className="flex h-1.5 gap-1"
           role="progressbar"
+          aria-label={t('stepStatus', { current: currentIndex + 1, total })}
           aria-valuemin={1}
           aria-valuemax={total}
           aria-valuenow={currentIndex + 1}
@@ -128,7 +158,7 @@ export function QuestionFlowCard({
             </div>
           ))}
         </div>
-        <p className="text-xs font-medium uppercase text-muted-foreground">
+        <p className="text-xs font-medium text-muted-foreground">
           {t('stepStatus', { current: currentIndex + 1, total })}
         </p>
       </div>
@@ -145,6 +175,7 @@ export function QuestionFlowCard({
 
         {currentType === 'text' ? (
           <textarea
+            aria-label={questionLabel(currentQuestion, currentIndex)}
             value={currentText}
             onChange={(event) => updateAnswer(currentId, [event.target.value])}
             onFocus={onInteract}
@@ -158,7 +189,7 @@ export function QuestionFlowCard({
             role="listbox"
             aria-multiselectable={currentType === 'multi_select'}
           >
-            {currentOptions.map((option) => {
+            {currentOptions.map((option, index) => {
               const oid = optionId(option)
               const checked = selected.has(oid)
               return (
@@ -190,6 +221,9 @@ export function QuestionFlowCard({
                       ? checked && <span className="size-1.5 rounded-full bg-current" />
                       : checked && <CheckIcon className="size-3" />}
                   </span>
+                  <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                    {index + 1}.
+                  </span>
                   <span className="min-w-0">
                     <span className="block font-medium leading-5">{option.label}</span>
                     {option.description && (
@@ -201,6 +235,58 @@ export function QuestionFlowCard({
                 </button>
               )
             })}
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => {
+                if (currentType === 'single_select') updateAnswer(currentId, [])
+                setCustomQuestionIds((current) => new Set([...current, currentId]))
+                onInteract()
+              }}
+              className={cn(
+                'flex min-h-11 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                customActive
+                  ? 'border-primary/60 bg-primary/10 text-primary-strong'
+                  : 'border-border hover:border-primary/50 hover:bg-accent',
+              )}
+              role="option"
+              aria-selected={customActive}
+            >
+              <span
+                className={cn(
+                  'flex size-4 shrink-0 items-center justify-center border-2',
+                  currentType === 'single_select' ? 'rounded-full' : 'rounded',
+                  customActive
+                    ? 'border-primary-strong bg-primary-strong text-primary-strong-foreground'
+                    : 'border-muted-foreground/50',
+                )}
+              >
+                {currentType === 'single_select'
+                  ? customActive && <span className="size-1.5 rounded-full bg-current" />
+                  : customActive && <CheckIcon className="size-3" />}
+              </span>
+              <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                {currentOptions.length + 1}.
+              </span>
+              <span className="font-medium">{t('customAnswer')}</span>
+            </button>
+            {customActive ? (
+              <textarea
+                autoFocus
+                aria-label={t('customAnswer')}
+                value={customAnswer}
+                onChange={(event) => {
+                  setCustomAnswers((current) => ({
+                    ...current,
+                    [currentId]: event.target.value,
+                  }))
+                  onInteract()
+                }}
+                placeholder={t('customAnswerPlaceholder')}
+                className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+                rows={2}
+              />
+            ) : null}
           </div>
         )}
       </div>

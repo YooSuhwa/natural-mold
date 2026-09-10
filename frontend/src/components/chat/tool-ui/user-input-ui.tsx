@@ -235,6 +235,7 @@ export function UserInputUI({
 
   const questions = useMemo(() => normalizeQuestions(args ?? {}), [args])
   const optionListOptions = useMemo(() => normalizeOptions(args?.options) ?? [], [args?.options])
+  const displayTitle = args?.title?.trim() === t('inputRequired') ? undefined : args?.title
   const submitDecision = useCallback(
     async (decision: ReturnType<typeof toRespond>, displayText?: string) => {
       if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
@@ -373,17 +374,19 @@ export function UserInputUI({
   }
 
   // ── requires-action: 입력 UI ──
-  const allAnswered = questions.every((_, i) => {
-    const val = answers[i]
-    if (val instanceof Set) return val.size > 0
-    return val !== undefined && val !== ''
-  })
+  const allAnswered =
+    questions.length > 0 &&
+    questions.every((_, i) => {
+      const val = answers[i]
+      if (val instanceof Set) return val.size > 0
+      return val !== undefined && val !== ''
+    })
 
   return (
-    <div className="moldy-chat-card w-full p-4">
+    <div className="moldy-chat-card moldy-status-warn w-full overflow-hidden border border-border bg-card text-foreground">
       {/* Header */}
-      <div className="mb-3 flex items-center gap-2">
-        <MessageSquareQuoteIcon className="size-4 moldy-builder-color-primary-bg-strong" />
+      <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
+        <MessageSquareQuoteIcon className="moldy-status-icon size-4" />
         <span className="text-sm font-medium">{t('inputRequired')}</span>
         <CountdownBadge
           formatted={formatted}
@@ -395,106 +398,105 @@ export function UserInputUI({
         />
       </div>
 
-      {submitError && (
-        <p role="alert" className="mb-3 text-xs text-destructive">
-          {t('resumeFailed')}
-        </p>
-      )}
+      <div className="p-4">
+        {submitError && (
+          <p role="alert" className="mb-3 text-xs text-destructive">
+            {t('resumeFailed')}
+          </p>
+        )}
 
-      {/* Questions */}
-      {args?.mode === 'question_flow' ? (
-        <QuestionFlowCard
-          id={approvalId}
-          title={args.title}
-          questions={questions}
-          submitting={submitState === 'submitting'}
-          onInteract={extend}
-          onSubmit={(response) => submitResponse(response.message, response.displayText)}
-        />
-      ) : args?.mode === 'option_list' ? (
-        <OptionListCard
-          id={approvalId}
-          title={args.title}
-          options={optionListOptions}
-          minSelections={args.minSelections}
-          maxSelections={args.maxSelections}
-          submitting={submitState === 'submitting'}
-          onInteract={extend}
-          onSubmit={(response) => submitResponse(response.message, response.displayText)}
-        />
-      ) : (
-        <>
-          <div className="space-y-4">
-            {questions.map((q, i) => {
-              switch (q.type) {
-                case 'single_select':
-                  return (
-                    <SingleSelectInput
-                      key={i}
-                      question={q}
-                      selected={(answers[i] as string) ?? null}
-                      onSelect={(v) => {
-                        updateAnswer(i, v)
-                        // 질문 1개 + single_select → 즉시 제출
-                        if (questions.length === 1) {
-                          void submitResponse(v, v)
-                        }
-                      }}
-                    />
-                  )
-                case 'multi_select':
-                  return (
-                    <MultiSelectInput
-                      key={i}
-                      question={q}
-                      selected={(answers[i] as Set<string>) ?? new Set<string>()}
-                      onToggle={(v) => toggleMulti(i, v)}
-                    />
-                  )
-                case 'text':
-                default:
-                  return (
-                    <TextInput
-                      key={i}
-                      question={q}
-                      value={(answers[i] as string) ?? ''}
-                      onChange={(v) => updateAnswer(i, v)}
-                      onFocus={extend}
-                      placeholder={t('placeholder')}
-                    />
-                  )
-              }
-            })}
-          </div>
+        {/* Questions */}
+        {args?.mode === 'question_flow' || questions.length > 1 ? (
+          <QuestionFlowCard
+            id={approvalId}
+            title={displayTitle}
+            questions={questions}
+            submitting={submitState === 'submitting'}
+            onInteract={extend}
+            onSubmit={(response) => submitResponse(response.message, response.displayText)}
+          />
+        ) : args?.mode === 'option_list' ? (
+          <OptionListCard
+            id={approvalId}
+            title={displayTitle}
+            question={args.question}
+            options={optionListOptions}
+            minSelections={args.minSelections}
+            maxSelections={args.maxSelections}
+            submitting={submitState === 'submitting'}
+            onInteract={extend}
+            onSubmit={(response) => submitResponse(response.message, response.displayText)}
+          />
+        ) : (
+          <>
+            <div className="space-y-4">
+              {questions.map((q, i) => {
+                switch (q.type) {
+                  case 'single_select':
+                    return (
+                      <SingleSelectInput
+                        key={i}
+                        question={q}
+                        selected={(answers[i] as string) ?? null}
+                        onSelect={(v) => {
+                          updateAnswer(i, v)
+                        }}
+                      />
+                    )
+                  case 'multi_select':
+                    return (
+                      <MultiSelectInput
+                        key={i}
+                        question={q}
+                        selected={(answers[i] as Set<string>) ?? new Set<string>()}
+                        onToggle={(v) => toggleMulti(i, v)}
+                      />
+                    )
+                  case 'text':
+                  default:
+                    return (
+                      <TextInput
+                        key={i}
+                        question={q}
+                        value={(answers[i] as string) ?? ''}
+                        onChange={(v) => updateAnswer(i, v)}
+                        onFocus={extend}
+                        placeholder={t('placeholder')}
+                      />
+                    )
+                }
+              })}
+            </div>
 
-          {/* Submit */}
-          <div className="mt-4 flex justify-end">
-            <button
-              type="button"
-              onClick={() => handleSubmit()}
-              disabled={!allAnswered || submitState === 'submitting'}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-[background-color,color,opacity]',
-                allAnswered && submitState === 'idle'
-                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                  : 'cursor-not-allowed bg-muted text-muted-foreground',
-              )}
-            >
-              {submitState === 'submitting' ? (
-                <>
-                  <Loader2Icon className="size-3 animate-spin" />
-                  {t('sending')}
-                </>
-              ) : (
-                <>
-                  <SendIcon className="size-3" />
-                  {t('confirm')}
-                </>
-              )}
-            </button>
-          </div>
-        </>
-      )}
+            {/* Submit */}
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => handleSubmit()}
+                disabled={!allAnswered || submitState === 'submitting'}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-[background-color,color,opacity]',
+                  allAnswered && submitState === 'idle'
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    : 'cursor-not-allowed bg-muted text-muted-foreground',
+                )}
+              >
+                {submitState === 'submitting' ? (
+                  <>
+                    <Loader2Icon className="size-3 animate-spin" />
+                    {t('sending')}
+                  </>
+                ) : (
+                  <>
+                    <SendIcon className="size-3" />
+                    {t('confirm')}
+                  </>
+                )}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

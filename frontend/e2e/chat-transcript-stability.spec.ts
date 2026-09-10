@@ -213,7 +213,7 @@ test.describe('Chat transcript stability QA bundle', () => {
       const askUserCards = page.locator('[data-tool-ui-id]').filter({ hasText: '🍎 사과' })
       setFailurePhase(testInfo.annotations, 'wait_ask_user_card')
       await expect(askUserCards).toHaveCount(1, { timeout: 30_000 })
-      await expect(askUserCards.first().getByText('입력이 필요합니다')).toBeVisible()
+      await expect(askUserCards.first().getByText('어떤 과일이 좋아요?')).toBeVisible()
       setFailurePhase(testInfo.annotations, 'verify_prompt_stability')
       await expectNoUserPromptDisappearance(page)
 
@@ -293,7 +293,7 @@ test.describe('Chat transcript stability QA bundle', () => {
       const askUserCards = page.locator('[data-tool-ui-id]').filter({ hasText: '🍎 사과' })
       await expect(askUserCards).toHaveCount(1, { timeout: 45_000 })
       await expect(page.getByText('네, 골라봐요!').last()).toBeVisible()
-      await expect(askUserCards.first().getByText('입력이 필요합니다')).toBeVisible()
+      await expect(askUserCards.first().getByText('어떤 과일이 좋아요?')).toBeVisible()
       await expectNoUserPromptDisappearance(page)
       await expectAskUserActivityNotDuplicated(page)
       await expect(page.getByText('ask_user 실행 중')).toHaveCount(0)
@@ -302,7 +302,7 @@ test.describe('Chat transcript stability QA bundle', () => {
       await expect(page).toHaveURL(conversationUrl)
       const hydratedAskUserCards = page.locator('[data-tool-ui-id]').filter({ hasText: '🍎 사과' })
       await expect(hydratedAskUserCards).toHaveCount(1, { timeout: 45_000 })
-      await expect(hydratedAskUserCards.first().getByText('입력이 필요합니다')).toBeVisible()
+      await expect(hydratedAskUserCards.first().getByText('어떤 과일이 좋아요?')).toBeVisible()
       await expect(
         page.locator('[data-moldy-message-role="user"]').filter({ hasText: askUserPrompt }),
       ).toBeVisible()
