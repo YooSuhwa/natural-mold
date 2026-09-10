@@ -15,7 +15,10 @@ import type {
 } from '@/lib/chat/message-queue/server-message-queue-contract'
 import { render, screen, userEvent } from '../../../../tests/test-utils'
 
-function RunningQueueRuntime({ children }: PropsWithChildren) {
+function RunningQueueRuntime({
+  children,
+  onSteer = vi.fn(),
+}: PropsWithChildren<{ onSteer?: () => void | Promise<void> }>) {
   const runtime = useExternalStoreRuntime<ThreadMessage>({
     messages: [],
     isRunning: true,
@@ -24,7 +27,7 @@ function RunningQueueRuntime({ children }: PropsWithChildren) {
       items: [],
       steerItems: [],
       enqueue: vi.fn(),
-      steer: vi.fn(),
+      steer: onSteer,
       move: vi.fn(),
       edit: vi.fn(),
       remove: vi.fn(),
@@ -132,6 +135,30 @@ describe('ThreadComposer queue runtime controls', () => {
     await user.type(screen.getByRole('textbox'), 'steer this message')
 
     expect(steer).toBeEnabled()
+  })
+
+  it('requires Send now confirmation before steering a new composer message', async () => {
+    const user = userEvent.setup()
+    const onSteer = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    render(
+      <RunningQueueRuntime onSteer={onSteer}>
+        <ThreadComposer />
+      </RunningQueueRuntime>,
+    )
+
+    await user.type(screen.getByRole('textbox'), 'change direction')
+    await user.click(screen.getByRole('button', { name: '현재 응답을 중단하고 바로 전송' }))
+
+    expect(onSteer).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: '지금 보내기' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: '즉시 전송 취소' }))
+    expect(onSteer).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: '현재 응답을 중단하고 바로 전송' }))
+    await user.click(screen.getByRole('button', { name: '지금 보내기' }))
+
+    expect(onSteer).toHaveBeenCalledOnce()
   })
 
   it('renders a promoted public queue item once without offering steer again', () => {

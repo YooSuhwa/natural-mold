@@ -18,6 +18,7 @@ from app.schemas.chat_resource_context import (
     FrozenChatResourceContext,
 )
 from app.services.artifact_storage import ArtifactStorageBackend, get_artifact_storage_backend
+from app.services.chat_quote_context import freeze_message_quote
 from app.services.chat_resource_context_errors import ResourceContextLimitError
 from app.services.chat_resource_context_sources import (
     ArtifactSourceRequest,
@@ -74,6 +75,10 @@ class ChatResourceContextResolver:
                 id=resource.id,
                 version_id=resource.version_id,
                 label=resource.label,
+                message_id=resource.message_id,
+                quote=resource.quote,
+                comment=resource.comment,
+                message_role=resource.message_role,
             )
             match resource.kind:
                 case "file":
@@ -118,6 +123,8 @@ class ChatResourceContextResolver:
                 )
             case "conversation":
                 conversation = await owned_conversation(self._db, self._scope, reference.id)
+                if reference.message_id is not None:
+                    return await freeze_message_quote(conversation, reference)
                 transcript = await _conversation_transcript(conversation)
                 text = _truncate_utf8(transcript.text, MAX_RESOURCE_CONTEXT_ITEM_BYTES)
                 digest = hashlib.sha256(text.encode()).hexdigest()

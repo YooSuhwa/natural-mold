@@ -20,6 +20,10 @@ export type MessageQueueLabels = {
   readonly cancelEdit: string
   readonly remove: string
   readonly steer: string
+  readonly steerAction: string
+  readonly sendNow: string
+  readonly cancelSteer: string
+  readonly moreActions: string
   readonly moveUp: string
   readonly moveDown: string
   readonly sending: string

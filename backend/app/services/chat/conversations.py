@@ -455,6 +455,15 @@ async def delete_conversation(db: AsyncSession, conv: Conversation) -> None:
         owner_id=str(owner_id),
         conversation_id=str(locked_conversation.id),
     )
+    # Keep retained side history discoverable when its parent is deliberately deleted.
+    await db.execute(
+        update(Conversation)
+        .where(
+            Conversation.side_chat_parent_id == locked_conversation.id,
+            Conversation.source == "side_chat",
+        )
+        .values(source="ui", side_chat_parent_id=None)
+    )
     await db.delete(locked_conversation)
     await db.flush()
 

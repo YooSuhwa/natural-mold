@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext } from 'react'
+import type { Decision } from '@/lib/types'
 
 /**
  * Provided by `GroupedApprovalCard` so the child `ApprovalCard` rows can (a) know
@@ -17,6 +18,15 @@ export interface MultiApprovalContextValue {
   unregister: (actionIndex: number) => void
   /** Record an action only after its decision has been accepted by the runtime. */
   resolve: (actionIndex: number) => void
+  /** Stage one decision; the last action flushes the whole LangGraph batch. */
+  submitDecision: (
+    actionIndex: number,
+    decision: Decision,
+    displayText?: string,
+    interruptId?: string | null,
+  ) => Promise<void>
+  /** Only one action is visually active; siblings stay mounted to preserve callbacks. */
+  isActive: (actionIndex: number) => boolean
 }
 
 export const MultiApprovalContext = createContext<MultiApprovalContextValue | null>(null)

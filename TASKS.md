@@ -1,14 +1,14 @@
 # Moldy — TASKS
 
-<!-- project-current-source: migration=m76_pinned_conv_summaries; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-08 -->
+<!-- project-current-source: migration=m77_side_chat_link; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-10 -->
 
-> Last updated: 2026-09-08
-> Source-aligned snapshot: Alembic head `m76_pinned_conv_summaries`. The
+> Last updated: 2026-09-10
+> Source-aligned snapshot: Alembic head `m77_side_chat_link`. The
 > original Phase 0~14 list below is preserved as historical build-up context;
 > M59 remains the feature-origin point for generated artifacts, not the current
 > migration head.
 
-## Current Source Snapshot (2026-09-08)
+## Current Source Snapshot (2026-09-10)
 
 - [x] Multi-user auth and operator split (ADR-016): JWT, HttpOnly cookies, CSRF,
   refresh-token rotation, `super_user`, system/user resource separation.
@@ -47,6 +47,10 @@
   Direct injection into the currently running run is not implemented.
 - [x] Backend Pyright basic-mode debt cleared and made blocking in CI (PR #302);
   see `docs/pyright-burndown-plan.md`. This is not a claim of strict-mode coverage.
+- [x] Selected-message quotes with editable comments and source previews; independent
+  same-agent side chat with explicit return-to-main and save-to-list actions (M77).
+  Side conversations are server-stored and reopen after reload; closing the panel
+  does not delete them. Main drafts and runs are isolated from side conversations.
 - [x] Scripted E2E stabilization (PR #303) and smoke CI fixes (PR #304) merged.
 - [x] Profile personalization (2), agent MCP attachment (1), and marketplace
   publish/moderation (3) E2E scenarios added. Focused capture run passed all six;

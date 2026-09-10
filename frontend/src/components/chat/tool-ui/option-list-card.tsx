@@ -13,6 +13,7 @@ import type { UserInputOption } from '@/lib/types'
 interface OptionListCardProps {
   id: string
   title?: string
+  question?: string
   options: UserInputOption[]
   minSelections?: number
   maxSelections?: number
@@ -28,6 +29,7 @@ function optionId(option: UserInputOption): string {
 export function OptionListCard({
   id,
   title,
+  question,
   options,
   minSelections = 1,
   maxSelections,
@@ -37,39 +39,59 @@ export function OptionListCard({
 }: OptionListCardProps) {
   const t = useTranslations('chat.userInput')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [customAnswer, setCustomAnswer] = useState('')
+  const [customActive, setCustomActive] = useState(false)
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
   const selectionMode = maxSelections === 1 ? 'single' : 'multi'
-  const canConfirm = selectedIds.length >= minSelections
+  const customValue = customAnswer.trim()
+  const selectionCount = selectedIds.length + (customActive && customValue ? 1 : 0)
+  const occupiedSelectionSlots = selectedIds.length + (customActive ? 1 : 0)
+  const customLocked =
+    selectionMode === 'multi' &&
+    maxSelections !== undefined &&
+    selectedIds.length >= maxSelections &&
+    !customActive
+  const canConfirm = selectionCount >= minSelections
 
   const toggleOption = useCallback(
     (option: UserInputOption) => {
       if (option.disabled || submitting) return
       const oid = optionId(option)
+      if (selectionMode === 'single') {
+        setCustomActive(false)
+        setCustomAnswer('')
+      }
       setSelectedIds((prev) => {
-        if (selectionMode === 'single') return prev.includes(oid) ? [] : [oid]
+        if (selectionMode === 'single') {
+          return prev.includes(oid) ? [] : [oid]
+        }
         if (prev.includes(oid)) return prev.filter((id) => id !== oid)
-        if (maxSelections !== undefined && prev.length >= maxSelections) return prev
+        if (maxSelections !== undefined && occupiedSelectionSlots >= maxSelections) return prev
         return [...prev, oid]
       })
       onInteract()
     },
-    [maxSelections, onInteract, selectionMode, submitting],
+    [maxSelections, occupiedSelectionSlots, onInteract, selectionMode, submitting],
   )
 
   const clear = useCallback(() => {
     setSelectedIds([])
+    setCustomAnswer('')
+    setCustomActive(false)
     onInteract()
   }, [onInteract])
 
   const submit = useCallback(() => {
     if (!canConfirm || submitting) return
-    void onSubmit(serializeOptionListResponse(options, selectedIds))
-  }, [canConfirm, onSubmit, options, selectedIds, submitting])
+    const selection = customActive && customValue ? [...selectedIds, customValue] : selectedIds
+    void onSubmit(serializeOptionListResponse(options, selection))
+  }, [canConfirm, customActive, customValue, onSubmit, options, selectedIds, submitting])
 
   return (
     <div className="space-y-4" data-tool-ui-id={id}>
       <div className="space-y-1">
         {title && <p className="text-sm font-semibold">{title}</p>}
+        {question && <p className="text-sm text-foreground">{question}</p>}
         {maxSelections !== undefined && selectionMode === 'multi' && (
           <p className="text-xs text-muted-foreground">
             {t('selectionRange', { min: minSelections, max: maxSelections })}
@@ -78,7 +100,7 @@ export function OptionListCard({
       </div>
 
       <div className="space-y-1.5" role="listbox" aria-multiselectable={selectionMode === 'multi'}>
-        {options.map((option) => {
+        {options.map((option, index) => {
           const oid = optionId(option)
           const checked = selected.has(oid)
           const locked =
@@ -116,6 +138,9 @@ export function OptionListCard({
                   ? checked && <span className="size-1.5 rounded-full bg-current" />
                   : checked && <CheckIcon className="size-3" />}
               </span>
+              <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                {index + 1}.
+              </span>
               <span className="min-w-0">
                 <span className="block font-medium leading-5">{option.label}</span>
                 {option.description && (
@@ -127,16 +152,66 @@ export function OptionListCard({
             </button>
           )
         })}
+        <button
+          type="button"
+          disabled={customLocked || submitting}
+          onClick={() => {
+            if (selectionMode === 'single') setSelectedIds([])
+            setCustomActive(true)
+            onInteract()
+          }}
+          className={cn(
+            'flex min-h-11 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+            customActive
+              ? 'border-primary/60 bg-primary/10 text-primary-strong'
+              : 'border-border hover:border-primary/50 hover:bg-accent',
+            (customLocked || submitting) && 'cursor-not-allowed opacity-50',
+          )}
+          role="option"
+          aria-selected={customActive}
+        >
+          <span
+            className={cn(
+              'flex size-4 shrink-0 items-center justify-center border-2',
+              selectionMode === 'single' ? 'rounded-full' : 'rounded',
+              customActive
+                ? 'border-primary-strong bg-primary-strong text-primary-strong-foreground'
+                : 'border-muted-foreground/50',
+            )}
+          >
+            {selectionMode === 'single'
+              ? customActive && <span className="size-1.5 rounded-full bg-current" />
+              : customActive && <CheckIcon className="size-3" />}
+          </span>
+          <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+            {options.length + 1}.
+          </span>
+          <span className="font-medium">{t('customAnswer')}</span>
+        </button>
+        {customActive ? (
+          <textarea
+            autoFocus
+            aria-label={t('customAnswer')}
+            value={customAnswer}
+            onChange={(event) => {
+              setCustomAnswer(event.target.value)
+              onInteract()
+            }}
+            placeholder={t('customAnswerPlaceholder')}
+            className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+            rows={2}
+          />
+        ) : null}
       </div>
 
       <div className="flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={clear}
-          disabled={selectedIds.length === 0 || submitting}
+          disabled={selectionCount === 0 || submitting}
           className={cn(
             'rounded-full px-3 py-2 text-xs font-medium transition-colors',
-            selectedIds.length === 0 || submitting
+            selectionCount === 0 || submitting
               ? 'cursor-not-allowed text-muted-foreground/50'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground',
           )}
@@ -154,7 +229,7 @@ export function OptionListCard({
               : 'cursor-not-allowed bg-muted text-muted-foreground',
           )}
         >
-          {submitting ? t('sending') : t('confirmSelection', { count: selectedIds.length })}
+          {submitting ? t('sending') : t('confirmSelection', { count: selectionCount })}
         </button>
       </div>
     </div>

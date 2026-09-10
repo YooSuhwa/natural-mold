@@ -16,6 +16,9 @@ class Conversation(Base):
     agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="ui")
+    side_chat_parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
     is_pinned: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),

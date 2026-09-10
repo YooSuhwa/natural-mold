@@ -379,371 +379,387 @@ export function ApprovalCard({
   status,
   addResult,
 }: ToolCallMessagePartProps<ApprovalArgs, unknown>) {
-    const t = useTranslations('chat.approval')
-    const styles = useDecisionStyles()
-    const hitl = useHiTL()
-    const multi = useMultiApproval()
-    const [decision, setDecision] = useState<Decision | null>(null)
-    const [rejectReason, setRejectReason] = useState('')
-    // 수정 모드 draft — field-based editor가 키별로 편집한다. raw JSON 텍스트
-    // 대신 칸별 값을 들고 있어 JSON.parse 실패로 전체 submit이 막히지 않는다.
-    const [draft, setDraft] = useState<Record<string, unknown>>({})
-    const [showEdit, setShowEdit] = useState(false)
-    const [submitting, setSubmitting] = useState(false)
-    const [resumeError, setResumeError] = useState<string | null>(null)
-    const [localResult, setLocalResult] = useState<ApprovalResult | null>(null)
-    // 스킬 빌더 AD-4 — "이 세션에서 계속 허용" 체크 상태. review_configs 플래그
-    // (session_consent_eligible)가 있을 때만 렌더/전송된다.
-    const [consentSession, setConsentSession] = useState(false)
+  const t = useTranslations('chat.approval')
+  const styles = useDecisionStyles()
+  const hitl = useHiTL()
+  const multi = useMultiApproval()
+  const [decision, setDecision] = useState<Decision | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+  // 수정 모드 draft — field-based editor가 키별로 편집한다. raw JSON 텍스트
+  // 대신 칸별 값을 들고 있어 JSON.parse 실패로 전체 submit이 막히지 않는다.
+  const [draft, setDraft] = useState<Record<string, unknown>>({})
+  const [showEdit, setShowEdit] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [resumeError, setResumeError] = useState<string | null>(null)
+  const [localResult, setLocalResult] = useState<ApprovalResult | null>(null)
+  // 스킬 빌더 AD-4 — "이 세션에서 계속 허용" 체크 상태. review_configs 플래그
+  // (session_consent_eligible)가 있을 때만 렌더/전송된다.
+  const [consentSession, setConsentSession] = useState(false)
 
-    // 카드 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
-    const fallbackId = useId()
-    const approvalId = args?.approval_id ?? `approval-${fallbackId}`
+  // 카드 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
+  const fallbackId = useId()
+  const approvalId = args?.approval_id ?? `approval-${fallbackId}`
 
-    // requires-action 상태일 때만 timer 활성
-    const isPending =
-      status.type !== 'complete' && status.type !== 'running' && result === undefined
-    // 그룹(멀티액션) 안에서 렌더될 때는 compact 모드 — 자체 헤더/카운트다운을 숨기고
-    // (그룹 컨테이너가 대신 보여준다) "모두 승인"을 위해 승인 콜백을 등록한다.
-    const grouped = Boolean(multi) && typeof args?.hitl_action_index === 'number'
-    const actionIndex = args?.hitl_action_index
+  // requires-action 상태일 때만 timer 활성
+  const isPending = status.type !== 'complete' && status.type !== 'running' && result === undefined
+  // 그룹(멀티액션) 안에서 렌더될 때는 compact 모드 — 자체 헤더/카운트다운을 숨기고
+  // (그룹 컨테이너가 대신 보여준다) "모두 승인"을 위해 승인 콜백을 등록한다.
+  const grouped = Boolean(multi) && typeof args?.hitl_action_index === 'number'
+  const actionIndex = args?.hitl_action_index
+  const groupedActive = !grouped || multi?.isActive(actionIndex ?? -1) === true
+  const cardTestId = typeof actionIndex === 'number' ? `approval-action-${actionIndex}` : undefined
+  const totalActions =
+    typeof args?.hitl_total_actions === 'number' ? String(args.hitl_total_actions) : undefined
 
-    const resumeDecision = useCallback(
-      async (standardDecision: StandardDecision, displayText?: string) => {
-        if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
-          await hitl.registerDecision(
-            args.hitl_action_index,
-            standardDecision,
-            displayText,
-            args.hitl_interrupt_id,
-          )
-          return
-        }
-        await hitl?.onResumeDecisions([standardDecision], displayText)
-      },
-      [args, hitl],
-    )
-
-    const handleDecision = useCallback(
-      async (d: Decision, opts?: { reasonOverride?: string }) => {
-        setDecision(d)
-        setSubmitting(true)
-
-        const reason = opts?.reasonOverride ?? (d === 'rejected' ? rejectReason : undefined)
-        const response: ApprovalResult = { decision: d }
-        const resumeResponse: ApprovalResult = { decision: d }
-
-        if (reason) {
-          response.reason = reason
-          resumeResponse.reason = reason
-        }
-
-        if (d === 'modified') {
-          // field-based editor의 draft를 그대로 사용한다. 시크릿 칸은 잠겨
-          // <redacted>로 남고, 백엔드가 checkpoint 원본으로 복원한다(프론트
-          // 복원 없음). JSON.parse가 없으므로 syntax 에러로 막히지 않는다.
-          response.modified_args = draft
-          resumeResponse.modified_args = draft
-        }
-
-        const standardDecision = toDecision(d, resumeResponse, args?.tool_name, {
-          sessionScope: args?.session_consent_eligible === true && consentSession,
-        })
-        try {
-          await resumeDecision(standardDecision, styles[d].label)
-        } catch {
-          setResumeError(t('resumeFailed'))
-          setSubmitting(false)
-          setDecision(null)
-          return false
-        }
-        addApprovalResultIfSupported(addResult, response)
-        setLocalResult(response)
-        setSubmitting(false)
-        return true
-      },
-      [addResult, rejectReason, draft, t, styles, args, resumeDecision, consentSession],
-    )
-
-    const visibleResult = result ?? localResult
-
-    // The group owns its heading. Count this action only after the runtime
-    // accepted a decision (or supplied an already-complete tool result), never
-    // when the user merely starts an approval, rejection, or edit flow.
-    useEffect(() => {
-      if (
-        grouped &&
-        multi &&
-        typeof actionIndex === 'number' &&
-        (status.type === 'complete' || visibleResult !== null)
-      ) {
-        multi.resolve(actionIndex)
-      }
-    }, [actionIndex, grouped, multi, status.type, visibleResult])
-
-    // 만료 시 자동 reject — handleDecision 변동에 영향받지 않도록 ref로 보관
-    const expireMessage = t('autoRejected')
-    const handleExpire = useCallback(() => {
-      if (submitting || decision !== null) return
-      void handleDecision('rejected', { reasonOverride: expireMessage })
-    }, [handleDecision, submitting, decision, expireMessage])
-
-    const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
-      approvalId,
-      initialTimeoutSeconds: args?.timeout_seconds,
-      onExpire: handleExpire,
-      // In a group the countdown badge isn't rendered, so keeping the timer would
-      // silently auto-reject a card mid-decision. Disable per-card auto-expire in
-      // compact mode (the group has no visible deadline).
-      active: isPending && !grouped,
-    })
-
-    const onInteract = useMemo(() => extend, [extend])
-
-    // 도구별 allowed_decisions 게이팅 — 카드가 받은 화이트리스트대로 버튼을 노출.
-    // 빈/누락이면 approve+reject만(edit 제외) — standard-interrupt의 reviewForAction
-    // fallback과 동일. execute_in_skill(approve,reject)엔 수정 버튼이 뜨지 않는다.
-    const allowedDecisions = useMemo(
-      () => new Set(args?.allowed_decisions ?? []),
-      [args?.allowed_decisions],
-    )
-    const canApprove = allowedDecisions.size === 0 || allowedDecisions.has('approve')
-    const canEdit = allowedDecisions.has('edit')
-    const canReject = allowedDecisions.size === 0 || allowedDecisions.has('reject')
-
-    // "모두 승인"을 위해 미결정 카드의 승인 콜백을 그룹 컨테이너에 등록. 결정되거나
-    // (localResult) 사용자가 이미 거부/수정 흐름에 들어간 카드(decision/showEdit)는
-    // 등록에서 빠져, "모두 승인"이 진행 중인 거부·수정 의도를 덮어쓰지 않는다.
-    useEffect(() => {
-      const idx = args?.hitl_action_index
-      if (
-        !grouped ||
-        !multi ||
-        typeof idx !== 'number' ||
-        !canApprove ||
-        localResult !== null ||
-        decision !== null ||
-        showEdit
-      ) {
+  const resumeDecision = useCallback(
+    async (standardDecision: StandardDecision, displayText?: string) => {
+      if (grouped && multi && typeof actionIndex === 'number') {
+        await multi.submitDecision(
+          actionIndex,
+          standardDecision,
+          displayText,
+          args?.hitl_interrupt_id,
+        )
         return
       }
-      multi.register(idx, () => handleDecision('approved'))
-      return () => multi.unregister(idx)
-    }, [
-      grouped,
-      multi,
-      canApprove,
-      localResult,
-      decision,
-      showEdit,
-      args?.hitl_action_index,
-      handleDecision,
-    ])
+      if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
+        await hitl.registerDecision(
+          args.hitl_action_index,
+          standardDecision,
+          displayText,
+          args.hitl_interrupt_id,
+        )
+        return
+      }
+      await hitl?.onResumeDecisions([standardDecision], displayText)
+    },
+    [actionIndex, args, grouped, hitl, multi],
+  )
 
-    // ── 완료 상태 ──
-    if (status.type === 'complete' || visibleResult !== null) {
-      return <ApprovalBadge result={visibleResult} />
+  const handleDecision = useCallback(
+    async (d: Decision, opts?: { reasonOverride?: string }) => {
+      setDecision(d)
+      setSubmitting(true)
+
+      const reason = opts?.reasonOverride ?? (d === 'rejected' ? rejectReason : undefined)
+      const response: ApprovalResult = { decision: d }
+      const resumeResponse: ApprovalResult = { decision: d }
+
+      if (reason) {
+        response.reason = reason
+        resumeResponse.reason = reason
+      }
+
+      if (d === 'modified') {
+        // field-based editor의 draft를 그대로 사용한다. 시크릿 칸은 잠겨
+        // <redacted>로 남고, 백엔드가 checkpoint 원본으로 복원한다(프론트
+        // 복원 없음). JSON.parse가 없으므로 syntax 에러로 막히지 않는다.
+        response.modified_args = draft
+        resumeResponse.modified_args = draft
+      }
+
+      const standardDecision = toDecision(d, resumeResponse, args?.tool_name, {
+        sessionScope: args?.session_consent_eligible === true && consentSession,
+      })
+      try {
+        await resumeDecision(standardDecision, styles[d].label)
+      } catch {
+        setResumeError(t('resumeFailed'))
+        setSubmitting(false)
+        setDecision(null)
+        return false
+      }
+      addApprovalResultIfSupported(addResult, response)
+      setLocalResult(response)
+      setSubmitting(false)
+      return true
+    },
+    [addResult, rejectReason, draft, t, styles, args, resumeDecision, consentSession],
+  )
+
+  const visibleResult = result ?? localResult
+
+  // The group owns its heading. Count this action only after the runtime
+  // accepted a decision (or supplied an already-complete tool result), never
+  // when the user merely starts an approval, rejection, or edit flow.
+  useEffect(() => {
+    if (
+      grouped &&
+      multi &&
+      typeof actionIndex === 'number' &&
+      (status.type === 'complete' || visibleResult !== null)
+    ) {
+      multi.resolve(actionIndex)
     }
+  }, [actionIndex, grouped, multi, status.type, visibleResult])
 
-    // ── 로딩 상태 ──
-    if (status.type === 'running') {
-      return (
-        <div className="moldy-chat-card flex items-center gap-2 px-3 py-2 text-xs">
-          <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
-          <span className="text-muted-foreground">{t('preparing')}</span>
-        </div>
-      )
+  // 만료 시 자동 reject — handleDecision 변동에 영향받지 않도록 ref로 보관
+  const expireMessage = t('autoRejected')
+  const handleExpire = useCallback(() => {
+    if (submitting || decision !== null) return
+    void handleDecision('rejected', { reasonOverride: expireMessage })
+  }, [handleDecision, submitting, decision, expireMessage])
+
+  const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
+    approvalId,
+    initialTimeoutSeconds: args?.timeout_seconds,
+    onExpire: handleExpire,
+    // In a group the countdown badge isn't rendered, so keeping the timer would
+    // silently auto-reject a card mid-decision. Disable per-card auto-expire in
+    // compact mode (the group has no visible deadline).
+    active: isPending && !grouped,
+  })
+
+  const onInteract = useMemo(() => extend, [extend])
+
+  // 도구별 allowed_decisions 게이팅 — 카드가 받은 화이트리스트대로 버튼을 노출.
+  // 빈/누락이면 approve+reject만(edit 제외) — standard-interrupt의 reviewForAction
+  // fallback과 동일. execute_in_skill(approve,reject)엔 수정 버튼이 뜨지 않는다.
+  const allowedDecisions = useMemo(
+    () => new Set(args?.allowed_decisions ?? []),
+    [args?.allowed_decisions],
+  )
+  const canApprove = allowedDecisions.size === 0 || allowedDecisions.has('approve')
+  const canEdit = allowedDecisions.has('edit')
+  const canReject = allowedDecisions.size === 0 || allowedDecisions.has('reject')
+
+  // "모두 승인"을 위해 미결정 카드의 승인 콜백을 그룹 컨테이너에 등록. 결정되거나
+  // (localResult) 사용자가 이미 거부/수정 흐름에 들어간 카드(decision/showEdit)는
+  // 등록에서 빠져, "모두 승인"이 진행 중인 거부·수정 의도를 덮어쓰지 않는다.
+  useEffect(() => {
+    const idx = args?.hitl_action_index
+    if (
+      !grouped ||
+      !multi ||
+      typeof idx !== 'number' ||
+      !canApprove ||
+      localResult !== null ||
+      decision !== null ||
+      showEdit
+    ) {
+      return
     }
+    multi.register(idx, () => handleDecision('approved'))
+    return () => multi.unregister(idx)
+  }, [
+    grouped,
+    multi,
+    canApprove,
+    localResult,
+    decision,
+    showEdit,
+    args?.hitl_action_index,
+    handleDecision,
+  ])
 
-    // ── requires-action: 승인 카드 ──
-    const toolName = resolveApprovalToolName(args?.tool_name, args?.tool_args) ?? t('toolCall')
-    const rawDescription = cleanApprovalDescription(args?.description ?? args?.message)
-    const description = rawDescription ? redactSensitiveText(rawDescription) : undefined
-    const toolArgs = args?.tool_args ? redactSensitiveRecord(args.tool_args) : undefined
-
-    // Per-action selector for multi-action HiTL interrupts: one approval card
-    // renders per action_request, scoped by its index so E2E can approve each
-    // independently and assert the total-action count.
-    const cardTestId =
-      typeof args?.hitl_action_index === 'number'
-        ? `approval-action-${args.hitl_action_index}`
-        : undefined
-    const totalActions =
-      typeof args?.hitl_total_actions === 'number' ? String(args.hitl_total_actions) : undefined
-
-    const body = (
-      <div className="space-y-3 p-4">
-        {/* Tool name + description */}
-        <div>
-          <div className="mb-1 flex items-center gap-1.5">
-            <WrenchIcon className="size-3 text-muted-foreground" />
-            <span className="text-xs font-semibold">{toolName}</span>
-          </div>
-          {description && <p className="text-xs text-muted-foreground">{description}</p>}
-        </div>
-
-        {/* Args preview — collapsed by default; the headline now names the
-              actual skill/tool, so expanding is only needed to inspect details. */}
-        {toolArgs && Object.keys(toolArgs).length > 0 && <ArgsPreview args={toolArgs} />}
-
-        {/* 거부 사유 입력 (거부 선택 시) */}
-        {decision === 'rejected' && !submitting && (
-          <textarea
-            aria-label={t('rejectReasonLabel')}
-            value={rejectReason}
-            onChange={(e) => {
-              setRejectReason(e.target.value)
-              onInteract()
-            }}
-            onFocus={onInteract}
-            placeholder={t('rejectReasonPlaceholder')}
-            className="moldy-field-status moldy-status-danger w-full resize-none rounded-lg border bg-background px-3 py-2 text-xs outline-hidden placeholder:text-muted-foreground"
-            rows={2}
-          />
-        )}
-
-        {/* 수정 인자 입력 (수정 선택 시) — 칸별 field editor. 시크릿 키는
-              read-only 잠금, 비-scalar는 칸별 JSON. raw JSON textarea 아님. */}
-        {showEdit && !submitting && (
-          <ArgsEditor value={draft} onChange={setDraft} onInteract={onInteract} />
-        )}
-
-        {resumeError && <p className="mt-1 text-xs text-destructive">{resumeError}</p>}
-
-        {/* 세션 동의 옵션 (스킬 빌더 AD-4) — review_configs 플래그 조건부.
-              체크 후 승인하면 decisions에 scope:'session'이 첨부되어 이 세션의
-              같은 도구는 이후 승인 카드 없이 실행된다. */}
-        {args?.session_consent_eligible === true && canApprove && !submitting && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input
-              id={`${approvalId}-session-consent`}
-              type="checkbox"
-              aria-label={t('allowForSession')}
-              checked={consentSession}
-              onChange={(e) => {
-                setConsentSession(e.target.checked)
-                onInteract()
-              }}
-              data-testid="approval-session-consent"
-              className="size-3.5 accent-primary"
-            />
-            <label htmlFor={`${approvalId}-session-consent`} className="cursor-pointer">
-              {t('allowForSession')}
-            </label>
-          </div>
-        )}
-
-        {/* Action buttons */}
-        {!submitting ? (
-          <div className="flex items-center gap-2">
-            {/* 승인 */}
-            {canApprove && (
-              <button
-                type="button"
-                onClick={() => handleDecision('approved')}
-                data-testid="approval-approve-button"
-                data-variant="solid"
-                className="moldy-action-pill moldy-status-success"
-              >
-                <CheckIcon className="size-3" />
-                {t('approve')}
-              </button>
-            )}
-
-            {/* 수정 후 승인 — allowed_decisions에 edit이 있을 때만 노출 */}
-            {canEdit &&
-              (!showEdit ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEdit(true)
-                    setDraft({ ...(toolArgs ?? {}) })
-                  }}
-                  data-variant="outline"
-                  className="moldy-action-pill moldy-status-info"
-                >
-                  <PencilIcon className="size-3" />
-                  {t('edit')}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleDecision('modified')}
-                  data-variant="solid"
-                  className="moldy-action-pill moldy-status-info"
-                >
-                  <PencilIcon className="size-3" />
-                  {t('editAndApprove')}
-                </button>
-              ))}
-
-            {/* 거부 */}
-            {canReject &&
-              (decision !== 'rejected' ? (
-                <button
-                  type="button"
-                  onClick={() => setDecision('rejected')}
-                  data-variant="outline"
-                  className="moldy-action-pill moldy-status-danger"
-                >
-                  <XIcon className="size-3" />
-                  {t('reject')}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleDecision('rejected')}
-                  data-variant="solid"
-                  className="moldy-action-pill moldy-status-danger"
-                >
-                  <XIcon className="size-3" />
-                  {t('rejectConfirm')}
-                </button>
-              ))}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2Icon className="size-3 animate-spin" />
-            {t('processing')}
-          </div>
-        )}
-      </div>
-    )
-
-    // 그룹(멀티액션) 안: 헤더/카운트다운 없이 compact 블록. 그룹 컨테이너가
-    // "승인 대기 N건" 헤더와 단일 카운트다운, "모두 승인"을 소유한다.
-    if (grouped) {
-      return (
-        <div
-          data-testid={cardTestId}
-          data-hitl-total-actions={totalActions}
-          className="moldy-chat-card w-full"
-        >
-          {body}
-        </div>
-      )
-    }
-
+  // ── 완료 상태 ──
+  if (status.type === 'complete' || visibleResult !== null) {
+    const badge = <ApprovalBadge result={visibleResult} />
+    if (!grouped) return badge
     return (
       <div
-        className="moldy-chat-card moldy-status-surface moldy-status-warn w-full"
         data-testid={cardTestId}
         data-hitl-total-actions={totalActions}
+        data-hitl-active={groupedActive ? 'true' : 'false'}
+        hidden={!groupedActive}
+        className={cn('w-full', !groupedActive && 'hidden')}
       >
-        {/* Header */}
-        <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
-          <ShieldCheckIcon className="moldy-status-icon size-4" />
-          <span className="text-sm font-medium">{t('approvalRequired')}</span>
-          <CountdownBadge
-            formatted={formatted}
-            isUrgent={isUrgent}
-            expired={remaining <= 0}
-            label={t('expiresIn')}
-            expiredLabel={t('expired')}
-            className="ml-auto"
-          />
+        {badge}
+      </div>
+    )
+  }
+
+  // ── 로딩 상태 ──
+  if (status.type === 'running') {
+    return (
+      <div className="moldy-chat-card flex items-center gap-2 px-3 py-2 text-xs">
+        <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
+        <span className="text-muted-foreground">{t('preparing')}</span>
+      </div>
+    )
+  }
+
+  // ── requires-action: 승인 카드 ──
+  const toolName = resolveApprovalToolName(args?.tool_name, args?.tool_args) ?? t('toolCall')
+  const rawDescription = cleanApprovalDescription(args?.description ?? args?.message)
+  const description = rawDescription ? redactSensitiveText(rawDescription) : undefined
+  const toolArgs = args?.tool_args ? redactSensitiveRecord(args.tool_args) : undefined
+
+  const body = (
+    <div className="space-y-3 p-4">
+      {/* Tool name + description */}
+      <div>
+        <div className="mb-1 flex items-center gap-1.5">
+          <WrenchIcon className="size-3 text-muted-foreground" />
+          <span className="text-xs font-semibold">{toolName}</span>
         </div>
+        {description && <p className="text-xs text-muted-foreground">{description}</p>}
+      </div>
+
+      {/* Args preview — collapsed by default; the headline now names the
+              actual skill/tool, so expanding is only needed to inspect details. */}
+      {toolArgs && Object.keys(toolArgs).length > 0 && <ArgsPreview args={toolArgs} />}
+
+      {/* 거부 사유 입력 (거부 선택 시) */}
+      {decision === 'rejected' && !submitting && (
+        <textarea
+          aria-label={t('rejectReasonLabel')}
+          value={rejectReason}
+          onChange={(e) => {
+            setRejectReason(e.target.value)
+            onInteract()
+          }}
+          onFocus={onInteract}
+          placeholder={t('rejectReasonPlaceholder')}
+          className="moldy-field-status moldy-status-danger w-full resize-none rounded-lg border bg-background px-3 py-2 text-xs outline-hidden placeholder:text-muted-foreground"
+          rows={2}
+        />
+      )}
+
+      {/* 수정 인자 입력 (수정 선택 시) — 칸별 field editor. 시크릿 키는
+              read-only 잠금, 비-scalar는 칸별 JSON. raw JSON textarea 아님. */}
+      {showEdit && !submitting && (
+        <ArgsEditor value={draft} onChange={setDraft} onInteract={onInteract} />
+      )}
+
+      {resumeError && <p className="mt-1 text-xs text-destructive">{resumeError}</p>}
+
+      {/* 세션 동의 옵션 (스킬 빌더 AD-4) — review_configs 플래그 조건부.
+              체크 후 승인하면 decisions에 scope:'session'이 첨부되어 이 세션의
+              같은 도구는 이후 승인 카드 없이 실행된다. */}
+      {args?.session_consent_eligible === true && canApprove && !submitting && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            id={`${approvalId}-session-consent`}
+            type="checkbox"
+            aria-label={t('allowForSession')}
+            checked={consentSession}
+            onChange={(e) => {
+              setConsentSession(e.target.checked)
+              onInteract()
+            }}
+            data-testid="approval-session-consent"
+            className="size-3.5 accent-primary"
+          />
+          <label htmlFor={`${approvalId}-session-consent`} className="cursor-pointer">
+            {t('allowForSession')}
+          </label>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      {!submitting ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* 승인 */}
+          {canApprove && (
+            <button
+              type="button"
+              onClick={() => handleDecision('approved')}
+              data-testid="approval-approve-button"
+              data-variant="solid"
+              className="moldy-action-pill moldy-status-success order-last"
+            >
+              <CheckIcon className="size-3" />
+              {t('approve')}
+            </button>
+          )}
+
+          {/* 수정 후 승인 — allowed_decisions에 edit이 있을 때만 노출 */}
+          {canEdit &&
+            (!showEdit ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEdit(true)
+                  setDraft({ ...(toolArgs ?? {}) })
+                }}
+                data-variant="outline"
+                className="moldy-action-pill moldy-status-info"
+              >
+                <PencilIcon className="size-3" />
+                {t('edit')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleDecision('modified')}
+                data-variant="solid"
+                className="moldy-action-pill moldy-status-info"
+              >
+                <PencilIcon className="size-3" />
+                {t('editAndApprove')}
+              </button>
+            ))}
+
+          {/* 거부 */}
+          {canReject &&
+            (decision !== 'rejected' ? (
+              <button
+                type="button"
+                onClick={() => setDecision('rejected')}
+                data-variant="outline"
+                className="moldy-action-pill moldy-status-danger"
+              >
+                <XIcon className="size-3" />
+                {t('reject')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleDecision('rejected')}
+                data-variant="solid"
+                className="moldy-action-pill moldy-status-danger"
+              >
+                <XIcon className="size-3" />
+                {t('rejectConfirm')}
+              </button>
+            ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2Icon className="size-3 animate-spin" />
+          {t('processing')}
+        </div>
+      )}
+    </div>
+  )
+
+  // 그룹(멀티액션) 안: 헤더/카운트다운 없이 compact 블록. 그룹 컨테이너가
+  // "승인 대기 N건" 헤더와 단일 카운트다운, "모두 승인"을 소유한다.
+  if (grouped) {
+    return (
+      <div
+        data-testid={cardTestId}
+        data-hitl-total-actions={totalActions}
+        data-hitl-active={groupedActive ? 'true' : 'false'}
+        hidden={!groupedActive}
+        className={cn('moldy-chat-card w-full', !groupedActive && 'hidden')}
+      >
         {body}
       </div>
     )
+  }
+
+  return (
+    <div
+      className="moldy-chat-card moldy-status-warn w-full border border-border bg-card text-foreground"
+      data-testid={cardTestId}
+      data-hitl-total-actions={totalActions}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
+        <ShieldCheckIcon className="moldy-status-icon size-4" />
+        <span className="text-sm font-medium">{t('approvalRequired')}</span>
+        <CountdownBadge
+          formatted={formatted}
+          isUrgent={isUrgent}
+          expired={remaining <= 0}
+          label={t('expiresIn')}
+          expiredLabel={t('expired')}
+          className="ml-auto"
+        />
+      </div>
+      {body}
+    </div>
+  )
 }

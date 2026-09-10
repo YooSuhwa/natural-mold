@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Agent } from '@/lib/types'
+import { SideChatToggle } from '@/components/chat/side-chat/side-chat-panel'
 
 interface ChatPageHeaderProps {
   readonly agent: Agent | undefined
@@ -49,6 +50,7 @@ export function ChatPageHeader({
         <AgentContextPopover agent={agent} agentId={agentId} />
       </div>
       <div className="flex items-center gap-1">
+        <SideChatToggle />
         <Button
           variant="ghost"
           size="icon-sm"

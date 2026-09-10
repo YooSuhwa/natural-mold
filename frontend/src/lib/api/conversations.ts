@@ -24,6 +24,12 @@ function buildConversationPageSearch(params?: ConversationPageParams): string {
 }
 
 export const conversationsApi = {
+  createSideChat: (conversationId: string) =>
+    apiFetch<Conversation>(`/api/conversations/${conversationId}/side-chats`, { method: 'POST' }),
+  saveSideChat: (conversationId: string) =>
+    apiFetch<Conversation>(`/api/conversations/${conversationId}/side-chats/save`, {
+      method: 'POST',
+    }),
   list: (agentId: string) => apiFetch<Conversation[]>(`/api/agents/${agentId}/conversations`),
   page: (agentId: string, params?: ConversationPageParams) =>
     apiFetch<ConversationListEnvelope>(

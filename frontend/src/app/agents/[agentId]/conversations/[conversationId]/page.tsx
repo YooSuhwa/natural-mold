@@ -42,7 +42,8 @@ import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
 import { PinnedConversationSummary } from '@/components/chat/pinned-conversation-summary'
 import { ExportDialog } from '@/components/chat/export-dialog'
-import { ChatRightRail } from '@/components/chat/right-rail/chat-right-rail'
+import { SideChatWorkspace } from '@/components/chat/side-chat/side-chat-workspace'
+import { SideChatPanel, ConversationDetailRail } from '@/components/chat/side-chat/side-chat-panel'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const EMPTY_MESSAGES: Message[] = []
@@ -400,81 +401,85 @@ export default function ChatPage({
   )
 
   return (
-    <div className="moldy-app-surface flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
-      {/* 메인 채팅 카드 */}
-      <section className="moldy-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <ChatPageHeader
-          agent={agent}
-          agentId={agentId}
-          title={currentTitle}
-          onNewConversation={handleNewConversation}
-          onOpenSettings={handleOpenSettings}
-          onOpenTrace={handleOpenTrace}
-          onToggleArtifacts={handleToggleArtifacts}
-        />
-        <PinnedConversationSummary conversationId={activeConversationId} />
+    <SideChatWorkspace
+      key={activeConversationId ?? 'draft'}
+      conversationId={useLangGraphRuntime ? activeConversationId : null}
+      title={currentTitle ?? agent?.name ?? ''}
+    >
+      <div className="moldy-app-surface flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
+        {/* 메인 채팅 카드 */}
+        <section className="moldy-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <ChatPageHeader
+            agent={agent}
+            agentId={agentId}
+            title={currentTitle}
+            onNewConversation={handleNewConversation}
+            onOpenSettings={handleOpenSettings}
+            onOpenTrace={handleOpenTrace}
+            onToggleArtifacts={handleToggleArtifacts}
+          />
+          <PinnedConversationSummary conversationId={activeConversationId} />
 
-        {/* Thread */}
-        {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||
-        isLangGraphDraftBootstrapping ? (
-          <div className="flex-1 px-4 py-4">
-            <div className="mx-auto max-w-3xl space-y-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="flex gap-3">
-                  <Skeleton className="size-8 rounded-full" />
-                  <Skeleton className="moldy-skeleton-message h-16 flex-1" />
-                </div>
-              ))}
+          {/* Thread */}
+          {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||
+          isLangGraphDraftBootstrapping ? (
+            <div className="flex-1 px-4 py-4">
+              <div className="mx-auto max-w-3xl space-y-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex gap-3">
+                    <Skeleton className="size-8 rounded-full" />
+                    <Skeleton className="moldy-skeleton-message h-16 flex-1" />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : (
-          <ToolIconProvider iconIds={toolIconIds} mcpServers={mcpServerNames}>
-            <ChatRuntimeSection
-              activeConversationId={activeConversationId}
-              activeRun={envelope?.active_run ?? null}
-              agentId={agentId}
-              agentImageUrl={agent?.image_url}
-              agentName={agent?.name}
-              attachmentAdapter={moldyAttachmentAdapter}
-              emptyContent={renderedEmptyContent}
-              feedbackAdapter={feedbackAdapter}
-              latestRun={envelope?.latest_run ?? null}
-              messages={messages}
-              modelName={agent?.model?.display_name}
-              showContextGauge
-              contextWindow={agent?.model?.context_window ?? null}
-              onBeforeNewMessage={handleBeforeNewMessage}
-              onNewMessageAccepted={handleNewMessageAccepted}
-              onRuntimeStatusChange={handleRuntimeStatusChange}
-              onStreamEnd={onStreamEnd}
-              streamFn={streamFn}
-              totalCost={envelope?.total_estimated_cost}
-              useLangGraphRuntime={useLangGraphRuntime}
-              user={user}
-              linkedSkills={agent?.skills}
-              commandActions={{
-                createNewConversation: handleNewConversation,
-                openFilesRail: handleToggleArtifacts,
-                ...(activeConversationId ? { openExportChooser: () => setExportOpen(true) } : {}),
-              }}
-            />
-          </ToolIconProvider>
-        )}
-      </section>
+          ) : (
+            <ToolIconProvider iconIds={toolIconIds} mcpServers={mcpServerNames}>
+              <ChatRuntimeSection
+                activeConversationId={activeConversationId}
+                activeRun={envelope?.active_run ?? null}
+                agentId={agentId}
+                agentImageUrl={agent?.image_url}
+                agentName={agent?.name}
+                attachmentAdapter={moldyAttachmentAdapter}
+                emptyContent={renderedEmptyContent}
+                feedbackAdapter={feedbackAdapter}
+                latestRun={envelope?.latest_run ?? null}
+                messages={messages}
+                modelName={agent?.model?.display_name}
+                showContextGauge
+                contextWindow={agent?.model?.context_window ?? null}
+                onBeforeNewMessage={handleBeforeNewMessage}
+                onNewMessageAccepted={handleNewMessageAccepted}
+                onRuntimeStatusChange={handleRuntimeStatusChange}
+                onStreamEnd={onStreamEnd}
+                streamFn={streamFn}
+                totalCost={envelope?.total_estimated_cost}
+                useLangGraphRuntime={useLangGraphRuntime}
+                user={user}
+                linkedSkills={agent?.skills}
+                commandActions={{
+                  createNewConversation: handleNewConversation,
+                  openFilesRail: handleToggleArtifacts,
+                  ...(activeConversationId ? { openExportChooser: () => setExportOpen(true) } : {}),
+                }}
+              />
+            </ToolIconProvider>
+          )}
+        </section>
 
-      {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
-      <ChatRightRail
-        conversationId={activeConversationId}
-        className="moldy-panel overflow-hidden"
-      />
-      {activeConversationId ? (
-        <ExportDialog
-          open={exportOpen}
-          onOpenChange={setExportOpen}
-          conversationId={activeConversationId}
-          title={currentTitle}
-        />
-      ) : null}
-    </div>
+        {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
+        <ConversationDetailRail conversationId={activeConversationId} />
+        <SideChatPanel agent={agent} user={user} />
+        {activeConversationId ? (
+          <ExportDialog
+            open={exportOpen}
+            onOpenChange={setExportOpen}
+            conversationId={activeConversationId}
+            title={currentTitle}
+          />
+        ) : null}
+      </div>
+    </SideChatWorkspace>
   )
 }

@@ -238,9 +238,11 @@ test.describe('Wave 10 — HITL approval decision captures', () => {
         }
       }
       await sendMessage(page, 'E2E_HITL_MULTI')
-      // Both grouped-compact and standalone cards carry approval-action-N, so
-      // wait on that (not the header text, which differs between the two modes).
-      await expect(card.first()).toBeVisible({ timeout: 40_000 })
+      // Every action remains mounted for one batched resume, but the interaction
+      // surface pages through exactly one active decision at a time.
+      await expect(
+        page.locator('[data-testid^="approval-action-"][data-hitl-active="true"]'),
+      ).toBeVisible({ timeout: 40_000 })
       await page.waitForTimeout(600)
     }
 
@@ -250,10 +252,13 @@ test.describe('Wave 10 — HITL approval decision captures', () => {
           file: '07-multi-card.png',
           run: async () => {
             await gotoSendMulti('HITL 멀티 카드')
-            // ONE grouped container ("승인 대기 N건" + "모두 승인") wrapping the two
-            // compact action rows — not two standalone cards.
+            // ONE grouped container wrapping both mounted decisions, with only
+            // the current action visible (ask_user-style paging).
             await expect(group).toBeVisible({ timeout: 20_000 })
             await expect(card).toHaveCount(2, { timeout: 20_000 })
+            await expect(
+              page.locator('[data-testid^="approval-action-"][data-hitl-active="true"]'),
+            ).toHaveCount(1)
             await page.waitForTimeout(400)
             await captureLocator(group, WAVE, '07-multi-card.png')
           },

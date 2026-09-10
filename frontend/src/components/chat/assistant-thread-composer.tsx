@@ -9,6 +9,7 @@ import {
   PaperclipIcon,
   SendIcon,
   WandSparklesIcon,
+  XIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
@@ -37,6 +38,9 @@ import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 import { reportClientWarning } from '@/lib/logging/client-logger'
 import { ChatComposerTriggers } from '@/components/chat/context/chat-composer-triggers'
 import { ResourceContextChips } from '@/components/chat/context/resource-context-chips'
+import { QuoteComposerBridge } from '@/components/chat/side-chat/quote-composer-bridge'
+import { useSideChat } from '@/components/chat/side-chat/side-chat-context'
+import { QuoteContextChips, isMessageQuote } from '@/components/chat/side-chat/quote-context-chips'
 import { createChatCommands } from '@/lib/chat/commands/chat-command-catalog'
 import { dispatchChatCommand } from '@/lib/chat/commands/chat-command-dispatch'
 import type { ChatCommandActions, ChatCommandCopy } from '@/lib/chat/commands/chat-command-types'
@@ -93,7 +97,11 @@ export function ThreadComposer({
   const [attachmentButton, setAttachmentButton] = useState<HTMLButtonElement | null>(null)
   const aui = useAui()
   const isRunning = useAuiState((state) => state.thread.isRunning)
-  const resourceContext = useResourceContextComposer(resourceContextResetKey)
+  const sideChat = useSideChat()
+  const resourceContext = useResourceContextComposer(
+    resourceContextResetKey,
+    conversationId === sideChat?.sideId ? sideChat?.draft.current?.references : undefined,
+  )
   const resourceCandidates = useResourceContextCandidates({ conversationId, linkedSkills })
   useFollowupSuggestion(conversationId)
   const [followupEnabled, setFollowupEnabled] = useAtom(followupEnabledAtom)
@@ -165,7 +173,10 @@ export function ThreadComposer({
   ])
 
   return (
-    <ComposerPrimitive.Root className="moldy-chat-card relative z-20 overflow-visible @container">
+    <ComposerPrimitive.Root
+      className="moldy-chat-card relative z-20 overflow-visible @container"
+      data-moldy-thread-composer
+    >
       {enableMessageQueue ? (
         <ServerMessageQueuePanel
           labels={{
@@ -175,6 +186,10 @@ export function ThreadComposer({
             edit: tQueue('edit'),
             save: tQueue('save'),
             cancelEdit: tQueue('cancelEdit'),
+            steerAction: tQueue('steerAction'),
+            sendNow: tQueue('sendNow'),
+            cancelSteer: tQueue('cancelSteer'),
+            moreActions: tQueue('moreActions'),
             remove: tQueue('remove'),
             steer: tQueue('steer'),
             moveUp: tQueue('moveUp'),
@@ -210,55 +225,65 @@ export function ThreadComposer({
           onResourceSelect={(reference) => resourceContext.add(reference)}
         >
           <ResourceContextChips
-            references={resourceContext.references}
+            references={resourceContext.references.filter(
+              (reference) => !isMessageQuote(reference),
+            )}
             labels={categoryLabels}
             removeLabel={(label) => tContext('remove', { label })}
             onRemove={resourceContext.remove}
           />
-          <ImeSafeComposerInput
-            ref={composerTextareaRef}
-            autoFocus
-            autoFocusKey={focusKey}
-            placeholder={ghostVisible ? '' : t('placeholder')}
-            submitMode="enter"
-            onKeyDown={(event) => {
-              if (
-                event.key === 'Enter' &&
-                !event.shiftKey &&
-                !event.nativeEvent.isComposing &&
-                aui.composer.getState().text.trim().startsWith('/')
-              ) {
-                event.preventDefault()
-                const commandText = aui.composer.getState().text
-                void dispatchChatCommand(commandText, commands).then((result) => {
-                  if (result.kind === 'handled' && result.commandId !== 'help') {
-                    aui.composer.setText('')
-                  } else if (result.kind === 'blocked') {
-                    toast.error(
-                      result.reason === 'arguments-not-supported'
-                        ? tCommands('argumentsNotSupported')
-                        : (result.message ?? tCommands('unknown')),
-                    )
-                  }
-                })
-                return
-              }
-              handleGhostKeyDown(event)
-              if (!event.defaultPrevented) handleHistoryKeyDown(event)
-            }}
-            onCompositionStart={() => setComposing(true)}
-            onCompositionEnd={() => setComposing(false)}
-            className={cn(
-              'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-hidden',
-              'placeholder:text-muted-foreground',
-              'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
-              compact ? 'min-h-10 max-h-32' : 'min-h-11 max-h-40',
-            )}
-            rows={1}
+          <QuoteComposerBridge context={resourceContext} inputRef={composerTextareaRef} />
+          <QuoteContextChips
+            references={resourceContext.references}
+            onRemove={resourceContext.remove}
+            onUpdate={resourceContext.update}
           />
-          {ghostVisible && ghostText ? (
-            <ComposerGhostSuggestion text={ghostText} onAccept={acceptGhost} />
-          ) : null}
+          <div className="relative">
+            <ImeSafeComposerInput
+              ref={composerTextareaRef}
+              autoFocus
+              autoFocusKey={focusKey}
+              placeholder={ghostVisible ? '' : t('placeholder')}
+              submitMode="enter"
+              onKeyDown={(event) => {
+                if (
+                  event.key === 'Enter' &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing &&
+                  aui.composer.getState().text.trim().startsWith('/')
+                ) {
+                  event.preventDefault()
+                  const commandText = aui.composer.getState().text
+                  void dispatchChatCommand(commandText, commands).then((result) => {
+                    if (result.kind === 'handled' && result.commandId !== 'help') {
+                      aui.composer.setText('')
+                    } else if (result.kind === 'blocked') {
+                      toast.error(
+                        result.reason === 'arguments-not-supported'
+                          ? tCommands('argumentsNotSupported')
+                          : (result.message ?? tCommands('unknown')),
+                      )
+                    }
+                  })
+                  return
+                }
+                handleGhostKeyDown(event)
+                if (!event.defaultPrevented) handleHistoryKeyDown(event)
+              }}
+              onCompositionStart={() => setComposing(true)}
+              onCompositionEnd={() => setComposing(false)}
+              className={cn(
+                'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-hidden',
+                'placeholder:text-muted-foreground',
+                'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+                compact ? 'min-h-10 max-h-32' : 'min-h-11 max-h-40',
+              )}
+              rows={1}
+            />
+            {ghostVisible && ghostText ? (
+              <ComposerGhostSuggestion text={ghostText} onAccept={acceptGhost} />
+            ) : null}
+          </div>
         </ChatComposerTriggers>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5">
@@ -339,7 +364,11 @@ export function ThreadComposer({
           <AuiIf condition={(s) => s.thread.isRunning && s.thread.capabilities.queue}>
             <>
               <QueueSendButton label={t('sendButton')} />
-              <QueueSteerButton label={tQueue('steerNew')} />
+              <QueueSteerButton
+                label={tQueue('steerNew')}
+                sendNowLabel={tQueue('sendNow')}
+                cancelLabel={tQueue('cancelSteer')}
+              />
             </>
           </AuiIf>
           <AuiIf condition={(s) => s.thread.isRunning}>
@@ -368,9 +397,49 @@ function QueueSendButton({ label }: { readonly label: string }) {
   )
 }
 
-function QueueSteerButton({ label }: { readonly label: string }) {
+function QueueSteerButton({
+  label,
+  sendNowLabel,
+  cancelLabel,
+}: {
+  readonly label: string
+  readonly sendNowLabel: string
+  readonly cancelLabel: string
+}) {
   const aui = useAui()
   const isEmpty = useAuiState((state) => state.composer.isEmpty)
+  const [armed, setArmed] = useState(false)
+
+  if (armed) {
+    return (
+      <div className="flex items-center gap-1" data-moldy-queue-steer-confirmation>
+        <Button
+          type="button"
+          size="sm"
+          disabled={isEmpty}
+          aria-label={sendNowLabel}
+          data-moldy-queue-send-now-new
+          onClick={() => {
+            aui.composer.send({ steer: true })
+            setArmed(false)
+          }}
+        >
+          <FastForwardIcon className="size-3.5" />
+          {sendNowLabel}
+        </Button>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={cancelLabel}
+          onClick={() => setArmed(false)}
+        >
+          <XIcon className="size-3.5" />
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <Button
       type="button"
@@ -381,7 +450,7 @@ function QueueSteerButton({ label }: { readonly label: string }) {
       aria-label={label}
       title={label}
       data-moldy-queue-steer-new
-      onClick={() => aui.composer.send({ steer: true })}
+      onClick={() => setArmed(true)}
     >
       <FastForwardIcon className="size-4" />
     </Button>

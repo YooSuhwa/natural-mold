@@ -26,7 +26,11 @@ function AssistantTextPart() {
   )
   const components = isRunning ? MARKDOWN_COMPONENTS_STREAMING : MARKDOWN_COMPONENTS_FINAL
   return (
-    <div className="prose-chat py-1 text-sm leading-relaxed text-foreground">
+    <div
+      className="prose-chat py-1 text-sm leading-relaxed text-foreground"
+      data-chat-quote-text
+      data-chat-streaming={isRunning ? 'true' : undefined}
+    >
       <StreamdownTextPrimitive
         plugins={STREAMDOWN_PLUGINS}
         remarkPlugins={CHAT_STREAMING_REMARK_PLUGINS}

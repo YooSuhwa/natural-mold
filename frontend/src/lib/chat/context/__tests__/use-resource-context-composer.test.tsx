@@ -18,6 +18,25 @@ function useHarness(resetKey: number) {
 }
 
 describe('useResourceContextComposer', () => {
+  it('canonicalizes a DOM quote with a late label before synchronizing run config', async () => {
+    const ref = {
+      kind: 'conversation',
+      id: '11111111-1111-4111-8111-111111111111',
+      message_id: 'm',
+      quote: '선택',
+      label: '원문',
+    } as const
+    const { result } = renderHook(() => useHarness(0), { wrapper: Wrapper })
+    act(() => result.current.context.add(ref))
+    await waitFor(() => expect(result.current.configured).toEqual([ref]))
+    act(() =>
+      result.current.context.update(result.current.context.references[0], {
+        ...ref,
+        comment: '댓글',
+      }),
+    )
+    await waitFor(() => expect(result.current.configured).toEqual([{ ...ref, comment: '댓글' }]))
+  })
   it('keeps strict refs in official run config, supports removal, and clears after acceptance', async () => {
     const ref = {
       kind: 'file',

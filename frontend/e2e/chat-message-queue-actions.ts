@@ -120,6 +120,7 @@ export async function sendForStrategy(
   page: Page,
   text: string,
   strategy: 'enqueue' | 'interrupt',
+  options?: { readonly afterSteerArmed?: () => Promise<void> },
 ): Promise<QueueSubmission> {
   const responsePromise = page.waitForResponse(
     (response) => commandStrategy(response.request()) === strategy,
@@ -133,6 +134,10 @@ export async function sendForStrategy(
     await expect(steerButton).toBeVisible({ timeout: 10_000 })
     await expect(steerButton).toBeEnabled({ timeout: 10_000 })
     await steerButton.click()
+    const sendNowButton = page.locator('[data-moldy-queue-send-now-new]')
+    await expect(sendNowButton).toBeVisible()
+    await options?.afterSteerArmed?.()
+    await sendNowButton.click()
   }
   const response = await responsePromise
   expect(response.ok()).toBeTruthy()

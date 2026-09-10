@@ -36,10 +36,19 @@ import { AssistantMessageParts } from '@/components/chat/assistant-message-parts
 import { MessageRunSummary } from '@/components/chat/run-summary'
 import { useAssistantThreadDynamicContext } from '@/components/chat/assistant-thread-context'
 import type { TerminalNoticeStatus } from '@/lib/chat/langgraph-runtime/terminal-notice'
+import { quotedResourcesFromText } from '@/lib/chat/context/quoted-resource-message'
+import { QuotedResourceMessage } from '@/components/chat/side-chat/quoted-resource-message'
 
 function UserMessage() {
   const { isBuilder, showMessageTimestamp, user } = useAssistantThreadDynamicContext()
   const messageId = useAuiState((s) => s.message?.id)
+  const text = useAuiState((s) =>
+    s.message.content
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text)
+      .join('\n'),
+  )
+  const quotedResources = quotedResourcesFromText(text)
   const metaRow = (
     <MessageMetaRow>
       <BranchPicker />
@@ -55,14 +64,19 @@ function UserMessage() {
       </Suspense>
     )
   }
+  if (quotedResources) return <QuotedResourceMessage quotes={quotedResources} />
   return (
     <div
       className="group relative flex justify-end gap-3"
       data-moldy-message-id={messageId}
       data-moldy-message-role="user"
+      tabIndex={-1}
     >
       <div className="flex w-full max-w-[80%] flex-col items-end">
-        <div className="moldy-chat-bubble-user px-4 py-2.5 text-sm leading-relaxed">
+        <div
+          className="moldy-chat-bubble-user px-4 py-2.5 text-sm leading-relaxed"
+          data-chat-quote-text
+        >
           <MessagePrimitive.Content />
         </div>
         <UserMessageAttachments />
@@ -140,6 +154,7 @@ function AssistantMessage() {
       className="group relative flex gap-3"
       data-moldy-message-id={messageId}
       data-moldy-message-role="assistant"
+      tabIndex={-1}
     >
       <AgentAvatar
         imageUrl={agentImageUrl ?? null}

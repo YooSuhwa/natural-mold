@@ -1290,6 +1290,36 @@
       "stop": { "label": "/stop", "description": "실행 중지 및 대기열 일시 정지" },
       "help": { "label": "/help", "description": "사용 가능한 명령어 보기" }
     },
+    "sideChat": {
+      "userMessage": "내 메시지",
+      "assistantMessage": "에이전트 답변",
+      "sourceMessage": "원문 메시지",
+      "title": "사이드 채팅",
+      "selectShorter": "내용이 길어요. 본 채팅에 가져올 부분을 드래그해서 선택해 주세요.",
+      "selectionActions": "선택한 텍스트로 질문하기",
+      "addToChat": "채팅에 추가",
+      "explain": "더 자세히",
+      "askSide": "사이드 채팅에 질문하기",
+      "explainPrompt": "선택한 내용을 더 자세히 설명해 주세요.",
+      "emptyDescription": "대화의 한 부분을 따로 이야기해 보세요. 선택한 내용만 전달하며 본 채팅의 흐름은 그대로 유지됩니다.",
+      "storageNotice": "같은 에이전트와 별도로 대화합니다. 서버에 저장되며 닫아도 삭제되지 않습니다. 목록에 남기려면 저장을 눌러 주세요.",
+      "quoteNumber": "주석 {number}",
+      "removeQuote": "주석 {number} 제거",
+      "sourceConversation": "출처 대화",
+      "comment": "내 댓글",
+      "commentPlaceholder": "이 부분에 대해 요청할 내용을 적어 주세요",
+      "viewSource": "원문 보기",
+      "saveComment": "적용",
+      "loading": "사이드 채팅을 준비하고 있어요",
+      "loadFailed": "사이드 채팅을 열지 못했어요. 선택한 내용은 그대로 남아 있습니다.",
+      "retry": "다시 시도",
+      "close": "사이드 채팅 닫기",
+      "saveConversation": "대화 목록에 저장",
+      "saved": "대화 목록에 저장했어요",
+      "saveFailed": "저장하지 못했어요. 다시 시도해 주세요.",
+      "quotedContext": "참고한 대화",
+      "quotedExcerpt": "선택한 텍스트"
+    },
     "resourceContext": {
       "ariaLabel": "컨텍스트 추가",
       "limit": "컨텍스트는 최대 8개까지 추가할 수 있습니다.",
@@ -1425,6 +1455,8 @@
       "next": "다음",
       "complete": "완료",
       "clear": "초기화",
+      "customAnswer": "직접 입력",
+      "customAnswerPlaceholder": "원하는 답변을 직접 입력하세요…",
       "selectionRange": "{min}개 이상 {max}개 이하 선택",
       "confirmSelection": "선택 확인 ({count})",
       "resumeFailed": "답변을 전송하지 못했습니다. 다시 시도하세요."
@@ -1472,7 +1504,11 @@
       "cancelEdit": "수정 취소",
       "remove": "대기 메시지 삭제",
       "steer": "현재 응답을 중단하고 먼저 실행",
+      "steerAction": "Steer",
       "steerNew": "현재 응답을 중단하고 바로 전송",
+      "sendNow": "지금 보내기",
+      "cancelSteer": "즉시 전송 취소",
+      "moreActions": "대기 메시지 작업 더보기",
       "moveUp": "위로 이동",
       "moveDown": "아래로 이동",
       "sending": "서버에 저장 중",
@@ -1836,8 +1872,9 @@
     },
     "deepAgentsState": {
       "tasks": {
-        "title": "작업 목록",
-        "progress": "{done}/{total} 완료"
+        "title": "작업 계획",
+        "progress": "{done}/{total} 완료",
+        "current": "진행 중: {item}"
       },
       "files": {
         "title": "파일",

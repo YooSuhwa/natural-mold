@@ -1,17 +1,18 @@
 # Moldy PRD
 
-<!-- project-current-source: migration=m76_pinned_conv_summaries; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-08 -->
+<!-- project-current-source: migration=m77_side_chat_link; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-10 -->
 
-> Last updated: 2026-09-08
-> Version: v0.6
+> Last updated: 2026-09-10
+> Version: v0.7
 > Source basis: current source tree and Alembic head
-> `m76_pinned_conv_summaries`. M59 is retained below only as the historical
+> `m77_side_chat_link`. M59 is retained below only as the historical
 > origin of generated artifacts.
 
 ## Changelog
 
 | Version | Date | Change |
 |---------|------|--------|
+| v0.7 | 2026-09-10 | Selected-message quotes, editable comments and independent same-agent side chat; M77 retains the parent/side link for reopening. |
 | v0.6 | 2026-09-08 | Aligned with M76, assistant-ui 0.15.18, implemented MCP/Agent publishing/install and blocking Pyright CI. Kept same-run Steer and broader storage adoption out of scope. |
 | v0.5 | 2026-09-05 | Refreshed current source state for Deep Agents 0.7.11, the LangGraph v3 runtime path, and versioned runtime-policy snapshots. |
 | v0.4 | 2026-06-07 | Rebased PRD on actual source. Replaced single-user PoC assumptions with ADR-016 multi-user auth, marketplace, memory, Agent API, artifacts, audit, subagents, and runtime split status. |
@@ -27,6 +28,7 @@
 | Isolated test lanes | Backend, frontend, scripted E2E, and live E2E have distinct runner/database contracts | `scripts/run-isolated-command.sh`, `frontend/scripts/run-e2e-lane.mjs` |
 | Runtime policy M71/M72 | Agent policy plus immutable conversation snapshot and `ConversationRun` provenance implemented; legacy conversations retain compatibility semantics | `backend/app/agent_runtime/runtime_policy.py`, `backend/app/services/conversation_runtime_policy.py`, migrations M71/M72, ADR-022 |
 | Chat M73~M76 | Queued inputs, persisted run metrics, MCP Apps provenance and pinned summaries; assistant-ui 0.15.18 with Moldy transport retained | migrations M73~M76, `frontend/package.json`, `frontend/src/lib/chat/langgraph-runtime/` |
+| Selected-text side chat M77 | Selection actions add quoted context to main or side chat; source/comment previews, explicit return to main, reopen and save to conversation list. Server-stored, not deleted on panel close; no full transcript clone or same-run Steer | `frontend/src/components/chat/side-chat/`, `backend/app/routers/conversation_side_chats.py`, `frontend/e2e/chat-side-chat.spec.ts` |
 | MCP/Agent marketplace | Template/spec publishing, dependency snapshots, install/rebinding and shared UI wizards implemented | `backend/app/marketplace/agent_spec.py`, `mcp_server.py`, `install/`, `frontend/src/components/marketplace/` |
 | Backend types | Pyright basic-mode errors cleared; CI blocks regressions. This does not imply strict mode or a Pydantic rewrite | `docs/pyright-burndown-plan.md`, `.github/workflows/ci.yml` |
 

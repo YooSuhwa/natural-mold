@@ -67,6 +67,8 @@ interface CollapsiblePillProps {
   /** pill 전체를 버튼으로 쓸 때 (sub-agent 카드처럼). children 없을 때 권장. */
   onClick?: () => void
   className?: string
+  /** 좁은 레이아웃에서도 식별 라벨을 보존해야 하는 호출부용 제목 클래스. */
+  titleClassName?: string
 }
 
 const STATUS_META: Record<
@@ -121,6 +123,7 @@ export function CollapsiblePill({
   trailing,
   onClick,
   className,
+  titleClassName,
 }: CollapsiblePillProps) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   // `useState` reads `defaultExpanded` only at mount. A subagent card mounts
@@ -157,7 +160,7 @@ export function CollapsiblePill({
       {HeaderIcon ? (
         <HeaderIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
       ) : null}
-      <span className="truncate font-medium">{title}</span>
+      <span className={cn('truncate font-medium', titleClassName)}>{title}</span>
       {meta ? <span className="min-w-0 truncate text-muted-foreground">{meta}</span> : null}
     </>
   )

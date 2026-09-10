@@ -43,6 +43,7 @@ import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
 import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
 import type { SkillBrief } from '@/lib/types'
 import 'katex/dist/katex.min.css'
+import { useSideChat } from '@/components/chat/side-chat/side-chat-context'
 import './markdown-styles.css'
 
 export { GenericToolFallback } from '@/components/chat/tool-ui/generic-tool-ui'
@@ -52,6 +53,7 @@ export {
 } from '@/components/chat/assistant-message-parts'
 
 export interface AssistantThreadProps {
+  threadHeader?: ReactNode
   agentImageUrl?: string | null
   agentImagePublicAsset?: boolean
   agentName?: string
@@ -82,6 +84,7 @@ export interface AssistantThreadProps {
 }
 
 export function AssistantThread({
+  threadHeader,
   agentImageUrl,
   agentImagePublicAsset = false,
   agentName,
@@ -110,6 +113,7 @@ export function AssistantThread({
   retryLastFailedInput,
   resourceContextResetKey,
 }: AssistantThreadProps) {
+  const sideChat = useSideChat()
   const tPage = useTranslations('chat.page')
   const isBuilder = variant === 'builder'
   const [isViewportAtBottom, setIsViewportAtBottom] = useState(true)
@@ -159,7 +163,14 @@ export function AssistantThread({
   return (
     <AssistantThreadDynamicContext.Provider value={dynamicContextValue}>
       <ChatConversationContext.Provider value={conversationId ?? null}>
-        <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
+        <ThreadPrimitive.Root
+          className="flex h-full min-h-0 flex-col"
+          data-chat-selection-thread={sideChat && !isBuilder ? conversationId : undefined}
+          data-chat-selection-title={
+            sideChat && conversationId === sideChat.mainId ? sideChat.mainTitle : agentName
+          }
+        >
+          {threadHeader}
           {!isBuilder && deepAgentsState && deepAgentsState.todos.length > 0 ? (
             <MissionControlBar todos={deepAgentsState.todos} />
           ) : null}

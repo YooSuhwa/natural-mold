@@ -111,7 +111,10 @@ vi.mock('@assistant-ui/react', () => {
     useAuiState: (selector: (state: unknown) => unknown) =>
       selector({
         composer: { dictation: null, isEditing: true, runConfig: {}, text: '' },
-        message: { id: 'assistant-message-1' },
+        message: {
+          id: 'assistant-message-1',
+          content: [{ type: 'text', text: '메시지' }],
+        },
         thread: { isDisabled: false, messages: [{ id: 'assistant-message-1' }] },
       }),
     useAui: () => ({

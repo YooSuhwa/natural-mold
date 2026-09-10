@@ -246,6 +246,47 @@ describe('appendInterruptToolCallMessages', () => {
     ])
   })
 
+  it('treats a missing ask_user options field and an empty options array as equivalent', () => {
+    const existing = new AIMessage({
+      id: 'assistant-ask-text',
+      content: '',
+      tool_calls: [
+        {
+          id: 'toolu-ask-text',
+          name: 'ask_user',
+          args: { question: '추가 설명을 입력해 주세요' },
+        },
+      ],
+    })
+
+    const projected = appendInterruptToolCallMessages(
+      [new HumanMessage({ id: 'user-1', content: 'ask for details' }), existing],
+      [
+        {
+          interrupt_id: 'intr-ask-text',
+          action_requests: [
+            {
+              name: 'ask_user',
+              args: { question: '추가 설명을 입력해 주세요', options: [] },
+            },
+          ],
+          review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+        },
+      ],
+    )
+
+    expect(projected).toHaveLength(2)
+    expect(AIMessage.isInstance(projected[1]) ? projected[1].tool_calls : []).toEqual([
+      expect.objectContaining({
+        id: 'toolu-ask-text',
+        args: expect.objectContaining({
+          hitl_interrupt_id: 'intr-ask-text',
+          hitl_action_index: 0,
+        }),
+      }),
+    ])
+  })
+
   it('hydrates a persisted ask_user tool call even when the interrupt id already matches', () => {
     const existing = new AIMessage({
       id: 'assistant-ask',

@@ -28,7 +28,7 @@ describe('E2E skip manifest', () => {
   it('classifies every current repository skip exactly once', async () => {
     await expect(checkRepository(process.cwd(), '2026-09-05')).resolves.toEqual({
       ruleCount: 10,
-      skipCount: 83,
+      skipCount: 84,
     })
   })
 

@@ -147,13 +147,6 @@
     "message": "A control must be associated with a text label."
   },
   {
-    "filePath": "src/components/chat/tool-ui/question-flow-card.tsx",
-    "line": 147,
-    "column": 11,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
     "filePath": "src/components/chat/tool-ui/user-input-ui.tsx",
     "line": 128,
     "column": 7,

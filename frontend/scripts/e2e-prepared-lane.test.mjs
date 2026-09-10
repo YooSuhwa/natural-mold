@@ -29,6 +29,7 @@ const RUNTIME_POLICY_CAPTURE_FILES = Object.freeze([
   'chat-recovery-discovery.spec.ts',
 ])
 const RESOURCE_CAPTURE_FILES = Object.freeze([
+  'chat-side-chat.spec.ts',
   'profile-personalization.spec.ts',
   'agent-mcp-attachment.spec.ts',
   'marketplace-publish-moderation.spec.ts',

@@ -80,6 +80,7 @@ DB migration, reused development server, or production credential is needed.
 | Token usage hover | chat | `conversation_messages` | `chat-token-usage`, `chat-langgraph-v3` | ✅/🟨 |
 | Document artifacts | chat | `artifacts` | `document-artifact-viewers` | ✅ |
 | Branching (regenerate/edit) + feedback + multi-turn | chat | `conversation_branches`, `feedback` | `chat-interactions` | ✅ |
+| Selected-text quotes and side chat | chat | `conversation_side_chats`, `conversation_runs` | `chat-side-chat` | ✅ source/comment preview, independent side run, main draft isolation, return to main, save/reopen/reload, tablet/mobile draft preservation; focused scripted run 2026-09-10 |
 | Message attachments (upload on send) | chat | `uploads` | `message-attachments` | ✅ |
 | HITL tool approval (approve / reject) | chat | `conversation_messages` | `document-artifact-viewers` (approve), `hitl-approval` (reject) | ✅ |
 | Credentials (user) | `/credentials` | `credentials` | `credentials` | ✅ (create only) |

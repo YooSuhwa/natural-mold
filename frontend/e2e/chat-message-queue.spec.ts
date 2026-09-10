@@ -42,10 +42,18 @@ test.describe('Server-backed chat message queue', () => {
       await expect(page.locator(`[data-moldy-queue-item="${firstId}"]`)).toBeVisible()
       await expect(page.locator(`[data-moldy-queue-item="${secondId}"]`)).toBeVisible()
 
+      await page
+        .locator(`[data-moldy-queue-item="${firstId}"]`)
+        .getByRole('button', { name: /더보기|More/ })
+        .click()
       await page.locator(`[data-moldy-queue-edit="${firstId}"]`).click()
       const editor = page.getByRole('textbox', { name: /대기 메시지 수정|Edit queued message/ })
       await editor.fill('edited queued message')
       await page.getByRole('button', { name: /저장|Save/ }).click()
+      await page
+        .locator(`[data-moldy-queue-item="${firstId}"]`)
+        .getByRole('button', { name: /더보기|More/ })
+        .click()
       await page.locator(`[data-moldy-queue-move-down="${firstId}"]`).click()
 
       await expect
@@ -54,6 +62,10 @@ test.describe('Server-backed chat message queue', () => {
         )
         .toEqual([secondId, firstId])
 
+      await page
+        .locator(`[data-moldy-queue-item="${secondId}"]`)
+        .getByRole('button', { name: /더보기|More/ })
+        .click()
       await page.locator(`[data-moldy-queue-remove="${secondId}"]`).click()
       await expect
         .poll(async () => {
@@ -161,7 +173,12 @@ test.describe('Server-backed chat message queue', () => {
       )
       const steerButton = page.locator('[data-moldy-queue-steer-new]')
       await expect(steerButton).toBeVisible({ timeout: 10_000 })
-      const accepted = await sendForStrategy(page, expectedHuman, 'interrupt')
+      const accepted = await sendForStrategy(page, expectedHuman, 'interrupt', {
+        afterSteerArmed: async () => {
+          expect(runStarts).toHaveLength(1)
+          await waitForRunStatus(request, setup.conversationId, predecessorId, 'running', 5_000)
+        },
+      })
       expect(accepted.runId).toBeNull()
       await waitForRunStatus(request, setup.conversationId, predecessorId, 'canceled')
 

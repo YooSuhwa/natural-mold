@@ -25,8 +25,25 @@ export const resourceContextReferenceSchema = z.discriminatedUnion('kind', [
     .strict()
     .readonly(),
   z
-    .object({ kind: z.literal('conversation'), ...baseReferenceShape })
+    .object({
+      kind: z.literal('conversation'),
+      ...baseReferenceShape,
+      message_id: z.string().min(1).max(255).optional(),
+      quote: z.string().trim().min(1).max(8000).optional(),
+      comment: z.string().max(2000).optional(),
+      message_role: z.enum(['user', 'assistant']).optional(),
+    })
     .strict()
+    .refine((value) => {
+      if (
+        value.message_id === undefined &&
+        value.quote === undefined &&
+        value.comment === undefined &&
+        value.message_role === undefined
+      )
+        return true
+      return Boolean(value.message_id && value.quote)
+    }, 'A quote requires a message and excerpt')
     .readonly(),
 ])
 
@@ -36,8 +53,7 @@ function rejectDuplicateReferences(
 ): void {
   const identities = new Set<string>()
   references.forEach((reference, index) => {
-    const version = reference.kind === 'artifact' ? (reference.version_id ?? '') : ''
-    const identity = `${reference.kind}:${reference.id}:${version}`
+    const identity = resourceContextReferenceKey(reference)
     if (identities.has(identity)) {
       context.addIssue({ code: 'custom', message: 'Duplicate resource reference', path: [index] })
     }
@@ -75,6 +91,9 @@ function versionId(reference: ResourceContextReference): string {
 }
 
 export function resourceContextReferenceKey(reference: ResourceContextReference): string {
+  if (reference.kind === 'conversation' && reference.message_id) {
+    return JSON.stringify([reference.kind, reference.id, reference.message_id, reference.quote])
+  }
   return `${reference.kind}:${reference.id}:${versionId(reference)}`
 }
 

@@ -102,6 +102,16 @@ def resource_context_user_message(
                     "mime_type": item.mime_type,
                     "content_available": item.content_available,
                     "text": item.text,
+                    **(
+                        {
+                            "message_id": item.message_id,
+                            "quote": item.quote,
+                            "comment": item.comment,
+                            "message_role": item.message_role,
+                        }
+                        if item.quote is not None
+                        else {}
+                    ),
                 }
                 for item in context.resources
             ],
