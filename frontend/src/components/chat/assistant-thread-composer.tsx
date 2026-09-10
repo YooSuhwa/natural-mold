@@ -9,6 +9,7 @@ import {
   PaperclipIcon,
   SendIcon,
   WandSparklesIcon,
+  XIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
@@ -172,7 +173,10 @@ export function ThreadComposer({
   ])
 
   return (
-    <ComposerPrimitive.Root className="moldy-chat-card relative z-20 overflow-visible @container">
+    <ComposerPrimitive.Root
+      className="moldy-chat-card relative z-20 overflow-visible @container"
+      data-moldy-thread-composer
+    >
       {enableMessageQueue ? (
         <ServerMessageQueuePanel
           labels={{
@@ -182,6 +186,10 @@ export function ThreadComposer({
             edit: tQueue('edit'),
             save: tQueue('save'),
             cancelEdit: tQueue('cancelEdit'),
+            steerAction: tQueue('steerAction'),
+            sendNow: tQueue('sendNow'),
+            cancelSteer: tQueue('cancelSteer'),
+            moreActions: tQueue('moreActions'),
             remove: tQueue('remove'),
             steer: tQueue('steer'),
             moveUp: tQueue('moveUp'),
@@ -356,7 +364,11 @@ export function ThreadComposer({
           <AuiIf condition={(s) => s.thread.isRunning && s.thread.capabilities.queue}>
             <>
               <QueueSendButton label={t('sendButton')} />
-              <QueueSteerButton label={tQueue('steerNew')} />
+              <QueueSteerButton
+                label={tQueue('steerNew')}
+                sendNowLabel={tQueue('sendNow')}
+                cancelLabel={tQueue('cancelSteer')}
+              />
             </>
           </AuiIf>
           <AuiIf condition={(s) => s.thread.isRunning}>
@@ -385,9 +397,49 @@ function QueueSendButton({ label }: { readonly label: string }) {
   )
 }
 
-function QueueSteerButton({ label }: { readonly label: string }) {
+function QueueSteerButton({
+  label,
+  sendNowLabel,
+  cancelLabel,
+}: {
+  readonly label: string
+  readonly sendNowLabel: string
+  readonly cancelLabel: string
+}) {
   const aui = useAui()
   const isEmpty = useAuiState((state) => state.composer.isEmpty)
+  const [armed, setArmed] = useState(false)
+
+  if (armed) {
+    return (
+      <div className="flex items-center gap-1" data-moldy-queue-steer-confirmation>
+        <Button
+          type="button"
+          size="sm"
+          disabled={isEmpty}
+          aria-label={sendNowLabel}
+          data-moldy-queue-send-now-new
+          onClick={() => {
+            aui.composer.send({ steer: true })
+            setArmed(false)
+          }}
+        >
+          <FastForwardIcon className="size-3.5" />
+          {sendNowLabel}
+        </Button>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={cancelLabel}
+          onClick={() => setArmed(false)}
+        >
+          <XIcon className="size-3.5" />
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <Button
       type="button"
@@ -398,7 +450,7 @@ function QueueSteerButton({ label }: { readonly label: string }) {
       aria-label={label}
       title={label}
       data-moldy-queue-steer-new
-      onClick={() => aui.composer.send({ steer: true })}
+      onClick={() => setArmed(true)}
     >
       <FastForwardIcon className="size-4" />
     </Button>

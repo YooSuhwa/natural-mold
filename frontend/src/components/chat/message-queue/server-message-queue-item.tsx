@@ -2,7 +2,15 @@
 
 import { useState } from 'react'
 import { QueueItemPrimitive, type AppendMessage } from '@assistant-ui/react'
-import { ArrowDownIcon, ArrowUpIcon, PencilIcon, PlayIcon, Trash2Icon, XIcon } from 'lucide-react'
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  EllipsisIcon,
+  FastForwardIcon,
+  PencilIcon,
+  Trash2Icon,
+  XIcon,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { useServerMessageQueueController } from '@/lib/chat/message-queue/server-message-queue-context'
@@ -38,6 +46,8 @@ export function ServerMessageQueueItem({
 }) {
   const controller = useServerMessageQueueController()
   const [editing, setEditing] = useState(false)
+  const [steerArmed, setSteerArmed] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const [draft, setDraft] = useState(text)
   const save = async () => {
     const trimmed = draft.trim()
@@ -47,7 +57,10 @@ export function ServerMessageQueueItem({
   }
 
   return (
-    <li className="moldy-muted-panel flex items-start gap-2 px-2.5 py-2" data-moldy-queue-item={id}>
+    <li
+      className="moldy-muted-panel flex flex-wrap items-start gap-2 px-2.5 py-2"
+      data-moldy-queue-item={id}
+    >
       <div className="min-w-0 flex-1">
         {editing ? (
           <textarea
@@ -62,7 +75,7 @@ export function ServerMessageQueueItem({
           <span className="line-clamp-2 text-sm text-foreground">{text}</span>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-1">
         {editing ? (
           <>
             <Button type="button" size="sm" onClick={() => void save()}>
@@ -83,82 +96,113 @@ export function ServerMessageQueueItem({
           </>
         ) : (
           <>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              aria-label={labels.edit}
-              data-moldy-queue-edit={id}
-              onClick={() => setEditing(true)}
-            >
-              <PencilIcon className="size-3.5" />
-            </Button>
-            {officialActions ? (
-              <QueueItemPrimitive.Steer asChild>
+            {officialActions && !steerArmed ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                aria-label={labels.steer}
+                data-moldy-queue-steer={id}
+                onClick={() => setSteerArmed(true)}
+              >
+                <FastForwardIcon className="size-3.5" />
+                {labels.steerAction}
+              </Button>
+            ) : officialActions ? (
+              <>
+                <QueueItemPrimitive.Steer asChild>
+                  <Button
+                    type="button"
+                    size="sm"
+                    aria-label={labels.sendNow}
+                    data-moldy-queue-send-now={id}
+                  >
+                    <FastForwardIcon className="size-3.5" />
+                    {labels.sendNow}
+                  </Button>
+                </QueueItemPrimitive.Steer>
                 <Button
                   type="button"
                   size="icon-sm"
                   variant="ghost"
-                  aria-label={labels.steer}
-                  data-moldy-queue-steer={id}
+                  aria-label={labels.cancelSteer}
+                  onClick={() => setSteerArmed(false)}
                 >
-                  <PlayIcon className="size-3.5" />
+                  <XIcon className="size-3.5" />
                 </Button>
-              </QueueItemPrimitive.Steer>
+              </>
             ) : null}
             <Button
               type="button"
               size="icon-sm"
               variant="ghost"
-              disabled={!previousId}
-              aria-label={labels.moveUp}
-              data-moldy-queue-move-up={id}
-              onClick={() =>
-                previousId && void controller.move(id, { lane: 'queue', insertBefore: previousId })
-              }
+              aria-label={labels.moreActions}
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen((value) => !value)}
             >
-              <ArrowUpIcon className="size-3.5" />
+              <EllipsisIcon className="size-3.5" />
             </Button>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              disabled={!nextId}
-              aria-label={labels.moveDown}
-              data-moldy-queue-move-down={id}
-              onClick={() =>
-                nextId && void controller.move(id, { lane: 'queue', insertAfter: nextId })
-              }
-            >
-              <ArrowDownIcon className="size-3.5" />
-            </Button>
-            {officialActions ? (
-              <QueueItemPrimitive.Remove asChild>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={labels.remove}
-                  data-moldy-queue-remove={id}
-                >
-                  <Trash2Icon className="size-3.5" />
-                </Button>
-              </QueueItemPrimitive.Remove>
-            ) : (
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                aria-label={labels.remove}
-                data-moldy-queue-remove={id}
-                onClick={() => void controller.remove(id)}
-              >
-                <Trash2Icon className="size-3.5" />
-              </Button>
-            )}
           </>
         )}
       </div>
+      {!editing && moreOpen ? (
+        <div
+          role="group"
+          aria-label={labels.moreActions}
+          className="flex basis-full flex-wrap justify-end gap-1 border-t border-border/50 pt-1.5"
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            data-moldy-queue-edit={id}
+            onClick={() => {
+              setMoreOpen(false)
+              setEditing(true)
+            }}
+          >
+            <PencilIcon />
+            {labels.edit}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={!previousId}
+            data-moldy-queue-move-up={id}
+            onClick={() =>
+              previousId && void controller.move(id, { lane: 'queue', insertBefore: previousId })
+            }
+          >
+            <ArrowUpIcon />
+            {labels.moveUp}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={!nextId}
+            data-moldy-queue-move-down={id}
+            onClick={() =>
+              nextId && void controller.move(id, { lane: 'queue', insertAfter: nextId })
+            }
+          >
+            <ArrowDownIcon />
+            {labels.moveDown}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:text-destructive"
+            data-moldy-queue-remove={id}
+            onClick={() => void controller.remove(id)}
+          >
+            <Trash2Icon />
+            {labels.remove}
+          </Button>
+        </div>
+      ) : null}
     </li>
   )
 }

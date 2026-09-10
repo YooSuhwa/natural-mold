@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
       parts: [{ type: 'text' as const, text: 'queued two' }],
     },
   ],
+  officialSteer: vi.fn(),
 }))
 
 vi.mock('@assistant-ui/react', () => ({
@@ -39,7 +40,12 @@ vi.mock('@assistant-ui/react', () => ({
   },
   QueueItemPrimitive: {
     Text: () => <span>queued message</span>,
-    Steer: ({ children }: { children: ReactNode }) => children,
+    Steer: ({ children }: { children: ReactNode }) =>
+      isValidElement(children)
+        ? cloneElement(children as ReactElement<{ onClick?: () => void }>, {
+            onClick: mocks.officialSteer,
+          })
+        : children,
     Remove: ({ children }: { children: ReactNode }) => children,
   },
 }))
@@ -58,6 +64,10 @@ const labels: MessageQueueLabels = {
   cancelEdit: 'Cancel edit',
   remove: 'Remove',
   steer: 'Steer',
+  steerAction: 'Steer',
+  sendNow: 'Send now',
+  cancelSteer: 'Cancel steer',
+  moreActions: 'More actions',
   moveUp: 'Move up',
   moveDown: 'Move down',
   sending: 'Sending',
@@ -119,6 +129,27 @@ function controller(): ServerMessageQueueController {
 }
 
 describe('ServerMessageQueuePanel', () => {
+  it('arms a queued steer locally and only promotes it after Send now', async () => {
+    const queue = controller()
+    render(
+      <ServerMessageQueueProvider controller={queue}>
+        <ServerMessageQueuePanel labels={labels} />
+      </ServerMessageQueueProvider>,
+    )
+    const user = userEvent.setup()
+
+    await user.click(screen.getAllByRole('button', { name: 'Steer' })[0])
+    expect(mocks.officialSteer).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Send now' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Cancel steer' }))
+    expect(mocks.officialSteer).not.toHaveBeenCalled()
+
+    await user.click(screen.getAllByRole('button', { name: 'Steer' })[0])
+    await user.click(screen.getByRole('button', { name: 'Send now' }))
+    expect(mocks.officialSteer).toHaveBeenCalledOnce()
+  })
+
   it('renders authoritative items and wires edit, reorder, and resume controls', async () => {
     const queue = controller()
     render(
@@ -131,11 +162,13 @@ describe('ServerMessageQueuePanel', () => {
     expect(screen.getByText('Queue')).toBeVisible()
     expect(screen.getByText('Paused')).toBeVisible()
     expect(screen.getByText('Queued')).toBeVisible()
-    await user.click(screen.getAllByRole('button', { name: 'Edit' })[0])
+    await user.click(screen.getAllByRole('button', { name: 'More actions' })[0])
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
     await user.clear(screen.getByRole('textbox', { name: 'Edit' }))
     await user.type(screen.getByRole('textbox', { name: 'Edit' }), 'edited queue message')
     await user.click(screen.getByRole('button', { name: 'Save' }))
-    await user.click(screen.getAllByRole('button', { name: 'Move down' })[0])
+    await user.click(screen.getAllByRole('button', { name: 'More actions' })[0])
+    await user.click(screen.getByRole('button', { name: 'Move down' }))
     await user.click(screen.getByRole('button', { name: 'Resume' }))
 
     expect(queue.edit).toHaveBeenCalledWith(
