@@ -40,7 +40,7 @@
       "category": "manual-capture",
       "owner": "frontend-quality",
       "expires": "2027-03-31",
-      "expected_count": 22
+      "expected_count": 23
     },
     {
       "id": "legacy-runtime",

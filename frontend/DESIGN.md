@@ -45,6 +45,19 @@
   메시지 metadata와 함께 유지한다.
 - streaming loading, tool state, HITL decision, subagent progress, artifact cards,
   reconnect indicator, memory/compaction 표시는 서버 이벤트를 기준으로 유지한다.
+- `ask_user`와 HITL 승인은 같은 pending-interaction 카드 문법(상태 헤더, 본문,
+  하단 action)을 사용한다. 복수 결정은 카드를 세로로 쌓지 않고 한 번에 한 단계만
+  보여주며, 마지막 단계에서 기존 LangGraph `Decision[]` 계약으로 한 번 재개한다.
+- pending-interaction 카드는 정상적인 사용자 판단 단계이므로 `bg-card` 중립 표면을
+  사용한다. 위험·오류를 뜻하는 전체 경고색 배경은 사용하지 않고, 상태 구분은
+  헤더 아이콘과 실제 승인·거절 action 색상으로 제한한다.
+- 실행 중 메시지는 기본적으로 서버 대기열에 저장한다. Steer는 `대기 → 즉시 전송
+준비 → 전송 중`의 명시적 상태 전이를 사용하며, 첫 클릭은 로컬 확인 상태만 바꾸고
+  `지금 보내기`를 누른 두 번째 클릭에서만 현재 run 취소와 우선 실행을 요청한다.
+  편집, 순서 변경, 삭제는 항목별 보조 메뉴로 유지한다.
+- 현재 Todo는 모델이 보낸 순서를 유지해 작업 흐름을 왜곡하지 않는다. 상단 계획은
+  접힌 상태에서도 완료 수와 현재 진행 항목을 요약하고, transcript의 과거
+  `write_todos` 호출은 기본적으로 접어 현재 계획과의 시각적 경쟁을 줄인다.
 - transcript가 바닥에서 벗어나면 scroll-to-bottom control을 노출하고, 검색은
   현재 viewport가 보이는 경우에만 Cmd/Ctrl+F로 연다.
 

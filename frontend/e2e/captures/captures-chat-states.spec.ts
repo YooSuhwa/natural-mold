@@ -211,9 +211,9 @@ test.describe('Wave 4 — chat state captures', () => {
         title: 'HITL multi-action',
         run: async (conversationId) => {
           await goAndSend(conversationId, 'E2E_HITL_MULTI')
-          await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible({
-            timeout: 40_000,
-          })
+          await expect(
+            page.getByText(/승인 대기 \d+건|pending approvals/).last(),
+          ).toBeVisible({ timeout: 40_000 })
           await page.waitForTimeout(600)
         },
       },
@@ -236,7 +236,7 @@ test.describe('Wave 4 — chat state captures', () => {
           )
           const runId = await waitForActiveRun(request, conversationId)
           await page
-            .getByText('Collect LangGraph v3 runtime evidence')
+            .getByText('Render delegated subagent progress')
             .waitFor({ state: 'visible', timeout: 30_000 })
             .catch(() => {})
           await waitForRunStatus(request, conversationId, runId, 'interrupted').catch(() => {})
