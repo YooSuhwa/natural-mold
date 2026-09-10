@@ -57,7 +57,7 @@ async def test_quote_freezes_only_selected_message_and_keeps_provenance(
         assert item.resolved_label == "Current"
         assert "뒤 문단" not in item.text
         assert "더 자세히 알려줘" in item.text
-        assert item.to_public_reference()["quote"] == "선택한 문장"
+        assert item.to_public_reference().get("quote") == "선택한 문장"
         assert await resolver.reauthorize(result) == result
 
         with pytest.raises(ResourceContextNotFoundError):
