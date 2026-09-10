@@ -1,8 +1,8 @@
 # Moldy Architecture Map
 
-<!-- project-current-source: migration=m76_pinned_conv_summaries; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-08 -->
+<!-- project-current-source: migration=m77_side_chat_link; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-10 -->
 
-> Last updated: 2026-09-08
+> Last updated: 2026-09-10
 > Source basis: current tracked repository source, recent runtime commits, and
 > the files under `backend/app/`,
 > `frontend/src/`, and `frontend/e2e/`.
@@ -20,11 +20,12 @@ schedule productization.
 | Backend | FastAPI app factory in `backend/app/main.py` and async SQLAlchemy services |
 | Frontend | Next.js 16.2.2 + React 19.2.4 App Router, `next-intl`, TanStack Query, Jotai |
 | Runtime | LangChain 1.x + LangGraph 1.x + `deepagents>=0.7.11,<0.8.0` (lock: 0.7.11) |
-| Database | PostgreSQL 16, Alembic head `m76_pinned_conv_summaries` |
+| Database | PostgreSQL 16, Alembic head `m77_side_chat_link` |
 | Auth | ADR-016 JWT HS256, HttpOnly cookies, CSRF double-submit, refresh rotation, `super_user` |
 | Credentials | Cipher V2 and system/user credential separation |
 | Marketplace | Catalog, install, update, uninstall, publish, ACL, moderation/listing, k-skill importer |
 | Latest major feature | Versioned runtime policy with immutable conversation snapshots and run provenance |
+| Selected-text side chat | M77 parent/side conversation link; separate run and Jotai scope; selected excerpts use authorized, frozen resource context, with explicit promotion into the main composer |
 
 ## System Overview
 
@@ -193,7 +194,7 @@ The current skill runtime is selected-skill based, not a broad `/skills/` mount:
 
 ## Data Model Groups
 
-Alembic head is `m76_pinned_conv_summaries`. The ORM groups tables as follows:
+Alembic head is `m77_side_chat_link`. The ORM groups tables as follows:
 
 | Group | Tables / models |
 |-------|-----------------|

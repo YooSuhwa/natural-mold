@@ -69,9 +69,13 @@ type ThreadRenderProps = Pick<
   | 'commandActions'
   | 'linkedSkills'
   | 'resourceContextResetKey'
+  | 'compact'
+  | 'threadHeader'
 > & { readonly retryLastFailedRunId?: string }
 
 export interface ChatRuntimeSectionProps {
+  readonly compact?: boolean
+  readonly threadHeader?: ReactNode
   readonly activeConversationId: string | null
   readonly activeRun: ConversationRun | null
   readonly agentId: string
@@ -102,6 +106,8 @@ export interface ChatRuntimeSectionProps {
 }
 
 export function ChatRuntimeSection({
+  compact,
+  threadHeader,
   activeConversationId,
   activeRun,
   agentId,
@@ -135,6 +141,8 @@ export function ChatRuntimeSection({
   }, [onNewMessageAccepted])
   const threadProps = useMemo<ThreadRenderProps>(
     () => ({
+      compact,
+      threadHeader,
       agentImageUrl,
       agentName,
       composerHint,
@@ -152,6 +160,8 @@ export function ChatRuntimeSection({
       onDictationStart: dictation.resetFailure,
     }),
     [
+      compact,
+      threadHeader,
       activeConversationId,
       agentImageUrl,
       agentName,

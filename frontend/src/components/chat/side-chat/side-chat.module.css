@@ -1,0 +1,8 @@
+.panel {
+  flex: 0 0 44%;
+  min-width: 22rem;
+  max-width: 45rem;
+}
+.panel[hidden] {
+  display: none;
+}

@@ -122,6 +122,7 @@ const scriptedFullIgnore = [
   '**/manual*.spec.ts',
 ]
 const resourceCaptureSpecGlobs = [
+  '**/chat-side-chat.spec.ts',
   '**/profile-personalization.spec.ts',
   '**/agent-mcp-attachment.spec.ts',
   '**/marketplace-publish-moderation.spec.ts',
