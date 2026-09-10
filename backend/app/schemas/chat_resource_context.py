@@ -20,6 +20,10 @@ class PublicChatResourceReference(TypedDict):
     id: str
     version_id: NotRequired[str]
     label: NotRequired[str]
+    message_id: NotRequired[str]
+    quote: NotRequired[str]
+    comment: NotRequired[str]
+    message_role: NotRequired[Literal["user", "assistant"]]
 
 
 class ChatResourceReference(BaseModel):
@@ -31,6 +35,10 @@ class ChatResourceReference(BaseModel):
     id: uuid.UUID
     version_id: uuid.UUID | None = None
     label: str | None = Field(default=None, min_length=1, max_length=255)
+    message_id: str | None = Field(default=None, min_length=1, max_length=255)
+    quote: str | None = Field(default=None, min_length=1, max_length=8000)
+    comment: str | None = Field(default=None, max_length=2000)
+    message_role: Literal["user", "assistant"] | None = None
 
     def to_public_reference(self) -> PublicChatResourceReference:
         public: PublicChatResourceReference = {"kind": self.kind, "id": str(self.id)}
@@ -38,6 +46,14 @@ class ChatResourceReference(BaseModel):
             public["version_id"] = str(self.version_id)
         if self.label is not None:
             public["label"] = self.label
+        if self.message_id is not None:
+            public["message_id"] = self.message_id
+        if self.quote is not None:
+            public["quote"] = self.quote
+        if self.comment is not None:
+            public["comment"] = self.comment
+        if self.message_role is not None:
+            public["message_role"] = self.message_role
         return public
 
     @model_validator(mode="after")
@@ -46,6 +62,20 @@ class ChatResourceReference(BaseModel):
             raise PydanticCustomError(
                 "resource_context_version",
                 "version_id is supported only for artifact references",
+            )
+        has_quote_fields = any(
+            value is not None
+            for value in (self.message_id, self.quote, self.comment, self.message_role)
+        )
+        if has_quote_fields and (
+            self.kind != "conversation"
+            or not self.message_id
+            or not self.quote
+            or not self.quote.strip()
+        ):
+            raise PydanticCustomError(
+                "resource_context_quote",
+                "A conversation quote requires message_id and quote",
             )
         return self
 
@@ -62,7 +92,10 @@ class ChatResourceContextRequest(BaseModel):
 
     @model_validator(mode="after")
     def references_are_unique(self) -> Self:
-        identities = {(item.kind, item.id, item.version_id) for item in self.resources}
+        identities = {
+            (item.kind, item.id, item.version_id, item.message_id, item.quote)
+            for item in self.resources
+        }
         if len(identities) != len(self.resources):
             raise PydanticCustomError(
                 "resource_context_duplicate",
@@ -80,6 +113,10 @@ class FrozenChatResource(BaseModel):
     id: uuid.UUID
     version_id: uuid.UUID | None = None
     label: str | None = None
+    message_id: str | None = None
+    quote: str | None = None
+    comment: str | None = None
+    message_role: Literal["user", "assistant"] | None = None
     resolved_label: str
     mime_type: str
     source_version: str
@@ -88,12 +125,16 @@ class FrozenChatResource(BaseModel):
     content_available: bool = True
 
     def to_public_reference(self) -> PublicChatResourceReference:
-        public: PublicChatResourceReference = {"kind": self.kind, "id": str(self.id)}
-        if self.version_id is not None:
-            public["version_id"] = str(self.version_id)
-        if self.label is not None:
-            public["label"] = self.label
-        return public
+        return ChatResourceReference(
+            kind=self.kind,
+            id=self.id,
+            version_id=self.version_id,
+            label=self.resolved_label if self.quote else self.label,
+            message_id=self.message_id,
+            quote=self.quote,
+            comment=self.comment,
+            message_role=self.message_role,
+        ).to_public_reference()
 
 
 class FrozenChatResourceContext(BaseModel):

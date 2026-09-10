@@ -14,12 +14,14 @@ from app.routers import (
     conversation_pinned_summaries,
     conversation_run_inputs,
     conversation_runs,
+    conversation_side_chats,
     conversation_traces,
 )
 
 router = APIRouter(tags=["conversations"])
 
 router.include_router(conversation_crud.router)
+router.include_router(conversation_side_chats.router)
 router.include_router(conversation_traces.router)
 router.include_router(conversation_runs.router)
 router.include_router(conversation_run_inputs.router)
