@@ -1868,8 +1868,9 @@
     },
     "deepAgentsState": {
       "tasks": {
-        "title": "작업 목록",
-        "progress": "{done}/{total} 완료"
+        "title": "작업 계획",
+        "progress": "{done}/{total} 완료",
+        "current": "진행 중: {item}"
       },
       "files": {
         "title": "파일",

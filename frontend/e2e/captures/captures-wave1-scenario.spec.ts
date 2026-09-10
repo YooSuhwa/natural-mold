@@ -155,13 +155,13 @@ test.describe('Wave 1 scenario captures', () => {
 
     // 런이 끝나도 미션 컨트롤은 남는다 — 펼쳐서 체크리스트 캡처.
     await expect(missionControl).toBeVisible()
-    await missionControl.getByText('작업 목록').click()
+    await missionControl.getByText(/작업 계획|Task plan/).click()
     await expect(missionControl.getByText('Collect LangGraph v3 runtime evidence')).toBeVisible({
       timeout: 10_000,
     })
     await settle(page)
     await capture(page, WAVE, '04-mission-control-after-run.png')
-    await missionControl.getByText('작업 목록').click()
+    await missionControl.getByText(/작업 계획|Task plan/).click()
 
     // 완료된 서브에이전트 pill — 접힌 상태에서도 결과 첫 줄 요약이 보인다.
     const subagentSummary = page.locator('[data-moldy-subagent-summary]').first()

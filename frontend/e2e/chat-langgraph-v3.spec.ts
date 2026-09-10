@@ -60,7 +60,7 @@ test.describe('LangGraph v3 chat runtime', () => {
       await sendMessage(page, `E2E_LANGGRAPH_V3 subagent=${setup.childRuntimeName}`)
       const originalRunId = await waitForActiveRun(request, setup.conversationId)
       await waitForRunStatus(request, setup.conversationId, originalRunId, 'interrupted')
-      await expect(page.getByText('Collect LangGraph v3 runtime evidence')).toBeVisible({
+      await expect(page.getByText('Render delegated subagent progress')).toBeVisible({
         timeout: 30_000,
       })
       await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible()

@@ -171,7 +171,7 @@ test.describe('Live chat surface captures', () => {
         `E2E_LANGGRAPH_V3 slow_subagent=true subagent=${setup.childRuntimeName}`,
       )
       const runId = await waitForActiveRun(request, setup.conversationId)
-      await expect(page.getByText('Collect LangGraph v3 runtime evidence')).toBeVisible({
+      await expect(page.getByText('Render delegated subagent progress')).toBeVisible({
         timeout: 30_000,
       })
       await waitForRunStatus(request, setup.conversationId, runId, 'interrupted')

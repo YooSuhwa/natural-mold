@@ -203,18 +203,15 @@ test.describe('LangGraph v3 visual scenario matrix', () => {
       )
       const runId = await waitForActiveRun(request, setup.conversationId)
 
-      // `.first()`: while the run is still streaming the planning todos render in
-      // two places at once — the live activity panel ("작업 목록") and the message
-      // "Plan" card — so a bare `getByText` trips Playwright strict mode. Either
-      // copy being visible proves the planning state was captured. (The duplicate
-      // render itself is addressed separately by gating the activity panel.)
-      await expect(page.getByText('Collect LangGraph v3 runtime evidence').first()).toBeVisible({
+      // The canonical mission-control surface keeps the current task in its
+      // collapsed summary; the historical Plan pill remains collapsed below it.
+      await expect(page.getByText('Render delegated subagent progress').first()).toBeVisible({
         timeout: 30_000,
       })
       const streamingStatusPanel = page.locator('[data-slot="streaming-status-panel"]')
       const planPill = page
         .locator('.moldy-tool-pill')
-        .filter({ hasText: 'Collect LangGraph v3 runtime evidence' })
+        .filter({ hasText: 'Plan' })
         .first()
       await expect(streamingStatusPanel).toBeVisible()
       await expect(planPill).toBeVisible()

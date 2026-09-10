@@ -16,7 +16,7 @@ describe('DeepAgentsStatePanel', () => {
   it('characterizes grouped task state and collapsed file count rendering', () => {
     render(<DeepAgentsStatePanel state={state} />)
 
-    expect(screen.getByText('작업 목록')).toBeInTheDocument()
+    expect(screen.getByText('작업 계획')).toBeInTheDocument()
     expect(screen.getByText('1/3 완료')).toBeInTheDocument()
     expect(screen.getByText('Plan work')).toBeInTheDocument()
     expect(screen.getByText('Write draft')).toBeInTheDocument()

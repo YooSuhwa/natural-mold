@@ -1868,8 +1868,9 @@
     },
     "deepAgentsState": {
       "tasks": {
-        "title": "Tasks",
-        "progress": "{done}/{total} done"
+        "title": "Task plan",
+        "progress": "{done}/{total} done",
+        "current": "In progress: {item}"
       },
       "files": {
         "title": "Files",

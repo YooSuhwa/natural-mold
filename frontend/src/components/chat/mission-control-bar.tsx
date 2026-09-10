@@ -20,6 +20,11 @@ export function MissionControlBar({ todos }: { readonly todos: readonly DeepAgen
   if (todos.length === 0) return null
   const done = completedTodoCount(todos)
   const allDone = done === todos.length
+  const activeTodo = todos.find((todo) => todo.status === 'in_progress')
+  const progress = t('tasks.progress', { done, total: todos.length })
+  const summary = activeTodo
+    ? `${progress} · ${t('tasks.current', { item: activeTodo.content })}`
+    : progress
   return (
     <div
       className="border-b border-border/60 bg-background/95 px-4 py-1.5"
@@ -30,9 +35,10 @@ export function MissionControlBar({ todos }: { readonly todos: readonly DeepAgen
           status={allDone ? 'success' : 'loading'}
           kind="thinking"
           title={t('tasks.title')}
-          meta={t('tasks.progress', { done, total: todos.length })}
+          meta={summary}
           leadingIcon={ListChecksIcon}
           defaultExpanded={false}
+          titleClassName="shrink-0"
         >
           <TodosBody todos={todos} />
         </CollapsiblePill>

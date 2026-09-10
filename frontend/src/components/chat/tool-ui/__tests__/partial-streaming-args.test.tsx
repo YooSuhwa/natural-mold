@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -29,9 +29,7 @@ const renderUserInput = UserInputUI as unknown as ToolUiRender['render']
 describe('부분 스트리밍 args 방어 (M8-4)', () => {
   it('write_todos: todos가 문자열 조각이어도 크래시 없이 렌더된다', () => {
     expect(() =>
-      render(
-        <>{renderPlan({ args: { todos: '회의록에서 담' }, status: { type: 'running' } })}</>,
-      ),
+      render(<>{renderPlan({ args: { todos: '회의록에서 담' }, status: { type: 'running' } })}</>),
     ).not.toThrow()
   })
 
@@ -59,6 +57,20 @@ describe('부분 스트리밍 args 방어 (M8-4)', () => {
         </>,
       ),
     ).not.toThrow()
+  })
+
+  it('write_todos: historical plan details start collapsed', () => {
+    render(
+      <>
+        {renderPlan({
+          args: { todos: [{ content: '초안 작성', status: 'in_progress' }] },
+          status: { type: 'complete' },
+        })}
+      </>,
+    )
+
+    expect(screen.queryByText('초안 작성')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Expand' })).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('ask_user: questions/options가 문자열 조각이어도 크래시 없이 렌더된다', () => {

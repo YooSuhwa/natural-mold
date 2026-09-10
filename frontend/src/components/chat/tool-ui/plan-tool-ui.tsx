@@ -130,7 +130,7 @@ function PlanToolView({ args, statusType }: { args: WriteTodosArgs; statusType: 
       status={pillStatusFromAssistantUi(statusType)}
       title={t('title')}
       meta={meta}
-      defaultExpanded={items.length > 0}
+      defaultExpanded={false}
     >
       {body}
     </CollapsiblePill>

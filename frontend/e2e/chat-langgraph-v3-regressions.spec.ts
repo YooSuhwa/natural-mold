@@ -344,7 +344,7 @@ test.describe('LangGraph v3 regression coverage', () => {
 
       const runId = await waitForActiveRun(request, setup.conversationId)
       await waitForRunStatus(request, setup.conversationId, runId, 'interrupted')
-      await expect(page.getByText('Collect LangGraph v3 runtime evidence').first()).toBeVisible({
+      await expect(page.getByText('Render delegated subagent progress').first()).toBeVisible({
         timeout: 30_000,
       })
       // Live (before any reload): the subagent card is expanded with its result.

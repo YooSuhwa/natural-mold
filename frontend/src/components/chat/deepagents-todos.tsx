@@ -20,8 +20,6 @@ export const TODO_STATUS_META: Record<
   pending: { Icon: CircleIcon, className: 'text-muted-foreground' },
 }
 
-const TODO_GROUPS: readonly DeepAgentTodoStatus[] = ['in_progress', 'pending', 'completed']
-
 export function completedTodoCount(todos: readonly DeepAgentTodo[]): number {
   return todos.filter((todo) => todo.status === 'completed').length
 }
@@ -48,18 +46,10 @@ export function TodoRow({ todo }: { readonly todo: DeepAgentTodo }) {
 
 export function TodosBody({ todos }: { readonly todos: readonly DeepAgentTodo[] }) {
   return (
-    <div className="space-y-2">
-      {TODO_GROUPS.map((status) => {
-        const items = todos.filter((todo) => todo.status === status)
-        if (items.length === 0) return null
-        return (
-          <ol key={status} className="space-y-0.5">
-            {items.map((todo) => (
-              <TodoRow key={todo.id} todo={todo} />
-            ))}
-          </ol>
-        )
-      })}
-    </div>
+    <ol className="space-y-0.5">
+      {todos.map((todo) => (
+        <TodoRow key={todo.id} todo={todo} />
+      ))}
+    </ol>
   )
 }
