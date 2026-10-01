@@ -47,6 +47,15 @@ DB migration, reused development server, or production credential is needed.
 - `PW_SKIP_BACKEND=1` is an optional pure-frontend mock mode (no backend booted).
 - The seeded E2E user is a **super_user**, so operator-only screens (system
   credentials, system LLM, marketplace moderation, audit) are testable.
+- The browser and isolated server processes use **UTC** on every host. Resource
+  journeys initialize the existing onboarding-dismissed session flags; signup
+  separately verifies that the welcome dialog opens and can be dismissed.
+  This prevents fresh throwaway users' modal from hiding settings controls.
+- Nightly exports validated failure receipts even when the test step fails.
+  The JSON report includes bounded textual page state on failures; cleanup and
+  secret scanning must pass before the workflow uploads the export.
+- Run backend unit checks and the local browser lane sequentially. Cleanup
+  checker tests require the lane ports to be idle and reject a running E2E stack.
 
 ## Status legend
 
