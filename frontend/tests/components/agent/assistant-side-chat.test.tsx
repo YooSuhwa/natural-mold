@@ -13,15 +13,23 @@ import { render, screen, userEvent, waitFor } from '../../test-utils'
 const testState = vi.hoisted(() => ({
   isMobile: false,
   pathname: '/agents/agent-1/settings',
-  userId: 'user-1',
+  userId: 'user-1' as string | null | undefined,
+  sessionLoading: false,
+  sessionFetched: true,
+  replace: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
   usePathname: () => testState.pathname,
+  useRouter: () => ({ replace: testState.replace }),
 }))
 
 vi.mock('@/lib/auth/session', () => ({
-  useSession: () => ({ data: { id: testState.userId } }),
+  useSession: () => ({
+    data: typeof testState.userId === 'string' ? { id: testState.userId } : testState.userId,
+    isLoading: testState.sessionLoading,
+    isFetched: testState.sessionFetched,
+  }),
 }))
 
 vi.mock('@/hooks/use-mobile', () => ({
@@ -101,9 +109,23 @@ vi.mock('@/components/shared/dialog-shell', () => {
 function SideChatControls() {
   const sideChat = useAssistantSideChat()
   const [mainMessages] = useState(['main message'])
+  const [pageDialogOpen, setPageDialogOpen] = useState(false)
+  const [pageDraft, setPageDraft] = useState('')
   return (
     <>
       <p data-testid="main-transcript">{mainMessages.join(',')}</p>
+      <button type="button" onClick={() => setPageDialogOpen(true)}>
+        open page dialog
+      </button>
+      {pageDialogOpen ? (
+        <div role="dialog" aria-label="page dialog">
+          <input
+            aria-label="page draft"
+            value={pageDraft}
+            onChange={(event) => setPageDraft(event.target.value)}
+          />
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={(event) =>
@@ -137,10 +159,80 @@ describe('AssistantSideChatProvider', () => {
     testState.isMobile = false
     testState.pathname = '/agents/agent-1/settings'
     testState.userId = 'user-1'
+    testState.sessionLoading = false
+    testState.sessionFetched = true
+    testState.replace.mockReset()
     window.requestAnimationFrame = (callback) => {
       callback(0)
       return 1
     }
+  })
+
+  it.each([true, false])(
+    '늦은 session 응답 전에는 page를 노출하지 않고 열린 dialog를 유지한다 (loading=%s)',
+    async (sessionLoading) => {
+      testState.userId = undefined
+      testState.sessionLoading = sessionLoading
+      testState.sessionFetched = false
+      const user = userEvent.setup()
+      const mainStore = createStore()
+      const view = renderSideChat(mainStore)
+
+      expect(screen.queryByRole('button', { name: 'open page dialog' })).not.toBeInTheDocument()
+      expect(screen.queryByTestId('main-transcript')).not.toBeInTheDocument()
+
+      testState.userId = 'user-1'
+      testState.sessionLoading = false
+      testState.sessionFetched = true
+      const tree = () => (
+        <Provider store={mainStore}>
+          <AssistantSideChatProvider>
+            <SideChatControls />
+          </AssistantSideChatProvider>
+        </Provider>
+      )
+      view.rerender(tree())
+      await user.click(screen.getByRole('button', { name: 'open page dialog' }))
+      await user.type(screen.getByRole('textbox', { name: 'page draft' }), 'keep this draft')
+
+      // A same-account session refresh must not replace already interactive page children.
+      view.rerender(tree())
+      expect(screen.getByRole('dialog', { name: 'page dialog' })).toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: 'page draft' })).toHaveValue('keep this draft')
+    },
+  )
+
+  it('로그아웃하면 page와 보관한 사이드 세션을 제거하고 로그인으로 이동한다', async () => {
+    const user = userEvent.setup()
+    const mainStore = createStore()
+    const view = renderSideChat(mainStore)
+    const tree = () => (
+      <Provider store={mainStore}>
+        <AssistantSideChatProvider>
+          <SideChatControls />
+        </AssistantSideChatProvider>
+      </Provider>
+    )
+    await user.click(screen.getByRole('button', { name: 'open agent one' }))
+    const firstSessionId = screen
+      .getByTestId('retained-assistant-panel')
+      .getAttribute('data-session-id')
+    await user.click(screen.getByRole('button', { name: 'commit side message' }))
+
+    testState.userId = null
+    view.rerender(tree())
+    expect(screen.queryByTestId('main-transcript')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('retained-assistant-panel')).not.toBeInTheDocument()
+    expect(testState.replace).toHaveBeenCalledWith('/login?callbackUrl=%2Fagents%2Fagent-1%2Fsettings')
+
+    testState.userId = 'user-1'
+    view.rerender(tree())
+    await user.click(screen.getByRole('button', { name: 'open agent one' }))
+    expect(screen.getByTestId('retained-assistant-panel')).toHaveAttribute('data-message-count', '0')
+    expect(screen.getByTestId('retained-assistant-panel')).not.toHaveAttribute(
+      'data-session-id',
+      firstSessionId,
+    )
   })
 
   it('닫았다 다시 연 같은 에이전트의 독립 메시지와 세션을 유지한다', async () => {
@@ -248,6 +340,8 @@ describe('AssistantSideChatProvider', () => {
     const mainStore = createStore()
     const view = renderSideChat(mainStore)
 
+    await user.click(screen.getByRole('button', { name: 'open page dialog' }))
+    await user.type(screen.getByRole('textbox', { name: 'page draft' }), 'private user-one draft')
     await user.click(screen.getByRole('button', { name: 'open agent one' }))
     const firstSessionId = screen
       .getByTestId('retained-assistant-panel')
@@ -262,6 +356,7 @@ describe('AssistantSideChatProvider', () => {
         </AssistantSideChatProvider>
       </Provider>,
     )
+    expect(screen.queryByRole('dialog', { name: 'page dialog' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'open agent one' }))
 
     expect(screen.getByTestId('retained-assistant-panel')).toHaveAttribute(
