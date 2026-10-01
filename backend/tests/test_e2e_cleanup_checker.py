@@ -14,6 +14,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.e2e_port_fixtures import LanePorts
+from tests.e2e_port_fixtures import reserved_e2e_ports as reserved_e2e_ports
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import e2e_cleanup_lifecycle as lifecycle  # noqa: E402
@@ -523,9 +526,17 @@ def _final_f2_manifest(
     ],
 )
 def test_checker_accepts_exact_f2_e2e_receipt_binding(
-    tmp_path: Path, node: str, project: str, requested_specs: tuple[str, ...]
+    tmp_path: Path,
+    node: str,
+    project: str,
+    requested_specs: tuple[str, ...],
+    monkeypatch: pytest.MonkeyPatch,
+    reserved_e2e_ports: LanePorts,
 ) -> None:
     payload, receipt = _final_f2_manifest(tmp_path, node, project, requested_specs)
+    monkeypatch.setattr(lifecycle, "PORTS", reserved_e2e_ports)
+    payload["frontend_port"], payload["backend_port"] = reserved_e2e_ports["scripted"]
+    receipt.write_text(json.dumps(payload), encoding="utf-8")
     load_and_validate(receipt, repository_root=tmp_path)
 
 
