@@ -269,19 +269,23 @@ test.describe('Chat transcript stability QA bundle', () => {
     try {
       await page.goto(`${FRONTEND}/agents/${setup.parentAgentId}/conversations/new`)
 
-      await sendMessage(page, firstPrompt)
+      const firstRun = await waitForAcceptedRunStartResponse(page, () =>
+        sendMessage(page, firstPrompt),
+      )
       await expect(page).toHaveURL(DRAFT_TO_CONVERSATION_URL, { timeout: 30_000 })
+      await waitForRunStatus(request, firstRun.conversationId, firstRun.runId, 'completed')
       await expect(page.getByText('E2E scripted document model is ready.').last()).toBeVisible({
         timeout: 30_000,
       })
 
-      await sendMessage(page, secondPrompt)
+      const secondRunId = await sendMessageForRun(page, firstRun.conversationId, secondPrompt)
+      await waitForRunStatus(request, firstRun.conversationId, secondRunId, 'completed')
       await expect(
         page.locator('[data-moldy-message-role="user"]').filter({ hasText: secondPrompt }),
       ).toBeVisible({ timeout: 30_000 })
-      await expect(page.getByText('E2E scripted document model is ready.').last()).toBeVisible({
-        timeout: 30_000,
-      })
+      await expect(
+        page.getByText('E2E scripted document model is ready.', { exact: true }),
+      ).toHaveCount(2, { timeout: 30_000 })
 
       await installUserPromptStabilityObserver(page, askUserPrompt)
       await installAskUserActivityObserver(page)

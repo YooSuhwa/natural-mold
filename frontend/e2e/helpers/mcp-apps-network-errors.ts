@@ -42,12 +42,30 @@ export function isKnownShimRequestFailure(
   observation: RequestFailureObservation,
   appOrigin: string,
 ): boolean {
-  return (
+  if (observation.frameUrl === null || !isOfficialShimFrame(observation.frameUrl, appOrigin)) {
+    return false
+  }
+  if (
     observation.url === KNOWN_SHIM_BEACON_URL &&
     observation.errorText === 'net::ERR_NAME_NOT_RESOLVED' &&
-    observation.resourceType === 'script' &&
-    isOfficialShimFrame(observation.frameUrl, appOrigin)
-  )
+    observation.resourceType === 'script'
+  ) {
+    return true
+  }
+  if (
+    observation.errorText !== 'net::ERR_ABORTED' ||
+    observation.method !== 'POST' ||
+    !['ping', 'xhr'].includes(observation.resourceType)
+  ) {
+    return false
+  }
+  try {
+    const request = new URL(observation.url)
+    const frame = new URL(observation.frameUrl)
+    return request.origin === frame.origin && request.pathname === '/cdn-cgi/rum'
+  } catch {
+    return false
+  }
 }
 
 function isExpectedMcpAppsRscPrefetchAbort(

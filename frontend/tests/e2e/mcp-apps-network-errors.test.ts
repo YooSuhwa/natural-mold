@@ -55,4 +55,34 @@ describe('MCP Apps optional shim telemetry classifier', () => {
 
     expect(unexpectedMcpAppsBrowserErrors([], [prefetch], APP_ORIGIN).requestFailures).toEqual([])
   })
+
+  it.each(['ping', 'xhr'])(
+    'accepts an aborted %s telemetry POST from the official shim',
+    (resourceType) => {
+      const frameOrigin = 'https://fixture.scf.auiusercontent.com'
+      const telemetry: RequestFailureObservation = {
+        url: `${frameOrigin}/cdn-cgi/rum?`,
+        errorText: 'net::ERR_ABORTED',
+        method: 'POST',
+        resourceType,
+        frameUrl: `${frameOrigin}/moldy-mcp-app/shim.html?origin=${APP_ORIGIN}`,
+      }
+      expect(unexpectedMcpAppsBrowserErrors([], [telemetry], APP_ORIGIN).requestFailures).toEqual(
+        [],
+      )
+      for (const changed of [
+        { url: `${APP_ORIGIN}/api/conversations` },
+        { url: 'https://other.scf.auiusercontent.com/cdn-cgi/rum' },
+        { errorText: 'net::ERR_CONNECTION_REFUSED' },
+        { method: 'GET' },
+        { resourceType: 'fetch' },
+        { frameUrl: `${frameOrigin}/shim.html?origin=https://unrelated.invalid` },
+      ]) {
+        const unrelated = { ...telemetry, ...changed }
+        expect(unexpectedMcpAppsBrowserErrors([], [unrelated], APP_ORIGIN).requestFailures).toEqual(
+          [unrelated],
+        )
+      }
+    },
+  )
 })

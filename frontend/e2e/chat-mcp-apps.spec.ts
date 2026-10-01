@@ -12,6 +12,7 @@ import {
 } from './fixtures'
 import { startMcpAppsFixture, type McpAppsFixture } from './helpers/mcp-apps-fixture'
 import {
+  isKnownShimRequestFailure,
   unexpectedMcpAppsBrowserErrors,
   type ConsoleErrorObservation,
   type RequestFailureObservation,
@@ -205,11 +206,16 @@ test.describe('Chat MCP Apps', () => {
       expect(unexpectedErrors).toEqual({ consoleErrors: [], requestFailures: [] })
       expect(errors.console).toEqual(consoleErrors.map((error) => error.text))
       expect(errors.page).toEqual([])
-      // The shared finite-code collector cannot retain iframe provenance, so
-      // the exact optional shim beacon rejected above appears here as one
-      // generic non-API failure. The raw classifier still rejects every other
-      // request failure before this aggregate assertion.
-      expect(errors.network).toEqual(['other_request_failure'])
+      // Optional shim telemetry varies by network availability. Account for
+      // only the narrowly classified shim failures in the shared collector.
+      const shimFailureCodes = requestFailures
+        .filter((failure) => isKnownShimRequestFailure(failure, new URL(page.url()).origin))
+        .map((failure) =>
+          failure.errorText === 'net::ERR_ABORTED'
+            ? 'other_request_abort'
+            : 'other_request_failure',
+        )
+      expect(errors.network).toEqual([...new Set(shimFailureCodes)].sort())
     } finally {
       await fixture?.stop()
       if (seeded) {

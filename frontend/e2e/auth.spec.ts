@@ -53,6 +53,10 @@ test.describe('Auth — signup', () => {
 
     // Register auto-authenticates and redirects to the dashboard.
     await page.waitForURL((url) => url.pathname === '/')
+    const onboarding = page.getByRole('dialog', { name: 'Moldy에 오신 것을 환영합니다' })
+    await expect(onboarding).toBeVisible()
+    await onboarding.getByRole('button', { name: '나중에', exact: true }).click()
+    await expect(onboarding).toBeHidden()
     await expect(page.getByRole('button', { name: displayName }).first()).toBeVisible()
   })
 })

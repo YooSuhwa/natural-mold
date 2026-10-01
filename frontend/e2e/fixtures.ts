@@ -18,6 +18,7 @@ import {
   recordNetworkFailure,
   type NetworkFailureCode,
 } from './helpers/network-failure-diagnostic'
+import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '../src/lib/auth/session-flags'
 
 type ErrorCollector = {
   console: string[]
@@ -113,9 +114,38 @@ function isExpectedNonOkResponse(url: string, status: number): boolean {
   return url.includes('favicon')
 }
 
-export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
+export const test = base.extend<{ authMock: void; failureUi: void; errors: ErrorCollector }>({
+  failureUi: [
+    async ({ page }, use, testInfo) => {
+      await use()
+      if (testInfo.status === testInfo.expectedStatus || page.isClosed()) return
+      // Keep textual failure context in execution.json, which the isolated
+      // runner scans before export. Disposable Playwright output is removed.
+      const snapshot = await page
+        .locator('body')
+        .ariaSnapshot({ timeout: 2_000 })
+        .catch(() => '')
+      testInfo.annotations.push({
+        type: 'moldy.failure-ui.v1',
+        description: JSON.stringify({
+          pathname: new URL(page.url()).pathname,
+          snapshot: snapshot.slice(0, 12_000),
+        }),
+      })
+    },
+    { auto: true },
+  ],
   authMock: [
     async ({ page }, use) => {
+      // Resource journeys start after onboarding. Fresh throwaway users must
+      // not open a modal over their settings, regardless of the host timezone.
+      await page.addInitScript(
+        ({ onboarding, welcome }) => {
+          sessionStorage.setItem(onboarding, '1')
+          sessionStorage.setItem(welcome, '1')
+        },
+        { onboarding: ONBOARDING_DISMISSED_FLAG, welcome: SUPER_USER_WELCOMED_FLAG },
+      )
       if (process.env.PW_SKIP_BACKEND === '1') {
         await page.route('**/api/auth/me', (route) => route.fulfill({ json: E2E_USER }))
       }
