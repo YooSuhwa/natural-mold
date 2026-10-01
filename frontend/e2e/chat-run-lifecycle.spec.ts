@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { waitForAcceptedRunStart } from './helpers/run-start'
 
 const BACKEND_PORT = process.env.E2E_BACKEND_PORT ?? '8001'
 const API_BASE = process.env.E2E_API_BASE_URL ?? `http://localhost:${BACKEND_PORT}`
@@ -136,14 +137,17 @@ test.describe('Chat run lifecycle API contract', () => {
         'P1 active run contract',
       )
 
-      const seedRes = await request.post(`${API_BASE}/api/e2e/conversations/${conversationId}/runs`, {
-        headers: csrfHeaders,
-        data: {
-          status: 'running',
-          source: 'chat',
-          input_preview: 'P1 active run contract',
+      const seedRes = await request.post(
+        `${API_BASE}/api/e2e/conversations/${conversationId}/runs`,
+        {
+          headers: csrfHeaders,
+          data: {
+            status: 'running',
+            source: 'chat',
+            input_preview: 'P1 active run contract',
+          },
         },
-      })
+      )
       expect(seedRes.ok()).toBeTruthy()
       const seededRun = (await seedRes.json()) as { id: string; status: string }
       expect(seededRun.status).toBe('running')
@@ -165,7 +169,9 @@ test.describe('Chat run lifecycle API contract', () => {
       expect(activeRun.id).toBe(seededRun.id)
       expect(activeRun.status).toBe('running')
 
-      const messagesRes = await request.get(`${API_BASE}/api/conversations/${conversationId}/messages`)
+      const messagesRes = await request.get(
+        `${API_BASE}/api/conversations/${conversationId}/messages`,
+      )
       expect(messagesRes.ok()).toBeTruthy()
       const messages = (await messagesRes.json()) as {
         active_run: { id: string; status: string } | null
@@ -197,12 +203,7 @@ test.describe('Chat run lifecycle API contract', () => {
     )
 
     try {
-      const conversationA = await createConversation(
-        request,
-        csrfHeaders,
-        agentId,
-        'P2 slow run A',
-      )
+      const conversationA = await createConversation(request, csrfHeaders, agentId, 'P2 slow run A')
       const conversationB = await createConversation(
         request,
         csrfHeaders,
@@ -262,7 +263,10 @@ test.describe('Chat run lifecycle API contract', () => {
       const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
       await expect(composer).toBeVisible()
       await composer.fill('E2E_SLOW_STREAM')
-      await composer.press('Enter')
+      const runId = await waitForAcceptedRunStart(page, conversationId, () =>
+        composer.press('Enter'),
+      )
+      await waitForRunStatus(request, conversationId, runId, 'running')
 
       const spinner = page.locator(`[data-moldy-run-spinner="${conversationId}"]`)
       await expect(spinner).toBeVisible({ timeout: 10_000 })
@@ -317,16 +321,14 @@ test.describe('Chat run lifecycle API contract', () => {
       await expect(spinner).toBeVisible({ timeout: 10_000 })
       const activeRun = await waitForActiveRun(request, conversationId)
 
-      const cancelResponsePromise = page.waitForResponse(
-        (response) => {
-          if (response.request().method() !== 'POST') return false
-          const url = response.url()
-          return (
-            url.includes(`/api/conversations/${conversationId}/runs/${activeRun.id}/cancel`) ||
-            url.includes(`/threads/${conversationId}/runs/${activeRun.id}/cancel`)
-          )
-        },
-      )
+      const cancelResponsePromise = page.waitForResponse((response) => {
+        if (response.request().method() !== 'POST') return false
+        const url = response.url()
+        return (
+          url.includes(`/api/conversations/${conversationId}/runs/${activeRun.id}/cancel`) ||
+          url.includes(`/threads/${conversationId}/runs/${activeRun.id}/cancel`)
+        )
+      })
       await page.locator('[data-moldy-stop-button="true"]').click()
       const cancelResponse = await cancelResponsePromise
       expect(cancelResponse.ok()).toBeTruthy()
@@ -357,21 +359,19 @@ test.describe('Chat run lifecycle API contract', () => {
     )
 
     try {
-      const conversationId = await createConversation(
-        request,
-        csrfHeaders,
-        agentId,
-        'P3 stale run',
-      )
+      const conversationId = await createConversation(request, csrfHeaders, agentId, 'P3 stale run')
 
-      const seedRes = await request.post(`${API_BASE}/api/e2e/conversations/${conversationId}/runs`, {
-        headers: csrfHeaders,
-        data: {
-          status: 'running',
-          source: 'chat',
-          input_preview: 'stale run',
+      const seedRes = await request.post(
+        `${API_BASE}/api/e2e/conversations/${conversationId}/runs`,
+        {
+          headers: csrfHeaders,
+          data: {
+            status: 'running',
+            source: 'chat',
+            input_preview: 'stale run',
+          },
         },
-      })
+      )
       expect(seedRes.ok()).toBeTruthy()
       const seededRun = (await seedRes.json()) as { id: string; status: string }
       expect(seededRun.status).toBe('running')
@@ -423,15 +423,18 @@ test.describe('Chat run lifecycle API contract', () => {
         'P3 action required run',
       )
 
-      const seedRes = await request.post(`${API_BASE}/api/e2e/conversations/${conversationId}/runs`, {
-        headers: csrfHeaders,
-        data: {
-          status: 'interrupted',
-          source: 'chat',
-          input_preview: 'needs approval',
-          interrupt_id: 'e2e-approval',
+      const seedRes = await request.post(
+        `${API_BASE}/api/e2e/conversations/${conversationId}/runs`,
+        {
+          headers: csrfHeaders,
+          data: {
+            status: 'interrupted',
+            source: 'chat',
+            input_preview: 'needs approval',
+            interrupt_id: 'e2e-approval',
+          },
         },
-      })
+      )
       expect(seedRes.ok()).toBeTruthy()
       const seededRun = (await seedRes.json()) as { id: string; status: string }
       expect(seededRun.status).toBe('interrupted')

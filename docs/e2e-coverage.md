@@ -1,6 +1,6 @@
 # E2E Coverage Matrix
 
-<!-- e2e-current-source: profile-personalization=covered; refreshed=2026-09-08 -->
+<!-- e2e-current-source: profile-personalization=covered; nightly-setup=utc; refreshed=2026-10-01 -->
 
 Living record of Playwright E2E coverage across Moldy's feature surface.
 Update this whenever you add/change a spec or ship a user-facing feature.
@@ -47,6 +47,15 @@ DB migration, reused development server, or production credential is needed.
 - `PW_SKIP_BACKEND=1` is an optional pure-frontend mock mode (no backend booted).
 - The seeded E2E user is a **super_user**, so operator-only screens (system
   credentials, system LLM, marketplace moderation, audit) are testable.
+- The browser and isolated server processes use **UTC** on every host. Resource
+  journeys initialize the existing onboarding-dismissed session flags; signup
+  separately verifies that the welcome dialog opens and can be dismissed.
+  This prevents fresh throwaway users' modal from hiding settings controls.
+- Nightly exports validated failure receipts even when the test step fails.
+  The JSON report includes bounded textual page state on failures; cleanup and
+  secret scanning must pass before the workflow uploads the export.
+- Run backend unit checks and the local browser lane sequentially. Cleanup
+  checker tests require the lane ports to be idle and reject a running E2E stack.
 
 ## Status legend
 
@@ -63,7 +72,7 @@ DB migration, reused development server, or production credential is needed.
 | Feature area | Route(s) | Router | Spec | Status |
 |---|---|---|---|---|
 | Session bootstrap | — | `auth` | `e2e/global-setup.mjs` (API login) | ✅ infra |
-| Signup / login / logout UI | `(auth)/login`, `(auth)/register` | `auth` | `auth` | ✅ |
+| Signup / onboarding / login / logout UI | `(auth)/login`, `(auth)/register` | `auth` | `auth` | ✅ |
 | Profile personalization | `/settings` | `auth` | `profile-personalization` | ✅ name/initials/color/reset + avatar upload/render/delete |
 | Dashboard / static pages | `/`, `/tools`, `/models`, `/usage` | — | `smoke` | 🟦 |
 | Agent creation pages | `/agents/new{,/manual,/template,/conversational}` | `agents`, `builder` | `smoke` | 🟦 |

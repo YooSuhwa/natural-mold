@@ -90,14 +90,20 @@ describe('useBrowserDictation', () => {
 
     await waitFor(() => expect(result.current.availability).toBe('ready'))
     const session = result.current.adapter?.listen()
-    const onSpeech = vi.fn()
-    session?.onSpeech(onSpeech)
+    try {
+      const onSpeech = vi.fn()
+      session?.onSpeech(onSpeech)
 
-    BrowserSpeechRecognition.latest?.emitResult('partial', false)
-    BrowserSpeechRecognition.latest?.emitResult('final', true)
+      BrowserSpeechRecognition.latest?.emitResult('partial', false)
+      BrowserSpeechRecognition.latest?.emitResult('final', true)
 
-    expect(onSpeech).toHaveBeenNthCalledWith(1, { isFinal: false, transcript: 'partial' })
-    expect(onSpeech).toHaveBeenNthCalledWith(2, { isFinal: true, transcript: 'final' })
+      expect(onSpeech).toHaveBeenNthCalledWith(1, { isFinal: false, transcript: 'partial' })
+      expect(onSpeech).toHaveBeenNthCalledWith(2, { isFinal: true, transcript: 'final' })
+    } finally {
+      // A final result doesn't end continuous recognition; close the owned
+      // session before Vitest disposes its browser globals.
+      await session?.stop()
+    }
   })
 
   it('reports a browser speech failure after the browser emits an error', async () => {

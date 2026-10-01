@@ -127,13 +127,17 @@ test.describe('Task 8 recovery and discovery browser acceptance', () => {
         `E2E_LANGGRAPH_V3 subagent=${setup.childRuntimeName}`,
       )
       await waitForRunStatus(request, setup.conversationId, artifactRunId, 'interrupted')
-      await approveExecuteInSkill(page)
+      const resumedRunId = await approveExecuteInSkill(page)
       await waitForArtifact(request, setup.conversationId, REPORT_FILE)
       await waitForArtifact(request, setup.conversationId, NOTES_FILE)
       await expectFinalTextVisible(page)
+      // Finish the artifact-producing run before changing panel state or
+      // submitting another run; final text can precede terminal persistence.
+      await waitForRunStatus(request, setup.conversationId, resumedRunId, 'completed')
+      await expect(page.locator('[data-moldy-stop-button="true"]')).toHaveCount(0)
 
       const { reportArtifactButton } = await normalizeArtifactList(page, REPORT_FILE, NOTES_FILE)
-      await reportArtifactButton.click()
+      await reportArtifactButton.click({ timeout: 15_000 })
       const desktopRail = page.getByRole('complementary')
       await expect(desktopRail).toBeVisible()
       await expect(desktopRail.getByText('LangGraph v3 E2E Report')).toBeVisible()
@@ -185,13 +189,15 @@ test.describe('Task 8 recovery and discovery browser acceptance', () => {
       const canceledSummary = page.locator(
         `[data-testid="run-summary"][data-run-id="${activeRunId}"]`,
       )
+      await expect(page.locator('[data-moldy-stop-button="true"]')).toHaveCount(0)
+      const canceledNotice = page.locator(`[data-moldy-message-id="moldy-canceled-${activeRunId}"]`)
+      await expect(canceledNotice).toBeVisible({ timeout: 15_000 })
+      // Wait for the live activity summary to hand off to the persisted canceled summary.
+      await expect(canceledSummary).toHaveCount(1, { timeout: 15_000 })
       await expect(canceledSummary).toBeVisible({ timeout: 15_000 })
       await expect(canceledSummary).toContainText('도구 총 0')
       await expect(canceledSummary).toContainText('서브 에이전트 총 0')
-      const canceledNotice = page.locator(`[data-moldy-message-id="moldy-canceled-${activeRunId}"]`)
-      await expect(canceledNotice).toBeVisible({ timeout: 15_000 })
       await expect(canceledNotice).toContainText(/중단됨|Canceled/)
-      await expect(page.locator('[data-moldy-stop-button="true"]')).toHaveCount(0)
       await expect(page.getByRole('button', { name: /전송|Send/ }).last()).toBeVisible()
       await capture(page, testInfo, '768-server-canceled.png')
 

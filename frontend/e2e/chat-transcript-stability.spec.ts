@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test'
-import { API_BASE, apiDeleteOk, expect, test } from './fixtures'
+import { API_BASE, apiDeleteOk, apiGetJson, expect, isRecord, test } from './fixtures'
 import { setFailurePhase } from './helpers/failure-phase-diagnostic'
 import {
   sendMessage,
@@ -214,6 +214,43 @@ test.describe('Chat transcript stability QA bundle', () => {
       setFailurePhase(testInfo.annotations, 'wait_ask_user_card')
       await expect(askUserCards).toHaveCount(1, { timeout: 30_000 })
       await expect(askUserCards.first().getByText('어떤 과일이 좋아요?')).toBeVisible()
+      // Interrupted persistence can precede browser checkpoint hydration.
+      // Wait for the saved parent message before editing the card's local state.
+      const state = await apiGetJson(
+        request,
+        `${API_BASE}/api/conversations/${acceptedRun.conversationId}/langgraph/threads/${acceptedRun.conversationId}/state`,
+      )
+      const savedMessages =
+        isRecord(state) && isRecord(state.values) && Array.isArray(state.values.messages)
+          ? state.values.messages
+          : []
+      const savedAskUserMessage = savedMessages.find(
+        (message: unknown) =>
+          isRecord(message) &&
+          Array.isArray(message.tool_calls) &&
+          message.tool_calls.some((call: unknown) => isRecord(call) && call.name === 'ask_user'),
+      )
+      if (
+        !isRecord(savedAskUserMessage) ||
+        typeof savedAskUserMessage.id !== 'string' ||
+        !Array.isArray(savedAskUserMessage.tool_calls)
+      ) {
+        throw new Error('Interrupted checkpoint did not contain the saved ask_user message')
+      }
+      const savedAskUserCall = savedAskUserMessage.tool_calls.find(
+        (call: unknown) => isRecord(call) && call.name === 'ask_user',
+      )
+      if (!isRecord(savedAskUserCall) || typeof savedAskUserCall.id !== 'string') {
+        throw new Error('Interrupted checkpoint did not contain the saved ask_user tool call')
+      }
+      await expect(askUserCards.first()).toHaveAttribute('data-tool-ui-id', savedAskUserCall.id, {
+        timeout: 30_000,
+      })
+      await expect(
+        page
+          .locator('[data-moldy-message-role="assistant"]')
+          .filter({ has: askUserCards.first() }),
+      ).toHaveAttribute('data-moldy-message-id', savedAskUserMessage.id, { timeout: 30_000 })
       setFailurePhase(testInfo.annotations, 'verify_prompt_stability')
       await expectNoUserPromptDisappearance(page)
 
@@ -228,7 +265,7 @@ test.describe('Chat transcript stability QA bundle', () => {
       const confirmButton = askUserCard.getByRole('button', { name: /선택 확인|Confirm/ })
       await expect(confirmButton).toBeVisible()
       await expect(confirmButton).toBeEnabled()
-      await confirmButton.click()
+      await confirmButton.click({ timeout: 10_000 })
 
       setFailurePhase(testInfo.annotations, 'wait_final_response')
       await expect(page.getByText(ASK_USER_FINAL_TEXT)).toBeVisible({ timeout: 60_000 })
@@ -269,19 +306,23 @@ test.describe('Chat transcript stability QA bundle', () => {
     try {
       await page.goto(`${FRONTEND}/agents/${setup.parentAgentId}/conversations/new`)
 
-      await sendMessage(page, firstPrompt)
+      const firstRun = await waitForAcceptedRunStartResponse(page, () =>
+        sendMessage(page, firstPrompt),
+      )
       await expect(page).toHaveURL(DRAFT_TO_CONVERSATION_URL, { timeout: 30_000 })
+      await waitForRunStatus(request, firstRun.conversationId, firstRun.runId, 'completed')
       await expect(page.getByText('E2E scripted document model is ready.').last()).toBeVisible({
         timeout: 30_000,
       })
 
-      await sendMessage(page, secondPrompt)
+      const secondRunId = await sendMessageForRun(page, firstRun.conversationId, secondPrompt)
+      await waitForRunStatus(request, firstRun.conversationId, secondRunId, 'completed')
       await expect(
         page.locator('[data-moldy-message-role="user"]').filter({ hasText: secondPrompt }),
       ).toBeVisible({ timeout: 30_000 })
-      await expect(page.getByText('E2E scripted document model is ready.').last()).toBeVisible({
-        timeout: 30_000,
-      })
+      await expect(
+        page.getByText('E2E scripted document model is ready.', { exact: true }),
+      ).toHaveCount(2, { timeout: 30_000 })
 
       await installUserPromptStabilityObserver(page, askUserPrompt)
       await installAskUserActivityObserver(page)

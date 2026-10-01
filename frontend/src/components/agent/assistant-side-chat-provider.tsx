@@ -16,6 +16,7 @@ import { useTranslations } from 'next-intl'
 import { usePathname } from 'next/navigation'
 
 import { AssistantPanel, type AssistantPanelSession } from './assistant-panel'
+import { AuthGuard } from '@/components/auth/AuthGuard'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSession } from '@/lib/auth/session'
@@ -55,9 +56,11 @@ export function useAssistantSideChat(): AssistantSideChatContextValue {
 export function AssistantSideChatProvider({ children }: { readonly children: ReactNode }) {
   const { data: user } = useSession()
   return (
-    <AssistantSideChatProviderForUser key={user?.id ?? 'anonymous'}>
-      {children}
-    </AssistantSideChatProviderForUser>
+    <AuthGuard>
+      <AssistantSideChatProviderForUser key={user?.id ?? 'anonymous'}>
+        {children}
+      </AssistantSideChatProviderForUser>
+    </AuthGuard>
   )
 }
 

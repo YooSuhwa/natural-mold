@@ -169,6 +169,7 @@ export default defineConfig({
   ],
   use: {
     baseURL,
+    timezoneId: 'UTC',
     storageState: authStatePath,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',

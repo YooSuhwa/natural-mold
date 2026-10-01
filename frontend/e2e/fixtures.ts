@@ -15,9 +15,14 @@ import {
   classifyRequestFailure,
   classifyResponseFailure,
   isExpectedNextRscPrefetchAbort,
+  isExpectedApiReadNavigationAbort,
+  deferredApiReadAbortCode,
+  collectNetworkFailureCodes,
+  shouldDeferApiReadAbort,
   recordNetworkFailure,
   type NetworkFailureCode,
 } from './helpers/network-failure-diagnostic'
+import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '../src/lib/auth/session-flags'
 
 type ErrorCollector = {
   console: string[]
@@ -113,9 +118,38 @@ function isExpectedNonOkResponse(url: string, status: number): boolean {
   return url.includes('favicon')
 }
 
-export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
+export const test = base.extend<{ authMock: void; failureUi: void; errors: ErrorCollector }>({
+  failureUi: [
+    async ({ page }, use, testInfo) => {
+      await use()
+      if (testInfo.status === testInfo.expectedStatus || page.isClosed()) return
+      // Keep textual failure context in execution.json, which the isolated
+      // runner scans before export. Disposable Playwright output is removed.
+      const snapshot = await page
+        .locator('body')
+        .ariaSnapshot({ timeout: 2_000 })
+        .catch(() => '')
+      testInfo.annotations.push({
+        type: 'moldy.failure-ui.v1',
+        description: JSON.stringify({
+          pathname: new URL(page.url()).pathname,
+          snapshot: snapshot.slice(0, 12_000),
+        }),
+      })
+    },
+    { auto: true },
+  ],
   authMock: [
     async ({ page }, use) => {
+      // Resource journeys start after onboarding. Fresh throwaway users must
+      // not open a modal over their settings, regardless of the host timezone.
+      await page.addInitScript(
+        ({ onboarding, welcome }) => {
+          sessionStorage.setItem(onboarding, '1')
+          sessionStorage.setItem(welcome, '1')
+        },
+        { onboarding: ONBOARDING_DISMISSED_FLAG, welcome: SUPER_USER_WELCOMED_FLAG },
+      )
       if (process.env.PW_SKIP_BACKEND === '1') {
         await page.route('**/api/auth/me', (route) => route.fulfill({ json: E2E_USER }))
       }
@@ -124,7 +158,23 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
     { auto: true },
   ],
   errors: async ({ page }, use, testInfo) => {
-    const errors: ErrorCollector = { console: [], page: [], network: [] }
+    const persistentNetworkCodes: NetworkFailureCode[] = []
+    const deferredApiReadAborts: Array<{
+      readonly input: Parameters<typeof classifyRequestFailure>[0]
+      readonly startNavigationGeneration: number
+      readonly url: string
+    }> = []
+    const errors: ErrorCollector = {
+      console: [],
+      page: [],
+      get network(): NetworkFailureCode[] {
+        return collectNetworkFailureCodes(
+          persistentNetworkCodes,
+          deferredApiReadAborts,
+          mainFrameNavigationGeneration,
+        )
+      },
+    }
     const mainFrameRequestGenerations = new WeakMap<Request, number>()
     let mainFrameNavigationGeneration = 0
 
@@ -152,13 +202,14 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
       const url = response.url()
       if (status >= 400 && !isExpectedNonOkResponse(url, status)) {
         recordNetworkFailure(
-          errors.network,
+          persistentNetworkCodes,
           testInfo.annotations,
           classifyResponseFailure({ requestUrl: url }),
         )
       }
     })
     page.on('requestfailed', (req) => {
+      const requestStartNavigationGeneration = mainFrameRequestGenerations.get(req)
       const nextStaticChunkProvenance = consumeMainFrameRequestFailure(
         mainFrameRequestGenerations,
         req,
@@ -236,6 +287,40 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         requestUrl: url,
         currentPageUrl: page.url(),
       })
+      const expectedApiReadNavigationAbort = isExpectedApiReadNavigationAbort(
+        {
+          errorText,
+          method: req.method(),
+          resourceType: req.resourceType(),
+          ...nextStaticChunkProvenance,
+          requestUrl: url,
+          currentPageUrl: page.url(),
+        },
+        API_BASE,
+      )
+      const apiReadAbortCandidate =
+        requestStartNavigationGeneration !== undefined &&
+        shouldDeferApiReadAbort(
+          {
+            errorText,
+            method: req.method(),
+            resourceType: req.resourceType(),
+            ...nextStaticChunkProvenance,
+            requestUrl: url,
+            currentPageUrl: page.url(),
+          },
+          API_BASE,
+          expectedApiReadNavigationAbort ||
+            expectedStreamDetach ||
+            expectedSdkCancelAbort ||
+            expectedRouteTransitionAbort ||
+            expectedFollowupTransitionAbort ||
+            expectedLangGraphSdkTransitionAbort ||
+            expectedBranchSwitchAbort ||
+            expectedConversationDeleteAbort ||
+            expectedNextStaticChunkAbort ||
+            expectedNextRscPrefetchAbort,
+        )
       if (
         !url.includes('favicon') &&
         !expectedStreamDetach &&
@@ -246,10 +331,12 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         !expectedBranchSwitchAbort &&
         !expectedConversationDeleteAbort &&
         !expectedNextStaticChunkAbort &&
-        !expectedNextRscPrefetchAbort
+        !expectedNextRscPrefetchAbort &&
+        !expectedApiReadNavigationAbort &&
+        !apiReadAbortCandidate
       ) {
         recordNetworkFailure(
-          errors.network,
+          persistentNetworkCodes,
           testInfo.annotations,
           classifyRequestFailure({
             errorText,
@@ -260,10 +347,61 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
             currentPageUrl: page.url(),
           }),
         )
+        if (url.startsWith(`${API_BASE}/api/`)) {
+          testInfo.annotations.push({
+            type: 'moldy.api-request-failure.v1',
+            description: JSON.stringify({
+              pathname: new URL(url).pathname.slice(0, 500),
+              method: req.method(),
+              resourceType: req.resourceType(),
+              errorText,
+              ...nextStaticChunkProvenance,
+            }),
+          })
+        }
+      }
+      if (apiReadAbortCandidate) {
+        if (requestStartNavigationGeneration !== undefined) {
+          deferredApiReadAborts.push({
+            startNavigationGeneration: requestStartNavigationGeneration,
+            url,
+            input: {
+              errorText,
+              method: req.method(),
+              resourceType: req.resourceType(),
+              ...nextStaticChunkProvenance,
+              startedBeforeCurrentMainFrameNavigation: false,
+              requestUrl: url,
+              currentPageUrl: page.url(),
+            },
+          })
+        }
       }
     })
 
     await use(errors)
+
+    // Finalize deferred candidates after all request/navigation events have
+    // arrived. A later main-frame navigation proves prior-document provenance;
+    // otherwise retain the real abort code.
+    for (const candidate of deferredApiReadAborts) {
+      const code = deferredApiReadAbortCode(candidate, mainFrameNavigationGeneration)
+      if (code !== undefined) {
+        recordNetworkFailure(persistentNetworkCodes, testInfo.annotations, code)
+        testInfo.annotations.push({
+          type: 'moldy.api-request-failure.v1',
+          description: JSON.stringify({
+            pathname: new URL(candidate.url).pathname.slice(0, 500),
+            method: candidate.input.method,
+            resourceType: candidate.input.resourceType,
+            errorText: candidate.input.errorText,
+            isMainFrame: candidate.input.isMainFrame,
+            startedBeforeCurrentMainFrameNavigation:
+              candidate.input.startedBeforeCurrentMainFrameNavigation,
+          }),
+        })
+      }
+    }
 
     // Auto-verify: no JS exceptions after each test
     expect(errors.page, 'JS exceptions detected').toEqual([])
