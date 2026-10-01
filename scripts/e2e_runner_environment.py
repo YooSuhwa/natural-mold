@@ -71,6 +71,9 @@ def build_lane_environment(
     frontend_port, backend_port = (3100, 8101) if lane == "scripted" else (3200, 8201)
     env.update(
         {
+            # Match Playwright's UTC browser so SSR and client clock-derived
+            # text agree on hosts using other timezones.
+            "TZ": "UTC",
             "MOLDY_DISABLE_ENV_FILE": "true",
             "MOLDY_GATE_PYTHON": sys.executable,
             "PYTHON_DOTENV_DISABLED": "1",

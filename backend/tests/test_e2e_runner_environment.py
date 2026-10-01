@@ -67,6 +67,18 @@ def test_lane_environment_uses_only_the_fixed_runner_interpreter(
     assert "PYTHON" not in environment
 
 
+@pytest.mark.parametrize("host_timezone", [None, "Asia/Seoul", "America/New_York"])
+def test_server_timezone_matches_the_utc_browser(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, host_timezone: str | None
+) -> None:
+    if host_timezone is None:
+        monkeypatch.delenv("TZ", raising=False)
+    else:
+        monkeypatch.setenv("TZ", host_timezone)
+
+    assert _environment(tmp_path)["TZ"] == "UTC"
+
+
 @pytest.mark.parametrize(
     "project",
     ["scripted-smoke", "scripted-full", "scripted-capture", "live-manual"],
