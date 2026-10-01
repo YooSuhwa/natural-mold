@@ -131,9 +131,13 @@ test.describe('Task 8 recovery and discovery browser acceptance', () => {
       await waitForArtifact(request, setup.conversationId, REPORT_FILE)
       await waitForArtifact(request, setup.conversationId, NOTES_FILE)
       await expectFinalTextVisible(page)
+      // Finish the artifact-producing run before changing panel state or
+      // submitting another run; final text can precede terminal persistence.
+      await waitForRunStatus(request, setup.conversationId, artifactRunId, 'completed')
+      await expect(page.locator('[data-moldy-stop-button="true"]')).toHaveCount(0)
 
       const { reportArtifactButton } = await normalizeArtifactList(page, REPORT_FILE, NOTES_FILE)
-      await reportArtifactButton.click()
+      await reportArtifactButton.click({ timeout: 15_000 })
       const desktopRail = page.getByRole('complementary')
       await expect(desktopRail).toBeVisible()
       await expect(desktopRail.getByText('LangGraph v3 E2E Report')).toBeVisible()
