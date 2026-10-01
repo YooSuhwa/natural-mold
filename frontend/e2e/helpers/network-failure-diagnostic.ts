@@ -102,6 +102,47 @@ export function isExpectedApiReadNavigationAbort(
   }
 }
 
+/** Recognize a strict prior-document API-read abort candidate independent of the
+ * event-order provenance captured by Playwright. */
+export function isApiReadNavigationAbortCandidate(
+  input: RequestFailureDiagnosticInput,
+  apiBaseUrl: string,
+): boolean {
+  return isExpectedApiReadNavigationAbort(
+    { ...input, startedBeforeCurrentMainFrameNavigation: true },
+    apiBaseUrl,
+  )
+}
+
+export type DeferredApiReadAbort = {
+  readonly input: RequestFailureDiagnosticInput
+  readonly startNavigationGeneration: number
+}
+
+/** Return the candidate's effective code until a later main-frame navigation
+ * proves that it belonged to the prior document. */
+export function deferredApiReadAbortCode(
+  candidate: DeferredApiReadAbort,
+  currentNavigationGeneration: number,
+): NetworkFailureCode | undefined {
+  return currentNavigationGeneration > candidate.startNavigationGeneration
+    ? undefined
+    : classifyRequestFailure(candidate.input)
+}
+
+export function collectNetworkFailureCodes(
+  persistentCodes: readonly NetworkFailureCode[],
+  deferredCandidates: readonly DeferredApiReadAbort[],
+  currentNavigationGeneration: number,
+): NetworkFailureCode[] {
+  const codes = [...persistentCodes]
+  for (const candidate of deferredCandidates) {
+    const code = deferredApiReadAbortCode(candidate, currentNavigationGeneration)
+    if (code !== undefined && !codes.includes(code)) codes.push(code)
+  }
+  return codes.sort()
+}
+
 /** Reduce one failed browser request to a finite code without retaining raw inputs. */
 export function classifyRequestFailure(input: RequestFailureDiagnosticInput): NetworkFailureCode {
   const nextChunkCode = nextChunkAbortCode(input)

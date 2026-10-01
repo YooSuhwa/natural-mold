@@ -3,11 +3,16 @@ import { test, expect } from './fixtures'
 // E2E: Skills page — create text skill.
 
 test.describe('Skills page', () => {
-  test('user can create a text skill and see it in the table', async ({ page }) => {
+  test('user can create a text skill, open its source, and return to the table', async ({
+    page,
+    errors,
+  }) => {
     let skills: Array<Record<string, unknown>> = []
+    let content = ''
     await page.route(/\/api\/skills(\?.*)?$/, (route) => {
       if (route.request().method() === 'POST') {
         const body = route.request().postDataJSON() as Record<string, unknown>
+        content = (body.content as string) ?? ''
         const created = {
           id: 'skill-1',
           name: body.name,
@@ -29,6 +34,10 @@ test.describe('Skills page', () => {
       }
       return route.fulfill({ json: skills })
     })
+    await page.route(/\/api\/skills\/skill-1$/, (route) => route.fulfill({ json: skills[0] }))
+    await page.route(/\/api\/skills\/skill-1\/content$/, (route) =>
+      route.fulfill({ json: { content } }),
+    )
 
     await page.goto('/skills')
     await page
@@ -42,7 +51,16 @@ test.describe('Skills page', () => {
 
     await page.getByRole('button', { name: '저장' }).click()
     await expect(page.getByText('스킬이 생성되었습니다')).toBeVisible()
-    await expect(page.getByText('Greeting snippet')).toBeVisible()
+    await expect(page).toHaveURL(/\/skills\/skill-1\/source$/)
+    await expect(page.getByTestId('studio-context-bar')).toContainText('Greeting snippet')
+    await expect(page.locator('main textarea')).toHaveValue('# Hello\nThis is a snippet.')
+
+    await page.getByRole('tab', { name: '목록', exact: true }).click()
+    await expect(page).toHaveURL(/\/skills$/)
+    await expect(page.getByRole('row').filter({ hasText: 'Greeting snippet' })).toBeVisible()
+    expect(errors.console).toEqual([])
+    expect(errors.page).toEqual([])
+    expect(errors.network).toEqual([])
   })
 
   test('user can bulk-delete selected skills from the table', async ({ page }) => {
@@ -67,7 +85,10 @@ test.describe('Skills page', () => {
         updated_at: now,
       }
     }
-    let skills = [makeSkill('skill-a', 'Bulk Target A', 1), makeSkill('skill-b', 'Bulk Target B', 0)]
+    let skills = [
+      makeSkill('skill-a', 'Bulk Target A', 1),
+      makeSkill('skill-b', 'Bulk Target B', 0),
+    ]
     const deleted: string[] = []
 
     await page.route(/\/api\/skills(\?.*)?$/, (route) => route.fulfill({ json: skills }))

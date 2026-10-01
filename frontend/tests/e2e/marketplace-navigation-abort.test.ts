@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  collectNetworkFailureCodes,
+  deferredApiReadAbortCode,
+  isApiReadNavigationAbortCandidate,
   isExpectedApiReadNavigationAbort,
+  type DeferredApiReadAbort,
   type RequestFailureDiagnosticInput,
 } from '../../e2e/helpers/network-failure-diagnostic'
 
@@ -59,5 +63,45 @@ describe('run status read canceled by document navigation', () => {
     { requestUrl: run.requestUrl.replace('55ce328b-e4c5-49c2-a453-231e0b904b6b', 'not-an-id') },
   ])('retains every unrelated transport or provenance failure: %j', (changed) => {
     expect(isExpectedApiReadNavigationAbort({ ...run, ...changed }, API)).toBe(false)
+  })
+})
+
+describe('event-order provenance correction', () => {
+  const deferred: DeferredApiReadAbort = {
+    input: {
+      ...input,
+      requestUrl: `${API}/api/conversations/55ce328b-e4c5-49c2-a453-231e0b904b6b/runs/ec965b82-294b-4ed6-a2fe-15e0a30f6edb`,
+      startedBeforeCurrentMainFrameNavigation: false,
+    },
+    startNavigationGeneration: 4,
+  }
+
+  it('reports before navigation and clears only after a later navigation', () => {
+    expect(isApiReadNavigationAbortCandidate(deferred.input, API)).toBe(true)
+    expect(deferredApiReadAbortCode(deferred, 4)).toBe('api_request_abort')
+    expect(deferredApiReadAbortCode(deferred, 5)).toBeUndefined()
+  })
+
+  it('retains the candidate when no later navigation occurs', () => {
+    expect(collectNetworkFailureCodes([], [deferred], 4)).toEqual(['api_request_abort'])
+  })
+
+  it('keeps a current-document candidate alongside a cleared prior candidate', () => {
+    const current: DeferredApiReadAbort = { ...deferred, startNavigationGeneration: 5 }
+    expect(collectNetworkFailureCodes([], [deferred, current], 5)).toEqual(['api_request_abort'])
+  })
+
+  it('retains unrelated request and response failures while clearing the candidate', () => {
+    expect(
+      collectNetworkFailureCodes(['api_request_abort', 'api_response_failure'], [deferred], 5),
+    ).toEqual(['api_request_abort', 'api_response_failure'])
+  })
+
+  it('retains all codes when a current abort and response failure coexist', () => {
+    const current: DeferredApiReadAbort = { ...deferred, startNavigationGeneration: 5 }
+    expect(collectNetworkFailureCodes(['api_response_failure'], [current], 5)).toEqual([
+      'api_request_abort',
+      'api_response_failure',
+    ])
   })
 })
