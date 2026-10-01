@@ -4,6 +4,7 @@ import {
   deferredApiReadAbortCode,
   isApiReadNavigationAbortCandidate,
   isExpectedApiReadNavigationAbort,
+  shouldDeferApiReadAbort,
   type DeferredApiReadAbort,
   type RequestFailureDiagnosticInput,
 } from '../../e2e/helpers/network-failure-diagnostic'
@@ -24,6 +25,15 @@ describe('marketplace version read canceled by document navigation', () => {
     expect(isExpectedApiReadNavigationAbort(input, API)).toBe(true)
   })
 
+  it.each(['/api/agents', '/api/skills', '/api/skills/skill-id', '/api/agents?offset=0'])(
+    'accepts a canceled prior-document API read: %s',
+    (path) => {
+      expect(isExpectedApiReadNavigationAbort({ ...input, requestUrl: `${API}${path}` }, API)).toBe(
+        true,
+      )
+    },
+  )
+
   it.each<Partial<RequestFailureDiagnosticInput>>([
     { startedBeforeCurrentMainFrameNavigation: false },
     { isMainFrame: false },
@@ -31,9 +41,9 @@ describe('marketplace version read canceled by document navigation', () => {
     { resourceType: 'xhr' },
     { errorText: 'net::ERR_CONNECTION_RESET' },
     { requestUrl: input.requestUrl.replace('8101', '8201') },
-    { requestUrl: `${API}/api/marketplace/items` },
-    { requestUrl: `${input.requestUrl}/install` },
-    { requestUrl: `${API}/api/marketplace/versions/not-an-id` },
+    { requestUrl: `${API}/marketplace/items` },
+    { requestUrl: `${API}/api` },
+    { requestUrl: `${API}/apis/skills` },
     { requestUrl: 'not-a-url' },
   ])('retains every failure outside the exact transport and provenance contract: %j', (changed) => {
     expect(isExpectedApiReadNavigationAbort({ ...input, ...changed }, API)).toBe(false)
@@ -50,6 +60,12 @@ describe('run status read canceled by document navigation', () => {
     expect(isExpectedApiReadNavigationAbort(run, API)).toBe(true)
   })
 
+  it('rejects non-API paths even when the transport matches', () => {
+    expect(isExpectedApiReadNavigationAbort({ ...run, requestUrl: `${API}/health` }, API)).toBe(
+      false,
+    )
+  })
+
   it.each<Partial<RequestFailureDiagnosticInput>>([
     { startedBeforeCurrentMainFrameNavigation: false },
     { isMainFrame: false },
@@ -57,10 +73,7 @@ describe('run status read canceled by document navigation', () => {
     { resourceType: 'xhr' },
     { errorText: 'net::ERR_CONNECTION_RESET' },
     { requestUrl: run.requestUrl.replace('8101', '8201') },
-    { requestUrl: `${run.requestUrl}/stream` },
-    { requestUrl: run.requestUrl.replace(/runs\/[^/]+$/, 'runs') },
-    { requestUrl: run.requestUrl.replace(/runs\/[^/]+$/, 'runs/not-an-id') },
-    { requestUrl: run.requestUrl.replace('55ce328b-e4c5-49c2-a453-231e0b904b6b', 'not-an-id') },
+    { requestUrl: run.requestUrl.replace('http://localhost:8101/api/', 'http://localhost:8101/') },
   ])('retains every unrelated transport or provenance failure: %j', (changed) => {
     expect(isExpectedApiReadNavigationAbort({ ...run, ...changed }, API)).toBe(false)
   })
@@ -103,5 +116,24 @@ describe('event-order provenance correction', () => {
       'api_request_abort',
       'api_response_failure',
     ])
+  })
+
+  it('does not defer an abort already covered by a benign stream rule', () => {
+    expect(shouldDeferApiReadAbort(deferred.input, API, true)).toBe(false)
+  })
+
+  it('rejects current-document provenance at the helper boundary', () => {
+    expect(
+      isExpectedApiReadNavigationAbort(
+        { ...deferred.input, startedBeforeCurrentMainFrameNavigation: false },
+        API,
+      ),
+    ).toBe(false)
+  })
+
+  it('rejects a non-fetch API transport at the helper boundary', () => {
+    expect(isApiReadNavigationAbortCandidate({ ...deferred.input, resourceType: 'xhr' }, API)).toBe(
+      false,
+    )
   })
 })

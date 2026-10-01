@@ -16,9 +16,9 @@ import {
   classifyResponseFailure,
   isExpectedNextRscPrefetchAbort,
   isExpectedApiReadNavigationAbort,
-  isApiReadNavigationAbortCandidate,
   deferredApiReadAbortCode,
   collectNetworkFailureCodes,
+  shouldDeferApiReadAbort,
   recordNetworkFailure,
   type NetworkFailureCode,
 } from './helpers/network-failure-diagnostic'
@@ -300,8 +300,7 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
       )
       const apiReadAbortCandidate =
         requestStartNavigationGeneration !== undefined &&
-        !expectedApiReadNavigationAbort &&
-        isApiReadNavigationAbortCandidate(
+        shouldDeferApiReadAbort(
           {
             errorText,
             method: req.method(),
@@ -311,6 +310,16 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
             currentPageUrl: page.url(),
           },
           API_BASE,
+          expectedApiReadNavigationAbort ||
+            expectedStreamDetach ||
+            expectedSdkCancelAbort ||
+            expectedRouteTransitionAbort ||
+            expectedFollowupTransitionAbort ||
+            expectedLangGraphSdkTransitionAbort ||
+            expectedBranchSwitchAbort ||
+            expectedConversationDeleteAbort ||
+            expectedNextStaticChunkAbort ||
+            expectedNextRscPrefetchAbort,
         )
       if (
         !url.includes('favicon') &&

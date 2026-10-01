@@ -92,11 +92,7 @@ export function isExpectedApiReadNavigationAbort(
   try {
     const request = new URL(input.requestUrl)
     if (request.origin !== new URL(apiBaseUrl).origin) return false
-    const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-    return (
-      new RegExp(`^/api/marketplace/versions/${uuid}$`, 'i').test(request.pathname) ||
-      new RegExp(`^/api/conversations/${uuid}/runs/${uuid}$`, 'i').test(request.pathname)
-    )
+    return request.pathname.startsWith('/api/')
   } catch {
     return false
   }
@@ -112,6 +108,14 @@ export function isApiReadNavigationAbortCandidate(
     { ...input, startedBeforeCurrentMainFrameNavigation: true },
     apiBaseUrl,
   )
+}
+
+export function shouldDeferApiReadAbort(
+  input: RequestFailureDiagnosticInput,
+  apiBaseUrl: string,
+  alreadyExpected: boolean,
+): boolean {
+  return !alreadyExpected && isApiReadNavigationAbortCandidate(input, apiBaseUrl)
 }
 
 export type DeferredApiReadAbort = {
