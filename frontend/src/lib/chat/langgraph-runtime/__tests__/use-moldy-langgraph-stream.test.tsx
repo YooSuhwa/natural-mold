@@ -6,6 +6,10 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMoldyLangGraphStream } from '../use-moldy-langgraph-stream'
 import { dispatchMoldyBranchSwitched } from '../branch-switch-events'
+import {
+  stickyConvertedMessagesByConversation,
+  stickyMessagesByConversation,
+} from '../stream-message-foundation'
 import type {
   AppendMessage,
   AttachmentAdapter,
@@ -192,6 +196,8 @@ function mockRunResponses(...responses: readonly unknown[]): void {
 
 describe('useMoldyLangGraphStream', () => {
   beforeEach(() => {
+    stickyMessagesByConversation.clear()
+    stickyConvertedMessagesByConversation.clear()
     mocks.stream.messages = []
     mocks.stream.values = { messages: [] }
     mocks.stream.interrupts = []

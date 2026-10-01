@@ -133,7 +133,10 @@ export function useHitlDecisionController({
       capturedPayload: StandardInterruptPayload,
     ) => {
       if (generationRef.current !== generation) return
-      if (activeGenerationByIdRef.current.get(interruptId) !== payloadKey) return
+      // Accepted resume may already have removed the interrupt. Only a newer
+      // active generation should supersede the captured decision result.
+      const activePayloadKey = activeGenerationByIdRef.current.get(interruptId)
+      if (activePayloadKey !== undefined && activePayloadKey !== payloadKey) return
       const resolved = resolvedInterruptToolCallsFromDecisions(capturedPayload, decisions)
       if (resolved.length === 0) return
       const resolvedIds = new Set(resolved.map((item) => item.toolCall.id).filter(Boolean))
@@ -185,6 +188,7 @@ export function useHitlDecisionController({
           }
           if (stream.hydrationPromise) await stream.hydrationPromise
           await stream.respond({ decisions }, options)
+          rememberResolvedInterrupt(generation, payloadKey, activeId, decisions, payload)
           if (concurrentBatch && !concurrentBatch.settled) {
             concurrentBatch.settled = true
             concurrentBatchesRef.current.delete(batchKey)
@@ -197,9 +201,7 @@ export function useHitlDecisionController({
             return true
           }
           if (generationRef.current !== generation) return true
-          if (activeGenerationByIdRef.current.get(activeId) !== payloadKey) return true
           deletePendingDecisionIfOwned(pendingDecisionsRef.current, payloadKey, concurrentBatch)
-          rememberResolvedInterrupt(generation, payloadKey, activeId, decisions, payload)
           return true
         }
 
@@ -219,6 +221,12 @@ export function useHitlDecisionController({
         }
         if (stream.hydrationPromise) await stream.hydrationPromise
         await stream.respondAll(responsesById)
+        for (const [activeId, decisions] of decisionsById) {
+          const payload = payloadsAtDecision.get(activeId)
+          const payloadKey = generationKeyById.get(activeId)
+          if (!payload || !payloadKey) continue
+          rememberResolvedInterrupt(generation, payloadKey, activeId, decisions, payload)
+        }
         if (concurrentBatch && !concurrentBatch.settled) {
           concurrentBatch.settled = true
           concurrentBatchesRef.current.delete(batchKey)
@@ -231,13 +239,10 @@ export function useHitlDecisionController({
           return true
         }
         if (generationRef.current !== generation) return true
-        for (const [activeId, decisions] of decisionsById) {
-          const payload = payloadsAtDecision.get(activeId)
+        for (const activeId of decisionsById.keys()) {
           const payloadKey = generationKeyById.get(activeId)
-          if (!payload || !payloadKey) continue
-          if (activeGenerationByIdRef.current.get(activeId) !== payloadKey) continue
+          if (!payloadKey) continue
           deletePendingDecisionIfOwned(pendingDecisionsRef.current, payloadKey, concurrentBatch)
-          rememberResolvedInterrupt(generation, payloadKey, activeId, decisions, payload)
         }
         return true
       } catch (caught: unknown) {
@@ -354,13 +359,13 @@ export function useHitlDecisionController({
         : { interruptId: targetId }
       if (stream.hydrationPromise) await stream.hydrationPromise
       await stream.respond({ decisions }, options)
+      rememberResolvedInterrupt(generation, payloadKey, targetId, decisions, payload)
       try {
         await refreshLifecycle()
       } catch (caught: unknown) {
         reportRuntimeFailure(caught, 'hitl_refresh_failed')
         return
       }
-      rememberResolvedInterrupt(generation, payloadKey, targetId, decisions, payload)
     },
     [
       allInterruptPayloadsById,
