@@ -31,14 +31,30 @@ jobs:
           E2E_RUN_MANIFEST="$PWD/.omo/evidence/project-restart-consolidated-roadmap/ci-nightly-full.json" \
             pnpm --dir frontend test:e2e:scripted -- --project=scripted-full --workers=1
       - name: Validate cleanup and redacted artifact contract
-        run: >-
-          backend/.venv/bin/python scripts/check-isolation-cleanup.py
-          .omo/evidence/project-restart-consolidated-roadmap/ci-nightly-full.json
+        id: nightly_artifact_contract
+        if: ${{ always() }}
+        run: |
+          backend/.venv/bin/python scripts/check-isolation-cleanup.py \
+            --print-artifact-metadata \
+            .omo/evidence/project-restart-consolidated-roadmap/ci-nightly-full.json \
+            >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
+        if: >-
+          ${{ always() && steps.nightly_artifact_contract.outcome == 'success' &&
+              steps.nightly_artifact_contract.outputs.artifact_scope == 'manifest-only' }}
+        with:
+          name: nightly-scripted-full
+          path: .omo/evidence/project-restart-consolidated-roadmap/ci-nightly-full.json
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: >-
+          ${{ always() && steps.nightly_artifact_contract.outcome == 'success' &&
+              steps.nightly_artifact_contract.outputs.artifact_scope == 'full' }}
         with:
           name: nightly-scripted-full
           path: |
             .omo/evidence/project-restart-consolidated-roadmap/ci-nightly-full.json
-            output/e2e-captures/
+            ${{ steps.nightly_artifact_contract.outputs.artifact_directory }}
           if-no-files-found: error
           retention-days: 30

@@ -227,3 +227,24 @@ def test_pr_smoke_uploads_only_the_validated_export_directory() -> None:
     assert '>> "$GITHUB_OUTPUT"' in validation
     assert "steps.pr_smoke_artifact_contract.outputs.artifact_directory" in full_upload
     assert "output/e2e-captures/" not in full_upload
+
+
+def test_nightly_preserves_validated_failure_artifacts_for_diagnosis() -> None:
+    steps = _workflow_steps(_workflow("nightly-e2e.yml"))
+    validation = _named_step(steps, "Validate cleanup and redacted artifact contract")
+    uploads = tuple(step for step in steps if "actions/upload-artifact@v4" in step)
+
+    assert "id: nightly_artifact_contract" in validation
+    assert "if: ${{ always() }}" in validation
+    assert "--print-artifact-metadata" in validation
+    assert '>> "$GITHUB_OUTPUT"' in validation
+    assert len(uploads) == 2
+    diagnostic_upload, full_upload = uploads
+    for upload in uploads:
+        assert "always()" in upload
+        assert "steps.nightly_artifact_contract.outcome == 'success'" in upload
+        assert "ci-nightly-full.json" in upload
+        assert "output/e2e-captures/" not in upload
+    assert "outputs.artifact_scope == 'manifest-only'" in diagnostic_upload
+    assert "outputs.artifact_scope == 'full'" in full_upload
+    assert "steps.nightly_artifact_contract.outputs.artifact_directory" in full_upload
