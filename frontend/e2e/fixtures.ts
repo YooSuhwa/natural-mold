@@ -15,6 +15,7 @@ import {
   classifyRequestFailure,
   classifyResponseFailure,
   isExpectedNextRscPrefetchAbort,
+  isExpectedMarketplaceVersionNavigationAbort,
   recordNetworkFailure,
   type NetworkFailureCode,
 } from './helpers/network-failure-diagnostic'
@@ -266,6 +267,17 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
         requestUrl: url,
         currentPageUrl: page.url(),
       })
+      const expectedMarketplaceVersionNavigationAbort = isExpectedMarketplaceVersionNavigationAbort(
+        {
+          errorText,
+          method: req.method(),
+          resourceType: req.resourceType(),
+          ...nextStaticChunkProvenance,
+          requestUrl: url,
+          currentPageUrl: page.url(),
+        },
+        API_BASE,
+      )
       if (
         !url.includes('favicon') &&
         !expectedStreamDetach &&
@@ -276,7 +288,8 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
         !expectedBranchSwitchAbort &&
         !expectedConversationDeleteAbort &&
         !expectedNextStaticChunkAbort &&
-        !expectedNextRscPrefetchAbort
+        !expectedNextRscPrefetchAbort &&
+        !expectedMarketplaceVersionNavigationAbort
       ) {
         recordNetworkFailure(
           errors.network,
@@ -290,6 +303,18 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
             currentPageUrl: page.url(),
           }),
         )
+        if (url.startsWith(`${API_BASE}/api/`)) {
+          testInfo.annotations.push({
+            type: 'moldy.api-request-failure.v1',
+            description: JSON.stringify({
+              pathname: new URL(url).pathname.slice(0, 500),
+              method: req.method(),
+              resourceType: req.resourceType(),
+              errorText,
+              ...nextStaticChunkProvenance,
+            }),
+          })
+        }
       }
     })
 

@@ -76,6 +76,32 @@ function nextChunkAbortCode(input: RequestFailureDiagnosticInput): NetworkFailur
     : 'next_chunk_abort_current_document'
 }
 
+/** A full document navigation can cancel the previous page's version-detail read. */
+export function isExpectedMarketplaceVersionNavigationAbort(
+  input: RequestFailureDiagnosticInput,
+  apiBaseUrl: string,
+): boolean {
+  if (
+    input.errorText !== 'net::ERR_ABORTED' ||
+    input.method !== 'GET' ||
+    input.resourceType !== 'fetch' ||
+    !input.isMainFrame ||
+    !input.startedBeforeCurrentMainFrameNavigation
+  )
+    return false
+  try {
+    const request = new URL(input.requestUrl)
+    return (
+      request.origin === new URL(apiBaseUrl).origin &&
+      /^\/api\/marketplace\/versions\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        request.pathname,
+      )
+    )
+  } catch {
+    return false
+  }
+}
+
 /** Reduce one failed browser request to a finite code without retaining raw inputs. */
 export function classifyRequestFailure(input: RequestFailureDiagnosticInput): NetworkFailureCode {
   const nextChunkCode = nextChunkAbortCode(input)

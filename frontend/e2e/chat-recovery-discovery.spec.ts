@@ -127,13 +127,13 @@ test.describe('Task 8 recovery and discovery browser acceptance', () => {
         `E2E_LANGGRAPH_V3 subagent=${setup.childRuntimeName}`,
       )
       await waitForRunStatus(request, setup.conversationId, artifactRunId, 'interrupted')
-      await approveExecuteInSkill(page)
+      const resumedRunId = await approveExecuteInSkill(page)
       await waitForArtifact(request, setup.conversationId, REPORT_FILE)
       await waitForArtifact(request, setup.conversationId, NOTES_FILE)
       await expectFinalTextVisible(page)
       // Finish the artifact-producing run before changing panel state or
       // submitting another run; final text can precede terminal persistence.
-      await waitForRunStatus(request, setup.conversationId, artifactRunId, 'completed')
+      await waitForRunStatus(request, setup.conversationId, resumedRunId, 'completed')
       await expect(page.locator('[data-moldy-stop-button="true"]')).toHaveCount(0)
 
       const { reportArtifactButton } = await normalizeArtifactList(page, REPORT_FILE, NOTES_FILE)

@@ -1,6 +1,6 @@
 # E2E Coverage Matrix
 
-<!-- e2e-current-source: profile-personalization=covered; refreshed=2026-09-08 -->
+<!-- e2e-current-source: profile-personalization=covered; nightly-setup=utc; refreshed=2026-10-01 -->
 
 Living record of Playwright E2E coverage across Moldy's feature surface.
 Update this whenever you add/change a spec or ship a user-facing feature.
@@ -72,7 +72,7 @@ DB migration, reused development server, or production credential is needed.
 | Feature area | Route(s) | Router | Spec | Status |
 |---|---|---|---|---|
 | Session bootstrap | — | `auth` | `e2e/global-setup.mjs` (API login) | ✅ infra |
-| Signup / login / logout UI | `(auth)/login`, `(auth)/register` | `auth` | `auth` | ✅ |
+| Signup / onboarding / login / logout UI | `(auth)/login`, `(auth)/register` | `auth` | `auth` | ✅ |
 | Profile personalization | `/settings` | `auth` | `profile-personalization` | ✅ name/initials/color/reset + avatar upload/render/delete |
 | Dashboard / static pages | `/`, `/tools`, `/models`, `/usage` | — | `smoke` | 🟦 |
 | Agent creation pages | `/agents/new{,/manual,/template,/conversational}` | `agents`, `builder` | `smoke` | 🟦 |
