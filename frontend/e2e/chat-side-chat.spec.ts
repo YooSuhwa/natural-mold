@@ -147,14 +147,35 @@ test('quotes, comments, independent side run and return to main', async ({ page,
       '본 채팅의 초안은 보존해 주세요.',
     )
     await page.reload()
+    // Session hydration replaces the anonymous workspace. Wait for the
+    // authenticated main runtime before opening its restored mobile panel.
+    const currentUser = await apiGetJson(request, `${API_BASE}/api/auth/me`)
+    if (!isRecord(currentUser) || typeof currentUser.name !== 'string')
+      throw new Error('Missing authenticated user')
+    await expect(
+      main.getByRole('img', { name: `${currentUser.name} 프로필 아이콘`, exact: true }),
+    ).toBeVisible({ timeout: 30_000 })
+    await expect(answer).toContainText('E2E scripted document model is ready.', {
+      timeout: 30_000,
+    })
+    await expect(main.locator('textarea[data-moldy-composer-input]')).toBeVisible()
+    await expect(main.locator('textarea[data-moldy-composer-input]')).toBeEnabled()
+    const sideToggle = page.getByRole('button', {
+      name: '사이드 채팅',
+      exact: true,
+      includeHidden: true,
+    })
+    await expect(sideToggle).toHaveAttribute('aria-expanded', 'false')
     const reopened = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' && response.url().endsWith('/side-chats'),
     )
-    await page.getByRole('button', { name: '사이드 채팅', exact: true }).click()
+    await sideToggle.click()
     const reopenedResponse = await reopened
     expect(reopenedResponse.status()).toBe(200)
     expect((await reopenedResponse.json()).id).toBe(sideId)
+    await expect(sideToggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.getByRole('dialog')).toBeVisible()
     await expect(side.getByTestId('sent-quote-context')).toBeVisible({ timeout: 20_000 })
     succeeded = true
   } finally {

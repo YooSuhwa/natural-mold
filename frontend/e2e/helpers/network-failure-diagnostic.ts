@@ -76,8 +76,8 @@ function nextChunkAbortCode(input: RequestFailureDiagnosticInput): NetworkFailur
     : 'next_chunk_abort_current_document'
 }
 
-/** A full document navigation can cancel the previous page's version-detail read. */
-export function isExpectedMarketplaceVersionNavigationAbort(
+/** A full document navigation can cancel the previous page's metadata reads. */
+export function isExpectedApiReadNavigationAbort(
   input: RequestFailureDiagnosticInput,
   apiBaseUrl: string,
 ): boolean {
@@ -91,11 +91,11 @@ export function isExpectedMarketplaceVersionNavigationAbort(
     return false
   try {
     const request = new URL(input.requestUrl)
+    if (request.origin !== new URL(apiBaseUrl).origin) return false
+    const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
     return (
-      request.origin === new URL(apiBaseUrl).origin &&
-      /^\/api\/marketplace\/versions\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        request.pathname,
-      )
+      new RegExp(`^/api/marketplace/versions/${uuid}$`, 'i').test(request.pathname) ||
+      new RegExp(`^/api/conversations/${uuid}/runs/${uuid}$`, 'i').test(request.pathname)
     )
   } catch {
     return false

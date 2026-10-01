@@ -15,7 +15,7 @@ import {
   classifyRequestFailure,
   classifyResponseFailure,
   isExpectedNextRscPrefetchAbort,
-  isExpectedMarketplaceVersionNavigationAbort,
+  isExpectedApiReadNavigationAbort,
   recordNetworkFailure,
   type NetworkFailureCode,
 } from './helpers/network-failure-diagnostic'
@@ -267,7 +267,7 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
         requestUrl: url,
         currentPageUrl: page.url(),
       })
-      const expectedMarketplaceVersionNavigationAbort = isExpectedMarketplaceVersionNavigationAbort(
+      const expectedApiReadNavigationAbort = isExpectedApiReadNavigationAbort(
         {
           errorText,
           method: req.method(),
@@ -289,7 +289,7 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
         !expectedConversationDeleteAbort &&
         !expectedNextStaticChunkAbort &&
         !expectedNextRscPrefetchAbort &&
-        !expectedMarketplaceVersionNavigationAbort
+        !expectedApiReadNavigationAbort
       ) {
         recordNetworkFailure(
           errors.network,
