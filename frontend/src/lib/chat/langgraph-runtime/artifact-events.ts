@@ -4,10 +4,14 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useChannelEffect, type AnyStream, type Event } from '@langchain/react'
 import type { BaseMessage } from '@langchain/core/messages'
-import { useSetAtom } from 'jotai'
+import { useSetAtom, useStore } from 'jotai'
 import { artifactKeys } from '@/lib/api/artifacts'
-import { upsertArtifactList, upsertChatArtifactAtom } from '@/lib/stores/chat-artifacts'
-import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import {
+  chatArtifactsAtom,
+  upsertArtifactList,
+  upsertChatArtifactAtom,
+} from '@/lib/stores/chat-artifacts'
+import { chatRightRailAtom, type RightRailState } from '@/lib/stores/chat-right-rail'
 import type { ArtifactSummary, FileEventPayload } from '@/lib/types'
 
 interface ProtocolArtifactEvent {
@@ -162,6 +166,11 @@ export function useLangGraphArtifactEffects({
   messages,
 }: UseLangGraphArtifactEffectsOptions): MessageWithArtifacts[] {
   const queryClient = useQueryClient()
+  const store = useStore()
+  const automaticPreviewRef = useRef<{
+    readonly conversationId: string
+    readonly state: RightRailState
+  } | null>(null)
   const upsertArtifact = useSetAtom(upsertChatArtifactAtom)
   const setRightRail = useSetAtom(chatRightRailAtom)
   const seenEventKeysRef = useRef(new Set<string>())
@@ -178,6 +187,10 @@ export function useLangGraphArtifactEffects({
       if (seenEventKeysRef.current.has(eventKey)) return
       seenEventKeysRef.current.add(eventKey)
 
+      const knownArtifact = store
+        .get(chatArtifactsAtom)
+        [conversationId]?.items.find((artifact) => artifact.id === payload.id)
+      const isKnownVersion = knownArtifact?.version_id === payload.version_id
       upsertArtifact(payload)
       setArtifactsByMessageId((current) => updateMessageArtifactMap(current, payload))
       const conversationArtifactKey = artifactKeys.conversation(conversationId)
@@ -193,18 +206,32 @@ export function useLangGraphArtifactEffects({
           })
         })
 
-      if (payload.op !== 'deleted') {
-        setRightRail({
+      const currentRail = store.get(chatRightRailAtom)
+      const automaticPreview =
+        automaticPreviewRef.current?.conversationId === conversationId
+          ? automaticPreviewRef.current.state
+          : null
+      const followsAutomaticPreview = currentRail === automaticPreview
+      const firstPreview = currentRail.mode === 'none' && automaticPreview === null
+      // Replayed events still hydrate data, but cannot replace the user's panel choice.
+      if (
+        payload.op !== 'deleted' &&
+        !isKnownVersion &&
+        (firstPreview || followsAutomaticPreview)
+      ) {
+        const nextRail: RightRailState = {
           mode: 'artifacts',
           artifacts: {
             conversationId: payload.conversation_id,
             selectedArtifactId: payload.id,
             view: 'preview',
           },
-        })
+        }
+        automaticPreviewRef.current = { conversationId, state: nextRail }
+        setRightRail(nextRail)
       }
     },
-    [conversationId, queryClient, setRightRail, upsertArtifact],
+    [conversationId, queryClient, setRightRail, store, upsertArtifact],
   )
 
   useChannelEffect(stream, ARTIFACT_CHANNELS, {

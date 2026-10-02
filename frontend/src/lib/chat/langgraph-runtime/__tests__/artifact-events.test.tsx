@@ -1,13 +1,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AIMessage } from '@langchain/core/messages'
+import { AIMessage, type BaseMessage } from '@langchain/core/messages'
 import type { AnyStream } from '@langchain/react'
 import { Provider, createStore } from 'jotai'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { artifactKeys } from '@/lib/api/artifacts'
 import { chatArtifactsAtom } from '@/lib/stores/chat-artifacts'
-import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import { chatRightRailAtom, type RightRailState } from '@/lib/stores/chat-right-rail'
 import type { FileEventPayload } from '@/lib/types'
 import { protocolArtifactPayload, useLangGraphArtifactEffects } from '../artifact-events'
 
@@ -73,6 +73,20 @@ function protocolEvent(payload: FileEventPayload, eventId = 'event-file-1') {
   }
 }
 
+function artifactEffectsFixture() {
+  const store = createStore()
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const stream = { kind: 'stream' } as unknown as AnyStream
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <Provider store={store}>{children}</Provider>
+    </QueryClientProvider>
+  )
+  const useEffects = (messages: readonly BaseMessage[] = []) =>
+    useLangGraphArtifactEffects({ stream, conversationId: 'conversation-1', messages })
+  return { store, queryClient, stream, wrapper, useEffects }
+}
+
 function artifactSummary(payload: FileEventPayload) {
   const { op: _op, ...summary } = payload
   void _op
@@ -99,26 +113,11 @@ describe('useLangGraphArtifactEffects', () => {
   })
 
   it('applies v3 artifact custom events to stores, right rail, queries, and live messages', async () => {
-    const store = createStore()
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { store, queryClient, wrapper, useEffects } = artifactEffectsFixture()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
-    const stream = { kind: 'stream' } as unknown as AnyStream
     const assistantMessage = new AIMessage({ id: 'assistant-1', content: '초안입니다.' })
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>
-        <Provider store={store}>{children}</Provider>
-      </QueryClientProvider>
-    )
 
-    const { result } = renderHook(
-      () =>
-        useLangGraphArtifactEffects({
-          stream,
-          conversationId: 'conversation-1',
-          messages: [assistantMessage],
-        }),
-      { wrapper },
-    )
+    const { result } = renderHook(useEffects, { wrapper, initialProps: [assistantMessage] })
 
     const effectOptions = mocks.useChannelEffect.mock.calls[0]?.[2] as
       | ChannelEffectOptions
@@ -154,25 +153,90 @@ describe('useLangGraphArtifactEffects', () => {
     ])
   })
 
-  it('keeps consecutive stream artifacts in the conversation query cache', async () => {
-    const store = createStore()
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const stream = { kind: 'stream' } as unknown as AnyStream
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>
-        <Provider store={store}>{children}</Provider>
-      </QueryClientProvider>
+  it.each<RightRailState>([
+    { mode: 'artifacts', artifacts: { conversationId: 'conversation-1', view: 'list' } },
+    {
+      mode: 'artifacts',
+      artifacts: {
+        conversationId: 'conversation-1',
+        selectedArtifactId: 'chosen',
+        view: 'preview',
+      },
+    },
+    {
+      mode: 'outline',
+      outline: { conversationId: 'conversation-1', messageId: 'message-1', content: 'Outline' },
+    },
+    { mode: 'none' },
+  ])('preserves the user-selected $mode rail when a later artifact arrives', (chosenRail) => {
+    const { store, wrapper, useEffects } = artifactEffectsFixture()
+    renderHook(useEffects, { wrapper })
+    const options: ChannelEffectOptions = mocks.useChannelEffect.mock.calls[0][2]
+    act(() => options.onEvent(protocolEvent(artifact())))
+    act(() => store.set(chatRightRailAtom, chosenRail))
+
+    act(() => options.onEvent(protocolEvent(artifact({ id: 'artifact-2' }), 'later-event')))
+
+    expect(store.get(chatRightRailAtom)).toBe(chosenRail)
+    expect(store.get(chatArtifactsAtom)['conversation-1']?.items).toHaveLength(2)
+  })
+
+  it('indexes a known artifact replay after remount without reopening the rail', () => {
+    const { store, wrapper, useEffects } = artifactEffectsFixture()
+    store.set(chatArtifactsAtom, {
+      'conversation-1': { items: [artifactSummary(artifact())], selectedArtifactId: 'artifact-1' },
+    })
+    const { result } = renderHook(useEffects, {
+      wrapper,
+      initialProps: [new AIMessage({ id: 'assistant-1', content: 'Done' })],
+    })
+    const options: ChannelEffectOptions = mocks.useChannelEffect.mock.calls[0][2]
+
+    act(() => options.onEvent(protocolEvent(artifact())))
+
+    expect(store.get(chatRightRailAtom)).toEqual({ mode: 'none' })
+    expect(result.current[0]?.artifacts).toEqual([artifactSummary(artifact())])
+  })
+
+  it('opens a new conversation artifact after the previous conversation rail was closed', () => {
+    const { store, stream, wrapper } = artifactEffectsFixture()
+    const { rerender } = renderHook(
+      (conversationId: string) =>
+        useLangGraphArtifactEffects({ stream, conversationId, messages: [] }),
+      { wrapper, initialProps: 'conversation-1' },
+    )
+    const options: ChannelEffectOptions = mocks.useChannelEffect.mock.calls[0][2]
+    act(() => options.onEvent(protocolEvent(artifact())))
+    act(() => store.set(chatRightRailAtom, { mode: 'none' }))
+    rerender('conversation-2')
+    const latestOptions: ChannelEffectOptions = mocks.useChannelEffect.mock.lastCall?.[2]
+
+    act(() =>
+      latestOptions.onEvent(
+        protocolEvent(
+          artifact({
+            conversation_id: 'conversation-2',
+            id: 'new-artifact',
+          }),
+          'new-conversation-event',
+        ),
+      ),
     )
 
-    renderHook(
-      () =>
-        useLangGraphArtifactEffects({
-          stream,
-          conversationId: 'conversation-1',
-          messages: [],
-        }),
-      { wrapper },
-    )
+    expect(store.get(chatRightRailAtom)).toEqual({
+      mode: 'artifacts',
+      artifacts: {
+        conversationId: 'conversation-2',
+        selectedArtifactId: 'new-artifact',
+        view: 'preview',
+      },
+    })
+  })
+
+  it('keeps consecutive stream artifacts in the conversation query cache', async () => {
+    const { store, queryClient, wrapper, useEffects } = artifactEffectsFixture()
+
+    renderHook(useEffects, { wrapper })
 
     const effectOptions = mocks.useChannelEffect.mock.calls[0]?.[2] as
       | ChannelEffectOptions
@@ -198,6 +262,14 @@ describe('useLangGraphArtifactEffects', () => {
         artifactKeys.conversation('conversation-1'),
       )
       expect(cached?.map((item) => item.id).sort()).toEqual(['artifact-1', 'artifact-2'])
+    })
+    expect(store.get(chatRightRailAtom)).toEqual({
+      mode: 'artifacts',
+      artifacts: {
+        conversationId: 'conversation-1',
+        selectedArtifactId: 'artifact-2',
+        view: 'preview',
+      },
     })
     expect(
       store
