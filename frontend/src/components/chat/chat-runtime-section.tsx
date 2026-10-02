@@ -156,7 +156,10 @@ export function ChatRuntimeSection({
       commandActions,
       linkedSkills,
       retryLastFailedRunId: latestRun?.status === 'failed' ? latestRun.id : undefined,
-      resourceContextResetKey: `${latestRun?.id ?? 'none'}:${acceptedSubmission}`,
+      // A delayed run-query refresh must not clear quotes added to the next draft.
+      resourceContextResetKey: useLangGraphRuntime
+        ? `${activeConversationId ?? 'draft'}:${acceptedSubmission}`
+        : `${latestRun?.id ?? 'none'}:${acceptedSubmission}`,
       onDictationStart: dictation.resetFailure,
     }),
     [
@@ -178,6 +181,7 @@ export function ChatRuntimeSection({
       latestRun?.id,
       latestRun?.status,
       acceptedSubmission,
+      useLangGraphRuntime,
     ],
   )
 

@@ -210,6 +210,8 @@ async function locatorWidth(locator: ReturnType<Page['locator']>): Promise<numbe
 }
 
 async function dragHorizontally(page: Page, locator: ReturnType<Page['locator']>, deltaX: number) {
+  // Raw mouse actions need coordinates sampled after the handle's transition settles.
+  await locator.hover()
   const box = await locator.boundingBox()
   if (!box) throw new Error('Expected drag handle to have a bounding box')
   const startX = box.x + box.width / 2

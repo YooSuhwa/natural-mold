@@ -17,6 +17,8 @@ from uuid import uuid4
 
 import pytest
 
+from tests.e2e_port_fixtures import LanePorts
+from tests.e2e_port_fixtures import reserved_e2e_ports as reserved_e2e_ports
 from tests.project_gate_wave_support import synthetic_docker_identity
 
 SOURCE_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -39,7 +41,9 @@ def project_gate_runner() -> ModuleType:
 
 
 @pytest.fixture(autouse=True)
-def isolated_project_gate_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def isolated_project_gate_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reserved_e2e_ports: LanePorts
+) -> None:
     """Run every public gate scenario in a disposable checkout-shaped repository.
 
     The production evidence root is intentionally ignored and may be absent in
@@ -49,6 +53,15 @@ def isolated_project_gate_repository(tmp_path: Path, monkeypatch: pytest.MonkeyP
     """
     repo_root = tmp_path / "repo"
     shutil.copytree(SOURCE_REPO_ROOT / "scripts", repo_root / "scripts")
+    port_contract = repo_root / "scripts/e2e_cleanup_contract.py"
+    private_contract, replacements = re.subn(
+        r"^PORTS: Final = .+$",
+        f"PORTS: Final = {reserved_e2e_ports!r}",
+        port_contract.read_text(encoding="utf-8"),
+        flags=re.MULTILINE,
+    )
+    assert replacements == 1
+    port_contract.write_text(private_contract, encoding="utf-8")
     python_path = repo_root / "backend" / ".venv" / "bin" / "python"
     python_path.parent.mkdir(parents=True)
     python_path.symlink_to(SOURCE_REPO_ROOT / "backend" / ".venv" / "bin" / "python")
@@ -122,6 +135,8 @@ def _fake_commands(
         f"manifest_mode = {manifest_mode_literal}\n"
         f"if {pnpm_exit} == 0 and manifest_mode != 'missing':\n"
         "    manifest_path = Path(os.environ['E2E_RUN_MANIFEST'])\n"
+        "    sys.path.insert(0, str(manifest_path.parents[3] / 'scripts'))\n"
+        "    from e2e_cleanup_contract import PORTS as lane_ports\n"
         "    if manifest_mode == 'forged':\n"
         "        manifest_path.write_text('{}', encoding='utf-8')\n"
         "    else:\n"
@@ -145,7 +160,7 @@ def _fake_commands(
         "        egress = {'enabled': False, 'clean_stop': True, 'records': []}\n"
         "        if lane == 'live':\n"
         "            egress = {'enabled': True, 'clean_stop': True, 'records': [{'method': 'POST', 'origin': 'https://api.example.com', 'path_class': 'chat_completions', 'status': 200, 'count': 1}]}\n"  # noqa: E501
-        "        payload = {'schema_version': 1, 'runner': 'moldy-isolated-e2e', 'lane': lane, 'project': project, 'workers': 1, 'retries': 0, 'reuse_existing_server': False, 'status': 'passed', 'failure_reason': None, 'child_exit_code': 0, 'self_test': 'normal', 'run_id': 'a' * 24, 'owned_run_root': True, 'owned_database': True, 'owned_backend': True, 'owned_frontend': True, 'owned_proxy': lane == 'live', 'postgres_image': 'postgres:16-alpine', 'server_version_num': '160001', 'alembic_head': 'm70', 'alembic_current': 'm70', 'schema_fingerprint': 'b' * 64, 'second_upgrade_idempotent': True, 'frontend_port': 3100 if lane == 'scripted' else 3200, 'backend_port': 8101 if lane == 'scripted' else 8201, 'selected_ids': nodes, 'executed_ids': nodes, 'export': {'schema_version': 1, 'secret_scan_passed': True, 'export_directory': export_relative, 'manifest': manifest_entry, 'files': [manifest_entry, artifact_entry], 'screenshots': []}, 'egress': egress, 'cleanup': {'cleanup_container_removed': True, 'owned_label_absent': True, 'postgres_port_removed': True, 'owned_database_removed': True, 'backend_port_removed': True, 'frontend_port_removed': True, 'proxy_port_removed': True, 'process_group_stopped': True, 'cleanup_run_root_removed': True, 'foreign_containers_preserved': True}}\n"  # noqa: E501
+        "        payload = {'schema_version': 1, 'runner': 'moldy-isolated-e2e', 'lane': lane, 'project': project, 'workers': 1, 'retries': 0, 'reuse_existing_server': False, 'status': 'passed', 'failure_reason': None, 'child_exit_code': 0, 'self_test': 'normal', 'run_id': 'a' * 24, 'owned_run_root': True, 'owned_database': True, 'owned_backend': True, 'owned_frontend': True, 'owned_proxy': lane == 'live', 'postgres_image': 'postgres:16-alpine', 'server_version_num': '160001', 'alembic_head': 'm70', 'alembic_current': 'm70', 'schema_fingerprint': 'b' * 64, 'second_upgrade_idempotent': True, 'frontend_port': lane_ports[lane][0], 'backend_port': lane_ports[lane][1], 'selected_ids': nodes, 'executed_ids': nodes, 'export': {'schema_version': 1, 'secret_scan_passed': True, 'export_directory': export_relative, 'manifest': manifest_entry, 'files': [manifest_entry, artifact_entry], 'screenshots': []}, 'egress': egress, 'cleanup': {'cleanup_container_removed': True, 'owned_label_absent': True, 'postgres_port_removed': True, 'owned_database_removed': True, 'backend_port_removed': True, 'frontend_port_removed': True, 'proxy_port_removed': True, 'process_group_stopped': True, 'cleanup_run_root_removed': True, 'foreign_containers_preserved': True}}\n"  # noqa: E501
         "        manifest_path.write_text(json.dumps(payload), encoding='utf-8')\n"
         f"sys.exit({pnpm_exit})\n",
     )

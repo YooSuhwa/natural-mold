@@ -78,8 +78,8 @@ function langGraphStream(isLoading: boolean) {
   }
 }
 
-function renderSection(overrides: Partial<Parameters<typeof ChatRuntimeSection>[0]> = {}) {
-  return render(
+function sectionElement(overrides: Partial<Parameters<typeof ChatRuntimeSection>[0]> = {}) {
+  return (
     <ChatRuntimeSection
       activeConversationId="conversation-1"
       activeRun={activeRun}
@@ -99,8 +99,17 @@ function renderSection(overrides: Partial<Parameters<typeof ChatRuntimeSection>[
       useLangGraphRuntime={false}
       user={null}
       {...overrides}
-    />,
+    />
   )
+}
+
+function renderSection(overrides: Partial<Parameters<typeof ChatRuntimeSection>[0]> = {}) {
+  const view = render(sectionElement(overrides))
+  return {
+    ...view,
+    rerenderSection: (next: Partial<Parameters<typeof ChatRuntimeSection>[0]>) =>
+      view.rerender(sectionElement({ ...overrides, ...next })),
+  }
 }
 
 describe('ChatRuntimeSection', () => {
@@ -203,6 +212,28 @@ describe('ChatRuntimeSection', () => {
     const runtimeOptions = mocks.useMoldyLangGraphStream.mock.calls[0]?.[0]
     act(() => runtimeOptions?.onRunStartAccepted?.())
     expect(onNewMessageAccepted).toHaveBeenCalledOnce()
+  })
+
+  it('clears quotes on acceptance without clearing the next draft on late run hydration', () => {
+    const view = renderSection({ useLangGraphRuntime: true })
+    const resetKey = () => mocks.assistantThreadProps.mock.calls.at(-1)?.[0].resourceContextResetKey
+    const initialKey = resetKey()
+    const runtimeOptions = mocks.useMoldyLangGraphStream.mock.calls.at(-1)?.[0]
+    act(() => runtimeOptions?.onRunStartAccepted?.())
+    const acceptedKey = resetKey()
+    expect(acceptedKey).not.toBe(initialKey)
+
+    // The user can already be composing a new quote when the run query catches up.
+    view.rerenderSection({
+      latestRun: {
+        id: 'run-completed',
+        conversation_id: 'conversation-1',
+        status: 'completed',
+      } as ConversationRun,
+    })
+    expect(resetKey()).toBe(acceptedKey)
+    view.rerenderSection({ activeConversationId: 'conversation-2' })
+    expect(resetKey()).not.toBe(acceptedKey)
   })
 
   it('offers retry only for the durable input bound to the latest failed run', async () => {
