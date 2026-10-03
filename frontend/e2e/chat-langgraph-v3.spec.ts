@@ -94,7 +94,25 @@ test.describe('LangGraph v3 chat runtime', () => {
       await page.setViewportSize(DESKTOP_VIEWPORT)
 
       const { reportArtifactButton } = await normalizeArtifactList(page, REPORT_FILE, NOTES_FILE)
-      await reportArtifactButton.click()
+      // Preview rendering does not await the separate opened-record mutation.
+      // Finish its response body before reload can cancel a pending POST.
+      const [openedResponse] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            response.request().method() === 'POST' &&
+            response.url().startsWith(`${API_BASE}/api/artifacts/`) &&
+            /^\/api\/artifacts\/[^/]+\/opened$/.test(new URL(response.url()).pathname),
+        ),
+        reportArtifactButton.click(),
+      ])
+      expect(openedResponse.status()).toBe(200)
+      const openedArtifact: unknown = await openedResponse.json()
+      expect(openedArtifact).toMatchObject({
+        display_name: REPORT_FILE,
+        conversation_id: setup.conversationId,
+        preview_count: 1,
+        last_opened_at: expect.any(String),
+      })
       await expect(
         page.getByRole('complementary').getByText('LangGraph v3 E2E Report'),
       ).toBeVisible({ timeout: 20_000 })
