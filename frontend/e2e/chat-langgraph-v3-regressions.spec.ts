@@ -16,8 +16,10 @@ import {
   expectFinalTextVisible,
   records,
   sendMessage,
+  sendMessageForRun,
   setupLangGraphV3Agent,
   stringField,
+  waitForAcceptedRunStart,
   waitForActiveRun,
   waitForArtifact,
   waitForRunStatus,
@@ -207,6 +209,15 @@ function countMessages(
   return messages.filter(
     (message) => message.role === role && message.content.includes(contentNeedle),
   ).length
+}
+
+async function expectPersistedRunSummary(page: Page, runId: string): Promise<void> {
+  // Live activity shares this test id; only the transcript summary proves the
+  // browser consumed the persisted run-detail response before a deliberate reload.
+  const summary = page.locator(
+    `[data-testid="run-summary"][data-run-id="${runId}"]:not([data-testid="run-activity-strip"] *)`,
+  )
+  await expect(summary).toBeVisible({ timeout: 30_000 })
 }
 
 function tokenUsageButtons(page: Page) {
@@ -401,19 +412,28 @@ test.describe('LangGraph v3 regression coverage', () => {
     try {
       const conversationId = await createConversation(request, setup, 'v3 branch persistence')
       await page.goto(`/agents/${setup.agentId}/conversations/${conversationId}`)
-      await sendMessage(page, 'E2E branch persistence first turn')
+      const firstRunId = await sendMessageForRun(
+        page,
+        conversationId,
+        'E2E branch persistence first turn',
+      )
       await waitForMessage(
         request,
         conversationId,
         'assistant',
         'E2E scripted document model is ready.',
       )
+      await waitForRunStatus(request, conversationId, firstRunId, 'completed')
+      await expectPersistedRunSummary(page, firstRunId)
       await page.reload()
-      await waitRunIdle(request, conversationId)
+      await expectPersistedRunSummary(page, firstRunId)
 
-      await page.getByRole('button', { name: '재생성' }).first().click()
+      const regeneratedRunId = await waitForAcceptedRunStart(page, conversationId, async () => {
+        await page.getByRole('button', { name: '재생성' }).first().click()
+      })
       const regenerated = await waitForAssistantBranch(request, conversationId, 1)
-      await waitRunIdle(request, conversationId)
+      await waitForRunStatus(request, conversationId, regeneratedRunId, 'completed')
+      await expectPersistedRunSummary(page, regeneratedRunId)
 
       const previousCheckpointId = regenerated.siblingCheckpointIds[0]
       if (!previousCheckpointId) throw new Error('previous branch checkpoint id was missing')
@@ -432,6 +452,7 @@ test.describe('LangGraph v3 regression coverage', () => {
       expect(errors.console).toEqual([])
       expect(errors.network).toEqual([])
     } finally {
+      await page.close()
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.agentId}`, setup.csrfHeaders)
     }
   })
