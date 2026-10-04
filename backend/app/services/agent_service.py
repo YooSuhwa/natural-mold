@@ -20,6 +20,7 @@ from app.models.skill import AgentSkillLink
 from app.models.template import Template
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.agent import AgentCreate, AgentUpdate
+from app.services.agent_deletion import delete_agent as delete_agent
 from app.services.agent_image_paths import build_agent_image_url
 
 logger = logging.getLogger(__name__)
@@ -568,8 +569,3 @@ async def _count_active_triggers(db: AsyncSession, agent_id: uuid.UUID) -> int:
         .where(AgentTrigger.agent_id == agent_id, AgentTrigger.status == "active")
     )
     return int(result.scalar_one() or 0)
-
-
-async def delete_agent(db: AsyncSession, agent: Agent) -> None:
-    await db.delete(agent)
-    await db.flush()

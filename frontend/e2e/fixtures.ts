@@ -23,6 +23,7 @@ import {
   type NetworkFailureCode,
 } from './helpers/network-failure-diagnostic'
 import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '../src/lib/auth/session-flags'
+import { waitForAgentRunsBeforeDelete } from './helpers/agent-cleanup'
 
 type ErrorCollector = {
   console: string[]
@@ -86,6 +87,9 @@ export async function apiDeleteOk(
   url: string,
   csrfHeaders: CsrfHeaders,
 ): Promise<void> {
+  if (/^\/api\/agents\/[^/]+$/.test(new URL(url).pathname)) {
+    await waitForAgentRunsBeforeDelete(request, url)
+  }
   const response = await request.delete(url, { headers: csrfHeaders })
   if (!response.ok() && response.status() !== 404) {
     await failWithBody(`DELETE ${url}`, response)
