@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { Page } from '@playwright/test'
 
 import { API_BASE, apiGetJson, apiJson, test, expect } from './fixtures'
 import { registerMember } from './helpers/member-session'
@@ -11,6 +12,22 @@ const profileSchema = z.object({
   avatar_color: z.string(),
   avatar_image_url: z.string().nullable(),
 })
+
+async function expectAvatarLoaded(page: Page): Promise<void> {
+  const image = page
+    .locator('img')
+    .and(page.getByRole('img', { name: 'E2E Member 프로필 아이콘' }))
+    .first()
+  await expect(image).toBeVisible()
+  await expect
+    .poll(() =>
+      image.evaluate(
+        (element) =>
+          element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0,
+      ),
+    )
+    .toBe(true)
+}
 
 test.use({ storageState: { cookies: [], origins: [] } })
 test.beforeEach(async ({ page }) => {
@@ -95,20 +112,11 @@ test('avatar image upload, authenticated rendering and deletion persist', async 
     avatar_mode: 'image',
     avatar_image_url: expect.any(String),
   })
+  // The upload response precedes the browser's authenticated image GET.
+  // Finish that read before reload can cancel the previous document's image.
+  await expectAvatarLoaded(page)
   await page.reload()
-  const image = page
-    .locator('img')
-    .and(page.getByRole('img', { name: 'E2E Member 프로필 아이콘' }))
-    .first()
-  await expect(image).toBeVisible()
-  await expect
-    .poll(() =>
-      image.evaluate(
-        (element) =>
-          element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0,
-      ),
-    )
-    .toBe(true)
+  await expectAvatarLoaded(page)
   const deleted = page.waitForResponse(
     (res) => res.url().endsWith('/api/auth/me/avatar-image') && res.request().method() === 'DELETE',
   )
