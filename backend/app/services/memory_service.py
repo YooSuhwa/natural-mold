@@ -20,11 +20,16 @@ from app.models.memory import (
     UserMemorySettings,
 )
 from app.schemas.memory import (
-    AgentMemorySettingsUpdate,
     MemoryProposalCreate,
     MemoryRecordCreate,
     MemoryRecordUpdate,
     UserMemorySettingsUpdate,
+)
+from app.services.agent_memory_settings import (
+    get_agent_settings as get_agent_settings,
+)
+from app.services.agent_memory_settings import (
+    update_agent_settings as update_agent_settings,
 )
 
 MemoryScope = Literal["user", "agent"]
@@ -176,53 +181,6 @@ async def update_user_settings(
     return settings
 
 
-async def get_agent_settings(
-    db: AsyncSession,
-    agent_id: uuid.UUID,
-    user_id: uuid.UUID,
-) -> AgentMemorySettings | None:
-    if await _get_owned_agent(db, agent_id, user_id) is None:
-        return None
-    result = await db.execute(
-        select(AgentMemorySettings).where(AgentMemorySettings.agent_id == agent_id)
-    )
-    settings = result.scalar_one_or_none()
-    if settings is not None:
-        return settings
-    settings = AgentMemorySettings(agent_id=agent_id)
-    db.add(settings)
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        result = await db.execute(
-            select(AgentMemorySettings).where(AgentMemorySettings.agent_id == agent_id)
-        )
-        settings = result.scalar_one_or_none()
-        if settings is None:
-            raise
-        return settings
-    await db.refresh(settings)
-    return settings
-
-
-async def update_agent_settings(
-    db: AsyncSession,
-    agent_id: uuid.UUID,
-    user_id: uuid.UUID,
-    payload: AgentMemorySettingsUpdate,
-) -> AgentMemorySettings | None:
-    settings = await get_agent_settings(db, agent_id, user_id)
-    if settings is None:
-        return None
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(settings, field, value)
-    settings.updated_at = _now_naive()
-    await db.commit()
-    await db.refresh(settings)
-    return settings
-
-
 def _policy_rank(policy: str) -> int:
     return {"off": 0, "ask": 1, "auto": 2}.get(policy, 0)
 
@@ -235,9 +193,7 @@ def _scope_allows(allowed: str, scope: str) -> bool:
     return allowed == "both" or allowed == scope
 
 
-def _scope_intersection(
-    user_allowed: AllowedScopes, agent_override: str
-) -> AllowedScopes | None:
+def _scope_intersection(user_allowed: AllowedScopes, agent_override: str) -> AllowedScopes | None:
     if agent_override == "inherit":
         return user_allowed
     if agent_override == "agent_only":
