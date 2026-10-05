@@ -1,3 +1,5 @@
+import type { MessagesEnvelope } from '../src/lib/types'
+import { recordFailureUiEvidence } from './helpers/failure-ui-evidence'
 import { API_BASE, apiDeleteOk, expect, test } from './fixtures'
 import {
   expectNoUserTextFlicker,
@@ -397,7 +399,32 @@ test.describe('Chat streaming render integrity', () => {
       expect(resumeCommands, 'resume must not fire after only one of two approvals').toEqual([])
 
       // Approve the SECOND card → coordinator flushes both decisions in ONE resume.
+      // Verify the cards after the browser receives the completed REST envelope,
+      // which may replace compact replay messages during durable settlement.
+      const completedEnvelope = page.waitForResponse(
+        async (response) => {
+          if (
+            response.request().method() !== 'GET' ||
+            new URL(response.url()).pathname !==
+              `/api/conversations/${setup.conversationId}/messages` ||
+            response.status() !== 200
+          )
+            return false
+          const envelope = (await response.json()) as MessagesEnvelope
+          return envelope.latest_run?.status === 'completed'
+        },
+        { timeout: 60_000 },
+      )
       await approveCard(1)
+      const persisted = (await (await completedEnvelope).json()) as MessagesEnvelope
+      // Checkpoint history can expose the same call in multiple message nodes.
+      const persistedCallIds = new Set(
+        persisted.messages
+          .flatMap((message) => message.tool_calls ?? [])
+          .filter((call) => call.name === 'execute_in_skill')
+          .map((call) => call.id),
+      )
+      expect(persistedCallIds).toEqual(new Set(['call_e2e_hitl_multi_0', 'call_e2e_hitl_multi_1']))
       await expect(approveButtons).toHaveCount(0, { timeout: 30_000 })
       await expect(page.getByText(FINAL_TEXT_PARTIAL).last()).toBeVisible({ timeout: 60_000 })
       await expect(cards).toHaveCount(2, { timeout: 30_000 })
@@ -413,6 +440,9 @@ test.describe('Chat streaming render integrity', () => {
       })
 
       expect(errors.console, 'console errors during multi-action HITL').toEqual([])
+    } catch (error) {
+      await recordFailureUiEvidence(page, test.info())
+      throw error
     } finally {
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)

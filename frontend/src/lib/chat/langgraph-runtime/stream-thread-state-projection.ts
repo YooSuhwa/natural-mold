@@ -9,7 +9,7 @@ import {
 } from '@langchain/core/messages'
 import type { LangGraphInterruptLike } from './hitl-interrupts'
 import { isTerminalNoticeStatus, type TerminalNoticeStatus } from './terminal-notice'
-import type { Message as MoldyMessage } from '@/lib/types'
+import type { Message as MoldyMessage, ToolCallInfo } from '@/lib/types'
 
 export interface ThreadRunNotice {
   readonly id: string
@@ -140,7 +140,26 @@ export function messagesFromServerMessages(
         tool_call_id: message.tool_call_id ?? '',
       })
     }
-    return new AIMessage({ id, content: message.content, additional_kwargs })
+    return new AIMessage({
+      id,
+      content: message.content,
+      additional_kwargs,
+      tool_calls: runtimeToolCallsFromServer(message.tool_calls),
+    })
+  })
+}
+
+function runtimeToolCallsFromServer(calls: readonly ToolCallInfo[] | null): ToolCallInfo[] {
+  return (calls ?? []).flatMap((call) => {
+    if (call.name !== 'request_approval') return [call]
+    // REST exposes an approval UI alias under the original call ID. The runtime
+    // must keep that ID's checkpoint tool name stable; interrupt projection owns
+    // the separate approval card and its decision result.
+    const name = call.args.tool_name
+    const args = call.args.tool_args
+    return typeof name === 'string' && name.length > 0 && isRecord(args) && !Array.isArray(args)
+      ? [{ ...call, name, args }]
+      : []
   })
 }
 

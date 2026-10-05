@@ -69,28 +69,44 @@ describe('appendPendingNewSubmitMessage', () => {
 })
 
 describe('messagesFromServerMessages', () => {
-  // The degraded server-message fallback intentionally does NOT carry assistant
-  // tool_calls. Reconstructing them here conflicts with the primary checkpointer
-  // hydration on reload: assistant-ui reconciles the two representations of the
-  // same message (by id) and throws "Tool call name … does not match existing
-  // tool call …", which breaks the HITL approval card after reload (found by the
-  // chat-langgraph-v3 E2E specs). A tool-call-only turn rendering momentarily
-  // blank in the rare degraded window is far less harmful than breaking reload.
-  it('does not carry assistant tool_calls (avoids reload reconciliation conflict)', () => {
+  it('keeps original tool identities when REST approval aliases reconcile with checkpoint hydration', () => {
     const converted = messagesFromServerMessages([
       serverMessage({
-        id: 'assistant-tool',
-        role: 'assistant',
-        content: '',
-        tool_calls: [{ id: 'call-1', name: 'web_search', args: { query: 'moldy' } }],
+        id: 'public-assistant-tool',
+        runtime_message_id: 'checkpoint-assistant-tool',
+        tool_calls: [
+          {
+            id: 'call-1',
+            name: 'request_approval',
+            args: {
+              tool_name: 'execute_in_skill',
+              tool_args: { command: 'make-docx' },
+              hitl_interrupt_id: 'interrupt-1',
+            },
+          },
+        ],
       }),
     ])
-
-    expect(converted).toHaveLength(1)
-    const message = converted[0]
-    expect(AIMessage.isInstance(message)).toBe(true)
-    expect(AIMessage.isInstance(message) ? message.tool_calls : null).toEqual([])
+    const checkpoint = new AIMessage({
+      id: 'checkpoint-assistant-tool',
+      content: '',
+      tool_calls: [{ id: 'call-1', name: 'execute_in_skill', args: { command: 'make-docx' } }],
+    })
+    expect(converted[0].id).toBe(checkpoint.id)
+    expect(AIMessage.isInstance(converted[0]) ? converted[0].tool_calls : null).toEqual(
+      checkpoint.tool_calls,
+    )
   })
+
+  it.each([{}, { tool_name: 'execute_in_skill', tool_args: [] }])(
+    'does not import a malformed approval alias as a runtime tool declaration (%j)',
+    (args) => {
+      const converted = messagesFromServerMessages([
+        serverMessage({ tool_calls: [{ id: 'call-1', name: 'request_approval', args }] }),
+      ])
+      expect(AIMessage.isInstance(converted[0]) ? converted[0].tool_calls : null).toEqual([])
+    },
+  )
 
   it('does not attach a non-empty tool_calls array for plain assistant text turns', () => {
     const converted = messagesFromServerMessages([
