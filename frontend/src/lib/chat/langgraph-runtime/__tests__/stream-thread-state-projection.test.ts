@@ -2,12 +2,28 @@ import { describe, expect, it } from 'vitest'
 import {
   interruptsFromThreadState,
   messageMetadataFromThreadState,
+  completedRunIdFromThreadState,
   messagesFromServerMessages,
   messagesFromThreadState,
   terminalRunNoticeFromThreadState,
 } from '../stream-thread-state-projection'
 
 describe('stream thread state projection', () => {
+  it('correlates only a completed exact run for replay hydration', () => {
+    expect(
+      completedRunIdFromThreadState({
+        metadata: { latest_run: { id: 'run', status: 'completed' } },
+      }),
+    ).toBe('run')
+    expect(
+      completedRunIdFromThreadState({ metadata: { latest_run: { id: 'old', status: 'running' } } }),
+    ).toBeNull()
+    expect(
+      completedRunIdFromThreadState({ metadata: { latest_run: { status: 'completed' } } }),
+    ).toBeNull()
+    expect(completedRunIdFromThreadState(null)).toBeNull()
+  })
+
   it('projects messages, metadata, interrupts, and terminal state from one snapshot', () => {
     const state = {
       metadata: { latest_run: { id: 'run-1', status: 'failed', error_message: 'failed' } },
@@ -49,6 +65,37 @@ describe('stream thread state projection', () => {
     expect(messageMetadataFromThreadState(state).byId.size).toBe(0)
     expect(interruptsFromThreadState(state)).toEqual([])
     expect(terminalRunNoticeFromThreadState(state)).toBeNull()
+  })
+
+  it('keeps checkpoint identities in REST fallback before state hydration', () => {
+    const fallback = [
+      {
+        id: '38d03419-01f7-51d9-a33e-cfedcaec0732',
+        runtime_message_id: 'lc_run--fallback-answer',
+        conversation_id: 'conversation-1',
+        role: 'assistant' as const,
+        content: 'Pin this answer',
+        tool_calls: null,
+        tool_call_id: null,
+        created_at: '2026-09-01T00:00:00Z',
+      },
+    ]
+    const hydrated = messagesFromThreadState({
+      values: {
+        messages: [
+          {
+            type: 'ai',
+            id: 'lc_run--fallback-answer',
+            content: 'Pin this answer',
+          },
+        ],
+      },
+    })
+    const displayed = messagesFromServerMessages(fallback)
+    expect(displayed[0]?.id).toBe('lc_run--fallback-answer')
+    expect(displayed[0]?.additional_kwargs.metadata).toEqual({ publicMessageId: fallback[0].id })
+    expect(displayed[0]?.id).toBe(hydrated?.[0]?.id)
+    expect(fallback[0]?.id).toBe('38d03419-01f7-51d9-a33e-cfedcaec0732')
   })
 
   it('preserves public server message role conversion', () => {

@@ -106,11 +106,15 @@ export function UserMessageAttachments() {
   // The v3 runtime builds messages from LangGraph state (LangChain messages),
   // which do NOT carry the moldy attachment side channel — so `s.message`
   // never exposes `attachments`. Instead we key off the message id (which
-  // equals the backfilled `message_attachments.message_id` — same id the
-  // anchor/jump uses) and look this turn's attachments up from the unified
+  // uses the public UUID carried by REST fallback when the checkpoint ID
+  // differs from `message_attachments.message_id`) and look this turn's attachments up from the unified
   // `/files` list. Reference-stable selector (a string id) avoids re-render loops.
   const conversationId = useChatConversationId()
-  const messageId = useAuiState((s) => (s.message?.role === 'user' ? s.message.id : null))
+  const messageId = useAuiState((s) => {
+    if (s.message?.role !== 'user') return null
+    const publicId = s.message.metadata.custom.publicMessageId
+    return typeof publicId === 'string' ? publicId : s.message.id
+  })
   const { data } = useConversationFiles(conversationId)
   const briefs = useMemo<MessageAttachmentBrief[]>(() => {
     if (!messageId) return []

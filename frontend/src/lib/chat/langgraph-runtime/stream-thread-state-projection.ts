@@ -54,6 +54,13 @@ export function interruptsFromThreadState(state: unknown): readonly LangGraphInt
   return interrupts
 }
 
+export function completedRunIdFromThreadState(state: unknown): string | null {
+  if (!isRecord(state) || !isRecord(state.metadata)) return null
+  const run = state.metadata.latest_run
+  if (!isRecord(run) || run.status !== 'completed') return null
+  return typeof run.id === 'string' && run.id.length > 0 ? run.id : null
+}
+
 export function terminalRunNoticeFromThreadState(state: unknown): ThreadRunNotice | null {
   if (!isRecord(state)) return null
   const metadata = isRecord(state.metadata) ? state.metadata : {}
@@ -120,17 +127,20 @@ export function messagesFromServerMessages(
 ): BaseMessage[] {
   if (!messages || messages.length === 0) return []
   return messages.map((message) => {
+    const id = message.runtime_message_id ?? message.id
+    const additional_kwargs = { metadata: { publicMessageId: message.id } }
     if (message.role === 'user') {
-      return new HumanMessage({ id: message.id, content: message.content })
+      return new HumanMessage({ id, content: message.content, additional_kwargs })
     }
     if (message.role === 'tool') {
       return new ToolMessage({
-        id: message.id,
+        id,
+        additional_kwargs,
         content: message.content,
         tool_call_id: message.tool_call_id ?? '',
       })
     }
-    return new AIMessage({ id: message.id, content: message.content })
+    return new AIMessage({ id, content: message.content, additional_kwargs })
   })
 }
 

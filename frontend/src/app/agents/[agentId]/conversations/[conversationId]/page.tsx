@@ -24,7 +24,7 @@ import {
   conversationRuntimeStatusAtom,
   type ConversationRuntimeStatus,
 } from '@/lib/stores/chat-navigator-store'
-import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
+import { resolveFeedbackMessageId, useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { getChatRuntimeMode } from '@/lib/chat/runtime-mode'
 import {
@@ -315,13 +315,28 @@ export default function ChatPage({
   }, [messages])
   const getActiveRating = useCallback((mid: string) => ratingByMessage.get(mid), [ratingByMessage])
 
+  const publicMessageIds = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const message of messages) {
+      map.set(message.id, message.id)
+      if (message.runtime_message_id) map.set(message.runtime_message_id, message.id)
+    }
+    return map
+  }, [messages])
+  const getFeedbackMessageId = useCallback(
+    (id: string) => resolveFeedbackMessageId(publicMessageIds, id),
+    [publicMessageIds],
+  )
   const feedbackAdapter = useChatFeedbackAdapter(
     resolvedSideEffectConversationId,
     getActiveRating,
-    () => {
-      queryClient.invalidateQueries({
-        queryKey: conversationKeys.messages(resolvedSideEffectConversationId),
-      })
+    {
+      resolveMessageId: getFeedbackMessageId,
+      onMutate: () => {
+        queryClient.invalidateQueries({
+          queryKey: conversationKeys.messages(resolvedSideEffectConversationId),
+        })
+      },
     },
   )
   const useLangGraphRuntime = runtimeMode === 'langgraph_v3' && activeConversationId !== null
