@@ -339,6 +339,8 @@ export interface FileItem {
 
 export interface Message {
   id: string
+  /** Checkpoint identity for chat actions during REST fallback hydration. */
+  runtime_message_id?: string | null
   conversation_id: string
   role: 'user' | 'assistant' | 'tool'
   content: string
