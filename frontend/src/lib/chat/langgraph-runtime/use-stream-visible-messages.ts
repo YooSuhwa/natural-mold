@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo } from 'react'
-import type { BaseMessage } from '@langchain/core/messages'
+import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
 import type { PendingNewSubmitState } from './use-submit-checkpoint-controller'
 import type { PendingEditRenderState, PendingReloadRenderState } from './stream-edit-reload-types'
 import type { ServerMessageMetadataSnapshot } from './stream-thread-state-projection'
@@ -11,9 +11,11 @@ import {
   messageContentEqualsText,
 } from './stream-message-projection'
 import {
+  isEmptyMessageContent,
   messageListIsDegraded,
   suppressRunningEmptyAssistantPlaceholder,
 } from './stream-message-comparison'
+import { branchMetadataFromMessage } from './stream-message-content'
 import { applyPendingReloadRenderState } from './stream-edit-reload-render'
 import { applyPendingEditRenderState } from './stream-edit-projection'
 import {
@@ -87,7 +89,39 @@ export function useStreamVisibleMessages({
     // by that envelope, while edit/reload projections continue to own their
     // intentionally shorter branch during settlement.
     if (settling && (pendingEdit !== null || pendingReload !== null)) return visible
-    return messageListIsDegraded(visible, fallback) ? fallback : visible
+    if (messageListIsDegraded(visible, fallback)) return fallback
+    // Durable replay may contain only human id/type references. Restore their
+    // content from the message envelope without replacing newer stream output.
+    const persisted = new Map<string, BaseMessage>()
+    const ambiguous = new Set<string>()
+    for (const message of fallback) {
+      if (!message.id || !isHumanMessage(message)) continue
+      if (persisted.has(message.id)) ambiguous.add(message.id)
+      persisted.set(message.id, message)
+    }
+    return visible.map((message) => {
+      if (
+        !message.id ||
+        ambiguous.has(message.id) ||
+        !isHumanMessage(message) ||
+        !isEmptyMessageContent(message.content)
+      )
+        return message
+      const source = persisted.get(message.id)
+      return source && !isEmptyMessageContent(source.content)
+        ? new HumanMessage({
+            ...message,
+            content: source.content,
+            additional_kwargs: {
+              ...message.additional_kwargs,
+              metadata: {
+                ...branchMetadataFromMessage(message),
+                publicMessageId: branchMetadataFromMessage(source).publicMessageId,
+              },
+            },
+          })
+        : message
+    })
   }, [fallback, pendingEdit, pendingReload, settling, visible])
   const renderable = useMemo(
     () => suppressRunningEmptyAssistantPlaceholder(reconciled, isLoading),

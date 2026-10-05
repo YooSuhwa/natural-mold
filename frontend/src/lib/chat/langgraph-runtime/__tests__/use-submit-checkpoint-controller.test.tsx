@@ -11,6 +11,9 @@ describe('useSubmitCheckpointController', () => {
       expect(result.current.acceptPendingSubmit('run-accepted')).toBe(true)
     })
 
+    expect(result.current.pendingSubmit?.message.additional_kwargs.moldyAcceptedRunId).toBe(
+      'run-accepted',
+    )
     expect(result.current.pendingSubmit).toEqual(
       expect.objectContaining({
         content: 'cancel me',

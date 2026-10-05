@@ -292,6 +292,7 @@ describe('useMoldyLangGraphStream', () => {
       'onResumeDecisions',
       'registerDecision',
       'retryFailedInput',
+      'runtimeIsRunning',
       'sendMessage',
       'stream',
       'threadRunNotice',

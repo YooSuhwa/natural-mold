@@ -1,5 +1,9 @@
 import type { BaseMessage } from '@langchain/core/messages'
-import { isAssistantMessage, isHumanMessage } from './stream-message-content'
+import {
+  isAssistantMessage,
+  isHumanMessage,
+  textContentFromMessageContent,
+} from './stream-message-content'
 import { baseMessageIdentity, messageContentFingerprint } from './stream-message-fingerprint'
 import { isRecord } from './stream-message-utilities'
 
@@ -101,12 +105,63 @@ export function messageListIsDegraded(
 export function postRunHydrationIsReady(
   stateMessages: readonly BaseMessage[],
   visibleMessages: readonly BaseMessage[],
+  completedRunId?: string | null,
 ): boolean {
   if (!hasReadyAssistantAfterLastHumanMessage(stateMessages)) return false
   if (visibleMessages.length === 0) return true
-  if (stateMessages.length < visibleMessages.length) return false
-  if (messageListIsDegraded(stateMessages, visibleMessages)) return false
-  return humanMessageCount(stateMessages) >= humanMessageCount(visibleMessages)
+  const comparable = visibleWithoutConfirmedReplaySubmit(
+    stateMessages,
+    visibleMessages,
+    completedRunId,
+  )
+  if (stateMessages.length < comparable.length) return false
+  if (messageListIsDegraded(stateMessages, comparable)) return false
+  return humanMessageCount(stateMessages) >= humanMessageCount(comparable)
+}
+
+function visibleWithoutConfirmedReplaySubmit(
+  state: readonly BaseMessage[],
+  visible: readonly BaseMessage[],
+  completedRunId: string | null | undefined,
+): readonly BaseMessage[] {
+  if (!completedRunId) return visible
+  const lastAssistantIndex = visible.findLastIndex(isAssistantMessage)
+  const stateAssistant = lastAssistantMessage(state)
+  const visibleAssistant = visible[lastAssistantIndex]
+  if (
+    !stateAssistant ||
+    !visibleAssistant ||
+    !messagesShareStableIdentity(stateAssistant, visibleAssistant)
+  )
+    return visible
+  const referenceIds = new Set(
+    visible
+      .filter((message) => isHumanMessage(message) && isEmptyMessageContent(message.content))
+      .map((message) => message.id)
+      .filter(Boolean),
+  )
+  const persistedTexts = new Set(
+    state
+      .filter(
+        (message) =>
+          isHumanMessage(message) &&
+          referenceIds.has(message.id) &&
+          !isEmptyMessageContent(message.content),
+      )
+      .map((message) => textContentFromMessageContent(message.content)),
+  )
+  // Replay refs and their completed answer prove the optimistic bubble has a
+  // persisted counterpart. Keep later or different pending submissions intact.
+  return visible.filter(
+    (message, index) =>
+      !(
+        index < lastAssistantIndex &&
+        isHumanMessage(message) &&
+        message.id?.startsWith('moldy-pending-user:') &&
+        message.additional_kwargs.moldyAcceptedRunId === completedRunId &&
+        persistedTexts.has(textContentFromMessageContent(message.content))
+      ),
+  )
 }
 
 export function humanMessageCount(messages: readonly BaseMessage[]): number {

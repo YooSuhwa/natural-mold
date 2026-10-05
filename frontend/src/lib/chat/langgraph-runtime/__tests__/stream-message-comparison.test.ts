@@ -21,6 +21,74 @@ import {
 } from '../stream-message-comparison'
 
 describe('stream message comparison', () => {
+  it('accepts full hydration that replaces a compact replay and its confirmed optimistic duplicate', () => {
+    const context = new HumanMessage({ id: 'context', content: 'resource excerpt' })
+    const prompt = new HumanMessage({ id: 'prompt', content: 'question' })
+    const answer = new AIMessage({ id: 'answer', content: 'reply' })
+    const pending = new HumanMessage({
+      id: 'moldy-pending-user:conversation:1',
+      content: 'question',
+      additional_kwargs: { moldyAcceptedRunId: 'run-current' },
+    })
+    const references = [
+      new HumanMessage({ id: 'context', content: '' }),
+      new HumanMessage({ id: 'prompt', content: '' }),
+    ]
+    expect(
+      postRunHydrationIsReady(
+        [context, prompt, answer],
+        [pending, ...references, answer],
+        'run-old',
+      ),
+    ).toBe(false)
+    expect(
+      postRunHydrationIsReady([context, prompt, answer], [pending, ...references, answer], null),
+    ).toBe(false)
+    expect(
+      postRunHydrationIsReady(
+        [context, prompt, answer],
+        [pending, ...references, answer],
+        'run-current',
+      ),
+    ).toBe(true)
+    expect(
+      postRunHydrationIsReady(
+        [context, prompt, answer],
+        [...references, answer, pending],
+        'run-current',
+      ),
+    ).toBe(false)
+    expect(
+      postRunHydrationIsReady(
+        [context, prompt, answer],
+        [pending, context, prompt, answer],
+        'run-current',
+      ),
+    ).toBe(false)
+    expect(
+      postRunHydrationIsReady(
+        [context, prompt, answer],
+        [
+          new HumanMessage({
+            id: pending.id,
+            content: 'new question',
+            additional_kwargs: pending.additional_kwargs,
+          }),
+          ...references,
+          answer,
+        ],
+        'run-current',
+      ),
+    ).toBe(false)
+    expect(
+      postRunHydrationIsReady(
+        [context, prompt, answer],
+        [pending, ...references, new AIMessage({ id: 'new-answer', content: 'new reply' })],
+        'run-current',
+      ),
+    ).toBe(false)
+  })
+
   it('finds the last ready assistant response after the latest human message', () => {
     const firstHuman = new HumanMessage({ id: 'human-1', content: 'first' })
     const firstAssistant = new AIMessage({ id: 'assistant-1', content: 'first reply' })

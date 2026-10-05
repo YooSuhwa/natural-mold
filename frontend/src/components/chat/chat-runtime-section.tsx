@@ -302,6 +302,7 @@ function LangGraphRuntimeSection({
 }: LangGraphRuntimeSectionProps) {
   const {
     assistantRuntime,
+    runtimeIsRunning,
     activities,
     deepAgentsState,
     stream,
@@ -322,6 +323,9 @@ function LangGraphRuntimeSection({
     serverRunIsActive,
     serverMessages,
   })
+  // Queue submissions can finish entirely through durable replay without a
+  // raw SDK loading transition. Observe the same state as the displayed runtime.
+  const isRunning = runtimeIsRunning ?? stream.isLoading
   const wasRunningRef = useRef(false)
   const hitlValue = useMemo(
     () => ({ onResumeDecisions, registerDecision }),
@@ -330,7 +334,7 @@ function LangGraphRuntimeSection({
   usePublishSubagentRuntime(conversationId, stream)
 
   useEffect(() => {
-    if (stream.isLoading) {
+    if (isRunning) {
       wasRunningRef.current = true
       onRuntimeStatusChange('running')
       return
@@ -339,7 +343,7 @@ function LangGraphRuntimeSection({
     if (!wasRunningRef.current) return
     wasRunningRef.current = false
     onStreamEnd(false)
-  }, [onRuntimeStatusChange, onStreamEnd, stream.isLoading])
+  }, [isRunning, onRuntimeStatusChange, onStreamEnd])
 
   return (
     <RuntimeFrame
