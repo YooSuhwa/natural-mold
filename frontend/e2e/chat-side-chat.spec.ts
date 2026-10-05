@@ -2,7 +2,13 @@ import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { Locator, Page } from '@playwright/test'
 import { API_BASE, apiDeleteOk, apiGetJson, expect, isRecord, test } from './fixtures'
-import { sendMessage, setupLangGraphV3Agent } from './langgraph-v3-helpers'
+import { recordFailureUiEvidence } from './helpers/failure-ui-evidence'
+import {
+  sendMessage,
+  setupLangGraphV3Agent,
+  waitForAcceptedRunStart,
+  waitForRunStatus,
+} from './langgraph-v3-helpers'
 
 const captures = path.resolve('../output/e2e-captures/20260910-side-chat')
 
@@ -36,6 +42,8 @@ test('quotes, comments, independent side run and return to main', async ({ page,
   await mkdir(captures, { recursive: true })
   const setup = await setupLangGraphV3Agent(request)
   let succeeded = false
+  let releaseStream = () => {}
+  let releaseState = () => {}
   try {
     await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
     await test.step('send initial message', () =>
@@ -66,6 +74,19 @@ test('quotes, comments, independent side run and return to main', async ({ page,
       .locator('textarea[data-moldy-composer-input]')
       .fill('본 채팅의 초안은 보존해 주세요.')
     await selectBody(page, answer)
+    // Attach the side stream only after its durable run completes so this
+    // scenario exercises compact replay rather than relying on live timing.
+    let heldStreams = 0
+    const streamGate = new Promise<void>((resolve) => {
+      releaseStream = resolve
+    })
+    await page.route('**/langgraph/threads/*/stream/events', async (route) => {
+      if (!route.request().url().includes(setup.conversationId)) {
+        heldStreams += 1
+        await streamGate
+      }
+      await route.continue()
+    })
     const created = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' && response.url().endsWith('/side-chats'),
@@ -87,12 +108,29 @@ test('quotes, comments, independent side run and return to main', async ({ page,
     const runRequest = page.waitForRequest(
       (req) => req.url().includes(sideId) && (req.postData() ?? '').includes('resource_context'),
     )
-    await sideComposer.press('Enter')
+    const stateGate = new Promise<void>((resolve) => {
+      releaseState = resolve
+    })
+    await page.route(`**/langgraph/threads/${sideId}/state`, async (route) => {
+      await stateGate
+      await route.continue()
+    })
+    const acceptedRun = await waitForAcceptedRunStart(page, sideId, () =>
+      sideComposer.press('Enter'),
+    )
+    await waitForRunStatus(request, sideId, acceptedRun, 'completed')
+    await expect.poll(() => heldStreams).toBeGreaterThan(0)
+    releaseStream()
     expect((await runRequest).postData()).toContain('E2E scripted document model is ready.')
     await expect(side.locator('[data-moldy-message-role="assistant"]')).toContainText(
       'E2E scripted document model is ready.',
       { timeout: 60_000 },
     )
+    const hydratedState = page.waitForResponse(
+      (response) => response.url().includes(sideId) && response.url().endsWith('/state'),
+    )
+    releaseState()
+    expect((await hydratedState).status()).toBe(200)
     await expect(side.getByTestId('sent-quote-context')).toBeVisible()
     await expect(main.locator('textarea[data-moldy-composer-input]')).toHaveValue(
       '본 채팅의 초안은 보존해 주세요.',
@@ -178,7 +216,14 @@ test('quotes, comments, independent side run and return to main', async ({ page,
     await expect(page.getByRole('dialog')).toBeVisible()
     await expect(side.getByTestId('sent-quote-context')).toBeVisible({ timeout: 20_000 })
     succeeded = true
+  } catch (error: unknown) {
+    await recordFailureUiEvidence(page, test.info())
+    throw error
   } finally {
+    releaseStream()
+    releaseState()
+    await page.unrouteAll({ behavior: 'wait' })
+    await page.close()
     // The runner removes the throwaway DB on failure; don't mask the original error with cleanup.
     if (succeeded) {
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
