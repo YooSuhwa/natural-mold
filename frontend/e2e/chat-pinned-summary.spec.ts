@@ -14,6 +14,7 @@ import {
   type CsrfHeaders,
 } from './fixtures'
 import { sendMessage } from './langgraph-v3-helpers'
+import { recordFailureUiEvidence } from './helpers/failure-ui-evidence'
 
 const CAPTURE_DIR = path.resolve(
   process.cwd(),
@@ -103,18 +104,78 @@ test.describe('Pinned conversation summary', () => {
     test.setTimeout(180_000)
     const fixture = await createFixture(request)
     const foreign = await playwright.request.newContext({ baseURL: API_BASE })
+    let releaseState: () => void = () => undefined
+    const stateGate = new Promise<void>((resolve) => {
+      releaseState = resolve
+    })
+    let heldStateReads = 0
     await fs.mkdir(CAPTURE_DIR, { recursive: true })
 
     try {
       await page.goto(`/agents/${fixture.agentId}/conversations/${fixture.conversationId}`)
       await sendMessage(page, '고정할 답변을 작성해줘')
       await waitForCompletedReply(request, fixture.conversationId)
+      // REST fallback remains actionable while checkpoint hydration is pending.
+      await page.route(
+        `**/api/conversations/${fixture.conversationId}/langgraph/threads/${fixture.conversationId}/state`,
+        async (route) => {
+          heldStateReads += 1
+          await stateGate
+          await route.continue()
+        },
+      )
       await page.reload()
+      await expect.poll(() => heldStateReads).toBeGreaterThan(0)
       const reply = page.getByText('E2E scripted document model is ready.').last()
       await expect(reply).toBeVisible({ timeout: 60_000 })
       const assistantMessage = page.locator('[data-moldy-message-role="assistant"]').last()
+      const envelope = await apiGetJson(
+        request,
+        `${API_BASE}/api/conversations/${fixture.conversationId}/messages`,
+      )
+      if (!isRecord(envelope) || !Array.isArray(envelope.messages)) {
+        throw new Error('REST messages envelope was invalid')
+      }
+      const source = envelope.messages.find(
+        (message: unknown) => isRecord(message) && message.role === 'assistant',
+      )
+      if (!isRecord(source) || typeof source.runtime_message_id !== 'string') {
+        throw new Error('REST assistant did not retain its checkpoint identity')
+      }
+      await expect(assistantMessage).toHaveAttribute(
+        'data-moldy-message-id',
+        source.runtime_message_id,
+      )
       await assistantMessage.hover()
-      await page.getByRole('button', { name: '대화 요약으로 고정' }).last().click()
+      const pinResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PUT' &&
+          response.url() ===
+            `${API_BASE}/api/conversations/${fixture.conversationId}/pinned-summary`,
+      )
+      await assistantMessage.getByRole('button', { name: '대화 요약으로 고정' }).click()
+      await apiJson(await pinResponse, 'Pin REST fallback assistant summary')
+      // The same identity must also toggle to DELETE before checkpoint hydration.
+      const unpinResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'DELETE' &&
+          response.url() ===
+            `${API_BASE}/api/conversations/${fixture.conversationId}/pinned-summary`,
+      )
+      const messageUnpin = assistantMessage.getByRole('button', { name: '대화 요약 고정 해제' })
+      await expect(messageUnpin).toBeEnabled()
+      await messageUnpin.click()
+      expect((await unpinResponse).status()).toBe(204)
+      await expect(page.getByText('고정된 대화 요약')).toHaveCount(0)
+      const repinResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PUT' &&
+          response.url() ===
+            `${API_BASE}/api/conversations/${fixture.conversationId}/pinned-summary`,
+      )
+      await assistantMessage.getByRole('button', { name: '대화 요약으로 고정' }).click()
+      await apiJson(await repinResponse, 'Repin REST fallback assistant summary')
+      releaseState()
 
       await expect(page.getByText('고정된 대화 요약')).toBeVisible()
       await expect(page.getByText('E2E scripted document model is ready.')).toHaveCount(2)
@@ -166,7 +227,13 @@ test.describe('Pinned conversation summary', () => {
       expect(cleared).toEqual({ summary: null })
       expect(errors.console).toEqual([])
       expect(errors.page).toEqual([])
+    } catch (error: unknown) {
+      await recordFailureUiEvidence(page, test.info())
+      throw error
     } finally {
+      releaseState()
+      await page.unrouteAll({ behavior: 'wait' })
+      await page.close()
       await foreign.dispose()
       await apiDeleteOk(request, `${API_BASE}/api/agents/${fixture.agentId}`, fixture.csrfHeaders)
     }

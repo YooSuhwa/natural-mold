@@ -201,6 +201,8 @@ class TokenUsageBreakdown(BaseModel):
 
 class MessageResponse(BaseModel):
     id: uuid.UUID
+    # Keep checkpoint identity for chat actions while preserving the public UUID.
+    runtime_message_id: str | None = None
     conversation_id: uuid.UUID
     role: str
     content: str

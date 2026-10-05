@@ -10,7 +10,7 @@ import {
   isRecord,
   test,
 } from './fixtures'
-import { sendMessage, setupLangGraphV3Agent } from './langgraph-v3-helpers'
+import { sendMessageForRun, setupLangGraphV3Agent, waitForRunStatus } from './langgraph-v3-helpers'
 
 function runStartResourceContext(request: Request): readonly unknown[] | null {
   if (request.method() !== 'POST') return null
@@ -95,11 +95,16 @@ test.describe('Chat commands and authoritative resource context', () => {
         mimeType: 'text/plain',
         buffer: Buffer.from('authoritative resource context fixture'),
       })
-      await sendMessage(page, 'Index this attachment.')
+      const attachmentRunId = await sendMessageForRun(
+        page,
+        setup.conversationId,
+        'Index this attachment.',
+      )
       await expect(page.getByText('E2E scripted document model is ready.').last()).toBeVisible({
         timeout: 60_000,
       })
       const fileId = await attachedFileId(request, setup.conversationId, filename)
+      await waitForRunStatus(request, setup.conversationId, attachmentRunId, 'completed')
 
       await composer.fill('/files')
       await composer.press('Enter')
@@ -155,7 +160,11 @@ test.describe('Chat commands and authoritative resource context', () => {
       const runStart = page.waitForRequest(
         (candidate) => runStartResourceContext(candidate)?.length === 1,
       )
-      await sendMessage(page, 'Use the selected file context.')
+      const contextRunId = await sendMessageForRun(
+        page,
+        setup.conversationId,
+        'Use the selected file context.',
+      )
       const publicRefs = runStartResourceContext(await runStart)
       expect(publicRefs).toEqual([{ kind: 'file', id: fileId, label: filename }])
 
@@ -177,6 +186,7 @@ test.describe('Chat commands and authoritative resource context', () => {
           return isRecord(item) ? item.resource_context : null
         })
         .toEqual([{ kind: 'file', id: fileId, label: filename }])
+      await waitForRunStatus(request, setup.conversationId, contextRunId, 'completed')
 
       const registration = await apiJson(
         await foreign.post('/api/auth/register', {

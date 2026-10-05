@@ -1,6 +1,7 @@
 import type { Request } from '@playwright/test'
 
-import { API_BASE, apiDeleteOk, expect, test } from './fixtures'
+import { API_BASE, apiDeleteOk, apiJson, expect, isRecord, test } from './fixtures'
+import { retireSeededRun } from './helpers/seeded-run-cleanup'
 import {
   beginPersistedEnqueue,
   commandStrategy,
@@ -26,6 +27,7 @@ test.describe('Server-backed chat message queue', () => {
   }, testInfo) => {
     test.setTimeout(120_000)
     const setup = await setupLangGraphV3Agent(request)
+    let seededRunId: string | undefined
     try {
       const active = await request.post(
         `${API_BASE}/api/e2e/conversations/${setup.conversationId}/runs`,
@@ -35,6 +37,11 @@ test.describe('Server-backed chat message queue', () => {
         },
       )
       expect(active.ok()).toBeTruthy()
+      const seededRun = await apiJson(active, 'seeded queue run')
+      if (!isRecord(seededRun) || typeof seededRun.id !== 'string') {
+        throw new Error('Missing seeded queue run id')
+      }
+      seededRunId = seededRun.id
       await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
 
       const { inputId: firstId } = await sendForStrategy(page, 'first queued message', 'enqueue')
@@ -81,6 +88,14 @@ test.describe('Server-backed chat message queue', () => {
       await expect(page.locator(`[data-moldy-queue-item="${secondId}"]`)).toHaveCount(0)
       await page.screenshot({ path: testInfo.outputPath('queue-crud-reload.png'), fullPage: true })
     } finally {
+      if (seededRunId) {
+        await retireSeededRun(request, {
+          url: `${API_BASE}/api/e2e/conversations/${setup.conversationId}`,
+          runId: seededRunId,
+          csrfHeaders: setup.csrfHeaders,
+        })
+        await waitForRunStatus(request, setup.conversationId, seededRunId, 'stale')
+      }
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
     }

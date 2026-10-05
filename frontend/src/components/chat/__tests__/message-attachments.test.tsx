@@ -1,7 +1,50 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen, userEvent, within } from '../../../../tests/test-utils'
-import { MessageAttachmentItem, fileItemToBrief } from '@/components/chat/message-attachments'
+import {
+  MessageAttachmentItem,
+  UserMessageAttachments,
+  fileItemToBrief,
+} from '@/components/chat/message-attachments'
 import type { FileItem, MessageAttachmentBrief } from '@/lib/types'
+
+vi.mock('@assistant-ui/react', async () => ({
+  ...(await vi.importActual<typeof import('@assistant-ui/react')>('@assistant-ui/react')),
+  useAuiState: (
+    selector: (state: {
+      message: { role: string; id: string; metadata: { custom: Record<string, string> } }
+    }) => unknown,
+  ) =>
+    selector({
+      message: {
+        role: 'user',
+        id: 'runtime-user',
+        metadata: { custom: { publicMessageId: 'public-user' } },
+      },
+    }),
+}))
+vi.mock('@/components/chat/conversation-context', () => ({
+  useChatConversationId: () => 'conversation',
+}))
+vi.mock('@/lib/hooks/use-conversation-files', () => ({
+  useConversationFiles: () => ({
+    data: [
+      {
+        source: 'attached',
+        id: 'attachment',
+        name: 'quoted-report.txt',
+        mime_type: 'text/plain',
+        preview_url: '/api/uploads/attachment',
+        message_id: 'public-user',
+        size_bytes: 28,
+      },
+    ],
+  }),
+}))
+
+it('renders persisted attachments for a runtime message carrying its public ID', () => {
+  render(<UserMessageAttachments />)
+  expect(screen.getByRole('button', { name: /quoted-report.txt/ })).toBeInTheDocument()
+})
 
 vi.mock('@/lib/chat/attachment-preview', () => ({
   getAttachmentTextPreview: vi.fn(async () => ({

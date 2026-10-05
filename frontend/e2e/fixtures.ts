@@ -1,3 +1,4 @@
+import { recordFailureUiEvidence } from './helpers/failure-ui-evidence'
 import {
   test as base,
   expect,
@@ -23,6 +24,7 @@ import {
   type NetworkFailureCode,
 } from './helpers/network-failure-diagnostic'
 import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '../src/lib/auth/session-flags'
+import { waitForAgentRunsBeforeDelete } from './helpers/agent-cleanup'
 
 type ErrorCollector = {
   console: string[]
@@ -86,6 +88,9 @@ export async function apiDeleteOk(
   url: string,
   csrfHeaders: CsrfHeaders,
 ): Promise<void> {
+  if (/^\/api\/agents\/[^/]+$/.test(new URL(url).pathname)) {
+    await waitForAgentRunsBeforeDelete(request, url)
+  }
   const response = await request.delete(url, { headers: csrfHeaders })
   if (!response.ok() && response.status() !== 404) {
     await failWithBody(`DELETE ${url}`, response)
@@ -123,19 +128,7 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
     async ({ page }, use, testInfo) => {
       await use()
       if (testInfo.status === testInfo.expectedStatus || page.isClosed()) return
-      // Keep textual failure context in execution.json, which the isolated
-      // runner scans before export. Disposable Playwright output is removed.
-      const snapshot = await page
-        .locator('body')
-        .ariaSnapshot({ timeout: 2_000 })
-        .catch(() => '')
-      testInfo.annotations.push({
-        type: 'moldy.failure-ui.v1',
-        description: JSON.stringify({
-          pathname: new URL(page.url()).pathname,
-          snapshot: snapshot.slice(0, 12_000),
-        }),
-      })
+      await recordFailureUiEvidence(page, testInfo)
     },
     { auto: true },
   ],
@@ -206,6 +199,14 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
           testInfo.annotations,
           classifyResponseFailure({ requestUrl: url }),
         )
+        testInfo.annotations.push({
+          type: 'moldy.response-failure.v1',
+          description: JSON.stringify({
+            pathname: new URL(url).pathname.slice(0, 500),
+            method: response.request().method(),
+            status,
+          }),
+        })
       }
     })
     page.on('requestfailed', (req) => {

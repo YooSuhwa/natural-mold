@@ -347,3 +347,21 @@ class TestStripJsonBlocks:
         content = "No code blocks here."
         result = strip_json_blocks(content)
         assert result == "No code blocks here."
+
+
+def test_rest_messages_retain_checkpoint_identity_for_runtime_actions() -> None:
+    # Public UUIDs remain stable while fallback chat actions use checkpoint ids.
+    conversation_id = uuid.uuid4()
+    responses = langchain_messages_to_response(
+        [AIMessage(id="lc_run--fallback-answer", content="Pin this answer")],
+        conversation_id,
+    )
+    assert responses[0].id == uuid.uuid5(uuid.NAMESPACE_URL, "lc_run--fallback-answer")
+    assert responses[0].model_dump().get("runtime_message_id") == "lc_run--fallback-answer"
+
+
+def test_rest_messages_without_checkpoint_ids_keep_a_stable_runtime_identity() -> None:
+    conversation_id = uuid.uuid4()
+    responses = langchain_messages_to_response([AIMessage(content="Answer")], conversation_id)
+    assert responses[0].id == uuid.uuid5(conversation_id, "0")
+    assert responses[0].model_dump().get("runtime_message_id") == "synthetic-0"

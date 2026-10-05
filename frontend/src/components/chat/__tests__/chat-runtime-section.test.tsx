@@ -410,4 +410,57 @@ describe('ChatRuntimeSection', () => {
     expect(onRuntimeStatusChange).toHaveBeenLastCalledWith('idle')
     expect(onStreamEnd).toHaveBeenCalledWith(false)
   })
+
+  it('invalidates after a queued run settles without a raw stream loading transition', () => {
+    const onRuntimeStatusChange = vi.fn()
+    const onStreamEnd = vi.fn()
+    mocks.useMoldyLangGraphStream.mockReturnValue({
+      assistantRuntime: 'langgraph-runtime',
+      activities: [],
+      stream: langGraphStream(false),
+      runtimeIsRunning: true,
+      onResumeDecisions: vi.fn(),
+      registerDecision: vi.fn(),
+    })
+
+    const { rerender } = renderSection({
+      onRuntimeStatusChange,
+      onStreamEnd,
+      useLangGraphRuntime: true,
+    })
+
+    expect(onRuntimeStatusChange).toHaveBeenLastCalledWith('running')
+    mocks.useMoldyLangGraphStream.mockReturnValue({
+      assistantRuntime: 'langgraph-runtime',
+      activities: [],
+      stream: langGraphStream(false),
+      runtimeIsRunning: false,
+      onResumeDecisions: vi.fn(),
+      registerDecision: vi.fn(),
+    })
+    rerender(
+      <ChatRuntimeSection
+        activeConversationId="conversation-1"
+        activeRun={activeRun}
+        agentId="agent-1"
+        agentImageUrl={null}
+        agentName="Agent"
+        attachmentAdapter={undefined}
+        emptyContent={<div />}
+        feedbackAdapter={undefined}
+        latestRun={null}
+        messages={messages}
+        modelName="Model"
+        onRuntimeStatusChange={onRuntimeStatusChange}
+        onStreamEnd={onStreamEnd}
+        streamFn={emptyStream}
+        totalCost={0}
+        useLangGraphRuntime
+        user={null}
+      />,
+    )
+
+    expect(onRuntimeStatusChange).toHaveBeenLastCalledWith('idle')
+    expect(onStreamEnd).toHaveBeenCalledWith(false)
+  })
 })

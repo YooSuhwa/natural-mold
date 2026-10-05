@@ -38,6 +38,13 @@ jobs:
             --print-artifact-metadata \
             .omo/evidence/project-restart-consolidated-roadmap/ci-nightly-full.json \
             >> "$GITHUB_OUTPUT"
+      - name: Reject database lifecycle errors
+        if: >-
+          ${{ always() && steps.nightly_artifact_contract.outcome == 'success' &&
+              steps.nightly_artifact_contract.outputs.artifact_scope == 'full' }}
+        run: |
+          backend/.venv/bin/python scripts/check-e2e-server-errors.py \
+            "${{ steps.nightly_artifact_contract.outputs.artifact_directory }}/results/execution.stderr.log"
       - uses: actions/upload-artifact@v4
         if: >-
           ${{ always() && steps.nightly_artifact_contract.outcome == 'success' &&

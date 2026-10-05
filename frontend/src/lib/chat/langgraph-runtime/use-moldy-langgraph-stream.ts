@@ -309,6 +309,7 @@ export function useMoldyLangGraphStream({
   return {
     stream,
     assistantRuntime,
+    runtimeIsRunning,
     activities,
     deepAgentsState,
     sendMessage,

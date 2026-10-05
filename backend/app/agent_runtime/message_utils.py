@@ -154,6 +154,7 @@ def langchain_messages_to_response(
         results.append(
             MessageResponse(
                 id=parse_msg_id(msg.id, conversation_id, idx),
+                runtime_message_id=msg.id or f"synthetic-{idx}",
                 conversation_id=conversation_id,
                 role=role,
                 content=content,

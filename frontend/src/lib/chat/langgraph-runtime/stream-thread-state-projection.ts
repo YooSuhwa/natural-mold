@@ -9,7 +9,7 @@ import {
 } from '@langchain/core/messages'
 import type { LangGraphInterruptLike } from './hitl-interrupts'
 import { isTerminalNoticeStatus, type TerminalNoticeStatus } from './terminal-notice'
-import type { Message as MoldyMessage } from '@/lib/types'
+import type { Message as MoldyMessage, ToolCallInfo } from '@/lib/types'
 
 export interface ThreadRunNotice {
   readonly id: string
@@ -52,6 +52,13 @@ export function interruptsFromThreadState(state: unknown): readonly LangGraphInt
     interrupts.push(...interruptRecords(task.interrupts))
   }
   return interrupts
+}
+
+export function completedRunIdFromThreadState(state: unknown): string | null {
+  if (!isRecord(state) || !isRecord(state.metadata)) return null
+  const run = state.metadata.latest_run
+  if (!isRecord(run) || run.status !== 'completed') return null
+  return typeof run.id === 'string' && run.id.length > 0 ? run.id : null
 }
 
 export function terminalRunNoticeFromThreadState(state: unknown): ThreadRunNotice | null {
@@ -120,17 +127,39 @@ export function messagesFromServerMessages(
 ): BaseMessage[] {
   if (!messages || messages.length === 0) return []
   return messages.map((message) => {
+    const id = message.runtime_message_id ?? message.id
+    const additional_kwargs = { metadata: { publicMessageId: message.id } }
     if (message.role === 'user') {
-      return new HumanMessage({ id: message.id, content: message.content })
+      return new HumanMessage({ id, content: message.content, additional_kwargs })
     }
     if (message.role === 'tool') {
       return new ToolMessage({
-        id: message.id,
+        id,
+        additional_kwargs,
         content: message.content,
         tool_call_id: message.tool_call_id ?? '',
       })
     }
-    return new AIMessage({ id: message.id, content: message.content })
+    return new AIMessage({
+      id,
+      content: message.content,
+      additional_kwargs,
+      tool_calls: runtimeToolCallsFromServer(message.tool_calls),
+    })
+  })
+}
+
+function runtimeToolCallsFromServer(calls: readonly ToolCallInfo[] | null): ToolCallInfo[] {
+  return (calls ?? []).flatMap((call) => {
+    if (call.name !== 'request_approval') return [call]
+    // REST exposes an approval UI alias under the original call ID. The runtime
+    // must keep that ID's checkpoint tool name stable; interrupt projection owns
+    // the separate approval card and its decision result.
+    const name = call.args.tool_name
+    const args = call.args.tool_args
+    return typeof name === 'string' && name.length > 0 && isRecord(args) && !Array.isArray(args)
+      ? [{ ...call, name, args }]
+      : []
   })
 }
 

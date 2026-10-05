@@ -6,6 +6,7 @@ import { MOLDY_BRANCH_SWITCHED_EVENT, isMoldyBranchSwitchedEvent } from './branc
 import type { PendingEditRenderState, PendingReloadRenderState } from './stream-edit-reload-types'
 import { postRunHydrationIsReady } from './stream-message-comparison'
 import {
+  completedRunIdFromThreadState,
   messagesFromThreadState,
   type ReloadRunCorrelation,
 } from './stream-thread-state-projection'
@@ -150,7 +151,14 @@ export function useStreamHydrationEffects({
         .then((state) => {
           if (!active || canceledRef.current) return
           const messages = messagesFromThreadState(state)
-          if (messages && postRunHydrationIsReady(messages, latestVisibleMessagesRef.current)) {
+          if (
+            messages &&
+            postRunHydrationIsReady(
+              messages,
+              latestVisibleMessagesRef.current,
+              completedRunIdFromThreadState(state),
+            )
+          ) {
             handleThreadState(state, { replaceMessages: true })
             settle()
             return

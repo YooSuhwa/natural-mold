@@ -63,7 +63,14 @@ export function useSubmitCheckpointController(conversationId: string) {
     (runId: string): boolean => {
       const current = pendingSubmitsByConversation.get(conversationId)
       if (!current || current.acceptedRunId === runId) return Boolean(current)
-      pendingSubmitsByConversation.set(conversationId, { ...current, acceptedRunId: runId })
+      pendingSubmitsByConversation.set(conversationId, {
+        ...current,
+        acceptedRunId: runId,
+        message: new HumanMessage({
+          ...current.message,
+          additional_kwargs: { ...current.message.additional_kwargs, moldyAcceptedRunId: runId },
+        }),
+      })
       emitChange()
       return true
     },
