@@ -65,6 +65,7 @@ dependencies = [
     "pyjwt>=2.8",
     # EmailStr validation (Pydantic) for /api/auth payloads.
     "email-validator>=2.0",
+    "openfga-sdk==0.10.5",
 ]
 
 [project.optional-dependencies]
