@@ -339,6 +339,9 @@ documents:
   - path: docs/exec-plans/index.md
     lifecycle: canonical-current
     status: current
+  - path: docs/exec-plans/org-authz-event-contract.md
+    lifecycle: reference/spec
+    status: reference
   - path: docs/exec-plans/org-authz-handoff.md
     lifecycle: reference/spec
     status: reference

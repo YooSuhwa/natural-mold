@@ -49,6 +49,8 @@ def require_rollout_receipt(*, stabilization: bool) -> None:
         raise ValueError("Fourteen days of actual shadow observation are required")
     if receipt.enforcement_started_at < receipt.shadow_ended_at:
         raise ValueError("Enforcement must follow shadow observation")
+    if receipt.enforcement_ended_at < receipt.enforcement_started_at:
+        raise ValueError("Enforcement cannot end before it starts")
     if receipt.enforcement_ended_at > datetime.now(UTC):
         raise ValueError("Future-dated observation is not evidence")
     if stabilization and receipt.enforcement_ended_at - receipt.enforcement_started_at < timedelta(

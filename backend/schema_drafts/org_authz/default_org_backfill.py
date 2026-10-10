@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 from sqlalchemy.engine import Connection
 
 from app.authz.config import AuthzSettings
+from schema_drafts.org_authz import backfill_provenance as provenance
 from schema_drafts.org_authz.conversation_backfill import resolve_conversations
 from schema_drafts.org_authz.schema import schema_metadata
 from schema_drafts.org_authz.scope_columns import M81_SCOPED
@@ -127,7 +128,15 @@ def backfill_scopes(connection: Connection, metadata: sa.MetaData) -> None:
 
 def backfill(connection: Connection, settings: AuthzSettings | None = None) -> None:
     config = settings or AuthzSettings()
+    provenance.lock_writers(connection)
     metadata = schema_metadata(scope_columns=True)
+    provenance.preserve_legacy_timestamps(metadata)
+    existing = provenance.load(connection, metadata, TENANT)
+    if existing is not None:
+        provenance.verify(connection, metadata, existing, TENANT, ORG)
+        return
+    provenance.default_references(connection, metadata, TENANT, ORG, allowed_tables=set())
+    before = provenance.capture(connection, metadata, TENANT, ORG)
     limits = TypeAdapter(dict[str, JsonValue]).validate_json(config.tenant_default_limits)
     insert_if_missing(
         connection,
@@ -157,49 +166,18 @@ def backfill(connection: Connection, settings: AuthzSettings | None = None) -> N
     seed_memberships(connection, metadata)
     resolve_conversations(connection, metadata)
     backfill_scopes(connection, metadata)
+    provenance.save(
+        connection, metadata, before, provenance.capture(connection, metadata, TENANT, ORG)
+    )
 
 
 def reverse_backfill(connection: Connection) -> None:
-    """Undo default scope without deleting content; extra dependencies block rollback.
-
-    A post-migration group, invitation or another organization in the default
-    tenant prevents FK deletion and rolls back this entire operation. Do not
-    silently remove live organization data to make a downgrade succeed.
-    """
+    """Verify completed provenance before restoring exact pre-m82 values."""
+    provenance.lock_writers(connection)
     metadata = schema_metadata(scope_columns=True)
-    conversations = metadata.tables["conversations"]
-    original_conversations = connection.scalars(
-        sa.select(conversations.c.id).where(
-            conversations.c.org_id == ORG, conversations.c.tenant_id == TENANT
-        )
-    ).all()
-    for name in M81_SCOPED:
-        table = metadata.tables[name]
-        connection.execute(
-            sa.update(table)
-            .where(table.c.org_id == ORG, table.c.tenant_id == TENANT)
-            .values(org_id=None, tenant_id=None)
-        )
-    users = metadata.tables["users"]
-    connection.execute(
-        sa.update(users).where(users.c.last_active_org_id == ORG).values(last_active_org_id=None)
-    )
-    connection.execute(
-        sa.update(conversations)
-        .where(conversations.c.id.in_(original_conversations))
-        .values(user_id=None)
-    )
-    for name in ("organization_role_grants", "organization_members"):
-        table = metadata.tables[name]
-        connection.execute(sa.delete(table).where(table.c.org_id == ORG))
-    for name in ("tenant_role_grants", "tenant_members"):
-        table = metadata.tables[name]
-        connection.execute(sa.delete(table).where(table.c.tenant_id == TENANT))
-    connection.execute(
-        sa.delete(metadata.tables["organizations"]).where(
-            metadata.tables["organizations"].c.id == ORG
-        )
-    )
-    connection.execute(
-        sa.delete(metadata.tables["tenants"]).where(metadata.tables["tenants"].c.id == TENANT)
-    )
+    provenance.preserve_legacy_timestamps(metadata)
+    snapshot = provenance.load(connection, metadata, TENANT)
+    if snapshot is None:
+        raise ValueError("m82 migration snapshot unavailable; rollback requires reconciliation")
+    provenance.verify(connection, metadata, snapshot, TENANT, ORG)
+    provenance.restore(connection, metadata, snapshot)

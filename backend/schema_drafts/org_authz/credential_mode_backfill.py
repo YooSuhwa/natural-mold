@@ -20,8 +20,8 @@ class CredentialSource(BaseModel):
     definition_key: str
 
 
-def hostname(value: object) -> str | None:
-    if not isinstance(value, str) or not value.startswith(("https://", "http://")):
+def hostname(value: str | None) -> str | None:
+    if value is None or not value.startswith(("https://", "http://")):
         return None
     host = urlsplit(value).hostname
     return host.lower().rstrip(".") if host else None
@@ -63,7 +63,8 @@ def backfill_modes(connection: Connection) -> None:
         hosts = destinations.get(row.id, set())
         definition = registry.get(row.definition_key)
         if definition and definition.test:
-            host = hostname(definition.test.request.get("url"))
+            request_url = definition.test.request.get("url")
+            host = hostname(request_url) if isinstance(request_url, str) else None
             if host:
                 hosts.add(host)
         if not hosts and row.definition_key not in GENERIC:

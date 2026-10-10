@@ -152,7 +152,31 @@ Task commits: A-03 `84ba74f0`, A-04 `bf71a22b`, A-05 `9f18fe95`, A-06
 Baseline phase checks: frontend lint:all and build passed under Node 22 in
 isolated roots. Scripted smoke selected/executed 18 tests, no unexpected failures;
 its owned cleanup/export receipt passed. A later independent port check rejected
-`live_port` because a separately started main-checkout uvicorn occupied 8101
-after this lane finished; that foreign process was preserved. Coverage gates
-require a clean Git state and rejected the still-uncommitted A-13 draft before
-measurement, so coverage is not claimed yet. P0 is not closed and P1 has not begun.
+`live_port` because a separately started main-checkout stack occupied 8101/3100
+after this lane finished. The user explicitly authorized stopping the unused
+server. After verifying and stopping those backend/frontend server processes,
+the unchanged independent checker passed both receipts (`validated=2`);
+`output/org-authz/p0/cleanup-independent-recheck.json` records this recheck.
+Coverage gates
+initially required a clean Git state and rejected the uncommitted draft before
+measurement. At `4190d87b`, the complete backend coverage gate passed (4,692 tests,
+57 integration tests deselected); frontend coverage also passed. The canonical
+owned PostgreSQL lane passed all 57 integration tests and independent cleanup.
+P0 is not closed and P1 has not begun.
+
+Five independent A-13 reviews at `4190d87b` yielded QA PASS and goal/context/code/
+security FAIL. Blockers are the absent 19-event source crosswalk, omitted LDAP
+configuration, global identity lifecycle tied to one tenant connection, incomplete
+child/history RLS inventory and destructive m82 rollback for post-upgrade rows.
+Corrections and targeted regressions are in progress; these findings are not
+treated as final acceptance or whole-product completion.
+
+A-13 correction evidence: the independent source crosswalk verifies all 19
+original event rows and a fixed reflected contract for 56 tables / 802 columns;
+the nine source-contract tests passed. The owned PostgreSQL RLS correction suite
+passed 60 tests, including indirect payload read/write/reparenting denial and
+the actual saver setup (95 physical tables when initialized). A separate owned
+PostgreSQL recheck passed the initial/full migration chain and shared-issuer
+identity lifecycle tests. LDAP transport/configuration and incoherent rollout
+receipt regressions passed. Final re-review and clean-commit phase checks remain
+required before A-13/P0 closure.

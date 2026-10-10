@@ -91,6 +91,46 @@ Enforced FGA errors deny with 503, while private reads remain independent.
 
 ## Decision clarifications
 
+- A-13's [event and schema crosswalk](../exec-plans/org-authz-event-contract.md)
+  records all 19 original event rows, their concrete DB/tuple/revocation sources,
+  and explicit R1–R8 resolutions where the original sections conflict. The
+  crosswalk is a reviewed schema contract; event execution and exact emitted
+  tuple-set tests remain requirements of the later service/runtime tasks.
+- m82 records its original and completed modified values in the reserved,
+  server-managed `tenants.settings._migration_m82` entry. Rollback verifies the
+  complete snapshot and dependency inventory before writes; new rows, changed
+  ownership/scope or missing provenance require explicit reconciliation. It
+  never clears ownership from post-upgrade conversations. Subsequent tenant
+  settings APIs must reject client changes to reserved keys and preserve them
+  during settings updates. The snapshot excludes credential ciphertext/password
+  fields, is not an authorization receipt, and must not be exposed through the
+  product settings response.
+- Deferred m92 explicitly classifies every physical table, including indirect
+  child/history rows and the four LangGraph saver tables. Unknown tables stop
+  activation before policy DDL. Parent EXISTS policies protect child rows and
+  secondary references; foreign keys alone do not propagate RLS. Global identity
+  gateways use a trusted internal identity context. Outbox, migration history
+  and saver tables use a trusted internal platform service context; neither
+  context may come from HTTP input or `is_super_user`. Tenant sessions cannot
+  read saver payloads. The future saver pool must enter its service context only
+  after conversation/runtime authorization. This strengthens the plan's
+  checkpointer exception; it does not enable RLS in the current app.
+- A-13 makes `user_identities.connection_id` nullable with `ON DELETE SET NULL`.
+  It records the connection that first established the global identity, rather
+  than owning that identity. Every login must independently validate its current
+  active tenant connection, verified issuer, subject and tenant membership; it
+  must never authorize through the historical connection pointer. Removing or
+  disabling tenant A's connection cannot affect tenant B's mapping for the same
+  OIDC issuer and subject. LDAP issuers are namespaced by connection ID because
+  directory subject identifiers are connection-local. This retains the plan's
+  22 tables and global unique issuer/subject contract without tenant-owned global
+  identity lifecycle. H-08 must test current-connection acceptance end to end.
+- LDAP settings have explicit encrypted bind-password, key ID, server/TLS,
+  user/group base DN and filters, attribute mapping and CA certificate columns.
+  Draft connections may be incomplete; tested/active LDAP connections require
+  their mandatory settings. The database rejects plaintext LDAP URLs; runtime
+  H-08 still must validate certificates, perform StartTLS before credentials and
+  suppress credential logging.
 - A-13 mentions 19 new tables, while sections 6.1 and 20.1 specify 22 including
   three SSO tables. The canonical schema scope is all 22 tables, not 19.
 - Section 18 suggests a separate D-01 PR, conflicting with the detailed two-PR

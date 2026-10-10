@@ -13,12 +13,12 @@ erDiagram
   organizations ||--o{ org_invitations : invites
   tenants ||--o{ tenant_domains : verifies
   tenants ||--o{ sso_connections : configures
-  sso_connections ||--o{ user_identities : authenticates
+  sso_connections |o--o{ user_identities : provenance_SET_NULL
   users ||--o{ user_identities : links
   organizations ||--o{ resource_grants : scopes
   organizations ||--o{ authz_revocations : denies
-  resource_grants ||--o{ authz_outbox : projects
-  authz_model_versions ||--o{ authz_shadow_diffs : evaluates
+  %% authz_outbox.source_table/source_id is a polymorphic source, not a grant FK.
+  %% authz_shadow_diffs contains scalar check context, not a model-version FK.
   organizations ||--o{ resource_credential_bindings : scopes
   credentials ||--o{ resource_credential_bindings : restricts
   organizations ||--o{ access_requests : scopes
@@ -27,3 +27,17 @@ erDiagram
   users ||--o{ notifications : receives
   users ||--o{ agent_user_preferences : saves
   agents ||--o{ agent_user_preferences : references
+  tenants ||--o{ resource_grants : scopes
+  tenants ||--o{ authz_revocations : scopes
+  tenants ||--o{ resource_credential_bindings : scopes
+  users ||--o{ resource_credential_bindings : connects
+  users |o--o{ organizations : creates_SET_NULL
+  organizations |o--o{ users : last_active_SET_NULL
+  organizations ||--o{ agents : scopes
+  users ||--o{ agents : owns_RESTRICT
+  organizations ||--o{ conversations : scopes
+  users ||--o{ conversations : owns
+  agents |o--o{ conversations : agent_SET_NULL_preserves_history
+  %% Composite organization/tenant FK applies to every org-scoped table.
+  %% Diagram shows physical FKs; tuple edges and polymorphic IDs are in event_contract.json.
+  %% m90 removes marketplace_item_acl and legacy favorite/shared columns; m91 drops authz_shadow_diffs.
