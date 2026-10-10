@@ -230,6 +230,10 @@ documents:
     lifecycle: decision-record
     status: accepted
     index: adr
+  - path: docs/design-docs/adr-023-org-authz.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
   - path: docs/design-docs/agent-edit-workbench.md
     lifecycle: completed-plan
     status: completed
@@ -335,6 +339,13 @@ documents:
   - path: docs/exec-plans/index.md
     lifecycle: canonical-current
     status: current
+  - path: docs/exec-plans/org-authz-handoff.md
+    lifecycle: reference/spec
+    status: reference
+  - path: docs/exec-plans/org-authz-progress.md
+    lifecycle: active-plan
+    status: active
+    index: active-plan
   - path: docs/lint-hardening-plan.md
     lifecycle: active-plan
     status: active

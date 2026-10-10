@@ -4,9 +4,12 @@ This index mirrors the tracked execution-plan directories. The wording after
 each link records its declared state; Completed also holds closed/superseded
 plans, explicitly labeled below. Current product follow-ups live in `../../TASKS.md`.
 
+The active organization authorization program follows the supplied
+[HTML specification](org-authz-plan.html).
+
 ## Active
 
-- [조직·권한·공유 개발 기획](org-authz-plan.html) — approved for implementation by the user on 2026-10-10; P0 in progress. [Execution record](org-authz-progress.md).
+- [조직·권한·공유 실행 기록](org-authz-progress.md) — approved for implementation by the user on 2026-10-10; P0 in progress.
 
 ## Completed
 
