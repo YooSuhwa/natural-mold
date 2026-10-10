@@ -244,7 +244,7 @@ real-participant U-05 study are future gates.
 - [ ] B-07 — organization switching and administration UI.
 - [ ] B-08 — ownership constraints and agent archive lifecycle.
 - [ ] B-09 — frontend state reset and transport inspection.
-- [ ] B-10 — company context, suspension and deployment modes.
+- [x] B-10 — company context, suspension and deployment modes.
 - [ ] B-11 — company administration API.
 - [ ] B-12 — SaaS platform company administration API.
 - [ ] B-13 — tenant/platform sessions and derived task context.
@@ -373,3 +373,50 @@ Original planning/prototype files were not modified. No shared database migratio
 or app startup occurred. B-06/B-08 model/writer changes are required before
 deploying this schema: migration promotion alone does not make existing resource
 writers compatible with required scope or complete the archive lifecycle.
+
+## B-10 company context and mode foundation (2026-10-11)
+
+`app/tenancy` now resolves fresh company membership/status and scoped admin or
+auditor roles. `get_tenant_context` derives the company from a validated current
+organization and revalidates the org/company pair. Explicit company lookups
+collapse foreign/missing targets to the same 404; an operator flag adds neither
+membership nor company roles. Governance permissions exclude resource-content
+permissions. Queries remain inside the shared authorization boundary, preserving
+the ownership ratchet without increasing its baseline.
+
+Company suspension returns `tenant_suspended`, preserves refresh tokens and
+allows the existing login to work after resume. Deletion-scheduled companies are
+unavailable. Physical status is refreshed even in an existing SQLAlchemy identity
+map; a separate PostgreSQL transaction can invalidate the next check immediately.
+Suspension/unavailability/permission denials use the existing best-effort audit
+path. B-13 will finish tenant-scoped audit/session propagation.
+
+Implementation detail supporting the planned mode-sensitive navigation:
+`GET /api/me/installation` is an authenticated SELF endpoint returning deployment
+mode, multi-org availability and SaaS operator management availability. It does
+not require company membership, so a SaaS operator can navigate without content
+access. `require_saas_platform_operator` hides management in installation mode
+(404) and denies nonoperators in SaaS (403). B-12 consumes this dependency for
+actual company lifecycle routes; B-07 consumes the navigation flags for UI.
+The OpenAPI fragment and referenced schemas for all three new self-navigation
+routes are frozen in `tests/authz/openapi_new_routes.json`; frontend type comparison
+remains part of B-07. Switching deployment mode does not alter stored memberships.
+
+- Focused company context/mode cases: nine passed. HTTP navigation/dependency
+  cases: ten passed, including DB authority differing from the original JWT,
+  suspension/resume with unchanged login, refresh-token preservation and an
+  actual recorded denial audit. OpenAPI snapshot case passed.
+- Isolated authz/authentication/CSRF/profile regression: 196 passed with four
+  workers, 49 seconds; the official runner reports cleanup removed. An initial
+  selection used nonexistent test filenames and collected zero tests; the actual
+  filenames were selected for the successful run.
+- Native PostgreSQL cross-transaction suspension, resume and removal: one passed;
+  the owned database was removed. This is context/API evidence, not browser or
+  global enforcement evidence for the later resource route conversion.
+- Whole-backend Ruff/Pyright and changed-file type/format ratchets passed (15
+  Python files, zero errors). Ownership ratchet stays 173, additions zero.
+
+Evidence: ignored `output/org-authz/p1/b10-*.log`. Current live Alembic remains
+m83; no shared database migration, deployment or UI acceptance is claimed.
+Next: B-04 organization administration, B-06 private scope and B-11/B-12 company
+administration. The full P0–P8 goal remains active.

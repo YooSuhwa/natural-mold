@@ -26,6 +26,8 @@ from app.database import async_session, close_session_shielded
 from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.services import user_service
+from app.tenancy.context import TenantContext, tenant_context_from_org
+from app.tenancy.deployment import require_platform_tenant_management
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +165,23 @@ async def get_org_context(
     )
     request.state.org_context = context
     return context
+
+
+async def get_tenant_context(
+    request: Request,
+    context: OrgContext = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+) -> TenantContext:
+    tenant = await tenant_context_from_org(db, context)
+    request.state.tenant_context = tenant
+    return tenant
+
+
+async def require_saas_platform_operator(
+    user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+    require_platform_tenant_management(user, settings.deployment_mode)
+    return user
 
 
 async def owned_conversation(

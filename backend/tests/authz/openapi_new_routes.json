@@ -1,0 +1,289 @@
+{
+  "paths": {
+    "/api/me/active-org": {
+      "post": {
+        "operationId": "set_active_organization_api_me_active_org_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActiveOrganizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveOrganizationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Active Organization",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/api/me/installation": {
+      "get": {
+        "operationId": "get_installation_api_me_installation_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Installation",
+        "tags": [
+          "installation"
+        ]
+      }
+    },
+    "/api/me/organizations": {
+      "get": {
+        "operationId": "list_organizations_api_me_organizations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizationSummary"
+                  },
+                  "title": "Response List Organizations Api Me Organizations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Organizations",
+        "tags": [
+          "organizations"
+        ]
+      }
+    }
+  },
+  "schemas": {
+    "ActiveOrganizationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "org_id": {
+          "format": "uuid",
+          "title": "Org Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org_id"
+      ],
+      "title": "ActiveOrganizationRequest",
+      "type": "object"
+    },
+    "ActiveOrganizationResponse": {
+      "properties": {
+        "org_id": {
+          "format": "uuid",
+          "title": "Org Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org_id",
+        "tenant_id"
+      ],
+      "title": "ActiveOrganizationResponse",
+      "type": "object"
+    },
+    "HTTPValidationError": {
+      "properties": {
+        "detail": {
+          "items": {
+            "$ref": "#/components/schemas/ValidationError"
+          },
+          "title": "Detail",
+          "type": "array"
+        }
+      },
+      "title": "HTTPValidationError",
+      "type": "object"
+    },
+    "InstallationResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "deployment_mode": {
+          "enum": [
+            "single_tenant",
+            "multi_tenant"
+          ],
+          "title": "Deployment Mode",
+          "type": "string"
+        },
+        "org_multi_enabled": {
+          "title": "Org Multi Enabled",
+          "type": "boolean"
+        },
+        "platform_tenant_management_enabled": {
+          "title": "Platform Tenant Management Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "deployment_mode",
+        "org_multi_enabled",
+        "platform_tenant_management_enabled"
+      ],
+      "title": "InstallationResponse",
+      "type": "object"
+    },
+    "OrganizationSummary": {
+      "properties": {
+        "capabilities": {
+          "default": [],
+          "items": {
+            "enum": [
+              "cap_create_agent",
+              "cap_create_skill",
+              "cap_create_tool",
+              "cap_register_mcp",
+              "cap_connect_database",
+              "cap_share_org_wide",
+              "cap_publish_marketplace"
+            ],
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "is_default": {
+          "title": "Is Default",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "roles": {
+          "default": [],
+          "items": {
+            "enum": [
+              "admin",
+              "builder",
+              "auditor"
+            ],
+            "type": "string"
+          },
+          "title": "Roles",
+          "type": "array"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "tenant_name": {
+          "title": "Tenant Name",
+          "type": "string"
+        },
+        "tenant_status": {
+          "enum": [
+            "active",
+            "suspended",
+            "deletion_scheduled"
+          ],
+          "title": "Tenant Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "tenant_id",
+        "tenant_name",
+        "tenant_status",
+        "is_default"
+      ],
+      "title": "OrganizationSummary",
+      "type": "object"
+    },
+    "ValidationError": {
+      "properties": {
+        "ctx": {
+          "title": "Context",
+          "type": "object"
+        },
+        "input": {
+          "title": "Input"
+        },
+        "loc": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "title": "Location",
+          "type": "array"
+        },
+        "msg": {
+          "title": "Message",
+          "type": "string"
+        },
+        "type": {
+          "title": "Error Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "loc",
+        "msg",
+        "type"
+      ],
+      "title": "ValidationError",
+      "type": "object"
+    }
+  }
+}

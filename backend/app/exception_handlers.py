@@ -16,7 +16,14 @@ logger = logging.getLogger(__name__)
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
-        if exc.code in {"forbidden", "csrf_mismatch", "not_authenticated"}:
+        if exc.code in {
+            "forbidden",
+            "csrf_mismatch",
+            "not_authenticated",
+            "tenant_suspended",
+            "tenant_unavailable",
+            "permission_required",
+        }:
             from app.services import audit_service
 
             current_user = getattr(request.state, "current_user", None)
