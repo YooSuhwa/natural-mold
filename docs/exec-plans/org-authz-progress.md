@@ -701,3 +701,29 @@ B-06 itself remains incomplete: private ORM/query/writer scoping and newly seede
 dev account scope still need implementation. This fixture preparation does not
 establish organization isolation for any existing private endpoint, and no
 shared/main database or runtime data was changed. The full goal remains active.
+
+## B-06 query foundation (2026-10-11, endpoint cutover remains open)
+
+Added `app/authz/scoping.py`: `org_scoped` limits queries to the exact current
+company/organization pair; `private_scoped` additionally requires the current
+owner, including for platform operators. `private_parent_scoped` joins an
+explicit private parent for child tables without scope columns. Nullable shared
+resource columns and required private columns have separate typed model
+contracts; query row types are preserved without casts or suppression comments.
+Platform rows with null scope are excluded from these organization queries;
+catalog policy and resource permissions remain separate checks.
+
+The helper follows failing-test-first implementation. Seven real SQLite cases
+cover same-user organization switching, another owner, an inconsistent company
+pair, platform rows, missing organizations, operators, non-null model columns
+and inherited child visibility. The selected context/frozen-schema regression
+passes **25 tests**. A real owned PostgreSQL child/parent query also passes
+**1 integration test** and its disposable database is removed by the lab.
+Whole-backend Pyright/Ruff and changed-file type/format gates pass;
+the ownership predicate ratchet remains **173**, with zero additions.
+
+This is a reusable query boundary, not a product endpoint isolation claim.
+Existing private ORM/writers and service callers still need the B-06 cutover.
+The historical full-backend baseline remains 4,870 tests from the preceding
+checkpoint; it was not rerun for this isolated helper addition. No shared
+database, environment, runtime data, deployment or remote branch was modified.
