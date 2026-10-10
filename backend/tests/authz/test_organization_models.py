@@ -47,13 +47,16 @@ def test_application_registers_organization_tables_and_active_org_pointer() -> N
     assert {fk.ondelete for fk in column.foreign_keys} == {"SET NULL"}
 
 
-def test_alembic_activates_one_m80_head() -> None:
+def test_alembic_keeps_core_organization_revisions_on_one_chain() -> None:
     # Given: the application's actual revision directory.
     config = Config("alembic.ini")
     # When: Alembic resolves the deployable migration graph.
     script = ScriptDirectory.from_config(config)
-    # Then: the reviewed first three revisions form the single live head.
-    assert script.get_heads() == ["m80_org_capabilities_invitations"]
+    # Then: the core organization schema remains an ancestor of the single live head.
+    assert len(script.get_heads()) == 1
+    assert "m80_org_capabilities_invitations" in {
+        revision.revision for revision in script.walk_revisions()
+    }
 
 
 def test_application_metadata_creates_and_drops_all_organization_tables() -> None:

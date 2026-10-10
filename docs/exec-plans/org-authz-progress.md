@@ -236,7 +236,7 @@ real-participant U-05 study are future gates.
 ## P1 checklist
 
 - [x] B-01 — live m78–m80 models and immutable Alembic revisions.
-- [ ] B-02 — m81 scope, m82 default organization backfill, m83 constraints.
+- [x] B-02 — m81 scope, m82 default organization backfill, m83 constraints.
 - [x] B-03 — organization context and active organization API.
 - [ ] B-04 — organization membership, invitation, group, role and capability API.
 - [ ] B-05 — registration policies and invitation acceptance.
@@ -323,3 +323,53 @@ the tested immediate removal/suspension behavior.
 Evidence: ignored `output/org-authz/p0/b03-{unit-all,auth-regression-r2,
 postgres-api-r2,ruff-all,pyright-all}.log`. B-01 is committed as `941e9247`.
 P1 remains in progress; next tasks are B-02 scope/backfill and B-10 company context.
+
+## B-02 migration promotion (2026-10-11)
+
+The live linear Alembic chain now reaches `m83_org_scope_not_null`: m81 adds
+scope to exactly 20 organization tables and three tenant catalogs, m82 resolves
+private conversation owners and seeds the default company/organization, and
+m83 enforces scope and preserves conversations after agent deletion. Shared
+resource owners use RESTRICT; conversation agents use nullable SET NULL with
+name/activity snapshots. Legacy scope uniqueness is replaced by scoped indexes.
+
+Historical helpers live in the frozen `app/migrations/org_authz_v1` package.
+They reflect physical tables, use a frozen SQLite UUID manifest, and read only
+the three original migration environment settings. No helper imports current
+app models, Base metadata, runtime settings, or review drafts. The unchanged v2
+`_migration_m82` record contains original/expected values and transitive physical
+FK/checkpoint identities; payloads and ciphertext are excluded. Referenced
+natural keys are also captured so reparenting cannot evade rollback checks.
+Sorted PostgreSQL table locks cover verification through restoration.
+
+- Native PostgreSQL acceptance: four passed, including actual m80→m83→m80
+  twice, unresolved-owner transaction rollback, second-writer lock timeout, and
+  actual PostgresSaver setup/put/put_writes followed by rollback refusal.
+- All authorization PostgreSQL integration scenarios: 76 passed, 141 unit cases
+  deselected. Owned databases/schemas/FGA processes are absent after cleanup.
+- Live SQLite chain: two passed. Tests explicitly adapt PostgreSQL `now()` and
+  the legacy m40 partial indexes rather than claiming SQLite is production.
+- Prototype/promotion parity passed for DDL semantics and all v2 data/identity
+  fields, excluding four generated creation/grant/membership timestamps and
+  column ordering. Separate round-trip tests preserve original timestamps.
+- Worker-focused production helper suite: 25 passed. Whole-backend Ruff/Pyright
+  and changed-file format/type ratchets passed (31 files, zero type errors).
+  Ownership ratchet remains 173, additions zero. Helper modules are at most 233
+  nonblank/noncomment lines, with no function above three declared parameters.
+- Complete B-02 backend unit regression: 4,785 passed, three existing MCP warnings,
+  with the official isolated command runner and four pytest workers (190 seconds).
+  Independent B-10 draft tests were excluded from this B-02 gate. The first
+  manually prepared runner placed TMPDIR under the checkout, failing the existing
+  system-temp isolation assertion (4,784 passed, one failed). No source/test was
+  weakened; the official runner corrected the environment and the entire suite
+  passed. The owned temporary tree from the initial attempt was removed.
+- A strengthened native round-trip scenario additionally compared every column
+  and row of all original physical tables, including ciphertext and timestamps;
+  both full-history migration cycles passed. No legacy content was changed.
+
+Evidence: ignored `output/org-authz/p1/b02/` logs. Semantic legacy constraints
+survive downgrade; unnamed legacy constraints may acquire deterministic names.
+Original planning/prototype files were not modified. No shared database migration
+or app startup occurred. B-06/B-08 model/writer changes are required before
+deploying this schema: migration promotion alone does not make existing resource
+writers compatible with required scope or complete the archive lifecycle.
