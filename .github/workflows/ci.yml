@@ -36,6 +36,8 @@ jobs:
       # not in the default dev dependency-group.
       - run: uv sync --frozen --all-extras
       - run: uv run ruff check .
+      - name: Authorization ownership predicate ratchet
+        run: uv run python ../scripts/check_authz_predicates.py
       - name: Resolve changed-file base
         env:
           QUALITY_EVENT_NAME: "${{ github.event_name }}"

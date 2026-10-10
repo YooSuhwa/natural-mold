@@ -1,0 +1,562 @@
+[
+  {
+    "file": "agent_api/runtime_service.py",
+    "expression": "AgentApiThread.user_id == principal.user_id",
+    "count": 1
+  },
+  {
+    "file": "agent_api/runtime_service.py",
+    "expression": "AgentDeployment.user_id == principal.user_id",
+    "count": 1
+  },
+  {
+    "file": "agent_api/service.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "agent_api/service.py",
+    "expression": "AgentApiKey.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "agent_api/service.py",
+    "expression": "AgentDeployment.user_id == user_id",
+    "count": 5
+  },
+  {
+    "file": "agent_runtime/assistant/tools/helpers.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "agent_runtime/assistant/tools/read_tools.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "agent_runtime/assistant/tools/read_tools.py",
+    "expression": "AgentTrigger.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "agent_runtime/assistant/tools/read_tools.py",
+    "expression": "Skill.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "agent_runtime/assistant/tools/write_tools/agent_config.py",
+    "expression": "AgentTrigger.user_id == ctx.user_id",
+    "count": 1
+  },
+  {
+    "file": "agent_runtime/assistant/tools/write_tools/composition.py",
+    "expression": "Agent.user_id == ctx.user_id",
+    "count": 1
+  },
+  {
+    "file": "agent_runtime/assistant/tools/write_tools/composition.py",
+    "expression": "Skill.user_id == ctx.user_id",
+    "count": 1
+  },
+  {
+    "file": "agent_runtime/assistant/tools/write_tools/cron.py",
+    "expression": "AgentTrigger.user_id == ctx.user_id",
+    "count": 2
+  },
+  {
+    "file": "agent_runtime/assistant/tools/write_tools/tool_links.py",
+    "expression": "McpServer.user_id == ctx.user_id",
+    "count": 1
+  },
+  {
+    "file": "agent_runtime/assistant/tools/write_tools/tool_links.py",
+    "expression": "Tool.visible_to(ctx.user_id)",
+    "count": 1
+  },
+  {
+    "file": "agent_runtime/credential_resolution.py",
+    "expression": "Credential.user_id == subject_user_id",
+    "count": 1
+  },
+  {
+    "file": "credentials/service.py",
+    "expression": "Credential.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "marketplace/access.py",
+    "expression": "item.owner_user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "marketplace/agent_spec.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "marketplace/agent_spec.py",
+    "expression": "MarketplaceItem.owner_user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "marketplace/credential_requirements.py",
+    "expression": "SkillCredentialBinding.user_id == user.id",
+    "count": 3
+  },
+  {
+    "file": "marketplace/install/common.py",
+    "expression": "MarketplaceInstallation.user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "marketplace/mcp_server.py",
+    "expression": "MarketplaceItem.owner_user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "marketplace/origin_service.py",
+    "expression": "MarketplaceInstallation.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "marketplace/publish_service.py",
+    "expression": "MarketplaceItem.owner_user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "marketplace/service.py",
+    "expression": "MarketplaceInstallation.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "marketplace/service.py",
+    "expression": "MarketplaceItem.owner_user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "marketplace/service.py",
+    "expression": "MarketplaceItemACL.user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "mcp/apps_binding_store.py",
+    "expression": "ConversationRun.user_id == draft.user_id",
+    "count": 1
+  },
+  {
+    "file": "mcp/apps_binding_store.py",
+    "expression": "ConversationRun.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "mcp/apps_binding_store.py",
+    "expression": "McpAppInvocationBinding.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "mcp/apps_binding_store.py",
+    "expression": "McpServer.user_id == binding.credential_subject_user_id",
+    "count": 1
+  },
+  {
+    "file": "mcp/apps_binding_store.py",
+    "expression": "McpServer.user_id == owner_user_id",
+    "count": 1
+  },
+  {
+    "file": "mcp/auth.py",
+    "expression": "Credential.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "models/tool.py",
+    "expression": "def visible_to",
+    "count": 1
+  },
+  {
+    "file": "routers/agent_blueprints.py",
+    "expression": "AgentBlueprint.user_id == user.id",
+    "count": 2
+  },
+  {
+    "file": "routers/agent_runtime_api.py",
+    "expression": "AgentDeployment.user_id == principal.user_id",
+    "count": 1
+  },
+  {
+    "file": "routers/conversation_agent_protocol_consent.py",
+    "expression": "SkillBuilderSession.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "routers/feedback.py",
+    "expression": "MessageFeedback.user_id == user.id",
+    "count": 3
+  },
+  {
+    "file": "routers/health.py",
+    "expression": "McpServer.user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "routers/marketplace.py",
+    "expression": "MarketplaceInstallation.user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_blueprint_service.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_blueprint_service.py",
+    "expression": "McpServer.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_blueprint_service.py",
+    "expression": "Skill.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_blueprint_service.py",
+    "expression": "Tool.visible_to(user_id)",
+    "count": 1
+  },
+  {
+    "file": "services/agent_memory_settings.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_service.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 5
+  },
+  {
+    "file": "services/agent_service.py",
+    "expression": "McpServer.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_service.py",
+    "expression": "Skill.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "services/agent_service.py",
+    "expression": "Tool.visible_to(user_id)",
+    "count": 2
+  },
+  {
+    "file": "services/artifacts/library.py",
+    "expression": "ConversationArtifact.user_id == user_id",
+    "count": 6
+  },
+  {
+    "file": "services/artifacts/recorder.py",
+    "expression": "ConversationArtifact.user_id == context.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/audit_service.py",
+    "expression": "AuditEvent.owner_user_id == owner_user_id",
+    "count": 1
+  },
+  {
+    "file": "services/audit_service.py",
+    "expression": "AuditEvent.owner_user_id == viewer_user_id",
+    "count": 1
+  },
+  {
+    "file": "services/auth_service.py",
+    "expression": "RefreshToken.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/builder_service.py",
+    "expression": "BuilderSession.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "services/builder_service.py",
+    "expression": "McpServer.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/builder_service.py",
+    "expression": "Skill.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/builder_service.py",
+    "expression": "Tool.visible_to(user_id)",
+    "count": 1
+  },
+  {
+    "file": "services/chat/attachments.py",
+    "expression": "MessageAttachment.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/chat/conversations.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 4
+  },
+  {
+    "file": "services/chat/messages.py",
+    "expression": "MessageFeedback.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/chat/runtime_context.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "services/chat_resource_context_integration.py",
+    "expression": "ConversationRunInput.user_id == scope.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/chat_resource_context_sources.py",
+    "expression": "Agent.user_id == scope.user_id",
+    "count": 2
+  },
+  {
+    "file": "services/chat_resource_context_sources.py",
+    "expression": "ConversationArtifact.user_id == scope.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/chat_resource_context_sources.py",
+    "expression": "MessageAttachment.user_id == scope.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/chat_resource_context_sources.py",
+    "expression": "Skill.user_id == scope.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/conversation_run_message_links.py",
+    "expression": "ConversationRun.user_id == query.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/conversation_run_queue_mutations.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/conversation_run_queue_mutations.py",
+    "expression": "ConversationRunInput.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "services/conversation_run_queue_promotion.py",
+    "expression": "ConversationRunInput.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/conversation_run_queue_service.py",
+    "expression": "ConversationRun.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/conversation_run_queue_service.py",
+    "expression": "ConversationRunInput.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/conversation_run_service.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/conversation_run_service.py",
+    "expression": "ConversationRun.user_id == user_id",
+    "count": 4
+  },
+  {
+    "file": "services/conversation_stream_service.py",
+    "expression": "SkillBuilderSession.user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "services/mcp_service.py",
+    "expression": "Credential.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/mcp_service.py",
+    "expression": "McpServer.user_id == user_id",
+    "count": 4
+  },
+  {
+    "file": "services/memory_service.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "services/memory_service.py",
+    "expression": "MemoryProposal.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/memory_service.py",
+    "expression": "MemoryRecord.user_id == user_id",
+    "count": 3
+  },
+  {
+    "file": "services/memory_service.py",
+    "expression": "UserMemorySettings.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "services/skill_builder_finalize.py",
+    "expression": "SkillBuilderSession.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/skill_builder_hidden_agent.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/skill_builder_service.py",
+    "expression": "Skill.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/skill_builder_service.py",
+    "expression": "SkillBuilderSession.user_id == user_id",
+    "count": 3
+  },
+  {
+    "file": "services/skill_builder_slug.py",
+    "expression": "Skill.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/skill_draft_workspace.py",
+    "expression": "MessageAttachment.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/skill_evaluation_service.py",
+    "expression": "SkillEvaluationRun.user_id == user_id",
+    "count": 4
+  },
+  {
+    "file": "services/skill_evaluation_service.py",
+    "expression": "SkillEvaluationSet.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "services/skill_evaluation_set_preparation.py",
+    "expression": "SkillEvaluationSet.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/skill_feedback_service.py",
+    "expression": "SkillEvaluationCaseFeedback.user_id == user_id",
+    "count": 3
+  },
+  {
+    "file": "services/skill_feedback_service.py",
+    "expression": "SkillFeedback.user_id == user_id",
+    "count": 3
+  },
+  {
+    "file": "services/skill_response_enrichment.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/skill_response_enrichment.py",
+    "expression": "SkillCredentialBinding.user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "services/skill_response_enrichment.py",
+    "expression": "SkillEvaluationRun.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/skill_response_enrichment.py",
+    "expression": "SkillEvaluationSet.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/skill_revision_service.py",
+    "expression": "SkillRevision.user_id == user_id",
+    "count": 2
+  },
+  {
+    "file": "services/tool_service.py",
+    "expression": "McpServer.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/tool_service.py",
+    "expression": "Skill.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/tool_service.py",
+    "expression": "Tool.visible_to(user_id)",
+    "count": 3
+  },
+  {
+    "file": "services/trigger_service.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/trigger_service.py",
+    "expression": "AgentTrigger.user_id == user_id",
+    "count": 3
+  },
+  {
+    "file": "services/trigger_service.py",
+    "expression": "AgentTriggerRun.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/usage_aggregate.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 3
+  },
+  {
+    "file": "services/usage_aggregate.py",
+    "expression": "DailySpendUser.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/usage_service.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/usage_service.py",
+    "expression": "DailySpendUser.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/user_service.py",
+    "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/user_service.py",
+    "expression": "RefreshToken.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "skills/service.py",
+    "expression": "Skill.user_id == user_id",
+    "count": 2
+  }
+]
