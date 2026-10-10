@@ -10,11 +10,27 @@ import pytest
 from sqlalchemy import select
 
 from app.authz import scoping
-from tests.authz.scoping_fixture import RequiredScopedResource, ScopedChild, ScopedResource
+from tests.authz.scoping_fixture import (
+    OwnedNullableScopedResource,
+    RequiredScopedResource,
+    ScopedChild,
+    ScopedResource,
+)
 from tests.authz.scoping_fixture import scope_fixture as scope_fixture
 
 if TYPE_CHECKING:
     from tests.authz.scoping_fixture import ScopeFixture
+
+
+def test_required_owner_does_not_expose_platform_row_with_nullable_scope(
+    scope_fixture: ScopeFixture,
+) -> None:
+    # Given: legacy Skill/MCP shape has required ownership and nullable platform scope.
+    statement = select(OwnedNullableScopedResource.id)
+    # When: the same owner's private lookup runs inside their organization.
+    scoped = scoping.private_scoped(statement, OwnedNullableScopedResource, scope_fixture.context)
+    # Then: the matching owner on a platform row cannot widen organization visibility.
+    assert scope_fixture.connection.scalars(scoped).all() == [1]
 
 
 def test_required_scope_columns_keep_typed_private_query(scope_fixture: ScopeFixture) -> None:

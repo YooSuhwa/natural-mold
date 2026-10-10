@@ -756,3 +756,15 @@ predicate ratchet remains **173**, additions **0**.
 No application startup, shared/main DB migration, runtime-data mutation,
 deployment or push was performed. This closes development-account preparation,
 not B-06 private endpoint/service/writer scoping or full P1 acceptance.
+
+### B-06 helper contract for existing Skill/MCP owners
+
+Fresh source verification found that actual m81–m83 retain required `user_id`
+on Skill/MCP rows while their organization/company columns are nullable for
+platform resources. The scoping helper now accepts this mixed column shape
+explicitly, without changing frozen migrations or owner nullability. A typed
+failing case first proved the missing shape; **8** real SQLite helper cases now
+pass (0.27s). The new case also verifies that matching the owner of a platform
+row does not expose it through a private organization query. These type-only
+adapter additions do not change the SQL predicate or claim resource endpoint
+cutover.

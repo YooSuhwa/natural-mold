@@ -41,6 +41,15 @@ class RequiredScopedResource(ScopeBase):
     user_id: Mapped[UUID] = mapped_column()
 
 
+class OwnedNullableScopedResource(ScopeBase):
+    __tablename__ = "owned_nullable_scoped_resources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[UUID | None] = mapped_column()
+    org_id: Mapped[UUID | None] = mapped_column()
+    user_id: Mapped[UUID] = mapped_column()
+
+
 @dataclass(frozen=True, slots=True)
 class ScopeFixture:
     connection: Connection
@@ -98,6 +107,18 @@ def scope_fixture() -> Iterator[ScopeFixture]:
                         "tenant_id": first.tenant_id,
                         "user_id": first.user_id,
                     }
+                ],
+            )
+            connection.execute(
+                insert(OwnedNullableScopedResource),
+                [
+                    {
+                        "id": 1,
+                        "org_id": first.org_id,
+                        "tenant_id": first.tenant_id,
+                        "user_id": first.user_id,
+                    },
+                    {"id": 2, "org_id": None, "tenant_id": None, "user_id": first.user_id},
                 ],
             )
             yield ScopeFixture(connection=connection, context=first, second=second)

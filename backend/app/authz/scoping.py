@@ -21,6 +21,12 @@ class PrivateScopedModel(OrgScopedModel, Protocol):
     user_id: Mapped[UUID | None]
 
 
+class OwnedOrgScopedModel(OrgScopedModel, Protocol):
+    """Skill/MCP retain required owners even on nullable platform-scope rows."""
+
+    user_id: Mapped[UUID]
+
+
 class RequiredOrgScopedModel(Protocol):
     org_id: Mapped[UUID]
     tenant_id: Mapped[UUID]
@@ -38,9 +44,13 @@ class RequiredPrivateParentModel(RequiredPrivateScopedModel, Protocol):
     __table__: ClassVar[FromClause]
 
 
+class OwnedOrgParentModel(OwnedOrgScopedModel, Protocol):
+    __table__: ClassVar[FromClause]
+
+
 @dataclass(frozen=True, slots=True)
 class PrivateParent:
-    model: type[PrivateParentModel] | type[RequiredPrivateParentModel]
+    model: type[PrivateParentModel] | type[RequiredPrivateParentModel] | type[OwnedOrgParentModel]
     on: ColumnElement[bool]
 
 
@@ -55,7 +65,7 @@ def org_scoped[*Row](
 
 def private_scoped[*Row](
     stmt: Select[tuple[*Row]],
-    model: type[PrivateScopedModel] | type[RequiredPrivateScopedModel],
+    model: type[PrivateScopedModel] | type[RequiredPrivateScopedModel] | type[OwnedOrgScopedModel],
     ctx: OrgContext,
 ) -> Select[tuple[*Row]]:
     """Private rows require the caller AND current org, including for operators."""
