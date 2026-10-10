@@ -7,9 +7,8 @@ from alembic.operations import Operations
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.database import Base
 from schema_drafts.org_authz.chain import DRAFTS, Draft
-from schema_drafts.org_authz.schema import schema_metadata
+from schema_drafts.org_authz.schema import baseline_metadata, schema_metadata
 from tests.authz.backfill_fixture import seed
 from tests.authz.marketplace_migration_fixture import seed_marketplace
 
@@ -39,7 +38,7 @@ async def test_full_reversible_draft_chain_and_deferred_cleanup_on_sqlite() -> N
     engine = create_async_engine("sqlite+aiosqlite://")
     try:
         async with engine.begin() as connection:
-            await connection.run_sync(Base.metadata.create_all)
+            await connection.run_sync(baseline_metadata().create_all)
             for draft in DRAFTS[:4]:
                 await connection.run_sync(execute_draft, draft)
             expected = await connection.run_sync(seed, schema_metadata(scope_columns=True))
@@ -110,7 +109,7 @@ async def test_reversible_drafts_return_to_original_schema_without_losing_conten
     engine = create_async_engine("sqlite+aiosqlite://")
     try:
         async with engine.begin() as connection:
-            await connection.run_sync(Base.metadata.create_all)
+            await connection.run_sync(baseline_metadata().create_all)
             for draft in DRAFTS[:4]:
                 await connection.run_sync(execute_draft, draft)
             await connection.run_sync(seed, schema_metadata(scope_columns=True))
@@ -119,10 +118,12 @@ async def test_reversible_drafts_return_to_original_schema_without_losing_conten
             for draft in reversed(DRAFTS[:12]):
                 await connection.run_sync(execute_draft, draft, downgrade=True)
             tables = await connection.run_sync(lambda conn: sa.inspect(conn).get_table_names())
-            assert set(tables) == set(Base.metadata.tables)
+            assert set(tables) == set(baseline_metadata().tables)
             assert (
                 await connection.scalar(
-                    sa.select(sa.func.count()).select_from(Base.metadata.tables["conversations"])
+                    sa.select(sa.func.count()).select_from(
+                        baseline_metadata().tables["conversations"]
+                    )
                 )
                 == 4
             )

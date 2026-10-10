@@ -5,11 +5,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy import MetaData, create_engine
 
-from app.database import Base
 from schema_drafts.org_authz.chain import DRAFTS
 from schema_drafts.org_authz.event_contract import missing_sources
 from schema_drafts.org_authz.plan_source import source_new_table_codes, source_rows
-from schema_drafts.org_authz.schema import NEW_TABLES
+from schema_drafts.org_authz.schema import NEW_TABLES, baseline_metadata
 from schema_drafts.org_authz.schema_contract import schema_contract, table_inventory
 from tests.authz.test_full_draft_chain import execute_draft
 
@@ -22,7 +21,7 @@ def migrated_metadata() -> MetaData:
     engine = create_engine("sqlite://")
     try:
         with engine.begin() as connection:
-            Base.metadata.create_all(connection)
+            baseline_metadata().create_all(connection)
             for draft in DRAFTS[:12]:
                 execute_draft(connection, draft)
             metadata = MetaData()
@@ -92,7 +91,7 @@ def test_deferred_cleanup_preserves_all_event_sources() -> None:
     engine = create_engine("sqlite://")
     try:
         with engine.begin() as connection:
-            Base.metadata.create_all(connection)
+            baseline_metadata().create_all(connection)
             # When: all drafts, including operationally gated cleanup, run locally.
             for draft in DRAFTS:
                 execute_draft(connection, draft, disposable=True)

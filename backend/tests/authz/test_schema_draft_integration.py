@@ -8,7 +8,6 @@ from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.database import Base
 from schema_drafts.org_authz import m78_tenants_organizations as m78
 from schema_drafts.org_authz import m79_groups as m79
 from schema_drafts.org_authz import m80_org_capabilities_invitations as m80
@@ -16,7 +15,7 @@ from schema_drafts.org_authz import m81_org_scope_columns as m81
 from schema_drafts.org_authz import m82_default_org_backfill as m82
 from schema_drafts.org_authz import m83_org_scope_not_null as m83
 from schema_drafts.org_authz import m84_authz_core as m84
-from schema_drafts.org_authz.schema import schema_metadata
+from schema_drafts.org_authz.schema import baseline_metadata, schema_metadata
 from tests.authz.backfill_fixture import seed
 from tests.authz.test_schema_draft_migrations import execute
 
@@ -30,7 +29,7 @@ async def test_postgres_initial_drafts_and_cross_tenant_composite_fk() -> None:
         async with engine.begin() as conn:
             await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
             await conn.execute(text(f'SET LOCAL search_path TO "{schema}"'))
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(baseline_metadata().create_all)
             for operation in (m78.upgrade, m79.upgrade, m80.upgrade, m81.upgrade):
                 await conn.run_sync(execute, operation)
             metadata = schema_metadata(scope_columns=True)

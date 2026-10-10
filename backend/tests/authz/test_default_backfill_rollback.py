@@ -10,14 +10,13 @@ import sqlalchemy as sa
 from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
-from app.database import Base
 from schema_drafts.org_authz import m78_tenants_organizations as m78
 from schema_drafts.org_authz import m79_groups as m79
 from schema_drafts.org_authz import m80_org_capabilities_invitations as m80
 from schema_drafts.org_authz import m81_org_scope_columns as m81
 from schema_drafts.org_authz import m82_default_org_backfill as m82
 from schema_drafts.org_authz.default_org_backfill import ORG, TENANT
-from schema_drafts.org_authz.schema import schema_metadata
+from schema_drafts.org_authz.schema import baseline_metadata, schema_metadata
 from tests.authz.backfill_fixture import seed
 from tests.authz.test_schema_draft_migrations import execute
 
@@ -27,7 +26,7 @@ async def prepared_connection() -> AsyncIterator[AsyncConnection]:
     engine = create_async_engine("sqlite+aiosqlite://")
     try:
         async with engine.begin() as connection:
-            await connection.run_sync(Base.metadata.create_all)
+            await connection.run_sync(baseline_metadata().create_all)
             for operation in (m78.upgrade, m79.upgrade, m80.upgrade, m81.upgrade):
                 await connection.run_sync(execute, operation)
             await connection.run_sync(seed, schema_metadata(scope_columns=True))

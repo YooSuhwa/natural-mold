@@ -50,6 +50,16 @@ from app.models.message_attachment import MessageAttachment
 from app.models.message_event import MessageEvent, MessageEventChunk
 from app.models.message_feedback import MessageFeedback
 from app.models.model import Model
+from app.models.organization import (
+    Organization,
+    OrganizationMember,
+    OrganizationRoleGrant,
+    Tenant,
+    TenantMember,
+    TenantRoleGrant,
+)
+from app.models.organization_group import Group, GroupMember, OrgCapabilityGrant, OrgInvitation
+from app.models.organization_identity import SsoConnection, TenantDomain, UserIdentity
 from app.models.refresh_token import RefreshToken
 from app.models.share_link import ShareLink
 from app.models.skill import AgentSkillLink, Skill
@@ -69,6 +79,19 @@ from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
 
 __all__ = [
+    "Organization",
+    "OrganizationMember",
+    "OrganizationRoleGrant",
+    "Tenant",
+    "TenantMember",
+    "TenantRoleGrant",
+    "Group",
+    "GroupMember",
+    "OrgCapabilityGrant",
+    "OrgInvitation",
+    "SsoConnection",
+    "TenantDomain",
+    "UserIdentity",
     "Agent",
     "AgentApiKey",
     "AgentApiKeyDeployment",

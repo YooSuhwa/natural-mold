@@ -10,7 +10,6 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
 
-from app.database import Base
 from schema_drafts.org_authz import backfill_provenance as provenance
 from schema_drafts.org_authz import m78_tenants_organizations as m78
 from schema_drafts.org_authz import m79_groups as m79
@@ -18,7 +17,7 @@ from schema_drafts.org_authz import m80_org_capabilities_invitations as m80
 from schema_drafts.org_authz import m81_org_scope_columns as m81
 from schema_drafts.org_authz import m82_default_org_backfill as m82
 from schema_drafts.org_authz.backfill_snapshot import BackfillSnapshot
-from schema_drafts.org_authz.schema import schema_metadata
+from schema_drafts.org_authz.schema import baseline_metadata, schema_metadata
 from tests.authz.backfill_fixture import seed
 from tests.authz.test_schema_draft_migrations import execute
 
@@ -56,7 +55,7 @@ def test_postgres_writer_cannot_commit_between_verification_and_restoration(
         with engine.begin() as connection:
             connection.execute(sa.text(f'CREATE SCHEMA "{schema}"'))
             connection.execute(sa.text(f'SET LOCAL search_path TO "{schema}"'))
-            Base.metadata.create_all(connection)
+            baseline_metadata().create_all(connection)
             for operation in (m78.upgrade, m79.upgrade, m80.upgrade, m81.upgrade):
                 execute(connection, operation)
             seed(connection, metadata)

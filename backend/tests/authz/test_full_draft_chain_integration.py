@@ -52,7 +52,7 @@ async def test_actual_m77_database_accepts_all_drafts_and_fails_closed_under_rls
         config.attributes["database_url"] = target.set(
             drivername="postgresql+asyncpg"
         ).render_as_string(hide_password=False)
-        await run_sync(command.upgrade, config, "head")
+        await run_sync(command.upgrade, config, "m77_side_chat_link")
         async with engine.begin() as connection:
             for draft in DRAFTS[:4]:
                 await connection.run_sync(execute_draft, draft)

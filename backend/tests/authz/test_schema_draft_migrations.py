@@ -8,11 +8,11 @@ from sqlalchemy import inspect
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.database import Base
 from schema_drafts.org_authz import m78_tenants_organizations as m78
 from schema_drafts.org_authz import m79_groups as m79
 from schema_drafts.org_authz import m80_org_capabilities_invitations as m80
 from schema_drafts.org_authz import m81_org_scope_columns as m81
+from schema_drafts.org_authz.schema import baseline_metadata
 
 
 def execute(connection: Connection, operation: Callable[[], None]) -> None:
@@ -25,7 +25,7 @@ async def test_initial_drafts_upgrade_downgrade_and_repeat_on_sqlite() -> None:
     engine = create_async_engine("sqlite+aiosqlite://")
     try:
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(baseline_metadata().create_all)
             for _ in range(2):
                 # When: staged Alembic draft upgrades run in their declared order.
                 for operation in (m78.upgrade, m79.upgrade, m80.upgrade, m81.upgrade):
@@ -44,6 +44,6 @@ async def test_initial_drafts_upgrade_downgrade_and_repeat_on_sqlite() -> None:
                 tables = await conn.run_sync(
                     lambda connection: inspect(connection).get_table_names()
                 )
-                assert set(tables) == set(Base.metadata.tables)
+                assert set(tables) == set(baseline_metadata().tables)
     finally:
         await engine.dispose()

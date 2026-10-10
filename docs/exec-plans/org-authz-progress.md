@@ -1,6 +1,6 @@
 # Organization and authorization execution record
 
-Status: P0 complete; P1 ready — full implementation goal active
+Status: P0 complete; P1 in progress — full implementation goal active
 Started: 2026-10-10 (Asia/Seoul)
 Branch: `feature/org-authz`
 Baseline: `9657ca60552e8f5e8c45ce6a8bd176c500c8992a`
@@ -225,10 +225,57 @@ verdicts are recorded in `reviews/ledger.jsonl`. Broad gate artifacts are
 `org-authz-p0-schema-r3.json`; predecessor frontend/smoke receipts are linked by
 unchanged tree identity, not claimed as newly executed tests.
 
-P1 may now begin with B-01. Live app metadata/Alembic remains m77; authorization
+At P0 closure, live app metadata/Alembic remained m77; authorization
 defaults remain legacy and RLS disabled. No main/shared database was migrated,
 no deployment or PR was created, and full implementation/operational acceptance
 remains unfinished. P0's CLI uses named query flags; C-07's complete operational
 CLI must finish the plan's subject-aware diagnostic interface alongside rebuild
 and reconciliation. The 14-day shadow observation, two-week stabilization and
 real-participant U-05 study are future gates.
+
+## P1 checklist
+
+- [x] B-01 — live m78–m80 models and immutable Alembic revisions.
+- [ ] B-02 — m81 scope, m82 default organization backfill, m83 constraints.
+- [ ] B-03 — organization context and active organization API.
+- [ ] B-04 — organization membership, invitation, group, role and capability API.
+- [ ] B-05 — registration policies and invitation acceptance.
+- [ ] B-06 — organization filters for private data.
+- [ ] B-07 — organization switching and administration UI.
+- [ ] B-08 — ownership constraints and agent archive lifecycle.
+- [ ] B-09 — frontend state reset and transport inspection.
+- [ ] B-10 — company context, suspension and deployment modes.
+- [ ] B-11 — company administration API.
+- [ ] B-12 — SaaS platform company administration API.
+- [ ] B-13 — tenant/platform sessions and derived task context.
+- [ ] B-15 — cookie, refresh revocation and token claim contracts.
+- [ ] B-16 — company data keys and ciphertext version 2.
+
+## B-01 implementation (2026-10-10)
+
+The application now registers 13 organization/enterprise identity models (76
+active tables) and the optional `users.last_active_org_id` pointer. The live
+single Alembic head is `m80_org_capabilities_invitations`. Migration definitions
+contain immutable DDL; they do not import review drafts or mutable app models.
+The pointer uses `use_alter=True` to break the user/organization DDL cycle.
+
+P0 draft migration tests retain their original 63-table m77 fixture and a frozen
+user definition. Physical migration tests explicitly start at m77 instead of a
+moving `head`, so live promotion cannot skip or double-create reviewed drafts.
+The fixed m89 source contract still matches; original planning files are untouched.
+
+- Full backend unit suite: 4,737 passed, three existing MCP deprecation warnings.
+- Additional live SQLite upgrade/downgrade repetition: focused model suite 4 passed.
+- All authz PostgreSQL integration tests: 71 passed, 93 unit tests deselected.
+  Includes live m77→m80→m77 repetition, exact columns/FK actions/PK/unique/check
+  names, mapped model operations, cross-company group membership rejection,
+  deleted active organization pointer clearing, global identity preservation and
+  plaintext LDAP rejection. Each test owns and removes its database or schema.
+- Authz focused unit suite: 93 passed before the additional SQLite scenario.
+- Whole-backend Ruff passed. Whole-tree format check reports 114 pre-existing
+  files; the changed-file format ratchet passed for all 23 changed Python files.
+  Changed-file type ratchet passed with zero errors/warnings for the same files.
+
+Logs: ignored `output/org-authz/p0/b01-{unit-all,all-postgres,focused-r2,ruff,format}.log`.
+Shared/main databases were not migrated; development server startup against an
+unmigrated shared database is not an acceptance claim. Next work is B-02/B-03/B-10.

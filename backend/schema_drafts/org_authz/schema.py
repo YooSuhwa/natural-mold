@@ -16,6 +16,7 @@ from schema_drafts.org_authz import (
 from schema_drafts.org_authz import sso as _sso  # noqa: F401 - declare draft tables
 from schema_drafts.org_authz.base import DraftBase
 from schema_drafts.org_authz.legacy_contract import apply_later_columns, apply_m81
+from schema_drafts.org_authz.m77_user import metadata as m77_user_metadata
 
 NEW_TABLES = frozenset(
     {
@@ -45,10 +46,20 @@ NEW_TABLES = frozenset(
 )
 
 
-def schema_metadata(*, scope_columns: bool = False, later_columns: bool = False) -> MetaData:
-    """Copy baseline and new table definitions for portable migration tests."""
-    metadata = MetaData(naming_convention=DraftBase.metadata.naming_convention)
+def baseline_metadata() -> MetaData:
+    """Retain m77 fixtures when reviewed organization models become live."""
+    metadata = MetaData()
     for table in Base.metadata.tables.values():
+        if table.name not in NEW_TABLES and table.name != "users":
+            table.to_metadata(metadata)
+    m77_user_metadata.tables["users"].to_metadata(metadata)
+    return metadata
+
+
+def schema_metadata(*, scope_columns: bool = False, later_columns: bool = False) -> MetaData:
+    """Copy the frozen baseline and reviewed draft definitions."""
+    metadata = MetaData(naming_convention=DraftBase.metadata.naming_convention)
+    for table in baseline_metadata().tables.values():
         table.to_metadata(metadata)
     for table in DraftBase.metadata.tables.values():
         table.to_metadata(metadata)

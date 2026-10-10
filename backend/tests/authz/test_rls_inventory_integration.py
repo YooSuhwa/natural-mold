@@ -48,7 +48,7 @@ def rls_lab() -> Iterator[RlsLab]:
         config.attributes["database_url"] = target.set(
             drivername="postgresql+asyncpg"
         ).render_as_string(hide_password=False)
-        command.upgrade(config, "head")
+        command.upgrade(config, "m77_side_chat_link")
         # Actual saver setup owns four public tables outside the Alembic chain.
         with PostgresSaver.from_conn_string(
             target.set(drivername="postgresql").render_as_string(hide_password=False)
