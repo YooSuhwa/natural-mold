@@ -27,6 +27,14 @@ def include_app_routers(app: FastAPI) -> None:
         me_orgs,
         memory,
         models,
+        org_assignments,
+        org_catalog,
+        org_group_members,
+        org_groups,
+        org_invitations,
+        org_members,
+        org_search,
+        orgs,
         shares,
         skill_builder,
         skill_builder_trigger,
@@ -66,6 +74,14 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(mcp.catalog_router)
     app.include_router(mcp_apps.router)
     app.include_router(models.router)
+    app.include_router(orgs.router)
+    app.include_router(org_catalog.router)
+    app.include_router(org_search.router)
+    app.include_router(org_members.router)
+    app.include_router(org_invitations.router)
+    app.include_router(org_groups.router)
+    app.include_router(org_group_members.router)
+    app.include_router(org_assignments.router)
     app.include_router(shares.router)
     app.include_router(templates.router)
     app.include_router(skill_builder.router)

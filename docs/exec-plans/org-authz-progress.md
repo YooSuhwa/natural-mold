@@ -238,7 +238,7 @@ real-participant U-05 study are future gates.
 - [x] B-01 — live m78–m80 models and immutable Alembic revisions.
 - [x] B-02 — m81 scope, m82 default organization backfill, m83 constraints.
 - [x] B-03 — organization context and active organization API.
-- [ ] B-04 — organization membership, invitation, group, role and capability API.
+- [x] B-04 — organization control APIs and focused/native/full backend gates; runtime fanout remains E-03.
 - [ ] B-05 — registration policies and invitation acceptance.
 - [ ] B-06 — organization filters for private data.
 - [ ] B-07 — organization switching and administration UI.
@@ -420,3 +420,124 @@ Evidence: ignored `output/org-authz/p1/b10-*.log`. Current live Alembic remains
 m83; no shared database migration, deployment or UI acceptance is claimed.
 Next: B-04 organization administration, B-06 private scope and B-11/B-12 company
 administration. The full P0–P8 goal remains active.
+
+## B-04 working checkpoint (2026-10-11, not complete or committed)
+
+Current uncommitted control API work includes organization metadata/policy,
+manual group CRUD and group rosters, role/capability deltas, membership
+add/suspend/remove/rejoin, and invitation create/list/revoke. Router/service
+permission checks use fresh DB memberships and scoped roles; operator flags do
+not bypass the company boundary. Mutations use the locked organization timestamp
+and increment its epoch. Last effective admin protection covers direct and group
+admins and rolls back rejected changes with a savepoint. Member removal preserves
+the global account/history, requires resource handoff first, clears scoped
+membership grants, and stops scoped triggers/API keys. Suspension trigger handling
+still needs finishing; resource revocation/outbox integration remains C-04/E-02.
+
+Invites use a domain-separated MAC over a random invitation UUID and the resolved
+installation signing secret. Authorized idempotent creation can reproduce the
+link while only SHA-256 is stored. List responses exclude both token and hash.
+After secret rotation, existing token hashes remain usable for B-05 acceptance,
+but re-copy returns no substitute token when its hash differs. This is an
+implementation choice supporting hash-only storage plus idempotent retry; no
+email was sent. Acceptance and registration policies remain B-05.
+
+Audit names now follow section 14.1, with constants in `authz/audit_actions.py`.
+Role/capability deltas record grant and revoke events separately; metadata and
+policy edits use separate events. Scope propagation to actual audit columns is
+still H-03/B-13. The new-route snapshot automatically discovers additions from
+the frozen legacy identities and includes all referenced schemas; updates remain
+reviewed source changes rather than silent acceptance of API drift.
+
+Current evidence: 25 focused control/API/contract cases passed; whole-backend
+Ruff/Pyright passed; ownership ratchet remains 173, additions zero. One native
+m83 scenario passed with real JWT/CSRF, concurrent edits (one 200/one 409), scoped
+group/role/capability operations, and owned-resource offboarding refusal followed
+by removal after handoff/deletion. Logs are `output/org-authz/p1/b04-*.log`.
+These are focused API gates; no B-04 full-regression or UI closure is claimed.
+
+Before B-04 closure, finish principal search (current-org equality, two-character
+query, 20 results, 30/user/minute, email privacy), catalog policy API and impact
+handoff to E-03, suspension/background handling, invitation expiry/revocation
+edge cases, additional scope/concurrency tests, OpenAPI/type/format checks, and
+the appropriate regression selection. Replace interim physical m81 scope-column
+projections in member-exit queries when B-06 promotes ORM scope fields. No B-04
+commit, shared database migration, deployment or goal completion is claimed.
+
+### B-04 search/suspension follow-up (2026-10-11)
+
+Principal search now enforces current-org equality, stripped two-character
+queries, whitelisted comma-separated types and a combined 20-result ceiling.
+Only active users/company/org members are searched. Member email matching is
+exact and its response email is hidden; member managers can match/disclose email.
+Group results count active memberships. LIKE wildcard characters are escaped.
+The live SlowAPI endpoint uses `30/minute` keyed by the authenticated DB user.
+Four HTTP cases passed, including 30 successes/31st rejection and a second user
+on the same browser IP succeeding. The new schema is included in the snapshot.
+
+Org member suspension now pauses scoped triggers without revoking API keys or
+refresh tokens. A new native red case observed an active trigger after suspension;
+the shared pause helper corrected it. The expanded actual-m83/JWT/CSRF scenario
+passed (4.91s), including resume, owned-resource removal refusal and account
+preservation. API-key revocation remains permanent only for member removal.
+
+Current focused control/contract selection: 29 passed. Whole-backend Ruff and
+Pyright passed; ownership ratchet remains 173, additions zero. Logs:
+`b04-principal-search-rate.log`, `b04-suspension-trigger-{red,green}.log`,
+`b04-core-search-suspend.log`, `b04-{ruff,pyright}-search-suspend.log` under the
+ignored P1 output directory. B-04 remains uncommitted and incomplete: catalog
+policy API/impact handoff, invite edge cases, wider scope/concurrency evidence,
+regression closure and later C-04/E-02 effects still remain. Next work must retain
+the full P0–P8 objective; these focused gates do not close the whole feature.
+
+### B-04 API implementation closure (2026-10-11)
+
+The organization control API surface now includes catalog policy GET/PUT, in
+addition to the metadata, directory, membership, invitation, role/capability and
+principal-search routes described above. Catalog overrides are stored in
+`organizations.settings.catalog_policy` as typed `{items: [{type, id, enabled}]}`
+records. Company policy uses the same format in `tenants.settings.catalog_policy`.
+Omitted items inherit enabled status; effective availability is the intersection
+of platform visibility, company and organization policy. PUT replaces this
+organization's overrides, preserves unrelated settings, checks the locked ETag,
+increments the authorization epoch and commits `org.catalog_policy_update` in
+the same transaction. Inaccessible/missing/non-system items share the same 404.
+Company-disabled or platform-hidden items cannot be explicitly enabled.
+
+Inventory contains only platform system tools/skills/MCP and platform/current-
+company models. The model company filter uses the actual m81 physical column;
+B-08 must replace this interim projection with its promoted ORM mapping.
+Catalog read/write locks the company row as well as the already locked org row,
+so concurrent company policy mutation cannot validate against a stale policy.
+
+**E-03 integration contract remains open:** consume the stored policy, add the
+impact preview (affected agents and required connections), transactionally
+write/revoke `system_fanout` grants through C-04, invalidate connection summaries,
+and enforce the effective policy in candidate lists and runtime/model resolution.
+This API storage gate does not establish `can_use=false` or runtime exclusion.
+Company policy editing is B-11; invitation acceptance/registration is B-05.
+Membership removal still needs C-04/E-02 resource-grant/outbox/retention effects.
+Audit tenant/org column propagation remains H-03/B-13. The full goal stays active.
+
+Evidence under `output/org-authz/p1/`:
+
+- `b04-focused-catalog-invites.log`: **38 passed** including catalog boundaries,
+  expiry/accepted/revoked invite retries, secret rotation without substituting a
+  mismatched token, repeat-revocation timestamp preservation and principal rates.
+- `b04-native-control-current.log`: **3 passed, 11.83s** on owned, fully migrated
+  PostgreSQL databases. Real JWT/CSRF HTTP verifies stale edits, member suspension,
+  owned-resource exit refusal, company model isolation, atomic catalog/audit writes
+  and concurrent invitation retries (one 201, one 200, one row/token). A separate
+  direct-service database scenario verifies that suspension pauses only the
+  selected org, preserves both API keys, and removal revokes only the selected
+  org's key while resources/entry points in another org survive. Each lab database
+  was removed in its context-manager cleanup.
+- `b04-full-backend.log`: **4,842 passed, 3 existing warnings, 233.72s** through
+  the official isolated runner; child exit 0 and cleanup `removed`.
+- Whole-backend Ruff/Pyright pass, changed Python type/format gates select 56
+  files, and the ownership ratchet remains **173, additions 0**. The new-route
+  OpenAPI snapshot includes the catalog surface and reference closure.
+
+There is no frontend/browser acceptance, shared database migration, deployment,
+PR or full P1/P0–P8 completion claim. Continue with B-06 private ORM/query/writer
+scoping and the remaining company/session/crypto tasks before closing P1.

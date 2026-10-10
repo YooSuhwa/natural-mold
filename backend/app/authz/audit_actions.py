@@ -1,0 +1,22 @@
+"""Audit action names from the accepted plan, section 14.1."""
+
+from typing import Final
+
+ORG_UPDATE: Final = "org.update"
+ORG_POLICY_UPDATE: Final = "org.policy_update"
+ORG_CATALOG_POLICY_UPDATE: Final = "org.catalog_policy_update"
+ORG_MEMBER_ADD: Final = "org.member_add"
+ORG_MEMBER_REMOVE: Final = "org.member_remove"
+ORG_MEMBER_SUSPEND: Final = "org.member_suspend"
+ORG_ROLE_GRANT: Final = "org.role_grant"
+ORG_ROLE_REVOKE: Final = "org.role_revoke"
+ORG_CAPABILITY_GRANT: Final = "org.capability_grant"
+ORG_CAPABILITY_REVOKE: Final = "org.capability_revoke"
+ORG_INVITATION_CREATE: Final = "org.invitation_create"
+ORG_INVITATION_ACCEPT: Final = "org.invitation_accept"
+ORG_INVITATION_REVOKE: Final = "org.invitation_revoke"
+GROUP_CREATE: Final = "group.create"
+GROUP_UPDATE: Final = "group.update"
+GROUP_DELETE: Final = "group.delete"
+GROUP_MEMBER_ADD: Final = "group.member_add"
+GROUP_MEMBER_REMOVE: Final = "group.member_remove"

@@ -12,6 +12,7 @@ leak does not expose usable tokens.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 import secrets
 import uuid
@@ -84,6 +85,17 @@ def _resolve_secret() -> str:
 
 def _encode(payload: dict[str, object]) -> str:
     return pyjwt.encode(payload, _resolve_secret(), algorithm=settings.jwt_algorithm)
+
+
+def create_org_invitation_token(invitation_id: uuid.UUID) -> str:
+    """Reproduce an authorized invite link without storing its plaintext.
+
+    A distinct purpose prefix separates this MAC from JWT/CSRF signatures.
+    Acceptance verifies the stored hash and database expiry, not JWT claims.
+    """
+    message = b"moldy/org-invitation/v1\x00" + invitation_id.bytes
+    signature = hmac.new(_resolve_secret().encode(), message, hashlib.sha256).hexdigest()
+    return f"v1.{invitation_id.hex}.{signature}"
 
 
 def _now() -> datetime:
