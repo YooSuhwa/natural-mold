@@ -54,13 +54,16 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
+        details = exc.errors()
+        for error in details:
+            error.pop("input", None)
         return JSONResponse(
             status_code=422,
             content={
                 "error": {
                     "code": "VALIDATION_ERROR",
                     "message": "입력값 검증에 실패했습니다",
-                    "details": jsonable_encoder(exc.errors()),
+                    "details": jsonable_encoder(details),
                 }
             },
         )

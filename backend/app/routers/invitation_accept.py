@@ -1,0 +1,34 @@
+"""Logged-in invitation acceptance uses CSRF and never returns a token or email."""
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
+
+from app.auth.cookies import set_active_org_cookie
+from app.authz.policies import SELF, authz_policy
+from app.dependencies import CurrentUser, get_current_user, verify_csrf
+from app.routers.orgs import mutation_request
+from app.schemas.invitation_accept import InvitationAccept, InvitationAccepted
+from app.services.orgs.info import OrgMutationRequest
+from app.services.orgs.invitation_acceptance import InvitationAcceptance, accept_invitation
+
+router = APIRouter(prefix="/api/invitations", tags=["invitation acceptance"])
+
+
+async def authenticated_acceptance(
+    payload: InvitationAccept,
+    user: CurrentUser = Depends(get_current_user),
+    mutation: OrgMutationRequest = Depends(mutation_request),
+) -> InvitationAccepted:
+    result = await accept_invitation(InvitationAcceptance(mutation, user.id, payload.token))
+    await mutation.db.commit()
+    return result
+
+
+@router.post("/accept", response_model=InvitationAccepted, dependencies=[Depends(verify_csrf)])
+@authz_policy(SELF)
+async def accept_invitation_link(
+    result: InvitationAccepted = Depends(authenticated_acceptance),
+) -> JSONResponse:
+    response = JSONResponse(content=result.model_dump(mode="json"))
+    set_active_org_cookie(response, result.org_id)
+    return response

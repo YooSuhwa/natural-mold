@@ -133,7 +133,7 @@ async def test_live_catalog_scope_and_serialized_invitation_retries(
                     replies.append(
                         await client.post(
                             f"/api/orgs/{organization.id}/invitations",
-                            json={"email": "concurrent@example.com"},
+                            json={"email": "concurrent@example.com", "role": "builder"},
                             headers=login.headers(),
                         )
                     )
@@ -157,5 +157,72 @@ async def test_live_catalog_scope_and_serialized_invitation_retries(
                     )
                     assert len(rows) == 1
                     assert rows[0].id == UUID(replies[0].json()["id"])
+
+                # Reissuing the same original link is also serialized across request sessions.
+                resent: list[Response] = []
+
+                async def resend() -> None:
+                    resent.append(
+                        await client.post(
+                            f"/api/orgs/{organization.id}/invitations/{replies[0].json()['id']}/resend",
+                            headers=login.headers(),
+                        )
+                    )
+
+                async with anyio.create_task_group() as tasks:
+                    tasks.start_soon(resend)
+                    tasks.start_soon(resend)
+                assert sorted(reply.status_code for reply in resent) == [200, 201]
+                assert resent[0].json()["token"] == resent[1].json()["token"]
+                recipient = await register_session(
+                    client, email="concurrent@example.com", name="Recipient"
+                )
+                original_denied = await client.post(
+                    "/api/invitations/accept",
+                    json={"token": replies[0].json()["token"]},
+                    headers=recipient.headers(),
+                )
+                assert original_denied.status_code == 404
+                accepted: list[Response] = []
+
+                async def accept() -> None:
+                    accepted.append(
+                        await client.post(
+                            "/api/invitations/accept",
+                            json={"token": resent[0].json()["token"]},
+                            headers=recipient.headers(),
+                        )
+                    )
+
+                async with anyio.create_task_group() as tasks:
+                    tasks.start_soon(accept)
+                    tasks.start_soon(accept)
+                assert sorted(reply.status_code for reply in accepted) == [200, 409]
+                recipient_id = UUID(recipient.body["user"]["id"])
+                async with sessions() as db:
+                    member = await db.get(OrganizationMember, (organization.id, recipient_id))
+                    assert member is not None and member.status == "active"
+                    grants = list(
+                        (
+                            await db.scalars(
+                                select(OrganizationRoleGrant).where(
+                                    OrganizationRoleGrant.org_id == organization.id,
+                                    OrganizationRoleGrant.principal_id == recipient_id,
+                                )
+                            )
+                        ).all()
+                    )
+                    assert len(grants) == 1 and grants[0].role == "builder"
+                    events = list(
+                        (
+                            await db.scalars(
+                                select(AuditEvent).where(
+                                    AuditEvent.action == "org.invitation_accept",
+                                    AuditEvent.target_id == resent[0].json()["id"],
+                                )
+                            )
+                        ).all()
+                    )
+                    assert len(events) == 1
         finally:
             await engine.dispose()

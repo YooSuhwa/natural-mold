@@ -1,0 +1,282 @@
+"""A hash-only invitation binds the authenticated email to one company and organization."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Literal, assert_never
+from uuid import UUID
+
+import pytest
+from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.cookies import ACTIVE_ORG_COOKIE
+from app.config import settings
+from app.models.organization import OrganizationMember, OrganizationRoleGrant, Tenant, TenantMember
+from app.models.organization_group import Group, GroupMember, OrgInvitation
+from tests.authz.test_org_groups_api import grant_admin
+from tests.conftest import AuthSession, register_session
+
+if TYPE_CHECKING:
+    from tests.authz.org_context_fixture import OrgFixture
+
+pytest_plugins = ["tests.authz.org_context_fixture"]
+
+
+@dataclass(frozen=True, slots=True)
+class AcceptanceFixture:
+    id: UUID
+    token: str
+    recipient_id: UUID
+    session: AuthSession
+    group_id: UUID
+
+
+async def pending_invitation(
+    db: AsyncSession, client: AsyncClient, fixture: OrgFixture
+) -> AcceptanceFixture:
+    await grant_admin(db, fixture)
+    group = await db.scalar(select(Group).where(Group.org_id == fixture.first))
+    assert group is not None
+    created = await client.post(
+        f"/api/orgs/{fixture.first}/invitations",
+        json={"email": "recipient@example.com", "role": "builder", "group_ids": [str(group.id)]},
+        headers=fixture.session.headers(),
+    )
+    assert created.status_code == 201
+    session = await register_session(client, email="recipient@example.com", name="Recipient")
+    return AcceptanceFixture(
+        id=UUID(created.json()["id"]),
+        token=created.json()["token"],
+        recipient_id=UUID(session.body["user"]["id"]),
+        session=session,
+        group_id=group.id,
+    )
+
+
+async def test_acceptance_joins_company_org_group_role_and_selects_org_atomically(
+    db: AsyncSession, raw_client: AsyncClient, org_fixture: OrgFixture
+) -> None:
+    # Given: an existing authenticated account and a pending invitation with role/group.
+    invitation = await pending_invitation(db, raw_client, org_fixture)
+    # When: the invited account accepts its link.
+    result = await raw_client.post(
+        "/api/invitations/accept",
+        json={"token": invitation.token},
+        headers=invitation.session.headers(),
+    )
+    # Then: all membership facts and current selection are durable.
+    assert result.status_code == 200
+    assert result.json()["org_id"] == str(org_fixture.first)
+    assert result.json()["tenant_id"] == str(org_fixture.tenant)
+    assert result.cookies[ACTIVE_ORG_COOKIE] == str(org_fixture.first)
+    member = await db.get(OrganizationMember, (org_fixture.first, invitation.recipient_id))
+    company_member = await db.get(TenantMember, (org_fixture.tenant, invitation.recipient_id))
+    row = await db.get(OrgInvitation, invitation.id)
+    assert member is not None and member.status == "active"
+    assert company_member is not None and company_member.status == "active"
+    assert row is not None and row.accepted_by == invitation.recipient_id
+    role = await db.scalar(
+        select(OrganizationRoleGrant).where(
+            OrganizationRoleGrant.org_id == org_fixture.first,
+            OrganizationRoleGrant.principal_id == invitation.recipient_id,
+            OrganizationRoleGrant.role == "builder",
+        )
+    )
+    assert role is not None
+    group_member = await db.get(GroupMember, (invitation.group_id, invitation.recipient_id))
+    assert group_member is not None
+    retried = await raw_client.post(
+        "/api/invitations/accept",
+        json={"token": invitation.token},
+        headers=invitation.session.headers(),
+    )
+    assert retried.status_code == 409
+    assert retried.json()["error"]["code"] == "invitation_used"
+
+
+@pytest.mark.parametrize("state", ["expired", "revoked", "unknown"])
+async def test_unusable_link_never_creates_membership(
+    db: AsyncSession,
+    raw_client: AsyncClient,
+    org_fixture: OrgFixture,
+    state: Literal["expired", "revoked", "unknown"],
+) -> None:
+    # Given: an unusable invitation link.
+    invitation = await pending_invitation(db, raw_client, org_fixture)
+    row = await db.get(OrgInvitation, invitation.id)
+    assert row is not None
+    token = invitation.token
+    match state:
+        case "expired":
+            row.created_at = datetime.now(UTC) - timedelta(days=8)
+            row.expires_at = datetime.now(UTC) - timedelta(days=1)
+        case "revoked":
+            row.revoked_at = datetime.now(UTC)
+        case "unknown":
+            token = "unknown-invitation-token"
+        case unreachable:
+            assert_never(unreachable)
+    await db.commit()
+    # When: the invited account attempts acceptance.
+    result = await raw_client.post(
+        "/api/invitations/accept", json={"token": token}, headers=invitation.session.headers()
+    )
+    # Then: no member, company membership or consumption is committed.
+    assert result.status_code == (410 if state == "expired" else 404)
+    assert await db.get(OrganizationMember, (org_fixture.first, invitation.recipient_id)) is None
+    assert await db.get(TenantMember, (org_fixture.tenant, invitation.recipient_id)) is None
+    await db.refresh(row)
+    assert row.accepted_at is None
+
+
+async def test_other_email_cannot_accept_link_or_learn_target_email(
+    db: AsyncSession, raw_client: AsyncClient, org_fixture: OrgFixture
+) -> None:
+    # Given: a valid link presented by another authenticated account.
+    invitation = await pending_invitation(db, raw_client, org_fixture)
+    wrong = await register_session(raw_client, email="wrong@example.com", name="Wrong")
+    # When: the other account attempts acceptance.
+    result = await raw_client.post(
+        "/api/invitations/accept", json={"token": invitation.token}, headers=wrong.headers()
+    )
+    # Then: the email binding is enforced without disclosing the invitation's email.
+    assert result.status_code == 403
+    assert result.json()["error"]["code"] == "invitation_email_mismatch"
+    assert "recipient@example.com" not in result.text
+
+
+async def test_company_suspension_and_csrf_refuse_acceptance_before_mutation(
+    db: AsyncSession, raw_client: AsyncClient, org_fixture: OrgFixture
+) -> None:
+    # Given: a valid link to a suspended company.
+    invitation = await pending_invitation(db, raw_client, org_fixture)
+    company = await db.get(Tenant, org_fixture.tenant)
+    assert company is not None
+    company.status = "suspended"
+    await db.commit()
+    # When: the account submits acceptance with and without CSRF.
+    denied = await raw_client.post(
+        "/api/invitations/accept",
+        json={"token": invitation.token},
+        headers=invitation.session.headers(),
+    )
+    missing_csrf = await raw_client.post(
+        "/api/invitations/accept", json={"token": invitation.token}
+    )
+    # Then: neither creates the membership, while authentication remains valid.
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "tenant_suspended"
+    assert missing_csrf.status_code == 403
+    assert missing_csrf.json()["error"]["code"] == "csrf_mismatch"
+    assert (await raw_client.get("/api/auth/me")).status_code == 200
+
+
+async def test_invalid_token_length_never_echoes_the_secret_in_validation_details(
+    db: AsyncSession, raw_client: AsyncClient, org_fixture: OrgFixture
+) -> None:
+    # Given: an oversized secret which fails request parsing.
+    invitation = await pending_invitation(db, raw_client, org_fixture)
+    # When: the request is rejected by schema validation.
+    result = await raw_client.post(
+        "/api/invitations/accept",
+        json={"token": invitation.token + "x" * 300},
+        headers=invitation.session.headers(),
+    )
+    # Then: the error identifies the field without copying the secret back to clients/logs.
+    assert result.status_code == 422
+    assert invitation.token not in result.text
+
+
+@pytest.mark.parametrize("state", ["company_member", "org_member", "deleted_group", "old_removed"])
+async def test_acceptance_cannot_restore_blocked_membership_or_stale_groups(
+    db: AsyncSession,
+    raw_client: AsyncClient,
+    org_fixture: OrgFixture,
+    state: Literal["company_member", "org_member", "deleted_group", "old_removed"],
+) -> None:
+    # Given: a pending link whose membership/group context has changed since issuance.
+    invitation = await pending_invitation(db, raw_client, org_fixture)
+    expected = 403
+    match state:
+        case "company_member":
+            db.add(
+                TenantMember(
+                    tenant_id=org_fixture.tenant,
+                    user_id=invitation.recipient_id,
+                    status="suspended",
+                )
+            )
+        case "org_member":
+            db.add(
+                OrganizationMember(
+                    org_id=org_fixture.first,
+                    tenant_id=org_fixture.tenant,
+                    user_id=invitation.recipient_id,
+                    status="suspended",
+                )
+            )
+        case "deleted_group":
+            group = await db.get(Group, invitation.group_id)
+            assert group is not None
+            await db.delete(group)
+            expected = 409
+        case "old_removed":
+            db.add(
+                OrganizationMember(
+                    org_id=org_fixture.first,
+                    tenant_id=org_fixture.tenant,
+                    user_id=invitation.recipient_id,
+                    status="removed",
+                    removed_at=datetime.now(UTC),
+                )
+            )
+            expected = 404
+        case unreachable:
+            assert_never(unreachable)
+    await db.commit()
+    # When: the old link is presented.
+    result = await raw_client.post(
+        "/api/invitations/accept",
+        json={"token": invitation.token},
+        headers=invitation.session.headers(),
+    )
+    # Then: no consumption or new grant is persisted.
+    assert result.status_code == expected
+    row = await db.get(OrgInvitation, invitation.id)
+    assert row is not None and row.accepted_at is None
+    grants = list(
+        (
+            await db.scalars(
+                select(OrganizationRoleGrant).where(
+                    OrganizationRoleGrant.principal_id == invitation.recipient_id
+                )
+            )
+        ).all()
+    )
+    assert grants == []
+
+
+async def test_existing_invitation_hash_survives_signing_secret_rotation(
+    db: AsyncSession, raw_client: AsyncClient, org_fixture: OrgFixture
+) -> None:
+    # Given: a pending link issued before the installation signing secret is rotated.
+    invitation = await pending_invitation(db, raw_client, org_fixture)
+    with pytest.MonkeyPatch.context() as rotation:
+        rotation.setattr(settings, "jwt_secret", "dummy-new-signing-secret-for-acceptance-42")
+        logged_in = await raw_client.post(
+            "/api/auth/login", json={"email": "recipient@example.com", "password": "correct horse"}
+        )
+        assert logged_in.status_code == 200
+        # When: the account authenticates under the new key and accepts the old link.
+        result = await raw_client.post(
+            "/api/invitations/accept",
+            json={"token": invitation.token},
+            headers={"X-CSRF-Token": logged_in.json()["csrf_token"]},
+        )
+    # Then: the stored hash, rather than the current MAC signer, proves link possession.
+    assert result.status_code == 200
+    row = await db.get(OrgInvitation, invitation.id)
+    assert row is not None and row.accepted_by == invitation.recipient_id

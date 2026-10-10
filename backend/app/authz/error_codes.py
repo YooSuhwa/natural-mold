@@ -19,6 +19,12 @@ ErrorCode = Literal[
     "resource_transfer_required",
     "org_access_denied",
     "catalog_policy_locked",
+    "invitation_invalid",
+    "invitation_used",
+    "invitation_expired",
+    "invitation_email_mismatch",
+    "invitation_membership_blocked",
+    "invitation_group_unavailable",
 ]
 
 
@@ -40,6 +46,16 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         "last_admin": ErrorSpec(409, "마지막 조직 관리자를 제거할 수 없습니다"),
         "org_access_denied": ErrorSpec(403, "현재 조직에서만 대상을 검색할 수 있습니다"),
         "catalog_policy_locked": ErrorSpec(403, "회사 또는 플랫폼에서 끈 항목은 켤 수 없습니다"),
+        "invitation_invalid": ErrorSpec(404, "사용할 수 없는 초대 링크입니다"),
+        "invitation_used": ErrorSpec(409, "이미 사용한 초대 링크입니다"),
+        "invitation_expired": ErrorSpec(410, "초대 링크가 만료되었습니다"),
+        "invitation_email_mismatch": ErrorSpec(403, "초대받은 이메일의 계정으로 로그인해 주세요"),
+        "invitation_membership_blocked": ErrorSpec(
+            403, "구성원 상태를 먼저 관리자에게 확인해 주세요"
+        ),
+        "invitation_group_unavailable": ErrorSpec(
+            409, "초대 대상 그룹이 변경되었습니다. 새 초대를 요청해 주세요"
+        ),
         "resource_transfer_required": ErrorSpec(
             409, "소유한 자원을 먼저 이전하거나 삭제해야 합니다"
         ),

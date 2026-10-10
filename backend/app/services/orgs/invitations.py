@@ -172,6 +172,13 @@ async def revoke_invitation(
         raise authorization_error("not_found")
     if row.revoked_at is not None:
         return
+    await record_invitation_revocation(mutation, context, row)
+    await mutation.db.commit()
+
+
+async def record_invitation_revocation(
+    mutation: OrgMutationRequest, context: OrgControlContext, row: OrgInvitation
+) -> None:
     row.revoked_at = datetime.now(UTC)
     bump_version(context.organization)
     await audit_service.record_event(
@@ -188,4 +195,3 @@ async def revoke_invitation(
         request=mutation.request,
         metadata={"org_id": str(context.organization.id)},
     )
-    await mutation.db.commit()

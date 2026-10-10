@@ -541,3 +541,65 @@ Evidence under `output/org-authz/p1/`:
 There is no frontend/browser acceptance, shared database migration, deployment,
 PR or full P1/P0–P8 completion claim. Continue with B-06 private ORM/query/writer
 scoping and the remaining company/session/crypto tasks before closing P1.
+
+## B-05 invitation acceptance/resend checkpoint (2026-10-11, registration still open)
+
+`POST /api/invitations/accept` now requires an authenticated active account and
+CSRF. Its write-only `SecretStr` token is looked up by stored SHA-256, so a valid
+link remains usable after the installation signing secret rotates. The service
+locks the organization, company and invitation in the same order as catalog
+mutations, reloads account/status facts and refuses revoked, used, expired or
+email-mismatched links. A suspended company/org/member cannot be restored through
+the link; an invitation predating an org removal cannot rejoin that member.
+Removed/changed groups are validated before any membership write.
+
+Acceptance atomically creates company/org membership as needed, adds the declared
+role/manual groups without duplicating existing facts, consumes the invitation,
+updates the user's active org and increments the org epoch. Separate acceptance,
+member-add, role-grant and group-member events describe actual changes. The router
+commits once and then issues the existing HttpOnly active-org cookie. A concurrent
+or later replay receives `invitation_used` and creates no duplicate grant.
+
+`POST /api/orgs/{org_id}/invitations/{invitation_id}/resend` implements section
+13.12.2's requirement that reissuing invalidates older links. It revokes pending
+links for that address and commits the replacement/hash and audits together.
+Repeated requests for the original row return its newer live replacement when
+the current signer can reproduce that replacement's token. After signer rotation,
+explicit resend creates a usable new link rather than substituting a token which
+cannot match an old stored hash. Authorization/CSRF and source/group guards remain
+in the existing organization control service. No mail was sent.
+
+A focused red test also exposed plaintext token echo in FastAPI's validation
+error `input` field. The shared validation handler now omits raw input values,
+retaining the field locations/messages needed by clients. This prevents schema
+length/type errors from copying submitted secrets into API error responses.
+
+Evidence in the ignored `output/org-authz/p1/` directory:
+
+- `b05-invitation-focused-final.log`: **23 passed** for acceptance, resend,
+  existing invitation behavior and the reviewed OpenAPI snapshot. Includes
+  current-key login accepting an older link, blocked/removed membership, deleted
+  groups, secret-free validation errors and original-link invalidation.
+- `b05-invitation-postgres.log`: **1 passed, 4.32s**, actual owned m83 database
+  and real JWT/CSRF requests. Concurrent create/resend each return one 201/one 200;
+  concurrent acceptance returns one 200/one 409. Exactly one recipient role and
+  acceptance audit remain. The original resent link fails, and the lab is removed.
+- `b05-full-backend-invitations.log`: **4,855 passed, 3 existing warnings,
+  208.92s** with the official isolated runner, child exit 0 and cleanup `removed`.
+  The signing-secret-rotation case was added after that isolated copy was created
+  and is covered separately by the final 23-case focused run; production behavior
+  did not change between those runs.
+- Whole-backend Ruff/Pyright pass; changed-file type/format gates select **14**
+  Python files; the ownership ratchet remains **173, additions 0**.
+
+B-05 is not complete: `auth_service.register` still needs the three installation
+registration policies, invitation-backed account creation, default-org membership
+and first-user org/company bootstrap roles, with atomic failure/concurrency tests.
+Default signup must fail visibly if the migrated installation default is missing,
+rather than create an unscoped account. Update unit fixtures to represent m82's
+seeded default company/org; preserve explicit no-membership scenarios by removing
+membership in those fixtures. Actual API integration fixtures should start at m83
+before signup. This prerequisite comes before B-06's private writer/query scoping.
+Pending-invitation revocation on issuer offboarding, grant outbox fanout and audit
+scope columns still require C-04/E-02/H-03/B-13. No UI/deployment/full-goal acceptance
+is claimed.

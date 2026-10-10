@@ -1,5 +1,64 @@
 {
   "paths": {
+    "/api/invitations/accept": {
+      "post": {
+        "operationId": "accept_invitation_link_api_invitations_accept_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationAccept"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Invitation Link",
+        "tags": [
+          "invitation acceptance"
+        ]
+      }
+    },
     "/api/me/active-org": {
       "post": {
         "operationId": "set_active_organization_api_me_active_org_post",
@@ -1303,6 +1362,75 @@
         ]
       }
     },
+    "/api/orgs/{org_id}/invitations/{invitation_id}/resend": {
+      "post": {
+        "operationId": "resend_invitation_link_api_orgs__org_id__invitations__invitation_id__resend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resend Invitation Link",
+        "tags": [
+          "organization invitations"
+        ]
+      }
+    },
     "/api/orgs/{org_id}/members": {
       "get": {
         "operationId": "list_members_api_orgs__org_id__members_get",
@@ -2566,6 +2694,50 @@
         "platform_tenant_management_enabled"
       ],
       "title": "InstallationResponse",
+      "type": "object"
+    },
+    "InvitationAccept": {
+      "additionalProperties": false,
+      "properties": {
+        "token": {
+          "format": "password",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Token",
+          "type": "string",
+          "writeOnly": true
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "title": "InvitationAccept",
+      "type": "object"
+    },
+    "InvitationAccepted": {
+      "properties": {
+        "org_id": {
+          "format": "uuid",
+          "title": "Org Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org_id",
+        "tenant_id",
+        "user_id"
+      ],
+      "title": "InvitationAccepted",
       "type": "object"
     },
     "InvitationCreate": {
