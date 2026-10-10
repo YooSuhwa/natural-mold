@@ -103,6 +103,10 @@ async def test_thirty_per_minute_limit_is_per_user_not_shared_browser_ip(
             )
         )
         await db.commit()
+        selected = await raw_client.post(
+            "/api/me/active-org", json={"org_id": str(org_fixture.first)}, headers=other.headers()
+        )
+        assert selected.status_code == 200
         assert (await raw_client.get(path, params={"q": "Builders"})).status_code == 200
     finally:
         limiter.reset()

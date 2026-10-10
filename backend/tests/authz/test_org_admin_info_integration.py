@@ -34,6 +34,7 @@ async def test_live_m83_metadata_policy_uses_real_cookies_and_locked_versions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async with async_organization_lab() as lab:
+        await run_sync(command.upgrade, lab.config, "m83_org_scope_not_null")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:
@@ -79,7 +80,6 @@ async def test_live_m83_metadata_policy_uses_real_cookies_and_locked_versions(
                             principal_id=user_id,
                         )
                     )
-                await run_sync(command.upgrade, lab.config, "m83_org_scope_not_null")
                 # Given: actual m83 schema, real JWT/CSRF cookies and the same original version.
                 original = await client.get(f"/api/orgs/{organization.id}")
                 assert original.status_code == 200

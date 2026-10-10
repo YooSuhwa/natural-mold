@@ -6,7 +6,15 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 AvatarMode = Literal["auto", "initials", "image"]
 EditableAvatarMode = Literal["auto", "initials"]
@@ -22,6 +30,7 @@ class RegisterRequest(BaseModel):
 
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
+    invitation_token: SecretStr | None = Field(default=None, min_length=1, max_length=256)
     display_name: str | None = Field(None, min_length=1, max_length=80)
     # Legacy web clients used ``name``. Keep accepting it while the frontend
     # switches copy to "display name".

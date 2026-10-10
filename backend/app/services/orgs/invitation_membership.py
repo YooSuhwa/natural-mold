@@ -36,6 +36,7 @@ class JoinedFacts:
     member_added: bool
     role_added: bool
     groups_added: tuple[UUID, ...]
+    company_member_added: bool = False
 
 
 async def join_invited_membership(db: AsyncSession, target: InvitationMembership) -> JoinedFacts:
@@ -119,4 +120,4 @@ async def join_invited_membership(db: AsyncSession, target: InvitationMembership
                 )
             )
             added_groups.append(group_id)
-    return JoinedFacts(target, member_added, role_added, tuple(added_groups))
+    return JoinedFacts(target, member_added, role_added, tuple(added_groups), company is None)

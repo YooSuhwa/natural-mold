@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.config import settings
+from app.models.audit_event import AuditEvent
 from app.models.organization import OrganizationMember, OrganizationRoleGrant, Tenant, TenantMember
 from app.models.organization_group import Group, GroupMember, OrgInvitation
 from tests.authz.test_org_groups_api import grant_admin
@@ -88,6 +89,27 @@ async def test_acceptance_joins_company_org_group_role_and_selects_org_atomicall
     assert role is not None
     group_member = await db.get(GroupMember, (invitation.group_id, invitation.recipient_id))
     assert group_member is not None
+    company_events = list(
+        (
+            await db.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.action == "tenant.member_add",
+                    AuditEvent.actor_user_id == invitation.recipient_id,
+                )
+            )
+        ).all()
+    )
+    assert (
+        len(
+            [
+                event
+                for event in company_events
+                if event.event_metadata is not None
+                and event.event_metadata.get("tenant_id") == str(org_fixture.tenant)
+            ]
+        )
+        == 1
+    )
     retried = await raw_client.post(
         "/api/invitations/accept",
         json={"token": invitation.token},

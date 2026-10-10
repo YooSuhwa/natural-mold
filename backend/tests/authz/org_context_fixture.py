@@ -8,6 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.dependencies import CurrentUser
 from app.models.organization import (
     Organization,
@@ -18,6 +19,7 @@ from app.models.organization import (
 )
 from app.models.organization_group import Group, GroupMember, OrgCapabilityGrant
 from app.models.user import User
+from tests.authz.registration_fixture import clear_default_membership
 from tests.conftest import AuthSession, register_session
 
 
@@ -36,6 +38,8 @@ async def org_fixture(raw_client: AsyncClient, db: AsyncSession) -> OrgFixture:
     login = await register_session(raw_client, email="org-context@example.com", name="Organization")
     user = await db.scalar(select(User).where(User.email == "org-context@example.com"))
     assert user is not None
+    await clear_default_membership(db, user.id)
+    raw_client.cookies.delete(ACTIVE_ORG_COOKIE)
     tenants = [
         Tenant(name=name, slug=name, secrets_namespace=name) for name in ("A", "B", "Foreign")
     ]

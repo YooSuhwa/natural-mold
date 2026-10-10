@@ -80,6 +80,10 @@ async def record_acceptance(mutation: OrgMutationRequest, facts: JoinedFacts) ->
         events.append(
             (audit_actions.ORG_MEMBER_ADD, "organization_member", user.id, {"source": "invitation"})
         )
+    if facts.company_member_added:
+        events.append(
+            (audit_actions.TENANT_MEMBER_ADD, "tenant_member", user.id, {"source": "invitation"})
+        )
     if facts.role_added:
         events.append(
             (

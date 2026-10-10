@@ -205,6 +205,10 @@ async def raw_client(raw_test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]
     Used by /api/auth tests and the multi-user isolation matrix.
     """
 
+    from tests.authz.registration_fixture import seed_registration_default
+
+    async with TestSession() as db:
+        await seed_registration_default(db)
     transport = ASGITransport(app=raw_test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

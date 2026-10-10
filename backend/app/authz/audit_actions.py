@@ -3,6 +3,8 @@
 from typing import Final
 
 ORG_UPDATE: Final = "org.update"
+TENANT_MEMBER_ADD: Final = "tenant.member_add"
+TENANT_ROLE_GRANT: Final = "tenant.role_grant"
 ORG_POLICY_UPDATE: Final = "org.policy_update"
 ORG_CATALOG_POLICY_UPDATE: Final = "org.catalog_policy_update"
 ORG_MEMBER_ADD: Final = "org.member_add"

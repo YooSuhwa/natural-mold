@@ -32,7 +32,7 @@ from app.exceptions import AppError
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.schemas.auth import RegisterRequest
-from app.services import user_service
+from app.services import registration_service, user_service
 
 logger = logging.getLogger(__name__)
 
@@ -68,28 +68,8 @@ def user_agent(request: Request) -> str | None:
 
 
 async def register(db: AsyncSession, payload: RegisterRequest, request: Request) -> User:
-    """Create a new user + auto-promote the first signup to super_user."""
-
-    if await user_service.email_exists(db, payload.email):
-        raise AppError(
-            code="email_already_exists",
-            message="이미 가입된 이메일입니다",
-            status=409,
-        )
-    promote = settings.allow_first_user_as_admin and await user_service.is_first_user(db)
-    user = await user_service.create_user(
-        db,
-        email=payload.email,
-        # bcrypt cost-12 (~250ms) would freeze every coroutine on the event
-        # loop — offload to a worker thread. Same for the verify calls below.
-        password_hash=await asyncio.to_thread(hash_password, payload.password),
-        name=payload.profile_display_name,
-        display_name=payload.profile_display_name,
-        is_super_user=promote,
-    )
-    if promote:
-        logger.info("First user signup auto-promoted to super_user: %s", user.email)
-    return user
+    """Apply registration policy and atomically prepare account/scope membership."""
+    return await registration_service.register_user(db, payload, request)
 
 
 # ---------------------------------------------------------------------------

@@ -239,7 +239,7 @@ real-participant U-05 study are future gates.
 - [x] B-02 — m81 scope, m82 default organization backfill, m83 constraints.
 - [x] B-03 — organization context and active organization API.
 - [x] B-04 — organization control APIs and focused/native/full backend gates; runtime fanout remains E-03.
-- [ ] B-05 — registration policies and invitation acceptance.
+- [x] B-05 — registration policies, atomic invitation acceptance/resend and signup scope/bootstrap.
 - [ ] B-06 — organization filters for private data.
 - [ ] B-07 — organization switching and administration UI.
 - [ ] B-08 — ownership constraints and agent archive lifecycle.
@@ -603,3 +603,65 @@ before signup. This prerequisite comes before B-06's private writer/query scopin
 Pending-invitation revocation on issuer offboarding, grant outbox fanout and audit
 scope columns still require C-04/E-02/H-03/B-13. No UI/deployment/full-goal acceptance
 is claimed.
+
+## B-05 signup implementation and final gates (2026-10-11)
+
+The existing register endpoint now delegates to typed registration policy,
+membership and account services. `default_org` enrolls the new account in the
+migrated installation default; `invite_only` requires `invitation_token` and
+joins the stored invitation's company/org/role/groups; `closed` rejects new
+accounts even with a valid invitation. Installation, company and organization
+restrictions intersect, so an org cannot reopen company/installation signup.
+Existing-account invitation acceptance is separate from account creation.
+
+The migrated default company is selected by its canonical UUID namespace rather
+than its mutable slug. Missing initialization returns 503 without an unscoped
+account. Account insertion, membership/role changes, invitation consumption,
+preference, auth refresh whitelist and successful audit records commit once in
+the existing router. Cookies, including the HttpOnly org selection, are issued
+after commit. Password hashing uses the existing bcrypt helper off the event loop.
+Group/link/status failures after account flush roll the account back as well.
+
+The default organization row serializes signup until that transaction commits,
+including the first-user count. When first-user promotion is enabled, exactly
+one first account becomes platform operator and receives explicit default-org
+and default-company admin grants. Invitations to another company retain their
+declared role; operator flags do not substitute for company/content authority.
+When promotion is disabled, the org's configured member/builder default applies.
+Grant audits target actual org/company IDs; member audits target the account.
+Invite-driven company membership now also emits `tenant.member_add`.
+
+The raw unit auth fixture now represents m82's seeded default company/org.
+Scenarios intended to have no membership explicitly remove it; the two-company
+context fixture clears the initial org cookie before arranging its own context.
+The search-rate test now selects the second account's intended org through the
+real switch API before probing the per-user limit. Production cookie checks were
+kept strict. Native API fixtures start at actual m83 before signup.
+
+Current final evidence under `output/org-authz/p1/`:
+
+- `b05-control-registration-final.log`: **63 passed** across organization controls,
+  registration, invitation acceptance/resend, principal rate and schema contracts.
+- `b05-signup-invitation-audit-final.log`: **47 passed** in signup/invitation/auth
+  and audit scenarios, including company-member audit scope.
+- `b05-registration-postgres-final.log`: **5 passed, 22.24s**, actual owned m83
+  PostgreSQL and JWT/CSRF. Concurrent signup creates exactly one operator/org admin/
+  company admin, while failed invite-backed signup leaves no orphan account.
+  Existing org switching/removal, policy, suspension and concurrent invite flows
+  remain valid. Each lab database is removed on exit.
+- Whole-backend Ruff/Pyright pass; changed type/format gates select **22** files;
+  ownership ratchet remains **173, additions 0**.
+- `b05-registration-full-backend-audit-final.log`: **4,867 passed, 3 existing
+  warnings, 213.88s**, final production source through the official isolated
+  runner; child exit 0 and cleanup `removed`. The preceding full run exposed the
+  stale org selection in the search fixture; after its actual switch was added,
+  both the repeat and the final post-audit source run passed.
+
+No shared/main database was migrated and no deployment/UI acceptance is claimed.
+The signup bootstrap and token lookup still need B-13's named scoped sessions;
+membership tuple/outbox effects require C-04 and audit scope columns H-03. Before
+B-06, freeze all 63 legacy table definitions used by P0 fixtures (not merely the
+user table), then promote private ORM scope fields and query/writer context.
+Also enroll newly created dev E2E seed accounts in the default scope before
+private endpoints require it; that seed path bypasses public registration and
+must keep its production skip guard. The full P0–P8 objective remains active.

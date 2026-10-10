@@ -25,6 +25,9 @@ ErrorCode = Literal[
     "invitation_email_mismatch",
     "invitation_membership_blocked",
     "invitation_group_unavailable",
+    "organization_bootstrap_required",
+    "registration_closed",
+    "registration_invitation_required",
 ]
 
 
@@ -56,6 +59,9 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         "invitation_group_unavailable": ErrorSpec(
             409, "초대 대상 그룹이 변경되었습니다. 새 초대를 요청해 주세요"
         ),
+        "organization_bootstrap_required": ErrorSpec(503, "기본 회사와 조직을 초기화해야 합니다"),
+        "registration_closed": ErrorSpec(403, "현재는 새 계정을 만들 수 없습니다"),
+        "registration_invitation_required": ErrorSpec(403, "초대 링크로 가입해 주세요"),
         "resource_transfer_required": ErrorSpec(
             409, "소유한 자원을 먼저 이전하거나 삭제해야 합니다"
         ),

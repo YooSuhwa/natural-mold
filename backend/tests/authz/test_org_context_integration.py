@@ -4,10 +4,12 @@ from collections.abc import AsyncGenerator
 
 import anyio
 import pytest
+from anyio.to_thread import run_sync
 from fastapi import Depends
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from alembic import command
 from app.authz.org_context import OrgContext
 from app.authz.policies import SELF, authz_policy
 from app.dependencies import get_db, get_org_context
@@ -22,8 +24,9 @@ pytestmark = pytest.mark.integration
 
 
 async def test_postgres_cookie_switch_and_removed_membership_block_next_request() -> None:
-    # Given: the actual m80 chain in an owned disposable database and real auth routes.
+    # Given: the actual m83 schema in an owned disposable database and real auth routes.
     async with async_organization_lab() as lab:
+        await run_sync(command.upgrade, lab.config, "m83_org_scope_not_null")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         try:
             sessions = async_sessionmaker(engine, expire_on_commit=False)

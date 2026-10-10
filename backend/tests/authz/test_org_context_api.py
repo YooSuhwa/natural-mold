@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.config import settings
 from app.models.user import User
+from tests.authz.registration_fixture import clear_default_membership
 from tests.conftest import register_session
 
 if TYPE_CHECKING:
@@ -21,9 +22,13 @@ pytest_plugins = ["tests.authz.org_context_fixture"]
 
 async def test_authenticated_user_without_memberships_sees_empty_org_list(
     raw_client: AsyncClient,
+    db: AsyncSession,
 ) -> None:
     # Given: an authenticated user without an organization membership.
-    await register_session(raw_client, email="no-org@example.com", name="No organization")
+    session = await register_session(raw_client, email="no-org@example.com", name="No organization")
+    from uuid import UUID
+
+    await clear_default_membership(db, UUID(session.body["user"]["id"]))
     # When: the user's organization list is requested.
     response = await raw_client.get("/api/me/organizations")
     # Then: the self endpoint responds with an empty list, without creating membership.
