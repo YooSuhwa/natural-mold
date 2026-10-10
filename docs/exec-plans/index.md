@@ -6,7 +6,7 @@ plans, explicitly labeled below. Current product follow-ups live in `../../TASKS
 
 ## Active
 
-No approved execution plan is active in this directory.
+- [조직·권한·공유 개발 기획](org-authz-plan.html) — approved for implementation by the user on 2026-10-10; P0 in progress. [Execution record](org-authz-progress.md).
 
 ## Completed
 

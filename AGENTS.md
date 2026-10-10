@@ -543,6 +543,7 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 | ADR-020 | Chat Run AG-UI Adapter | LangGraph v3 run/stream protocol adapter |
 | ADR-021 | Value-Based Trace Redaction | 값 기반 trace secret 마스킹 |
 | ADR-022 | Runtime Policy Lifecycle | versioned agent policy, immutable conversation snapshot, run provenance |
+| ADR-023 | Tenant / Organization Authorization | OpenFGA projection, company isolation, staged enforcement, sharing and runtime delegation |
 
 각 ADR 본문은 `docs/design-docs/`에 있다.
 
