@@ -63,6 +63,7 @@ logger = logging.getLogger(__name__)
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.authz.policies import register_legacy_policies
 from app.config import settings
 from app.database import async_session
 from app.hooks import register_default_hooks
@@ -267,6 +268,7 @@ def create_app() -> FastAPI:
     async def health_check():
         return {"status": "ok"}
 
+    register_legacy_policies(app)
     return app
 
 
