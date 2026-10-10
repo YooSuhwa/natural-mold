@@ -198,3 +198,12 @@ Enforced FGA errors deny with 503, while private reads remain independent.
   PostgreSQL. Drafts discover and replace the exact source constraint by its
   columns and fail on ambiguity. Rollback refuses preserved orphan histories or
   spend keys that cannot be collapsed without losing data.
+- B-03 follows section 16.6 for explicit invalid organization cookies: deny with
+  403 rather than silently selecting another organization. Section 8.1's
+  illustrative fallback applies only to a stale saved preference when the
+  cookie is absent. Both company and organization membership must be active,
+  including for platform operators. Keep `OrgContext` separate from
+  `CurrentUser`; no organization/authority claim is added to JWT. Read membership
+  from DB on every request until a mutation-aware process cache exists; such a
+  cache must preserve immediate removal/suspension behavior. Self organization
+  listing/switching is not resource permission enforcement.

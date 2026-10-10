@@ -14,11 +14,14 @@ ADR-016 §5.1 — Three cookies are issued on register/login/refresh:
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired, TypedDict
+from uuid import UUID
 
 from fastapi import Response
 
 from app.config import settings
+
+ACTIVE_ORG_COOKIE: Final = "moldy_active_org"
 
 
 class _CookieKwargs(TypedDict):
@@ -83,6 +86,7 @@ def clear_auth_cookies(response: Response) -> None:
         settings.cookie_name_access,
         settings.cookie_name_refresh,
         settings.cookie_name_csrf,
+        ACTIVE_ORG_COOKIE,
     ):
         response.delete_cookie(
             name,
@@ -91,3 +95,12 @@ def clear_auth_cookies(response: Response) -> None:
             secure=settings.cookie_secure,
             samesite=settings.cookie_samesite,
         )
+
+
+def set_active_org_cookie(response: Response, org_id: UUID) -> None:
+    """Share authentication cookie transport settings for all browser request types."""
+    response.set_cookie(
+        ACTIVE_ORG_COOKIE,
+        str(org_id),
+        **_common_kwargs(settings.refresh_token_expire_days * 86400, http_only=True),
+    )

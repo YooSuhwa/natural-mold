@@ -23,6 +23,7 @@ def include_app_routers(app: FastAPI) -> None:
         marketplace,
         mcp,
         mcp_apps,
+        me_orgs,
         memory,
         models,
         shares,
@@ -58,6 +59,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(health.router)
     app.include_router(marketplace.router)
     app.include_router(memory.router)
+    app.include_router(me_orgs.router)
     app.include_router(mcp.router)
     app.include_router(mcp.catalog_router)
     app.include_router(mcp_apps.router)

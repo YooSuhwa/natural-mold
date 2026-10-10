@@ -237,7 +237,7 @@ real-participant U-05 study are future gates.
 
 - [x] B-01 — live m78–m80 models and immutable Alembic revisions.
 - [ ] B-02 — m81 scope, m82 default organization backfill, m83 constraints.
-- [ ] B-03 — organization context and active organization API.
+- [x] B-03 — organization context and active organization API.
 - [ ] B-04 — organization membership, invitation, group, role and capability API.
 - [ ] B-05 — registration policies and invitation acceptance.
 - [ ] B-06 — organization filters for private data.
@@ -279,3 +279,47 @@ The fixed m89 source contract still matches; original planning files are untouch
 Logs: ignored `output/org-authz/p0/b01-{unit-all,all-postgres,focused-r2,ruff,format}.log`.
 Shared/main databases were not migrated; development server startup against an
 unmigrated shared database is not an acceptance claim. Next work is B-02/B-03/B-10.
+
+## P0 publication and B-03 implementation (2026-10-10)
+
+P0 closure `f0c4d8a1c552619562c51705cd19171a8aab7930` is pushed to
+`origin/feature/org-authz`; the branch now tracks that remote. The pre-push hooks
+passed 4,734 backend and 1,995 frontend tests in a separate, owned checkout.
+The first attempt's `DATA_ROOT` override conflicted with the default-path test;
+the test was preserved and the isolated checkout used its own default data path.
+A subsequent SSH connection closed during hook execution; retry with explicit
+keepalive and no shared control connection completed successfully. Hooks were
+never bypassed. Temporary review/push checkouts are archived, and all useful
+reports/logs remain in this workspace's ignored output directory.
+
+B-03 adds explicitly SELF-marked `GET /api/me/organizations` and CSRF-protected
+`POST /api/me/active-org`, plus the separate `get_org_context` dependency.
+Organization summaries expose company/status, direct or group-derived org roles,
+and effective navigation capabilities. Both active company and organization
+membership are required; platform operator status does not bypass membership.
+Selection updates the saved preference and issues the HttpOnly organization
+cookie with the authentication transport settings. Logout also clears it.
+
+Decision clarification: explicit malformed/foreign cookies fail with 403, as
+required by 16.6. Only an absent cookie with a stale saved preference can fall
+back to another active membership; the broader fallback in the illustrative
+8.1 snippet would violate the explicit-cookie test. Company suspension retains
+the specific `tenant_suspended` error. Membership is checked from DB on every
+request, with FastAPI request-level dependency caching. No process TTL is used
+before the mutation invalidation protocol exists; a later cache must preserve
+the tested immediate removal/suspension behavior.
+
+- Full backend unit suite: 4,755 passed, three existing MCP warnings, with an
+  owned temporary runtime/data root removed after execution.
+- Authz and authentication regression selection: 139 passed; focused context,
+  cookie security and HTTP scenarios: 17 passed.
+- Native PostgreSQL HTTP flow: 1 passed. Real m80 migrations, JWT/CSRF cookies,
+  foreign target denial, valid selection and a protected request denied after
+  separately committed membership removal; owned database removed. This is API
+  acceptance evidence, not browser/UI acceptance or production RLS enforcement.
+- Whole-backend Ruff and Pyright passed. Changed-file type and format ratchets
+  passed for 14 Python files; ownership ratchet remains 173, additions zero.
+
+Evidence: ignored `output/org-authz/p0/b03-{unit-all,auth-regression-r2,
+postgres-api-r2,ruff-all,pyright-all}.log`. B-01 is committed as `941e9247`.
+P1 remains in progress; next tasks are B-02 scope/backfill and B-10 company context.

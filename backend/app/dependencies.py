@@ -18,7 +18,9 @@ from dataclasses import dataclass
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.auth.jwt import InvalidTokenError, decode_token
+from app.authz.org_context import OrgContext, resolve_org_context
 from app.config import settings
 from app.database import async_session, close_session_shielded
 from app.exceptions import AppError
@@ -147,6 +149,20 @@ async def require_super_user(
     if not user.is_super_user:
         raise AppError(code="forbidden", message="권한이 없습니다", status=403)
     return user
+
+
+async def get_org_context(
+    request: Request,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrgContext:
+    context = await resolve_org_context(
+        db,
+        user,
+        cookie=request.cookies.get(ACTIVE_ORG_COOKIE),
+    )
+    request.state.org_context = context
+    return context
 
 
 async def owned_conversation(
