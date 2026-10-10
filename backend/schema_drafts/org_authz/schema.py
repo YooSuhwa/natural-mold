@@ -2,9 +2,7 @@
 
 from sqlalchemy import MetaData
 
-from app import models as _legacy_models  # noqa: F401 - register baseline tables
 from app.authz.model_version import model_versions
-from app.database import Base
 from schema_drafts.org_authz import grants as _grants  # noqa: F401 - declare draft tables
 from schema_drafts.org_authz import groups as _groups  # noqa: F401 - declare draft tables
 from schema_drafts.org_authz import (
@@ -16,7 +14,7 @@ from schema_drafts.org_authz import (
 from schema_drafts.org_authz import sso as _sso  # noqa: F401 - declare draft tables
 from schema_drafts.org_authz.base import DraftBase
 from schema_drafts.org_authz.legacy_contract import apply_later_columns, apply_m81
-from schema_drafts.org_authz.m77_user import metadata as m77_user_metadata
+from schema_drafts.org_authz.m77 import build_metadata
 
 NEW_TABLES = frozenset(
     {
@@ -47,13 +45,8 @@ NEW_TABLES = frozenset(
 
 
 def baseline_metadata() -> MetaData:
-    """Retain m77 fixtures when reviewed organization models become live."""
-    metadata = MetaData()
-    for table in Base.metadata.tables.values():
-        if table.name not in NEW_TABLES and table.name != "users":
-            table.to_metadata(metadata)
-    m77_user_metadata.tables["users"].to_metadata(metadata)
-    return metadata
+    """Return frozen m77 definitions independently of all current live ORM models."""
+    return build_metadata()
 
 
 def schema_metadata(*, scope_columns: bool = False, later_columns: bool = False) -> MetaData:

@@ -665,3 +665,39 @@ user table), then promote private ORM scope fields and query/writer context.
 Also enroll newly created dev E2E seed accounts in the default scope before
 private endpoints require it; that seed path bypasses public registration and
 must keep its production skip guard. The full P0–P8 objective remains active.
+
+## B-06 prerequisite: immutable legacy fixtures (2026-10-11)
+
+The historical fixture previously copied 62 tables from the live application
+metadata, with only `users` already frozen. A failing case demonstrated that a
+live `conversations.title` nullability change also changed the alleged m77
+fixture. That coupling would invalidate P0/B-02 migration and rollback evidence
+as B-06 adds live scope fields.
+
+`schema_drafts/org_authz/m77/` now holds explicit SQLAlchemy definitions for those
+62 tables, with the existing frozen user definition completing all **63**.
+`baseline_metadata()` constructs a fresh independent instance from that package.
+No current model/table reflection is used. Python UUID/list/dict/scalar/default
+factories and naive/aware UTC timestamp behavior are retained. Literal SQL server
+defaults remain literals; dialect-aware `func.now()` remains a function instead
+of being flattened into a text expression. Index/constraint/FK actions and
+nullable/SQL type definitions are preserved.
+
+The pre-promotion PostgreSQL/SQLite DDL was captured once as `ddl_contract.json`.
+All **282** compiled table/index statements match its definitions, allowing only
+constraint ordering inside CREATE TABLE. Three regression cases guard live-ORM
+independence, independent caller copies and both-dialect DDL fidelity. Do not
+regenerate this package from later live models to make tests green.
+
+Focused schema/migration tests: **12 passed**; immutable DDL contract cases:
+**3 passed**. Actual owned PostgreSQL draft/full-chain/scope/rollback/writer-lock/
+live organization migration selection: **11 passed, 46.84s**. Changed type/format
+gates select **66** Python files and pass; Ruff/Pyright pass. Logs are
+`output/org-authz/p1/b06-{frozen-*,freeze-*}`. The whole-backend regression is
+recorded in `b06-freeze-full-backend.log`: **4,870 passed, 3 existing warnings,
+215.17s**, official isolated runner child exit 0 and cleanup `removed`.
+
+B-06 itself remains incomplete: private ORM/query/writer scoping and newly seeded
+dev account scope still need implementation. This fixture preparation does not
+establish organization isolation for any existing private endpoint, and no
+shared/main database or runtime data was changed. The full goal remains active.

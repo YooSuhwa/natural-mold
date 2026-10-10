@@ -1,0 +1,138 @@
+"""Immutable historical m77 metadata for draft migration fixtures."""
+
+import sqlalchemy as sa
+
+from schema_drafts.org_authz.m77_user import metadata as user_metadata
+
+from . import (
+    agent_api_key_deployments,
+    agent_api_keys,
+    agent_api_runs,
+    agent_api_threads,
+    agent_blueprints,
+    agent_deployments,
+    agent_mcp_tools,
+    agent_memory_settings,
+    agent_skills,
+    agent_subagents,
+    agent_tools,
+    agent_trigger_runs,
+    agent_triggers,
+    agents,
+    artifact_versions,
+    audit_events,
+    builder_sessions,
+    conversation_artifacts,
+    conversation_pinned_summaries,
+    conversation_run_inputs,
+    conversation_run_metrics,
+    conversation_runs,
+    conversations,
+    credential_audit_logs,
+    credential_defaults,
+    credential_oauth_states,
+    credentials,
+    daily_spend_agent,
+    daily_spend_model,
+    daily_spend_user,
+    health_check_history,
+    marketplace_installations,
+    marketplace_item_acl,
+    marketplace_items,
+    marketplace_publication_links,
+    marketplace_versions,
+    mcp_app_invocation_bindings,
+    mcp_servers,
+    mcp_tools,
+    memory_proposals,
+    memory_records,
+    message_attachments,
+    message_event_chunks,
+    message_events,
+    message_feedbacks,
+    models,
+    refresh_tokens,
+    share_links,
+    skill_builder_sessions,
+    skill_credential_bindings,
+    skill_evaluation_case_feedbacks,
+    skill_evaluation_runs,
+    skill_evaluation_sets,
+    skill_feedbacks,
+    skill_revisions,
+    skill_usage_events,
+    skills,
+    system_llm_settings,
+    templates,
+    token_usages,
+    tools,
+    user_memory_settings,
+)
+
+
+def build_metadata() -> sa.MetaData:
+    metadata = sa.MetaData()
+    agent_api_key_deployments.register(metadata)
+    agent_api_keys.register(metadata)
+    agent_api_runs.register(metadata)
+    agent_api_threads.register(metadata)
+    agent_blueprints.register(metadata)
+    agent_deployments.register(metadata)
+    agent_mcp_tools.register(metadata)
+    agent_memory_settings.register(metadata)
+    agent_skills.register(metadata)
+    agent_subagents.register(metadata)
+    agent_tools.register(metadata)
+    agent_trigger_runs.register(metadata)
+    agent_triggers.register(metadata)
+    agents.register(metadata)
+    artifact_versions.register(metadata)
+    audit_events.register(metadata)
+    builder_sessions.register(metadata)
+    conversation_artifacts.register(metadata)
+    conversation_pinned_summaries.register(metadata)
+    conversation_run_inputs.register(metadata)
+    conversation_run_metrics.register(metadata)
+    conversation_runs.register(metadata)
+    conversations.register(metadata)
+    credential_audit_logs.register(metadata)
+    credential_defaults.register(metadata)
+    credential_oauth_states.register(metadata)
+    credentials.register(metadata)
+    daily_spend_agent.register(metadata)
+    daily_spend_model.register(metadata)
+    daily_spend_user.register(metadata)
+    health_check_history.register(metadata)
+    marketplace_installations.register(metadata)
+    marketplace_item_acl.register(metadata)
+    marketplace_items.register(metadata)
+    marketplace_publication_links.register(metadata)
+    marketplace_versions.register(metadata)
+    mcp_app_invocation_bindings.register(metadata)
+    mcp_servers.register(metadata)
+    mcp_tools.register(metadata)
+    memory_proposals.register(metadata)
+    memory_records.register(metadata)
+    message_attachments.register(metadata)
+    message_event_chunks.register(metadata)
+    message_events.register(metadata)
+    message_feedbacks.register(metadata)
+    models.register(metadata)
+    refresh_tokens.register(metadata)
+    share_links.register(metadata)
+    skill_builder_sessions.register(metadata)
+    skill_credential_bindings.register(metadata)
+    skill_evaluation_case_feedbacks.register(metadata)
+    skill_evaluation_runs.register(metadata)
+    skill_evaluation_sets.register(metadata)
+    skill_feedbacks.register(metadata)
+    skill_revisions.register(metadata)
+    skill_usage_events.register(metadata)
+    skills.register(metadata)
+    system_llm_settings.register(metadata)
+    templates.register(metadata)
+    token_usages.register(metadata)
+    tools.register(metadata)
+    user_memory_settings.register(metadata)
+    user_metadata.tables["users"].to_metadata(metadata)
+    return metadata
