@@ -1,6 +1,6 @@
 # Organization and authorization execution record
 
-Status: P0 in progress — full implementation goal active
+Status: P0 complete; P1 ready — full implementation goal active
 Started: 2026-10-10 (Asia/Seoul)
 Branch: `feature/org-authz`
 Baseline: `9657ca60552e8f5e8c45ce6a8bd176c500c8992a`
@@ -35,7 +35,7 @@ observation. U-05 real-participant study is separate from automated UX testing.
 - [x] A-10 — middleware ordering, durable auth interrupt, revocation prototypes.
 - [x] A-11 — RLS 15 scenarios and two counterexamples in disposable PostgreSQL.
 - [x] A-12 — boundary intersection benchmark with the supplied final model.
-- [ ] A-13 — complete 22-table schema and staged migration contract review.
+- [x] A-13 — complete 22-table schema and staged migration contract review.
 
 ## Verified baseline
 
@@ -120,7 +120,7 @@ Task commits: A-03 `84ba74f0`, A-04 `bf71a22b`, A-05 `9f18fe95`, A-06
 `d29120f2`, A-07 `a83b924c`, A-08 `1228267e`, A-09 `7a94a0b5`, A-11
 `37b0b964`, A-12 `af0260f3`. A-10 is committed with this evidence entry.
 
-## A-13 work in progress (2026-10-10)
+## A-13 implementation and review history (2026-10-10)
 
 - Complete 22-table draft ORM/Core definitions are in
   `backend/schema_drafts/org_authz/`, isolated from live app metadata.
@@ -192,3 +192,43 @@ without triggering the direct-column guard. A-13 remains unapproved until the
 complete physical dependency guard and PostgreSQL concurrency regression are
 verified and reviewed. The next correction also separates snapshot codec,
 dependency discovery and restoration into modules below the review-size limit.
+
+## P0 closure (2026-10-10)
+
+Approved source: `53e1e6186d53fcd597fa3f0eb2637067df9a757d`.
+All five fresh leaf reviews (goal, context, code, security, manual QA) passed at
+that source. The earlier failures are retained in the evidence ledger rather
+than overwritten. The final rollback guard includes physical FK descendants,
+optional saver identities, version-2 provenance and a real concurrent-writer
+regression. Original HTML/model planning inputs remain preserved.
+
+- Backend coverage gate: 4,734 passed with four temporary workers; floor passed.
+- Canonical disposable PostgreSQL lane: 118 selected/executed, zero failures or
+  skips, independent cleanup passed (`validated=1`).
+- Whole-backend Ruff and Pyright passed; changed-Python type/format ratchets
+  passed for 100 files against the original baseline.
+- Frontend lint:all, build, 1,995 Vitest tests and coverage passed at the unchanged
+  frontend tree `842189e5d083fc427957db42fa3a032152f9931c`. No frontend changes in
+  the final rollback delta required repeating those checks.
+- Scripted smoke: 18 selected/executed at `19c7bd88`; no unexpected failures,
+  owned cleanup/export passed. It remains applicable to the byte-identical
+  application tree `29000575c4a931715bda595bf8770798da36283f` and frontend tree.
+  Independent cleanup validated both smoke and PG receipts.
+- Fetched and merged `origin/main`; it still points to baseline `9657ca60`, so
+  no route/table/migration renumbering was needed. Git hooks were preserved.
+
+Evidence is under ignored `output/org-authz/p0/` and
+`.omo/evidence/project-restart-consolidated-roadmap/`. The final review reports
+are `reviews/a13-{goal,context,code,security,qa}-r3.md`; their exact source and
+verdicts are recorded in `reviews/ledger.jsonl`. Broad gate artifacts are
+`backend-coverage-r3.log`, `backend-typecheck-r3.log`, and
+`org-authz-p0-schema-r3.json`; predecessor frontend/smoke receipts are linked by
+unchanged tree identity, not claimed as newly executed tests.
+
+P1 may now begin with B-01. Live app metadata/Alembic remains m77; authorization
+defaults remain legacy and RLS disabled. No main/shared database was migrated,
+no deployment or PR was created, and full implementation/operational acceptance
+remains unfinished. P0's CLI uses named query flags; C-07's complete operational
+CLI must finish the plan's subject-aware diagnostic interface alongside rebuild
+and reconciliation. The 14-day shadow observation, two-week stabilization and
+real-participant U-05 study are future gates.

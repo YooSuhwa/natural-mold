@@ -9,7 +9,7 @@ The active organization authorization program follows the supplied
 
 ## Active
 
-- [조직·권한·공유 실행 기록](org-authz-progress.md) — approved for implementation by the user on 2026-10-10; P0 in progress.
+- [조직·권한·공유 실행 기록](org-authz-progress.md) — approved for implementation by the user on 2026-10-10; P0 complete, P1 ready.
 
 ## Completed
 
