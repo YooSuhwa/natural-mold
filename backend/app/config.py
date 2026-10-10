@@ -4,8 +4,10 @@ from typing import Final, Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.authz.config import AuthzSettings
 
-class Settings(BaseSettings):
+
+class Settings(AuthzSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Runtime mode. ``production`` triggers strict boot-time validation

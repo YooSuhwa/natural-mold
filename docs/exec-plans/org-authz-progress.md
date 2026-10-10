@@ -24,7 +24,7 @@ observation. U-05 real-participant study is separate from automated UX testing.
 
 - [x] A-01 — ADR-023 and supplied plan registered; decisions accepted through the
   user's instruction to implement the supplied plan. Source/design review recorded.
-- [ ] A-02 — OpenFGA Compose and settings; private network startup evidence.
+- [x] A-02 — OpenFGA Compose and settings; private network startup evidence.
 - [ ] A-03 — pinned SDK client; timeout, retry, metrics tests.
 - [ ] A-04 — model/tests and CI; 144 checks and six ListObjects cases.
 - [ ] A-05 — bootstrap/check/explain CLI; model ID persistence.
@@ -55,6 +55,24 @@ observation. U-05 real-participant study is separate from automated UX testing.
 2026-10-10: A-13's 19-table count is stale; use 22 from 6.1/20.1 (SSO included).
 2026-10-10: Follow 17.4 two-PR sequence, resolving section 18's separate D-01 PR
 wording by keeping D-01 in its own commit within PR 1. See ADR-023.
+
+## A-02 verification (2026-10-10)
+
+- Configuration red test: eight failures before new settings existed; after
+  implementation `uv run pytest -q tests/authz/test_config.py`: eight passed.
+- OpenFGA 1.22.0 and dedicated PostgreSQL 16 started in disposable Compose
+  project `moldy-orgauthz-p0-5b15`; migration exited successfully.
+- Network-only health request returned `{"status":"SERVING"}`. Container
+  HostConfig.PortBindings is `{}`; no FGA host API/metrics port was exposed.
+- Compose requires root-environment OPENFGA_DB_PASSWORD and OPENFGA_API_TOKEN;
+  backend/.env is not a source for Compose variable interpolation. Do not edit
+  the shared installation `.env` for disposable tests.
+- Token uses Pydantic SecretStr; diagnostics redact it. Timeouts/poll periods
+  reject zero and modes reject invalid values. Defaults remain legacy/single_tenant
+  and RLS disabled.
+- New authorization settings are isolated in app/authz/config.py; the existing
+  single-responsibility Settings aggregate inherits them without moving unrelated
+  installation settings.
 
 ## Next stage start conditions
 

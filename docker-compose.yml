@@ -1,4 +1,45 @@
 services:
+  openfga-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: openfga
+      POSTGRES_PASSWORD: ${OPENFGA_DB_PASSWORD:?Set OPENFGA_DB_PASSWORD}
+      POSTGRES_DB: openfga
+    volumes:
+      - openfga_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openfga -d openfga"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  openfga-migrate:
+    image: openfga/openfga:v1.22.0
+    command: migrate
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://openfga:${OPENFGA_DB_PASSWORD:?Set OPENFGA_DB_PASSWORD}@openfga-postgres:5432/openfga?sslmode=disable
+    depends_on:
+      openfga-postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  openfga:
+    image: openfga/openfga:v1.22.0
+    command: run
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://openfga:${OPENFGA_DB_PASSWORD:?Set OPENFGA_DB_PASSWORD}@openfga-postgres:5432/openfga?sslmode=disable
+      OPENFGA_AUTHN_METHOD: preshared
+      OPENFGA_AUTHN_PRESHARED_KEYS: ${OPENFGA_API_TOKEN:?Set OPENFGA_API_TOKEN}
+      OPENFGA_PLAYGROUND_ENABLED: "false"
+      OPENFGA_METRICS_ENABLED: "true"
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # No host ports: FGA API and metrics are available only in the Compose network.
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -37,6 +78,10 @@ services:
       CHECKPOINTER_POOL_MIN_SIZE: ${CHECKPOINTER_POOL_MIN_SIZE:-4}
       CHECKPOINTER_POOL_MAX_SIZE: ${CHECKPOINTER_POOL_MAX_SIZE:-20}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      OPENFGA_API_URL: http://openfga:8080
+      OPENFGA_API_TOKEN: ${OPENFGA_API_TOKEN:?Set OPENFGA_API_TOKEN}
+      AUTHZ_MODE: ${AUTHZ_MODE:-legacy}
+      DB_RLS_ENABLED: ${DB_RLS_ENABLED:-false}
     # Secrets (ENCRYPTION_KEYS, JWT_SECRET, optional LLM keys) are read from
     # backend/.env — the same file the local-dev workflow creates. Marked
     # optional so `docker compose up postgres -d` keeps working before the
@@ -50,6 +95,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      openfga:
+        condition: service_started
 
   frontend:
     build:
@@ -74,3 +121,4 @@ services:
 volumes:
   postgres_data:
   backend_data:
+  openfga_data:
