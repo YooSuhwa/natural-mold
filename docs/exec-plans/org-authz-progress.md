@@ -119,3 +119,40 @@ frontend lint/build/tests/coverage and scripted smoke.
 Task commits: A-03 `84ba74f0`, A-04 `bf71a22b`, A-05 `9f18fe95`, A-06
 `d29120f2`, A-07 `a83b924c`, A-08 `1228267e`, A-09 `7a94a0b5`, A-11
 `37b0b964`, A-12 `af0260f3`. A-10 is committed with this evidence entry.
+
+## A-13 work in progress (2026-10-10)
+
+- Complete 22-table draft ORM/Core definitions are in
+  `backend/schema_drafts/org_authz/`, isolated from live app metadata.
+  All new constraints and indexes have stable names; partial indexes declare
+  PostgreSQL and SQLite predicates, and organization scope uses composite FKs.
+- All 15 staged draft files exist. Reversible m78–m89 upgrade/downgrade passes
+  on seeded SQLite; deferred cleanup DDL passes only in explicitly disposable
+  validation. The active app/Alembic head remains m77.
+- Actual Alembic m77 PostgreSQL, in an owned UUID database, accepts the complete
+  draft chain. A nonowner/no-BYPASSRLS role sees zero agents without context,
+  correct private rows with context, and cannot update platform credentials.
+  Extended platform-only RLS recheck passed against actual Alembic m77.
+- API caller / side-parent / hidden-session ownership is preserved on backfill;
+  repeat runs do not duplicate tenants, memberships or roles. Missing hidden
+  source owners abort. Owner deletion is restricted and agent SQL deletion
+  preserves conversations. Downgrade keeps content and refuses orphan histories.
+- Marketplace private/restricted/public/unlisted/system projection is compared
+  by exact grant set, including view/install/manage mapping and a repeat run.
+  Historical migration results remain separate from these current executions.
+- Clarifications: SSO creation is in m80; deferred order is m89→m92→m90→m91;
+  source inventory counts active ORM tables separately from five preserved
+  historical DB tables. See ADR-023 for rationale.
+- Current focused gate: 48 unit tests passed, seven integration tests deselected
+  by the normal lane. Ruff and Pyright passed for the draft and test modules.
+  The complete-chain PG test creates and removes its own UUID database and role.
+  A-13's final schema-manifest/event review and canonical full integration gate
+  remain open; the checkbox is deliberately still unchecked.
+
+Baseline phase checks: frontend lint:all and build passed under Node 22 in
+isolated roots. Scripted smoke selected/executed 18 tests, no unexpected failures;
+its owned cleanup/export receipt passed. A later independent port check rejected
+`live_port` because a separately started main-checkout uvicorn occupied 8101
+after this lane finished; that foreign process was preserved. Coverage gates
+require a clean Git state and rejected the still-uncommitted A-13 draft before
+measurement, so coverage is not claimed yet. P0 is not closed and P1 has not begun.

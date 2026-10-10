@@ -127,3 +127,27 @@ Enforced FGA errors deny with 503, while private reads remain independent.
   installation bootstrap therefore follows m84; P0 validates the command first.
   `MIGRATION_DATABASE_URL` is mandatory for bootstrap, and read commands require
   explicit immutable store/model IDs rather than silently using the latest model.
+- A-13 keeps drafts outside the live Alembic versions until their task stage is
+  approved. The active head remains m77 during P0; schema review uses a separate
+  declarative metadata rather than registering unfinished models in the app.
+  All 22 new definitions are present, including the SSO trio that section 6.3
+  omitted. Their creation is included in m80, before scope/backfill work.
+- The chain is m78–m89, then m92, m90, m91. Consecutive numeric ordering would
+  require PR2's legacy deletion before PR1/I-06 RLS and the enforcement
+  stabilization period. Preserve revision IDs but correct dependencies; keep
+  m92 operationally deferred and m90/m91 on PR2. No automatic `upgrade head`
+  crosses deferred activation. Deferred drafts require observation/backup
+  receipts; the explicit disposable-validation option is test evidence only.
+- Physical clean-m77 PostgreSQL contains five additional historical tables:
+  `_m11_dedup_connection_snapshot`, `_m11_dedup_tool_remap`,
+  `_m11_tool_backfill_provenance`, `_m9_migrated_connections`, and
+  `agent_creation_sessions`. None is read by app code. They retain old migration
+  provenance/compatibility data and are preserved. Report 63 active ORM tables
+  separately from 68 physical business/history tables; at m89 these become
+  85 active and 90 physical, excluding Alembic and runtime-managed saver tables.
+  Deferred RLS restricts the historical tables and global projection tables to
+  explicit platform scope, rather than exposing them in tenant sessions.
+- Existing FK/unique names differ between ORM create_all and migrated
+  PostgreSQL. Drafts discover and replace the exact source constraint by its
+  columns and fail on ambiguity. Rollback refuses preserved orphan histories or
+  spend keys that cannot be collapsed without losing data.
