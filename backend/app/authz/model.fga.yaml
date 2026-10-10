@@ -1,0 +1,426 @@
+name: Moldy authorization model v2
+model_file: ./model.fga
+tuples:
+  # 테넌트 t-acme(고객사) 아래 조직 acme, sales. 테넌트 관리자 tara, 테넌트 감사자 tom
+  - { user: user:tara, relation: admin, object: tenant:t-acme }
+  - { user: user:tom, relation: auditor, object: tenant:t-acme }
+  - { user: user:alice, relation: member, object: tenant:t-acme }
+  - { user: user:bob, relation: member, object: tenant:t-acme }
+  - { user: user:sam, relation: member, object: tenant:t-acme }
+  - { user: user:carol, relation: member, object: tenant:t-acme }
+  - { user: user:dave, relation: member, object: tenant:t-acme }
+  - { user: user:audra, relation: member, object: tenant:t-acme }
+  - { user: tenant:t-acme, relation: tenant, object: organization:acme }
+  - { user: tenant:t-acme, relation: tenant, object: organization:sales }
+  - { user: user:sam, relation: member, object: organization:sales }
+  # 다른 테넌트
+  - { user: user:eve, relation: member, object: tenant:t-beta }
+  - { user: tenant:t-beta, relation: tenant, object: organization:beta }
+  # 테넌트 공개 마켓플레이스 항목
+  - { user: organization:acme, relation: org, object: marketplace_item:tenant-pack }
+  - { user: user:bob, relation: owner, object: marketplace_item:tenant-pack }
+  - { user: tenant:t-acme#member, relation: installer, object: marketplace_item:tenant-pack }
+  - { user: tenant:t-acme, relation: tenant, object: marketplace_item:tenant-pack }
+  - { user: tenant:t-acme, relation: tenant, object: marketplace_item:hr-pack }
+  # 조직 acme: 관리자 alice, 빌더 bob, 구성원 carol, 인사팀 그룹(dave), 감사자 audra
+  - { user: user:alice, relation: admin, object: organization:acme }
+  - { user: user:bob, relation: builder, object: organization:acme }
+  - { user: user:carol, relation: member, object: organization:acme }
+  - { user: group:hr#member, relation: member, object: organization:acme }
+  - { user: organization:acme, relation: org, object: group:hr }
+  - { user: user:dave, relation: member, object: group:hr }
+  - { user: user:audra, relation: auditor, object: organization:acme }
+  - { user: group:hr#member, relation: cap_create_skill, object: organization:acme }
+  # 다른 조직 beta
+  - { user: user:eve, relation: member, object: organization:beta }
+  # 에이전트: bob 소유, 인사팀 실행, carol 편집
+  - { user: organization:acme, relation: org, object: agent:hr-bot }
+  - { user: user:bob, relation: owner, object: agent:hr-bot }
+  - { user: group:hr#member, relation: consumer, object: agent:hr-bot }
+  - { user: user:carol, relation: editor, object: agent:hr-bot }
+  - { user: organization:acme, relation: org, object: agent:policy-sub }
+  - { user: user:bob, relation: owner, object: agent:policy-sub }
+  - { user: agent:hr-bot, relation: consumer, object: agent:policy-sub }
+  # 에이전트 생성 시 조직 거주 튜플
+  - { user: agent:hr-bot, relation: resident_agent, object: organization:acme }
+  - { user: agent:policy-sub, relation: resident_agent, object: organization:acme }
+  # 기간 한정 실행 권한
+  - user: user:carol
+    relation: consumer
+    object: agent:policy-sub
+    condition:
+      name: non_expired_grant
+      context: { grant_time: "2026-10-10T00:00:00Z", grant_duration: 24h }
+  # 자격 증명 위임
+  - { user: organization:acme, relation: org, object: credential:bob-slack }
+  - { user: user:bob, relation: owner, object: credential:bob-slack }
+  - { user: agent:hr-bot, relation: consumer, object: credential:bob-slack }
+  # MCP 서버와 도구, 채팅 전용 위임
+  - { user: organization:acme, relation: org, object: mcp_server:slack }
+  - { user: user:bob, relation: owner, object: mcp_server:slack }
+  - { user: group:hr#member, relation: consumer, object: mcp_server:slack }
+  - user: agent:hr-bot
+    relation: consumer
+    object: mcp_server:slack
+    condition:
+      name: allowed_run_source
+      context: { allowed_sources: ["CHAT"] }
+  - { user: mcp_server:slack, relation: server, object: mcp_tool:slack-post }
+  - { user: mcp_server:slack, relation: server, object: mcp_tool:slack-delete }
+  - { user: group:hr#member, relation: blocked, object: mcp_tool:slack-delete }
+  # 시스템 도구: 조직 구성원 전체에 부여 (조직 생성 시 팬아웃)
+  - { user: organization:acme, relation: allowed_org, object: tool:sys-web-search }
+  - { user: organization:acme#member, relation: consumer, object: tool:sys-web-search }
+  # 스킬
+  - { user: organization:acme, relation: org, object: skill:hwp }
+  - { user: user:bob, relation: owner, object: skill:hwp }
+  - { user: agent:hr-bot, relation: consumer, object: skill:hwp }
+  # 모델 허용 목록
+  - { user: organization:acme#member, relation: consumer, object: llm_model:gpt-x }
+  # 지식 저장소
+  - { user: organization:acme, relation: org, object: knowledge_base:rules }
+  - { user: user:bob, relation: owner, object: knowledge_base:rules }
+  - { user: agent:hr-bot, relation: consumer, object: knowledge_base:rules }
+  - { user: knowledge_base:rules, relation: kb, object: document:leave }
+  # DB
+  - { user: organization:acme, relation: org, object: db_connection:erp }
+  - { user: user:bob, relation: owner, object: db_connection:erp }
+  - user: user:carol
+    relation: explorer
+    object: db_connection:erp
+    condition:
+      name: in_company_network
+      context: { cidr: "10.20.0.0/16" }
+  - { user: db_connection:erp, relation: connection, object: db_query_tool:leave-balance }
+  - { user: agent:hr-bot, relation: consumer, object: db_query_tool:leave-balance }
+  # 마켓플레이스 (조직 공개)
+  - { user: organization:acme, relation: org, object: marketplace_item:hr-pack }
+  - { user: user:bob, relation: owner, object: marketplace_item:hr-pack }
+  - { user: organization:acme#member, relation: viewer, object: marketplace_item:hr-pack }
+  # 하위 에이전트에만 위임된 자격 증명 (상위 에이전트로 전이되면 안 됨)
+  - { user: organization:acme, relation: org, object: credential:sub-cred }
+  - { user: user:bob, relation: owner, object: credential:sub-cred }
+  - { user: agent:policy-sub, relation: consumer, object: credential:sub-cred }
+  # MCP 서버 위임: 모든 실행 출처 허용 기본값
+  - user: agent:policy-sub
+    relation: consumer
+    object: mcp_server:slack
+    condition:
+      name: allowed_run_source
+      context: { allowed_sources: ["CHAT", "TRIGGER", "API", "SUBAGENT", "CHANNEL"] }
+  # 경계 밖 주체에게 잘못 기록된 튜플 (모델이 거부해야 함)
+  - { user: user:eve, relation: consumer, object: agent:policy-sub }
+  - { user: user:eve, relation: viewer, object: knowledge_base:rules }
+  - { user: user:sam, relation: editor, object: skill:hwp }
+  - { user: user:tara, relation: viewer, object: agent:hr-bot }
+  - { user: user:eve, relation: viewer, object: document:leave }
+  # 다른 회사 에이전트
+  - { user: organization:beta, relation: org, object: agent:beta-bot }
+  - { user: agent:beta-bot, relation: resident_agent, object: organization:beta }
+  - { user: agent:beta-bot, relation: consumer, object: credential:bob-slack }
+  # 조직에서 제거됐지만 소유 튜플이 남은 사용자
+  - { user: organization:acme, relation: org, object: agent:left-bot }
+  - { user: user:lena, relation: owner, object: agent:left-bot }
+  # 회사를 떠난 마켓플레이스 항목 소유자
+  - { user: organization:acme, relation: org, object: marketplace_item:old-pack }
+  - { user: tenant:t-acme, relation: tenant, object: marketplace_item:old-pack }
+  - { user: user:lena, relation: owner, object: marketplace_item:old-pack }
+  # MCP 서버: 채팅 전용 위임 (트리거·API·하위 에이전트 거부 확인용)
+  - { user: organization:acme, relation: org, object: mcp_server:chat-only }
+  - { user: user:bob, relation: owner, object: mcp_server:chat-only }
+  - user: agent:policy-sub
+    relation: consumer
+    object: mcp_server:chat-only
+    condition:
+      name: allowed_run_source
+      context: { allowed_sources: ["CHAT"] }
+  # 회사 공용 자격증명: 영업 조직에만 허용
+  - { user: tenant:t-acme, relation: tenant, object: credential:tenant-llm }
+  - { user: organization:sales, relation: allowed_org, object: credential:tenant-llm }
+  - { user: organization:sales#member, relation: consumer, object: credential:tenant-llm }
+  - { user: organization:acme#member, relation: consumer, object: credential:tenant-llm }
+
+tests:
+  - name: 조직 역할과 기능 권한
+    check:
+      - user: user:alice
+        object: organization:acme
+        assertions: { member: true, builder: true, can_manage_members: true, can_manage_policy: true, can_view_audit: true, cap_share_org_wide: true }
+      - user: user:bob
+        object: organization:acme
+        assertions: { cap_create_agent: true, cap_register_mcp: true, cap_connect_database: false, can_manage_members: false }
+      - user: user:carol
+        object: organization:acme
+        assertions: { member: true, cap_create_agent: false, cap_create_skill: false }
+      - user: user:dave
+        object: organization:acme
+        assertions: { member: true, cap_create_skill: true, cap_create_agent: false }
+      - user: user:audra
+        object: organization:acme
+        assertions: { can_view_audit: true, can_view_usage: true, member: false }
+      - user: user:eve
+        object: organization:acme
+        assertions: { member: false }
+  - name: 에이전트 단계와 관리자 거버넌스
+    check:
+      - user: user:dave
+        object: agent:hr-bot
+        assertions: { can_run: true, can_view_config: false, can_edit: false, can_share: false }
+      - user: user:carol
+        object: agent:hr-bot
+        assertions: { can_run: true, can_view_config: true, can_edit: true, can_share: false, can_delete: false }
+      - user: user:bob
+        object: agent:hr-bot
+        assertions: { can_share: true, can_deploy: true, can_delete: true, can_govern: true }
+      - user: user:alice
+        object: agent:hr-bot
+        assertions: { can_run: false, can_view_config: false, can_edit: false, can_delete: true, can_govern: true }
+      - user: agent:hr-bot
+        object: agent:policy-sub
+        assertions: { can_run: true }
+  - name: 기간 한정 실행 권한
+    check:
+      - user: user:carol
+        object: agent:policy-sub
+        context: { current_time: "2026-10-10T12:00:00Z" }
+        assertions: { can_run: true }
+      - user: user:carol
+        object: agent:policy-sub
+        context: { current_time: "2026-10-11T12:00:00Z" }
+        assertions: { can_run: false }
+  - name: 위임 자원
+    check:
+      - user: agent:hr-bot
+        object: credential:bob-slack
+        assertions: { can_use: true }
+      - user: user:dave
+        object: credential:bob-slack
+        assertions: { can_use: false }
+      - user: user:alice
+        object: credential:bob-slack
+        assertions: { can_use: false, can_edit: false, can_delete: true, can_govern: true }
+      - user: agent:hr-bot
+        object: skill:hwp
+        assertions: { can_use: true, can_view: false }
+      - user: agent:hr-bot
+        object: db_query_tool:leave-balance
+        assertions: { can_use: true }
+      - user: user:bob
+        object: db_query_tool:leave-balance
+        assertions: { can_use: true }
+  - name: MCP 도구 상속과 차단, 실행 출처 조건
+    check:
+      - user: user:dave
+        object: mcp_tool:slack-post
+        assertions: { can_invoke: true }
+      - user: user:dave
+        object: mcp_tool:slack-delete
+        assertions: { can_invoke: false }
+      - user: user:carol
+        object: mcp_tool:slack-post
+        assertions: { can_invoke: false }
+      - user: agent:hr-bot
+        object: mcp_server:slack
+        context: { run_source: "CHAT" }
+        assertions: { can_use: true }
+      - user: agent:hr-bot
+        object: mcp_server:slack
+        context: { run_source: "TRIGGER" }
+        assertions: { can_use: false }
+  - name: 시스템 도구와 모델 허용 목록
+    check:
+      - user: user:carol
+        object: tool:sys-web-search
+        assertions: { can_use: true, can_edit: false }
+      - user: user:eve
+        object: tool:sys-web-search
+        assertions: { can_use: false }
+      - user: user:dave
+        object: llm_model:gpt-x
+        assertions: { can_use: true }
+      - user: user:eve
+        object: llm_model:gpt-x
+        assertions: { can_use: false }
+  - name: 지식 저장소와 문서
+    check:
+      - user: agent:hr-bot
+        object: knowledge_base:rules
+        assertions: { can_query: true, can_view: false }
+      - user: user:alice
+        object: knowledge_base:rules
+        assertions: { can_share: false, can_revoke: true, can_view: false, can_query: false }
+      - user: user:bob
+        object: document:leave
+        assertions: { can_view: true }
+      - user: user:dave
+        object: document:leave
+        assertions: { can_view: false }
+  - name: DB 탐색 사내망 조건
+    check:
+      - user: user:carol
+        object: db_connection:erp
+        context: { user_ip: "10.20.3.7" }
+        assertions: { can_explore: true }
+      - user: user:carol
+        object: db_connection:erp
+        context: { user_ip: "203.0.113.9" }
+        assertions: { can_explore: false }
+  - name: 마켓플레이스와 조직 경계
+    check:
+      - user: user:carol
+        object: marketplace_item:hr-pack
+        assertions: { can_view: true, can_install: false }
+      - user: user:eve
+        object: marketplace_item:hr-pack
+        assertions: { can_view: false }
+      - user: user:eve
+        object: agent:policy-sub
+        assertions: { can_run: false }
+  - name: 위임 비전이와 실행 출처 기본값
+    check:
+      - user: agent:hr-bot
+        object: credential:sub-cred
+        assertions: { can_use: false }
+      - user: agent:policy-sub
+        object: credential:sub-cred
+        assertions: { can_use: true }
+      - user: user:dave
+        object: credential:sub-cred
+        assertions: { can_use: false }
+      - user: agent:policy-sub
+        object: mcp_server:slack
+        context: { run_source: "TRIGGER" }
+        assertions: { can_use: true }
+      - user: agent:hr-bot
+        object: mcp_tool:slack-post
+        context: { run_source: "API" }
+        assertions: { can_invoke: false }
+  - name: 테넌트 관리자와 감사자
+    check:
+      - user: user:tara
+        object: tenant:t-acme
+        assertions: { can_manage_tenant: true, can_create_org: true, member: true }
+      - user: user:tara
+        object: organization:acme
+        assertions: { can_manage_members: true, can_manage_policy: true, can_view_audit: true, member: false, cap_create_agent: false }
+      - user: user:tara
+        object: organization:sales
+        assertions: { can_manage_members: true }
+      - user: user:tara
+        object: agent:hr-bot
+        assertions: { can_run: false, can_view_config: false, can_govern: true, can_delete: true, can_revoke: true }
+      - user: user:tara
+        object: knowledge_base:rules
+        assertions: { can_view: false, can_share: false, can_revoke: true }
+      - user: user:tom
+        object: organization:acme
+        assertions: { can_view_audit: true, can_view_usage: true, can_manage_members: false }
+      - user: user:alice
+        object: organization:sales
+        assertions: { can_manage_members: false, member: false }
+      - user: user:alice
+        object: tenant:t-acme
+        assertions: { can_manage_tenant: false, member: true }
+  - name: 테넌트 경계
+    check:
+      - user: user:sam
+        object: marketplace_item:tenant-pack
+        assertions: { can_install: true, can_view: true }
+      - user: user:eve
+        object: marketplace_item:tenant-pack
+        assertions: { can_view: false }
+      - user: user:sam
+        object: agent:hr-bot
+        assertions: { can_run: false }
+      - user: user:eve
+        object: organization:acme
+        assertions: { can_manage_members: false, member: false }
+  - name: 경계 밖 직접 튜플 거부
+    check:
+      - user: user:eve
+        object: knowledge_base:rules
+        assertions: { can_view: false, can_query: false }
+      - user: user:sam
+        object: skill:hwp
+        assertions: { can_edit: false, can_use: false }
+      - user: agent:beta-bot
+        object: credential:bob-slack
+        assertions: { can_use: false }
+      - user: user:eve
+        object: document:leave
+        assertions: { can_view: false }
+      - user: user:lena
+        object: agent:left-bot
+        assertions: { can_run: false, can_edit: false, can_govern: false }
+      - user: user:alice
+        object: agent:left-bot
+        assertions: { can_govern: true, can_run: false }
+  - name: 관리자 거버넌스로 내용 접근 불가
+    check:
+      - user: user:tara
+        object: agent:hr-bot
+        assertions: { can_run: false, can_view_config: false, can_edit: false, can_share: false }
+      - user: user:alice
+        object: knowledge_base:rules
+        assertions: { can_share: false, can_revoke: true, can_view: false }
+      - user: user:alice
+        object: agent:hr-bot
+        assertions: { can_share: false, can_revoke: true }
+  - name: 회사 공용 자격증명 허용 조직
+    check:
+      - user: user:sam
+        object: credential:tenant-llm
+        assertions: { can_use: true, can_edit: false }
+      - user: user:carol
+        object: credential:tenant-llm
+        assertions: { can_use: false }
+      - user: user:tara
+        object: credential:tenant-llm
+        assertions: { can_edit: true, can_share: true, can_use: false }
+      - user: user:eve
+        object: credential:tenant-llm
+        assertions: { can_use: false }
+  - name: 떠난 소유자와 실행 출처
+    check:
+      - user: user:lena
+        object: marketplace_item:old-pack
+        assertions: { can_govern: false, can_manage: false, can_view: false }
+      - user: user:alice
+        object: marketplace_item:old-pack
+        assertions: { can_govern: true }
+      - user: agent:policy-sub
+        object: mcp_server:chat-only
+        context: { run_source: "CHAT" }
+        assertions: { can_use: true }
+      - user: agent:policy-sub
+        object: mcp_server:chat-only
+        context: { run_source: "TRIGGER" }
+        assertions: { can_use: false }
+      - user: agent:policy-sub
+        object: mcp_server:chat-only
+        context: { run_source: "SUBAGENT" }
+        assertions: { can_use: false }
+  - name: 목록 조회
+    list_objects:
+      - user: user:dave
+        type: agent
+        assertions:
+          can_run: [agent:hr-bot]
+          can_edit: []
+      - user: user:carol
+        type: agent
+        context: { current_time: "2026-10-10T12:00:00Z" }
+        assertions:
+          can_edit: [agent:hr-bot]
+      - user: user:dave
+        type: mcp_tool
+        assertions:
+          can_invoke: [mcp_tool:slack-post]
+      - user: user:eve
+        type: agent
+        assertions:
+          can_run: []
+      - user: user:eve
+        type: credential
+        assertions:
+          can_use: []

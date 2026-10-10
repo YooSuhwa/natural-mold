@@ -10,6 +10,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  authz-model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install checksum-verified OpenFGA CLI 0.8.1
+        run: |
+          curl --fail --silent --show-error --location \
+            https://github.com/openfga/cli/releases/download/v0.8.1/fga_0.8.1_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/fga.tar.gz"
+          printf '%s  %s\n' \
+            e0414ad70850f8070540ad1be7a1e2e861edd6d6e73f6ed2b959c3277f98a54c \
+            "$RUNNER_TEMP/fga.tar.gz" | sha256sum --check
+          tar --extract --gzip --file "$RUNNER_TEMP/fga.tar.gz" --directory "$RUNNER_TEMP"
+          sudo install "$RUNNER_TEMP/fga" /usr/local/bin/fga
+      - name: Verify organization permission model
+        run: fga model test --tests backend/app/authz/model.fga.yaml
+      - name: Verify SDK model matches the canonical DSL
+        run: |
+          fga model transform --file backend/app/authz/model.fga > "$RUNNER_TEMP/model.json"
+          diff backend/app/authz/model.json "$RUNNER_TEMP/model.json"
+
   backend:
     runs-on: ubuntu-latest
     defaults:

@@ -1,0 +1,224 @@
+model
+  schema 1.1
+
+type user
+
+type tenant
+  relations
+    define admin: [user]
+    define auditor: [user]
+    define member: [user] or admin
+    define can_manage_tenant: admin
+    define can_create_org: admin
+    define can_manage_tenant_catalog: admin
+    define can_view_tenant_audit: admin or auditor
+    define can_view_tenant_usage: admin or auditor
+
+type group
+  relations
+    define org: [organization]
+    define member: [user]
+
+type organization
+  relations
+    define tenant: [tenant]
+    define admin: [user, group#member]
+    define governor: admin or admin from tenant
+    define builder: [user, group#member] or admin
+    define member: [user, group#member] or builder
+    define auditor: [user, group#member]
+    define resident_agent: [agent]
+    define boundary: member or resident_agent
+    define cap_create_agent: [user, group#member, organization#member] or builder
+    define cap_create_skill: [user, group#member, organization#member] or builder
+    define cap_create_tool: [user, group#member, organization#member] or builder
+    define cap_register_mcp: [user, group#member, organization#member] or builder
+    define cap_connect_database: [user, group#member] or admin
+    define cap_share_org_wide: [user, group#member] or admin
+    define cap_publish_marketplace: [user, group#member, organization#member] or builder
+    define can_manage_members: admin or admin from tenant
+    define can_manage_policy: admin or admin from tenant
+    define can_view_audit: auditor or admin or can_view_tenant_audit from tenant
+    define can_view_usage: auditor or admin or can_view_tenant_usage from tenant
+
+type llm_model
+  relations
+    define consumer: [user, group#member, organization#member]
+    define can_use: consumer
+
+type credential
+  relations
+    define org: [organization]
+    define tenant: [tenant]
+    define allowed_org: [organization]
+    define in_boundary: boundary from org or boundary from allowed_org
+    define owner: [user]
+    define manager: [user] or owner
+    define consumer: [user, group#member, organization#member, agent] or manager
+    define can_use: consumer and in_boundary
+    define can_edit: (manager and in_boundary) or admin from tenant
+    define can_share: (manager and in_boundary) or admin from tenant
+    define can_revoke: can_share or governor from org
+    define can_delete: (manager and in_boundary) or governor from org or admin from tenant
+    define can_govern: (owner and in_boundary) or governor from org or admin from tenant
+
+type tool
+  relations
+    define org: [organization]
+    define allowed_org: [organization]
+    define in_boundary: boundary from org or boundary from allowed_org
+    define owner: [user]
+    define manager: [user, group#member] or owner
+    define editor: [user, group#member] or manager
+    define viewer: [user, group#member, organization#member] or editor
+    define consumer: [user, group#member, organization#member, agent] or viewer
+    define can_use: consumer and in_boundary
+    define can_view: viewer and in_boundary
+    define can_edit: editor and in_boundary
+    define can_share: manager and in_boundary
+    define can_revoke: can_share or governor from org
+    define can_delete: (manager and in_boundary) or governor from org
+    define can_govern: (owner and in_boundary) or governor from org
+
+type mcp_server
+  relations
+    define org: [organization]
+    define allowed_org: [organization]
+    define in_boundary: boundary from org or boundary from allowed_org
+    define owner: [user]
+    define manager: [user, group#member] or owner
+    define editor: [user, group#member] or manager
+    define viewer: [user, group#member, organization#member] or editor
+    define consumer: [user, group#member, organization#member, agent with allowed_run_source] or viewer
+    define can_use: consumer and in_boundary
+    define can_view: viewer and in_boundary
+    define can_edit: editor and in_boundary
+    define can_share: manager and in_boundary
+    define can_revoke: can_share or governor from org
+    define can_delete: (manager and in_boundary) or governor from org
+    define can_govern: (owner and in_boundary) or governor from org
+
+type mcp_tool
+  relations
+    define server: [mcp_server]
+    define blocked: [user, group#member, organization#member, agent]
+    define can_invoke: can_use from server but not blocked
+
+type skill
+  relations
+    define org: [organization]
+    define allowed_org: [organization]
+    define in_boundary: boundary from org or boundary from allowed_org
+    define owner: [user]
+    define manager: [user, group#member] or owner
+    define editor: [user, group#member] or manager
+    define viewer: [user, group#member, organization#member] or editor
+    define consumer: [user, group#member, organization#member, agent] or viewer
+    define can_use: consumer and in_boundary
+    define can_view: viewer and in_boundary
+    define can_edit: editor and in_boundary
+    define can_share: manager and in_boundary
+    define can_revoke: can_share or governor from org
+    define can_delete: (manager and in_boundary) or governor from org
+    define can_govern: (owner and in_boundary) or governor from org
+
+type agent
+  relations
+    define org: [organization]
+    define in_boundary: boundary from org
+    define owner: [user]
+    define manager: [user, group#member] or owner
+    define editor: [user, group#member] or manager
+    define viewer: [user, group#member, organization#member] or editor
+    define consumer: [user, group#member, organization#member, agent, user with non_expired_grant] or viewer
+    define can_run: consumer and in_boundary
+    define can_view_config: viewer and in_boundary
+    define can_clone: viewer and in_boundary
+    define can_edit: editor and in_boundary
+    define can_share: manager and in_boundary
+    define can_deploy: manager and in_boundary
+    define can_revoke: can_share or governor from org
+    define can_delete: (manager and in_boundary) or governor from org
+    define can_govern: (owner and in_boundary) or governor from org
+
+type knowledge_base
+  relations
+    define org: [organization]
+    define in_boundary: boundary from org
+    define owner: [user]
+    define manager: [user, group#member] or owner
+    define editor: [user, group#member] or manager
+    define viewer: [user, group#member] or editor
+    define consumer: [user, group#member, organization#member, agent] or viewer
+    define can_query: consumer and in_boundary
+    define can_view: viewer and in_boundary
+    define can_edit: editor and in_boundary
+    define can_share: manager and in_boundary
+    define can_revoke: can_share or governor from org
+    define can_delete: (manager and in_boundary) or governor from org
+    define can_govern: (owner and in_boundary) or governor from org
+
+type document
+  relations
+    define kb: [knowledge_base]
+    define viewer: [user, group#member] or can_view from kb
+    define can_view: viewer and in_boundary from kb
+
+type db_connection
+  relations
+    define org: [organization]
+    define in_boundary: boundary from org
+    define owner: [user]
+    define manager: [user, group#member] or owner
+    define explorer: [user, group#member, user with in_company_network] or manager
+    define can_explore: explorer and in_boundary
+    define can_edit: manager and in_boundary
+    define can_share: manager and in_boundary
+    define can_revoke: can_share or governor from org
+    define can_delete: (manager and in_boundary) or governor from org
+    define can_govern: (owner and in_boundary) or governor from org
+
+type db_query_tool
+  relations
+    define connection: [db_connection]
+    define consumer: [user, group#member, organization#member, agent] or can_explore from connection
+    define can_use: consumer and in_boundary from connection
+
+type marketplace_item
+  relations
+    define org: [organization]
+    define tenant: [tenant]
+    define owner: [user]
+    define manager: [user] or owner
+    define installer: [user, group#member, organization#member, tenant#member] or manager
+    define viewer: [user, group#member, organization#member, tenant#member] or installer
+    define can_view: viewer and member from tenant
+    define can_install: installer and member from tenant
+    define can_manage: manager and member from tenant
+    define can_govern: (owner and member from tenant) or governor from org
+
+type workflow
+  relations
+    define org: [organization]
+    define in_boundary: boundary from org
+    define owner: [user]
+    define manager: [user, group#member] or owner
+    define editor: [user, group#member] or manager
+    define consumer: [user, group#member, organization#member] or editor
+    define can_run: consumer and in_boundary
+    define can_edit: editor and in_boundary
+    define can_share: manager and in_boundary
+    define can_revoke: can_share or governor from org
+    define can_delete: (manager and in_boundary) or governor from org
+
+condition non_expired_grant(current_time: timestamp, grant_time: timestamp, grant_duration: duration) {
+  current_time < grant_time + grant_duration
+}
+
+condition allowed_run_source(run_source: string, allowed_sources: list<string>) {
+  run_source in allowed_sources
+}
+
+condition in_company_network(user_ip: ipaddress, cidr: string) {
+  user_ip.in_cidr(cidr)
+}
