@@ -105,6 +105,13 @@ Enforced FGA errors deny with 503, while private reads remain independent.
   during settings updates. The snapshot excludes credential ciphertext/password
   fields, is not an authorization receipt, and must not be exposed through the
   product settings response.
+  Snapshot version 2 also records actual incoming-FK dependency closure and
+  optional saver identity/reference keys. New or reparented indirect rows must
+  fail preflight before parent ownership or scope is restored; payload and
+  credential secret fields are excluded. Missing version-2 provenance requires
+  reconciliation. PostgreSQL locks keep verification and restoration in one
+  writer-stable transaction; the concurrency regression uses a real second
+  connection during that window.
 - Deferred m92 explicitly classifies every physical table, including indirect
   child/history rows and the four LangGraph saver tables. Unknown tables stop
   activation before policy DDL. Parent EXISTS policies protect child rows and

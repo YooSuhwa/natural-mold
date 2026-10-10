@@ -180,3 +180,15 @@ PostgreSQL recheck passed the initial/full migration chain and shared-issuer
 identity lifecycle tests. LDAP transport/configuration and incoherent rollout
 receipt regressions passed. Final re-review and clean-commit phase checks remain
 required before A-13/P0 closure.
+
+At `19c7bd88`, backend coverage passed 4,719 tests (117 integration tests
+deselected), canonical PostgreSQL passed all 117 selected/executed tests,
+scripted smoke passed all 18, and independent cleanup validated both receipts.
+Whole-backend Pyright and the 93-file changed-Python type/format ratchets passed.
+Frontend evidence is unchanged at tree `842189e5d083fc427957db42fa3a032152f9931c`.
+Goal/context/QA/security re-reviews passed. Code re-review rejected a further
+rollback gap: FK-only child rows could be created under existing scoped roots
+without triggering the direct-column guard. A-13 remains unapproved until the
+complete physical dependency guard and PostgreSQL concurrency regression are
+verified and reviewed. The next correction also separates snapshot codec,
+dependency discovery and restoration into modules below the review-size limit.
