@@ -98,3 +98,32 @@ Enforced FGA errors deny with 503, while private reads remain independent.
   inside PR 1.
 - Reserved knowledge/database/workflow types remain model-only until their
   features exist. No placeholder product endpoints are added for them.
+- A-08 uses a syntax-aware inventory of 173 occurrences in 65 files, verified
+  against the exact baseline commit. Appendix A's restricted regex omits 19
+  occurrences in eight files and undercounts 10 occurrences in listed files.
+  The stronger ratchet pins expressions and occurrence counts per file, so
+  deleting one old predicate cannot excuse adding a different one. Historical
+  HTML totals remain unchanged.
+- A-07 initially attaches policies from frozen, explicit route identities at app
+  registration instead of editing 49 existing route modules solely for markers.
+  Unknown routes receive no default and fail the meta test. P3 declarations take
+  precedence; this reduces unrelated route churn while preserving the gate.
+- A-09 pins CSRF presence during the legacy phase. The claimed existing
+  ownership-before-CSRF order is false: E2E helpers explicitly put ownership
+  after CSRF. The stricter target order will be introduced and behavior-tested
+  with resource policies in P3; legacy response precedence remains unchanged.
+- A-10 confirms that LangChain after-model hooks run in reverse middleware
+  order. P5 must assemble `[approval, connection_guard]` with `interrupt_on=None`
+  explicitly, so the guard node executes before the approval node. Combining
+  both interrupts inside one hook is unsafe: after connection state changes,
+  the approval interrupt can consume the earlier authentication resume value.
+  Keep separate checkpoint nodes and use the native HITL `when` predicate to
+  exclude tool calls already resolved by permission-denial ToolMessages. Cancel
+  must resolve outstanding call IDs before ending the graph. This narrows the
+  existing ADR-012 top-level injection rule for the authorized runtime path.
+- A-05 requires the model-version schema introduced by m84 in P2. P0 tests use
+  its explicit Core table contract in owned disposable schemas, including real
+  PostgreSQL. The CLI never creates tables or migrates an installation. Actual
+  installation bootstrap therefore follows m84; P0 validates the command first.
+  `MIGRATION_DATABASE_URL` is mandatory for bootstrap, and read commands require
+  explicit immutable store/model IDs rather than silently using the latest model.

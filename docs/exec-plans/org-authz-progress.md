@@ -25,16 +25,16 @@ observation. U-05 real-participant study is separate from automated UX testing.
 - [x] A-01 — ADR-023 and supplied plan registered; decisions accepted through the
   user's instruction to implement the supplied plan. Source/design review recorded.
 - [x] A-02 — OpenFGA Compose and settings; private network startup evidence.
-- [ ] A-03 — pinned SDK client; timeout, retry, metrics tests.
-- [ ] A-04 — model/tests and CI; 144 checks and six ListObjects cases.
-- [ ] A-05 — bootstrap/check/explain CLI; model ID persistence.
-- [ ] A-06 — fake authorization and live integration lane.
-- [ ] A-07 — route policy declarations and missing-policy ratchet.
-- [ ] A-08 — ownership predicate ratchet.
-- [ ] A-09 — CSRF and single Alembic head invariants.
-- [ ] A-10 — middleware ordering, durable auth interrupt, revocation prototypes.
-- [ ] A-11 — RLS 15 scenarios and two counterexamples in disposable PostgreSQL.
-- [ ] A-12 — boundary intersection benchmark with the supplied final model.
+- [x] A-03 — pinned SDK client; timeout, retry, metrics tests.
+- [x] A-04 — model/tests and CI; 144 checks and six ListObjects cases.
+- [x] A-05 — bootstrap/check/explain CLI; model ID persistence.
+- [x] A-06 — fake authorization and live integration lane.
+- [x] A-07 — route policy declarations and missing-policy ratchet.
+- [x] A-08 — ownership predicate ratchet (stronger 173-occurrence AST baseline).
+- [x] A-09 — CSRF presence and single Alembic head invariants; target order in P3.
+- [x] A-10 — middleware ordering, durable auth interrupt, revocation prototypes.
+- [x] A-11 — RLS 15 scenarios and two counterexamples in disposable PostgreSQL.
+- [x] A-12 — boundary intersection benchmark with the supplied final model.
 - [ ] A-13 — complete 22-table schema and staged migration contract review.
 
 ## Verified baseline
@@ -80,3 +80,42 @@ P1 begins only after every P0 acceptance item and the phase CI-equivalent checks
 pass. Each missing prerequisite remains unchecked. Required checks include
 backend lint/types/tests/coverage, disposable PG integration and cleanup,
 frontend lint/build/tests/coverage and scripted smoke.
+
+## P0 evidence through A-12 (2026-10-10)
+
+- Backend baseline suite: 4,665 passed after correcting the canonical document
+  inventory. Frontend baseline: 324 files / 1,995 tests passed under Node 22.
+- A-03 native SDK wire tests cover retry, total timeout, reversed batch order
+  and per-item errors. A-04 canonical model: 17 cases, 144 checks and six
+  ListObjects cases passed; compiled model JSON matches the supplied final model.
+- A-05 red collection failed before bootstrap existed. Empty-store deployment
+  and repeated bootstrap pass with real OpenFGA against SQLite and PostgreSQL
+  version storage. CLI defaults require deliberate DB selection and pinned IDs.
+  Run from backend: `uv run python -m app.authz.cli --help`.
+- A-10 native Deep Agents tests verify partial denial, authentication before
+  approval, approval retained for permitted calls, retry/skip/cancel without
+  duplicate tools, cancellation call completion, and repeated retry. A real
+  PostgreSQL checkpointer survives a closed connection and reconstructed graph.
+  The deny-overlay prototype covers grant and four organization-wide revocation
+  scopes, committed markers, unaffected organizations and storage failure.
+  These are P0 prototypes; production runtime integration remains P5/C-08 work.
+- A-11 owned PostgreSQL fresh fixture: 15/15; two counterexamples: 2/2;
+  concurrent 8 × 100 operations: zero cross-tenant contamination. Failed
+  scenarios now exit nonzero; engines dispose even when scenario bodies raise.
+- A-12 final-source two-round benchmark: CURRENT Check p95 3.34/3.51 ms,
+  Batch50 p95 22.02/21.70 ms, cross-tenant grants 0/100 in both rounds.
+  The deliberate baseline misgrants remain 100/100. Exact workloads, canonical
+  model bytes and list cardinalities are preserved. Owned stores were deleted
+  and independently returned 404. This artificial local workload does not
+  establish production capacity or observation evidence.
+- Canonical disposable PostgreSQL lane: 54 integration nodes passed, none
+  skipped, including both bootstrap dialects, durable interrupt and source-row
+  permission checks. Cleanup receipt validated, foreign containers preserved.
+  Receipt: `.omo/evidence/project-restart-consolidated-roadmap/org-authz-p0-native.json`.
+- Current outputs are ignored under `output/org-authz/p0/`; committed
+  `scripts/p0/results/` remain clearly historical handoff evidence. Detailed
+  refined RLS/benchmark logs and verification receipts are in that output folder.
+
+Task commits: A-03 `84ba74f0`, A-04 `bf71a22b`, A-05 `9f18fe95`, A-06
+`d29120f2`, A-07 `a83b924c`, A-08 `1228267e`, A-09 `7a94a0b5`, A-11
+`37b0b964`, A-12 `af0260f3`. A-10 is committed with this evidence entry.
