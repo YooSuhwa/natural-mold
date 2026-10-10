@@ -1,0 +1,206 @@
+{
+ "tuples": {
+  "baseline": 131309,
+  "current": 151309
+ },
+ "round1_baseline": {
+  "check_user_can_run": {
+   "n": 1000,
+   "p50": 2.21,
+   "p95": 2.87,
+   "p99": 3.47,
+   "mean": 2.27,
+   "allowed": 215
+  },
+  "check_agent_can_use_credential": {
+   "n": 500,
+   "p50": 1.63,
+   "p95": 2.17,
+   "p99": 2.48,
+   "mean": 1.69
+  },
+  "cross_tenant_misgrant_allowed": "100/100",
+  "batchcheck_50": {
+   "n": 200,
+   "p50": 11.83,
+   "p95": 14.55,
+   "p99": 15.47,
+   "mean": 11.99
+  },
+  "listobjects_can_run": {
+   "n": 100,
+   "p50": 2.01,
+   "p95": 2.95,
+   "p99": 4.2,
+   "mean": 2.12,
+   "avg_results": 87.4,
+   "max_results": 103
+  },
+  "listobjects_can_edit": {
+   "n": 100,
+   "p50": 1.32,
+   "p95": 1.79,
+   "p99": 2.3,
+   "mean": 1.4,
+   "avg_results": 5.1,
+   "max_results": 11
+  },
+  "check_concurrency8": {
+   "n": 2000,
+   "p50": 5.12,
+   "p95": 11.66,
+   "p99": 18.54,
+   "mean": 6.03
+  }
+ },
+ "round1_current": {
+  "check_user_can_run": {
+   "n": 1000,
+   "p50": 1.93,
+   "p95": 2.72,
+   "p99": 3.28,
+   "mean": 2.03,
+   "allowed": 215
+  },
+  "check_agent_can_use_credential": {
+   "n": 500,
+   "p50": 1.51,
+   "p95": 2.13,
+   "p99": 2.38,
+   "mean": 1.57
+  },
+  "cross_tenant_misgrant_allowed": "0/100",
+  "batchcheck_50": {
+   "n": 200,
+   "p50": 18.35,
+   "p95": 24.01,
+   "p99": 33.03,
+   "mean": 18.84
+  },
+  "listobjects_can_run": {
+   "n": 100,
+   "p50": 2.51,
+   "p95": 3.83,
+   "p99": 4.66,
+   "mean": 2.67,
+   "avg_results": 87.4,
+   "max_results": 103
+  },
+  "listobjects_can_edit": {
+   "n": 100,
+   "p50": 1.99,
+   "p95": 3.26,
+   "p99": 3.66,
+   "mean": 2.08,
+   "avg_results": 5.1,
+   "max_results": 11
+  },
+  "check_concurrency8": {
+   "n": 2000,
+   "p50": 5.62,
+   "p95": 11.67,
+   "p99": 16.44,
+   "mean": 6.34
+  }
+ },
+ "round2_current": {
+  "check_user_can_run": {
+   "n": 1000,
+   "p50": 1.94,
+   "p95": 2.78,
+   "p99": 3.55,
+   "mean": 2.03,
+   "allowed": 215
+  },
+  "check_agent_can_use_credential": {
+   "n": 500,
+   "p50": 1.33,
+   "p95": 2.01,
+   "p99": 2.39,
+   "mean": 1.42
+  },
+  "cross_tenant_misgrant_allowed": "0/100",
+  "batchcheck_50": {
+   "n": 200,
+   "p50": 17.8,
+   "p95": 22.26,
+   "p99": 23.91,
+   "mean": 17.99
+  },
+  "listobjects_can_run": {
+   "n": 100,
+   "p50": 2.61,
+   "p95": 4.05,
+   "p99": 4.35,
+   "mean": 2.75,
+   "avg_results": 87.4,
+   "max_results": 103
+  },
+  "listobjects_can_edit": {
+   "n": 100,
+   "p50": 2.17,
+   "p95": 3.49,
+   "p99": 3.77,
+   "mean": 2.33,
+   "avg_results": 5.1,
+   "max_results": 11
+  },
+  "check_concurrency8": {
+   "n": 2000,
+   "p50": 5.46,
+   "p95": 11.02,
+   "p99": 15.62,
+   "mean": 6.16
+  }
+ },
+ "round2_baseline": {
+  "check_user_can_run": {
+   "n": 1000,
+   "p50": 1.69,
+   "p95": 2.54,
+   "p99": 3.04,
+   "mean": 1.8,
+   "allowed": 215
+  },
+  "check_agent_can_use_credential": {
+   "n": 500,
+   "p50": 1.2,
+   "p95": 1.67,
+   "p99": 1.94,
+   "mean": 1.26
+  },
+  "cross_tenant_misgrant_allowed": "100/100",
+  "batchcheck_50": {
+   "n": 200,
+   "p50": 11.48,
+   "p95": 13.67,
+   "p99": 15.32,
+   "mean": 11.67
+  },
+  "listobjects_can_run": {
+   "n": 100,
+   "p50": 1.89,
+   "p95": 2.77,
+   "p99": 2.95,
+   "mean": 1.97,
+   "avg_results": 87.4,
+   "max_results": 103
+  },
+  "listobjects_can_edit": {
+   "n": 100,
+   "p50": 1.42,
+   "p95": 2.26,
+   "p99": 2.92,
+   "mean": 1.52,
+   "avg_results": 5.1,
+   "max_results": 11
+  },
+  "check_concurrency8": {
+   "n": 2000,
+   "p50": 5.15,
+   "p95": 13.22,
+   "p99": 20.11,
+   "mean": 6.2
+  }
+ }
+}
