@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.password import hash_password, verify_password
 from app.config import settings
 from app.models.user import User
+from app.seed.e2e_scope import lock_e2e_seed, seed_e2e_scope
 from app.services import user_service
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ async def seed_e2e_user(db: AsyncSession) -> User | None:
         logger.warning("skip seed_e2e_user: E2E user email or password is empty")
         return None
 
+    await lock_e2e_seed(db)
     existing = await user_service.get_by_email(db, email)
     if existing is None:
         user = await user_service.create_user(
@@ -39,6 +41,7 @@ async def seed_e2e_user(db: AsyncSession) -> User | None:
             display_name=name,
             is_super_user=True,
         )
+        await seed_e2e_scope(db, user)
         logger.info("seed_e2e_user: created %s", email)
         return user
 
@@ -62,6 +65,7 @@ async def seed_e2e_user(db: AsyncSession) -> User | None:
     if changed:
         await db.flush()
         logger.info("seed_e2e_user: refreshed %s", email)
+    await seed_e2e_scope(db, existing)
     return existing
 
 

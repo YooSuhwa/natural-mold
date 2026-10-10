@@ -727,3 +727,32 @@ Existing private ORM/writers and service callers still need the B-06 cutover.
 The historical full-backend baseline remains 4,870 tests from the preceding
 checkpoint; it was not rerun for this isolated helper addition. No shared
 database, environment, runtime data, deployment or remote branch was modified.
+
+## B-06 development-account scope prerequisite (2026-10-11)
+
+Development E2E account seeding now provisions a dedicated explicit company and
+organization using reserved UUIDv5 IDs (`moldy/e2e-tenant` and
+`moldy/e2e-organization`). It enrolls the configured account and gives that
+fixture account explicit company/organization admin roles; the global operator
+flag alone is not used as an organization role. The saved organization is set
+only when absent. Production and disabled-feature entrypoints return before
+creating any fixture scope.
+
+Repeated seeding is idempotent. Existing suspended company/organization scope
+and inactive/removed memberships are rejected with `e2e_scope_unavailable`
+rather than reactivated. PostgreSQL startup transactions acquire a dedicated
+transaction advisory lock before account lookup so simultaneous development
+backends cannot duplicate the account, membership or role grants. Account and
+scope writes remain in the caller's transaction.
+
+Failing tests first demonstrated missing enrollment. The selected seed,
+organization-context and signup regression passes **25 tests** (1.04s); actual
+m83 PostgreSQL concurrent bootstrap passes **1 test** (4.00s), including normal
+organization resolution and explicit company/org membership. Logs are
+`output/org-authz/p1/b06-e2e-scope-{focused,native}.log`. Pyright and changed-file
+type/format checks pass for **4** Python files, Ruff passes, and the ownership
+predicate ratchet remains **173**, additions **0**.
+
+No application startup, shared/main DB migration, runtime-data mutation,
+deployment or push was performed. This closes development-account preparation,
+not B-06 private endpoint/service/writer scoping or full P1 acceptance.
