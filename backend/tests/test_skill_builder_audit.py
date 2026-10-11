@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.audit_event import AuditEvent
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 from tests.skill_builder_test_helpers import configure_system_llm as _configure_system_llm
 
@@ -116,13 +118,15 @@ async def test_improve_confirm_audit_includes_counts_and_hashes_without_content(
 ) -> None:
     await _configure_system_llm(db)
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content(body="BASE_FILE_BODY_MARKER"),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content(body="BASE_FILE_BODY_MARKER"),
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
         old_hash = skill.content_hash

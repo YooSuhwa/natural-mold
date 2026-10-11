@@ -5,7 +5,15 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+    verify_csrf,
+)
 from app.error_codes import agent_not_found, conversation_not_found
 from app.models.conversation import Conversation
 from app.schemas.conversation import (
@@ -19,6 +27,7 @@ from app.schemas.conversation import (
     ConversationWithAgentResponse,
 )
 from app.schemas.conversation_run import ConversationRunResponse
+from app.schemas.conversation_scope import ConversationMutation
 from app.services import chat_service, conversation_run_service
 from app.services.agent_image_paths import build_agent_image_url
 from app.services.conversation_audit_service import record_conversation_audit
@@ -35,7 +44,9 @@ def _conversation_with_agent_response(
     base["active_run"] = active_run
     return ConversationWithAgentResponse(
         **base,
-        agent=ConversationAgentBrief(
+        agent=None
+        if agent is None
+        else ConversationAgentBrief(
             id=agent.id,
             name=agent.name,
             image_url=build_agent_image_url(
@@ -50,10 +61,12 @@ def _conversation_with_agent_response(
 async def _active_runs_by_conversation(
     db: AsyncSession,
     items: list[Conversation],
+    context: OrgContext,
 ) -> dict[uuid.UUID, ConversationRunResponse]:
     active_runs = await conversation_run_service.active_runs_for_conversations(
         db,
         [item.id for item in items],
+        context=context,
     )
     return {
         conversation_id: ConversationRunResponse.model_validate(run)
@@ -64,8 +77,9 @@ async def _active_runs_by_conversation(
 async def _conversation_responses_with_active_runs(
     db: AsyncSession,
     items: list[Conversation],
+    context: OrgContext,
 ) -> list[ConversationResponse]:
-    active_runs = await _active_runs_by_conversation(db, items)
+    active_runs = await _active_runs_by_conversation(db, items, context)
     return [
         ConversationResponse.model_validate(item).model_copy(
             update={"active_run": active_runs.get(item.id)}
@@ -85,11 +99,12 @@ async def list_global_conversations_page(
     sort: ConversationSort = Query("updated"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
     try:
         items, next_cursor, has_more = await chat_service.list_global_conversations_page(
             db,
-            user.id,
+            context,
             limit=limit,
             cursor=cursor,
             q=q,
@@ -97,7 +112,7 @@ async def list_global_conversations_page(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid cursor") from exc
-    active_runs = await _active_runs_by_conversation(db, items)
+    active_runs = await _active_runs_by_conversation(db, items, context)
     return ConversationWithAgentListEnvelope(
         items=[
             _conversation_with_agent_response(item, active_run=active_runs.get(item.id))
@@ -115,12 +130,12 @@ async def list_global_conversations_page(
 async def get_conversation_detail(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    conv = await chat_service.get_owned_ui_conversation_with_agent(db, conversation_id, user.id)
+    conv = await chat_service.get_owned_ui_conversation_with_agent(db, conversation_id, context)
     if not conv:
         raise conversation_not_found()
-    active_runs = await _active_runs_by_conversation(db, [conv])
+    active_runs = await _active_runs_by_conversation(db, [conv], context)
     return _conversation_with_agent_response(conv, active_run=active_runs.get(conv.id))
 
 
@@ -136,13 +151,15 @@ async def list_conversations_page(
     sort: ConversationSort = Query("updated"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    if not await chat_service.is_agent_owned_by_user(db, agent_id, user.id):
+    if not await chat_service.is_agent_owned_by_user(db, agent_id, context):
         raise agent_not_found()
     try:
         items, next_cursor, has_more = await chat_service.list_conversations_page(
             db,
             agent_id,
+            context=context,
             limit=limit,
             cursor=cursor,
             q=q,
@@ -151,7 +168,7 @@ async def list_conversations_page(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid cursor") from exc
     return ConversationListEnvelope(
-        items=await _conversation_responses_with_active_runs(db, items),
+        items=await _conversation_responses_with_active_runs(db, items, context),
         next_cursor=next_cursor,
         has_more=has_more,
     )
@@ -165,12 +182,13 @@ async def list_conversations(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
+    agent = await chat_service.get_agent_with_tools(db, agent_id, context)
     if not agent:
         raise agent_not_found()
-    items = await chat_service.list_conversations(db, agent_id)
-    return await _conversation_responses_with_active_runs(db, items)
+    items = await chat_service.list_conversations(db, agent_id, context)
+    return await _conversation_responses_with_active_runs(db, items, context)
 
 
 @router.post(
@@ -184,12 +202,13 @@ async def create_conversation(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
+    agent = await chat_service.get_agent_with_tools(db, agent_id, context)
     if not agent:
         raise agent_not_found()
-    conv = await chat_service.create_conversation(db, agent_id, data.title)
+    conv = await chat_service.create_conversation(db, agent_id, data.title, context=context)
     await record_conversation_audit(
         db,
         user=user,
@@ -213,12 +232,13 @@ async def create_draft_conversation(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
+    agent = await chat_service.get_agent_with_tools(db, agent_id, context)
     if not agent:
         raise agent_not_found()
-    conv = await chat_service.create_conversation(db, agent_id, source="draft")
+    conv = await chat_service.create_conversation(db, agent_id, context=context, source="draft")
     await record_conversation_audit(
         db,
         user=user,
@@ -244,8 +264,11 @@ async def update_conversation(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
     conv: Conversation = Depends(owned_conversation),
+    context: OrgContext = Depends(get_org_context),
 ):
-    updated = await chat_service.update_conversation(db, conv, data)
+    updated = await chat_service.update_conversation(
+        db, ConversationMutation(conv.id, context, data)
+    )
     await record_conversation_audit(
         db,
         user=user,
@@ -271,8 +294,9 @@ async def mark_conversation_read(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
     conv: Conversation = Depends(owned_conversation),
+    context: OrgContext = Depends(get_org_context),
 ):
-    updated = await chat_service.mark_conversation_read(db, conv)
+    updated = await chat_service.mark_conversation_read(db, conv.id, context)
     await record_conversation_audit(
         db,
         user=user,
@@ -292,6 +316,7 @@ async def delete_conversation(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
     conv: Conversation = Depends(owned_conversation),
 ):
@@ -304,5 +329,5 @@ async def delete_conversation(
         agent_id=conv.agent_id,
         title=conv.title,
     )
-    await chat_service.delete_conversation(db, conv)
+    await chat_service.delete_conversation(db, conv, context)
     await db.commit()

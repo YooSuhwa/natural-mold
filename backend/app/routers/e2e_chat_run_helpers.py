@@ -8,8 +8,17 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_scope import require_conversation_agent_id
+from app.authz.org_context import OrgContext
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+    verify_csrf,
+)
 from app.error_codes import conversation_not_found
 from app.models.conversation import Conversation
 from app.schemas.conversation_run import ConversationRunResponse
@@ -59,6 +68,7 @@ async def create_e2e_conversation_run(
     data: E2EConversationRunCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
     conv: Conversation = Depends(owned_conversation),
 ):
@@ -66,8 +76,8 @@ async def create_e2e_conversation_run(
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conv.id,
-        agent_id=conv.agent_id,
-        user_id=user.id,
+        agent_id=require_conversation_agent_id(conv),
+        context=context,
         source=data.source,
         input_preview=data.input_preview,
     )
@@ -107,6 +117,7 @@ async def update_e2e_conversation_run_heartbeat(
     data: E2EConversationRunHeartbeatUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
     # 게이트 전용이지만 decorator dependencies 는 verify_csrf 보다 먼저 돌아
     # CSRF 403 → 404 순서가 뒤집히므로 파라미터 위치(_csrf 뒤)로 순서를 보존한다.
@@ -117,7 +128,7 @@ async def update_e2e_conversation_run_heartbeat(
         db,
         conversation_id=conversation_id,
         run_id=run_id,
-        user_id=user.id,
+        context=context,
     )
     if run is None:
         raise conversation_not_found()

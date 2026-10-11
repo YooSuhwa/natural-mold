@@ -27,6 +27,7 @@ from app.models.model import Model
 from app.models.skill import AgentSkillLink, Skill
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 
@@ -75,6 +76,8 @@ async def _make_agent_with_dependencies(
         description="Returns the current date and time.",
         parameters={"timezone": "Asia/Seoul"},
         enabled=True,
+        org_id=None,
+        tenant_id=None,
     )
     skill = Skill(
         id=uuid.uuid4(),
@@ -88,6 +91,8 @@ async def _make_agent_with_dependencies(
         size_bytes=100,
         version="1.0.0",
         origin_kind="created_by_me",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     server = McpServer(
         id=uuid.uuid4(),
@@ -99,6 +104,8 @@ async def _make_agent_with_dependencies(
         headers=mcp_headers or {},
         env_vars={},
         status="connected",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     mcp_tool = McpTool(
         id=uuid.uuid4(),
@@ -124,6 +131,8 @@ async def _make_agent_with_dependencies(
         opener_questions=["What should I research?"],
         model_fallback_list=[str(fallback_model.id)] if fallback_model else None,
         status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     agent.tool_links = [AgentToolLink(tool_id=tool.id)]
     if include_skill:
@@ -203,9 +212,7 @@ async def test_publish_agent_creates_portable_agent_spec(
 
     # Audit row is committed together with the publish.
     audit_row = (
-        await db.execute(
-            select(AuditEvent).where(AuditEvent.action == "marketplace.publish")
-        )
+        await db.execute(select(AuditEvent).where(AuditEvent.action == "marketplace.publish"))
     ).scalar_one()
     assert audit_row.target_id == body["id"]
 
@@ -226,9 +233,7 @@ async def test_publish_agent_audit_failure_rolls_back_publish(
     from app.services import audit_service
 
     with (
-        patch.object(
-            audit_service, "record_event", side_effect=RuntimeError("audit down")
-        ),
+        patch.object(audit_service, "record_event", side_effect=RuntimeError("audit down")),
         pytest.raises(RuntimeError),
     ):
         await client.post(
@@ -410,6 +415,8 @@ async def test_publish_agent_rejects_shared_subagent_dependency(
         identity_mode=AGENT_IDENTITY_FIXED,
         model_id=model.id,
         status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(child)
     await db.flush()
@@ -525,6 +532,8 @@ async def test_publish_agent_version_rejects_non_agent_marketplace_item(
         moderation_status="approved",
         source_kind="user",
         published_at=_now(),
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(skill_item)
     await db.commit()

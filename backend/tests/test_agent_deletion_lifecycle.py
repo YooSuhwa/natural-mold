@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 from httpx import AsyncClient
@@ -8,13 +10,22 @@ from httpx import AsyncClient
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession, seed_agent
 
 
 async def _seed_run(status: str, *, active: bool) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
     async with TestSession() as db:
         _, _, agent = await seed_agent(db)
-        conversation = Conversation(agent_id=agent.id, title="Deletion lifecycle")
+        conversation = Conversation(
+            agent_id=agent.id,
+            title="Deletion lifecycle",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conversation)
         await db.flush()
         run = ConversationRun(

@@ -8,8 +8,12 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.catalog_scope import load_private_installation
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scoped
 from app.error_codes import (
     marketplace_credential_required,
     marketplace_invalid_package,
@@ -23,7 +27,7 @@ from app.marketplace.install.bindings import (
     _required_credential_keys,
     _validate_mcp_bindings,
 )
-from app.marketplace.install.common import _existing_installation, _now
+from app.marketplace.install.common import _existing_installation, _now, _resolve_version
 from app.marketplace.schemas import InstallMarketplaceItemIn
 from app.models.credential import Credential
 from app.models.marketplace import (
@@ -43,21 +47,21 @@ async def _install_mcp_item(
     item: MarketplaceItem,
     version: MarketplaceVersion,
     user: CurrentUser,
+    context: OrgContext,
     body: InstallMarketplaceItemIn,
 ) -> MarketplaceInstallation:
     if version.payload_kind != "mcp_template":
         raise marketplace_invalid_package("version is not an MCP template")
 
-    existing = await _existing_installation(db, item=item, user=user)
+    existing = await _existing_installation(db, item=item, user=user, context=context)
     if existing is not None and body.install_mode == "reuse_or_update":
         if not body.credential_bindings:
             return existing
-        installed_version = await db.get(MarketplaceVersion, existing.version_id)
-        binding_version = installed_version or version
+        binding_version = await _resolve_version(db, item=item, version_id=existing.version_id)
         credential_id = await _validate_mcp_bindings(
             db,
             version=binding_version,
-            user=user,
+            context=context,
             bindings=body.credential_bindings,
         )
         missing = [
@@ -72,7 +76,9 @@ async def _install_mcp_item(
         server_id = existing.installed_mcp_server_id
         if server_id is None:
             raise marketplace_invalid_package("installed MCP server is missing")
-        server = await db.get(McpServer, server_id)
+        server = await db.scalar(
+            private_scoped(select(McpServer).where(McpServer.id == server_id), McpServer, context)
+        )
         # Re-validate ownership before mutating (mirror
         # ``_overwrite_mcp_installation``) — collapse to 404 per the
         # enumeration-safety convention.
@@ -96,7 +102,7 @@ async def _install_mcp_item(
     credential_id = await _validate_mcp_bindings(
         db,
         version=version,
-        user=user,
+        context=context,
         bindings=body.credential_bindings,
     )
     missing = [key for key in _mcp_required_keys(version) if key not in body.credential_bindings]
@@ -114,7 +120,13 @@ async def _install_mcp_item(
         and body.install_mode == "overwrite_existing"
         and existing.installed_mcp_server_id is not None
     ):
-        server = await db.get(McpServer, existing.installed_mcp_server_id)
+        server = await db.scalar(
+            private_scoped(
+                select(McpServer).where(McpServer.id == existing.installed_mcp_server_id),
+                McpServer,
+                context,
+            )
+        )
         # Re-validate ownership before mutating (mirror
         # ``_overwrite_mcp_installation``) — collapse to 404 per the
         # enumeration-safety convention.
@@ -136,7 +148,9 @@ async def _install_mcp_item(
 
     server = McpServer(
         id=uuid.uuid4(),
-        user_id=user.id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=str(name),
         description=payload.get("description"),
         transport=str(payload.get("transport") or "streamable_http"),
@@ -155,7 +169,9 @@ async def _install_mcp_item(
 
     installation = MarketplaceInstallation(
         id=uuid.uuid4(),
-        user_id=user.id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         item_id=item.id,
         version_id=version.id,
         resource_type="mcp",
@@ -173,7 +189,7 @@ async def _mcp_install_status_for_server(
     db: AsyncSession,
     *,
     version: MarketplaceVersion,
-    user: CurrentUser,
+    context: OrgContext,
     server: McpServer,
 ) -> str:
     missing: list[str] = []
@@ -184,11 +200,16 @@ async def _mcp_install_status_for_server(
             missing.append(key)
             continue
 
-        credential = await db.get(Credential, server.credential_id)
+        credential = await db.scalar(
+            private_scoped(
+                select(Credential).where(Credential.id == server.credential_id), Credential, context
+            )
+        )
         expected_definition = requirement.get("definition_key")
         if (
             credential is None
-            or credential.user_id != user.id
+            or credential.is_system
+            or credential.status != "active"
             or (expected_definition and credential.definition_key != expected_definition)
         ):
             missing.append(key)
@@ -202,13 +223,24 @@ async def _overwrite_mcp_installation(
     item: MarketplaceItem,
     latest: MarketplaceVersion,
     user: CurrentUser,
+    context: OrgContext,
 ) -> MarketplaceInstallation:
+    scoped_installation = await load_private_installation(db, installation.id, context)
+    if scoped_installation is None:
+        raise marketplace_item_not_found()
+    installation = scoped_installation
     if latest.payload_kind != "mcp_template":
         raise marketplace_invalid_package("latest version is not an MCP template")
     if installation.installed_mcp_server_id is None:
         raise marketplace_item_not_found()
 
-    server = await db.get(McpServer, installation.installed_mcp_server_id)
+    server = await db.scalar(
+        private_scoped(
+            select(McpServer).where(McpServer.id == installation.installed_mcp_server_id),
+            McpServer,
+            context,
+        )
+    )
     if server is None or server.user_id != user.id:
         raise marketplace_item_not_found()
 
@@ -217,7 +249,7 @@ async def _overwrite_mcp_installation(
     install_status = await _mcp_install_status_for_server(
         db,
         version=latest,
-        user=user,
+        context=context,
         server=server,
     )
     _apply_mcp_payload_to_server(

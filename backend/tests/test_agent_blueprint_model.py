@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.agent_blueprint import AgentBlueprint
 from app.models.marketplace import MarketplaceInstallation, MarketplaceItem, MarketplaceVersion
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 
@@ -38,6 +39,8 @@ async def test_agent_marketplace_installation_points_to_agent_blueprint(
         status="published",
         moderation_status="approved",
         source_kind="user",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(item)
     await db.flush()
@@ -69,6 +72,8 @@ async def test_agent_marketplace_installation_points_to_agent_blueprint(
         source_marketplace_version_id=version.id,
         origin_user_id=TEST_USER_ID,
         origin_kind="imported_by_me",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(blueprint)
     await db.flush()
@@ -82,6 +87,8 @@ async def test_agent_marketplace_installation_points_to_agent_blueprint(
         installed_agent_blueprint_id=blueprint.id,
         install_status="active",
         is_dirty=False,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(installation)
     await db.flush()

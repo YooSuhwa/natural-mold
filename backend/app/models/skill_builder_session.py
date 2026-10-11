@@ -8,6 +8,7 @@ from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
 
 if TYPE_CHECKING:
     from app.models.skill import Skill
@@ -37,9 +38,10 @@ def utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-class SkillBuilderSession(Base):
+class SkillBuilderSession(RequiredOrgScope, Base):
     __tablename__ = "skill_builder_sessions"
     __table_args__ = (
+        *resource_scope_constraints("skill_builder_sessions", system=False),
         Index("ix_skill_builder_sessions_user_updated", "user_id", "updated_at"),
         Index("ix_skill_builder_sessions_finalized_skill", "finalized_skill_id"),
         Index("ix_skill_builder_sessions_source_skill", "source_skill_id"),

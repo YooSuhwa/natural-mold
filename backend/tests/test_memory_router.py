@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
@@ -16,7 +17,15 @@ async def _seed_agent(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
         name="Memory Agent",
         system_prompt="You remember useful preferences.",
     )
-    conversation = Conversation(agent_id=agent.id, title="Memory Test")
+    conversation = Conversation(
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        org_id=agent.org_id,
+        tenant_id=agent.tenant_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=datetime.now(UTC),
+        title="Memory Test",
+    )
     db.add(conversation)
     await db.commit()
     return agent.id, conversation.id

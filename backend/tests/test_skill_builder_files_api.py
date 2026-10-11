@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.skill_builder_session import SkillBuilderSession
 from app.services import skill_draft_workspace as workspace
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -42,7 +43,13 @@ _MOLDY_YAML = "credential_requirements:\n  - key: naver_search\n    kind: api_ke
 async def _make_session(
     db: AsyncSession, *, user_id: uuid.UUID = TEST_USER_ID
 ) -> SkillBuilderSession:
-    session = SkillBuilderSession(user_id=user_id, user_request="테스트", status="active")
+    session = SkillBuilderSession(
+        user_id=user_id,
+        user_request="테스트",
+        status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+    )
     db.add(session)
     await db.flush()
     path = workspace.create_workspace(session.id)

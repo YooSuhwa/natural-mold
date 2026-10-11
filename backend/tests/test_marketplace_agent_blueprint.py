@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.identity import make_agent_runtime_name
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.models.agent import Agent
 from app.models.agent_blueprint import AgentBlueprint
 from app.models.marketplace import (
@@ -25,6 +25,12 @@ from app.models.model import Model
 from app.models.skill import Skill
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_credential,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -62,6 +68,8 @@ async def _make_agent_item(db: AsyncSession) -> tuple[MarketplaceItem, Marketpla
         moderation_status="approved",
         source_kind="user",
         published_at=_now(),
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(item)
     await db.flush()
@@ -116,6 +124,8 @@ async def _make_agent_item_with_dependencies(
         moderation_status="approved",
         source_kind="user",
         published_at=_now(),
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(item)
     await db.flush()
@@ -316,6 +326,8 @@ async def test_publish_install_overwrite_and_create_preserve_runtime_policy(
         model_id=model.id,
         model=model,
         runtime_policy={"version": 1, "todo": {"enabled": False}},
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([model, agent])
     await db.commit()
@@ -423,6 +435,8 @@ async def test_publish_rejects_nonportable_runtime_policy_payloads(
         model_id=model.id,
         model=model,
         runtime_policy=runtime_policy,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([model, agent])
     await db.commit()
@@ -769,6 +783,8 @@ async def test_create_agent_from_blueprint_materializes_declared_dependencies(
         name="Current DateTime",
         parameters={},
         enabled=True,
+        org_id=None,
+        tenant_id=None,
     )
     skill = Skill(
         id=uuid.uuid4(),
@@ -780,6 +796,8 @@ async def test_create_agent_from_blueprint_materializes_declared_dependencies(
         content_hash="d" * 64,
         size_bytes=100,
         origin_kind="created_by_me",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([model, tool, skill])
     item, _version = await _make_agent_item_with_dependencies(db)
@@ -908,16 +926,18 @@ async def test_create_agent_from_blueprint_reuse_existing_requires_credential_bo
         is_default=True,
         is_visible=True,
     )
-    credential = await credential_service.create(
+    credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="HTTP Tool Credential",
-        data={
-            "server_url": "https://api.example.test",
-            "access_token": "install-token",
-            "refresh_token": "install-refresh",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="HTTP Tool Credential",
+            data={
+                "server_url": "https://api.example.test",
+                "access_token": "install-token",
+                "refresh_token": "install-refresh",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     db.add(model)
     item, version = await _make_agent_item(db)
@@ -996,6 +1016,8 @@ async def test_create_agent_from_blueprint_does_not_reuse_tool_with_different_pa
         parameters={"url": "https://wrong.example.test/search"},
         credential_id=None,
         enabled=True,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([model, existing_tool])
     item, version = await _make_agent_item(db)
@@ -1067,6 +1089,8 @@ async def test_create_agent_from_blueprint_does_not_reuse_mcp_name_collision(
         credential_id=None,
         status="connected",
         is_system=False,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([model, existing])
     item, version = await _make_agent_item(db)
@@ -1135,27 +1159,31 @@ async def test_create_agent_from_blueprint_does_not_reuse_mcp_with_different_cre
         is_default=True,
         is_visible=True,
     )
-    old_credential = await credential_service.create(
+    old_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Old Docs MCP OAuth",
-        data={
-            "server_url": "https://mcp.example.test",
-            "access_token": "old-token",
-            "refresh_token": "old-refresh",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Old Docs MCP OAuth",
+            data={
+                "server_url": "https://mcp.example.test",
+                "access_token": "old-token",
+                "refresh_token": "old-refresh",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
-    selected_credential = await credential_service.create(
+    selected_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Selected Docs MCP OAuth",
-        data={
-            "server_url": "https://mcp.example.test",
-            "access_token": "selected-token",
-            "refresh_token": "selected-refresh",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Selected Docs MCP OAuth",
+            data={
+                "server_url": "https://mcp.example.test",
+                "access_token": "selected-token",
+                "refresh_token": "selected-refresh",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     existing = McpServer(
         id=uuid.uuid4(),
@@ -1171,6 +1199,8 @@ async def test_create_agent_from_blueprint_does_not_reuse_mcp_with_different_cre
         credential_id=old_credential.id,
         status="connected",
         is_system=False,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     tool = Tool(
         id=uuid.uuid4(),
@@ -1180,6 +1210,8 @@ async def test_create_agent_from_blueprint_does_not_reuse_mcp_with_different_cre
         name="Current DateTime",
         parameters={},
         enabled=True,
+        org_id=None,
+        tenant_id=None,
     )
     skill = Skill(
         id=uuid.uuid4(),
@@ -1191,6 +1223,8 @@ async def test_create_agent_from_blueprint_does_not_reuse_mcp_with_different_cre
         content_hash="d" * 64,
         size_bytes=100,
         origin_kind="created_by_me",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([model, existing, tool, skill])
     item, version = await _make_agent_item_with_dependencies(db)
@@ -1308,16 +1342,18 @@ async def test_agent_blueprint_install_persists_credential_binding_for_create_ag
         is_default=True,
         is_visible=True,
     )
-    credential = await credential_service.create(
+    credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Docs MCP OAuth",
-        data={
-            "server_url": "https://mcp.example.test",
-            "access_token": "install-token",
-            "refresh_token": "install-refresh",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Docs MCP OAuth",
+            data={
+                "server_url": "https://mcp.example.test",
+                "access_token": "install-token",
+                "refresh_token": "install-refresh",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     tool = Tool(
         id=uuid.uuid4(),
@@ -1327,6 +1363,8 @@ async def test_agent_blueprint_install_persists_credential_binding_for_create_ag
         name="Current DateTime",
         parameters={},
         enabled=True,
+        org_id=None,
+        tenant_id=None,
     )
     skill = Skill(
         id=uuid.uuid4(),
@@ -1338,6 +1376,8 @@ async def test_agent_blueprint_install_persists_credential_binding_for_create_ag
         content_hash="d" * 64,
         size_bytes=100,
         origin_kind="created_by_me",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([model, tool, skill])
     item, version = await _make_agent_item_with_dependencies(db)
@@ -1389,16 +1429,18 @@ async def test_agent_blueprint_reuse_or_update_applies_credential_bindings(
     db: AsyncSession,
 ) -> None:
     await _ensure_test_user(db)
-    credential = await credential_service.create(
+    credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Docs MCP OAuth",
-        data={
-            "server_url": "https://mcp.example.test",
-            "access_token": "install-token",
-            "refresh_token": "install-refresh",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Docs MCP OAuth",
+            data={
+                "server_url": "https://mcp.example.test",
+                "access_token": "install-token",
+                "refresh_token": "install-refresh",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     item, version = await _make_agent_item_with_dependencies(db)
     requirement = {
@@ -1451,16 +1493,18 @@ async def test_agent_blueprint_installation_summary_recomputes_missing_binding(
     db: AsyncSession,
 ) -> None:
     await _ensure_test_user(db)
-    credential = await credential_service.create(
+    credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Docs MCP OAuth",
-        data={
-            "server_url": "https://mcp.example.test",
-            "access_token": "install-token",
-            "refresh_token": "install-refresh",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Docs MCP OAuth",
+            data={
+                "server_url": "https://mcp.example.test",
+                "access_token": "install-token",
+                "refresh_token": "install-refresh",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     item, version = await _make_agent_item_with_dependencies(db)
     requirement = {
@@ -1514,12 +1558,12 @@ async def test_agent_blueprint_install_rejects_wrong_credential_definition(
     db: AsyncSession,
 ) -> None:
     await _ensure_test_user(db)
-    wrong_credential = await credential_service.create(
+    wrong_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="openai",
-        name="Wrong Credential",
-        data={"api_key": "sk-test"},
+        CredentialCreation(
+            definition_key="openai", name="Wrong Credential", data={"api_key": "sk-test"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     item, version = await _make_agent_item_with_dependencies(db)
     requirement = {
@@ -1621,6 +1665,8 @@ async def test_create_agent_from_blueprint_links_existing_subagent(
         identity_mode="per_user",
         model_id=model.id,
         status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([model, worker])
     item, version = await _make_agent_item(db)
@@ -1895,6 +1941,8 @@ async def test_agent_blueprint_list_ignores_uninstalled_installation_rows(
         origin_user_id=TEST_USER_ID,
         origin_kind="imported_by_me",
         install_status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(blueprint)
     await db.flush()
@@ -1908,6 +1956,8 @@ async def test_agent_blueprint_list_ignores_uninstalled_installation_rows(
         install_status="uninstalled",
         is_dirty=False,
         installed_at=_now(),
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     active = MarketplaceInstallation(
         id=uuid.uuid4(),
@@ -1919,6 +1969,8 @@ async def test_agent_blueprint_list_ignores_uninstalled_installation_rows(
         install_status="active",
         is_dirty=False,
         installed_at=_now(),
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([stale, active])
     await db.commit()
@@ -2040,6 +2092,8 @@ async def test_agent_blueprint_reuse_or_update_rejects_foreign_blueprint(
         origin_user_id=other_user.id,
         origin_kind="imported_by_me",
         install_status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(foreign_blueprint)
     await db.flush()
@@ -2053,6 +2107,8 @@ async def test_agent_blueprint_reuse_or_update_rejects_foreign_blueprint(
         install_status="active",
         is_dirty=False,
         installed_at=_now(),
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(installation)
     await db.commit()

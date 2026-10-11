@@ -40,6 +40,8 @@ from app.marketplace.skill_runtime import (
     ResolvedCredential,
     build_skill_runtime_context,
 )
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 from tests.tool_helpers import tool_coroutine
 
 # ---------------------------------------------------------------------------
@@ -244,6 +246,7 @@ def _seed_skill(root: Path, slug: str) -> Path:
 
 def _make_cfg(thread_id: str, skills: list[dict] | None) -> AgentConfig:
     return AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="anthropic",
         model_name="claude-sonnet-4-5",
         api_key=None,

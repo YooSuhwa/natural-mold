@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_policy import RuntimePolicyV1, TodoPolicyV1
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.model import Model
 from app.models.skill import Skill
@@ -15,6 +16,12 @@ from app.models.template import Template
 from app.models.tool import Tool
 from app.models.user import User
 from app.services.agent_service import create_agent, update_agent
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -22,14 +29,19 @@ async def _seed_all(db: AsyncSession) -> tuple[Model, Tool, Skill, Template]:
     """Seed user, model, tool, skill, and template."""
     user = User(id=TEST_USER_ID, email="test@test.com", name="Test")
     db.add(user)
+    await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
 
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o", is_default=True)
     db.add(model)
 
     tool = Tool(
+        is_system=True,
         name="Web Search",
         definition_key="builtin:web_search",
         description="Search the web",
+        org_id=None,
+        tenant_id=None,
     )
     db.add(tool)
 
@@ -40,6 +52,8 @@ async def _seed_all(db: AsyncSession) -> tuple[Model, Tool, Skill, Template]:
         description="A test skill",
         kind="text",
         storage_path="/tmp/skills/test/SKILL.md",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(skill)
 
@@ -77,7 +91,7 @@ async def test_create_agent_with_template_tools(db: AsyncSession):
             model_id=model.id,
             template_id=template.id,
         ),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
 
     assert agent is not None
@@ -100,7 +114,7 @@ async def test_create_agent_flushes_without_committing(db: AsyncSession):
             system_prompt="test",
             model_id=model.id,
         ),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
     agent_id = agent.id
     await db.rollback()
@@ -133,7 +147,7 @@ async def test_create_agent_with_skills(db: AsyncSession):
             model_id=model.id,
             skill_ids=[skill.id],
         ),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
 
     assert len(agent.skill_links) == 1
@@ -161,15 +175,13 @@ async def test_update_agent_tool_ids(db: AsyncSession):
             model_id=model.id,
             tool_ids=[tool.id],
         ),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
     assert len(agent.tool_links) == 1
 
     # Update with empty tool_ids (remove all tools)
     updated = await update_agent(
-        db,
-        agent,
-        AgentUpdate(tool_ids=[]),
+        db, agent, AgentUpdate(tool_ids=[]), context=unit_context(TEST_USER_ID)
     )
     assert len(updated.tool_links) == 0
 
@@ -194,7 +206,7 @@ async def test_update_agent_multiple_fields(db: AsyncSession):
             system_prompt="original",
             model_id=model.id,
         ),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
 
     updated = await update_agent(
@@ -208,6 +220,7 @@ async def test_update_agent_multiple_fields(db: AsyncSession):
             model_params={"temperature": 0.5},
             middleware_configs=[MiddlewareConfigEntry(type="summarization", params={})],
         ),
+        context=unit_context(TEST_USER_ID),
     )
 
     assert updated.name == "Renamed"
@@ -240,15 +253,13 @@ async def test_update_agent_skill_ids(db: AsyncSession):
             model_id=model.id,
             skill_ids=[skill.id],
         ),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
     assert len(agent.skill_links) == 1
 
     # Remove skills
     updated = await update_agent(
-        db,
-        agent,
-        AgentUpdate(skill_ids=[]),
+        db, agent, AgentUpdate(skill_ids=[]), context=unit_context(TEST_USER_ID)
     )
     assert len(updated.skill_links) == 0
 
@@ -267,7 +278,7 @@ async def test_create_agent_persists_omitted_null_and_explicit_runtime_policy(
     omitted = await create_agent(
         db,
         AgentCreate(name="Omitted", system_prompt="test", model_id=model.id),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
     explicit_null = await create_agent(
         db,
@@ -277,7 +288,7 @@ async def test_create_agent_persists_omitted_null_and_explicit_runtime_policy(
             model_id=model.id,
             runtime_policy=None,
         ),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
     explicit = await create_agent(
         db,
@@ -290,7 +301,7 @@ async def test_create_agent_persists_omitted_null_and_explicit_runtime_policy(
                 todo=TodoPolicyV1(enabled=False),
             ),
         ),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
 
     # Then NULL remains legacy-compatible and explicit false is stored canonically.
@@ -324,18 +335,22 @@ async def test_update_agent_distinguishes_omitted_policy_from_explicit_null(
                 todo=TodoPolicyV1(enabled=False),
             ),
         ),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
     original = dict(agent.runtime_policy or {})
 
     # When an unrelated update omits runtime_policy.
-    unchanged = await update_agent(db, agent, AgentUpdate(name="Renamed"))
+    unchanged = await update_agent(
+        db, agent, AgentUpdate(name="Renamed"), context=unit_context(TEST_USER_ID)
+    )
 
     # Then the stored policy is preserved exactly.
     assert unchanged.runtime_policy == original
 
     # When a later update explicitly sends NULL.
-    cleared = await update_agent(db, agent, AgentUpdate(runtime_policy=None))
+    cleared = await update_agent(
+        db, agent, AgentUpdate(runtime_policy=None), context=unit_context(TEST_USER_ID)
+    )
 
     # Then the stored override is cleared back to legacy-compatible NULL.
     assert cleared.runtime_policy is None
@@ -354,7 +369,7 @@ async def test_agent_response_exposes_stored_effective_and_source_policy(
     legacy = await create_agent(
         db,
         AgentCreate(name="Legacy", system_prompt="test", model_id=model.id),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
     explicit = await create_agent(
         db,
@@ -367,7 +382,7 @@ async def test_agent_response_exposes_stored_effective_and_source_policy(
                 todo=TodoPolicyV1(enabled=False),
             ),
         ),
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
     )
 
     # When both rows are serialized through the public Agent response adapter.

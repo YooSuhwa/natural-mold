@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.authz.platform_scope import PlatformScope
+from app.credentials.creation import CredentialCreation
 from app.models.model import Model
 from app.models.system_llm_setting import SystemLlmSetting
+from tests.authz.unit_scope_fixture import create_test_credential
 
 SYSTEM_MODEL_NAME = "gpt-5.4"
 
@@ -19,13 +21,12 @@ SYSTEM_MODEL_NAME = "gpt-5.4"
 async def configure_system_llm(db: AsyncSession) -> None:
     """text_primary system LLM + 매칭되는 models 카탈로그 행을 구성한다."""
 
-    credential = await credential_service.create(
+    credential = await create_test_credential(
         db,
-        user_id=None,
-        definition_key="openai",
-        name="builder-key",
-        data={"api_key": "sk-test"},
-        is_system=True,
+        CredentialCreation(
+            definition_key="openai", name="builder-key", data={"api_key": "sk-test"}
+        ),
+        PlatformScope(),
     )
     db.add(
         SystemLlmSetting(

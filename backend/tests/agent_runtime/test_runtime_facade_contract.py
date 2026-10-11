@@ -20,6 +20,8 @@ from tests.agent_runtime.runtime_contract_helpers import (
     JSONValue,
     assert_contract_matches,
 )
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 _FIXTURE_NAME = "runtime_facade_v1.json"
 _PATCH_POINTS = (
@@ -208,7 +210,16 @@ async def collect_runtime_facade_contract(
     )
     monkeypatch.setattr(builder, "_interactive_tool_instruction_prompt", lambda: "<interactive>")
     prepared = await builder._prepare_runtime_components(
-        AgentConfig("provider", "model", None, None, "<base>", [], "contract-thread"),
+        AgentConfig(
+            "provider",
+            "model",
+            None,
+            None,
+            "<base>",
+            [],
+            "contract-thread",
+            org_context=unit_context(TEST_USER_ID),
+        ),
         is_trigger_mode=False,
         include_ask_user=True,
         include_agent_memory_file=False,
@@ -270,6 +281,7 @@ def test_agent_config_preserves_legacy_positional_model_params_slot() -> None:
         [],
         "contract-thread",
         model_params,
+        org_context=unit_context(TEST_USER_ID),
     )
 
     assert config.model_params is model_params

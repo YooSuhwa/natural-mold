@@ -50,6 +50,7 @@ from app.services.chat.conversations import (
     mark_conversation_read,
     maybe_set_auto_title,
     promote_draft_conversation,
+    set_active_branch,
     touch_conversation,
     update_conversation,
 )
@@ -98,6 +99,7 @@ __all__ = [
     "maybe_set_auto_title",
     "promote_draft_conversation",
     "save_token_usage",
+    "set_active_branch",
     "touch_conversation",
     "trigger_blocked_tools_for_agent_tree",
     "update_conversation",

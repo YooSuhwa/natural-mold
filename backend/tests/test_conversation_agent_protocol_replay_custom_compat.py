@@ -3,17 +3,45 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent
+from app.dependencies import CurrentUser
+from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
 from app.routers.conversation_agent_protocol_replay import (
     load_protocol_events,
     protocol_replay_generator,
 )
 from app.routers.conversation_agent_protocol_runtime import protocol_events_from_broker
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
+from tests.conftest import TEST_USER_ID
+
+
+async def _seed_legacy_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="legacy-replay@test.dev", name="Fixture")
+    )
+    db.add(
+        Conversation(
+            id=conversation_id,
+            user_id=TEST_USER_ID,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            agent_id=None,
+            agent_name_snapshot="Legacy replay fixture",
+            last_activity_at=datetime.now(UTC),
+        )
+    )
+    await db.flush()
 
 
 def _event_payloads(chunks: list[str]) -> list[dict[str, object]]:
@@ -42,6 +70,7 @@ async def _collect_replay_chunks(events: list[StoredProtocolEvent]) -> list[str]
 @pytest.mark.asyncio
 async def test_replay_normalizes_legacy_flat_custom_prefixed_event(db: AsyncSession) -> None:
     conversation_id = uuid.uuid4()
+    await _seed_legacy_conversation(db, conversation_id)
     run_id = "run-flat-custom"
     db.add(
         MessageEvent(
@@ -66,7 +95,7 @@ async def test_replay_normalizes_legacy_flat_custom_prefixed_event(db: AsyncSess
     )
     await db.commit()
 
-    events = await load_protocol_events(db, conversation_id)
+    events = await load_protocol_events(db, conversation_id, context=unit_context(TEST_USER_ID))
     chunks = await _collect_replay_chunks(events)
     payloads = _event_payloads(chunks)
 
@@ -85,6 +114,7 @@ async def test_replay_normalizes_legacy_flat_custom_prefixed_event(db: AsyncSess
 @pytest.mark.asyncio
 async def test_replay_normalizes_legacy_wire_custom_prefixed_event(db: AsyncSession) -> None:
     conversation_id = uuid.uuid4()
+    await _seed_legacy_conversation(db, conversation_id)
     run_id = "run-wire-custom"
     db.add(
         MessageEvent(
@@ -111,7 +141,7 @@ async def test_replay_normalizes_legacy_wire_custom_prefixed_event(db: AsyncSess
     )
     await db.commit()
 
-    events = await load_protocol_events(db, conversation_id)
+    events = await load_protocol_events(db, conversation_id, context=unit_context(TEST_USER_ID))
     chunks = await _collect_replay_chunks(events)
     payloads = _event_payloads(chunks)
 

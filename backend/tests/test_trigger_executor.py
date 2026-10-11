@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
 
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
+from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, ensure_unit_scope
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -36,7 +40,10 @@ async def _seed_full_setup(
         db.add(model)
         await db.flush()
 
+        await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
         agent = Agent(
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
             user_id=user.id,
             name="Trigger Agent",
             system_prompt="You are helpful.",
@@ -47,9 +54,12 @@ async def _seed_full_setup(
 
         if with_tools:
             tool = Tool(
+                is_system=True,
                 name=tool_name,
                 definition_key=tool_definition_key,
                 description=tool_name,
+                org_id=None,
+                tenant_id=None,
             )
             db.add(tool)
             await db.flush()
@@ -57,6 +67,8 @@ async def _seed_full_setup(
             db.add(link)
 
         trigger = AgentTrigger(
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
             agent_id=agent.id,
             user_id=user.id,
             trigger_type="interval",
@@ -169,10 +181,13 @@ async def test_execute_trigger_agent_not_found():
         user = User(id=TEST_USER_ID, email="test@test.com", name="Test")
         db.add(user)
         await db.flush()
+        await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
 
         # Create trigger pointing to non-existent agent
         fake_agent_id = uuid.uuid4()
         trigger = AgentTrigger(
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
             agent_id=fake_agent_id,
             user_id=user.id,
             trigger_type="interval",
@@ -196,7 +211,8 @@ async def test_execute_trigger_agent_not_found():
     async with TestSession() as db:
         trigger = await db.get(AgentTrigger, trigger_id)
         assert trigger is not None
-        assert trigger.status == "error"
+        assert trigger.status == "active"
+        assert await db.scalar(select(AgentTriggerRun.id)) is None
 
 
 @pytest.mark.asyncio
@@ -480,7 +496,15 @@ async def test_execute_trigger_selected_conversation_uses_target_conversation():
     """selected_conversation policy should write into the configured conversation."""
     trigger_id, agent_id = await _seed_full_setup()
     async with TestSession() as db:
-        target = Conversation(agent_id=agent_id, title="기존 대화")
+        target = Conversation(
+            agent_id=agent_id,
+            title="기존 대화",
+            user_id=TEST_USER_ID,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            agent_name_snapshot="Trigger Agent",
+            last_activity_at=datetime.now(UTC),
+        )
         db.add(target)
         await db.flush()
         trigger = await db.get(AgentTrigger, trigger_id)

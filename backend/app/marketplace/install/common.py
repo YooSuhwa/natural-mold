@@ -16,8 +16,18 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.error_codes import marketplace_version_not_found
+from app.authz.catalog_scope import (
+    catalog_view_candidate_predicate,
+    installation_child_scope_predicate,
+)
+from app.authz.catalog_version_scope import load_item_version
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
+from app.authz.scoping import private_scope_predicate
+from app.error_codes import marketplace_item_not_found, marketplace_version_not_found
+from app.exceptions import AppError
 from app.marketplace.access import is_owner
 from app.models.marketplace import (
     MarketplaceInstallation,
@@ -86,18 +96,30 @@ async def _resolve_version(
     version doesn't belong to the item or doesn't exist.
     """
 
-    if version_id is not None:
-        version = await db.get(MarketplaceVersion, version_id)
-        if version is None or version.item_id != item.id:
-            raise marketplace_version_not_found()
-        return version
-    if item.latest_version_id is None:
-        # Item without versions — install is meaningless.
+    target_id = version_id if version_id is not None else item.latest_version_id
+    if target_id is None:
         raise marketplace_version_not_found()
-    version = await db.get(MarketplaceVersion, item.latest_version_id)
+    version = await load_item_version(db, item.id, target_id)
     if version is None:
         raise marketplace_version_not_found()
     return version
+
+
+async def load_install_source_item(
+    db: AsyncSession, item_id: uuid.UUID, context: OrgContext
+) -> MarketplaceItem:
+    """Load the current catalog source without flushing pending caller writes."""
+    statement = (
+        select(MarketplaceItem)
+        .where(MarketplaceItem.id == item_id, catalog_view_candidate_predicate(context))
+        .execution_options(autoflush=False, populate_existing=True)
+        .options(selectinload(MarketplaceItem.acl_entries))
+    )
+    with db.no_autoflush:
+        item = await db.scalar(statement)
+    if item is None:
+        raise marketplace_item_not_found()
+    return item
 
 
 async def _existing_installation(
@@ -105,18 +127,32 @@ async def _existing_installation(
     *,
     item: MarketplaceItem,
     user: CurrentUser,
+    context: OrgContext,
 ) -> MarketplaceInstallation | None:
     stmt = (
-        select(MarketplaceInstallation)
+        select(MarketplaceInstallation, installation_child_scope_predicate(context))
         .where(
             MarketplaceInstallation.item_id == item.id,
-            MarketplaceInstallation.user_id == user.id,
+            private_scope_predicate(MarketplaceInstallation, context),
             MarketplaceInstallation.install_status != "uninstalled",
         )
         .order_by(MarketplaceInstallation.installed_at.desc())
         .limit(1)
     )
-    return (await db.execute(stmt)).scalar_one_or_none()
+    result = (await db.execute(stmt)).first()
+    if result is None:
+        return None
+    installation, children_authorized = result
+    if not children_authorized:
+        raise marketplace_item_not_found()
+    try:
+        await resolve_private_actor(
+            db,
+            PrivateResourceActor(installation.user_id, installation.org_id, installation.tenant_id),
+        )
+    except AppError:
+        raise marketplace_item_not_found() from None
+    return installation
 
 
 def _payload_skill_kind(version: MarketplaceVersion) -> str:

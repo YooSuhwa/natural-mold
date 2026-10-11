@@ -17,6 +17,7 @@ from app.agent_api.sse_adapter import (
     format_openai_data_sse,
 )
 from app.agent_runtime.agent_stream_runner import execute_agent_invoke, execute_agent_stream
+from app.authz.agent_api_scope import private_deployment_predicate
 from app.dependencies import get_db
 from app.exceptions import AppError
 from app.models.agent_api import AgentDeployment
@@ -184,23 +185,22 @@ async def list_public_agents(
     principal: ApiKeyPrincipal = Depends(get_api_key_principal),
 ) -> dict[str, list[dict[str, object]]]:
     principal.require_scope("read")
-    if principal.key.allow_all_deployments:
-        result = await db.execute(
-            select(AgentDeployment)
-            .where(
-                AgentDeployment.user_id == principal.user_id,
-                AgentDeployment.status == "active",
-            )
-            .options(selectinload(AgentDeployment.agent))
-            .order_by(AgentDeployment.created_at.desc())
+    statement = (
+        select(AgentDeployment)
+        .where(
+            private_deployment_predicate(principal.context),
+            AgentDeployment.status == "active",
         )
-        deployments = list(result.scalars().all())
-    else:
-        deployments = [
-            link.deployment
-            for link in principal.key.deployment_links
-            if link.deployment is not None and link.deployment.status == "active"
-        ]
+        .options(selectinload(AgentDeployment.agent))
+        .execution_options(populate_existing=True, autoflush=False)
+        .order_by(AgentDeployment.created_at.desc())
+    )
+    if not principal.key.allow_all_deployments:
+        statement = statement.where(
+            AgentDeployment.id.in_([link.deployment_id for link in principal.key.deployment_links])
+        )
+    result = await db.execute(statement)
+    deployments = list(result.scalars().all())
 
     data: list[dict[str, object]] = []
     for deployment in deployments:
@@ -216,14 +216,8 @@ async def list_public_agents(
                     scope
                     for scope in ("invoke", "stream", "background")
                     if scope in set(principal.key.scopes or [])
-                    and (
-                        scope != "stream"
-                        or deployment.allow_streaming
-                    )
-                    and (
-                        scope != "background"
-                        or deployment.allow_background
-                    )
+                    and (scope != "stream" or deployment.allow_streaming)
+                    and (scope != "background" or deployment.allow_background)
                 ],
             }
         )
@@ -291,6 +285,7 @@ async def run_wait(
     conversation = await runtime_service.create_api_conversation(
         db,
         deployment,
+        principal=principal,
         title="API run",
     )
     run = await runtime_service.create_run_row(
@@ -310,6 +305,7 @@ async def run_wait(
             deployment=deployment,
             conversation=conversation,
             external_user=request.user,
+            required_scope="invoke",
         )
         answer = await execute_agent_invoke(
             cfg,
@@ -341,9 +337,7 @@ async def run_wait(
             run=run,
             action="agent_api.run_wait",
             outcome="failure",
-            reason_code=(
-                exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"
-            ),
+            reason_code=(exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"),
             reason_message=getattr(exc, "message", str(exc)),
         )
         await db.commit()
@@ -394,6 +388,7 @@ async def _run_stream_response(
         conversation = await runtime_service.create_api_conversation(
             db,
             deployment,
+            principal=principal,
             title="API stream",
         )
         api_thread_id = None
@@ -417,6 +412,7 @@ async def _run_stream_response(
             deployment=deployment,
             conversation=conversation,
             external_user=external_user,
+            required_scope="stream",
         )
     except Exception as exc:
         await _record_agent_api_run_audit(
@@ -426,14 +422,10 @@ async def _run_stream_response(
             request=request,
             run=run,
             action=(
-                "agent_api.thread_run_stream"
-                if thread_id is not None
-                else "agent_api.run_stream"
+                "agent_api.thread_run_stream" if thread_id is not None else "agent_api.run_stream"
             ),
             outcome="failure",
-            reason_code=(
-                exc.code if isinstance(exc, AppError) else "AGENT_API_STREAM_FAILED"
-            ),
+            reason_code=(exc.code if isinstance(exc, AppError) else "AGENT_API_STREAM_FAILED"),
             reason_message=getattr(exc, "message", str(exc)),
         )
         await db.commit()
@@ -445,11 +437,7 @@ async def _run_stream_response(
         deployment=deployment,
         request=request,
         run=run,
-        action=(
-            "agent_api.thread_run_stream"
-            if thread_id is not None
-            else "agent_api.run_stream"
-        ),
+        action=("agent_api.thread_run_stream" if thread_id is not None else "agent_api.run_stream"),
         outcome="success",
         metadata={"accepted": True},
     )
@@ -506,6 +494,7 @@ async def _run_openai_stream_response(
     conversation = await runtime_service.create_api_conversation(
         db,
         deployment,
+        principal=principal,
         title="OpenAI-compatible stream",
     )
     run = await runtime_service.create_run_row(
@@ -525,6 +514,7 @@ async def _run_openai_stream_response(
             deployment=deployment,
             conversation=conversation,
             external_user=request.user,
+            required_scope="stream",
         )
     except Exception as exc:
         await _mark_stream_run_failed_and_raise(db, run, exc)
@@ -618,6 +608,7 @@ async def thread_run_wait(
             deployment=deployment,
             conversation=thread.conversation,
             external_user=thread.external_user or request.user,
+            required_scope="invoke",
         )
         answer = await execute_agent_invoke(
             cfg,
@@ -645,9 +636,7 @@ async def thread_run_wait(
             run=run,
             action="agent_api.thread_run_wait",
             outcome="failure",
-            reason_code=(
-                exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"
-            ),
+            reason_code=(exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"),
             reason_message=getattr(exc, "message", str(exc)),
         )
         await db.commit()

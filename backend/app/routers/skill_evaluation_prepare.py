@@ -5,7 +5,8 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.routers.skill_evaluation_prepare_support import (
     preparation_response,
     record_preparation_audit,
@@ -27,9 +28,10 @@ async def prepare_skill_evaluation(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillEvaluationPrepareResponse:
-    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await load_skill_or_404(db, skill_id=skill_id, context=context)
     result = await prepare_skill_evaluation_set(
         db=db,
         skill=skill,

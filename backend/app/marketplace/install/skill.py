@@ -20,7 +20,10 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.error_codes import marketplace_credential_required
+from app.authz.catalog_scope import load_private_installation
+from app.authz.org_context import OrgContext
+from app.authz.skill_binding_scope import require_private_skill
+from app.error_codes import marketplace_credential_required, marketplace_item_not_found
 from app.marketplace import credential_requirements
 from app.marketplace.install.bindings import _persist_bindings
 from app.marketplace.install.common import (
@@ -83,6 +86,7 @@ async def _install_skill_item(
     item: MarketplaceItem,
     version: MarketplaceVersion,
     user: CurrentUser,
+    context: OrgContext,
     body: InstallMarketplaceItemIn,
 ) -> MarketplaceInstallation:
     """Create a fresh skill row + installation from ``version``.
@@ -107,7 +111,9 @@ async def _install_skill_item(
 
     skill = Skill(
         id=skill_id,
-        user_id=user.id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=name,
         slug=_slugify(name),
         description=item.description,
@@ -141,14 +147,14 @@ async def _install_skill_item(
 
     # Bind credentials (validate_binding rejects mismatches → 422).
     try:
-        await _persist_bindings(db, skill=skill, user=user, bindings=body.credential_bindings)
+        await _persist_bindings(db, skill=skill, context=context, bindings=body.credential_bindings)
     except Exception:
         await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
         raise
 
     # Determine install_status. ``reject`` mode = caller wants a hard
     # error when something's missing; ``needs_setup`` mode = soft state.
-    missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
+    missing = await credential_requirements.missing_required_keys(db, skill=skill, context=context)
     if missing and body.install_missing_credentials == "reject":
         await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
         raise marketplace_credential_required(
@@ -158,7 +164,9 @@ async def _install_skill_item(
 
     installation = MarketplaceInstallation(
         id=uuid.uuid4(),
-        user_id=user.id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         item_id=item.id,
         version_id=version.id,
         resource_type="skill",
@@ -190,6 +198,7 @@ async def _refresh_skill_installation_bindings(
     installation: MarketplaceInstallation,
     skill: Skill,
     user: CurrentUser,
+    context: OrgContext,
     body: InstallMarketplaceItemIn,
 ) -> MarketplaceInstallation:
     """Apply setup-wizard bindings to an existing skill installation.
@@ -199,8 +208,14 @@ async def _refresh_skill_installation_bindings(
     the submitted bindings leaves that UI in a permanent setup loop.
     """
 
-    await _persist_bindings(db, skill=skill, user=user, bindings=body.credential_bindings)
-    missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
+    scoped_installation = await load_private_installation(db, installation.id, context)
+    if scoped_installation is None or scoped_installation.installed_skill_id != skill.id:
+        raise marketplace_item_not_found()
+    installation = scoped_installation
+    await require_private_skill(db, skill, context)
+
+    await _persist_bindings(db, skill=skill, context=context, bindings=body.credential_bindings)
+    missing = await credential_requirements.missing_required_keys(db, skill=skill, context=context)
     if missing and body.install_missing_credentials == "reject":
         raise marketplace_credential_required(
             f"missing required credential bindings: {', '.join(missing)}"
@@ -218,6 +233,7 @@ async def _overwrite_skill_installation(
     item: MarketplaceItem,
     latest: MarketplaceVersion,
     user: CurrentUser,
+    context: OrgContext,
     skill: Skill,
 ) -> MarketplaceInstallation:
     """``overwrite`` update strategy for skill installations.
@@ -227,9 +243,15 @@ async def _overwrite_skill_installation(
     installed ``skill`` row and handled the dirty/type guards.
     """
 
+    scoped_installation = await load_private_installation(db, installation.id, context)
+    if scoped_installation is None or scoped_installation.installed_skill_id != skill.id:
+        raise marketplace_item_not_found()
+    installation = scoped_installation
+    await require_private_skill(db, skill, context)
+
     await _replace_skill_snapshot(latest, skill)
     _apply_version_metadata_to_skill(skill=skill, item=item, version=latest)
-    missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
+    missing = await credential_requirements.missing_required_keys(db, skill=skill, context=context)
     installation.version_id = latest.id
     installation.install_status = "needs_setup" if missing else "active"
     installation.is_dirty = False

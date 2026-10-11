@@ -14,13 +14,20 @@ from sqlalchemy.orm import aliased
 
 from app.agent_runtime import event_names
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
+from app.authz.conversation_run_scope import (
+    RunConversationTarget,
+    lock_run_conversation,
+    private_run_predicate,
+    resume_parent_predicate,
+)
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import require_private_actor
 from app.config import settings
 from app.exceptions import ConflictError
-from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, RUN_TERMINAL_STATUSES, ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
-from app.models.user import User
+from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import trace_storage
 from app.services.artifact_service import finalize_artifacts_for_run
 from app.services.conversation_audit_service import record_conversation_run_audit
@@ -71,42 +78,17 @@ def _is_active_run_unique_violation(exc: IntegrityError) -> bool:
     )
 
 
-async def _conversation_owned_by_user(
-    db: AsyncSession,
-    *,
-    conversation_id: uuid.UUID,
-    agent_id: uuid.UUID,
-    user_id: uuid.UUID,
-) -> Conversation | None:
-    user_exists = await db.scalar(
-        select(User.id).where(User.id == user_id).with_for_update(read=True, key_share=True)
-    )
-    if user_exists is None:
-        return None
-    result = await db.execute(
-        select(Conversation)
-        .join(Agent, Agent.id == Conversation.agent_id)
-        .where(
-            Conversation.id == conversation_id,
-            Conversation.agent_id == agent_id,
-            Agent.user_id == user_id,
-        )
-        .with_for_update(of=Conversation)
-    )
-    return result.scalar_one_or_none()
-
-
 async def _latest_interrupted_run(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> ConversationRun | None:
     resume_child = aliased(ConversationRun)
     resume_child_exists = (
         select(resume_child.id)
         .where(
-            resume_child.parent_run_id == ConversationRun.id,
+            resume_parent_predicate(resume_child),
             resume_child.source == "resume",
         )
         .exists()
@@ -115,7 +97,7 @@ async def _latest_interrupted_run(
         select(ConversationRun)
         .where(
             ConversationRun.conversation_id == conversation_id,
-            ConversationRun.user_id == user_id,
+            private_run_predicate(context),
             ConversationRun.status == "interrupted",
             ~resume_child_exists,
         )
@@ -129,12 +111,13 @@ async def get_latest_interrupted_run(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> ConversationRun | None:
+    await require_private_actor(db, context)
     return await _latest_interrupted_run(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
 
 
@@ -142,12 +125,13 @@ async def get_active_run(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> ConversationRun | None:
+    await require_private_actor(db, context)
     result = await db.execute(
         select(ConversationRun).where(
             ConversationRun.conversation_id == conversation_id,
-            ConversationRun.user_id == user_id,
+            private_run_predicate(context),
             ConversationRun.is_active.is_(True),
         )
     )
@@ -157,14 +141,16 @@ async def get_active_run(
 async def active_runs_for_conversations(
     db: AsyncSession,
     conversation_ids: Sequence[uuid.UUID],
+    context: OrgContext,
 ) -> dict[uuid.UUID, ConversationRun]:
+    await require_private_actor(db, context)
     if not conversation_ids:
         return {}
     resume_child = aliased(ConversationRun)
     resume_child_exists = (
         select(resume_child.id)
         .where(
-            resume_child.parent_run_id == ConversationRun.id,
+            resume_parent_predicate(resume_child),
             resume_child.source == "resume",
         )
         .exists()
@@ -173,6 +159,7 @@ async def active_runs_for_conversations(
         select(ConversationRun)
         .where(
             ConversationRun.conversation_id.in_(conversation_ids),
+            private_run_predicate(context),
             or_(
                 ConversationRun.is_active.is_(True),
                 ((ConversationRun.status == "interrupted") & (~resume_child_exists)),
@@ -194,14 +181,18 @@ async def current_run_for_conversation(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
+    context: OrgContext,
 ) -> ConversationRun | None:
-    return (await active_runs_for_conversations(db, [conversation_id])).get(conversation_id)
+    return (await active_runs_for_conversations(db, [conversation_id], context)).get(
+        conversation_id
+    )
 
 
 async def latest_run_for_conversation(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
+    context: OrgContext,
 ) -> ConversationRun | None:
     """최신 run을 상태와 무관하게 1건 반환.
 
@@ -211,9 +202,10 @@ async def latest_run_for_conversation(
     이 취소되었다" 는 사실은 conversation 단위 최신 run 으로만 durable 하게
     전달할 수 있다 (``ix_conversation_runs_conversation_created`` 인덱스 사용).
     """
+    await require_private_actor(db, context)
     result = await db.execute(
         select(ConversationRun)
-        .where(ConversationRun.conversation_id == conversation_id)
+        .where(ConversationRun.conversation_id == conversation_id, private_run_predicate(context))
         .order_by(ConversationRun.created_at.desc())
         .limit(1)
     )
@@ -225,7 +217,7 @@ async def get_run_for_user(
     *,
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     for_update: bool = False,
 ) -> ConversationRun | None:
     """``for_update=True`` 는 이후 ``transition_run`` 으로 상태를 바꿀 호출자용.
@@ -233,10 +225,11 @@ async def get_run_for_user(
     Postgres 에서 row lock 으로 worker/heartbeat 와의 read-modify-write 경합을
     직렬화한다 (SQLite dialect 는 FOR UPDATE 를 무시 — 테스트는 단일 루프라 안전).
     """
+    await require_private_actor(db, context)
     stmt = select(ConversationRun).where(
         ConversationRun.id == run_id,
         ConversationRun.conversation_id == conversation_id,
-        ConversationRun.user_id == user_id,
+        private_run_predicate(context),
     )
     if for_update:
         stmt = stmt.with_for_update()
@@ -249,7 +242,7 @@ async def create_run(
     *,
     conversation_id: uuid.UUID,
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     source: RunSource,
     input_preview: str | None,
     parent_run_id: uuid.UUID | None = None,
@@ -257,21 +250,20 @@ async def create_run(
     metadata: dict[str, Any] | None = None,
     allow_legacy_resume: bool = False,
 ) -> ConversationRun:
-    conversation = await _conversation_owned_by_user(
-        db,
-        conversation_id=conversation_id,
-        agent_id=agent_id,
-        user_id=user_id,
+    conversation = await lock_run_conversation(
+        db, RunConversationTarget(conversation_id, agent_id, context)
     )
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     try:
-        _, _, runtime_policy = await ensure_conversation_runtime_policy(db, conversation.id)
+        _, _, runtime_policy = await ensure_conversation_runtime_policy(
+            db, ConversationPolicyTarget(conversation.id, context)
+        )
     except RuntimePolicySnapshotError as exc:
         raise ConflictError(exc.code, exc.code) from None
 
-    active = await get_active_run(db, conversation_id=conversation_id, user_id=user_id)
+    active = await get_active_run(db, conversation_id=conversation_id, context=context)
     if active is not None:
         raise _conflict("Conversation already has an active run")
 
@@ -283,7 +275,7 @@ async def create_run(
                 select(ConversationRun)
                 .where(
                     ConversationRun.conversation_id == conversation_id,
-                    ConversationRun.user_id == user_id,
+                    private_run_predicate(context),
                     ConversationRun.source == "resume",
                     ConversationRun.parent_run_id.is_(None),
                     ConversationRun.interrupt_id == interrupt_id,
@@ -296,7 +288,7 @@ async def create_run(
             latest = await _latest_interrupted_run(
                 db,
                 conversation_id=conversation_id,
-                user_id=user_id,
+                context=context,
             )
             if latest is None or latest.id != parent_run_id:
                 raise _conflict("Resume run must target the latest interrupted run")
@@ -310,7 +302,7 @@ async def create_run(
     run = ConversationRun(
         conversation_id=conversation.id,
         agent_id=agent_id,
-        user_id=user_id,
+        user_id=context.user_id,
         parent_run_id=parent_run_id,
         source=source,
         status="queued",
@@ -449,8 +441,16 @@ async def finalize_run_outputs_for_status(
         status="completed" if status == "canceled" else "failed",
         conversation_id=run.conversation_id,
     )
+    conversation = await db.get(Conversation, run.conversation_id)
+    if conversation is None:
+        return
     await finalize_artifacts_for_run(
         db,
+        context=OrgContext(
+            user_id=conversation.user_id,
+            org_id=conversation.org_id,
+            tenant_id=conversation.tenant_id,
+        ),
         conversation_id=run.conversation_id,
         assistant_msg_id=str(run.id),
         run_status=status,

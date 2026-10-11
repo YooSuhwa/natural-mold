@@ -16,7 +16,8 @@ from app.agent_runtime.protocol_events import (
     resequence_protocol_events,
     stored_custom_protocol_event,
 )
-from app.models.conversation import Conversation
+from app.authz.conversation_scope import load_private_conversation
+from app.authz.org_context import OrgContext
 from app.models.message_event import MessageEvent
 from app.routers.conversation_agent_protocol_event_normalization import (
     stored_compatible_protocol_event,
@@ -160,12 +161,13 @@ async def load_protocol_events(
     db: AsyncSession,
     conversation_id: uuid.UUID,
     *,
+    context: OrgContext,
     secret_values: Collection[str] | None = None,
 ) -> list[StoredProtocolEvent]:
     if secret_values is None:
-        conversation = await db.get(Conversation, conversation_id)
+        conversation = await load_private_conversation(db, conversation_id, context)
         secret_values = (
-            tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+            tuple(await chat_secrets.collect_conversation_secret_values(db, conversation, context))
             if conversation is not None
             else ()
         )

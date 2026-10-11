@@ -15,6 +15,8 @@ from app.agent_runtime.langgraph_message_identity import collect_root_ai_message
 from app.agent_runtime.message_utils import parse_msg_id
 from app.agent_runtime.protocol_events import StoredProtocolEvent
 from app.agent_runtime.runtime_config import AgentConfig
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:The v3 streaming protocol on Pregel is experimental"
@@ -133,6 +135,7 @@ async def test_real_compiled_graph_links_its_emitted_assistant_identity(
 
     monkeypatch.setattr(langgraph_streaming, "collect_root_ai_message_id", observe_identity)
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="fake",
         model_name="fake-chat",
         api_key=None,

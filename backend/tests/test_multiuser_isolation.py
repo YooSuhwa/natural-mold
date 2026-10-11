@@ -12,13 +12,17 @@ filter path.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.models.agent import Agent
 from app.models.model import Model
-from tests.conftest import AuthSession, TestSession, register_session
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
+from tests.conftest import TEST_USER_ID, AuthSession, TestSession, register_session
 
 # ---------------------------------------------------------------------------
 # Test infrastructure
@@ -299,7 +303,16 @@ async def test_user_b_cannot_modify_user_a_conversation(raw_client: AsyncClient)
     agent_id = await _make_agent(raw_client, a, model_id)
 
     async with TestSession() as db:
-        conv = Conversation(id=uuid.uuid4(), agent_id=uuid.UUID(agent_id), title="t")
+        conv = Conversation(
+            id=uuid.uuid4(),
+            agent_id=uuid.UUID(agent_id),
+            title="t",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=TEST_USER_ID,
+            agent_name_snapshot="Fixture agent",
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         conv_id = str(conv.id)
@@ -332,7 +345,18 @@ async def test_user_b_cannot_touch_user_a_conversation_surfaces(raw_client: Asyn
     agent_id = await _make_agent(raw_client, a, model_id)
 
     async with TestSession() as db:
-        conv = Conversation(id=uuid.uuid4(), agent_id=uuid.UUID(agent_id), title="t")
+        owner_agent = await db.get(Agent, uuid.UUID(agent_id))
+        assert owner_agent is not None
+        conv = Conversation(
+            id=uuid.uuid4(),
+            agent_id=uuid.UUID(agent_id),
+            title="t",
+            org_id=owner_agent.org_id,
+            tenant_id=owner_agent.tenant_id,
+            user_id=owner_agent.user_id,
+            agent_name_snapshot="Fixture agent",
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         conv_id = str(conv.id)

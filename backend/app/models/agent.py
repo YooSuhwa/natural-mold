@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, ForeignKey, String, Text, event
+from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Numeric, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.agent_runtime.identity import AGENT_IDENTITY_FIXED, make_agent_runtime_name
 from app.database import Base
 from app.models.mcp_tool import AgentMcpToolLink
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
 from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink
 
@@ -28,12 +30,24 @@ AGENT_RUNTIME_PROFILES = (
 )
 
 
-class Agent(Base):
+class Agent(RequiredOrgScope, Base):
     __tablename__ = "agents"
+    __table_args__ = (
+        *resource_scope_constraints("agents", system=False),
+        CheckConstraint(
+            "monthly_spend_limit IS NULL OR monthly_spend_limit >= 0",
+            name="ck_agents_monthly_spend_limit",
+        ),
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", name="fk_agents_archived_by", ondelete="SET NULL"), nullable=True
+    )
+    monthly_spend_limit: Mapped[Decimal | None] = mapped_column(Numeric(20, 8), nullable=True)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("users.id", name="fk_agents_owner_restrict", ondelete="RESTRICT"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
@@ -84,7 +98,7 @@ class Agent(Base):
         nullable=False,
     )
 
-    user: Mapped[User] = relationship(back_populates="agents")  # type: ignore[name-defined]
+    user: Mapped[User] = relationship(back_populates="agents", foreign_keys=[user_id])  # type: ignore[name-defined]
     model: Mapped[Model] = relationship()  # type: ignore[name-defined]
     # The Credential providing the LLM API key. ``lazy='select'`` so callers
     # explicitly opt into the join via ``selectinload``.
@@ -109,7 +123,7 @@ class Agent(Base):
         lazy="selectin",
     )
     conversations: Mapped[list[Conversation]] = relationship(  # type: ignore[name-defined]
-        back_populates="agent", cascade="all, delete-orphan"
+        back_populates="agent", passive_deletes="all"
     )
 
     @property

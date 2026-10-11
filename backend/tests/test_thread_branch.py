@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from io import BytesIO
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -26,6 +28,7 @@ from app.services.thread_branch_service import (
     materialize_messages_at_checkpoint,
     rewind_to_checkpoint_before_message,
 )
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -540,10 +543,20 @@ async def _seed_agent_and_conv() -> tuple[uuid.UUID, uuid.UUID]:
             name="Branch Agent",
             system_prompt="You are helpful.",
             model_id=model.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(agent)
         await db.flush()
-        conv = Conversation(agent_id=agent.id, title="Branch Conv")
+        conv = Conversation(
+            agent_id=agent.id,
+            title="Branch Conv",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         return agent.id, conv.id

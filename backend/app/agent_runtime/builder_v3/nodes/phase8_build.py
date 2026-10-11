@@ -11,7 +11,6 @@ import uuid
 
 from langchain_core.messages import AIMessage
 from langgraph.types import interrupt
-from sqlalchemy import select
 
 from app.agent_runtime.builder_v3.nodes._helpers import (
     build_phase_complete,
@@ -19,9 +18,11 @@ from app.agent_runtime.builder_v3.nodes._helpers import (
     ensure_todos,
     make_pending_tool_card,
 )
+from app.agent_runtime.builder_v3.session_scope import require_execution_session
 from app.agent_runtime.builder_v3.state import BuilderState
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.database import async_session as async_session_factory
-from app.models.builder_session import BuilderSession
+from app.exceptions import AppError
 from app.schemas.builder import BuilderStatus
 
 logger = logging.getLogger(__name__)
@@ -41,29 +42,30 @@ async def _confirm_and_create_agent(state: BuilderState) -> tuple[str | None, st
     except ValueError:
         return None, "잘못된 session_id"
 
-    from app.services.builder_service import claim_for_confirming, confirm_build
+    from app.services.builder_service import claim_for_confirming, confirm_build, get_agent_by_id
 
     try:
         async with async_session_factory() as db:
-            stmt = select(BuilderSession).where(BuilderSession.id == sid)
-            session = (await db.execute(stmt)).scalar_one_or_none()
-            if not session:
-                return None, "세션을 찾을 수 없음"
+            session = await require_execution_session(db, state)
 
+            context = await resolve_private_actor(
+                db, PrivateResourceActor(session.user_id, session.org_id, session.tenant_id)
+            )
             if session.status == BuilderStatus.COMPLETED and session.agent_id:
-                return str(session.agent_id), None
+                existing = await get_agent_by_id(db, session.agent_id, context)
+                if existing is None:
+                    return None, "세션에 연결된 에이전트를 찾을 수 없습니다"
+                return str(existing.id), None
 
             if session.status != BuilderStatus.PREVIEW:
                 return None, f"세션 상태가 PREVIEW가 아닙니다: {session.status}"
 
-            claimed = await claim_for_confirming(db, sid, session.user_id)
+            claimed = await claim_for_confirming(db, sid, context)
             if not claimed:
                 return None, "다른 요청이 처리 중입니다."
 
-            session = (await db.execute(stmt)).scalar_one_or_none()
-            if not session:
-                return None, "세션이 사라졌습니다."
-            agent = await confirm_build(db, session)
+            session = await require_execution_session(db, state)
+            agent = await confirm_build(db, session, context)
             if not agent:
                 return None, "에이전트 생성 실패"
             return str(agent.id), None
@@ -74,21 +76,14 @@ async def _confirm_and_create_agent(state: BuilderState) -> tuple[str | None, st
 
 async def _persist_error(state: BuilderState, error_message: str) -> None:
     """builder_session.error_message + status=FAILED 기록 (frontend가 표시할 수 있도록)."""
-    session_id_str = state.get("session_id", "")
-    if not session_id_str:
-        return
-    try:
-        sid = uuid.UUID(session_id_str)
-    except ValueError:
-        return
     try:
         async with async_session_factory() as db:
-            stmt = select(BuilderSession).where(BuilderSession.id == sid)
-            row = (await db.execute(stmt)).scalar_one_or_none()
-            if row:
-                row.error_message = error_message
-                row.status = BuilderStatus.FAILED
-                await db.commit()
+            row = await require_execution_session(db, state)
+            row.error_message = error_message
+            row.status = BuilderStatus.FAILED
+            await db.commit()
+    except AppError:
+        raise
     except Exception:  # pragma: no cover
         logger.warning("Phase 8 error persist failed", exc_info=True)
 
@@ -162,9 +157,7 @@ async def phase8_build_wait(state: BuilderState) -> dict:
         # 생성 실패 — 사용자에게 명시적으로 노출
         err_text = error or "에이전트 생성에 실패했습니다."
         await _persist_error(state, err_text)
-        close_msgs = close_pending_tool_card(
-            pending_tc_id, "draft_approval", f"실패: {err_text}"
-        )
+        close_msgs = close_pending_tool_card(pending_tc_id, "draft_approval", f"실패: {err_text}")
         return {
             "messages": [
                 *close_msgs,

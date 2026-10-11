@@ -6,14 +6,23 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_policy import ResolvedRuntimePolicy
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import private_scope_predicate, private_scoped
+from app.error_codes import conversation_not_found, trigger_not_found
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
+from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.schemas.trigger import TriggerCreate, TriggerUpdate
 from app.services.conversation_runtime_policy import (
     ensure_conversation_runtime_policy as _ensure_conversation_runtime_policy,
@@ -147,18 +156,23 @@ def _serialize_trigger(
 
 
 async def get_owned_agent(
-    db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
 ) -> Agent | None:
-    result = await db.execute(select(Agent).where(Agent.id == agent_id, Agent.user_id == user_id))
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, private_scope_predicate(Agent, context))
+    )
     return result.scalar_one_or_none()
 
 
 async def _ensure_agent_fixed_for_trigger(
     db: AsyncSession,
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Agent:
-    agent = await get_owned_agent(db, agent_id, user_id)
+    agent = await get_owned_agent(db, agent_id, context)
     if agent is None:
         raise ValueError("agent not found")
     # 히든 런타임 에이전트(skill builder 등)는 트리거 대상 불가 — 트리거 실행은
@@ -172,12 +186,15 @@ async def _ensure_agent_fixed_for_trigger(
 
 
 async def get_trigger(
-    db: AsyncSession, trigger_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, trigger_id: uuid.UUID, context: OrgContext
 ) -> AgentTrigger | None:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     result = await db.execute(
         select(AgentTrigger).where(
             AgentTrigger.id == trigger_id,
-            AgentTrigger.user_id == user_id,
+            private_scope_predicate(AgentTrigger, context),
         )
     )
     return result.scalar_one_or_none()
@@ -189,25 +206,42 @@ async def _validate_target_conversation(
     agent_id: uuid.UUID,
     target_conversation_id: uuid.UUID | None,
     conversation_policy: str,
+    context: OrgContext,
 ) -> uuid.UUID | None:
     if conversation_policy != "selected_conversation":
         return None
     if target_conversation_id is None:
         raise ValueError("target_conversation_id is required")
-    conversation = await db.get(Conversation, target_conversation_id)
+    conversation = await db.scalar(
+        private_scoped(
+            select(Conversation).where(Conversation.id == target_conversation_id),
+            Conversation,
+            context,
+        )
+    )
     if conversation is None or conversation.agent_id != agent_id:
         raise ValueError("target_conversation_id is invalid")
     return target_conversation_id
 
 
 async def list_triggers(
-    db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
 ) -> list[dict[str, Any]]:
+    await require_private_actor(db, context)
     result = await db.execute(
         select(AgentTrigger, Agent.name, Conversation.title, Conversation.unread_count)
-        .join(Agent, Agent.id == AgentTrigger.agent_id)
-        .outerjoin(Conversation, Conversation.id == AgentTrigger.schedule_conversation_id)
-        .where(AgentTrigger.agent_id == agent_id, AgentTrigger.user_id == user_id)
+        .join(
+            Agent, and_(Agent.id == AgentTrigger.agent_id, private_scope_predicate(Agent, context))
+        )
+        .outerjoin(
+            Conversation,
+            and_(
+                Conversation.id == AgentTrigger.schedule_conversation_id,
+                Conversation.agent_id == AgentTrigger.agent_id,
+                private_scope_predicate(Conversation, context),
+            ),
+        )
+        .where(AgentTrigger.agent_id == agent_id, private_scope_predicate(AgentTrigger, context))
         .order_by(AgentTrigger.created_at.desc())
     )
     return [
@@ -221,12 +255,22 @@ async def list_triggers(
     ]
 
 
-async def list_user_triggers(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
+async def list_user_triggers(db: AsyncSession, context: OrgContext) -> list[dict[str, Any]]:
+    await require_private_actor(db, context)
     result = await db.execute(
         select(AgentTrigger, Agent.name, Conversation.title, Conversation.unread_count)
-        .join(Agent, Agent.id == AgentTrigger.agent_id)
-        .outerjoin(Conversation, Conversation.id == AgentTrigger.schedule_conversation_id)
-        .where(AgentTrigger.user_id == user_id)
+        .join(
+            Agent, and_(Agent.id == AgentTrigger.agent_id, private_scope_predicate(Agent, context))
+        )
+        .outerjoin(
+            Conversation,
+            and_(
+                Conversation.id == AgentTrigger.schedule_conversation_id,
+                Conversation.agent_id == AgentTrigger.agent_id,
+                private_scope_predicate(Conversation, context),
+            ),
+        )
+        .where(private_scope_predicate(AgentTrigger, context))
         .order_by(AgentTrigger.created_at.desc())
     )
     return [
@@ -243,10 +287,10 @@ async def list_user_triggers(db: AsyncSession, user_id: uuid.UUID) -> list[dict[
 async def create_trigger(
     db: AsyncSession,
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     data: TriggerCreate,
 ) -> AgentTrigger:
-    await _ensure_agent_fixed_for_trigger(db, agent_id, user_id)
+    await _ensure_agent_fixed_for_trigger(db, agent_id, context)
     schedule_config, timezone = normalize_schedule_config(
         data.trigger_type,
         data.schedule_config,
@@ -255,6 +299,7 @@ async def create_trigger(
     conversation_policy = _validate_conversation_policy(data.conversation_policy)
     target_conversation_id = await _validate_target_conversation(
         db,
+        context=context,
         agent_id=agent_id,
         target_conversation_id=data.target_conversation_id,
         conversation_policy=conversation_policy,
@@ -262,7 +307,9 @@ async def create_trigger(
     name = (data.name or "").strip() or _default_name(data.trigger_type, schedule_config)
     trigger = AgentTrigger(
         agent_id=agent_id,
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=name,
         trigger_type=data.trigger_type,
         schedule_config=schedule_config,
@@ -285,11 +332,15 @@ async def create_trigger(
 
 
 async def update_trigger(
-    db: AsyncSession, trigger: AgentTrigger, data: TriggerUpdate
+    db: AsyncSession, trigger: AgentTrigger, data: TriggerUpdate, *, context: OrgContext
 ) -> AgentTrigger:
+    scoped = await get_trigger(db, trigger.id, context)
+    if scoped is None:
+        raise trigger_not_found()
+    trigger = scoped
     target_status = data.status if data.status is not None else trigger.status
     if target_status == "active":
-        await _ensure_agent_fixed_for_trigger(db, trigger.agent_id, trigger.user_id)
+        await _ensure_agent_fixed_for_trigger(db, trigger.agent_id, context)
     trigger_type = data.trigger_type or trigger.trigger_type
     timezone = data.timezone or trigger.timezone
 
@@ -322,6 +373,7 @@ async def update_trigger(
         )
         target_conversation_id = await _validate_target_conversation(
             db,
+            context=context,
             agent_id=trigger.agent_id,
             target_conversation_id=(
                 data.target_conversation_id
@@ -352,7 +404,11 @@ async def update_trigger(
     return trigger
 
 
-async def delete_trigger(db: AsyncSession, trigger: AgentTrigger) -> None:
+async def delete_trigger(db: AsyncSession, trigger: AgentTrigger, context: OrgContext) -> None:
+    scoped = await get_trigger(db, trigger.id, context)
+    if scoped is None:
+        raise trigger_not_found()
+    trigger = scoped
     from app.scheduler import remove_trigger_job
 
     remove_trigger_job(trigger.id)
@@ -441,55 +497,58 @@ async def start_trigger_run(
     return run
 
 
-async def resolve_schedule_conversation(db: AsyncSession, trigger: AgentTrigger) -> Conversation:
-    conversation: Conversation | None = None
+async def resolve_schedule_conversation(
+    db: AsyncSession, trigger: AgentTrigger, context: OrgContext
+) -> Conversation:
+    from app.services.chat.conversations import create_conversation
 
-    if trigger.conversation_policy == "selected_conversation" and trigger.target_conversation_id:
-        conversation = await db.get(Conversation, trigger.target_conversation_id)
-        if conversation is not None and conversation.agent_id == trigger.agent_id:
-            return conversation
-
-    if trigger.conversation_policy == "new_per_run":
-        conversation = Conversation(
-            agent_id=trigger.agent_id,
-            title=f"스케줄: {trigger.name}",
-            last_activity_source="schedule",
+    if (trigger.user_id, trigger.org_id, trigger.tenant_id) != (
+        context.user_id,
+        context.org_id,
+        context.tenant_id,
+    ):
+        raise trigger_not_found()
+    if trigger.conversation_policy == "selected_conversation":
+        conversation = await db.scalar(
+            private_scoped(
+                select(Conversation).where(Conversation.id == trigger.target_conversation_id),
+                Conversation,
+                context,
+            )
         )
-        db.add(conversation)
-        await db.commit()
-        await db.refresh(conversation)
+        if conversation is None or conversation.agent_id != trigger.agent_id:
+            raise conversation_not_found()
         return conversation
-
-    if trigger.schedule_conversation_id is not None:
-        conversation = await db.get(Conversation, trigger.schedule_conversation_id)
-
-    if conversation is None:
-        conversation = Conversation(
-            agent_id=trigger.agent_id,
-            title=f"스케줄: {trigger.name}",
-            last_activity_source="schedule",
+    if (
+        trigger.conversation_policy != "new_per_run"
+        and trigger.schedule_conversation_id is not None
+    ):
+        conversation = await db.scalar(
+            private_scoped(
+                select(Conversation).where(Conversation.id == trigger.schedule_conversation_id),
+                Conversation,
+                context,
+            )
         )
-        db.add(conversation)
-        await db.flush()
+        if conversation is None or conversation.agent_id != trigger.agent_id:
+            raise conversation_not_found()
+        return conversation
+    conversation = await create_conversation(
+        db, trigger.agent_id, f"스케줄: {trigger.name}", context=context
+    )
+    conversation.last_activity_source = "schedule"
+    if trigger.conversation_policy != "new_per_run":
         trigger.schedule_conversation_id = conversation.id
-        await db.commit()
-        await db.refresh(trigger)
-        await db.refresh(conversation)
+    await db.commit()
+    await db.refresh(conversation)
     return conversation
 
 
 async def ensure_schedule_conversation_runtime_policy(
-    db: AsyncSession,
-    conversation_id: uuid.UUID,
-    *,
-    current_trigger_run_id: uuid.UUID,
+    db: AsyncSession, target: ConversationPolicyTarget
 ) -> ResolvedRuntimePolicy:
-    """Snapshot policy for a trigger-owned conversation through the service boundary."""
-    _, _, runtime_policy = await _ensure_conversation_runtime_policy(
-        db,
-        conversation_id,
-        current_trigger_run_id=current_trigger_run_id,
-    )
+    """Snapshot policy for the explicitly scoped trigger conversation."""
+    _, _, runtime_policy = await _ensure_conversation_runtime_policy(db, target)
     return runtime_policy
 
 
@@ -562,8 +621,8 @@ async def list_trigger_runs(
     return list(result.scalars().all())
 
 
-async def schedule_summary(db: AsyncSession, user_id: uuid.UUID) -> dict[str, int]:
-    rows = await list_user_triggers(db, user_id)
+async def schedule_summary(db: AsyncSession, context: OrgContext) -> dict[str, int]:
+    rows = await list_user_triggers(db, context)
     return {
         "total_unread": sum(int(row["schedule_conversation_unread_count"] or 0) for row in rows),
         "active_count": sum(1 for row in rows if row["status"] == "active"),

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 from httpx import AsyncClient
@@ -14,6 +16,7 @@ from app.agent_runtime.protocol_events import (
     stored_custom_protocol_event,
     stored_protocol_event,
 )
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun, utc_now_naive
@@ -29,6 +32,12 @@ from app.routers.conversation_agent_protocol_replay import (
 from app.routers.conversation_messages import _replay_resume_generator
 from app.routers.conversation_runs import _replay_run_generator
 from app.services import trace_storage
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -38,6 +47,10 @@ async def _seed_conversation(db: AsyncSession) -> Conversation:
         user = User(id=TEST_USER_ID, email="protocol-replay@test.dev", name="Replay")
         db.add(user)
 
+    await db.flush()
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="fixture-replay@test.dev", name="Fixture")
+    )
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
@@ -47,11 +60,21 @@ async def _seed_conversation(db: AsyncSession) -> Conversation:
         name="Replay Agent",
         system_prompt="You are helpful.",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
 
-    conversation = Conversation(agent_id=agent.id, title="Replay Conversation")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="Replay Conversation",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.commit()
     return conversation
@@ -245,7 +268,7 @@ async def test_protocol_replay_projects_run_local_sequences_to_thread_sequence(
     )
     await db.commit()
 
-    events = await load_protocol_events(db, conversation.id)
+    events = await load_protocol_events(db, conversation.id, context=unit_context(TEST_USER_ID))
     chunks = [
         chunk
         async for chunk in protocol_replay_generator(
@@ -314,7 +337,7 @@ async def test_protocol_replay_projects_legacy_terminal_events(
     )
     await db.commit()
 
-    events = await load_protocol_events(db, conversation.id)
+    events = await load_protocol_events(db, conversation.id, context=unit_context(TEST_USER_ID))
     chunks = [
         chunk
         async for chunk in protocol_replay_generator(
@@ -371,9 +394,7 @@ async def test_legacy_replay_projects_offload_paths_at_each_public_stream_bounda
     await db.commit()
 
     protocol_events = await load_protocol_events(
-        db,
-        conversation.id,
-        secret_values={configured_secret},
+        db, conversation.id, secret_values={configured_secret}, context=unit_context(TEST_USER_ID)
     )
     protocol_wire = "".join(
         [

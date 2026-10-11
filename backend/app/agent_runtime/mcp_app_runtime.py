@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from app.authz.org_context import OrgContext
 from app.mcp.apps_binding_store import record_runtime_binding
 from app.mcp.domain import McpAppRuntimeContext
 
@@ -45,6 +46,8 @@ def mcp_app_context(
         config.get("credential_subject_user_id"),
         config.get("mcp_server_id"),
         config.get("mcp_tool_id"),
+        config.get("org_id"),
+        config.get("tenant_id"),
     )
     if not isinstance(resource_uri, str) or not all(isinstance(value, str) for value in required):
         return None
@@ -54,6 +57,7 @@ def mcp_app_context(
         return None
     return McpAppRuntimeContext(
         conversation_id=ids[0],
+        org_context=OrgContext(org_id=ids[6], tenant_id=ids[7], user_id=ids[1]),
         user_id=ids[1],
         agent_id=ids[2],
         credential_subject_user_id=ids[3],

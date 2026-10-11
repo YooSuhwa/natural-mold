@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from typing import Any
 
 import pytest
@@ -19,6 +21,7 @@ from app.models.conversation import Conversation
 from app.models.user import User
 from app.routers import conversation_pinned_summaries, conversations
 from app.services.conversation_pinned_summary_service import SummarySource
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession, seed_agent
 
 
@@ -125,13 +128,22 @@ class _CheckpointSource:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("retained", [False, True])
 async def test_pinned_summary_http_round_trip_survives_reload(
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
+    retained: bool,
 ) -> None:
     # Given
     user, _, agent = await seed_agent(db)
-    conversation = Conversation(agent_id=agent.id)
+    conversation = Conversation(
+        agent_id=None if retained else agent.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.flush()
     message_id = f"lc-run-{uuid.uuid4()}"
@@ -189,7 +201,14 @@ async def test_pinned_summary_http_unpin_clears_selection(
 ) -> None:
     # Given
     user, _, agent = await seed_agent(db)
-    conversation = Conversation(agent_id=agent.id)
+    conversation = Conversation(
+        agent_id=agent.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.flush()
     message_id = f"lc-run-{uuid.uuid4()}"
@@ -228,7 +247,14 @@ async def test_pinned_summary_http_hides_foreign_conversation(
     owner, _, owner_agent = await seed_agent(db)
     foreign_user_id = uuid.uuid4()
     foreign_user, _, _ = await seed_agent(db, user_id=foreign_user_id)
-    conversation = Conversation(agent_id=owner_agent.id)
+    conversation = Conversation(
+        agent_id=owner_agent.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=owner_agent.user_id,
+        agent_name_snapshot=owner_agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.flush()
     message_id = f"lc-run-{uuid.uuid4()}"
@@ -268,7 +294,14 @@ async def test_pinned_summary_http_rejects_malformed_message_identity(
 ) -> None:
     # Given
     user, _, agent = await seed_agent(db)
-    conversation = Conversation(agent_id=agent.id)
+    conversation = Conversation(
+        agent_id=agent.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.flush()
     app = _isolated_app(db, [_current_user(user)])

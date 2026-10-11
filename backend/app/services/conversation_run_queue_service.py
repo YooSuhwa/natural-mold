@@ -8,8 +8,10 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
+from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import conversation_run_service
 from app.services.conversation_run_queue_mutations import (
     delete_pending_input,
@@ -47,7 +49,7 @@ async def enqueue_input(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     client_request_id: str,
     source: QueueInputSource,
     input_payload: dict[str, JsonValue],
@@ -59,7 +61,7 @@ async def enqueue_input(
         await enqueue_input_with_result(
             db,
             conversation_id=conversation_id,
-            user_id=user_id,
+            context=context,
             client_request_id=client_request_id,
             source=source,
             input_payload=input_payload,
@@ -74,7 +76,7 @@ async def enqueue_input_with_result(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     client_request_id: str,
     source: QueueInputSource,
     input_payload: dict[str, JsonValue],
@@ -83,13 +85,14 @@ async def enqueue_input_with_result(
     priority: int,
 ) -> EnqueuedConversationInput:
     """Persist an idempotent input without allocating an active run."""
+    user_id = context.user_id
     input_payload = validate_queue_input_payload(input_payload)
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
-    await ensure_conversation_runtime_policy(db, conversation.id)
+    await ensure_conversation_runtime_policy(db, ConversationPolicyTarget(conversation.id, context))
     existing = await db.scalar(
         select(ConversationRunInput).where(
             ConversationRunInput.conversation_id == conversation_id,
@@ -136,11 +139,17 @@ async def persist_direct_input(
     db: AsyncSession,
     *,
     run: ConversationRun,
+    context: OrgContext,
     client_request_id: str,
     input_payload: dict[str, JsonValue],
     attachment_ids: list[uuid.UUID],
 ) -> ConversationRunInput:
     """Bind an accepted direct chat input to its already-created run."""
+    conversation = await lock_owned_conversation(
+        db, conversation_id=run.conversation_id, context=context
+    )
+    if run.user_id != context.user_id or run.agent_id != conversation.agent_id:
+        raise queue_input_not_found()
     existing = await db.scalar(
         select(ConversationRunInput.id).where(
             ConversationRunInput.conversation_id == run.conversation_id,
@@ -179,20 +188,21 @@ async def claim_next_input(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> ClaimedConversationInput | None:
     """Bind the next eligible input to a run under the conversation row lock."""
+    user_id = context.user_id
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
     if conversation.queue_paused:
         return None
     active = await conversation_run_service.get_active_run(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
     if active is not None:
         return None
@@ -230,7 +240,7 @@ async def claim_next_input(
     interrupted = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
     if interrupted is not None:
         return None
@@ -239,7 +249,7 @@ async def claim_next_input(
         db,
         conversation_id=conversation.id,
         agent_id=queued.agent_id,
-        user_id=user_id,
+        context=context,
         source="chat",
         input_preview=None,
         metadata={

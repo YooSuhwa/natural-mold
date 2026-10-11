@@ -6,7 +6,7 @@ import uuid
 from collections.abc import AsyncGenerator
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -23,6 +23,7 @@ os.environ.setdefault("ENCRYPTION_KEYS", secrets.token_hex(32))
 os.environ["SKILL_EVALUATION_ENABLED"] = "true"
 
 from app.auth import password as password_module  # noqa: E402
+from app.authz.org_context import OrgContext  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.dependencies import (  # noqa: E402
@@ -30,6 +31,7 @@ from app.dependencies import (  # noqa: E402
     get_current_user,
     get_current_user_optional,
     get_db,
+    get_org_context,
     verify_csrf,
 )
 from app.main import create_app  # noqa: E402
@@ -103,7 +105,7 @@ def _stub_llm_credential_resolution(monkeypatch):
     (``monkeypatch.undo()`` or per-test re-patch).
     """
 
-    async def _fake_resolve(_db, _agent, **_kwargs):
+    async def _fake_resolve(_db, _agent, _access):
         return "test-api-key"
 
     monkeypatch.setattr(
@@ -172,6 +174,14 @@ async def _bypass_verify_csrf() -> None:
     return
 
 
+async def override_get_org_context(
+    user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> OrgContext:
+    from tests.authz.unit_scope_fixture import ensure_unit_scope
+
+    return await ensure_unit_scope(db, user)
+
+
 @pytest.fixture(scope="session")
 def test_app() -> FastAPI:
     app = create_app()
@@ -179,6 +189,7 @@ def test_app() -> FastAPI:
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_current_user_optional] = override_get_current_user
     app.dependency_overrides[verify_csrf] = _bypass_verify_csrf
+    app.dependency_overrides[get_org_context] = override_get_org_context
     return app
 
 
@@ -332,6 +343,10 @@ def make_agent(
     """Persist a minimal ``Agent`` row and flush. Returns the row."""
 
     from app.models.agent import Agent
+    from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
+
+    kwargs.setdefault("org_id", TEST_ORG_ID)
+    kwargs.setdefault("tenant_id", TEST_TENANT_ID)
 
     agent = Agent(
         user_id=user_id,
@@ -374,6 +389,12 @@ async def seed_agent(
             email, user_name = f"u-{uuid.uuid4().hex[:8]}@test.com", "Test User"
         user = User(id=user_id, email=email, name=user_name)
         db.add(user)
+    from tests.authz.unit_scope_fixture import ensure_unit_scope
+
+    await ensure_unit_scope(
+        db,
+        CurrentUser(id=user.id, email=user.email, name=user.name, is_super_user=user.is_super_user),
+    )
     model = await make_model(db)
     agent = await make_agent(
         db,

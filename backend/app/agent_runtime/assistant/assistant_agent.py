@@ -16,12 +16,15 @@ from langchain_core.language_models import BaseChatModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.assistant.tools.clarify_tools import build_clarify_tools
+from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
 from app.agent_runtime.assistant.tools.read_tools import build_read_tools
 from app.agent_runtime.assistant.tools.write_tools import build_write_tools
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.model_factory import create_chat_model
 from app.agent_runtime.runtime_component_builder import build_agent
 from app.agent_runtime.runtime_policy import ASSISTANT_RUNTIME_POLICY
+from app.authz.org_context import OrgContext
+from app.error_codes import agent_not_found
 from app.services.system_credential_resolver import resolve_system_model
 
 logger = logging.getLogger(__name__)
@@ -56,7 +59,7 @@ def _assistant_write_interrupt_on(write_tools: list[Any]) -> dict[str, Any]:
 async def build_assistant_agent(
     db: AsyncSession,
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     thread_id: str,
 ) -> Any:
     """Assistant 에이전트를 생성한다.
@@ -73,6 +76,8 @@ async def build_assistant_agent(
     # ADR-019: the assistant text model is the operator-selected ``text_primary``
     # role. Raises ``SystemModelNotConfiguredError`` if unset (surfaced by the
     # caller) — no silent ``.env`` fallback.
+    if await get_agent_with_eager_load(db, agent_id, context) is None:
+        raise agent_not_found()
     resolved = await resolve_system_model(db, "text_primary")
     model: BaseChatModel = create_chat_model(
         resolved.provider,
@@ -82,8 +87,8 @@ async def build_assistant_agent(
     )
 
     # 도구 35개 = 16 read + 18 write + 1 clarify
-    read_tools = build_read_tools(db, agent_id, user_id)
-    write_tools = build_write_tools(db, agent_id, user_id)
+    read_tools = build_read_tools(db, agent_id, context)
+    write_tools = build_write_tools(db, agent_id, context)
     clarify_tools = build_clarify_tools()
     tools = read_tools + write_tools + clarify_tools
 

@@ -13,6 +13,8 @@ from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
 from app.models.message_event import MessageEvent
 from app.services import conversation_run_message_links, conversation_run_service, trace_storage
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 from tests.test_conversation_run_message_links import _create_run, _seed_conversation
 
 
@@ -196,6 +198,7 @@ async def test_v3_root_ai_message_id_survives_stream_finalize_and_owned_link_que
     msg_id_sink: list[str] = []
     error_sink: list[StreamErrorRecord] = []
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="fake",
         model_name="fake-chat",
         api_key=None,
@@ -236,7 +239,7 @@ async def test_v3_root_ai_message_id_survives_stream_finalize_and_owned_link_que
         db,
         conversation_run_message_links.RunMessageLinkQuery(
             conversation_id=conversation.id,
-            user_id=agent_model.user_id,
+            context=unit_context(agent_model.user_id),
             message_ids=[raw_message_id],
         ),
     )

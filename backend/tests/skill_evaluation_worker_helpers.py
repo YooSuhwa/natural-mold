@@ -10,7 +10,7 @@ from unittest.mock import patch
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.models.audit_event import AuditEvent
 from app.models.marketplace import SkillCredentialBinding
 from app.models.skill_evaluation import SkillEvaluationRun
@@ -23,6 +23,13 @@ from app.services.skill_evaluation_worker_types import (
     SkillEvaluationResult,
 )
 from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation, TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    create_test_credential,
+    create_test_package_skill,
+    create_test_text_skill,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -80,14 +87,16 @@ async def create_run(
     evals: list[JsonValue] | None = None,
 ) -> SkillEvaluationRun:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Evaluator",
-            slug=f"evaluator-{uuid.uuid4().hex[:8]}",
-            description="Use when testing skill evaluation behavior.",
-            content=skill_content(),
-            version="1.0.0",
+            TextSkillCreation(
+                name="Evaluator",
+                slug=f"evaluator-{uuid.uuid4().hex[:8]}",
+                description="Use when testing skill evaluation behavior.",
+                content=skill_content(),
+                version="1.0.0",
+            ),
+            unit_context(TEST_USER_ID),
         )
     evaluation_set = await skill_evaluation_service.create_evaluation_set(
         db,
@@ -123,11 +132,13 @@ async def create_script_run(
         )
     )
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=package_zip({"SKILL.md": skill_content(), "scripts/probe.py": script}),
-            name_override="Evaluator Package",
+            PackageSkillCreation(
+                zip_bytes=package_zip({"SKILL.md": skill_content(), "scripts/probe.py": script}),
+                name_override="Evaluator Package",
+            ),
+            unit_context(TEST_USER_ID),
         )
     if credential_secret is not None:
         skill.credential_requirements = [
@@ -140,12 +151,12 @@ async def create_script_run(
                 "env_map": {"api_key": "OPENAI_API_KEY"},
             }
         ]
-        credential = await credential_service.create(
+        credential = await create_test_credential(
             db,
-            user_id=TEST_USER_ID,
-            definition_key="openai",
-            name="eval key",
-            data={"api_key": credential_secret},
+            CredentialCreation(
+                definition_key="openai", name="eval key", data={"api_key": credential_secret}
+            ),
+            unit_context(TEST_USER_ID),
         )
         db.add(
             SkillCredentialBinding(

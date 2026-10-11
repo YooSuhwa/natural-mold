@@ -17,13 +17,16 @@ from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
 
 
-class CredentialDefault(Base):
+class CredentialDefault(RequiredOrgScope, Base):
     __tablename__ = "credential_defaults"
     __table_args__ = (
+        *resource_scope_constraints("credential_defaults", system=False),
         Index(
-            "uq_credential_defaults_user_scope",
+            "uq_credential_defaults_org_user_scope",
+            "org_id",
             "user_id",
             "scope_kind",
             "scope_key",

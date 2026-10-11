@@ -11,10 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
+from app.credentials.mutation_scope import CredentialPatch
 from app.credentials.registry import registry
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.credential_oauth_state import CredentialOAuthState
 from app.models.user import User
+from tests.authz.unit_scope_fixture import create_test_credential, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -31,21 +34,23 @@ async def test_oauth_start_creates_persistent_state(
     db: AsyncSession,
     client: AsyncClient,
 ) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Atlassian",
-        data={
-            "server_url": "https://mcp.atlassian.com/v1/mcp/authv2",
-            "use_dynamic_client_registration": False,
-            "auth_url": "https://id.example/authorize",
-            "access_token_url": "https://id.example/token",
-            "client_id": "cid",
-            "scope": "read:jira",
-            "grant_type": "pkce",
-            "authentication": "none",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian",
+            data={
+                "server_url": "https://mcp.atlassian.com/v1/mcp/authv2",
+                "use_dynamic_client_registration": False,
+                "auth_url": "https://id.example/authorize",
+                "access_token_url": "https://id.example/token",
+                "client_id": "cid",
+                "scope": "read:jira",
+                "grant_type": "pkce",
+                "authentication": "none",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -67,20 +72,22 @@ async def test_oauth_start_audits_persisted_credential_payload(
     db: AsyncSession,
     client: AsyncClient,
 ) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Atlassian",
-        data={
-            "server_url": "https://mcp.atlassian.com/v1/mcp/authv2",
-            "use_dynamic_client_registration": False,
-            "auth_url": "https://id.example/authorize",
-            "access_token_url": "https://id.example/token",
-            "client_id": "cid",
-            "grant_type": "pkce",
-            "authentication": "none",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian",
+            data={
+                "server_url": "https://mcp.atlassian.com/v1/mcp/authv2",
+                "use_dynamic_client_registration": False,
+                "auth_url": "https://id.example/authorize",
+                "access_token_url": "https://id.example/token",
+                "client_id": "cid",
+                "grant_type": "pkce",
+                "authentication": "none",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -113,20 +120,22 @@ async def test_oauth_start_cleans_expired_and_consumed_states(
     db: AsyncSession,
     client: AsyncClient,
 ) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Atlassian",
-        data={
-            "server_url": "https://mcp.atlassian.com/v1/mcp/authv2",
-            "use_dynamic_client_registration": False,
-            "auth_url": "https://id.example/authorize",
-            "access_token_url": "https://id.example/token",
-            "client_id": "cid",
-            "grant_type": "pkce",
-            "authentication": "none",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian",
+            data={
+                "server_url": "https://mcp.atlassian.com/v1/mcp/authv2",
+                "use_dynamic_client_registration": False,
+                "auth_url": "https://id.example/authorize",
+                "access_token_url": "https://id.example/token",
+                "client_id": "cid",
+                "grant_type": "pkce",
+                "authentication": "none",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     now = datetime.now(UTC).replace(tzinfo=None)
     db.add_all(
@@ -169,16 +178,18 @@ async def test_oauth_callback_consumes_state_and_stores_token(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Atlassian",
-        data={
-            "access_token_url": "https://id.example/token",
-            "client_id": "cid",
-            "authentication": "none",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian",
+            data={
+                "access_token_url": "https://id.example/token",
+                "client_id": "cid",
+                "authentication": "none",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     raw_state = "state-raw"
     db.add(
@@ -235,16 +246,18 @@ async def test_oauth_callback_rejects_cross_user_state(
 
     other_user_id = uuid.uuid4()
     db.add(User(id=other_user_id, email="other@test.com", name="Other", is_super_user=False))
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=other_user_id,
-        definition_key="mcp_oauth2",
-        name="Atlassian",
-        data={
-            "access_token_url": "https://id.example/token",
-            "client_id": "cid",
-            "authentication": "none",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian",
+            data={
+                "access_token_url": "https://id.example/token",
+                "client_id": "cid",
+                "authentication": "none",
+            },
+        ),
+        unit_context(other_user_id),
     )
     raw_state = "cross-user-state"
     db.add(
@@ -275,26 +288,29 @@ async def test_oauth_callback_rejects_cross_user_state(
 
 @pytest.mark.asyncio
 async def test_update_preserves_oauth_tokens_for_mcp_oauth2(db: AsyncSession) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Atlassian",
-        data={
-            "server_url": "https://mcp.atlassian.com/v1/mcp/authv2",
-            "access_token": "access",
-            "refresh_token": "refresh",
-            "expires_at": 9999999999.0,
-            "client_id": "cid",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian",
+            data={
+                "server_url": "https://mcp.atlassian.com/v1/mcp/authv2",
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "expires_at": 9999999999.0,
+                "client_id": "cid",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
     await credential_service.update(
         db,
-        credential=cred,
-        actor_user_id=TEST_USER_ID,
-        data={"server_url": "https://mcp.atlassian.com/v1/mcp/authv2"},
+        CredentialPatch(
+            cred.id, TEST_USER_ID, data={"server_url": "https://mcp.atlassian.com/v1/mcp/authv2"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
     await db.refresh(cred)
@@ -310,29 +326,32 @@ async def test_update_preserves_oauth_tokens_for_mcp_oauth2(db: AsyncSession) ->
 async def test_update_drops_oauth_session_when_mcp_server_url_changes(
     db: AsyncSession,
 ) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Atlassian",
-        data={
-            "server_url": "https://mcp.atlassian.com/v1/mcp/authv2",
-            "auth_url": "https://id.atlassian.com/authorize",
-            "access_token_url": "https://id.atlassian.com/token",
-            "client_id": "old-client",
-            "client_secret": "old-secret",
-            "access_token": "old-access",
-            "refresh_token": "old-refresh",
-            "expires_at": 9999999999.0,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian",
+            data={
+                "server_url": "https://mcp.atlassian.com/v1/mcp/authv2",
+                "auth_url": "https://id.atlassian.com/authorize",
+                "access_token_url": "https://id.atlassian.com/token",
+                "client_id": "old-client",
+                "client_secret": "old-secret",
+                "access_token": "old-access",
+                "refresh_token": "old-refresh",
+                "expires_at": 9999999999.0,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
     await credential_service.update(
         db,
-        credential=cred,
-        actor_user_id=TEST_USER_ID,
-        data={"server_url": "https://mcp.new.example/v1/mcp"},
+        CredentialPatch(
+            cred.id, TEST_USER_ID, data={"server_url": "https://mcp.new.example/v1/mcp"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
     await db.refresh(cred)

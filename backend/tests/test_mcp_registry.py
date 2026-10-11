@@ -224,6 +224,8 @@ async def test_create_from_registry_rejects_system_credential(
         key_id=key_id,
         field_keys=field_keys,
         is_system=True,
+        org_id=None,
+        tenant_id=None,
     )
     db.add(credential)
     await db.commit()

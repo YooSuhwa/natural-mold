@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.langgraph_pending_inputs import interrupt_payloads_from_checkpointer
 from app.agent_runtime.protocol_events import StoredProtocolEvent, protocol_interrupts_from_event
+from app.authz.org_context import OrgContext
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_replay import load_protocol_events
 from app.services import conversation_run_service
@@ -45,11 +46,12 @@ async def load_pending_interrupt_tasks(
     conversation: Conversation,
     *,
     user_id: uuid.UUID,
+    context: OrgContext,
 ) -> list[ThreadTask]:
     run = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation.id,
-        user_id=user_id,
+        context=context,
     )
     if run is None:
         return []
@@ -57,7 +59,7 @@ async def load_pending_interrupt_tasks(
     run_id = str(run.id)
     events = [
         event
-        for event in await load_protocol_events(db, conversation.id)
+        for event in await load_protocol_events(db, conversation.id, context=context)
         if event["run_id"] == run_id
     ]
     interrupts: list[ThreadInterrupt] = _pending_interrupts_for_events(events)

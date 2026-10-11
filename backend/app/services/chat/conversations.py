@@ -17,12 +17,17 @@ from typing import Literal, assert_never
 from fastapi import HTTPException
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import InstrumentedAttribute, contains_eager
+from sqlalchemy.orm import InstrumentedAttribute, aliased, contains_eager
 
 from app.agent_runtime.runtime_policy import (
     SKILL_BUILDER_RUNTIME_POLICY,
     runtime_policy_to_json,
 )
+from app.authz.conversation_scope import load_private_conversation, lock_private_conversation
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import require_private_actor
+from app.authz.scoping import private_scope_predicate, private_scoped
+from app.error_codes import agent_not_found, conversation_not_found
 from app.models.agent import (
     AGENT_RUNTIME_PROFILE_SKILL_BUILDER,
     AGENT_RUNTIME_PROFILE_STANDARD,
@@ -30,8 +35,28 @@ from app.models.agent import (
 )
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.conversation_run_input import ConversationRunInput
 from app.models.message_event import MessageEvent
-from app.schemas.conversation import ConversationSort, ConversationUpdate
+from app.schemas.conversation import ConversationSort
+from app.schemas.conversation_scope import ConversationPromotion, DraftConversationCleanup
+from app.services.chat.conversation_mutations import (
+    clear_active_branch_override as clear_active_branch_override,
+)
+from app.services.chat.conversation_mutations import (
+    mark_conversation_read as mark_conversation_read,
+)
+from app.services.chat.conversation_mutations import (
+    maybe_set_auto_title as maybe_set_auto_title,
+)
+from app.services.chat.conversation_mutations import (
+    set_active_branch as set_active_branch,
+)
+from app.services.chat.conversation_mutations import (
+    touch_conversation as touch_conversation,
+)
+from app.services.chat.conversation_mutations import (
+    update_conversation as update_conversation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,18 +75,30 @@ def conversation_title_from_content(content: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conversation]:
+async def list_conversations(
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
+) -> list[Conversation]:
+    await require_private_actor(db, context)
     result = await db.execute(
         select(Conversation)
-        .where(Conversation.agent_id == agent_id, Conversation.source == "ui")
+        .where(
+            Conversation.agent_id == agent_id,
+            Conversation.source == "ui",
+            private_scope_predicate(Conversation, context),
+        )
         .order_by(Conversation.is_pinned.desc(), Conversation.updated_at.desc())
     )
     return list(result.scalars().all())
 
 
-async def is_agent_owned_by_user(db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+async def is_agent_owned_by_user(
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
+) -> bool:
+    await require_private_actor(db, context)
     result = await db.execute(
-        select(Agent.id).where(Agent.id == agent_id, Agent.user_id == user_id).limit(1)
+        select(Agent.id)
+        .where(Agent.id == agent_id, private_scope_predicate(Agent, context))
+        .limit(1)
     )
     return result.scalar_one_or_none() is not None
 
@@ -154,15 +191,18 @@ async def list_conversations_page(
     db: AsyncSession,
     agent_id: uuid.UUID,
     *,
+    context: OrgContext,
     limit: int,
     cursor: str | None = None,
     q: str | None = None,
     sort: ConversationSort = "updated",
 ) -> tuple[list[Conversation], str | None, bool]:
+    await require_private_actor(db, context)
     timestamp_column = _conversation_sort_column(sort)
     query = select(Conversation).where(
         Conversation.agent_id == agent_id,
         Conversation.source == "ui",
+        private_scope_predicate(Conversation, context),
     )
 
     search = (q or "").strip()
@@ -213,25 +253,30 @@ async def list_conversations_page(
 
 async def list_global_conversations_page(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
     *,
     limit: int,
     cursor: str | None = None,
     q: str | None = None,
     sort: ConversationSort = "updated",
 ) -> tuple[list[Conversation], str | None, bool]:
+    await require_private_actor(db, context)
     timestamp_column = _conversation_sort_column(sort)
     query = (
         select(Conversation)
-        .join(Agent, Conversation.agent_id == Agent.id)
+        .outerjoin(
+            Agent,
+            and_(Conversation.agent_id == Agent.id, private_scope_predicate(Agent, context)),
+        )
         .where(
-            Agent.user_id == user_id,
+            private_scope_predicate(Conversation, context),
             # 히든 런타임 에이전트(스킬 빌더 등)의 대화는 네비게이터/최근 대화에
             # 노출하지 않는다 — 빌더 라우트가 전용 진입점이다.
-            Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+            or_(Agent.id.is_(None), Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD),
             Conversation.source == "ui",
         )
         .options(contains_eager(Conversation.agent))
+        .execution_options(populate_existing=True)
     )
 
     search = (q or "").strip()
@@ -274,9 +319,25 @@ async def create_conversation(
     agent_id: uuid.UUID,
     title: str | None = None,
     *,
+    context: OrgContext,
     source: str = "ui",
 ) -> Conversation:
-    conv = Conversation(agent_id=agent_id, title=title or "새 대화", source=source)
+    await require_private_actor(db, context)
+    agent = await db.scalar(
+        private_scoped(select(Agent).where(Agent.id == agent_id), Agent, context)
+    )
+    if agent is None:
+        raise agent_not_found()
+    conv = Conversation(
+        agent_id=agent_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=datetime.now(UTC),
+        title=title or "새 대화",
+        source=source,
+    )
     if source == "draft":
         runtime_profile = await db.scalar(select(Agent.runtime_profile).where(Agent.id == agent_id))
         if runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER:
@@ -293,22 +354,20 @@ async def create_conversation(
 
 
 async def promote_draft_conversation(
-    db: AsyncSession,
-    conv: Conversation,
-    *,
-    title_from_content: str | None = None,
+    db: AsyncSession, target: ConversationPromotion
 ) -> Conversation:
+    conv = await lock_private_conversation(db, target.conversation_id, target.context)
     if conv.source != "draft":
         return conv
     conv.source = "ui"
-    if title_from_content:
-        conv.title = conversation_title_from_content(title_from_content)
+    if target.title_from_content:
+        conv.title = conversation_title_from_content(target.title_from_content)
     await db.flush()
     await db.refresh(conv)
     return conv
 
 
-async def gc_orphan_draft_conversations(db: AsyncSession, *, retention_hours: int) -> int:
+async def gc_orphan_draft_conversations(db: AsyncSession, cleanup: DraftConversationCleanup) -> int:
     """Delete abandoned, message-less draft conversations past the cutoff.
 
     A draft (``source == "draft"``) is created by ``POST
@@ -321,8 +380,8 @@ async def gc_orphan_draft_conversations(db: AsyncSession, *, retention_hours: in
 
     * still ``source == "draft"`` (never promoted — promotion is the
       first-message signal, so a non-draft row is never touched), AND
-    * message-less: no ``message_events`` turn row exists for the
-      conversation (the ORM-visible proxy for a recorded assistant turn).
+    * message-less: no recorded turn, durable run/input or side-conversation
+      child exists. Durable work is preserved even before its first event.
 
     The age check uses ``created_at`` (naive UTC, matching the column) so a
     just-opened draft the user is still typing into is never collected. Child
@@ -337,6 +396,7 @@ async def gc_orphan_draft_conversations(db: AsyncSession, *, retention_hours: in
     # typing), so a mis-set ``0`` must surface loudly as a config error instead of
     # silently destroying live drafts or silently substituting a value the operator
     # never chose.
+    retention_hours = cleanup.retention_hours
     if retention_hours <= 0:
         raise ValueError(f"retention_hours must be >= 1, got {retention_hours}")
 
@@ -344,97 +404,96 @@ async def gc_orphan_draft_conversations(db: AsyncSession, *, retention_hours: in
     has_event = (
         select(MessageEvent.id).where(MessageEvent.conversation_id == Conversation.id).exists()
     )
+    side_child = aliased(Conversation)
+    has_side_child = (
+        select(side_child.id)
+        .where(side_child.side_chat_parent_id == Conversation.id)
+        .correlate(Conversation)
+        .exists()
+    )
+    has_run = (
+        select(ConversationRun.id)
+        .where(ConversationRun.conversation_id == Conversation.id)
+        .exists()
+    )
+    has_input = (
+        select(ConversationRunInput.id)
+        .where(ConversationRunInput.conversation_id == Conversation.id)
+        .exists()
+    )
     result = await db.execute(
         delete(Conversation).where(
             Conversation.source == "draft",
             Conversation.created_at < cutoff,
             ~has_event,
+            ~has_side_child,
+            ~has_run,
+            ~has_input,
         )
     )
     await db.commit()
     deleted = int(getattr(result, "rowcount", 0) or 0)
     if deleted:
         logger.info(
-            "Draft conversation GC: deleted %d orphan draft(s) older than %s",
+            "Draft conversation GC: deleted %d empty draft(s) older than %s under %s",
             deleted,
             cutoff.isoformat(),
+            cleanup.scope,
         )
     return deleted
 
 
-async def get_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> Conversation | None:
-    result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
-    return result.scalar_one_or_none()
+async def get_conversation(
+    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext
+) -> Conversation | None:
+    return await load_private_conversation(db, conversation_id, context)
 
 
 async def get_owned_conversation(
-    db: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext
 ) -> Conversation | None:
-    """Conversation lookup gated by ownership through Agent.user_id.
-
-    Single SELECT joining ``conversations -> agents`` so callers don't have to
-    issue two queries (conversation, then agent ownership check). Returns
-    ``None`` when the conversation doesn't exist *or* belongs to another user
-    — callers should map both to ``conversation_not_found`` so existence
-    isn't leaked via 403/404 differences.
-    """
-    result = await db.execute(
-        select(Conversation)
-        .join(Agent, Conversation.agent_id == Agent.id)
-        .where(Conversation.id == conversation_id)
-        .where(Agent.user_id == user_id)
-    )
-    return result.scalar_one_or_none()
+    """The private conversation boundary is independent of its agent owner."""
+    return await load_private_conversation(db, conversation_id, context)
 
 
 async def get_owned_ui_conversation_with_agent(
-    db: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext
 ) -> Conversation | None:
+    await require_private_actor(db, context)
     result = await db.execute(
-        select(Conversation)
-        .join(Agent, Conversation.agent_id == Agent.id)
-        .where(
-            Conversation.id == conversation_id,
-            Conversation.source == "ui",
-            Agent.user_id == user_id,
+        private_scoped(
+            select(Conversation).where(
+                Conversation.id == conversation_id, Conversation.source == "ui"
+            ),
+            Conversation,
+            context,
+        )
+        .outerjoin(
+            Agent,
+            and_(Conversation.agent_id == Agent.id, private_scope_predicate(Agent, context)),
         )
         .options(contains_eager(Conversation.agent))
+        .execution_options(populate_existing=True)
     )
     return result.unique().scalar_one_or_none()
 
 
-async def update_conversation(
-    db: AsyncSession, conv: Conversation, data: ConversationUpdate
-) -> Conversation:
-    if data.title is not None:
-        conv.title = data.title
-    if data.is_pinned is not None:
-        conv.is_pinned = data.is_pinned
-    await db.flush()
-    await db.refresh(conv)
-    return conv
-
-
-async def mark_conversation_read(db: AsyncSession, conv: Conversation) -> Conversation:
-    conv.unread_count = 0
-    conv.last_read_at = datetime.now(UTC).replace(tzinfo=None)
-    await db.flush()
-    await db.refresh(conv)
-    return conv
-
-
-async def delete_conversation(db: AsyncSession, conv: Conversation) -> None:
+async def delete_conversation(db: AsyncSession, conv: Conversation, context: OrgContext) -> None:
     from app.agent_runtime.checkpointer import delete_thread
     from app.agent_runtime.offload_storage import delete_conversation_offloads
     from app.agent_runtime.runtime_config import _DATA_DIR
 
-    locked_conversation = (
-        await db.execute(
-            select(Conversation).where(Conversation.id == conv.id).with_for_update(of=Conversation)
+    locked_conversation = await lock_private_conversation(db, conv.id, context)
+    foreign_child_id = await db.scalar(
+        select(Conversation.id)
+        .where(
+            Conversation.side_chat_parent_id == locked_conversation.id,
+            ~private_scope_predicate(Conversation, context),
         )
-    ).scalar_one_or_none()
-    if locked_conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        .limit(1)
+    )
+    if foreign_child_id is not None:
+        raise conversation_not_found()
     active_run_id = await db.scalar(
         select(ConversationRun.id)
         .where(
@@ -446,9 +505,7 @@ async def delete_conversation(db: AsyncSession, conv: Conversation) -> None:
     if active_run_id is not None:
         raise HTTPException(status_code=409, detail="Conversation has an active run")
 
-    owner_id = (
-        await db.execute(select(Agent.user_id).where(Agent.id == locked_conversation.agent_id))
-    ).scalar_one()
+    owner_id = locked_conversation.user_id
     await delete_thread(str(locked_conversation.id))
     delete_conversation_offloads(
         _DATA_DIR,
@@ -461,49 +518,9 @@ async def delete_conversation(db: AsyncSession, conv: Conversation) -> None:
         .where(
             Conversation.side_chat_parent_id == locked_conversation.id,
             Conversation.source == "side_chat",
+            private_scope_predicate(Conversation, context),
         )
         .values(source="ui", side_chat_parent_id=None)
     )
     await db.delete(locked_conversation)
-    await db.flush()
-
-
-async def maybe_set_auto_title(
-    db: AsyncSession,
-    conversation_id: uuid.UUID,
-    content: str,
-) -> None:
-    title = conversation_title_from_content(content)
-    await db.execute(
-        update(Conversation)
-        .where(Conversation.id == conversation_id, Conversation.title == "새 대화")
-        .values(title=title)
-    )
-    await db.flush()
-
-
-async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> None:
-    """Bump ``conversation.updated_at`` to anchor message-list timestamps."""
-
-    await db.execute(
-        update(Conversation)
-        .where(Conversation.id == conversation_id)
-        .values(
-            updated_at=datetime.now(UTC).replace(tzinfo=None),
-            last_activity_source="user",
-        )
-    )
-    await db.flush()
-
-
-async def clear_active_branch_override(db: AsyncSession, conversation_id: uuid.UUID) -> None:
-    """Reset ``active_branch_checkpoint_id`` so the next list call falls back
-    to the newest leaf — used after edit/regenerate where the new branch is
-    the most recent and should automatically become active."""
-
-    await db.execute(
-        update(Conversation)
-        .where(Conversation.id == conversation_id)
-        .values(active_branch_checkpoint_id=None)
-    )
     await db.flush()

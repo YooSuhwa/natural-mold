@@ -5,7 +5,8 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import invalid_skill_package, skill_feedback_invalid, skill_not_found
 from app.routers.skill_router_support import (
     record_revision_create_audits,
@@ -13,6 +14,7 @@ from app.routers.skill_router_support import (
     serialize_skill,
     serialize_skills,
 )
+from app.schemas.resource_view_context import ResourceViewContext
 from app.schemas.skill import (
     SkillContentUpdate,
     SkillCreate,
@@ -29,6 +31,7 @@ from app.schemas.skill_feedback import (
 from app.schemas.skill_usage import SkillUsageDailyPointResponse, SkillUsageSummaryResponse
 from app.services import skill_feedback_service, skill_revision_mutations, skill_usage_service
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
 from app.skills.inspector import SkillMetadataError
 from app.skills.package_exporter import build_installed_skill_zip_bytes
 
@@ -41,9 +44,10 @@ async def list_skills(
     q: str | None = Query(default=None, max_length=120),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    skills = await skill_service.list_skills(db, user.id, kind=kind, query=q)
-    return await serialize_skills(db, skills, user)
+    skills = await skill_service.list_skills(db, context, kind=kind, query=q)
+    return await serialize_skills(db, skills, ResourceViewContext(user, context))
 
 
 @router.post("", response_model=SkillResponse, status_code=201)
@@ -52,17 +56,20 @@ async def create_text_skill(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
     try:
         skill = await skill_service.create_text_skill(
             db,
-            user_id=user.id,
-            name=data.name,
-            slug=data.slug,
-            description=data.description,
-            content=data.content,
-            version=data.version,
+            TextSkillCreation(
+                name=data.name,
+                slug=data.slug,
+                description=data.description,
+                content=data.content,
+                version=data.version,
+            ),
+            context,
         )
     except SkillMetadataError as exc:
         raise invalid_skill_package(str(exc)) from None
@@ -90,7 +97,7 @@ async def create_text_skill(
         revision=revision,
     )
     await db.commit()
-    return await serialize_skill(db, skill, user)
+    return await serialize_skill(db, skill, ResourceViewContext(user, context))
 
 
 @router.get("/{skill_id}", response_model=SkillResponse)
@@ -98,11 +105,12 @@ async def get_skill(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
-    return await serialize_skill(db, skill, user)
+    return await serialize_skill(db, skill, ResourceViewContext(user, context))
 
 
 @router.patch("/{skill_id}", response_model=SkillResponse)
@@ -112,9 +120,10 @@ async def patch_skill_metadata(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     revision_parent = await skill_revision_mutations.prepare_mutation_parent(
@@ -127,6 +136,7 @@ async def patch_skill_metadata(
     updated = await skill_service.update_metadata(
         db,
         skill=skill,
+        context=context,
         name=data.name,
         description=data.description,
         version=data.version,
@@ -158,7 +168,7 @@ async def patch_skill_metadata(
         metadata={"changed_fields": changed_fields},
     )
     await db.commit()
-    return await serialize_skill(db, updated, user)
+    return await serialize_skill(db, updated, ResourceViewContext(user, context))
 
 
 @router.put("/{skill_id}/content", response_model=SkillResponse)
@@ -168,9 +178,10 @@ async def put_text_content(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     if skill.kind != "text":
@@ -181,7 +192,9 @@ async def put_text_content(
         user_id=user.id,
     )
     try:
-        updated = await skill_service.update_text_content(db, skill=skill, content=data.content)
+        updated = await skill_service.update_text_content(
+            db, skill=skill, content=data.content, context=context
+        )
     except SkillMetadataError as exc:
         raise invalid_skill_package(str(exc)) from None
     revision = await skill_revision_mutations.create_manual_revision(
@@ -211,7 +224,7 @@ async def put_text_content(
         metadata={"content_length": len(data.content)},
     )
     await db.commit()
-    return await serialize_skill(db, updated, user)
+    return await serialize_skill(db, updated, ResourceViewContext(user, context))
 
 
 @router.get("/{skill_id}/content", response_model=SkillTextContentResponse)
@@ -219,8 +232,9 @@ async def get_text_content(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     if skill.kind != "text":
@@ -234,8 +248,9 @@ async def get_skill_feedback(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     return await _feedback_summary_response(db, skill_id=skill.id, user_id=user.id)
@@ -247,9 +262,10 @@ async def upsert_skill_feedback(
     data: SkillFeedbackUpsertRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     try:
@@ -271,9 +287,10 @@ async def delete_skill_feedback(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     # Idempotent — deleting absent feedback is not an error.
@@ -310,8 +327,9 @@ async def get_skill_usage(
     days: int = Query(default=30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     summary = await skill_usage_service.get_skill_usage_summary(db, skill_id=skill.id, days=days)
@@ -344,8 +362,9 @@ async def export_package_skill(
     include_evals: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> Response:
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     if skill.kind != "package":
@@ -368,9 +387,10 @@ async def delete_skill(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     await record_skill_audit(
@@ -380,5 +400,5 @@ async def delete_skill(
         action="skill.delete",
         skill=skill,
     )
-    await skill_service.delete_skill(db, skill)
+    await skill_service.delete_skill(db, skill, context)
     await db.commit()

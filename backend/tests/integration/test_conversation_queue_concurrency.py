@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -21,6 +22,12 @@ from app.models.conversation_run_input import ConversationRunInput
 from app.models.model import Model
 from app.models.user import User
 from app.services import conversation_run_queue_service, conversation_run_service
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -60,16 +67,32 @@ async def _seed_conversation(
                 display_name="Queue Model",
             )
         )
+        await db.flush()
+        await ensure_unit_scope(
+            db, CurrentUser(id=user_id, email=f"{user_id}@fixture.local", name="Race fixture")
+        )
         db.add(
             Agent(
                 id=agent_id,
                 user_id=user_id,
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
                 name="Queue Agent",
                 system_prompt="Keep order.",
                 model_id=model_id,
             )
         )
-        db.add(Conversation(id=conversation_id, agent_id=agent_id, title="Queue"))
+        db.add(
+            Conversation(
+                id=conversation_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
+                agent_name_snapshot="Race fixture",
+                title="Queue",
+            )
+        )
         await db.commit()
     return user_id, agent_id, conversation_id
 
@@ -85,7 +108,7 @@ async def _enqueue(
         queued = await conversation_run_queue_service.enqueue_input(
             db,
             conversation_id=conversation_id,
-            user_id=user_id,
+            context=unit_context(user_id),
             client_request_id=request_id,
             source="chat",
             input_payload={"messages": [{"role": "user", "content": request_id}]},
@@ -115,7 +138,7 @@ async def test_two_concurrent_claims_bind_exactly_one_active_run() -> None:
             claimed = await conversation_run_queue_service.claim_next_input(
                 db,
                 conversation_id=conversation_id,
-                user_id=user_id,
+                context=unit_context(user_id),
             )
             await db.commit()
             results.append(claimed.input.id if claimed is not None else None)
@@ -199,7 +222,7 @@ async def test_stop_and_claim_share_conversation_first_lock_order() -> None:
             db,
             conversation_id=conversation_id,
             agent_id=agent_id,
-            user_id=user_id,
+            context=unit_context(user_id),
             source="chat",
             input_preview="active",
         )
@@ -213,13 +236,13 @@ async def test_stop_and_claim_share_conversation_first_lock_order() -> None:
             await conversation_run_queue_service.pause_queue(
                 db,
                 conversation_id=conversation_id,
-                user_id=user_id,
+                context=unit_context(user_id),
             )
             locked = await conversation_run_service.get_run_for_user(
                 db,
                 conversation_id=conversation_id,
                 run_id=run_id,
-                user_id=user_id,
+                context=unit_context(user_id),
                 for_update=True,
             )
             assert locked is not None
@@ -231,7 +254,7 @@ async def test_stop_and_claim_share_conversation_first_lock_order() -> None:
             result = await conversation_run_queue_service.claim_next_input(
                 db,
                 conversation_id=conversation_id,
-                user_id=user_id,
+                context=unit_context(user_id),
             )
             await db.commit()
             claims.append(result is not None)
@@ -279,7 +302,7 @@ async def test_concurrent_stop_steer_and_claim_do_not_deadlock_or_overlap() -> N
             db,
             conversation_id=conversation_id,
             agent_id=agent_id,
-            user_id=user_id,
+            context=unit_context(user_id),
             source="chat",
             input_preview="active",
         )
@@ -293,13 +316,13 @@ async def test_concurrent_stop_steer_and_claim_do_not_deadlock_or_overlap() -> N
             await conversation_run_queue_service.pause_queue(
                 db,
                 conversation_id=conversation_id,
-                user_id=user_id,
+                context=unit_context(user_id),
             )
             locked = await conversation_run_service.get_run_for_user(
                 db,
                 conversation_id=conversation_id,
                 run_id=run_id,
-                user_id=user_id,
+                context=unit_context(user_id),
                 for_update=True,
             )
             assert locked is not None
@@ -311,7 +334,7 @@ async def test_concurrent_stop_steer_and_claim_do_not_deadlock_or_overlap() -> N
             await conversation_run_queue_service.enqueue_input(
                 db,
                 conversation_id=conversation_id,
-                user_id=user_id,
+                context=unit_context(user_id),
                 client_request_id="steer-correction",
                 source="chat",
                 input_payload={"messages": [{"role": "user", "content": "correct"}]},
@@ -323,7 +346,7 @@ async def test_concurrent_stop_steer_and_claim_do_not_deadlock_or_overlap() -> N
                 db,
                 conversation_id=conversation_id,
                 run_id=run_id,
-                user_id=user_id,
+                context=unit_context(user_id),
                 for_update=True,
             )
             assert locked is not None
@@ -335,7 +358,7 @@ async def test_concurrent_stop_steer_and_claim_do_not_deadlock_or_overlap() -> N
             result = await conversation_run_queue_service.claim_next_input(
                 db,
                 conversation_id=conversation_id,
-                user_id=user_id,
+                context=unit_context(user_id),
             )
             await db.commit()
             claims.append(result is not None)

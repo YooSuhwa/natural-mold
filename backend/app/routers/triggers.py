@@ -5,7 +5,8 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     agent_identity_requires_fixed,
     agent_not_found,
@@ -86,16 +87,18 @@ def _map_trigger_validation(exc: ValueError) -> None:
 async def list_all_triggers(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    return await trigger_service.list_user_triggers(db, user.id)
+    return await trigger_service.list_user_triggers(db, context)
 
 
 @router.get("/api/triggers/summary", response_model=TriggerSummaryResponse)
 async def trigger_summary(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    return await trigger_service.schedule_summary(db, user.id)
+    return await trigger_service.schedule_summary(db, context)
 
 
 @router.patch("/api/triggers/{trigger_id}", response_model=TriggerResponse)
@@ -105,13 +108,14 @@ async def update_trigger_global(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
+    trigger = await trigger_service.get_trigger(db, trigger_id, context)
     if not trigger:
         raise trigger_not_found()
     try:
-        updated = await trigger_service.update_trigger(db, trigger, data)
+        updated = await trigger_service.update_trigger(db, trigger, data, context=context)
     except ValueError as exc:
         _map_trigger_validation(exc)
     await _record_trigger_audit(
@@ -135,9 +139,10 @@ async def delete_trigger_global(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
+    trigger = await trigger_service.get_trigger(db, trigger_id, context)
     if not trigger:
         raise trigger_not_found()
     await _record_trigger_audit(
@@ -147,7 +152,7 @@ async def delete_trigger_global(
         action="trigger.delete",
         trigger=trigger,
     )
-    await trigger_service.delete_trigger(db, trigger)
+    await trigger_service.delete_trigger(db, trigger, context)
 
 
 @router.post("/api/triggers/{trigger_id}/run-now", response_model=TriggerRunResponse)
@@ -156,9 +161,10 @@ async def run_trigger_now(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
+    trigger = await trigger_service.get_trigger(db, trigger_id, context)
     if not trigger:
         raise trigger_not_found()
 
@@ -191,8 +197,9 @@ async def list_trigger_runs(
     trigger_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
+    trigger = await trigger_service.get_trigger(db, trigger_id, context)
     if not trigger:
         raise trigger_not_found()
     return await trigger_service.list_trigger_runs(db, trigger_id, user.id)
@@ -206,11 +213,12 @@ async def list_agent_triggers(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    agent = await trigger_service.get_owned_agent(db, agent_id, user.id)
+    agent = await trigger_service.get_owned_agent(db, agent_id, context)
     if not agent:
         raise agent_not_found()
-    return await trigger_service.list_triggers(db, agent_id, user.id)
+    return await trigger_service.list_triggers(db, agent_id, context)
 
 
 @router.post(
@@ -224,13 +232,14 @@ async def create_trigger(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await trigger_service.get_owned_agent(db, agent_id, user.id)
+    agent = await trigger_service.get_owned_agent(db, agent_id, context)
     if not agent:
         raise agent_not_found()
     try:
-        trigger = await trigger_service.create_trigger(db, agent_id, user.id, data)
+        trigger = await trigger_service.create_trigger(db, agent_id, context, data)
     except ValueError as exc:
         _map_trigger_validation(exc)
     await _record_trigger_audit(
@@ -255,13 +264,14 @@ async def update_agent_trigger(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
+    trigger = await trigger_service.get_trigger(db, trigger_id, context)
     if not trigger or trigger.agent_id != agent_id:
         raise trigger_not_found()
     try:
-        updated = await trigger_service.update_trigger(db, trigger, data)
+        updated = await trigger_service.update_trigger(db, trigger, data, context=context)
     except ValueError as exc:
         _map_trigger_validation(exc)
     await _record_trigger_audit(
@@ -289,9 +299,10 @@ async def delete_agent_trigger(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
+    trigger = await trigger_service.get_trigger(db, trigger_id, context)
     if not trigger or trigger.agent_id != agent_id:
         raise trigger_not_found()
     await _record_trigger_audit(
@@ -301,4 +312,4 @@ async def delete_agent_trigger(
         action="trigger.delete",
         trigger=trigger,
     )
-    await trigger_service.delete_trigger(db, trigger)
+    await trigger_service.delete_trigger(db, trigger, context)

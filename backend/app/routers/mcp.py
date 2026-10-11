@@ -12,7 +12,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.credentials.validation import require_user_credential
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     credential_not_found,
     unknown_registry_entry,
@@ -99,9 +101,9 @@ def _tool_to_response(tool: McpTool) -> McpToolResponse:
 @router.get("", response_model=list[McpServerResponse])
 async def list_servers(
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[McpServerResponse]:
-    rows = await mcp_service.list_servers(db, user.id)
+    rows = await mcp_service.list_servers(db, context)
     return [_server_to_response(r) for r in rows]
 
 
@@ -111,9 +113,10 @@ async def create_server(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> McpServerResponse:
-    server = await mcp_service.create_server(db, user_id=user.id, data=payload)
+    server = await mcp_service.create_server(db, context=context, data=payload)
     await db.commit()
     await db.refresh(server)
     await mcp_service.record_server_audit(
@@ -134,6 +137,7 @@ async def create_server_from_registry(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> McpServerResponse:
     """Create a server from a curated catalog entry.
@@ -153,7 +157,7 @@ async def create_server_from_registry(
 
     server = await mcp_service.create_server_from_registry_entry(
         db,
-        user_id=user.id,
+        context=context,
         name=payload.name,
         credential_id=payload.credential_id,
         entry=entry,
@@ -179,6 +183,7 @@ async def probe_mcp_server(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> McpProbeResponse:
     """Connect to an MCP server without persisting it.
@@ -214,6 +219,7 @@ async def probe_mcp_server(
 
     credentials: dict[str, Any] | None = None
     if payload.credential_id is not None:
+        await require_user_credential(db, credential_id=payload.credential_id, context=context)
         auth = await resolve_mcp_auth(
             db,
             credential_id=payload.credential_id,
@@ -274,13 +280,13 @@ async def probe_mcp_server(
 @router.get("/all-tools", response_model=list[McpToolWithServerResponse])
 async def list_all_user_mcp_tools(
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[McpToolWithServerResponse]:
     """All MCP tools across the user's servers — powers the unified Tools
     picker (Tools tab → MCP source) so the user can bind individual tools
     to an agent without first navigating to each server detail page."""
 
-    rows = await mcp_service.list_all_tools(db, user.id)
+    rows = await mcp_service.list_all_tools(db, context)
     return [
         McpToolWithServerResponse(
             id=tool.id,
@@ -305,6 +311,7 @@ async def import_servers(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> McpImportResult:
     """Bulk import MCP server definitions.
@@ -320,7 +327,7 @@ async def import_servers(
     (its tool links are preserved because the row keeps its id).
     """
 
-    result = await mcp_service.import_servers(db, user_id=user.id, data=payload)
+    result = await mcp_service.import_servers(db, context=context, data=payload)
     await db.commit()
     await mcp_service.record_import_audit(
         db,
@@ -338,7 +345,7 @@ async def import_servers(
 @router.get("/export", response_model=McpExportResponse)
 async def export_servers(
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> McpExportResponse:
     """Dump every server owned by the caller in import-compatible shape.
 
@@ -346,7 +353,7 @@ async def export_servers(
     template strings, and ``credential_id`` is exported as a bare reference.
     """
 
-    rows = await mcp_service.list_servers(db, user.id, order_by_name=True)
+    rows = await mcp_service.list_servers(db, context, order_by_name=True)
 
     out: dict[str, McpExportEntry] = {}
     for row in rows:
@@ -367,10 +374,10 @@ async def export_servers(
 async def get_server(
     server_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> McpServerDetailResponse:
-    server = await mcp_service.load_owned(db, server_id, user.id)
-    tools = await mcp_service.load_tools_for(db, server_id)
+    server = await mcp_service.load_owned(db, server_id, context)
+    tools = await mcp_service.load_tools_for(db, server_id, context)
     base = _server_to_response(server)
     return McpServerDetailResponse(
         **base.model_dump(),
@@ -385,11 +392,12 @@ async def update_server(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> McpServerResponse:
-    server = await mcp_service.load_owned(db, server_id, user.id)
+    server = await mcp_service.load_owned(db, server_id, context)
     fields_set = payload.model_fields_set
-    await mcp_service.update_server(db, server=server, user_id=user.id, data=payload)
+    await mcp_service.update_server(db, server=server, context=context, data=payload)
     await db.commit()
     await db.refresh(server)
     await mcp_service.record_server_audit(
@@ -416,9 +424,10 @@ async def delete_server(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> None:
-    server = await mcp_service.load_owned(db, server_id, user.id)
+    server = await mcp_service.load_owned(db, server_id, context)
     await mcp_service.record_server_audit(
         db,
         user=user,
@@ -426,7 +435,7 @@ async def delete_server(
         action="mcp_server.delete",
         server=server,
     )
-    await mcp_service.delete_server(db, server=server)
+    await mcp_service.delete_server(db, server=server, context=context)
     await db.commit()
     await mcp_service.invalidate_runtime_mcp_cache()
 
@@ -440,9 +449,10 @@ async def test_server(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> McpTestResponse:
-    server = await mcp_service.load_owned(db, server_id, user.id)
+    server = await mcp_service.load_owned(db, server_id, context)
     probe: dict[str, Any] = await discovery.test_server(db, server)
     await mcp_service.record_server_audit(
         db,
@@ -472,9 +482,10 @@ async def discover_server_tools(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> McpDiscoverResponse:
-    server = await mcp_service.load_owned(db, server_id, user.id)
+    server = await mcp_service.load_owned(db, server_id, context)
     probe, tools = await discovery.discover_tools(db, server)
     await mcp_service.record_server_audit(
         db,

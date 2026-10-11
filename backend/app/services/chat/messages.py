@@ -17,6 +17,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.message_utils import langchain_messages_to_response, parse_msg_id
+from app.authz.conversation_scope import require_private_conversation
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.models.conversation import Conversation
 from app.models.message_attachment import MessageAttachment
 from app.models.message_feedback import MessageFeedback
@@ -37,6 +40,7 @@ async def list_messages_from_checkpointer(
     conversation: Conversation,
     user_id: uuid.UUID | None = None,
     *,
+    context: OrgContext,
     tree: Any = None,
 ) -> list:
     """Return persisted messages, attaching stable per-message timestamps.
@@ -57,6 +61,8 @@ async def list_messages_from_checkpointer(
     the caller's existing feedback rating (P0-1c) and any attachments linked
     by message id (P1-7).
     """
+
+    conversation = await require_private_conversation(db, conversation.id, context)
 
     # P0-D: tree를 호출자가 미리 만들어 넘기면 build_message_tree 중복 호출
     # (= _collect_checkpoints + alist 전체 walk)을 피한다. 단독으로 부르면
@@ -137,7 +143,7 @@ async def list_messages_from_checkpointer(
             conversation_id=conversation.id,
             responses=responses,
         )
-    secrets = tuple(await collect_conversation_secret_values(db, conversation))
+    secrets = tuple(await collect_conversation_secret_values(db, conversation, context))
     _redact_response_tool_calls(responses, secret_values=secrets)
 
     # Hydrate per-message feedback (current user) + attachments/artifacts. Wrapped in
@@ -175,6 +181,7 @@ async def list_messages_from_checkpointer(
                 select(MessageAttachment).where(
                     MessageAttachment.conversation_id == conversation.id,
                     MessageAttachment.message_id.is_not(None),
+                    private_scope_predicate(MessageAttachment, context),
                 )
             )
             for att in attach_result.scalars().all():
@@ -194,7 +201,7 @@ async def list_messages_from_checkpointer(
         try:
             artifacts_by_msg = await list_conversation_artifacts_by_message_id(
                 db,
-                user_id=user_id,
+                context=context,
                 conversation_id=conversation.id,
             )
         except Exception:  # noqa: BLE001 — non-critical hydration

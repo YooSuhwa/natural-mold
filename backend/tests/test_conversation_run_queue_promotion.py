@@ -7,9 +7,11 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_scope import require_conversation_agent_id
 from app.models.conversation import Conversation
 from app.services import conversation_run_queue_service, conversation_run_service
 from app.services.conversation_run_queue_promotion import promote_pending_input
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID, register_session
 from tests.integration._seed import seed_conversation_with_agent
 
@@ -18,7 +20,7 @@ async def _pending(db: AsyncSession, conversation_id: uuid.UUID, *, request_id: 
     return await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id=request_id,
         source="chat",
         input_payload={"messages": [{"role": "user", "content": request_id}]},
@@ -39,8 +41,8 @@ async def test_promote_pending_input_requests_predecessor_cancel_atomically(
     active = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conversation.agent_id,
-        user_id=TEST_USER_ID,
+        agent_id=require_conversation_agent_id(conversation),
+        context=unit_context(TEST_USER_ID),
         source="chat",
         input_preview="active",
     )
@@ -52,7 +54,7 @@ async def test_promote_pending_input_requests_predecessor_cancel_atomically(
         db,
         conversation_id=conversation_id,
         input_id=queued.id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         expected_revision=1,
     )
 
@@ -77,7 +79,7 @@ async def test_promote_pending_input_without_active_run_is_dispatchable(
         db,
         conversation_id=conversation_id,
         input_id=queued.id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         expected_revision=1,
     )
 
@@ -97,8 +99,8 @@ async def test_promote_pending_input_rejects_replay_before_canceling_again(
     active = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conversation.agent_id,
-        user_id=TEST_USER_ID,
+        agent_id=require_conversation_agent_id(conversation),
+        context=unit_context(TEST_USER_ID),
         source="chat",
         input_preview="active",
     )
@@ -108,7 +110,7 @@ async def test_promote_pending_input_rejects_replay_before_canceling_again(
         db,
         conversation_id=conversation_id,
         input_id=queued.id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         expected_revision=1,
     )
     first_cancel_requested_at = active.cancel_requested_at
@@ -119,7 +121,7 @@ async def test_promote_pending_input_rejects_replay_before_canceling_again(
             db,
             conversation_id=conversation_id,
             input_id=queued.id,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             expected_revision=2,
         )
 
@@ -139,7 +141,7 @@ async def test_promote_pending_input_rejects_paused_queue(
     await conversation_run_queue_service.pause_queue(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
 
     # When promotion is requested before explicit resume.
@@ -148,7 +150,7 @@ async def test_promote_pending_input_rejects_paused_queue(
             db,
             conversation_id=conversation_id,
             input_id=queued.id,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             expected_revision=1,
         )
 
@@ -172,7 +174,7 @@ async def test_promote_pending_input_hides_foreign_conversation(
             db,
             conversation_id=conversation_id,
             input_id=queued.id,
-            user_id=uuid.uuid4(),
+            context=unit_context(uuid.uuid4()),
             expected_revision=1,
         )
 
@@ -244,7 +246,7 @@ async def test_promote_route_rejects_repeat_without_dispatch_or_second_cancel(
         db,
         conversation_id=conversation_id,
         input_id=queued.id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         expected_revision=1,
     )
     await db.commit()

@@ -5,6 +5,7 @@ import uuid
 from app.models.skill import Skill
 from app.models.skill_evaluation import SkillEvaluationRun
 from app.services.skill_health_service import calculate_skill_health
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 
 
 def _skill(content_hash: str = "a" * 64) -> Skill:
@@ -17,6 +18,8 @@ def _skill(content_hash: str = "a" * 64) -> Skill:
         kind="text",
         content_hash=content_hash,
         size_bytes=1,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
 
 

@@ -18,10 +18,21 @@ import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import Select
+from sqlalchemy.sql.elements import ColumnElement
 
+from app.authz.catalog_scope import (
+    catalog_view_candidate_predicate,
+    installation_child_scope_predicate,
+)
+from app.authz.catalog_version_scope import load_item_version
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import require_private_actor
+from app.authz.scoping import private_scope_predicate
+from app.error_codes import marketplace_item_not_found
 from app.marketplace.access import (
     can_install_item,
     can_view_item,
@@ -58,7 +69,28 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def _base_catalog_query(user: CurrentUser, *, public_listed_only: bool):
+def _catalog_owner_predicate(user: CurrentUser) -> ColumnElement[bool]:
+    """Use the same existing owner visibility clause for detail and listing."""
+    return MarketplaceItem.owner_user_id == user.id
+
+
+def _catalog_view_stmt(user: CurrentUser, context: OrgContext) -> Select[tuple[MarketplaceItem]]:
+    """Match persisted visibility before any authorized read can flush staged edits."""
+    return select(MarketplaceItem).where(
+        catalog_view_candidate_predicate(context),
+        or_(
+            _catalog_owner_predicate(user),
+            literal(user.is_super_user),
+            and_(MarketplaceItem.status != "disabled", MarketplaceItem.visibility == "system"),
+            and_(
+                MarketplaceItem.status == "published",
+                MarketplaceItem.visibility.in_(("public", "unlisted", "restricted")),
+            ),
+        ),
+    )
+
+
+def _base_catalog_query(user: CurrentUser, context: OrgContext, *, public_listed_only: bool):
     """Build a SELECT that respects the user's visibility scope (Spec §10.1).
 
     super_user      → all items, no default visibility gate.
@@ -83,7 +115,7 @@ def _base_catalog_query(user: CurrentUser, *, public_listed_only: bool):
     equal to the items count (1:N → existence join would duplicate).
     """
 
-    stmt = select(MarketplaceItem)
+    stmt = _catalog_view_stmt(user, context)
     if user.is_super_user:
         return stmt
 
@@ -105,7 +137,7 @@ def _base_catalog_query(user: CurrentUser, *, public_listed_only: bool):
         public_path = and_(public_path, MarketplaceItem.is_listed.is_(True))
 
     visibility_clauses = [
-        MarketplaceItem.owner_user_id == user.id,
+        _catalog_owner_predicate(user),
         MarketplaceItem.visibility == "system",
         public_path,
         and_(
@@ -118,7 +150,7 @@ def _base_catalog_query(user: CurrentUser, *, public_listed_only: bool):
     return stmt.where(or_(*visibility_clauses))
 
 
-def _installed_for_user_exists(user_id: uuid.UUID):
+def _installed_for_user_exists(context: OrgContext):
     """User 의 active installation 이 있는 item id 를 EXISTS 로 잡는다.
 
     SQL 단계에서 적용해야 ``installed=true`` filter + pagination 이 정확하다.
@@ -133,7 +165,8 @@ def _installed_for_user_exists(user_id: uuid.UUID):
         select(MarketplaceInstallation.id)
         .where(
             MarketplaceInstallation.item_id == MarketplaceItem.id,
-            MarketplaceInstallation.user_id == user_id,
+            private_scope_predicate(MarketplaceInstallation, context),
+            installation_child_scope_predicate(context),
             MarketplaceInstallation.install_status != "uninstalled",
         )
         .exists()
@@ -165,19 +198,19 @@ def _apply_filters(stmt, filters: MarketplaceItemListFilters):
     return stmt
 
 
-def _catalog_stmt(user: CurrentUser, filters: MarketplaceItemListFilters):
+def _catalog_stmt(user: CurrentUser, filters: MarketplaceItemListFilters, context: OrgContext):
     public_listed_only = filters.is_listed is None
-    stmt = _base_catalog_query(user, public_listed_only=public_listed_only)
+    stmt = _base_catalog_query(user, context, public_listed_only=public_listed_only)
     stmt = _apply_filters(stmt, filters)
     if filters.installed is not None:
-        exists_clause = _installed_for_user_exists(user.id)
+        exists_clause = _installed_for_user_exists(context)
         stmt = stmt.where(exists_clause if filters.installed else ~exists_clause)
     return stmt
 
 
-def _catalog_rows_stmt(user: CurrentUser, filters: MarketplaceItemListFilters):
+def _catalog_rows_stmt(user: CurrentUser, filters: MarketplaceItemListFilters, context: OrgContext):
     return (
-        _catalog_stmt(user, filters)
+        _catalog_stmt(user, filters, context)
         .options(
             selectinload(MarketplaceItem.latest_version),
             selectinload(MarketplaceItem.acl_entries),
@@ -187,6 +220,7 @@ def _catalog_rows_stmt(user: CurrentUser, filters: MarketplaceItemListFilters):
             MarketplaceItem.published_at.desc().nullslast(),
             MarketplaceItem.created_at.desc(),
         )
+        .execution_options(populate_existing=True)
     )
 
 
@@ -198,11 +232,20 @@ async def _fetch_catalog_rows(
     db: AsyncSession,
     *,
     user: CurrentUser,
+    context: OrgContext,
     filters: MarketplaceItemListFilters,
     limit: int,
     offset: int,
 ) -> list[MarketplaceItem]:
-    stmt = _catalog_rows_stmt(user, filters).limit(limit).offset(offset)
+    candidate = (
+        _catalog_view_stmt(user, context)
+        .with_only_columns(MarketplaceItem.id)
+        .limit(1)
+        .execution_options(autoflush=False)
+    )
+    if await db.scalar(candidate) is None:
+        return []
+    stmt = _catalog_rows_stmt(user, filters, context).limit(limit).offset(offset)
     return list((await db.execute(stmt)).scalars().unique().all())
 
 
@@ -211,6 +254,7 @@ async def _apply_post_load_filters(
     *,
     rows: Sequence[MarketplaceItem],
     user: CurrentUser,
+    context: OrgContext,
     filters: MarketplaceItemListFilters,
 ) -> list[MarketplaceItem]:
     filtered = list(rows)
@@ -221,7 +265,7 @@ async def _apply_post_load_filters(
     # 여전히 post-load 단계에서만 정확히 적용 가능.
     if filters.install_state:
         installation_summaries = await bulk_derive_installation_summaries(
-            db, items=filtered, user_id=user.id
+            db, items=filtered, context=context
         )
         kept = []
         for item in filtered:
@@ -259,6 +303,7 @@ async def _project_item(
     db: AsyncSession,
     item: MarketplaceItem,
     user: CurrentUser,
+    context: OrgContext,
     *,
     installation_summary: MarketplaceInstallationSummary | None = None,
     has_publication_link: bool | None = None,
@@ -268,7 +313,7 @@ async def _project_item(
         # ``latest_version`` may be eager-loaded; fall back to a lookup.
         lv = item.latest_version
         if lv is None:
-            lv = await db.get(MarketplaceVersion, item.latest_version_id)
+            lv = await load_item_version(db, item.id, item.latest_version_id)
         if lv is not None:
             latest_version_summary = MarketplaceVersionSummary.model_validate(lv)
 
@@ -278,7 +323,7 @@ async def _project_item(
     credential_summary: CredentialSummaryOut = derive_credential_summary(requirements)
 
     installation: MarketplaceInstallationSummary = installation_summary or (
-        await derive_installation_summary(db, item=item, user_id=user.id)
+        await derive_installation_summary(db, item=item, context=context)
     )
 
     # publication_summary는 viewer 본인이 publish한 자기 리소스인지 보여주는 정보.
@@ -287,7 +332,10 @@ async def _project_item(
     # CTA를 노출. 그 결과 자기 publish 백업본을 다시 install 불가능. PRD §6
     # 정신상 source resource를 잃은 owner는 marketplace 원본에서 재install이
     # 합리적이므로, publication_link 존재 여부까지 함께 확인해야 한다.
-    owner_view = is_owner(item, user)
+    owner_view = is_owner(item, user) and (item.org_id, item.tenant_id) == (
+        context.org_id,
+        context.tenant_id,
+    )
     if has_publication_link is None:
         has_publication_link = False
         if owner_view:
@@ -351,16 +399,29 @@ async def _project_item(
         # information leak 발생.
         acl_user_ids=(
             [a.user_id for a in (item.acl_entries or [])]
-            if (is_owner(item, user) or user.is_super_user)
+            if (
+                owner_view
+                or (
+                    user.is_super_user
+                    and item.is_system
+                    and item.org_id is None
+                    and item.tenant_id is None
+                )
+            )
             else None
         ),
     )
 
 
 async def _bulk_publication_link_item_ids(
-    db: AsyncSession, items: Sequence[MarketplaceItem], user: CurrentUser
+    db: AsyncSession, items: Sequence[MarketplaceItem], user: CurrentUser, *, context: OrgContext
 ) -> set[uuid.UUID]:
-    owner_item_ids = [item.id for item in items if is_owner(item, user)]
+    owner_item_ids = [
+        item.id
+        for item in items
+        if is_owner(item, user)
+        and (item.org_id, item.tenant_id) == (context.org_id, context.tenant_id)
+    ]
     if not owner_item_ids:
         return set()
     rows = (
@@ -381,11 +442,14 @@ async def _project_items(
     db: AsyncSession,
     items: Sequence[MarketplaceItem],
     user: CurrentUser,
+    context: OrgContext,
 ) -> list[MarketplaceItemOut]:
     installation_summaries = await bulk_derive_installation_summaries(
-        db, items=items, user_id=user.id
+        db, items=items, context=context
     )
-    publication_link_item_ids = await _bulk_publication_link_item_ids(db, items, user)
+    publication_link_item_ids = await _bulk_publication_link_item_ids(
+        db, items, user, context=context
+    )
     return [
         await _project_item(
             db,
@@ -393,6 +457,7 @@ async def _project_items(
             user,
             installation_summary=installation_summaries.get(item.id),
             has_publication_link=item.id in publication_link_item_ids,
+            context=context,
         )
         for item in items
     ]
@@ -424,31 +489,41 @@ async def list_items(
     db: AsyncSession,
     *,
     user: CurrentUser,
+    context: OrgContext,
     filters: MarketplaceItemListFilters,
     limit: int = 50,
     offset: int = 0,
 ) -> Sequence[MarketplaceItemOut]:
-    rows = await _fetch_catalog_rows(db, user=user, filters=filters, limit=limit, offset=offset)
-    rows = await _apply_post_load_filters(db, rows=rows, user=user, filters=filters)
-    return await _project_items(db, rows, user)
+    await require_private_actor(db, context)
+    rows = await _fetch_catalog_rows(
+        db, user=user, filters=filters, limit=limit, offset=offset, context=context
+    )
+    rows = await _apply_post_load_filters(
+        db, rows=rows, user=user, filters=filters, context=context
+    )
+    return await _project_items(db, rows, user, context=context)
 
 
 async def _count_catalog_items(
     db: AsyncSession,
     *,
     user: CurrentUser,
+    context: OrgContext,
     filters: MarketplaceItemListFilters,
 ) -> int | None:
     if _has_post_load_filters(filters):
         return None
-    stmt = _catalog_stmt(user, filters)
-    return await db.scalar(select(func.count()).select_from(stmt.subquery()))
+    stmt = _catalog_stmt(user, filters, context)
+    return await db.scalar(
+        select(func.count()).select_from(stmt.subquery()).execution_options(autoflush=False)
+    )
 
 
 async def _scan_post_filtered_page(
     db: AsyncSession,
     *,
     user: CurrentUser,
+    context: OrgContext,
     filters: MarketplaceItemListFilters,
     limit: int,
     offset: int,
@@ -462,18 +537,14 @@ async def _scan_post_filtered_page(
 
     while True:
         raw_rows = await _fetch_catalog_rows(
-            db,
-            user=user,
-            filters=filters,
-            limit=batch_size,
-            offset=raw_offset,
+            db, user=user, filters=filters, limit=batch_size, offset=raw_offset, context=context
         )
         if not raw_rows:
             exhausted = True
             break
 
         filtered_rows = await _apply_post_load_filters(
-            db, rows=raw_rows, user=user, filters=filters
+            db, rows=raw_rows, user=user, filters=filters, context=context
         )
         for item in filtered_rows:
             if filtered_seen < offset:
@@ -500,28 +571,26 @@ async def list_items_page(
     db: AsyncSession,
     *,
     user: CurrentUser,
+    context: OrgContext,
     filters: MarketplaceItemListFilters,
     limit: int = 50,
     offset: int = 0,
 ) -> MarketplaceItemsPage:
+    await require_private_actor(db, context)
     if _has_post_load_filters(filters):
         rows, has_more, total = await _scan_post_filtered_page(
-            db, user=user, filters=filters, limit=limit, offset=offset
+            db, user=user, filters=filters, limit=limit, offset=offset, context=context
         )
     else:
         raw_rows = await _fetch_catalog_rows(
-            db,
-            user=user,
-            filters=filters,
-            limit=limit + 1,
-            offset=offset,
+            db, user=user, filters=filters, limit=limit + 1, offset=offset, context=context
         )
         has_more = len(raw_rows) > limit
         rows = raw_rows[:limit]
-        total = await _count_catalog_items(db, user=user, filters=filters)
+        total = await _count_catalog_items(db, user=user, filters=filters, context=context)
 
     return MarketplaceItemsPage(
-        items=await _project_items(db, rows, user),
+        items=await _project_items(db, rows, user, context=context),
         limit=limit,
         offset=offset,
         total=total,
@@ -534,6 +603,7 @@ async def get_item(
     db: AsyncSession,
     *,
     user: CurrentUser,
+    context: OrgContext,
     item_id: uuid.UUID,
 ) -> MarketplaceItem | None:
     """Fetch an item if the user is allowed to see it.
@@ -542,8 +612,17 @@ async def get_item(
     callers can map both to a single 404 (enumeration oracle safety).
     """
 
+    await require_private_actor(db, context)
+    candidate = (
+        _catalog_view_stmt(user, context)
+        .with_only_columns(MarketplaceItem.id)
+        .where(MarketplaceItem.id == item_id)
+        .execution_options(autoflush=False)
+    )
+    if await db.scalar(candidate) is None:
+        return None
     stmt = (
-        select(MarketplaceItem)
+        _catalog_view_stmt(user, context)
         .where(MarketplaceItem.id == item_id)
         .options(
             selectinload(MarketplaceItem.latest_version),
@@ -567,19 +646,26 @@ async def project_item(
     *,
     item: MarketplaceItem,
     user: CurrentUser,
+    context: OrgContext,
 ) -> MarketplaceItemOut:
     """Public projection helper (router uses after ``get_item``)."""
 
-    return await _project_item(db, item, user)
+    await require_private_actor(db, context)
+    current = await get_item(db, user=user, context=context, item_id=item.id)
+    if current is None:
+        raise marketplace_item_not_found()
+    with db.no_autoflush:
+        return await _project_item(db, current, user, context=context)
 
 
 async def list_versions(
     db: AsyncSession,
     *,
     user: CurrentUser,
+    context: OrgContext,
     item_id: uuid.UUID,
 ) -> Sequence[MarketplaceVersionSummary] | None:
-    item = await get_item(db, user=user, item_id=item_id)
+    item = await get_item(db, user=user, item_id=item_id, context=context)
     if item is None:
         return None
     stmt = (
@@ -595,13 +681,23 @@ async def get_version(
     db: AsyncSession,
     *,
     user: CurrentUser,
+    context: OrgContext,
     version_id: uuid.UUID,
 ) -> MarketplaceVersionDetail | None:
-    version = await db.get(MarketplaceVersion, version_id)
-    if version is None:
+    await require_private_actor(db, context)
+    parent_id = await db.scalar(
+        select(MarketplaceVersion.item_id)
+        .where(MarketplaceVersion.id == version_id)
+        .execution_options(autoflush=False)
+    )
+    if parent_id is None:
         return None
-    item = await get_item(db, user=user, item_id=version.item_id)
+    with db.no_autoflush:
+        item = await get_item(db, user=user, item_id=parent_id, context=context)
     if item is None:
+        return None
+    version = await load_item_version(db, item.id, version_id)
+    if version is None:
         return None
     # Install permission required to reveal full payload? Spec §10.2 says
     # any viewer may read version metadata, so use can_view_item gate

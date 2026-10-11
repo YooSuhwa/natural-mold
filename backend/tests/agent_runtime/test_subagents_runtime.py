@@ -18,9 +18,11 @@ from app.agent_runtime.identity import (
 )
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import resolve_runtime_policy
+from app.authz.org_context import OrgContext
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.model import Model
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
 
 
 def _agent(
@@ -41,6 +43,8 @@ def _agent(
         model=model,
         runtime_name=make_agent_runtime_name(agent_id),
         identity_mode=identity_mode,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     agent.tool_links = []
     agent.mcp_tool_links = []
@@ -100,6 +104,7 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
         caller_user_id=caller_id,
     )
     parent_cfg = AgentConfig(
+        org_context=unit_context(owner_id),
         provider=parent_model.provider,
         model_name=parent_model.model_name,
         api_key="parent-key",
@@ -161,9 +166,13 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
         "app.agent_runtime.subagents.chat_service.build_tools_config",
         fake_build_tools_config,
     )
+
+    def fake_agent_skills(agent: Agent, context: OrgContext) -> list[dict[str, str]]:
+        assert context == parent_cfg.org_context
+        return [{"slug": "child-skill"}] if agent is child else []
+
     monkeypatch.setattr(
-        "app.agent_runtime.subagents.chat_service.build_agent_skills",
-        lambda agent: [{"slug": "child-skill"}] if agent is child else [],
+        "app.agent_runtime.subagents.chat_service.build_agent_skills", fake_agent_skills
     )
     monkeypatch.setattr(
         "app.agent_runtime.subagents._prepare_runtime_components",

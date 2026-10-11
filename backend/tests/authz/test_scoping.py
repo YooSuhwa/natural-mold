@@ -96,3 +96,19 @@ def test_child_query_checks_parent_scope_when_child_has_no_scope_columns(
     statement = scoping.private_parent_scoped(select(ScopedChild.id), parent, scope_fixture.context)
     # Then: the parent's owner/company/org jointly limit visible children.
     assert scope_fixture.connection.scalars(statement).all() == [1]
+
+
+@pytest.mark.parametrize("other_company", [False, True])
+def test_composed_private_predicate_matches_scoped_query(
+    scope_fixture: ScopeFixture, other_company: bool
+) -> None:
+    context = scope_fixture.second if other_company else scope_fixture.context
+    context = replace(context, is_super_user=True)
+    statement = select(ScopedResource.id)
+    composed = statement.where(scoping.private_scope_predicate(ScopedResource, context))
+    scoped = scoping.private_scoped(statement, ScopedResource, context)
+    assert (
+        scope_fixture.connection.scalars(composed).all()
+        == (scope_fixture.connection.scalars(scoped).all())
+        == ([2] if other_company else [1])
+    )

@@ -36,13 +36,14 @@ from app.agent_runtime.assistant.tools.write_tools.composition import build_comp
 from app.agent_runtime.assistant.tools.write_tools.context import WriteToolContext
 from app.agent_runtime.assistant.tools.write_tools.cron import build_cron_tools
 from app.agent_runtime.assistant.tools.write_tools.tool_links import build_tool_link_tools
+from app.authz.org_context import OrgContext
 from app.database import async_session as async_session_factory
 
 
 def build_write_tools(
     db: AsyncSession,  # noqa: ARG001 — kept for interface compatibility
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> list[StructuredTool]:
     """Assistant 쓰기 도구 18개를 생성한다.
 
@@ -56,7 +57,7 @@ def build_write_tools(
     ctx = WriteToolContext(
         session_factory=async_session_factory,
         agent_id=agent_id,
-        user_id=user_id,
+        org_context=context,
     )
     return [
         *build_tool_link_tools(ctx),

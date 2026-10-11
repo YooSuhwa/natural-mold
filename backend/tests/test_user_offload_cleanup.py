@@ -139,7 +139,12 @@ async def test_delete_user_keeps_owner_rows_when_offload_cleanup_fails(
 ) -> None:
     user = await _make_user(db)
     agent = await _make_agent(db, user.id)
-    await _make_conversation(db, agent.id)
+    conversation = await _make_conversation(db, agent.id)
+    # Explicitly release the protected Agent; independent account history remains.
+    conversation.agent_id = None
+    await db.flush()
+    await db.delete(agent)
+    await db.flush()
     from app.agent_runtime import checkpointer, offload_storage
 
     monkeypatch.setattr(checkpointer, "delete_thread", AsyncMock())

@@ -9,25 +9,33 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
+from app.authz.scoping import private_scope_predicate
 from app.models.agent import Agent
 from app.models.memory import AgentMemorySettings
 from app.schemas.memory import AgentMemorySettingsUpdate
 
 
 async def _owned_settings(
-    db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
 ) -> tuple[AgentMemorySettings | None, bool]:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     # Only a key-share lock is needed: it fences DELETE without taking any
     # conversation/run locks or blocking ordinary owner metadata updates.
     owner = await db.scalar(
         select(Agent.id)
-        .where(Agent.id == agent_id, Agent.user_id == user_id)
+        .where(Agent.id == agent_id, private_scope_predicate(Agent, context))
         .with_for_update(read=True, key_share=True)
     )
     if owner is None:
         return None, False
     settings = await db.scalar(
-        select(AgentMemorySettings).where(AgentMemorySettings.agent_id == agent_id)
+        select(AgentMemorySettings)
+        .where(AgentMemorySettings.agent_id == agent_id)
+        .execution_options(populate_existing=True, autoflush=False)
     )
     if settings is not None:
         return settings, False
@@ -37,10 +45,10 @@ async def _owned_settings(
 
 
 async def _recover_settings(
-    db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
 ) -> tuple[AgentMemorySettings | None, bool]:
     await db.rollback()
-    settings, created = await _owned_settings(db, agent_id, user_id)
+    settings, created = await _owned_settings(db, agent_id, context)
     if created:
         # An integrity error without a winning row is not a duplicate insert.
         await db.rollback()
@@ -48,15 +56,15 @@ async def _recover_settings(
 
 
 async def get_agent_settings(
-    db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
 ) -> AgentMemorySettings | None:
-    settings, created = await _owned_settings(db, agent_id, user_id)
+    settings, created = await _owned_settings(db, agent_id, context)
     if settings is None or not created:
         return settings
     try:
         await db.commit()
     except IntegrityError:
-        settings, missing_winner = await _recover_settings(db, agent_id, user_id)
+        settings, missing_winner = await _recover_settings(db, agent_id, context)
         if missing_winner:
             raise
     # expire_on_commit=False retains the INSERT's defaults. A refresh after
@@ -67,10 +75,10 @@ async def get_agent_settings(
 async def update_agent_settings(
     db: AsyncSession,
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     payload: AgentMemorySettingsUpdate,
 ) -> AgentMemorySettings | None:
-    settings, _ = await _owned_settings(db, agent_id, user_id)
+    settings, _ = await _owned_settings(db, agent_id, context)
     if settings is None:
         return None
     changes = payload.model_dump(exclude_unset=True)
@@ -80,7 +88,7 @@ async def update_agent_settings(
     try:
         await db.commit()
     except IntegrityError:
-        settings, missing_winner = await _recover_settings(db, agent_id, user_id)
+        settings, missing_winner = await _recover_settings(db, agent_id, context)
         if missing_winner:
             raise
         if settings is None:

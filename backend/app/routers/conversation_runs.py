@@ -14,8 +14,16 @@ from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.streaming import format_sse
+from app.authz.org_context import OrgContext
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+    verify_csrf,
+)
 from app.error_codes import resume_not_found
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun, utc_now_naive
@@ -125,11 +133,12 @@ async def get_active_conversation_run(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
     run = await conversation_run_service.get_active_run(
         db,
         conversation_id=conversation_id,
-        user_id=user.id,
+        context=context,
     )
     return ConversationRunResponse.model_validate(run) if run is not None else None
 
@@ -146,6 +155,7 @@ async def stream_conversation_run(
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     conversation: Conversation = Depends(owned_conversation),
 ) -> StreamingResponse:
     after_id = last_event_id or last_event_id_header
@@ -153,14 +163,16 @@ async def stream_conversation_run(
         db,
         conversation_id=conversation_id,
         run_id=run_id,
-        user_id=user.id,
+        context=context,
         for_update=True,
     )
     if run is None:
         raise resume_not_found()
 
     run_id_str = str(run_id)
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+    secrets = tuple(
+        await chat_secrets.collect_conversation_secret_values(db, conversation, context)
+    )
     broker = broker_registry.get(run_id_str)
     if broker is not None and not broker.is_closed:
         if broker.conversation_id != str(conversation_id):
@@ -219,6 +231,7 @@ async def cancel_conversation_run(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
     result = await cancel_owned_conversation_run(
@@ -226,6 +239,7 @@ async def cancel_conversation_run(
         conversation_id=conversation_id,
         run_id=run_id,
         user=user,
+        context=context,
         request=request,
     )
     return ConversationRunResponse.model_validate(result.run)
@@ -240,6 +254,7 @@ async def cancel_langgraph_sdk_run(
     action: Literal["interrupt", "rollback"] = Query("interrupt"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> Response:
     result = await cancel_owned_conversation_run(
@@ -247,6 +262,7 @@ async def cancel_langgraph_sdk_run(
         conversation_id=thread_id,
         run_id=run_id,
         user=user,
+        context=context,
         request=request,
     )
     headers = {"X-LangGraph-Cancel-Action": action}
@@ -266,12 +282,13 @@ async def get_conversation_run(
     run_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,
         run_id=run_id,
-        user_id=user.id,
+        context=context,
     )
     if run is None:
         raise resume_not_found()

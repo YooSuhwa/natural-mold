@@ -22,11 +22,14 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.config import settings
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillDraftFile, SkillDraftFileRole
 from app.skills.display_limits import DISPLAY_TEXT_SNIFF_BYTES, MAX_DISPLAY_TEXT_BYTES
-from app.storage.paths import ensure_relative, resolve_data_path
+from app.storage.paths import resolve_data_path
+from app.storage.skill_draft_paths import SKILL_DRAFTS_ROOT, skill_draft_storage_path
 
 if TYPE_CHECKING:
     from app.models.message_attachment import MessageAttachment
@@ -34,8 +37,6 @@ if TYPE_CHECKING:
     from app.schemas.skill_builder import SkillDraftPackage
 
 logger = logging.getLogger(__name__)
-
-SKILL_DRAFTS_ROOT = "skill-drafts"
 
 # 사용자 시험 입력 전용 디렉토리 — 스킬 패키지 콘텐츠가 아니므로 어댑터
 # (검증/zip 수거)에서 제외한다.
@@ -52,7 +53,7 @@ _MAX_ADAPTER_FILE_BYTES = MAX_DISPLAY_TEXT_BYTES
 def workspace_storage_path(session_id: uuid.UUID) -> str:
     """세션 워크스페이스의 data_root 기준 상대 경로 (ADR-018)."""
 
-    return ensure_relative(f"{SKILL_DRAFTS_ROOT}/{session_id}")
+    return skill_draft_storage_path(session_id)
 
 
 def resolve_workspace_dir(storage_path: str) -> Path:
@@ -418,7 +419,7 @@ async def copy_conversation_attachments_to_inputs(
     *,
     storage_path: str,
     attachment_ids: Sequence[uuid.UUID],
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> list[str]:
     """run 시작 시 방금 링크된 첨부를 ``inputs/``로 복사한다 (소유권 필터 포함)."""
 
@@ -429,7 +430,7 @@ async def copy_conversation_attachments_to_inputs(
     result = await db.execute(
         select(MessageAttachment).where(
             MessageAttachment.id.in_(list(attachment_ids)),
-            MessageAttachment.user_id == user_id,
+            private_scope_predicate(MessageAttachment, context),
         )
     )
     return copy_attachments_to_inputs(storage_path, list(result.scalars()))

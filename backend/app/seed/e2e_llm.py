@@ -23,18 +23,24 @@ Secrets stay in env (never committed). Skipped in production / when unset.
 from __future__ import annotations
 
 import logging
-import uuid
 from decimal import Decimal
+from typing import assert_never
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext, resolve_org_context
+from app.authz.platform_scope import PlatformScope
+from app.authz.scoping import private_scoped
 from app.config import settings
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
+from app.dependencies import CurrentUser
 from app.models.credential import Credential
 from app.models.model import Model
 from app.models.system_llm_setting import SystemLlmSetting
 from app.models.user import User
+from app.seed.e2e_scope import E2E_ORG_ID
 
 logger = logging.getLogger(__name__)
 
@@ -46,36 +52,39 @@ _E2E_LLM_ROLES = ("text_primary", "text_fallback")
 
 async def _upsert_credential(
     db: AsyncSession,
-    *,
-    user_id: uuid.UUID | None,
-    name: str,
-    base_url: str,
-    api_key: str,
+    creation: CredentialCreation,
+    context: OrgContext | PlatformScope,
 ) -> Credential:
     """Find-by-name, refreshing the encrypted payload so changed env values
     take effect on re-seed; create it if absent."""
-    cred = (
-        await db.execute(select(Credential).where(Credential.name == name).limit(1))
-    ).scalar_one_or_none()
-    data = {"base_url": base_url, "api_key": api_key}
+    query = select(Credential).where(Credential.name == creation.name)
+    match context:
+        case OrgContext():
+            query = private_scoped(query, Credential, context)
+        case PlatformScope():
+            query = query.where(
+                Credential.is_system.is_(True),
+                Credential.org_id.is_(None),
+                Credential.tenant_id.is_(None),
+            )
+        case unreachable:
+            assert_never(unreachable)
+    cred = (await db.execute(query.limit(1))).scalar_one_or_none()
+    data = dict(creation.data)
     if cred is None:
         cred = await credential_service.create(
             db,
-            user_id=user_id,
-            definition_key=E2E_LLM_DEFINITION_KEY,
-            name=name,
-            data=data,
-            is_system=user_id is None,
-            source="seed",
+            creation,
+            context,
         )
-        logger.info("seed_e2e_llm: created credential %s", name)
+        logger.info("seed_e2e_llm: created credential %s", creation.name)
     else:
         blob, key_id, field_keys = credential_service.encrypt_data(data)
         cred.data_encrypted = blob
         cred.key_id = key_id
         cred.field_keys = field_keys
         await db.flush()
-        logger.info("seed_e2e_llm: refreshed credential %s", name)
+        logger.info("seed_e2e_llm: refreshed credential %s", creation.name)
     return cred
 
 
@@ -92,7 +101,14 @@ async def seed_e2e_llm(db: AsyncSession) -> Model | None:
 
     # 1) system credential -> Builder / Assistant (system models).
     system_cred = await _upsert_credential(
-        db, user_id=None, name=E2E_LLM_SYSTEM_CREDENTIAL_NAME, base_url=base_url, api_key=api_key
+        db,
+        CredentialCreation(
+            definition_key=E2E_LLM_DEFINITION_KEY,
+            name=E2E_LLM_SYSTEM_CREDENTIAL_NAME,
+            data={"base_url": base_url, "api_key": api_key},
+            source="seed",
+        ),
+        PlatformScope(),
     )
 
     # 2) user-owned credential for the seeded E2E user -> user agents / chat.
@@ -101,12 +117,22 @@ async def seed_e2e_llm(db: AsyncSession) -> Model | None:
     ).scalar_one_or_none()
     user_cred: Credential | None = None
     if e2e_user is not None:
+        actor = CurrentUser(
+            id=e2e_user.id,
+            email=e2e_user.email,
+            name=e2e_user.name,
+            is_super_user=e2e_user.is_super_user,
+        )
+        context = await resolve_org_context(db, actor, cookie=str(E2E_ORG_ID))
         user_cred = await _upsert_credential(
             db,
-            user_id=e2e_user.id,
-            name=E2E_LLM_USER_CREDENTIAL_NAME,
-            base_url=base_url,
-            api_key=api_key,
+            CredentialCreation(
+                definition_key=E2E_LLM_DEFINITION_KEY,
+                name=E2E_LLM_USER_CREDENTIAL_NAME,
+                data={"base_url": base_url, "api_key": api_key},
+                source="seed",
+            ),
+            context,
         )
 
     # 3) Model row. Default credential = the user one when available so the E2E
@@ -148,14 +174,10 @@ async def seed_e2e_llm(db: AsyncSession) -> Model | None:
     # 4) System LLM text_primary + text_fallback -> system credential + model.
     for role in _E2E_LLM_ROLES:
         setting = (
-            await db.execute(
-                select(SystemLlmSetting).where(SystemLlmSetting.role == role).limit(1)
-            )
+            await db.execute(select(SystemLlmSetting).where(SystemLlmSetting.role == role).limit(1))
         ).scalar_one_or_none()
         if setting is None:
-            db.add(
-                SystemLlmSetting(role=role, credential_id=system_cred.id, model_name=model_name)
-            )
+            db.add(SystemLlmSetting(role=role, credential_id=system_cred.id, model_name=model_name))
         else:
             setting.credential_id = system_cred.id
             setting.model_name = model_name

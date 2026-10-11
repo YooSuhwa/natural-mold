@@ -16,6 +16,7 @@ from app.models.marketplace import MarketplaceItem, MarketplaceVersion
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.models.user import User
 from app.skills import service as skill_service
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -177,6 +178,8 @@ async def _published_skill_item(
         moderation_status="approved",
         source_kind="user",
         published_at=datetime.now(UTC).replace(tzinfo=None),
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(item)
     await db.flush()

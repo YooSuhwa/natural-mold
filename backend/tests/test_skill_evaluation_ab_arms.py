@@ -18,6 +18,8 @@ from app.services import skill_evaluation_service
 from app.services.skill_evaluation_llm import LlmSkillEvaluationEvaluator
 from app.services.skill_evaluation_worker_state import build_context
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -66,19 +68,19 @@ def _grader_json(*, passed: bool = True, baseline_passed: bool = False) -> str:
 
 async def _create_run(db: AsyncSession, tmp_path: Path, *, run_config: dict | None = None):
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="AB Evaluator",
-            slug=f"ab-evaluator-{uuid.uuid4().hex[:8]}",
-            description="Use when benchmarking with/without the skill.",
-            content=(
-                "---\n"
+            TextSkillCreation(
+                name="AB Evaluator",
+                slug=f"ab-evaluator-{uuid.uuid4().hex[:8]}",
+                description="Use when benchmarking with/without the skill.",
+                content="---\n"
                 "name: ab-evaluator\n"
                 'description: "Use when benchmarking with/without the skill."\n'
-                "---\n\nAlways answer with a table of owners and deadlines.\n"
+                "---\n\nAlways answer with a table of owners and deadlines.\n",
+                version="1.0.0",
             ),
-            version="1.0.0",
+            unit_context(TEST_USER_ID),
         )
     evaluation_set = await skill_evaluation_service.create_evaluation_set(
         db,
@@ -220,17 +222,17 @@ async def test_malformed_grader_answer_isolates_to_one_case(
     """
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="AB Multi",
-            slug=f"ab-multi-{uuid.uuid4().hex[:8]}",
-            description="Use when testing per-case grader isolation.",
-            content=(
-                "---\nname: ab-multi\n"
-                'description: "Use when testing per-case grader isolation."\n---\n\nBody.\n'
+            TextSkillCreation(
+                name="AB Multi",
+                slug=f"ab-multi-{uuid.uuid4().hex[:8]}",
+                description="Use when testing per-case grader isolation.",
+                content="---\nname: ab-multi\n"
+                'description: "Use when testing per-case grader isolation."\n---\n\nBody.\n',
+                version="1.0.0",
             ),
-            version="1.0.0",
+            unit_context(TEST_USER_ID),
         )
     evaluation_set = await skill_evaluation_service.create_evaluation_set(
         db,

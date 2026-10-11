@@ -20,11 +20,13 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.credentials import service as credential_service
 from app.dependencies import (
     CurrentUser,
     get_current_user,
     get_db,
+    get_org_context,
     require_super_user,
     verify_csrf,
 )
@@ -170,9 +172,9 @@ async def delete_model(
 
 
 async def _load_owned_credential(
-    db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, credential_id: uuid.UUID, context: OrgContext
 ) -> Credential:
-    cred = await credential_service.get_for_user(db, credential_id, user_id)
+    cred = await credential_service.get_for_user(db, credential_id, context)
     if cred is None:
         raise credential_not_found()
     return cred
@@ -197,6 +199,7 @@ async def test_registered_model(
     ),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ModelTestResponse:
     """Probe a registered ``Model`` row using a Credential.
@@ -210,7 +213,7 @@ async def test_registered_model(
     if model is None:
         raise model_not_found()
 
-    cred = await resolve_credential_for_model(db, model, credential_id, user.id)
+    cred = await resolve_credential_for_model(db, model, credential_id, context)
     if cred is None:
         # Disambiguate so existing 404-on-invalid-credential clients keep
         # working while still giving a useful 422 when the user simply has
@@ -265,6 +268,7 @@ async def test_preview_model(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ModelTestResponse:
     """Probe an unregistered ``provider:model_name`` combo (Custom ID flow).
@@ -274,7 +278,7 @@ async def test_preview_model(
     pasted-in ID before committing it to the table.
     """
 
-    cred = await _load_owned_credential(db, payload.credential_id, user.id)
+    cred = await _load_owned_credential(db, payload.credential_id, context)
     data = await credential_service.decrypt_with_external(cred.data_encrypted)
 
     result = await run_model_test(

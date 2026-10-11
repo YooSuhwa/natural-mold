@@ -345,6 +345,9 @@ documents:
   - path: docs/exec-plans/org-authz-handoff.md
     lifecycle: reference/spec
     status: reference
+  - path: docs/exec-plans/org-authz-native-scope-matrix.md
+    lifecycle: generated-evidence
+    status: generated
   - path: docs/exec-plans/org-authz-progress.md
     lifecycle: active-plan
     status: active

@@ -4,6 +4,9 @@ from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.catalog_scope import installation_child_scope_predicate
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scoped
 from app.dependencies import CurrentUser
 from app.marketplace import origin_service
 from app.marketplace.schemas import (
@@ -13,6 +16,7 @@ from app.marketplace.schemas import (
 from app.models.marketplace import MarketplaceInstallation
 from app.models.skill import Skill
 from app.models.skill_revision import SkillRevision
+from app.schemas.resource_view_context import ResourceViewContext
 from app.schemas.skill import SkillResponse
 from app.services import audit_service, skill_revision_audit
 from app.services.skill_response_enrichment import (
@@ -48,32 +52,42 @@ async def record_skill_audit(
     )
 
 
-async def serialize_skill(db: AsyncSession, skill: Skill, user: CurrentUser) -> SkillResponse:
+async def serialize_skill(
+    db: AsyncSession, skill: Skill, access: ResourceViewContext
+) -> SkillResponse:
+    user = access.user
+    context = access.context
     origin = origin_service.derive_origin_summary_for_skill(skill, user)
-    publication = await origin_service.derive_publication_summary_for_skill(db, skill)
+    publication = await origin_service.derive_publication_summary_for_skill(db, skill, context)
     response = SkillResponse.model_validate(skill)
-    quality = (await build_skill_quality_map(db, user=user, skills=[skill])).get(skill.id)
+    quality = (await build_skill_quality_map(db, context=context, skills=[skill])).get(skill.id)
     if quality is not None:
         response.latest_evaluation_summary = quality.latest_evaluation_summary
         response.health = quality.health
-    link_counts = await agent_link_counts_by_skill(db, user_id=user.id, skill_ids=[skill.id])
+    link_counts = await agent_link_counts_by_skill(db, context=context, skill_ids=[skill.id])
     response.used_by_count = link_counts.get(skill.id, 0)
     response.origin_summary = origin
     response.publication_summary = publication
-    response.installation = await _derive_installation(db, skill)
+    response.installation = await _derive_installation(db, skill, context)
     return response
 
 
 async def serialize_skills(
     db: AsyncSession,
     skills: list[Skill],
-    user: CurrentUser,
+    access: ResourceViewContext,
 ) -> list[SkillResponse]:
-    publications = await origin_service.bulk_derive_publication_summaries_for_skills(db, skills)
-    installations = await origin_service.bulk_derive_skill_installation_summaries(db, skills)
-    quality_by_skill = await build_skill_quality_map(db, user=user, skills=skills)
+    user = access.user
+    context = access.context
+    publications = await origin_service.bulk_derive_publication_summaries_for_skills(
+        db, skills, context
+    )
+    installations = await origin_service.bulk_derive_skill_installation_summaries(
+        db, skills, context
+    )
+    quality_by_skill = await build_skill_quality_map(db, context=context, skills=skills)
     link_counts = await agent_link_counts_by_skill(
-        db, user_id=user.id, skill_ids=[skill.id for skill in skills]
+        db, context=context, skill_ids=[skill.id for skill in skills]
     )
     responses: list[SkillResponse] = []
     for skill in skills:
@@ -119,14 +133,18 @@ async def record_revision_create_audits(
 async def _derive_installation(
     db: AsyncSession,
     skill: Skill,
+    context: OrgContext,
 ) -> MarketplaceInstallationSummary | None:
     if skill.source_marketplace_item_id is None:
         return None
-    stmt = (
-        select(MarketplaceInstallation)
-        .where(MarketplaceInstallation.installed_skill_id == skill.id)
-        .limit(1)
-    )
+    stmt = private_scoped(
+        select(MarketplaceInstallation).where(
+            MarketplaceInstallation.installed_skill_id == skill.id,
+            installation_child_scope_predicate(context),
+        ),
+        MarketplaceInstallation,
+        context,
+    ).limit(1)
     row = (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         return None

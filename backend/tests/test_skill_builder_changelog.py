@@ -8,9 +8,17 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.schemas.skill_builder import SkillBuilderMode
 from app.services import skill_builder_service, skill_revision_service
+from app.services.skill_builder_mutation_scope import SkillBuilderMutationTarget
 from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation
+from tests.authz.unit_scope_fixture import (
+    create_test_package_skill,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -37,16 +45,19 @@ async def test_confirm_create_generates_revision_changelog(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="Create a notes skill",
         )
         await skill_builder_service.save_draft_package(
             db,
-            session,
-            draft={
+            SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+            {
                 "name": "Notes",
                 "slug": "notes",
                 "description": "Use when summarizing notes.",
@@ -63,7 +74,9 @@ async def test_confirm_create_generates_revision_changelog(
             },
         )
 
-        skill = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        skill = await skill_builder_service.confirm_session(
+            db, session, context=unit_context(TEST_USER_ID)
+        )
         revisions = await skill_revision_service.list_revisions(
             db,
             skill=skill,
@@ -84,29 +97,34 @@ async def test_confirm_improve_generates_diff_changelog_items(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_with(
-                {
-                    "SKILL.md": _skill_md("notes", "Original guidance."),
-                    "scripts/run.py": "print('v1')\n",
-                    "references/old.md": "remove me\n",
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_with(
+                    {
+                        "SKILL.md": _skill_md("notes", "Original guidance."),
+                        "scripts/run.py": "print('v1')\n",
+                        "references/old.md": "remove me\n",
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="Improve the notes skill",
             mode=SkillBuilderMode.IMPROVE,
             source_skill_id=skill.id,
         )
         await skill_builder_service.save_draft_package(
             db,
-            session,
-            draft={
+            SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+            {
                 "name": "Notes",
                 "slug": "notes",
                 "description": "Use when summarizing notes.",
@@ -128,7 +146,9 @@ async def test_confirm_improve_generates_diff_changelog_items(
             },
         )
 
-        updated = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        updated = await skill_builder_service.confirm_session(
+            db, session, context=unit_context(TEST_USER_ID)
+        )
         revisions = await skill_revision_service.list_revisions(
             db,
             skill=updated,

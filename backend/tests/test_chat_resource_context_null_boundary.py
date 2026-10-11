@@ -7,10 +7,12 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_scope import require_conversation_agent_id
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID
 from tests.integration._seed import seed_conversation_with_agent
 
@@ -22,8 +24,8 @@ async def _seed_active_run(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
     active = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conversation.agent_id,
-        user_id=TEST_USER_ID,
+        agent_id=require_conversation_agent_id(conversation),
+        context=unit_context(TEST_USER_ID),
         source="chat",
         input_preview="active",
     )

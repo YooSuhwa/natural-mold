@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,6 +19,7 @@ from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from app.schemas.conversation import MessageResponse
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -45,11 +48,21 @@ async def _seed_conversation(*, owner_id: uuid.UUID = TEST_USER_ID) -> uuid.UUID
             description="An agent for share tests",
             system_prompt="You are helpful.",
             model_id=model.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(agent)
         await db.flush()
 
-        conv = Conversation(agent_id=agent.id, title="Shared topic")
+        conv = Conversation(
+            agent_id=agent.id,
+            title="Shared topic",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         return conv.id

@@ -30,6 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.database import async_session as async_session_factory
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_trigger import AgentTrigger
@@ -41,7 +43,7 @@ from app.services.tool_service import get_tools_catalog
 def build_read_tools(
     db: AsyncSession,  # noqa: ARG001 — kept for interface compatibility
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> list[StructuredTool]:
     """Assistant 읽기 도구 16개를 생성한다.
 
@@ -54,7 +56,7 @@ def build_read_tools(
 
     async def _get_agent() -> Agent | None:
         async with async_session_factory() as session:
-            return await get_agent_with_eager_load(session, agent_id, user_id)
+            return await get_agent_with_eager_load(session, agent_id, context)
 
     # ------ 1. get_agent_config ------
 
@@ -136,8 +138,10 @@ def build_read_tools(
 
     async def list_available_tools() -> str:
         """시스템에서 사용 가능한 도구 목록을 조회합니다."""
+        if await _get_agent() is None:
+            return "에이전트를 찾을 수 없습니다."
         async with async_session_factory() as session:
-            items = await get_tools_catalog(session, user_id)
+            items = await get_tools_catalog(session, context)
             return json.dumps(items, ensure_ascii=False, indent=2)
 
     # ------ 5. list_available_middlewares ------
@@ -159,10 +163,12 @@ def build_read_tools(
 
     async def list_available_subagents() -> str:
         """서브에이전트로 사용 가능한 에이전트 목록을 조회합니다."""
+        if await _get_agent() is None:
+            return "에이전트를 찾을 수 없습니다."
         async with async_session_factory() as session:
             result = await session.execute(
                 select(Agent.id, Agent.name, Agent.description, Agent.model_id).where(
-                    Agent.user_id == user_id,
+                    private_scope_predicate(Agent, context),
                     Agent.id != agent_id,
                     # 히든 런타임 에이전트는 서브에이전트 후보에서 제외.
                     Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
@@ -192,9 +198,11 @@ def build_read_tools(
 
     async def list_available_skills() -> str:
         """사용 가능한 스킬 목록을 조회합니다."""
+        if await _get_agent() is None:
+            return "에이전트를 찾을 수 없습니다."
         async with async_session_factory() as session:
             result = await session.execute(
-                select(Skill).where(Skill.user_id == user_id).order_by(Skill.name)
+                select(Skill).where(private_scope_predicate(Skill, context)).order_by(Skill.name)
             )
             skills = result.scalars().all()
             items = [
@@ -348,11 +356,13 @@ def build_read_tools(
 
     async def list_cron_schedules() -> str:
         """에이전트의 크론 스케줄 목록을 조회합니다."""
+        if await _get_agent() is None:
+            return "에이전트를 찾을 수 없습니다."
         async with async_session_factory() as session:
             result = await session.execute(
                 select(AgentTrigger).where(
                     AgentTrigger.agent_id == agent_id,
-                    AgentTrigger.user_id == user_id,
+                    private_scope_predicate(AgentTrigger, context),
                 )
             )
             triggers = result.scalars().all()
@@ -371,12 +381,14 @@ def build_read_tools(
             sid = uuid.UUID(schedule_id)
         except ValueError:
             return "유효하지 않은 스케줄 ID입니다."
+        if await _get_agent() is None:
+            return "에이전트를 찾을 수 없습니다."
         async with async_session_factory() as session:
             result = await session.execute(
                 select(AgentTrigger).where(
                     AgentTrigger.id == sid,
                     AgentTrigger.agent_id == agent_id,
-                    AgentTrigger.user_id == user_id,
+                    private_scope_predicate(AgentTrigger, context),
                 )
             )
             t = result.scalar_one_or_none()

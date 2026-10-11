@@ -15,7 +15,17 @@ from sqlalchemy.orm import selectinload
 from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.agent_runtime.streaming import format_sse
+from app.authz.builder_scope import resolve_builder_actor
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import private_scope_predicate, private_scoped, resource_candidates
 from app.database import async_session as async_session_factory
+from app.error_codes import session_not_found
+from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.builder_session import BuilderSession
 from app.models.mcp_server import McpServer
@@ -70,10 +80,17 @@ def decisions_to_builder_response(decisions: list[Decision]) -> Any:
 # ---------------------------------------------------------------------------
 
 
-async def create_session(db: AsyncSession, user_id: uuid.UUID, user_request: str) -> BuilderSession:
+async def create_session(
+    db: AsyncSession, context: OrgContext, user_request: str
+) -> BuilderSession:
     """빌드 세션을 생성한다."""
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     session = BuilderSession(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         user_request=user_request,
         status=BuilderStatus.BUILDING,
     )
@@ -84,12 +101,12 @@ async def create_session(db: AsyncSession, user_id: uuid.UUID, user_request: str
 
 
 async def get_session(
-    db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, session_id: uuid.UUID, context: OrgContext
 ) -> BuilderSession | None:
+    await require_private_actor(db, context)
     result = await db.execute(
-        select(BuilderSession).where(
-            BuilderSession.id == session_id,
-            BuilderSession.user_id == user_id,
+        private_scoped(
+            select(BuilderSession).where(BuilderSession.id == session_id), BuilderSession, context
         )
     )
     return result.scalar_one_or_none()
@@ -100,27 +117,41 @@ async def get_session(
 # ---------------------------------------------------------------------------
 
 
-async def claim_for_confirming(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+async def claim_for_confirming(
+    db: AsyncSession, session_id: uuid.UUID, context: OrgContext
+) -> bool:
     """PREVIEW → CONFIRMING 원자적 전환. 성공하면 True.
 
     동시 confirm 요청이 오더라도 하나만 성공한다.
     """
-    result = await db.execute(
+    if await get_session(db, session_id, context) is None:
+        return False
+    try:
+        await resolve_builder_actor(db, session_id, context.user_id)
+    except AppError:
+        return False
+    claimed_id = await db.scalar(
         update(BuilderSession)
         .where(
             BuilderSession.id == session_id,
-            BuilderSession.user_id == user_id,
+            private_scope_predicate(BuilderSession, context),
             BuilderSession.status == BuilderStatus.PREVIEW,
         )
         .values(status=BuilderStatus.CONFIRMING)
+        .returning(BuilderSession.id)
     )
     await db.commit()
-    return result.rowcount == 1  # type: ignore[return-value]
+    return claimed_id is not None
 
 
-async def get_agent_by_id(db: AsyncSession, agent_id: uuid.UUID) -> Agent | None:
+async def get_agent_by_id(
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
+) -> Agent | None:
     """Agent를 ID로 조회한다 (멱등 confirm 반환용)."""
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    await require_private_actor(db, context)
+    result = await db.execute(
+        private_scoped(select(Agent).where(Agent.id == agent_id), Agent, context)
+    )
     return result.scalar_one_or_none()
 
 
@@ -182,12 +213,21 @@ async def _get_default_model_name(db: AsyncSession) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | None:
+async def confirm_build(
+    db: AsyncSession, session: BuilderSession, context: OrgContext
+) -> Agent | None:
     """빌드 확인: draft_config를 기반으로 실제 Agent를 생성한다.
 
     agent_creation_service.confirm_creation()의 도구/모델 매칭 로직을 재사용.
     예외 발생 시 세션을 PREVIEW로 롤백하여 CONFIRMING 고착을 방지한다.
     """
+    scoped = await get_session(db, session.id, context)
+    if scoped is None:
+        raise session_not_found()
+    session = scoped
+    await resolve_private_actor(
+        db, PrivateResourceActor(session.user_id, session.org_id, session.tenant_id)
+    )
     config = session.draft_config
     if not config:
         return None
@@ -212,12 +252,14 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
 
         # 항목 매칭 — 이름으로 Tool / McpTool / Skill 3-way 분리 조회
         tools_to_link, mcp_tools_to_link, skills_to_link = await _resolve_tools(
-            db, session.user_id, config.get("tools", [])
+            db, context, config.get("tools", [])
         )
 
         # 에이전트 생성
         agent = Agent(
-            user_id=session.user_id,
+            user_id=context.user_id,
+            org_id=context.org_id,
+            tenant_id=context.tenant_id,
             name=config.get("name_ko") or config.get("name", "새 에이전트"),
             description=config.get("description", ""),
             system_prompt=config.get("system_prompt", ""),
@@ -273,7 +315,7 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
 
 async def _resolve_tools(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
     tool_names: list[str],
 ) -> tuple[list[Tool], list[McpTool], list[Skill]]:
     """이름 목록 → (Tool, McpTool, Skill) 3-way 분리 반환.
@@ -291,9 +333,8 @@ async def _resolve_tools(
     lower_names = [n.lower() for n in tool_names]
 
     tool_result = await db.execute(
-        select(Tool).where(
-            Tool.visible_to(user_id),
-            func.lower(Tool.name).in_(lower_names),
+        resource_candidates(
+            select(Tool).where(func.lower(Tool.name).in_(lower_names)), Tool, context
         )
     )
     tools = list(tool_result.scalars().all())
@@ -307,7 +348,7 @@ async def _resolve_tools(
         select(McpTool)
         .join(McpServer, McpServer.id == McpTool.server_id)
         .where(
-            McpServer.user_id == user_id,
+            private_scope_predicate(McpServer, context),
             func.lower(McpTool.name).in_(remaining),
         )
     )
@@ -320,7 +361,7 @@ async def _resolve_tools(
 
     skill_result = await db.execute(
         select(Skill).where(
-            Skill.user_id == user_id,
+            private_scope_predicate(Skill, context),
             func.lower(Skill.name).in_(remaining),
         )
     )
@@ -407,7 +448,8 @@ async def run_v3_message_stream(
     from app.agent_runtime.streaming import stream_agent_response
 
     async with async_session_factory() as db:
-        tools_catalog = await get_tools_catalog(db, user_id)
+        context = await resolve_builder_actor(db, session_id, user_id)
+        tools_catalog = await get_tools_catalog(db, context)
         default_model_name = await _get_default_model_name(db)
         middlewares_catalog = _get_middlewares_catalog()
 
@@ -423,6 +465,8 @@ async def run_v3_message_stream(
             "messages": [HumanMessage(content=content)],
             "user_id": str(user_id),
             "session_id": str(session_id),
+            "org_id": str(context.org_id),
+            "tenant_id": str(context.tenant_id),
             "user_request": content,
             "tools_catalog": tools_catalog,
             "middlewares_catalog": middlewares_catalog,
@@ -457,6 +501,9 @@ async def run_v3_resume_stream(
     from app.agent_runtime.builder_v3.graph import compile_graph
     from app.agent_runtime.checkpointer import get_checkpointer
     from app.agent_runtime.streaming import stream_agent_response
+
+    async with async_session_factory() as db:
+        await resolve_builder_actor(db, session_id, user_id)
 
     checkpointer = get_checkpointer()
     graph_compiled = compile_graph(checkpointer)

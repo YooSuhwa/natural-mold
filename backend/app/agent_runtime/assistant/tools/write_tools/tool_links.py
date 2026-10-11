@@ -9,6 +9,7 @@ from app.agent_runtime.assistant.tools.write_tools.context import (
     WriteToolContext,
     get_agent_with_session,
 )
+from app.authz.scoping import private_scope_predicate, resource_candidates
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.tool import AgentToolLink, Tool
@@ -36,9 +37,10 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                 return "모든 도구가 이미 추가되어 있습니다."
 
             result = await session.execute(
-                select(Tool).where(
-                    Tool.visible_to(ctx.user_id),
-                    func.lower(Tool.name).in_(lower_names),
+                resource_candidates(
+                    select(Tool).where(func.lower(Tool.name).in_(lower_names)),
+                    Tool,
+                    ctx.org_context,
                 )
             )
             found_tools = list(result.scalars().all())
@@ -100,7 +102,7 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                 select(McpTool)
                 .join(McpServer, McpServer.id == McpTool.server_id)
                 .where(
-                    McpServer.user_id == ctx.user_id,
+                    private_scope_predicate(McpServer, ctx.org_context),
                     func.lower(McpTool.name).in_(lower_names),
                 )
             )

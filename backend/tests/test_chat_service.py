@@ -10,12 +10,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import stored_protocol_event
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
 from app.schemas.conversation import MessageResponse
+from app.schemas.conversation_scope import ConversationAutoTitle
 from app.services import chat_service, trace_storage
 from app.services.chat_service import (
     create_conversation,
@@ -24,6 +26,12 @@ from app.services.chat_service import (
     list_conversations,
     maybe_set_auto_title,
     save_token_usage,
+)
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
 )
 from tests.conftest import TEST_USER_ID, TestSession
 
@@ -40,9 +48,14 @@ async def _seed(db: AsyncSession) -> uuid.UUID:
         name="Chat Agent",
         system_prompt="Hi",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
+    await ensure_unit_scope(
+        db, CurrentUser(id=user.id, email=user.email, name=user.name, is_super_user=False)
+    )
     return agent.id
 
 
@@ -56,7 +69,7 @@ async def test_list_conversations_empty(db: AsyncSession):
     agent_id = await _seed(db)
     await db.commit()
 
-    convs = await list_conversations(db, agent_id)
+    convs = await list_conversations(db, agent_id, context=unit_context(TEST_USER_ID))
     assert convs == []
 
 
@@ -65,10 +78,10 @@ async def test_list_conversations_with_data(db: AsyncSession):
     agent_id = await _seed(db)
     await db.commit()
 
-    await create_conversation(db, agent_id, title="First")
-    await create_conversation(db, agent_id, title="Second")
+    await create_conversation(db, agent_id, title="First", context=unit_context(TEST_USER_ID))
+    await create_conversation(db, agent_id, title="Second", context=unit_context(TEST_USER_ID))
 
-    convs = await list_conversations(db, agent_id)
+    convs = await list_conversations(db, agent_id, context=unit_context(TEST_USER_ID))
     assert len(convs) == 2
     # Most recent first (order by updated_at desc)
     assert convs[0].title == "Second"
@@ -85,7 +98,7 @@ async def test_create_conversation_default_title(db: AsyncSession):
     agent_id = await _seed(db)
     await db.commit()
 
-    conv = await create_conversation(db, agent_id)
+    conv = await create_conversation(db, agent_id, context=unit_context(TEST_USER_ID))
     assert conv.title == "새 대화"
     assert conv.agent_id == agent_id
     assert conv.id is not None
@@ -96,7 +109,9 @@ async def test_create_conversation_custom_title(db: AsyncSession):
     agent_id = await _seed(db)
     await db.commit()
 
-    conv = await create_conversation(db, agent_id, title="Custom Title")
+    conv = await create_conversation(
+        db, agent_id, title="Custom Title", context=unit_context(TEST_USER_ID)
+    )
     assert conv.title == "Custom Title"
 
 
@@ -106,7 +121,7 @@ async def test_create_conversation_flushes_without_committing(db: AsyncSession):
     agent_id = await _seed(db)
     await db.commit()
 
-    conv = await create_conversation(db, agent_id)
+    conv = await create_conversation(db, agent_id, context=unit_context(TEST_USER_ID))
     conv_id = conv.id
     await db.rollback()
 
@@ -126,16 +141,21 @@ async def test_create_conversation_flushes_without_committing(db: AsyncSession):
 async def test_get_conversation_found(db: AsyncSession):
     agent_id = await _seed(db)
     await db.commit()
-    conv = await create_conversation(db, agent_id, title="Find Me")
+    conv = await create_conversation(
+        db, agent_id, title="Find Me", context=unit_context(TEST_USER_ID)
+    )
 
-    found = await get_conversation(db, conv.id)
+    found = await get_conversation(db, conv.id, unit_context(TEST_USER_ID))
     assert found is not None
     assert found.title == "Find Me"
 
 
 @pytest.mark.asyncio
-async def test_get_conversation_not_found(db: AsyncSession):
-    result = await get_conversation(db, uuid.uuid4())
+async def test_get_conversation_not_found(db: AsyncSession) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="fixture-missing@test.dev", name="Fixture")
+    )
+    result = await get_conversation(db, uuid.uuid4(), unit_context(TEST_USER_ID))
     assert result is None
 
 
@@ -149,12 +169,16 @@ async def test_auto_title_from_first_user_message(db: AsyncSession):
     """First user message auto-generates conversation title from '새 대화'."""
     agent_id = await _seed(db)
     await db.commit()
-    conv = await create_conversation(db, agent_id)  # title="새 대화"
+    conv = await create_conversation(
+        db, agent_id, context=unit_context(TEST_USER_ID)
+    )  # title="새 대화"
     assert conv.title == "새 대화"
 
-    await maybe_set_auto_title(db, conv.id, "오늘 날씨 어때?")
+    await maybe_set_auto_title(
+        db, ConversationAutoTitle(conv.id, unit_context(TEST_USER_ID), "오늘 날씨 어때?")
+    )
 
-    updated = await get_conversation(db, conv.id)
+    updated = await get_conversation(db, conv.id, unit_context(TEST_USER_ID))
     assert updated is not None
     assert updated.title == "오늘 날씨 어때?"
 
@@ -164,11 +188,13 @@ async def test_auto_title_long_content_truncated(db: AsyncSession):
     """Long content is truncated to 37 chars + '...'."""
     agent_id = await _seed(db)
     await db.commit()
-    conv = await create_conversation(db, agent_id)
+    conv = await create_conversation(db, agent_id, context=unit_context(TEST_USER_ID))
 
-    await maybe_set_auto_title(db, conv.id, "a" * 60)
+    await maybe_set_auto_title(
+        db, ConversationAutoTitle(conv.id, unit_context(TEST_USER_ID), "a" * 60)
+    )
 
-    updated = await get_conversation(db, conv.id)
+    updated = await get_conversation(db, conv.id, unit_context(TEST_USER_ID))
     assert updated is not None
     assert updated.title is not None
     assert len(updated.title) == 40
@@ -180,11 +206,15 @@ async def test_auto_title_no_change_when_already_set(db: AsyncSession):
     """Title is not overwritten if already set (not '새 대화')."""
     agent_id = await _seed(db)
     await db.commit()
-    conv = await create_conversation(db, agent_id, title="Custom Title")
+    conv = await create_conversation(
+        db, agent_id, title="Custom Title", context=unit_context(TEST_USER_ID)
+    )
 
-    await maybe_set_auto_title(db, conv.id, "새로운 내용")
+    await maybe_set_auto_title(
+        db, ConversationAutoTitle(conv.id, unit_context(TEST_USER_ID), "새로운 내용")
+    )
 
-    updated = await get_conversation(db, conv.id)
+    updated = await get_conversation(db, conv.id, unit_context(TEST_USER_ID))
     assert updated is not None
     assert updated.title == "Custom Title"  # unchanged
 
@@ -198,7 +228,7 @@ async def test_auto_title_no_change_when_already_set(db: AsyncSession):
 async def test_save_token_usage(db: AsyncSession):
     agent_id = await _seed(db)
     await db.commit()
-    conv = await create_conversation(db, agent_id)
+    conv = await create_conversation(db, agent_id, context=unit_context(TEST_USER_ID))
 
     usage = await save_token_usage(
         db,
@@ -225,7 +255,9 @@ async def test_save_token_usage(db: AsyncSession):
 async def test_hydrates_pending_write_file_interrupt_from_trace_chunks(db: AsyncSession):
     """A paused DeepAgents write_file turn should render as approval, not a spinner."""
     agent_id = await _seed(db)
-    conv = await create_conversation(db, agent_id, title="HITL file")
+    conv = await create_conversation(
+        db, agent_id, title="HITL file", context=unit_context(TEST_USER_ID)
+    )
     msg_id = uuid.uuid4()
     raw_msg_id = str(msg_id)
     run_id = str(uuid.uuid4())
@@ -318,7 +350,9 @@ async def test_hydrates_pending_write_file_interrupt_from_trace_chunks(db: Async
 @pytest.mark.asyncio
 async def test_hydrates_pending_write_file_interrupt_from_protocol_trace(db: AsyncSession):
     agent_id = await _seed(db)
-    conv = await create_conversation(db, agent_id, title="v3 HITL file")
+    conv = await create_conversation(
+        db, agent_id, title="v3 HITL file", context=unit_context(TEST_USER_ID)
+    )
     msg_id = uuid.uuid4()
     raw_msg_id = str(msg_id)
     run_id = str(uuid.uuid4())
@@ -407,7 +441,9 @@ async def test_hydrates_pending_write_file_interrupt_from_protocol_trace(db: Asy
 async def test_does_not_hydrate_completed_write_file_interrupt(db: AsyncSession):
     """Once write_file has a tool result, reload should not show a pending approval."""
     agent_id = await _seed(db)
-    conv = await create_conversation(db, agent_id, title="Completed HITL file")
+    conv = await create_conversation(
+        db, agent_id, title="Completed HITL file", context=unit_context(TEST_USER_ID)
+    )
     assistant_msg_id = uuid.uuid4()
     raw_assistant_msg_id = str(assistant_msg_id)
     tool_result_msg_id = uuid.uuid4()
@@ -484,7 +520,9 @@ async def test_does_not_hydrate_completed_write_file_interrupt(db: AsyncSession)
 async def test_hydrates_interrupt_only_on_matching_tool_call_response(db: AsyncSession):
     """A write_file interrupt should not be appended to unrelated tool-call messages."""
     agent_id = await _seed(db)
-    conv = await create_conversation(db, agent_id, title="Scoped HITL file")
+    conv = await create_conversation(
+        db, agent_id, title="Scoped HITL file", context=unit_context(TEST_USER_ID)
+    )
     datetime_msg_id = uuid.uuid4()
     write_msg_id = uuid.uuid4()
     run_id = str(uuid.uuid4())
@@ -621,18 +659,21 @@ def test_redacts_response_tool_calls_before_exposure():
 
 
 @pytest.mark.asyncio
-async def test_get_agent_with_tools_found(db: AsyncSession):
+async def test_get_agent_with_tools_found(db: AsyncSession) -> None:
     user = User(id=TEST_USER_ID, email="test@test.com", name="Test")
     db.add(user)
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
 
     agent = Agent(
         user_id=user.id,
         name="Tooled Agent",
         system_prompt="Hi",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -641,6 +682,9 @@ async def test_get_agent_with_tools_found(db: AsyncSession):
         name="Web Search",
         definition_key="builtin:web_search",
         description="Search the web",
+        is_system=True,
+        org_id=None,
+        tenant_id=None,
     )
     db.add(tool)
     await db.flush()
@@ -649,7 +693,7 @@ async def test_get_agent_with_tools_found(db: AsyncSession):
     db.add(link)
     await db.commit()
 
-    result = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    result = await get_agent_with_tools(db, agent.id, unit_context(TEST_USER_ID))
     assert result is not None
     assert result.name == "Tooled Agent"
     assert result.model is not None
@@ -658,6 +702,9 @@ async def test_get_agent_with_tools_found(db: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_get_agent_with_tools_not_found(db: AsyncSession):
-    result = await get_agent_with_tools(db, uuid.uuid4(), TEST_USER_ID)
+async def test_get_agent_with_tools_not_found(db: AsyncSession) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="fixture-missing@test.dev", name="Fixture")
+    )
+    result = await get_agent_with_tools(db, uuid.uuid4(), unit_context(TEST_USER_ID))
     assert result is None

@@ -7,7 +7,8 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.event_broker import registry as broker_registry
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.routers import conversation_agent_protocol_state as state_api
 from app.routers.conversation_agent_protocol_attach import wait_for_live_broker_or_terminal
 from app.routers.conversation_agent_protocol_commands import handle_thread_command
@@ -87,15 +88,17 @@ async def post_thread_command(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> JSONResponse:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
         thread_id=thread_id,
-        user_id=user.id,
+        context=context,
     )
     return await handle_thread_command(
+        context=context,
         conversation=conversation,
         command=command,
         request=request,
@@ -112,23 +115,26 @@ async def get_thread_state(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> dict[str, object]:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
         thread_id=thread_id,
-        user_id=user.id,
+        context=context,
     )
-    tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
-    secrets = await collect_state_secret_values(db, conversation)
+    tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id, context=context)
+    secrets = await collect_state_secret_values(db, conversation, context)
     snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=secrets)
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,
+        context=context,
     )
     latest_run = await conversation_run_service.latest_run_for_conversation(
         db,
         conversation_id=conversation.id,
+        context=context,
     )
     if current_run is not None and current_run.is_active:
         stale = await maybe_mark_stale_active_run(
@@ -137,6 +143,7 @@ async def get_thread_state(
             conversation=conversation,
             user=user,
             request=request,
+            context=context,
         )
         if stale is not None:
             current_run = None
@@ -160,19 +167,21 @@ async def update_thread_state(
     request: UpdateStateRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> dict[str, object]:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
         thread_id=thread_id,
-        user_id=user.id,
+        context=context,
     )
     return await state_api.update_thread_state_response(
         db,
         conversation=conversation,
         request=request,
         user=user,
+        context=context,
     )
 
 
@@ -183,15 +192,18 @@ async def get_thread_history(
     request: HistoryRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> list[dict[str, object]]:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
         thread_id=thread_id,
-        user_id=user.id,
+        context=context,
     )
-    return await state_api.load_thread_history_response(conversation, request, db=db, user=user)
+    return await state_api.load_thread_history_response(
+        conversation, request, db=db, user=user, context=context
+    )
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/stream/events")
@@ -204,19 +216,21 @@ async def subscribe_thread_events(
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> Response:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
         thread_id=thread_id,
-        user_id=user.id,
+        context=context,
     )
     after_id = last_event_id or last_event_id_header
     params = request.as_params()
     if needs_thread_stream(params):
         return sse_response(
             protocol_thread_stream_generator(
+                context=context,
                 conversation_id=conversation.id,
                 thread_id=str(conversation.id),
                 params=params,
@@ -229,6 +243,7 @@ async def subscribe_thread_events(
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,
+        context=context,
     )
     if current_run is not None and current_run.is_active:
         broker = broker_registry.get(str(current_run.id))
@@ -240,7 +255,7 @@ async def subscribe_thread_events(
                 else None
             )
         if current_run is None or not current_run.is_active:
-            events = await load_protocol_events(db, conversation.id)
+            events = await load_protocol_events(db, conversation.id, context=context)
             return sse_response(
                 protocol_replay_generator(
                     events,
@@ -265,6 +280,7 @@ async def subscribe_thread_events(
             conversation=conversation,
             user=user,
             request=http_request,
+            context=context,
         )
         if stale is not None:
             return sse_response(
@@ -286,7 +302,7 @@ async def subscribe_thread_events(
             headers=protocol_headers(run_id=str(current_run.id)),
         )
 
-    events = await load_protocol_events(db, conversation.id)
+    events = await load_protocol_events(db, conversation.id, context=context)
     return sse_response(
         protocol_replay_generator(
             events,
@@ -303,23 +319,26 @@ async def get_compat_thread_state(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> dict[str, object]:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
         thread_id=str(conversation_id),
-        user_id=user.id,
+        context=context,
     )
-    tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
-    secrets = await collect_state_secret_values(db, conversation)
+    tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id, context=context)
+    secrets = await collect_state_secret_values(db, conversation, context)
     snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=secrets)
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,
+        context=context,
     )
     latest_run = await conversation_run_service.latest_run_for_conversation(
         db,
         conversation_id=conversation.id,
+        context=context,
     )
     if current_run is not None and current_run.is_active:
         stale = await maybe_mark_stale_active_run(
@@ -328,6 +347,7 @@ async def get_compat_thread_state(
             conversation=conversation,
             user=user,
             request=request,
+            context=context,
         )
         if stale is not None:
             current_run = None

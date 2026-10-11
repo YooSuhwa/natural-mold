@@ -22,6 +22,8 @@ from fastapi import HTTPException
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.credentials import service as credential_service
 from app.credentials.mcp_oauth_client import (
     build_authorization_url,
@@ -32,7 +34,6 @@ from app.credentials.mcp_oauth_client import (
     select_grant_type_and_authentication,
 )
 from app.credentials.registry import registry
-from app.dependencies import CurrentUser
 from app.error_codes import credential_forbidden, credential_not_found
 from app.models.credential import Credential
 from app.models.credential_oauth_state import CredentialOAuthState
@@ -173,7 +174,7 @@ async def gc_oauth_states(db: AsyncSession, *, now: datetime) -> None:
 async def start_oauth(
     db: AsyncSession,
     *,
-    user: CurrentUser,
+    context: OrgContext,
     credential_id: uuid.UUID,
     fallback_redirect_uri: str,
     return_to: str | None,
@@ -185,7 +186,7 @@ async def start_oauth(
     is responsible for filling these in before starting the flow).
     """
 
-    cred = await credential_service.get_for_user(db, credential_id, user.id)
+    cred = await credential_service.get_for_user(db, credential_id, context)
     if cred is None:
         raise credential_not_found()
     definition = registry.get(cred.definition_key)
@@ -227,7 +228,7 @@ async def start_oauth(
         CredentialOAuthState(
             state_hash=hash_oauth_state(state),
             credential_id=credential_id,
-            user_id=user.id,
+            user_id=context.user_id,
             redirect_uri=str(redirect_uri),
             code_verifier=code_verifier,
             origin="credential",
@@ -240,7 +241,7 @@ async def start_oauth(
     await credential_service.write_audit_log(
         db,
         credential_id=cred.id,
-        actor_user_id=user.id,
+        actor_user_id=context.user_id,
         action="update",
         source="api",
         metadata={"data_changed": True, "trigger": "oauth_start"},
@@ -293,6 +294,12 @@ async def handle_callback(
     # complete another user's OAuth flow and update their credential.
     if cred.user_id != pending.user_id:
         raise credential_forbidden()
+    if cred.org_id is None or cred.tenant_id is None:
+        raise credential_not_found()
+    await resolve_private_actor(
+        db,
+        PrivateResourceActor(user_id=pending.user_id, org_id=cred.org_id, tenant_id=cred.tenant_id),
+    )
     definition = registry.get(cred.definition_key)
     if definition is None or definition.pre_authentication is None:
         raise HTTPException(

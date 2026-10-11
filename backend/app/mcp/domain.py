@@ -6,6 +6,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.authz.org_context import OrgContext
+
 
 @dataclass
 class McpToolDescriptor:
@@ -30,6 +32,7 @@ class McpAppRuntimeContext:
     """Server-owned identities attached to one discovered runtime tool."""
 
     conversation_id: uuid.UUID
+    org_context: OrgContext
     user_id: uuid.UUID
     agent_id: uuid.UUID
     credential_subject_user_id: uuid.UUID

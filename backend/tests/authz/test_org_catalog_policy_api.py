@@ -117,7 +117,11 @@ async def test_catalog_rejects_private_foreign_and_missing_items_without_enumera
         {"tenant": org_fixture.second.hex, "id": company_model.id.hex},
     )
     private = Tool(
-        name="Private tool", definition_key="builtin:current_datetime", user_id=org_fixture.user.id
+        name="Private tool",
+        definition_key="builtin:current_datetime",
+        user_id=org_fixture.user.id,
+        org_id=org_fixture.first,
+        tenant_id=org_fixture.tenant,
     )
     db.add(private)
     await db.commit()

@@ -28,6 +28,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.resource_scope import NullableOrgScope, resource_scope_constraints
 
 
 class AgentSkillLink(Base):
@@ -56,16 +57,17 @@ class AgentSkillLink(Base):
     skill: Mapped[Skill] = relationship(lazy="joined")
 
 
-class Skill(Base):
+class Skill(NullableOrgScope, Base):
     __tablename__ = "skills"
     __table_args__ = (
-        UniqueConstraint("user_id", "slug", name="uq_skills_user_slug"),
+        *resource_scope_constraints("skills", system=True),
+        UniqueConstraint("org_id", "user_id", "slug", name="uq_skills_org_user_slug"),
         {"extend_existing": True},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("users.id", name="fk_skills_owner_restrict", ondelete="RESTRICT"), nullable=False
     )
 
     name: Mapped[str] = mapped_column(String(150), nullable=False)

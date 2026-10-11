@@ -20,16 +20,25 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.authz.platform_scope import PlatformScope
+from app.credentials.creation import CredentialCreation
 from app.models.tool import Tool
 from app.models.user import User
 from app.tools import registry as tool_registry_mod
 from app.tools.domain import ToolDefinition, ToolRunContext
+from app.tools.execution_scope import ToolRunOptions, ToolRunTarget
 from app.tools.parameters import FieldDef, FieldKind
 from app.tools.registry import ToolRegistry
 from app.tools.registry import registry as tool_registry
 from app.tools.runner import run_tool
-from tests.conftest import TEST_USER_ID
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_credential,
+    ensure_unit_scope,
+    unit_context,
+)
+from tests.conftest import TEST_USER_ID, override_get_current_user
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +47,8 @@ async def _ensure_test_user(db: AsyncSession):
     if existing.scalar_one_or_none() is None:
         db.add(User(id=TEST_USER_ID, email="test@test.com", name="Test User"))
         await db.commit()
+    await ensure_unit_scope(db, await override_get_current_user())
+    await db.commit()
 
 
 # -- Catalog -----------------------------------------------------------------
@@ -202,12 +213,12 @@ async def test_create_tool_rejects_cross_user_credential(
 ) -> None:
     other_user_id = uuid.uuid4()
     db.add(User(id=other_user_id, email="other-tools@test.com", name="Other"))
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=other_user_id,
-        definition_key="http_bearer",
-        name="other bearer",
-        data={"token": "secret"},
+        CredentialCreation(
+            definition_key="http_bearer", name="other bearer", data={"token": "secret"}
+        ),
+        unit_context(other_user_id),
     )
     await db.commit()
 
@@ -229,13 +240,12 @@ async def test_patch_tool_rejects_system_credential(
     client: AsyncClient,
     db: AsyncSession,
 ) -> None:
-    system_cred = await credential_service.create(
+    system_cred = await create_test_credential(
         db,
-        user_id=None,
-        definition_key="http_bearer",
-        name="system bearer",
-        data={"token": "secret"},
-        is_system=True,
+        CredentialCreation(
+            definition_key="http_bearer", name="system bearer", data={"token": "secret"}
+        ),
+        PlatformScope(),
     )
     await db.commit()
     create = await client.post(
@@ -329,6 +339,8 @@ async def test_other_user_cannot_access(client: AsyncClient, db: AsyncSession) -
     db.add(
         Tool(
             user_id=other_id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
             definition_key="http_request",
             name="Other's Tool",
             parameters={"method": "GET", "url": "https://x"},
@@ -358,6 +370,8 @@ async def test_run_endpoint_stamps_last_used_at(
 
     tool = Tool(
         user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         definition_key="http_request",
         name="Stamp Me",
         parameters={"method": "GET", "url": "https://api.example.com/ping"},
@@ -367,7 +381,11 @@ async def test_run_endpoint_stamps_last_used_at(
     await db.refresh(tool)
     assert tool.last_used_at is None
 
-    async def _fail(**_: object) -> ToolRunResult:
+    async def _fail(
+        db: AsyncSession, target: ToolRunTarget, options: ToolRunOptions
+    ) -> ToolRunResult:
+        assert target.context.user_id == TEST_USER_ID
+        assert options.registry is tool_registry
         return ToolRunResult(success=False, error="boom")
 
     monkeypatch.setattr("app.services.tool_service.run_tool", _fail)
@@ -377,7 +395,11 @@ async def test_run_endpoint_stamps_last_used_at(
     await db.refresh(tool)
     assert tool.last_used_at is None
 
-    async def _ok(**_: object) -> ToolRunResult:
+    async def _ok(
+        db: AsyncSession, target: ToolRunTarget, options: ToolRunOptions
+    ) -> ToolRunResult:
+        assert target.context.user_id == TEST_USER_ID
+        assert options.registry is tool_registry
         return ToolRunResult(success=True, result={"ok": True}, http_status=200)
 
     monkeypatch.setattr("app.services.tool_service.run_tool", _ok)
@@ -412,6 +434,8 @@ async def test_run_http_request_with_mock_transport(
     transport = httpx.MockTransport(handler)
     tool = Tool(
         user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         definition_key="http_request",
         name="Test",
         parameters={
@@ -426,10 +450,9 @@ async def test_run_http_request_with_mock_transport(
 
     async with httpx.AsyncClient(transport=transport) as client:
         result = await run_tool(
-            db=db,
-            tool=tool,
-            registry=tool_registry,
-            http_client=client,
+            db,
+            ToolRunTarget(tool.id, unit_context(TEST_USER_ID)),
+            ToolRunOptions(registry=tool_registry, http_client=client),
         )
 
     assert result.success, result.error
@@ -443,12 +466,12 @@ async def test_run_http_request_with_mock_transport(
 async def test_run_http_request_with_credential(db: AsyncSession) -> None:
     """When a Bearer credential is bound, the runner injects the Authorization header."""
 
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="http_bearer",
-        name="bearer",
-        data={"token": "supersecret"},
+        CredentialCreation(
+            definition_key="http_bearer", name="bearer", data={"token": "supersecret"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -460,6 +483,8 @@ async def test_run_http_request_with_credential(db: AsyncSession) -> None:
 
     tool = Tool(
         user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         definition_key="http_request",
         name="With Auth",
         parameters={
@@ -475,10 +500,9 @@ async def test_run_http_request_with_credential(db: AsyncSession) -> None:
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         result = await run_tool(
-            db=db,
-            tool=tool,
-            registry=tool_registry,
-            http_client=client,
+            db,
+            ToolRunTarget(tool.id, unit_context(TEST_USER_ID)),
+            ToolRunOptions(registry=tool_registry, http_client=client),
         )
 
     assert result.success, result.error
@@ -490,12 +514,14 @@ async def test_run_http_request_with_credential(db: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_run_naver_search_uses_credential_headers(db: AsyncSession) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="naver_search",
-        name="naver",
-        data={"client_id": "id-1", "client_secret": "sec-2"},
+        CredentialCreation(
+            definition_key="naver_search",
+            name="naver",
+            data={"client_id": "id-1", "client_secret": "sec-2"},
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -512,6 +538,8 @@ async def test_run_naver_search_uses_credential_headers(db: AsyncSession) -> Non
 
     tool = Tool(
         user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         definition_key="naver_search_blog",
         name="Blog",
         parameters={"query": "fastapi"},
@@ -522,7 +550,11 @@ async def test_run_naver_search_uses_credential_headers(db: AsyncSession) -> Non
     await db.refresh(tool)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        result = await run_tool(db=db, tool=tool, registry=tool_registry, http_client=client)
+        result = await run_tool(
+            db,
+            ToolRunTarget(tool.id, unit_context(TEST_USER_ID)),
+            ToolRunOptions(registry=tool_registry, http_client=client),
+        )
 
     assert result.success, result.error
     assert "openapi.naver.com/v1/search/blog.json" in captured["url"]
@@ -626,6 +658,8 @@ async def test_run_tool_returns_error_envelope_on_missing_credential(
 ) -> None:
     tool = Tool(
         user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         definition_key="naver_search_blog",
         name="No Cred",
         parameters={"query": "x"},
@@ -635,7 +669,11 @@ async def test_run_tool_returns_error_envelope_on_missing_credential(
     await db.commit()
     await db.refresh(tool)
 
-    result = await run_tool(db=db, tool=tool, registry=tool_registry)
+    result = await run_tool(
+        db,
+        ToolRunTarget(tool.id, unit_context(TEST_USER_ID)),
+        ToolRunOptions(registry=tool_registry),
+    )
     assert result.success is False
     assert result.error is not None
     assert "credential" in result.error.lower()
@@ -661,6 +699,8 @@ async def test_run_tool_uses_verified_outbound_client_when_it_owns_client(
     )
     tool = Tool(
         user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         definition_key="local_ssl_probe",
         name="SSL Probe",
         parameters={},
@@ -671,7 +711,9 @@ async def test_run_tool_uses_verified_outbound_client_when_it_owns_client(
 
     with patch("app.tools.runner.httpx.AsyncClient") as client_cls:
         client_cls.return_value.aclose = AsyncMock()
-        result = await run_tool(db=db, tool=tool, registry=local)
+        result = await run_tool(
+            db, ToolRunTarget(tool.id, unit_context(TEST_USER_ID)), ToolRunOptions(registry=local)
+        )
 
     assert result.success, result.error
     assert "verify" in client_cls.call_args.kwargs

@@ -79,7 +79,7 @@ class User(Base):
         return f"/api/auth/me/avatar-image?t={stamp}"
 
     agents: Mapped[list[Agent]] = relationship(  # type: ignore[name-defined]
-        back_populates="user", cascade="all, delete-orphan"
+        back_populates="user", foreign_keys="Agent.user_id", passive_deletes="all"
     )
     builder_sessions: Mapped[list[BuilderSession]] = relationship(  # type: ignore[name-defined]
         back_populates="user", cascade="all, delete-orphan"

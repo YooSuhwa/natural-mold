@@ -333,6 +333,9 @@ async def resolve_runtime_credentials(
     except (TypeError, ValueError):
         return
 
+    from dataclasses import replace
+
+    organization = replace(cfg.org_context, user_id=user_uuid)
     # Build a slug → raw-config map so we can pair descriptors with
     # their ``agent_skills.config`` overrides (Spec §3.8).
     raw_by_slug: dict[str, dict[str, Any]] = {
@@ -356,7 +359,7 @@ async def resolve_runtime_credentials(
         resolved, missing = await resolve_credential_bindings(
             db,
             skill=skill,
-            user_id=user_uuid,
+            context=organization,
             agent_skill_config=agent_config_override,
         )
         if missing:

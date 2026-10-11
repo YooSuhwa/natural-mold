@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -21,20 +23,20 @@ async def test_skill_detail_marks_latest_evaluation_stale_by_hash(
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Stale Probe",
-            slug="stale-probe",
-            description="Use when testing stale evaluation state.",
-            content=(
-                "---\n"
+            TextSkillCreation(
+                name="Stale Probe",
+                slug="stale-probe",
+                description="Use when testing stale evaluation state.",
+                content="---\n"
                 "name: stale-probe\n"
                 'description: "Use when testing stale evaluation state."\n'
                 "---\n\n"
-                "Test stale evaluation state.\n"
+                "Test stale evaluation state.\n",
+                version="1.0.0",
             ),
-            version="1.0.0",
+            unit_context(TEST_USER_ID),
         )
     original_hash = skill.content_hash
     evaluation_set_id = uuid.uuid4()
@@ -75,20 +77,20 @@ async def test_skill_detail_preserves_evaluation_set_without_run(
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Generated Eval Probe",
-            slug="generated-eval-probe",
-            description="Use when testing evaluation set visibility.",
-            content=(
-                "---\n"
+            TextSkillCreation(
+                name="Generated Eval Probe",
+                slug="generated-eval-probe",
+                description="Use when testing evaluation set visibility.",
+                content="---\n"
                 "name: generated-eval-probe\n"
                 'description: "Use when testing evaluation set visibility."\n'
                 "---\n\n"
-                "Test evaluation set visibility.\n"
+                "Test evaluation set visibility.\n",
+                version="1.0.0",
             ),
-            version="1.0.0",
+            unit_context(TEST_USER_ID),
         )
     evaluation_set_id = uuid.uuid4()
     db.add(

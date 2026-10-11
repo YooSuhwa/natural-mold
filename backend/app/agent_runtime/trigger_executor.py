@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from app.agent_runtime.agent_stream_runner import execute_agent_invoke
+from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.identity import (
     AgentIdentityError,
@@ -27,10 +28,13 @@ from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.agent_runtime.subagents import build_subagents_config
+from app.authz.trigger_scope import require_trigger_actor
 from app.database import async_session
+from app.exceptions import AppError
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.model import Model
+from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import chat_service, trigger_service
 from app.tools.risk import format_trigger_block_reason
 
@@ -100,6 +104,21 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             logger.info("Trigger %s skipped (not found)", trigger_id)
             return None
 
+        try:
+            context = await require_trigger_actor(db, trigger)
+            agent = await chat_service.get_agent_with_tools(db, trigger.agent_id, context)
+            if agent is None:
+                return None
+            blocked_tools = await chat_service.trigger_blocked_tools_for_agent_tree(
+                agent, context=context, db=db
+            )
+            tools_config = await chat_service.build_tools_config(
+                agent, context=context, db=db, conversation_id=None
+            )
+        except AppError as exc:
+            logger.info("Trigger %s skipped (authorization: %s)", trigger_id, exc.code)
+            return None
+
         in_flight = await trigger_service.find_in_flight_run(db, trigger_uuid)
         if in_flight is not None:
             logger.info("Trigger %s skipped (run %s already in flight)", trigger_id, in_flight.id)
@@ -154,23 +173,6 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             await db.refresh(run)
             return run
 
-        # Single source of truth for prefetch — same call the conversations
-        # router uses, so no field on ``agent`` is lazy-loaded later.
-        agent = await chat_service.get_agent_with_tools(db, trigger.agent_id, trigger.user_id)
-        if not agent:
-            logger.warning("Trigger %s: agent not found", trigger_id)
-            trigger.status = "error"
-            await trigger_service.finish_trigger_run(
-                db,
-                trigger=trigger,
-                run=run,
-                conversation=None,
-                status="failed",
-                error_message="agent not found",
-            )
-            await db.refresh(run)
-            return run
-
         if agent.model is None:
             logger.warning("Trigger %s: agent has no model bound — skipping run", trigger_id)
             await trigger_service.finish_trigger_run(
@@ -211,17 +213,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
         run.credential_subject_user_id = identity.credential_subject_user_id
 
         effective_prompt = chat_service.build_effective_prompt(agent)
-        tools_config = await chat_service.build_tools_config(
-            agent,
-            db=db,
-            conversation_id=None,
-            identity=identity,
-        )
-        agent_skills = chat_service.build_agent_skills(agent)
-        blocked_tools = await chat_service.trigger_blocked_tools_for_agent_tree(
-            agent,
-            db=db,
-        )
+        agent_skills = chat_service.build_agent_skills(agent, context)
         if blocked_tools:
             reason = format_trigger_block_reason(blocked_tools)
             logger.warning("Trigger %s blocked: %s", trigger_id, reason)
@@ -236,12 +228,11 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             await db.refresh(run)
             return run
 
-        conversation = await trigger_service.resolve_schedule_conversation(db, trigger)
+        conversation = await trigger_service.resolve_schedule_conversation(db, trigger, context)
         try:
             runtime_policy = await trigger_service.ensure_schedule_conversation_runtime_policy(
                 db,
-                conversation.id,
-                current_trigger_run_id=run.id,
+                ConversationPolicyTarget(conversation.id, context, run.id),
             )
             await db.commit()
         except RuntimePolicySnapshotError as exc:
@@ -264,7 +255,9 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             now_str,
         )
 
-        api_key = await resolve_llm_api_key_for_agent(db, agent, identity=identity)
+        api_key = await resolve_llm_api_key_for_agent(
+            db, agent, AgentCredentialAccess(context, identity)
+        )
         base_url = agent.model.base_url
 
         fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
@@ -273,6 +266,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
         )
 
         cfg = AgentConfig(
+            org_context=context,
             provider=agent.model.provider,
             model_name=agent.model.model_name,
             api_key=api_key,

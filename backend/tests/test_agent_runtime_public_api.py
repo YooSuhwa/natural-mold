@@ -4,7 +4,14 @@ import uuid
 
 import pytest
 
+from app.dependencies import CurrentUser
 from app.schemas.agent_api import AgentApiScope
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.anyio
@@ -47,17 +54,21 @@ async def _seed_deployed_agent_with_key(
         runtime_name=make_agent_runtime_name(agent_id),
         model_id=model.id,
         model=model,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([user, model, agent])
     await db.commit()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
+    await db.commit()
 
     deployment = await service.create_deployment(
-        db, TEST_USER_ID, AgentDeploymentCreate(agent_id=agent.id)
+        db, unit_context(TEST_USER_ID), AgentDeploymentCreate(agent_id=agent.id)
     )
     effective_scopes: list[AgentApiScope] = scopes or ["invoke", "stream", "read"]
     key, cleartext = await service.create_api_key(
         db,
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
         AgentApiKeyCreate(
             name="Runtime key",
             scopes=effective_scopes,
@@ -100,6 +111,8 @@ async def _seed_two_deployments_with_scoped_keys(db):
         runtime_name=make_agent_runtime_name(first_id),
         model_id=model.id,
         model=model,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     second = Agent(
         id=second_id,
@@ -109,19 +122,23 @@ async def _seed_two_deployments_with_scoped_keys(db):
         runtime_name=make_agent_runtime_name(second_id),
         model_id=model.id,
         model=model,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([user, model, first, second])
     await db.commit()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
+    await db.commit()
 
     first_deployment = await service.create_deployment(
-        db, TEST_USER_ID, AgentDeploymentCreate(agent_id=first.id)
+        db, unit_context(TEST_USER_ID), AgentDeploymentCreate(agent_id=first.id)
     )
     second_deployment = await service.create_deployment(
-        db, TEST_USER_ID, AgentDeploymentCreate(agent_id=second.id)
+        db, unit_context(TEST_USER_ID), AgentDeploymentCreate(agent_id=second.id)
     )
     _first_key, first_cleartext = await service.create_api_key(
         db,
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
         AgentApiKeyCreate(
             name="First key",
             scopes=["invoke", "stream", "read"],
@@ -130,7 +147,7 @@ async def _seed_two_deployments_with_scoped_keys(db):
     )
     _second_key, second_cleartext = await service.create_api_key(
         db,
-        TEST_USER_ID,
+        unit_context(TEST_USER_ID),
         AgentApiKeyCreate(
             name="Second key",
             scopes=["invoke", "stream", "read"],
@@ -215,9 +232,12 @@ async def test_public_agents_requires_read_scope(client, db):
 
 
 async def test_thread_lookup_rejects_key_without_thread_deployment_access(client, db):
-    _first_deployment, second_deployment, first_key, second_key = (
-        await _seed_two_deployments_with_scoped_keys(db)
-    )
+    (
+        _first_deployment,
+        second_deployment,
+        first_key,
+        second_key,
+    ) = await _seed_two_deployments_with_scoped_keys(db)
 
     thread_response = await client.post(
         "/v1/threads",
@@ -232,8 +252,8 @@ async def test_thread_lookup_rejects_key_without_thread_deployment_access(client
         headers={"Authorization": f"Bearer {first_key}"},
     )
 
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "AGENT_API_DEPLOYMENT_FORBIDDEN"
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "AGENT_API_THREAD_NOT_FOUND"
 
 
 async def test_run_wait_invokes_deployed_agent_and_creates_api_conversation(
@@ -381,13 +401,17 @@ async def test_thread_run_wait_reuses_thread_conversation(client, db, monkeypatc
     assert str(conversations[0].id) == thread["conversation_id"]
 
     audit_actions = (
-        await db.execute(
-            select(AuditEvent.action).where(
-                AuditEvent.target_owner_user_id == TEST_USER_ID,
-                AuditEvent.actor_type == "api_key",
+        (
+            await db.execute(
+                select(AuditEvent.action).where(
+                    AuditEvent.target_owner_user_id == TEST_USER_ID,
+                    AuditEvent.actor_type == "api_key",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert set(audit_actions) >= {
         "agent_api.thread_create",
         "agent_api.thread_run_wait",
@@ -469,9 +493,7 @@ async def test_run_stream_emits_external_sse_events(client, db, monkeypatch):
     assert "event: run_end" in text
 
     audit = (
-        await db.execute(
-            select(AuditEvent).where(AuditEvent.action == "agent_api.run_stream")
-        )
+        await db.execute(select(AuditEvent).where(AuditEvent.action == "agent_api.run_stream"))
     ).scalar_one()
     assert audit.actor_type == "api_key"
     assert audit.target_type == "agent_api_run"

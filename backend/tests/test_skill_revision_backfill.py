@@ -13,6 +13,13 @@ from app.models.skill_builder_session import SkillBuilderSession
 from app.models.skill_revision import SkillRevision
 from app.services import skill_revision_retention, skill_revision_service
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_text_skill,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -21,13 +28,15 @@ def _skill_content(name: str = "revision-backfill", body: str = "Initial body.")
 
 
 async def _create_text_skill(db: AsyncSession) -> Skill:
-    return await skill_service.create_text_skill(
+    return await create_test_text_skill(
         db,
-        user_id=TEST_USER_ID,
-        name="Revision Backfill",
-        slug="revision-backfill",
-        description="Use when testing revision backfill.",
-        content=_skill_content(),
+        TextSkillCreation(
+            name="Revision Backfill",
+            slug="revision-backfill",
+            description="Use when testing revision backfill.",
+            content=_skill_content(),
+        ),
+        unit_context(TEST_USER_ID),
     )
 
 
@@ -67,6 +76,7 @@ async def test_prune_revisions_keeps_latest_current_published_and_active_builder
                 db,
                 skill=skill,
                 content=_skill_content(body=f"Body {index}"),
+                context=unit_context(TEST_USER_ID),
             )
             revision = await skill_revision_service.create_revision_for_skill(
                 db,
@@ -86,6 +96,8 @@ async def test_prune_revisions_keeps_latest_current_published_and_active_builder
                 source_skill_id=skill.id,
                 base_content_hash=revisions[2].content_hash,
                 status="review",
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
             )
         )
         await db.flush()

@@ -15,20 +15,25 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
+from app.authz.org_context import OrgContext
 from app.models.agent import Agent
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class WriteToolContext:
     """쓰기 도구 그룹 빌더가 공유하는 실행 컨텍스트."""
 
     session_factory: Callable[[], AsyncSession]
     agent_id: uuid.UUID
-    user_id: uuid.UUID
+    org_context: OrgContext
+
+    @property
+    def user_id(self) -> uuid.UUID:
+        return self.org_context.user_id
 
 
 async def get_agent_with_session(
     ctx: WriteToolContext,
     session: AsyncSession,
 ) -> Agent | None:
-    return await get_agent_with_eager_load(session, ctx.agent_id, ctx.user_id)
+    return await get_agent_with_eager_load(session, ctx.agent_id, ctx.org_context)

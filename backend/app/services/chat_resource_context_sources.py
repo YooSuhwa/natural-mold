@@ -10,7 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from app.models.agent import Agent
+from app.authz.artifact_scope import private_artifact_predicate
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.models.message_attachment import MessageAttachment
@@ -25,9 +27,13 @@ _TEXTUAL_MIME_EXACT: Final = {"application/json", "application/xml"}
 
 @dataclass(frozen=True, slots=True)
 class ResourceContextScope:
-    user_id: uuid.UUID
+    context: OrgContext
     agent_id: uuid.UUID
     conversation_id: uuid.UUID
+
+    @property
+    def user_id(self) -> uuid.UUID:
+        return self.context.user_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,12 +66,12 @@ async def load_file_source(
     attachment = await db.scalar(
         select(MessageAttachment)
         .join(Conversation, Conversation.id == MessageAttachment.conversation_id)
-        .join(Agent, Agent.id == Conversation.agent_id)
         .where(
             MessageAttachment.id == reference.id,
-            MessageAttachment.user_id == scope.user_id,
-            Agent.user_id == scope.user_id,
+            private_scope_predicate(MessageAttachment, scope.context),
+            private_scope_predicate(Conversation, scope.context),
         )
+        .execution_options(autoflush=False, populate_existing=True)
     )
     if attachment is None:
         raise ResourceContextNotFoundError()
@@ -91,11 +97,13 @@ async def load_artifact_source(
 ) -> LoadedResource:
     reference = request.reference
     artifact = await db.scalar(
-        select(ConversationArtifact).where(
+        select(ConversationArtifact)
+        .where(
             ConversationArtifact.id == reference.id,
-            ConversationArtifact.user_id == scope.user_id,
+            private_artifact_predicate(scope.context),
             ConversationArtifact.status == "ready",
         )
+        .execution_options(populate_existing=True, autoflush=False)
     )
     if artifact is None:
         raise ResourceContextNotFoundError()
@@ -126,9 +134,10 @@ async def load_skill_source(
         .join(AgentSkillLink, AgentSkillLink.skill_id == Skill.id)
         .where(
             Skill.id == reference.id,
-            Skill.user_id == scope.user_id,
+            private_scope_predicate(Skill, scope.context),
             AgentSkillLink.agent_id == scope.agent_id,
         )
+        .execution_options(autoflush=False, populate_existing=True)
     )
     path = _skill_entry_path(skill)
     if skill is None or path is None or not await run_in_threadpool(path.is_file):
@@ -156,8 +165,10 @@ async def owned_conversation(
 ) -> Conversation:
     conversation = await db.scalar(
         select(Conversation)
-        .join(Agent, Agent.id == Conversation.agent_id)
-        .where(Conversation.id == conversation_id, Agent.user_id == scope.user_id)
+        .where(
+            Conversation.id == conversation_id, private_scope_predicate(Conversation, scope.context)
+        )
+        .execution_options(autoflush=False, populate_existing=True)
     )
     if conversation is None:
         raise ResourceContextNotFoundError()
@@ -170,13 +181,22 @@ async def _artifact_version(
     requested_version_id: uuid.UUID | None,
 ) -> ArtifactVersion:
     version_id = requested_version_id or artifact.current_version_id
-    version = await db.get(ArtifactVersion, version_id) if version_id is not None else None
+    version = (
+        await db.scalar(
+            select(ArtifactVersion)
+            .where(ArtifactVersion.id == version_id, ArtifactVersion.artifact_id == artifact.id)
+            .execution_options(populate_existing=True, autoflush=False)
+        )
+        if version_id is not None
+        else None
+    )
     if version is None and requested_version_id is None:
         version = await db.scalar(
             select(ArtifactVersion)
             .where(ArtifactVersion.artifact_id == artifact.id)
             .order_by(ArtifactVersion.version_number.desc())
             .limit(1)
+            .execution_options(autoflush=False, populate_existing=True)
         )
     if version is None or version.artifact_id != artifact.id:
         raise ResourceContextNotFoundError()

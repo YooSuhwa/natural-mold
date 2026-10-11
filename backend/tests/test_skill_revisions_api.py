@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.skill_builder import JsonValue
 from app.services import skill_revision_service
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -31,13 +33,15 @@ async def test_list_revisions_returns_owned_skill_history(
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
         revision = await skill_revision_service.create_revision_for_skill(
             db,
@@ -64,13 +68,15 @@ async def test_get_revision_returns_detail_metadata(
 ) -> None:
     compatibility: dict[str, JsonValue] = {"targets": {"openai_codex": {"status": "ok"}}}
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
         revision = await skill_revision_service.create_revision_for_skill(
             db,
@@ -98,13 +104,15 @@ async def test_rollback_revision_restores_content_and_creates_new_revision(
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content("Original guidance."),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content("Original guidance."),
+            ),
+            unit_context(TEST_USER_ID),
         )
         original = await skill_revision_service.create_revision_for_skill(
             db,
@@ -116,6 +124,7 @@ async def test_rollback_revision_restores_content_and_creates_new_revision(
             db,
             skill=skill,
             content=_skill_content("Changed guidance."),
+            context=unit_context(TEST_USER_ID),
         )
         await skill_revision_service.create_revision_for_skill(
             db,

@@ -8,6 +8,7 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.identity import (
     AGENT_IDENTITY_FIXED,
@@ -23,6 +24,8 @@ from app.agent_runtime.runtime_policy import (
     RuntimePolicySnapshotError,
 )
 from app.agent_runtime.subagents import build_subagents_config
+from app.authz.org_context import OrgContext
+from app.authz.runtime_capability_scope import require_runtime_capability_tree
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ConflictError, ValidationError
@@ -126,10 +129,15 @@ async def build_agent_config_for_conversation(
     conversation_id: uuid.UUID,
     user: CurrentUser,
     *,
+    context: OrgContext,
     checkpoint_id: str | None = None,
 ) -> AgentConfig:
-    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, user.id)
-    if not conv:
+    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
+    if not conv or (conv.user_id, conv.org_id, conv.tenant_id) != (
+        context.user_id,
+        context.org_id,
+        context.tenant_id,
+    ):
         raise conversation_not_found()
     if conv.agent is None:
         raise agent_not_found()
@@ -149,6 +157,7 @@ async def build_agent_config_for_conversation(
         principal=AgentInvocationPrincipal.chat_user(user),
         source="chat",
         current_user=user,
+        context=context,
         checkpoint_id=checkpoint_id,
         runtime_policy=runtime_policy,
     )
@@ -158,6 +167,7 @@ async def build_agent_config_for_loaded_agent(
     db: AsyncSession,
     agent: Agent,
     *,
+    context: OrgContext,
     thread_id: str,
     principal: AgentInvocationPrincipal,
     source: InvocationSource,
@@ -165,6 +175,7 @@ async def build_agent_config_for_loaded_agent(
     checkpoint_id: str | None = None,
     runtime_policy: ResolvedRuntimePolicy = LEGACY_RUNTIME_POLICY,
 ) -> AgentConfig:
+    require_runtime_capability_tree(agent, context)
     if agent.model is None:
         raise ValidationError("AGENT_MODEL_REQUIRED", "agent has no model bound")
     if source == "api" and agent.identity_mode != AGENT_IDENTITY_FIXED:
@@ -181,9 +192,12 @@ async def build_agent_config_for_loaded_agent(
         source=_source_to_agent_run_source(source),
         caller_user_id=principal.caller_user_id,
     )
-    api_key = await resolve_llm_api_key_for_agent(db, agent, identity=identity)
+    api_key = await resolve_llm_api_key_for_agent(
+        db, agent, AgentCredentialAccess(context, identity)
+    )
     tools_config = await chat_service.build_tools_config(
         agent,
+        context=context,
         db=db,
         conversation_id=thread_id,
         identity=identity,
@@ -195,6 +209,7 @@ async def build_agent_config_for_loaded_agent(
     )
 
     cfg = AgentConfig(
+        org_context=context,
         provider=agent.model.provider,
         model_name=agent.model.model_name,
         api_key=api_key,
@@ -205,7 +220,7 @@ async def build_agent_config_for_loaded_agent(
         runtime_policy=runtime_policy,
         model_params=agent.model_params,
         middleware_configs=agent.middleware_configs,
-        agent_skills=chat_service.build_agent_skills(agent) or None,
+        agent_skills=chat_service.build_agent_skills(agent, context) or None,
         agent_id=str(agent.id),
         agent_name=agent.name,
         provider_api_keys={agent.model.provider: api_key} if api_key else None,

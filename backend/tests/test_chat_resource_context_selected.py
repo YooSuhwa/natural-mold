@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,7 @@ from app.models.skill import AgentSkillLink, Skill
 from app.schemas.chat_resource_context import ChatResourceContextRequest, ChatResourceReference
 from app.services.chat_resource_context_errors import ResourceContextNotFoundError
 from app.services.thread_branch_service import MessageTree, MessageTreeNode
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.test_chat_resource_context_support import (
     resource_context_resolver,
     seed_resource_context,
@@ -35,6 +38,8 @@ async def test_resolve_skill_requires_current_agent_selection(
         storage_path=str(path),
         content_hash=hashlib.sha256(path.read_bytes()).hexdigest(),
         size_bytes=path.stat().st_size,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(skill)
     await db.flush()
@@ -67,7 +72,15 @@ async def test_resolve_conversation_uses_owned_bounded_active_transcript(
     db: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     seeded = await seed_resource_context(db)
-    referenced = Conversation(agent_id=seeded.agent.id, title="Referenced")
+    referenced = Conversation(
+        agent_id=seeded.agent.id,
+        title="Referenced",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=seeded.agent.user_id,
+        agent_name_snapshot=seeded.agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(referenced)
     await db.flush()
     tree = MessageTree(

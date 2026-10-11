@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.credentials.registry import registry
 from app.mcp import client as mcp_client
 from app.mcp import discovery as mcp_discovery
@@ -25,7 +26,14 @@ from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.user import User
-from tests.conftest import TEST_USER_ID
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_credential,
+    ensure_unit_scope,
+    unit_context,
+)
+from tests.conftest import TEST_USER_ID, override_get_current_user
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +42,8 @@ async def _ensure_test_user(db: AsyncSession):
     if existing.scalar_one_or_none() is None:
         db.add(User(id=TEST_USER_ID, email="test@test.com", name="Test User"))
         await db.commit()
+    await ensure_unit_scope(db, await override_get_current_user())
+    await db.commit()
 
 
 def _patch_probe(monkeypatch, payload: dict[str, Any]) -> None:
@@ -91,6 +101,8 @@ async def test_create_mcp_server_rejects_cross_user_credential(
     blob, key_id, field_keys = credential_service.encrypt_data({"token": "secret"})
     credential = Credential(
         user_id=other_user_id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         definition_key="http_bearer",
         name="other-token",
         data_encrypted=blob,
@@ -134,6 +146,8 @@ async def test_patch_mcp_server_rejects_system_credential(
         key_id=key_id,
         field_keys=field_keys,
         is_system=True,
+        org_id=None,
+        tenant_id=None,
     )
     db.add(credential)
     await db.commit()
@@ -148,6 +162,8 @@ async def test_patch_mcp_server_rejects_system_credential(
 @pytest.mark.asyncio
 async def test_get_mcp_server_with_tools(client: AsyncClient, db: AsyncSession) -> None:
     server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="A",
         transport="streamable_http",
@@ -232,6 +248,8 @@ async def test_patch_mcp_server_rejects_inconsistent_payload(
 @pytest.mark.asyncio
 async def test_delete_mcp_server_cascades_tools(client: AsyncClient, db: AsyncSession) -> None:
     server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="X",
         transport="streamable_http",
@@ -264,6 +282,8 @@ async def test_test_endpoint_marks_connected(
     client: AsyncClient, db: AsyncSession, monkeypatch
 ) -> None:
     server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="Hello",
         transport="streamable_http",
@@ -303,6 +323,8 @@ async def test_test_endpoint_marks_auth_needed_on_401(
     client: AsyncClient, db: AsyncSession, monkeypatch
 ) -> None:
     server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="Auth",
         transport="streamable_http",
@@ -330,6 +352,8 @@ async def test_test_endpoint_marks_auth_needed_on_401(
 @pytest.mark.asyncio
 async def test_discover_persists_tools(client: AsyncClient, db: AsyncSession, monkeypatch) -> None:
     server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="Disc",
         transport="streamable_http",
@@ -394,6 +418,8 @@ async def test_discover_preserves_stale_tools_and_marks_last_seen(
     """
 
     server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="Stale",
         transport="streamable_http",
@@ -561,6 +587,8 @@ async def test_connect_and_list_stdio_requires_command() -> None:
 async def test_import_mcp_servers_creates_and_skips(client: AsyncClient, db: AsyncSession) -> None:
     # Pre-existing server with the same name to test skip vs overwrite.
     existing = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="dup",
         transport="streamable_http",
@@ -619,6 +647,8 @@ async def test_import_mcp_servers_overwrite_updates_in_place(
     client: AsyncClient, db: AsyncSession
 ) -> None:
     existing = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="dup",
         transport="streamable_http",
@@ -652,14 +682,16 @@ async def test_import_mcp_servers_overwrite_updates_in_place(
 
 @pytest.mark.asyncio
 async def test_export_mcp_servers_omits_secrets(client: AsyncClient, db: AsyncSession) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="http_bearer",
-        name="export-bearer",
-        data={"token": "SECRET"},
+        CredentialCreation(
+            definition_key="http_bearer", name="export-bearer", data={"token": "SECRET"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="exp",
         transport="streamable_http",
@@ -697,6 +729,8 @@ async def test_export_mcp_servers_sorted_by_name(client: AsyncClient, db: AsyncS
 
     db.add(
         McpServer(
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
             user_id=TEST_USER_ID,
             name="alpha",
             transport="streamable_http",
@@ -706,6 +740,8 @@ async def test_export_mcp_servers_sorted_by_name(client: AsyncClient, db: AsyncS
     await db.flush()
     db.add(
         McpServer(
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
             user_id=TEST_USER_ID,
             name="zeta",
             transport="streamable_http",
@@ -742,12 +778,16 @@ async def test_poll_mcp_servers_health_updates_columns(db: AsyncSession, monkeyp
     from app.scheduler import poll_mcp_servers_health
 
     ok_server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="ok",
         transport="streamable_http",
         url="https://ok.example.com",
     )
     bad_server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="bad",
         transport="streamable_http",
@@ -822,14 +862,16 @@ def test_build_skills_prompt_empty_returns_blank() -> None:
 
 @pytest.mark.asyncio
 async def test_discovery_uses_credential_payload_for_headers(db: AsyncSession, monkeypatch) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="http_bearer",
-        name="mcp-bearer",
-        data={"token": "T-123"},
+        CredentialCreation(
+            definition_key="http_bearer", name="mcp-bearer", data={"token": "T-123"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="Auth-MCP",
         transport="streamable_http",
@@ -866,21 +908,25 @@ async def test_test_endpoint_marks_auth_needed_when_oauth_refresh_fails(
     db: AsyncSession,
     monkeypatch,
 ) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="expired",
-        data={
-            "access_token": "old",
-            "refresh_token": "refresh",
-            "expires_at": 1,
-            "access_token_url": "https://issuer.example/token",
-            "client_id": "cid",
-            "authentication": "none",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="expired",
+            data={
+                "access_token": "old",
+                "refresh_token": "refresh",
+                "expires_at": 1,
+                "access_token_url": "https://issuer.example/token",
+                "client_id": "cid",
+                "authentication": "none",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="Expired OAuth MCP",
         transport="streamable_http",
@@ -911,19 +957,21 @@ async def test_probe_endpoint_returns_soft_failure_when_oauth_refresh_fails(
     db: AsyncSession,
     monkeypatch,
 ) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="expired",
-        data={
-            "access_token": "old",
-            "refresh_token": "refresh",
-            "expires_at": 1,
-            "access_token_url": "https://issuer.example/token",
-            "client_id": "cid",
-            "authentication": "none",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="expired",
+            data={
+                "access_token": "old",
+                "refresh_token": "refresh",
+                "expires_at": 1,
+                "access_token_url": "https://issuer.example/token",
+                "client_id": "cid",
+                "authentication": "none",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 

@@ -5,7 +5,8 @@ import uuid
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import skill_not_found
 from app.marketplace import credential_requirements
 from app.routers.skill_router_support import record_skill_audit
@@ -27,8 +28,9 @@ async def get_skill_credential_requirements(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[SkillCredentialRequirementOut]:
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     return [
@@ -54,11 +56,12 @@ async def list_skill_credential_bindings(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[SkillCredentialBindingOut]:
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
-    rows = await credential_requirements.list_bindings(db, skill=skill, user=user)
+    rows = await credential_requirements.list_bindings(db, skill=skill, context=context)
     return [SkillCredentialBindingOut.model_validate(row) for row in rows]
 
 
@@ -73,15 +76,16 @@ async def put_skill_credential_binding(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillCredentialBindingOut:
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     row = await credential_requirements.upsert_binding(
         db,
         skill=skill,
-        user=user,
+        context=context,
         requirement_key=requirement_key,
         credential_id=body.credential_id,
     )
@@ -109,15 +113,16 @@ async def delete_skill_credential_binding(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> Response:
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     deleted = await credential_requirements.delete_binding(
         db,
         skill=skill,
-        user=user,
+        context=context,
         requirement_key=requirement_key,
     )
     if not deleted:

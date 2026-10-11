@@ -2,19 +2,26 @@ from __future__ import annotations
 
 import uuid
 from contextlib import suppress
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.agent_api.dependencies import ApiKeyPrincipal
+from app.agent_api.access import authorize_deployment, ensure_key_can_access_deployment
+from app.agent_api.dependencies import ApiKeyPrincipal, refresh_api_key_principal
 from app.agent_api.service import utc_now_naive
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
+from app.authz.agent_api_scope import (
+    private_api_thread_parents_predicate,
+    private_deployment_predicate,
+)
+from app.authz.scoping import private_scoped
 from app.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.models.agent_api import AgentApiRun, AgentApiThread, AgentDeployment
 from app.models.conversation import Conversation
 from app.schemas.agent_api import AgentRunRequest, AgentThreadCreateRequest, AgentThreadResponse
+from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import chat_service
 from app.services.agent_invocation_service import (
     AgentInvocationPrincipal,
@@ -34,20 +41,6 @@ def external_thread_id(row_id: uuid.UUID) -> str:
     return f"thr_{row_id.hex}"
 
 
-def ensure_key_can_access_deployment(
-    principal: ApiKeyPrincipal,
-    deployment_id: uuid.UUID,
-) -> None:
-    if principal.key.allow_all_deployments:
-        return
-    allowed = {link.deployment_id for link in principal.key.deployment_links}
-    if deployment_id not in allowed:
-        raise ForbiddenError(
-            "AGENT_API_DEPLOYMENT_FORBIDDEN",
-            "API key cannot access this deployment",
-        )
-
-
 async def resolve_deployment_for_agent_id(
     db: AsyncSession,
     principal: ApiKeyPrincipal,
@@ -55,6 +48,7 @@ async def resolve_deployment_for_agent_id(
     *,
     required_scope: str,
 ) -> AgentDeployment:
+    principal = await refresh_api_key_principal(db, principal)
     principal.require_scope(required_scope)
 
     conditions = [AgentDeployment.public_id == agent_id]
@@ -63,16 +57,17 @@ async def resolve_deployment_for_agent_id(
 
     result = await db.execute(
         select(AgentDeployment)
-        .where(AgentDeployment.user_id == principal.user_id)
+        .where(private_deployment_predicate(principal.context))
         .where(AgentDeployment.status == "active")
         .where(or_(*conditions))
         .options(selectinload(AgentDeployment.agent))
+        .execution_options(populate_existing=True, autoflush=False)
     )
     deployment = result.scalar_one_or_none()
     if deployment is None:
         raise NotFoundError("AGENT_DEPLOYMENT_NOT_FOUND", "deployment not found")
 
-    ensure_key_can_access_deployment(principal, deployment.id)
+    ensure_key_can_access_deployment(principal, deployment)
 
     if required_scope == "stream" and not deployment.allow_streaming:
         raise ForbiddenError("AGENT_API_STREAM_DISABLED", "streaming is disabled")
@@ -85,14 +80,17 @@ async def create_api_conversation(
     db: AsyncSession,
     deployment: AgentDeployment,
     *,
+    principal: ApiKeyPrincipal,
     title: str | None = None,
 ) -> Conversation:
-    conversation = Conversation(
-        agent_id=deployment.agent_id,
-        title=title or "API conversation",
+    authorized = await authorize_deployment(db, principal, deployment.id)
+    conversation = await chat_service.create_conversation(
+        db,
+        authorized.deployment.agent_id,
+        title or "API conversation",
+        context=authorized.principal.context,
         source="api",
     )
-    db.add(conversation)
     await db.commit()
     await db.refresh(conversation)
     return conversation
@@ -108,6 +106,7 @@ async def create_thread(
     conversation = await create_api_conversation(
         db,
         deployment,
+        principal=principal,
         title="API thread",
     )
     thread_id = uuid.uuid4()
@@ -151,18 +150,27 @@ async def get_thread_for_public_id(
     principal: ApiKeyPrincipal,
     thread_id: str,
 ) -> AgentApiThread:
+    principal = await refresh_api_key_principal(db, principal)
     result = await db.execute(
         select(AgentApiThread)
-        .where(AgentApiThread.public_id == thread_id, AgentApiThread.user_id == principal.user_id)
+        .where(
+            AgentApiThread.public_id == thread_id,
+            AgentApiThread.user_id == principal.user_id,
+            private_api_thread_parents_predicate(principal.context),
+        )
         .options(
             selectinload(AgentApiThread.deployment).selectinload(AgentDeployment.agent),
             selectinload(AgentApiThread.conversation),
         )
+        .execution_options(populate_existing=True, autoflush=False)
     )
     thread = result.scalar_one_or_none()
     if thread is None:
         raise NotFoundError("AGENT_API_THREAD_NOT_FOUND", "thread not found")
-    ensure_key_can_access_deployment(principal, thread.deployment_id)
+    try:
+        ensure_key_can_access_deployment(principal, thread.deployment)
+    except NotFoundError:
+        raise NotFoundError("AGENT_API_THREAD_NOT_FOUND", "thread not found") from None
     return thread
 
 
@@ -177,9 +185,31 @@ async def create_run_row(
     input_payload: dict[str, Any],
     metadata: dict[str, Any] | None,
 ) -> AgentApiRun:
+    authorized = await authorize_deployment(db, principal, deployment.id)
+    principal, deployment = authorized.principal, authorized.deployment
+    scope_for_mode: dict[str, Literal["invoke", "stream"]] = {
+        "wait": "invoke",
+        "stream": "stream",
+        "openai_stream": "stream",
+    }
+    operation = scope_for_mode.get(mode)
+    if operation is None:
+        raise ValidationError("AGENT_API_RUN_MODE_INVALID", "run mode is invalid")
+    principal.require_scope(operation)
     if conversation_id is not None:
+        conversation = await db.scalar(
+            private_scoped(
+                select(Conversation).where(Conversation.id == conversation_id),
+                Conversation,
+                principal.context,
+            )
+        )
+        if conversation is None or conversation.agent_id != deployment.agent_id:
+            raise NotFoundError("AGENT_API_THREAD_NOT_FOUND", "thread not found")
         try:
-            await ensure_conversation_runtime_policy(db, conversation_id)
+            await ensure_conversation_runtime_policy(
+                db, ConversationPolicyTarget(conversation_id, principal.context)
+            )
         except RuntimePolicySnapshotError as exc:
             raise ConflictError(exc.code, exc.code) from None
     row = AgentApiRun(
@@ -235,7 +265,21 @@ async def build_config_for_run(
     deployment: AgentDeployment,
     conversation: Conversation,
     external_user: str | None,
+    required_scope: Literal["invoke", "stream"],
 ):
+    authorized = await authorize_deployment(db, principal, deployment.id)
+    principal, deployment = authorized.principal, authorized.deployment
+    principal.require_scope(required_scope)
+    scoped_conversation = await db.scalar(
+        private_scoped(
+            select(Conversation).where(Conversation.id == conversation.id),
+            Conversation,
+            principal.context,
+        )
+    )
+    if scoped_conversation is None or scoped_conversation.agent_id != deployment.agent_id:
+        raise NotFoundError("AGENT_API_THREAD_NOT_FOUND", "thread not found")
+    conversation = scoped_conversation
     try:
         runtime_policy = snapshot_from_conversation(conversation)
     except RuntimePolicySnapshotError as exc:
@@ -245,12 +289,13 @@ async def build_config_for_run(
             "RUNTIME_POLICY_SNAPSHOT_INVALID",
             "RUNTIME_POLICY_SNAPSHOT_INVALID",
         )
-    agent = await chat_service.get_agent_with_tools(db, deployment.agent_id, principal.user_id)
+    agent = await chat_service.get_agent_with_tools(db, deployment.agent_id, principal.context)
     if agent is None:
         raise NotFoundError("AGENT_NOT_FOUND", "agent not found")
     return await build_agent_config_for_loaded_agent(
         db,
         agent,
+        context=principal.context,
         thread_id=str(conversation.id),
         principal=AgentInvocationPrincipal.api_key(
             key_id=principal.key.id,

@@ -12,6 +12,8 @@ from app.agent_runtime.e2e_scripted_model import (
 )
 from app.agent_runtime.run_metrics import RunMetricsAccumulator, RunMetricsSnapshot
 from app.agent_runtime.runtime_config import AgentConfig
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:The v3 streaming protocol on Pregel is experimental"
@@ -37,6 +39,7 @@ async def _run_compiled_text_metrics(
         system_prompt="Return the deterministic response.",
         tools_config=[],
         thread_id="22222222-2222-4222-8222-222222222222",
+        org_context=unit_context(TEST_USER_ID),
     )
 
     _ = [

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.database import Base
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
 
 ARTIFACT_STATUS_VALUES = ("writing", "ready", "deleted", "failed")
 ARTIFACT_STORAGE_VALUES = ("local", "s3")
@@ -38,9 +39,10 @@ ARTIFACT_KIND_VALUES = (
 )
 
 
-class ConversationArtifact(Base):
+class ConversationArtifact(RequiredOrgScope, Base):
     __tablename__ = "conversation_artifacts"
     __table_args__ = (
+        *resource_scope_constraints("conversation_artifacts", system=False),
         UniqueConstraint(
             "conversation_id",
             "assistant_msg_id",

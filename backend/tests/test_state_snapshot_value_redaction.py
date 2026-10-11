@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
 import pytest
@@ -30,7 +31,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.mcp_server import McpServer
@@ -45,6 +46,13 @@ from app.routers.conversation_agent_protocol_state_snapshot import (
     serialize_langchain_message,
 )
 from app.services.thread_branch_service import _CheckpointSlim
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_credential,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 # Opaque, no sensitive-key prefix, not Bearer/sk-/JWT/DSN -> heuristics can't
@@ -116,10 +124,20 @@ async def _seed_conversation(db: AsyncSession) -> Conversation:
         name="State Redact Agent",
         system_prompt="You are helpful.",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
-    conversation = Conversation(agent_id=agent.id, title="State Redact Conversation")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="State Redact Conversation",
+        user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        agent_name_snapshot="Collector fixture",
+        last_activity_at=datetime.now(UTC),
+    )
     db.add(conversation)
     await db.commit()
     return conversation
@@ -280,6 +298,10 @@ async def test_collect_conversation_secrets_includes_fallback_base_url_userinfo(
     if user is None:
         user = User(id=TEST_USER_ID, email="fb-redact@test.dev", name="FB Redact")
         db.add(user)
+    await db.flush()
+    from app.dependencies import CurrentUser
+
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     primary = Model(provider="openai", model_name="gpt-4o", display_name="Primary")
     fallback = Model(
         provider="openai_compatible",
@@ -295,14 +317,24 @@ async def test_collect_conversation_secrets_includes_fallback_base_url_userinfo(
         system_prompt="You are helpful.",
         model_id=primary.id,
         model_fallback_list=[str(fallback.id)],
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
-    conversation = Conversation(agent_id=agent.id, title="FB Conversation")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="FB Conversation",
+        user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        agent_name_snapshot="Collector fixture",
+        last_activity_at=datetime.now(UTC),
+    )
     db.add(conversation)
     await db.commit()
 
-    secrets = await collect_conversation_secret_values(db, conversation)
+    secrets = await collect_conversation_secret_values(db, conversation, unit_context(TEST_USER_ID))
 
     assert "fallbackpw99999" in secrets, "fallback base_url password must be collected"
     assert "fbuser" in secrets
@@ -349,19 +381,21 @@ async def _seed_conversation_with_secret_sources(db: AsyncSession) -> _SeededSec
         db.add(user)
         await db.flush()
 
-    llm_cred = await credential_service.create(
+    llm_cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="openai",
-        name=f"collect-llm-{unique}",
-        data={"api_key": llm_api_key},
+        CredentialCreation(
+            definition_key="openai", name=f"collect-llm-{unique}", data={"api_key": llm_api_key}
+        ),
+        unit_context(TEST_USER_ID),
     )
-    tool_cred = await credential_service.create(
+    tool_cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="naver_search",
-        name=f"collect-naver-{unique}",
-        data={"client_id": "nv-client-id", "client_secret": tool_credential_secret},
+        CredentialCreation(
+            definition_key="naver_search",
+            name=f"collect-naver-{unique}",
+            data={"client_id": "nv-client-id", "client_secret": tool_credential_secret},
+        ),
+        unit_context(TEST_USER_ID),
     )
 
     model = Model(
@@ -379,6 +413,8 @@ async def _seed_conversation_with_secret_sources(db: AsyncSession) -> _SeededSec
         system_prompt="You are helpful.",
         model_id=model.id,
         llm_credential_id=llm_cred.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -389,6 +425,8 @@ async def _seed_conversation_with_secret_sources(db: AsyncSession) -> _SeededSec
         definition_key="naver_search_blog",
         parameters={},
         credential_id=tool_cred.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(tool)
     await db.flush()
@@ -401,6 +439,8 @@ async def _seed_conversation_with_secret_sources(db: AsyncSession) -> _SeededSec
         url="http://localhost:18010/mcp",
         headers={"X-Api-Token": mcp_header_token},
         env_vars={},
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(server)
     await db.flush()
@@ -415,7 +455,15 @@ async def _seed_conversation_with_secret_sources(db: AsyncSession) -> _SeededSec
     await db.flush()
     db.add(AgentMcpToolLink(agent_id=agent.id, mcp_tool_id=mcp_tool.id))
 
-    conversation = Conversation(agent_id=agent.id, title=f"Collect Conversation {unique}")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title=f"Collect Conversation {unique}",
+        user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        agent_name_snapshot="Collector fixture",
+        last_activity_at=datetime.now(UTC),
+    )
     db.add(conversation)
     await db.commit()
     return _SeededSecretSources(
@@ -434,7 +482,9 @@ async def test_collect_conversation_secrets_includes_llm_api_key(db: AsyncSessio
     from app.services.chat_service import collect_conversation_secret_values
 
     seeded = await _seed_conversation_with_secret_sources(db)
-    secrets = await collect_conversation_secret_values(db, seeded.conversation)
+    secrets = await collect_conversation_secret_values(
+        db, seeded.conversation, unit_context(TEST_USER_ID)
+    )
     assert seeded.llm_api_key in secrets, "LLM api_key must be collected"
 
 
@@ -447,7 +497,9 @@ async def test_collect_conversation_secrets_includes_tool_credential_values(
     from app.services.chat_service import collect_conversation_secret_values
 
     seeded = await _seed_conversation_with_secret_sources(db)
-    secrets = await collect_conversation_secret_values(db, seeded.conversation)
+    secrets = await collect_conversation_secret_values(
+        db, seeded.conversation, unit_context(TEST_USER_ID)
+    )
     assert seeded.tool_credential_secret in secrets, "tool credential values must be collected"
 
 
@@ -460,7 +512,9 @@ async def test_collect_conversation_secrets_includes_mcp_transport_headers(
     from app.services.chat_service import collect_conversation_secret_values
 
     seeded = await _seed_conversation_with_secret_sources(db)
-    secrets = await collect_conversation_secret_values(db, seeded.conversation)
+    secrets = await collect_conversation_secret_values(
+        db, seeded.conversation, unit_context(TEST_USER_ID)
+    )
     assert seeded.mcp_header_token in secrets, "MCP transport header values must be collected"
 
 
@@ -473,7 +527,9 @@ async def test_collect_conversation_secrets_includes_model_base_url_userinfo(
     from app.services.chat_service import collect_conversation_secret_values
 
     seeded = await _seed_conversation_with_secret_sources(db)
-    secrets = await collect_conversation_secret_values(db, seeded.conversation)
+    secrets = await collect_conversation_secret_values(
+        db, seeded.conversation, unit_context(TEST_USER_ID)
+    )
     assert seeded.base_url_password in secrets, "primary base_url password must be collected"
     assert "primaryuser" in secrets, "primary base_url username must be collected"
 
@@ -527,7 +583,7 @@ async def test_thread_state_read_path_masks_collected_secret_end_to_end(
     unmasked = await load_thread_state_snapshot(conversation, db=db)
     assert sentinel in json.dumps(unmasked.values)
 
-    collected = await collect_state_secret_values(db, conversation)
+    collected = await collect_state_secret_values(db, conversation, unit_context(TEST_USER_ID))
     snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=collected)
 
     rendered = json.dumps(snapshot.values)

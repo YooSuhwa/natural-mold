@@ -16,11 +16,15 @@ from app.agent_runtime.runtime_policy import (
     runtime_policy_to_json,
     validate_runtime_policy_snapshot,
 )
+from app.authz.conversation_scope import lock_private_conversation
+from app.authz.scoping import private_scope_predicate
+from app.error_codes import agent_not_found
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, Agent
 from app.models.agent_api import AgentApiRun
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.schemas.conversation_scope import ConversationPolicyTarget
 
 
 def snapshot_from_conversation(conversation: Conversation) -> ResolvedRuntimePolicy | None:
@@ -59,34 +63,31 @@ async def _has_prior_execution(
 
 
 async def ensure_conversation_runtime_policy(
-    db: AsyncSession,
-    conversation_id: uuid.UUID,
-    *,
-    current_trigger_run_id: uuid.UUID | None = None,
+    db: AsyncSession, target: ConversationPolicyTarget
 ) -> tuple[Conversation, Agent, ResolvedRuntimePolicy]:
-    """Lock and initialize one conversation snapshot using first-writer-wins semantics."""
+    """Initialize one scoped conversation snapshot with first-writer-wins locking."""
+    conversation = await lock_private_conversation(db, target.conversation_id, target.context)
     result = await db.execute(
-        select(Conversation, Agent)
-        .join(Agent, Agent.id == Conversation.agent_id)
-        .where(Conversation.id == conversation_id)
-        .with_for_update(of=(Conversation, Agent))
+        select(Agent, Agent.runtime_profile, Agent.runtime_policy)
+        .where(Agent.id == conversation.agent_id, private_scope_predicate(Agent, target.context))
+        .with_for_update(of=Agent)
     )
     row = result.one_or_none()
     if row is None:
-        raise LookupError("conversation runtime policy owner not found")
-    conversation, agent = row
+        raise agent_not_found()
+    agent, runtime_profile, agent_policy = row
     existing = snapshot_from_conversation(conversation)
     if existing is not None:
         return conversation, agent, existing
 
-    prior_execution = await _has_prior_execution(db, conversation.id, current_trigger_run_id)
-    if agent.runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER:
+    prior_execution = await _has_prior_execution(db, conversation.id, target.current_trigger_run_id)
+    if runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER:
         resolved = SKILL_BUILDER_RUNTIME_POLICY
     elif prior_execution:
         resolved = LEGACY_RUNTIME_POLICY
     else:
         try:
-            resolved = resolve_runtime_policy(agent.runtime_policy)
+            resolved = resolve_runtime_policy(agent_policy)
         except PydanticValidationError:
             from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 

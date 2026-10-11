@@ -10,9 +10,13 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.skill import Skill
 from app.services import skill_revision_service
+from app.services.skill_builder_mutation_scope import SkillBuilderMutationTarget
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, ensure_unit_scope, unit_context
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -75,13 +79,15 @@ async def test_first_legacy_content_mutation_creates_baseline_then_update_revisi
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Legacy Text",
-            slug="legacy-text",
-            description="Use when testing revisions.",
-            content=_skill_md("legacy-text", "Original body."),
+            TextSkillCreation(
+                name="Legacy Text",
+                slug="legacy-text",
+                description="Use when testing revisions.",
+                content=_skill_md("legacy-text", "Original body."),
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
 
@@ -164,18 +170,21 @@ async def test_builder_created_package_file_mutations_use_existing_editor_api(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     from app.services import skill_builder_service
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="Create a package skill",
         )
         await skill_builder_service.save_draft_package(
             db,
-            session,
-            draft={
+            SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+            {
                 "name": "Builder Editable",
                 "slug": "builder-editable",
                 "description": "Use when testing builder-created file editing.",
@@ -188,7 +197,9 @@ async def test_builder_created_package_file_mutations_use_existing_editor_api(
                 "execution_profile": {},
             },
         )
-        skill = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        skill = await skill_builder_service.confirm_session(
+            db, session, context=unit_context(TEST_USER_ID)
+        )
         await db.commit()
 
         put_response = await client.put(
@@ -222,29 +233,34 @@ async def test_builder_improve_on_legacy_skill_creates_pre_mutation_baseline(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     from app.schemas.skill_builder import SkillBuilderMode
     from app.services import skill_builder_service
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Legacy Builder",
-            slug="legacy-builder",
-            description="Use when testing revisions.",
-            content=_skill_md("legacy-builder", "Original body."),
+            TextSkillCreation(
+                name="Legacy Builder",
+                slug="legacy-builder",
+                description="Use when testing revisions.",
+                content=_skill_md("legacy-builder", "Original body."),
+            ),
+            unit_context(TEST_USER_ID),
         )
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="Improve this skill",
             mode=SkillBuilderMode.IMPROVE,
             source_skill_id=skill.id,
         )
         await skill_builder_service.save_draft_package(
             db,
-            session,
-            draft={
+            SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+            {
                 "name": "Legacy Builder",
                 "slug": "legacy-builder",
                 "description": "Use when testing revisions.",
@@ -260,7 +276,9 @@ async def test_builder_improve_on_legacy_skill_creates_pre_mutation_baseline(
             },
         )
 
-        updated = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        updated = await skill_builder_service.confirm_session(
+            db, session, context=unit_context(TEST_USER_ID)
+        )
         revisions = await skill_revision_service.list_revisions(
             db,
             skill=updated,

@@ -77,7 +77,9 @@ async def _seed_scripted_system_llm(db: AsyncSession) -> None:
     구성(seed_e2e_llm)이나 운영자 선택을 덮어쓰지 않음).
     """
 
+    from app.authz.platform_scope import PlatformScope
     from app.credentials import service as credential_service
+    from app.credentials.creation import CredentialCreation
     from app.models.system_llm_setting import SystemLlmSetting
 
     existing = (
@@ -100,12 +102,13 @@ async def _seed_scripted_system_llm(db: AsyncSession) -> None:
     if credential is None:
         credential = await credential_service.create(
             db,
-            user_id=None,
-            definition_key=E2E_SCRIPTED_PROVIDER,
-            name=E2E_SCRIPTED_SYSTEM_CREDENTIAL_NAME,
-            data={"api_key": "e2e-scripted"},
-            is_system=True,
-            source="seed",
+            CredentialCreation(
+                definition_key=E2E_SCRIPTED_PROVIDER,
+                name=E2E_SCRIPTED_SYSTEM_CREDENTIAL_NAME,
+                data={"api_key": "e2e-scripted"},
+                source="seed",
+            ),
+            PlatformScope(),
         )
 
     if existing is None:

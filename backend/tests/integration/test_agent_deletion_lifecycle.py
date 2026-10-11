@@ -10,6 +10,8 @@ from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.services import agent_service
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 from tests.integration.test_conversation_run_delete_races import (
     SeededGraph,
     _assert_graph,
@@ -41,7 +43,7 @@ async def test_agent_delete_rejects_run_while_worker_holds_run_lock(
 
         # When: deletion overlaps the worker's terminal persistence transaction.
         with anyio.fail_after(2), pytest.raises(HTTPException) as raised:
-            await agent_service.delete_agent(delete_db, agent)
+            await agent_service.delete_agent(delete_db, agent, context=unit_context(TEST_USER_ID))
 
         # Then: reject before cascade needs the locked run; never wait on it.
         assert raised.value.status_code == 409
@@ -66,7 +68,9 @@ async def test_run_creation_first_fences_agent_delete_until_commit(
         async def remove() -> None:
             attempted.set()
             with pytest.raises(HTTPException) as raised:
-                await agent_service.delete_agent(delete_db, agent)
+                await agent_service.delete_agent(
+                    delete_db, agent, context=unit_context(TEST_USER_ID)
+                )
             assert raised.value.status_code == 409
             await delete_db.rollback()
             finished.set()
@@ -113,7 +117,7 @@ async def test_agent_delete_first_fences_run_creation_then_returns_not_found(
             await attempted.wait()
             await _wait_for_lock(delete_db, create_pid)
             assert not finished.is_set()
-            await agent_service.delete_agent(delete_db, agent)
+            await agent_service.delete_agent(delete_db, agent, context=unit_context(TEST_USER_ID))
             await delete_db.commit()
             with anyio.fail_after(5):
                 await finished.wait()

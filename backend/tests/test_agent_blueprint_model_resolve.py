@@ -28,12 +28,19 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.marketplace.schemas import CreateAgentFromBlueprintIn
 from app.models.agent_blueprint import AgentBlueprint
 from app.models.model import Model
 from app.models.user import User
 from app.services import agent_blueprint_service
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -51,6 +58,10 @@ async def _ensure_test_user(db: AsyncSession) -> None:
             )
         )
         await db.flush()
+
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="blueprint-fixture@test.dev", name="Fixture")
+    )
 
 
 async def _make_blueprint(
@@ -81,6 +92,8 @@ async def _make_blueprint(
         spec_hash="d" * 64,
         origin_kind="imported_by_me",
         install_status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(blueprint)
     await db.flush()
@@ -111,7 +124,7 @@ async def test_hidden_model_override_rejected_422(db: AsyncSession) -> None:
         await agent_blueprint_service.create_agent_from_blueprint(
             db,
             blueprint_id=blueprint.id,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             body=CreateAgentFromBlueprintIn(model_id=hidden.id),
         )
 
@@ -132,7 +145,7 @@ async def test_missing_model_override_rejected_422(db: AsyncSession) -> None:
         await agent_blueprint_service.create_agent_from_blueprint(
             db,
             blueprint_id=blueprint.id,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             body=CreateAgentFromBlueprintIn(model_id=uuid.uuid4()),
         )
 
@@ -154,7 +167,7 @@ async def test_visible_model_override_materializes_agent(db: AsyncSession) -> No
     agent = await agent_blueprint_service.create_agent_from_blueprint(
         db,
         blueprint_id=blueprint.id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         body=CreateAgentFromBlueprintIn(model_id=other_visible.id),
     )
 
@@ -184,7 +197,7 @@ async def test_spec_preferred_model_id_ignores_hidden_model(db: AsyncSession) ->
     agent = await agent_blueprint_service.create_agent_from_blueprint(
         db,
         blueprint_id=blueprint.id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         body=CreateAgentFromBlueprintIn(),
     )
 

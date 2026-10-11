@@ -25,8 +25,10 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.mcp_probe_scope import require_mcp_probe_scope
 from app.config import settings
 from app.credentials import service as credential_service
+from app.exceptions import AppError
 from app.mcp import client as mcp_client
 from app.mcp.auth import resolve_mcp_auth
 from app.models.credential import Credential
@@ -123,11 +125,16 @@ async def check_mcp_server(
     SDK client used here is HTTP-only).
     """
 
+    validated_credential = await require_mcp_probe_scope(
+        db, server, credential.id if credential is not None else server.credential_id
+    )
     try:
         auth = await resolve_mcp_auth(
             db,
             credential_id=credential.id if credential is not None else server.credential_id,
-            user_id=server.user_id,
+            user_id=(
+                validated_credential.user_id if validated_credential is not None else server.user_id
+            ),
             static_headers=server.headers,
         )
         if auth.error:
@@ -245,7 +252,10 @@ async def check_all_active(
             server = await db.get(McpServer, server_id)
             if server is None:
                 continue
-            cred = await _resolve_credential(db, server.credential_id)
+            try:
+                cred = await require_mcp_probe_scope(db, server, server.credential_id)
+            except AppError:
+                continue
             history = await check_mcp_server(db, server=server, credential=cred)
             counters["mcp_servers_checked"] += 1
             counters[history.status] = counters.get(history.status, 0) + 1
@@ -276,7 +286,10 @@ async def check_all_active(
             server = await session.get(McpServer, server_id)
             if server is None:
                 return
-            cred = await _resolve_credential(session, server.credential_id)
+            try:
+                cred = await require_mcp_probe_scope(session, server, server.credential_id)
+            except AppError:
+                return
             history = await check_mcp_server(session, server=server, credential=cred)
             await session.commit()
             await record_counter("mcp_servers_checked", history.status)
@@ -348,14 +361,6 @@ async def _update_mcp_status(
     elif history.status == "unhealthy":
         server.status = "unreachable"
     server.last_error = error or history.error_message
-
-
-async def _resolve_credential(
-    db: AsyncSession, credential_id: uuid.UUID | None
-) -> Credential | None:
-    if credential_id is None:
-        return None
-    return await db.get(Credential, credential_id)
 
 
 async def _resolve_model_credential(db: AsyncSession, model: Model) -> Credential | None:

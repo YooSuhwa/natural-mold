@@ -7,6 +7,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
 
 MEMORY_SCOPES = ("user", "agent")
 MEMORY_ALLOWED_SCOPES = ("user", "agent", "both")
@@ -101,8 +102,9 @@ class AgentMemorySettings(Base):
     )
 
 
-class MemoryRecord(Base):
+class MemoryRecord(RequiredOrgScope, Base):
     __tablename__ = "memory_records"
+    __table_args__ = resource_scope_constraints("memory_records", system=False)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -141,8 +143,9 @@ class MemoryRecord(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
-class MemoryProposal(Base):
+class MemoryProposal(RequiredOrgScope, Base):
     __tablename__ = "memory_proposals"
+    __table_args__ = resource_scope_constraints("memory_proposals", system=False)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(

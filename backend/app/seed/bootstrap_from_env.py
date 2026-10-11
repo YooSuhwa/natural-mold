@@ -21,8 +21,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.platform_scope import PlatformScope
 from app.config import settings
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.models.credential import Credential
 
 logger = logging.getLogger(__name__)
@@ -118,9 +120,7 @@ async def bootstrap_system_credentials(db: AsyncSession) -> list[Credential]:
         return []
 
     existing_rows = await db.execute(
-        select(Credential.definition_key, Credential.name).where(
-            Credential.is_system.is_(True)
-        )
+        select(Credential.definition_key, Credential.name).where(Credential.is_system.is_(True))
     )
     existing = {(row[0], row[1]) for row in existing_rows.all()}
 
@@ -133,12 +133,10 @@ async def bootstrap_system_credentials(db: AsyncSession) -> list[Credential]:
             continue
         credential = await credential_service.create(
             db,
-            user_id=None,
-            definition_key=spec.definition_key,
-            name=spec.name,
-            data=payload,
-            is_system=True,
-            source="seed",
+            CredentialCreation(
+                definition_key=spec.definition_key, name=spec.name, data=payload, source="seed"
+            ),
+            PlatformScope(),
         )
         created.append(credential)
         logger.info(

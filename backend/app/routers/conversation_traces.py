@@ -9,7 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
-from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation
+from app.authz.org_context import OrgContext
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+)
 from app.error_codes import (
     trace_not_found,
 )
@@ -42,13 +49,14 @@ async def get_conversation_run_message_links(
     message_id: Annotated[list[ConversationRunMessageKey], Query(min_length=1, max_length=50)],
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _conversation: Conversation = Depends(owned_conversation),
 ) -> list[ConversationRunMessageLinkResponse]:
     return await list_run_message_links(
         db,
         RunMessageLinkQuery(
             conversation_id=conversation_id,
-            user_id=user.id,
+            context=context,
             message_ids=message_id,
         ),
     )
@@ -100,10 +108,13 @@ async def list_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     conversation: Conversation = Depends(owned_conversation),
 ):
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+    secrets = tuple(
+        await chat_secrets.collect_conversation_secret_values(db, conversation, context)
+    )
     return [_public_turn_trace(record, secret_values=secrets) for record in records]
 
 
@@ -115,10 +126,13 @@ async def list_debug_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     conversation: Conversation = Depends(owned_conversation),
 ):
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+    secrets = tuple(
+        await chat_secrets.collect_conversation_secret_values(db, conversation, context)
+    )
     run_statuses = await _run_status_by_message_event_id(db, records)
     langfuse_enabled = is_langfuse_enabled()
     fallback_reason = None if langfuse_enabled else "Langfuse disabled"
@@ -147,6 +161,7 @@ async def get_debug_trace_detail(
     trace_id: str,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     conversation: Conversation = Depends(owned_conversation),
 ):
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
@@ -158,7 +173,9 @@ async def get_debug_trace_detail(
         raise trace_not_found()
 
     run_statuses = await _run_status_by_message_event_id(db, [record])
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+    secrets = tuple(
+        await chat_secrets.collect_conversation_secret_values(db, conversation, context)
+    )
     summary, spans, raw, fallback_reason = await trace_debug_service.build_debug_detail(
         record,
         run_status=run_statuses.get(record.assistant_msg_id),

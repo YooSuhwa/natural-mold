@@ -11,6 +11,21 @@ from sqlalchemy.orm import selectinload
 
 from app.agent_runtime.identity import make_agent_runtime_name, validate_identity_mode
 from app.agent_runtime.runtime_policy import runtime_policy_to_json
+from app.authz.agent_projection_scope import (
+    AgentPresentation,
+    load_agent_presentation,
+    mcp_link_scope,
+    projection_options,
+    tool_link_scope,
+)
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import private_scope_predicate, resource_candidates
+from app.error_codes import agent_not_found
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.mcp_server import McpServer
@@ -41,7 +56,7 @@ def _selectin_agent() -> list:
     ]
 
 
-async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
+async def list_agents(db: AsyncSession, context: OrgContext) -> list[Agent]:
     """List user's agents with ``last_used_at`` set on each row.
 
     ``last_used_at`` is derived from ``max(conversations.updated_at)`` per
@@ -50,6 +65,7 @@ async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
     attribute (not persisted) so the response serializer picks it up.
     """
 
+    await require_private_actor(db, context)
     from sqlalchemy import func
 
     from app.models.conversation import Conversation
@@ -60,6 +76,7 @@ async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
             func.max(Conversation.updated_at).label("last_used_at"),
             func.coalesce(func.sum(Conversation.unread_count), 0).label("unread_count"),
         )
+        .where(private_scope_predicate(Conversation, context))
         .group_by(Conversation.agent_id)
         .subquery()
     )
@@ -68,11 +85,12 @@ async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
         select(Agent, last_used_subq.c.last_used_at, last_used_subq.c.unread_count)
         .outerjoin(last_used_subq, Agent.id == last_used_subq.c.agent_id)
         .where(
-            Agent.user_id == user_id,
+            private_scope_predicate(Agent, context),
             # Hidden runtime rows (skill builder 등) never surface in lists.
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
         )
-        .options(*_selectin_agent())
+        .options(*projection_options(context))
+        .execution_options(autoflush=False, populate_existing=True)
         .order_by(func.coalesce(last_used_subq.c.last_used_at, Agent.created_at).desc())
     )
     rows = result.all()
@@ -85,15 +103,16 @@ async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
     return agents
 
 
-async def list_agent_summaries(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+async def list_agent_summaries(db: AsyncSession, context: OrgContext) -> list[dict]:
     """List user's agents as lean dashboard/sidebar summary rows."""
 
+    await require_private_actor(db, context)
     from app.models.conversation import Conversation
 
     user_agent_ids = (
         select(Agent.id)
         .where(
-            Agent.user_id == user_id,
+            private_scope_predicate(Agent, context),
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
         )
         .subquery()
@@ -106,6 +125,7 @@ async def list_agent_summaries(db: AsyncSession, user_id: uuid.UUID) -> list[dic
             func.coalesce(func.sum(Conversation.unread_count), 0).label("unread_count"),
         )
         .where(Conversation.agent_id.in_(select(user_agent_ids.c.id)))
+        .where(private_scope_predicate(Conversation, context))
         .group_by(Conversation.agent_id)
         .subquery()
     )
@@ -114,6 +134,7 @@ async def list_agent_summaries(db: AsyncSession, user_id: uuid.UUID) -> list[dic
             AgentToolLink.agent_id.label("agent_id"),
             func.count(AgentToolLink.tool_id).label("tool_count"),
         )
+        .where(tool_link_scope(context))
         .group_by(AgentToolLink.agent_id)
         .subquery()
     )
@@ -122,6 +143,7 @@ async def list_agent_summaries(db: AsyncSession, user_id: uuid.UUID) -> list[dic
             AgentMcpToolLink.agent_id.label("agent_id"),
             func.count(AgentMcpToolLink.mcp_tool_id).label("mcp_tool_count"),
         )
+        .where(mcp_link_scope(context))
         .group_by(AgentMcpToolLink.agent_id)
         .subquery()
     )
@@ -148,7 +170,7 @@ async def list_agent_summaries(db: AsyncSession, user_id: uuid.UUID) -> list[dic
         .outerjoin(tool_summary, Agent.id == tool_summary.c.agent_id)
         .outerjoin(mcp_tool_summary, Agent.id == mcp_tool_summary.c.agent_id)
         .where(
-            Agent.user_id == user_id,
+            private_scope_predicate(Agent, context),
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
         )
         .order_by(func.coalesce(conversation_summary.c.last_used_at, Agent.created_at).desc())
@@ -182,25 +204,37 @@ async def list_agent_summaries(db: AsyncSession, user_id: uuid.UUID) -> list[dic
     return summaries
 
 
-async def get_agent(db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -> Agent | None:
-    result = await db.execute(
-        select(Agent)
-        .where(Agent.id == agent_id, Agent.user_id == user_id)
-        .options(*_selectin_agent())
-    )
-    agent = result.scalar_one_or_none()
-    if agent is None:
-        return None
-    from app.models.conversation import Conversation
-
-    unread_result = await db.execute(
-        select(func.coalesce(func.sum(Conversation.unread_count), 0)).where(
-            Conversation.agent_id == agent_id
+async def get_agent(db: AsyncSession, agent_id: uuid.UUID, context: OrgContext) -> Agent | None:
+    with db.no_autoflush:
+        await resolve_private_actor(
+            db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
         )
-    )
-    agent_with_unread = cast(Any, agent)
-    agent_with_unread._unread_count = int(unread_result.scalar_one() or 0)  # noqa: SLF001 — deliberate stash
-    return agent
+        result = await db.execute(
+            select(Agent)
+            .where(Agent.id == agent_id, private_scope_predicate(Agent, context))
+            .options(*_selectin_agent())
+            .execution_options(autoflush=False, populate_existing=True)
+        )
+        agent = result.scalar_one_or_none()
+        if agent is None:
+            return None
+        from app.models.conversation import Conversation
+
+        unread_result = await db.execute(
+            select(func.coalesce(func.sum(Conversation.unread_count), 0)).where(
+                Conversation.agent_id == agent_id, private_scope_predicate(Conversation, context)
+            )
+        )
+        agent_with_unread = cast(Any, agent)
+        agent_with_unread._unread_count = int(unread_result.scalar_one() or 0)  # noqa: SLF001 — deliberate stash
+        return agent
+
+
+async def get_agent_projection(
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
+) -> AgentPresentation | None:
+    """Read current presentation links without changing persisted associations."""
+    return await load_agent_presentation(db, agent_id, context)
 
 
 def _build_tool_links(tool_ids: list[uuid.UUID]) -> list[AgentToolLink]:
@@ -209,7 +243,7 @@ def _build_tool_links(tool_ids: list[uuid.UUID]) -> list[AgentToolLink]:
 
 
 async def _validate_sub_agent_ids_owned(
-    db: AsyncSession, sub_agent_ids: list[uuid.UUID], user_id: uuid.UUID
+    db: AsyncSession, sub_agent_ids: list[uuid.UUID], context: OrgContext
 ) -> None:
     """sub_agent_ids: 실재 + 동일 사용자 소유. 누락 시 400."""
     if not sub_agent_ids:
@@ -217,7 +251,7 @@ async def _validate_sub_agent_ids_owned(
     result = await db.execute(
         select(Agent.id).where(
             Agent.id.in_(sub_agent_ids),
-            Agent.user_id == user_id,
+            private_scope_predicate(Agent, context),
             # Hidden runtime rows can't be attached as sub-agents.
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
         )
@@ -232,7 +266,7 @@ async def _validate_sub_agent_ids_owned(
 
 
 async def _validate_mcp_tool_ids_owned(
-    db: AsyncSession, mcp_tool_ids: list[uuid.UUID], user_id: uuid.UUID
+    db: AsyncSession, mcp_tool_ids: list[uuid.UUID], context: OrgContext
 ) -> None:
     """mcp_tool_ids: 실재 + (서버 소유주가 user_id). 누락 시 400."""
 
@@ -241,7 +275,7 @@ async def _validate_mcp_tool_ids_owned(
     result = await db.execute(
         select(McpTool.id)
         .join(McpServer, McpTool.server_id == McpServer.id)
-        .where(McpTool.id.in_(mcp_tool_ids), McpServer.user_id == user_id)
+        .where(McpTool.id.in_(mcp_tool_ids), private_scope_predicate(McpServer, context))
     )
     valid = {row[0] for row in result.all()}
     invalid = [str(i) for i in mcp_tool_ids if i not in valid]
@@ -253,16 +287,13 @@ async def _validate_mcp_tool_ids_owned(
 
 
 async def _validate_tool_ids_owned(
-    db: AsyncSession, tool_ids: list[uuid.UUID], user_id: uuid.UUID
+    db: AsyncSession, tool_ids: list[uuid.UUID], context: OrgContext
 ) -> None:
     """tool_ids: 실재 + (사용자 소유 OR 시스템 도구). 누락 시 400."""
     if not tool_ids:
         return
     result = await db.execute(
-        select(Tool.id).where(
-            Tool.id.in_(tool_ids),
-            Tool.visible_to(user_id),
-        )
+        resource_candidates(select(Tool.id).where(Tool.id.in_(tool_ids)), Tool, context)
     )
     valid = {row[0] for row in result.all()}
     invalid = [str(i) for i in tool_ids if i not in valid]
@@ -294,7 +325,7 @@ async def _validate_model_fallback_ids(db: AsyncSession, fallback_ids: list[uuid
 
 
 async def _validate_skill_ids_owned(
-    db: AsyncSession, skill_ids: list[uuid.UUID], user_id: uuid.UUID
+    db: AsyncSession, skill_ids: list[uuid.UUID], context: OrgContext
 ) -> None:
     """skill_ids: 실재 + 동일 사용자 소유. 누락 시 400."""
     if not skill_ids:
@@ -304,7 +335,7 @@ async def _validate_skill_ids_owned(
     result = await db.execute(
         select(Skill.id).where(
             Skill.id.in_(skill_ids),
-            Skill.user_id == user_id,
+            private_scope_predicate(Skill, context),
         )
     )
     valid = {row[0] for row in result.all()}
@@ -317,7 +348,7 @@ async def _validate_skill_ids_owned(
 
 
 async def _install_template_skills(
-    db: AsyncSession, slugs: list[str], user_id: uuid.UUID
+    db: AsyncSession, slugs: list[str], context: OrgContext
 ) -> list[uuid.UUID]:
     """Install system marketplace skills referenced by a template (by slug).
 
@@ -335,6 +366,7 @@ async def _install_template_skills(
     from app.models.skill import Skill
     from app.models.user import User
 
+    user_id = context.user_id
     user_row = await db.get(User, user_id)
     if user_row is None:
         return []
@@ -373,6 +405,7 @@ async def _install_template_skills(
                 db,
                 item_id=item_id,
                 user=current_user,
+                context=context,
                 body=InstallMarketplaceItemIn(),
             )
         except HTTPException:
@@ -386,7 +419,7 @@ async def _install_template_skills(
     # A re-used installation can point at a skill the user has since deleted;
     # attach only skill rows that still exist and belong to the user.
     result = await db.execute(
-        select(Skill.id).where(Skill.id.in_(skill_ids), Skill.user_id == user_id)
+        select(Skill.id).where(Skill.id.in_(skill_ids), private_scope_predicate(Skill, context))
     )
     valid = {row[0] for row in result.all()}
     dangling = [str(s) for s in skill_ids if s not in valid]
@@ -395,7 +428,11 @@ async def _install_template_skills(
     return [s for s in skill_ids if s in valid]
 
 
-async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
+async def toggle_favorite(db: AsyncSession, agent: Agent, context: OrgContext) -> Agent:
+    scoped = await get_agent(db, agent.id, context)
+    if scoped is None:
+        raise agent_not_found()
+    agent = scoped
     agent.is_favorite = not agent.is_favorite
     await db.flush()
     await db.refresh(
@@ -405,15 +442,36 @@ async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
     return agent
 
 
-async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) -> Agent:
+async def _validate_agent_binding_ids(
+    db: AsyncSession, data: AgentCreate | AgentUpdate, context: OrgContext
+) -> None:
+    """Validate the complete requested graph before mutating an Agent or its links."""
+    with db.no_autoflush:
+        if data.model_fallback_ids:
+            await _validate_model_fallback_ids(db, data.model_fallback_ids)
+        if data.tool_ids:
+            await _validate_tool_ids_owned(db, data.tool_ids, context)
+        if data.mcp_tool_ids:
+            await _validate_mcp_tool_ids_owned(db, data.mcp_tool_ids, context)
+        if data.skill_ids:
+            await _validate_skill_ids_owned(db, data.skill_ids, context)
+        if data.sub_agent_ids:
+            await _validate_sub_agent_ids_owned(db, data.sub_agent_ids, context)
+
+
+async def create_agent(db: AsyncSession, data: AgentCreate, context: OrgContext) -> Agent:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    await _validate_agent_binding_ids(db, data, context)
     fallback_ids = data.model_fallback_ids or []
-    if fallback_ids:
-        await _validate_model_fallback_ids(db, fallback_ids)
 
     agent_id = uuid.uuid4()
     agent = Agent(
         id=agent_id,
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         runtime_name=make_agent_runtime_name(agent_id),
         identity_mode=validate_identity_mode(data.identity_mode),
         name=data.name,
@@ -445,23 +503,19 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         # Auto-link from template recommended tools (by name)
         lower_names = [n.lower() for n in template.recommended_tools]
         result = await db.execute(
-            select(Tool.id).where(
-                Tool.visible_to(user_id),
-                func.lower(Tool.name).in_(lower_names),
+            resource_candidates(
+                select(Tool.id).where(func.lower(Tool.name).in_(lower_names)), Tool, context
             )
         )
         tool_ids_to_link.extend(r[0] for r in result.all())
 
     if tool_ids_to_link:
-        await _validate_tool_ids_owned(db, tool_ids_to_link, user_id)
         agent.tool_links = _build_tool_links(tool_ids_to_link)
 
     if data.mcp_tool_ids:
-        await _validate_mcp_tool_ids_owned(db, data.mcp_tool_ids, user_id)
         agent.mcp_tool_links = [AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids]
 
     if data.skill_ids:
-        await _validate_skill_ids_owned(db, data.skill_ids, user_id)
         agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
     elif template and template.recommended_skill_slugs:
         # Auto-install system marketplace skills referenced by the template,
@@ -469,13 +523,12 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         auto_skill_ids = await _install_template_skills(
             db,
             [str(s) for s in template.recommended_skill_slugs],
-            user_id,
+            context,
         )
         if auto_skill_ids:
             agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in auto_skill_ids]
 
     if data.sub_agent_ids:
-        await _validate_sub_agent_ids_owned(db, data.sub_agent_ids, user_id)
         agent.sub_agent_links = [
             AgentSubAgentLink(sub_agent_id=sid, position=idx)
             for idx, sid in enumerate(data.sub_agent_ids)
@@ -490,7 +543,16 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
     return agent
 
 
-async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Agent:
+async def update_agent(
+    db: AsyncSession, agent: Agent, data: AgentUpdate, *, context: OrgContext
+) -> Agent:
+    scoped = await get_agent(db, agent.id, context)
+    if scoped is None:
+        raise agent_not_found()
+    agent = scoped
+    if data.sub_agent_ids is not None and agent.id in data.sub_agent_ids:
+        raise HTTPException(status_code=400, detail="Cannot add self as sub-agent")
+    await _validate_agent_binding_ids(db, data, context)
     if data.identity_mode is not None and data.identity_mode != agent.identity_mode:
         next_mode = validate_identity_mode(data.identity_mode)
         if next_mode == "per_user" and await _count_active_triggers(db, agent.id) > 0:
@@ -520,32 +582,25 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
     if data.opener_questions is not None:
         agent.opener_questions = data.opener_questions
     if data.model_fallback_ids is not None:
-        await _validate_model_fallback_ids(db, data.model_fallback_ids)
         agent.model_fallback_list = (
             [str(fid) for fid in data.model_fallback_ids] if data.model_fallback_ids else None
         )
     if data.tool_ids is not None:
-        await _validate_tool_ids_owned(db, data.tool_ids, agent.user_id)
         # Clear existing links first to avoid PK conflict, then add new ones
         agent.tool_links.clear()
         await db.flush()
         agent.tool_links = _build_tool_links(data.tool_ids)
     if data.mcp_tool_ids is not None:
-        await _validate_mcp_tool_ids_owned(db, data.mcp_tool_ids, agent.user_id)
         agent.mcp_tool_links.clear()
         await db.flush()
         agent.mcp_tool_links = [AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids]
     if data.skill_ids is not None:
-        await _validate_skill_ids_owned(db, data.skill_ids, agent.user_id)
         agent.skill_links.clear()
         await db.flush()
         agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
     if data.sub_agent_ids is not None:
         # 자기참조 방어: DB CHECK 제약과 이중 가드
-        if agent.id in data.sub_agent_ids:
-            raise HTTPException(status_code=400, detail="Cannot add self as sub-agent")
         # 소유권/실재 검증 (cross-tenant leak + 500 IntegrityError 방지)
-        await _validate_sub_agent_ids_owned(db, data.sub_agent_ids, agent.user_id)
         agent.sub_agent_links.clear()
         await db.flush()
         agent.sub_agent_links = [

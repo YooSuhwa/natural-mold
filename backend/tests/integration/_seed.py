@@ -11,11 +11,14 @@ Conversation 시퀀스를 hand-roll. 한 곳으로 통합하면 향후 모델/�
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, ensure_unit_scope
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -46,7 +49,12 @@ async def seed_conversation_with_agent(
         )
         db.add(model)
         await db.flush()
+        await ensure_unit_scope(
+            db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test")
+        )
         agent = Agent(
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
             user_id=TEST_USER_ID,
             name=agent_name,
             system_prompt=system_prompt,
@@ -54,7 +62,15 @@ async def seed_conversation_with_agent(
         )
         db.add(agent)
         await db.flush()
-        conv = Conversation(agent_id=agent.id, title=conv_title)
+        conv = Conversation(
+            agent_id=agent.id,
+            title=conv_title,
+            user_id=TEST_USER_ID,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            agent_name_snapshot=agent.name,
+            last_activity_at=datetime.now(UTC),
+        )
         db.add(conv)
         await db.commit()
         return conv.id

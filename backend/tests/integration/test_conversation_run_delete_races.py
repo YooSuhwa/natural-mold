@@ -5,6 +5,7 @@ import os
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 import anyio
@@ -14,6 +15,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -21,6 +23,12 @@ from app.models.model import Model
 from app.models.user import User
 from app.services import conversation_run_service, memory_service, user_service
 from app.services.chat import conversations as conversation_service
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,10 +93,26 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> SeededGraph:
         model = Model(provider="openai", model_name="race-model", display_name="Race Model")
         db.add_all([user, model])
         await db.flush()
-        agent = Agent(user_id=user.id, name="Race Agent", system_prompt="x", model_id=model.id)
+        await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
+        agent = Agent(
+            user_id=user.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            name="Race Agent",
+            system_prompt="x",
+            model_id=model.id,
+        )
         db.add(agent)
         await db.flush()
-        conversation = Conversation(agent_id=agent.id, title="Race Conversation")
+        conversation = Conversation(
+            agent_id=agent.id,
+            user_id=user.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            agent_name_snapshot=agent.name,
+            last_activity_at=datetime.now(UTC),
+            title="Race Conversation",
+        )
         db.add(conversation)
         await db.commit()
         return SeededGraph(user.id, model.id, agent.id, conversation.id)
@@ -132,7 +156,7 @@ async def _create_run(db: AsyncSession, graph: SeededGraph) -> ConversationRun:
         db,
         conversation_id=graph.conversation_id,
         agent_id=graph.agent_id,
-        user_id=graph.user_id,
+        context=unit_context(graph.user_id),
         source="chat",
         input_preview="race",
     )
@@ -185,7 +209,9 @@ async def test_conversation_delete_first_blocks_run_then_returns_not_found(
         await attempted.wait()
         await _wait_for_lock(delete_db, create_pid)
         assert not task.done()
-        await conversation_service.delete_conversation(delete_db, conversation)
+        await conversation_service.delete_conversation(
+            delete_db, conversation, context=unit_context(graph.user_id)
+        )
         await delete_db.commit()
         with pytest.raises(HTTPException) as raised:
             await asyncio.wait_for(task, timeout=5)
@@ -217,7 +243,9 @@ async def test_run_first_blocks_conversation_delete_then_returns_conflict(
 
         async def remove() -> None:
             attempted.set()
-            await conversation_service.delete_conversation(delete_db, conversation)
+            await conversation_service.delete_conversation(
+                delete_db, conversation, context=unit_context(graph.user_id)
+            )
 
         task = asyncio.create_task(remove())
         await attempted.wait()
@@ -315,7 +343,7 @@ async def test_run_creation_user_fence_allows_memory_settings_insert_before_comm
         with anyio.fail_after(1):
             policy = await memory_service.resolve_effective_policy(
                 memory_db,
-                user_id=graph.user_id,
+                context=unit_context(graph.user_id),
                 agent_id=graph.agent_id,
             )
 

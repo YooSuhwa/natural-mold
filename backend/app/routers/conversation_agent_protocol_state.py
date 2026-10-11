@@ -17,6 +17,7 @@ from app.agent_runtime.mcp_app_projection import (
 )
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.run_secrets import collect_cfg_secret_values
+from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_contracts import (
@@ -31,6 +32,8 @@ from app.routers.conversation_agent_protocol_state_snapshot import (
     project_todo_policy_values,
     serialize_langchain_message,
 )
+from app.schemas.conversation_scope import ConversationBranchMutation
+from app.services.chat.conversation_mutations import set_active_branch
 from app.services.conversation_stream_service import resolve_agent_context
 from app.services.thread_branch_service import _CheckpointSlim, _collect_checkpoints
 
@@ -44,6 +47,7 @@ async def load_thread_history_response(
     *,
     db: AsyncSession | None = None,
     user: CurrentUser | None = None,
+    context: OrgContext,
 ) -> list[dict[str, object]]:
     try:
         checkpointer = get_checkpointer()
@@ -54,7 +58,7 @@ async def load_thread_history_response(
     # explicitly (best-effort) and thread them into the serialized messages.
     secrets: tuple[str, ...] | None = None
     if db is not None and user is not None:
-        secrets = tuple(await collect_state_secret_values(db, conversation))
+        secrets = tuple(await collect_state_secret_values(db, conversation, context))
 
     checkpoints = await _collect_checkpoints(checkpointer, str(conversation.id))
     checkpoint_by_message_id = _checkpoint_by_message_id_from_checkpoints(checkpoints)
@@ -81,11 +85,13 @@ async def update_thread_state_response(
     conversation: Conversation,
     request: UpdateStateRequest,
     user: CurrentUser,
+    context: OrgContext,
 ) -> dict[str, object]:
     cfg = await resolve_agent_context(
         db,
         conversation.id,
         user,
+        context=context,
         checkpoint_id=request.checkpoint.checkpoint_id if request.checkpoint else None,
     )
     agent, _, config = await _prepare_agent(cfg, messages_history=[])
@@ -109,7 +115,9 @@ async def update_thread_state_response(
     updated = await agent.aget_state({"configurable": {"thread_id": str(conversation.id)}})
     checkpoint_id = _snapshot_checkpoint_id(updated)
     if checkpoint_id:
-        conversation.active_branch_checkpoint_id = checkpoint_id
+        await set_active_branch(
+            db, ConversationBranchMutation(conversation.id, context, checkpoint_id)
+        )
         await db.commit()
     # ADR-021 C2 — cfg was already resolved above; reuse its eager secret set
     # to mask the returned state values (this endpoint runs outside any run).

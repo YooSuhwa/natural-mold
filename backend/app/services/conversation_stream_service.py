@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agent_runtime import event_names
 from app.agent_runtime.agent_stream_runner import execute_agent_stream, resume_agent_stream
+from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
@@ -29,12 +30,17 @@ from app.agent_runtime.runtime_policy import (
 )
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
 from app.agent_runtime.subagents import build_subagents_config
+from app.authz.conversation_scope import require_private_conversation
+from app.authz.org_context import OrgContext
+from app.authz.runtime_capability_scope import require_runtime_capability_tree
+from app.authz.skill_builder_scope import private_skill_builder_predicate
 from app.config import settings
 from app.database import async_session
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ConflictError
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER
+from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.model import Model
 from app.observability.langfuse import LangfuseTraceRecord
@@ -83,17 +89,25 @@ async def resolve_agent_context(
     conversation_id: uuid.UUID,
     user: CurrentUser,
     *,
+    context: OrgContext,
     checkpoint_id: str | None = None,
 ) -> AgentConfig:
     """conversation + agent 조회 -> AgentConfig 생성."""
 
-    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, user.id)
-    if not conv:
+    await require_private_conversation(db, conversation_id, context)
+    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
+    if not conv or (conv.user_id, conv.org_id, conv.tenant_id) != (
+        context.user_id,
+        context.org_id,
+        context.tenant_id,
+    ):
         raise conversation_not_found()
 
     agent = conv.agent
     if agent is None:
         raise agent_not_found()
+
+    require_runtime_capability_tree(agent, context)
 
     try:
         runtime_policy = snapshot_from_conversation(conv)
@@ -112,6 +126,7 @@ async def resolve_agent_context(
             agent,
             user,
             runtime_policy=SKILL_BUILDER_RUNTIME_POLICY,
+            context=context,
             checkpoint_id=checkpoint_id,
         )
 
@@ -134,11 +149,14 @@ async def resolve_agent_context(
         caller_user_id=user.id,
     )
 
-    api_key = await resolve_llm_api_key_for_agent(db, agent, identity=identity)
+    api_key = await resolve_llm_api_key_for_agent(
+        db, agent, AgentCredentialAccess(context, identity)
+    )
     base_url = agent.model.base_url
 
     tools_config = await chat_service.build_tools_config(
         agent,
+        context=context,
         db=db,
         conversation_id=str(conversation_id),
         identity=identity,
@@ -155,6 +173,7 @@ async def resolve_agent_context(
     )
 
     cfg = AgentConfig(
+        org_context=context,
         provider=agent.model.provider,
         model_name=agent.model.model_name,
         api_key=api_key,
@@ -165,7 +184,7 @@ async def resolve_agent_context(
         runtime_policy=runtime_policy,
         model_params=agent.model_params,
         middleware_configs=agent.middleware_configs,
-        agent_skills=chat_service.build_agent_skills(agent) or None,
+        agent_skills=chat_service.build_agent_skills(agent, context) or None,
         agent_id=str(agent.id),
         agent_name=agent.name,
         provider_api_keys=provider_api_keys,
@@ -207,6 +226,7 @@ async def _resolve_skill_builder_agent_context(
     agent: Any,
     user: CurrentUser,
     *,
+    context: OrgContext,
     runtime_policy: ResolvedRuntimePolicy,
     checkpoint_id: str | None,
 ) -> AgentConfig:
@@ -227,27 +247,38 @@ async def _resolve_skill_builder_agent_context(
         resolve_system_model,
     )
 
-    try:
-        resolved = await resolve_system_model(db, "text_primary")
-    except SystemModelNotConfiguredError as exc:
-        raise system_llm_not_configured() from exc
+    if user.id != context.user_id:
+        raise conversation_not_found()
+    await require_private_conversation(db, conv.id, context)
 
     result = await db.execute(
         select(SkillBuilderSession)
         .where(
             SkillBuilderSession.conversation_id == conv.id,
-            SkillBuilderSession.user_id == user.id,
+            private_skill_builder_predicate(context),
         )
         # 세션↔대화 1:1은 DB 제약이 아니라 관례다 — 방어적으로 최신 1건만
         # 취해 MultipleResultsFound 500을 차단한다 (R2).
         .order_by(SkillBuilderSession.created_at.desc())
         .limit(1)
+        .with_for_update(of=SkillBuilderSession)
+        .execution_options(populate_existing=True, autoflush=False)
     )
     session = result.scalar_one_or_none()
     if session is None:
         # 빌더 대화인데 매칭 세션이 없거나 남의 세션 — 접근 불가로 통일
         # (enumeration-safe 404).
         raise conversation_not_found()
+
+    if session.draft_workspace_path is not None and (
+        session.draft_workspace_path != skill_draft_workspace.workspace_storage_path(session.id)
+    ):
+        raise conversation_not_found()
+
+    try:
+        resolved = await resolve_system_model(db, "text_primary")
+    except SystemModelNotConfiguredError as exc:
+        raise system_llm_not_configured() from exc
 
     if not session.draft_workspace_path:
         # start v2가 항상 채우지만, 방어적으로 재생성 (멱등).
@@ -278,6 +309,7 @@ async def _resolve_skill_builder_agent_context(
     )
 
     cfg = AgentConfig(
+        org_context=context,
         provider=resolved.provider,
         model_name=resolved.model_name,
         api_key=resolved.api_key,
@@ -470,7 +502,7 @@ def build_artifact_recorder(
         session_factory=cast(async_sessionmaker[AsyncSession], async_session),
         context=ArtifactRuntimeContext(
             conversation_id=conversation_id,
-            user_id=user.id,
+            org_context=cfg.org_context,
             agent_id=uuid.UUID(cfg.agent_id),
             assistant_msg_id=run_id,
             output_dir=(Path(settings.conversation_output_dir) / str(conversation_id)).resolve(),
@@ -549,6 +581,14 @@ async def finalize_trace(
     final_status: trace_storage.TraceStatus = status or ("completed" if success else "failed")
     trace_record = langfuse_sink[0] if langfuse_sink else None
     async with async_session() as session:
+        conversation = await session.get(Conversation, conversation_id)
+        if conversation is None:
+            return
+        artifact_context = OrgContext(
+            user_id=conversation.user_id,
+            org_id=conversation.org_id,
+            tenant_id=conversation.tenant_id,
+        )
         finalized = await trace_storage.finalize_turn(
             session,
             assistant_msg_id=run_id,
@@ -573,6 +613,7 @@ async def finalize_trace(
         if finalized is not None and finalized.linked_message_ids:
             await link_artifacts_to_messages(
                 session,
+                context=artifact_context,
                 conversation_id=conversation_id,
                 assistant_msg_id=run_id,
                 linked_message_ids=[str(message_id) for message_id in finalized.linked_message_ids],
@@ -580,6 +621,7 @@ async def finalize_trace(
         if run_status is not None:
             await finalize_artifacts_for_run(
                 session,
+                context=artifact_context,
                 conversation_id=conversation_id,
                 assistant_msg_id=run_id,
                 run_status=run_status,

@@ -12,6 +12,7 @@ from app.agent_runtime.assistant.tools.write_tools.context import (
     get_agent_with_session,
 )
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
+from app.authz.scoping import private_scope_predicate
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.skill import AgentSkillLink, Skill
@@ -120,7 +121,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                 result = await session.execute(
                     select(Agent.id, Agent.name).where(
                         Agent.id.in_(candidates.keys()),
-                        Agent.user_id == ctx.user_id,
+                        private_scope_predicate(Agent, ctx.org_context),
                         # 히든 런타임 에이전트는 서브에이전트 결선 불가.
                         Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
                     )
@@ -211,7 +212,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             result = await session.execute(
                 select(Skill)
                 .where(
-                    Skill.user_id == ctx.user_id,
+                    private_scope_predicate(Skill, ctx.org_context),
                     func.lower(Skill.name).in_(lower_names),
                 )
                 .order_by(Skill.created_at.asc())

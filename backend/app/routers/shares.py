@@ -25,8 +25,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.message_utils import parse_msg_id
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
+from app.authz.conversation_scope import resolve_conversation_actor
+from app.authz.org_context import OrgContext
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+    verify_csrf,
+)
 from app.error_codes import share_not_found
 from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
@@ -87,7 +96,12 @@ async def _load_public_share_messages(
     cached_snapshot = share_cache.get_snapshot(share_token, checkpoint_id)
     if cached_snapshot is not None:
         return cached_snapshot.messages
-    return await chat_service.list_messages_from_checkpointer(db, conversation, user_id=None)
+    return await chat_service.list_messages_from_checkpointer(
+        db,
+        conversation,
+        user_id=None,
+        context=await resolve_conversation_actor(db, conversation.id, conversation.user_id),
+    )
 
 
 def _is_trace_visible_in_share(
@@ -164,7 +178,7 @@ async def _list_public_share_visible_artifacts(
 
     artifacts_by_message_id = await artifact_service.list_conversation_artifacts_by_message_id(
         db,
-        user_id=user_id,
+        context=await resolve_conversation_actor(db, conversation.id, conversation.user_id),
         conversation_id=conversation.id,
     )
     visible_artifacts: list[ArtifactSummary] = []
@@ -208,9 +222,10 @@ async def get_active_share(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> ShareLinkResponse | None:
     """Return the active share link, or ``None`` when the conversation is private."""
-    link = await share_service.get_active_share_for_conversation(db, conversation_id)
+    link = await share_service.get_active_share_for_conversation(db, conversation_id, context)
     if link is None:
         return None
     return ShareLinkResponse.model_validate(link)
@@ -225,11 +240,12 @@ async def create_share(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
     conv: Conversation = Depends(owned_conversation),
 ) -> ShareLinkResponse:
     """Make the conversation public. Returns the existing token if already shared."""
-    link = await share_service.create_or_get_active_share(db, conv, user.id)
+    link = await share_service.create_or_get_active_share(db, conv, context)
     await audit_service.record_self_event(
         db,
         user,
@@ -256,11 +272,12 @@ async def revoke_share(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
     conv: Conversation = Depends(owned_conversation),
 ) -> None:
     """Revoke any active share link for the conversation. Idempotent."""
-    revoked_tokens = await share_service.revoke_share(db, conversation_id)
+    revoked_tokens = await share_service.revoke_share(db, conversation_id, context)
     await audit_service.record_self_event(
         db,
         user,
@@ -306,8 +323,19 @@ async def get_public_share(
     if cached is not None:
         return cached
 
-    messages = await chat_service.list_messages_from_checkpointer(db, conversation, user_id=None)
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+    messages = await chat_service.list_messages_from_checkpointer(
+        db,
+        conversation,
+        user_id=None,
+        context=await resolve_conversation_actor(db, conversation.id, conversation.user_id),
+    )
+    secrets = tuple(
+        await chat_secrets.collect_conversation_secret_values(
+            db,
+            conversation,
+            await resolve_conversation_actor(db, conversation.id, conversation.user_id),
+        )
+    )
     # W6: turn별 SSE event trace를 함께 노출 → 공개 페이지에서 도구/Skill
     # 칩 렌더용. trace가 없는(W5 이전에 만든) 대화는 빈 list로 응답.
     traces = _filter_public_share_traces(
@@ -360,7 +388,12 @@ async def get_public_share_messages(
     if cached is not None:
         return cached
 
-    messages = await chat_service.list_messages_from_checkpointer(db, conversation, user_id=None)
+    messages = await chat_service.list_messages_from_checkpointer(
+        db,
+        conversation,
+        user_id=None,
+        context=await resolve_conversation_actor(db, conversation.id, conversation.user_id),
+    )
     envelope = MessagesEnvelope(
         messages=messages,
         active_tip_message_id=None,
@@ -438,13 +471,13 @@ async def get_public_share_artifact_content(
         if is_text_preview_artifact(summary):
             return await artifact_service.read_artifact_text_content(
                 db,
-                user_id=agent.user_id,
+                context=await resolve_conversation_actor(db, conversation.id, conversation.user_id),
                 artifact_id=artifact_id,
                 conversation_id=conversation.id,
             )
         _artifact, _version, path = await artifact_service.get_artifact_download_path(
             db,
-            user_id=agent.user_id,
+            context=await resolve_conversation_actor(db, conversation.id, conversation.user_id),
             artifact_id=artifact_id,
             conversation_id=conversation.id,
         )
@@ -479,7 +512,7 @@ async def download_public_share_artifact(
         )
         artifact, _version, path = await artifact_service.get_artifact_download_path(
             db,
-            user_id=agent.user_id,
+            context=await resolve_conversation_actor(db, conversation.id, conversation.user_id),
             artifact_id=summary.id,
             conversation_id=conversation.id,
         )

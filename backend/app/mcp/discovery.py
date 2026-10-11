@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.mcp_probe_scope import require_mcp_probe_scope
 from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import connect_and_list
 from app.models.mcp_server import McpServer
@@ -15,10 +16,11 @@ from app.models.mcp_tool import McpTool
 
 
 async def _probe(db: AsyncSession, server: McpServer) -> dict[str, Any]:
+    credential = await require_mcp_probe_scope(db, server, server.credential_id)
     auth = await resolve_mcp_auth(
         db,
         credential_id=server.credential_id,
-        user_id=server.user_id,
+        user_id=credential.user_id if credential is not None else server.user_id,
         static_headers=server.headers,
     )
     if auth.error:

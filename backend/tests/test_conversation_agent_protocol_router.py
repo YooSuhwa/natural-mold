@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import uuid
 from contextlib import suppress
+from datetime import UTC, datetime
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from typing import Any
 from unittest.mock import patch
 
@@ -23,6 +26,8 @@ from app.agent_runtime.runtime_policy import (
     resolve_runtime_policy,
     runtime_policy_to_json,
 )
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser
 from app.main import create_app
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -33,6 +38,12 @@ from app.models.user import User
 from app.routers.conversation_agent_protocol_runtime import protocol_events_from_broker
 from app.routers.conversation_agent_protocol_state_snapshot import project_todo_policy_values
 from app.services import trace_storage
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -87,10 +98,12 @@ def _patch_state_graph(
         conversation_id: uuid.UUID,
         _user: Any,
         *,
+        context: OrgContext,
         checkpoint_id: str | None = None,
     ) -> AgentConfig:
         assert checkpoint_id is None
         return AgentConfig(
+            org_context=context,
             provider="openai",
             model_name="gpt-4o",
             api_key=None,
@@ -155,6 +168,8 @@ async def _seed_conversation(
     await db.flush()
 
     agent = Agent(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=user.id,
         name="Protocol Agent",
         system_prompt="You are helpful.",
@@ -163,7 +178,16 @@ async def _seed_conversation(
     db.add(agent)
     await db.flush()
 
-    conversation = Conversation(agent_id=agent.id, title="Protocol Conversation")
+    await ensure_unit_scope(db, CurrentUser(id=agent.user_id, email="test@test.com", name="Test"))
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="Protocol Conversation",
+        user_id=agent.user_id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        agent_name_snapshot=agent.name,
+        last_activity_at=datetime.now(UTC),
+    )
     db.add(conversation)
     await db.commit()
     return conversation
@@ -190,7 +214,15 @@ async def _close_broker_after_subscribe(broker: EventBroker) -> None:
 
 def test_todo_policy_projection_rejects_invalid_conversation_snapshot() -> None:
     # Given an incomplete persisted policy tuple.
-    conversation = Conversation(agent_id=uuid.uuid4(), title="Invalid policy")
+    conversation = Conversation(
+        agent_id=uuid.uuid4(),
+        title="Invalid policy",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        agent_name_snapshot="Fixture agent",
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     conversation.runtime_policy_snapshot = {"version": 1}
     conversation.runtime_policy_version = 1
     conversation.runtime_policy_hash = "not-a-runtime-policy-hash"
@@ -204,7 +236,15 @@ def test_todo_policy_projection_rejects_invalid_conversation_snapshot() -> None:
 def test_todo_policy_projection_preserves_server_owned_snapshot() -> None:
     # Given the server-owned default snapshot that always has Todo enabled.
     resolved = resolve_runtime_policy(None)
-    conversation = Conversation(agent_id=uuid.uuid4(), title="Server policy")
+    conversation = Conversation(
+        agent_id=uuid.uuid4(),
+        title="Server policy",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        agent_name_snapshot="Fixture agent",
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     conversation.runtime_policy_snapshot = runtime_policy_to_json(resolved.effective)
     conversation.runtime_policy_version = resolved.effective.version
     conversation.runtime_policy_hash = resolved.policy_hash
@@ -711,10 +751,12 @@ async def test_update_thread_state_redacts_task_secrets_paths_and_memory_without
         conversation_id: uuid.UUID,
         _user: Any,
         *,
+        context: OrgContext,
         checkpoint_id: str | None = None,
     ) -> AgentConfig:
         assert checkpoint_id is None
         return AgentConfig(
+            org_context=context,
             provider="openai",
             model_name="gpt-4o",
             api_key=secret,
@@ -1104,12 +1146,15 @@ async def test_protocol_lifecycle_stream_survives_broker_rotation(
     async def is_disconnected() -> bool:
         return False
 
-    async def no_replay_events(_conversation_id: uuid.UUID) -> list[dict[str, Any]]:
+    async def no_replay_events(
+        _conversation_id: uuid.UUID, _context: OrgContext
+    ) -> list[dict[str, Any]]:
         return []
 
     monkeypatch.setattr(thread_stream, "_load_replay_events", no_replay_events)
 
     stream = thread_stream.protocol_thread_stream_generator(
+        context=unit_context(TEST_USER_ID),
         conversation_id=conversation.id,
         thread_id=str(conversation.id),
         params={"channels": ["lifecycle", "messages"]},
@@ -1152,7 +1197,9 @@ async def test_protocol_lifecycle_stream_projects_live_events_after_numeric_sinc
     async def is_disconnected() -> bool:
         return False
 
-    async def no_replay_events(_conversation_id: uuid.UUID) -> list[dict[str, Any]]:
+    async def no_replay_events(
+        _conversation_id: uuid.UUID, _context: OrgContext
+    ) -> list[dict[str, Any]]:
         return []
 
     monkeypatch.setattr(thread_stream, "_load_replay_events", no_replay_events)
@@ -1167,6 +1214,7 @@ async def test_protocol_lifecycle_stream_projects_live_events_after_numeric_sinc
     )
 
     stream = thread_stream.protocol_thread_stream_generator(
+        context=unit_context(TEST_USER_ID),
         conversation_id=conversation.id,
         thread_id=str(conversation.id),
         params={"channels": ["lifecycle"], "since": 5},
@@ -1195,7 +1243,9 @@ async def test_protocol_lifecycle_stream_uses_broker_cursor_for_live_resume(
     async def is_disconnected() -> bool:
         return False
 
-    async def no_replay_events(_conversation_id: uuid.UUID) -> list[dict[str, Any]]:
+    async def no_replay_events(
+        _conversation_id: uuid.UUID, _context: OrgContext
+    ) -> list[dict[str, Any]]:
         return []
 
     monkeypatch.setattr(thread_stream, "_load_replay_events", no_replay_events)
@@ -1215,6 +1265,7 @@ async def test_protocol_lifecycle_stream_uses_broker_cursor_for_live_resume(
     )
 
     stream = thread_stream.protocol_thread_stream_generator(
+        context=unit_context(TEST_USER_ID),
         conversation_id=conversation.id,
         thread_id=str(conversation.id),
         params={"channels": ["lifecycle"]},
@@ -1238,7 +1289,9 @@ async def test_protocol_lifecycle_stream_throttles_idle_replay_polling(
 
     load_count = 0
 
-    async def fake_load_replay_events(_conversation_id: uuid.UUID) -> list[dict[str, Any]]:
+    async def fake_load_replay_events(
+        _conversation_id: uuid.UUID, _context: OrgContext
+    ) -> list[dict[str, Any]]:
         nonlocal load_count
         load_count += 1
         return []
@@ -1249,6 +1302,7 @@ async def test_protocol_lifecycle_stream_throttles_idle_replay_polling(
     monkeypatch.setattr(thread_stream, "_load_replay_events", fake_load_replay_events)
 
     stream = thread_stream.protocol_thread_stream_generator(
+        context=unit_context(TEST_USER_ID),
         conversation_id=uuid.uuid4(),
         thread_id=str(uuid.uuid4()),
         params={"channels": ["lifecycle"]},
@@ -1274,7 +1328,9 @@ async def test_protocol_lifecycle_stream_backs_off_idle_replay_polling(
 
     load_count = 0
 
-    async def fake_load_replay_events(_conversation_id: uuid.UUID) -> list[dict[str, Any]]:
+    async def fake_load_replay_events(
+        _conversation_id: uuid.UUID, _context: OrgContext
+    ) -> list[dict[str, Any]]:
         nonlocal load_count
         load_count += 1
         return []
@@ -1287,6 +1343,7 @@ async def test_protocol_lifecycle_stream_backs_off_idle_replay_polling(
     monkeypatch.setattr(thread_stream, "_load_replay_events", fake_load_replay_events)
 
     stream = thread_stream.protocol_thread_stream_generator(
+        context=unit_context(TEST_USER_ID),
         conversation_id=uuid.uuid4(),
         thread_id=str(uuid.uuid4()),
         params={"channels": ["lifecycle"]},

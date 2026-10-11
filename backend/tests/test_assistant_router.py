@@ -11,6 +11,7 @@ from httpx import AsyncClient
 from app.models.agent import Agent
 from app.models.model import Model
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -32,6 +33,8 @@ async def _seed_agent() -> uuid.UUID:
             name="Assistant Agent",
             system_prompt="You are helpful.",
             model_id=model.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(agent)
         await db.commit()

@@ -17,7 +17,10 @@ from app.agent_runtime.protocol_events import (
     protocol_event_cursor,
     resequence_protocol_event,
 )
+from app.authz.conversation_scope import resolve_conversation_actor
+from app.authz.org_context import OrgContext
 from app.database import async_session
+from app.error_codes import conversation_not_found
 from app.routers.conversation_agent_protocol_replay import (
     _events_after_cursor,
     load_protocol_events,
@@ -52,9 +55,14 @@ def _latest_live_broker(conversation_id: uuid.UUID) -> EventBroker | None:
     return max(live_brokers, key=lambda broker: broker.created_at)
 
 
-async def _load_replay_events(conversation_id: uuid.UUID) -> list[StoredProtocolEvent]:
+async def _load_replay_events(
+    conversation_id: uuid.UUID, context: OrgContext
+) -> list[StoredProtocolEvent]:
     async with async_session() as session:
-        return await load_protocol_events(session, conversation_id)
+        fresh = await resolve_conversation_actor(session, conversation_id, context.user_id)
+        if (fresh.org_id, fresh.tenant_id) != (context.org_id, context.tenant_id):
+            raise conversation_not_found()
+        return await load_protocol_events(session, conversation_id, context=fresh)
 
 
 def _numeric_since(params: SubscribeParams) -> int:
@@ -76,9 +84,10 @@ def _next_replay_delay(current_delay: float) -> float:
 
 async def _load_replay_events_or_empty(
     conversation_id: uuid.UUID,
+    context: OrgContext,
 ) -> list[StoredProtocolEvent]:
     try:
-        return await _load_replay_events(conversation_id)
+        return await _load_replay_events(conversation_id, context)
     except SQLAlchemyError as exc:
         logger.debug("Skipping protocol thread replay after database read failed: %s", exc)
         return []
@@ -131,6 +140,7 @@ async def _yield_broker_events(
 async def protocol_thread_stream_generator(
     *,
     conversation_id: uuid.UUID,
+    context: OrgContext,
     thread_id: str,
     params: SubscribeParams,
     after_id: str | None,
@@ -143,7 +153,7 @@ async def protocol_thread_stream_generator(
     next_replay_at = loop.time() + replay_delay
     next_heartbeat_at = loop.time() + _THREAD_STREAM_HEARTBEAT_SECONDS
 
-    replay_events = await _load_replay_events_or_empty(conversation_id)
+    replay_events = await _load_replay_events_or_empty(conversation_id, context)
     last_seq = max(last_seq, _max_event_seq(replay_events))
     for event in _iter_replay_events(replay_events, params=params, cursor=cursor):
         cursor = _event_cursor(event)
@@ -169,7 +179,7 @@ async def protocol_thread_stream_generator(
         now = asyncio.get_running_loop().time()
         if now >= next_replay_at:
             replayed = False
-            replay_events = await _load_replay_events_or_empty(conversation_id)
+            replay_events = await _load_replay_events_or_empty(conversation_id, context)
             last_seq = max(last_seq, _max_event_seq(replay_events))
             for event in _iter_replay_events(replay_events, params=params, cursor=cursor):
                 cursor = _event_cursor(event)

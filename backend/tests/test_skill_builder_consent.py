@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -19,13 +20,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.skill_builder.tools import build_skill_builder_tools
 from app.config import settings
+from app.dependencies import CurrentUser
+from app.models.conversation import Conversation
 from app.models.skill_builder_session import SkillBuilderSession
 from app.routers.conversation_agent_protocol_consent import (
     apply_session_consent_decisions,
 )
 from app.routers.conversation_agent_protocol_interrupts import ThreadInterrupt
+from app.routers.session_consent_scope import SessionConsentPayload, SessionConsentTarget
 from app.services import skill_draft_workspace as workspace
-from tests.conftest import TEST_USER_ID, TestSession
+from app.services.skill_builder_mutation_scope import SkillBuilderMutationTarget
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
+from tests.conftest import TEST_USER_ID, TestSession, seed_agent
 
 pytestmark = pytest.mark.asyncio
 
@@ -52,11 +63,28 @@ async def _make_session(
     conversation_id: uuid.UUID | None = None,
     requires_network: bool = False,
 ) -> SkillBuilderSession:
+    await ensure_unit_scope(db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test"))
+    if conversation_id is not None and await db.get(Conversation, conversation_id) is None:
+        _, _, agent = await seed_agent(db)
+        db.add(
+            Conversation(
+                id=conversation_id,
+                agent_id=agent.id,
+                user_id=TEST_USER_ID,
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
+                agent_name_snapshot=agent.name,
+                last_activity_at=datetime.now(UTC),
+            )
+        )
+        await db.flush()
     session = SkillBuilderSession(
         user_id=TEST_USER_ID,
         user_request="회의록 스킬",
         status="active",
         conversation_id=conversation_id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(session)
     await db.flush()
@@ -119,10 +147,8 @@ async def test_consent_recorded_and_scope_stripped(db: AsyncSession) -> None:
 
     recorded = await apply_session_consent_decisions(
         db,
-        conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
-        resume=resume,
-        pending_interrupts=_pending(["test_skill_draft"]),
+        SessionConsentTarget(conversation_id, unit_context(TEST_USER_ID)),
+        SessionConsentPayload(resume, _pending(["test_skill_draft"])),
     )
 
     assert recorded == ["test_skill_draft"]
@@ -146,10 +172,8 @@ async def test_consent_not_recorded_for_finalize_skill(db: AsyncSession) -> None
 
     recorded = await apply_session_consent_decisions(
         db,
-        conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
-        resume=_resume([decision]),
-        pending_interrupts=_pending(["finalize_skill"]),
+        SessionConsentTarget(conversation_id, unit_context(TEST_USER_ID)),
+        SessionConsentPayload(_resume([decision]), _pending(["finalize_skill"])),
     )
 
     assert recorded == []
@@ -167,10 +191,8 @@ async def test_consent_not_recorded_for_network_draft(db: AsyncSession) -> None:
 
     recorded = await apply_session_consent_decisions(
         db,
-        conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
-        resume=_resume([decision]),
-        pending_interrupts=_pending(["test_skill_draft"]),
+        SessionConsentTarget(conversation_id, unit_context(TEST_USER_ID)),
+        SessionConsentPayload(_resume([decision]), _pending(["test_skill_draft"])),
     )
 
     assert recorded == []
@@ -186,10 +208,8 @@ async def test_consent_ignores_reject_decisions(db: AsyncSession) -> None:
 
     recorded = await apply_session_consent_decisions(
         db,
-        conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
-        resume=_resume([decision]),
-        pending_interrupts=_pending(["test_skill_draft"]),
+        SessionConsentTarget(conversation_id, unit_context(TEST_USER_ID)),
+        SessionConsentPayload(_resume([decision]), _pending(["test_skill_draft"])),
     )
 
     assert recorded == []
@@ -210,14 +230,14 @@ async def _builder_cfg(session_id: uuid.UUID, **overrides: object) -> AgentConfi
         "system_prompt": "placeholder",
         "tools_config": [],
         "thread_id": "thread-consent",
-        "agent_id": "agent-consent",
+        "agent_id": str(uuid.uuid4()),
         "user_id": str(TEST_USER_ID),
         "runtime_profile": "skill_builder",
         "skill_builder_session_id": str(session_id),
         "draft_workspace_path": f"skill-drafts/{session_id}",
     }
     defaults.update(overrides)
-    return AgentConfig(**defaults)  # type: ignore[arg-type]
+    return AgentConfig(org_context=unit_context(TEST_USER_ID), **defaults)  # type: ignore[arg-type]
 
 
 async def test_interrupt_policy_includes_sandbox_until_consented() -> None:
@@ -276,16 +296,24 @@ async def test_resolve_threads_consent_and_offer(client, db: AsyncSession) -> No
     user = CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User", is_super_user=True)
     conversation_id = uuid.UUID(body["conversation_id"])
 
-    before = await resolve_agent_context(db, conversation_id, user)
+    before = await resolve_agent_context(
+        db, conversation_id, user, context=unit_context(TEST_USER_ID)
+    )
     assert before.skill_builder_consented_tools is None
     assert before.skill_builder_consent_offer_tools == ["test_skill_draft"]
 
-    session = await skill_builder_service.get_session(db, uuid.UUID(body["id"]), TEST_USER_ID)
+    session = await skill_builder_service.get_session(
+        db, uuid.UUID(body["id"]), unit_context(TEST_USER_ID)
+    )
     assert session is not None
-    await skill_builder_service.record_tool_consents(db, session, tool_names=["test_skill_draft"])
+    await skill_builder_service.record_tool_consents(
+        db, SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)), ["test_skill_draft"]
+    )
     await db.commit()
 
-    after = await resolve_agent_context(db, conversation_id, user)
+    after = await resolve_agent_context(
+        db, conversation_id, user, context=unit_context(TEST_USER_ID)
+    )
     assert after.skill_builder_consented_tools == ["test_skill_draft"]
     assert after.skill_builder_consent_offer_tools is None
 
@@ -332,7 +360,7 @@ def _sandbox_tools(session: SkillBuilderSession):
         session_id=str(session.id),
         workspace_path=session.draft_workspace_path or "",
         session_factory=TestSession,
-        user_id=str(TEST_USER_ID),
+        context=unit_context(TEST_USER_ID),
         agent_id=None,
         credential_subject_user_id=str(TEST_USER_ID),
         include_runtime_tools=True,
@@ -404,7 +432,7 @@ async def test_test_skill_draft_fails_closed_on_intraturn_network_flip(
         session_id=str(session.id),
         workspace_path=session.draft_workspace_path or "",
         session_factory=TestSession,
-        user_id=str(TEST_USER_ID),
+        context=unit_context(TEST_USER_ID),
         agent_id=None,
         credential_subject_user_id=str(TEST_USER_ID),
         include_runtime_tools=True,

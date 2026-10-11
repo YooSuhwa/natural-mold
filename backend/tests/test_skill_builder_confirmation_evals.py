@@ -7,10 +7,13 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.schemas.skill_builder import JsonValue
 from app.services import skill_builder_service
+from app.services.skill_builder_mutation_scope import SkillBuilderMutationTarget
 from app.skills import service as skill_service
+from tests.authz.unit_scope_fixture import ensure_unit_scope, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -59,15 +62,24 @@ async def test_confirm_session_creates_evaluation_set_from_draft_evals(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="회의록 요약 스킬 만들어줘",
         )
-        await skill_builder_service.save_draft_package(db, session, draft=_draft_with_evals())
+        await skill_builder_service.save_draft_package(
+            db,
+            SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+            _draft_with_evals(),
+        )
 
-        skill = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        skill = await skill_builder_service.confirm_session(
+            db, session, context=unit_context(TEST_USER_ID)
+        )
 
         result = await db.execute(
             select(SkillEvaluationSet).where(SkillEvaluationSet.skill_id == skill.id)
@@ -92,10 +104,13 @@ async def test_confirm_session_copies_builder_eval_result_to_completed_run(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="회의록 요약 스킬 만들어줘",
         )
         session.eval_result = {
@@ -108,9 +123,16 @@ async def test_confirm_session_copies_builder_eval_result_to_completed_run(
             "case_results": [{"case_index": 0, "status": "passed", "score": 1}],
             "artifact_path": "skill_builder/session-1/eval",
         }
-        await skill_builder_service.save_draft_package(db, session, draft=_draft_with_evals())
+        await db.flush()
+        await skill_builder_service.save_draft_package(
+            db,
+            SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+            _draft_with_evals(),
+        )
 
-        skill = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        skill = await skill_builder_service.confirm_session(
+            db, session, context=unit_context(TEST_USER_ID)
+        )
 
         result = await db.execute(
             select(SkillEvaluationRun).where(SkillEvaluationRun.skill_id == skill.id)

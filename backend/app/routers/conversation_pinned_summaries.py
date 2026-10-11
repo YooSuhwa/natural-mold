@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from typing import Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from langchain_core.messages import BaseMessage
@@ -9,16 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.message_utils import content_to_text
-from app.dependencies import get_db, owned_conversation, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import get_db, get_org_context, owned_conversation, verify_csrf
 from app.schemas.conversation_pinned_summary import (
     PinConversationSummaryRequest,
     PinnedConversationSummaryEnvelope,
     PinnedConversationSummaryResponse,
 )
-from app.schemas.conversation_refs import conversation_ref
 from app.services.conversation_pinned_summary_service import (
     InvalidPinnedSummarySourceError,
     MessageRole,
+    PinSummaryTarget,
     SummarySource,
     get_summary,
     pin_summary,
@@ -29,6 +31,12 @@ from app.services.thread_branch_service import (
     _build_tree_from_checkpoints,
     _collect_checkpoints,
 )
+
+
+class PinnedConversationRef(Protocol):
+    @property
+    def active_branch_checkpoint_id(self) -> str | None: ...
+
 
 router = APIRouter(tags=["conversations"])
 _TURN_ID_SEPARATOR = "::moldy-turn-"
@@ -131,14 +139,15 @@ async def _load_sources(
 async def read_pinned_summary(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    conv: object = Depends(owned_conversation),
+    conv: PinnedConversationRef = Depends(owned_conversation),
+    context: OrgContext = Depends(get_org_context),
 ) -> PinnedConversationSummaryEnvelope:
-    row = await get_summary(db, conversation_id)
+    row = await get_summary(db, conversation_id, context)
     if row is None:
         return PinnedConversationSummaryEnvelope(summary=None)
     active, historical = await _load_sources(
         conversation_id,
-        conversation_ref(conv).active_branch_checkpoint_id,
+        conv.active_branch_checkpoint_id,
     )
     return PinnedConversationSummaryEnvelope(summary=serialize_summary(row, active, historical))
 
@@ -151,15 +160,18 @@ async def write_pinned_summary(
     conversation_id: uuid.UUID,
     data: PinConversationSummaryRequest,
     db: AsyncSession = Depends(get_db),
-    conv: object = Depends(owned_conversation),
+    conv: PinnedConversationRef = Depends(owned_conversation),
     _csrf: None = Depends(verify_csrf),
+    context: OrgContext = Depends(get_org_context),
 ) -> PinnedConversationSummaryResponse:
     active, historical = await _load_sources(
         conversation_id,
-        conversation_ref(conv).active_branch_checkpoint_id,
+        conv.active_branch_checkpoint_id,
     )
     try:
-        row = await pin_summary(db, conversation_id, data.message_id, active)
+        row = await pin_summary(
+            db, PinSummaryTarget(conversation_id, context, data.message_id, active)
+        )
     except InvalidPinnedSummarySourceError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -176,9 +188,10 @@ async def write_pinned_summary(
 async def delete_pinned_summary(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _conv: object = Depends(owned_conversation),
+    _conv: PinnedConversationRef = Depends(owned_conversation),
     _csrf: None = Depends(verify_csrf),
+    context: OrgContext = Depends(get_org_context),
 ) -> Response:
-    await unpin_summary(db, conversation_id)
+    await unpin_summary(db, conversation_id, context)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

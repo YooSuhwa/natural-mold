@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from decimal import Decimal
 
 import pytest
@@ -15,6 +17,7 @@ from app.models.model import Model
 from app.models.token_usage import TokenUsage
 from app.models.user import User
 from app.services.usage_service import get_agent_usage, get_usage_summary
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 
@@ -40,6 +43,8 @@ async def _seed_agent(
         name=name,
         system_prompt="You are helpful.",
         model_id=model_id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -65,7 +70,15 @@ async def _seed_usage(
     from app.models.daily_spend_agent import DailySpendAgent
     from app.models.daily_spend_user import DailySpendUser
 
-    conv = Conversation(agent_id=agent_id, title="c")
+    conv = Conversation(
+        agent_id=agent_id,
+        title="c",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        agent_name_snapshot="Fixture agent",
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conv)
     await db.flush()
 
@@ -81,9 +94,7 @@ async def _seed_usage(
     db.add(usage)
 
     today = date_type.today()
-    agent = (
-        await db.execute(select(AgentModel).where(AgentModel.id == agent_id))
-    ).scalar_one()
+    agent = (await db.execute(select(AgentModel).where(AgentModel.id == agent_id))).scalar_one()
     user_id = agent.user_id
 
     # Upsert per (date, agent) and (date, user) so callers can seed multiple

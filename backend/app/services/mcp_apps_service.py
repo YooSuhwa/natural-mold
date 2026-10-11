@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.run_secrets import collect_secret_values
+from app.credentials import service as credential_service
 from app.mcp.apps import (
     normalize_resource_ui_meta,
     normalize_tool_ui_meta,
@@ -96,7 +97,7 @@ async def call_bound_tool(
         server_id=context.binding.mcp_server_id,
         tool_id=None,
         tool_name=tool_name,
-        owner_user_id=context.binding.credential_subject_user_id,
+        context=context.org_context,
     )
     meta = normalize_tool_ui_meta(tool.metadata_json) if tool is not None else None
     if tool is None or not tool_allows_visibility(meta, "app"):
@@ -128,6 +129,12 @@ async def call_bound_tool(
 
 
 async def _auth_for_context(db: AsyncSession, context: AuthorizedBinding) -> ResolvedMcpAuth:
+    if context.server.credential_id is not None:
+        credential = await credential_service.get_for_user(
+            db, context.server.credential_id, context.org_context
+        )
+        if credential is None:
+            raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 404)
     auth = await resolve_mcp_auth(
         db,
         credential_id=context.server.credential_id,

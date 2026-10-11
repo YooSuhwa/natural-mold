@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.agent_runtime import event_names
 from app.agent_runtime.streaming import format_sse
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.audit_event import AuditEvent
 from app.models.conversation import Conversation
@@ -26,6 +27,12 @@ from app.models.model import Model
 from app.models.user import User
 from app.services import conversation_run_service, trace_storage
 from app.services.conversation_run_worker import RunTaskRegistry, reset_run_task_registry_for_tests
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TestSession
 from tests.integration._seed import seed_conversation_with_agent
 
@@ -128,17 +135,33 @@ async def test_first_accepted_run_wins_runtime_policy_snapshot_under_postgres_lo
                 display_name="Policy Race Model",
             )
         )
+        await db.flush()
+        await ensure_unit_scope(
+            db, CurrentUser(id=user_id, email=f"{user_id}@fixture.local", name="Race fixture")
+        )
         db.add(
             Agent(
                 id=agent_id,
                 user_id=user_id,
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
                 name="Policy Race Agent",
                 system_prompt="Stay deterministic.",
                 model_id=model_id,
                 runtime_policy={"version": 1, "todo": {"enabled": False}},
             )
         )
-        db.add(Conversation(id=conversation_id, agent_id=agent_id, title="Policy Race"))
+        db.add(
+            Conversation(
+                id=conversation_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
+                agent_name_snapshot="Race fixture",
+                title="Policy Race",
+            )
+        )
         await db.commit()
 
     winner_ready = asyncio.Event()
@@ -152,7 +175,7 @@ async def test_first_accepted_run_wins_runtime_policy_snapshot_under_postgres_lo
                 db,
                 conversation_id=conversation_id,
                 agent_id=agent_id,
-                user_id=user_id,
+                context=unit_context(user_id),
                 source="chat",
                 input_preview="winner",
             )
@@ -175,7 +198,7 @@ async def test_first_accepted_run_wins_runtime_policy_snapshot_under_postgres_lo
                     db,
                     conversation_id=conversation_id,
                     agent_id=agent_id,
-                    user_id=user_id,
+                    context=unit_context(user_id),
                     source="chat",
                     input_preview="contender",
                 )

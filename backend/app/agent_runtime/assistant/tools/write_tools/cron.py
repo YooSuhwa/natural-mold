@@ -9,7 +9,11 @@ from langchain_core.tools import StructuredTool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.assistant.tools.write_tools.context import WriteToolContext
+from app.agent_runtime.assistant.tools.write_tools.context import (
+    WriteToolContext,
+    get_agent_with_session,
+)
+from app.authz.scoping import private_scope_predicate
 from app.models.agent_trigger import AgentTrigger
 from app.schemas.trigger import TriggerCreate, TriggerUpdate
 from app.services import trigger_service
@@ -28,6 +32,8 @@ async def _resolve_trigger_for_write(
     schedule_id: str | None = None,
     schedule_name: str | None = None,
 ) -> tuple[AgentTrigger | None, str | None]:
+    if await get_agent_with_session(ctx, session) is None:
+        return None, "에이전트를 찾을 수 없습니다."
     if schedule_id:
         try:
             sid = uuid.UUID(schedule_id)
@@ -37,7 +43,7 @@ async def _resolve_trigger_for_write(
             select(AgentTrigger).where(
                 AgentTrigger.id == sid,
                 AgentTrigger.agent_id == ctx.agent_id,
-                AgentTrigger.user_id == ctx.user_id,
+                private_scope_predicate(AgentTrigger, ctx.org_context),
             )
         )
         trigger = result.scalar_one_or_none()
@@ -52,7 +58,7 @@ async def _resolve_trigger_for_write(
         select(AgentTrigger)
         .where(
             AgentTrigger.agent_id == ctx.agent_id,
-            AgentTrigger.user_id == ctx.user_id,
+            private_scope_predicate(AgentTrigger, ctx.org_context),
             AgentTrigger.name == schedule_name,
         )
         .order_by(AgentTrigger.created_at.desc())
@@ -135,11 +141,13 @@ def build_cron_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             )
 
         async with ctx.session_factory() as session:
+            if await get_agent_with_session(ctx, session) is None:
+                return "에이전트를 찾을 수 없습니다."
             try:
                 trigger = await trigger_service.create_trigger(
                     session,
                     ctx.agent_id,
-                    ctx.user_id,
+                    ctx.org_context,
                     TriggerCreate.model_validate(
                         {
                             "name": name,
@@ -234,7 +242,12 @@ def build_cron_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                 update_payload["auto_pause_after_failures"] = auto_pause_after_failures
             try:
                 update = TriggerUpdate.model_validate(update_payload)
-                await trigger_service.update_trigger(session, trigger, update)
+                await trigger_service.update_trigger(
+                    session,
+                    trigger,
+                    update,
+                    context=ctx.org_context,
+                )
             except ValueError as exc:
                 return f"스케줄 설정이 올바르지 않습니다: {exc}"
             return "스케줄 수정 완료."
@@ -257,7 +270,7 @@ def build_cron_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             )
             if error or not trigger:
                 return error or "스케줄을 찾을 수 없습니다."
-            await trigger_service.delete_trigger(session, trigger)
+            await trigger_service.delete_trigger(session, trigger, ctx.org_context)
             return "스케줄 삭제 완료."
 
     # ------ 17. enable_cron_schedule ------
@@ -283,6 +296,7 @@ def build_cron_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                     session,
                     trigger,
                     TriggerUpdate(status="active"),
+                    context=ctx.org_context,
                 )
             except ValueError as exc:
                 return f"스케줄 설정이 올바르지 않습니다: {exc}"
@@ -306,7 +320,12 @@ def build_cron_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             )
             if error or not trigger:
                 return error or "스케줄을 찾을 수 없습니다."
-            await trigger_service.update_trigger(session, trigger, TriggerUpdate(status="paused"))
+            await trigger_service.update_trigger(
+                session,
+                trigger,
+                TriggerUpdate(status="paused"),
+                context=ctx.org_context,
+            )
             return "스케줄 비활성화 완료."
 
     return [

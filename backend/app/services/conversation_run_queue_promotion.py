@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
 from app.services.conversation_run_queue_mutations import (
@@ -32,14 +33,15 @@ async def promote_pending_input(
     *,
     conversation_id: uuid.UUID,
     input_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     expected_revision: int,
 ) -> PromotedConversationInput:
     """Promote one pending input and persist predecessor cancellation in one transaction."""
+    user_id = context.user_id
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
     if conversation.queue_paused:
         raise _conflict("Resume the conversation queue before steering")
@@ -67,7 +69,7 @@ async def promote_pending_input(
     interrupted = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
     if interrupted is not None:
         raise _conflict("Resolve the pending approval before steering")
@@ -75,14 +77,14 @@ async def promote_pending_input(
     active = await conversation_run_service.get_active_run(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
     if active is not None:
         active = await conversation_run_service.get_run_for_user(
             db,
             conversation_id=conversation_id,
             run_id=active.id,
-            user_id=user_id,
+            context=context,
             for_update=True,
         )
 

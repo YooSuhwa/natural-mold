@@ -15,16 +15,6 @@
     },
     {
       "rule": "routers_to_models",
-      "importer": "app.routers.agent_blueprints",
-      "imported": "app.models.agent_blueprint"
-    },
-    {
-      "rule": "routers_to_models",
-      "importer": "app.routers.agent_blueprints",
-      "imported": "app.models.marketplace"
-    },
-    {
-      "rule": "routers_to_models",
       "importer": "app.routers.agent_runtime_api",
       "imported": "app.models.agent_api"
     },
@@ -70,11 +60,6 @@
     },
     {
       "rule": "routers_to_models",
-      "importer": "app.routers.conversation_agent_protocol_consent",
-      "imported": "app.models.skill_builder_session"
-    },
-    {
-      "rule": "routers_to_models",
       "importer": "app.routers.conversation_agent_protocol_interrupts",
       "imported": "app.models.conversation"
     },
@@ -82,11 +67,6 @@
       "rule": "routers_to_models",
       "importer": "app.routers.conversation_agent_protocol_legacy",
       "imported": "app.models.message_event"
-    },
-    {
-      "rule": "routers_to_models",
-      "importer": "app.routers.conversation_agent_protocol_replay",
-      "imported": "app.models.conversation"
     },
     {
       "rule": "routers_to_models",
@@ -212,11 +192,6 @@
       "rule": "routers_to_models",
       "importer": "app.routers.health",
       "imported": "app.models.health_check_history"
-    },
-    {
-      "rule": "routers_to_models",
-      "importer": "app.routers.health",
-      "imported": "app.models.mcp_server"
     },
     {
       "rule": "routers_to_models",

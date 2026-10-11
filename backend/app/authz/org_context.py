@@ -54,7 +54,7 @@ async def resolve_org_context(
     FastAPI caches this dependency within a request. Membership is read from the
     database on every request so suspension/removal never depends on a process TTL.
     """
-    query = active_memberships(user.id)
+    query = active_memberships(user.id).execution_options(populate_existing=True)
     if cookie is not None:
         try:
             requested = UUID(cookie)

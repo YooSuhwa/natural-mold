@@ -15,18 +15,18 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
 import httpx
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.credentials import service as credential_service
+from app.credentials.mutation_scope import load_scoped_credential
 from app.http_ssl import get_outbound_ssl_context
-from app.models.credential import Credential
-from app.models.tool import Tool
 from app.tools.domain import ToolDefinition, ToolRunContext
+from app.tools.execution_scope import ToolRunOptions, ToolRunTarget, load_execution_tool
 from app.tools.parameters import FieldDef
-from app.tools.registry import ToolRegistry
 
 
 class ToolRunError(RuntimeError):
@@ -53,9 +53,7 @@ class ToolRunResult:
         }
 
 
-def _validate_parameters(
-    fields: list[FieldDef], values: dict[str, Any]
-) -> dict[str, Any]:
+def _validate_parameters(fields: list[FieldDef], values: dict[str, Any]) -> dict[str, Any]:
     """Apply defaults + required checks. Returns a normalized dict."""
 
     normalized: dict[str, Any] = {}
@@ -65,9 +63,7 @@ def _validate_parameters(
         elif spec.default is not None:
             normalized[spec.name] = spec.default
         elif spec.required:
-            raise ToolRunError(
-                f"required parameter '{spec.name}' is missing"
-            )
+            raise ToolRunError(f"required parameter '{spec.name}' is missing")
     # Pass through unknown keys so runners can accept extras (e.g. dynamic
     # query params) without forcing every key into the FieldDef list.
     for k, v in values.items():
@@ -76,27 +72,16 @@ def _validate_parameters(
 
 
 async def _load_credential_payload(
-    db: AsyncSession, credential_id: Any
+    db: AsyncSession, credential_id: UUID | None, context: OrgContext
 ) -> dict[str, Any] | None:
     if credential_id is None:
         return None
-    row = (
-        await db.execute(select(Credential).where(Credential.id == credential_id))
-    ).scalar_one_or_none()
-    if row is None:
-        raise ToolRunError(
-            f"credential {credential_id} not found (was it deleted?)"
-        )
+    row = await load_scoped_credential(db, credential_id, context)
     return await credential_service.decrypt_with_external(row.data_encrypted)
 
 
 async def run_tool(
-    *,
-    db: AsyncSession,
-    tool: Tool,
-    registry: ToolRegistry,
-    runtime_args: dict[str, Any] | None = None,
-    http_client: httpx.AsyncClient | None = None,
+    db: AsyncSession, target: ToolRunTarget, options: ToolRunOptions
 ) -> ToolRunResult:
     """Execute ``tool`` once. Returns a structured result envelope.
 
@@ -105,7 +90,8 @@ async def run_tool(
     matching the chat runtime's "tool returns error string" pattern.
     """
 
-    definition = registry.get(tool.definition_key)
+    tool = await load_execution_tool(db, target)
+    definition = options.registry.get(tool.definition_key)
     if definition is None:
         return ToolRunResult(
             success=False,
@@ -118,17 +104,17 @@ async def run_tool(
         )
 
     merged: dict[str, Any] = {**(tool.parameters or {})}
-    if runtime_args:
-        merged.update(runtime_args)
+    if options.runtime_args:
+        merged.update(options.runtime_args)
 
     try:
         validated = _validate_parameters(definition.parameters, merged)
-        credentials = await _load_credential_payload(db, tool.credential_id)
+        credentials = await _load_credential_payload(db, tool.credential_id, target.context)
     except ToolRunError as exc:
         return ToolRunResult(success=False, error=str(exc))
 
-    own_client = http_client is None
-    client = http_client or httpx.AsyncClient(
+    own_client = options.http_client is None
+    client = options.http_client or httpx.AsyncClient(
         timeout=30.0,
         verify=get_outbound_ssl_context(),
     )

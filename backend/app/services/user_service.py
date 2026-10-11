@@ -13,8 +13,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
-from app.models.conversation import Conversation
+from app.authz.account_erasure import lock_account_history, require_account_resources_released
 from app.models.conversation_run import ConversationRun
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
@@ -140,7 +139,7 @@ async def cleanup_user_resources(db: AsyncSession, user_id: uuid.UUID) -> None:
 
     Currently:
     1. LangGraph checkpoints — every conversation owned (transitively via
-       Agent.user_id) by this user.
+       Conversation.user_id) by this user.
     2. Internal compaction history and large-result spill files for those
        same trusted owner/conversation pairs.
     3. Active refresh tokens — revoked so any leaked browser session stops
@@ -159,22 +158,10 @@ async def cleanup_user_resources(db: AsyncSession, user_id: uuid.UUID) -> None:
     if locked_user_id is None:
         return
 
-    # 1. Conversations owned by the user (joined via Agent.user_id). The
+    # 1. Histories directly owned by the account, including agentless history. The
     # deterministic row-lock order matches run creation's User -> Conversation
     # order and keeps the active-run check valid until the caller commits.
-    conv_rows = (
-        (
-            await db.execute(
-                select(Conversation.id)
-                .join(Agent, Agent.id == Conversation.agent_id)
-                .where(Agent.user_id == user_id)
-                .order_by(Conversation.id)
-                .with_for_update(of=Conversation)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    conv_rows = await lock_account_history(db, user_id)
 
     if conv_rows:
         active_run_id = await db.scalar(
@@ -242,10 +229,11 @@ async def delete_user(db: AsyncSession, user_id: uuid.UUID) -> None:
     decide whether to roll back on a failure mid-way.
     """
 
-    user = await get_by_id(db, user_id)
+    user = await db.scalar(select(User).where(User.id == user_id).with_for_update())
     if user is None:
         return
 
+    await require_account_resources_released(db, user_id)
     await cleanup_user_resources(db, user_id)
     await db.delete(user)
     await db.flush()

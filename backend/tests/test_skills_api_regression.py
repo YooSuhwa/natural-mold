@@ -31,6 +31,7 @@ from app.models.agent import Agent
 from app.models.skill import AgentSkillLink, Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.skills import service as skill_service
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 # ---------------------------------------------------------------------------
@@ -65,6 +66,8 @@ def _make_skill_row(
         source_kind=source_kind,
         origin_kind=origin_kind,
         is_dirty=False,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
 
 
@@ -109,6 +112,8 @@ class TestM41ColumnDefaults:
             version=None,
             package_metadata=None,
             used_by_count=0,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(row)
         await db.flush()
@@ -545,6 +550,8 @@ class TestAgentSkillLinkAfterM42:
             description=None,
             system_prompt="",
             model_id=uuid.uuid4(),
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         skill = _make_skill_row(name="link-skill", kind="text")
         db.add_all([agent, skill])
@@ -572,6 +579,8 @@ class TestAgentSkillLinkAfterM42:
             description=None,
             system_prompt="",
             model_id=uuid.uuid4(),
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         skill = _make_skill_row(name="ov-skill", kind="text")
         db.add_all([agent, skill])

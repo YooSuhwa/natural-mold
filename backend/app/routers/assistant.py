@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import agent_not_found
 from app.schemas.assistant import AssistantMessageRequest, AssistantResumeRequest
 from app.services import agent_service, assistant_service
@@ -28,10 +29,11 @@ async def send_assistant_message(
     data: AssistantMessageRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
     """Assistant에게 메시지를 보내고 SSE 스트리밍으로 응답받는다."""
-    agent = await agent_service.get_agent(db, agent_id, user.id)
+    agent = await agent_service.get_agent(db, agent_id, context)
     if not agent:
         raise agent_not_found()
 
@@ -41,7 +43,7 @@ async def send_assistant_message(
         assistant_service.stream_assistant_message(
             db=db,
             agent_id=agent_id,
-            user_id=user.id,
+            context=context,
             thread_id=thread_id,
             user_message=data.content,
         ),
@@ -60,9 +62,10 @@ async def resume_assistant_message(
     data: AssistantResumeRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
+    agent = await agent_service.get_agent(db, agent_id, context)
     if not agent:
         raise agent_not_found()
 
@@ -72,7 +75,7 @@ async def resume_assistant_message(
         assistant_service.stream_assistant_resume(
             db=db,
             agent_id=agent_id,
-            user_id=user.id,
+            context=context,
             thread_id=thread_id,
             decisions=data.decisions,
         ),

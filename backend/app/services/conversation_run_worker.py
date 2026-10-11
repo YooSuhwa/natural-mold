@@ -23,10 +23,19 @@ from app.agent_runtime.run_metrics_baseline import (
 from app.agent_runtime.run_metrics_types import TerminalRunState
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.stream_error_messages import public_stream_error_message
+from app.authz.conversation_run_scope import (
+    RunConversationTarget,
+    RunExecutionTarget,
+    lock_executable_run,
+)
+from app.authz.worker_conversation_scope import (
+    WorkerConversationTarget,
+    load_worker_conversation,
+)
 from app.config import settings
 from app.dependencies import CurrentUser
+from app.error_codes import conversation_not_found
 from app.marketplace.redaction import replace_secret_values
-from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service, thread_branch_service
 from app.services import conversation_stream_service as stream_service
@@ -208,6 +217,24 @@ def _publish_yielded_chunk_if_needed(
     return compat_seq
 
 
+def _execution_target(
+    run_id: uuid.UUID, conversation_id: uuid.UUID, cfg: AgentConfig
+) -> RunExecutionTarget:
+    if (
+        cfg.agent_id is None
+        or cfg.thread_id != str(conversation_id)
+        or cfg.user_id != str(cfg.org_context.user_id)
+    ):
+        raise conversation_not_found()
+    try:
+        agent_id = uuid.UUID(cfg.agent_id)
+    except ValueError:
+        raise conversation_not_found() from None
+    return RunExecutionTarget(
+        run_id, RunConversationTarget(conversation_id, agent_id, cfg.org_context)
+    )
+
+
 async def start_conversation_run(
     *,
     run_id: uuid.UUID,
@@ -220,6 +247,12 @@ async def start_conversation_run(
     registry: RunTaskRegistry | None = None,
     attachment_ids: list[uuid.UUID] | None = None,
 ) -> StreamCtx:
+    target = _execution_target(run_id, conversation_id, cfg)
+    if user.id != target.conversation.context.user_id:
+        raise conversation_not_found()
+    async with _session_factory()() as session:
+        if await lock_executable_run(session, target) is None:
+            raise conversation_not_found()
     registry = registry or get_run_task_registry()
     ctx = stream_service.prepare_stream_context(conversation_id, run_id=str(run_id))
     task = asyncio.create_task(
@@ -310,7 +343,7 @@ async def _transition(
 
 
 async def _transition_to_running(
-    run_id: uuid.UUID,
+    target: RunExecutionTarget,
     *,
     worker_instance_id: str,
 ) -> tuple[ConversationRun | None, bool]:
@@ -323,7 +356,7 @@ async def _transition_to_running(
     status 로 분기한다.
     """
     async with _session_factory()() as session:
-        run = await session.get(ConversationRun, run_id, with_for_update=True)
+        run = await lock_executable_run(session, target)
         if run is None:
             return None, False
         if run.status != "queued":
@@ -478,31 +511,33 @@ async def _record_run_audit(
 
 async def _activate_latest_branch_leaf_if_needed(
     *,
-    conversation_id: uuid.UUID,
+    target: WorkerConversationTarget,
     moldy_source: str,
     final_status: conversation_run_service.RunStatus,
 ) -> None:
     if final_status != "completed" or moldy_source not in {"edit", "regenerate"}:
         return
-    try:
-        tree = await thread_branch_service.build_message_tree(
-            get_checkpointer(),
-            str(conversation_id),
-            active_checkpoint_id=None,
-        )
-    except Exception:  # noqa: BLE001
-        logger.warning(
-            "failed to resolve latest branch leaf after %s run conversation_id=%s",
-            moldy_source,
-            conversation_id,
-            exc_info=True,
-        )
-        return
-    if not tree.active_checkpoint_id:
-        return
-
     async with _session_factory()() as session:
-        conversation = await session.get(Conversation, conversation_id, with_for_update=True)
+        conversation = await load_worker_conversation(session, target)
+        if conversation is None:
+            return
+        try:
+            tree = await thread_branch_service.build_message_tree(
+                get_checkpointer(),
+                str(target.conversation_id),
+                active_checkpoint_id=None,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "failed to resolve latest branch leaf after %s run conversation_id=%s",
+                moldy_source,
+                target.conversation_id,
+                exc_info=True,
+            )
+            return
+        if not tree.active_checkpoint_id:
+            return
+        conversation = await load_worker_conversation(session, target)
         if conversation is None:
             return
         conversation.active_branch_checkpoint_id = tree.active_checkpoint_id
@@ -518,7 +553,7 @@ def _trace_status_for_run(
 
 
 async def _backfill_turn_attachments(
-    conversation_id: uuid.UUID, attachment_ids: list[uuid.UUID]
+    target: WorkerConversationTarget, attachment_ids: list[uuid.UUID]
 ) -> None:
     """Stamp this send's uploads with the turn's user message id (M1).
 
@@ -529,14 +564,18 @@ async def _backfill_turn_attachments(
     from app.services import chat_service
 
     async with _session_factory()() as session:
-        conversation = await session.get(Conversation, conversation_id)
+        conversation = await load_worker_conversation(session, target)
         if conversation is None:
             return
         message_id = await chat_service.resolve_turn_user_message_id(session, conversation)
         if not message_id:
             return
         await chat_service.link_attachments_to_message(
-            session, attachment_ids=attachment_ids, message_id=message_id
+            session,
+            attachment_ids=attachment_ids,
+            message_id=message_id,
+            conversation_id=conversation.id,
+            context=target.context,
         )
         await session.commit()
 
@@ -550,7 +589,15 @@ async def _prepare_run_metrics(
     """Capture the exact pre-input assistant IDs used to exclude checkpoint replay."""
     try:
         async with _session_factory()() as session:
-            conversation = await session.get(Conversation, conversation_id)
+            conversation = await load_worker_conversation(
+                session, WorkerConversationTarget(conversation_id, cfg.org_context)
+            )
+            if conversation is None:
+                return RunMetricsAccumulator(
+                    started_at=started_at,
+                    complete_event_capture=False,
+                    observe_protocol_events=False,
+                )
             active_checkpoint_id = (
                 getattr(cfg, "checkpoint_id", None)
                 if getattr(cfg, "checkpoint_id", None) is not None
@@ -609,7 +656,7 @@ async def _run_conversation(
     # 워커가 run 을 시작하지 못한 경우(소멸/이미 terminal)에는 finally 의
     # trace finalize + terminal 전이를 건너뛴다 — 다른 경로가 이미 끝낸 run 을
     # 다시 finalize 하지 않기 위함.
-    finalize_needed = True
+    finalize_needed = False
     workerless_cancel_before_start = False
     executor_exhausted_normally = False
     terminal_delivery = OwnerTerminalDelivery(
@@ -620,13 +667,14 @@ async def _run_conversation(
     )
     try:
         run, started = await _transition_to_running(
-            run_id,
+            _execution_target(run_id, conversation_id, cfg),
             worker_instance_id=registry.worker_instance_id,
         )
         if run is None:
             logger.warning("conversation run vanished before worker start run_id=%s", run_id)
             finalize_needed = False
             return
+        finalize_needed = True
         if not started:
             if run.status == "canceling" and run.worker_instance_id is None:
                 # Stop 요청이 워커 기동 전(queued)에 도착 — 실행 없이 canceled 로
@@ -780,7 +828,7 @@ async def _run_conversation(
                         status=effective_status,
                     )
                 await _activate_latest_branch_leaf_if_needed(
-                    conversation_id=conversation_id,
+                    target=WorkerConversationTarget(conversation_id, cfg.org_context),
                     moldy_source=moldy_source,
                     final_status=effective_status,
                 )
@@ -811,7 +859,9 @@ async def _run_conversation(
                 # and mis-link). Best-effort: a failure leaves message_id NULL
                 # (orphan GC reaps it later) rather than breaking run teardown.
                 try:
-                    await _backfill_turn_attachments(conversation_id, attachment_ids)
+                    await _backfill_turn_attachments(
+                        WorkerConversationTarget(conversation_id, cfg.org_context), attachment_ids
+                    )
                 except Exception:
                     logger.exception("attachment message_id backfill failed run_id=%s", run_id)
 

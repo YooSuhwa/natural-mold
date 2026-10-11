@@ -13,7 +13,9 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -40,6 +42,8 @@ def _session(
         status=status,
         source_skill_id=source_skill_id,
         finalized_skill_id=finalized_skill_id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     if updated_at is not None:
         session.created_at = updated_at
@@ -83,6 +87,18 @@ async def test_skill_id_matches_source_and_finalized(
     db: AsyncSession,
 ) -> None:
     skill_id = uuid.uuid4()
+    db.add(
+        Skill(
+            id=skill_id,
+            user_id=TEST_USER_ID,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            name="Owned session source",
+            slug="owned-session-source",
+            kind="text",
+        )
+    )
+    await db.flush()
     improve = _session(mode="improve", source_skill_id=skill_id)
     created = _session(status="completed", finalized_skill_id=skill_id)
     unrelated = _session()

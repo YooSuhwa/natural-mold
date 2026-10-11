@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_api import service
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.models.agent_api import AgentApiKey, AgentDeployment
 from app.schemas.agent_api import (
     AgentApiKeyCreate,
@@ -106,16 +107,18 @@ def _key_list_response(row) -> AgentApiKeyListResponse:
 async def list_deployment_candidates(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    return await service.list_deployment_candidates(db, user.id)
+    return await service.list_deployment_candidates(db, context)
 
 
 @router.get("/deployments", response_model=list[AgentDeploymentResponse])
 async def list_deployments(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    rows = await service.list_deployments(db, user.id)
+    rows = await service.list_deployments(db, context)
     return [service.deployment_to_response(row) for row in rows]
 
 
@@ -125,9 +128,10 @@ async def create_deployment(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    row = await service.create_deployment(db, user.id, data)
+    row = await service.create_deployment(db, context, data)
     await _record_deployment_audit(
         db,
         user=user,
@@ -146,9 +150,10 @@ async def update_deployment(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    row = await service.update_deployment(db, user.id, deployment_id, data)
+    row = await service.update_deployment(db, context, deployment_id, data)
     await _record_deployment_audit(
         db,
         user=user,
@@ -165,8 +170,9 @@ async def update_deployment(
 async def list_api_keys(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    rows = await service.list_api_keys(db, user.id)
+    rows = await service.list_api_keys(db, context)
     return [_key_list_response(row) for row in rows]
 
 
@@ -176,9 +182,10 @@ async def create_api_key(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    row, cleartext = await service.create_api_key(db, user.id, data)
+    row, cleartext = await service.create_api_key(db, context, data)
     await _record_api_key_audit(
         db,
         user=user,
@@ -208,9 +215,10 @@ async def revoke_api_key(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    row = await service.revoke_api_key(db, user.id, api_key_id)
+    row = await service.revoke_api_key(db, context, api_key_id)
     await _record_api_key_audit(
         db,
         user=user,

@@ -8,6 +8,7 @@ attachments into one created_at-sorted, source-tagged stream. Coexists with
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from app.models.user import User
 from app.services.artifact_service import ArtifactDeltaRecorder, ArtifactRuntimeContext
 from app.services.artifact_storage import LocalArtifactStorageBackend
 from tests.artifact_test_helpers import seed_artifact_conversation
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -33,7 +35,7 @@ async def _seed_generated_artifact(conv_id: uuid.UUID, agent_id: uuid.UUID, tmp_
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="files-run-1",
             output_dir=output_dir,
@@ -59,6 +61,8 @@ def _attachment(conv_id: uuid.UUID, *, message_id: str | None) -> MessageAttachm
         size_bytes=5,
         storage_path=f"/tmp/{upload_id}.png",
         url=f"/api/uploads/{upload_id}",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
 
 
@@ -150,10 +154,25 @@ async def test_files_endpoint_other_user_is_404(client: AsyncClient, db: AsyncSe
     model = Model(provider="openai", model_name="gpt-4o-mini", display_name="GPT-4o mini")
     db.add_all([other, model])
     await db.flush()
-    agent = Agent(user_id=other.id, name="Other", system_prompt="x", model_id=model.id)
+    agent = Agent(
+        user_id=other.id,
+        name="Other",
+        system_prompt="x",
+        model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+    )
     db.add(agent)
     await db.flush()
-    conv = Conversation(agent_id=agent.id, title="Other")
+    conv = Conversation(
+        agent_id=agent.id,
+        title="Other",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=datetime.now(UTC),
+    )
     db.add(conv)
     await db.commit()
 

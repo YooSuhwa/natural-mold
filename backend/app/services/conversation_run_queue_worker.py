@@ -8,15 +8,17 @@ from sqlalchemy import select
 
 from app.agent_runtime.executor import execute_agent_stream_langgraph
 from app.agent_runtime.runtime_config import AgentConfig
+from app.authz.conversation_input_scope import conversation_input_parent
+from app.authz.conversation_scope import resolve_conversation_actor
+from app.authz.scoping import private_parent_scoped
 from app.database import async_session as database_session
-from app.dependencies import CurrentUser
-from app.exceptions import ConflictError
-from app.models.agent import Agent
+from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.user import User
 from app.services import conversation_run_queue_service, conversation_run_service
+from app.services import conversation_run_queue_worker_metadata as metadata
 from app.services.chat_resource_context_integration import (
     reauthorize_resource_context_payload,
 )
@@ -39,74 +41,80 @@ def _session_factory():
     return async_session or database_session
 
 
-def _current_user(user: User) -> CurrentUser:
-    return CurrentUser(
-        id=user.id,
-        email=user.email,
-        name=user.name,
-        display_name=user.display_name,
-        avatar_mode=user.avatar_mode,
-        avatar_initials=user.avatar_initials,
-        avatar_color=user.avatar_color,
-        avatar_image_url=user.avatar_image_url,
-        is_super_user=user.is_super_user,
-    )
-
-
 async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
     """Rehydrate and launch one claimed input without request-scoped state."""
     registry = get_run_task_registry()
     cfg: AgentConfig | None = None
-    current_user: CurrentUser | None = None
     error_code: str | None = None
     async with _session_factory()() as db:
-        queued = await db.get(ConversationRunInput, input_id)
-        if queued is None or queued.run_id is None or queued.status != "claimed":
+        identity = await metadata.load_queue_input_identity(db, input_id)
+        if identity is None or identity.run_id is None or identity.status != "claimed":
             return None
-        run = await db.get(ConversationRun, queued.run_id)
-        user = await db.get(User, queued.user_id)
-        input_payload = queued.input_payload
+        run = await db.scalar(
+            select(ConversationRun)
+            .where(ConversationRun.id == identity.run_id)
+            .options(*metadata.RUN_IDENTITY_OPTIONS)
+            .execution_options(autoflush=False)
+        )
         if run is None:
             return None
-        if user is None or not user.is_active:
-            error_code = "queue_user_unavailable"
-        else:
-            local_task = registry.get(run.id)
-            if local_task is not None and not local_task.done():
-                return run
-            current_user = _current_user(user)
+        user = await db.get(User, identity.user_id)
+        try:
+            target = await metadata.authorize_queue_target(db, identity, run)
+        except metadata.QueueBindingInvalidError:
+            await _fail_claimed_input(input_id, error_code="queue_binding_invalid")
+            return None
+        except AppError:
+            error_code = (
+                "queue_user_unavailable"
+                if user is None or not user.is_active
+                else "queue_rehydrate_failed"
+            )
+            await _fail_claimed_input(input_id, error_code=error_code)
+            return run
+        local_task = registry.get(target.run.id)
+        if local_task is not None and not local_task.done():
+            return target.run
+        queued = await db.scalar(
+            private_parent_scoped(
+                select(ConversationRunInput).where(ConversationRunInput.id == input_id),
+                conversation_input_parent(),
+                target.context,
+            )
+        )
+        if queued is None or user is None:
+            await _fail_claimed_input(input_id, error_code="queue_rehydrate_failed")
+            return run
+        context = target.context
+        current_user = metadata.queue_current_user(user)
+        input_payload = queued.input_payload
+        try:
+            cfg = await resolve_agent_context(
+                db,
+                queued.conversation_id,
+                current_user,
+                context=context,
+                checkpoint_id=queued.checkpoint_id,
+            )
+        except (AppError, HTTPException, ValueError):
+            logger.warning("queued input rehydration failed input_id=%s", input_id, exc_info=True)
+            error_code = "queue_rehydrate_failed"
+        if error_code is None:
             try:
-                cfg = await resolve_agent_context(
+                input_payload = await reauthorize_resource_context_payload(
                     db,
-                    queued.conversation_id,
-                    current_user,
-                    checkpoint_id=queued.checkpoint_id,
+                    ResourceContextScope(
+                        context=context,
+                        agent_id=queued.agent_id,
+                        conversation_id=queued.conversation_id,
+                    ),
+                    input_payload,
                 )
-            except (ConflictError, HTTPException, ValueError):
+            except HTTPException:
                 logger.warning(
-                    "queued input rehydration failed input_id=%s",
-                    input_id,
-                    exc_info=True,
+                    "queued resource context unavailable input_id=%s", input_id, exc_info=True
                 )
-                error_code = "queue_rehydrate_failed"
-            if error_code is None:
-                try:
-                    input_payload = await reauthorize_resource_context_payload(
-                        db,
-                        ResourceContextScope(
-                            user_id=queued.user_id,
-                            agent_id=queued.agent_id,
-                            conversation_id=queued.conversation_id,
-                        ),
-                        input_payload,
-                    )
-                except HTTPException:
-                    logger.warning(
-                        "queued resource context unavailable input_id=%s",
-                        input_id,
-                        exc_info=True,
-                    )
-                    error_code = "queue_resource_context_unavailable"
+                error_code = "queue_resource_context_unavailable"
         attachment_ids = [uuid.UUID(value) for value in queued.attachment_ids]
         conversation_id = queued.conversation_id
         run_id = run.id
@@ -115,7 +123,7 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
     if error_code is not None:
         await _fail_claimed_input(input_id, error_code=error_code)
         return run
-    if cfg is None or current_user is None:
+    if cfg is None:
         await _fail_claimed_input(input_id, error_code="queue_rehydrate_failed")
         return run
 
@@ -143,15 +151,37 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
 
 async def _fail_claimed_input(input_id: uuid.UUID, *, error_code: str) -> None:
     async with _session_factory()() as db:
-        queued = await db.get(ConversationRunInput, input_id)
-        if queued is None or queued.run_id is None:
+        identity = await metadata.load_queue_input_identity(db, input_id)
+        if identity is None or identity.run_id is None:
             return
-        conversation = await db.get(Conversation, queued.conversation_id, with_for_update=True)
-        run = await db.get(ConversationRun, queued.run_id, with_for_update=True)
+        conversation = (
+            await db.execute(
+                select(Conversation.id, Conversation.user_id, Conversation.agent_id)
+                .where(Conversation.id == identity.conversation_id)
+                .with_for_update(of=Conversation)
+            )
+        ).one_or_none()
+        run = await db.scalar(
+            select(ConversationRun)
+            .where(ConversationRun.id == identity.run_id)
+            .with_for_update(of=ConversationRun)
+            .options(*metadata.RUN_TERMINAL_OPTIONS)
+        )
         if conversation is None or run is None or run.status != "queued":
+            return
+        queued = await db.scalar(
+            select(ConversationRunInput)
+            .where(ConversationRunInput.id == input_id)
+            .with_for_update(of=ConversationRunInput)
+            .options(metadata.INPUT_TERMINAL_OPTIONS)
+        )
+        if queued is None or queued.run_id != run.id:
             return
         queued.status = "failed"
         queued.revision += 1
+        if not metadata.queue_binding_matches(queued, run, conversation):
+            await db.commit()
+            return
         await conversation_run_service.transition_run(
             db,
             run,
@@ -168,16 +198,18 @@ async def dispatch_next_for_conversation(
     """Claim, commit, then launch the next input for one conversation."""
     async with _session_factory()() as db:
         owner_id = await db.scalar(
-            select(Agent.user_id)
-            .join(Conversation, Conversation.agent_id == Agent.id)
-            .where(Conversation.id == conversation_id)
+            select(Conversation.user_id).where(Conversation.id == conversation_id)
         )
         if owner_id is None:
+            return None
+        try:
+            context = await resolve_conversation_actor(db, conversation_id, owner_id)
+        except AppError:
             return None
         claimed = await conversation_run_queue_service.claim_next_input(
             db,
             conversation_id=conversation_id,
-            user_id=owner_id,
+            context=context,
         )
         if claimed is None:
             return None
@@ -196,7 +228,7 @@ async def recover_conversation_queue() -> int:
     )
     async with _session_factory()() as db:
         claimed_result = await db.execute(
-            select(ConversationRunInput)
+            select(ConversationRunInput.id, ConversationRunInput.run_id)
             .join(ConversationRun, ConversationRun.id == ConversationRunInput.run_id)
             .where(
                 ConversationRunInput.status == "claimed",
@@ -205,9 +237,7 @@ async def recover_conversation_queue() -> int:
             )
         )
         claimed_ids = [
-            item.id
-            for item in claimed_result.scalars().all()
-            if item.run_id not in registry.active_run_ids()
+            item.id for item in claimed_result.all() if item.run_id not in registry.active_run_ids()
         ]
         pending_result = await db.execute(
             select(ConversationRunInput.conversation_id)

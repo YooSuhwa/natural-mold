@@ -5,7 +5,8 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     skill_file_not_found,
     skill_not_found,
@@ -15,6 +16,7 @@ from app.error_codes import (
 from app.models.skill import Skill
 from app.models.skill_revision import SkillRevision
 from app.routers.skill_router_support import serialize_skill
+from app.schemas.resource_view_context import ResourceViewContext
 from app.schemas.skill_revision import (
     SkillRevisionDetail,
     SkillRevisionFileContentResponse,
@@ -35,10 +37,11 @@ async def list_skill_revisions(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[SkillRevisionSummary]:
     # 리비전 목록 — 최신순 상한(형제 세션 목록과 동일한 bounded 계약).
     # 저장/롤백마다 리비전이 늘므로 무제한 반환은 수백 행 응답·DOM으로 자란다.
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await _load_skill_or_404(db, skill_id=skill_id, context=context)
     revisions = await skill_revision_service.list_revisions(
         db, skill=skill, user_id=user.id, limit=limit
     )
@@ -51,8 +54,9 @@ async def get_skill_revision(
     revision_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> SkillRevisionDetail:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await _load_skill_or_404(db, skill_id=skill_id, context=context)
     revision = await skill_revision_service.get_revision(
         db,
         skill=skill,
@@ -70,6 +74,7 @@ async def list_skill_revision_files(
     revision_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> SkillRevisionFilesResponse:
     """리비전 스냅샷 zip의 파일 목록 (버전 diff/소스 보기, Phase 2).
 
@@ -78,7 +83,7 @@ async def list_skill_revision_files(
     """
 
     revision = await _load_revision_or_404(
-        db, skill_id=skill_id, revision_id=revision_id, user=user
+        db, skill_id=skill_id, revision_id=revision_id, user=user, context=context
     )
     if skill_revision_service.snapshot_pruned(revision):
         return SkillRevisionFilesResponse(snapshot_pruned=True, files=[])
@@ -107,6 +112,7 @@ async def get_skill_revision_file_content(
     ),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> SkillRevisionFileContentResponse:
     """리비전 스냅샷의 단일 파일 텍스트 (소유자 전용).
 
@@ -115,7 +121,7 @@ async def get_skill_revision_file_content(
     """
 
     revision = await _load_revision_or_404(
-        db, skill_id=skill_id, revision_id=revision_id, user=user
+        db, skill_id=skill_id, revision_id=revision_id, user=user, context=context
     )
     if skill_revision_service.snapshot_pruned(revision):
         raise skill_file_not_found()
@@ -132,9 +138,10 @@ async def rollback_skill_revision(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillRollbackResponse:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await _load_skill_or_404(db, skill_id=skill_id, context=context)
     revision = await skill_revision_service.get_revision(
         db,
         skill=skill,
@@ -149,6 +156,7 @@ async def rollback_skill_revision(
             skill=skill,
             user_id=user.id,
             revision=revision,
+            context=context,
             changelog_summary=f"Rolled back to revision {revision.revision_number}.",
         )
     except (
@@ -181,7 +189,7 @@ async def rollback_skill_revision(
     await db.refresh(restored)
     return SkillRollbackResponse(
         # bare model_validate 대신 serializer — used_by_count/health enrichment 정렬.
-        skill=await serialize_skill(db, skill, user),
+        skill=await serialize_skill(db, skill, ResourceViewContext(user, context)),
         revision=SkillRevisionSummary.model_validate(restored),
     )
 
@@ -190,9 +198,9 @@ async def _load_skill_or_404(
     db: AsyncSession,
     *,
     skill_id: uuid.UUID,
-    user: CurrentUser,
+    context: OrgContext,
 ) -> Skill:
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if skill is None:
         raise skill_not_found()
     return skill
@@ -204,8 +212,9 @@ async def _load_revision_or_404(
     skill_id: uuid.UUID,
     revision_id: uuid.UUID,
     user: CurrentUser,
+    context: OrgContext,
 ) -> SkillRevision:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await _load_skill_or_404(db, skill_id=skill_id, context=context)
     revision = await skill_revision_service.get_revision(
         db,
         skill=skill,

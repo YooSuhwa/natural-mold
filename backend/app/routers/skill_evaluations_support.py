@@ -5,6 +5,7 @@ import uuid
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.error_codes import (
     skill_evaluation_set_not_found,
@@ -26,9 +27,9 @@ async def load_skill_or_404(
     db: AsyncSession,
     *,
     skill_id: uuid.UUID,
-    user: CurrentUser,
+    context: OrgContext,
 ) -> Skill:
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+    skill = await skill_service.get_skill(db, skill_id, context)
     if skill is None:
         raise skill_not_found()
     return skill

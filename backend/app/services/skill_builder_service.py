@@ -3,21 +3,42 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
+from pydantic import JsonValue
 from sqlalchemy import desc, or_, select, update
-from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import private_scope_predicate
+from app.authz.skill_builder_scope import (
+    private_skill_builder_predicate,
+    resolve_skill_builder_actor,
+)
+from app.error_codes import session_not_found
+from app.exceptions import AppError
+from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillBuilderMode, SkillBuilderStatus
+from app.schemas.skill_builder_scope import SkillBuilderChatAttachment
 from app.services.skill_builder_confirmation import confirm_builder_session
 from app.services.skill_builder_errors import (
     SkillBuilderConflictError,
     SkillBuilderSourceSkillNotFound,
     SkillBuilderValidationError,
+)
+from app.services.skill_builder_mutation_scope import (
+    SkillBuilderEvaluation,
+    SkillBuilderMessage,
+    SkillBuilderMutationTarget,
+    load_mutation_session,
 )
 from app.skills import service as skill_service
 from app.storage.paths import ensure_relative
@@ -26,18 +47,21 @@ from app.storage.paths import ensure_relative
 async def create_session(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     user_request: str,
     mode: SkillBuilderMode = SkillBuilderMode.CREATE,
     source_skill_id: uuid.UUID | None = None,
 ) -> SkillBuilderSession:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     base_snapshot: dict[str, Any] | None = None
     base_skill_version: str | None = None
     base_content_hash: str | None = None
     if mode is SkillBuilderMode.IMPROVE:
         if source_skill_id is None:
             raise SkillBuilderSourceSkillNotFound("source skill is required")
-        source_skill = await _get_owned_skill(db, source_skill_id, user_id)
+        source_skill = await _get_owned_skill(db, source_skill_id, context)
         if source_skill is None:
             raise SkillBuilderSourceSkillNotFound("source skill not found")
         base_snapshot = await load_skill_snapshot(source_skill)
@@ -45,7 +69,9 @@ async def create_session(
         base_content_hash = source_skill.content_hash
 
     session = SkillBuilderSession(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         user_request=user_request,
         mode=mode.value,
         source_skill_id=source_skill_id if mode is SkillBuilderMode.IMPROVE else None,
@@ -61,15 +87,28 @@ async def create_session(
 
 async def attach_chat_runtime(
     db: AsyncSession,
-    session: SkillBuilderSession,
-    *,
-    conversation_id: uuid.UUID,
-    draft_workspace_path: str,
+    attachment: SkillBuilderChatAttachment,
 ) -> SkillBuilderSession:
     """v2 시작 플로우 — 빌더 대화/워크스페이스를 붙이고 상태를 ACTIVE로 올린다."""
 
+    context = attachment.context
+    session = await get_session(db, attachment.session_id, context)
+    if session is None:
+        raise session_not_found()
+    await resolve_skill_builder_actor(db, session.id, context.user_id)
+    conversation_id = await db.scalar(
+        select(Conversation.id)
+        .join(Agent, Agent.id == Conversation.agent_id)
+        .where(
+            Conversation.id == attachment.conversation_id,
+            private_scope_predicate(Conversation, context),
+            private_scope_predicate(Agent, context),
+        )
+    )
+    if conversation_id is None:
+        raise session_not_found()
     session.conversation_id = conversation_id
-    session.draft_workspace_path = ensure_relative(draft_workspace_path)
+    session.draft_workspace_path = ensure_relative(attachment.draft_workspace_path)
     session.status = SkillBuilderStatus.ACTIVE.value
     session.updated_at = _now()
     await db.flush()
@@ -77,13 +116,9 @@ async def attach_chat_runtime(
 
 
 async def record_tool_consents(
-    db: AsyncSession,
-    session: SkillBuilderSession,
-    *,
-    tool_names: list[str],
+    db: AsyncSession, target: SkillBuilderMutationTarget, tool_names: list[str]
 ) -> SkillBuilderSession:
-    """AD-4 스코프드 동의 기록 — 도구명 → 동의 메타데이터 (세션 단위)."""
-
+    session = await load_mutation_session(db, target)
     consents = dict(session.tool_consents or {})
     granted_at = datetime.now(UTC).isoformat()
     for name in tool_names:
@@ -97,13 +132,21 @@ async def record_tool_consents(
 async def resolve_session_agent_id(
     db: AsyncSession,
     session: SkillBuilderSession,
+    context: OrgContext,
 ) -> uuid.UUID | None:
     """빌더 대화의 히든 에이전트 id (대화 미연결/삭제 시 None)."""
 
-    if session.conversation_id is None:
+    scoped = await get_session(db, session.id, context)
+    if scoped is None or scoped.conversation_id is None:
         return None
     result = await db.execute(
-        select(Conversation.agent_id).where(Conversation.id == session.conversation_id)
+        select(Agent.id)
+        .join(Conversation, Conversation.agent_id == Agent.id)
+        .where(
+            Conversation.id == scoped.conversation_id,
+            private_scope_predicate(Conversation, context),
+            private_scope_predicate(Agent, context),
+        )
     )
     return result.scalar_one_or_none()
 
@@ -111,13 +154,16 @@ async def resolve_session_agent_id(
 async def get_session(
     db: AsyncSession,
     session_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> SkillBuilderSession | None:
+    await require_private_actor(db, context)
     result = await db.execute(
-        select(SkillBuilderSession).where(
+        select(SkillBuilderSession)
+        .where(
             SkillBuilderSession.id == session_id,
-            SkillBuilderSession.user_id == user_id,
+            private_skill_builder_predicate(context),
         )
+        .execution_options(populate_existing=True, autoflush=False)
     )
     return result.scalar_one_or_none()
 
@@ -125,7 +171,7 @@ async def get_session(
 async def list_sessions(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     skill_id: uuid.UUID | None = None,
     status: str | None = None,
     limit: int = 20,
@@ -139,9 +185,10 @@ async def list_sessions(
     세션을 클릭 가능한 행으로 노출하지 않기 위함(명시 status로는 조회 가능).
     """
 
+    await require_private_actor(db, context)
     stmt = (
         select(SkillBuilderSession)
-        .where(SkillBuilderSession.user_id == user_id)
+        .where(private_skill_builder_predicate(context))
         # updated_at은 트랜잭션/초 단위로 동률이 나므로 id 보조 정렬로 절단
         # 경계 행의 플랩을 막는다 (R5).
         .order_by(desc(SkillBuilderSession.updated_at), desc(SkillBuilderSession.id))
@@ -163,17 +210,14 @@ async def list_sessions(
 
 
 async def append_message(
-    db: AsyncSession,
-    session: SkillBuilderSession,
-    *,
-    role: str,
-    content: str,
+    db: AsyncSession, target: SkillBuilderMutationTarget, message: SkillBuilderMessage
 ) -> SkillBuilderSession:
+    session = await load_mutation_session(db, target)
     messages = list(session.messages or [])
     messages.append(
         {
-            "role": role,
-            "content": content,
+            "role": message.role,
+            "content": message.content,
             "created_at": datetime.now(UTC).isoformat(),
         }
     )
@@ -184,12 +228,10 @@ async def append_message(
 
 
 async def save_draft_package(
-    db: AsyncSession,
-    session: SkillBuilderSession,
-    *,
-    draft: dict[str, Any],
+    db: AsyncSession, target: SkillBuilderMutationTarget, draft: Mapping[str, JsonValue]
 ) -> SkillBuilderSession:
-    session.draft_package = draft
+    session = await load_mutation_session(db, target)
+    session.draft_package = dict(draft)
     session.status = SkillBuilderStatus.REVIEW.value
     session.updated_at = _now()
     await db.flush()
@@ -197,12 +239,10 @@ async def save_draft_package(
 
 
 async def save_validation_result(
-    db: AsyncSession,
-    session: SkillBuilderSession,
-    *,
-    result: dict[str, Any],
+    db: AsyncSession, target: SkillBuilderMutationTarget, result: Mapping[str, JsonValue]
 ) -> SkillBuilderSession:
-    session.validation_result = result
+    session = await load_mutation_session(db, target)
+    session.validation_result = dict(result)
     compatibility_result = result.get("compatibility_result")
     if isinstance(compatibility_result, dict):
         session.compatibility_result = compatibility_result
@@ -212,14 +252,11 @@ async def save_validation_result(
 
 
 async def save_trigger_eval_result(
-    db: AsyncSession,
-    session: SkillBuilderSession,
-    *,
-    result: Mapping[str, Any],
-    draft: Mapping[str, Any],
+    db: AsyncSession, target: SkillBuilderMutationTarget, evaluation: SkillBuilderEvaluation
 ) -> SkillBuilderSession:
-    session.trigger_eval_result = dict(result)
-    session.draft_package = dict(draft)
+    session = await load_mutation_session(db, target)
+    session.trigger_eval_result = dict(evaluation.result)
+    session.draft_package = dict(evaluation.draft)
     session.updated_at = _now()
     await db.flush()
     return session
@@ -228,33 +265,37 @@ async def save_trigger_eval_result(
 async def claim_for_confirming(
     db: AsyncSession,
     session_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> bool:
-    result = cast(
-        CursorResult[Any],
-        await db.execute(
-            update(SkillBuilderSession)
-            .where(
-                SkillBuilderSession.id == session_id,
-                SkillBuilderSession.user_id == user_id,
-                SkillBuilderSession.status == SkillBuilderStatus.REVIEW.value,
-            )
-            .values(status=SkillBuilderStatus.CONFIRMING.value, updated_at=_now())
-        ),
+    if await get_session(db, session_id, context) is None:
+        return False
+    try:
+        await resolve_skill_builder_actor(db, session_id, context.user_id)
+    except AppError:
+        return False
+    claimed_id = await db.scalar(
+        update(SkillBuilderSession)
+        .where(
+            SkillBuilderSession.id == session_id,
+            private_scope_predicate(SkillBuilderSession, context),
+            SkillBuilderSession.status == SkillBuilderStatus.REVIEW.value,
+        )
+        .values(status=SkillBuilderStatus.CONFIRMING.value, updated_at=_now())
+        .returning(SkillBuilderSession.id)
     )
     await db.commit()
-    return result.rowcount == 1
+    return claimed_id is not None
 
 
 async def confirm_session(
     db: AsyncSession,
     session: SkillBuilderSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     zip_from_workspace: bool = False,
 ) -> Skill:
     return await confirm_builder_session(
-        db, session, user_id=user_id, zip_from_workspace=zip_from_workspace
+        db, session, context=context, zip_from_workspace=zip_from_workspace
     )
 
 
@@ -293,12 +334,12 @@ async def load_skill_snapshot(skill: Skill) -> dict[str, Any]:
 async def _get_owned_skill(
     db: AsyncSession,
     skill_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Skill | None:
     result = await db.execute(
         select(Skill).where(
             Skill.id == skill_id,
-            Skill.user_id == user_id,
+            private_scope_predicate(Skill, context),
         )
     )
     return result.scalar_one_or_none()

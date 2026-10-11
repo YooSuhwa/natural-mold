@@ -13,6 +13,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.config import settings
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.schemas.artifact import ArtifactTextContent
@@ -24,7 +25,7 @@ from app.services.artifacts.library import _get_owned_artifact_with_version
 async def read_artifact_text_content(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
     conversation_id: uuid.UUID | None = None,
     storage: ArtifactStorageBackend | None = None,
@@ -32,7 +33,7 @@ async def read_artifact_text_content(
 ) -> ArtifactTextContent:
     artifact, version = await _get_owned_artifact_with_version(
         db,
-        user_id=user_id,
+        context=context,
         artifact_id=artifact_id,
         conversation_id=conversation_id,
     )
@@ -56,14 +57,14 @@ async def read_artifact_text_content(
 async def get_artifact_download_path(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
     conversation_id: uuid.UUID | None = None,
     storage: ArtifactStorageBackend | None = None,
 ) -> tuple[ConversationArtifact, ArtifactVersion, Path]:
     artifact, version = await _get_owned_artifact_with_version(
         db,
-        user_id=user_id,
+        context=context,
         artifact_id=artifact_id,
         conversation_id=conversation_id,
     )

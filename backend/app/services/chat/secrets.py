@@ -13,9 +13,15 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
+from app.agent_runtime.identity import AgentRunSource, resolve_agent_run_identity
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.run_secrets import collect_secret_values, collect_url_userinfo
+from app.authz.conversation_scope import require_private_conversation
+from app.authz.org_context import OrgContext
+from app.authz.runtime_capability_scope import require_runtime_capability_tree
+from app.authz.scoping import private_scoped
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.schemas.conversation import MessageResponse
@@ -27,6 +33,7 @@ logger = logging.getLogger(__name__)
 async def collect_conversation_secret_values(
     db: AsyncSession,
     conversation: Conversation,
+    context: OrgContext,
 ) -> set[str]:
     """ADR-021 C2 — gather the conversation agent's plaintext secrets.
 
@@ -47,6 +54,7 @@ async def collect_conversation_secret_values(
 
     from app.services.conversation_stream_service import resolve_fallback_chain
 
+    conversation = await require_private_conversation(db, conversation.id, context)
     secrets: set[str] = set()
     # GET /messages (and share-link render) run outside any agent run, and the
     # routers load the conversation WITHOUT eager-loading ``agent`` (the runtime
@@ -59,22 +67,36 @@ async def collect_conversation_secret_values(
     if agent_id is None:
         return secrets
     try:
-        result = await db.execute(
-            select(Agent).where(Agent.id == agent_id).options(*_agent_runtime_load_options())
-        )
-        agent = result.unique().scalar_one_or_none()
+        with db.no_autoflush:
+            result = await db.execute(
+                private_scoped(select(Agent).where(Agent.id == agent_id), Agent, context)
+                .options(*_agent_runtime_load_options())
+                .execution_options(populate_existing=True, autoflush=False)
+            )
+            agent = result.unique().scalar_one_or_none()
     except Exception:  # noqa: BLE001 — read must not fail on secret-collect
         logger.debug("secret-collect agent load failed for %s", conversation.id, exc_info=True)
         return secrets
     if agent is None:
         return secrets
+    require_runtime_capability_tree(agent, context)
 
+    identity = resolve_agent_run_identity(
+        agent_id=agent.id,
+        agent_owner_user_id=agent.user_id,
+        runtime_name=agent.runtime_name,
+        identity_mode=agent.identity_mode,
+        source=AgentRunSource.CHAT,
+        caller_user_id=context.user_id,
+    )
     # Each source is isolated: a failure in ONE (e.g. resolve_llm_api_key_for_agent
     # raises for an agent whose LLM credential was deleted) must NOT abort the
     # others, or tool/MCP/base_url secrets would silently go uncollected →
     # under-masking (ADR-021 re-review #1).
     try:
-        api_key = await resolve_llm_api_key_for_agent(db, agent)
+        api_key = await resolve_llm_api_key_for_agent(
+            db, agent, AgentCredentialAccess(context, identity)
+        )
         if api_key:
             secrets |= collect_secret_values(api_key)
     except Exception:  # noqa: BLE001
@@ -104,7 +126,7 @@ async def collect_conversation_secret_values(
         # collection needs (mask what's stored; the live run path collects
         # refreshed tokens itself).
         tools_config = await build_tools_config(
-            agent, db=None, conversation_id=str(conversation.id)
+            agent, context=context, identity=identity, db=None, conversation_id=str(conversation.id)
         )
         for tool_config in tools_config or []:
             if not isinstance(tool_config, dict):

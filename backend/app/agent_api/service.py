@@ -10,6 +10,14 @@ from sqlalchemy.orm import selectinload
 from app.agent_api.security import generate_api_key
 from app.agent_runtime.identity import AGENT_IDENTITY_FIXED
 from app.agent_runtime.runtime_policy import RuntimePolicyV1, resolve_runtime_policy
+from app.authz.agent_api_scope import private_api_key_predicate, private_deployment_predicate
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import private_scope_predicate
 from app.exceptions import NotFoundError, ValidationError
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_api import AgentApiKey, AgentApiKeyDeployment, AgentDeployment
@@ -84,23 +92,26 @@ def _key_options():
     )
 
 
-async def list_deployments(db: AsyncSession, user_id: uuid.UUID) -> list[AgentDeployment]:
+async def list_deployments(db: AsyncSession, context: OrgContext) -> list[AgentDeployment]:
+    await require_private_actor(db, context)
     result = await db.execute(
         select(AgentDeployment)
-        .where(AgentDeployment.user_id == user_id)
+        .where(private_deployment_predicate(context))
         .options(selectinload(AgentDeployment.agent))
+        .execution_options(populate_existing=True, autoflush=False)
         .order_by(AgentDeployment.created_at.desc())
     )
     return list(result.scalars().all())
 
 
 async def list_deployment_candidates(
-    db: AsyncSession, user_id: uuid.UUID
+    db: AsyncSession, context: OrgContext
 ) -> list[AgentDeploymentCandidateResponse]:
+    await require_private_actor(db, context)
     agents_result = await db.execute(
         select(Agent)
         .where(
-            Agent.user_id == user_id,
+            private_scope_predicate(Agent, context),
             # 히든 런타임 에이전트는 API 배포 후보에서 제외.
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
         )
@@ -108,7 +119,7 @@ async def list_deployment_candidates(
     )
     agents = list(agents_result.scalars().all())
     deployments_result = await db.execute(
-        select(AgentDeployment).where(AgentDeployment.user_id == user_id)
+        select(AgentDeployment).where(private_deployment_predicate(context))
     )
     deployments_by_agent = {row.agent_id: row for row in deployments_result.scalars().all()}
 
@@ -133,13 +144,18 @@ async def list_deployment_candidates(
 
 
 async def create_deployment(
-    db: AsyncSession, user_id: uuid.UUID, data: AgentDeploymentCreate
+    db: AsyncSession, context: OrgContext, data: AgentDeploymentCreate
 ) -> AgentDeployment:
-    result = await db.execute(
-        select(Agent)
-        .where(Agent.id == data.agent_id, Agent.user_id == user_id)
-        .options(selectinload(Agent.model))
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    with db.no_autoflush:
+        result = await db.execute(
+            select(Agent)
+            .where(Agent.id == data.agent_id, private_scope_predicate(Agent, context))
+            .options(selectinload(Agent.model))
+            .execution_options(autoflush=False, populate_existing=True)
+        )
     agent = result.scalar_one_or_none()
     if agent is None:
         raise NotFoundError("AGENT_NOT_FOUND", "agent not found")
@@ -149,11 +165,13 @@ async def create_deployment(
             "API deployment requires fixed identity.",
         )
 
-    existing = await db.execute(
-        select(AgentDeployment)
-        .where(AgentDeployment.agent_id == agent.id, AgentDeployment.user_id == user_id)
-        .options(selectinload(AgentDeployment.agent))
-    )
+    with db.no_autoflush:
+        existing = await db.execute(
+            select(AgentDeployment)
+            .where(AgentDeployment.agent_id == agent.id, private_deployment_predicate(context))
+            .options(selectinload(AgentDeployment.agent))
+            .execution_options(autoflush=False, populate_existing=True)
+        )
     existing_row = existing.scalar_one_or_none()
     if existing_row is not None:
         return existing_row
@@ -161,7 +179,9 @@ async def create_deployment(
     public_id = agent.runtime_name or f"agent_{agent.id.hex[:12]}"
     row = AgentDeployment(
         agent_id=agent.id,
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         public_id=public_id,
         allow_streaming=data.allow_streaming,
         allow_background=data.allow_background,
@@ -180,15 +200,20 @@ async def create_deployment(
 
 async def update_deployment(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
     deployment_id: uuid.UUID,
     data: AgentDeploymentUpdate,
 ) -> AgentDeployment:
-    result = await db.execute(
-        select(AgentDeployment)
-        .where(AgentDeployment.id == deployment_id, AgentDeployment.user_id == user_id)
-        .options(selectinload(AgentDeployment.agent))
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    with db.no_autoflush:
+        result = await db.execute(
+            select(AgentDeployment)
+            .where(AgentDeployment.id == deployment_id, private_deployment_predicate(context))
+            .options(selectinload(AgentDeployment.agent))
+            .execution_options(autoflush=False, populate_existing=True)
+        )
     row = result.scalar_one_or_none()
     if row is None:
         raise NotFoundError("AGENT_DEPLOYMENT_NOT_FOUND", "deployment not found")
@@ -208,15 +233,20 @@ async def update_deployment(
 
 
 async def _load_deployments_for_key(
-    db: AsyncSession, user_id: uuid.UUID, deployment_ids: list[uuid.UUID]
+    db: AsyncSession, context: OrgContext, deployment_ids: list[uuid.UUID]
 ) -> list[AgentDeployment]:
     if not deployment_ids:
         return []
-    result = await db.execute(
-        select(AgentDeployment)
-        .where(AgentDeployment.user_id == user_id, AgentDeployment.id.in_(deployment_ids))
-        .options(selectinload(AgentDeployment.agent))
-    )
+    with db.no_autoflush:
+        result = await db.execute(
+            select(AgentDeployment)
+            .where(
+                private_deployment_predicate(context),
+                AgentDeployment.id.in_(deployment_ids),
+            )
+            .options(selectinload(AgentDeployment.agent))
+            .execution_options(autoflush=False, populate_existing=True)
+        )
     rows = list(result.scalars().all())
     if len({row.id for row in rows}) != len(set(deployment_ids)):
         raise ValidationError(
@@ -227,17 +257,22 @@ async def _load_deployments_for_key(
 
 
 async def create_api_key(
-    db: AsyncSession, user_id: uuid.UUID, data: AgentApiKeyCreate
+    db: AsyncSession, context: OrgContext, data: AgentApiKeyCreate
 ) -> tuple[AgentApiKey, str]:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     if not data.allow_all_deployments and not data.deployment_ids:
         raise ValidationError(
             "AGENT_API_KEY_DEPLOYMENT_REQUIRED",
             "select at least one deployment or allow all deployments",
         )
-    deployments = await _load_deployments_for_key(db, user_id, data.deployment_ids)
+    deployments = await _load_deployments_for_key(db, context, data.deployment_ids)
     generated = generate_api_key()
     row = AgentApiKey(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=data.name,
         description=data.description,
         key_id=generated.key_id,
@@ -258,21 +293,27 @@ async def create_api_key(
     return result.scalar_one(), generated.cleartext
 
 
-async def list_api_keys(db: AsyncSession, user_id: uuid.UUID) -> list[AgentApiKey]:
+async def list_api_keys(db: AsyncSession, context: OrgContext) -> list[AgentApiKey]:
+    await require_private_actor(db, context)
     result = await db.execute(
         select(AgentApiKey)
-        .where(AgentApiKey.user_id == user_id)
+        .where(private_api_key_predicate(context))
         .options(_key_options())
+        .execution_options(populate_existing=True, autoflush=False)
         .order_by(AgentApiKey.created_at.desc())
     )
     return list(result.scalars().all())
 
 
-async def revoke_api_key(db: AsyncSession, user_id: uuid.UUID, key_id: uuid.UUID) -> AgentApiKey:
+async def revoke_api_key(db: AsyncSession, context: OrgContext, key_id: uuid.UUID) -> AgentApiKey:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     result = await db.execute(
         select(AgentApiKey)
-        .where(AgentApiKey.id == key_id, AgentApiKey.user_id == user_id)
+        .where(AgentApiKey.id == key_id, private_api_key_predicate(context))
         .options(_key_options())
+        .execution_options(populate_existing=True, autoflush=False)
     )
     row = result.scalar_one_or_none()
     if row is None:

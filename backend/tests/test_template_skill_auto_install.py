@@ -16,12 +16,14 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.marketplace import MarketplaceInstallation
 from app.models.model import Model
 from app.models.skill import Skill
 from app.models.template import Template
 from app.schemas.agent import AgentCreate
 from app.services import agent_service
+from tests.authz.unit_scope_fixture import ensure_unit_scope, unit_context
 from tests.conftest import make_user
 
 
@@ -67,11 +69,14 @@ async def test_template_skill_slug_installs_and_attaches(
 ) -> None:
     await _seed_marketplace(db, tmp_path, monkeypatch)
     user = await make_user(db)
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     model = _add_model(db)
     template = _add_template(db, ["openwiki"])
     await db.flush()
 
-    agent = await agent_service.create_agent(db, _agent_create(model, template), user.id)
+    agent = await agent_service.create_agent(
+        db, _agent_create(model, template), unit_context(user.id)
+    )
 
     assert len(agent.skill_links) == 1
     skill = await db.get(Skill, agent.skill_links[0].skill_id)
@@ -101,15 +106,16 @@ async def test_template_skill_reuses_existing_installation(
 ) -> None:
     await _seed_marketplace(db, tmp_path, monkeypatch)
     user = await make_user(db)
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     model = _add_model(db)
     template = _add_template(db, ["openwiki"])
     await db.flush()
 
     first = await agent_service.create_agent(
-        db, _agent_create(model, template, name="Doc Agent 1"), user.id
+        db, _agent_create(model, template, name="Doc Agent 1"), unit_context(user.id)
     )
     second = await agent_service.create_agent(
-        db, _agent_create(model, template, name="Doc Agent 2"), user.id
+        db, _agent_create(model, template, name="Doc Agent 2"), unit_context(user.id)
     )
 
     assert len(first.skill_links) == 1
@@ -127,11 +133,14 @@ async def test_template_with_unknown_skill_slug_still_creates_agent(
 ) -> None:
     await _seed_marketplace(db, tmp_path, monkeypatch)
     user = await make_user(db)
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     model = _add_model(db)
     template = _add_template(db, ["no-such-skill"])
     await db.flush()
 
-    agent = await agent_service.create_agent(db, _agent_create(model, template), user.id)
+    agent = await agent_service.create_agent(
+        db, _agent_create(model, template), unit_context(user.id)
+    )
 
     assert agent.skill_links == []
 
@@ -142,6 +151,7 @@ async def test_template_without_skill_slugs_keeps_legacy_behavior(
 ) -> None:
     await _seed_marketplace(db, tmp_path, monkeypatch)
     user = await make_user(db)
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     model = _add_model(db)
     template = Template(
         name=f"tmpl-{uuid.uuid4().hex[:6]}",
@@ -151,6 +161,8 @@ async def test_template_without_skill_slugs_keeps_legacy_behavior(
     db.add(template)
     await db.flush()
 
-    agent = await agent_service.create_agent(db, _agent_create(model, template), user.id)
+    agent = await agent_service.create_agent(
+        db, _agent_create(model, template), unit_context(user.id)
+    )
 
     assert agent.skill_links == []

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.skill_builder_session import SkillBuilderSession
 from app.services import skill_draft_workspace as workspace
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -46,6 +47,8 @@ async def _make_session(
         # 실제 v2 플로우는 start에서 대화를 attach한다 — conversation 없는 오래된
         # 세션은 dead로 간주되어 abandoned 전이 대상 (R2). aiosqlite는 FK 미강제.
         conversation_id=uuid.uuid4() if with_conversation else None,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(session)
     await db.flush()

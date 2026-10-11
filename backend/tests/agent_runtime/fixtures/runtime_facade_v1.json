@@ -514,6 +514,12 @@
           "name": "secret_values"
         },
         {
+          "annotation": "OrgContext",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "org_context"
+        },
+        {
           "annotation": "ResolvedRuntimePolicy",
           "default": "value:ResolvedRuntimePolicy",
           "kind": "keyword_only",

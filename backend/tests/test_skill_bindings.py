@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.credential import Credential
 from app.models.skill import Skill
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 # ---------------------------------------------------------------------------
@@ -65,9 +66,7 @@ async def _make_test_user(db: AsyncSession) -> uuid.UUID:
     return user.id
 
 
-async def _make_user(
-    db: AsyncSession, *, email: str = "other@test.com"
-) -> uuid.UUID:
+async def _make_user(db: AsyncSession, *, email: str = "other@test.com") -> uuid.UUID:
     user = User(
         id=uuid.uuid4(),
         email=email,
@@ -98,6 +97,8 @@ async def _make_skill(
         content_hash=None,
         size_bytes=0,
         credential_requirements=requirements,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(skill)
     await db.flush()
@@ -123,6 +124,8 @@ async def _make_credential(
         is_shared=False,
         is_system=is_system,
         status="active",
+        org_id=None if is_system else TEST_ORG_ID,
+        tenant_id=None if is_system else TEST_TENANT_ID,
     )
     db.add(cred)
     await db.flush()
@@ -148,13 +151,9 @@ async def test_requirements_empty_when_skill_has_none(
 
 
 @pytest.mark.asyncio
-async def test_requirements_lists_skill_entries(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_requirements_lists_skill_entries(client: AsyncClient, db: AsyncSession) -> None:
     await _make_test_user(db)
-    skill = await _make_skill(
-        db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT]
-    )
+    skill = await _make_skill(db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT])
     await db.commit()
 
     r = await client.get(f"/api/skills/{skill.id}/credential-requirements")
@@ -175,13 +174,9 @@ async def test_requirements_lists_skill_entries(
 
 
 @pytest.mark.asyncio
-async def test_bindings_empty_for_new_skill(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_bindings_empty_for_new_skill(client: AsyncClient, db: AsyncSession) -> None:
     await _make_test_user(db)
-    skill = await _make_skill(
-        db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT]
-    )
+    skill = await _make_skill(db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT])
     await db.commit()
 
     r = await client.get(f"/api/skills/{skill.id}/credential-bindings")
@@ -195,16 +190,10 @@ async def test_bindings_empty_for_new_skill(
 
 
 @pytest.mark.asyncio
-async def test_binding_create_and_update_idempotent(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_binding_create_and_update_idempotent(client: AsyncClient, db: AsyncSession) -> None:
     await _make_test_user(db)
-    skill = await _make_skill(
-        db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT]
-    )
-    cred1 = await _make_credential(
-        db, user_id=TEST_USER_ID, definition_key="srt_account"
-    )
+    skill = await _make_skill(db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT])
+    cred1 = await _make_credential(db, user_id=TEST_USER_ID, definition_key="srt_account")
     cred2 = await _make_credential(
         db,
         user_id=TEST_USER_ID,
@@ -246,17 +235,11 @@ async def test_binding_create_and_update_idempotent(
 
 
 @pytest.mark.asyncio
-async def test_binding_rejects_other_user_credential(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_binding_rejects_other_user_credential(client: AsyncClient, db: AsyncSession) -> None:
     await _make_test_user(db)
     other = await _make_user(db, email="other@test.com")
-    skill = await _make_skill(
-        db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT]
-    )
-    other_cred = await _make_credential(
-        db, user_id=other, definition_key="srt_account"
-    )
+    skill = await _make_skill(db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT])
+    other_cred = await _make_credential(db, user_id=other, definition_key="srt_account")
     await db.commit()
 
     r = await client.put(
@@ -274,12 +257,8 @@ async def test_binding_rejects_definition_key_mismatch(
     client: AsyncClient, db: AsyncSession
 ) -> None:
     await _make_test_user(db)
-    skill = await _make_skill(
-        db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT]
-    )
-    wrong = await _make_credential(
-        db, user_id=TEST_USER_ID, definition_key="anthropic"
-    )
+    skill = await _make_skill(db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT])
+    wrong = await _make_credential(db, user_id=TEST_USER_ID, definition_key="anthropic")
     await db.commit()
 
     r = await client.put(
@@ -292,13 +271,9 @@ async def test_binding_rejects_definition_key_mismatch(
 
 
 @pytest.mark.asyncio
-async def test_binding_rejects_system_credential(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_binding_rejects_system_credential(client: AsyncClient, db: AsyncSession) -> None:
     await _make_test_user(db)
-    skill = await _make_skill(
-        db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT]
-    )
+    skill = await _make_skill(db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT])
     sys_cred = await _make_credential(
         db,
         user_id=None,
@@ -312,8 +287,8 @@ async def test_binding_rejects_system_credential(
         f"/api/skills/{skill.id}/credential-bindings/srt_login",
         json={"credential_id": str(sys_cred.id)},
     )
-    assert r.status_code == 422, r.text
-    assert r.json()["error"]["code"] == "MARKETPLACE_CREDENTIAL_MISMATCH"
+    assert r.status_code == 404, r.text
+    assert r.json()["error"]["code"] == "CREDENTIAL_NOT_FOUND"
 
 
 @pytest.mark.asyncio
@@ -321,12 +296,8 @@ async def test_binding_unknown_requirement_key_returns_400(
     client: AsyncClient, db: AsyncSession
 ) -> None:
     await _make_test_user(db)
-    skill = await _make_skill(
-        db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT]
-    )
-    cred = await _make_credential(
-        db, user_id=TEST_USER_ID, definition_key="srt_account"
-    )
+    skill = await _make_skill(db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT])
+    cred = await _make_credential(db, user_id=TEST_USER_ID, definition_key="srt_account")
     await db.commit()
 
     r = await client.put(
@@ -345,16 +316,10 @@ async def test_binding_unknown_requirement_key_returns_400(
 
 
 @pytest.mark.asyncio
-async def test_delete_binding_idempotent(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_delete_binding_idempotent(client: AsyncClient, db: AsyncSession) -> None:
     await _make_test_user(db)
-    skill = await _make_skill(
-        db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT]
-    )
-    cred = await _make_credential(
-        db, user_id=TEST_USER_ID, definition_key="srt_account"
-    )
+    skill = await _make_skill(db, user_id=TEST_USER_ID, requirements=[_SRT_REQUIREMENT])
+    cred = await _make_credential(db, user_id=TEST_USER_ID, definition_key="srt_account")
     await db.commit()
 
     # Create binding.
@@ -365,14 +330,10 @@ async def test_delete_binding_idempotent(
     assert r1.status_code == 200
 
     # First delete — wipes the row.
-    r2 = await client.delete(
-        f"/api/skills/{skill.id}/credential-bindings/srt_login"
-    )
+    r2 = await client.delete(f"/api/skills/{skill.id}/credential-bindings/srt_login")
     assert r2.status_code == 204
 
     # Second delete — already gone, still 204 (idempotent — see
     # rules/security.md: do not leak existence via DELETE).
-    r3 = await client.delete(
-        f"/api/skills/{skill.id}/credential-bindings/srt_login"
-    )
+    r3 = await client.delete(f"/api/skills/{skill.id}/credential-bindings/srt_login")
     assert r3.status_code == 204

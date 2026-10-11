@@ -63,14 +63,14 @@ async def _load_memory_context(cfg: AgentConfig) -> tuple[str, list[dict[str, An
         async with _async_session_factory() as db:
             policy = await memory_service.resolve_effective_policy(
                 db,
-                user_id=user_uuid,
+                context=cfg.org_context,
                 agent_id=agent_uuid,
             )
             if not policy.read_enabled:
                 return "", []
             records = await memory_service.list_runtime_memory_records(
                 db,
-                user_id=user_uuid,
+                context=cfg.org_context,
                 agent_id=agent_uuid,
                 allowed_scopes=policy.allowed_scopes,
             )
@@ -93,7 +93,7 @@ async def _memory_write_policy_for_run(cfg: AgentConfig, *, is_trigger_mode: boo
         async with _async_session_factory() as db:
             policy = await memory_service.resolve_effective_policy(
                 db,
-                user_id=user_uuid,
+                context=cfg.org_context,
                 agent_id=agent_uuid,
             )
             return policy.trigger_write_policy if is_trigger_mode else policy.write_policy

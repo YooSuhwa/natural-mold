@@ -9,18 +9,13 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation
+from tests.authz.unit_scope_fixture import create_test_package_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 
 def _skill_md(name: str = "demo") -> str:
-    return (
-        "---\n"
-        f"name: {name}\n"
-        'description: "demo skill"\n'
-        'version: "1.0.0"\n'
-        "---\n\n"
-        "# Demo body\n"
-    )
+    return f'---\nname: {name}\ndescription: "demo skill"\nversion: "1.0.0"\n---\n\n# Demo body\n'
 
 
 def _zip_with(files: dict[str, str]) -> bytes:
@@ -37,10 +32,12 @@ async def test_set_skill_file_recomputes_package_content_hash(
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_with({"SKILL.md": _skill_md("pkg"), "scripts/run.py": "print(1)\n"}),
+            PackageSkillCreation(
+                zip_bytes=_zip_with({"SKILL.md": _skill_md("pkg"), "scripts/run.py": "print(1)\n"})
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
         old_hash = skill.content_hash
@@ -73,16 +70,18 @@ async def test_delete_skill_file_recomputes_package_content_hash(
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_with(
-                {
-                    "SKILL.md": _skill_md("pkg-delete"),
-                    "scripts/run.py": "print(1)\n",
-                    "notes.md": "temporary\n",
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_with(
+                    {
+                        "SKILL.md": _skill_md("pkg-delete"),
+                        "scripts/run.py": "print(1)\n",
+                        "notes.md": "temporary\n",
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
         old_hash = skill.content_hash

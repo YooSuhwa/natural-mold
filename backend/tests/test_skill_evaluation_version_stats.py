@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -24,17 +26,17 @@ def _now() -> datetime:
 
 async def _create_skill(db: AsyncSession, tmp_path: Path):
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Version Stats",
-            slug=f"version-stats-{uuid.uuid4().hex[:8]}",
-            description="Use when testing version stats.",
-            content=(
-                "---\nname: version-stats\n"
-                'description: "Use when testing version stats."\n---\n\nBody.\n'
+            TextSkillCreation(
+                name="Version Stats",
+                slug=f"version-stats-{uuid.uuid4().hex[:8]}",
+                description="Use when testing version stats.",
+                content="---\nname: version-stats\n"
+                'description: "Use when testing version stats."\n---\n\nBody.\n',
+                version="1.0.0",
             ),
-            version="1.0.0",
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
         return skill

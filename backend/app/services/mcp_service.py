@@ -19,9 +19,18 @@ from fastapi import HTTPException, Request
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.mcp_probe_scope import require_mcp_probe_scope
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import PrivateParent, private_parent_scoped, private_scoped
 from app.credentials.validation import require_user_credential
 from app.dependencies import CurrentUser
 from app.error_codes import mcp_server_not_found
+from app.exceptions import AppError
 from app.mcp import discovery as mcp_discovery
 from app.models.credential import Credential
 from app.models.mcp_server import McpServer
@@ -40,10 +49,13 @@ logger = logging.getLogger(__name__)
 # -- Queries -------------------------------------------------------------------
 
 
-async def load_owned(db: AsyncSession, server_id: uuid.UUID, user_id: uuid.UUID) -> McpServer:
+async def load_owned(db: AsyncSession, server_id: uuid.UUID, context: OrgContext) -> McpServer:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     row = (
         await db.execute(
-            select(McpServer).where(McpServer.id == server_id, McpServer.user_id == user_id)
+            private_scoped(select(McpServer), McpServer, context).where(McpServer.id == server_id)
         )
     ).scalar_one_or_none()
     if row is None:
@@ -51,11 +63,20 @@ async def load_owned(db: AsyncSession, server_id: uuid.UUID, user_id: uuid.UUID)
     return row
 
 
-async def load_tools_for(db: AsyncSession, server_id: uuid.UUID) -> list[McpTool]:
+async def load_tools_for(
+    db: AsyncSession, server_id: uuid.UUID, context: OrgContext
+) -> list[McpTool]:
+    await require_private_actor(db, context)
     rows = (
         (
             await db.execute(
-                select(McpTool).where(McpTool.server_id == server_id).order_by(McpTool.name)
+                private_parent_scoped(
+                    select(McpTool),
+                    PrivateParent(model=McpServer, on=McpTool.server_id == McpServer.id),
+                    context,
+                )
+                .where(McpTool.server_id == server_id)
+                .order_by(McpTool.name)
             )
         )
         .scalars()
@@ -66,13 +87,14 @@ async def load_tools_for(db: AsyncSession, server_id: uuid.UUID) -> list[McpTool
 
 async def list_servers(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
     *,
     order_by_name: bool = False,
 ) -> list[McpServer]:
+    await require_private_actor(db, context)
     order = McpServer.name if order_by_name else McpServer.created_at.desc()
     rows = (
-        (await db.execute(select(McpServer).where(McpServer.user_id == user_id).order_by(order)))
+        (await db.execute(private_scoped(select(McpServer), McpServer, context).order_by(order)))
         .scalars()
         .all()
     )
@@ -81,16 +103,18 @@ async def list_servers(
 
 async def list_all_tools(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> list[tuple[McpTool, str]]:
     """Every MCP tool across the user's servers, paired with the server name."""
 
+    await require_private_actor(db, context)
     rows = (
         await db.execute(
-            select(McpTool, McpServer.name)
-            .join(McpServer, McpTool.server_id == McpServer.id)
-            .where(McpServer.user_id == user_id)
-            .order_by(McpServer.name, McpTool.name)
+            private_parent_scoped(
+                select(McpTool, McpServer.name),
+                PrivateParent(model=McpServer, on=McpTool.server_id == McpServer.id),
+                context,
+            ).order_by(McpServer.name, McpTool.name)
         )
     ).all()
     return [(tool, server_name) for tool, server_name in rows]
@@ -122,14 +146,19 @@ def validate_payload_consistency(
 async def create_server(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     data: McpServerCreate,
 ) -> McpServer:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     validate_payload_consistency(data.transport, data.url, data.command)
     if data.credential_id is not None:
-        await require_user_credential(db, credential_id=data.credential_id, user_id=user_id)
+        await require_user_credential(db, credential_id=data.credential_id, context=context)
     server = McpServer(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=data.name,
         description=data.description,
         transport=data.transport,
@@ -149,23 +178,28 @@ async def create_server(
 async def create_server_from_registry_entry(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     name: str,
     credential_id: uuid.UUID | None,
     entry: dict[str, Any],
 ) -> McpServer:
     """Create a server from a resolved catalog entry (registry lookup is the
     router's concern — unknown keys are an HTTP 400 there)."""
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
 
     transport = entry.get("transport")
     url = entry.get("url")
     command = entry.get("command")
     validate_payload_consistency(transport, url, command)
     if credential_id is not None:
-        await require_user_credential(db, credential_id=credential_id, user_id=user_id)
+        await require_user_credential(db, credential_id=credential_id, context=context)
 
     server = McpServer(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=name,
         description=entry.get("description"),
         transport=transport,
@@ -186,10 +220,11 @@ async def update_server(
     db: AsyncSession,
     *,
     server: McpServer,
-    user_id: uuid.UUID,
+    context: OrgContext,
     data: McpServerUpdate,
 ) -> McpServer:
     fields_set = data.model_fields_set
+    server = await load_owned(db, server.id, context)
 
     if "name" in fields_set and data.name is not None:
         server.name = data.name
@@ -209,7 +244,7 @@ async def update_server(
         server.headers = dict(data.headers)
     if "credential_id" in fields_set:
         if data.credential_id is not None:
-            await require_user_credential(db, credential_id=data.credential_id, user_id=user_id)
+            await require_user_credential(db, credential_id=data.credential_id, context=context)
         server.credential_id = data.credential_id
     if "status" in fields_set and data.status is not None:
         server.status = data.status
@@ -219,9 +254,10 @@ async def update_server(
     return server
 
 
-async def delete_server(db: AsyncSession, *, server: McpServer) -> None:
+async def delete_server(db: AsyncSession, *, server: McpServer, context: OrgContext) -> None:
     # Manual cascade for SQLite tests where ondelete=CASCADE isn't enforced.
-    for row in await load_tools_for(db, server.id):
+    server = await load_owned(db, server.id, context)
+    for row in await load_tools_for(db, server.id, context):
         await db.delete(row)
     await db.delete(server)
     await db.flush()
@@ -230,16 +266,20 @@ async def delete_server(db: AsyncSession, *, server: McpServer) -> None:
 async def import_servers(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     data: McpImportRequest,
 ) -> McpImportResult:
     """Bulk import MCP server definitions (see router docstring for shape)."""
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
 
     result = McpImportResult()
+    user_id = context.user_id
 
     # Pre-load existing servers by name so we don't re-query inside the loop.
     existing_rows = (
-        (await db.execute(select(McpServer).where(McpServer.user_id == user_id))).scalars().all()
+        (await db.execute(private_scoped(select(McpServer), McpServer, context))).scalars().all()
     )
     by_name: dict[str, McpServer] = {row.name: row for row in existing_rows}
 
@@ -253,8 +293,7 @@ async def import_servers(
         owned = (
             (
                 await db.execute(
-                    select(Credential.id).where(
-                        Credential.user_id == user_id,
+                    private_scoped(select(Credential.id), Credential, context).where(
                         Credential.id.in_(referenced_creds),
                     )
                 )
@@ -315,6 +354,8 @@ async def import_servers(
             if existing is None:
                 server = McpServer(
                     user_id=user_id,
+                    org_id=context.org_id,
+                    tenant_id=context.tenant_id,
                     name=name,
                     description=entry.description,
                     transport=transport,
@@ -503,6 +544,10 @@ async def poll_mcp_servers_health(
         )
 
         for server in rows:
+            try:
+                await require_mcp_probe_scope(db, server, server.credential_id)
+            except AppError:
+                continue
             counters["checked"] += 1
             try:
                 probe = await mcp_discovery.test_server(db, server)

@@ -187,7 +187,7 @@ async def require_saas_platform_operator(
 async def owned_conversation(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> Conversation:
     """Resolve a path ``conversation_id`` to the caller's own conversation.
 
@@ -201,10 +201,10 @@ async def owned_conversation(
 
     # Function-local: chat_service pulls in the runtime/model graph, importing
     # it at module load would cycle back through dependencies.
+    from app.authz.conversation_scope import load_private_conversation
     from app.error_codes import conversation_not_found
-    from app.services import chat_service
 
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
+    conv = await load_private_conversation(db, conversation_id, context)
     if conv is None:
         raise conversation_not_found()
     return conv

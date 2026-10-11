@@ -15,6 +15,7 @@ from httpx import AsyncClient
 from app.agent_runtime.offload_storage import OffloadIdentity, ScopedOffloadStorage
 from app.agent_runtime.runtime_policy import LEGACY_RUNTIME_POLICY
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -23,6 +24,7 @@ from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
 from app.services import trace_storage
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, ensure_unit_scope
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -120,7 +122,10 @@ async def _seed_agent(
         db.add(model)
         await db.flush()
 
+        await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
         agent = Agent(
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
             user_id=user.id,
             name=agent_name,
             system_prompt="You are helpful.",
@@ -132,9 +137,12 @@ async def _seed_agent(
         tool_id = None
         if with_tools:
             tool = Tool(
+                is_system=True,
                 name="Web Search",
                 definition_key="builtin:web_search",
                 description="Search the web",
+                org_id=None,
+                tenant_id=None,
             )
             db.add(tool)
             await db.flush()
@@ -148,7 +156,17 @@ async def _seed_agent(
 
 async def _seed_conversation(agent_id: uuid.UUID) -> uuid.UUID:
     async with TestSession() as db:
-        conv = Conversation(agent_id=agent_id, title="Test Conv")
+        agent = await db.get(Agent, agent_id)
+        assert agent is not None
+        conv = Conversation(
+            agent_id=agent_id,
+            title="Test Conv",
+            user_id=agent.user_id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            agent_name_snapshot=agent.name,
+            last_activity_at=datetime.now(UTC),
+        )
         db.add(conv)
         await db.commit()
         return conv.id
@@ -164,8 +182,15 @@ async def _seed_conversation_with_title(
     updated_at: datetime | None = None,
 ) -> uuid.UUID:
     async with TestSession() as db:
+        agent = await db.get(Agent, agent_id)
+        assert agent is not None
         conv = Conversation(
             agent_id=agent_id,
+            user_id=agent.user_id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            agent_name_snapshot=agent.name,
+            last_activity_at=datetime.now(UTC),
             title=title,
             is_pinned=is_pinned,
             source=source,
@@ -839,7 +864,15 @@ async def test_send_message_sets_auto_title(client: AsyncClient):
 
     # Create conversation with default title "새 대화"
     async with TestSession() as db:
-        conv = Conversation(agent_id=agent_id, title="새 대화")
+        conv = Conversation(
+            agent_id=agent_id,
+            title="새 대화",
+            user_id=TEST_USER_ID,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            agent_name_snapshot="Conv Agent",
+            last_activity_at=datetime.now(UTC),
+        )
         db.add(conv)
         await db.commit()
         conv_id = conv.id
@@ -1046,6 +1079,11 @@ async def test_mark_conversation_read_clears_schedule_unread(client: AsyncClient
         conv = Conversation(
             agent_id=agent_id,
             title="스케줄: 뉴스",
+            user_id=TEST_USER_ID,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            agent_name_snapshot="Conv Agent",
+            last_activity_at=datetime.now(UTC),
             unread_count=2,
             last_activity_source="schedule",
         )

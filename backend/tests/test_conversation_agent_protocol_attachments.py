@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from typing import Any
 
 import pytest
@@ -14,6 +16,7 @@ from app.models.conversation_run_input import ConversationRunInput
 from app.models.message_attachment import MessageAttachment
 from app.models.model import Model
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 
@@ -32,11 +35,21 @@ async def _seed_conversation(db: AsyncSession) -> Conversation:
         name="Attachment Agent",
         system_prompt="You are helpful.",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
 
-    conversation = Conversation(agent_id=agent.id, title="Attachment Conversation")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="Attachment Conversation",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.commit()
     return conversation
@@ -50,6 +63,8 @@ async def _seed_attachment(db: AsyncSession) -> MessageAttachment:
         size_bytes=1234,
         storage_path="uploads/plan.pdf",
         url="/api/uploads/plan.pdf",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(attachment)
     await db.commit()

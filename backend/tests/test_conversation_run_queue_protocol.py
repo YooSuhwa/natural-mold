@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import anyio
 import pytest
@@ -11,7 +10,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.runtime_config import AgentConfig
+from app.authz.conversation_scope import require_conversation_agent_id
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -22,6 +21,8 @@ from app.services import (
     conversation_run_service,
     conversation_run_worker,
 )
+from tests.authz.run_fixture_config import run_fixture_config
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 from tests.integration._seed import seed_conversation_with_agent
 
@@ -38,8 +39,8 @@ async def test_interrupt_persists_correction_and_cancellation_in_one_request(
     active = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conversation.agent_id,
-        user_id=TEST_USER_ID,
+        agent_id=require_conversation_agent_id(conversation),
+        context=unit_context(TEST_USER_ID),
         source="chat",
         input_preview="old direction",
     )
@@ -95,8 +96,8 @@ async def test_interrupt_api_dispatches_correction_only_after_owner_ack(
         predecessor = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conversation.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conversation),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="old direction",
         )
@@ -136,7 +137,7 @@ async def test_interrupt_api_dispatches_correction_only_after_owner_ack(
     await conversation_run_worker.start_conversation_run(
         run_id=predecessor_id,
         conversation_id=conversation_id,
-        cfg=cast(AgentConfig, SimpleNamespace(secret_values=set(), agent_id=None)),
+        cfg=await run_fixture_config(predecessor_id, TestSession),
         user=CurrentUser(id=TEST_USER_ID, email="owner@test", name="Owner"),
         input_payload={"messages": [{"role": "user", "content": "old"}]},
         moldy_source="chat",
@@ -253,8 +254,8 @@ async def test_enqueue_does_not_cancel_same_process_active_run(
         active = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conversation.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conversation),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="active",
         )
@@ -273,7 +274,7 @@ async def test_enqueue_does_not_cancel_same_process_active_run(
     await conversation_run_worker.start_conversation_run(
         run_id=active_id,
         conversation_id=conversation_id,
-        cfg=cast(AgentConfig, SimpleNamespace(secret_values=set(), agent_id=None)),
+        cfg=await run_fixture_config(active_id, TestSession),
         user=CurrentUser(id=TEST_USER_ID, email="owner@test", name="Owner"),
         input_payload={"messages": [{"role": "user", "content": "active"}]},
         moldy_source="chat",
@@ -307,7 +308,7 @@ async def test_enqueue_does_not_cancel_same_process_active_run(
         await conversation_run_queue_service.pause_queue(
             db,
             conversation_id=conversation_id,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
         )
         durable_active = await db.get(ConversationRun, active_id, with_for_update=True)
         assert durable_active is not None
@@ -332,8 +333,8 @@ async def test_interrupt_retry_does_not_cancel_its_resulting_run(
         predecessor = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conversation.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conversation),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="active",
         )
@@ -364,7 +365,7 @@ async def test_interrupt_retry_does_not_cancel_its_resulting_run(
     await conversation_run_worker.start_conversation_run(
         run_id=predecessor_id,
         conversation_id=conversation_id,
-        cfg=cast(AgentConfig, SimpleNamespace(secret_values=set(), agent_id=None)),
+        cfg=await run_fixture_config(predecessor_id, TestSession),
         user=CurrentUser(id=TEST_USER_ID, email="owner@test", name="Owner"),
         input_payload={"messages": [{"role": "user", "content": "active"}]},
         moldy_source="chat",

@@ -6,11 +6,13 @@ bodies are moved verbatim; only import plumbing changed.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scoped
 from app.error_codes import marketplace_credential_required
 from app.marketplace import credential_requirements
 from app.marketplace.install.common import _now
@@ -21,15 +23,12 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.skill import Skill
 
-if TYPE_CHECKING:
-    from app.dependencies import CurrentUser
-
 
 async def _persist_bindings(
     db: AsyncSession,
     *,
     skill: Skill,
-    user: CurrentUser,
+    context: OrgContext,
     bindings: dict[str, uuid.UUID],
 ) -> list[SkillCredentialBinding]:
     """Validate and create binding rows. Each binding goes through the
@@ -40,7 +39,7 @@ async def _persist_bindings(
         row = await credential_requirements.upsert_binding(
             db,
             skill=skill,
-            user=user,
+            context=context,
             requirement_key=key,
             credential_id=credential_id,
         )
@@ -95,7 +94,7 @@ async def _validate_version_credential_bindings(
     db: AsyncSession,
     *,
     version: MarketplaceVersion,
-    user: CurrentUser,
+    context: OrgContext,
     bindings: dict[str, uuid.UUID],
 ) -> dict[str, str]:
     requirement_by_key = _credential_requirements_by_key(version)
@@ -105,8 +104,18 @@ async def _validate_version_credential_bindings(
         if requirement is None:
             raise marketplace_credential_required(f"unknown credential binding: {key}")
 
-        credential = await db.get(Credential, credential_id)
-        if credential is None or credential.user_id != user.id:
+        credential = await db.scalar(
+            private_scoped(
+                select(Credential).where(
+                    Credential.id == credential_id,
+                    Credential.status == "active",
+                    Credential.is_system.is_(False),
+                ),
+                Credential,
+                context,
+            )
+        )
+        if credential is None:
             raise marketplace_credential_required(f"invalid credential binding: {key}")
 
         expected_definition = requirement.get("definition_key")
@@ -120,7 +129,7 @@ async def _validate_mcp_bindings(
     db: AsyncSession,
     *,
     version: MarketplaceVersion,
-    user: CurrentUser,
+    context: OrgContext,
     bindings: dict[str, uuid.UUID],
 ) -> uuid.UUID | None:
     requirements = version.credential_requirements or []
@@ -132,8 +141,18 @@ async def _validate_mcp_bindings(
         return None
 
     requirement = requirement_by_key.get("mcp_auth")
-    credential = await db.get(Credential, credential_id)
-    if credential is None or credential.user_id != user.id:
+    credential = await db.scalar(
+        private_scoped(
+            select(Credential).where(
+                Credential.id == credential_id,
+                Credential.status == "active",
+                Credential.is_system.is_(False),
+            ),
+            Credential,
+            context,
+        )
+    )
+    if credential is None:
         raise marketplace_credential_required("MCP credential binding is invalid")
     expected_definition = (
         requirement.get("definition_key") if isinstance(requirement, dict) else None

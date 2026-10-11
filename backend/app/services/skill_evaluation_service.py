@@ -97,11 +97,13 @@ async def get_evaluation_set(
     evaluation_set_id: uuid.UUID,
 ) -> SkillEvaluationSet | None:
     result = await db.execute(
-        select(SkillEvaluationSet).where(
+        select(SkillEvaluationSet)
+        .where(
             SkillEvaluationSet.id == evaluation_set_id,
             SkillEvaluationSet.skill_id == skill.id,
             SkillEvaluationSet.user_id == user_id,
         )
+        .execution_options(autoflush=False, populate_existing=True)
     )
     return result.scalar_one_or_none()
 

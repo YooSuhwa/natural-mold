@@ -18,7 +18,11 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.authz.artifact_scope import validated_artifact_conversation
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.config import settings
+from app.error_codes import conversation_not_found
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.services.artifact_paths import (
     ArtifactPathError,
@@ -60,7 +64,7 @@ class ArtifactDelta:
 @dataclass(frozen=True)
 class ArtifactRuntimeContext:
     conversation_id: uuid.UUID
-    user_id: uuid.UUID
+    org_context: OrgContext
     agent_id: uuid.UUID
     assistant_msg_id: str
     output_dir: Path
@@ -83,6 +87,10 @@ class ArtifactDeltaRecorder:
         self._snapshot = ArtifactSnapshot(files={})
 
     async def prepare(self) -> None:
+        async with self.session_factory() as db:
+            await validated_artifact_conversation(
+                db, self.context.conversation_id, self.context.org_context
+            )
         self._snapshot = await snapshot_output_dir(self.context.output_dir, hash_files=False)
 
     async def collect_after_tool_result(
@@ -97,6 +105,10 @@ class ArtifactDeltaRecorder:
         ):
             return []
 
+        async with self.session_factory() as db:
+            await validated_artifact_conversation(
+                db, self.context.conversation_id, self.context.org_context
+            )
         after = await snapshot_output_dir(self.context.output_dir, previous=self._snapshot)
         deltas = diff_snapshots(self._snapshot, after)
         self._snapshot = after
@@ -209,6 +221,11 @@ async def ingest_changed_files(
     # Call-time facade lookup: see snapshot_output_dir.
     from app.services.artifact_service import _sha256_file
 
+    conversation = await validated_artifact_conversation(
+        db, context.conversation_id, context.org_context
+    )
+    if conversation.agent_id != context.agent_id:
+        raise conversation_not_found()
     events: list[dict[str, object]] = []
     for delta in deltas:
         state = delta.state
@@ -220,7 +237,7 @@ async def ingest_changed_files(
                         select(ConversationArtifact)
                         .where(
                             ConversationArtifact.conversation_id == context.conversation_id,
-                            ConversationArtifact.user_id == context.user_id,
+                            private_scope_predicate(ConversationArtifact, context.org_context),
                             ConversationArtifact.assistant_msg_id == context.assistant_msg_id,
                             ConversationArtifact.logical_path == normalized.logical_path,
                             ConversationArtifact.status != "deleted",
@@ -249,6 +266,7 @@ async def ingest_changed_files(
             await db.execute(
                 select(ConversationArtifact).where(
                     and_(
+                        private_scope_predicate(ConversationArtifact, context.org_context),
                         ConversationArtifact.conversation_id == context.conversation_id,
                         ConversationArtifact.assistant_msg_id == context.assistant_msg_id,
                         ConversationArtifact.logical_path == normalized.logical_path,
@@ -273,7 +291,9 @@ async def ingest_changed_files(
 
         artifact = existing or ConversationArtifact(
             id=uuid.uuid4(),
-            user_id=context.user_id,
+            user_id=context.org_context.user_id,
+            org_id=context.org_context.org_id,
+            tenant_id=context.org_context.tenant_id,
             agent_id=context.agent_id,
             conversation_id=context.conversation_id,
             assistant_msg_id=context.assistant_msg_id,
@@ -340,6 +360,7 @@ async def link_artifacts_to_messages(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
+    context: OrgContext,
     assistant_msg_id: str,
     linked_message_ids: list[str],
 ) -> None:
@@ -350,6 +371,7 @@ async def link_artifacts_to_messages(
         update(ConversationArtifact)
         .where(
             ConversationArtifact.conversation_id == conversation_id,
+            private_scope_predicate(ConversationArtifact, context),
             ConversationArtifact.assistant_msg_id == assistant_msg_id,
             ConversationArtifact.status != "deleted",
         )
@@ -361,6 +383,7 @@ async def finalize_artifacts_for_run(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
+    context: OrgContext,
     assistant_msg_id: str,
     run_status: str,
 ) -> int:
@@ -381,6 +404,7 @@ async def finalize_artifacts_for_run(
             update(ConversationArtifact)
             .where(
                 ConversationArtifact.conversation_id == conversation_id,
+                private_scope_predicate(ConversationArtifact, context),
                 ConversationArtifact.assistant_msg_id == assistant_msg_id,
                 ConversationArtifact.status.in_(("writing", "ready")),
             )

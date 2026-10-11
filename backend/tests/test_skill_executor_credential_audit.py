@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.marketplace.skill_runtime import (
     ResolvedCredential,
     SkillRuntimeDescriptor,
@@ -17,6 +17,7 @@ from app.marketplace.skill_runtime import (
 from app.models.audit_event import AuditEvent
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.user import User
+from tests.authz.unit_scope_fixture import create_test_credential, unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 
 pytestmark = pytest.mark.asyncio
@@ -29,12 +30,12 @@ async def test_execute_in_skill_records_credential_audit_without_secret_payload(
     monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
     async with TestSession() as db:
         db.add(User(id=TEST_USER_ID, email="skill-audit@test", name="Skill Audit"))
-        credential = await credential_service.create(
+        credential = await create_test_credential(
             db,
-            user_id=TEST_USER_ID,
-            definition_key="openai",
-            name="skill key",
-            data={"api_key": "sk-runtime-secret"},
+            CredentialCreation(
+                definition_key="openai", name="skill key", data={"api_key": "sk-runtime-secret"}
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
         credential_id = credential.id

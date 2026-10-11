@@ -38,13 +38,16 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from app.authz.catalog_scope import load_private_installation
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
+from app.authz.scoping import private_scoped
 from app.error_codes import (
     marketplace_dirty_installation,
     marketplace_item_not_found,
-    marketplace_version_not_found,
 )
+from app.exceptions import AppError
 from app.marketplace.access import can_install_item
 from app.marketplace.install.agent_blueprint import (
     _install_agent_blueprint_item,
@@ -54,6 +57,7 @@ from app.marketplace.install.common import (
     _existing_installation,
     _now,
     _resolve_version,
+    load_install_source_item,
 )
 from app.marketplace.install.mcp import _install_mcp_item, _overwrite_mcp_installation
 from app.marketplace.install.skill import (
@@ -69,11 +73,7 @@ from app.marketplace.schemas import (
 )
 from app.models.agent import Agent
 from app.models.agent_blueprint import AgentBlueprint
-from app.models.marketplace import (
-    MarketplaceInstallation,
-    MarketplaceItem,
-    MarketplaceVersion,
-)
+from app.models.marketplace import MarketplaceInstallation
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.skill import Skill
@@ -96,6 +96,7 @@ async def install_item(
     *,
     item_id: uuid.UUID,
     user: CurrentUser,
+    context: OrgContext,
     body: InstallMarketplaceItemIn,
 ) -> MarketplaceInstallation:
     """Install (or re-use) a marketplace item for ``user``. Caller must
@@ -103,6 +104,14 @@ async def install_item(
     install + side effects in one unit of work.
     """
 
+    if context.user_id != user.id:
+        raise marketplace_item_not_found()
+    try:
+        await resolve_private_actor(
+            db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+        )
+    except AppError:
+        raise marketplace_item_not_found() from None
     # Bezos OPEN-1 (2026-05-19): ``can_install_item`` walks
     # ``item.acl_entries`` for restricted-visibility items. Plain
     # ``db.get(MarketplaceItem, ...)`` returns the row without
@@ -112,19 +121,9 @@ async def install_item(
     # 404, which doubles as an **enumeration oracle** (500 only happens
     # for restricted items the caller can't see).
     # Fix: eager-load ``acl_entries`` so the permission check stays in
-    # pre-loaded memory. ``latest_version`` is also pre-loaded because
-    # ``_resolve_version`` below would otherwise re-fetch the row.
-    item_stmt = (
-        select(MarketplaceItem)
-        .where(MarketplaceItem.id == item_id)
-        .options(
-            selectinload(MarketplaceItem.acl_entries),
-            selectinload(MarketplaceItem.latest_version),
-        )
-    )
-    item = (await db.execute(item_stmt)).scalar_one_or_none()
-    if item is None:
-        raise marketplace_item_not_found()
+    # pre-loaded memory. Version payloads are loaded only by the item-bound
+    # query in ``_resolve_version`` after the item permission check.
+    item = await load_install_source_item(db, item_id, context)
     if not can_install_item(item, user):
         # Collapse forbidden + missing for enumeration safety.
         logger.info(
@@ -144,6 +143,7 @@ async def install_item(
             version=version,
             user=user,
             body=body,
+            context=context,
         )
 
     if item.resource_type == "agent":
@@ -153,6 +153,7 @@ async def install_item(
             version=version,
             user=user,
             body=body,
+            context=context,
         )
 
     # Resource_type guard: known marketplace resource types are handled above.
@@ -161,12 +162,16 @@ async def install_item(
         raise marketplace_item_not_found()
 
     # install_mode dispatch (Spec §10.8 / desc 단계 3)
-    existing = await _existing_installation(db, item=item, user=user)
+    existing = await _existing_installation(db, item=item, user=user, context=context)
     if existing is not None:
         if body.install_mode == "reuse_or_update":
             if existing.installed_skill_id is None:
                 raise marketplace_item_not_found()
-            skill = await db.get(Skill, existing.installed_skill_id)
+            skill = await db.scalar(
+                private_scoped(
+                    select(Skill).where(Skill.id == existing.installed_skill_id), Skill, context
+                )
+            )
             if skill is None:
                 raise marketplace_item_not_found()
             return await _refresh_skill_installation_bindings(
@@ -175,10 +180,11 @@ async def install_item(
                 skill=skill,
                 user=user,
                 body=body,
+                context=context,
             )
         if body.install_mode == "overwrite_existing":
             # Delete the existing skill + installation, then re-install.
-            await _remove_install_artifacts(db, existing)
+            await _remove_install_artifacts(db, existing, context)
             await db.flush()
         # ``new_copy`` falls through to create a fresh row.
 
@@ -188,6 +194,7 @@ async def install_item(
         version=version,
         user=user,
         body=body,
+        context=context,
     )
 
 
@@ -201,6 +208,7 @@ async def update_installation(
     *,
     installation_id: uuid.UUID,
     user: CurrentUser,
+    context: OrgContext,
     body: UpdateMarketplaceInstallationIn,
 ) -> MarketplaceInstallation:
     """Apply an update strategy to an existing installation.
@@ -215,27 +223,39 @@ async def update_installation(
                               "update available" badge.
     """
 
-    installation = await db.get(MarketplaceInstallation, installation_id)
+    if context.user_id != user.id:
+        raise marketplace_item_not_found()
+    installation = await load_private_installation(db, installation_id, context)
     if installation is None or installation.user_id != user.id:
         raise marketplace_item_not_found()
 
-    item = await db.get(MarketplaceItem, installation.item_id)
-    if item is None or item.latest_version_id is None:
+    item = await load_install_source_item(db, installation.item_id, context)
+    if not can_install_item(item, user) or item.latest_version_id is None:
         raise marketplace_item_not_found()
 
-    latest = await db.get(MarketplaceVersion, item.latest_version_id)
-    if latest is None:
-        raise marketplace_version_not_found()
+    latest = await _resolve_version(db, item=item, version_id=None)
 
     # Refuse silent overwrites when the user has edited the installed
     # copy — they must opt in explicitly with overwrite / install_new_copy.
     skill = (
-        await db.get(Skill, installation.installed_skill_id)
+        await db.scalar(
+            private_scoped(
+                select(Skill).where(Skill.id == installation.installed_skill_id), Skill, context
+            )
+        )
         if installation.installed_skill_id is not None
         else None
     )
     blueprint = (
-        await db.get(AgentBlueprint, installation.installed_agent_blueprint_id)
+        await db.scalar(
+            private_scoped(
+                select(AgentBlueprint).where(
+                    AgentBlueprint.id == installation.installed_agent_blueprint_id
+                ),
+                AgentBlueprint,
+                context,
+            )
+        )
         if installation.installed_agent_blueprint_id is not None
         else None
     )
@@ -266,6 +286,7 @@ async def update_installation(
                 install_mode="new_copy",
                 install_missing_credentials="needs_setup",
             ),
+            context=context,
         )
 
     if installation.resource_type == "mcp":
@@ -275,6 +296,7 @@ async def update_installation(
             item=item,
             latest=latest,
             user=user,
+            context=context,
         )
 
     if installation.resource_type == "agent":
@@ -284,6 +306,7 @@ async def update_installation(
             item=item,
             latest=latest,
             user=user,
+            context=context,
         )
 
     # ``overwrite`` — replace files in place so agent_skills rows and
@@ -299,6 +322,7 @@ async def update_installation(
         latest=latest,
         user=user,
         skill=skill,
+        context=context,
     )
 
 
@@ -312,6 +336,7 @@ async def delete_installation(
     *,
     installation_id: uuid.UUID,
     user: CurrentUser,
+    context: OrgContext,
     delete_resource: bool = False,
 ) -> None:
     """Soft delete by default (Spec §3.11 — link suspension keeps the
@@ -319,12 +344,12 @@ async def delete_installation(
     installed skill (filesystem + DB row).
     """
 
-    installation = await db.get(MarketplaceInstallation, installation_id)
+    installation = await load_private_installation(db, installation_id, context)
     if installation is None or installation.user_id != user.id:
         raise marketplace_item_not_found()
 
     if delete_resource:
-        await _remove_install_artifacts(db, installation)
+        await _remove_install_artifacts(db, installation, context)
         await db.delete(installation)
         return
 
@@ -334,9 +359,14 @@ async def delete_installation(
     # trade-off) but sync its status so the list/detail endpoints don't
     # surface it as a stale ``active`` ghost after re-install.
     if installation.installed_agent_blueprint_id is not None:
-        blueprint = await db.get(
-            AgentBlueprint,
-            installation.installed_agent_blueprint_id,
+        blueprint = await db.scalar(
+            private_scoped(
+                select(AgentBlueprint).where(
+                    AgentBlueprint.id == installation.installed_agent_blueprint_id
+                ),
+                AgentBlueprint,
+                context,
+            )
         )
         if blueprint is not None:
             blueprint.install_status = "uninstalled"
@@ -351,18 +381,25 @@ async def delete_installation(
 async def _remove_install_artifacts(
     db: AsyncSession,
     installation: MarketplaceInstallation,
-    *,
-    keep_installation: bool = False,
+    context: OrgContext,
 ) -> None:
     """Remove the installed skill row + its on-disk directory. Used by
     overwrite/uninstall paths.
 
-    ``keep_installation`` skips the installation row delete so callers
-    can rebind it to a new skill (overwrite-in-place update).
+    The persisted installation and every private child must match the supplied context.
     """
 
+    scoped_installation = await load_private_installation(db, installation.id, context)
+    if scoped_installation is None:
+        raise marketplace_item_not_found()
+    installation = scoped_installation
+
     if installation.installed_skill_id is not None:
-        skill = await db.get(Skill, installation.installed_skill_id)
+        skill = await db.scalar(
+            private_scoped(
+                select(Skill).where(Skill.id == installation.installed_skill_id), Skill, context
+            )
+        )
         if skill is not None:
             if skill.storage_path:
                 # text-kind skills store SKILL.md path — climb one level
@@ -374,7 +411,13 @@ async def _remove_install_artifacts(
                 )
             await db.delete(skill)
     if installation.installed_mcp_server_id is not None:
-        server = await db.get(McpServer, installation.installed_mcp_server_id)
+        server = await db.scalar(
+            private_scoped(
+                select(McpServer).where(McpServer.id == installation.installed_mcp_server_id),
+                McpServer,
+                context,
+            )
+        )
         if server is not None:
             tools = (
                 (await db.execute(select(McpTool).where(McpTool.server_id == server.id)))
@@ -385,18 +428,26 @@ async def _remove_install_artifacts(
                 await db.delete(tool)
             await db.delete(server)
     if installation.installed_agent_blueprint_id is not None:
-        blueprint = await db.get(
-            AgentBlueprint,
-            installation.installed_agent_blueprint_id,
+        blueprint = await db.scalar(
+            private_scoped(
+                select(AgentBlueprint).where(
+                    AgentBlueprint.id == installation.installed_agent_blueprint_id
+                ),
+                AgentBlueprint,
+                context,
+            )
         )
         if blueprint is not None:
             await db.delete(blueprint)
     if installation.installed_agent_id is not None:
-        agent = await db.get(Agent, installation.installed_agent_id)
+        agent = await db.scalar(
+            private_scoped(
+                select(Agent).where(Agent.id == installation.installed_agent_id), Agent, context
+            )
+        )
         if agent is not None:
             await db.delete(agent)
-    if not keep_installation:
-        await db.delete(installation)
+    await db.delete(installation)
 
 
 __all__: list[str] = [

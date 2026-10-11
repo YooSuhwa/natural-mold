@@ -8,7 +8,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.schemas.mcp_apps import (
     McpAppsCallToolCommand,
     McpAppsCommand,
@@ -32,6 +33,7 @@ async def execute_mcp_apps_command(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    org_context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> dict[str, Any]:
     try:
@@ -40,7 +42,7 @@ async def execute_mcp_apps_command(
             conversation_id=conversation_id,
             run_id=run_id,
             tool_call_id=tool_call_id,
-            user_id=user.id,
+            context=org_context,
         )
         match command:
             case McpAppsReadResourceCommand():

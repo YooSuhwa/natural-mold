@@ -6,7 +6,8 @@ import uuid
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     invalid_file_path,
     invalid_skill_package,
@@ -20,6 +21,7 @@ from app.routers.skill_router_support import (
     record_skill_audit,
     serialize_skill,
 )
+from app.schemas.resource_view_context import ResourceViewContext
 from app.schemas.skill import SkillFileEntry, SkillFileUpdate, SkillResponse
 from app.services import skill_revision_mutations
 from app.skills import service as skill_service
@@ -33,8 +35,9 @@ async def list_skill_files(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[SkillFileEntry]:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await _load_skill_or_404(db, skill_id=skill_id, context=context)
     return [
         SkillFileEntry(path=item.path, size=item.size, is_dir=item.is_dir)
         for item in skill_service.get_skill_files(skill)
@@ -47,8 +50,9 @@ async def get_skill_file(
     file_path: str,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> Response:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await _load_skill_or_404(db, skill_id=skill_id, context=context)
     try:
         data = skill_service.get_file_bytes(skill, file_path)
     except FileNotFoundError:
@@ -67,9 +71,10 @@ async def put_skill_file(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillResponse:
-    skill = await _load_package_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await _load_package_skill_or_404(db, skill_id=skill_id, context=context)
     revision_parent = await skill_revision_mutations.prepare_mutation_parent(
         db,
         skill=skill,
@@ -107,7 +112,7 @@ async def put_skill_file(
         metadata={"file_path": file_path, "content_length": len(data.content)},
     )
     await db.commit()
-    return await serialize_skill(db, updated, user)
+    return await serialize_skill(db, updated, ResourceViewContext(user, context))
 
 
 @router.delete("/{file_path:path}", response_model=SkillResponse)
@@ -117,9 +122,10 @@ async def delete_skill_file(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillResponse:
-    skill = await _load_package_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await _load_package_skill_or_404(db, skill_id=skill_id, context=context)
     revision_parent = await skill_revision_mutations.prepare_mutation_parent(
         db,
         skill=skill,
@@ -150,7 +156,7 @@ async def delete_skill_file(
         metadata={"file_path": file_path},
     )
     await db.commit()
-    return await serialize_skill(db, updated, user)
+    return await serialize_skill(db, updated, ResourceViewContext(user, context))
 
 
 @router.post("", response_model=SkillResponse, status_code=201)
@@ -161,9 +167,10 @@ async def upload_skill_file(
     rel_path: str = Form(..., description="Relative path inside the skill, eg 'scripts/run.py'"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillResponse:
-    skill = await _load_package_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await _load_package_skill_or_404(db, skill_id=skill_id, context=context)
     body = await file.read()
     revision_parent = await skill_revision_mutations.prepare_mutation_parent(
         db,
@@ -202,20 +209,22 @@ async def upload_skill_file(
         metadata={"file_path": rel_path, "filename": file.filename, "content_length": len(body)},
     )
     await db.commit()
-    return await serialize_skill(db, updated, user)
+    return await serialize_skill(db, updated, ResourceViewContext(user, context))
 
 
-async def _load_skill_or_404(db: AsyncSession, *, skill_id: uuid.UUID, user: CurrentUser) -> Skill:
-    skill = await skill_service.get_skill(db, skill_id, user.id)
+async def _load_skill_or_404(
+    db: AsyncSession, *, skill_id: uuid.UUID, context: OrgContext
+) -> Skill:
+    skill = await skill_service.get_skill(db, skill_id, context)
     if not skill:
         raise skill_not_found()
     return skill
 
 
 async def _load_package_skill_or_404(
-    db: AsyncSession, *, skill_id: uuid.UUID, user: CurrentUser
+    db: AsyncSession, *, skill_id: uuid.UUID, context: OrgContext
 ) -> Skill:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await _load_skill_or_404(db, skill_id=skill_id, context=context)
     if skill.kind != "package":
         raise invalid_skill_package("file-level mutations are only valid for package skills")
     return skill

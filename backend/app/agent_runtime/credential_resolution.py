@@ -19,12 +19,14 @@ Assistant, and other service flows use ``system_credential_resolver`` instead.
 from __future__ import annotations
 
 import logging
-import uuid
+from dataclasses import replace
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.identity import AgentRunIdentity
+from app.agent_runtime.credential_access import AgentCredentialAccess
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scoped
 from app.config import settings
 from app.credentials import service as credential_service
 from app.credentials.service import PROVIDER_TO_DEFINITION_KEY
@@ -61,8 +63,7 @@ class LLMCredentialRequiredError(AppError):
 async def resolve_llm_api_key_for_agent(
     db: AsyncSession,
     agent: Agent,
-    *,
-    identity: AgentRunIdentity | None = None,
+    access: AgentCredentialAccess,
 ) -> str | None:
     """Decrypt the best available credential for ``agent`` and return its key.
 
@@ -73,7 +74,8 @@ async def resolve_llm_api_key_for_agent(
     backend stdout 로 진단 가능 (silent fail 회귀 방지).
     """
 
-    subject_user_id = identity.credential_subject_user_id if identity is not None else agent.user_id
+    subject = replace(access.context, user_id=access.identity.credential_subject_user_id)
+    subject_user_id = subject.user_id
     model = getattr(agent, "model", None)
     if _allows_keyless_dev_model(model):
         logger.info(
@@ -85,7 +87,7 @@ async def resolve_llm_api_key_for_agent(
 
     cred = getattr(agent, "llm_credential", None)
     if cred is not None:
-        if _credential_owned_by_subject(cred, subject_user_id):
+        if _credential_owned_by_subject(cred, subject):
             key = await _decrypt_api_key(cred)
             if key is not None:
                 logger.info(
@@ -110,7 +112,7 @@ async def resolve_llm_api_key_for_agent(
 
     if model is not None and model.default_credential_id is not None:
         fallback_cred = await credential_service.get_for_user(
-            db, model.default_credential_id, subject_user_id
+            db, model.default_credential_id, subject
         )
         if fallback_cred is not None:
             key = await _decrypt_api_key(fallback_cred)
@@ -145,9 +147,8 @@ async def resolve_llm_api_key_for_agent(
         definition_key = PROVIDER_TO_DEFINITION_KEY[model.provider]
         matches = (
             await db.execute(
-                select(Credential)
+                private_scoped(select(Credential), Credential, subject)
                 .where(
-                    Credential.user_id == subject_user_id,
                     Credential.is_system.is_(False),
                     Credential.definition_key == definition_key,
                     Credential.status == "active",
@@ -192,9 +193,11 @@ def _allows_keyless_dev_model(model: object | None) -> bool:
     )
 
 
-def _credential_owned_by_subject(cred: Credential, subject_user_id: uuid.UUID) -> bool:
+def _credential_owned_by_subject(cred: Credential, subject: OrgContext) -> bool:
     return (
-        cred.user_id == subject_user_id
+        cred.user_id == subject.user_id
+        and cred.org_id == subject.org_id
+        and cred.tenant_id == subject.tenant_id
         and bool(getattr(cred, "is_system", False)) is False
         and getattr(cred, "status", "active") == "active"
     )

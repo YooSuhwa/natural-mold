@@ -8,8 +8,15 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+)
 from app.schemas.conversation import FileItem
 from app.services import chat_service
 from app.services.conversation_file_service import resolve_conversation_file
@@ -24,6 +31,7 @@ router = APIRouter(tags=["conversations"])
 )
 async def list_conversation_files(
     conversation_id: uuid.UUID,
+    context: OrgContext = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[FileItem]:
@@ -36,7 +44,7 @@ async def list_conversation_files(
     """
 
     return await chat_service.list_conversation_files(
-        db, user_id=user.id, conversation_id=conversation_id
+        db, user_id=user.id, conversation_id=conversation_id, context=context
     )
 
 

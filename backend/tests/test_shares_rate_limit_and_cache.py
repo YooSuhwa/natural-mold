@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,6 +17,7 @@ from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.user import User
 from app.rate_limit import limiter
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import (
     TEST_USER_ID,
     TestSession,
@@ -40,11 +43,21 @@ async def _seed_conversation() -> uuid.UUID:
             description="An agent for cache tests",
             system_prompt="You are helpful.",
             model_id=model.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(agent)
         await db.flush()
 
-        conv = Conversation(agent_id=agent.id, title="Cached topic")
+        conv = Conversation(
+            agent_id=agent.id,
+            title="Cached topic",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         return conv.id
@@ -142,16 +155,16 @@ async def test_public_share_rate_limit_returns_429_when_enabled():
 
         app = create_app()
         app.dependency_overrides[get_db] = override_get_db
+        from app.dependencies import get_org_context
+        from tests.conftest import override_get_org_context
+
+        app.dependency_overrides[get_org_context] = override_get_org_context
         app.dependency_overrides[get_current_user] = override_get_current_user
         app.dependency_overrides[verify_csrf] = _bypass_verify_csrf
 
         # Mint a token the public route can resolve.
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as ac:
-            token = (
-                await ac.post(f"/api/conversations/{conv_id}/share")
-            ).json()["share_token"]
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            token = (await ac.post(f"/api/conversations/{conv_id}/share")).json()["share_token"]
 
             with patch(
                 "app.routers.shares.chat_service.list_messages_from_checkpointer",

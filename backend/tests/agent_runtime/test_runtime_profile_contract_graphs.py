@@ -19,6 +19,7 @@ from tests.agent_runtime.runtime_contract_helpers import (
     contract_diff_paths,
     load_contract_fixture,
 )
+from tests.authz.unit_scope_fixture import unit_context
 
 _FIXTURE = "runtime_profiles_v1.json"
 
@@ -74,10 +75,13 @@ async def _assistant_manifest(monkeypatch: pytest.MonkeyPatch) -> dict[str, JSON
     monkeypatch.setattr(assistant_agent, "get_checkpointer", lambda: None)
     monkeypatch.setattr(assistant_agent, "_load_system_prompt", lambda: "<assistant-profile>")
 
+    monkeypatch.setattr(
+        assistant_agent, "get_agent_with_eager_load", AsyncMock(return_value=object())
+    )
     graph = await assistant_agent.build_assistant_agent(
         AsyncMock(),
         UUID("00000000-0000-4000-8000-000000000001"),
-        UUID("00000000-0000-4000-8000-000000000002"),
+        unit_context(UUID("00000000-0000-4000-8000-000000000002")),
         "assistant-thread",
     )
     return _compiled_shape(graph)

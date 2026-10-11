@@ -6,9 +6,11 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_scope import require_conversation_agent_id
 from app.models.conversation import Conversation
 from app.services import conversation_run_queue_service, conversation_run_service
 from app.services.conversation_run_queue_payload import MAX_QUEUE_INPUT_BYTES
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID
 from tests.integration._seed import seed_conversation_with_agent
 
@@ -23,7 +25,7 @@ async def test_queue_routes_edit_reorder_delete_pending_inputs(
     first = await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="route-1",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "one"}]},
@@ -34,7 +36,7 @@ async def test_queue_routes_edit_reorder_delete_pending_inputs(
     second = await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="route-2",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "two"}]},
@@ -97,7 +99,7 @@ async def test_queue_edit_rejects_attachment_replacement(
     queued = await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="attached",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "attached"}]},
@@ -133,7 +135,7 @@ async def test_queue_edit_rejects_malformed_and_oversized_json_input(
     queued = await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="bounded-edit",
         source="chat",
         input_payload={"messages": []},
@@ -176,8 +178,8 @@ async def test_stop_pauses_dispatch_until_owner_resumes(
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conversation.agent_id,
-        user_id=TEST_USER_ID,
+        agent_id=require_conversation_agent_id(conversation),
+        context=unit_context(TEST_USER_ID),
         source="chat",
         input_preview="active",
     )
@@ -185,7 +187,7 @@ async def test_stop_pauses_dispatch_until_owner_resumes(
     await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="after-stop",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "later"}]},

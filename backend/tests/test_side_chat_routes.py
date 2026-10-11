@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 from httpx import AsyncClient
 
 from app.models.conversation import Conversation
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TestSession
 from tests.test_conversations_router import _seed_agent
 
@@ -94,9 +97,19 @@ async def test_deleting_parent_keeps_side_history_discoverable(
 
 @pytest.mark.asyncio
 async def test_side_chat_routes_hide_foreign_and_missing_conversations(client: AsyncClient) -> None:
-    agent_id, _ = await _seed_agent(user_id=uuid.uuid4(), user_email="foreign-side@test.com")
+    foreign_user_id = uuid.uuid4()
+    agent_id, _ = await _seed_agent(user_id=foreign_user_id, user_email="foreign-side@test.com")
     async with TestSession() as db:
-        conversation = Conversation(agent_id=agent_id, title="Private", source="side_chat")
+        conversation = Conversation(
+            agent_id=agent_id,
+            title="Private",
+            source="side_chat",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=foreign_user_id,
+            agent_name_snapshot="Fixture agent",
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conversation)
         await db.commit()
         foreign_id = conversation.id

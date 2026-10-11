@@ -8,10 +8,16 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.builder_session import BuilderSession
 from app.models.model import Model
 from app.models.user import User
 from app.schemas.builder import BuilderStatus
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -26,6 +32,8 @@ async def _seed(db: AsyncSession) -> None:
         is_default=True,
     )
     db.add(model)
+    await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     await db.commit()
 
 
@@ -101,6 +109,8 @@ async def test_confirm_build(client: AsyncClient, db: AsyncSession):
             "middlewares": [],
             "model_name": "GPT-4o",
         },
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(session)
     await db.commit()
@@ -147,6 +157,8 @@ async def test_confirm_completed_without_agent(client: AsyncClient, db: AsyncSes
         status=BuilderStatus.COMPLETED,
         agent_id=None,
         draft_config={"name": "Weather Bot"},
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(session)
     await db.commit()
@@ -167,6 +179,8 @@ async def test_confirm_already_confirming(client: AsyncClient, db: AsyncSession)
         user_request="test",
         status=BuilderStatus.CONFIRMING,
         draft_config={"name": "Bot"},
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(session)
     await db.commit()
@@ -187,6 +201,8 @@ async def test_confirm_no_draft_config(client: AsyncClient, db: AsyncSession):
         user_request="test",
         status=BuilderStatus.PREVIEW,
         draft_config=None,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(session)
     await db.commit()
@@ -218,6 +234,8 @@ async def test_confirm_no_model_returns_422(client: AsyncClient, db: AsyncSessio
             "middlewares": [],
             "model_name": "nonexistent",
         },
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(session)
     await db.commit()

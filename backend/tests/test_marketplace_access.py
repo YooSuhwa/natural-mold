@@ -20,14 +20,17 @@ import uuid
 from collections.abc import AsyncGenerator
 
 import pytest
+from fastapi import Depends
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.dependencies import (
     CurrentUser,
     get_current_user,
     get_current_user_optional,
     get_db,
+    get_org_context,
     verify_csrf,
 )
 from app.main import create_app
@@ -42,6 +45,7 @@ from app.models.marketplace import (
     MarketplaceItemACL,
     MarketplaceVersion,
 )
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, ensure_unit_scope
 from tests.conftest import TestSession, override_get_db
 
 # Stable user identities for the matrix.
@@ -83,6 +87,8 @@ def _build_item(
         visibility=visibility,
         status=status,
         moderation_status="approved",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     item.acl_entries = [
         MarketplaceItemACL(
@@ -141,15 +147,11 @@ class TestCanViewItem:
         assert can_view_item(item, _user(UNRELATED_ID)) is True
 
     def test_system_item_visible_to_everyone(self) -> None:
-        item = _build_item(
-            visibility="system", is_system=True, owner_id=None
-        )
+        item = _build_item(visibility="system", is_system=True, owner_id=None)
         assert can_view_item(item, _user(UNRELATED_ID)) is True
 
     def test_disabled_item_hidden_from_unrelated_user(self) -> None:
-        item = _build_item(
-            visibility="public", status="disabled", is_listed=True
-        )
+        item = _build_item(visibility="public", status="disabled", is_listed=True)
         assert can_view_item(item, _user(UNRELATED_ID)) is False
         # super_user keeps view rights (admin moderation flow).
         assert can_view_item(item, _user(SUPER_ID, is_super=True)) is True
@@ -182,9 +184,7 @@ class TestCanInstallItem:
         assert can_install_item(item, _user(UNRELATED_ID)) is False
 
     def test_disabled_item_install_blocked_for_non_super_user(self) -> None:
-        item = _build_item(
-            visibility="public", status="disabled", is_listed=True
-        )
+        item = _build_item(visibility="public", status="disabled", is_listed=True)
         assert can_install_item(item, _user(UNRELATED_ID)) is False
         # Owner can re-install their own disabled draft for testing.
         # super_user can install for rescue.
@@ -229,9 +229,7 @@ class TestIsOwner:
         assert is_owner(item, _user(UNRELATED_ID)) is False
 
     def test_system_item_has_no_owner(self) -> None:
-        item = _build_item(
-            visibility="system", is_system=True, owner_id=None
-        )
+        item = _build_item(visibility="system", is_system=True, owner_id=None)
         # Even when the caller passes the OWNER_ID, ownership predicate
         # must be False (system items have no owner row).
         assert is_owner(item, _user(OWNER_ID)) is False
@@ -254,6 +252,11 @@ async def _client_for_user(user: CurrentUser) -> AsyncClient:
     app.dependency_overrides[get_current_user] = _user_override
     app.dependency_overrides[get_current_user_optional] = _user_override
 
+    async def declared_scope(db: AsyncSession = Depends(get_db)) -> OrgContext:
+        return await ensure_unit_scope(db, user)
+
+    app.dependency_overrides[get_org_context] = declared_scope
+
     async def _no_csrf() -> None:
         return None
 
@@ -263,9 +266,7 @@ async def _client_for_user(user: CurrentUser) -> AsyncClient:
     return AsyncClient(transport=transport, base_url="http://test")
 
 
-async def _seed_private_item(
-    db: AsyncSession, *, owner_id: uuid.UUID
-) -> MarketplaceItem:
+async def _seed_private_item(db: AsyncSession, *, owner_id: uuid.UUID) -> MarketplaceItem:
     """Insert a private item owned by ``owner_id``. Status=draft so only
     the owner can see it (Spec §12)."""
 
@@ -279,6 +280,8 @@ async def _seed_private_item(
         slug=f"hidden-{uuid.uuid4().hex[:6]}",
         visibility="private",
         status="draft",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(item)
     await db.commit()
@@ -337,9 +340,7 @@ class TestEnumerationOracleSafety:
         assert r_hidden.json() == r_missing.json()
 
     @pytest.mark.asyncio
-    async def test_owner_can_see_their_own_private_item(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_owner_can_see_their_own_private_item(self, db_session: AsyncSession) -> None:
         """Sanity check the 404 isn't over-reaching."""
 
         item = await _seed_private_item(db_session, owner_id=OWNER_ID)
@@ -359,23 +360,16 @@ class TestEnumerationOracleSafety:
         assert body["publication_summary"]["state"] in ("draft", "not_published")
 
     @pytest.mark.asyncio
-    async def test_versions_list_uses_same_404_envelope(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_versions_list_uses_same_404_envelope(self, db_session: AsyncSession) -> None:
         """``GET /items/{id}/versions`` shares the enumeration gate."""
 
         item = await _seed_private_item(db_session, owner_id=OWNER_ID)
 
         async with await _client_for_user(_user(UNRELATED_ID)) as client:
-            resp = await client.get(
-                f"/api/marketplace/items/{item.id}/versions"
-            )
+            resp = await client.get(f"/api/marketplace/items/{item.id}/versions")
 
         assert resp.status_code == 404
-        assert (
-            resp.json().get("error", {}).get("code")
-            == "MARKETPLACE_ITEM_NOT_FOUND"
-        )
+        assert resp.json().get("error", {}).get("code") == "MARKETPLACE_ITEM_NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_version_detail_unreachable_when_parent_hidden(

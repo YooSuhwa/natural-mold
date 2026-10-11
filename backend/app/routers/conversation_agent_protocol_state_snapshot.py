@@ -14,6 +14,7 @@ from app.agent_runtime.mcp_app_projection import (
 )
 from app.agent_runtime.message_utils import parse_msg_id
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
+from app.authz.org_context import OrgContext
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_checkpoint_state import (
     load_checkpoint_channel_values,
@@ -79,6 +80,7 @@ def serialize_langchain_message(
 async def collect_state_secret_values(
     db: AsyncSession,
     conversation: Conversation,
+    context: OrgContext,
 ) -> set[str]:
     """ADR-021 C2 — gather the run's plaintext secrets for state-API egress.
 
@@ -95,7 +97,7 @@ async def collect_state_secret_values(
 
     from app.services.chat_service import collect_conversation_secret_values
 
-    return await collect_conversation_secret_values(db, conversation)
+    return await collect_conversation_secret_values(db, conversation, context)
 
 
 async def load_thread_state_snapshot(

@@ -5,7 +5,15 @@ import uuid
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+    verify_csrf,
+)
 from app.schemas.conversation import ConversationResponse
 from app.services import conversation_side_chat_service
 from app.services.conversation_audit_service import record_conversation_audit
@@ -24,12 +32,13 @@ async def create_side_chat(
     response: Response,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ConversationResponse:
     """Open the parent's independent same-agent side chat, creating it once."""
-    parent = await owned_conversation(conversation_id, db, user)
+    parent = await owned_conversation(conversation_id, db, context)
     conversation, created = await conversation_side_chat_service.get_or_create_side_chat(
-        db, parent.id
+        db, parent.id, context
     )
     if not created:
         response.status_code = 200
@@ -58,11 +67,12 @@ async def save_side_chat(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ConversationResponse:
     """Idempotently make a side chat discoverable as a regular conversation."""
-    conversation = await owned_conversation(conversation_id, db, user)
-    if conversation_side_chat_service.promote_side_chat(conversation):
+    conversation = await owned_conversation(conversation_id, db, context)
+    if await conversation_side_chat_service.promote_side_chat(db, conversation.id, context):
         await record_conversation_audit(
             db,
             user=user,

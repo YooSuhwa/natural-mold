@@ -19,6 +19,8 @@ from app.services.skill_evaluation_auto_preparation import (
 )
 from app.services.skill_evaluation_set_preparation import SkillEvaluationPreparationStatus
 from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation
+from tests.authz.unit_scope_fixture import create_test_package_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -30,17 +32,19 @@ async def test_best_effort_prepare_recovers_from_flush_integrity_error(
 ) -> None:
     # Given: auto-prepare will hit a real DB constraint failure during flush.
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_with(
-                {
-                    "SKILL.md": _skill_md(),
-                    "evals/evals.json": json.dumps(
-                        {"evals": [{"input": "Classify.", "expected": "Label."}]}
-                    ),
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_with(
+                    {
+                        "SKILL.md": _skill_md(),
+                        "evals/evals.json": json.dumps(
+                            {"evals": [{"input": "Classify.", "expected": "Label."}]}
+                        ),
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
 
         # When: best-effort preparation runs inside a savepoint.

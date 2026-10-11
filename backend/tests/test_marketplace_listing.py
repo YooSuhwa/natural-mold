@@ -10,7 +10,7 @@
   공개 미승인 후보. ``visibility=unlisted``은 여전히 제외.
 * **``visibility=unlisted``** — list에서 항상 제외. detail(``GET /items/{id}``)은
   authenticated user 모두 접근 가능 (direct-link sharing).
-* **super_user** — 모든 항목 + 모든 ``is_listed`` 값 노출 (관리 권한).
+* **super_user** — 공개 심사와 플랫폼 항목을 관리하며, 미공유 개인 항목은 제외.
 
 이 파일은 list 결과의 **포함/제외 매트릭스**를 가드한다. detail 접근 + ACL
 permission 행렬은 ``test_marketplace_access.py``가 담당.
@@ -22,18 +22,22 @@ import uuid
 from collections.abc import AsyncGenerator
 
 import pytest
+from fastapi import Depends
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.dependencies import (
     CurrentUser,
     get_current_user,
     get_current_user_optional,
     get_db,
+    get_org_context,
     verify_csrf,
 )
 from app.main import create_app
 from app.models.marketplace import MarketplaceItem
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, ensure_unit_scope
 from tests.conftest import TestSession, override_get_db
 
 REGULAR_ID = uuid.UUID("aaaa1111-aaaa-1111-aaaa-1111aaaa1111")
@@ -59,6 +63,11 @@ async def _client_for_user(user: CurrentUser) -> AsyncClient:
 
     app.dependency_overrides[get_current_user] = _user_override
     app.dependency_overrides[get_current_user_optional] = _user_override
+
+    async def declared_scope(db: AsyncSession = Depends(get_db)) -> OrgContext:
+        return await ensure_unit_scope(db, user)
+
+    app.dependency_overrides[get_org_context] = declared_scope
 
     async def _no_csrf() -> None:
         return None
@@ -88,6 +97,8 @@ def _make_item(
         slug=slug,
         visibility=visibility,
         status=status,
+        org_id=None if is_system else TEST_ORG_ID,
+        tenant_id=None if is_system else TEST_TENANT_ID,
     )
 
 
@@ -215,13 +226,10 @@ class TestDefaultListing:
         assert "regular-unlisted" in slugs
 
     @pytest.mark.asyncio
-    async def test_super_user_default_list_includes_everything(
+    async def test_super_user_moderation_excludes_ungranted_private_resources(
         self, seeded: dict[str, MarketplaceItem | uuid.UUID]
     ) -> None:
-        """super_user always sees the full catalog — no default gating.
-
-        Confirms the early-return branch in ``_base_catalog_query`` keeps
-        the moderation surface complete without forcing ``?is_listed=false``."""
+        """Moderation includes public/platform entries without private content access."""
 
         async with await _client_for_user(_user(SUPER_ID, is_super=True)) as client:
             resp = await client.get("/api/marketplace/items")
@@ -232,12 +240,13 @@ class TestDefaultListing:
             "public-unlisted",
             "unlisted-vis",
             "system-item",
-            "regular-private",
             "regular-unlisted",
         ):
             assert required in slugs, (
                 f"super_user list missing {required!r} — moderation view broken"
             )
+
+        assert "regular-private" not in slugs
 
 
 @pytest.mark.asyncio

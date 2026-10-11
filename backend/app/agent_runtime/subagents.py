@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.identity import (
     AgentRunIdentity,
@@ -18,6 +19,7 @@ from app.agent_runtime.runtime_component_builder import (
     _prepare_runtime_components,
 )
 from app.agent_runtime.runtime_config import AgentConfig
+from app.error_codes import agent_not_found
 from app.models.agent import Agent
 from app.services import chat_service
 
@@ -94,6 +96,13 @@ async def build_subagents_config(
         child = link.sub_agent
         if child is None:
             continue
+        context = parent_cfg.org_context
+        if (child.user_id, child.org_id, child.tenant_id) != (
+            context.user_id,
+            context.org_id,
+            context.tenant_id,
+        ):
+            raise agent_not_found()
         if child.model is None:
             raise ValueError(f"linked subagent {child.id} has no model bound")
 
@@ -101,15 +110,17 @@ async def build_subagents_config(
         child_api_key = await resolve_llm_api_key_for_agent(
             db,
             child,
-            identity=child_identity,
+            AgentCredentialAccess(parent_cfg.org_context, child_identity),
         )
         child_tools_config = await chat_service.build_tools_config(
             child,
+            context=parent_cfg.org_context,
             db=db,
             conversation_id=parent_cfg.thread_id,
             identity=child_identity,
         )
         child_cfg = AgentConfig(
+            org_context=parent_cfg.org_context,
             provider=child.model.provider,
             model_name=child.model.model_name,
             api_key=child_api_key,
@@ -120,7 +131,7 @@ async def build_subagents_config(
             runtime_policy=parent_cfg.runtime_policy,
             model_params=child.model_params,
             middleware_configs=child.middleware_configs,
-            agent_skills=chat_service.build_agent_skills(child) or None,
+            agent_skills=chat_service.build_agent_skills(child, parent_cfg.org_context) or None,
             agent_id=str(child.id),
             agent_name=child.name,
             provider_api_keys={child.model.provider: child_api_key} if child_api_key else None,

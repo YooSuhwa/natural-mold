@@ -18,8 +18,17 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import private_scoped
 from app.config import settings
+from app.error_codes import skill_not_found
 from app.models.skill import Skill
+from app.skills.creation import PackageSkillCreation, TextSkillCreation
 from app.skills.file_service import (
     delete_skill_file,
     get_file_bytes,
@@ -68,12 +77,13 @@ def _now() -> datetime:
 
 async def list_skills(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
     *,
     kind: str | None = None,
     query: str | None = None,
 ) -> list[Skill]:
-    stmt = select(Skill).where(Skill.user_id == user_id)
+    await require_private_actor(db, context)
+    stmt = private_scoped(select(Skill), Skill, context)
     if kind:
         stmt = stmt.where(Skill.kind == kind)
     if query:
@@ -84,8 +94,13 @@ async def list_skills(
     return list(result.scalars().all())
 
 
-async def get_skill(db: AsyncSession, skill_id: uuid.UUID, user_id: uuid.UUID) -> Skill | None:
-    result = await db.execute(select(Skill).where(Skill.id == skill_id, Skill.user_id == user_id))
+async def get_skill(db: AsyncSession, skill_id: uuid.UUID, context: OrgContext) -> Skill | None:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    result = await db.execute(
+        private_scoped(select(Skill).where(Skill.id == skill_id), Skill, context)
+    )
     return result.scalar_one_or_none()
 
 
@@ -93,17 +108,20 @@ async def get_skill(db: AsyncSession, skill_id: uuid.UUID, user_id: uuid.UUID) -
 
 
 async def create_text_skill(
-    db: AsyncSession,
-    *,
-    user_id: uuid.UUID,
-    name: str,
-    slug: str | None,
-    description: str | None,
-    content: str,
-    version: str | None = None,
+    db: AsyncSession, creation: TextSkillCreation, context: OrgContext
 ) -> Skill:
     """Create a text skill, persisting ``content`` as ``SKILL.md`` on disk."""
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
 
+    name, slug, description, content, version = (
+        creation.name,
+        creation.slug,
+        creation.description,
+        creation.content,
+        creation.version,
+    )
     parse_skill_md(content, require_metadata=True)
     final_slug = slugify(slug or name)
     skill_id = uuid.uuid4()
@@ -115,7 +133,9 @@ async def create_text_skill(
 
     skill = Skill(
         id=skill_id,
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=name,
         slug=final_slug,
         description=description,
@@ -134,15 +154,18 @@ async def create_text_skill(
 
 
 async def create_package_skill(
-    db: AsyncSession,
-    *,
-    user_id: uuid.UUID,
-    zip_bytes: bytes,
-    name_override: str | None = None,
-    slug_override: str | None = None,
+    db: AsyncSession, creation: PackageSkillCreation, context: OrgContext
 ) -> Skill:
     """Extract a ``.skill`` zip and persist as a package skill."""
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
 
+    zip_bytes, name_override, slug_override = (
+        creation.zip_bytes,
+        creation.name_override,
+        creation.slug_override,
+    )
     skill_id = uuid.uuid4()
     root = _skill_root(skill_id)
     try:
@@ -157,7 +180,9 @@ async def create_package_skill(
 
     skill = Skill(
         id=skill_id,
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=final_name,
         slug=final_slug,
         description=info.description,
@@ -192,10 +217,15 @@ async def update_metadata(
     db: AsyncSession,
     *,
     skill: Skill,
+    context: OrgContext,
     name: str | None = None,
     description: str | None = None,
     version: str | None = None,
 ) -> Skill:
+    scoped = await get_skill(db, skill.id, context)
+    if scoped is None:
+        raise skill_not_found()
+    skill = scoped
     if name is not None and name != skill.name:
         skill.name = name
     if description is not None:
@@ -208,7 +238,13 @@ async def update_metadata(
     return skill
 
 
-async def update_text_content(db: AsyncSession, *, skill: Skill, content: str) -> Skill:
+async def update_text_content(
+    db: AsyncSession, *, skill: Skill, content: str, context: OrgContext
+) -> Skill:
+    scoped = await get_skill(db, skill.id, context)
+    if scoped is None:
+        raise skill_not_found()
+    skill = scoped
     if skill.kind != "text":
         raise ValueError("update_text_content only valid for text skills")
     if not skill.storage_path:
@@ -225,13 +261,17 @@ async def update_text_content(db: AsyncSession, *, skill: Skill, content: str) -
     return skill
 
 
-async def delete_skill(db: AsyncSession, skill: Skill) -> None:
+async def delete_skill(db: AsyncSession, skill: Skill, context: OrgContext) -> None:
     """Remove the DB row and the on-disk storage.
 
     Both text and package skills live under ``<storage_dir>/<skill_id>/``;
     we wipe that directory regardless of kind. A missing path is a no-op.
     """
 
+    scoped = await get_skill(db, skill.id, context)
+    if scoped is None:
+        raise skill_not_found()
+    skill = scoped
     storage = skill.storage_path
     await db.delete(skill)
     await db.flush()

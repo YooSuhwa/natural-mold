@@ -23,14 +23,23 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.model_factory import sync_env_fallback_from_credentials
+from app.authz.org_context import OrgContext
+from app.authz.platform_scope import PlatformScope
 from app.credentials import oauth_service
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
+from app.credentials.mutation_scope import (
+    CredentialAuditQuery,
+    CredentialPatch,
+    CredentialTestRecord,
+)
 from app.credentials.registry import registry
 from app.credentials.tester import CredentialTester
 from app.dependencies import (
     CurrentUser,
     get_current_user,
     get_db,
+    get_org_context,
     require_super_user,
     verify_csrf,
 )
@@ -93,8 +102,10 @@ def _request_meta(request: Request) -> tuple[str | None, str | None]:
     return client, request.headers.get("user-agent")
 
 
-async def _load_owned(db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID) -> Credential:
-    cred = await credential_service.get_for_user(db, credential_id, user_id)
+async def _load_owned(
+    db: AsyncSession, credential_id: uuid.UUID, context: OrgContext
+) -> Credential:
+    cred = await credential_service.get_for_user(db, credential_id, context)
     if cred is None:
         raise credential_not_found()
     return cred
@@ -135,9 +146,9 @@ async def get_credential_type(key: str) -> CredentialDefinitionSchema:
 @crud_router.get("", response_model=list[CredentialResponse])
 async def list_credentials(
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[CredentialResponse]:
-    creds = await credential_service.list_for_user(db, user.id)
+    creds = await credential_service.list_for_user(db, context)
     return [_to_response(c) for c in creds]
 
 
@@ -146,6 +157,7 @@ async def create_credential(
     payload: CredentialCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> CredentialResponse:
     if registry.get(payload.definition_key) is None:
@@ -156,11 +168,13 @@ async def create_credential(
     name = payload.normalized_name()
     cred = await credential_service.create(
         db,
-        user_id=user.id,
-        definition_key=payload.definition_key,
-        name=name,
-        data=payload.data,
-        is_shared=payload.is_shared,
+        CredentialCreation(
+            definition_key=payload.definition_key,
+            name=name,
+            data=payload.data,
+            is_shared=payload.is_shared,
+        ),
+        context,
     )
     await db.commit()
     await db.refresh(cred)
@@ -172,9 +186,9 @@ async def create_credential(
 async def get_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> CredentialResponse:
-    cred = await _load_owned(db, credential_id, user.id)
+    cred = await _load_owned(db, credential_id, context)
     return _to_response(cred)
 
 
@@ -184,9 +198,10 @@ async def update_credential(
     payload: CredentialUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> CredentialResponse:
-    cred = await _load_owned(db, credential_id, user.id)
+    cred = await _load_owned(db, credential_id, context)
     if payload.name is not None:
         # Preserve marker reservation enforced by markers.check_reserved_marker
         from app.schemas.markers import check_reserved_marker
@@ -194,12 +209,15 @@ async def update_credential(
         check_reserved_marker(payload.name, "name")
     await credential_service.update(
         db,
-        credential=cred,
-        actor_user_id=user.id,
-        name=payload.name,
-        data=payload.data,
-        is_shared=payload.is_shared,
-        status=payload.status,
+        CredentialPatch(
+            credential_id=cred.id,
+            actor_user_id=user.id,
+            name=payload.name,
+            data=payload.data,
+            is_shared=payload.is_shared,
+            status=payload.status,
+        ),
+        context,
     )
     await db.commit()
     await db.refresh(cred)
@@ -212,9 +230,10 @@ async def delete_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> None:
-    cred = await _load_owned(db, credential_id, user.id)
+    cred = await _load_owned(db, credential_id, context)
     definition_key = cred.definition_key
     await credential_service.write_audit_log(
         db,
@@ -265,12 +284,10 @@ async def create_system_credential(
     # picker queries (``list_for_user`` filters ``is_system=False``).
     cred = await credential_service.create(
         db,
-        user_id=None,
-        definition_key=payload.definition_key,
-        name=payload.normalized_name(),
-        data=payload.data,
-        is_shared=False,
-        is_system=True,
+        CredentialCreation(
+            definition_key=payload.definition_key, name=payload.normalized_name(), data=payload.data
+        ),
+        PlatformScope(),
     )
     await db.commit()
     await db.refresh(cred)
@@ -302,11 +319,14 @@ async def update_system_credential(
         check_reserved_marker(payload.name, "name")
     await credential_service.update(
         db,
-        credential=cred,
-        actor_user_id=user.id,
-        name=payload.name,
-        data=payload.data,
-        status=payload.status,
+        CredentialPatch(
+            credential_id=cred.id,
+            actor_user_id=user.id,
+            name=payload.name,
+            data=payload.data,
+            status=payload.status,
+        ),
+        PlatformScope(),
     )
     await db.commit()
     await db.refresh(cred)
@@ -342,9 +362,10 @@ async def test_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> CredentialTestResponse:
-    cred = await _load_owned(db, credential_id, user.id)
+    cred = await _load_owned(db, credential_id, context)
     definition = registry.get(cred.definition_key)
     if definition is None:
         raise HTTPException(
@@ -355,10 +376,7 @@ async def test_credential(
     result = await CredentialTester().run(definition, data)
     payload = result.to_dict()
     await credential_service.record_test(
-        db,
-        credential=cred,
-        actor_user_id=user.id,
-        result=payload,
+        db, CredentialTestRecord(cred.id, user.id, payload), context
     )
     await db.commit()
     return CredentialTestResponse(**payload)
@@ -392,6 +410,7 @@ async def discover_models(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> list[DiscoveredModelSchema]:
     """List models reachable through this Credential.
@@ -401,7 +420,7 @@ async def discover_models(
     canonical 'is this key valid' surface, not this endpoint.
     """
 
-    cred = await credential_service.get_for_user(db, credential_id, user.id)
+    cred = await credential_service.get_for_user(db, credential_id, context)
     if cred is None and user.is_super_user:
         # System LLM settings (ADR-019) discovers models from is_system
         # credentials, which _load_owned (user-scoped) can't see. super_user
@@ -445,10 +464,12 @@ async def list_audit_logs(
     credential_id: uuid.UUID,
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[CredentialAuditLogResponse]:
-    await _load_owned(db, credential_id, user.id)
-    logs = await credential_service.list_audit_logs(db, credential_id=credential_id, limit=limit)
+    await _load_owned(db, credential_id, context)
+    logs = await credential_service.list_audit_logs(
+        db, CredentialAuditQuery(credential_id, limit), context
+    )
     return [
         CredentialAuditLogResponse(
             id=log.id,
@@ -495,14 +516,14 @@ async def oauth2_auth_start(
     credential_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> OAuth2AuthStartResponse:
     """Start the OAuth2 authorize flow (orchestration in ``oauth_service``)."""
 
     result = await oauth_service.start_oauth(
         db,
-        user=user,
+        context=context,
         credential_id=credential_id,
         fallback_redirect_uri=str(request.url_for("oauth2_callback")),
         return_to=request.headers.get("origin"),

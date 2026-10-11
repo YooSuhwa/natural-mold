@@ -14,12 +14,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.skill_builder.eval_runner import run_eval_skill_command
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.config import settings
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
+from app.dependencies import CurrentUser
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.marketplace import SkillCredentialBinding
 from app.services import skill_evaluation_service
 from app.services.skill_evaluation_worker_state import build_context
-from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation, TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    create_test_credential,
+    create_test_package_skill,
+    create_test_text_skill,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 from tests.tool_helpers import tool_coroutine
 
@@ -49,23 +57,27 @@ async def test_evaluation_context_mounts_only_the_target_skill(
     tmp_path: Path,
 ) -> None:
     with patch.object(settings, "data_root", str(tmp_path)):
-        target = await skill_service.create_text_skill(
+        target = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Runtime Target",
-            slug=f"runtime-target-{uuid.uuid4().hex[:8]}",
-            description="Use when testing evaluation runtime mounts.",
-            content=_skill_content("target"),
-            version="1.0.0",
+            TextSkillCreation(
+                name="Runtime Target",
+                slug=f"runtime-target-{uuid.uuid4().hex[:8]}",
+                description="Use when testing evaluation runtime mounts.",
+                content=_skill_content("target"),
+                version="1.0.0",
+            ),
+            unit_context(TEST_USER_ID),
         )
-        other = await skill_service.create_text_skill(
+        other = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Runtime Other",
-            slug=f"runtime-other-{uuid.uuid4().hex[:8]}",
-            description="Use when testing evaluation runtime mounts.",
-            content=_skill_content("other"),
-            version="1.0.0",
+            TextSkillCreation(
+                name="Runtime Other",
+                slug=f"runtime-other-{uuid.uuid4().hex[:8]}",
+                description="Use when testing evaluation runtime mounts.",
+                content=_skill_content("other"),
+                version="1.0.0",
+            ),
+            unit_context(TEST_USER_ID),
         )
         evaluation_set = await skill_evaluation_service.create_evaluation_set(
             db,
@@ -126,29 +138,34 @@ async def test_eval_command_reuses_skill_execution_policy_and_audit_kind(
     monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
     secret = "sk-evaluation-secret"
     with patch.object(settings, "data_root", str(tmp_path)):
-        credential = await credential_service.create(
-            db,
-            user_id=TEST_USER_ID,
-            definition_key="openai",
-            name="evaluation key",
-            data={"api_key": secret},
+        await ensure_unit_scope(
+            db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test")
         )
-        skill = await skill_service.create_package_skill(
+        credential = await create_test_credential(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_with(
-                {
-                    "SKILL.md": _skill_content("eval-package"),
-                    "scripts/echo_env.py": (
-                        "import os\n"
-                        "from pathlib import Path\n"
-                        "print(os.environ['OPENAI_API_KEY'])\n"
-                        "print(Path(os.environ['HOME']).name)\n"
-                        "print(Path(os.environ['OUTPUTS_DIR']).resolve())\n"
-                        "Path(os.environ['SKILL_OUTPUT_DIR'], 'result.txt').write_text('ok')\n"
-                    ),
-                }
+            CredentialCreation(
+                definition_key="openai", name="evaluation key", data={"api_key": secret}
             ),
+            unit_context(TEST_USER_ID),
+        )
+        skill = await create_test_package_skill(
+            db,
+            PackageSkillCreation(
+                zip_bytes=_zip_with(
+                    {
+                        "SKILL.md": _skill_content("eval-package"),
+                        "scripts/echo_env.py": (
+                            "import os\n"
+                            "from pathlib import Path\n"
+                            "print(os.environ['OPENAI_API_KEY'])\n"
+                            "print(Path(os.environ['HOME']).name)\n"
+                            "print(Path(os.environ['OUTPUTS_DIR']).resolve())\n"
+                            "Path(os.environ['SKILL_OUTPUT_DIR'], 'result.txt').write_text('ok')\n"
+                        ),
+                    }
+                )
+            ),
+            unit_context(TEST_USER_ID),
         )
         skill.credential_requirements = [
             {

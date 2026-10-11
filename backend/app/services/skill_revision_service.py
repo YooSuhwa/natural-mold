@@ -14,11 +14,12 @@ from anyio.to_thread import run_sync
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.skill_revision_scope import RevisionRollbackTarget, load_private_rollback_target
 from app.config import settings
 from app.models.skill import Skill
 from app.models.skill_builder_session import JsonValue
 from app.models.skill_revision import SkillRevision
-from app.services.skill_locks import lock_skill_for_mutation
 from app.services.skill_revision_storage import write_skill_revision_snapshot
 from app.skills import service as skill_service
 from app.skills.display_limits import DISPLAY_TEXT_SNIFF_BYTES, MAX_DISPLAY_TEXT_BYTES
@@ -120,11 +121,13 @@ async def get_revision(
     if skill.user_id != user_id:
         return None
     result = await db.execute(
-        select(SkillRevision).where(
+        select(SkillRevision)
+        .where(
             SkillRevision.id == revision_id,
             SkillRevision.skill_id == skill.id,
             SkillRevision.user_id == user_id,
         )
+        .execution_options(autoflush=False, populate_existing=True)
     )
     return result.scalar_one_or_none()
 
@@ -134,14 +137,17 @@ async def rollback_to_revision(
     *,
     skill: Skill,
     user_id: uuid.UUID,
+    context: OrgContext,
     revision: SkillRevision,
     changelog_summary: str | None = None,
 ) -> SkillRevision:
-    if skill.user_id != user_id or revision.skill_id != skill.id:
+    if context.user_id != user_id:
         raise SkillRevisionNotFound("revision not found")
+    skill, revision = await load_private_rollback_target(
+        db, RevisionRollbackTarget(skill.id, revision.id, context)
+    )
     if snapshot_pruned(revision):
         raise SkillRevisionRollbackUnsupported("revision snapshot was pruned")
-    skill = await lock_skill_for_mutation(db, skill=skill)
     parent_revision_id = skill.current_revision_id
     try:
         zip_bytes = await run_sync(_read_revision_bytes, revision.object_key)
@@ -164,7 +170,7 @@ async def rollback_to_revision(
             parse_skill_md(content, require_metadata=True)
         except (ValueError, yaml.YAMLError) as exc:
             raise SkillRevisionSnapshotMissing("revision snapshot SKILL.md is invalid") from exc
-        await skill_service.update_text_content(db, skill=skill, content=content)
+        await skill_service.update_text_content(db, skill=skill, content=content, context=context)
     else:
         if not skill.storage_path:
             raise SkillRevisionRollbackUnsupported("package skill has no storage path")

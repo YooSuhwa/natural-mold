@@ -8,6 +8,8 @@ from sqlalchemy import String, cast, func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.message_utils import parse_msg_id
+from app.authz.conversation_run_scope import private_run_predicate
+from app.authz.org_context import OrgContext
 from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
 from app.schemas.conversation_run_message_links import ConversationRunMessageLinkResponse
@@ -18,7 +20,7 @@ class RunMessageLinkQuery:
     """Typed owner-scoped request for durable message links."""
 
     conversation_id: uuid.UUID
-    user_id: uuid.UUID
+    context: OrgContext
     message_ids: Sequence[str]
 
 
@@ -61,7 +63,7 @@ async def list_run_message_links(
         .where(
             MessageEvent.conversation_id == query.conversation_id,
             ConversationRun.conversation_id == query.conversation_id,
-            ConversationRun.user_id == query.user_id,
+            private_run_predicate(query.context),
             linked_values.c.value.in_(canonical_ids),
         )
         .distinct()

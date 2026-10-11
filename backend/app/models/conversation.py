@@ -2,18 +2,37 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
+
+if TYPE_CHECKING:
+    from app.models.agent import Agent
 
 
-class Conversation(Base):
+class Conversation(RequiredOrgScope, Base):
     __tablename__ = "conversations"
+    __table_args__ = (
+        *resource_scope_constraints("conversations", system=False),
+        Index("ix_conversations_owner_org_updated", "user_id", "org_id", "updated_at"),
+        Index("ix_conversations_last_activity", "org_id", "last_activity_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agents.id", name="fk_conversations_agent_preserved", ondelete="SET NULL"),
+        nullable=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", name="fk_conversations_owner", ondelete="CASCADE"),
+        nullable=False,
+    )
+    agent_name_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="ui")
     side_chat_parent_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -52,4 +71,4 @@ class Conversation(Base):
         DateTime(timezone=False), nullable=True
     )
 
-    agent: Mapped[Agent] = relationship(back_populates="conversations")  # type: ignore[name-defined]
+    agent: Mapped[Agent | None] = relationship(back_populates="conversations")

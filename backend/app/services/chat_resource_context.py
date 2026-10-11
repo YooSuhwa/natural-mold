@@ -8,6 +8,7 @@ from typing import assert_never
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.models.conversation import Conversation
 from app.schemas.chat_resource_context import (
     MAX_RESOURCE_CONTEXT_ITEM_BYTES,
@@ -56,6 +57,10 @@ class ChatResourceContextResolver:
         self._dependencies = dependencies or ResourceContextDependencies()
 
     async def resolve(self, request: ChatResourceContextRequest) -> FrozenChatResourceContext:
+        context = self._scope.context
+        await resolve_private_actor(
+            self._db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+        )
         resources: list[FrozenChatResource] = []
         total_bytes = 0
         for reference in request.resources:
@@ -69,6 +74,10 @@ class ChatResourceContextResolver:
     async def reauthorize(self, context: FrozenChatResourceContext) -> FrozenChatResourceContext:
         """Recheck access without refreshing or replacing stored snapshot text."""
 
+        actor = self._scope.context
+        await resolve_private_actor(
+            self._db, PrivateResourceActor(actor.user_id, actor.org_id, actor.tenant_id)
+        )
         for resource in context.resources:
             reference = ChatResourceReference(
                 kind=resource.kind,

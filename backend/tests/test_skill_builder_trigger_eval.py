@@ -11,21 +11,28 @@ from app.agent_runtime.skill_builder.trigger_eval import (
     rewrite_description,
     select_best_candidate,
 )
-from app.credentials import service as credential_service
+from app.authz.platform_scope import PlatformScope
+from app.credentials.creation import CredentialCreation
+from app.dependencies import CurrentUser
 from app.models.system_llm_setting import SystemLlmSetting
 from app.schemas.skill_builder import JsonValue
 from app.services import skill_builder_service
+from app.services.skill_builder_mutation_scope import SkillBuilderMutationTarget
+from tests.authz.unit_scope_fixture import create_test_credential, ensure_unit_scope, unit_context
 from tests.conftest import TEST_USER_ID
 
 
 async def _configure_system_llm(db: AsyncSession) -> None:
-    credential = await credential_service.create(
+    await ensure_unit_scope(
         db,
-        user_id=None,
-        definition_key="openai",
-        name="trigger-eval-key",
-        data={"api_key": "sk-test"},
-        is_system=True,
+        CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User", is_super_user=True),
+    )
+    credential = await create_test_credential(
+        db,
+        CredentialCreation(
+            definition_key="openai", name="trigger-eval-key", data={"api_key": "sk-test"}
+        ),
+        PlatformScope(),
     )
     db.add(
         SystemLlmSetting(
@@ -97,10 +104,12 @@ async def test_trigger_eval_endpoint_persists_result_and_updates_draft_descripti
     await _configure_system_llm(db)
     session = await skill_builder_service.create_session(
         db,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         user_request="회의록에서 액션 아이템과 담당자를 표로 추출",
     )
-    await skill_builder_service.save_draft_package(db, session, draft=_draft())
+    await skill_builder_service.save_draft_package(
+        db, SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)), _draft()
+    )
     await db.commit()
 
     response = await client.post(f"/api/skill-builder/{session.id}/trigger-eval/run")

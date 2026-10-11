@@ -18,7 +18,13 @@ from app.config import settings
 from app.models.skill import Skill
 from app.models.skill_revision import SkillRevision
 from app.services import skill_revision_service
-from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_text_skill,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -44,13 +50,15 @@ def _tmp_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def _make_skill_with_revision(db: AsyncSession) -> tuple[Skill, SkillRevision]:
-    skill = await skill_service.create_text_skill(
+    skill = await create_test_text_skill(
         db,
-        user_id=TEST_USER_ID,
-        name="Notes",
-        slug="notes",
-        description="Use when summarizing notes.",
-        content=_skill_content(),
+        TextSkillCreation(
+            name="Notes",
+            slug="notes",
+            description="Use when summarizing notes.",
+            content=_skill_content(),
+        ),
+        unit_context(TEST_USER_ID),
     )
     revision = await skill_revision_service.create_revision_for_skill(
         db,
@@ -448,6 +456,8 @@ async def test_foreign_skill_revision_files_404(
         version=None,
         package_metadata=None,
         used_by_count=0,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(foreign_skill)
     await db.flush()

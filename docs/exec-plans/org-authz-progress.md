@@ -768,3 +768,2564 @@ pass (0.27s). The new case also verifies that matching the owner of a platform
 row does not expose it through a private organization query. These type-only
 adapter additions do not change the SQL predicate or claim resource endpoint
 cutover.
+
+## B-06 live cutover in progress (2026-10-11, uncommitted)
+
+The coherent Tasks 4–14 cutover has started. Live `Credential` and `Tool` models
+now declare the actual m81/m83 organization/company columns, named composite
+scope FKs, system checks and restricted owner FKs. Credential creation takes a
+typed payload plus a mandatory `OrgContext` or an explicit `PlatformScope`.
+Personal writes persist the exact caller/company/organization; platform writers
+deliberately use null scope. Personal credential CRUD, OAuth start, model probes
+and private tool CRUD now receive the request's validated context. Existing
+platform bootstrap and E2E LLM seed callers were converted to explicit scopes.
+
+Failing real HTTP cases reproduced same-owner cross-company credential/tool
+reads and mutations before the change. Those **9** focused cases now pass.
+The expanded credential/OAuth/model/tool selection passes **78 tests** (2.43s).
+An actual m83 owned PostgreSQL HTTP case proves persisted credential scope and
+same-owner company-switch denial: **1 passed** (4.02s). These results are scoped
+evidence, not full B-06/P1 acceptance.
+
+Public OAuth completion derives the actor from the persisted credential's
+company/organization and reloads account/membership state before token exchange.
+Three failing revocation cases first demonstrated the missing boundary; company
+suspension, membership removal and inactive accounts are now denied without
+exchanging tokens or consuming state. A separate failing identity-map case
+demonstrated cached company status surviving an SQL suspension; organization
+resolution now refreshes already-loaded ORM rows. That regression passes.
+
+The existing mocked-auth unit app now declares a real test company/organization
+and membership graph. The unmodified `raw_client` still exercises actual
+JWT/cookie/CSRF and request membership checks. Exactly **85** existing credential
+test writer calls were converted using Python AST import/call resolution, with
+dry-run diffs before application. The ast-grep executable was unavailable; the
+stdlib AST fallback was used. No production default, before-flush scope fill or
+optional-context compatibility branch was added. Unrelated formatter-only
+changes were identified by identical ASTs and removed.
+
+Current whole-backend Ruff passes; the ownership predicate ratchet decreases
+from **173** to **168**, additions **0**. Whole-backend Pyright currently reports
+**1 remaining error**: the runtime model-default credential lookup still passes
+a user UUID instead of `OrgContext`. It must be converted through the runtime
+scope spine; no implicit owner/default/session fallback will be added.
+
+This cutover remains **uncommitted**. Required remaining work includes runtime
+context propagation, other shared/private ORM writers and their direct test
+constructors, MCP organization filtering/persistence, all B-06 private consumers,
+native cross-surface acceptance and the isolated full backend gate. The current
+MCP binding/import paths have context-aware credential validation, but their
+server ORM/read/write organization cutover is not complete. The frozen m77
+fixture, shared/main DB, environment and runtime data remain untouched.
+Logs are `output/org-authz/p1/b06-{credential-*,cutover-*,oauth-*}`.
+
+The additional legacy Tool/MCP transition selection currently has **45 passed,
+8 failed** (2.79s). Failures identify direct test ORM constructors still omitting
+the new required scope (credential/tool `org_required` checks), including runner
+fixtures. They must receive explicit declared test scope; the production checks
+will not be weakened to preserve those constructors. The log is
+`output/org-authz/p1/b06-tools-mcp-transition.log`. Changed-file format checks
+pass for **59** Python files. No cutover commit or full-suite success is claimed.
+
+### B-06 MCP persistence/child queries and required runtime credential scope
+
+The eight legacy Tool/MCP failures above were resolved with explicit test scope;
+the original selection then passed **53 tests** (1.20s). Test fixtures also seed
+the declared company/organization graph instead of relying on SQLite's disabled
+FK enforcement.
+
+`McpServer` now maps the exact m81/m83 scope columns/checks/FKs while preserving
+its required owner column. Creation, registry creation and import persist the
+request context. Private server lists/details/updates/deletes/exports and global
+child-tool lists require context; child queries join the scoped parent through
+`private_parent_scoped`. Import deduplication is partitioned by owner and current
+organization. Update/delete re-load their scoped target before mutation.
+Seven new real HTTP cases cover persistence and cross-company list/detail/
+child-tool/update/delete/export denial. The combined Tool/MCP and new private
+selection passes **65 tests** (1.79s).
+
+The owned actual-m83 PostgreSQL HTTP matrix now covers **Credential, Tool and
+McpServer**, including physical scope persistence and same-owner company-switch
+denial: **3 passed** (12.68s). It does not cover the remaining scoped tables or
+prove full B-06 acceptance. Log: `b06-native-resource-scope-matrix.log`.
+
+Runtime credential resolution now requires the frozen `AgentCredentialAccess`
+input containing an explicit `OrgContext` and `AgentRunIdentity`. The implicit
+agent-owner identity input fallback is removed. Direct bindings, model defaults
+and provider matching all require the credential subject plus the exact company/
+organization. Three initial failing cases demonstrated the missing mandatory
+scope interface; the positive/negative matrix now passes **6 tests** (0.43s).
+The credential subject is explicitly derived from the supplied identity while
+preserving the supplied company/org, not selected from owner membership or
+saved preferences.
+
+Whole-backend Ruff passes; the selected changed implementation/tests have zero
+Pyright errors; changed-file format passes for **64** Python files; ownership
+predicates decrease to **163**, additions **0**. **Whole-backend Pyright is still
+red (20 errors)** because five production runtime entrypoints and older runtime
+tests still call the old credential resolver interface. The required next step
+is to propagate explicit scope through those entrypoints and persisted parents,
+without adding an optional context or compatibility fallback. Other scoped ORM
+and writer conversions remain open. All cutover edits remain uncommitted;
+no full-backend green, startup, shared DB migration or deployment is claimed.
+
+### B-06 request/runtime scope spine (2026-10-11, still uncommitted)
+
+`AgentConfig` now has a required keyword-only `org_context` with no default.
+Ordinary chat and skill-builder config producers preserve the explicit request
+context. Agent invocation config producers require the same context, and child
+agent configs/credential access inherit their parent's declared organization.
+Chat start/send/resume, message edit/regeneration and LangGraph state/command
+routes inject the validated context and pass it through their helper calls.
+
+The selected conversation/router/protocol/runtime-credential regression passes
+**77 tests** (3.04s), recorded in `b06-runtime-http-spine-green.log`. Initial
+failures identified old mock resolver signatures and a platform Tool fixture
+that omitted `is_system`; those fixtures now declare the new inputs/platform
+identity explicitly. The selected request/config/subagent implementation has
+zero Pyright errors, and whole-backend Ruff passes.
+
+**Whole-backend Pyright remains red: 57 errors.** The required field/interface
+exposes remaining production consumers (queued execution, triggers, Agent API,
+secret collection, evaluation config) and older test constructors/callers.
+They need persisted-row scope propagation and explicit fixture context, not a
+default value. Conversation/trigger/deployment/private ORM and writer alignment
+remains necessary before those detached paths can derive context correctly.
+No full B-06/P1/goal completion, full-suite green or cutover commit is claimed.
+Logs: `b06-runtime-spine-{ruff,pyright}.log` and the HTTP spine test log above.
+
+### B-06 persisted conversation scope and detached queue actor (2026-10-11)
+
+This is further work inside the same **uncommitted, coherent cutover**. Live
+`Agent` and `Conversation` now map their actual m81/m83 scope fields; five of
+the twenty scoped root models are mapped (Agent, Conversation, Credential,
+Tool, MCP). Conversation ownership is independent of Agent ownership. Creation
+requires an explicit `OrgContext`, validates the agent with `private_scoped`,
+and persists owner, org/company, agent-name snapshot and last-activity time.
+Ordinary, draft, skill-builder and side-chat conversation writers pass explicit
+request or freshly resolved persisted-parent context. Trigger and Agent API
+writers still need their own mapped persisted roots and cutover work.
+
+`Agent.conversations` no longer ORM-cascade-deletes histories, including loaded
+collections. The physical FK preserves history via SET NULL. Agent's restricted
+owner FK and archive/budget fields now match m81/m83, with explicit User FK
+relationships. The common private-conversation dependency and detail/runtime
+loaders use conversation owner + current org/company. Detail responses can
+represent an absent agent and expose its stored name and last activity; frontend
+history rendering remains pending. Runtime callers reject agentless histories.
+
+The new `authz.conversation_scope` helper restores a detached actor from the
+persisted Conversation owner/org/company and checks fresh account/membership/
+company state. Queue launching uses this context before runtime assembly, and
+queue dispatch obtains its owner from Conversation, not Agent. Revocation or
+company suspension terminalizes the claimed input/run before any runtime config
+is built. No saved-preference fallback is introduced.
+
+Existing runtime unit constructors now explicitly declare the unit fixture
+context. The reviewed runtime-facade JSON changes only by the six-line required
+`org_context` parameter record; it is not a regenerated migration fixture.
+Legacy LLM resolver tests pass explicit `AgentCredentialAccess` with declared
+identities and scope.
+
+Evidence in `output/org-authz/p1/`:
+
+- `b06-conversation-runtime-focused-final.log`: **94 passed**, 3.46s; includes
+  own/foreign-company retained-history HTTP detail, persisted scope after company
+  switching, revoked membership, loaded-relationship deletion preservation,
+  queue revocation/suspension, ordinary chat/protocol, runtime facade and all
+  credential resolver tiers.
+- `b06-conversation-native-m83.log`: **1 passed**, 4.19s. Owned temporary
+  PostgreSQL database upgraded through the actual m83 chain; real mapped Agent
+  and Conversation creation, loaded-agent deletion, then history re-read in a
+  new session with nullable agent FK, preserved name and timezone-aware activity.
+- `b06-required-runtime-context-unit.log`: **23 passed**, 0.54s, focused runtime
+  stream/offload/resume/HiTL/facade contracts after the required-context change.
+- `b06-conversation-source-pyright.log`: selected conversation/queue/context/ORM
+  implementation has **0 errors**. Whole-backend type checking remains red;
+  required trigger/API/evaluation/secret inputs and remaining legacy test calls
+  are open, not suppressed with defaults.
+- Whole Ruff and `git diff --check` pass. Changed Python format: **122 selected,
+  passed**. Changed Python type ratchet: **122 selected, 7 errors**, still red.
+  Ownership guard: **161 predicates, 0 additions**; its baseline is unchanged.
+
+No full-backend regression green, all-root scope closure, frontend acceptance,
+B-06/P1/goal completion, cutover commit, shared database migration, app startup
+or deployment is claimed. Next: finish required Agent writers and other root
+fixture conversions, then map persisted Trigger/Deployment/API-key/Skill roots
+and propagate their scope to detached runtime/secret/evaluation paths. Close all
+remaining private readers/writers and run the full isolated gates before the
+planned single cutover commit.
+
+### B-06 Agent writers, Builder authority and persisted Trigger scope (2026-10-11)
+
+Further **uncommitted cutover** work now maps seven of the twenty scoped roots:
+Agent, Conversation, Credential, Tool, MCP, BuilderSession and AgentTrigger.
+The source m81/m83 migrations and ownership-ratchet baseline are unchanged.
+
+Agent list/summary/detail queries and conversation aggregates use the shared
+private owner/org/company predicate. Main CRUD/image and Assistant entrypoints
+receive explicit request context. Agent creation persists it; update/favorite/
+delete reload the target under independently supplied context before mutation.
+Tool, MCP and subagent references use exact scoped candidates. Skill reference
+and template-install scope closure remains dependent on their root conversions.
+
+All three direct Agent writers now receive explicit scope: ordinary creation,
+builder confirmation and hidden skill-builder creation. Blueprint materialization
+passes its required context to the ordinary writer; blueprint/dependency root
+scope checks remain part of the unfinished wider cutover. Hidden runtime rows
+are looked up per private org/company instead of across all the user's orgs.
+
+BuilderSession uses the actual m81/m83 required scope/FK contract. Session
+creation/get/confirm require explicit context. Confirm reloads the matching
+session, checks fresh persisted actor authority and then materializes the Agent
+in that same scope. LangGraph phase-8 resolves authority from the persisted
+session before claiming confirmation; it does not select an organization from
+saved preferences or assume graph-state identity alone proves authority.
+`langgraph-fundamentals` was read for this node change.
+
+AgentTrigger maps required scope with no default. Trigger CRUD/list/summary and
+selected-conversation validation receive exact context; updates/deletes reload
+the scoped root. The executor restores a fresh private actor from the persisted
+trigger, passes its context to Agent/credential/config loading, and denies
+revoked membership, company suspension and inactive accounts even under
+`force=True`. Schedule-thread creation/reuse validates private conversation
+scope and uses the explicit-context Conversation writer. Assistant cron writes
+restore the persisted target Agent's actor before invoking the scoped service.
+
+Evidence in `output/org-authz/p1/`:
+
+- `b06-agent-builder-regression.log`: **83 passed**, 2.68s (Agent API/service,
+  builder API/service and new private Agent/Builder scenarios). Includes
+  same-owner foreign-company list/summary/ID denials and foreign-company builder
+  confirm rejection before Agent creation. Updated fixture inputs explicitly
+  declare unit scope; platform catalog tools declare `is_system`.
+- `b06-trigger-chat-regression.log`: **108 passed**, 4.09s (Trigger API/executor,
+  private Trigger actor, ordinary conversation and protocol regressions).
+- `b06-private-runtime-boundaries.log`: **47 passed**, 1.72s (private roots,
+  detached actors, runtime credential tiers/facade and shared scope composition).
+- `b06-agent-trigger-native-final.log`: **2 passed**, 8.49s, each in an owned
+  temporary PostgreSQL database upgraded through actual m83. Real HTTP writes
+  persist Agent/Builder/Trigger ownership/scope, company suspension denies a
+  forced trigger; loaded Agent deletion preserves scoped conversation history.
+- `b06-agent-trigger-source-pyright.log`: **0 errors** for the selected changed
+  Agent/Builder/Trigger/model/route/graph/cron implementation. Whole Ruff and
+  `git diff --check` pass. Ownership guard: **144 predicates, 0 additions**.
+- Whole-backend Pyright remains **red: 73 errors**. Production entrypoints still
+  open are Agent API, secret collection and skill evaluation; remaining legacy
+  test/helper calls must supply the new context. This is not a full-suite pass.
+
+Required next work: map Deployment/API-key and Skill/evaluation parents, carry
+persisted target scope into those remaining runtime/secret paths, finish all
+other root writers/readers and their explicit fixtures, then run the planned
+full isolated static/native/regression gates. B-06/P1/full-goal completion,
+cutover commit, frontend acceptance, shared DB migration and deployment remain
+unclaimed.
+
+### B-06 persisted Agent API scope (2026-10-11, still uncommitted)
+
+Deployment and API-key live models now match actual m81/m83 required org/company
+scope and FK contracts: **nine of twenty** scoped roots are mapped. Control
+plane candidates/lists/create/update/revoke services and routes require explicit
+`OrgContext`; key deployment references must be private candidates in that exact
+scope. Both writers persist owner/org/company without defaults.
+
+Authenticated Agent API principals now contain required key-derived context.
+Authentication verifies the secret and current key state, then restores the
+persisted key actor with fresh account/company/membership checks before writing
+usage counters. The browser's active-org cookie never selects a key's scope.
+`allow_all_deployments` remains limited to the key's own org/company and owner.
+
+Runtime deployment selection, public lists and thread reads enforce that scope.
+Thread reads also preserve direct child ownership and return the same 404/code
+for unavailable and inaccessible thread IDs. The old regression's 403 assertion
+was deliberately updated to the repository's enumeration-masking requirement.
+Missing operation scopes still return their existing 403 scope-required error.
+
+Private API conversation creation uses the common explicit-context Conversation
+writer. Before run rows, policy snapshots or runtime config are built, the key
+and deployment are reloaded: revocation, expiry, grants, actor state and exact
+private scope are checked again. Runtime config producers explicitly provide
+`invoke` or `stream`; there is no operation/context default. Configs use the
+persisted deployment/key organization for Agent and credential resolution.
+
+Evidence in `output/org-authz/p1/`:
+
+- `b06-api-regression.log`: **40 passed**, 1.97s, including the final explicit
+  fixture membership graph. Coverage includes control plane/key/runtime/Dify/OpenAI adapters, UI-source
+  exclusion and seven new private boundary scenarios. These prove same-owner
+  foreign-company denial, key scope surviving UI org switch, no usage-counter
+  write after revoked membership/company/account authority, stale-key revocation
+  and removal of `invoke` scope before policy or credential preparation.
+- `b06-api-native-m83.log`: **1 passed**, 4.05s, in an owned temporary PostgreSQL
+  database upgraded through actual m83. Real HTTP Agent/deployment/key/thread
+  writes preserve matching scope, and company suspension denies the key.
+- `b06-api-source-pyright.log`: selected Agent API implementation and new native/
+  private boundary tests have **0 errors**. Whole Ruff and `git diff --check`
+  pass; ownership guard is **133 predicates, 0 additions**, baseline unchanged.
+- Changed Python ratchets: **164 selected**, format passed, types remain red
+  with **11 errors**. Whole-backend Pyright is still **red: 71 errors**; remaining
+  production consumers are secret collection and skill evaluation, together
+  with old context/signature calls in broader regression fixtures.
+
+The full private cutover, other eleven scoped roots, full isolated backend
+regression, frontend acceptance, B-06/P1/P0-P8 goal completion and cutover commit
+remain open. No shared database migration, app startup or deployment occurred.
+Next: Skill/evaluation persisted scope and explicit secret-collector context,
+then the remaining private root readers/writers and their strict fixtures.
+
+### B-06 Skill, evaluation actor and remaining Skill-writer prerequisites (2026-10-11)
+
+The same **uncommitted coherent cutover** now maps **13/20** scoped roots: the
+previous nine plus Skill, SkillBuilderSession, MarketplaceInstallation and
+AgentBlueprint. These use exact m81/m83 scope/FK contracts. Skill's owner FK is
+RESTRICT and slug uniqueness is `(org_id, user_id, slug)`. The immutable source
+migrations, frozen historical package and ownership baseline are unchanged.
+
+Text/package Skill creation takes an immutable input DTO plus required
+`OrgContext` (three arguments). Private list/get and text/metadata/delete
+mutations require explicit context, reload matching owner/org/company candidates
+and reject foreign-company targets before storage changes. Skill/file/revision/
+credential/evaluation request routes pass validated context. Agent/Builder Skill
+references also filter exact private scope.
+
+Evaluation preparation restores a fresh private actor from the persisted target
+Skill, verifies evaluation-set/run parent identity, and places its organization
+in required `AgentConfig.org_context`. Membership/company/account failures occur
+before runtime mount. The worker now catches preparation failures through its
+existing failure outcome path, so a permission-denied job is terminalized rather
+than left grading. Runtime requirement resolution requires explicit context and
+selects an active non-system credential by subject + org/company before decrypting;
+foreign credentials become missing requirements without decryption.
+
+SkillBuilderSession writers/readers and slug resolution now require context.
+Confirmation validates matching session scope and fresh membership, and passes
+that scope to package creation/improvement. Detached finalization restores the
+persisted session actor; request controllers pass their explicit selected context.
+Marketplace install/update/delete dispatch receives recipient context; new Skill,
+MCP, blueprint and installation rows preserve it. Reuse queries use private scoped
+installation candidates. Wider marketplace catalog/permission/binding/read closure
+remains part of the unfinished cutover; these prerequisites do not claim it complete.
+
+The test-call migration uses Python AST import resolution, preserving legacy data
+arguments in immutable DTOs and declaring unit contexts explicitly. Test-only Skill
+helpers prepare real unit user/company/org/member graphs before calling actual
+strict writers; no production defaults or first-org fallback were added. Filesystem
+regressions run through `scripts/run-isolated-command.sh`, which reports owned
+mirror cleanup. Newly added private scenarios patch storage to pytest temp paths.
+
+Evidence in `output/org-authz/p1/`:
+
+- `b06-skill-evaluation-regression.log`: **46 passed**, 2.07s, with isolated mirror
+  cleanup **removed**. Covers text/package CRUD, storage/mount/subprocess/evaluation
+  workers and new private Skill/evaluation scenarios.
+- New boundaries include identical slugs in different companies, private HTTP
+  list/ID denial, rejection before modifying/deleting foreign-company storage,
+  all three actor revocations before evaluator execution, persisted target scope
+  after a saved-company switch, and no decryption of a foreign-company credential.
+- `b06-skill-native-m83.log`: **1 passed**, 4.03s. Owned temporary PostgreSQL
+  database upgraded through actual m83; real Skill HTTP write and scoped builder
+  session write/re-read preserve owner/org/company, with temporary storage only.
+- `b06-skill-source-final-pyright.log`: selected changed Skill/evaluation/builder/
+  installer/model/controller implementation and new private/native tests have
+  **0 errors**. Whole Ruff and `git diff --check` pass. Ownership guard is
+  **123 predicates, 0 additions**, baseline unchanged.
+- Changed Python: **245 selected**, formatting passes; type ratchet remains red
+  with **92 errors** in broader context/signature fixture conversions. Whole-backend
+  Pyright is still **red: 159 errors**. The only reported remaining production
+  missing-context call is secret collection; old test/builder/marketplace callers
+  and strict parent fixtures must still be reconciled, not hidden by defaults.
+
+No all-root scope closure, full isolated backend regression green, B-06/P1/full
+P0-P8 goal completion or cutover commit is claimed. Seven scoped roots, explicit
+secret-collector context, broader private child/read/write checks, fixture closure,
+full gates and frontend acceptance remain open. No shared DB migration, main data
+write, app startup or deployment occurred.
+
+### B-06 continuation — secret, share, file, memory and catalog roots (2026-10-11)
+
+The live ORM now maps organization/company columns on all **20** tables in
+the frozen `M81_SCOPED` contract. This is metadata coverage, not proof that every
+service, background consumer, or product surface has completed scope cutover.
+No Tasks 4–14 cutover commit or B-06/P1/full-goal completion is claimed.
+
+- Secret collection now requires an explicit context. Conversation, credential,
+  runtime-tool and replay paths reject foreign organization tuples before
+  credential decryption. Public shares rehydrate their authorized persisted
+  conversation scope before collecting secrets or reading content.
+- Share links retain physical `created_by`; the authorization `user_id` synonym
+  creates no extra SQL column. Private share operations use exact owner/org/company.
+  Public token reads check the link/conversation scope chain before cache use.
+- Uploads persist owner/org/company. File lookup, conversation/message linking,
+  message hydration, resource-context loading and draft input copying are scoped.
+  An already linked upload cannot be reassigned to another conversation.
+- Artifact readers, counters, favorites, soft deletion and content access require
+  context. Library predicates also check the conversation parent; name hydration
+  checks the parent tuple. Runtime recording carries `ArtifactRuntimeContext.org_context`
+  and rechecks the persisted conversation actor before filesystem snapshots and ingest.
+  Finalization derives its explicit maintenance scope from the persisted conversation.
+- Memory records/proposals persist exact context, including approval-created records.
+  Runtime hydration/tools use required context; writes and effective-policy loading
+  recheck the actor. Source conversations use direct Conversation ownership. User
+  memory settings remain global to the user. Credential-default uniqueness includes
+  organization, matching immutable m81.
+- Catalog items retain physical `owner_user_id`, with a non-column synonym for
+  common query guards. Private publishing validates source context and scopes reuse.
+  Management candidates are private scoped rows or explicit null-scoped platform rows;
+  existing catalog management authority checks still apply. Tenant-publication
+  columns are mapped to m81; publication approval/FGA policy is not implemented here.
+- Test-only ORM fixtures declare the unit organization/company and conversation
+  owner/activity fields explicitly. Authentication fixtures prepare an actual
+  membership graph; no production scope defaults or preference fallbacks were added.
+
+Evidence (ignored `output/org-authz/p1/`):
+
+- `b06-private-roots-focused.log`: **44 passed**, 1.83s (new private boundaries,
+  memory CRUD/router/tools, agent memory-settings recovery).
+- `b06-artifact-attachment-regression.log`: **37 passed**, 1.46s (recording, file
+  routes, message attachment backfill, library and public-share artifact behavior).
+- Actual m83 PostgreSQL/ASGI checks: share **1 passed/4.69s**, upload **1 passed/4.10s**,
+  artifact ingestion + HTTP content **1 passed/4.20s**, memory + proposal HTTP writes
+  **1 passed/4.12s**, catalog publishing + credential-default ORM write
+  **1 passed/4.28s**, in the corresponding `b06-*-native-m83.log` files. These use
+  owned temporary databases, no application lifespan or external LLM execution.
+- `b06-all-fixture-types.json`: whole-backend Pyright **0 errors**, 1,410 files.
+  Changed-Python type/format ratchets: **381 selected, passed**. Whole Ruff and
+  `git diff --check` pass. Ownership guard: **98 predicates, 0 additions**;
+  its reviewed baseline is unchanged.
+- `b06-full-cutover-inventory.log`: the prior full isolated snapshot was **red**:
+  **548 failed, 4,404 passed**, 239.96s. Its owned mirror was removed. A second
+  full isolated inventory in `b06-full-cutover-inventory-r2.log` after explicit
+  fixture updates is still **red: 117 failed, 4,852 passed**, 235.24s. Its owned
+  mirror was removed (`cleanup=removed`, child exit 1). Snapshot hash:
+  `9f7c20a7f8ce8603053efdda05a8283d2344bddb128ca0d804468267ffc4bd86`.
+
+Outstanding scope closure includes Assistant read/write tools, builder catalog
+consumers, run/queue mutation services, marketplace origin/installed-state and
+materialization readers, residual private child lookups, and remaining fixture
+regressions. The frontend, real E2E acceptance, B-13 session/RLS work, D/F shared
+authorization, and later P0–P8 operational gates remain open. No shared database
+migration, main data write, startup, push or deployment occurred in this continuation.
+
+### B-06 continuation — detached Assistant, indexes and materialization (2026-10-11)
+
+Assistant read/write builders now require `OrgContext`. Their frozen write context
+carries the exact selected organization; fresh target loads recheck user and
+membership state. Tool/MCP/Skill/subagent/cron candidates are scoped before use.
+The shared Assistant/Builder catalog also requires context. Builder stream/resume
+rehydrates its persisted session actor, independently of the saved company preference.
+
+Conversation pagination, private lookup, cancel entry points and deletion require
+explicit context. Global history filters direct Conversation owner/org/company.
+Deletion scopes its locked reload before checkpoint/file cleanup and uses the
+Conversation owner when the associated Agent no longer exists. Agentless history
+navigation and frontend presentation remain B-08 work.
+
+Blueprint materialization now passes context to credential validation and all
+dependency resolvers. Tool/MCP creation copies the parent's exact org/company;
+same-owner resources in another organization are excluded from reuse pools.
+Credential candidates must be active, non-system and private to the same tuple.
+Test-only builder sessions prepare real membership fixtures; runtime-env fixtures
+pass explicit context, and retained public catalog fixtures declare their scope.
+
+Evidence (ignored `output/org-authz/p1/`):
+
+- `b06-assistant-builder-regression.log`: **127 passed**, 4.21s, including scoped
+  targets/catalogs and persisted Builder scope after a saved-preference switch.
+- `b06-assistant-native-m83.log`: **1 passed**, 4.59s. A real Assistant tool changes
+  the prompt; after the user is disabled, the same captured tool refuses further
+  writes. This invokes the tool directly, not an LLM/HiTL/browser journey.
+- `b06-conversation-index-regression.log`: **71 passed**, 2.46s. New private tests
+  reject foreign history/cleanup and preserve correct agentless cleanup ownership.
+- `b06-conversation-index-native-m83.log`: **1 passed**, 4.09s. Real HTTP history
+  pagination excludes another company's rows after an authenticated cookie switch;
+  direct foreign Agent pagination returns 404.
+- `b06-blueprint-builder-regression.log`: **87 passed**, 3.04s, in the isolated
+  mirror with successful cleanup. Includes the same-owner foreign-tool collision
+  regression, builder finalization, credential env injection and install preparation.
+- `b06-blueprint-native-m83.log`: **1 passed**, 3.97s. Real m83 Agent/Tool/MCP
+  materialization preserves exact owner/org/company; no provider execution occurs.
+- `b06-full-cutover-inventory-r3.log`: full isolated snapshot remains **red**:
+  **43 failed, 4,933 passed**, 225.74s, cleanup removed. Snapshot hash
+  `5291213d896e7544a820319e0478f67e9b17978379c92ce39510e866d9cd9e45`.
+  This snapshot predates the materialization/finalization fixture corrections above.
+- Whole Ruff and `git diff --check` pass. Ownership guard: **77 predicates,
+  0 additions**, unchanged reviewed baseline. Latest changed-Python formatting:
+  **402 selected, passed**. `b06-blueprint-types-final.json` reports whole-backend
+  **0 errors**, 1,417 files. The updated type ratchet is also **402 selected,
+  0 errors, passed**. Full regression remains red pending a new complete snapshot.
+
+Run/queue service closure, marketplace origin/installed-state/catalog readers,
+residual private child access, remaining regressions and full acceptance are open.
+No cutover commit, B-06/P1/full P0–P8 completion, shared database migration, main
+data write, lifespan/startup, push or deployment is claimed.
+
+The subsequent full isolated snapshot (`b06-full-cutover-inventory-r4.log`) is
+still **red: 20 failed, 4,957 passed**, 225.35s, with owned-mirror cleanup removed.
+Snapshot hash: `e3ca83b026f779dbd9630884c0f9f3927e8320132311e986d221ff8706693fef`.
+`b06-full-failure-domains-r4.txt` records the remaining domain inventory. The
+post-snapshot runtime-profile membership fixture correction passes together with
+catalog-policy and blueprint scope checks: `b06-blueprint-caller-regression.log`,
+**17 passed**, 1.27s. Other remaining failures have not yet been cleared by a full
+snapshot; run/queue and catalog/origin scope closure remain separate required work.
+
+### B-06 continuation — account erasure and queue context (2026-10-11)
+
+The handoff explicitly requires releasing protected resource ownership before
+account deletion. `delete_user` now locks the User, checks all six restricted
+owner roots, and rejects with `resource_transfer_required` (409) before external
+cleanup. MarketplaceItem's live owner FK matches m83 RESTRICT. Account history
+cleanup reads direct Conversation ownership, including agentless histories, so
+Agent ownership cannot select another user's transcript. No new erasure/retention
+policy, automatic ownership transfer or archive completion is claimed.
+
+Queue enqueue/claim, direct-input persistence, edit/delete/reorder/list/pause/resume
+and promotion require explicit `OrgContext`. The locked conversation must match
+owner/org/company and fresh actor authority. Background dispatch derives scope
+from its persisted conversation before claiming. Workerless cancellation uses a
+separate explicit PlatformScope maintenance target: stopping already-revoked work
+remains possible, while private queue execution continues to fail closed. Recovery
+also verifies run/input parent identity before touching a bound input.
+
+Fixture repairs preserve actual identities: raw authenticated histories copy
+their persisted Agent tuple, foreign side-chat histories use the foreign owner,
+and private builder/client fixtures prepare real memberships. Removed dependency
+baseline entries are pruned only when the corresponding import disappears; the
+baseline was not widened to permit new dependency violations.
+
+Evidence in ignored `output/org-authz/p1/`:
+
+- `b06-all-remaining-regression.log`: **110 passed**, 7.91s, owned mirror removed.
+- `b06-erasure-native-m83.log`: **1 passed**, 3.91s. Actual m83 account deletion
+  rejects outstanding Agent ownership before checkpoint cleanup and retains rows.
+- `b06-queue-context-regression.log`: **43 passed**, 2.57s, owned mirror removed.
+- `b06-queue-native-m83.log`: **1 passed**, 4.33s. Actual enqueue/claim writes plus
+  system cancellation after user deactivation, without provider execution/lifespan.
+- `b06-queue-types-final.json`: whole-backend **0 errors**, 1,422 files. Whole Ruff
+  and `git diff --check` pass. Runtime dependency guard passes with **89 reviewed
+  violations, 6 reviewed cyclic edges** after pruning one obsolete violation.
+- `b06-full-cutover-inventory-r5.log`: full snapshot **red: 1 failed, 4,976 passed**,
+  225.09s, mirror removed; hash
+  `8ba2afb41c52e6a8b1a9ea7fbca6681f3cab8cd3cb3bfc4969cf9d032f2a38a3`.
+  The remaining offload fixture now explicitly releases its protected Agent before
+  exercising failed cleanup of independent account history; its focused regression
+  passes. This snapshot predates the new queue context interfaces.
+- The complete updated snapshot is running in `b06-full-cutover-inventory-r6.log`;
+  full-green acceptance remains unproven until it finishes and is inspected.
+
+Catalog/origin/installed-state private scope, remaining run-service closure,
+worker relationship checks, all-surface native acceptance and review remain open.
+No cutover commit or B-06/P1/full P0–P8 completion is claimed.
+
+### B-06 continuation — catalog projections and conversation runs (2026-10-11)
+
+Catalog readers now require explicit `OrgContext`. Private owner candidates,
+installed filters, installation annotations, installation child prefetches and
+publication management summaries respect owner/org/company. Operators cannot see
+another organization's ungranted private catalog entries by default. Public and
+explicit platform catalog candidates retain their existing visibility checks.
+Skill serializers carry a frozen `ResourceViewContext`; publication annotations
+validate the persisted Skill and MarketplaceItem roots before exposing metadata.
+`mark_installation_dirty` also requires an explicit private installation context.
+These changes do not implement the later FGA publication workflow.
+
+Conversation run create, active/interrupted/detail/latest queries and bulk page
+projections now require explicit context. Read predicates inherit the direct
+Conversation scope, including its owner independently of Agent ownership.
+Creation requires the matching private Agent and Conversation plus fresh actor
+membership; it retains User-before-Conversation locking for account-erasure races.
+Protocol, queue, history and disposable E2E fixture callers propagate that context.
+Native positive run creation and negative same-user cross-company metadata reads
+are covered against actual m83.
+
+Claimed queue workers now require queue input, run and conversation identities to
+agree on conversation, owner and Agent before rehydration or executor launch. A
+regression first reproduced failure recovery changing an unrelated run to failed.
+Recovery now fails only the malformed input and leaves that unrelated run intact.
+This closes the claimed-input binding case; direct run-worker reauthorization and
+remaining private Skill binding/quality readers are still separate open work.
+
+Evidence in ignored `output/org-authz/p1/`:
+
+- `b06-full-cutover-inventory-r6.log`: **4,980 passed**, 3 warnings, 263.18s,
+  owned mirror removed; hash
+  `7cd4694ae7267ea115f1b7924f0414e26b369f104c7d150a2f4961df4c807796`.
+  This successful snapshot predates this catalog/run/publication continuation.
+- `b06-catalog-origin-regression.log`: **124 passed**, 8.93s, mirror removed.
+- `b06-catalog-origin-native-m83.log`: **2 passed**, 7.97s; actual m83 catalog
+  publish/default writes and private Skill/builder scope, without lifespan/LLM.
+- `b06-catalog-origin-types-final.json`: **0 errors**, 1,424 files. Both changed
+  Python ratchets passed for **420 selected files** at that prior snapshot.
+- `b06-worker-binding-red.log`: reproduces an unrelated run incorrectly becoming
+  failed; the corrected recovery/launch regression passes both cases.
+- `b06-run-scope-red.log`: required context contract was missing from run readers;
+  the new same-owner foreign-org query/create rejection regression passes.
+- `b06-run-worker-focused.log`: **18 passed**, 1.10s.
+- `b06-run-context-regression-r2.log`: **104 passed**, 4.23s, mirror removed; hash
+  `1b8b2c3dee2617d240127141e9960f72683b06d73dc252aa29472a1d58023409`.
+  Fixtures prepare real memberships rather than bypassing new creation authority.
+- `b06-run-context-native-m83.log`: **2 passed**, 8.71s. Actual m83 run creation,
+  HTTP active/detail boundaries after company switch and revoked-user system queue
+  cancellation; owner-role app sessions, no RLS/lifespan/provider/E2E claim.
+- `b06-publication-regression.log`: **125 passed**, 10.88s, mirror removed; hash
+  `210b20c62021f7b5dac5ea533d90b587df6f7df83ef65e335d7a8c278b0e2995`.
+- `b06-run-publication-types-final.json`: whole-backend **0 errors**, 1,427 files.
+  Ownership guard after removing redundant child owner predicates passes with
+  **67 predicates, 0 additions**. Whole latest formatting/lint gates follow below.
+- `b06-full-cutover-inventory-r7.log`: complete regression snapshot is running.
+  It predates the subsequent publication change and dormant PostgreSQL lane seed
+  repairs; its terminal result must be recorded separately when inspected.
+
+B-06/P1 and full P0–P8 remain open. No cutover commit, shared database migration,
+main data write, push, deployment, full native acceptance or product completion is
+claimed. 14-day shadow, stabilization and human acceptance gates remain unchanged.
+
+The r7 full isolated snapshot finished **red: 7 failed, 4,980 passed**, 226.99s,
+3 warnings, mirror removed; hash
+`2112a2ba57ff4b6d864680d609b7ca57844fced84d191976bc50bddefda69a82`.
+The failures were three run-fixture helpers lacking actual organization membership.
+Those helpers now seed the declared test organization/company memberships. Focused
+reverification (`b06-run-caller-regression.log`) passes **34 tests**, 1.01s, mirror
+removed; hash `bdb7f48772f38f8bb9b47353ee2805fb24523d1d1ceedab56e0a8d69c9b520a5`.
+Dormant PostgreSQL lane fixtures also receive explicit matching scope and membership;
+those standalone lane concurrency scenarios have not been executed in this pass.
+
+Durable message-to-run link queries now carry explicit `OrgContext` and inherit
+`private_run_predicate`; the previous owner-only query DTO is removed. The native
+index scenario verifies actual PostgreSQL JSON projection through the HTTP link
+endpoint in the correct organization and absence from the same owner's other
+company context (`b06-run-links-native-m83.log`: **1 passed**, 4.88s).
+`b06-run-links-regression.log` passes **12 tests**, 0.83s.
+
+An additional red regression showed that a resume child belonging to another
+conversation could hide a genuine interrupted parent. Both interrupted lookup
+and bulk current-run projection now require a coherent parent/conversation/owner
+relationship through a shared authorization predicate. The combined run/router/
+historical-links regression (`b06-run-final-regression.log`) passes **57 tests**,
+2.41s. These focused results remain distinct from the r8 full snapshot, which was
+started before the final message-link and resume relationship changes.
+
+The r8 isolated complete snapshot finished **green: 4,988 passed**, 3 warnings,
+227.77s. Its final cleanup and snapshot identity are recorded below. This snapshot
+includes the corrected run-membership fixtures and publication scope change, but
+predates the final message-link/resume relationship additions. Those additions
+have the separately recorded 57-test combined regression, real m83 link projection
+and latest private regression (`b06-run-final-private.log`: **5 passed**, 0.30s).
+`b06-run-final-types.json` reports **0 errors**, 1,427 files. The latest changed
+format ratchet passes for **428 selected files**. Whole Ruff, `git diff --check`,
+ownership guard (**66 predicates, 0 additions**) and the unchanged runtime
+dependency baseline (**89 reviewed violations, 6 reviewed cyclic edges**) pass.
+Full source closure remains pending, especially direct worker reauthorization,
+Skill binding/quality readers and invalid installed-child reference handling.
+
+R8 owned-mirror cleanup: **removed**, child exit **0**; snapshot hash
+`9b665c0a8c6f25c232d25561d7075befa5909aec91351998a2bf93b73d8e8ef8`.
+Latest changed type ratchet (`b06-run-final-type-ratchet.log`):
+**428 selected, 0 errors, 0 warnings, passed**.
+
+### B-06 continuation — direct worker and private installed-child closure (2026-10-11)
+
+Direct conversation execution validates its explicit AgentConfig identity and
+private execution target before creating a broker or registering a task. The
+actual `queued -> running` transition independently reloads and locks the matching
+User/Conversation/Agent/run graph and rechecks membership. Missing/mismatched scope
+or revocation aborts before execution; failed preauthorization cannot finalize or
+mutate an unrelated run. A frozen `RunExecutionTarget` carries persisted run and
+conversation identity. Worker fixtures now build real typed AgentConfig from an
+explicit disposable session factory instead of identity-free namespaces.
+
+Skill credential binding read/validate/upsert/delete, installation binding
+validation and runtime env inputs require explicit context. Private Skill roots
+and fresh actor membership are checked before binding writes or secret resolution.
+Credential references require matching owner/org/company; eligibility also checks
+active status, system separation and definition keys. Malformed foreign bindings
+cannot satisfy required setup. System credentials on this private binding surface
+are uniformly `CREDENTIAL_NOT_FOUND` (404); the previous system-existence hint is
+removed. Existing system test fixtures now use the physical null/null platform
+scope. Obsolete `_LightUser` adapters and unused runtime-env `user` input are gone.
+
+Skill quality/evaluation/set/binding readers and Agent usage counts inherit private
+Skill/Agent scope. Foreign Skill quality entries are omitted; inactive, foreign or
+wrong-definition credentials stay missing in bulk readiness. The bulk path still
+batches the binding query and does not call the per-Skill missing-key service.
+
+Installation candidates now validate every non-null Skill/MCP/Agent/Blueprint
+reference against the installation context. Invalid child references are absent
+from single/bulk catalog annotations and installed filters. Reuse rejects them
+before materialization; update, overwrite and uninstall reload a private authorized
+installation and scoped child roots before filesystem/DB effects. Install entry
+rechecks active actor authority before copying snapshots. Removal requires explicit
+context; its unused keep-installation mode is removed (no callers used that mode).
+
+Evidence in ignored `output/org-authz/p1/`:
+
+- `b06-direct-worker-red.log` reproduces task registration without organization
+  validation. `b06-direct-worker-regression-r3.log`: **35 passed**, 2.20s,
+  mirror removed; hash `69c85046d4f054139196217db99f4cefe1727b7283afc32eaeac13302965ed7b`.
+- `b06-direct-worker-native-m83.log`: **2 passed**, 8.15s. Actual direct running
+  transition succeeds for active membership and stays queued after suspension.
+  No executor/provider/lifespan is invoked by these native transition cases.
+- `b06-skill-binding-red.log` proves missing context interfaces. The added malformed
+  foreign binding readiness and credential-selection cases pass with real fixtures.
+- `b06-skill-binding-regression-r2.log`: **134 passed**, 6.07s, mirror removed;
+  hash `2036703764ac8f1f73b64631ab3b66586ae262f66e54ee05f5f0a5c78918beee`.
+- `b06-skill-quality-regression.log`: **136 passed**, 6.09s, mirror removed;
+  hash `1ff7230011b92969194ed03069ea658d8ef093640e6a8141b33ac806960b657e`.
+- `b06-skill-binding-native-m83.log`: **1 passed**, 4.51s. Real JWT/CSRF HTTP PUT
+  rejects same-user foreign-company credentials without creating a binding and
+  accepts the correctly scoped credential; actual cipher writes use dummy data.
+- `b06-installed-child-red.log` reproduces exposing a foreign private child ID as
+  a normal active install. `b06-installed-child-reuse-red.log` reproduces reuse
+  accepting that malformed link. The corrected scope cases pass.
+- `b06-installed-child-regression-r1.log`: **123 passed**, 8.86s, mirror removed;
+  hash `33a5c8a88bb8cbbab92903578a4f3edc8bcd84f4775d5dd531859df5206d555d`.
+- `b06-installed-child-native-m83.log`: **1 passed**, 4.30s. On actual m83 the valid
+  install is projected normally; a persisted cross-company child reference is
+  absent, reuse and resource deletion are denied, and the foreign Skill and own
+  installation remain unchanged. No filesystem/provider action is exercised.
+- `b06-full-cutover-inventory-r9.log`: complete snapshot **red: 2 failed, 4,994
+  passed**, 217.68s, 3 warnings, mirror removed; hash
+  `89a7a7fdc997f9ccd769e1b3d5696f0f856fca1a92ada724d36494badae33348`.
+  Both failures were template auto-install fixtures without actual organization
+  membership. All four template fixtures now seed their declared membership;
+  their corrected regressions are included in the 123-test result above.
+  This snapshot predates installed-child closure and is not latest full acceptance.
+- The updated complete isolated snapshot runs in `b06-full-cutover-inventory-r10.log`.
+
+This is bounded application/owner-role native evidence, not RLS, actual app
+lifespan/provider/browser, all-root matrix/review or full P0–P8 completion. B-06
+cutover and Task 15 remain uncommitted pending the complete source audit and gates.
+
+The r10 complete isolated snapshot finished **green: 4,998 passed**, 3 warnings,
+223.69s, child exit 0, owned mirror cleanup **removed**; hash
+`cfc1a066f83d1311def7fa0e1c39bf7eee368f1c7cbaafe600fe550c24b1a9a6`.
+This snapshot includes direct worker, private binding/quality, installed-child
+read/reuse/update/overwrite/removal checks and the corrected template memberships.
+The subsequently added exact-20 structural gate is verified separately:
+`b06-exact20-frozen-gates.log`: **4 passed**, 1.66s. It independently executes the
+frozen m80→m83 DDL, compares all twenty live tables' complete column names and
+nullability, all FK targets/delete policies, scope CHECK names and SQL bodies,
+and rejects implicit org/company defaults. Frozen m77 source diff remains empty.
+This is SQLite DDL/live-ORM parity and frozen-source evidence, not the remaining
+native twenty-root cross-surface acceptance matrix.
+
+`b06-worker-binding-installed-types-final.json`: **0 errors**, 1,434 files.
+The preceding changed-Python gates (`b06-final-scope-{type,format}-ratchet.log`)
+pass for **437 selected files** with 0 errors/warnings. Ownership guard remains
+**59 predicates, 0 additions**; runtime dependency baseline remains **89 reviewed
+violations, 6 reviewed cyclic edges**. The newly added model gate's final type and
+format results are recorded separately after inspection.
+
+No B-06 commit/completion is claimed from these green gates alone. Task 15's native
+same-user/two-company twenty-root read/write/non-enumeration/operator/platform
+matrix and the final implementation/source/fidelity reviews remain required.
+
+Final inspected static results for this continuation:
+`b06-exact20-types-final.json`: **0 errors**, 1,435 files.
+`b06-exact20-type-ratchet.log`: **438 selected, 0 errors, 0 warnings, passed**.
+`b06-exact20-format-ratchet.log`: **438 selected, passed**.
+Whole Ruff and `git diff --check` pass; ownership guard has **59 predicates,
+0 additions**, and frozen m77 source remains unchanged. The new exact-20 gate
+also reruns green after its SQLAlchemy constraint-name typing correction.
+The goal remains active; no cutover commit, P1, deployment or full product
+completion is asserted.
+
+### B-06 native acceptance continuation (2026-10-11)
+
+Added the exact-twenty native ORM/query graph plus authenticated HTTP matrix in
+`tests/authz/test_private_scope_integration.py`, with typed fixture and HTTP response
+helpers. Generic boundary results are deliberately separated from real service/
+route writes. `docs/exec-plans/org-authz-native-scope-matrix.md` maps all twenty roots,
+actual HTTP read coverage, writer evidence and explicit exclusions.
+
+The native HTTP matrix found a real remaining Blueprint disclosure: the same
+owner could read another company's Blueprint through the list/detail router.
+Both router paths now require context and scope Blueprint plus joined Installation.
+The resulting combined query reproduced SQLAlchemy auto-correlation removing all
+FROM clauses in a child check; explicit Installation correlation fixes the predicate.
+Native matrix+migration gates: **8 passed**, 34.49s. The focused Blueprint/caller
+regression passes **91 tests**, 2.78s, owned mirror removed.
+
+Builder/Skill builder confirming claims now require explicit context, scoped parent
+and fresh actor authority before atomic UPDATE RETURNING. Completed Agent lookup is
+scoped. Phase 8 reauthorizes before its idempotent completed path. Skill builder chat
+attachment uses a frozen DTO and validates persisted Session, Conversation and Agent
+scope before linking; session Agent lookup is also scoped. Scope regressions include
+same-owner foreign claims and conversation attachment, with no state mutation.
+`b06-builder-attachments-regression.log`: **81 passed**, 2.47s, owned mirror removed.
+
+Real writer verification now covers default and a second company selected through
+the actual active-org API: six native scenario pairs (**12 passed**, 47.30s), three
+file scenario pairs (**6 passed**, 23.19s) and credential/tool/MCP original+switched
+writes (**3 passed**, 12.51s). Added actual Agent publication/install proof for
+Blueprint and Installation. CredentialDefault has no production creation endpoint
+or service writer, so its explicit ORM writer is identified rather than overstated.
+
+`b06-full-cutover-inventory-r11.log`: **5,002 passed**, 3 warnings, 219.39s,
+child exit 0, owned mirror removed; hash
+`33067e867ef2f5095925ac65772b782e1434e17fed100f655227fd782080ab4d`.
+This snapshot includes Builder/attachment, Blueprint scope and correlation changes,
+but predates subsequent native-writer parameter expansion and documentation-only
+coverage mapping. Latest static/type/frozen checks are inspected separately.
+No cutover commit or full B-06/P1/full-goal completion is asserted yet; foreign
+mutation coverage, full source audit and independent final reviews remain required.
+
+The inspected native acceptance mapping now includes actual production write flows
+for Blueprint and Installation (`b06-native-install-writers.log`: **1 passed**, 5.06s),
+not only fixture ORM construction. Default/second-company writer expansion is green:
+`b06-native-second-company-writers.log` **12 passed**, 47.30s;
+`b06-native-second-company-file-writers.log` **6 passed**, 23.19s;
+`b06-native-second-company-credential-tool-mcp.log` **3 passed**, 12.51s.
+These tests physically inspect emitted scope in both companies and use real JWT/
+CSRF active-org selection. Scheduler syncing alone is explicitly stubbed; provider
+execution/lifespan is not performed. All native databases are disposable owned labs.
+CredentialDefault remains ORM-only evidence because no production writer exists.
+
+Final static inspection for this native matrix continuation:
+`b06-native-writer-matrix-final-types.json`: **0 errors**, 1,441 files.
+`b06-native-writer-matrix-format-ratchet.log`: **444 selected, passed**.
+`b06-native-matrix-frozen-gates.log`: **4 passed**, 1.88s, exact-20 ORM/frozen checks.
+Ruff and `git diff --check` pass; ownership guard is **55 predicates, 0 additions**;
+reviewed runtime dependencies remain **89 violations, 6 cyclic edges**; frozen
+m77 source diff is empty. Full goal remains active and no cutover commit, P1,
+RLS/OpenFGA/production/browser/human or full product completion is claimed.
+
+### B-06 foreign HTTP mutations and conversation service writes (2026-10-11)
+
+The exact-20 native matrix now compares raw physical snapshots before/after 28
+schema-valid foreign mutation requests as the switched same owner and again as
+an ungranted authenticated super-user. Every request returns 404, including
+materialization/confirmation and installation update/delete paths. Native result:
+`b06-native-foreign-mutations-r1.log` **1 passed**, 5.24s. This remains m83 owner-role
+ASGI/database evidence, without lifespan, provider execution or RLS certification.
+
+Direct conversation mutation services previously accepted a cached Conversation
+or bare UUID without explicit organization context. Five regression cases first
+failed with `DID NOT RAISE` (`b06-conversation-mutations-red.log`). Required typed
+targets/context now guard title/pin changes, read state, activity touch, automatic
+title and branch clear/switch using the exact persisted owner/org/company tuple,
+row lock and freshly checked account/membership before mutation. Foreign and
+revoked actors receive the uniform conversation 404. All real route callers pass
+context, including branch selection and protocol state updates. No context default
+or current-preference fallback is added.
+
+`b06-conversation-mutations-regression.log`: **166 passed**, 6.14s, child exit 0,
+cleanup `removed`, run-root SHA256
+`6fbcc7a91ae9012e5d70b1381d9995ae173a4c3d93035208928e056ab1a61010`.
+This includes 18 direct mutation cases (six operations across own/foreign/revoked
+membership), plus chat, branch and protocol regressions. Native recheck
+`b06-conversation-mutations-native.log`: **2 passed**, 9.03s. Full Pyright snapshot
+`b06-conversation-mutations-full-types.json`: **0 errors**, 1,445 files.
+
+The subsequent source inventory explicitly identifies more service seams to close
+before B-06 completion: draft/side-chat promotion, runtime-policy initialization,
+pinned-summary child read/write and the legacy bare-ID conversation reader.
+Existing request dependencies authorize these routes, but they do not satisfy the
+required private service context contract by themselves. These findings are not
+waived by the green HTTP matrix. The final source audit and F1–F4 wave remain open.
+
+Source audit also flags joined Agent projections for malformed parent/child scope
+and retained history: `list_global_conversations_page` currently requires a live
+Agent join, while `get_owned_ui_conversation_with_agent` and runtime eager joins
+need private Agent predicates in the join itself. Orphan-history detail evidence
+must not imply global-list or every joined child projection acceptance. Activity
+touch also needs explicit inspection of the m83 `last_activity_at` contract.
+
+Current mutation-stage static gates: changed-file types and format **449 selected,
+passed**; whole Ruff and `git diff --check` pass; frozen/exact-20 checks **4 passed**,
+2.07s; ownership ratchet **55 predicates, 0 additions**; runtime dependency guard
+unchanged at **89 reviewed violations, 6 cyclic edges**. Frozen m77 source diff
+remains empty. The broader B-06 cutover remains uncommitted and incomplete.
+
+The complete isolated mutation-stage snapshot is green:
+`b06-full-cutover-inventory-r12.log` **5,020 passed**, 3 warnings, 188.80s;
+child exit 0, cleanup `removed`, run-root SHA256
+`409e38dea7094456b5abe66b5dad4100b68516248133997e2f6c595ab6e139a7`.
+This snapshot predates the following retained-history/Agent-projection corrections;
+it must not be presented as coverage of later changes or full B-06 acceptance.
+
+### B-06 retained history and joined Agent projections (2026-10-11)
+
+Focused reproduction `b06-conversation-projections-red.log`: **4 failed, 2 passed**.
+Global history omitted directly owned conversations after Agent deletion and when
+the linked Agent had a foreign scope. UI/runtime eager reads also hydrated the
+foreign Agent's private fields. All three query paths now left-join Agent with its
+own exact user/org/company predicate in the join condition. Global history keeps
+directly owned retained rows, still excludes live own hidden runtime agents, and
+uses the persisted Agent name snapshot when no authorized live Agent is present.
+`populate_existing` prevents an earlier cached relationship from surviving this
+new scoped projection. Runtime consumers receive no live Agent for a mismatched
+reference and continue to reject execution through their existing required-Agent
+boundary. No provider execution is exercised here.
+
+`b06-conversation-projections-regression-r2.log`: **67 passed**, 2.89s, child exit 0,
+cleanup `removed`, run-root SHA256
+`3d19f633ab37420dfc7518a2de7f074c811cf2e19fbe3e4fd0d413d7c08caf0d`.
+Native HTTP/root/index recheck `b06-conversation-projections-native.log`:
+**3 passed**, 12.90s. The six new projection cases use real SQLite ORM graphs;
+the native recheck covers existing actual HTTP/root/index scenarios, not every
+malformed-reference fixture on PostgreSQL. Targeted Pyright: **3 files, 0 errors**.
+
+Remaining B-06 source findings are not waived: draft/side-chat promotion,
+runtime-policy initialization, pinned-summary services, legacy bare-ID reader and
+activity timestamp contract still need closure before the final review wave.
+The 5,020-test r12 snapshot predates these projection edits; latest full regression
+will be captured after the remaining service contracts are closed.
+
+### B-06 conversation policy, promotion and pinned-summary services (2026-10-11)
+
+Required `ConversationPromotion` and `ConversationPolicyTarget` now carry explicit
+context into draft promotion and policy initialization. A shared conversation
+authorization helper reads the exact owner/org/company root and freshly checks
+account/membership, returning the uniform 404 before writes. Side-chat creation,
+reuse and promotion require context; reuse refuses an existing unique child whose
+scope does not match its parent. Run, queue, Agent API and detached trigger callers
+pass their already-authorized persisted target context. No saved preference or
+first-membership inference is added.
+
+Red reproductions: `b06-conversation-draft-red.log` **2 failed, 1 passed**;
+`b06-conversation-side-promotion-red.log` **2 failed, 1 passed**. Policy reproduction
+`b06-conversation-policy-red.log` shows three unauthorized initialization cases
+failing with `DID NOT RAISE`; the own case initially had a test-only missing flush,
+corrected before reading the persisted tuple. The first regression uncovered 13
+trigger failures because refreshing the whole Agent invalidated already-loaded
+async relationships (`agent.model`, MissingGreenlet). The policy query now selects
+current policy/profile scalar columns alongside the locked authorized Agent,
+preserving the caller's eager runtime relationships.
+
+Activity touch now writes m83 `last_activity_at` as well as the existing update
+timestamp; `b06-conversation-activity-red.log` **1 failed, 2 passed** reproduced
+the stale activity field. The legacy conversation reader now requires context and
+uses the private root predicate; `b06-conversation-reader-red.log` reproduced its
+foreign-company disclosure.
+
+`b06-conversation-policy-side-activity-regression.log`: **113 passed**, 3.79s;
+child exit 0, cleanup `removed`, run-root SHA256
+`226a8ad9333f1b88301cedb668aaa9f827fa12237c3a41bd4175a7f673b2147b`.
+`b06-conversation-reader-regression.log`: **77 passed**, 3.09s; cleanup `removed`,
+run-root SHA256 `f9ed817278bbb787ea0a94851ab770d31f718413fed70973a61835697d211503`.
+`b06-conversation-policy-side-native.log`: **5 passed**, 21.07s, covering actual
+default/selected-company side-chat HTTP policy creation/reuse/promotion, Agent API
+writers and the authenticated root matrix.
+
+Pinned-summary read/pin/unpin services now require the private conversation
+context; reads recheck membership without a row lock, while mutations lock the
+private root before child lookup/source validation. `PinSummaryTarget` replaces
+the unscoped four-parameter writer. `b06-pinned-summary-scope-red.log` **6 failed,
+3 passed** reproduced foreign/revoked child reads and mutations. All router/test
+callers pass context, and retained agentless history remains supported.
+
+`b06-pinned-summary-scope-regression.log`: **51 passed**, 1.77s; child exit 0,
+cleanup `removed`, run-root SHA256
+`f9f2acaf691574754436010edd31f1c1035f903c8cc6161cd41d6596e6957faa`.
+`b06-pinned-summary-native.log`: **2 passed**, 8.98s. The concurrency scenario now
+uses an independently migrated, created/dropped m83 database, real private actor
+and simultaneous service transactions; both first pins commit and one valid child
+remains. Source snapshots in this focused test are explicit fixtures, not actual
+LLM/checkpointer messages. The other case runs **34** foreign HTTP mutation paths
+per owner/operator actor and checks twenty-root physical snapshots unchanged.
+
+Whole Pyright snapshot `b06-private-conversation-services-types.json`: **0 errors**,
+1,449 files. Ruff passes. Full isolated r13 is running after these changes;
+no final B-06 acceptance/commit, RLS, startup/provider/browser/human or full P0–P8
+completion is asserted. Deletion/maintenance child traversal and the remaining
+cross-domain source audit still precede the independent final review wave.
+
+The dependency gate caught a new router-to-ORM import introduced by the pinned
+route annotation. `PinnedConversationRef` now exposes only the checkpoint property
+the route needs, preserving the existing layer boundary and allowing agentless
+retained histories without the legacy `conversation_ref` non-null-Agent check.
+Dependency guard is again **89 reviewed violations, 6 cyclic edges** with no new
+violation. The HTTP round-trip regression explicitly covers both live-Agent and
+retained agentless conversations. The full r13 mirror predates this final router
+protocol/retained-test adjustment; its result remains a bounded snapshot.
+
+Full isolated r13 finished: `b06-full-cutover-inventory-r13.log` **5,047 passed**,
+3 warnings, 190.44s; child exit 0, cleanup `removed`, run-root SHA256
+`7e74e7c57840eb01caff6243d0cb5eb9438891f76e74a9671378f15830a15bd2`.
+Final protocol/retained-history adjustment:
+`b06-pinned-summary-router-protocol-r2.log` **17 passed**, 0.97s; child exit 0,
+cleanup `removed`, run-root SHA256
+`7498ebfd59fee9f925f74f091e904e75d62f86f95fba07e0071d622958270c62`;
+targeted Pyright **2 files, 0 errors**. Changed-file types/format stage is
+**457 selected, passed**; ownership guard remains **55 predicates, 0 additions**.
+The full B-06 cutover is still uncommitted; remaining deletion/maintenance and
+cross-domain parent/child audit plus independent review are required.
+
+### B-06 deletion, explicit maintenance and same-org peer secret boundary (2026-10-11)
+
+Direct deletion now uses the locked private conversation helper and fresh actor
+check. It refuses a foreign-scope side child before checkpoint/offload effects;
+the owned side-history update additionally includes the exact private predicate.
+`b06-conversation-deletion-red.log`: **2 failed, 2 passed**, reproducing revoked
+membership deletion and foreign child mutation. New cases keep filesystem effects
+in owned temporary storage and stub only the external checkpoint deletion seam.
+`b06-conversation-deletion-regression.log`: **55 passed**, 2.46s; isolated cleanup
+`removed`, run-root SHA256
+`ec3fb9b52c79b96b3b88ebdcf27e66779ebcdec824f508e31a39b18be8af67ee`.
+
+Draft GC requires `DraftConversationCleanup` with a non-default `PlatformScope`;
+the named scheduler job supplies that explicit maintenance context. This remains
+an internal typed maintenance contract, not B-13 platform-session/RLS enforcement.
+The collector now preserves any draft with a side child, durable run or queued
+input, even before the first message event. `b06-conversation-gc-red-r2.log`:
+**3 failed**, each incorrectly deleted a parent containing child work. Fixture
+input uses the actual pending/position/Agent contract and the Agent/conversation
+owner tuple is aligned. Retention-positive validation, new/normal history and
+message-event protection remain in their existing regressions; no B-08 retention
+policy or archive lifecycle is introduced.
+
+Combined `b06-conversation-deletion-gc-regression.log`: **68 passed**, 2.59s;
+child exit 0, cleanup `removed`, run-root SHA256
+`adb35ba913ea07abcdd2d63dfff2ee6d7aa92276d08730d45d7b16902664c8b2`.
+`b06-conversation-deletion-native.log`: **4 passed**, 16.65s: actual m83 FK-backed
+own/revoked/foreign-child deletion plus the 34-path JWT matrix. Rejected cases
+leave the physical parent/child and SET NULL reference unchanged; native checkpoint
+deletion is explicitly stubbed, filesystem root is temporary, no live provider or
+production checkpoint cleanup is claimed.
+
+The cross-domain audit reproduced another private read gap: the read-time secret
+collector used organization scope without owner scope for its linked Agent.
+`b06-same-org-peer-secret-red.log` **1 failed**, showing a same-org peer's actual
+dummy credential in the returned secret set through a malformed owned conversation
+link. Agent loading now uses the full private predicate before identity/credential
+resolution. `b06-same-org-peer-secret-regression.log`: **23 passed**, 0.91s; child
+exit 0, cleanup `removed`, run-root SHA256
+`5542938b858d23b04182304bb05baf8043cbf76893f2c439caa80f9b5423134e`.
+
+Current phase static gate: changed-file types/format **460 selected, passed**;
+ownership **55 predicates, 0 additions**; dependency guard unchanged at **89
+reviewed violations, 6 cyclic edges**. Whole source type snapshot before the added
+native deletion test: **1,450 files, 0 errors**. Full isolated r14 is running.
+
+Audit frontier remains explicit: SkillBuilder failed/canceled claim recovery still
+uses a user-only update and needs exact persisted context. The original HTML task
+appendix assigns Skill feedback/evaluation authorization to D-03 and organization
+usage/counter schema and permissions to H-03/m89; those remain full-goal work,
+without promoting a 21st m81-scoped table or claiming those phases here. This
+distinction is supported by the plan itself (task B-06, H-03 and appendix), not by
+a narrower substitute objective. No B-06 commit/final review/full-goal completion
+is asserted yet.
+
+Full isolated r14 completed: `b06-full-cutover-inventory-r14.log` **5,056 passed**,
+3 warnings, 243.46s; child exit 0, cleanup `removed`, run-root SHA256
+`30b56742ac28af98d0ca667a180aab5b9a9ee75d243f153015fcb1ee54827d55`.
+Latest whole type snapshot `b06-deletion-maintenance-secret-final-types.json`:
+**1,451 files, 0 errors**. Ruff and `git diff --check` pass. The original frozen
+m77 fixture/source is unchanged. This closes the current deletion/GC/collector
+regression unit, while SkillBuilder recovery scope and the final source audit/
+review gates remain open. Full P0–P8 goal stays active.
+
+### B-06 recovery checkpoint and independent review (2026-10-11)
+
+The previously identified SkillBuilder claim-recovery writer now retains the
+original required OrgContext across the separate recovery transaction, including
+cancellation paths. The update qualifies session ID, owner, company, organization
+and confirming status. Focused recovery: **22 passed**, native recovery/matrix/
+migration batch: **13 passed**, frozen model gate: **4 passed**. Full isolated r15
+before independent review: **5,059 passed**, cleanup removed, run-root SHA256
+`d3b967fbebd6fbc71024d4f9f207b158b181058fb19bcc0e4cbc7f181085db28`.
+These are bounded prior snapshots, not acceptance for later corrections.
+
+A dedicated attached review checkout captured immutable local candidate
+`9595fd89554040e72282f103b3c5866b4e9a33b6`, based on
+`54ce914f87a79e182e5228ddbc84e6dddb66569f`. The primary cutover remains
+uncommitted and the candidate has not been adopted, pushed or deployed. All five
+independent lanes returned **FAIL**. Stamped reports and the review ledger are
+preserved under `output/org-authz/b06-review/`; they are ignored local evidence.
+
+Fresh independent QA on that exact candidate: native m83 **41 passed**, focused
+SQLite **206 passed**, official full suite **5,058 passed, 1 failed**, cleanup
+removed, run-root SHA256
+`b2dc70eb17541e5ae1b775e34b9183419ce22a93322f1ec6dda3ba6e5c567d60`.
+The full-suite failure was the newly tracked native-scope matrix missing from the
+document inventory. This demonstrates why the earlier uncommitted snapshot's
+full-green result cannot be substituted for an exact committed-candidate check.
+No owned temporary native databases remained after that QA.
+
+Review findings require B-06 corrections, rather than moving their requirements
+to deferred phases: Builder node persistence, SkillBuilder runtime/session/tool
+bindings, private runtime child Agent/Tool materialization, trigger joined
+projections and effects before authorization, and current artifact version parent
+validation. Runtime/security witnesses used malformed persisted references;
+ordinary HTTP reference forging was not demonstrated.
+
+### B-06 first review corrections (2026-10-11)
+
+Builder checkpoints now include their original organization/company tuple. A
+shared node helper parses that required tuple, restores current actor membership,
+and locks the exact privately owned session before phase-7 save, phase-8 confirm
+or error writes. Missing old checkpoint scope fails closed. Node regression red:
+**8 failed, 2 passed**, covering revoked membership, moved session, wrong user and
+missing scope; green with related Builder cases: **49 passed**, targeted types
+**0 errors**. This does not resolve all SkillBuilder tool/runtime findings.
+
+Detached triggers now validate their persisted actor and referenced private
+Agent/Conversations before claiming a durable run. Rejected scope leaves no new
+run or failure-counter/status mutation; the existing trigger row lock and
+duplicate-run guard remain. List joins independently qualify Agent and schedule
+Conversation projections. The three authorization-denial regressions failed on
+the reviewed behavior; initial new projection fixtures required missing model/
+conversation fields to be corrected before their green check. Independent F2
+provided the actual foreign projection/orphan-claim witness. Trigger regressions:
+**39 passed**, targeted types **0 errors**. The old missing-Agent test now asserts
+the approved no-private-side-effect behavior, rather than expecting error-state
+mutation on a malformed reference.
+
+Artifact current-version reads now require both version ID and the authorized
+artifact's parent ID. An invalid non-null pointer is rejected before returning a
+foreign object key. Red **1 failed, 2 passed**; related artifact green **19 passed**.
+
+Subagent execution checks the child's exact owner/company/organization before
+identity or credential resolution; linked Tools must be exact private resources
+or explicit system owner-null/company-null/organization-null rows. Cross-company
+Agent/Tool regression red **2 failed** after correcting the fixture to fixed
+identity and stubbing only the provider/component boundary; green **11 passed**,
+cleanup removed, run-root SHA256
+`be9405da5e783983d63cea4c1cb7c13771e381af885714d7f4a2837a5aa915e1`.
+
+The documentation inventory now includes the native matrix. Combined current
+affected regressions: **125 passed**, cleanup removed, run-root SHA256
+`3da2c054836933975ef5b2a39dc6f7fc4e8782aa23449d8004c443090211ad4e`.
+Runtime dependency guard remains **89 reviewed violations / 6 cyclic edges**;
+ownership guard **54 predicates / 0 additions**. These changes invalidate reuse
+of the reviewed candidate SHA; no replacement candidate is accepted yet.
+
+Remaining mandatory B-06 work includes scoped SkillBuilder runtime/tool bindings,
+native concurrent same-item installation deduplication in and across companies,
+and concurrent detached run/queue/artifact/memory isolation/recovery. Then fresh
+full/static/native gates and all applicable independent review lanes are needed
+at a new exact SHA. B-06 and the full P0–P8 goal remain open. RLS/platform sessions,
+shared OpenFGA, later D03/H03/m89, providers/browser/humans and timed release gates
+are not certified by these backend tests.
+
+Current correction static checks: changed-file types **467 selected, 0 errors**;
+changed-file format **467 selected, passed**; selected Ruff and `git diff --check`
+passed. Only the new matrix and its inventory entry were staged to make the
+tracked-document contract concrete for the affected repository check. No primary
+commit, candidate adoption, push, PR or deployment has occurred.
+
+### B-06 SkillBuilder scope and native install concurrency corrections (2026-10-11)
+
+Skill Builder tools now require an explicit OrgContext instead of an optional
+user-only identity. The runtime binding protocol forwards the frozen context.
+Each validate/evaluation/sandbox/finalize action restores current actor authority,
+locks the exact privately owned session, verifies the stored workspace binding,
+and checks the attached private Conversation/Agent before file operations. The
+finalize service itself receives the caller's required context; it cannot derive
+a different company after a session move. Existing direct unit fixtures now seed
+real User/membership rows rather than relying on absent account state. Policy-only
+configuration fixtures use valid UUIDs; no production authorization fallback was
+added for their former arbitrary strings.
+
+The initial four-tool scope regressions were **12 failed**, covering foreign
+company, revoked membership and mismatched bound workspace. Runtime reverse lookup
+also reproduced an owned Conversation linked to a foreign SkillBuilderSession:
+**1 failed**, and the prior path reached workspace creation and system model
+resolution. The lookup now requires exact owner/company/org and fresh Conversation
+authority before any workspace creation or system credential/model resolution.
+
+An additional persisted-workspace witness was **4 failed / 12 passed**: a private
+session whose stored path was replaced by another session's directory still passed
+simple path-equality validation. A shared storage helper now supplies the canonical
+`skill-drafts/<session_id>` contract to authorization, runtime lookup, workspace
+creation and finalization. The canonical-path check blocks such malformed persisted
+paths. These are bounded service/tool tests; no ordinary HTTP path-forging exploit
+or live provider execution is asserted.
+
+Combined current SkillBuilder regressions **59 passed**, cleanup removed, run-root
+SHA256 `ac682985586af3442bf2ca2c4bf006e2aa5e665f12fef126429ebb99e5d60da6`.
+Evidence logs reside under `output/org-authz/p1/b06-skill-builder-*`. The original
+red cases' filesystem reads, sandbox execution and finalize boundary are observed
+with narrow external seams; the asserted authorization and session state are real
+SQLite service/ORM operations.
+
+Task 13's missing concurrency scenario now has fresh native evidence:
+`b06-install-concurrency-native.log` **1 passed**, 4.45s. The test creates an actual
+m83 lab, real JWT/CSRF actor and two companies, publishes one real Agent template,
+and launches four HTTP installation transactions (two per company). A real
+PostgreSQL holder transaction keeps the item row locked until all four requests
+reach the original production lock function. The observer does not substitute a
+fake lock, inject rows or bypass the installer. After release, the requests yield
+one reused installation/Blueprint within each exact company and distinct IDs
+between companies. The persisted installation and Blueprint owner/org/company
+tuples are inspected. This is owner-role m83/ASGI evidence, not RLS, browser,
+provider, startup or marketplace OpenFGA acceptance. Owned native lab database
+inventory after the run: **0**.
+
+Task 14 still requires simultaneous detached queue/run/stream/artifact/memory
+execution and recovery. The next scenario will exercise the actual queue worker
+and run lifecycle with a bounded provider boundary, rather than substituting
+sequential per-company service tests. Full isolated/static/native regression and
+all applicable independent reviews must then run at a new exact candidate SHA.
+B-06 is not accepted, and full P0–P8 remains active.
+
+Latest static snapshot after these corrections and native concurrency test:
+changed-file types **473 selected, 0 errors**; format **473 selected, passed**;
+ownership guard **53 predicates / 0 additions**; runtime dependencies unchanged
+at **89 reviewed violations / 6 cyclic edges**. Selected Ruff and
+`git diff --check` pass. No replacement candidate has yet been committed or
+approved, and these focused results are not a full backend or product gate.
+
+### B-06 actual detached concurrency and correction gates (2026-10-11)
+
+Task 14 now has a native two-company execution/recovery experiment, not merely
+serial per-company transitions. Two actual `launch_claimed_input` queue workers
+restore contexts from their stored input/run/Conversation bindings, register real
+run tasks and remain live together at the deterministic provider boundary. A real
+CSRF preference-switch request commits while both are paused. Each then invokes
+the production artifact recorder/storage and memory writer, persists stream events
+and completes the actual run lifecycle with its original organization. Own content
+is read through HTTP and foreign content returns 404; runtime memory and persisted
+trace/replay payloads contain only their source company's marker. Two concurrent
+workerless cancellation recovery sweepers cancel two later claimed runs once;
+their cleared queue-run pointers are checked, and the previous outputs remain
+unchanged. No recovery invokes the provider boundary.
+
+Initial experiment needed an ordinary-account fixture correction (the default
+first-admin flag differed from the constructed context) and the input-pointer
+assertion follows the existing recovery contract. It did not reproduce an
+authorization defect. With the corrected fixture, native **1 passed**, 4.86s.
+The test deliberately excludes initialized LangGraph checkpoint and real provider
+execution; optional checkpoint-metrics baseline warnings are not accepted as
+checkpoint/token-usage/billing evidence. This is owned temporary m83 ASGI/worker
+evidence, not RLS, application startup or full product acceptance.
+
+Final verbose native correction batch: **15 passed**, 81.60s, exact node names in
+`b06-review-corrections-native.log`; includes the two mandatory concurrency cases,
+the exact-20/34-foreign-write HTTP matrix, original SkillBuilder claim recovery and
+actual frozen migration round trips. Owned native lab database inventory: **0**.
+
+All concrete authorization domain files together: **443 passed, 126 deselected**,
+184.36s, cleanup `removed`, run-root SHA256
+`a0a62d4b9bce47231fa20f0b4b94da06fa67943faec38c5096382132e5bf64d9`.
+The explicit Task 14 no-side-effect selection: **26 passed, 2 deselected**, 1.85s,
+cleanup `removed`, run-root SHA256
+`27206afea4a0b0e12307eaddb55741fc7af0d7cc7ea258a88cf9f228b6262fa1`.
+Actual frozen m77/exact-20 ORM gates: **4 passed**, 2.13s. Whole-source Pyright:
+**1,462 files, 0 errors**; changed types/format **475 selected, passed**. Whole Ruff
+passes after removing an unused fixture import; predicate additions remain zero.
+
+The local B-06 execution plan now explicitly maps its provisional consolidated
+test filenames to the concrete domain files. Its acceptance criteria are unchanged;
+the mandatory concurrency commands use the actual owned PostgreSQL lane to observe
+real locks and detached execution. No missing-path command or deselected native
+case is treated as passing evidence. Full isolated r16 and a fresh exact-SHA review
+candidate remain pending. The original handoff files are unchanged; B-06 and the
+full P0–P8 goal remain active.
+
+Full isolated r16 completed: **5,091 passed**, 3 warnings, 263.39s, child exit 0,
+cleanup `removed`, run-root SHA256
+`dac75cf8cb29cc834e68c5a6f138a2f35e212e333c9f23f991665e9f05721fa7`.
+This is the correction snapshot before the new dedicated review candidate; a
+fresh exact-candidate gate remains required. The only later source changes before
+preparing that candidate are a formatting-only SSE interpolation split and unused
+test import removal, plus evidence documentation. No primary cutover adoption or
+full-goal completion is claimed.
+
+### B-06 second independent review and private preflight corrections (2026-10-11)
+
+Dedicated candidate `484932c517425e50f04b1ab4b19bf68588499e9a` was rejected:
+F1/F2/F3/F4 FAIL and F5 context PASS. All five stamped terminal reports and
+bounded QA logs are preserved in `output/org-authz/b06-review-r2/`; no primary
+adoption or partial cutover commit follows from this candidate. Its fresh QA
+results were 5,091 full-suite passes, 443 focused passes, and 33 native passes /
+2 failures. Both real installation/detached concurrency requirements passed.
+The native failures were stale suspended-Trigger expectations: the executor
+correctly returned before any durable claim. Native assertions now explicitly
+require no run plus unchanged Trigger status/failure count; **2 passed**, 9.03s.
+
+F1 reproduced an owned Artifact projecting a same-organization peer's private
+Agent name through a malformed persisted reference. Both batch and single
+summaries now match Agent owner, organization and company to the Artifact.
+Initial regression: **2 failed**; first focused correction batch: **21 passed**.
+The single-row predicate uses the central authorization helper, preserving the
+no-new-ownership-predicate ratchet rather than increasing its baseline.
+
+F2 reproduced foreign Tool denial after a committed Trigger claim, leaving a
+running row that blocked forced retry. F4 reproduced the Trigger risk scanner
+decrypting a same-organization peer subagent's MCP credential before the direct
+subagent guard. These require malformed persisted capability edges; ordinary
+HTTP edge forging, provider calls and external MCP connections are not claimed.
+Capability assembly and one-hop scanning now occur inside preclaim authorization.
+The shared tool builder first checks the Agent's complete private tuple and checks
+MCP Server private scope or explicit platform null/null scope before auth resolution.
+Denied executions return without run/counter/conversation effects.
+
+New regressions failed before correction (foreign Tool: **1 failed**; peer child /
+peer Server: **2 failed**). Corrected preflight/scope/runtime-child batch:
+**11 passed**, 0.90s; existing Trigger/credential/projection regressions:
+**41 passed**, 2.10s. The MCP witness uses actual scoped SQL/Cipher with a dummy
+secret and a spy delegating to real decrypt; it asserts no decrypt and no claim
+across two forced attempts. Final whole-source/static/isolated gates and a fresh
+exact-SHA five-lane review remain required. B-06 and full P0–P8 remain active.
+
+### B-06 third review: complete-tree preflight and Skill/MCP consumers (2026-10-11)
+
+Candidate `51a06237553c0d58418e7c27e320114a59d45f59` is rejected. All five
+terminal reports are preserved in `output/org-authz/b06-review-r3/`: F1/F3/F5
+PASS; F2/F4 FAIL. Fresh exact-candidate QA passed full **5,096**, authz **448**,
+native **35** (including both actual concurrency requirements and corrected
+suspended-Trigger assertions), all static/document gates and owned DB cleanup0.
+Those passes do not erase the independent reproduced findings or cover the
+later primary-only corrections. No primary cutover adoption follows.
+
+F2 reproduced valid parent Tool credential decryption before malformed peer-child
+denial. The new pure capability-tree preflight validates all supported one-hop
+Agent/Tool/MCP/Credential/Skill references before any node's secret resolution.
+Trigger scanning precedes root configuration; ordinary chat and API configuration
+use the same preflight before LLM resolution. Owned-parent-secret regressions
+failed **2** before correction; an ordinary invocation regression failed **1**.
+Corrected focused runs: **29** Trigger cases, **31** runtime cases and **52**
+chat/SkillBuilder cases, with isolated cleanup removed. Intermediate full r18:
+**5,097 passed**, 3 existing MCP deprecation warnings, cleanup removed, root hash
+`2d7de0865ef2eab11a12decf5f4869cb3631af67ebb1420c83259e279e53c2ae`.
+That full run predates the following Skill/MCP corrections.
+
+F4's foreign Skill descriptor is now rejected before configuration/materialization
+and credential resolution. `build_agent_skills` requires `OrgContext` at every
+parent/subagent/Trigger/invocation caller. Its real foreign persisted-edge test
+failed before correction; the completed experiment supplies an actual temporary
+foreign file and asserts no materializer call or runtime directory creation.
+The initial fixture incorrectly used the retired content column; that setup error
+is not counted as an authorization reproduction.
+
+MCP health list/history/probe use the current private server scope, and explicit
+or persisted probe credentials must resolve in that same context. Initial list
+and history cases reproduced exposure; the initial probe stub had a session error
+after the unauthorized probe was reached, not a successful probe-result receipt.
+The corrected test returns a row in the actual request session and verifies the
+owned probe succeeds before all three foreign paths deny. Combined health cases:
+**14 passed**, 1.00s; no remote probe or real secret was used.
+
+MCP Apps now require request `OrgContext`, validate binding/run/Conversation/Agent
+references and current membership, scope linked Servers and credentials before
+proxy operations, and retain the original scope in runtime callbacks. The runtime
+factory requires captured org/company IDs instead of reconstructing preferences.
+All three real HTTP commands previously returned200 after a company switch;
+now they return404 before read/call proxy seams. Existing cache/App tests:
+**25 passed**, 1.16s. Callback experiments preserve original scope after a real
+preference switch and deny a removed membership without inserting a binding;
+the combined App/private-server regression batch: **28 passed**, 1.36s.
+Binding reuse also rejects mismatched persisted provenance before returning an ID.
+
+F4's proposed all-null MCP owner representation conflicts with the frozen m83
+contract: Skill/MCP retain required user FKs on explicit platform rows. A different
+creator on an `is_system=True`, org/company-null row does not make that platform
+row private. Both runtime and bound-App candidates use the existing explicit
+platform exception; private rows still require the complete owner/org/company
+tuple. No migration or owner nullability was changed. Actual HTTP creation cannot
+set the system flag (it remains false), and mutation rejects that extra field422.
+The required-creator/null-scope runtime and flag-write regression batch:
+**29 passed**, 1.46s. This establishes the existing platform representation, not
+future shared OpenFGA authorization or tenant-owned system-resource policy.
+
+Final combined Skill/MCP focused isolated batch: **42 passed**, 1.85s, cleanup
+removed. Predicate ratchet is **47 / 0 additions**, with its baseline unchanged.
+Fresh full/static/native gates and a new immutable five-lane review are still
+required for the expanded correction source. B06 and full P0–P8 remain active.
+
+The health router now delegates its MCP root lookup to the scoped service, so
+its direct `app.models.mcp_server` dependency disappeared. The dependency baseline
+was tightened by removing only that verified obsolete exception; no new exception
+or cycle was added. Guard: **88 reviewed violations / 6 cyclic edges**; dependency
+guard regressions **47 passed**, 2.32s. Whole types: **1,470 files / 0 errors**;
+changed types/format **489 passed**, whole Ruff and documentation inventory pass.
+
+Full r19: **5,107 passed / 1 failed**, cleanup removed. The failure is the existing
+subagent test double still accepting one argument after `build_agent_skills`
+became context-required. The typed replacement accepts and asserts the supplied
+context; focused **4 passed** (not a production fallback or weakened boundary).
+Full r20 and the current native35 batch remain pending before a replacement
+immutable candidate can be reviewed. No r19 success or B06 adoption is claimed.
+
+The corrected-source native batch completed: **35 passed**, 172.36s, including
+the real installation and detached execution/recovery concurrency scenarios,
+exact20 authenticated read/write matrix, migration roundtrips and representative
+private writers. Owned disposable database inventory is **0**. This remains
+owner-role m83/ASGI evidence without startup/RLS/live-provider/browser acceptance.
+Full r20 and new exact-SHA independent review remain required.
+
+Full r20 completed: **5,108 passed**, 3 existing MCP SDK deprecation warnings,
+259.06s, child exit0 and cleanup removed. Run-root SHA256:
+`91ff05f17dbcd8d4ceece7594a749a674d5acd68384e76a77f410b90272a6460`.
+The only later source edits were the already-verified test-double formatting and
+evidence documentation, not a runtime change. Current changed types/format:
+**489 selected, passed**; whole Ruff passes; whole types **1,470 / 0 errors**.
+Native35/cleanup0 and the unchanged exact20/shared6/m83 contract remain bounded
+as described above. A new immutable candidate with five fresh stamped review
+lanes is required; no primary adoption, deployment or full-program completion.
+
+
+### B06 R4 independent review corrections (2026-10-11)
+
+Immutable candidate `29740be5202f13a2a1ea272a442d836c8c744aca` is rejected:
+F1/F5 passed; F2/F4 each returned a concrete HIGH blocker. F3 is still running
+and its terminal exact-SHA result must be preserved before the aggregate closes.
+Primary has not adopted this candidate.
+
+F2 reproduced an enabled foreign private stdio MCP link being omitted before
+server scope validation because its URL is absent. Both the pure capability
+preflight and runtime projection now check scope before URL eligibility. The
+projection also validates a linked credential before skipping URL-less servers.
+The new regression tests cover foreign owner, same-user other-company server, and foreign credential variants,
+assert no decryption and no TriggerRun claim across two forced attempts. The
+corrected fixture first reproduced DID NOT RAISE; green evidence is recorded in
+`output/org-authz/p1/b06-r4-stdio-red.log` and subsequent focused logs.
+
+F4 identified the persistent sequential/concurrent health sweep and lightweight
+MCP poll resolving same-user credentials across organization boundaries. Shared
+probe validation now restores the persisted server's exact private actor, checks
+fresh membership, and loads the linked credential under a lock before any auth
+resolution or connection. Scheduled mismatches are skipped without a probe or
+health-history write; direct discovery/probe calls deny. Platform rows retain
+the frozen m83 explicit system/null-scope representation; platform credential
+metadata must also be explicitly platform-scoped. Model health/company-scoping
+remains the separately deferred TENANT_ONLY3/D10/H work.
+
+Tests reproduced all three scheduled-path failures before correction. Added
+direct discovery denial, positive owned-credential probe with preferences in the
+other company, and membership-removal denial with no preference fallback. Legacy
+health fixtures now seed real memberships instead of bypassing the new guard.
+Final bounded focused evidence: **49 passed**, 1.88s, no warnings, in
+`output/org-authz/p1/b06-r4-fixes-focused-final.log`. Dependency guard remains
+**88 reviewed violations / 6 cycles**, without baseline changes. Full r21,
+changed-source/static gates and a new immutable five-lane review remain required.
+These are B06 corrections, not full P0–P8 completion or deployment evidence.
+
+R4 corrected-source focused follow-up: **50 passed**, 2.63s, including the exact same-user/different-company stdio-server witness. Whole types **1,473 files / 0 errors**; changed types/format **494 passed** before this final test-only extension. Full r21 was already collected before that extension; its terminal receipt must be paired with this focused run, and the next immutable candidate gets its own fresh exact-SHA F3 verification.
+
+R4 review is now fully terminal: **F1/F3/F5 PASS, F2/F4 FAIL; aggregate FAIL**.
+Fresh F3 reproduced 5,108 full, 460 authz and 35 native passes, static guards,
+empty frozen-m77 diff, source immutability and owned database cleanup0 at exact
+29740 SHA. Reports and regular raw QA receipts were copied to primary
+`output/org-authz/b06-review-r4/` immediately. Passing F3 does not override the
+concrete F2/F4 security findings or cover the subsequently corrected source.
+
+Full r21 completed: **5,115 passed**, 3 existing MCP SDK deprecation warnings,
+258.78s, child exit0 / cleanup removed. Receipt SHA256:
+`513ccc1b8faae4df7c25dca78bb437c68fecd24991abb28fbc3573e3cdfc1248`.
+The later same-user stdio variant and test-only exhaustive-match/fixture cleanup
+are verified separately (8 negative/positive tests); production code did not
+change after full-suite collection. Ruff and selected format pass. Fresh R5 F3
+must run the complete fixed immutable candidate (now 5,116 expected cases); no
+prior exact-SHA coverage is reused. The owned PostgreSQL inventory remains0.
+
+
+### B06 R5 independent review corrections (2026-10-11)
+
+All five lanes are terminal at `7a27a8f46d707724445fa1b1fe5f403c7d3c773b`:
+**F1/F2/F4 FAIL, F3/F5 PASS; aggregate FAIL/REQUEST_CHANGES**. Candidate not
+adopted. Reports, witnesses and regular raw QA receipts preserved primary
+`output/org-authz/b06-review-r5/`. Fresh F3 reproduced **5,116 full**,
+**468 authz**, **35 native**, all static/contract gates, clean source and labs0;
+those passes do not override concrete review failures or cover new corrections.
+
+F1's direct-service witness shows credentials.update accepting another company
+row without mandatory context while HTTP PATCH is already filtered upstream.
+Update, test recording and audit retrieval now require explicit context plus
+typed immutable patch/test/query input. The service reloads a locked credential
+using exact owner/org/tenant and fresh private membership, before data decryption
+or changes. Platform mutations require explicit PlatformScope and an exact
+system/platform/null-owner/null-org/null-tenant row. Actor identity cannot differ
+from private context. All actual callers, including OAuth regression/audit tests,
+pass explicit context. Context never defaults to the user's selected preference.
+The new tests deny foreign update/test/audit before effects, preserve valid
+original scope despite preference change, reject platform scope on private rows,
+and deny after membership removal. R5 witness is the actual behavioral red;
+new API tests additionally failed against the old signature before correction.
+
+F4's real JWT/CSRF wizard-preview witness shows same-user foreign and revoked
+credential secrets sent through /api/mcp-servers/probe. The route now requires
+OrgContext and validates the non-system credential under it before auth
+resolution. Local HTTP regression reproduced foreign200 before fix, then
+owned200/foreign404/revoked404 with no denied-path decrypt/connector calls.
+
+F2 reproduced public share metadata from a same-user foreign-company Agent
+through a malformed persisted Conversation→Agent link. Public resolution now
+validates the linked Agent exact tuple against the share's authorized private
+Conversation before returning its name/description; mismatch returns no share.
+Existing valid share control remains successful. No checkpoint/provider work is
+needed for a denied chain.
+
+F2 also found the new platform credential guard succeeded but probes incorrectly
+used the required MCP creator FK as credential owner. Discovery and persistent
+health now pass the validated credential's subject to auth resolution. System
+platform credential NULL owner is distinct from required MCP creator FK. Both
+real encrypted platform credential regression cases failed before correction
+and pass afterward; private scheduled-scope negative tests still pass.
+
+Bounded corrected-source evidence: credential/OAuth/LLM-sync **40 passed**,
+MCP/share/OAuth/health combination **60 passed**, final credential/MCP/share
+selection **62 passed**, 2.43s. Seven targeted files typecheck0; selected Ruff
+passes after import/format cleanup. Full r22 and all source gates are running.
+No schema/hand-off source changes, shared/main DB migration, deployment, archive
+completion, RLS activation, shared-FGA or whole-goal completion is implied.
+
+Original F4 wizard witness rerun against corrected primary source: **3 passed**,
+0.55s (owned, switched company, independent membership revocation). Thus the
+revocation case is also tested independently of the sequential company-switch
+regression. Changed-source types/format **498 passed**, dependency guard88/6,
+ownership47/0 unchanged; whole Ruff and documentation inventory pass.
+
+Original F2 public-share/platform-probe witnesses rerun against corrected primary:
+**4 passed**, 0.72s, including the owned public HTTP share control. Whole types:
+**1,477 files / 0 errors, warnings or information**. Frozen schema/handoff sources
+remain unchanged; native R5 35-pass evidence belongs to old immutable source,
+so the next independent F3 must rerun the native batch for its own candidate.
+
+Full r22 completed: **5,124 passed**, 3 existing MCP SDK deprecation warnings,
+220.16s, child exit0 and cleanup removed. Receipt SHA256:
+`5657d3b8c5a0d4c59410b9acd747429f7be74babc96d2f338b3f9d7ef05fdbc0`.
+Changed-source types/format **498 passed**, whole types **1,477 / 0 errors**,
+whole Ruff/docs and unchanged predicates47/0/dependencies88/6 pass; owned labs0.
+The later import ordering and evidence-only changes do not change runtime code.
+A new atomic503-file candidate and all five fresh stamped review lanes are
+required before primary adoption. All previous rejected candidates remain
+rejected; passing receipts alone do not establish B06 acceptance.
+
+
+### B06 R6 independent review corrections (2026-10-11)
+
+All five lanes terminal at `92f8ea29bab2ac15cf4a7cfb685b8145aa971810`:
+**F1/F2 FAIL, F3/F4/F5 PASS; aggregate FAIL/REQUEST_CHANGES**. Reports and
+regular raw QA receipts preserved primary output/org-authz/b06-review-r6.
+F3 freshly reproduced **5,124 full / 476 authz / 35 native / 5 additional
+witnesses**, static gates, cleanup/labs0 and clean immutable source. That bounded
+PASS does not override the two rejecting lanes or cover the new primary fixes.
+
+F2's actual JWT/CSRF Tool-run witness reached foreign-company credential decrypt
+and bounded runner through an owned Tool with a malformed persisted credential
+edge (HTTP200/decrypt1/runner1). Standalone runner and service now take an
+explicit private target/options, reload a locked Tool under captured scope and
+fresh membership, then reload a locked exact-scope credential before decryption
+or opening the client/dispatch. All five direct-run tests and HTTP/service
+callers migrated; the last-use test double now accepts/asserts the typed inputs.
+
+F2's read-time collector witness decrypted an owned LLM credential before finding
+a malformed foreign Tool credential. The shared lightweight collector now
+preflights the complete loaded one-hop capability metadata before any secret
+resolution. Malformed bound capabilities raise neutral AppError404, preventing
+read egress rather than returning an under-masked payload. Missing historical
+agent handling remains separately retained. Local regression reproduced the
+missing denial and then verifies no decryption; original foreign-bound collector
+test now asserts the stronger before-effect denial contract.
+
+F1 reproduced five SkillBuilder bare-ORM service mutations committing after
+membership removal, plus foreign-company Session→Conversation consent projection
+that read draft metadata before a scope check and committed foreign consent.
+Five mutations now require frozen explicit target/context and typed message/eval
+input, reload locked exact-scope session and fresh actor before modifying fields.
+All production/test callers migrated with explicit captured or declared unit
+context. Consent command carries explicit conversation/context and parsed resume
+payload; service query validates Session/Conversation/Agent exact tuple before
+any draft read, validates canonical session workspace, and records consent through
+the required mutation guard. Tests seed real conversation/agent graphs instead
+of dangling SQLite-only session FKs. A trigger-eval legacy fixture now seeds a
+real user/membership before directly calling the guarded service.
+
+Dependency guard was tightened by pruning only the verified obsolete consent
+router→SkillBuilderSession model exception after query delegation: **87 reviewed
+violations / 6 cycles**, no new exception/cycle. Ownership scanner now **46 /
+0 additions**, baseline unchanged. Focused isolated combination: **74 passed**,
+3.11s, childexit0/cleanupremoved, receipt
+`b56cc7205e6ea78e55461ba20279b47a92efd1e05627e2b4e7a104bb781c157a`.
+Full r23 and current type/format gates remain pending; no R6 candidate adoption.
+
+Execution correction: two focused FS-containing commands were mistakenly run
+without the isolation wrapper. Four newly created dummy-only text-Skill
+directories in the shared data symlink were identified by exact fixture hashes
+and each command's creation/modification time interval, and recovered into
+ignored output/org-authz/p1/recovered-owned-test-files. All four original paths
+are absent; no unknown file was removed. Ownership/recovery evidence:
+output/org-authz/p1/b06-r6-fs-ownership-proof.json. No main/shared DB migration
+or environment modification occurred. Subsequent FS-containing tests use the
+official isolated wrapper. The typed consent test's filename ending -red.log
+actually recorded a pass because its command ran concurrently with the fix;
+only F1's preserved six behavioral failures are counted as consent's red proof.
+This correction is recorded rather than claiming shared filesystem was untouched.
+
+R6 corrections type refinement: TriggerEvaluationResult is a TypedDict with
+object-valued Mapping compatibility. The producer's structured result is parsed
+through the standard Pydantic JsonValue adapter before building the frozen eval
+input; the Korean fixture declares its actual JSON value type. This avoids a
+cast/Any escape. Type adapter/fixture follow-up happened after r23 collection,
+so its final result is paired with the new focused **16 passed**, 1.40s,
+childexit0/cleanupremoved, receipt
+`af20884f5b5b6fe31d8892879b32347dea5a51d81292f7cba54998ea2c8e325c`.
+Changed types **506 / 0 errors**, selected format and whole Ruff pass. No
+previous candidate review PASS is reused; a fresh candidate/F3 full run is needed.
+
+Full r23 completed: **5,132 passed**, 3 existing MCP SDK deprecation warnings,
+222.78s, childexit0/cleanupremoved, receipt
+`a1dd0bbf1aa2dc3c66acf893119b40c01d8810e61057e7710fe943f37849fc18`.
+Pair with the post-collection parser/type follow-up focused16 described above.
+Whole types **1,483 / 0 errors**, changed types/format **506 passed**, whole
+Ruff/docs pass; dependency87/6 and predicates46/0 additions, owned PG labs0.
+Next candidate requires all five fresh exact-SHA terminal approvals; previous
+R6 aggregate rejection and corrected filesystem execution remain preserved.
+
+
+### B06 R7 terminal rejection and persisted-edge corrections
+
+R7 exact `1f94e85e8d0cca90109688c0fa9ce871bb4cacda` completed all five
+independent lanes: F1 FAIL, F2 FAIL, F3 PASS, F4 FAIL, F5 PASS. Aggregate
+FAIL / REQUEST_CHANGES; primary has not adopted it. Preserved reports and raw
+receipts are in output/org-authz/b06-review-r7. Fresh F3 full **5,132**,
+authz **484** (126 deselected), actual m83 native **35**, and bounded controls
+**14** pass; these do not override the three rejecting lanes. F4 and F2
+external witnesses explicitly prove imports from the dedicated checkout;
+earlier unpinned output-only runs are excluded from exact candidate coverage.
+
+F1 found cached ORM SkillBuilder confirmation authorizing a now-foreign
+persisted session, and cached Tool credential relationships hiding a changed
+foreign credential before secret preflight. F2 found resource context artifact
+hydration validating the artifact tuple without its Conversation parent.
+F4 found authenticated builder file routes following an owned session's
+stored foreign-session workspace path.
+
+Five typed repository regression cases independently reproduced those failures
+before production edits; official wrapper childexit1/cleanupremoved, receipt
+`55f91402759608971fa1a2fd5762411a1c0047830b1069f7dcddad465e1863ea`.
+Confirmation now reloads the exact locked mutation target and fresh actor before
+validation writes; canonical session workspace is checked before disk scans.
+Collector eager loading populates existing ORM rows from persisted data before
+the complete capability preflight. Artifact source hydration reuses the shared
+artifact-and-parent predicate before storage resolution, refreshing existing
+rows. Builder session reads refresh persisted fields, and sibling file routes
+require the canonical session workspace before listing/content access.
+
+New regression **5 passed**, cleanupremoved receipt
+`a39322e0779261baeb62080eac75eb2c9a30336cdfb34da72c5e769da83f7c49`;
+related confirmation/finalize/files/resource-context controls **49 passed**,
+cleanupremoved receipt
+`51ddc82c569807d130241fd7eddbeb7425c3041475b500c194341f98eb786a0e`.
+Whole Ruff passes; changed types/format **509 pass / 0 errors**, dependency
+**87 / 6**, predicates **46 / 0 additions**, docs **214 / 22**. An initial
+root-system-Python predicate command lacked pydantic and is not counted;
+the backend uv runtime rerun passes. Full r24 is pending. No previous SHA's
+approval transfers to a new candidate. Full P0–P8 goal remains incomplete.
+
+F1's two original witnesses were additionally rerun by root against immutable R7 with explicit dedicated PYTHONPATH and imported-production __file__ assertions; both behavioral failures reproduced (0.66s), cleanupremoved receipt4c60b54f5679508be4c965aaae4ca57eb69a5945de048b3ae1e07f364f7faa8c. Initial supplement omitted explicit pytest config and had fixture setup errors; not behavioral coverage. Whole current types1,486/errors0. Root r24 full is running serial; fresh candidate QA owns authoritative full/authz/native suites before adoption.
+
+
+### B06 R8 rejection and fresh persisted-parent/membership fixes
+
+R8 exact `c9a2fa5efc1a55be96114b818eea306c52542642` finished allfive:
+F1 FAIL, F2 FAIL, F3 PASS, F4 FAIL, F5 PASS; aggregate FAIL/REQUEST_CHANGES.
+Reports/receipts preserved output/org-authz/b06-review-r8. Fresh F3 full5137,
+authz489/126deselected, native35 across16, correction40/legitimate9/consent5,
+plus separately labeled native prerequisite2 pass; these cannot override the
+persisted-boundary blockers. Primary has not adopted R8.
+
+F1/F4 reproduced stale cached Conversation root/Agent reference allowing
+collector decryption after persisted scope/reference changes. Collector now
+uses require_private_conversation to reload the exact persisted root and
+fresh captured-scope account/membership before Agent resolution. Agent-less
+history still skips key lookup; a foreign Agent is excluded by scoped lookup.
+F1 reproduced SkillBuilder own Session→foreign Conversation validation writes:
+shared private_skill_builder_predicate checks nullable attachment's exact
+Conversation and any surviving Agent before session read/mutation. Detached
+agent-less owned history remains representable. F1 also reproduced Builder
+and SkillBuilder creation after organization-member removal: both creators
+now resolve fresh captured-scope actor before source/filesystem/write.
+F2 reproduced cached ArtifactVersion's old artifact_id hiding a persisted
+foreign parent: exact version ID AND artifact ID are now SQL predicates before
+storage read, with populate_existing/autoflushFalse.
+
+Root added five typed regression cases, verified behavioral red5 BEFORE
+production edits (cleanupremoved e3db6fad863a6c7f7d54389784ed38c2bd30cceb6300784f5ac0f0f0d93bf7dd),
+then green5 (cleanupremoved88dd27b2e34fdbcb1939d0bff3a4b3ecef73eb8710153d9af9a08cc1cff01928).
+Additional cached Conversation root/Agent control2 passes after the shared
+reload fix (filename ending -red.log recorded PASS, not red coverage).
+Related correction/legitimate controls88 pass, cleanupremoved
+b300597a6d001bc84af9a276fa61d48dd5f11cb8aad2ffcd3c761e9fcfe840a5.
+
+F4 additionally reproduced durable MemoryRecord update/delete after suspended
+membership. Root reproduced those and sibling proposal rejection/agent-memory
+settings lazy creation/update. Shared record/proposal loading and owned agent
+settings now refresh captured actor before effects, and refresh persisted ORM
+values. Corrected red5 receipt0b6a8bb1e36af86b95c3b4b3478caba1223b2689a91ed4ca59ad775b6c69f33a;
+first two sibling red attempts included wrong test-only Pydantic field names,
+excluded from behavioral coverage. Original update/delete red2 independently
+valid (393ecaa47890bdeff41f78b28656f13613673b9a28f85068a33cb0513b533d54).
+Current combined new regressions/redaction24 pass cleanupremoved
+9cf137a2e9000eb3bf4d5bf3d95c605788a76b62a3bd3bf0d67382d1ae11b4f5
+(b06-r8-complete-regressions-green.log). Existing memory32 controls pass,
+cleanupremoved3638ce20efc096c5b8eae16c63a239f7695dd3a4358605630cc94ef2d01f89d3.
+A legacy fallback-model secret fixture now creates actual user/member scope
+before collector; its initial missing-membership failure was not relaxed in
+production. New code retains required explicit OrgContext, no bypass/fallback.
+
+Whole Ruff/types1490errors0, changedtypes/format513 pass, dependencies87/6,
+predicates46/0 additions, docs214/22 pass. Root serial r24 interrupted as it
+covered superseded R8 source and duplicated fresh F3 suite; owned wrapper
+cleanupremoved244d84a1afa62ea255e05ac86104fc4200fa5c1147fec2362183f4da9069bd68,
+no full-suite pass inferred. Current four-worker r25 is running, with observed
+failures pending diagnosis. New candidate not frozen/adopted; goal active.
+
+
+Full r25 terminal: **6 failed / 5,143 passed**, 3 existing MCP deprecations,
+229.77s, cleanupremoved2165134f63fee925d44a05daab2830ac3191f7494154984882c58e7cf40dbfa2.
+All six failures were old unit fixtures lacking a real membership graph:
+two protocol replay collectors, three attachment read-path collectors, one
+SkillBuilder foreign-owner session creation with nonexistent user. Those
+fixtures now seed actual declared unit users/tenant+organization membership;
+production fresh-actor guards retained. Exact affected files19 passed,
+cleanupremoved207d45cce821563fbd165af2e128f5cdc44638620762bbc9a9aa3446ce40e6e0.
+Full four-worker r26 is running on this corrected source; no pass inferred yet.
+R8 allfive reports remain terminal and aggregateFAIL. Next candidate approval
+requires fresh allfive exactSHA reports; no goal completion or primary adoption.
+
+
+### B06 R9 aggregate rejection and common private writer authority repair
+
+R9 exact f8eff74b1466a739fe8f83c2bfa51b5190fa7d99 allfive terminal:
+F1FAIL/F2FAIL/F3PASS/F4FAIL/F5PASS, aggregateFAIL/REQUEST_CHANGES. Reports/raw
+receipts preserved output/org-authz/b06-review-r9. Fresh independent full5149,
+authz501/126deselected, native35 across16, prerequisites2/corrections52/
+legitimate9/consent5/static pass applies only rejected R9. Root r26 separately
+5149pass/273.15s/cleanupremoved1bb2053d907be32f8c954f375beb67413734db51b6f181f31c1e0884e0028ea1.
+No primary adoption or full-goal claim.
+
+F1/F2/F4 exposed the common missing fresh-authority boundary in current private
+writers: Credential/Tool/MCP/Agent/Skill creation; Tool/MCP mutations; Skill
+filesystem editing; Share creation/revocation; Deployment/API-key creation and
+mutations. Required captured scope was present but not refreshed before effects.
+Core private creator/get-owned boundaries now resolve_private_actor before
+private effects; Credential's explicit PlatformScope remains separate and
+unchanged. Existing scoped mutation callers reuse those guarded loaders.
+MCP registry/import creators and Agent deletion receive the same required guard.
+API control writers and Share writers explicitly resolve current captured
+membership/root before generation or mutation. No context preference fallback,
+private operator bypass or new dependency exception was introduced.
+
+F1's malformed improvement source-Skill edge reached validation/status writes.
+private_skill_builder_predicate now includes nullable source/finalized Skill
+exact scope in addition to attached Conversation/surviving Agent. F4's real JWT
+Attachment with a persisted foreign Conversation parent returned200/read1.
+New private_attachment_predicate checks nullable parent scope; shared upload
+content/download lookup refreshes row+actor before any filesystem read, while
+owned orphan/attached positives remain available.
+
+Root independently reproduced current typed-repository writer/source cases
+before production edits: red24, cleanupremoved9407e9c6aace49a88681faeb1e41fa8cc5e26ed25012729513cf72791e993fc1;
+Attachment red1, cleanupremovedc6342a2a16642d9397a9ffef29fc3231b5ac4d3379c63abb140865b5c727ebbe.
+After repairs all25 pass, final AnyIO filesystem-inventory test follow-up
+cleanupremoved2a407a632911449d2d43a521f9f483052d8550226aa33212241d378e491217a1.
+
+Root followed the same proven missing-guard seam into Trigger CRUD and Artifact
+metadata writers. Seven real suspended-membership variants reproduced before
+edits, cleanupremoved03c4fe3cb1ed2db748ef36157e2fe8c3c929875e91277ab245a44fee8c6ba7ad.
+Shared Trigger owned-agent/trigger loaders and Artifact owned-root loading now
+refresh authority before any change; all7 pass,
+cleanupremoved42e0b9c7166f2715672329a34f406d28743519b8eefe72542d58ef87a06c6876.
+Current Ruff/type+format522/dependencies87-6/predicates46-0 pass. Full r27
+started before final Trigger/Artifact guard and test-inventory follow-ups;
+its result must be paired with focused7+25 and a fresh exact-candidate F3 full.
+No previous SHA's PASS transfers. Full P0–P8 remains active/incomplete.
+
+
+Root r27 terminal: 3failed/5171passed, 3 existing MCP deprecations, 234.83s,
+cleanupremovedee959ffcd2049fc42a6d99177b544b42287872307b404216d794fdb2e5446308.
+Two Blueprint model-resolution fixtures had a real user but no membership;
+ensure_unit_scope now seeds the actual declared membership before legitimate
+materialization. The finalize source-deletion fixture left a dangling FK under
+SQLite (foreign_keys unenforced), unlike native ON DELETE SET NULL. It now
+explicitly models that native nullification; missing-source business error and
+claim release/retry remain tested while foreign nonnull source denies before
+effects. No production authorization weakening. Affected files plus source
+negative and Trigger/Artifact controls25 pass,
+cleanupremoved45dd80ec73de0783d0b4942e1d0a78a1e1e413d0bb795efaf2fea4bc6bfc1d48.
+Whole currenttypes1499errors0; selected522types/format, Ruff, dependencies87/6,
+predicates46/0, docs214/22 pass. Fresh rootr28-n4 running currentcorrectedsource,
+expected5181 cases; no currentfullPASS inferred. R9 rejected SHA unadopted;
+next exactcandidate requires allfive freshterminalPASS and native35.
+
+
+### B06 R10 terminal rejection and current corrections
+
+Exact rejected candidate d5f97ee7bd3d2cdf63fdb92a4cb5dfa00bc8c698:
+F1 FAIL, F2 FAIL, F3 PASS, F4 FAIL, F5 PASS. All terminal reports, scripts,
+raw logs and receipts are preserved in output/org-authz/b06-review-r10;
+aggregate FAIL / REQUEST_CHANGES. No primary adoption. F3 independently
+passed full5181/authz533/native35 and static gates for that SHA only.
+Root r28 also passed5181; neither result approves subsequent corrections.
+
+The actual missing boundaries were catalogue management/publication and upload
+writers after captured membership suspension; Blueprint dependent Tool creation
+before actor validation; SkillBuilder tool/list queries omitting the complete
+source/finalized Skill parent invariant; Attachment link writers using a stale
+actor; and API control projections exposing unscoped Deployment/Agent children.
+Current shared seams refresh actor before effects, reuse the complete session
+predicate, require a fresh private Conversation for linkage, and require exact
+API Deployment/Key child closure before projections. No private operator bypass,
+implicit context or new dependency exceptions were introduced.
+
+Typed repository witnesses were run before production edits: first20 cases
+15failed/5passed (077933a1c789ba950e8d8c1287f1dd43e4e63e3b9cdcd4bb7a294a8e30ad58a0),
+Attachment6 cases3failed/3passed
+(4f491dfc9f8990454d9275f068b18722e90d6bfee3128966828c778313cbc087).
+After correction all26 passed
+(2a4bd83d398ca8591861cc51a2cdeb0a9a216b91acf8b819d0e9594ff540a642).
+All receipts report cleanup removed. Root followed the proven API child seam
+into key-revocation serialization: actual missing-denial red1
+(739bb65832412482910d7cb3cc8d0467ba4065b965156d5f793a0b512cc7e61b).
+The Skill publication sibling test initially expected404 for suspended authority;
+the actual documented fresh membership denial is403, so that harness assertion
+was corrected without production weakening. The positive publication followed
+by suspended zero-file/zero-row behavior now passes; the test was moved into a
+separate publication module, and12 related cases pass after the move
+(7edb379d7dc7bb1883f6832b8f49f7560ffdfb2ce66891f26e5dd66fd696a5a2).
+That already-fixed sibling test is a green control, not newly claimed red evidence.
+
+Root whole types1505/errors0, changed types/format528, Ruff, dependencies87/6,
+predicates46/0 and docs214/22 passed before the final key-revocation follow-up.
+Full r29/native35 are running against the earlier current corrections; they
+cannot approve that pending production follow-up or newly added tests. Fresh
+final source gates and all five exact-SHA review lanes remain mandatory.
+Full P0–P8 goal remains active/incomplete.
+
+Root r29 terminal: 1failed/5206passed, 3 existing MCP deprecations,259.12s,
+cleanupremoved4cbb4ec47da0dd6399448d65bc2fd936ad283214528f569f6efb8534600d836a.
+The legacy source/finalized session-list fixture referenced a random Skill ID
+without a Skill row. It now persists an actual owned exact-org Skill before
+constructing both sessions; parent authorization is unchanged. Root follow-up
+key revocation uses the full key-child predicate and refreshed eager loading
+before write/response. Related scope, publication and fixture33 cases pass,
+cleanupremoved9edde7c3b479a0daea4d3714185d6931c2b37f909b171a06dfed438c7adeb3a9.
+Native35 passed181.90s with cleanupremoved
+6ac8139a6e0c4e2d38ed974468ef2f293d33306c681e6f561629af66e3640771;
+owned temporary PostgreSQL labs0 afterward. This native run preceded the small
+key-revocation follow-up; the next F3 exact-candidate native run remains required.
+Current finalRuff/selected529format/docs pass; finaltype and r30full are pending.
+No final full-suite or aggregate approval inferred.
+
+Root r30 terminal:5209passed/3 existing MCP deprecations/248.28s,
+cleanupremoved1baf39541ccf406c61cde10f9b23ea3a5ff6b39b9c1bca12b2b1177ccf4f5132.
+Production source was stable throughout r30. During the run one already-collected
+owned upload control was moved to the Attachment writer test module to keep the
+new publication module below250pureLOC (243); behavior stayed unchanged, and all
+18 affected tests passed afterward
+(627c8a7dfc403185111b81c944eb7a01e927e01f49e03663ad5967e741cb7ab3).
+Freeze type529/format529 pass. Fresh F3 will run the whole suite after that move
+on the exact immutable candidate, together with native35 and all-domain guards.
+Current cutover still unadopted; five-lane gate pending, full P0–P8 incomplete.
+
+
+### B06 R11 terminal rejection and primary repairs
+
+Rejected exact534-path candidate6b1cdb941ab0660594b6af94ce86fe8e40e8adaa:
+F1/F2/F3/F4 FAIL, F5 PASS. All five terminal reports and raw witnesses are
+preserved under output/org-authz/b06-review-r11; ledger aggregate FAIL /
+REQUEST_CHANGES. No adoption. F3 final configured full5209/authz561 plus126
+integration deselections/native35 across16/supplemental10/prereq2/static pass,
+but independent evaluation preclaim2fail/1pass rejects this SHA. Full P0–P8
+remains active/incomplete. Initial F3 inaccurate progress count was corrected;
+its actual initial full1fail5208 was a repo-local temporary-parent harness error.
+The next same-parent full was interrupted143 with cleanup removed; final full
+used an owned outside-repo parent and child TMPDIR/basetemp,5209pass226.71s.
+All41 prior raw receipts and final integrity receipt report cleanup removed;
+lab inventories0. No old or harness-limited PASS substitutes for final acceptance.
+
+Actual defects: runtime API list and deployment authorization omitted scoped
+Agent parent; runtime key authentication accepted foreign Deployment links
+before usage commits; SkillBuilder runtime/consent omitted source/finalized Skill
+parents before model/workspace reads; hidden Agent creator omitted fresh actor;
+evaluation worker committed grading/start/audit before context authorization;
+resource resolver read private file/artifact content after membership suspension.
+
+Root adapted reviewer witnesses to four strict repository regression modules.
+Before production edits,23 cases12failed/11passed, cleanupremoved
+ d7e15347fe18fae9c7598b80ddd4fdeb86cfce3efeac838edfcdd298363e0ff4.
+Common runtime Deployment selections now use the complete predicate and refreshed
+hydration; runtime key actor checks the complete Key graph before usage writes.
+An invalid linked-key graph now receives401 before usage, while an allow-all key's
+unavailable deployment is absent from200 listing. Both deny foreign metadata;
+this is deliberate key-authentication semantics, not weakened scope filtering.
+SkillBuilder runtime/consent use the full session predicate before effects; hidden
+creator validates actor before model lookup/insertion. Evaluation context loads
+before the start claim; existing failure/cancel cleanup remains possible. Resource
+resolve/reauthorize validate captured actor before any content reader.
+
+The first corrected run19passed/4failed exposed SQL auto-correlation when the
+complete session predicate was reused inside a Conversation/Agent join. Explicit
+correlation to each actual parent now retains inner tables. All23 then passed,
+cleanupremovedc46f4a10b19228ff97f55f37bd14c59112d258adfe22a9e811e863edf3dce3eb.
+Hidden creator tests were moved into their own focused module; no behavior change.
+
+Root additionally reproduced a cached EvaluationSet whose persisted Skill parent
+had changed: evaluator_calls1 plus durable grading/start/audit despite the stale
+identity map, actual red1 cleanupremoved
+ cdf322a1f7e6c4d496c1ba9f5d2e2d01cd437478b50860c21ce111d7ec7a333d.
+Run and EvaluationSet now refresh persisted values; SQL bounds the Set ID and Skill
+parent, and the pre-existing owner/Skill tuple check remains before construction.
+Related creator/runtime/consent/evaluation55 passed
+(983b9e46c9a91eb27ec3c42d857cc20b004db6efac66c2d2b30d23ba148bd016);
+final cache/actor9 passed
+(a02300a27e7f189fc751bf836a82c8bfc9ac1831b8f98b79755b89b9b2ef0954).
+No new ownership-predicate/dependency baseline exception was added.
+Ruff, changed534format and predicates46/additions0 pass; final types, r31 full
+and current native35 pending. A new exact candidate and five fresh review lanes
+are required; current primary source remains unadopted.
+
+Root r31 terminal:12failed/5221passed,3 existing MCP deprecations,261.19s,
+cleanupremoved29fedd9d406d9e935410059179929356b5f7212da0d3d542d8f19ff42843bc13.
+Eleven failures shared a resource-context test fixture with an actual User but
+no declared membership. One hidden-agent Trigger fixture had neither actual
+User nor membership before calling the strict creator. Both now explicitly
+seed unit scope via ensure_unit_scope; no production guard or expectations were
+weakened. Affected quote/resource/Trigger files plus new adversarial modules53
+pass, cleanupremoved42365662a6ac46c01f836c0d2e91b21ce1521c3e140a1f3e5c888a2b01818b8f.
+Current native35 passed179.87s, cleanupremoved
+5bb3f7226c924841c5f19bf46c478ab00ca71661ca77d34448fffd6fcded8b84;
+these fixture-only follow-ups do not alter production. Freeze534types/format and
+Ruff pass; whole types/errors0. Fresh current-source r32 full running, expected5233;
+no current fullPASS inferred before footer/receipt. Dedicated pending R12 branch
+contains539 authorized paths, uncommitted until gates complete. No primary adoption.
+
+Root r32 terminal:5233passed/3 existing MCP deprecations/260.59s,
+cleanupremoved2abb0d784148b7fc74f006ecbe1dbda3617d784f2c63a2ea4df13d93b129e6c3.
+Production source stayed stable. One additional API cached-revocation control was
+added after collection and already passed on unchanged production (HTTP401,
+usage0), cleanupremoved8384cfa06a9ca3880041e3c34e478496b301d2efcf0ead231076037b0be5e3ad.
+Its initial '-red' filename has been renamed '-control'; no new bug or failing
+proof is claimed from that run. The exact new candidate F3 full must include
+that control (expected5234), authz586 and fresh native/static acceptance.
+Current539-path atomic cutover remains unadopted; five fresh lanes required.
+
+### B06 R12 rejection and shared runtime/memory corrections
+
+Exact R12 `4d32dc8c6fbfee313aec465a19b5d6ede0b8e8c8`: all five terminal,
+F1/F2/F4 FAIL, F3/F5 PASS; aggregate FAIL. All reports/raw witnesses preserved
+in `output/org-authz/b06-review-r12`; broad5234/authz586/native35 PASS cannot
+override demonstrated memory parent, runtime preparation and cached-key effects.
+No primary adoption or full P0–P8 completion.
+
+- Ordinary chat refreshes the private Conversation actor before eager runtime
+  hydration/decryption. Shared Agent runtime loading refreshes persisted root and
+  eager capability graph with autoflush disabled. Actual chat and API config
+  witnesses now deny stale/foreign graph before dummy decryption.
+- Initial API-key authentication refreshes key/deployment graph before verification,
+  state and usage. The failure was a bounded preloaded-session case; fresh-session
+  revoked-key requests already denied correctly and remain positive controls.
+- MemoryRecord/Proposal queries authorize the exact private root and every
+  non-null Agent/source Conversation/surviving source Agent before hydration or
+  mutation. Common loaders protect update/delete/reject/approve; both lists refresh
+  captured actor. Creators share the source graph predicate. Legitimate NULL history
+  and user-global settings remain supported. New pure helper is61LOC/typed.
+
+Typed repository controls: `test_private_runtime_fresh_preparation.py`,
+`test_private_api_cached_runtime_graph.py`, `test_private_api_cached_authentication.py`,
+`test_private_memory_persisted_parents.py`, `test_private_memory_parent_consumers.py`,
+`test_private_memory_parent_integration.py` under backend/tests/authz.
+Primary replay of original witnesses:8fail/11pass beforefix, cleanupremoved
+c9f0e11e08c9776ba9e76c852e75ada79aebf1657e1fc6b2964d08a440040167.
+Additional source-Agent closure7fail, list actor2fail/2pass, source creator2fail
+are preserved as actual red evidence; no positive control is relabeled red.
+
+Shared corrections:18 original behavioral controls pass; related71pass before
+creator extension. Final affected memory/runtime/API suite88pass5.47s, cleanupremoved
+2dd191d8b0316bc899f23f109e7354814251b9e5cdd561b228da4c4797a8e762.
+Final actual-m83 JWT/CSRF malformed-parent plus legitimate memory HTTP4pass18.52s,
+cleanupremoved6cfdc8067c462e304a85a301bd8cc19d30a3db73a371197228bd41894b85ff45.
+Initial native invocation deselected2/exit5; it is excluded. Two native test type
+errors were corrected to actual current_database() and typed CurrentUser; final
+changed541types/format and whole1517types report0errors/0warnings; Ruff passes.
+Ownership ratchet46/additions0, dependency87/6, document inventory214/22 pass.
+
+Root r33 broad5291pass/3existingMCP warnings/224.79s, cleanupremoved
+14246aa8beb7611b47ec62325bd6e610a89e2d8ab3a29be306490a1acef925bc, covers
+production BEFORE the final shared source-creator guard; its production snapshot is
+`output/org-authz/p1/b06-r33-production-snapshot.json`. The two creator cases added
+after collection are verified separately; no5293 current-source full PASS inferred.
+A fresh exact full candidate must pass all five independent lanes and fresh full/
+authz/native/static gates before adoption. Full P0–P8 remains ACTIVE/INCOMPLETE.
+
+### B06 R13 all-lane rejection and complete metadata read boundaries
+
+Exact R13 `ca42a4f6a86f01f8275105fa63ab68f558ba7736`: F1/F2/F4 FAIL,
+F3/F5 PASS, all terminal and preserved in `output/org-authz/b06-review-r13`.
+Fresh full5293/authz645/native37 PASS does not override current Thread parent
+and captured-actor metadata findings. Primary remains unadopted.
+
+Thread detail now retains its direct owner filter and adds complete surviving
+Deployment/Agent + Conversation/Agent parents before eager hydration, with explicit
+SQL correlation and persisted row refresh/autoflushFalse. It shares that loader
+with existing Thread execution callers; no nonexistent GET/list-run route claimed.
+
+`require_private_actor(db, context)` reuses the existing current account/member
+resolver without autoflush.23 inventoried public read entrypoints now call it before
+queries or projections; typed mapping is in ignored output. Sidechat already uses
+fresh Conversation policy lock; files delegate to the now-fresh common Conversation
+loader. Message reading uses the common fresh private Conversation boundary before
+checkpoint source access, including provided-tree callers. No preference fallback,
+operator private bypass, new schema or deferred policy promotion.
+
+New typed tests: `test_private_metadata_actor.py`, `test_private_api_thread_parent.py`,
+`test_private_metadata_siblings.py`, `test_private_message_reader_actor.py`.
+Original+sibling true red13fail17pass, cleanupremovedf583d3dc48482c52d6e275492113e5172167a1b54fc51ff52988b301f396323b;
+checkpoint source red3fail1pass, removed91a21301f94633121d010f38d3858c30168e186ecfddd36a8365b532c8e28f07.
+Repaired34pass2.31s, removed9447c3e9cfbabab89673644d746333a3fdfa899200bd1a07adddfb8dd940543b.
+Related recovery/binding44pass3.09s removed6de2a6c782588703cfc4f51292104bdd45cff93042a7871854c42bf0114e52af.
+Actual m83 API/conversation read4pass17.01s removed67005e643a45e753dd19e3e50d705277fd888816b114bb41b19f28d45a01982b; lab0.
+
+Rootr34 full12fail5315pass261.32s removedd89da76b8e5e03a5af6102d19fa9c341e39a5431339eef8051f6cd17a5d5797b:
+old missing actor/member/Conversation fixture roots and total-SELECT performance
+expectation. Test-only corrections seed real actors/legacy Conversation history
+and measure the unchanged one-query Conversation/Agent base-read optimization
+separately from authorization refreshes. No production guard relaxed. Affected
+fixtures/domain/newcontrols126pass4.43s removed120f8012c7abfebaadd89ca8f80e2990ca526f60066ebd02651f9b071a947a59.
+First copied witness parse-overlap and external sibling missing skills.slug setup
+failures are retained/excluded; subsequent actual red evidence above is authoritative.
+
+Current changed545types/format0, whole1521types0, Ruff, predicates46/additions0,
+dependencies87/6 pass. Rootr35 fresh full pending until terminal footer/receipt;
+no5327 fullPASS inferred. Full550-path candidate requires five fresh exact-source
+review lanes and appropriate broad/native/static gates before adoption. Full
+P0–P8 remains ACTIVE/INCOMPLETE; B08/B13/sharedFGA/frontend and later work outstanding.
+
+Rootr35 terminal:5327pass/3existingMCP deprecations/261.61s, cleanupremoved
+507df985a79a065d8c36ed0ebceb5b10b527c9c911b5acaa440b8bc96f3b0c7b.
+Code stable before collection; current full gate now confirmed. Pending fresh
+R14 entire550-path candidate, all-five exact-source gates still required.
+
+
+### B06 R14 rejection and current-authority read/preflight corrections
+
+Exact cdee94bf05112476bf9dd80236fe2ccff7dc116c: all five terminal FAIL,
+aggregate REQUEST_CHANGES. Reports, source inventories, raw witnesses and cleanup
+receipts preserved under output/org-authz/b06-review-r14 before correction.
+Fresh full5327/authz679/native37 and static gates passed that rejected SHA; those
+results do not override concrete omitted actor refresh and pre-denial SQL flushes.
+
+17 independent read guards now reuse require_private_actor: Artifact lists/by-message/
+page/recent/stats, MCP server/all-tools, Tool list, API deployments/keys, SkillBuilder
+detail/list, Run interrupted/active/batch/latest/detail. Current-run wrapper delegates
+to the batch guard. The earlier38-function source inventory was incomplete; expanded
+AST inventory contains477 OrgContext functions, including guarded callers/delegates
+and legitimate cleanup, rather than pretending all477 require duplicate guards.
+Mapping b06-r14-read-guard-mapping.json is source evidence, not independent acceptance.
+
+Direct resolve_private_actor suppresses autoflush throughout account/member refresh.
+Detached Agent/Conversation/Builder/SkillBuilder actor preflights select persisted
+owner/org/tenant scalar columns without autoflush; pending content stays staged.
+Private Skill, Installation and executable-run preflights disable autoflush before
+authority checks; existing root/parent predicates and lock order remain. Revoked
+cleanup may close old work, but must not start new private content. No schema, UI,
+shared-FGA, ambient/default context or private-operator bypass was introduced.
+
+New typed repository tests: test_private_artifact_mcp_read_actor.py,
+test_private_run_tool_read_actor.py, test_private_api_control_read_actor.py,
+test_private_skill_builder_read_actor.py, test_private_actor_no_autoflush.py,
+test_private_installation_no_autoflush.py. Independent copied witnesses converted
+to repository tests: true red38fail35pass, repaired73pass; additional persisted-target
+preflights true red10fail4pass, run-lock2fail, installation2fail; corrected preflight
+16pass and final affected/legitimate100pass5.58s. Official wrapper receipts all removed,
+indexed in b06-r14-correction-receipts.json. Initial sibling fixture incorrectly used
+removed Skill.text_content field (14 setup failures) and first Installation test
+omitted future annotations (collection error); both retained and excluded from red
+evidence. Current Run scope test's random non-member organization now expects actor
+403; real same-user two-company empty controls remain covered by new typed matrix.
+
+New production functions remain frozen/typed/no Any/cast/ignore/<=250 pure LOC/<=3
+arguments. Predicate ratchet remains46/additions0; current changed551types/format0,
+dependencies87/6. Rootr36 full and bounded native are RUNNING, no terminal success
+claimed. A fresh whole candidate and five exact-source reviews are mandatory before
+adoption; full P0–P8 ACTIVE/INCOMPLETE, B08/B13/sharedFGA/UI/later gates remain open.
+
+R14 correction bounded native actual-m83:7pass35.36s across detached writer/API/install/artifact
+files, cleanupremovedac3c6295547fef64a59ec6a9b89a259f15fb0e68b98c8d49519b5fcf88f8a990;
+owned lab inventory0. Whole1527types0errors/0warnings, Ruff,551changedformat,docs214/22
+pass. Rootr36 full still running; observed failure means no final PASS can be inferred.
+
+Rootr36 terminal5fail5409pass/3existingMCPwarnings/228.99s; cleanupremoved
+c8fa76fc499c026c295e36e9425fe8436422c81265baf7bcd530e03d9eeaa594.
+Five failures are fixture/performance assumptions: two foreign readers lacked actual
+User/membership, one Artifact batching total included fresh account/member queries,
+and two Builder fixtures staged changelog/eval without persisting before fresh
+authority/session reload. Fixtures now seed actual foreign actors and explicitly
+flush intended fixture metadata; Artifact data batching retains<=4 with account/member
+SELECTs measured separately. No production guard changed. Caller source inspection
+found no production direct changelog_draft/eval_result assignment relying on implicit
+flush. Affected five files plus all new regression controls137pass6.27s, cleanupremoved
+70ee14f1b64e303bda0a9d8789cc61e6dbebee558fd2903ee5ce3790c9b46595.
+Rootr37 full RUNNING on stable current production/tests; no full PASS inferred.
+
+Rootr37 terminal5414pass/3existingMCPwarnings/225.37s, cleanupremoved
+965c3b04f18e454cb78a4f0122e38b3db61df90b8dbcf128ebbc41233dca760e.
+Current production/tests stable before collection; final correction full gate confirmed.
+R15 entire556-path candidate requires five fresh exact-source terminal reviews before
+adoption. Root remains unadopted; full P0–P8 ACTIVE/INCOMPLETE.
+
+
+### B06 R15 all-lane rejection and complete no-effect target preflights
+
+Exact d869a9844b519709a5beaaaf0ae3f111e6338939: allfive terminalFAIL,
+aggregateREQUEST_CHANGES. Full reports/raw witnesses/32 QA receipts/hash matrices
+preserved output/org-authz/b06-review-r15 before correction. Independent full5414,
+authz766/native37 and static/control gates PASS did not override actual pre-denial
+SQL effects, revoked Conversation creation, or rollback snapshot/file/row effects.
+
+Shared org_scoped/private_scoped/resource_candidates now disable SELECT autoflush;
+private_parent_scoped inherits that option. This protects target lookup, rather than
+only the preceding account/member refresh. Queue root locking refreshes without
+autoflush; evaluation Skill hydration and SkillBuilder Agent/Conversation child
+preflights also suppress it before denial. create_conversation refreshes captured
+actor before any Agent/Conversation work. No ambient/default scope/operator bypass.
+
+New strict/frozen RevisionRollbackTarget and load_private_rollback_target refresh
+actor, lock exact scoped persisted Skill, and select exact persisted Revision plus
+complete private Skill parent before snapshot-pruned checks or byte access. Cached
+input rows do not authorize rollback. Existing package/text behavior stays behind
+that common boundary. Skill/Revision SQL filters and lock precede all snapshot read,
+file replacement and new revision effects; no new raw ownership predicate added.
+
+Typed repository regression files: test_private_conversation_creator_actor.py,
+test_private_conversation_preflight_effects.py, test_private_owned_loader_effects.py,
+test_private_detached_preflight_effects.py, test_private_revision_rollback_boundary.py,
+test_private_pending_authority.py. True red23fail15pass2.28s, cleanupremoved
+5809071030f61305563d300c1412cc0b8a8c65f5800f6e3915b84a8587be8f21; repaired
+38pass2.02s removed068408f022e1ea1f15f20a642d83ff9667b93bcead72926a2742d0738691a6ba.
+Affected revision/queue/SkillBuilder/current controls99pass4.11s removed
+0478c31c88f25f9de3cfeef5ff83eec3df0a71a85ca1c22336ea1b9bfd124887.
+Additional cached Revision->foreignSkill parent controls (added after sharedfix,
+not red claims) plus creator18pass1.27s removed
+3f01b7688f8255497d40c3909e2a6bfc5e1864269feac8d15e137024cf5f5f6d.
+Initial two new scalar-count Optional type errors corrected with real non-None
+assertions; no Any/cast/ignore. New shared production helper remains<=250pureLOC/
+<=3args/frozenDTO. Predicate ratchet46/additions0, Ruff+changed558format pass;
+changed558types final rerun pending. Rootr38 full and selected actual-m83 native
+RUNNING; no full/native terminal PASS claimed. Current563-path whole cutover still
+requires fresh five exact-source reviews before adoption. FullP0–P8ACTIVE/incomplete.
+
+R15 correction actual-m83 selected native8pass40.71s, cleanupremoved
+33bbc48a838e6c58f1e6457cef459eab1189d582d5a2bedfa5656b29403b57ee.
+Changed558types0errors/0warnings,558format,Ruff,predicates46/additions0,deps87/6,
+docs214/22 PASS. Rootr38 full stillRUNNING; no terminal/fullcandidate acceptance.
+
+Additional source-led capability preflight siblings: require_mcp_probe_scope credential
+lookup, refresh_api_key_principal root/eager lookup, lock_executable_run child lookup
+all independently autoflushed staged content before denial. New typed witness
+test_private_capability_preflight_effects.py: true red3fail0pass, cleanupremoved
+9d9d9ef8ab5388f896d6a524b86cc44f995df85dfde255f9a6d5a0be4d2862f0. Three
+lookup execution options now autoflushFalse before authority/child decisions.
+Rootr38 collected before these new tests and was running when the three lookup
+options changed; even terminal PASS would belong only to the preceding snapshot.
+It cannot approve final current source. Fresh final full gate required. No native
+claim transferred from the prior8pass across this final source extension.
+
+Rootr38 terminal1fail5453pass/3existingMCPwarnings/189.06s, removed
+c196e343da2d307aa448c00245d09718c5d2656e71b4641835a50ef7e5de69d9.
+This run predates additional capability extension and is not final acceptance.
+One genuine sequential Credential mutation issue: the guarded fresh loader discarded
+a previously authorized but unflushed service update. update/record_test now explicitly
+flush only their validated Credential row; callers still commit, unrelated pending
+content is not flushed by this explicit leaf operation. API auth and principal-refresh
+prefixes suppress autoflush around complete eager graph/actor decisions, since parent
+SELECT options alone did not cover secondary eager queries.
+
+Additional capability red3 ->initial repair2pass1fail (eagerrefresh) retained honestly.
+Final seven-file corrections plus cached API/Credential controls55pass3.29s, official
+cleanup receipt pending footer read. Initial final-corrections invocation referenced
+a nonexistent guessed test path, ran0tests/exit4/removed8c72ec805f9d2c25ae70998c27f7caa04c179a4fc0dea90cef16b19ab473b340;
+excluded and corrected using actual rg-discovered test files. Rootr39 final full and
+fresh selected native RUNNING. Current564paths; newtests43cases. No adoption.
+
+Final correction55pass receiptremoved8e9b20305bcad619dc65449e4ebf7541c1bfa105452951a3b419da36d40ca542.
+Fresh final actual-m83 native10pass58.06s, removed0998eed79f2c963941f965c1cee177fb1ac6614e7065febb05b4f5c59a21e97e;
+whole1535types0errors/0warnings andchanged559types/format/Ruff/ratchet/deps/docs pass.
+Rootr39 remainsRUNNING, no terminal/full adoption inferred.
+
+Rootr39 final current production/tests terminal5457pass/3existingMCPwarnings/248.03s,
+cleanupremoved3a30733d194447e0ac96c7adc9521a474b9d938fe03bb20318d01de9a90b52b3.
+Code/tests stable before collection; authoritative root final full gate confirmed.
+R16 whole564path candidate still requires five fresh exact-source terminal reviews
+before adoption; primaryunadopted/fullP0–P8ACTIVE/incomplete.
+
+
+### B06 R16 검토 거절 및 실제 실패 경로 수정
+
+R16 `c32a156b2ff619ae9b2d0167efc5db46454371bd`의 564경로 전체 변경에 대한
+독립 검토 5개가 모두 종료됐다. F1/F2/F4/F5는 FAIL, F3 QA는 PASS다.
+보고서·원시 로그·정리 영수증은 `output/org-authz/b06-review-r16/ledger.md`에
+해시와 함께 보존했다. 전체 5,457개 통과 결과는 이 후보에 한정하며,
+다른 검토에서 재현한 실패를 상쇄하지 않는다. 후보는 primary에 채택하지 않았다.
+
+확인된 문제는 공유 링크의 캐시된 persisted scope/Agent 부모, private active-share의
+Conversation 부모 누락, Agent 및 runtime/secret collector의 eager secondary SELECT,
+Revision/Evaluation child detail, MCP binding/Run 및 Trigger 참조의 판정 전 autoflush다.
+각 검토는 실제 SQL 쓰기 관측 후 롤백했으며 durable commit/provider 효과를 주장하지 않는다.
+
+동일한 조건을 실행하는 typed 회귀 테스트 6파일/29사례를 추가했다.
+수정 전 **23 failed / 6 passed**, 격리 루트 정리 `removed`였다.
+조회 그룹에 한정한 `db.no_autoflush`, child/binding SELECT 옵션,
+공유 링크·대화·Agent refresh 및 Conversation 부모 predicate로 수정했다.
+첫 수정에서 frozen MCP exception이 generator context manager를 통과하며 TypeError로
+변경되는 문제가 5사례에 재현됐다. MCP authorization 전체를 감싸는 구문을 제거하고
+이미 옵션이 적용된 각 조회를 사용하도록 고쳤다. exception 자료형은 변경하지 않았다.
+
+최종 회귀 **29 passed**, 기존 정상 동작 및 조직 격리 관련 **108 passed**.
+원시 로그는 `output/org-authz/p1/b06-r16-regressions-{red,green,green-r2}.log`와
+`b06-r16-related.log`다. 각 실행의 격리 정리는 `removed`로 확인됐다.
+전체/실제 PostgreSQL/정적 최종 게이트와 새 후보의 독립 검토는 완료 결과를
+별도로 기록한다. B06 및 전체 P0–P8 목표는 아직 완료되지 않았다.
+
+
+최종 수정 소스에서 rootr40 전체 **5,486 passed / 기존 MCP 경고 3개 / 240.51초**,
+정리 `removed` (`d54db0c90921c22751a998db719cf7077007618a3a3c70cf336f13c5b36d47f5`).
+관련 실제 m83 PostgreSQL **10 passed / 51.94초**, 소유 테스트 DB 잔여 0.
+변경 Python 566개 타입·형식, 전체 1,541개 타입 오류/경고 0, Ruff,
+권한 predicate 46/additions 0, dependency 87/6, 문서 214/ADR 22 검사가 통과했다.
+제품 코드·테스트는 전체 실행 전에 고정했고 이후 변경하지 않았다.
+전체 571경로 후보의 새 독립 검토 5개가 모두 통과해야 B06을 채택한다.
+전체 P0–P8 목표는 ACTIVE이며 완료를 주장하지 않는다.
+
+
+### B06 R17 검토 결과와 공용 판정 경계 수정
+
+`5d8bb3732587004c68710aeaf0a7a4561348eceb` 전체 571경로 검토 5개가 모두 종료됐다.
+F1/F2/F4/F5는 FAIL, F3는 PASS이며 모든 보고서·원시 증거·정리 영수증을
+`output/org-authz/b06-review-r17/ledger.md`에 해시와 함께 보존했다.
+F3의 새 전체 5,486개, authz 838개, native 37+2+12개 통과는 그 SHA에 한정한다.
+다른 검토에서 재현한 실패 때문에 후보는 채택하지 않았다.
+
+확인된 실패: file/Skill resource target 조회의 판정 전 autoflush, Deployment 생성·변경과
+선택 Deployment의 API Key 생성 및 Agent 게시의 eager target 조회, MCP Tool 메타데이터와
+Server Credential FK의 오래된 캐시, 중복 MCP Binding의 캐시된 다른 회사 Conversation 부모
+및 충돌 거절 전 autoflush. 모의 wire 1회 진입은 실제 외부 호출·복호화·secret 노출과 구분한다.
+별도 4파일/25사례로 **15 failed / 10 passed**를 재현한 뒤 동일 조회 경계를 수정해
+**25 passed**를 확인했다. 기존 관련 동작 **76 passed**도 통과했다.
+
+같은 공용 검증 방식의 Agent 생성·변경 연결 항목도 실제로 확인했다.
+Skill/MCP/SubAgent 및 복합 입력의 foreign/missing 16사례가 모두 판정 전 SQL 쓰기로 실패했다.
+수정은 `_validate_agent_binding_ids`에서 요청한 전체 연결 항목을 no-autoflush로 먼저 검증하고,
+그 뒤 Agent 속성·연결을 변경하도록 순서를 옮긴 것이다. 기존 권한 검사와 명시적 쓰기는 유지한다.
+새 회귀 41사례와 기존 Agent 서비스 10사례를 합쳐 **51 passed**다.
+
+새 helper는 typed request union을 사용하고 3개 인수·짧은 함수다. 전역 Session 설정,
+권한 우회·optional context·스키마·프론트엔드·공유 FGA를 변경하지 않았다.
+정적 raw SELECT 후보 74개 목록은 실행 실패 74개라는 의미가 아니다. 권한 판정과 정상 쓰기
+이후 조회를 구분해야 하며, 성공한 정상 쓰기의 autoflush는 일괄 금지하지 않는다.
+관련 원시 로그는 `output/org-authz/p1/b06-r17-*.log`와 `b06-r41-full-n4.log`다.
+rootr41 전체 및 실제 PostgreSQL·정적 최종 검사 결과는 종료 후 별도로 기록한다.
+B06 및 전체 P0–P8 목표는 ACTIVE이며 완료되지 않았다.
+
+
+최종 rootr41은 수정된 코드·테스트에서 **5,527 passed / 기존 MCP 경고 3개 / 227.60초**,
+정리 `removed` (`b0aa2d0fe5b80875f4ff1f7774f8e032d42e92789630c3cdf77f2feb38d0cb4f`)다.
+추가 정상 Agent/Builder/SubAgent 동작 **117 passed**, 실제 m83 PostgreSQL 관련 **5 passed**, 테스트 DB 잔여 0.
+변경 Python 571개 타입·형식, 전체 1,546개 타입 오류/경고 0, Ruff,
+predicate 46/additions 0, dependency 87/6, 문서 214/ADR 22 검사가 통과했다.
+제품 코드·테스트는 rootr41 수집 전에 고정했으며 이후 변경하지 않았다.
+전체 576경로의 새 후보는 정확한 SHA에서 독립 검토 5개가 모두 통과해야 채택한다.
+B06 및 전체 P0–P8 목표는 ACTIVE이며 완료를 주장하지 않는다.
+
+### B06 R18 검토 거절과 조회·게시 경계 수정
+
+R18 `1f3ab68351b157b30f5985a38ca11dd4b6229c59`의 독립 검토 다섯 개가
+모두 종료됐다. F1/F2/F4/F5는 FAIL, F3는 실행한 범위에서 PASS다.
+보고서·실패 원문·격리 정리 기록을 양쪽 작업 폴더에 보존했고 후보는 채택하지 않았다.
+F3의 전체 5,527개 및 권한 879개, 실제 m83 37+2+12개 통과는 다른 검토의
+구체적인 반례를 상쇄하지 않는다.
+
+이번 수정 전 현재 코드에서도 실제 HTTP 상세·목록의 외부 회사 하위 리소스 노출
+8건, 요약 개수 2건, 수정 후 응답과 연결 보존 검증 2건을 재현했다.
+같은 경로의 Agent 게시 요청도 이동한 Skill·Tool·MCP·SubAgent 네 경우 모두
+201로 받아들였다(정상 대조 네 경우 통과). 게시 서비스의 fallback Model 조회와
+암묵적 ArtifactVersion fallback에서는 거절 전 관련 없는 private SQL 변경이
+재현됐다. 실제 provider 호출이나 secret 복호화·노출을 주장하지 않는다.
+원문과 정리 영수증은 `output/org-authz/p1/b06-r18-*-red.log` 및
+`b06-r18-red-receipts.json`에 있다.
+
+조회는 현재 저장된 하위 리소스의 조직 범위로 link 후보를 제한하며 요약 개수에도
+같은 조건을 사용한다. 쓰기 경로는 완전한 연결을 다시 로드해 숨겨진 연결도 교체할 수
+있다. 상세·생성·수정·favorite·Builder confirm·Blueprint materialization 응답은
+공용 조회 경계를 거친다. 게시에서는 비활성 도구를 포함한 모든 직접 metadata
+export 대상을 portability 오류·payload 생성·item 변경 전에 검사한다.
+ArtifactVersion과 fallback Model 조회에는 자동 flush 방지와 현재 값 재로딩을 적용했다.
+
+첫 수정에서 하위 Agent가 목록의 독립 항목이기도 한 경우 `populate_existing`가
+응답에 필요한 relationship을 비우는 실제 async ORM 오류 네 건을 발견했다.
+실행 중 `inspect(...).unloaded`로 상태를 확인하고 같은 범위의 직접 조회 옵션을
+하위 Agent에도 적용해 수정했다. 첫 실패 기록은 보존했다.
+새 회귀 검증 네 파일 44개가 통과했고 격리 루트는 제거됐다.
+관련 기존 검사에서 소유자를 빠뜨린 비시스템 Tool 테스트 데이터를 확인해
+에이전트 소유자를 명시했다. 전체·native·최종 정적 검사와 새 후보의 독립 검토는
+별도로 이어간다. B06 및 전체 P0–P8은 ACTIVE이며 완료되지 않았다.
+
+R18 수정 후 최종 실행 결과: 전체 백엔드 5,571개 통과(기존 MCP 경고 3개,
+228.18초), 새 회귀 44개, 관련 기존 동작 163개, 실제 m83 작성·게시 5개 통과.
+전체 1,552개 파일 타입 오류·경고 0, 변경 Python 577개 타입·형식 통과,
+권한 predicate 46/추가 0, 의존성 87/기존 순환 6, 문서 214/ADR 22 검사 통과.
+전체 테스트 정리 영수증은
+`33784d73b19f8b6c8ae696753e3cd02bd3f14c578ebd42ce407a098fc2989728`이며
+격리 루트는 제거됐다. 현재 전체 변경은 582경로다. 이 결과는 구현 검증이며,
+새 후보의 독립 검토 다섯 개가 모두 통과하기 전에는 B06 채택을 주장하지 않는다.
+
+최종 Ruff 재검사에서 unread 집계의 동적 `setattr`가 B010에 걸렸다.
+`AgentPresentation` frozen DTO로 값을 반환하도록 바꿨고 응답에서 명시적으로 반영한다.
+변경 후 새 회귀·관련 기존 동작을 합친 207개, 전체 1,552개 파일 타입 검사와
+Ruff가 통과했다. 위 R42 전체 5,571개 결과는 이 DTO 변경 전 결과로 보존한다.
+새 후보의 QA 검토가 최종 고정 소스에서 전체 검사를 직접 실행하며, 그 결과가
+나오기 전에는 현재 소스의 전체 검사 통과를 주장하지 않는다.
+
+### B06 R19 검토 거절과 설치·worker 경계 수정
+
+R19 `256df39301f463013a098eae40d6c7ad70797550`의 다섯 검토가 모두 종료됐고,
+F1/F2/F4는 FAIL, F3/F5는 실행한 범위에서 PASS다. 보고서·반례·정리 기록을
+양쪽 작업 폴더에 보존했으며 후보는 채택하지 않았다. F3은 최종 DTO를 포함한
+고정 소스에서 전체 5,571개, 실제 m83 37+2+12개 검사를 통과했다. 이 결과는
+설치·Blueprint·실행 완료 경계의 구체적인 실패를 상쇄하지 않는다.
+
+설치에서는 실제 회사 선택 쿠키를 B로 바꾸었을 때 Agent A와 private Item A가
+404인데도 설치 요청은 201로 받아들여 B의 Blueprint에 A의 비공개 system prompt를
+복사하는 문제가 확인됐다. 일반 사용자와 실제 운영자 모두 재현됐고, A의 정상 설치는
+통과했다. 최초 검토의 중복 쿠키로 인한 Item 상세 200 주장은 제외했다. 현재 설치
+진입 조회는 기존 catalog 후보 범위를 사용하며 private 회사 경계를 적용한다.
+공개·unlisted·플랫폼 카탈로그의 정상 설치 의미는 유지한다.
+
+없거나 이동한 버전 조회는 관련 없는 staged SQL을 flush하지 않고, 현재 item_id와
+version_id를 함께 확인한다. 암묵적인 latest version 경로에서 물리적으로 다른 항목으로
+이동한 버전을 설치하던 문제를 실제 HTTP로 재현했다. 최종 거절 전에 eager loader가
+이동한 버전 payload를 읽는 문제도 실제 SQL 두 사례로 확인해 eager 조회를 제거했다.
+현재 설치 관련 회귀와 기존 정상 검사 38개가 통과했다.
+
+worker의 완료된 edit/regenerate branch 처리에서는 소속이 제거된 뒤에도 checkpoint
+콜백을 읽고 실제 branch 값을 커밋하는 문제가 재현됐다. metrics와 attachment
+backfill에서도 같은 소속 제거 뒤 source 호출 두 사례가 재현됐다. 공용 frozen target이
+캡처한 context를 전달하고, 현재 actor와 정확한 대화 부모를 검사한 뒤 private 작업을
+수행한다. branch 읽기 도중 소속이 제거된 경우도 변경 직전에 다시 검사한다.
+대화의 물리적 회사 이동·소속 제거·정상 대조 및 기존 worker 검사 22개가 통과했다.
+checkpoint 콜백은 제한된 대체 구현이며 실제 provider/checkpointer 검증을 주장하지 않는다.
+
+현재 수정 후 실제 m83 PostgreSQL에서 회사별 설치·동시 설치·worker 관련 5개가
+통과했고 생성한 테스트 DB 잔여는 0이다. Blueprint의 전체 그래프 사전 검사 수정은
+진행 중이며, 이후 전체 고정 후보에서 새 독립 검토 다섯 개가 필요하다.
+B06 및 전체 P0–P8 목표는 ACTIVE이며 완료되지 않았다.
+
+최종 실행 경로 감사에서 root의 일부 pytest 명령이 child TMPDIR·basetemp·cache를
+명시하지 않아 격리 루트 밖에 임시 폴더 세 개를 남긴 것을 확인했다. 실행 시각·파일시스템
+식별값·해당 테스트 이름으로 소유권을 확인한 세 폴더만 no-follow 방식으로 옮긴 뒤
+공식 정리 helper로 제거했다. 공유 부모는 보존했으며 실행 전 경로 부재를 기록했다는
+주장은 하지 않는다. 원래 로그는 보존하고 최종 정리 증거에서 제외했다.
+올바른 child 경로를 명시한 최종 관련 검사 60개, 실제 PostgreSQL 5개가 다시 통과했고
+격리 루트는 제거됐다. 테스트 DB 잔여 0, 안정화한 installer/worker 9개 파일 해시는
+변하지 않았다. 이 재실행은 확인된 격리 경로 오류를 수정하기 위한 검증이다.
+
+R19 Blueprint 수정은 전체 dependency와 최종 Agent 입력을 no-autoflush 읽기 계획으로
+확정한 뒤 한 번 적용하도록 바꿨다. Tool·MCP 생성, 기존 MCP credential 변경,
+Skill·SubAgent·모델·fallback·credential·middleware·runtime policy·AgentCreate 검증이
+모두 적용 경계 앞에 있다. frozen DTO에 최종 UUID를 예약하고 기존 Agent writer의
+추가 검증과 router 감사·커밋 순서는 유지한다.
+
+실제 서비스·JWT/CSRF HTTP의 늦은 거절에서 DML이 없으며 정상 대조는 실제 행과
+연결을 생성한다. 캐시된 Blueprint·모델·credential·Tool·MCP 상태 다섯 실패도
+재현했고, 현재 SQL projection을 사용해 수정했다. 관련 없는 미저장 행을 덮어쓰지
+않는다. 요청 fallback 순서·중복·기존 hidden fallback 허용 의미와 MCP의 세 전략,
+동일 요청 재사용·생략값·native construction 변환을 유지한다.
+
+마지막 신규 회귀 27개, 관련 기존·신규 선택 검사 103개(설정상 제외 1개)가
+통과했다. 전체 백엔드 타입 오류·경고 0, 소유한 Python Ruff와 새 10개 파일 구조
+검사 통과다. 초기 MCP fixture의 key_id 누락, 대조 검사의 async relationship 로딩과
+별도 세션의 오래된 count, 기존 credential mismatch 409를 422로 기대한 오류는
+행동 증거에서 제외하고 원문을 보존했다. 최초 조합 정적 명령의 exit 0이 Ruff
+오류를 가린 결과도 통과 근거로 쓰지 않으며 마지막 fail-fast 정적 검사가 통과했다.
+원문·소스 해시는 `output/org-authz/p1/b06-r19-blueprint-*`에 있다.
+
+R19 수정 후 첫 전체 R43 검사는 5,613개 통과·1개 실패(기존 MCP 경고 3개,
+218.07초)였다. 실패는 기존 queue-worker metrics 테스트가 조직 context 없는
+SimpleNamespace를 AgentConfig로 cast한 데서 재현됐다. production fallback을
+추가하지 않고 실제 AgentConfig와 명시적 테스트 조직을 전달했으며 cast를 제거했다.
+해당 테스트·worker 관련 31개와 수정 파일 타입·Ruff·형식 검사가 통과했다.
+R43 실패 원문과 별도 red 재현은 보존한다. 수정 전 통과한 전체 정적·597경로 해시와
+수정 후 테스트 파일 하나의 차이를 기록했으며 다음 전체 검사는 별도로 실행한다.
+
+수정 후 최종 R44 전체 검사는 **5,614 passed / 기존 MCP 경고 3개 / 231.23초**다.
+격리 루트 정리 `removed` (`23b285b201c9e8b2362085c9b588ec7be8c5298209ffa8401d67f878cc8d8c3b`).
+전체 검사 동안 597경로의 소스 해시가 같았고 종료 후 다시 확인했다.
+전체 Ruff·타입 검사, 변경 Python 592개 타입·형식, predicate 46/추가 0,
+의존성 87/기존 순환 6, 문서 214/ADR 22 검사는 R43에서 통과했다.
+R43에서 발견한 테스트 파일 하나는 별도의 타입·Ruff·형식·관련 31개 검사를 통과했고
+R44에 포함됐다. 최종 후보 생성 전 변경 파일·문서 검사를 다시 확인한다.
+B06은 새 정확한 SHA의 독립 검토 다섯 개가 모두 통과해야 채택하며,
+전체 P0–P8 목표는 ACTIVE다. source/footer 이후 제품 코드·테스트를 바꾸지 않는다.
+
+### B06 R20 검토 거절과 Assistant·설치 업데이트 수정
+
+R20 `b25ba6eec593242f2c2cabda0b7b2f2711cc7952`의 다섯 유효 검토가 종료됐다.
+F1/F2/F4/F5는 FAIL, F3는 실행한 범위에서 PASS다. 최초 F2/F4는 자동 내용 필터로
+중단되어 INCONCLUSIVE로 보존했고, 각각 한 번의 제한된 재검토가 기존 반례와 현재
+소스·정상 대조를 확인해 FAIL을 보고했다. 원문·보고서·해시·정리 기록은 양쪽 작업
+폴더의 `output/org-authz/b06-review-r20/`에 있다. 후보는 채택하지 않았다.
+
+Assistant의 공통 조회에서 이동한 하위 Tool metadata를 보여주고, 소속 제거 거절 전에
+대기 중인 Tool INSERT를 실행하는 두 실패를 재현했다. 현재 actor와 범위가 적용된
+Agent projection을 재사용한다. Tool·Skill·MCP·SubAgent의 현재 metadata와 숨겨진
+물리적 연결 보존, 거절 전 target SQL·provider 준비 미호출을 포함한 신규 16개와
+기존 관련 143개 검사가 통과했다. 최초 직접 서비스 import는 실제 의존성 래칫에
+걸렸으므로 기준선을 늘리지 않고 공통 권한 모듈 경계를 정리한다.
+
+설치 업데이트 overwrite·keep_current가 다른 Item으로 이동한 버전을 받아들이는
+두 실패와 정상 대조 네 사례를 실제 HTTP로 재현했다. 초기 설치·업데이트는 같은
+현재 catalog source 조회와 item/version 소속 검증을 사용한다. 자격증명만 갱신하는
+Agent·MCP 재사용 경로의 retained version도 같은 검증을 거친다. 카탈로그 최신 버전
+관계와 단일·일괄 버전 조회는 예상 Item을 함께 확인한다. 잘못 연결된 설치본의 상태
+요약은 다른 Item의 requirements를 사용하지 않으며, 캐시된 버전 상세도 현재 저장된
+부모와 내용을 재조회한다. 관련 검사 107개 통과, 격리 루트 정리 removed다.
+일반 HTTP 상세 대조는 먼저 통과했지만 같은 세션의 캐시된 직접 서비스 호출은
+별도로 실패했다. 두 결과를 구분하며, stale cache 거절·갱신 근거를 HTTP 대조만으로
+추론하지 않는다.
+
+수정 중 첫 전체 검사는 5,646 passed / 1 failed / 7 warnings / 234.19초였다.
+실패는 `test_runtime_dependency_guard`의 Assistant 직접 서비스 import다. 경고 중
+네 개는 신규 fixture plugin assertion rewrite 순서, 세 개는 기존 MCP deprecation이다.
+정리 루트는 `98d9082825be19ec3142c8448ba2c04ff2a6ac65dce9131241cf75f76ab6c125`
+removed다. 이 전체 실행 뒤의 추가 수정에 대한 최종 전체 통과를 주장하지 않는다.
+실제 m83 수정 관련 5개 검사와 테스트 DB 잔여 0을 확인했고, 이후 version 상세·요약
+변경의 native 검사는 별도로 실행한다. 새 정확한 SHA의 다섯 독립 검토가 모두 통과해야
+B06을 채택하며, 전체 P0–P8 목표는 ACTIVE다.
+
+후속 검증: 버전 소속 공통 경계 수정 후 관련 107개 검사와 실제 m83 PostgreSQL
+업데이트·회사별 카탈로그 5개가 통과했다. native 정리 루트는
+`e136f062034e561d75f703d1b5000aa1281ee0267501045bcea6b644a4eb5108` removed다.
+Assistant 조회 구현은 `authz.agent_projection_scope.load_agent_presentation`으로
+옮겼으며 서비스와 런타임이 같은 구현을 호출한다. 실제 의존성 래칫은 기존 기준선
+87건/순환 6건 그대로 통과했고 관련 기존·래칫 158개가 통과했다. fixture 등록 순서
+경고는 공유 fixture 변경이나 경고 무시 없이 수정했다. 최종 후보 QA가 고정된 정확한
+소스에서 전체 검사를 실행한다. 수정 전 전체 FAIL은 그대로 보존한다.
+
+R20 수정 후 최종 고정 소스의 전체 검사: **5,651 passed / 기존 MCP 경고 3개 / 227.13초**.
+격리 정리 `removed` (`a74a12c1467ec42265ed10756474db49259aa83b16d7d7b3ab1faa43bab6a67d`). 검사 전후 606경로의 해시가
+같았으며, 아래 증거 기록만 이후 추가했다. 최종 전체 Ruff·타입 오류/경고 0, 변경
+Python 601개 타입·형식, 의존성 87/기존 순환 6, predicate 46/추가 0, 문서
+214/ADR 22 및 frozen schema 9개 검사가 통과했다. 고정 후보의 독립 검토와
+B06 채택은 별도이며 전체 P0–P8은 완료되지 않았다.
+
+
+### B06 R21 거절 후 수정 및 R22 검토 준비
+
+R21의 다섯 독립 검토가 모두 끝난 뒤 Blueprint 조회의 선행 INSERT와 멤버십
+철회 후 카탈로그 반환 문제로 후보를 거절했다. 보고서와 원본 실행 기록을 두
+체크아웃에 보존했다. Blueprint 조회는 현재 DB의 scalar projection으로 공통화하고,
+카탈로그는 현재 사용자 상태와 실제 조회 후보를 먼저 확인한다. 거절된 조회의
+대기 쓰기를 막으면서 정상 이름 변경을 보존하는 회귀 검사도 추가했다.
+
+최종 고정 617경로 소스의 전체 검사 **5,715 passed / integration 185 제외 /
+기존 MCP 경고 3개 / 636.03초**. 검사 전후 해시가 같았다. 격리 정리
+`10078c589aeef082a8b1122bb4e425e57fd3e8895479628004556a42426a3325` removed.
+관련 카탈로그 220개와 실제 m83 조회·게시·업데이트 9개가 통과했다. 전체 Ruff,
+타입 오류·경고 0, 변경 Python 612개 형식 검사가 통과했고, 불필요해진 두 의존성만
+기준선에서 제거하여 실제 의존성 85건/기존 순환 6건으로 통과했다.
+
+처음 전체 실행의 임시 디렉터리 설정 오류(10실패/3,302통과 후 중단)와 정상 변경
+보존 결함 발견 전 중단한 실행(1,025통과)은 최종 전체 통과 근거에서 제외한다.
+각 실행의 원본과 removed 정리 기록을 보존했다. 이 문단만 전체 검사 이후
+추가했으며 제품·테스트 소스는 바뀌지 않았다. R22 정확한 SHA의 새 다섯 검토와
+B06 채택은 아직 완료되지 않았다. 전체 P0–P8 목표도 ACTIVE다.
+
+### B06 R22 거절 후 수정 및 R23 검토 준비
+
+다섯 검토의 보고서와 원본을 모두 보존한 뒤 R22를 거절했다. 카탈로그 검색의
+정상 미저장 이름 변경 보존, 중복 ownership 조건 제거, 대기 입력 재시도에서
+현재 사용자·멤버십·실제 대화와 입력 부모 관계를 먼저 검사하도록 수정했다.
+정상 재시도의 최초 파일 스냅샷과 대기 쓰기는 유지한다. 관련 카탈로그 98개,
+대기 입력 53개, 실제 m83 검색 2개와 재시도 2개 검사가 통과했다.
+
+수정된 제품과 수집된 기본 테스트의 전체 결과는 **5,746 passed / 기존 MCP
+경고 3개 / 201.39초**다. 격리 정리
+`7d9b0fc722e211f23405b7801b42e4353e85879f46cb2838d0e85dc130af7cb6` removed.
+전체 수집 이후 native 전용 재시도 테스트를 추가했으므로 이 결과를 최종 전체
+소스 고정 증거로 주장하지 않는다. 정확한 R23 SHA에서 새 QA가 전체와 실제 DB
+검사를 실행한다. 잘못된 예외 형식·actor SELECT 금지 등 native 테스트 작성
+실패는 원본과 정리 기록을 보존했고 현재 권한 기준을 검증하는 형태로 수정했다.
+B06 채택, 후속 P1 및 전체 P0–P8 완료는 아직 대기 중이다.
+
+
+### B06 R23 거절 후 공통 조회·대기 입력 경계 수정
+
+다섯 검토의 보고서와 원본을 모두 보존한 뒤 R23을 거절했다. 공통 대화 조회와
+잠금, 큐 잠금은 현재 사용자를 먼저 확인한다. 대기 입력 작업기는 식별·바인딩
+메타데이터와 현재 권한을 확인한 뒤 내용을 읽는다. 권한 회수 후에도 필요한 실패
+정리는 내용을 읽지 않고 수행하며, 복구 수집은 ID만 읽는다. 정상 대기 쓰기,
+최초 입력 스냅샷, 대화 기록과 취소·실패 동작은 회귀 검사로 보존했다.
+
+최종 소스 628경로를 검사 전후 고정하여 **5,791 passed / 기존 MCP 경고 3개 /
+221.23초**, 현재 명시 매핑의 실제 m83 **72 passed / 350.67초**를 확인했다.
+전체 Ruff·타입 오류/경고 0, 변경 Python 623개 타입·형식, 소유자 조건 추가 0,
+기존 의존성 85/순환 6, 문서 214/ADR 22와 frozen 모델 검사가 통과했다.
+전체 정리 `0887dad52f0a57b05685972c5b1629fa74f3e6dee79e83b50212cb89728b805d`,
+native 정리 `1e9c7c30d28d989b2e1522bbec60a5af3a7f02dc0b05380eacd865b22ad563ea`,
+정적 정리 `a7ee80ace9991457a0dafb583c6f7477bd01385a7ea24c7f8fb902ce57bfb31c`
+모두 removed다. 이 기록만 검사 후 추가했으며 제품·테스트 소스는 바뀌지 않았다.
+
+새 영구 검사에서 unit 읽기 순서 20실패와 native 2실패를 먼저 재현한 원본,
+작업기 15실패 및 작성·형식·동시 편집 중 검사 실패를 별도 보존했다. 검사 통과는
+R24 고정 커밋의 새 다섯 검토와 B06 채택을 대신하지 않는다. 운영 환경·실제
+제공자·브라우저·사용자 시험 및 전체 P0–P8 완료도 아직 진행 범위다.
+
+### B06 R24 검토 거절 후 설치본 조회 순서 수정
+
+R24 후보 `d5af2b7c3bab468f14d4dc4a607930bc71460891`의 다섯 최종 보고서와
+원본 증거를 양쪽 체크아웃에 보존한 뒤 종합 실패를 기록했다. 계획·코드·실행·맥락
+검토는 제한된 범위에서 통과했지만, 보안 검토는 설치본 업데이트·삭제에서 현재
+구성원 자격 확인 전에 비공개 설치본 행을 읽는 결함을 재현했다(거부 4건 실패,
+정상 4건 통과). 거부 응답은 404였고 쓰기나 HTTP 내용 노출을 입증한 결과는 아니다.
+이 후보는 채택하지 않았다.
+
+`load_private_installation`의 현재 권한 확인을 기존 범위·하위 자원 잠금 조회
+앞으로 이동했다. 기존 오류, 범위 조건과 정상 저장 동작은 유지했다. 직접 조회·
+업데이트·삭제, 조직·회사 구성원 제거·계정 비활성화, 일반 사용자·운영자를 확인하는
+새 회귀 24건은 수정 전 실패했고, 수정 후 관련 회귀 49건이 통과했다. 실제 m83의
+설치본 업데이트·삭제 시나리오 8건도 통과했다. 정상 요청의 명시적 저장은 별도 세션에서
+확인했으며, 거부 요청에서는 비공개 설치본 조회와 쓰기가 없었다.
+
+전체 백엔드 5,815건(기존 MCP 경고 3건), 명시적으로 매핑한 PostgreSQL 80건,
+전체 Ruff·Pyright, 변경 Python 625개 타입·포맷, 소유자 판정 45/추가 0,
+의존성 85/6, 문서 214/22와 모델·고정 스키마 검사 4건이 통과했다. 검증 전후
+변경 파일 630개의 바이트 해시는 같았고 테스트 DB 잔여 수는 0이었다. 이 문서의
+증거 기록은 해당 검증 후 추가했다. 새 후보의 다섯 독립 검토와 채택은 아직 남았다.
+원본 결과는 `output/org-authz/p1/b06-r24-*`, 거절된 검토는
+`output/org-authz/b06-review-r24/`에 있다. 전체 P0–P8 목표는 계속 진행 중이다.
+
+## B06 R25 평가 작업자 조회 순서 보완 (검토 대기)
+
+R25 후보의 다섯 검토 결과와 원본 증거를 양쪽 작업 폴더에 보존한 뒤 채택을
+보류했다. 평가 내용과 스킬 본문이 현재 사용자 권한보다 먼저 조회됐고, 커밋의
+필수 계획 참조와 첫 검토 명령의 증거 기록도 보완이 필요했다.
+
+평가 작업자는 실행 식별정보와 스킬 소속만 먼저 확인하고, 현재 계정·조직·회사
+권한을 검증한 뒤 해당 스킬·평가 세트·실행의 본문을 읽도록 수정했다. 취소 확인과
+재시작 복구에는 상태·식별정보만 사용한다. 기존 평가 결과, 사용량, 취소·실패·감사
+기록과 정상 저장 동작은 유지했다. 새 조회 순서·정리 회귀 12건은 수정 전 실패했고,
+수정 후 관련 테스트 42건이 통과했다. 계획의 옛 통합 테스트 경로는 실제 여섯 모듈과
+명시적 PostgreSQL 사례로 대응시켜 기존 동작 기준을 그대로 검증했다.
+
+전체 백엔드 5,827건(기존 MCP 경고 3건), 권한 테스트 1,175건, 명시적 PostgreSQL
+88건, 대응한 런타임 회귀 174건이 통과했다. Ruff·Pyright, 변경 Python 628개 타입·
+포맷, 소유자 판정 45/추가 0, 의존성 85/6, 문서 214/22와 모델·고정 스키마 검사
+4건도 통과했다. 검증 전후 소스 633개의 해시가 같았고 임시 테스트 DB 잔여 수는
+0이었다. 이 증거 기록은 해당 검증 후 추가했다. 원본은 `output/org-authz/p1/b06-r25-*`,
+거절된 검토는 `output/org-authz/b06-review-r25/`에 있다. 새 후보의 다섯 독립 검토와
+채택은 아직 남았다. 전체 P0–P8 목표는 계속 진행 중이다.
+
+## B06 R26 실행 시작 전 취소 조회 보완 (검토 대기)
+
+R26 후보는 검토 절차의 증거 누락과 실행 시작 전 취소 처리의 불필요한 본문 조회로
+채택을 보류했다. 다섯 보고서와 원본 증거를 양쪽 작업 폴더에 보존하고 소스 633개의
+일치를 확인한 뒤 수정했다. 현재 권한을 잃은 사용자의 작업도 취소·복구할 수 있도록
+유지하면서, 대화·실행·입력 조회를 필요한 식별정보와 상태로 좁혔다. 보호된 실행이나
+다른 프로세스 소유 실행에는 취소 ACK를 만들지 않고, 잘못 연결된 입력은 변경하지 않는다.
+
+새 조회 회귀 8건은 수정 전 실패했고, 수정 후 관련 회귀 26건이 통과했다. 정상·조직
+구성원 제거·회사 구성원 제거·계정 비활성화와 일반 사용자·운영자를 조합한 실제 m83
+사례 8건에서도 취소·ACK·입력 수정 횟수·원본 내용·이벤트·감사 기록을 확인했다.
+전체 백엔드 5,838건(기존 MCP 경고 3건), 권한 테스트 1,186건, 명시적 PostgreSQL
+96건과 정적 검사가 통과했다. 변경 Python 630개 타입·포맷, 소유자 판정 45/추가 0,
+의존성 85/6, 문서 214/22, 모델·고정 스키마 4건과 새 코드 규칙도 통과했다. 검증
+전후 소스 635개의 해시가 같았고 임시 테스트 DB 잔여 수는 0이었다.
+
+이 기록은 검증 후 추가했다. 원본은 `output/org-authz/p1/b06-r26-*`, 거절된 검토는
+`output/org-authz/b06-review-r26/`에 있다. 새 후보의 검토 명령은 첫 실행부터 설정·
+문서·원본 로그·정리 기록을 함께 제공한다. 다섯 독립 검토와 채택은 아직 남았으며
+전체 P0–P8 목표는 계속 진행 중이다. B08 보관·복원·영구 삭제 계획은 실행 가능성
+검토를 통과했고, B06 반영 후 현재 소스를 다시 확인해 개발을 시작한다.

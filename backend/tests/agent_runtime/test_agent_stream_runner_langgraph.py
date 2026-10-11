@@ -8,10 +8,13 @@ import pytest
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.runtime_config import AgentConfig
 from app.hooks import HookResult
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 
 def _cfg() -> AgentConfig:
     return AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="fake",
         model_name="fake-chat",
         api_key=None,
@@ -24,6 +27,7 @@ def _cfg() -> AgentConfig:
 
 def _cfg_with_hooks() -> AgentConfig:
     return AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="fake",
         model_name="fake-chat",
         api_key=None,

@@ -39,7 +39,9 @@ class ConversationUpdate(BaseModel):
 
 class ConversationResponse(BaseModel):
     id: uuid.UUID
-    agent_id: uuid.UUID
+    agent_id: uuid.UUID | None
+    agent_name_snapshot: str
+    last_activity_at: UtcDatetime
     title: str | None
     is_pinned: bool
     unread_count: int = 0
@@ -66,7 +68,7 @@ class ConversationAgentBrief(BaseModel):
 
 
 class ConversationWithAgentResponse(ConversationResponse):
-    agent: ConversationAgentBrief
+    agent: ConversationAgentBrief | None
 
 
 class ConversationWithAgentListEnvelope(BaseModel):

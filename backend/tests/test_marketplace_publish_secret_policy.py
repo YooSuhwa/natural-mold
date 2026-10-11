@@ -33,6 +33,7 @@ from app.marketplace.mcp_server import build_mcp_server_payload
 from app.marketplace.secret_scan import is_suspicious_secret_value
 from app.models.mcp_server import McpServer
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 # ===========================================================================
@@ -135,9 +136,7 @@ SECRET_ARGS = ["--api-key", "aB3kLm9Qp5Rs7Tv1Wx4Yz6"]
 
 class TestSuspiciousValuePolicy:
     @pytest.mark.parametrize(("value", "header"), BENIGN_CASES)
-    def test_benign_structured_values_allowed(
-        self, value: str, header: str | None
-    ) -> None:
+    def test_benign_structured_values_allowed(self, value: str, header: str | None) -> None:
         assert not is_suspicious_secret_value(value, header_name=header), (
             value,
             header,
@@ -215,7 +214,7 @@ def _server(**overrides) -> McpServer:
         "status": "connected",
     }
     data.update(overrides)
-    return McpServer(**data)
+    return McpServer(**data, org_id=TEST_ORG_ID, tenant_id=TEST_TENANT_ID)
 
 
 class TestBuildPayloadGate:
@@ -281,9 +280,7 @@ class TestBuildPayloadGate:
             _server(headers={"Authorization": "=Bearer {{ $credentials.access_token }}"}),
             credential_definition_key="mcp_oauth2",
         )
-        assert payload["headers"] == {
-            "Authorization": "=Bearer {{ $credentials.access_token }}"
-        }
+        assert payload["headers"] == {"Authorization": "=Bearer {{ $credentials.access_token }}"}
 
 
 # ===========================================================================
@@ -313,9 +310,7 @@ async def test_publish_mcp_server_rejects_literal_secret_env_var(
     db: AsyncSession,
 ) -> None:
     await _ensure_test_user(db)
-    server = _server(
-        env_vars={"TOKEN_BLOB": "aB3kLm9Qp5Rs7Tv1Wx4Yz6Cd0Ef2Gh"}, headers={}
-    )
+    server = _server(env_vars={"TOKEN_BLOB": "aB3kLm9Qp5Rs7Tv1Wx4Yz6Cd0Ef2Gh"}, headers={})
     db.add(server)
     await db.commit()
 

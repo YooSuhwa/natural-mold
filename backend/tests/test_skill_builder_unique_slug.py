@@ -4,11 +4,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.skill_builder import SkillBuilderStatus
 from app.services import skill_builder_service
+from app.services.skill_builder_mutation_scope import SkillBuilderMutationTarget
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -22,7 +26,7 @@ def _skill_content(*, name: str = "skill") -> str:
     )
 
 
-def _korean_draft() -> dict[str, object]:
+def _korean_draft() -> dict[str, JsonValue]:
     name = "회의록 액션 아이템 정리"
     return {
         "name": name,
@@ -47,22 +51,28 @@ async def test_confirm_create_uses_unique_slug_when_korean_draft_falls_back_to_s
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        await skill_service.create_text_skill(
+        await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Existing Skill",
-            slug="skill",
-            description="Existing slug owner.",
-            content=_skill_content(name="existing-skill"),
+            TextSkillCreation(
+                name="Existing Skill",
+                slug="skill",
+                description="Existing slug owner.",
+                content=_skill_content(name="existing-skill"),
+            ),
+            unit_context(TEST_USER_ID),
         )
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="회의록 정리 스킬을 만들어줘",
         )
-        await skill_builder_service.save_draft_package(db, session, draft=_korean_draft())
+        await skill_builder_service.save_draft_package(
+            db, SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)), _korean_draft()
+        )
 
-        created = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        created = await skill_builder_service.confirm_session(
+            db, session, context=unit_context(TEST_USER_ID)
+        )
         await db.commit()
 
     assert created.name == "회의록 액션 아이템 정리"

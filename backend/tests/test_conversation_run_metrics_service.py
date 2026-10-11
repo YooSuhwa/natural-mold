@@ -9,6 +9,7 @@ from sqlalchemy import Table, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.agent_runtime.run_metrics import RunMetricActivity, RunMetricsSnapshot
+from app.authz.conversation_scope import require_conversation_agent_id
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_metrics import ConversationRunMetrics
@@ -18,6 +19,7 @@ from app.services.conversation_run_metrics_service import (
     persist_run_metrics,
     persist_run_metrics_and_usage,
 )
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 from tests.integration._seed import seed_conversation_with_agent
 
@@ -190,8 +192,8 @@ async def test_real_run_retry_keeps_one_metrics_and_token_usage_row() -> None:
         run = await conversation_run_service.create_run(
             session,
             conversation_id=conversation_id,
-            agent_id=conversation.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conversation),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="metrics",
         )
@@ -255,8 +257,8 @@ async def test_unknown_first_snapshot_blocks_conflicting_retry_token_insert() ->
         run = await conversation_run_service.create_run(
             session,
             conversation_id=conversation_id,
-            agent_id=conversation.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conversation),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="unknown first",
         )

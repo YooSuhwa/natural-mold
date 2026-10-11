@@ -8,15 +8,17 @@ from sqlalchemy import JSON, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
 
 
 def utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-class AgentDeployment(Base):
+class AgentDeployment(RequiredOrgScope, Base):
     __tablename__ = "agent_deployments"
     __table_args__ = (
+        *resource_scope_constraints("agent_deployments", system=False),
         UniqueConstraint("public_id", name="uq_agent_deployments_public_id"),
         UniqueConstraint("agent_id", name="uq_agent_deployments_agent_id"),
         Index("ix_agent_deployments_user_id", "user_id"),
@@ -47,9 +49,10 @@ class AgentDeployment(Base):
     )
 
 
-class AgentApiKey(Base):
+class AgentApiKey(RequiredOrgScope, Base):
     __tablename__ = "agent_api_keys"
     __table_args__ = (
+        *resource_scope_constraints("agent_api_keys", system=False),
         UniqueConstraint("key_id", name="uq_agent_api_keys_key_id"),
         Index("ix_agent_api_keys_user_id", "user_id"),
     )

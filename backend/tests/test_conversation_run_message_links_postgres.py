@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.models.message_event import MessageEvent
 from app.services import conversation_run_service
 from app.services.conversation_run_message_links import RunMessageLinkQuery, list_run_message_links
+from tests.authz.unit_scope_fixture import unit_context
 from tests.test_conversation_run_message_links import _create_run, _seed_conversation
 
 
@@ -68,7 +69,7 @@ async def test_postgres_json_projection_omits_ambiguous_and_retains_same_run_lin
                 db,
                 RunMessageLinkQuery(
                     conversation_id=conversation.id,
-                    user_id=owner_id,
+                    context=unit_context(owner_id),
                     message_ids=(str(ambiguous_message_id), str(retained_message_id)),
                 ),
             )

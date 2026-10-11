@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.models.agent import Agent
 from app.models.memory import AgentMemorySettings
 from app.services import agent_service, memory_service
+from tests.authz.unit_scope_fixture import unit_context
 from tests.integration.test_conversation_run_delete_races import (
     SeededGraph,
     _backend_pid,
@@ -23,7 +24,7 @@ async def test_agent_delete_first_makes_settings_read_return_missing(
     async with pg_factory() as delete_db, pg_factory() as settings_db:
         agent = await delete_db.get(Agent, graph.agent_id)
         assert agent is not None
-        await agent_service.delete_agent(delete_db, agent)
+        await agent_service.delete_agent(delete_db, agent, context=unit_context(graph.user_id))
         settings_pid = await _backend_pid(settings_db)
         attempted, finished = anyio.Event(), anyio.Event()
         results: list[AgentMemorySettings | None] = []
@@ -31,7 +32,9 @@ async def test_agent_delete_first_makes_settings_read_return_missing(
         async def read_settings() -> None:
             attempted.set()
             results.append(
-                await memory_service.get_agent_settings(settings_db, graph.agent_id, graph.user_id)
+                await memory_service.get_agent_settings(
+                    settings_db, graph.agent_id, unit_context(graph.user_id)
+                )
             )
             finished.set()
 
@@ -73,12 +76,14 @@ async def test_settings_read_first_fences_delete_until_settings_commit(
 
         async def read_settings() -> None:
             results.append(
-                await memory_service.get_agent_settings(settings_db, graph.agent_id, graph.user_id)
+                await memory_service.get_agent_settings(
+                    settings_db, graph.agent_id, unit_context(graph.user_id)
+                )
             )
             read_finished.set()
 
         async def remove() -> None:
-            await agent_service.delete_agent(delete_db, agent)
+            await agent_service.delete_agent(delete_db, agent, context=unit_context(graph.user_id))
             await delete_db.commit()
             delete_finished.set()
 

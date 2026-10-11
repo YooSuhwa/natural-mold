@@ -15,14 +15,16 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
 
 
 def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-class AgentBlueprint(Base):
+class AgentBlueprint(RequiredOrgScope, Base):
     __tablename__ = "agent_blueprints"
+    __table_args__ = resource_scope_constraints("agent_blueprints", system=False)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -50,17 +52,11 @@ class AgentBlueprint(Base):
     origin_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    origin_kind: Mapped[str] = mapped_column(
-        String(40), nullable=False, default="imported_by_me"
-    )
+    origin_kind: Mapped[str] = mapped_column(String(40), nullable=False, default="imported_by_me")
 
-    install_status: Mapped[str] = mapped_column(
-        String(30), nullable=False, default="active"
-    )
+    install_status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
     is_dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    created_agent_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    created_agent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now

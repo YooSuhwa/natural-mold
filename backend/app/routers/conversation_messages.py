@@ -14,7 +14,16 @@ from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.streaming import format_sse
-from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
+from app.authz.conversation_scope import load_private_conversation, require_conversation_agent_id
+from app.authz.org_context import OrgContext
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+    verify_csrf,
+)
 from app.error_codes import (
     agent_not_found,
     conversation_not_found,
@@ -25,6 +34,7 @@ from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
 from app.schemas.conversation import MessageCreate, MessagesEnvelope, ResumeRequest
 from app.schemas.conversation_run import ConversationRunResponse
+from app.schemas.conversation_scope import ConversationAutoTitle
 from app.services import (
     chat_service,
     conversation_run_service,
@@ -62,30 +72,31 @@ async def start_conversation_with_message(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
+    agent = await chat_service.get_agent_with_tools(db, agent_id, context)
     if not agent:
         raise agent_not_found()
 
     title = chat_service.conversation_title_from_content(data.content)
-    conv = await chat_service.create_conversation(db, agent_id, title)
+    conv = await chat_service.create_conversation(db, agent_id, title, context=context)
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conv.id,
         agent_id=agent_id,
-        user_id=user.id,
+        context=context,
         source="start",
         input_preview=data.content,
     )
-    cfg = await resolve_agent_context(db, conv.id, user)
-    await chat_service.touch_conversation(db, conv.id)
+    cfg = await resolve_agent_context(db, conv.id, user, context=context)
+    await chat_service.touch_conversation(db, conv.id, context)
 
     if data.attachments:
         await chat_service.link_attachments_to_conversation(
             db,
             conversation_id=conv.id,
-            user_id=user.id,
+            context=context,
             attachment_ids=[a.id for a in data.attachments],
         )
 
@@ -104,7 +115,7 @@ async def start_conversation_with_message(
         request=request,
         action="conversation.message_send",
         conversation_id=conv.id,
-        agent_id=conv.agent_id,
+        agent_id=require_conversation_agent_id(conv),
         title=conv.title,
         metadata={
             "content_length": len(data.content),
@@ -141,11 +152,13 @@ async def list_messages(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     conv: Conversation = Depends(owned_conversation),
 ):
     active_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation_id,
+        context=context,
     )
     active_run_response = (
         ConversationRunResponse.model_validate(active_run) if active_run is not None else None
@@ -153,6 +166,7 @@ async def list_messages(
     latest_run = await conversation_run_service.latest_run_for_conversation(
         db,
         conversation_id=conversation_id,
+        context=context,
     )
     latest_run_response = (
         ConversationRunResponse.model_validate(latest_run) if latest_run is not None else None
@@ -174,7 +188,7 @@ async def list_messages(
     messages = []
     if tree is not None:
         messages = await chat_service.list_messages_from_checkpointer(
-            db, conv, user_id=user.id, tree=tree
+            db, conv, context=context, user_id=user.id, tree=tree
         )
 
     total_cost = sum(
@@ -339,15 +353,16 @@ async def stream_resume(
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> StreamingResponse:
     after_id = last_event_id or last_event_id_header
     run_id_str = str(run_id)
 
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
+    conv = await load_private_conversation(db, conversation_id, context)
     if conv is None:
         _log_resume_reject("conv_unowned_or_missing", conversation_id, run_id_str, user=user.id)
         raise resume_not_found()
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conv))
+    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conv, context))
 
     broker = broker_registry.get(run_id_str)
     if broker is not None and not broker.is_closed:
@@ -426,28 +441,31 @@ async def send_message(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, user.id)
+    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
     if conv is None:
         raise conversation_not_found()
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conv.agent_id,
-        user_id=user.id,
+        agent_id=require_conversation_agent_id(conv),
+        context=context,
         source="chat",
         input_preview=data.content,
     )
-    cfg = await resolve_agent_context(db, conversation_id, user)
-    await chat_service.maybe_set_auto_title(db, conversation_id, data.content)
-    await chat_service.touch_conversation(db, conversation_id)
+    cfg = await resolve_agent_context(db, conversation_id, user, context=context)
+    await chat_service.maybe_set_auto_title(
+        db, ConversationAutoTitle(conversation_id, context, data.content)
+    )
+    await chat_service.touch_conversation(db, conversation_id, context)
 
     if data.attachments:
         await chat_service.link_attachments_to_conversation(
             db,
             conversation_id=conversation_id,
-            user_id=user.id,
+            context=context,
             attachment_ids=[a.id for a in data.attachments],
         )
     await record_conversation_audit(
@@ -488,12 +506,13 @@ async def resume_message(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, user.id)
+    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
     if conv is None:
         raise conversation_not_found()
-    await chat_service.touch_conversation(db, conversation_id)
+    await chat_service.touch_conversation(db, conversation_id, context)
 
     decisions_payload: list[dict[str, Any]] = [
         d.model_dump(exclude_none=True) for d in data.decisions
@@ -505,13 +524,13 @@ async def resume_message(
         request=request,
         action="conversation.message_resume",
         conversation_id=conversation_id,
-        agent_id=conv.agent_id,
+        agent_id=require_conversation_agent_id(conv),
         metadata={"decision_count": len(decisions_payload)},
     )
     parent_run = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation_id,
-        user_id=user.id,
+        context=context,
     )
     legacy_interrupt_trace: MessageEvent | None = None
     if parent_run is None:
@@ -537,8 +556,8 @@ async def resume_message(
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conv.agent_id,
-        user_id=user.id,
+        agent_id=require_conversation_agent_id(conv),
+        context=context,
         source="resume",
         input_preview=None,
         parent_run_id=parent_run.id if parent_run else None,
@@ -546,7 +565,7 @@ async def resume_message(
         metadata=metadata,
         allow_legacy_resume=legacy_interrupt_trace is not None,
     )
-    cfg = await resolve_agent_context(db, conversation_id, user)
+    cfg = await resolve_agent_context(db, conversation_id, user, context=context)
     run_id = run.id
     await db.commit()
 

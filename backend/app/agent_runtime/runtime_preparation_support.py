@@ -22,6 +22,7 @@ from app.agent_runtime.offload_storage import (
     ScopedOffloadStorage,
 )
 from app.agent_runtime.runtime_config import AgentConfig
+from app.authz.org_context import OrgContext
 from app.marketplace.skill_runtime import SkillToolContext
 
 
@@ -32,7 +33,7 @@ class BuildSkillBuilderTools(Protocol):
         session_id: str,
         workspace_path: str,
         session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]],
-        user_id: str | None,
+        context: OrgContext,
         agent_id: str | None,
         credential_subject_user_id: str | None,
         include_runtime_tools: bool,
@@ -59,7 +60,7 @@ class BuildMemoryTools(Protocol):
     def __call__(
         self,
         *,
-        user_id: str,
+        context: OrgContext,
         agent_id: str | None,
         conversation_id: str,
         is_trigger_mode: bool,

@@ -21,7 +21,8 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import unknown_tool_definition
 from app.models.tool import Tool
 from app.schemas.tool import (
@@ -33,6 +34,7 @@ from app.schemas.tool import (
     ToolRunResponse,
 )
 from app.services import tool_service
+from app.tools.execution_scope import ToolRunTarget
 from app.tools.registry import registry as tool_registry
 
 router = APIRouter(tags=["tools"])
@@ -84,10 +86,10 @@ async def list_tools(
     definition_key: str | None = Query(default=None),
     enabled: bool | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[ToolInstanceResponse]:
     rows = await tool_service.list_tools(
-        db, user.id, definition_key=definition_key, enabled=enabled
+        db, context, definition_key=definition_key, enabled=enabled
     )
     return [_to_response(r) for r in rows]
 
@@ -98,9 +100,10 @@ async def create_tool(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ToolInstanceResponse:
-    tool = await tool_service.create_tool(db, user_id=user.id, data=payload)
+    tool = await tool_service.create_tool(db, context=context, data=payload)
     await db.commit()
     await db.refresh(tool)
     await tool_service.record_tool_audit(
@@ -122,9 +125,9 @@ async def create_tool(
 async def get_tool(
     tool_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> ToolInstanceResponse:
-    return _to_response(await tool_service.load_owned(db, tool_id, user.id))
+    return _to_response(await tool_service.load_owned(db, tool_id, context))
 
 
 @crud_router.patch("/{tool_id}", response_model=ToolInstanceResponse)
@@ -134,10 +137,11 @@ async def update_tool(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ToolInstanceResponse:
-    tool = await tool_service.load_owned(db, tool_id, user.id)
-    await tool_service.update_tool(db, tool=tool, user_id=user.id, data=payload)
+    tool = await tool_service.load_owned(db, tool_id, context)
+    await tool_service.update_tool(db, tool=tool, context=context, data=payload)
     await db.commit()
     await db.refresh(tool)
     await tool_service.record_tool_audit(
@@ -161,9 +165,10 @@ async def delete_tool(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> None:
-    tool = await tool_service.load_owned(db, tool_id, user.id)
+    tool = await tool_service.load_owned(db, tool_id, context)
     await tool_service.record_tool_audit(
         db,
         user=user,
@@ -171,7 +176,7 @@ async def delete_tool(
         action="tool.delete",
         tool=tool,
     )
-    await tool_service.delete_tool(db, tool=tool)
+    await tool_service.delete_tool(db, tool=tool, context=context)
     await db.commit()
 
 
@@ -185,11 +190,12 @@ async def run_tool_endpoint(
     payload: ToolRunRequest | None = None,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ToolRunResponse:
-    tool = await tool_service.load_owned(db, tool_id, user.id)
+    tool = await tool_service.load_owned(db, tool_id, context)
     runtime_args = payload.runtime_args if payload else {}
-    result = await tool_service.run_tool_instance(db, tool=tool, runtime_args=runtime_args)
+    result = await tool_service.run_tool_instance(db, ToolRunTarget(tool.id, context), runtime_args)
     await tool_service.record_tool_audit(
         db,
         user=user,

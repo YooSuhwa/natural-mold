@@ -21,6 +21,8 @@ from app.services.skill_usage_service import (
     record_evaluation_usage,
 )
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID, TestSession, make_user
 
 pytestmark = pytest.mark.asyncio
@@ -38,14 +40,16 @@ def _skill_content(slug: str) -> str:
 
 async def _create_skill(db: AsyncSession, tmp_path: Path, *, user_id=TEST_USER_ID, slug="usage"):
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=user_id,
-            name=slug.title(),
-            slug=slug,
-            description="Use when testing skill usage accounting.",
-            content=_skill_content(slug),
-            version="1.0.0",
+            TextSkillCreation(
+                name=slug.title(),
+                slug=slug,
+                description="Use when testing skill usage accounting.",
+                content=_skill_content(slug),
+                version="1.0.0",
+            ),
+            unit_context(user_id),
         )
         await db.commit()
         return skill

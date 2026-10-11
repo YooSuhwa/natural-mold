@@ -33,7 +33,7 @@ async def prepare_skill_builder_components_impl(
                 session_id=cfg.skill_builder_session_id,
                 workspace_path=workspace_path,
                 session_factory=bindings.runtime_db_session_factory,
-                user_id=cfg.user_id,
+                context=cfg.org_context,
                 agent_id=cfg.agent_id,
                 credential_subject_user_id=cfg.credential_subject_user_id,
                 include_runtime_tools=True,

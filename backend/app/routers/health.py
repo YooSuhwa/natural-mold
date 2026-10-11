@@ -18,17 +18,18 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.credentials import service as credential_service
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     credential_not_found,
-    mcp_server_not_found,
     model_not_found,
 )
 from app.models.credential import Credential
 from app.models.health_check_history import HealthCheckHistory
-from app.models.mcp_server import McpServer
 from app.models.model import Model
 from app.services import health_check as health_check_service
+from app.services import mcp_service
 from app.services.credential_resolver import resolve_credential_for_model
 
 router = APIRouter(prefix="/api/health", tags=["health"])
@@ -153,11 +154,10 @@ async def list_model_health(
 @router.get("/mcp-servers", response_model=list[HealthSummaryEntry])
 async def list_mcp_health(
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    _: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    servers = (
-        (await db.execute(select(McpServer).where(McpServer.user_id == user.id))).scalars().all()
-    )
+    servers = await mcp_service.list_servers(db, context)
     latest = await _latest_for(db, "mcp_server", [s.id for s in servers])
     return [_summary_from("mcp_server", s.id, s.name, latest.get(s.id)) for s in servers]
 
@@ -169,7 +169,10 @@ async def get_history(
     limit: int = Query(30, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     _: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
+    if target_kind == "mcp_server":
+        await mcp_service.load_owned(db, target_id, context)
     return (
         (
             await db.execute(
@@ -193,7 +196,8 @@ async def check_now(
     target_id: uuid.UUID = Query(...),
     credential_id: uuid.UUID | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    _: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
     """Run a probe immediately and return the resulting history row.
@@ -208,7 +212,7 @@ async def check_now(
         model = await db.get(Model, target_id)
         if model is None:
             raise model_not_found()
-        credential = await resolve_credential_for_model(db, model, credential_id, user.id)
+        credential = await resolve_credential_for_model(db, model, credential_id, context)
         if credential is None:
             if credential_id is not None:
                 raise HTTPException(status_code=404, detail="credential not found")
@@ -223,14 +227,13 @@ async def check_now(
     else:
         # MCP servers carry their own credential reference; fall back to
         # the manual lookup we used before.
+        server = await mcp_service.load_owned(db, target_id, context)
         credential: Credential | None = None
-        if credential_id is not None:
-            credential = await db.get(Credential, credential_id)
-            if credential is None or credential.user_id != user.id:
+        selected_credential_id = credential_id or server.credential_id
+        if selected_credential_id is not None:
+            credential = await credential_service.get_for_user(db, selected_credential_id, context)
+            if credential is None:
                 raise credential_not_found()
-        server = await db.get(McpServer, target_id)
-        if server is None or server.user_id != user.id:
-            raise mcp_server_not_found()
         history = await health_check_service.check_mcp_server(
             db, server=server, credential=credential
         )

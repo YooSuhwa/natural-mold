@@ -101,7 +101,7 @@ async def prepare_runtime_components_impl(
         assert memory_user_id is not None  # noqa: S101 - narrowed by memory_tools_enabled
         langchain_tools.extend(
             bindings.build_memory_tools(
-                user_id=memory_user_id,
+                context=cfg.org_context,
                 agent_id=cfg.agent_id,
                 conversation_id=cfg.thread_id,
                 is_trigger_mode=is_trigger_mode,

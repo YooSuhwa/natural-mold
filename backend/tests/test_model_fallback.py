@@ -22,6 +22,7 @@ from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.model import Model
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -75,6 +76,8 @@ async def _seed_credential() -> tuple[uuid.UUID, str]:
                 data_encrypted=blob,
                 key_id=key_id,
                 field_keys=field_keys,
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
             )
         )
         await db.commit()
@@ -111,6 +114,7 @@ def test_recoverable_classifier_accepts_timeout_and_connection() -> None:
 def test_executor_chain_uses_fallback_when_primary_fails() -> None:
     calls, fake = _wire_create_model_failures(fail_count=1)
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="openai",
         model_name="gpt-4o",
         api_key=None,
@@ -138,6 +142,7 @@ def test_context_window_forwarded_to_create_chat_model() -> None:
         return _FakeChatModel(f"{provider}/{model_name}")
 
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="openai_compatible",
         model_name="gw-model",
         api_key=None,
@@ -161,6 +166,7 @@ def test_context_window_absent_when_unset() -> None:
         return _FakeChatModel(f"{provider}/{model_name}")
 
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="openai",
         model_name="gpt-4o",
         api_key=None,
@@ -177,6 +183,7 @@ def test_context_window_absent_when_unset() -> None:
 def test_executor_chain_re_raises_when_all_fail() -> None:
     calls, fake = _wire_create_model_failures(fail_count=3)
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="openai",
         model_name="gpt-4o",
         api_key=None,
@@ -204,6 +211,7 @@ def test_executor_chain_re_raises_when_all_fail() -> None:
 def test_executor_chain_skips_fallback_for_unrecoverable_errors() -> None:
     calls, fake = _wire_create_model_failures(fail_count=1, recoverable=False)
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="openai",
         model_name="gpt-4o",
         api_key=None,
@@ -227,6 +235,7 @@ def test_executor_chain_skips_fallback_for_unrecoverable_errors() -> None:
 def test_executor_chain_no_fallback_keeps_legacy_behaviour() -> None:
     calls, fake = _wire_create_model_failures(fail_count=0)
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="openai",
         model_name="gpt-4o",
         api_key=None,
@@ -248,6 +257,7 @@ def test_executor_builds_primary_and_runtime_fallback_candidates() -> None:
 
     calls, fake = _wire_create_model_failures(fail_count=0)
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="openai",
         model_name="gpt-4o",
         api_key=None,
@@ -321,6 +331,8 @@ async def test_with_fallback_records_audit_on_each_attempt() -> None:
             model_id=primary_id,
             llm_credential_id=cred_id,
             model_fallback_list=[str(fallback_id)],
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         agent.model = primary  # type: ignore[assignment]
         db.add_all([primary, fallback, agent])
@@ -383,6 +395,8 @@ async def test_with_fallback_no_chain_returns_primary() -> None:
             model_id=primary_id,
             llm_credential_id=cred_id,
             model_fallback_list=None,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         agent.model = primary  # type: ignore[assignment]
         db.add_all([primary, agent])

@@ -12,6 +12,8 @@ import pytest
 from app.agent_runtime import runtime_component_builder as builder
 from app.agent_runtime import runtime_preparation_support
 from app.agent_runtime.runtime_config import AgentConfig
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 
 def test_preparation_legacy_wrappers_keep_exact_signatures() -> None:
@@ -123,6 +125,7 @@ async def test_preparation_bindings_are_resolved_at_call_time(
     monkeypatch.setattr(builder, "ask_user_tool", ask_user)
 
     config = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="provider",
         model_name="model",
         api_key=None,
@@ -188,6 +191,7 @@ async def test_preparation_skill_builder_dispatch_uses_live_facade_wrapper(
     prepare_skill_builder = AsyncMock(return_value=components)
     monkeypatch.setattr(builder, "_prepare_skill_builder_components", prepare_skill_builder)
     config = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="provider",
         model_name="model",
         api_key=None,
@@ -241,6 +245,7 @@ async def test_preparation_propagates_existing_failure_without_factory_call(
     with pytest.raises(ValueError, match="invalid model configuration"):
         await builder._prepare_agent(
             AgentConfig(
+                org_context=unit_context(TEST_USER_ID),
                 provider="provider",
                 model_name="model",
                 api_key=None,

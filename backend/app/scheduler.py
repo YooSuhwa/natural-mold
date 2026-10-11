@@ -18,9 +18,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from app.authz.platform_scope import PlatformScope
 from app.config import settings
 from app.database import async_session, engine
 from app.scheduler_job_ids import LeaderSchedulerJobId
+from app.schemas.conversation_scope import DraftConversationCleanup
 
 logger = logging.getLogger(__name__)
 
@@ -576,7 +578,10 @@ async def draft_conversation_gc_run() -> int:
     async with async_session() as db:
         try:
             return await chat_service.gc_orphan_draft_conversations(
-                db, retention_hours=settings.draft_conversation_gc_retention_hours
+                db,
+                DraftConversationCleanup(
+                    PlatformScope(), settings.draft_conversation_gc_retention_hours
+                ),
             )
         except Exception:  # noqa: BLE001 — keep cron alive
             logger.exception("draft conversation GC failed; will retry next run")

@@ -5,6 +5,7 @@ import uuid
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.error_codes import session_not_found, system_llm_not_configured
 from app.models.skill import Skill
@@ -23,9 +24,9 @@ async def get_session_or_404(
     db: AsyncSession,
     *,
     session_id: uuid.UUID,
-    user: CurrentUser,
+    context: OrgContext,
 ) -> SkillBuilderSession:
-    session = await skill_builder_service.get_session(db, session_id, user.id)
+    session = await skill_builder_service.get_session(db, session_id, context)
     if session is None:
         raise session_not_found()
     return session
@@ -35,11 +36,11 @@ async def completed_skill(
     db: AsyncSession,
     *,
     session: SkillBuilderSession,
-    user: CurrentUser,
+    context: OrgContext,
 ) -> Skill | None:
     if session.status != SkillBuilderStatus.COMPLETED.value or session.finalized_skill_id is None:
         return None
-    return await skill_service.get_skill(db, session.finalized_skill_id, user.id)
+    return await skill_service.get_skill(db, session.finalized_skill_id, context)
 
 
 async def require_system_llm(

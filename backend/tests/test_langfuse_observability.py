@@ -6,6 +6,8 @@ from typing import Any
 import pytest
 
 from app.agent_runtime.runtime_config import AgentConfig
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 
 def _cfg(**overrides: Any) -> AgentConfig:
@@ -24,7 +26,7 @@ def _cfg(**overrides: Any) -> AgentConfig:
         "checkpoint_id": "checkpoint-123",
     }
     base.update(overrides)
-    return AgentConfig(**base)
+    return AgentConfig(org_context=unit_context(TEST_USER_ID), **base)
 
 
 def test_langfuse_context_disabled_when_flag_off(monkeypatch) -> None:

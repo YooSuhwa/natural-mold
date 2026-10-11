@@ -3,6 +3,8 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -16,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime import mcp_app_projection
 from app.agent_runtime.langgraph_protocol_adapter import adapt_stream_mode_chunk
 from app.agent_runtime.mcp_app_projection import attach_verified_mcp_apps
+from app.dependencies import CurrentUser
 from app.mcp.apps import normalize_tool_ui_meta, tool_allows_visibility
 from app.mcp.domain import McpAppRuntimeContext
 from app.models.agent import Agent
@@ -34,6 +37,12 @@ from app.services import mcp_apps_service
 from app.services.mcp_apps_binding_service import record_runtime_binding
 from app.services.mcp_apps_service import BindingDraft, McpAppsError
 from app.services.thread_branch_service import _CheckpointSlim
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -87,15 +96,26 @@ async def _seed(db: AsyncSession) -> SeededMcpApp:
     model = Model(provider="openai", model_name="gpt-4o-mini", display_name="GPT")
     db.add_all([user, model])
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     agent = Agent(
         user_id=user.id,
         name="MCP App Agent",
         system_prompt="Helpful",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
-    conversation = Conversation(agent_id=agent.id, title="MCP App")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="MCP App",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.flush()
     run = ConversationRun(
@@ -113,6 +133,8 @@ async def _seed(db: AsyncSession) -> SeededMcpApp:
         url="https://mcp.weather.test/rpc",
         headers={"Authorization": "Bearer server-secret"},
         status="connected",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([run, server])
     await db.flush()
@@ -142,6 +164,7 @@ async def _seed(db: AsyncSession) -> SeededMcpApp:
     binding_id = await mcp_apps_service.mint_invocation_binding(
         db,
         BindingDraft(
+            org_context=unit_context(user.id),
             run_id=run.id,
             conversation_id=conversation.id,
             user_id=user.id,
@@ -209,7 +232,7 @@ async def test_read_bound_resource_uses_server_connection_and_allowlists_meta(
         conversation_id=seeded.conversation.id,
         run_id=seeded.run.id,
         tool_call_id="tool-call-1",
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
 
     result = await mcp_apps_service.read_bound_resource(db, context)
@@ -253,7 +276,7 @@ async def test_call_bound_sibling_requires_current_same_server_agent_link(
         conversation_id=seeded.conversation.id,
         run_id=seeded.run.id,
         tool_call_id="tool-call-1",
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
 
     result = await mcp_apps_service.call_bound_tool(
@@ -282,7 +305,7 @@ async def test_authorize_binding_hides_cross_user_and_rejects_stale_or_revoked(
             conversation_id=seeded.conversation.id,
             run_id=seeded.run.id,
             tool_call_id="tool-call-1",
-            user_id=uuid.uuid4(),
+            context=unit_context(uuid.uuid4()),
         )
     assert cross_user.value.status_code == 404
 
@@ -294,7 +317,7 @@ async def test_authorize_binding_hides_cross_user_and_rejects_stale_or_revoked(
             conversation_id=seeded.conversation.id,
             run_id=seeded.run.id,
             tool_call_id="tool-call-1",
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
         )
     assert stale.value.code == "mcp_app_context_stale"
 
@@ -307,7 +330,7 @@ async def test_authorize_binding_hides_cross_user_and_rejects_stale_or_revoked(
             conversation_id=seeded.conversation.id,
             run_id=seeded.run.id,
             tool_call_id="tool-call-1",
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
         )
     assert revoked.value.status_code == 403
 
@@ -323,6 +346,8 @@ async def test_call_bound_tool_rejects_cross_server_name_and_oversized_arguments
         transport="streamable_http",
         url="https://other.test/rpc",
         status="connected",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(other_server)
     await db.flush()
@@ -342,7 +367,7 @@ async def test_call_bound_tool_rejects_cross_server_name_and_oversized_arguments
         conversation_id=seeded.conversation.id,
         run_id=seeded.run.id,
         tool_call_id="tool-call-1",
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
 
     with pytest.raises(McpAppsError) as cross_server:
@@ -384,7 +409,7 @@ async def test_read_bound_resource_rejects_malformed_mime_without_returning_html
         conversation_id=seeded.conversation.id,
         run_id=seeded.run.id,
         tool_call_id="tool-call-1",
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
 
     with pytest.raises(McpAppsError) as malformed:
@@ -418,7 +443,7 @@ async def test_read_bound_resource_rejects_server_credential_echo(
         conversation_id=seeded.conversation.id,
         run_id=seeded.run.id,
         tool_call_id="tool-call-1",
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
 
     with pytest.raises(McpAppsError) as sensitive:
@@ -443,7 +468,7 @@ async def test_call_bound_tool_rejects_oversized_server_result(
         conversation_id=seeded.conversation.id,
         run_id=seeded.run.id,
         tool_call_id="tool-call-1",
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
 
     with pytest.raises(McpAppsError) as oversized:
@@ -470,7 +495,7 @@ async def test_call_bound_tool_does_not_expose_transport_error_secret(
         conversation_id=seeded.conversation.id,
         run_id=seeded.run.id,
         tool_call_id="tool-call-1",
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
 
     with pytest.raises(McpAppsError) as failed:
@@ -488,6 +513,7 @@ async def test_runtime_binding_callback_persists_only_trusted_runtime_context(
 ) -> None:
     seeded = await _seed(db)
     context = McpAppRuntimeContext(
+        org_context=unit_context(TEST_USER_ID),
         conversation_id=seeded.conversation.id,
         user_id=TEST_USER_ID,
         agent_id=seeded.agent.id,
@@ -514,7 +540,7 @@ async def test_runtime_binding_callback_persists_only_trusted_runtime_context(
         conversation_id=seeded.conversation.id,
         run_id=seeded.run.id,
         tool_call_id="actual-runtime-tool-call",
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
     assert authorized.binding.result_meta == {"viewUUID": "view-2"}
     assert authorized.binding.structured_content == {"temperature": 24}
@@ -654,6 +680,7 @@ async def test_actual_toolnode_binding_is_persisted_and_rehydrated_on_resume(
 
     seeded = await _seed(db)
     context = McpAppRuntimeContext(
+        org_context=unit_context(TEST_USER_ID),
         conversation_id=seeded.conversation.id,
         user_id=TEST_USER_ID,
         agent_id=seeded.agent.id,

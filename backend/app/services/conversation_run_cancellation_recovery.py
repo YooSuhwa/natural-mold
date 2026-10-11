@@ -5,10 +5,16 @@ from collections.abc import Callable, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only, noload
 
+from app.authz.conversation_maintenance import (
+    ConversationMaintenanceTarget,
+    lock_maintenance_conversation,
+)
+from app.authz.platform_scope import PlatformScope
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
-from app.services import conversation_run_queue_service, conversation_run_service
+from app.services import conversation_run_service
 from app.services.conversation_audit_service import record_conversation_run_audit
 
 
@@ -41,14 +47,38 @@ async def finalize_workerless_cancel_before_start(
     finalized_conversations: list[uuid.UUID] = []
     for run_id, conversation_id, user_id in candidates:
         async with session_factory() as db:
-            await conversation_run_queue_service.lock_owned_conversation(
-                db,
-                conversation_id=conversation_id,
-                user_id=user_id,
+            conversation = await lock_maintenance_conversation(
+                db, ConversationMaintenanceTarget(conversation_id, user_id, PlatformScope())
             )
-            run = await db.get(ConversationRun, run_id, with_for_update=True)
+            if conversation is None:
+                continue
+            run = await db.scalar(
+                select(ConversationRun)
+                .options(
+                    load_only(
+                        ConversationRun.id,
+                        ConversationRun.conversation_id,
+                        ConversationRun.user_id,
+                        ConversationRun.agent_id,
+                        ConversationRun.source,
+                        ConversationRun.status,
+                        ConversationRun.is_active,
+                        ConversationRun.worker_instance_id,
+                        ConversationRun.completed_at,
+                        ConversationRun.cancel_requested_at,
+                        ConversationRun.cancellation_acknowledged_at,
+                        raiseload=True,
+                    ),
+                    noload(ConversationRun.metrics),
+                )
+                .where(ConversationRun.id == run_id)
+                .with_for_update()
+                .execution_options(populate_existing=True, autoflush=False)
+            )
             if (
                 run is None
+                or run.conversation_id != conversation.id
+                or run.user_id != conversation.user_id
                 or run.status != "canceling"
                 or not run.is_active
                 or run.worker_instance_id is not None
@@ -56,9 +86,26 @@ async def finalize_workerless_cancel_before_start(
                 continue
             bound_input = await db.scalar(
                 select(ConversationRunInput)
+                .options(
+                    load_only(
+                        ConversationRunInput.id,
+                        ConversationRunInput.conversation_id,
+                        ConversationRunInput.user_id,
+                        ConversationRunInput.run_id,
+                        ConversationRunInput.status,
+                        ConversationRunInput.revision,
+                        raiseload=True,
+                    )
+                )
                 .where(ConversationRunInput.run_id == run.id)
                 .with_for_update()
+                .execution_options(populate_existing=True, autoflush=False)
             )
+            if bound_input is not None and (
+                bound_input.conversation_id != conversation.id
+                or bound_input.user_id != conversation.user_id
+            ):
+                bound_input = None
             await conversation_run_service.transition_run(
                 db,
                 run,

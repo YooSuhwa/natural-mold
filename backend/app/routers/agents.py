@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.agent_runtime.runtime_policy import resolve_runtime_policy
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import agent_not_found, image_not_found
 from app.exceptions import ExternalServiceError, ValidationError
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
@@ -140,12 +141,24 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
     )
 
 
+async def _scoped_agent_response(
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
+) -> AgentResponse:
+    presentation = await agent_service.get_agent_projection(db, agent_id, context)
+    if presentation is None:
+        raise agent_not_found()
+    return _agent_to_response(presentation.agent).model_copy(
+        update={"unread_count": presentation.unread_count}
+    )
+
+
 @router.get("", response_model=list[AgentResponse])
 async def list_agents(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    agents = await agent_service.list_agents(db, user.id)
+    agents = await agent_service.list_agents(db, context)
     return [_agent_to_response(a) for a in agents]
 
 
@@ -153,8 +166,9 @@ async def list_agents(
 async def list_agent_summaries(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    return await agent_service.list_agent_summaries(db, user.id)
+    return await agent_service.list_agent_summaries(db, context)
 
 
 @router.post("", response_model=AgentResponse, status_code=201)
@@ -163,9 +177,10 @@ async def create_agent(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await agent_service.create_agent(db, data, user.id)
+    agent = await agent_service.create_agent(db, data, context)
     await audit_service.record_self_event(
         db,
         user,
@@ -184,7 +199,7 @@ async def create_agent(
         },
     )
     await db.commit()
-    return _agent_to_response(agent)
+    return await _scoped_agent_response(db, agent.id, context)
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)
@@ -192,11 +207,9 @@ async def get_agent(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
-    if not agent:
-        raise agent_not_found()
-    return _agent_to_response(agent)
+    return await _scoped_agent_response(db, agent_id, context)
 
 
 @router.put("/{agent_id}", response_model=AgentResponse)
@@ -206,13 +219,14 @@ async def update_agent(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
+    agent = await agent_service.get_agent(db, agent_id, context)
     if not agent:
         raise agent_not_found()
     _require_standard_profile(agent)
-    updated = await agent_service.update_agent(db, agent, data)
+    updated = await agent_service.update_agent(db, agent, data, context=context)
     changed_fields = sorted(data.model_fields_set - {"system_prompt"})
     await audit_service.record_self_event(
         db,
@@ -228,7 +242,7 @@ async def update_agent(
         },
     )
     await db.commit()
-    return _agent_to_response(updated)
+    return await _scoped_agent_response(db, updated.id, context)
 
 
 @router.patch("/{agent_id}/favorite", response_model=AgentResponse)
@@ -237,13 +251,14 @@ async def toggle_favorite(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
+    agent = await agent_service.get_agent(db, agent_id, context)
     if not agent:
         raise agent_not_found()
     _require_standard_profile(agent)
-    updated = await agent_service.toggle_favorite(db, agent)
+    updated = await agent_service.toggle_favorite(db, agent, context)
     await audit_service.record_self_event(
         db,
         user,
@@ -255,7 +270,7 @@ async def toggle_favorite(
         metadata={"is_favorite": updated.is_favorite},
     )
     await db.commit()
-    return _agent_to_response(updated)
+    return await _scoped_agent_response(db, updated.id, context)
 
 
 @router.delete("/{agent_id}", status_code=204)
@@ -264,9 +279,10 @@ async def delete_agent(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
+    agent = await agent_service.get_agent(db, agent_id, context)
     if not agent:
         raise agent_not_found()
     _require_standard_profile(agent)
@@ -279,7 +295,7 @@ async def delete_agent(
         target_name=agent.name,
         request=request,
     )
-    await agent_service.delete_agent(db, agent)
+    await agent_service.delete_agent(db, agent, context)
     await db.commit()
 
 
@@ -288,9 +304,10 @@ async def generate_agent_image(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
+    agent = await agent_service.get_agent(db, agent_id, context)
     if not agent:
         raise agent_not_found()
     _require_standard_profile(agent)
@@ -309,8 +326,9 @@ async def get_agent_image(
     variant: Literal["original", "preview"] = Query("original"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
+    agent = await agent_service.get_agent(db, agent_id, context)
     if not agent:
         raise image_not_found()
     if not agent.image_path:

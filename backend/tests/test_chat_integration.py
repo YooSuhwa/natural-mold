@@ -12,13 +12,18 @@ These tests cover the M5 wiring contract:
 
 from __future__ import annotations
 
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_scope import require_conversation_agent_id
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
+from app.dependencies import CurrentUser
 from app.exceptions import ValidationError
 from app.mcp import client as mcp_client
 from app.models.agent import Agent
@@ -29,6 +34,13 @@ from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
 from app.services import chat_service
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_credential,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -41,6 +53,7 @@ async def _seed_user_and_model(db: AsyncSession) -> Model:
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=TEST_USER_ID, email="ci@test", name="ci"))
     return model
 
 
@@ -56,19 +69,21 @@ async def test_build_tools_config_includes_decrypted_credentials(
 ) -> None:
     model = await _seed_user_and_model(db)
 
-    llm_cred = await credential_service.create(
+    llm_cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="openai",
-        name="agent llm",
-        data={"api_key": "sk-llm-secret"},
+        CredentialCreation(
+            definition_key="openai", name="agent llm", data={"api_key": "sk-llm-secret"}
+        ),
+        unit_context(TEST_USER_ID),
     )
-    tool_cred = await credential_service.create(
+    tool_cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="naver_search",
-        name="naver creds",
-        data={"client_id": "nv-id", "client_secret": "nv-secret"},
+        CredentialCreation(
+            definition_key="naver_search",
+            name="naver creds",
+            data={"client_id": "nv-id", "client_secret": "nv-secret"},
+        ),
+        unit_context(TEST_USER_ID),
     )
 
     agent = Agent(
@@ -77,6 +92,8 @@ async def test_build_tools_config_includes_decrypted_credentials(
         system_prompt="hi",
         model_id=model.id,
         llm_credential_id=llm_cred.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -87,20 +104,24 @@ async def test_build_tools_config_includes_decrypted_credentials(
         definition_key="naver_search_blog",
         parameters={"query": "moldy"},
         credential_id=tool_cred.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(tool)
     await db.flush()
     db.add(AgentToolLink(agent_id=agent.id, tool_id=tool.id))
     await db.commit()
 
-    fetched = await chat_service.get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    fetched = await chat_service.get_agent_with_tools(db, agent.id, unit_context(TEST_USER_ID))
     assert fetched is not None
     assert fetched.llm_credential is not None
     assert fetched.llm_credential.id == llm_cred.id
     assert len(fetched.tool_links) == 1
     assert fetched.tool_links[0].tool.credential is not None
 
-    configs = await chat_service.build_tools_config(fetched, db=db)
+    configs = await chat_service.build_tools_config(
+        fetched, db=db, context=unit_context(TEST_USER_ID)
+    )
     assert len(configs) == 1
     entry = configs[0]
     assert entry["definition_key"] == "naver_search_blog"
@@ -115,12 +136,14 @@ async def test_build_tools_config_decrypts_shared_credential_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model = await _seed_user_and_model(db)
-    tool_cred = await credential_service.create(
+    tool_cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="naver_search",
-        name="naver creds",
-        data={"client_id": "nv-id", "client_secret": "nv-secret"},
+        CredentialCreation(
+            definition_key="naver_search",
+            name="naver creds",
+            data={"client_id": "nv-id", "client_secret": "nv-secret"},
+        ),
+        unit_context(TEST_USER_ID),
     )
 
     agent = Agent(
@@ -128,6 +151,8 @@ async def test_build_tools_config_decrypts_shared_credential_once(
         name="Shared Cred Agent",
         system_prompt="hi",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -142,6 +167,8 @@ async def test_build_tools_config_decrypts_shared_credential_once(
             definition_key=definition_key,
             parameters={"query": "moldy"},
             credential_id=tool_cred.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(tool)
         await db.flush()
@@ -157,9 +184,11 @@ async def test_build_tools_config_decrypts_shared_credential_once(
 
     monkeypatch.setattr(credential_service, "decrypt_with_external", fake_decrypt)
 
-    fetched = await chat_service.get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    fetched = await chat_service.get_agent_with_tools(db, agent.id, unit_context(TEST_USER_ID))
     assert fetched is not None
-    configs = await chat_service.build_tools_config(fetched, db=db)
+    configs = await chat_service.build_tools_config(
+        fetched, db=db, context=unit_context(TEST_USER_ID)
+    )
 
     assert len(configs) == 2
     assert decrypt_calls == 1
@@ -171,12 +200,12 @@ async def test_build_tools_config_injects_mcp_secret_header(
     db: AsyncSession,
 ) -> None:
     model = await _seed_user_and_model(db)
-    mcp_cred = await credential_service.create(
+    mcp_cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_secret",
-        name="groupware cookie",
-        data={"secret": "SESSION=abc"},
+        CredentialCreation(
+            definition_key="mcp_secret", name="groupware cookie", data={"secret": "SESSION=abc"}
+        ),
+        unit_context(TEST_USER_ID),
     )
 
     agent = Agent(
@@ -184,6 +213,8 @@ async def test_build_tools_config_injects_mcp_secret_header(
         name="MCP Agent",
         system_prompt="hi",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -196,6 +227,8 @@ async def test_build_tools_config_injects_mcp_secret_header(
         credential_id=mcp_cred.id,
         headers={},
         env_vars={},
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(server)
     await db.flush()
@@ -212,10 +245,12 @@ async def test_build_tools_config_injects_mcp_secret_header(
     db.add(AgentMcpToolLink(agent_id=agent.id, mcp_tool_id=mcp_tool.id))
     await db.commit()
 
-    fetched = await chat_service.get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    fetched = await chat_service.get_agent_with_tools(db, agent.id, unit_context(TEST_USER_ID))
     assert fetched is not None
 
-    configs = await chat_service.build_tools_config(fetched, db=db)
+    configs = await chat_service.build_tools_config(
+        fetched, db=db, context=unit_context(TEST_USER_ID)
+    )
     assert len(configs) == 1
     entry = configs[0]
     assert entry["definition_key"] == "mcp"
@@ -232,12 +267,12 @@ async def test_build_tools_config_blocks_mcp_credential_subject_mismatch(
     other_user = User(email="other@test", name="Other")
     db.add(other_user)
     await db.flush()
-    mcp_cred = await credential_service.create(
+    mcp_cred = await create_test_credential(
         db,
-        user_id=other_user.id,
-        definition_key="mcp_secret",
-        name="other user secret",
-        data={"secret": "SESSION=other"},
+        CredentialCreation(
+            definition_key="mcp_secret", name="other user secret", data={"secret": "SESSION=other"}
+        ),
+        unit_context(other_user.id),
     )
 
     agent = Agent(
@@ -245,6 +280,8 @@ async def test_build_tools_config_blocks_mcp_credential_subject_mismatch(
         name="MCP Agent",
         system_prompt="hi",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -257,6 +294,8 @@ async def test_build_tools_config_blocks_mcp_credential_subject_mismatch(
         credential_id=mcp_cred.id,
         headers={},
         env_vars={},
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(server)
     await db.flush()
@@ -273,11 +312,11 @@ async def test_build_tools_config_blocks_mcp_credential_subject_mismatch(
     db.add(AgentMcpToolLink(agent_id=agent.id, mcp_tool_id=mcp_tool.id))
     await db.commit()
 
-    fetched = await chat_service.get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    fetched = await chat_service.get_agent_with_tools(db, agent.id, unit_context(TEST_USER_ID))
     assert fetched is not None
 
     with pytest.raises(ValidationError) as exc:
-        await chat_service.build_tools_config(fetched, db=db)
+        await chat_service.build_tools_config(fetched, db=db, context=unit_context(TEST_USER_ID))
     assert exc.value.code == "CREDENTIAL_SUBJECT_MISMATCH"
 
 
@@ -296,6 +335,8 @@ async def test_trigger_executor_uses_chat_service_prefetch() -> None:
             name="Trig Agent",
             system_prompt="ok",
             model_id=model.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(agent)
         await db.flush()
@@ -308,6 +349,8 @@ async def test_trigger_executor_uses_chat_service_prefetch() -> None:
             input_message="run me",
             status="active",
             run_count=0,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(trigger)
         await db.commit()
@@ -336,10 +379,9 @@ async def test_trigger_executor_uses_chat_service_prefetch() -> None:
         await execute_trigger(str(trigger_id))
 
     spy.assert_called_once()
-    # The 3 positional args must include the trigger's user_id (closes the
-    # legacy "trigger executor used different prefetch" bug).
+    # Prefetch carries the exact persisted trigger owner/org/company scope.
     args = spy.call_args.args
-    assert args[2] == TEST_USER_ID
+    assert args[2] == unit_context(TEST_USER_ID)
 
 
 # ---------------------------------------------------------------------------
@@ -366,10 +408,20 @@ async def test_owned_conv_with_agent_saves_one_roundtrip() -> None:
             name="RT Agent",
             system_prompt="x",
             model_id=model.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         setup_db.add(agent)
         await setup_db.flush()
-        conv = Conversation(agent_id=agent.id, title="RT Conv")
+        conv = Conversation(
+            agent_id=agent.id,
+            title="RT Conv",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         setup_db.add(conv)
         await setup_db.commit()
         conv_id = conv.id
@@ -379,22 +431,26 @@ async def test_owned_conv_with_agent_saves_one_roundtrip() -> None:
 
     def _on_cursor_old(_conn, _cursor, statement: str, *_args: Any) -> None:
         nonlocal select_count_old
-        if statement.lstrip().lower().startswith("select"):
+        sql = statement.lstrip().lower()
+        if sql.startswith("select") and ("from conversations" in sql or "from agents" in sql):
             select_count_old += 1
 
     def _on_cursor_new(_conn, _cursor, statement: str, *_args: Any) -> None:
         nonlocal select_count_new
-        if statement.lstrip().lower().startswith("select"):
+        sql = statement.lstrip().lower()
+        if sql.startswith("select") and ("from conversations" in sql or "from agents" in sql):
             select_count_new += 1
 
     async with TestSession() as old_db:
         engine = old_db.get_bind()
         event.listen(engine, "before_cursor_execute", _on_cursor_old)
         try:
-            old_conv = await chat_service.get_conversation(old_db, conv_id)
+            old_conv = await chat_service.get_conversation(
+                old_db, conv_id, unit_context(TEST_USER_ID)
+            )
             assert old_conv is not None
             old_agent = await chat_service.get_agent_with_tools(
-                old_db, old_conv.agent_id, TEST_USER_ID
+                old_db, require_conversation_agent_id(old_conv), unit_context(TEST_USER_ID)
             )
             assert old_agent is not None
         finally:
@@ -405,7 +461,7 @@ async def test_owned_conv_with_agent_saves_one_roundtrip() -> None:
         event.listen(engine, "before_cursor_execute", _on_cursor_new)
         try:
             new_conv = await chat_service.get_owned_conversation_with_agent(
-                new_db, conv_id, TEST_USER_ID
+                new_db, conv_id, unit_context(TEST_USER_ID)
             )
             assert new_conv is not None
             assert new_conv.agent is not None
@@ -413,9 +469,8 @@ async def test_owned_conv_with_agent_saves_one_roundtrip() -> None:
         finally:
             event.remove(engine, "before_cursor_execute", _on_cursor_new)
 
-    # 정확히 1 적어야 함 (conv lookup + agent base 두 SELECT 가 단일 join SELECT
-    # 로 통합). selectin chain (model/llm_credential/tool_links/mcp_tool_links/
-    # skill_links) 는 양쪽 동일하게 발사되므로 차이는 정확히 -1.
+    # Conversation/Agent base reads still save one query. Membership/account
+    # refresh queries have their own security controls and aren't this invariant.
     assert select_count_new == select_count_old - 1, (
         f"old={select_count_old}, new={select_count_new} — "
         "단일 join 으로 정확히 1 query 절감 invariant 위반"

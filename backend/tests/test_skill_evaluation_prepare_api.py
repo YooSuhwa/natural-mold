@@ -15,6 +15,7 @@ from app.models.skill import Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.skills import service as skill_service
 from app.storage.paths import ensure_relative
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -123,6 +124,8 @@ async def _package_skill(db: AsyncSession, tmp_path: Path) -> Skill:
         size_bytes=1,
         version="1.0.0",
         package_metadata={"name": "manual-prepare"},
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(skill)
     await db.flush()

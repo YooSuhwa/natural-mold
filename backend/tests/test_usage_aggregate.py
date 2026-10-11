@@ -21,6 +21,7 @@ from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
 from app.models.model import Model
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -38,10 +39,20 @@ async def _seed_basic() -> dict[str, uuid.UUID]:
         await db.flush()
 
         agent_a = Agent(
-            user_id=user.id, name="Agent A", system_prompt="hi", model_id=model_a.id
+            user_id=user.id,
+            name="Agent A",
+            system_prompt="hi",
+            model_id=model_a.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         agent_b = Agent(
-            user_id=user.id, name="Agent B", system_prompt="hi", model_id=model_b.id
+            user_id=user.id,
+            name="Agent B",
+            system_prompt="hi",
+            model_id=model_b.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add_all([agent_a, agent_b])
         await db.flush()
@@ -171,8 +182,7 @@ async def test_window_filters_apply(client: AsyncClient) -> None:
     today = date_type.today()
     yesterday = today - timedelta(days=1)
     resp = await client.get(
-        f"/api/usage/daily?target_kind=user&from={yesterday.isoformat()}"
-        f"&to={today.isoformat()}"
+        f"/api/usage/daily?target_kind=user&from={yesterday.isoformat()}&to={today.isoformat()}"
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -182,9 +192,7 @@ async def test_window_filters_apply(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_target_id_filter(client: AsyncClient) -> None:
     seeds = await _seed_basic()
-    resp = await client.get(
-        f"/api/usage/daily?target_kind=agent&target_id={seeds['agent_a']}"
-    )
+    resp = await client.get(f"/api/usage/daily?target_kind=agent&target_id={seeds['agent_a']}")
     assert resp.status_code == 200
     data = resp.json()
     today = date_type.today().isoformat()

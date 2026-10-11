@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.credential_resolution import (
     LLMCredentialRequiredError,
     resolve_llm_api_key_for_agent,
@@ -25,10 +26,19 @@ from app.agent_runtime.identity import (
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
-from app.credentials import service as credential_service
+from app.authz.platform_scope import PlatformScope
+from app.credentials.creation import CredentialCreation
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.model import Model
 from app.models.user import User
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_credential,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 OTHER_USER_ID = "00000000-0000-0000-0000-000000000002"
@@ -40,6 +50,8 @@ async def _ensure_test_user(db: AsyncSession):
     if existing.scalar_one_or_none() is None:
         db.add(User(id=TEST_USER_ID, email="test@test.com", name="Test User"))
         await db.commit()
+    await ensure_unit_scope(db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test"))
+    await db.commit()
 
 
 async def _make_agent_with_model(
@@ -58,6 +70,8 @@ async def _make_agent_with_model(
     await db.flush()
 
     agent = Agent(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
         user_id=TEST_USER_ID,
         name="Resolver Agent",
         system_prompt="hi",
@@ -72,6 +86,18 @@ async def _make_agent_with_model(
     return fresh
 
 
+def _fixed_access(agent: Agent) -> AgentCredentialAccess:
+    identity = resolve_agent_run_identity(
+        agent_id=agent.id,
+        agent_owner_user_id=agent.user_id,
+        runtime_name=agent.runtime_name,
+        identity_mode=AGENT_IDENTITY_FIXED,
+        source=AgentRunSource.CHAT,
+        caller_user_id=TEST_USER_ID,
+    )
+    return AgentCredentialAccess(unit_context(TEST_USER_ID), identity)
+
+
 @pytest.mark.asyncio
 async def test_auto_match_openai_compatible_user_credential(
     db: AsyncSession,
@@ -80,12 +106,14 @@ async def test_auto_match_openai_compatible_user_credential(
     ``openai_compatible`` credential, the resolver auto-matches it via
     ``PROVIDER_TO_DEFINITION_KEY`` and returns the decrypted ``api_key``."""
 
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="openai_compatible",
-        name="my-self-hosted",
-        data={"base_url": "https://my-host/v1", "api_key": "sk-local-key"},
+        CredentialCreation(
+            definition_key="openai_compatible",
+            name="my-self-hosted",
+            data={"base_url": "https://my-host/v1", "api_key": "sk-local-key"},
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -93,7 +121,7 @@ async def test_auto_match_openai_compatible_user_credential(
         db, provider="openai_compatible", base_url="https://my-host/v1"
     )
 
-    key = await resolve_llm_api_key_for_agent(db, agent)
+    key = await resolve_llm_api_key_for_agent(db, agent, _fixed_access(agent))
 
     assert key == "sk-local-key"
 
@@ -107,7 +135,7 @@ async def test_auto_match_missing_credential_raises(db: AsyncSession) -> None:
     agent = await _make_agent_with_model(db, provider="openai_compatible")
 
     with pytest.raises(LLMCredentialRequiredError):
-        await resolve_llm_api_key_for_agent(db, agent)
+        await resolve_llm_api_key_for_agent(db, agent, _fixed_access(agent))
 
 
 @pytest.mark.asyncio
@@ -121,7 +149,7 @@ async def test_e2e_scripted_provider_allows_keyless_when_enabled(
     monkeypatch.setattr(credential_resolution.settings, "e2e_scripted_model_enabled", True)
     agent = await _make_agent_with_model(db, provider="e2e_scripted")
 
-    key = await resolve_llm_api_key_for_agent(db, agent)
+    key = await resolve_llm_api_key_for_agent(db, agent, _fixed_access(agent))
 
     assert key is None
 
@@ -138,7 +166,7 @@ async def test_e2e_scripted_provider_requires_flag_for_keyless(
     agent = await _make_agent_with_model(db, provider="e2e_scripted")
 
     with pytest.raises(LLMCredentialRequiredError):
-        await resolve_llm_api_key_for_agent(db, agent)
+        await resolve_llm_api_key_for_agent(db, agent, _fixed_access(agent))
 
 
 @pytest.mark.asyncio
@@ -147,12 +175,14 @@ async def test_per_user_identity_resolves_provider_match_for_caller_subject(
 ) -> None:
     other_user_uuid = __import__("uuid").UUID(OTHER_USER_ID)
     db.add(User(id=other_user_uuid, email="other@test.com", name="Other User"))
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=other_user_uuid,
-        definition_key="openai_compatible",
-        name="caller-key",
-        data={"base_url": "https://caller/v1", "api_key": "sk-caller"},
+        CredentialCreation(
+            definition_key="openai_compatible",
+            name="caller-key",
+            data={"base_url": "https://caller/v1", "api_key": "sk-caller"},
+        ),
+        unit_context(other_user_uuid),
     )
     await db.commit()
 
@@ -166,7 +196,9 @@ async def test_per_user_identity_resolves_provider_match_for_caller_subject(
         caller_user_id=other_user_uuid,
     )
 
-    key = await resolve_llm_api_key_for_agent(db, agent, identity=identity)
+    key = await resolve_llm_api_key_for_agent(
+        db, agent, AgentCredentialAccess(unit_context(other_user_uuid), identity)
+    )
 
     assert key == "sk-caller"
 
@@ -175,12 +207,14 @@ async def test_per_user_identity_resolves_provider_match_for_caller_subject(
 async def test_explicit_agent_llm_credential_must_belong_to_identity_subject(
     db: AsyncSession,
 ) -> None:
-    owner_cred = await credential_service.create(
+    owner_cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="openai_compatible",
-        name="owner-key",
-        data={"base_url": "https://owner/v1", "api_key": "sk-owner"},
+        CredentialCreation(
+            definition_key="openai_compatible",
+            name="owner-key",
+            data={"base_url": "https://owner/v1", "api_key": "sk-owner"},
+        ),
+        unit_context(TEST_USER_ID),
     )
     other_user_uuid = __import__("uuid").UUID(OTHER_USER_ID)
     db.add(User(id=other_user_uuid, email="other@test.com", name="Other User"))
@@ -201,19 +235,23 @@ async def test_explicit_agent_llm_credential_must_belong_to_identity_subject(
     )
 
     with pytest.raises(LLMCredentialRequiredError):
-        await resolve_llm_api_key_for_agent(db, agent, identity=identity)
+        await resolve_llm_api_key_for_agent(
+            db, agent, AgentCredentialAccess(unit_context(other_user_uuid), identity)
+        )
 
 
 @pytest.mark.asyncio
 async def test_fixed_identity_keeps_owner_subject_for_explicit_credential(
     db: AsyncSession,
 ) -> None:
-    owner_cred = await credential_service.create(
+    owner_cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="openai_compatible",
-        name="owner-key",
-        data={"base_url": "https://owner/v1", "api_key": "sk-owner"},
+        CredentialCreation(
+            definition_key="openai_compatible",
+            name="owner-key",
+            data={"base_url": "https://owner/v1", "api_key": "sk-owner"},
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -230,7 +268,9 @@ async def test_fixed_identity_keeps_owner_subject_for_explicit_credential(
         caller_user_id=uuid.UUID(OTHER_USER_ID),
     )
 
-    key = await resolve_llm_api_key_for_agent(db, agent, identity=identity)
+    key = await resolve_llm_api_key_for_agent(
+        db, agent, AgentCredentialAccess(unit_context(uuid.UUID(OTHER_USER_ID)), identity)
+    )
 
     assert key == "sk-owner"
 
@@ -241,17 +281,18 @@ async def test_auto_match_skips_system_credentials(db: AsyncSession) -> None:
     rows are reserved for service flows (builder/assistant). A bare
     system credential must not satisfy an end-user chat resolution."""
 
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=None,
-        definition_key="openai_compatible",
-        name="system-only",
-        data={"base_url": "https://shared/v1", "api_key": "sk-system"},
-        is_system=True,
+        CredentialCreation(
+            definition_key="openai_compatible",
+            name="system-only",
+            data={"base_url": "https://shared/v1", "api_key": "sk-system"},
+        ),
+        PlatformScope(),
     )
     await db.commit()
 
     agent = await _make_agent_with_model(db, provider="openai_compatible")
 
     with pytest.raises(LLMCredentialRequiredError):
-        await resolve_llm_api_key_for_agent(db, agent)
+        await resolve_llm_api_key_for_agent(db, agent, _fixed_access(agent))

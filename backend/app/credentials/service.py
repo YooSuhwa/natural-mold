@@ -12,12 +12,28 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, assert_never
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.platform_scope import PlatformScope
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import private_scoped
+from app.credentials.creation import CredentialCreation
 from app.credentials.external_secrets import resolve_external_refs
+from app.credentials.mutation_scope import (
+    CredentialAuditQuery,
+    CredentialPatch,
+    CredentialTestRecord,
+    load_scoped_credential,
+)
+from app.error_codes import credential_not_found
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.security import cipher
@@ -97,34 +113,32 @@ async def decrypt_with_external(blob: str) -> dict[str, Any]:
 # -- Queries -----------------------------------------------------------------
 
 
-async def list_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[Credential]:
+async def list_for_user(db: AsyncSession, context: OrgContext) -> list[Credential]:
     """Return user-facing credentials only — system rows are hidden.
 
     Pickers (model Health, agent settings, MCP wizard) call this so a
     misclick doesn't bind an operator key to a user agent.
     """
 
+    await require_private_actor(db, context)
     result = await db.execute(
-        select(Credential)
-        .where(
-            Credential.user_id == user_id,
-            Credential.is_system.is_(False),
-        )
+        private_scoped(select(Credential), Credential, context)
+        .where(Credential.is_system.is_(False))
         .order_by(Credential.created_at.desc())
     )
     return list(result.scalars().all())
 
 
 async def get_for_user(
-    db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, credential_id: uuid.UUID, context: OrgContext
 ) -> Credential | None:
     """Look up a user-facing credential. System rows return None here so
     user-facing endpoints can't accidentally read them."""
 
+    await require_private_actor(db, context)
     result = await db.execute(
-        select(Credential).where(
+        private_scoped(select(Credential), Credential, context).where(
             Credential.id == credential_id,
-            Credential.user_id == user_id,
             Credential.is_system.is_(False),
         )
     )
@@ -310,38 +324,35 @@ async def write_audit_log(
 
 async def create(
     db: AsyncSession,
-    *,
-    user_id: uuid.UUID | None,
-    definition_key: str,
-    name: str,
-    data: dict[str, Any],
-    is_shared: bool = False,
-    is_system: bool = False,
-    source: str = "api",
+    creation: CredentialCreation,
+    context: OrgContext | PlatformScope,
 ) -> Credential:
-    """Create a credential row.
+    """Persist personal scope or an explicitly requested platform credential."""
+    match context:
+        case OrgContext():
+            await resolve_private_actor(
+                db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+            )
+            user_id, org_id, tenant_id = context.user_id, context.org_id, context.tenant_id
+            scope, is_system = "personal", False
+        case PlatformScope():
+            user_id, org_id, tenant_id = None, None, None
+            scope, is_system = "platform", True
+        case unreachable:
+            assert_never(unreachable)
 
-    ``is_system=True`` rows MUST be created with ``user_id=None`` — system
-    credentials belong to the operator, not to any single user, so the FK is
-    intentionally NULL (the m36 migration relaxed the constraint and added a
-    CHECK enforcing this invariant). User-owned credentials must always
-    supply a non-null ``user_id``.
-    """
-
-    if is_system and user_id is not None:
-        raise ValueError("system credentials must have user_id=None")
-    if not is_system and user_id is None:
-        raise ValueError("user credentials require user_id")
-
-    blob, key_id, field_keys = encrypt_data(data)
+    blob, key_id, field_keys = encrypt_data(dict(creation.data))
     cred = Credential(
         user_id=user_id,
-        definition_key=definition_key,
-        name=name,
+        org_id=org_id,
+        tenant_id=tenant_id,
+        scope=scope,
+        definition_key=creation.definition_key,
+        name=creation.name,
         data_encrypted=blob,
         key_id=key_id,
         field_keys=field_keys,
-        is_shared=is_shared,
+        is_shared=creation.is_shared,
         is_system=is_system,
         status="active",
     )
@@ -352,29 +363,24 @@ async def create(
         credential_id=cred.id,
         actor_user_id=user_id,
         action="create",
-        source=source,
-        metadata={"definition_key": definition_key},
+        source=creation.source,
+        metadata={"definition_key": creation.definition_key},
     )
     return cred
 
 
 async def update(
-    db: AsyncSession,
-    *,
-    credential: Credential,
-    actor_user_id: uuid.UUID | None,
-    name: str | None = None,
-    data: dict[str, Any] | None = None,
-    is_shared: bool | None = None,
-    status: str | None = None,
-    source: str = "api",
+    db: AsyncSession, patch: CredentialPatch, context: OrgContext | PlatformScope
 ) -> Credential:
+    if isinstance(context, OrgContext) and patch.actor_user_id != context.user_id:
+        raise credential_not_found()
+    credential = await load_scoped_credential(db, patch.credential_id, context)
     metadata: dict[str, Any] = {}
-    if name is not None and name != credential.name:
-        credential.name = name
+    if patch.name is not None and patch.name != credential.name:
+        credential.name = patch.name
         metadata["name_changed"] = True
-    if data is not None:
-        payload = dict(data)
+    if patch.data is not None:
+        payload = dict(patch.data)
         if credential.definition_key in OAUTH_DEFINITIONS:
             existing = decrypt_data(credential.data_encrypted)
             if not _oauth_identity_changed(existing, payload):
@@ -386,42 +392,44 @@ async def update(
         credential.key_id = key_id
         credential.field_keys = field_keys
         metadata["data_changed"] = True
-    if is_shared is not None:
-        credential.is_shared = is_shared
-    if status is not None:
-        credential.status = status
-        metadata["status"] = status
+    if patch.is_shared is not None:
+        credential.is_shared = patch.is_shared
+    if patch.status is not None:
+        credential.status = patch.status
+        metadata["status"] = patch.status
     if metadata:
         await write_audit_log(
             db,
             credential_id=credential.id,
-            actor_user_id=actor_user_id,
+            actor_user_id=patch.actor_user_id,
             action="update",
-            source=source,
+            source=patch.source,
             metadata=metadata,
         )
+    await db.flush([credential])
     return credential
 
 
 async def record_test(
-    db: AsyncSession,
-    *,
-    credential: Credential,
-    actor_user_id: uuid.UUID | None,
-    result: dict[str, Any],
-    source: str = "api",
+    db: AsyncSession, record: CredentialTestRecord, context: OrgContext | PlatformScope
 ) -> None:
+    if isinstance(context, OrgContext) and record.actor_user_id != context.user_id:
+        raise credential_not_found()
+    credential = await load_scoped_credential(db, record.credential_id, context)
+    result = dict(record.result)
+    message = result.get("message")
     credential.last_tested_at = datetime.now(UTC).replace(tzinfo=None)
     credential.last_test_result = result
     await write_audit_log(
         db,
         credential_id=credential.id,
-        actor_user_id=actor_user_id,
+        actor_user_id=record.actor_user_id,
         action="test",
-        source=source,
+        source=record.source,
         metadata={"success": bool(result.get("success"))},
-        error=None if result.get("success") else result.get("message"),
+        error=message if not result.get("success") and isinstance(message, str) else None,
     )
+    await db.flush([credential])
 
 
 async def re_encrypt_with_active_key(
@@ -457,16 +465,14 @@ async def re_encrypt_with_active_key(
 
 
 async def list_audit_logs(
-    db: AsyncSession,
-    *,
-    credential_id: uuid.UUID,
-    limit: int = 50,
+    db: AsyncSession, target: CredentialAuditQuery, context: OrgContext
 ) -> list[CredentialAuditLog]:
+    await load_scoped_credential(db, target.credential_id, context)
     result = await db.execute(
         select(CredentialAuditLog)
-        .where(CredentialAuditLog.credential_id == credential_id)
+        .where(CredentialAuditLog.credential_id == target.credential_id)
         .order_by(CredentialAuditLog.created_at.desc())
-        .limit(limit)
+        .limit(target.limit)
     )
     return list(result.scalars().all())
 

@@ -1,39 +1,31 @@
-"""Assistant 도구 공통 헬퍼 — Agent eager-load 쿼리 중복 제거."""
+"""Assistant target reads use the current actor and scoped Agent presentation."""
 
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from app.authz.agent_projection_scope import load_agent_presentation
+from app.authz.org_context import OrgContext
+from app.exceptions import AppError
 from app.models.agent import Agent
-from app.models.mcp_tool import AgentMcpToolLink
-from app.models.skill import AgentSkillLink
-from app.models.tool import AgentToolLink
 
 
 async def get_agent_with_eager_load(
     db: AsyncSession,
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Agent | None:
-    """Agent를 연관 관계(model, tool/mcp/skill links, sub_agent_links)와 함께 조회한다.
+    """Keep the Assistant lookup contract while refreshing actor and child scope.
 
-    read_tools, write_tools 양쪽에서 공통으로 사용한다.
+    The shared projection denies stale actors before target SQL/autoflush and
+    refreshes cached relationships from persisted resource parents. Its filtered
+    collections are a presentation; writers only append or explicitly delete
+    visible links, leaving hidden persisted associations intact.
     """
-    # AgentSubAgentLink.sub_agent는 lazy="joined"라 link 로드 시 자동으로 함께 옴 —
-    # 여기서 추가 selectinload는 중복.
-    result = await db.execute(
-        select(Agent)
-        .where(Agent.id == agent_id, Agent.user_id == user_id)
-        .options(
-            selectinload(Agent.model),
-            selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
-            selectinload(Agent.mcp_tool_links).selectinload(AgentMcpToolLink.mcp_tool),
-            selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
-            selectinload(Agent.sub_agent_links),
-        )
-    )
-    return result.scalar_one_or_none()
+    try:
+        presentation = await load_agent_presentation(db, agent_id, context)
+    except AppError:
+        return None
+    return presentation.agent if presentation is not None else None

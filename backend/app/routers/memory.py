@@ -6,7 +6,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import agent_not_found, memory_not_found, memory_proposal_not_found
 from app.schemas.memory import (
     AgentMemorySettingsOut,
@@ -54,8 +55,9 @@ async def get_agent_memory_settings(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> AgentMemorySettingsOut:
-    settings = await memory_service.get_agent_settings(db, agent_id, user.id)
+    settings = await memory_service.get_agent_settings(db, agent_id, context)
     if settings is None:
         raise agent_not_found()
     return AgentMemorySettingsOut.model_validate(settings)
@@ -70,9 +72,10 @@ async def update_agent_memory_settings(
     payload: AgentMemorySettingsUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> AgentMemorySettingsOut:
-    settings = await memory_service.update_agent_settings(db, agent_id, user.id, payload)
+    settings = await memory_service.update_agent_settings(db, agent_id, context, payload)
     if settings is None:
         raise agent_not_found()
     return AgentMemorySettingsOut.model_validate(settings)
@@ -85,10 +88,11 @@ async def list_memories(
     q: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[MemoryRecordOut]:
     records = await memory_service.list_memory_records(
         db,
-        user_id=user.id,
+        context=context,
         scope=None if scope == "all" else scope,
         agent_id=agent_id,
         q=q,
@@ -101,9 +105,10 @@ async def create_memory(
     payload: MemoryRecordCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryRecordOut:
-    record = await memory_service.create_memory_record(db, user_id=user.id, payload=payload)
+    record = await memory_service.create_memory_record(db, context=context, payload=payload)
     if record is None:
         raise agent_not_found()
     return MemoryRecordOut.model_validate(record)
@@ -115,12 +120,13 @@ async def update_memory(
     payload: MemoryRecordUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryRecordOut:
     record = await memory_service.update_memory_record(
         db,
         memory_id=memory_id,
-        user_id=user.id,
+        context=context,
         payload=payload,
     )
     if record is None:
@@ -133,12 +139,13 @@ async def delete_memory(
     memory_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> Response:
     deleted = await memory_service.delete_memory_record(
         db,
         memory_id=memory_id,
-        user_id=user.id,
+        context=context,
     )
     if not deleted:
         raise memory_not_found()
@@ -150,11 +157,12 @@ async def create_memory_proposal(
     payload: MemoryProposalCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryProposalOut:
     proposal = await memory_service.create_memory_proposal(
         db,
-        user_id=user.id,
+        context=context,
         payload=payload,
     )
     if proposal is None:
@@ -167,11 +175,12 @@ async def get_memory_proposal(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> MemoryProposalOut:
     proposal = await memory_service.get_memory_proposal(
         db,
         proposal_id=proposal_id,
-        user_id=user.id,
+        context=context,
     )
     if proposal is None:
         raise memory_proposal_not_found()
@@ -186,12 +195,13 @@ async def approve_memory_proposal(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryProposalApprovalOut:
     approved = await memory_service.approve_memory_proposal(
         db,
         proposal_id=proposal_id,
-        user_id=user.id,
+        context=context,
     )
     if approved is None:
         raise memory_proposal_not_found()
@@ -211,12 +221,13 @@ async def edit_and_approve_memory_proposal(
     payload: MemoryProposalEditApprove,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryProposalApprovalOut:
     approved = await memory_service.approve_memory_proposal(
         db,
         proposal_id=proposal_id,
-        user_id=user.id,
+        context=context,
         content=payload.content,
         reason=payload.reason,
     )
@@ -234,12 +245,13 @@ async def reject_memory_proposal(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryProposalOut:
     proposal = await memory_service.reject_memory_proposal(
         db,
         proposal_id=proposal_id,
-        user_id=user.id,
+        context=context,
     )
     if proposal is None:
         raise memory_proposal_not_found()

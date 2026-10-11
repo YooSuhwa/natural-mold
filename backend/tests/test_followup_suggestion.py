@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 from httpx import AsyncClient
@@ -16,6 +18,7 @@ from app.services.followup_service import (
     _sanitize_suggestion,
     _transcript_tail,
 )
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 
@@ -34,11 +37,21 @@ async def _seed_conversation(db: AsyncSession) -> Conversation:
         name="Followup Agent",
         system_prompt="You are helpful.",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
 
-    conversation = Conversation(agent_id=agent.id, title="Followup Conversation")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="Followup Conversation",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.commit()
     return conversation

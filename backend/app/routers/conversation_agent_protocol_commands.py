@@ -12,6 +12,8 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.executor import execute_agent_stream_langgraph, resume_agent_stream_langgraph
+from app.authz.conversation_scope import require_conversation_agent_id
+from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.exceptions import ConflictError
 from app.models.conversation import Conversation
@@ -47,6 +49,8 @@ from app.routers.conversation_agent_protocol_runtime import (
     command_multitask_strategy,
     input_preview,
 )
+from app.routers.session_consent_scope import SessionConsentPayload, SessionConsentTarget
+from app.schemas.conversation_scope import ConversationAutoTitle, ConversationPromotion
 from app.services import chat_service, conversation_run_queue_service, conversation_run_service
 from app.services.chat_resource_context_integration import (
     QueuedResourceContextInput,
@@ -90,21 +94,21 @@ async def _wait_for_interrupted_parent_run(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Any:
     deadline = time.monotonic() + _RESUME_INTERRUPT_WAIT_TIMEOUT_S
     while True:
         active = await conversation_run_service.get_active_run(
-            db, conversation_id=conversation_id, user_id=user_id
+            db, conversation_id=conversation_id, context=context
         )
         if active is None or time.monotonic() >= deadline:
             # 전이 직후 창일 수 있으니 마지막으로 한 번 더 조회하고 포기한다.
             return await conversation_run_service.get_latest_interrupted_run(
-                db, conversation_id=conversation_id, user_id=user_id
+                db, conversation_id=conversation_id, context=context
             )
         await asyncio.sleep(_RESUME_INTERRUPT_WAIT_INTERVAL_S)
         run = await conversation_run_service.get_latest_interrupted_run(
-            db, conversation_id=conversation_id, user_id=user_id
+            db, conversation_id=conversation_id, context=context
         )
         if run is not None:
             return run
@@ -117,6 +121,7 @@ async def _handle_run_start_command(
     request: Request,
     db: AsyncSession,
     user: CurrentUser,
+    context: OrgContext,
     start_run: StartConversationRun,
     executor_fn: AgentStreamExecutor,
 ) -> JSONResponse:
@@ -133,8 +138,8 @@ async def _handle_run_start_command(
     resolved_checkpoint_id = checkpoint_id(command)
     runtime_input_payload = input_without_protocol_attachments(input_payload)
     context_scope = ResourceContextScope(
-        user_id=user.id,
-        agent_id=conversation.agent_id,
+        context=context,
+        agent_id=require_conversation_agent_id(conversation),
         conversation_id=conversation.id,
     )
     direct_context = None
@@ -170,19 +175,20 @@ async def _handle_run_start_command(
     if conversation.source == "draft":
         await chat_service.promote_draft_conversation(
             db,
-            conversation,
-            title_from_content=preview,
+            ConversationPromotion(conversation.id, context, preview),
         )
     elif preview:
-        await chat_service.maybe_set_auto_title(db, conversation.id, preview)
-    await chat_service.touch_conversation(db, conversation.id)
+        await chat_service.maybe_set_auto_title(
+            db, ConversationAutoTitle(conversation.id, context, preview)
+        )
+    await chat_service.touch_conversation(db, conversation.id, context)
     await record_conversation_audit(
         db,
         user=user,
         request=request,
         action="conversation.message_send",
         conversation_id=conversation.id,
-        agent_id=conversation.agent_id,
+        agent_id=require_conversation_agent_id(conversation),
         metadata={
             "content_length": len(preview or ""),
             "attachment_count": len(attachment_ids),
@@ -193,7 +199,7 @@ async def _handle_run_start_command(
         pending_interrupt = await conversation_run_service.get_latest_interrupted_run(
             db,
             conversation_id=conversation.id,
-            user_id=user.id,
+            context=context,
         )
         if pending_interrupt is not None:
             return command_error(
@@ -219,7 +225,7 @@ async def _handle_run_start_command(
         enqueue_result = await conversation_run_queue_service.enqueue_input_with_result(
             db,
             conversation_id=conversation.id,
-            user_id=user.id,
+            context=context,
             client_request_id=client_request_id,
             source="chat",
             input_payload=runtime_input_payload,
@@ -228,12 +234,12 @@ async def _handle_run_start_command(
             priority=100 if strategy == "interrupt" else 0,
         )
         queued = enqueue_result.input
-        cfg = await resolve_agent_context(db, conversation.id, user)
+        cfg = await resolve_agent_context(db, conversation.id, user, context=context)
         if attachment_ids:
             await chat_service.link_attachments_to_conversation(
                 db,
                 conversation_id=conversation.id,
-                user_id=user.id,
+                context=context,
                 attachment_ids=attachment_ids,
             )
             if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
@@ -243,19 +249,19 @@ async def _handle_run_start_command(
                     db,
                     storage_path=cfg.draft_workspace_path,
                     attachment_ids=attachment_ids,
-                    user_id=user.id,
+                    context=context,
                 )
         active = await conversation_run_service.get_active_run(
             db,
             conversation_id=conversation.id,
-            user_id=user.id,
+            context=context,
         )
         if strategy == "interrupt" and enqueue_result.created and active is not None:
             active = await conversation_run_service.get_run_for_user(
                 db,
                 conversation_id=conversation.id,
                 run_id=active.id,
-                user_id=user.id,
+                context=context,
                 for_update=True,
             )
             if active is not None:
@@ -300,7 +306,7 @@ async def _handle_run_start_command(
             db,
             conversation_id=conversation.id,
             agent_id=cfg_agent_uuid(conversation),
-            user_id=user.id,
+            context=context,
             source=run_source,
             input_preview=preview,
             metadata={
@@ -313,6 +319,7 @@ async def _handle_run_start_command(
         if resolved_checkpoint_id is None:
             await conversation_run_queue_service.persist_direct_input(
                 db,
+                context=context,
                 run=run,
                 client_request_id=command.params.client_request_id or str(uuid.uuid4()),
                 input_payload=runtime_input_payload,
@@ -339,12 +346,13 @@ async def _handle_run_start_command(
         conversation.id,
         user,
         checkpoint_id=resolved_checkpoint_id,
+        context=context,
     )
     if attachment_ids:
         await chat_service.link_attachments_to_conversation(
             db,
             conversation_id=conversation.id,
-            user_id=user.id,
+            context=context,
             attachment_ids=attachment_ids,
         )
         if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
@@ -356,7 +364,7 @@ async def _handle_run_start_command(
                 db,
                 storage_path=cfg.draft_workspace_path,
                 attachment_ids=attachment_ids,
-                user_id=user.id,
+                context=context,
             )
     await db.commit()
 
@@ -439,6 +447,7 @@ async def _handle_input_respond_command(
     request: Request,
     db: AsyncSession,
     user: CurrentUser,
+    context: OrgContext,
     start_run: StartConversationRun,
     executor_fn: AgentStreamExecutor,
 ) -> JSONResponse:
@@ -453,11 +462,11 @@ async def _handle_input_respond_command(
     parent_run = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation.id,
-        user_id=user.id,
+        context=context,
     )
     if parent_run is None:
         parent_run = await _wait_for_interrupted_parent_run(
-            db, conversation_id=conversation.id, user_id=user.id
+            db, conversation_id=conversation.id, context=context
         )
         if parent_run is not None:
             # 워커 전이는 별도 세션 커밋이라, 대기 초반에 identity map에 적재된
@@ -471,7 +480,7 @@ async def _handle_input_respond_command(
             message="Resume run requires an interrupted parent run",
         )
 
-    tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
+    tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id, context=context)
     validation_error = validate_resume_payload(resume, interrupts_from_tasks(tasks))
     if validation_error is not None:
         return command_error(
@@ -484,10 +493,8 @@ async def _handle_input_respond_command(
     # 재빌드부터 동의가 즉시 효력을 갖는다 (모든 resume은 재빌드).
     consented_tools = await apply_session_consent_decisions(
         db,
-        conversation_id=conversation.id,
-        user_id=user.id,
-        resume=resume,
-        pending_interrupts=interrupts_from_tasks(tasks),
+        SessionConsentTarget(conversation.id, context),
+        SessionConsentPayload(resume, interrupts_from_tasks(tasks)),
     )
     try:
         input_payload = await restore_redacted_resume_payload(
@@ -503,14 +510,14 @@ async def _handle_input_respond_command(
         )
     run_interrupt_id = resume_run_interrupt_id(resume, parent_run.interrupt_id)
 
-    await chat_service.touch_conversation(db, conversation.id)
+    await chat_service.touch_conversation(db, conversation.id, context)
     await record_conversation_audit(
         db,
         user=user,
         request=request,
         action="conversation.message_resume",
         conversation_id=conversation.id,
-        agent_id=conversation.agent_id,
+        agent_id=require_conversation_agent_id(conversation),
         metadata={
             "source": "langgraph_protocol",
             "interrupt_id": run_interrupt_id,
@@ -523,7 +530,7 @@ async def _handle_input_respond_command(
             db,
             conversation_id=conversation.id,
             agent_id=cfg_agent_uuid(conversation),
-            user_id=user.id,
+            context=context,
             source="resume",
             input_preview=None,
             parent_run_id=parent_run.id,
@@ -546,7 +553,7 @@ async def _handle_input_respond_command(
             return command_error(command, code="MULTITASK_REJECTED", message=str(exc.detail))
         raise
     run_id = run.id
-    cfg = await resolve_agent_context(db, conversation.id, user)
+    cfg = await resolve_agent_context(db, conversation.id, user, context=context)
     await db.commit()
 
     await start_run(
@@ -573,6 +580,7 @@ async def handle_thread_command(
     request: Request,
     db: AsyncSession,
     user: CurrentUser,
+    context: OrgContext,
     start_run: StartConversationRun,
     run_start_executor: AgentStreamExecutor = execute_agent_stream_langgraph,
     input_respond_executor: AgentStreamExecutor = resume_agent_stream_langgraph,
@@ -584,6 +592,7 @@ async def handle_thread_command(
             request=request,
             db=db,
             user=user,
+            context=context,
             start_run=start_run,
             executor_fn=run_start_executor,
         )
@@ -594,6 +603,7 @@ async def handle_thread_command(
             request=request,
             db=db,
             user=user,
+            context=context,
             start_run=start_run,
             executor_fn=input_respond_executor,
         )

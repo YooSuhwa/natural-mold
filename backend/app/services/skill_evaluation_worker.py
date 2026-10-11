@@ -28,6 +28,7 @@ from app.services.skill_evaluation_worker_outcomes import (
     record_completed_audit,
 )
 from app.services.skill_evaluation_worker_state import (
+    RUN_LIFECYCLE_OPTIONS,
     build_context,
     load_run,
     mark_cancelled,
@@ -170,12 +171,16 @@ class SkillEvaluationWorker:
         if run.status != "queued":
             raise SkillEvaluationExecutionError(f"run is not queued: {run.status}")
 
+        try:
+            context = await build_context(db, run)
+        except SkillEvaluationExecutionError as exc:
+            await mark_execution_error_failed(db, run, exc)
+            return run
         await mark_running(db, run)
         await record_run_audit(db, run, "skill_evaluation.run_start")
         await mark_grading(db, run)
         await db.commit()
         await db.refresh(run)
-        context = await build_context(db, run)
         # Scale the whole-run timeout to the case count × arms so a legal
         # multi-case run isn't killed mid-run by a fixed cap (spec §4.1).
         run_timeout = effective_run_timeout_seconds(
@@ -222,8 +227,10 @@ class SkillEvaluationWorker:
         target already exists, and CancelledError here can't unwind the run.
         """
 
+        if run.status != "completed":
+            return
         usage = run.usage
-        if run.status != "completed" or not isinstance(usage, dict):
+        if not isinstance(usage, dict):
             return
         await record_evaluation_usage_nonfatal(
             skill_id=run.skill_id,
@@ -235,7 +242,10 @@ class SkillEvaluationWorker:
 
     async def mark_interrupted_runs(self, db: AsyncSession) -> int:
         result = await db.execute(
-            select(SkillEvaluationRun).where(SkillEvaluationRun.status.in_(("running", "grading")))
+            select(SkillEvaluationRun)
+            .options(RUN_LIFECYCLE_OPTIONS)
+            .where(SkillEvaluationRun.status.in_(("running", "grading")))
+            .execution_options(autoflush=False)
         )
         rows = list(result.scalars().all())
         for run in rows:
