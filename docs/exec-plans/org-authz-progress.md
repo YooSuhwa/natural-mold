@@ -240,7 +240,7 @@ real-participant U-05 study are future gates.
 - [x] B-03 — organization context and active organization API.
 - [x] B-04 — organization control APIs and focused/native/full backend gates; runtime fanout remains E-03.
 - [x] B-05 — registration policies, atomic invitation acceptance/resend and signup scope/bootstrap.
-- [ ] B-06 — organization filters for private data.
+- [x] B-06 — organization filters for private data.
 - [ ] B-07 — organization switching and administration UI.
 - [ ] B-08 — ownership constraints and agent archive lifecycle.
 - [ ] B-09 — frontend state reset and transport inspection.
@@ -3329,3 +3329,107 @@ R26 후보는 검토 절차의 증거 누락과 실행 시작 전 취소 처리�
 문서·원본 로그·정리 기록을 함께 제공한다. 다섯 독립 검토와 채택은 아직 남았으며
 전체 P0–P8 목표는 계속 진행 중이다. B08 보관·복원·영구 삭제 계획은 실행 가능성
 검토를 통과했고, B06 반영 후 현재 소스를 다시 확인해 개발을 시작한다.
+
+## B-06 R27 adoption record (2026-10-11, Asia/Seoul)
+
+B-06 is adopted at candidate `5b894c6661e4f24603eacb8b29344432af4a93dc`,
+parent `54ce914f87a79e182e5228ddbc84e6dddb66569f`, with **635 source paths / 630
+Python paths**. The authoritative adoption receipt is
+`output/org-authz/b06-review-r27/adoption.json` (`adopted=true`, verdict `PASS`);
+the aggregate is `output/org-authz/b06-review-r27/aggregate.md` (`R27 aggregate —
+PASS`). All five dual-copy-preserved review lanes passed at the same candidate:
+`f1-plan.md`, `f2-code.md`, `f3-qa.md`, `f4-security.md`, and `f5-context.md`
+under `output/org-authz/b06-review-r27/`.
+
+Fresh F3 acceptance evidence in `output/org-authz/b06-review-r27/f3-qa.md` records
+the whole backend **5,838 passed / 3 existing MCP warnings / 220.25s**, authz
+**1,186 passed / 171 integration deselected / 227.69s**, and canonical actual-m83
+native **96 passed / 424.94s**; separate native collection was **96 collected,
+collection PASSED**, with owned labs **0** and static checks **0 errors / 0
+warnings**. Independent B08 Gate0 evidence in
+`.omo/evidence/b08/task-1-gate0-report.md` and
+`.omo/evidence/b08/task-1-b06-adoption.json` confirms **80 existing source hashes
+and 41 planned-absent paths** against the adopted baseline.
+
+The full P0–P8 implementation goal remains **ACTIVE/incomplete**; P1 remains
+**in progress**. B08's four foundation tasks remain **in progress**. This record
+does not claim B08 feature/UI/deployment/shared-database/provider acceptance or
+overall completion; those boundaries remain explicit in the Gate0 and F3
+evidence.
+
+## B-08 Task 15 gate-start 기록 (2026-10-12, Asia/Seoul)
+
+이 블록은 2026-10-12 native/full gate 시작 시점에 확인한 **bounded progress snapshot**이다.
+이후 실행 결과를 자동 반영하는 evergreen current-status 기록이 아니다.
+
+B08 Tasks 1–14는 현재 승인되었고, Task 15의 단일 cross-surface witness, 전체 회귀,
+소스 freeze와 다섯 독립 검토는 아직 **OPEN**이다. Task 14 권위 증거
+`.omo/evidence/b08/task-14-canonical49-rerun4-pass-report.md` (SHA-256
+`edffb57bc9d37511a3ba8ff0683280f957c17e4de94bf4d8453ae3d72f9ef75a`)의 native
+canonical49는 49 selected / 49 executed / 49 passed / 0 failed / 0 skipped / 0
+deselected를 기록한다. migration current/head는 `b08_agent_lifecycle`이고, 140개
+소스 경로 해시가 전후 동일했으며, owned cleanup은 완료되고 foreign resources는
+보존되었다.
+
+Task 14의 authority 및 retained-history native acceptance도 각각 승인되었다
+(`.omo/evidence/b08/task-14-authority-native-acceptance.md`, SHA-256
+`3bf228b29e258993bbc1577101ff1c9b7028502ba0e98a58b4b21110b95e1a57`;
+`.omo/evidence/b08/task-14-retention-native-acceptance.md`, SHA-256
+`2c85e607f7e8416dc45a8b28b6243e8730d4360f6d2dc23b0f1094b16080d550`). 현재 증거가
+확인하는 범위는 metadata governance와 archive/restore/purge의 exact-name,
+retained-history masking, cleanup replay 경계다. Provider invocation은 0이며, 이는
+live provider 성공을 뜻하지 않는다.
+
+Gate 시작 전에 확인한 Task 15 bounded native 결과는 다음과 같다. 각 결과는 해당 범위의
+PASS일 뿐 canonical 전체 또는 F1–F5 승인을 뜻하지 않는다.
+
+- private authorization cohort: 38 selected / 38 executed / 38 completed / 0 failed / 0 skipped /
+  0 deselected. 이는 canonical 269-node 범위가 아니다. 결과 보고서
+  `.omo/evidence/b08/task-15-private-cohort-green-r2-pass-report.md` (SHA-256
+  `78a8c527daa1bb8f4f6719ea3379ca2d02580be633e463b54b8a3d5a3a8029bb`)에 기록되어 있다.
+- queue concurrency: 4 selected / 4 executed / 4 completed / 0 failed / 0 skipped / 0 deselected.
+  결과 보고서 `.omo/evidence/b08/task-15-queue-green-r1-pass-report.md` (SHA-256
+  `dc5648d8011b3b40589498f9ed355e7da597078de71dbf61f75b8ea60f97638b`)는 canonical
+  four-node queue mode로 한정한다.
+- delete race: 3 selected / 3 executed / 3 completed / 0 failed / 0 skipped / 0 deselected.
+  결과 보고서 `.omo/evidence/b08/task-15-native-delete-green-r1-pass-report.md` (SHA-256
+  `55f1bf9ed4e916a97a3f43eec312cb5e269b6da37a7e5c1e2d7d8fe3abce89ba`)는 noncanonical
+  exact-three coverage로 한정하며 broad 269-node gate를 주장하지 않는다.
+
+이 gate-start snapshot에서 broad native all-mode, full backend, source freeze 완료, F1–F5
+승인은 **PENDING**이었다. 따라서 이 기록은 full B08 또는 P0–P8 완료, full UI, provider/live
+성공, production deployment, shared-database migration을 주장하지 않는다. 이후 native/full
+결과와 review receipts는 이 문서를 갱신하지 않고 `.omo/evidence/`에 기록해 frozen source
+union을 보존한다.
+
+## B-08 Task 15 current gate validation (2026-10-12, Asia/Seoul)
+
+앞의 gate-start snapshot 이후, 같은 B08 source union에서 다음 검증 결과를 확인했다. 이는
+현재 candidate의 validation record이며 Task 15 final candidate 또는 F1–F5 승인을 뜻하지
+않는다.
+
+- Canonical native all은 269 selected / 269 executed / 269 completed / 0 failed / 0 skipped /
+  0 unexpected deselected, 580.608초로 통과했다. 권위 보고서는
+  `.omo/evidence/b08/task-15-native-all-structured-r3-native-report.md` (SHA-256
+  `a0c125cd2689b545a3cb8b9abe74f87450421b2e01d00a2648c92dd103b44e67`)이다.
+- Migration roundtrip은 `b08_agent_lifecycle`에서 한 revision downgrade 후 head 부재를
+  확인하고 head와 fingerprint를 복원했으며, `migration_roundtrip=true`로 통과했다. 권위
+  보고서는 `.omo/evidence/b08/task-15-migration-roundtrip-current-native-report.md`
+  (SHA-256 `23785eb22aa2449b58c146abccc22b405358b40f7c4b75aa591937f9e59f5920`)이다.
+- Whole backend는 **6,043 passed / 기존 MCP 경고 3개 / 272.14초**였다. Whole Ruff와
+  Pyright는 통과했고, changed Python types/format은 231개, focused guards는 158개,
+  lifecycle/history/purge는 102개가 통과했다. 권위 보고서는
+  `.omo/evidence/b08/task-15-fullgate-current-report.md` (SHA-256
+  `3d4281c6c3b23ae32184856985c34cfb547aae762b44e2d47f0b57300a28512d`)이다.
+
+Native 및 migration 결과가 사용한 complete source seal은 3,478개 경로와
+`bd312a411948540bee689b903143fb3a4a806af78072efcabc4930106f691a70`이며, full-gate after
+manifest는 `c8b3a0bb5a393e2b573084a1b661c15a2bf4b222317c504f1614861c62f3f65a`이다. file-pin
+delta는 0이며 metadata shape 차이만 있다. 다만 `check_plan_history.py verify`는 canonical
+precondition baseline 부재로 실행할 수 없어 candidate-bound final check가 남아 있다.
+
+따라서 Task 15 final candidate history/atomicity와 F1–F5는 아직 **OPEN**이고, full P0–P8도
+계속 남아 있다. 이 기록은 provider/live 성공, production deployment, full UI 또는
+shared-database migration을 주장하지 않는다. 이 append는 current source seal 이후의 문서
+기록이므로, 다음 candidate freeze가 필요하면 이 문서 상태를 포함해 새 source union을
+고정해야 한다.
