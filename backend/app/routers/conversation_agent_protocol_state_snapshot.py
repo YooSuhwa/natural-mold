@@ -20,11 +20,20 @@ from app.routers.conversation_agent_protocol_checkpoint_state import (
     load_checkpoint_channel_values,
 )
 from app.routers.conversation_agent_protocol_legacy import legacy_state_messages
-from app.services.conversation_runtime_policy import snapshot_from_conversation
+from app.schemas.conversation_history import ConversationHistoryCheckpointResponse
+from app.services.conversation_protocol_projection import (
+    MessageProjectionRequest,
+)
+from app.services.conversation_protocol_projection import (
+    project_todo_policy_values as _project_todo_policy_values,
+)
+from app.services.conversation_protocol_projection import (
+    serialize_langchain_message as _serialize_langchain_message,
+)
 from app.services.thread_branch_service import _collect_checkpoints, build_message_tree
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ThreadStateSnapshot:
     values: dict[str, Any]
     checkpoint_by_message_id: dict[str, str]
@@ -35,15 +44,7 @@ def project_todo_policy_values(
     conversation: Conversation,
     values: dict[str, Any],
 ) -> dict[str, Any]:
-    """Hide stale Todo state for a conversation that snapshotted explicit Todo-off."""
-    runtime_policy = snapshot_from_conversation(conversation)
-    if (
-        runtime_policy is None
-        or runtime_policy.source != "stored"
-        or runtime_policy.effective.todo.enabled
-    ):
-        return values
-    return {key: value for key, value in values.items() if key != "todos"}
+    return _project_todo_policy_values(conversation, values)
 
 
 def serialize_langchain_message(
@@ -53,28 +54,9 @@ def serialize_langchain_message(
     metadata: Mapping[str, Any] | None = None,
     secret_values: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    if hasattr(message, "model_dump"):
-        dumped = message.model_dump(mode="json")
-        payload = dumped if isinstance(dumped, dict) else {"type": "unknown", "content": dumped}
-    else:
-        get_type = getattr(message, "_getType", lambda: "unknown")
-        payload = {
-            "type": str(getattr(message, "type", None) or get_type()),
-            "content": getattr(message, "content", ""),
-            "id": getattr(message, "id", None),
-        }
-    # ADR-021 C2 — this runs in a plain HTTP GET (no active run / ContextVar),
-    # so the run secret set is passed explicitly by the router.
-    payload = project_and_redact_protocol_data(
-        "messages",
-        payload,
-        secret_values=secret_values,
+    return _serialize_langchain_message(
+        MessageProjectionRequest(message, checkpoint_id, metadata, secret_values)
     )
-    if not isinstance(payload, dict):
-        payload = {"type": "unknown", "content": payload}
-    if checkpoint_id is None and not metadata:
-        return payload
-    return _with_checkpoint_metadata(payload, checkpoint_id, metadata=metadata)
 
 
 async def collect_state_secret_values(
@@ -106,6 +88,30 @@ async def load_thread_state_snapshot(
     *,
     secret_values: Iterable[str] | None = None,
 ) -> ThreadStateSnapshot:
+    if conversation.agent_lifecycle_state == "purged":
+        if db is None:
+            return ThreadStateSnapshot({}, {}, {})
+        from app.services.conversation_history_service import read_purged_history_content
+
+        retained = await read_purged_history_content(db, conversation)
+        checkpoint_by_message_id: dict[str, str] = {}
+        parent_checkpoint_by_message_id: dict[str, str] = {}
+        for checkpoint in retained.checkpoints:
+            linkage = ConversationHistoryCheckpointResponse.model_validate(checkpoint)
+            for message in linkage.messages:
+                message_id = message.get("id")
+                if isinstance(message_id, str):
+                    checkpoint_by_message_id.setdefault(message_id, linkage.checkpoint_id)
+                    if linkage.parent_checkpoint_id is not None:
+                        parent_checkpoint_by_message_id.setdefault(
+                            message_id, linkage.parent_checkpoint_id
+                        )
+        return ThreadStateSnapshot(
+            values={**retained.state, "messages": retained.messages},
+            checkpoint_by_message_id=checkpoint_by_message_id,
+            parent_checkpoint_by_message_id=parent_checkpoint_by_message_id,
+        )
+
     # Materialise once — the set is consumed for the values payload plus every
     # message below; a one-shot generator would be exhausted after the first.
     secrets = tuple(secret_values) if secret_values is not None else None
@@ -214,33 +220,6 @@ async def _legacy_thread_state_snapshot(
         checkpoint_by_message_id={},
         parent_checkpoint_by_message_id={},
     )
-
-
-def _with_checkpoint_metadata(
-    payload: dict[str, Any],
-    checkpoint_id: str | None,
-    *,
-    metadata: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    additional_kwargs = payload.get("additional_kwargs")
-    additional_kwargs_dict = (
-        dict(additional_kwargs) if isinstance(additional_kwargs, Mapping) else {}
-    )
-    existing_metadata = additional_kwargs_dict.get("metadata")
-    metadata_dict = dict(existing_metadata) if isinstance(existing_metadata, Mapping) else {}
-    extra_metadata = dict(metadata or {})
-    if checkpoint_id is not None:
-        extra_metadata["checkpoint_id"] = checkpoint_id
-    return {
-        **payload,
-        "additional_kwargs": {
-            **additional_kwargs_dict,
-            "metadata": {
-                **metadata_dict,
-                **extra_metadata,
-            },
-        },
-    }
 
 
 async def _checkpoint_maps_by_message_id(

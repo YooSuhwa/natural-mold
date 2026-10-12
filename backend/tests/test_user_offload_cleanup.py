@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -142,6 +143,8 @@ async def test_delete_user_keeps_owner_rows_when_offload_cleanup_fails(
     conversation = await _make_conversation(db, agent.id)
     # Explicitly release the protected Agent; independent account history remains.
     conversation.agent_id = None
+    conversation.agent_lifecycle_state = "purged"
+    conversation.agent_purged_at = datetime.now(UTC)
     await db.flush()
     await db.delete(agent)
     await db.flush()

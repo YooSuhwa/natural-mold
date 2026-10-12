@@ -13,6 +13,7 @@ from app.services import conversation_run_service
 from app.services.conversation_run_queue_mutations import (
     lock_owned_conversation,
     queue_input_not_found,
+    require_queue_executable,
 )
 
 _INTERRUPT_PRIORITY = 100
@@ -38,6 +39,7 @@ async def promote_pending_input(
 ) -> PromotedConversationInput:
     """Promote one pending input and persist predecessor cancellation in one transaction."""
     user_id = context.user_id
+    await require_queue_executable(db, conversation_id, context)
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,

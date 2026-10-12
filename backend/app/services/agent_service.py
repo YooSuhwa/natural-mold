@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.agent_runtime.identity import make_agent_runtime_name, validate_identity_mode
 from app.agent_runtime.runtime_policy import runtime_policy_to_json
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.agent_projection_scope import (
     AgentPresentation,
     load_agent_presentation,
@@ -88,6 +89,7 @@ async def list_agents(db: AsyncSession, context: OrgContext) -> list[Agent]:
             private_scope_predicate(Agent, context),
             # Hidden runtime rows (skill builder 등) never surface in lists.
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+            Agent.archived_at.is_(None),
         )
         .options(*projection_options(context))
         .execution_options(autoflush=False, populate_existing=True)
@@ -114,6 +116,7 @@ async def list_agent_summaries(db: AsyncSession, context: OrgContext) -> list[di
         .where(
             private_scope_predicate(Agent, context),
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+            Agent.archived_at.is_(None),
         )
         .subquery()
     )
@@ -172,6 +175,7 @@ async def list_agent_summaries(db: AsyncSession, context: OrgContext) -> list[di
         .where(
             private_scope_predicate(Agent, context),
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+            Agent.archived_at.is_(None),
         )
         .order_by(func.coalesce(conversation_summary.c.last_used_at, Agent.created_at).desc())
     )
@@ -263,6 +267,8 @@ async def _validate_sub_agent_ids_owned(
             status_code=400,
             detail=f"Invalid or unauthorized sub_agent_ids: {invalid}",
         )
+    for sub_agent_id in sorted(valid, key=lambda item: item.bytes):
+        await load_agent_tree_for_execution(db, AgentExecutionTarget(sub_agent_id, context))
 
 
 async def _validate_mcp_tool_ids_owned(
@@ -447,6 +453,8 @@ async def _validate_agent_binding_ids(
 ) -> None:
     """Validate the complete requested graph before mutating an Agent or its links."""
     with db.no_autoflush:
+        if data.sub_agent_ids:
+            await _validate_sub_agent_ids_owned(db, data.sub_agent_ids, context)
         if data.model_fallback_ids:
             await _validate_model_fallback_ids(db, data.model_fallback_ids)
         if data.tool_ids:
@@ -455,8 +463,6 @@ async def _validate_agent_binding_ids(
             await _validate_mcp_tool_ids_owned(db, data.mcp_tool_ids, context)
         if data.skill_ids:
             await _validate_skill_ids_owned(db, data.skill_ids, context)
-        if data.sub_agent_ids:
-            await _validate_sub_agent_ids_owned(db, data.sub_agent_ids, context)
 
 
 async def create_agent(db: AsyncSession, data: AgentCreate, context: OrgContext) -> Agent:
@@ -546,6 +552,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, context: OrgContext)
 async def update_agent(
     db: AsyncSession, agent: Agent, data: AgentUpdate, *, context: OrgContext
 ) -> Agent:
+    await load_agent_tree_for_execution(db, AgentExecutionTarget(agent.id, context))
     scoped = await get_agent(db, agent.id, context)
     if scoped is None:
         raise agent_not_found()

@@ -68,3 +68,20 @@ def test_missing_policy_is_detectable_when_new_route_is_registered():
     assert [r.path for r in routes if not hasattr(r.endpoint, "__authz_policy__")] == [
         "/unclassified"
     ]
+
+
+def test_governance_policy_is_explicit_and_never_registered_as_legacy():
+    from app.authz.policies import GOVERNANCE, authz_policy
+
+    app = FastAPI()
+
+    @app.get("/governance")
+    @authz_policy(GOVERNANCE)
+    async def governance() -> bool:
+        return True
+
+    register_legacy_policies(app)
+    route = next(
+        route for route in app.routes if isinstance(route, APIRoute) and route.path == "/governance"
+    )
+    assert getattr(route.endpoint, "__authz_policy__", None) == "GOVERNANCE"

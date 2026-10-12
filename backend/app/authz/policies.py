@@ -12,13 +12,14 @@ from typing import Final, Literal, ParamSpec, TypeVar
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
-PolicyKind = Literal["LEGACY", "E2E_ONLY", "PUBLIC", "SELF", "CATALOG", "SUPER"]
+PolicyKind = Literal["LEGACY", "E2E_ONLY", "PUBLIC", "SELF", "CATALOG", "SUPER", "GOVERNANCE"]
 LEGACY: Final = "LEGACY"
 E2E_ONLY: Final = "E2E_ONLY"
 PUBLIC: Final = "PUBLIC"
 SELF: Final = "SELF"
 CATALOG: Final = "CATALOG"
 SUPER: Final = "SUPER"
+GOVERNANCE: Final = "GOVERNANCE"
 P = ParamSpec("P")
 R = TypeVar("R")
 

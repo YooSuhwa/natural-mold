@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
@@ -19,10 +20,17 @@ from app.agent_runtime.identity import (
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import resolve_runtime_policy
 from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser
+from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.model import Model
-from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 
 
 def _agent(
@@ -62,6 +70,15 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
 
     owner_id = uuid.uuid4()
     caller_id = uuid.uuid4()
+    await ensure_unit_scope(
+        db,
+        CurrentUser(
+            id=owner_id,
+            email=f"{owner_id}@example.com",
+            name="Subagent owner",
+            is_super_user=False,
+        ),
+    )
     parent_model = Model(
         id=uuid.uuid4(),
         provider="openai",
@@ -95,6 +112,8 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
             position=0,
         )
     ]
+    db.add_all([parent_model, child_model, parent, child])
+    await db.commit()
     parent_identity = resolve_agent_run_identity(
         agent_id=parent.id,
         agent_owner_user_id=parent.user_id,
@@ -198,6 +217,77 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
     assert observed_cfgs[0].api_key == "child-key"
     assert observed_cfgs[0].credential_subject_user_id == str(caller_id)
     assert observed_cfgs[0].runtime_policy is parent_cfg.runtime_policy
+
+
+@pytest.mark.asyncio
+async def test_build_subagents_config_rejects_archived_child_before_private_runtime_effects(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.agent_runtime.subagents import build_subagents_config
+
+    owner_id = uuid.uuid4()
+    await ensure_unit_scope(
+        db,
+        CurrentUser(
+            id=owner_id,
+            email=f"{owner_id}@example.com",
+            name="Archived child owner",
+            is_super_user=False,
+        ),
+    )
+    model = Model(
+        id=uuid.uuid4(),
+        provider="openai",
+        model_name="task-12",
+        display_name="Task 12",
+    )
+    parent = _agent(agent_id=uuid.uuid4(), user_id=owner_id, name="Parent", model=model)
+    child = _agent(agent_id=uuid.uuid4(), user_id=owner_id, name="Child", model=model)
+    child.archived_at = datetime.now(UTC).replace(tzinfo=None)
+    child.archived_by = owner_id
+    parent.sub_agent_links = [
+        AgentSubAgentLink(
+            parent_agent_id=parent.id,
+            sub_agent_id=child.id,
+            sub_agent=child,
+            position=0,
+        )
+    ]
+    db.add_all([model, parent, child])
+    await db.commit()
+    secret = AsyncMock()
+    tools = AsyncMock()
+    runtime = AsyncMock()
+    monkeypatch.setattr("app.agent_runtime.subagents.resolve_llm_api_key_for_agent", secret)
+    monkeypatch.setattr("app.agent_runtime.subagents.chat_service.build_tools_config", tools)
+    monkeypatch.setattr("app.agent_runtime.subagents._prepare_runtime_components", runtime)
+    parent_cfg = AgentConfig(
+        org_context=unit_context(owner_id),
+        provider=model.provider,
+        model_name=model.model_name,
+        api_key="parent-key",
+        base_url=None,
+        system_prompt=parent.system_prompt,
+        tools_config=[],
+        thread_id="task-12",
+        agent_id=str(parent.id),
+        agent_name=parent.name,
+        user_id=str(owner_id),
+        agent_owner_user_id=str(owner_id),
+        caller_user_id=str(owner_id),
+        credential_subject_user_id=str(owner_id),
+        identity_mode=parent.identity_mode,
+        agent_runtime_name=parent.runtime_name,
+    )
+
+    with pytest.raises(AppError) as caught:
+        await build_subagents_config(parent, db=db, parent_cfg=parent_cfg, is_trigger_mode=False)
+
+    assert caught.value.code == "AGENT_ARCHIVED"
+    secret.assert_not_awaited()
+    tools.assert_not_awaited()
+    runtime.assert_not_awaited()
 
 
 def test_stored_policy_child_keeps_own_scope_without_memory_or_runnable_tools(

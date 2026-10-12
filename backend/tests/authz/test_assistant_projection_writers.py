@@ -5,10 +5,16 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING, assert_never
 
+import pytest
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.assistant.tools import write_tools
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
+from app.exceptions import AppError
+from app.models.agent import Agent
+from app.models.agent_subagent import AgentSubAgentLink
+from app.models.organization import OrganizationMember
 from tests.authz.assistant_projection_fixture import (
     assistant_sessions as assistant_sessions,
 )
@@ -79,3 +85,82 @@ async def test_normal_assistant_writer_controls_preserve_hidden_physical_links(
     projected = await get_agent_with_eager_load(db, binding_target.agent_id, own)
     assert projected is not None and projected.name == "updated-parent"
     assert visible_ids(projected, binding_target.kind) == set()
+
+
+async def test_assistant_add_subagent_rejects_foreign_candidate(
+    db: AsyncSession, binding_target: BindingTarget, private_scopes: PrivateScopes
+) -> None:
+    own, foreign = private_scopes.first, private_scopes.second
+    candidate = Agent(
+        user_id=foreign.user_id,
+        org_id=foreign.org_id,
+        tenant_id=foreign.tenant_id,
+        model_id=binding_target.model_id,
+        name="Foreign assistant candidate",
+        system_prompt="Synthetic",
+    )
+    db.add(candidate)
+    await db.commit()
+    tools = {
+        tool.name: tool for tool in write_tools.build_write_tools(db, binding_target.agent_id, own)
+    }
+    result = await tools["add_subagent_to_agent"].ainvoke({"agent_ids": [str(candidate.id)]})
+    assert "찾을 수 없음" in result
+    assert (
+        await db.scalar(
+            select(AgentSubAgentLink.parent_agent_id).where(
+                AgentSubAgentLink.parent_agent_id == binding_target.agent_id,
+                AgentSubAgentLink.sub_agent_id == candidate.id,
+            )
+        )
+        is None
+    )
+
+
+async def test_assistant_root_mutation_rejects_revoked_actor(
+    db: AsyncSession, binding_target: BindingTarget, private_scopes: PrivateScopes
+) -> None:
+    own = private_scopes.first
+    linked = await create_binding(
+        db,
+        replace(binding_target, kind="subagent", marker="revoked-remove-control"),
+        own,
+    )
+    await db.execute(
+        update(OrganizationMember)
+        .where(
+            OrganizationMember.org_id == own.org_id,
+            OrganizationMember.user_id == own.user_id,
+        )
+        .values(status="removed")
+    )
+    await db.commit()
+    tools = {
+        tool.name: tool for tool in write_tools.build_write_tools(db, binding_target.agent_id, own)
+    }
+    with pytest.raises(AppError) as denied:
+        await tools["remove_subagent_from_agent"].ainvoke({"agent_ids": [str(linked.linked_id)]})
+    assert denied.value.status == 403
+    assert await linked.persisted_ids(db) == {linked.linked_id}
+
+
+async def test_assistant_root_mutation_rejects_foreign_root(
+    db: AsyncSession, binding_target: BindingTarget, private_scopes: PrivateScopes
+) -> None:
+    linked = await create_binding(
+        db,
+        replace(binding_target, kind="subagent", marker="foreign-remove-control"),
+        private_scopes.first,
+    )
+    tools = {
+        tool.name: tool
+        for tool in write_tools.build_write_tools(
+            db,
+            binding_target.agent_id,
+            private_scopes.second,
+        )
+    }
+    with pytest.raises(AppError) as denied:
+        await tools["remove_subagent_from_agent"].ainvoke({"agent_ids": [str(linked.linked_id)]})
+    assert denied.value.status == 404
+    assert await linked.persisted_ids(db) == {linked.linked_id}

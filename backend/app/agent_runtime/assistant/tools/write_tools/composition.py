@@ -7,9 +7,12 @@ import uuid
 from langchain_core.tools import StructuredTool
 from sqlalchemy import func, select
 
+from app.agent_runtime.assistant.tools.write_tools.composition_lifecycle import (
+    get_executable_agent,
+    require_executable_agent,
+)
 from app.agent_runtime.assistant.tools.write_tools.context import (
     WriteToolContext,
-    get_agent_with_session,
 )
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
 from app.authz.scoping import private_scope_predicate
@@ -30,7 +33,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             middleware_names: 추가할 미들웨어 type 키 목록
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -61,7 +64,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             middleware_names: 제거할 미들웨어 type 키 목록
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -91,7 +94,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             agent_ids: 추가할 서브에이전트 UUID 목록 (문자열)
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -127,6 +130,8 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                     )
                 )
                 name_by_id = {row.id: row.name for row in result.all()}
+                for sub_agent_id in sorted(name_by_id, key=lambda item: item.bytes):
+                    await require_executable_agent(ctx, session, sub_agent_id)
 
             # 3차 append (검증 통과한 것만)
             next_pos = max((link.position for link in agent.sub_agent_links), default=-1) + 1
@@ -161,7 +166,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             agent_ids: 제거할 서브에이전트 UUID 목록 (문자열)
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -200,7 +205,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             skill_names: 추가할 스킬 이름 목록 (Skill.name 매칭)
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -250,7 +255,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             skill_names: 제거할 스킬 이름 목록 (Skill.name 매칭)
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 

@@ -48,6 +48,8 @@ async def mutation_conversation(
         org_id=context.org_id,
         tenant_id=context.tenant_id,
         agent_id=None,
+        agent_lifecycle_state="purged",
+        agent_purged_at=datetime.now(UTC),
         agent_name_snapshot="Fixture retained agent",
         title="새 대화",
         source="draft",

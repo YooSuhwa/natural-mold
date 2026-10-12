@@ -102,6 +102,8 @@ async def test_confirmation_rechecks_foreign_conversation_edge_before_validation
         org_id=foreign.org_id,
         tenant_id=foreign.tenant_id,
         agent_id=None,
+        agent_lifecycle_state="purged",
+        agent_purged_at=datetime.now(UTC),
         agent_name_snapshot="Retained fixture",
         last_activity_at=datetime.now(UTC),
         title="Foreign retained fixture",

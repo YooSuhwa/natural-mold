@@ -33,6 +33,8 @@ async def projection_scenario(
     db: AsyncSession, private_scopes: PrivateScopes, request: pytest.FixtureRequest
 ) -> ProjectionScenario:
     agent_id = None
+    agent_lifecycle_state = "purged"
+    agent_purged_at = datetime.now(UTC)
     if request.param == "foreign":
         model = Model(provider="openai", model_name="fixture", display_name="Fixture")
         db.add(model)
@@ -49,12 +51,16 @@ async def projection_scenario(
         db.add(agent)
         await db.flush()
         agent_id = agent.id
+        agent_lifecycle_state = "active"
+        agent_purged_at = None
     context = private_scopes.first
     row = Conversation(
         user_id=context.user_id,
         org_id=context.org_id,
         tenant_id=context.tenant_id,
         agent_id=agent_id,
+        agent_lifecycle_state=agent_lifecycle_state,
+        agent_purged_at=agent_purged_at,
         agent_name_snapshot="Retained snapshot",
         last_activity_at=datetime.now(UTC),
         title="Retained history",

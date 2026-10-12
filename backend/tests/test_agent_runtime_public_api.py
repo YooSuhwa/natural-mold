@@ -274,7 +274,7 @@ async def test_run_wait_invokes_deployed_agent_and_creates_api_conversation(
         return "Hello from deployed agent"
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_invoke",
+        "app.agent_api.runtime_service.execute_agent_invoke",
         fake_invoke,
     )
 
@@ -333,7 +333,7 @@ async def test_run_wait_marks_run_failed_when_app_error_is_raised(client, db, mo
         raise ValidationError("AGENT_API_TEST_FAILURE", "test failure")
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_invoke",
+        "app.agent_api.runtime_service.execute_agent_invoke",
         fake_invoke,
     )
 
@@ -367,7 +367,7 @@ async def test_thread_run_wait_reuses_thread_conversation(client, db, monkeypatc
         return "Thread answer"
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_invoke",
+        "app.agent_api.runtime_service.execute_agent_invoke",
         fake_invoke,
     )
 
@@ -429,7 +429,7 @@ async def test_thread_run_wait_marks_run_failed_when_executor_fails(client, db, 
         raise RuntimeError("executor failed")
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_invoke",
+        "app.agent_api.runtime_service.execute_agent_invoke",
         fake_invoke,
     )
 
@@ -470,7 +470,7 @@ async def test_run_stream_emits_external_sse_events(client, db, monkeypatch):
         yield 'event: content_delta\ndata: {"content":"Hi"}\n\n'
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_stream",
+        "app.agent_api.runtime_service.execute_agent_stream",
         fake_stream,
     )
 
@@ -501,7 +501,9 @@ async def test_run_stream_emits_external_sse_events(client, db, monkeypatch):
     assert "Hi" not in str(audit.event_metadata)
 
 
-async def test_run_stream_marks_run_failed_when_config_build_fails(client, db, monkeypatch):
+async def test_run_stream_rejects_before_acceptance_when_config_build_fails(
+    client, db, monkeypatch
+):
     from sqlalchemy import select
 
     from app.exceptions import ValidationError
@@ -528,8 +530,4 @@ async def test_run_stream_marks_run_failed_when_config_build_fails(client, db, m
 
     assert response.status_code == 422
     result = await db.execute(select(AgentApiRun))
-    run = result.scalar_one()
-    assert run.status == "failed"
-    assert run.error_code == "AGENT_API_TEST_FAILURE"
-    assert run.error_message == "test stream failure"
-    assert run.finished_at is not None
+    assert result.scalar_one_or_none() is None

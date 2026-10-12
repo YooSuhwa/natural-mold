@@ -69,7 +69,8 @@ async def test_native_direct_worker_claim_rechecks_membership(
                 input_preview="Native fixture",
             )
             target = RunExecutionTarget(
-                run.id, RunConversationTarget(conversation_id, run.agent_id, context)
+                run.id,
+                RunConversationTarget(conversation_id, UUID(agent.json()["id"]), context),
             )
             if revoked:
                 await db.execute(
@@ -92,8 +93,22 @@ async def test_native_direct_worker_claim_rechecks_membership(
             persisted = await db.get(ConversationRun, target.run_id)
             assert persisted is not None
             if revoked:
-                assert loaded is None and persisted.status == "queued"
-                assert persisted.worker_instance_id is None
+                assert loaded is None
+                assert (
+                    persisted.status,
+                    persisted.is_active,
+                    persisted.worker_instance_id,
+                    persisted.cancel_reason,
+                ) == ("canceling", True, None, "authority_revoked")
+                assert persisted.cancel_requested_at is not None
+                assert persisted.cancellation_acknowledged_at is None
             else:
                 assert loaded is not None and loaded.id == target.run_id
-                assert persisted.status == "running" and persisted.worker_instance_id == "native"
+                assert (
+                    persisted.status,
+                    persisted.is_active,
+                    persisted.worker_instance_id,
+                    persisted.cancel_reason,
+                ) == ("running", True, "native", None)
+                assert persisted.cancel_requested_at is None
+                assert persisted.cancellation_acknowledged_at is None

@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.error_codes import marketplace_invalid_package
@@ -116,14 +117,16 @@ async def resolve_subagents(
         if selected is None:
             raise marketplace_invalid_package(f"missing subagent dependency: {name}")
         ids.append(selected)
+    for agent_id in sorted(set(ids), key=lambda item: item.bytes):
+        await load_agent_tree_for_execution(db, AgentExecutionTarget(agent_id, context))
     return ids
 
 
 async def plan_graph(db: AsyncSession, request: GraphRequest) -> GraphPlan:
+    subagents = await resolve_subagents(db, request.capabilities, request.context)
     tools = await plan_tools(db, request)
     skills = await resolve_skills(db, request)
     mcp = await plan_mcp(db, request)
-    subagents = await resolve_subagents(db, request.capabilities, request.context)
     return GraphPlan(request.context, tools, skills, mcp, tuple(subagents))
 
 

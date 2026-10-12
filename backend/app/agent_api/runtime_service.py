@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import suppress
+from dataclasses import dataclass
+from functools import partial
 from typing import Any, Literal
 
 from sqlalchemy import or_, select
@@ -11,11 +14,15 @@ from sqlalchemy.orm import selectinload
 from app.agent_api.access import authorize_deployment, ensure_key_can_access_deployment
 from app.agent_api.dependencies import ApiKeyPrincipal, refresh_api_key_principal
 from app.agent_api.service import utc_now_naive
+from app.agent_runtime.agent_stream_runner import execute_agent_invoke, execute_agent_stream
+from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
+from app.agent_runtime.streaming import StreamErrorRecord
 from app.authz.agent_api_scope import (
     private_api_thread_parents_predicate,
     private_deployment_predicate,
 )
+from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scoped
 from app.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.models.agent_api import AgentApiRun, AgentApiThread, AgentDeployment
@@ -23,6 +30,16 @@ from app.models.conversation import Conversation
 from app.schemas.agent_api import AgentRunRequest, AgentThreadCreateRequest, AgentThreadResponse
 from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import chat_service
+from app.services.agent_execution_owner import (
+    ExecutionEnvelopeRef,
+    OwnedExecutionRequest,
+    accept_owned_execution,
+)
+from app.services.agent_execution_runtime import (
+    RuntimeOwnershipRequest,
+    run_owned_execution,
+    stream_owned_execution,
+)
 from app.services.agent_invocation_service import (
     AgentInvocationPrincipal,
     build_agent_config_for_loaded_agent,
@@ -31,6 +48,17 @@ from app.services.conversation_runtime_policy import (
     ensure_conversation_runtime_policy,
     snapshot_from_conversation,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class ApiOwnedExecution:
+    conversation_run_id: uuid.UUID
+    conversation_id: uuid.UUID
+    root_agent_id: uuid.UUID
+    context: OrgContext
+    public_run_id: str
+    config: AgentConfig
+    messages: list[dict[str, Any]]
 
 
 def external_run_id(row_id: uuid.UUID) -> str:
@@ -91,8 +119,13 @@ async def create_api_conversation(
         context=authorized.principal.context,
         source="api",
     )
-    await db.commit()
-    await db.refresh(conversation)
+    try:
+        await ensure_conversation_runtime_policy(
+            db,
+            ConversationPolicyTarget(conversation.id, authorized.principal.context),
+        )
+    except RuntimePolicySnapshotError as exc:
+        raise ConflictError(exc.code, exc.code) from None
     return conversation
 
 
@@ -115,6 +148,7 @@ async def create_thread(
         public_id=external_thread_id(thread_id),
         user_id=principal.user_id,
         deployment_id=deployment.id,
+        deployment_public_id_snapshot=deployment.public_id,
         conversation_id=conversation.id,
         external_user=request.user,
         meta=request.metadata,
@@ -135,7 +169,7 @@ async def create_thread(
 def thread_to_response(thread: AgentApiThread) -> AgentThreadResponse:
     return AgentThreadResponse(
         id=thread.public_id,
-        agent_id=thread.deployment.public_id,
+        agent_id=thread.deployment_public_id_snapshot,
         conversation_id=thread.conversation_id,
         user=thread.external_user,
         metadata=thread.meta,
@@ -196,6 +230,23 @@ async def create_run_row(
     if operation is None:
         raise ValidationError("AGENT_API_RUN_MODE_INVALID", "run mode is invalid")
     principal.require_scope(operation)
+    if conversation_id is None and thread_id is not None:
+        conversation_id = await db.scalar(
+            select(AgentApiThread.conversation_id).where(
+                AgentApiThread.id == thread_id,
+                AgentApiThread.user_id == principal.user_id,
+                AgentApiThread.deployment_id == deployment.id,
+            )
+        )
+    if conversation_id is None:
+        conversation_id = (
+            await create_api_conversation(
+                db,
+                deployment,
+                principal=principal,
+                title="API run",
+            )
+        ).id
     if conversation_id is not None:
         conversation = await db.scalar(
             private_scoped(
@@ -217,24 +268,39 @@ async def create_run_row(
         user_id=principal.user_id,
         api_key_id=principal.key.id,
         deployment_id=deployment.id,
+        deployment_public_id_snapshot=deployment.public_id,
         conversation_id=conversation_id,
         thread_id=thread_id,
         mode=mode,
-        status="running",
+        status="pending",
         input=input_payload,
         meta=metadata,
-        started_at=utc_now_naive(),
     )
     db.add(row)
+    await db.flush()
+    await accept_owned_execution(
+        db,
+        OwnedExecutionRequest(
+            conversation_id=conversation_id,
+            root_agent_id=deployment.agent_id,
+            context=principal.context,
+            source="api",
+            input_preview=str(input_payload)[:500],
+            envelope=ExecutionEnvelopeRef(kind="api", envelope_id=row.id),
+        ),
+    )
     await db.commit()
-    await db.refresh(row)
-    return row
+    db.expunge(row)
+    accepted = await db.scalar(select(AgentApiRun).where(AgentApiRun.id == row.id))
+    if accepted is None:
+        raise RuntimeError("accepted API run disappeared after commit")
+    return accepted
 
 
 async def mark_run_succeeded(
     db: AsyncSession, run: AgentApiRun, *, output: dict[str, Any]
 ) -> AgentApiRun:
-    run.status = "succeeded"
+    await db.refresh(run)
     run.output = output
     run.finished_at = utc_now_naive()
     await db.commit()
@@ -249,13 +315,65 @@ async def mark_run_failed(
     code: str,
     message: str,
 ) -> AgentApiRun:
-    run.status = "failed"
+    await db.refresh(run)
     run.error_code = code
     run.error_message = message
     run.finished_at = utc_now_naive()
     await db.commit()
     await db.refresh(run)
     return run
+
+
+async def execute_owned_wait(request: ApiOwnedExecution) -> str:
+    ownership = RuntimeOwnershipRequest(
+        request.conversation_run_id,
+        request.conversation_id,
+        request.root_agent_id,
+        request.context,
+    )
+    operation = partial(
+        execute_agent_invoke,
+        request.config,
+        request.messages,
+        run_id=request.public_run_id,
+        moldy_source="api",
+    )
+    return await run_owned_execution(ownership, operation)
+
+
+async def stream_owned_run(request: ApiOwnedExecution) -> AsyncGenerator[str, None]:
+    ownership = RuntimeOwnershipRequest(
+        request.conversation_run_id,
+        request.conversation_id,
+        request.root_agent_id,
+        request.context,
+    )
+
+    async def operation() -> AsyncGenerator[str, None]:
+        errors: list[StreamErrorRecord] = []
+        saw_error_event = False
+        async for chunk in execute_agent_stream(
+            request.config,
+            request.messages,
+            run_id=request.public_run_id,
+            moldy_source="api",
+            error_sink=errors,
+        ):
+            if chunk.lstrip().startswith("event: error"):
+                saw_error_event = True
+                continue
+            yield chunk
+        if errors:
+            raise RuntimeError(errors[0].message)
+        if saw_error_event:
+            raise RuntimeError("Agent run failed")
+
+    owned_stream = stream_owned_execution(ownership, operation)
+    try:
+        async for chunk in owned_stream:
+            yield chunk
+    finally:
+        await owned_stream.aclose()
 
 
 async def build_config_for_run(
@@ -280,6 +398,11 @@ async def build_config_for_run(
     if scoped_conversation is None or scoped_conversation.agent_id != deployment.agent_id:
         raise NotFoundError("AGENT_API_THREAD_NOT_FOUND", "thread not found")
     conversation = scoped_conversation
+    await chat_service.require_executable_conversation(
+        db,
+        conversation.id,
+        principal.context,
+    )
     try:
         runtime_policy = snapshot_from_conversation(conversation)
     except RuntimePolicySnapshotError as exc:

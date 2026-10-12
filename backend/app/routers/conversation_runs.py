@@ -32,7 +32,7 @@ from app.routers.conversation_run_cancel import (
     cancel_owned_conversation_run,
     wait_for_run_terminal,
 )
-from app.schemas.conversation_run import ConversationRunResponse
+from app.schemas.conversation_run import ConversationRunHistoryResponse, ConversationRunResponse
 from app.services import conversation_run_service, trace_storage
 from app.services.chat import secrets as chat_secrets
 from app.services.conversation_audit_service import record_conversation_run_audit
@@ -126,7 +126,7 @@ def _retryable_attach_error() -> HTTPException:
 
 @router.get(
     "/api/conversations/{conversation_id}/runs/active",
-    response_model=ConversationRunResponse | None,
+    response_model=ConversationRunHistoryResponse | None,
     dependencies=[Depends(owned_conversation)],
 )
 async def get_active_conversation_run(
@@ -140,7 +140,7 @@ async def get_active_conversation_run(
         conversation_id=conversation_id,
         context=context,
     )
-    return ConversationRunResponse.model_validate(run) if run is not None else None
+    return ConversationRunHistoryResponse.model_validate(run) if run is not None else None
 
 
 @router.get(
@@ -274,7 +274,7 @@ async def cancel_langgraph_sdk_run(
 
 @router.get(
     "/api/conversations/{conversation_id}/runs/{run_id}",
-    response_model=ConversationRunResponse,
+    response_model=ConversationRunHistoryResponse,
     dependencies=[Depends(owned_conversation)],
 )
 async def get_conversation_run(
@@ -292,4 +292,4 @@ async def get_conversation_run(
     )
     if run is None:
         raise resume_not_found()
-    return ConversationRunResponse.model_validate(run)
+    return ConversationRunHistoryResponse.model_validate(run)

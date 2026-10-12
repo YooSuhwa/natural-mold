@@ -118,9 +118,10 @@ class AgentApiThread(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    deployment_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agent_deployments.id", ondelete="CASCADE"), nullable=False
+    deployment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_deployments.id", ondelete="SET NULL"), nullable=True
     )
+    deployment_public_id_snapshot: Mapped[str] = mapped_column(String(80), nullable=False)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
     )
@@ -151,8 +152,12 @@ class AgentApiRun(Base):
     api_key_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("agent_api_keys.id", ondelete="SET NULL"), nullable=True
     )
-    deployment_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agent_deployments.id", ondelete="CASCADE"), nullable=False
+    deployment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_deployments.id", ondelete="SET NULL"), nullable=True
+    )
+    deployment_public_id_snapshot: Mapped[str] = mapped_column(String(80), nullable=False)
+    conversation_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversation_runs.id", ondelete="SET NULL"), nullable=True, unique=True
     )
     thread_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("agent_api_threads.id", ondelete="SET NULL"), nullable=True

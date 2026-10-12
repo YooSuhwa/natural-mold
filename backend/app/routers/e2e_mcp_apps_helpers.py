@@ -26,7 +26,7 @@ from app.dependencies import (
     verify_csrf,
 )
 from app.mcp.client import connect_and_list
-from app.schemas.conversation_refs import conversation_ref
+from app.schemas.conversation_refs import ConversationRefSource, conversation_ref
 from app.services.e2e_mcp_apps_fixture_service import (
     complete_fixture_run,
     create_fixture_records,
@@ -82,7 +82,7 @@ async def create_e2e_mcp_apps_fixture(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
-    conversation: object = Depends(owned_conversation),
+    conversation: ConversationRefSource = Depends(owned_conversation),
 ) -> E2EMcpAppsFixtureResponse:
     """Create a real MCP ToolNode checkpoint and its trusted invocation binding."""
 

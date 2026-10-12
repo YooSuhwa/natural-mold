@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz.conversation_scope import load_private_conversation
+from app.authz.conversation_scope import load_private_conversation, require_private_conversation
 from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.schemas.conversation_refs import ConversationRef, conversation_ref
@@ -36,6 +36,20 @@ async def _owned_conversation(
     return conversation_ref(conversation)
 
 
+async def _executable_conversation(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    context: OrgContext,
+) -> ConversationRef:
+    agent_id = await conversation_run_queue_service.require_queue_executable(
+        db, conversation_id, context
+    )
+    conversation = await load_private_conversation(db, conversation_id, context)
+    if conversation is None or conversation.agent_id != agent_id:
+        raise conversation_run_queue_service.queue_input_not_found()
+    return conversation_ref(conversation)
+
+
 @router.get(
     "/api/conversations/{conversation_id}/run-inputs",
     response_model=ConversationRunInputListResponse,
@@ -46,7 +60,7 @@ async def list_conversation_run_inputs(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
 ) -> ConversationRunInputListResponse:
-    conversation = await _owned_conversation(db, conversation_id, context)
+    conversation = await require_private_conversation(db, conversation_id, context)
     items = await conversation_run_queue_service.list_inputs(
         db,
         conversation_id=conversation_id,
@@ -71,7 +85,7 @@ async def edit_conversation_run_input(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ConversationRunInputResponse:
-    conversation = await _owned_conversation(db, conversation_id, context)
+    conversation = await _executable_conversation(db, conversation_id, context)
     input_payload = await freeze_resource_context_payload(
         db,
         ResourceContextScope(
@@ -106,6 +120,7 @@ async def delete_conversation_run_input(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ConversationRunInputResponse:
+    await _executable_conversation(db, conversation_id, context)
     item = await conversation_run_queue_service.delete_pending_input(
         db,
         conversation_id=conversation_id,
@@ -130,6 +145,7 @@ async def promote_conversation_run_input(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ConversationRunInputResponse:
+    await _executable_conversation(db, conversation_id, context)
     promoted = await promote_pending_input(
         db,
         conversation_id=conversation_id,
@@ -160,6 +176,7 @@ async def reorder_conversation_run_inputs(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> list[ConversationRunInputResponse]:
+    await _executable_conversation(db, conversation_id, context)
     items = await conversation_run_queue_service.reorder_pending_inputs(
         db,
         conversation_id=conversation_id,
@@ -182,6 +199,7 @@ async def resume_conversation_run_inputs(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ConversationRunInputListResponse:
+    await _executable_conversation(db, conversation_id, context)
     await conversation_run_queue_service.resume_queue(
         db,
         conversation_id=conversation_id,

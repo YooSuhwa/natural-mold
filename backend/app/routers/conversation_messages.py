@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
@@ -33,7 +34,7 @@ from app.error_codes import (
 from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
 from app.schemas.conversation import MessageCreate, MessagesEnvelope, ResumeRequest
-from app.schemas.conversation_run import ConversationRunResponse
+from app.schemas.conversation_run import ConversationRunHistoryResponse
 from app.schemas.conversation_scope import ConversationAutoTitle
 from app.services import (
     chat_service,
@@ -41,6 +42,7 @@ from app.services import (
     thread_branch_service,
     trace_storage,
 )
+from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
 from app.services.chat import secrets as chat_secrets
 from app.services.conversation_audit_service import record_conversation_audit
 from app.services.conversation_run_worker import start_conversation_run
@@ -75,21 +77,25 @@ async def start_conversation_with_message(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent = await chat_service.get_agent_with_tools(db, agent_id, context)
-    if not agent:
-        raise agent_not_found()
-
     title = chat_service.conversation_title_from_content(data.content)
     conv = await chat_service.create_conversation(db, agent_id, title, context=context)
-    run = await conversation_run_service.create_run(
-        db,
-        conversation_id=conv.id,
-        agent_id=agent_id,
-        context=context,
-        source="start",
-        input_preview=data.content,
-    )
+    # Config hydration performs its own lifecycle check and therefore starts from
+    # a clean transaction. The final acceptance below rechecks after hydration.
+    await db.commit()
+    await chat_service.prepare_executable_conversation(db, conv.id, context)
     cfg = await resolve_agent_context(db, conv.id, user, context=context)
+    await db.commit()
+    accepted = await accept_owned_execution(
+        db,
+        OwnedExecutionRequest(
+            conversation_id=conv.id,
+            root_agent_id=agent_id,
+            context=context,
+            source="chat",
+            run_source="start",
+            input_preview=data.content,
+        ),
+    )
     await chat_service.touch_conversation(db, conv.id, context)
 
     if data.attachments:
@@ -122,7 +128,7 @@ async def start_conversation_with_message(
             "attachment_count": len(data.attachments or []),
         },
     )
-    run_id = run.id
+    run_id = accepted.run_id
     await db.commit()
 
     ctx = await start_conversation_run(
@@ -161,7 +167,9 @@ async def list_messages(
         context=context,
     )
     active_run_response = (
-        ConversationRunResponse.model_validate(active_run) if active_run is not None else None
+        ConversationRunHistoryResponse.model_validate(active_run)
+        if active_run is not None
+        else None
     )
     latest_run = await conversation_run_service.latest_run_for_conversation(
         db,
@@ -169,7 +177,9 @@ async def list_messages(
         context=context,
     )
     latest_run_response = (
-        ConversationRunResponse.model_validate(latest_run) if latest_run is not None else None
+        ConversationRunHistoryResponse.model_validate(latest_run)
+        if latest_run is not None
+        else None
     )
 
     from app.agent_runtime.checkpointer import get_checkpointer
@@ -186,7 +196,7 @@ async def list_messages(
         tree = None
 
     messages = []
-    if tree is not None:
+    if tree is not None or conv.agent_lifecycle_state == "purged":
         messages = await chat_service.list_messages_from_checkpointer(
             db, conv, context=context, user_id=user.id, tree=tree
         )
@@ -444,18 +454,22 @@ async def send_message(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
+    agent_id = await chat_service.prepare_executable_conversation(db, conversation_id, context)
     conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
     if conv is None:
         raise conversation_not_found()
-    run = await conversation_run_service.create_run(
-        db,
-        conversation_id=conversation_id,
-        agent_id=require_conversation_agent_id(conv),
-        context=context,
-        source="chat",
-        input_preview=data.content,
-    )
     cfg = await resolve_agent_context(db, conversation_id, user, context=context)
+    await db.commit()
+    accepted = await accept_owned_execution(
+        db,
+        OwnedExecutionRequest(
+            conversation_id=conversation_id,
+            root_agent_id=agent_id,
+            context=context,
+            source="chat",
+            input_preview=data.content,
+        ),
+    )
     await chat_service.maybe_set_auto_title(
         db, ConversationAutoTitle(conversation_id, context, data.content)
     )
@@ -480,7 +494,7 @@ async def send_message(
             "attachment_count": len(data.attachments or []),
         },
     )
-    run_id = run.id
+    run_id = accepted.run_id
     await db.commit()
 
     ctx = await start_conversation_run(
@@ -509,24 +523,14 @@ async def resume_message(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
+    agent_id = await chat_service.prepare_executable_conversation(db, conversation_id, context)
     conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
     if conv is None:
         raise conversation_not_found()
-    await chat_service.touch_conversation(db, conversation_id, context)
-
     decisions_payload: list[dict[str, Any]] = [
         d.model_dump(exclude_none=True) for d in data.decisions
     ]
     resume_payload: dict[str, Any] = {"decisions": decisions_payload}
-    await record_conversation_audit(
-        db,
-        user=user,
-        request=request,
-        action="conversation.message_resume",
-        conversation_id=conversation_id,
-        agent_id=require_conversation_agent_id(conv),
-        metadata={"decision_count": len(decisions_payload)},
-    )
     parent_run = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation_id,
@@ -550,23 +554,37 @@ async def resume_message(
                 detail="Resume run requires an interrupted parent run",
             )
         interrupt_id = _legacy_interrupt_id(legacy_interrupt_trace)
-    metadata = None
+    metadata: dict[str, JsonValue] | None = None
     if legacy_interrupt_trace is not None:
         metadata = {"legacy_interrupt_assistant_msg_id": legacy_interrupt_trace.assistant_msg_id}
-    run = await conversation_run_service.create_run(
-        db,
-        conversation_id=conversation_id,
-        agent_id=require_conversation_agent_id(conv),
-        context=context,
-        source="resume",
-        input_preview=None,
-        parent_run_id=parent_run.id if parent_run else None,
-        interrupt_id=interrupt_id,
-        metadata=metadata,
-        allow_legacy_resume=legacy_interrupt_trace is not None,
-    )
     cfg = await resolve_agent_context(db, conversation_id, user, context=context)
-    run_id = run.id
+    await db.commit()
+    accepted = await accept_owned_execution(
+        db,
+        OwnedExecutionRequest(
+            conversation_id=conversation_id,
+            root_agent_id=agent_id,
+            context=context,
+            source="chat",
+            run_source="resume",
+            input_preview=None,
+            parent_run_id=parent_run.id if parent_run else None,
+            interrupt_id=interrupt_id,
+            run_metadata=metadata,
+            allow_legacy_resume=legacy_interrupt_trace is not None,
+        ),
+    )
+    await chat_service.touch_conversation(db, conversation_id, context)
+    await record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.message_resume",
+        conversation_id=conversation_id,
+        agent_id=agent_id,
+        metadata={"decision_count": len(decisions_payload)},
+    )
+    run_id = accepted.run_id
     await db.commit()
 
     ctx = await start_conversation_run(

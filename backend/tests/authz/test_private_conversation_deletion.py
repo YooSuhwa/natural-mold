@@ -43,6 +43,8 @@ async def deletion_scenario(
         org_id=own.org_id,
         tenant_id=own.tenant_id,
         agent_id=None,
+        agent_lifecycle_state="purged",
+        agent_purged_at=datetime.now(UTC),
         agent_name_snapshot="Retained fixture",
         last_activity_at=datetime.now(UTC),
     )
@@ -56,6 +58,8 @@ async def deletion_scenario(
             org_id=other.org_id,
             tenant_id=other.tenant_id,
             agent_id=None,
+            agent_lifecycle_state="purged",
+            agent_purged_at=datetime.now(UTC),
             agent_name_snapshot="Foreign fixture",
             last_activity_at=datetime.now(UTC),
             source="side_chat",

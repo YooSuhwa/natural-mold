@@ -656,9 +656,12 @@ async def _insert_running_run(
     from app.models.agent_trigger_run import AgentTriggerRun
 
     async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
         run = AgentTriggerRun(
             trigger_id=trigger_id,
             agent_id=agent_id,
+            trigger_name_snapshot=trigger.name,
             user_id=TEST_USER_ID,
             input_message="in flight",
             status="running",
@@ -710,14 +713,10 @@ async def test_run_now_returns_conflict_when_run_in_flight(client):
 
 
 @pytest.mark.asyncio
-async def test_execute_trigger_ignores_stale_running_run():
-    """A crashed run stuck in 'running' past the staleness bound must not block."""
-    from datetime import UTC, datetime
-
-    from app.services.trigger_service import TRIGGER_RUN_STALE_AFTER
-
+async def test_execute_trigger_never_fabricates_ack_for_stale_running_run():
+    """Elapsed time alone must not release a legacy running claim."""
     trigger_id, agent_id = await _seed_full_setup()
-    stale_started = datetime.now(UTC).replace(tzinfo=None) - TRIGGER_RUN_STALE_AFTER * 2
+    stale_started = datetime(2020, 1, 1)
     await _insert_running_run(trigger_id, agent_id, started_at=stale_started)
 
     with (
@@ -731,5 +730,4 @@ async def test_execute_trigger_ignores_stale_running_run():
 
         run = await execute_trigger(str(trigger_id))
 
-    assert run is not None
-    assert run.status == "success"
+    assert run is None

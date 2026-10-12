@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.agent_publication_scope import require_agent_publication_scope
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
@@ -506,6 +507,33 @@ async def publish_agent(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    with db.no_autoflush:
+        scoped_agent_id = await db.scalar(
+            select(Agent.id)
+            .where(Agent.id == agent_id, private_scope_predicate(Agent, context))
+            .execution_options(autoflush=False, populate_existing=True)
+        )
+    if scoped_agent_id is None:
+        raise agent_not_found()
+
+    item: MarketplaceItem | None = None
+    if body.item_id is not None:
+        with db.no_autoflush:
+            item = await db.scalar(
+                private_scoped(
+                    select(MarketplaceItem).where(MarketplaceItem.id == body.item_id),
+                    MarketplaceItem,
+                    context,
+                ).execution_options(autoflush=False, populate_existing=True)
+            )
+        if item is None:
+            raise marketplace_item_not_found()
+        if not can_manage_item(item, user):
+            raise marketplace_manage_forbidden()
+        if item.resource_type != "agent":
+            raise marketplace_invalid_package("marketplace item is not an Agent item")
+
+    await load_agent_tree_for_execution(db, AgentExecutionTarget(agent_id, context))
     agent = await _load_agent(db, agent_id=agent_id, context=context)
 
     if body.visibility not in ("private", "restricted", "public", "unlisted"):
@@ -520,22 +548,7 @@ async def publish_agent(
     fallback_models = await _load_fallback_models(db, agent=agent)
     _reject_model_base_url_secrets(agent, fallback_models)
 
-    item: MarketplaceItem | None = None
-    if body.item_id is not None:
-        item = await db.scalar(
-            private_scoped(
-                select(MarketplaceItem).where(MarketplaceItem.id == body.item_id),
-                MarketplaceItem,
-                context,
-            )
-        )
-        if item is None:
-            raise marketplace_item_not_found()
-        if not can_manage_item(item, user):
-            raise marketplace_manage_forbidden()
-        if item.resource_type != "agent":
-            raise marketplace_invalid_package("marketplace item is not an Agent item")
-    else:
+    if item is None:
         slug = _slugify(body.name)
         item = (
             await db.execute(

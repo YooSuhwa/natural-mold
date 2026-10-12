@@ -52,6 +52,7 @@ from app.routers.conversation_agent_protocol_runtime import (
 from app.routers.session_consent_scope import SessionConsentPayload, SessionConsentTarget
 from app.schemas.conversation_scope import ConversationAutoTitle, ConversationPromotion
 from app.services import chat_service, conversation_run_queue_service, conversation_run_service
+from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
 from app.services.chat_resource_context_integration import (
     QueuedResourceContextInput,
     freeze_queued_resource_context_payload,
@@ -172,29 +173,23 @@ async def _handle_run_start_command(
             )
         run_source = "edit" if append_messages or attachment_ids else "regenerate"
     preview = input_preview(input_payload)
-    if conversation.source == "draft":
-        await chat_service.promote_draft_conversation(
+    try:
+        await chat_service.prepare_executable_conversation(db, conversation.id, context)
+        cfg = await resolve_agent_context(
             db,
-            ConversationPromotion(conversation.id, context, preview),
+            conversation.id,
+            user,
+            checkpoint_id=resolved_checkpoint_id,
+            context=context,
         )
-    elif preview:
-        await chat_service.maybe_set_auto_title(
-            db, ConversationAutoTitle(conversation.id, context, preview)
+        await db.commit()
+    except ConflictError as exc:
+        return command_error(
+            command,
+            code=exc.code,
+            message=exc.message,
+            status_code=exc.status,
         )
-    await chat_service.touch_conversation(db, conversation.id, context)
-    await record_conversation_audit(
-        db,
-        user=user,
-        request=request,
-        action="conversation.message_send",
-        conversation_id=conversation.id,
-        agent_id=require_conversation_agent_id(conversation),
-        metadata={
-            "content_length": len(preview or ""),
-            "attachment_count": len(attachment_ids),
-            "source": "langgraph_protocol",
-        },
-    )
     if strategy != "reject":
         pending_interrupt = await conversation_run_service.get_latest_interrupted_run(
             db,
@@ -234,7 +229,29 @@ async def _handle_run_start_command(
             priority=100 if strategy == "interrupt" else 0,
         )
         queued = enqueue_result.input
-        cfg = await resolve_agent_context(db, conversation.id, user, context=context)
+        if conversation.source == "draft":
+            await chat_service.promote_draft_conversation(
+                db,
+                ConversationPromotion(conversation.id, context, preview),
+            )
+        elif preview:
+            await chat_service.maybe_set_auto_title(
+                db, ConversationAutoTitle(conversation.id, context, preview)
+            )
+        await chat_service.touch_conversation(db, conversation.id, context)
+        await record_conversation_audit(
+            db,
+            user=user,
+            request=request,
+            action="conversation.message_send",
+            conversation_id=conversation.id,
+            agent_id=require_conversation_agent_id(conversation),
+            metadata={
+                "content_length": len(preview or ""),
+                "attachment_count": len(attachment_ids),
+                "source": "langgraph_protocol",
+            },
+        )
         if attachment_ids:
             await chat_service.link_attachments_to_conversation(
                 db,
@@ -302,20 +319,31 @@ async def _handle_run_start_command(
             position=queued.position,
         )
     try:
-        run = await conversation_run_service.create_run(
+        accepted = await accept_owned_execution(
+            db,
+            OwnedExecutionRequest(
+                conversation_id=conversation.id,
+                root_agent_id=cfg_agent_uuid(conversation),
+                context=context,
+                source="chat",
+                run_source=run_source,
+                input_preview=preview,
+                run_metadata={
+                    "protocol": "langgraph_v3",
+                    "command_id": command.id,
+                    "assistant_id": command.params.assistant_id,
+                    "checkpoint_id": resolved_checkpoint_id,
+                },
+            ),
+        )
+        run = await conversation_run_service.get_run_for_user(
             db,
             conversation_id=conversation.id,
-            agent_id=cfg_agent_uuid(conversation),
+            run_id=accepted.run_id,
             context=context,
-            source=run_source,
-            input_preview=preview,
-            metadata={
-                "protocol": "langgraph_v3",
-                "command_id": command.id,
-                "assistant_id": command.params.assistant_id,
-                "checkpoint_id": resolved_checkpoint_id,
-            },
         )
+        if run is None:
+            raise RuntimeError("accepted conversation run was not persisted")
         if resolved_checkpoint_id is None:
             await conversation_run_queue_service.persist_direct_input(
                 db,
@@ -341,12 +369,28 @@ async def _handle_run_start_command(
             )
         raise
     run_id = run.id
-    cfg = await resolve_agent_context(
+    if conversation.source == "draft":
+        await chat_service.promote_draft_conversation(
+            db,
+            ConversationPromotion(conversation.id, context, preview),
+        )
+    elif preview:
+        await chat_service.maybe_set_auto_title(
+            db, ConversationAutoTitle(conversation.id, context, preview)
+        )
+    await chat_service.touch_conversation(db, conversation.id, context)
+    await record_conversation_audit(
         db,
-        conversation.id,
-        user,
-        checkpoint_id=resolved_checkpoint_id,
-        context=context,
+        user=user,
+        request=request,
+        action="conversation.message_send",
+        conversation_id=conversation.id,
+        agent_id=require_conversation_agent_id(conversation),
+        metadata={
+            "content_length": len(preview or ""),
+            "attachment_count": len(attachment_ids),
+            "source": "langgraph_protocol",
+        },
     )
     if attachment_ids:
         await chat_service.link_attachments_to_conversation(
@@ -488,14 +532,6 @@ async def _handle_input_respond_command(
             code=validation_error.code,
             message=validation_error.message,
         )
-    # AD-4 — ``scope:"session"`` 동의를 세션에 기록하고 decision에서 비표준
-    # 키를 제거한다. **resolve_agent_context 이전**이어야 이번 resume의 에이전트
-    # 재빌드부터 동의가 즉시 효력을 갖는다 (모든 resume은 재빌드).
-    consented_tools = await apply_session_consent_decisions(
-        db,
-        SessionConsentTarget(conversation.id, context),
-        SessionConsentPayload(resume, interrupts_from_tasks(tasks)),
-    )
     try:
         input_payload = await restore_redacted_resume_payload(
             conversation=conversation,
@@ -510,6 +546,56 @@ async def _handle_input_respond_command(
         )
     run_interrupt_id = resume_run_interrupt_id(resume, parent_run.interrupt_id)
 
+    try:
+        await chat_service.prepare_executable_conversation(db, conversation.id, context)
+    except ConflictError as exc:
+        return command_error(
+            command,
+            code=exc.code,
+            message=exc.message,
+            status_code=exc.status,
+        )
+    # Session consent must be durable before the resumed Agent is rebuilt.
+    consented_tools = await apply_session_consent_decisions(
+        db,
+        SessionConsentTarget(conversation.id, context),
+        SessionConsentPayload(resume, interrupts_from_tasks(tasks)),
+    )
+    await db.commit()
+    await chat_service.require_executable_conversation(db, conversation.id, context)
+    cfg = await resolve_agent_context(db, conversation.id, user, context=context)
+    await db.commit()
+
+    try:
+        accepted = await accept_owned_execution(
+            db,
+            OwnedExecutionRequest(
+                conversation_id=conversation.id,
+                root_agent_id=cfg_agent_uuid(conversation),
+                context=context,
+                source="chat",
+                run_source="resume",
+                input_preview=None,
+                parent_run_id=parent_run.id,
+                interrupt_id=run_interrupt_id,
+                run_metadata={
+                    "protocol": "langgraph_v3",
+                    "command_id": command.id,
+                    "parent_run_id": str(parent_run.id),
+                },
+            ),
+        )
+    except ConflictError as exc:
+        return command_error(
+            command,
+            code=exc.code,
+            message=exc.message,
+            status_code=exc.status,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            return command_error(command, code="MULTITASK_REJECTED", message=str(exc.detail))
+        raise
     await chat_service.touch_conversation(db, conversation.id, context)
     await record_conversation_audit(
         db,
@@ -524,36 +610,7 @@ async def _handle_input_respond_command(
             **({"consented_tools": consented_tools} if consented_tools else {}),
         },
     )
-
-    try:
-        run = await conversation_run_service.create_run(
-            db,
-            conversation_id=conversation.id,
-            agent_id=cfg_agent_uuid(conversation),
-            context=context,
-            source="resume",
-            input_preview=None,
-            parent_run_id=parent_run.id,
-            interrupt_id=run_interrupt_id,
-            metadata={
-                "protocol": "langgraph_v3",
-                "command_id": command.id,
-                "parent_run_id": str(parent_run.id),
-            },
-        )
-    except ConflictError as exc:
-        return command_error(
-            command,
-            code=exc.code,
-            message=exc.message,
-            status_code=exc.status,
-        )
-    except HTTPException as exc:
-        if exc.status_code == 409:
-            return command_error(command, code="MULTITASK_REJECTED", message=str(exc.detail))
-        raise
-    run_id = run.id
-    cfg = await resolve_agent_context(db, conversation.id, user, context=context)
+    run_id = accepted.run_id
     await db.commit()
 
     await start_run(
@@ -585,6 +642,7 @@ async def handle_thread_command(
     run_start_executor: AgentStreamExecutor = execute_agent_stream_langgraph,
     input_respond_executor: AgentStreamExecutor = resume_agent_stream_langgraph,
 ) -> JSONResponse:
+    await chat_service.require_executable_conversation(db, conversation.id, context)
     if command.method == "run.start":
         return await _handle_run_start_command(
             conversation=conversation,

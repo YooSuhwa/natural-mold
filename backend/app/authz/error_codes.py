@@ -28,6 +28,12 @@ ErrorCode = Literal[
     "organization_bootstrap_required",
     "registration_closed",
     "registration_invitation_required",
+    "AGENT_ARCHIVED",
+    "AGENT_NOT_ARCHIVED",
+    "AGENT_LIFECYCLE_EXECUTION_PENDING",
+    "AGENT_PURGE_NAME_MISMATCH",
+    "AGENT_HISTORY_SNAPSHOT_INCOMPLETE",
+    "AGENT_LIFECYCLE_PERMISSION_REQUIRED",
 ]
 
 
@@ -65,6 +71,18 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         "resource_transfer_required": ErrorSpec(
             409, "소유한 자원을 먼저 이전하거나 삭제해야 합니다"
         ),
+        "AGENT_ARCHIVED": ErrorSpec(409, "보관된 에이전트는 실행할 수 없습니다"),
+        "AGENT_NOT_ARCHIVED": ErrorSpec(409, "보관된 에이전트만 처리할 수 있습니다"),
+        "AGENT_LIFECYCLE_EXECUTION_PENDING": ErrorSpec(
+            409, "에이전트 실행이 완전히 중지될 때까지 기다려 주세요"
+        ),
+        "AGENT_PURGE_NAME_MISMATCH": ErrorSpec(409, "에이전트 이름 확인이 일치하지 않습니다"),
+        "AGENT_HISTORY_SNAPSHOT_INCOMPLETE": ErrorSpec(
+            409, "대화 기록 스냅샷이 완성되지 않았습니다"
+        ),
+        "AGENT_LIFECYCLE_PERMISSION_REQUIRED": ErrorSpec(
+            403, "에이전트 수명주기 관리 권한이 필요합니다"
+        ),
     }
 )
 
@@ -72,3 +90,27 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
 def authorization_error(code: ErrorCode) -> AppError:
     spec = ERRORS[code]
     return AppError(code=code, message=spec.message, status=spec.status)
+
+
+def agent_archived() -> AppError:
+    return authorization_error("AGENT_ARCHIVED")
+
+
+def agent_not_archived() -> AppError:
+    return authorization_error("AGENT_NOT_ARCHIVED")
+
+
+def agent_lifecycle_execution_pending() -> AppError:
+    return authorization_error("AGENT_LIFECYCLE_EXECUTION_PENDING")
+
+
+def agent_purge_name_mismatch() -> AppError:
+    return authorization_error("AGENT_PURGE_NAME_MISMATCH")
+
+
+def agent_history_snapshot_incomplete() -> AppError:
+    return authorization_error("AGENT_HISTORY_SNAPSHOT_INCOMPLETE")
+
+
+def agent_lifecycle_permission_required() -> AppError:
+    return authorization_error("AGENT_LIFECYCLE_PERMISSION_REQUIRED")

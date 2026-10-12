@@ -18,6 +18,7 @@ from app.mcp.apps import (
     sanitize_result_payload,
     tool_allows_visibility,
 )
+from app.mcp.apps_binding_store import require_live_agent_tree
 from app.mcp.auth import ResolvedMcpAuth, resolve_mcp_auth
 from app.mcp.invocation import call_mcp_tool_once, read_mcp_resource_once
 from app.services.mcp_apps_binding_service import (
@@ -36,6 +37,7 @@ MAX_TOOL_ARGUMENT_BYTES: Final = 64 * 1024
 
 
 async def read_bound_resource(db: AsyncSession, context: AuthorizedBinding) -> dict[str, Any]:
+    await require_live_agent_tree(db, context.run.agent_id, context.org_context)
     auth = await _auth_for_context(db, context)
     raw = await read_mcp_resource_once(
         transport=context.server.transport,
@@ -89,11 +91,12 @@ async def call_bound_tool(
     tool_name: str,
     arguments: dict[str, Any],
 ) -> dict[str, Any]:
+    agent_id = await require_live_agent_tree(db, context.run.agent_id, context.org_context)
     if len(json.dumps(arguments, separators=(",", ":")).encode()) > MAX_TOOL_ARGUMENT_BYTES:
         raise McpAppsError("mcp_app_arguments_too_large", "tool arguments are too large", 413)
     tool = await linked_tool(
         db,
-        agent_id=context.run.agent_id,
+        agent_id=agent_id,
         server_id=context.binding.mcp_server_id,
         tool_id=None,
         tool_name=tool_name,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -10,6 +10,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_policy import ResolvedRuntimePolicy
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import (
     PrivateResourceActor,
@@ -24,6 +25,12 @@ from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
 from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.schemas.trigger import TriggerCreate, TriggerUpdate
+from app.services.agent_execution_owner import (
+    ExecutionEnvelopeRef,
+    OwnedExecutionRequest,
+    accept_owned_execution,
+)
+from app.services.agent_execution_runtime import RuntimeOwnershipRequest, run_owned_execution
 from app.services.conversation_runtime_policy import (
     ensure_conversation_runtime_policy as _ensure_conversation_runtime_policy,
 )
@@ -172,7 +179,8 @@ async def _ensure_agent_fixed_for_trigger(
     agent_id: uuid.UUID,
     context: OrgContext,
 ) -> Agent:
-    agent = await get_owned_agent(db, agent_id, context)
+    executable = await load_agent_tree_for_execution(db, AgentExecutionTarget(agent_id, context))
+    agent = next((item for item in executable.agents if item.id == agent_id), None)
     if agent is None:
         raise ValueError("agent not found")
     # 히든 런타임 에이전트(skill builder 등)는 트리거 대상 불가 — 트리거 실행은
@@ -446,12 +454,6 @@ async def refresh_next_run_at(db: AsyncSession, trigger: AgentTrigger) -> None:
     await db.refresh(trigger)
 
 
-# Runs stuck in "running" beyond this bound (crashed process, kill -9) stop
-# counting as an in-flight claim so they can't block the trigger forever.
-# A trigger run is a single agent invoke — normally minutes, not an hour.
-TRIGGER_RUN_STALE_AFTER = timedelta(hours=1)
-
-
 class TriggerRunInFlightError(Exception):
     """A run for this trigger is already in flight (SEC-3 duplicate guard)."""
 
@@ -461,15 +463,12 @@ class TriggerRunInFlightError(Exception):
 
 
 async def find_in_flight_run(db: AsyncSession, trigger_id: uuid.UUID) -> AgentTriggerRun | None:
-    """Newest non-stale ``running`` run for the trigger, if any."""
-
-    cutoff = _now() - TRIGGER_RUN_STALE_AFTER
+    """Newest active or unacknowledged run for the trigger, if any."""
     result = await db.execute(
         select(AgentTriggerRun)
         .where(
             AgentTriggerRun.trigger_id == trigger_id,
-            AgentTriggerRun.status == "running",
-            AgentTriggerRun.started_at >= cutoff,
+            AgentTriggerRun.status.in_(("queued", "running", "canceling")),
         )
         .order_by(AgentTriggerRun.started_at.desc())
         .limit(1)
@@ -486,14 +485,14 @@ async def start_trigger_run(
     run = AgentTriggerRun(
         trigger_id=trigger.id,
         agent_id=trigger.agent_id,
+        trigger_name_snapshot=trigger.name,
         user_id=trigger.user_id,
         input_message=trigger.input_message,
-        status="running",
+        status="queued",
         source=source,
     )
     db.add(run)
-    await db.commit()
-    await db.refresh(run)
+    await db.flush()
     return run
 
 
@@ -539,8 +538,7 @@ async def resolve_schedule_conversation(
     conversation.last_activity_source = "schedule"
     if trigger.conversation_policy != "new_per_run":
         trigger.schedule_conversation_id = conversation.id
-    await db.commit()
-    await db.refresh(conversation)
+    await db.flush()
     return conversation
 
 
@@ -627,3 +625,12 @@ async def schedule_summary(db: AsyncSession, context: OrgContext) -> dict[str, i
         "total_unread": sum(int(row["schedule_conversation_unread_count"] or 0) for row in rows),
         "active_count": sum(1 for row in rows if row["status"] == "active"),
     }
+
+
+__all__ = [
+    "ExecutionEnvelopeRef",
+    "OwnedExecutionRequest",
+    "RuntimeOwnershipRequest",
+    "accept_owned_execution",
+    "run_owned_execution",
+]

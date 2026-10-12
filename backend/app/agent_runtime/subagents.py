@@ -19,6 +19,7 @@ from app.agent_runtime.runtime_component_builder import (
     _prepare_runtime_components,
 )
 from app.agent_runtime.runtime_config import AgentConfig
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.error_codes import agent_not_found
 from app.models.agent import Agent
 from app.services import chat_service
@@ -85,6 +86,10 @@ async def build_subagents_config(
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """Convert one-hop linked child agents into Deep Agents SubAgent specs."""
 
+    await load_agent_tree_for_execution(
+        db,
+        AgentExecutionTarget(parent_agent.id, parent_cfg.org_context),
+    )
     parent_identity = _parent_identity_from_config(
         parent_cfg,
         is_trigger_mode=is_trigger_mode,

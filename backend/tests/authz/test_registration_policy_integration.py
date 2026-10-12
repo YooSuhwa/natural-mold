@@ -1,4 +1,4 @@
-"""Actual m83 signup serializes first-admin bootstrap and rolls back failed invite joins."""
+"""Current-schema signup serializes first-admin bootstrap and rolls back failed invite joins."""
 
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
@@ -34,7 +34,7 @@ class SignupApp:
 @asynccontextmanager
 async def signup_app(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[SignupApp]:
     async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "m83_org_scope_not_null")
+        await run_sync(command.upgrade, lab.config, "head")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:

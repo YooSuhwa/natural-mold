@@ -88,9 +88,9 @@ class ConversationArtifact(RequiredOrgScope, Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    agent_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agents.id", ondelete="CASCADE"),
-        nullable=False,
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="SET NULL"),
+        nullable=True,
     )
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE"),

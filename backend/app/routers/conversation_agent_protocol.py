@@ -41,6 +41,7 @@ from app.routers.conversation_agent_protocol_thread_stream import (
     needs_thread_stream,
     protocol_thread_stream_generator,
 )
+from app.schemas.conversation_history_protocol import RunMetadata, ThreadStateResponse
 from app.services import conversation_run_service
 from app.services.conversation_run_worker import start_conversation_run
 from app.services.conversation_stream_service import sse_response
@@ -50,14 +51,14 @@ router = APIRouter(tags=["conversations"])
 ACTIVE_THREAD_NEXT = "__moldy_active_run__"
 
 
-def _run_metadata(run: object | None) -> dict[str, object] | None:
+def _run_metadata(run: object | None) -> RunMetadata | None:
     if run is None:
         return None
     run_id = getattr(run, "id", None)
     status = getattr(run, "status", None)
     if run_id is None or not isinstance(status, str):
         return None
-    metadata: dict[str, object] = {"id": str(run_id), "status": status}
+    metadata = RunMetadata(id=str(run_id), status=status)
     if status == "failed":
         error_code = getattr(run, "error_code", None)
         if isinstance(error_code, str) and error_code:
@@ -116,13 +117,49 @@ async def get_thread_state(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
-) -> dict[str, object]:
+) -> ThreadStateResponse:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
         thread_id=thread_id,
         context=context,
     )
+    if conversation.agent_lifecycle_state == "purged":
+        snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=())
+        latest_run = await conversation_run_service.latest_run_for_conversation(
+            db,
+            conversation_id=conversation.id,
+            context=context,
+        )
+        latest_metadata = _run_metadata(latest_run)
+        values = dict(snapshot.values)
+        if latest_metadata is not None:
+            values["__moldy_runtime"] = {"latest_run": latest_metadata}
+        checkpoint_id = conversation.active_branch_checkpoint_id
+        return {
+            "values": values,
+            "next": [],
+            "tasks": [],
+            "checkpoint": (
+                {
+                    "thread_id": str(conversation.id),
+                    "checkpoint_id": checkpoint_id,
+                    "checkpoint_ns": "",
+                }
+                if checkpoint_id
+                else None
+            ),
+            "metadata": {
+                "conversation_id": str(conversation.id),
+                "agent_id": None,
+                "source": "retained_history_manifest",
+                "checkpoint_by_message_id": snapshot.checkpoint_by_message_id,
+                "parent_checkpoint_by_message_id": snapshot.parent_checkpoint_by_message_id,
+                "latest_run": latest_metadata,
+            },
+            "created_at": conversation.updated_at.isoformat(),
+            "parent_checkpoint": None,
+        }
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id, context=context)
     secrets = await collect_state_secret_values(db, conversation, context)
     snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=secrets)
@@ -169,7 +206,7 @@ async def update_thread_state(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
-) -> dict[str, object]:
+) -> ThreadStateResponse:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
@@ -194,7 +231,7 @@ async def get_thread_history(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
-) -> list[dict[str, object]]:
+) -> list[ThreadStateResponse]:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,

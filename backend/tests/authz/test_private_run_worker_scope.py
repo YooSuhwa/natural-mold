@@ -112,7 +112,14 @@ async def test_worker_rechecks_membership_at_running_transition(
     # When the detached worker tries to claim execution after revocation.
     loaded, started = await worker._transition_to_running(target, worker_instance_id="revoked")
 
-    # Then it aborts before the running transition or any provider side effect.
+    # Then it aborts before running while preserving durable cancellation maintenance.
     assert loaded is None and started is False
     await db.refresh(run)
-    assert run.status == "queued" and run.worker_instance_id is None
+    assert (run.status, run.is_active, run.worker_instance_id, run.cancel_reason) == (
+        "canceling",
+        True,
+        None,
+        "authority_revoked",
+    )
+    assert run.cancel_requested_at is not None
+    assert run.cancellation_acknowledged_at is None

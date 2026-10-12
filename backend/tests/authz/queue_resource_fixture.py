@@ -6,6 +6,7 @@ import json
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Unpack, assert_never
 from uuid import uuid4
@@ -194,12 +195,22 @@ async def rejected_scope(
                 .where(Agent.id == case.scope.agent_id)
                 .execution_options(synchronize_session=False)
             )
-        case "parent_agent" | "orphan_parent":
-            agent_id = uuid4() if denial == "parent_agent" else None
+        case "parent_agent":
             await db.execute(
                 update(Conversation)
                 .where(Conversation.id == case.scope.conversation_id)
-                .values(agent_id=agent_id)
+                .values(agent_id=uuid4())
+                .execution_options(synchronize_session=False)
+            )
+        case "orphan_parent":
+            await db.execute(
+                update(Conversation)
+                .where(Conversation.id == case.scope.conversation_id)
+                .values(
+                    agent_id=None,
+                    agent_lifecycle_state="purged",
+                    agent_purged_at=datetime.now(UTC),
+                )
                 .execution_options(synchronize_session=False)
             )
         case "child_agent":

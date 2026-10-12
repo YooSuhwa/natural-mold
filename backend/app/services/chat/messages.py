@@ -64,6 +64,16 @@ async def list_messages_from_checkpointer(
 
     conversation = await require_private_conversation(db, conversation.id, context)
 
+    if conversation.agent_lifecycle_state == "purged":
+        from app.services.chat.history_messages import (
+            RetainedMessageReadRequest,
+            load_retained_messages,
+        )
+
+        return await load_retained_messages(
+            RetainedMessageReadRequest(db, conversation, user_id, context)
+        )
+
     # P0-D: tree를 호출자가 미리 만들어 넘기면 build_message_tree 중복 호출
     # (= _collect_checkpoints + alist 전체 walk)을 피한다. 단독으로 부르면
     # 하위호환 유지를 위해 직접 build.

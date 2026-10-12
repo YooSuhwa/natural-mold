@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser
+from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.model import Model
 from tests.authz.unit_scope_fixture import (
@@ -225,10 +226,13 @@ async def test_global_trigger_runs_history(client: AsyncClient):
     trigger_id = resp.json()["id"]
 
     async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, uuid.UUID(trigger_id))
+        assert trigger is not None
         db.add(
             AgentTriggerRun(
                 trigger_id=uuid.UUID(trigger_id),
                 agent_id=uuid.UUID(agent_id),
+                trigger_name_snapshot=trigger.name,
                 user_id=TEST_USER_ID,
                 status="success",
                 input_message="상태 확인",

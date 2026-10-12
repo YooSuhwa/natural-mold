@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.agent_stream_runner import execute_agent_invoke
 from app.agent_runtime.credential_access import AgentCredentialAccess
@@ -28,9 +30,11 @@ from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.agent_runtime.subagents import build_subagents_config
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.trigger_scope import require_trigger_actor
 from app.database import async_session
 from app.exceptions import AppError
+from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.model import Model
@@ -39,6 +43,40 @@ from app.services import chat_service, trigger_service
 from app.tools.risk import format_trigger_block_reason
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _TriggerSubagentBuild:
+    agent: Agent
+    db: AsyncSession
+    config: AgentConfig
+
+
+@dataclass(frozen=True, slots=True)
+class _TriggerInvocation:
+    config: AgentConfig
+    input_message: str
+    run_id: uuid.UUID
+
+
+async def _configure_trigger_subagents(request: _TriggerSubagentBuild) -> None:
+    subagents, display_names = await build_subagents_config(
+        request.agent,
+        db=request.db,
+        parent_cfg=request.config,
+        is_trigger_mode=True,
+    )
+    request.config.subagents_config = subagents
+    request.config.subagent_display_names = display_names
+
+
+async def _invoke_trigger(request: _TriggerInvocation) -> str:
+    return await execute_agent_invoke(
+        request.config,
+        [{"role": "user", "content": request.input_message}],
+        run_id=str(request.run_id),
+        moldy_source="trigger",
+    )
 
 
 async def _resolve_fallback_chain(db, fallback_list):
@@ -93,19 +131,24 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
         # max_instances) serialise, then claim by checking for an in-flight
         # run before creating ours. FOR UPDATE is a no-op on SQLite (tests
         # exercise the check itself); on Postgres it closes the
-        # check-then-insert race — start_trigger_run's commit releases the
-        # lock, so the loser re-reads after the winner's run row is visible.
-        trigger = (
-            await db.execute(
-                select(AgentTrigger).where(AgentTrigger.id == trigger_uuid).with_for_update()
-            )
-        ).scalar_one_or_none()
+        # check-then-insert race. The lock remains held through durable run
+        # acceptance, so a contender re-reads only after the envelope is visible.
+        trigger = await db.scalar(select(AgentTrigger).where(AgentTrigger.id == trigger_uuid))
         if not trigger:
             logger.info("Trigger %s skipped (not found)", trigger_id)
             return None
 
         try:
             context = await require_trigger_actor(db, trigger)
+            await load_agent_tree_for_execution(db, AgentExecutionTarget(trigger.agent_id, context))
+            trigger = await db.scalar(
+                select(AgentTrigger)
+                .where(AgentTrigger.id == trigger_uuid, AgentTrigger.agent_id == trigger.agent_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if trigger is None:
+                return None
             agent = await chat_service.get_agent_with_tools(db, trigger.agent_id, context)
             if agent is None:
                 return None
@@ -211,6 +254,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
         run.identity_mode = identity.identity_mode
         run.agent_runtime_name = identity.runtime_name
         run.credential_subject_user_id = identity.credential_subject_user_id
+        await db.flush()
 
         effective_prompt = chat_service.build_effective_prompt(agent)
         agent_skills = chat_service.build_agent_skills(agent, context)
@@ -229,12 +273,15 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             return run
 
         conversation = await trigger_service.resolve_schedule_conversation(db, trigger, context)
+        await db.flush()
+        agent = await chat_service.get_agent_with_tools(db, trigger.agent_id, context)
+        if agent is None:
+            return None
         try:
             runtime_policy = await trigger_service.ensure_schedule_conversation_runtime_policy(
                 db,
                 ConversationPolicyTarget(conversation.id, context, run.id),
             )
-            await db.commit()
         except RuntimePolicySnapshotError as exc:
             await trigger_service.finish_trigger_run(
                 db,
@@ -294,13 +341,9 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             identity_mode=identity.identity_mode,
             agent_runtime_name=identity.runtime_name,
         )
+        await db.flush()
         try:
-            cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
-                agent,
-                db=db,
-                parent_cfg=cfg,
-                is_trigger_mode=True,
-            )
+            await _configure_trigger_subagents(_TriggerSubagentBuild(agent, db, cfg))
         except AgentIdentityError as exc:
             logger.warning("Trigger %s blocked by subagent identity policy: %s", trigger_id, exc)
             await trigger_service.finish_trigger_run(
@@ -318,13 +361,40 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
         # so value-based redaction masks trigger-run trace persistence too.
         # ``.update`` preserves the subagent secrets already unioned above.
         cfg.secret_values.update(collect_cfg_secret_values(cfg))
-        try:
-            output = await execute_agent_invoke(
-                cfg,
-                [{"role": "user", "content": trigger.input_message}],
-                run_id=str(run.id),
-                moldy_source="trigger",
+        run.conversation_id = conversation.id
+        await db.flush()
+        accepted = await trigger_service.accept_owned_execution(
+            db,
+            trigger_service.OwnedExecutionRequest(
+                conversation_id=conversation.id,
+                root_agent_id=agent.id,
+                context=context,
+                source="trigger",
+                input_preview=trigger.input_message,
+                envelope=trigger_service.ExecutionEnvelopeRef("trigger", run.id),
+            ),
+        )
+        await db.commit()
+
+        async def invoke() -> str:
+            return await _invoke_trigger(
+                _TriggerInvocation(cfg, trigger.input_message, accepted.run_id)
             )
+
+        try:
+            output = await trigger_service.run_owned_execution(
+                trigger_service.RuntimeOwnershipRequest(
+                    run_id=accepted.run_id,
+                    conversation_id=conversation.id,
+                    root_agent_id=agent.id,
+                    context=context,
+                ),
+                invoke,
+            )
+        except AppError as exc:
+            logger.info("Trigger %s stopped before invoke: %s", trigger_id, exc.code)
+            await db.refresh(run)
+            return run
         except Exception as exc:
             logger.exception("Trigger %s: agent execution failed", trigger_id)
             await trigger_service.finish_trigger_run(

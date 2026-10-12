@@ -21,13 +21,20 @@ from sqlalchemy.orm import InstrumentedAttribute, aliased, contains_eager
 
 from app.agent_runtime.runtime_policy import (
     SKILL_BUILDER_RUNTIME_POLICY,
+    RuntimePolicySnapshotError,
     runtime_policy_to_json,
 )
+from app.authz.agent_execution_scope import (
+    AgentExecutionTarget,
+    load_agent_tree_for_execution,
+)
 from app.authz.conversation_scope import load_private_conversation, lock_private_conversation
+from app.authz.error_codes import agent_archived
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
 from app.authz.scoping import private_scope_predicate, private_scoped
-from app.error_codes import agent_not_found, conversation_not_found
+from app.error_codes import conversation_not_found
+from app.exceptions import AppError, ConflictError
 from app.models.agent import (
     AGENT_RUNTIME_PROFILE_SKILL_BUILDER,
     AGENT_RUNTIME_PROFILE_STANDARD,
@@ -38,7 +45,11 @@ from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.message_event import MessageEvent
 from app.schemas.conversation import ConversationSort
-from app.schemas.conversation_scope import ConversationPromotion, DraftConversationCleanup
+from app.schemas.conversation_scope import (
+    ConversationPolicyTarget,
+    ConversationPromotion,
+    DraftConversationCleanup,
+)
 from app.services.chat.conversation_mutations import (
     clear_active_branch_override as clear_active_branch_override,
 )
@@ -57,6 +68,7 @@ from app.services.chat.conversation_mutations import (
 from app.services.chat.conversation_mutations import (
     update_conversation as update_conversation,
 )
+from app.services.conversation_runtime_policy import ensure_conversation_runtime_policy
 
 logger = logging.getLogger(__name__)
 
@@ -322,12 +334,8 @@ async def create_conversation(
     context: OrgContext,
     source: str = "ui",
 ) -> Conversation:
-    await require_private_actor(db, context)
-    agent = await db.scalar(
-        private_scoped(select(Agent).where(Agent.id == agent_id), Agent, context)
-    )
-    if agent is None:
-        raise agent_not_found()
+    executable = await load_agent_tree_for_execution(db, AgentExecutionTarget(agent_id, context))
+    agent = next(item for item in executable.agents if item.id == agent_id)
     conv = Conversation(
         agent_id=agent_id,
         user_id=context.user_id,
@@ -353,9 +361,83 @@ async def create_conversation(
     return conv
 
 
+async def require_executable_conversation(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    context: OrgContext,
+) -> uuid.UUID:
+    """Lock and assert Agent lifecycle before any private execution hydration."""
+    marker_key = (conversation_id, context.user_id, context.org_id, context.tenant_id)
+    current_transaction = db.get_transaction()
+    marker = db.info.setdefault("moldy_executable_conversations", {}).get(marker_key)
+    if (
+        current_transaction is not None
+        and isinstance(marker, tuple)
+        and len(marker) == 2
+        and marker[0] is current_transaction
+        and isinstance(marker[1], uuid.UUID)
+    ):
+        return marker[1]
+    try:
+        await require_private_actor(db, context)
+    except AppError as exc:
+        raise conversation_not_found() from exc
+    row = (
+        await db.execute(
+            select(Conversation.agent_id, Conversation.agent_lifecycle_state)
+            .where(
+                Conversation.id == conversation_id,
+                private_scope_predicate(Conversation, context),
+            )
+            .execution_options(populate_existing=True, autoflush=False)
+        )
+    ).one_or_none()
+    if row is None:
+        raise conversation_not_found()
+    if row.agent_id is None or row.agent_lifecycle_state == "purged":
+        raise agent_archived()
+    await load_agent_tree_for_execution(db, AgentExecutionTarget(row.agent_id, context))
+    db.info["moldy_executable_conversations"][marker_key] = (
+        db.get_transaction(),
+        row.agent_id,
+    )
+    return row.agent_id
+
+
+async def prepare_executable_conversation(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    context: OrgContext,
+) -> uuid.UUID:
+    """Initialize policy, then reacquire lifecycle authority for config hydration."""
+    await require_executable_conversation(db, conversation_id, context)
+    try:
+        await ensure_conversation_runtime_policy(
+            db, ConversationPolicyTarget(conversation_id, context)
+        )
+    except RuntimePolicySnapshotError as exc:
+        raise ConflictError(exc.code, exc.code) from None
+    await db.commit()
+    return await require_executable_conversation(db, conversation_id, context)
+
+
 async def promote_draft_conversation(
     db: AsyncSession, target: ConversationPromotion
 ) -> Conversation:
+    try:
+        await require_private_actor(db, target.context)
+    except AppError as exc:
+        raise conversation_not_found() from exc
+    agent_id = await db.scalar(
+        select(Conversation.agent_id)
+        .where(
+            Conversation.id == target.conversation_id,
+            private_scope_predicate(Conversation, target.context),
+        )
+        .execution_options(autoflush=False)
+    )
+    if agent_id is not None:
+        await require_executable_conversation(db, target.conversation_id, target.context)
     conv = await lock_private_conversation(db, target.conversation_id, target.context)
     if conv.source != "draft":
         return conv

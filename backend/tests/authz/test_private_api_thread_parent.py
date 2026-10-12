@@ -14,7 +14,6 @@ from app.agent_api.dependencies import ApiKeyPrincipal
 from app.authz.agent_api_scope import private_deployment_predicate
 from app.models.agent import Agent
 from app.models.agent_api import AgentApiRun, AgentDeployment
-from app.routers import agent_runtime_api
 from app.schemas.agent_api import AgentThreadCreateRequest
 
 if TYPE_CHECKING:
@@ -107,7 +106,7 @@ async def test_sibling_api_surface_blocks_same_foreign_agent_parent(
     )
     await db.commit()
     provider = AsyncMock(side_effect=AssertionError("No provider effects authorized"))
-    monkeypatch.setattr(agent_runtime_api, "execute_agent_invoke", provider)
+    monkeypatch.setattr(runtime_service, "execute_agent_invoke", provider)
     headers = {"Authorization": f"Bearer {api_case.cleartext}"}
 
     # When: one sibling surface handles this persisted malformed graph.

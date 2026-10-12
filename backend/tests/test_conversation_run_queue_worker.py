@@ -548,6 +548,7 @@ async def test_stale_sweep_does_not_ack_or_dispatch_over_live_remote_owner(
         worker_instance_id="remote-owner",
     )
     active.heartbeat_at = active.created_at - timedelta(hours=1)
+    await db.commit()
     await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
@@ -636,6 +637,7 @@ async def test_startup_sweep_then_recovery_finishes_workerless_cancel_before_sta
     await conversation_run_service.request_cancel_run(db, claimed.run, reason="steer")
     assert claimed.run.cancel_requested_at is not None
     claimed.run.created_at = claimed.run.cancel_requested_at - timedelta(hours=1)
+    await db.commit()
     await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
@@ -723,6 +725,7 @@ async def test_stale_remote_owner_with_ordinary_queue_pauses_automatic_dispatch(
         worker_instance_id="remote-owner",
     )
     active.heartbeat_at = active.created_at - timedelta(hours=1)
+    await db.commit()
     await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
@@ -780,6 +783,7 @@ async def test_startup_recovers_workerless_direct_cancel_then_dispatches_once(
     await conversation_run_service.request_cancel_run(db, direct, reason="stop")
     assert direct.cancel_requested_at is not None
     direct.created_at = direct.cancel_requested_at - timedelta(hours=1)
+    await db.commit()
     await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,

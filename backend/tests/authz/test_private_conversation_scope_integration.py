@@ -1,4 +1,6 @@
-"""Conversation mapper uses the actual m83 PostgreSQL history-preservation schema."""
+"""Conversation mapper uses the B08 PostgreSQL history-preservation schema."""
+
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -58,6 +60,10 @@ async def test_native_m83_retained_history_keeps_its_private_scope(
                 select(Agent).where(Agent.id == agent.id).options(selectinload(Agent.conversations))
             )
             assert loaded is not None and len(loaded.conversations) == 1
+            conversation.agent_id = None
+            conversation.agent_lifecycle_state = "purged"
+            conversation.agent_purged_at = datetime.now(UTC)
+            await db.flush()
             await db.delete(loaded)
             await db.commit()
         async with stack.sessions() as db:

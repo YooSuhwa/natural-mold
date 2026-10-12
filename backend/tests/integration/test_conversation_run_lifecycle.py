@@ -5,6 +5,7 @@ import contextlib
 import os
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import patch
 
@@ -160,6 +161,7 @@ async def test_first_accepted_run_wins_runtime_policy_snapshot_under_postgres_lo
                 tenant_id=TEST_TENANT_ID,
                 agent_name_snapshot="Race fixture",
                 title="Policy Race",
+                last_activity_at=datetime.now(UTC),
             )
         )
         await db.commit()

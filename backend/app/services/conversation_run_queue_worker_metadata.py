@@ -74,7 +74,7 @@ def queue_current_user(user: User) -> CurrentUser:
 class QueueInputIdentity:
     id: UUID
     conversation_id: UUID
-    agent_id: UUID
+    agent_id: UUID | None
     user_id: UUID
     run_id: UUID | None
     status: str
@@ -123,6 +123,8 @@ async def load_queue_input_identity(db: AsyncSession, input_id: UUID) -> QueueIn
 async def authorize_queue_target(
     db: AsyncSession, identity: QueueInputIdentity, run: ConversationRun
 ) -> AuthorizedQueueTarget:
+    if identity.agent_id is None or run.agent_id is None:
+        raise QueueBindingInvalidError
     parent = (
         await db.execute(
             select(Conversation.user_id, Conversation.org_id, Conversation.tenant_id)

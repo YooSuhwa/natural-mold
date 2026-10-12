@@ -23,19 +23,29 @@ from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_contracts import (
     HistoryRequest,
     ThreadCheckpoint,
-    ThreadHistoryCursor,
     UpdateStateRequest,
     state_response,
 )
 from app.routers.conversation_agent_protocol_state_snapshot import (
-    collect_state_secret_values,
     project_todo_policy_values,
-    serialize_langchain_message,
+)
+from app.schemas.conversation_history import ConversationHistoryCheckpointResponse, JsonValue
+from app.schemas.conversation_history_protocol import (
+    ThreadStateResponse,
+    ThreadStateResponseInput,
+    build_state_response,
 )
 from app.schemas.conversation_scope import ConversationBranchMutation
 from app.services.chat.conversation_mutations import set_active_branch
+from app.services.chat.conversations import require_executable_conversation
+from app.services.conversation_protocol_history import (
+    HistoryCheckpointProjectionRequest,
+    LiveThreadHistoryRequest,
+    build_checkpoint_history_response,
+    load_live_thread_history,
+)
 from app.services.conversation_stream_service import resolve_agent_context
-from app.services.thread_branch_service import _CheckpointSlim, _collect_checkpoints
+from app.services.thread_branch_service import _CheckpointSlim
 
 INITIAL_UPDATE_NODE = "__start__"
 DEFAULT_UPDATE_NODE = "agent"
@@ -48,35 +58,52 @@ async def load_thread_history_response(
     db: AsyncSession | None = None,
     user: CurrentUser | None = None,
     context: OrgContext,
-) -> list[dict[str, object]]:
-    try:
-        checkpointer = get_checkpointer()
-    except RuntimeError:
-        return []
+) -> list[ThreadStateResponse]:
+    if conversation.agent_lifecycle_state == "purged":
+        if db is None:
+            return []
+        from app.services.conversation_history_service import read_purged_history_content
 
-    # ADR-021 C2 — plain HTTP GET, no run ContextVar; collect the run's secrets
-    # explicitly (best-effort) and thread them into the serialized messages.
-    secrets: tuple[str, ...] | None = None
-    if db is not None and user is not None:
-        secrets = tuple(await collect_state_secret_values(db, conversation, context))
-
-    checkpoints = await _collect_checkpoints(checkpointer, str(conversation.id))
-    checkpoint_by_message_id = _checkpoint_by_message_id_from_checkpoints(checkpoints)
-    responses: list[dict[str, object]] = []
-    for checkpoint in _page_checkpoints(
-        checkpoints,
-        before=request.before,
-        limit=request.limit,
-    ):
-        responses.append(
-            await _checkpoint_state_response(
+        content = await read_purged_history_content(db, conversation)
+        retained = [
+            ConversationHistoryCheckpointResponse.model_validate(item)
+            for item in content.checkpoints
+        ]
+        checkpoint_by_message_id: dict[str, str] = {}
+        for checkpoint in retained:
+            for message in checkpoint.messages:
+                message_id = message.get("id")
+                if isinstance(message_id, str) and message_id:
+                    checkpoint_by_message_id.setdefault(message_id, checkpoint.checkpoint_id)
+        responses: list[ThreadStateResponse] = []
+        for checkpoint in retained:
+            values: dict[str, JsonValue] = dict(checkpoint.channel_values)
+            values["messages"] = list(checkpoint.messages)
+            responses.append(
+                build_state_response(
+                    conversation,
+                    ThreadStateResponseInput(
+                        values=values,
+                        checkpoint_id=checkpoint.checkpoint_id,
+                        checkpoint_ns=checkpoint.checkpoint_namespace,
+                        checkpoint_by_message_id=checkpoint_by_message_id,
+                        metadata_source="moldy_retained_history",
+                    ),
+                )
+            )
+        return responses
+    return list(
+        await load_live_thread_history(
+            LiveThreadHistoryRequest(
                 conversation,
-                checkpoint=checkpoint,
-                checkpoint_by_message_id=checkpoint_by_message_id,
-                secret_values=secrets,
+                request,
+                context,
+                db,
+                user,
+                get_checkpointer,
             )
         )
-    return responses
+    )
 
 
 async def update_thread_state_response(
@@ -86,7 +113,8 @@ async def update_thread_state_response(
     request: UpdateStateRequest,
     user: CurrentUser,
     context: OrgContext,
-) -> dict[str, object]:
+) -> ThreadStateResponse:
+    await require_executable_conversation(db, conversation.id, context)
     cfg = await resolve_agent_context(
         db,
         conversation.id,
@@ -125,47 +153,6 @@ async def update_thread_state_response(
     return await _snapshot_state_response(conversation, updated, secret_values=secrets)
 
 
-def _page_checkpoints(
-    checkpoints: Sequence[_CheckpointSlim],
-    *,
-    before: ThreadHistoryCursor | None,
-    limit: int,
-) -> list[_CheckpointSlim]:
-    before_id = _history_cursor_checkpoint_id(before)
-    page: list[_CheckpointSlim] = []
-    past_before = before_id is None
-    for checkpoint in checkpoints:
-        if not past_before:
-            if checkpoint.checkpoint_id == before_id:
-                past_before = True
-            continue
-        page.append(checkpoint)
-        if len(page) >= limit:
-            break
-    return page
-
-
-def _history_cursor_checkpoint_id(before: ThreadHistoryCursor | None) -> str | None:
-    if before is None:
-        return None
-    if before.checkpoint_id:
-        return before.checkpoint_id
-    configurable = before.configurable
-    return configurable.checkpoint_id if configurable is not None else None
-
-
-def _checkpoint_by_message_id_from_checkpoints(
-    checkpoints: Sequence[_CheckpointSlim],
-) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for checkpoint in sorted(checkpoints, key=lambda item: len(item.messages)):
-        for message in checkpoint.messages:
-            message_id = _message_id_from_message(message)
-            if message_id is not None and message_id not in result:
-                result[message_id] = checkpoint.checkpoint_id
-    return result
-
-
 async def _checkpoint_state_response(
     conversation: Conversation,
     *,
@@ -173,38 +160,15 @@ async def _checkpoint_state_response(
     checkpoint_by_message_id: dict[str, str],
     secret_values: Sequence[str] | None = None,
     session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] | None = None,
-) -> dict[str, object]:
-    messages: list[dict[str, Any]] = []
-    verified_apps = await verified_mcp_app_artifacts(
-        checkpoint.messages,
-        expected_conversation_id=str(conversation.id),
-        session_factory=session_factory,
-    )
-    candidate_ids = {item.tool_call_id for item in extract_mcp_app_candidates(checkpoint.messages)}
-    for message in checkpoint.messages:
-        message_id = _message_id_from_message(message)
-        introduced_by = (
-            checkpoint_by_message_id.get(message_id)
-            if message_id is not None
-            else checkpoint.checkpoint_id
+) -> ThreadStateResponse:
+    return await build_checkpoint_history_response(
+        HistoryCheckpointProjectionRequest(
+            conversation,
+            checkpoint,
+            checkpoint_by_message_id,
+            secret_values,
+            session_factory,
         )
-        messages.append(
-            project_verified_mcp_apps(
-                serialize_langchain_message(
-                    message,
-                    checkpoint_id=introduced_by or checkpoint.checkpoint_id,
-                    secret_values=secret_values,
-                ),
-                verified_apps,
-                untrusted_tool_call_ids=candidate_ids,
-            )
-        )
-    return state_response(
-        conversation,
-        values=project_todo_policy_values(conversation, {"messages": messages}),
-        checkpoint_id=checkpoint.checkpoint_id,
-        checkpoint_by_message_id=checkpoint_by_message_id,
-        metadata_source="moldy_checkpointer_history",
     )
 
 
@@ -245,7 +209,7 @@ async def _snapshot_state_response(
     *,
     secret_values: Sequence[str] | None = None,
     session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] | None = None,
-) -> dict[str, object]:
+) -> ThreadStateResponse:
     configurable = _snapshot_configurable(snapshot)
     checkpoint_id = configurable.get("checkpoint_id")
     checkpoint_ns = configurable.get("checkpoint_ns")

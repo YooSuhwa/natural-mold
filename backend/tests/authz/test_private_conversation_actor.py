@@ -8,16 +8,17 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.authz.conversation_scope import load_private_conversation, resolve_conversation_actor
+from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.models.organization import OrganizationMember
 from app.models.user import User
+from app.services.agent_lifecycle import archive_agent
 from app.services.chat.conversations import get_conversation
 
 if TYPE_CHECKING:
@@ -46,6 +47,8 @@ async def retained_conversation(db: AsyncSession, private_scopes: PrivateScopes)
         tenant_id=scope.tenant_id,
         agent_id=None,
         agent_name_snapshot="Archived fixture agent",
+        agent_lifecycle_state="purged",
+        agent_purged_at=datetime.now(UTC),
         last_activity_at=datetime.now(UTC),
         title="Retained fixture history",
     )
@@ -116,27 +119,26 @@ async def test_agent_delete_preserves_owned_history_and_name(
     )
     db.add(agent)
     await db.flush()
+    agent_id = agent.id
     conversation = await create_conversation(db, agent.id, context=private_scopes.first)
     conversation_id = conversation.id
     await db.commit()
-    # Loaded relationship must not cascade-delete private history either.
-    # The shared SQLite fixture normally disables FK enforcement. Enable it for this contract.
-    await db.execute(text("PRAGMA foreign_keys=ON"))
-    loaded = await db.scalar(
-        select(Agent).where(Agent.id == agent.id).options(selectinload(Agent.conversations))
+    actor = CurrentUser(
+        id=private_scopes.first.user_id,
+        email="owner@example.com",
+        name="Owner",
     )
-    assert loaded is not None and len(loaded.conversations) == 1
-    try:
-        await db.delete(loaded)
-        await db.commit()
-        db.expire_all()
-        preserved = await load_private_conversation(db, conversation_id, private_scopes.first)
-        assert preserved is not None
-        assert preserved.agent_id is None
-        assert preserved.agent_name_snapshot == "Original fixture name"
-    finally:
-        await db.rollback()
-        await db.execute(text("PRAGMA foreign_keys=OFF"))
+    await archive_agent(db, actor, agent_id)
+    await db.commit()
+    db.expire_all()
+    preserved_agent = await db.get(Agent, agent_id)
+    assert preserved_agent is not None
+    assert preserved_agent.archived_at is not None
+    preserved = await load_private_conversation(db, conversation_id, private_scopes.first)
+    assert preserved is not None
+    assert preserved.agent_id == agent_id
+    assert preserved.agent_lifecycle_state == "archived"
+    assert preserved.agent_name_snapshot == "Original fixture name"
 
 
 async def test_retained_history_read_is_scoped_to_current_company(

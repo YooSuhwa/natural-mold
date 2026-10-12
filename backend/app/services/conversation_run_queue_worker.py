@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.agent_runtime.executor import execute_agent_stream_langgraph
 from app.agent_runtime.runtime_config import AgentConfig
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.conversation_input_scope import conversation_input_parent
 from app.authz.conversation_scope import resolve_conversation_actor
 from app.authz.scoping import private_parent_scoped
@@ -58,23 +59,27 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
         )
         if run is None:
             return None
-        user = await db.get(User, identity.user_id)
         try:
             target = await metadata.authorize_queue_target(db, identity, run)
+            if identity.agent_id is None:
+                raise metadata.QueueBindingInvalidError
+            await load_agent_tree_for_execution(
+                db, AgentExecutionTarget(identity.agent_id, target.context)
+            )
         except metadata.QueueBindingInvalidError:
             await _fail_claimed_input(input_id, error_code="queue_binding_invalid")
             return None
         except AppError:
+            is_active = await db.scalar(select(User.is_active).where(User.id == identity.user_id))
             error_code = (
-                "queue_user_unavailable"
-                if user is None or not user.is_active
-                else "queue_rehydrate_failed"
+                "queue_user_unavailable" if is_active is not True else "queue_rehydrate_failed"
             )
             await _fail_claimed_input(input_id, error_code=error_code)
             return run
         local_task = registry.get(target.run.id)
         if local_task is not None and not local_task.done():
             return target.run
+        user = await db.get(User, identity.user_id)
         queued = await db.scalar(
             private_parent_scoped(
                 select(ConversationRunInput).where(ConversationRunInput.id == input_id),
@@ -82,7 +87,7 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
                 target.context,
             )
         )
-        if queued is None or user is None:
+        if queued is None or user is None or queued.agent_id is None:
             await _fail_claimed_input(input_id, error_code="queue_rehydrate_failed")
             return run
         context = target.context
@@ -255,6 +260,12 @@ async def recover_conversation_queue() -> int:
         if await launch_claimed_input(input_id) is not None:
             launched += 1
     for conversation_id in pending_conversation_ids:
-        if await dispatch_next_for_conversation(conversation_id) is not None:
-            launched += 1
+        try:
+            if await dispatch_next_for_conversation(conversation_id) is not None:
+                launched += 1
+        except AppError:
+            logger.info(
+                "queue recovery skipped non-executable conversation conversation_id=%s",
+                conversation_id,
+            )
     return launched

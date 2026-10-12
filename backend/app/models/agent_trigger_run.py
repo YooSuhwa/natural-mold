@@ -13,11 +13,15 @@ class AgentTriggerRun(Base):
     __tablename__ = "agent_trigger_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    trigger_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agent_triggers.id", ondelete="CASCADE"), nullable=False
+    trigger_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_triggers.id", ondelete="SET NULL"), nullable=True
     )
-    agent_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
+    )
+    trigger_name_snapshot: Mapped[str] = mapped_column(String(120), nullable=False)
+    conversation_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversation_runs.id", ondelete="SET NULL"), nullable=True, unique=True
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False

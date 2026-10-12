@@ -56,6 +56,8 @@ async def test_real_jwt_attachment_rejects_persisted_foreign_parent_before_read(
         org_id=foreign.org_id,
         tenant_id=foreign.tenant_id,
         agent_id=None,
+        agent_lifecycle_state="purged",
+        agent_purged_at=datetime.now(UTC),
         agent_name_snapshot="Foreign retained fixture",
         last_activity_at=datetime.now(UTC),
         title="Foreign fixture",

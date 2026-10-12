@@ -21,7 +21,7 @@ async def test_dify_chat_messages_blocking_adapter(client, db, monkeypatch):
         return "Dify style answer"
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_invoke",
+        "app.agent_api.runtime_service.execute_agent_invoke",
         fake_invoke,
     )
 
@@ -64,7 +64,7 @@ async def test_dify_existing_thread_rejects_noncanonical_runtime_policy_snapshot
     async def fail_invoke(*_args, **_kwargs):
         raise AssertionError("invalid policy must reject before invocation")
 
-    monkeypatch.setattr("app.routers.agent_runtime_api.execute_agent_invoke", fail_invoke)
+    monkeypatch.setattr("app.agent_api.runtime_service.execute_agent_invoke", fail_invoke)
     response = await client.post(
         f"/v1/agents/{deployment.public_id}/chat-messages",
         headers={"Authorization": f"Bearer {cleartext}"},
@@ -93,7 +93,7 @@ async def test_dify_workflow_run_blocking_adapter(client, db, monkeypatch):
         return "Workflow answer"
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_invoke",
+        "app.agent_api.runtime_service.execute_agent_invoke",
         fake_invoke,
     )
 
@@ -119,7 +119,7 @@ async def test_openai_chat_completions_blocking_adapter(client, db, monkeypatch)
         return "OpenAI compatible answer"
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_invoke",
+        "app.agent_api.runtime_service.execute_agent_invoke",
         fake_invoke,
     )
 
@@ -151,7 +151,7 @@ async def test_openai_chat_completions_streaming_adapter_emits_openai_chunks(
         yield 'event: content_delta\ndata: {"content":"lo"}\n\n'
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_stream",
+        "app.agent_api.runtime_service.execute_agent_stream",
         fake_stream,
     )
 

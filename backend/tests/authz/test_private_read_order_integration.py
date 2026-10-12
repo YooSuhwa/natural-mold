@@ -1,12 +1,14 @@
-"""Actual m83 current actors precede private history and queue source reads."""
+"""Current-schema actors precede private history and queue source reads."""
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal, assert_never
 from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.conversation_scope import resolve_conversation_actor
 from app.authz.org_context import resolve_org_context
@@ -14,14 +16,21 @@ from app.config import settings
 from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.models.conversation import Conversation
+from app.models.conversation_history import (
+    ConversationHistoryCheckpoint,
+    ConversationHistoryManifest,
+)
 from app.models.model import Model
 from app.models.organization import OrganizationMember
 from app.models.tool import Tool
 from app.models.user import User
 from app.schemas.agent import AgentCreate
+from app.schemas.conversation_history import JsonValue
 from app.services import agent_service
 from app.services import conversation_run_queue_service as queue
+from app.services.agent_purge_history_validation import verify_history_manifest
 from app.services.chat import conversations, messages
+from app.services.conversation_history_projection import canonical_payload_sha256
 from tests.authz.queue_resource_fixture import queue_resource_sql
 from tests.authz.test_registration_policy_integration import signup_app
 
@@ -40,6 +49,63 @@ class HistorySource:
     def nodes(self) -> tuple[()]:
         self.accesses.append("nodes")
         return ()
+
+
+async def _seed_retained_message(
+    db: AsyncSession, conversation_id: UUID, source_agent_id: UUID
+) -> str:
+    checkpoint_id = "native-read-order-retained"
+    retained_content = "RETAINED_READ_ORDER_CONTENT"
+    checkpoint_values: dict[str, JsonValue] = {"source": "retained-history"}
+    checkpoint_messages: list[JsonValue] = [
+        {"id": "retained-read-message", "type": "human", "content": retained_content}
+    ]
+    checkpoint_branch: dict[str, JsonValue] = {"active": True}
+    checkpoint_trace: dict[str, JsonValue] = {"references": []}
+    checkpoint_payload: dict[str, JsonValue] = {
+        "checkpoint_id": checkpoint_id,
+        "parent_checkpoint_id": None,
+        "checkpoint_namespace": "",
+        "channel_values": checkpoint_values,
+        "messages": checkpoint_messages,
+        "branch": checkpoint_branch,
+        "trace": checkpoint_trace,
+    }
+    checkpoint_sha256 = canonical_payload_sha256(checkpoint_payload)
+    manifest_payload: JsonValue = {
+        "schema_version": 1,
+        "conversation_id": str(conversation_id),
+        "source_agent_id": str(source_agent_id),
+        "checkpoints": [{**checkpoint_payload, "payload_sha256": checkpoint_sha256}],
+        "events": [],
+    }
+    manifest = ConversationHistoryManifest(
+        conversation_id=conversation_id,
+        source_agent_id_snapshot=source_agent_id,
+        state="complete",
+        checkpoint_count=1,
+        event_count=0,
+        canonical_payload_sha256=canonical_payload_sha256(manifest_payload),
+    )
+    db.add(manifest)
+    await db.flush()
+    db.add(
+        ConversationHistoryCheckpoint(
+            manifest_id=manifest.id,
+            conversation_id=conversation_id,
+            checkpoint_id=checkpoint_id,
+            parent_checkpoint_id=None,
+            checkpoint_namespace="",
+            channel_values=checkpoint_values,
+            messages=checkpoint_messages,
+            branch=checkpoint_branch,
+            trace=checkpoint_trace,
+            payload_sha256=checkpoint_sha256,
+        )
+    )
+    await db.flush()
+    assert await verify_history_manifest(db, manifest)
+    return retained_content
 
 
 @pytest.mark.parametrize(
@@ -99,13 +165,21 @@ async def test_native_current_actor_precedes_private_content_and_preserves_norma
                 priority=7,
             )
             await db.commit()
+            retained_content = None
             async with stack.sessions() as writer:
                 match action:
                     case "messages":
+                        retained_content = await _seed_retained_message(
+                            writer, conversation.id, agent.id
+                        )
                         await writer.execute(
                             update(Conversation)
                             .where(Conversation.id == conversation.id)
-                            .values(agent_id=None)
+                            .values(
+                                agent_id=None,
+                                agent_lifecycle_state="purged",
+                                agent_purged_at=datetime.now(UTC),
+                            )
                         )
                         if revoked:
                             await writer.execute(
@@ -141,7 +215,10 @@ async def test_native_current_actor_precedes_private_content_and_preserves_norma
                             result = await messages.list_messages_from_checkpointer(
                                 db, conversation, context=context, tree=source
                             )
-                            assert result == [] and conversation.agent_id is None
+                            assert retained_content is not None
+                            assert len(result) == 1 and result[0].content == retained_content
+                            assert result[0].branch_checkpoint_id == "native-read-order-retained"
+                            assert conversation.agent_id is None
                         case "queue":
                             inputs = await queue.list_inputs(
                                 db, conversation_id=conversation.id, context=context
@@ -170,13 +247,22 @@ async def test_native_current_actor_precedes_private_content_and_preserves_norma
                     "conversations.runtime_policy_snapshot" in sql.lower()
                     or "conversations.title" in sql.lower()
                     or "conversation_run_inputs.input_payload" in sql.lower()
+                    or "conversation_history_manifests" in sql.lower()
+                    or "conversation_history_checkpoints" in sql.lower()
+                    or "conversation_history_events" in sql.lower()
                     for sql in statements
                 )
             else:
                 assert queued.priority == 7 and queued.position == 1 and queued.revision == 1
                 match action:
                     case "messages":
-                        assert source.accesses == ["nodes"]
+                        assert source.accesses == []
+                        assert any(
+                            "conversation_history_manifests" in sql.lower() for sql in statements
+                        )
+                        assert any(
+                            "conversation_history_checkpoints" in sql.lower() for sql in statements
+                        )
                     case "queue":
                         assert source.accesses == []
                     case unreachable:

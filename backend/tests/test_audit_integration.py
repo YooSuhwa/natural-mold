@@ -177,11 +177,13 @@ async def test_agent_mutations_write_audit_without_prompt(
         .scalars()
         .all()
     )
-    assert {row.action for row in rows} >= {
+    actions = {row.action for row in rows}
+    assert actions >= {
         "agent.create",
         "agent.update",
-        "agent.delete",
+        "agent.archive",
     }
+    assert "agent.delete" not in actions
     assert "secret instruction text" not in str([row.event_metadata for row in rows])
     assert "new secret prompt" not in str([row.event_metadata for row in rows])
 

@@ -6,7 +6,6 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
     SubscribeParams,
@@ -18,29 +17,17 @@ from app.agent_runtime.protocol_events import (
 )
 from app.authz.conversation_scope import load_private_conversation
 from app.authz.org_context import OrgContext
+from app.error_codes import conversation_not_found
 from app.models.message_event import MessageEvent
-from app.routers.conversation_agent_protocol_event_normalization import (
-    stored_compatible_protocol_event,
+from app.services.conversation_protocol_event_projection import (
+    RawEventProjectionRequest,
+    stored_events_from_raw,
 )
-from app.routers.conversation_agent_protocol_legacy import protocol_events_from_legacy_sse
-from app.services import trace_storage
-from app.services.chat import secrets as chat_secrets
-
-
-def _optional_str(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None
-
-
-def _int_value(value: Any) -> int | None:
-    if isinstance(value, int) and not isinstance(value, bool):
-        return value
-    return int(value) if isinstance(value, str) and value.isdigit() else None
-
-
-def _namespace(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [segment for segment in value if isinstance(segment, str)]
+from app.services.conversation_protocol_replay import (
+    LiveProtocolEventsRequest,
+    load_live_protocol_events,
+    parse_stored_event_mapping,
+)
 
 
 def _stored_events_from_raw(
@@ -50,69 +37,14 @@ def _stored_events_from_raw(
     fallback_seq: int,
     secret_values: Collection[str] | None = None,
 ) -> list[StoredProtocolEvent]:
-    projected_raw = project_and_redact_protocol_data(
-        "protocol_replay",
-        raw,
-        secret_values=secret_values,
+    return stored_events_from_raw(
+        RawEventProjectionRequest(
+            parse_stored_event_mapping(raw),
+            record,
+            fallback_seq,
+            secret_values,
+        )
     )
-    if not isinstance(projected_raw, Mapping):
-        return []
-
-    method = _optional_str(projected_raw.get("method"))
-    seq = _int_value(projected_raw.get("seq"))
-    if method is not None and seq is not None and "data" in projected_raw:
-        return [
-            stored_compatible_protocol_event(
-                run_id=_optional_str(projected_raw.get("run_id")) or record.assistant_msg_id,
-                thread_id=_optional_str(projected_raw.get("thread_id"))
-                or str(record.conversation_id),
-                seq=seq,
-                method=method,
-                namespace=_namespace(projected_raw.get("namespace")),
-                data=projected_raw.get("data"),
-                event_id=_optional_str(projected_raw.get("upstream_event_id")),
-                timestamp=_optional_str(projected_raw.get("timestamp")),
-                id=_optional_str(projected_raw.get("id")),
-                checkpoint_id=_optional_str(projected_raw.get("checkpoint_id")),
-                checkpoint_ns=_optional_str(projected_raw.get("checkpoint_ns")),
-            )
-        ]
-
-    if projected_raw.get("type") != "event":
-        return protocol_events_from_legacy_sse(
-            projected_raw,
-            record=record,
-            seq=_legacy_seq(projected_raw, fallback=fallback_seq),
-        )
-    params = projected_raw.get("params")
-    if not isinstance(params, Mapping):
-        return []
-    wire_method = _optional_str(projected_raw.get("method"))
-    wire_seq = _int_value(projected_raw.get("seq"))
-    if wire_method is None or wire_seq is None:
-        return []
-    return [
-        stored_compatible_protocol_event(
-            run_id=record.assistant_msg_id,
-            thread_id=str(record.conversation_id),
-            seq=wire_seq,
-            method=wire_method,
-            namespace=_namespace(params.get("namespace")),
-            data=params.get("data"),
-            event_id=_optional_str(projected_raw.get("event_id")),
-            timestamp=_optional_str(params.get("timestamp")),
-            checkpoint_id=_optional_str(params.get("checkpoint_id")),
-            checkpoint_ns=_optional_str(params.get("checkpoint_ns")),
-        )
-    ]
-
-
-def _legacy_seq(raw: Mapping[str, Any], *, fallback: int) -> int:
-    event_id = _optional_str(raw.get("id"))
-    if event_id is None:
-        return fallback
-    tail = event_id.rsplit("-", 1)[-1]
-    return int(tail) if tail.isdigit() else fallback
 
 
 def _event_matches_cursor(event: StoredProtocolEvent, cursor: str) -> bool:
@@ -164,28 +96,34 @@ async def load_protocol_events(
     context: OrgContext,
     secret_values: Collection[str] | None = None,
 ) -> list[StoredProtocolEvent]:
-    if secret_values is None:
-        conversation = await load_private_conversation(db, conversation_id, context)
-        secret_values = (
-            tuple(await chat_secrets.collect_conversation_secret_values(db, conversation, context))
-            if conversation is not None
-            else ()
-        )
-    records = await trace_storage.get_traces_for_conversation(db, conversation_id)
-    events: list[StoredProtocolEvent] = []
-    for record in records:
-        for index, raw in enumerate(await trace_storage.load_events(db, record), start=1):
-            if not isinstance(raw, Mapping):
-                continue
-            events.extend(
-                _stored_events_from_raw(
-                    raw,
-                    record=record,
-                    fallback_seq=index,
-                    secret_values=secret_values,
-                )
+    conversation = await load_private_conversation(db, conversation_id, context)
+    if conversation is None:
+        raise conversation_not_found()
+    if conversation.agent_lifecycle_state == "purged":
+        from app.services.conversation_history_service import read_purged_history_content
+
+        retained = await read_purged_history_content(db, conversation)
+        events: list[StoredProtocolEvent] = []
+        for retained_event in retained.events:
+            record = MessageEvent(
+                conversation_id=conversation.id,
+                assistant_msg_id=retained_event.assistant_message_id,
+                events=[],
             )
-    return resequence_protocol_events(events)
+            for index, raw in enumerate(retained_event.events, start=1):
+                if isinstance(raw, Mapping):
+                    events.extend(
+                        _stored_events_from_raw(
+                            raw,
+                            record=record,
+                            fallback_seq=index,
+                            secret_values=(),
+                        )
+                    )
+        return resequence_protocol_events(events)
+    return await load_live_protocol_events(
+        LiveProtocolEventsRequest(db, conversation, context, secret_values)
+    )
 
 
 async def protocol_replay_generator(

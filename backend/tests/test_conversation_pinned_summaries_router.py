@@ -136,8 +136,11 @@ async def test_pinned_summary_http_round_trip_survives_reload(
 ) -> None:
     # Given
     user, _, agent = await seed_agent(db)
+    purged_at = _fixture_datetime.now(_FIXTURE_UTC) if retained else None
     conversation = Conversation(
         agent_id=None if retained else agent.id,
+        agent_lifecycle_state="purged" if retained else "active",
+        agent_purged_at=purged_at,
         org_id=TEST_ORG_ID,
         tenant_id=TEST_TENANT_ID,
         user_id=agent.user_id,

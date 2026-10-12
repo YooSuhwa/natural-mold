@@ -11,6 +11,8 @@ from httpx import ASGITransport, AsyncClient
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+pytest_plugins = ["tests.agent_lifecycle_sqlite_lock_adapter"]
+
 # Cipher V2 / new credential domain require ``ENCRYPTION_KEYS`` to be set
 # before ``app.config.settings`` is evaluated. Set it at import time so any
 # module that reads settings during collection sees a valid value.
@@ -141,6 +143,7 @@ def _patch_conversation_run_worker_session(monkeypatch):
     """Detached chat run workers must use the same in-memory DB as router tests."""
 
     monkeypatch.setattr("app.services.conversation_run_worker.async_session", TestSession)
+    monkeypatch.setattr("app.services.agent_execution_runtime.async_session", TestSession)
     monkeypatch.setattr("app.services.conversation_run_queue_worker.async_session", TestSession)
     monkeypatch.setattr("app.services.conversation_stream_service.async_session", TestSession)
     monkeypatch.setattr("app.services.skill_builder_finalize.async_session", TestSession)

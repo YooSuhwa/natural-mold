@@ -11,6 +11,7 @@ from app.agent_api.security import generate_api_key
 from app.agent_runtime.identity import AGENT_IDENTITY_FIXED
 from app.agent_runtime.runtime_policy import RuntimePolicyV1, resolve_runtime_policy
 from app.authz.agent_api_scope import private_api_key_predicate, private_deployment_predicate
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import (
     PrivateResourceActor,
@@ -114,6 +115,7 @@ async def list_deployment_candidates(
             private_scope_predicate(Agent, context),
             # 히든 런타임 에이전트는 API 배포 후보에서 제외.
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
+            Agent.archived_at.is_(None),
         )
         .order_by(Agent.name.asc())
     )
@@ -150,13 +152,20 @@ async def create_deployment(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
     with db.no_autoflush:
-        result = await db.execute(
-            select(Agent)
+        agent_id = await db.scalar(
+            select(Agent.id)
             .where(Agent.id == data.agent_id, private_scope_predicate(Agent, context))
-            .options(selectinload(Agent.model))
             .execution_options(autoflush=False, populate_existing=True)
         )
-    agent = result.scalar_one_or_none()
+    if agent_id is None:
+        raise NotFoundError("AGENT_NOT_FOUND", "agent not found")
+    executable = await load_agent_tree_for_execution(
+        db, AgentExecutionTarget(data.agent_id, context)
+    )
+    agent = next(
+        (candidate for candidate in executable.agents if candidate.id == data.agent_id),
+        None,
+    )
     if agent is None:
         raise NotFoundError("AGENT_NOT_FOUND", "agent not found")
     if agent.identity_mode != AGENT_IDENTITY_FIXED:
@@ -217,6 +226,8 @@ async def update_deployment(
     row = result.scalar_one_or_none()
     if row is None:
         raise NotFoundError("AGENT_DEPLOYMENT_NOT_FOUND", "deployment not found")
+    if data.status == "active":
+        await load_agent_tree_for_execution(db, AgentExecutionTarget(row.agent_id, context))
     if data.status is not None:
         row.status = data.status
     if data.allow_streaming is not None:

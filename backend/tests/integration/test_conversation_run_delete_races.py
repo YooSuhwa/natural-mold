@@ -16,6 +16,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.dependencies import CurrentUser
+from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -262,7 +263,7 @@ async def test_run_first_blocks_conversation_delete_then_returns_conflict(
 
 
 @pytest.mark.asyncio
-async def test_user_delete_first_blocks_run_then_returns_not_found(
+async def test_user_delete_first_returns_transfer_conflict_then_run_succeeds(
     pg_factory: async_sessionmaker[AsyncSession],
     graph: SeededGraph,
     cleanup_calls: CleanupCalls,
@@ -270,54 +271,158 @@ async def test_user_delete_first_blocks_run_then_returns_not_found(
     async with pg_factory() as delete_db, pg_factory() as create_db:
         create_pid = await _backend_pid(create_db)
         await delete_db.execute(select(User).where(User.id == graph.user_id).with_for_update())
-        attempted = asyncio.Event()
+        attempted = anyio.Event()
+        finished = anyio.Event()
+        created_runs: list[ConversationRun] = []
 
-        async def create() -> ConversationRun:
+        async def create() -> None:
             attempted.set()
-            return await _create_run(create_db, graph)
+            try:
+                run = await _create_run(create_db, graph)
+                await create_db.commit()
+                created_runs.append(run)
+            finally:
+                finished.set()
 
-        task = asyncio.create_task(create())
-        await attempted.wait()
-        await _wait_for_lock(delete_db, create_pid)
-        assert not task.done()
-        await user_service.delete_user(delete_db, graph.user_id)
-        await delete_db.commit()
-        with pytest.raises(HTTPException) as raised:
-            await asyncio.wait_for(task, timeout=5)
-        assert raised.value.status_code == 404
-        await create_db.rollback()
+        async def rollback_delete() -> None:
+            with anyio.CancelScope(shield=True):
+                with anyio.fail_after(5):
+                    await delete_db.rollback()
 
-    assert cleanup_calls.checkpoint_threads == [str(graph.conversation_id)]
-    assert cleanup_calls.offload_scopes == [(str(graph.user_id), str(graph.conversation_id))]
-    await _assert_graph(pg_factory, graph, user_present=False, conversation_present=False)
+        with anyio.fail_after(15):
+            async with anyio.create_task_group() as tasks:
+                try:
+                    tasks.start_soon(create)
+                    with anyio.fail_after(5):
+                        await attempted.wait()
+                    await _wait_for_lock(delete_db, create_pid)
+                    assert not finished.is_set()
+                    with pytest.raises(AppError) as raised:
+                        await user_service.delete_user(delete_db, graph.user_id)
+                    await rollback_delete()
+                    assert raised.value.code == "resource_transfer_required"
+                    assert raised.value.status == 409
+                    with anyio.fail_after(5):
+                        await finished.wait()
+                finally:
+                    await rollback_delete()
+
+    assert len(created_runs) == 1
+    assert cleanup_calls == CleanupCalls()
+    async with pg_factory() as verify_db:
+        stored_user = await verify_db.get(User, graph.user_id)
+        stored_agent = await verify_db.get(Agent, graph.agent_id)
+        stored_conversation = await verify_db.get(Conversation, graph.conversation_id)
+        stored_runs = (
+            await verify_db.scalars(
+                select(ConversationRun).where(
+                    ConversationRun.conversation_id == graph.conversation_id
+                )
+            )
+        ).all()
+
+    assert stored_user is not None
+    assert stored_agent is not None
+    assert stored_agent.user_id == graph.user_id
+    assert stored_agent.org_id == TEST_ORG_ID
+    assert stored_agent.tenant_id == TEST_TENANT_ID
+    assert stored_conversation is not None
+    assert stored_conversation.user_id == graph.user_id
+    assert stored_conversation.agent_id == graph.agent_id
+    assert stored_conversation.org_id == TEST_ORG_ID
+    assert stored_conversation.tenant_id == TEST_TENANT_ID
+    assert len(stored_runs) == 1
+    stored_run = stored_runs[0]
+    assert stored_run.id == created_runs[0].id
+    assert stored_run.user_id == graph.user_id
+    assert stored_run.agent_id == graph.agent_id
+    assert stored_run.conversation_id == graph.conversation_id
+    assert stored_run.source == "chat"
+    assert stored_run.status == "queued"
+    assert stored_run.is_active is True
 
 
 @pytest.mark.asyncio
-async def test_run_first_blocks_user_delete_then_preserves_graph(
+async def test_run_first_blocks_user_delete_then_resource_conflict_preserves_graph(
     pg_factory: async_sessionmaker[AsyncSession],
     graph: SeededGraph,
     cleanup_calls: CleanupCalls,
 ) -> None:
     async with pg_factory() as create_db, pg_factory() as delete_db:
         delete_pid = await _backend_pid(delete_db)
-        await _create_run(create_db, graph)
-        attempted = asyncio.Event()
+        created_run = await _create_run(create_db, graph)
+        attempted = anyio.Event()
+        finished = anyio.Event()
+        delete_errors: list[AppError] = []
 
         async def remove() -> None:
             attempted.set()
-            await user_service.delete_user(delete_db, graph.user_id)
+            try:
+                await user_service.delete_user(delete_db, graph.user_id)
+            except AppError as exc:
+                delete_errors.append(exc)
+            finally:
+                finished.set()
 
-        task = asyncio.create_task(remove())
-        await attempted.wait()
-        await _wait_for_lock(create_db, delete_pid)
-        assert not task.done()
-        await create_db.commit()
-        with pytest.raises(user_service.ActiveConversationRunConflict):
-            await asyncio.wait_for(task, timeout=5)
-        await delete_db.rollback()
+        async def rollback_session(db: AsyncSession) -> None:
+            with anyio.CancelScope(shield=True):
+                with anyio.fail_after(5):
+                    await db.rollback()
+
+        with anyio.fail_after(15):
+            async with anyio.create_task_group() as tasks:
+                try:
+                    tasks.start_soon(remove)
+                    with anyio.fail_after(5):
+                        await attempted.wait()
+                    await _wait_for_lock(create_db, delete_pid)
+                    assert not finished.is_set()
+                    await create_db.commit()
+                    with anyio.fail_after(5):
+                        await finished.wait()
+                finally:
+                    await rollback_session(create_db)
+                    if attempted.is_set() and not finished.is_set():
+                        with anyio.CancelScope(shield=True):
+                            with anyio.fail_after(5):
+                                await finished.wait()
+                    await rollback_session(delete_db)
 
     assert cleanup_calls == CleanupCalls()
-    await _assert_graph(pg_factory, graph, user_present=True, conversation_present=True)
+    assert len(delete_errors) == 1
+    assert delete_errors[0].code == "resource_transfer_required"
+    assert delete_errors[0].status == 409
+    async with pg_factory() as verify_db:
+        stored_user = await verify_db.get(User, graph.user_id)
+        stored_agent = await verify_db.get(Agent, graph.agent_id)
+        stored_conversation = await verify_db.get(Conversation, graph.conversation_id)
+        stored_runs = (
+            await verify_db.scalars(
+                select(ConversationRun).where(
+                    ConversationRun.conversation_id == graph.conversation_id
+                )
+            )
+        ).all()
+
+    assert stored_user is not None
+    assert stored_agent is not None
+    assert stored_agent.user_id == graph.user_id
+    assert stored_agent.org_id == TEST_ORG_ID
+    assert stored_agent.tenant_id == TEST_TENANT_ID
+    assert stored_conversation is not None
+    assert stored_conversation.user_id == graph.user_id
+    assert stored_conversation.agent_id == graph.agent_id
+    assert stored_conversation.org_id == TEST_ORG_ID
+    assert stored_conversation.tenant_id == TEST_TENANT_ID
+    assert len(stored_runs) == 1
+    stored_run = stored_runs[0]
+    assert stored_run.id == created_run.id
+    assert stored_run.user_id == graph.user_id
+    assert stored_run.agent_id == graph.agent_id
+    assert stored_run.conversation_id == graph.conversation_id
+    assert stored_run.source == "chat"
+    assert stored_run.status == "queued"
+    assert stored_run.is_active is True
 
 
 @pytest.mark.asyncio

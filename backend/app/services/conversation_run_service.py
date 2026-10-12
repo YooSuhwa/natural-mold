@@ -31,6 +31,7 @@ from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import trace_storage
 from app.services.artifact_service import finalize_artifacts_for_run
 from app.services.conversation_audit_service import record_conversation_run_audit
+from app.services.conversation_run_envelope_projection import project_owned_envelopes
 from app.services.conversation_runtime_policy import (
     copy_snapshot_to_run,
     ensure_conversation_runtime_policy,
@@ -347,6 +348,17 @@ async def transition_run(
     if status not in ALLOWED_TRANSITIONS.get(run.status, set()):
         raise ValueError(f"Invalid run status transition: {run.status} -> {status}")
 
+    if status in RUN_TERMINAL_STATUSES and run.cancel_requested_at is not None:
+        owner_ack = (
+            cancellation_ack_worker_id is not None
+            and run.worker_instance_id == cancellation_ack_worker_id
+        )
+        workerless_ack = allow_workerless_cancellation_ack and run.worker_instance_id is None
+        if not (owner_ack or workerless_ack) and (
+            cancellation_ack_worker_id is not None or allow_workerless_cancellation_ack
+        ):
+            raise ValueError("Cancellation acknowledgment requires the owning worker")
+
     now = utc_now_naive()
     run.status = status
     if last_event_id:
@@ -372,14 +384,13 @@ async def transition_run(
             workerless_ack = allow_workerless_cancellation_ack and run.worker_instance_id is None
             if owner_ack or workerless_ack:
                 run.cancellation_acknowledged_at = run.cancellation_acknowledged_at or now
-            elif cancellation_ack_worker_id is not None or allow_workerless_cancellation_ack:
-                raise ValueError("Cancellation acknowledgment requires the owning worker")
         if status == "interrupted" and interrupt_id:
             run.interrupt_id = interrupt_id
         if status in {"failed", "stale"}:
             run.error_code = error_code
             run.error_message = error_message
 
+    await project_owned_envelopes(db, run)
     await db.flush()
     return run
 

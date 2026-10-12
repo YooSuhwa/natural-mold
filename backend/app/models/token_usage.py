@@ -22,8 +22,8 @@ class TokenUsage(Base):
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    agent_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True
     )
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False)

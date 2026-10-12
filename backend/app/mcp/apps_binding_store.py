@@ -27,6 +27,7 @@ from app.mcp.apps import (
     sanitize_result_payload,
     tool_allows_visibility,
 )
+from app.mcp.apps_binding_lifecycle import McpAppsError, require_live_agent_tree
 from app.mcp.domain import McpAppRuntimeContext
 from app.models.agent import Agent
 from app.models.conversation_run import ConversationRun
@@ -62,16 +63,6 @@ class AuthorizedBinding:
     org_context: OrgContext
 
 
-@dataclass(frozen=True, slots=True)
-class McpAppsError(Exception):
-    code: str
-    message: str
-    status_code: int
-
-    def __str__(self) -> str:
-        return self.message
-
-
 async def linked_tool(
     db: AsyncSession,
     *,
@@ -92,6 +83,7 @@ async def linked_tool(
             McpTool.name == tool_name,
             McpTool.enabled.is_(True),
             private_scope_predicate(Agent, context),
+            Agent.archived_at.is_(None),
             McpServer.status != "disabled",
         )
     )
@@ -117,6 +109,7 @@ async def mint_invocation_binding(db: AsyncSession, draft: BindingDraft) -> uuid
     )
     if (
         run is None
+        or run.agent_id is None
         or run.agent_id != draft.agent_id
         or (
             draft.user_id != draft.org_context.user_id
@@ -124,6 +117,7 @@ async def mint_invocation_binding(db: AsyncSession, draft: BindingDraft) -> uuid
         )
     ):
         raise McpAppsError("mcp_app_run_not_found", "run context is not available", 404)
+    await require_live_agent_tree(db, run.agent_id, draft.org_context)
     tool = await linked_tool(
         db,
         agent_id=draft.agent_id,
@@ -235,10 +229,12 @@ async def authorize_binding(
     if (
         binding is None
         or run is None
+        or run.agent_id is None
         or binding.agent_id != run.agent_id
         or (binding.credential_subject_user_id != context.user_id)
     ):
         raise McpAppsError("mcp_app_not_found", "MCP App context was not found", 404)
+    await require_live_agent_tree(db, run.agent_id, context)
     tool = await linked_tool(
         db,
         agent_id=run.agent_id,
@@ -272,4 +268,5 @@ __all__ = [
     "linked_tool",
     "mint_invocation_binding",
     "record_runtime_binding",
+    "require_live_agent_tree",
 ]

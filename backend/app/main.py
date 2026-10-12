@@ -260,8 +260,10 @@ def create_app() -> FastAPI:
         return response
 
     from app.router_registry import include_app_routers
+    from app.routers import conversation_history
 
     include_app_routers(app)
+    app.include_router(conversation_history.router)
     register_exception_handlers(app)
 
     @app.get("/api/health")

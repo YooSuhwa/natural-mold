@@ -10,10 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.agent_runtime.runtime_policy import resolve_runtime_policy
+from app.authz.agent_lifecycle_scope import (
+    AgentLifecycleAuthorization,
+    authorize_agent_lifecycle,
+)
 from app.authz.org_context import OrgContext
+from app.authz.policies import GOVERNANCE, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import agent_not_found, image_not_found
-from app.exceptions import ExternalServiceError, ValidationError
+from app.exceptions import AppError, ExternalServiceError, ValidationError
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.schemas.agent import (
     AgentBrief,
@@ -25,9 +30,20 @@ from app.schemas.agent import (
     McpToolBrief,
     ToolBrief,
 )
+from app.schemas.agent_lifecycle import (
+    AgentLifecycleMetadataResponse,
+    AgentPurgeReceiptResponse,
+    AgentPurgeRequest,
+    AgentRestoreResponse,
+)
 from app.schemas.skill import SkillBrief
 from app.services import agent_service, audit_service, image_service
+from app.services.agent_execution_owner import notify_local_owner
 from app.services.agent_image_paths import build_agent_image_url, resolve_agent_image_path
+from app.services.agent_lifecycle import archive_agent, list_archived_agents, restore_agent
+from app.services.agent_purge_service import purge_agent
+from app.services.agent_purge_types import AgentPurgeCommand
+from app.services.conversation_run_worker import get_run_task_registry
 from app.services.image_preview import get_or_create_image_preview_async
 from app.tools.registry import registry as tool_registry
 
@@ -171,6 +187,15 @@ async def list_agent_summaries(
     return await agent_service.list_agent_summaries(db, context)
 
 
+@router.get("/archived", response_model=list[AgentLifecycleMetadataResponse])
+@authz_policy(GOVERNANCE)
+async def list_archived_agent_metadata(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> list[AgentLifecycleMetadataResponse]:
+    return await list_archived_agents(db, user)
+
+
 @router.post("", response_model=AgentResponse, status_code=201)
 async def create_agent(
     data: AgentCreate,
@@ -274,29 +299,69 @@ async def toggle_favorite(
 
 
 @router.delete("/{agent_id}", status_code=204)
+@authz_policy(GOVERNANCE)
 async def delete_agent(
     agent_id: uuid.UUID,
-    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
-):
-    agent = await agent_service.get_agent(db, agent_id, context)
-    if not agent:
-        raise agent_not_found()
-    _require_standard_profile(agent)
-    await audit_service.record_self_event(
-        db,
-        user,
-        action="agent.delete",
-        target_type="agent",
-        target_id=agent.id,
-        target_name=agent.name,
-        request=request,
-    )
-    await agent_service.delete_agent(db, agent, context)
+) -> None:
+    try:
+        await authorize_agent_lifecycle(
+            db,
+            user,
+            AgentLifecycleAuthorization(agent_id=agent_id, action="archive", context=context),
+        )
+    except AppError as error:
+        if error.code != "AGENT_LIFECYCLE_PERMISSION_REQUIRED":
+            raise
+        raise agent_not_found() from error
+    result = await archive_agent(db, user, agent_id)
     await db.commit()
+    registry = get_run_task_registry()
+    for intent in result.cancel_intents:
+        notify_local_owner(intent, registry)
+    if result.disabled_trigger_ids:
+        from app.scheduler import remove_trigger_job
+
+        for trigger_id in result.disabled_trigger_ids:
+            remove_trigger_job(trigger_id)
+
+
+@router.post("/{agent_id}/restore", response_model=AgentRestoreResponse)
+@authz_policy(GOVERNANCE)
+async def restore_archived_agent(
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> AgentRestoreResponse:
+    response = await restore_agent(db, user, agent_id)
+    await db.commit()
+    return response
+
+
+@router.post("/{agent_id}/purge", response_model=AgentPurgeReceiptResponse)
+@authz_policy(GOVERNANCE)
+async def purge_archived_agent(
+    agent_id: uuid.UUID,
+    data: AgentPurgeRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> AgentPurgeReceiptResponse:
+    receipt = await purge_agent(
+        AgentPurgeCommand(
+            db=db,
+            actor=user,
+            agent_id=agent_id,
+            confirmation_name=data.confirmation_name,
+        )
+    )
+    response.status_code = 200 if receipt.state == "completed" else 202
+    return receipt
 
 
 @router.post("/{agent_id}/image", response_model=GenerateImageResponse)

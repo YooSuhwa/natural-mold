@@ -1,5 +1,169 @@
 {
   "paths": {
+    "/api/agents/archived": {
+      "get": {
+        "operationId": "list_archived_agent_metadata_api_agents_archived_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentLifecycleMetadataResponse"
+                  },
+                  "title": "Response List Archived Agent Metadata Api Agents Archived Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Archived Agent Metadata",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/{agent_id}/purge": {
+      "post": {
+        "operationId": "purge_archived_agent_api_agents__agent_id__purge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPurgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPurgeReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Purge Archived Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/{agent_id}/restore": {
+      "post": {
+        "operationId": "restore_archived_agent_api_agents__agent_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRestoreResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Archived Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/history": {
+      "get": {
+        "operationId": "get_conversation_history_api_conversations__conversation_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Conversation History",
+        "tags": [
+          "conversation-history"
+        ]
+      }
+    },
     "/api/invitations/accept": {
       "post": {
         "operationId": "accept_invitation_link_api_invitations_accept_post",
@@ -1987,6 +2151,491 @@
       "title": "ActiveOrganizationResponse",
       "type": "object"
     },
+    "AgentLifecycleMetadataResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "format": "uuid",
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "archived_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Archived At"
+        },
+        "archived_by_user_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Archived By User Id"
+        },
+        "can_archive": {
+          "title": "Can Archive",
+          "type": "boolean"
+        },
+        "can_purge": {
+          "title": "Can Purge",
+          "type": "boolean"
+        },
+        "can_restore": {
+          "title": "Can Restore",
+          "type": "boolean"
+        },
+        "lifecycle_state": {
+          "enum": [
+            "active",
+            "archived_stopping",
+            "archived_stopped",
+            "purged"
+          ],
+          "title": "Lifecycle State",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "owner_label": {
+          "title": "Owner Label",
+          "type": "string"
+        },
+        "owner_user_id": {
+          "format": "uuid",
+          "title": "Owner User Id",
+          "type": "string"
+        },
+        "policy_delete_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Policy Delete At"
+        }
+      },
+      "required": [
+        "agent_id",
+        "name",
+        "owner_user_id",
+        "owner_label",
+        "archived_by_user_id",
+        "archived_at",
+        "lifecycle_state",
+        "policy_delete_at",
+        "can_archive",
+        "can_restore",
+        "can_purge"
+      ],
+      "title": "AgentLifecycleMetadataResponse",
+      "type": "object"
+    },
+    "AgentPurgeReceiptResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "format": "uuid",
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "receipt_id": {
+          "format": "uuid",
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "preparing",
+            "db_deleted",
+            "cleanup_pending",
+            "completed",
+            "failed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "receipt_id",
+        "agent_id",
+        "state",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "AgentPurgeReceiptResponse",
+      "type": "object"
+    },
+    "AgentPurgeRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmation_name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Confirmation Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "confirmation_name"
+      ],
+      "title": "AgentPurgeRequest",
+      "type": "object"
+    },
+    "AgentRestoreResponse": {
+      "additionalProperties": false,
+      "description": "Restore returns the same metadata-only governance projection.",
+      "properties": {
+        "agent_id": {
+          "format": "uuid",
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "archived_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Archived At"
+        },
+        "archived_by_user_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Archived By User Id"
+        },
+        "can_archive": {
+          "title": "Can Archive",
+          "type": "boolean"
+        },
+        "can_purge": {
+          "title": "Can Purge",
+          "type": "boolean"
+        },
+        "can_restore": {
+          "title": "Can Restore",
+          "type": "boolean"
+        },
+        "lifecycle_state": {
+          "enum": [
+            "active",
+            "archived_stopping",
+            "archived_stopped",
+            "purged"
+          ],
+          "title": "Lifecycle State",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "owner_label": {
+          "title": "Owner Label",
+          "type": "string"
+        },
+        "owner_user_id": {
+          "format": "uuid",
+          "title": "Owner User Id",
+          "type": "string"
+        },
+        "policy_delete_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Policy Delete At"
+        }
+      },
+      "required": [
+        "agent_id",
+        "name",
+        "owner_user_id",
+        "owner_label",
+        "archived_by_user_id",
+        "archived_at",
+        "lifecycle_state",
+        "policy_delete_at",
+        "can_archive",
+        "can_restore",
+        "can_purge"
+      ],
+      "title": "AgentRestoreResponse",
+      "type": "object"
+    },
+    "ArtifactSummary": {
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "agent_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Name"
+        },
+        "artifact_kind": {
+          "enum": [
+            "image",
+            "video",
+            "audio",
+            "pdf",
+            "markdown",
+            "html",
+            "code",
+            "document",
+            "data",
+            "cad",
+            "other"
+          ],
+          "title": "Artifact Kind",
+          "type": "string"
+        },
+        "assistant_msg_id": {
+          "title": "Assistant Msg Id",
+          "type": "string"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "conversation_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Conversation Title"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "download_count": {
+          "title": "Download Count",
+          "type": "integer"
+        },
+        "download_url": {
+          "title": "Download Url",
+          "type": "string"
+        },
+        "extension": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Extension"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "is_favorite": {
+          "title": "Is Favorite",
+          "type": "boolean"
+        },
+        "last_opened_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Opened At"
+        },
+        "linked_message_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Linked Message Ids"
+        },
+        "mime_type": {
+          "title": "Mime Type",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "preview_count": {
+          "title": "Preview Count",
+          "type": "integer"
+        },
+        "preview_url": {
+          "title": "Preview Url",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "source_tool_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Tool Name"
+        },
+        "status": {
+          "enum": [
+            "writing",
+            "ready",
+            "deleted",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tool Call Id"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "version_id": {
+          "format": "uuid",
+          "title": "Version Id",
+          "type": "string"
+        },
+        "version_number": {
+          "title": "Version Number",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "agent_id",
+        "conversation_id",
+        "assistant_msg_id",
+        "run_id",
+        "path",
+        "display_name",
+        "mime_type",
+        "artifact_kind",
+        "size_bytes",
+        "sha256",
+        "status",
+        "is_favorite",
+        "preview_count",
+        "download_count",
+        "version_id",
+        "version_number",
+        "created_at",
+        "updated_at",
+        "url",
+        "preview_url",
+        "download_url"
+      ],
+      "title": "ArtifactSummary",
+      "type": "object"
+    },
     "CapabilityAssignment": {
       "additionalProperties": false,
       "properties": {
@@ -2228,6 +2877,1087 @@
         "updated_at"
       ],
       "title": "CatalogPolicyView",
+      "type": "object"
+    },
+    "ConversationHistoryAttachmentResponse": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Id"
+        },
+        "mime_type": {
+          "title": "Mime Type",
+          "type": "string"
+        },
+        "size_bytes": {
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "message_id",
+        "filename",
+        "mime_type",
+        "size_bytes",
+        "url",
+        "created_at"
+      ],
+      "title": "ConversationHistoryAttachmentResponse",
+      "type": "object"
+    },
+    "ConversationHistoryEventResponse": {
+      "properties": {
+        "assistant_message_id": {
+          "title": "Assistant Message Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/components/schemas/app__schemas__conversation_history__JsonValue"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "payload_sha256": {
+          "title": "Payload Sha256",
+          "type": "string"
+        },
+        "sequence_end": {
+          "title": "Sequence End",
+          "type": "integer"
+        },
+        "sequence_start": {
+          "title": "Sequence Start",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "assistant_message_id",
+        "sequence_start",
+        "sequence_end",
+        "events",
+        "payload_sha256",
+        "created_at"
+      ],
+      "title": "ConversationHistoryEventResponse",
+      "type": "object"
+    },
+    "ConversationHistoryLinks": {
+      "properties": {
+        "files": {
+          "title": "Files",
+          "type": "string"
+        },
+        "messages": {
+          "title": "Messages",
+          "type": "string"
+        },
+        "self": {
+          "title": "Self",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "trace": {
+          "title": "Trace",
+          "type": "string"
+        }
+      },
+      "required": [
+        "self",
+        "messages",
+        "state",
+        "trace",
+        "files"
+      ],
+      "title": "ConversationHistoryLinks",
+      "type": "object"
+    },
+    "ConversationHistoryManifestResponse": {
+      "description": "Immutable retained-history manifest exposed to lifecycle callers.",
+      "properties": {
+        "canonical_payload_sha256": {
+          "title": "Canonical Payload Sha256",
+          "type": "string"
+        },
+        "checkpoint_count": {
+          "title": "Checkpoint Count",
+          "type": "integer"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "event_count": {
+          "title": "Event Count",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_agent_id_snapshot": {
+          "format": "uuid",
+          "title": "Source Agent Id Snapshot",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "building",
+            "complete"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "conversation_id",
+        "schema_version",
+        "source_agent_id_snapshot",
+        "state",
+        "checkpoint_count",
+        "event_count",
+        "canonical_payload_sha256",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "ConversationHistoryManifestResponse",
+      "type": "object"
+    },
+    "ConversationHistoryRef": {
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "agent_name": {
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "archived_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Archived At"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "lifecycle_state": {
+          "enum": [
+            "active",
+            "archived",
+            "purged"
+          ],
+          "title": "Lifecycle State",
+          "type": "string"
+        },
+        "purged_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Purged At"
+        },
+        "read_only": {
+          "title": "Read Only",
+          "type": "boolean"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Title"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "agent_id",
+        "agent_name",
+        "lifecycle_state",
+        "archived_at",
+        "purged_at",
+        "read_only",
+        "title",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "ConversationHistoryRef",
+      "type": "object"
+    },
+    "ConversationHistoryResponse": {
+      "description": "Stable owner-only history envelope for every Agent lifecycle state.",
+      "properties": {
+        "artifacts": {
+          "items": {
+            "$ref": "#/components/schemas/ArtifactSummary"
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "attachments": {
+          "items": {
+            "$ref": "#/components/schemas/ConversationHistoryAttachmentResponse"
+          },
+          "title": "Attachments",
+          "type": "array"
+        },
+        "branches": {
+          "items": {
+            "$ref": "#/components/schemas/app__schemas__conversation_history__JsonValue"
+          },
+          "title": "Branches",
+          "type": "array"
+        },
+        "checkpoints": {
+          "items": {
+            "$ref": "#/components/schemas/app__schemas__conversation_history__JsonValue"
+          },
+          "title": "Checkpoints",
+          "type": "array"
+        },
+        "conversation": {
+          "$ref": "#/components/schemas/ConversationHistoryRef"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/components/schemas/ConversationHistoryEventResponse"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/components/schemas/ConversationRunInputResponse"
+          },
+          "title": "Inputs",
+          "type": "array"
+        },
+        "latest_run": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ConversationRunHistoryResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "links": {
+          "$ref": "#/components/schemas/ConversationHistoryLinks"
+        },
+        "manifest": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ConversationHistoryManifestResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/components/schemas/app__schemas__conversation_history__JsonValue"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/components/schemas/ConversationRunHistoryResponse"
+          },
+          "title": "Runs",
+          "type": "array"
+        },
+        "state": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__schemas__conversation_history__JsonValue"
+          },
+          "title": "State",
+          "type": "object"
+        },
+        "trace": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__schemas__conversation_history__JsonValue"
+          },
+          "title": "Trace",
+          "type": "object"
+        },
+        "usage": {
+          "items": {
+            "$ref": "#/components/schemas/ConversationHistoryUsageResponse"
+          },
+          "title": "Usage",
+          "type": "array"
+        }
+      },
+      "required": [
+        "conversation",
+        "links"
+      ],
+      "title": "ConversationHistoryResponse",
+      "type": "object"
+    },
+    "ConversationHistoryUsageResponse": {
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "completion_tokens": {
+          "title": "Completion Tokens",
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "estimated_cost": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Cost"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "model_name": {
+          "title": "Model Name",
+          "type": "string"
+        },
+        "prompt_tokens": {
+          "title": "Prompt Tokens",
+          "type": "integer"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "total_tokens": {
+          "title": "Total Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "run_id",
+        "agent_id",
+        "model_name",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "estimated_cost",
+        "created_at"
+      ],
+      "title": "ConversationHistoryUsageResponse",
+      "type": "object"
+    },
+    "ConversationRunActivityResponse": {
+      "properties": {
+        "call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Call Id"
+        },
+        "elapsed_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Elapsed Ms"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "namespace": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Namespace",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "namespace"
+      ],
+      "title": "ConversationRunActivityResponse",
+      "type": "object"
+    },
+    "ConversationRunHistoryResponse": {
+      "description": "Read-only Run projection whose Agent may have been purged.",
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "cancel_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cancel Reason"
+        },
+        "cancel_requested_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cancel Requested At"
+        },
+        "cancellation_acknowledged_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cancellation Acknowledged At"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completed At"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Message"
+        },
+        "heartbeat_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Heartbeat At"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "input_preview": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Input Preview"
+        },
+        "interrupt_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interrupt Id"
+        },
+        "last_event_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Event Id"
+        },
+        "metrics": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ConversationRunMetricsResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Run Id"
+        },
+        "runtime_policy_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runtime Policy Hash"
+        },
+        "runtime_policy_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runtime Policy Source"
+        },
+        "runtime_policy_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runtime Policy Version"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "worker_instance_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Worker Instance Id"
+        }
+      },
+      "required": [
+        "id",
+        "conversation_id",
+        "agent_id",
+        "status",
+        "source",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "ConversationRunHistoryResponse",
+      "type": "object"
+    },
+    "ConversationRunInputResponse": {
+      "properties": {
+        "attachment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Attachment Ids",
+          "type": "array"
+        },
+        "checkpoint_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Checkpoint Id"
+        },
+        "claimed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Claimed At"
+        },
+        "client_request_id": {
+          "title": "Client Request Id",
+          "type": "string"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "input_payload": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__models__conversation_run_input__JsonValue-Output"
+          },
+          "title": "Input Payload",
+          "type": "object"
+        },
+        "position": {
+          "title": "Position",
+          "type": "integer"
+        },
+        "priority": {
+          "title": "Priority",
+          "type": "integer"
+        },
+        "resource_context": {
+          "items": {
+            "$ref": "#/components/schemas/PublicChatResourceReference"
+          },
+          "readOnly": true,
+          "title": "Resource Context",
+          "type": "array"
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "integer"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "conversation_id",
+        "run_id",
+        "client_request_id",
+        "source",
+        "status",
+        "priority",
+        "position",
+        "revision",
+        "input_payload",
+        "attachment_ids",
+        "checkpoint_id",
+        "claimed_at",
+        "created_at",
+        "updated_at",
+        "resource_context"
+      ],
+      "title": "ConversationRunInputResponse",
+      "type": "object"
+    },
+    "ConversationRunMetricsResponse": {
+      "properties": {
+        "activity_json": {
+          "items": {
+            "$ref": "#/components/schemas/ConversationRunActivityResponse"
+          },
+          "title": "Activity Json",
+          "type": "array"
+        },
+        "activity_truncated": {
+          "title": "Activity Truncated",
+          "type": "boolean"
+        },
+        "cache_creation_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cache Creation Tokens"
+        },
+        "cache_read_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cache Read Tokens"
+        },
+        "completion_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completion Tokens"
+        },
+        "descendant_subagent_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Descendant Subagent Calls"
+        },
+        "descendant_tool_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Descendant Tool Calls"
+        },
+        "elapsed_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Elapsed Ms"
+        },
+        "estimated_cost": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Cost"
+        },
+        "generation_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Generation Ms"
+        },
+        "prompt_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Prompt Tokens"
+        },
+        "root_subagent_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Root Subagent Calls"
+        },
+        "root_tool_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Root Tool Calls"
+        },
+        "terminal_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Terminal State"
+        },
+        "tokens_per_second": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tokens Per Second"
+        },
+        "ttft_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ttft Ms"
+        },
+        "usage_complete": {
+          "title": "Usage Complete",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "usage_complete",
+        "activity_json",
+        "activity_truncated"
+      ],
+      "title": "ConversationRunMetricsResponse",
       "type": "object"
     },
     "DirectoryPage_CapabilityGrantView_": {
@@ -2918,6 +4648,25 @@
       "title": "InvitationView",
       "type": "object"
     },
+    "JsonScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "MemberCreate": {
       "additionalProperties": false,
       "properties": {
@@ -3345,6 +5094,58 @@
       "title": "PrincipalSearchView",
       "type": "object"
     },
+    "PublicChatResourceReference": {
+      "properties": {
+        "comment": {
+          "title": "Comment",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "file",
+            "artifact",
+            "skill",
+            "conversation"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "message_id": {
+          "title": "Message Id",
+          "type": "string"
+        },
+        "message_role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Message Role",
+          "type": "string"
+        },
+        "quote": {
+          "title": "Quote",
+          "type": "string"
+        },
+        "version_id": {
+          "title": "Version Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "title": "PublicChatResourceReference",
+      "type": "object"
+    },
     "RoleAssignment": {
       "additionalProperties": false,
       "properties": {
@@ -3509,6 +5310,44 @@
       ],
       "title": "ValidationError",
       "type": "object"
+    },
+    "app__models__conversation_run_input__JsonValue-Output": {
+      "anyOf": [
+        {
+          "$ref": "#/components/schemas/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/components/schemas/app__models__conversation_run_input__JsonValue-Output"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__models__conversation_run_input__JsonValue-Output"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "app__schemas__conversation_history__JsonValue": {
+      "anyOf": [
+        {
+          "$ref": "#/components/schemas/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/components/schemas/app__schemas__conversation_history__JsonValue"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__schemas__conversation_history__JsonValue"
+          },
+          "type": "object"
+        }
+      ]
     }
   }
 }

@@ -7,6 +7,7 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
+from typing import get_args
 
 import pytest
 
@@ -23,6 +24,7 @@ from postgres_runner_contract import (  # noqa: E402
 )
 from postgres_runner_runtime import (  # noqa: E402
     OwnedContainer,
+    ScenarioKind,
     build_docker_env,
     build_docker_run_argv,
     lane_env,
@@ -159,6 +161,35 @@ def test_runner_selects_all_marked_integration_nodes_not_only_directory(monkeypa
     assert exit_code == 0
     assert commands[0][-3:] == ["tests", "-m", "integration"]
     assert "tests/integration" not in commands[0]
+
+
+def test_child_timeout_budget_is_extended_only_for_all_mode(monkeypatch) -> None:
+    dsns = build_lane_dsns(user="runner", password="dummy", port=49152, database="moldy_pg_lane_a1")
+    environment = {
+        "DATABASE_URL": dsns.async_url,
+        "DATABASE_URL_SYNC": dsns.sync_url,
+        "INTEGRATION_DATABASE_URL": dsns.integration_url,
+    }
+    modes: tuple[ScenarioKind, ...] = tuple(
+        mode for mode in get_args(ScenarioKind) if mode != "migration-roundtrip"
+    )
+    observed: dict[ScenarioKind, int] = {}
+    current: ScenarioKind = "all"
+
+    def record_command(
+        argv: list[str], *, timeout: int, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        observed[current] = timeout
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr("postgres_runner_runtime.run_command", record_command)
+
+    for current in modes:
+        run_test_child(environment, current)
+
+    assert set(observed) == set(modes)
+    assert observed["all"] == 900
+    assert {timeout for mode, timeout in observed.items() if mode != "all"} == {600}
 
 
 def test_parent_signal_after_container_create_emits_progressive_cleanup_receipt(

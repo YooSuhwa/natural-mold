@@ -330,6 +330,7 @@ async def test_build_tools_config_blocks_mcp_credential_subject_mismatch(
 async def test_trigger_executor_uses_chat_service_prefetch() -> None:
     async with TestSession() as db:
         model = await _seed_user_and_model(db)
+        model.base_url = "https://trigger.example/v1"
         agent = Agent(
             user_id=TEST_USER_ID,
             name="Trig Agent",
@@ -364,7 +365,7 @@ async def test_trigger_executor_uses_chat_service_prefetch() -> None:
         patch(
             "app.agent_runtime.trigger_executor.execute_agent_invoke",
             return_value="ok",
-        ),
+        ) as invoke,
         patch(
             "app.agent_runtime.trigger_executor.async_session",
             TestSession,
@@ -378,10 +379,21 @@ async def test_trigger_executor_uses_chat_service_prefetch() -> None:
 
         await execute_trigger(str(trigger_id))
 
-    spy.assert_called_once()
-    # Prefetch carries the exact persisted trigger owner/org/company scope.
-    args = spy.call_args.args
-    assert args[2] == unit_context(TEST_USER_ID)
+    assert spy.call_count == 2
+    # Lifecycle revalidation while creating the schedule conversation refreshes
+    # the Agent row. The second eager load restores runtime relationships without
+    # changing the persisted trigger owner/org/company scope.
+    for call in spy.call_args_list:
+        assert call.args[1] == agent.id
+        assert call.args[2] == unit_context(TEST_USER_ID)
+    invoke.assert_awaited_once()
+    awaited = invoke.await_args
+    assert awaited is not None
+    cfg, messages = awaited.args
+    assert cfg.provider == "openai"
+    assert cfg.model_name == "gpt-4o"
+    assert cfg.base_url == "https://trigger.example/v1"
+    assert messages == [{"role": "user", "content": "run me"}]
 
 
 # ---------------------------------------------------------------------------

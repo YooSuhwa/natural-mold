@@ -13,6 +13,7 @@ from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import conversation_run_service
+from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
 from app.services.conversation_run_queue_mutations import (
     delete_pending_input,
     edit_pending_input,
@@ -21,6 +22,7 @@ from app.services.conversation_run_queue_mutations import (
     pause_queue,
     queue_input_not_found,
     reorder_pending_inputs,
+    require_queue_executable,
     resume_queue,
 )
 from app.services.conversation_run_queue_payload import JsonValue, validate_queue_input_payload
@@ -87,6 +89,7 @@ async def enqueue_input_with_result(
     """Persist an idempotent input without allocating an active run."""
     user_id = context.user_id
     input_payload = validate_queue_input_payload(input_payload)
+    agent_id = await require_queue_executable(db, conversation_id, context)
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
@@ -118,7 +121,7 @@ async def enqueue_input_with_result(
     )
     queued = ConversationRunInput(
         conversation_id=conversation.id,
-        agent_id=conversation.agent_id,
+        agent_id=agent_id,
         user_id=user_id,
         client_request_id=client_request_id,
         source=source,
@@ -192,6 +195,7 @@ async def claim_next_input(
 ) -> ClaimedConversationInput | None:
     """Bind the next eligible input to a run under the conversation row lock."""
     user_id = context.user_id
+    agent_id = await require_queue_executable(db, conversation_id, context)
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
@@ -237,6 +241,8 @@ async def claim_next_input(
     )
     if queued is None:
         return None
+    if queued.agent_id is None or queued.agent_id != agent_id:
+        raise queue_input_not_found()
     interrupted = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation_id,
@@ -245,19 +251,24 @@ async def claim_next_input(
     if interrupted is not None:
         return None
 
-    run = await conversation_run_service.create_run(
+    accepted = await accept_owned_execution(
         db,
-        conversation_id=conversation.id,
-        agent_id=queued.agent_id,
-        context=context,
-        source="chat",
-        input_preview=None,
-        metadata={
-            "queue_input_id": str(queued.id),
-            "client_request_id": queued.client_request_id,
-            "checkpoint_id": queued.checkpoint_id,
-        },
+        OwnedExecutionRequest(
+            conversation_id=conversation.id,
+            root_agent_id=agent_id,
+            context=context,
+            source="chat",
+            input_preview=None,
+            run_metadata={
+                "queue_input_id": str(queued.id),
+                "client_request_id": queued.client_request_id,
+                "checkpoint_id": queued.checkpoint_id,
+            },
+        ),
     )
+    run = await db.get(ConversationRun, accepted.run_id)
+    if run is None:
+        raise RuntimeError("accepted conversation run was not persisted")
     queued.run_id = run.id
     queued.status = "claimed"
     queued.claimed_at = utc_now_naive()

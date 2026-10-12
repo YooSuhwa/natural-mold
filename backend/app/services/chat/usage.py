@@ -48,7 +48,7 @@ async def _resolve_agent_model_pricing(
 async def save_token_usage(
     db: AsyncSession,
     conversation_id: uuid.UUID,
-    agent_id: uuid.UUID,
+    agent_id: uuid.UUID | None,
     model_name: str,
     prompt_tokens: int,
     completion_tokens: int,

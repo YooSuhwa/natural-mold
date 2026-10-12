@@ -16,7 +16,6 @@ from app.agent_api.sse_adapter import (
     adapt_internal_stream_to_openai,
     format_openai_data_sse,
 )
-from app.agent_runtime.agent_stream_runner import execute_agent_invoke, execute_agent_stream
 from app.authz.agent_api_scope import private_deployment_predicate
 from app.dependencies import get_db
 from app.exceptions import AppError
@@ -288,6 +287,14 @@ async def run_wait(
         principal=principal,
         title="API run",
     )
+    cfg = await runtime_service.build_config_for_run(
+        db,
+        principal=principal,
+        deployment=deployment,
+        conversation=conversation,
+        external_user=request.user,
+        required_scope="invoke",
+    )
     run = await runtime_service.create_run_row(
         db,
         principal=principal,
@@ -298,21 +305,20 @@ async def run_wait(
         input_payload={"messages": messages},
         metadata=request.metadata,
     )
+    await db.refresh(run)
+    if run.conversation_run_id is None or run.conversation_id is None:
+        raise RuntimeError("accepted API run is missing durable ownership")
+    owned_execution = runtime_service.ApiOwnedExecution(
+        conversation_run_id=run.conversation_run_id,
+        conversation_id=run.conversation_id,
+        root_agent_id=deployment.agent_id,
+        context=principal.context,
+        public_run_id=run.public_id,
+        config=cfg,
+        messages=messages,
+    )
     try:
-        cfg = await runtime_service.build_config_for_run(
-            db,
-            principal=principal,
-            deployment=deployment,
-            conversation=conversation,
-            external_user=request.user,
-            required_scope="invoke",
-        )
-        answer = await execute_agent_invoke(
-            cfg,
-            messages,
-            run_id=run.public_id,
-            moldy_source="api",
-        )
+        answer = await runtime_service.execute_owned_wait(owned_execution)
         run = await runtime_service.mark_run_succeeded(
             db,
             run,
@@ -395,6 +401,15 @@ async def _run_stream_response(
         public_thread_id = None
         external_user = request.user
 
+    cfg = await runtime_service.build_config_for_run(
+        db,
+        principal=principal,
+        deployment=deployment,
+        conversation=conversation,
+        external_user=external_user,
+        required_scope="stream",
+    )
+
     run = await runtime_service.create_run_row(
         db,
         principal=principal,
@@ -405,31 +420,18 @@ async def _run_stream_response(
         input_payload={"messages": messages},
         metadata=request.metadata,
     )
-    try:
-        cfg = await runtime_service.build_config_for_run(
-            db,
-            principal=principal,
-            deployment=deployment,
-            conversation=conversation,
-            external_user=external_user,
-            required_scope="stream",
-        )
-    except Exception as exc:
-        await _record_agent_api_run_audit(
-            db,
-            principal=principal,
-            deployment=deployment,
-            request=request,
-            run=run,
-            action=(
-                "agent_api.thread_run_stream" if thread_id is not None else "agent_api.run_stream"
-            ),
-            outcome="failure",
-            reason_code=(exc.code if isinstance(exc, AppError) else "AGENT_API_STREAM_FAILED"),
-            reason_message=getattr(exc, "message", str(exc)),
-        )
-        await db.commit()
-        await _mark_stream_run_failed_and_raise(db, run, exc)
+    await db.refresh(run)
+    if run.conversation_run_id is None or run.conversation_id is None:
+        raise RuntimeError("accepted API run is missing durable ownership")
+    owned_execution = runtime_service.ApiOwnedExecution(
+        conversation_run_id=run.conversation_run_id,
+        conversation_id=run.conversation_id,
+        root_agent_id=deployment.agent_id,
+        context=principal.context,
+        public_run_id=run.public_id,
+        config=cfg,
+        messages=messages,
+    )
 
     await _record_agent_api_run_audit(
         db,
@@ -444,19 +446,15 @@ async def _run_stream_response(
     await db.commit()
 
     async def generator() -> AsyncGenerator[str, None]:
+        internal = runtime_service.stream_owned_run(owned_execution)
+        adapted = adapt_internal_stream(
+            internal,
+            run_id=run.public_id,
+            thread_id=public_thread_id,
+            agent_id=deployment.public_id,
+        )
         try:
-            internal = execute_agent_stream(
-                cfg,
-                messages,
-                run_id=run.public_id,
-                moldy_source="api",
-            )
-            async for chunk in adapt_internal_stream(
-                internal,
-                run_id=run.public_id,
-                thread_id=public_thread_id,
-                agent_id=deployment.public_id,
-            ):
+            async for chunk in adapted:
                 yield chunk
             await runtime_service.mark_run_succeeded(db, run, output={})
         except Exception as exc:  # noqa: BLE001 - stream errors must be visible to clients
@@ -469,6 +467,9 @@ async def _run_stream_response(
             from app.agent_runtime.streaming import format_sse
 
             yield format_sse("error", {"message": str(exc)})
+        finally:
+            await adapted.aclose()
+            await internal.aclose()
 
     return StreamingResponse(
         generator(),
@@ -497,6 +498,14 @@ async def _run_openai_stream_response(
         principal=principal,
         title="OpenAI-compatible stream",
     )
+    cfg = await runtime_service.build_config_for_run(
+        db,
+        principal=principal,
+        deployment=deployment,
+        conversation=conversation,
+        external_user=request.user,
+        required_scope="stream",
+    )
     run = await runtime_service.create_run_row(
         db,
         principal=principal,
@@ -507,32 +516,29 @@ async def _run_openai_stream_response(
         input_payload={"messages": messages},
         metadata=request.metadata,
     )
-    try:
-        cfg = await runtime_service.build_config_for_run(
-            db,
-            principal=principal,
-            deployment=deployment,
-            conversation=conversation,
-            external_user=request.user,
-            required_scope="stream",
-        )
-    except Exception as exc:
-        await _mark_stream_run_failed_and_raise(db, run, exc)
+    await db.refresh(run)
+    if run.conversation_run_id is None or run.conversation_id is None:
+        raise RuntimeError("accepted API run is missing durable ownership")
+    owned_execution = runtime_service.ApiOwnedExecution(
+        conversation_run_id=run.conversation_run_id,
+        conversation_id=run.conversation_id,
+        root_agent_id=deployment.agent_id,
+        context=principal.context,
+        public_run_id=run.public_id,
+        config=cfg,
+        messages=messages,
+    )
 
     async def generator() -> AsyncGenerator[str, None]:
+        internal = runtime_service.stream_owned_run(owned_execution)
+        adapted = adapt_internal_stream_to_openai(
+            internal,
+            run_id=run.public_id,
+            model=model,
+            created_at=run.created_at,
+        )
         try:
-            internal = execute_agent_stream(
-                cfg,
-                messages,
-                run_id=run.public_id,
-                moldy_source="api",
-            )
-            async for chunk in adapt_internal_stream_to_openai(
-                internal,
-                run_id=run.public_id,
-                model=model,
-                created_at=run.created_at,
-            ):
+            async for chunk in adapted:
                 yield chunk
             await runtime_service.mark_run_succeeded(db, run, output={})
         except Exception as exc:  # noqa: BLE001 - stream errors must be visible to clients
@@ -544,6 +550,9 @@ async def _run_openai_stream_response(
             )
             yield format_openai_data_sse({"error": {"message": str(exc)}})
             yield format_openai_data_sse("[DONE]")
+        finally:
+            await adapted.aclose()
+            await internal.aclose()
 
     return StreamingResponse(
         generator(),
@@ -591,6 +600,14 @@ async def thread_run_wait(
             status=409,
         )
     messages = runtime_service.validate_messages(request)
+    cfg = await runtime_service.build_config_for_run(
+        db,
+        principal=principal,
+        deployment=deployment,
+        conversation=thread.conversation,
+        external_user=thread.external_user or request.user,
+        required_scope="invoke",
+    )
     run = await runtime_service.create_run_row(
         db,
         principal=principal,
@@ -601,21 +618,20 @@ async def thread_run_wait(
         input_payload={"messages": messages},
         metadata=request.metadata,
     )
+    await db.refresh(run)
+    if run.conversation_run_id is None or run.conversation_id is None:
+        raise RuntimeError("accepted API run is missing durable ownership")
+    owned_execution = runtime_service.ApiOwnedExecution(
+        conversation_run_id=run.conversation_run_id,
+        conversation_id=run.conversation_id,
+        root_agent_id=deployment.agent_id,
+        context=principal.context,
+        public_run_id=run.public_id,
+        config=cfg,
+        messages=messages,
+    )
     try:
-        cfg = await runtime_service.build_config_for_run(
-            db,
-            principal=principal,
-            deployment=deployment,
-            conversation=thread.conversation,
-            external_user=thread.external_user or request.user,
-            required_scope="invoke",
-        )
-        answer = await execute_agent_invoke(
-            cfg,
-            messages,
-            run_id=run.public_id,
-            moldy_source="api",
-        )
+        answer = await runtime_service.execute_owned_wait(owned_execution)
         run = await runtime_service.mark_run_succeeded(db, run, output={"answer": answer})
         await _record_agent_api_run_audit(
             db,

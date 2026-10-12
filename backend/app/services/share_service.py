@@ -18,8 +18,12 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from app.authz.agent_execution_scope import (
+    AgentExecutionTarget,
+    assert_agent_tree_executable,
+    load_agent_tree_for_execution,
+)
 from app.authz.conversation_scope import (
     load_private_conversation,
     require_private_conversation,
@@ -32,10 +36,12 @@ from app.authz.private_actor import (
     resolve_private_actor,
 )
 from app.authz.scoping import private_scope_predicate, private_scoped
+from app.error_codes import agent_not_found
 from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.share_link import ShareLink
+from app.services.agent_lifecycle_locks import read_agent_tree
 
 __all__ = [
     "create_or_get_active_share",
@@ -77,6 +83,9 @@ async def create_or_get_active_share(
     db: AsyncSession, conversation: Conversation, context: OrgContext
 ) -> ShareLink:
     conversation = await require_private_conversation(db, conversation.id, context)
+    if conversation.agent_id is None:
+        raise agent_not_found()
+    await load_agent_tree_for_execution(db, AgentExecutionTarget(conversation.agent_id, context))
     existing = await get_active_share_for_conversation(db, conversation.id, context)
     if existing is not None:
         return existing
@@ -174,11 +183,10 @@ async def load_share_with_conversation_and_agent(
         conv_result = await db.execute(
             select(Conversation)
             .execution_options(populate_existing=True, autoflush=False)
-            .options(selectinload(Conversation.agent))
             .where(Conversation.id == link.conversation_id)
         )
         conversation = conv_result.scalar_one_or_none()
-        if conversation is None or conversation.agent is None:
+        if conversation is None or conversation.agent_id is None:
             return None
         if (link.created_by, link.org_id, link.tenant_id) != (
             conversation.user_id,
@@ -186,18 +194,25 @@ async def load_share_with_conversation_and_agent(
             conversation.tenant_id,
         ):
             return None
-        if (
-            conversation.agent.user_id,
-            conversation.agent.org_id,
-            conversation.agent.tenant_id,
-        ) != (
-            conversation.user_id,
-            conversation.org_id,
-            conversation.tenant_id,
-        ):
-            return None
         try:
             await resolve_conversation_actor(db, conversation.id, conversation.user_id)
+            owner_context = OrgContext(
+                org_id=conversation.org_id,
+                tenant_id=conversation.tenant_id,
+                user_id=conversation.user_id,
+            )
+            snapshot = await read_agent_tree(db, conversation.agent_id)
+            assert_agent_tree_executable(snapshot, owner_context)
         except AppError:
             return None
-        return link, conversation, conversation.agent
+        agent = await db.scalar(
+            select(Agent)
+            .where(
+                Agent.id == conversation.agent_id,
+                private_scope_predicate(Agent, owner_context),
+            )
+            .execution_options(populate_existing=True, autoflush=False)
+        )
+        if agent is None:
+            return None
+        return link, conversation, agent

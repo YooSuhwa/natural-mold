@@ -73,6 +73,7 @@ async def collector_case(db: AsyncSession, private_scopes: PrivateScopes) -> Col
     db.add(tool)
     await db.flush()
     db.add(AgentToolLink(agent_id=agent.id, tool_id=tool.id))
+    await db.commit()
     conversation = await create_conversation(db, agent.id, context=private_scopes.first)
     await db.commit()
     return CollectorCase(conversation, "dummy-foreign-collector")

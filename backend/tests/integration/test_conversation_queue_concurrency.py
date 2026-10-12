@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import UTC, datetime
 
 import anyio
 import pytest
@@ -91,6 +92,7 @@ async def _seed_conversation(
                 tenant_id=TEST_TENANT_ID,
                 agent_name_snapshot="Race fixture",
                 title="Queue",
+                last_activity_at=datetime.now(UTC),
             )
         )
         await db.commit()

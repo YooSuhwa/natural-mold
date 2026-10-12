@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
@@ -98,3 +98,22 @@ async def test_agent_id_operations_deny_same_owner_foreign_company(
         case "delete":
             response = await agent_case.client.delete(endpoint, headers=headers)
     assert response.status_code == 404, response.text
+
+
+async def test_agent_delete_foreign_scope_matches_missing_target(
+    agent_case: AgentCase,
+    private_scopes: PrivateScopes,
+) -> None:
+    # Given an authenticated owner whose selected company differs from the target Agent.
+    agent_case.client.cookies.set(ACTIVE_ORG_COOKIE, str(private_scopes.second.org_id))
+    csrf = agent_case.client.cookies.get("moldy_csrf")
+    assert csrf is not None
+    headers = {"X-CSRF-Token": csrf}
+
+    # When the owner deletes the foreign-scope target and an absent target.
+    foreign = await agent_case.client.delete(f"/api/agents/{agent_case.agent_id}", headers=headers)
+    missing = await agent_case.client.delete(f"/api/agents/{uuid4()}", headers=headers)
+
+    # Then both remain enumeration-safe and indistinguishable.
+    assert foreign.status_code == missing.status_code == 404
+    assert foreign.json() == missing.json()

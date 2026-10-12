@@ -38,6 +38,7 @@ _CLEANUP_FIELDS: Final = (
 )
 _SIGNALS: Final = (signal.SIGINT, signal.SIGTERM)
 EVIDENCE_ROOT: Final = REPO_ROOT / ".omo/evidence/project-restart-consolidated-roadmap"
+LIFECYCLE_EVIDENCE_ROOT: Final = REPO_ROOT / ".omo/evidence/b08"
 
 
 class ManifestPathError(RuntimeError):
@@ -465,11 +466,17 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
             "stream-resume",
             "run-lifecycle+stream-resume",
             "queue-concurrency",
+            "agent-lifecycle",
         ),
     )
     parser.add_argument("--manifest", required=True, type=Path)
     args = parser.parse_args()
-    evidence_root = ensure_evidence_root(REPO_ROOT)
+    match args.mode:
+        case "agent-lifecycle":
+            LIFECYCLE_EVIDENCE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+            evidence_root = LIFECYCLE_EVIDENCE_ROOT
+        case _:
+            evidence_root = ensure_evidence_root(REPO_ROOT)
     destination = args.manifest if args.manifest.is_absolute() else REPO_ROOT / args.manifest
     if destination.absolute().parent == evidence_root.absolute():
         validate_manifest_destination(destination, evidence_root)
@@ -495,6 +502,7 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
                 "stream-resume",
                 "run-lifecycle+stream-resume",
                 "queue-concurrency",
+                "agent-lifecycle",
             }:
                 verify_evidence_directory(evidence)
                 scenarios = [
@@ -524,6 +532,7 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
                     "stream-resume",
                     "run-lifecycle+stream-resume",
                     "queue-concurrency",
+                    "agent-lifecycle",
                 }
                 else "all"
             )

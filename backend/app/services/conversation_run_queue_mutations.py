@@ -13,6 +13,7 @@ from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.models.conversation_run import utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
+from app.services.chat.conversations import require_executable_conversation
 from app.services.conversation_run_queue_payload import JsonValue, validate_queue_input_payload
 
 
@@ -22,6 +23,17 @@ def queue_input_not_found() -> HTTPException:
 
 def _conflict(message: str) -> HTTPException:
     return HTTPException(status_code=409, detail=message)
+
+
+async def require_queue_executable(
+    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext
+) -> uuid.UUID:
+    try:
+        return await require_executable_conversation(db, conversation_id, context)
+    except AppError as exc:
+        if exc.code == "AGENT_ARCHIVED":
+            raise
+        raise queue_input_not_found() from exc
 
 
 async def lock_owned_conversation(
@@ -78,6 +90,7 @@ async def _pending_input_for_update(
     expected_revision: int,
 ) -> ConversationRunInput:
     user_id = context.user_id
+    await require_queue_executable(db, conversation_id, context)
     await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
@@ -156,6 +169,7 @@ async def reorder_pending_inputs(
     expected_revisions: dict[uuid.UUID, int],
 ) -> list[ConversationRunInput]:
     user_id = context.user_id
+    await require_queue_executable(db, conversation_id, context)
     await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
@@ -192,6 +206,7 @@ async def pause_queue(
     conversation_id: uuid.UUID,
     context: OrgContext,
 ) -> Conversation:
+    await require_queue_executable(db, conversation_id, context)
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
@@ -209,6 +224,7 @@ async def resume_queue(
     conversation_id: uuid.UUID,
     context: OrgContext,
 ) -> Conversation:
+    await require_queue_executable(db, conversation_id, context)
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
@@ -227,6 +243,7 @@ __all__ = [
     "lock_owned_conversation",
     "pause_queue",
     "queue_input_not_found",
+    "require_queue_executable",
     "reorder_pending_inputs",
     "resume_queue",
 ]

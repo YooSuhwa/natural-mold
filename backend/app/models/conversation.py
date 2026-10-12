@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -18,6 +18,17 @@ class Conversation(RequiredOrgScope, Base):
     __tablename__ = "conversations"
     __table_args__ = (
         *resource_scope_constraints("conversations", system=False),
+        CheckConstraint(
+            "agent_lifecycle_state IN ('active', 'archived', 'purged')",
+            name="ck_conversations_agent_lifecycle_state",
+        ),
+        CheckConstraint(
+            "(agent_lifecycle_state IN ('active', 'archived') "
+            "AND agent_id IS NOT NULL AND agent_purged_at IS NULL) OR "
+            "(agent_lifecycle_state = 'purged' "
+            "AND agent_id IS NULL AND agent_purged_at IS NOT NULL)",
+            name="ck_conversations_agent_lifecycle_binding",
+        ),
         Index("ix_conversations_owner_org_updated", "user_id", "org_id", "updated_at"),
         Index("ix_conversations_last_activity", "org_id", "last_activity_at"),
     )
@@ -32,6 +43,13 @@ class Conversation(RequiredOrgScope, Base):
         nullable=False,
     )
     agent_name_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    agent_lifecycle_state: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", server_default="active"
+    )
+    agent_archived_at_snapshot: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    agent_purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="ui")

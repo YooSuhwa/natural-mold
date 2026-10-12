@@ -1,4 +1,4 @@
-"""Native m83 deletion refuses revoked actors and foreign SET NULL child traversal."""
+"""Native B08 deletion refuses revoked actors and foreign retained-child traversal."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,7 +28,7 @@ async def test_native_delete_stops_before_foreign_child_or_revoked_actor_effects
     tmp_path: Path,
     kind: Literal["own", "revoked", "foreign_child"],
 ) -> None:
-    # Given a real private actor and independently migrated m83 owner-role database.
+    # Given a real private actor and independently migrated current-schema database.
     monkeypatch.setattr(settings, "registration_policy", "default_org")
     checkpoint_delete = AsyncMock()
     monkeypatch.setattr("app.agent_runtime.checkpointer.delete_thread", checkpoint_delete)
@@ -50,13 +50,16 @@ async def test_native_delete_stops_before_foreign_child_or_revoked_actor_effects
             context = await resolve_org_context(
                 db, PersistedActor(user.id, user.is_super_user), cookie=str(user.last_active_org_id)
             )
+            purged_at = datetime.now(UTC)
             parent = Conversation(
                 user_id=context.user_id,
                 org_id=context.org_id,
                 tenant_id=context.tenant_id,
                 agent_id=None,
                 agent_name_snapshot="Retained fixture",
-                last_activity_at=datetime.now(UTC),
+                agent_lifecycle_state="purged",
+                agent_purged_at=purged_at,
+                last_activity_at=purged_at,
             )
             db.add(parent)
             await db.commit()
@@ -66,13 +69,16 @@ async def test_native_delete_stops_before_foreign_child_or_revoked_actor_effects
             case "foreign_child":
                 other = await select_second_company(stack, headers, "native-delete@example.com")
                 async with stack.sessions() as db:
+                    purged_at = datetime.now(UTC)
                     child = Conversation(
                         user_id=other.user_id,
                         org_id=other.org_id,
                         tenant_id=other.tenant_id,
                         agent_id=None,
                         agent_name_snapshot="Foreign retained fixture",
-                        last_activity_at=datetime.now(UTC),
+                        agent_lifecycle_state="purged",
+                        agent_purged_at=purged_at,
+                        last_activity_at=purged_at,
                         source="side_chat",
                         side_chat_parent_id=parent_id,
                     )

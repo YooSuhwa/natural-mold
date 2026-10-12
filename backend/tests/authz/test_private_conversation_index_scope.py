@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -45,6 +46,8 @@ async def test_agentless_history_cleanup_uses_conversation_owner(
 ) -> None:
     conversation = collector_case.conversation
     conversation.agent_id = None
+    conversation.agent_lifecycle_state = "purged"
+    conversation.agent_purged_at = datetime.now(UTC)
     await db.flush()
     checkpoint = AsyncMock()
     with (

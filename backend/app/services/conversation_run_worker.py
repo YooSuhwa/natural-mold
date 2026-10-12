@@ -9,6 +9,7 @@ import uuid
 from collections.abc import AsyncGenerator, Callable
 from typing import Any, Literal, cast
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.agent_runtime import event_names
@@ -23,6 +24,7 @@ from app.agent_runtime.run_metrics_baseline import (
 from app.agent_runtime.run_metrics_types import TerminalRunState
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.stream_error_messages import public_stream_error_message
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.conversation_run_scope import (
     RunConversationTarget,
     RunExecutionTarget,
@@ -35,6 +37,7 @@ from app.authz.worker_conversation_scope import (
 from app.config import settings
 from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found
+from app.exceptions import AppError
 from app.marketplace.redaction import replace_secret_values
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service, thread_branch_service
@@ -56,7 +59,11 @@ CancelReason = Literal["stop", "steer", "shutdown"]
 _CANCEL_POLL_SECONDS = 0.25
 
 
-class RunTaskAlreadyRegisteredError(RuntimeError):
+class RunTaskRegistrationError(RuntimeError):
+    pass
+
+
+class RunTaskAlreadyRegisteredError(RunTaskRegistrationError):
     pass
 
 
@@ -107,6 +114,14 @@ class RunTaskRegistry:
 
         task.add_done_callback(_discard)
 
+    def start_current(self, run_id: uuid.UUID) -> asyncio.Task[None]:
+        """Register and return the task currently executing this coroutine."""
+        task = asyncio.current_task()
+        if task is None:
+            raise RunTaskRegistrationError("no current task is available for registration")
+        self.start(run_id, task)
+        return task
+
     def get(self, run_id: uuid.UUID) -> asyncio.Task[None] | None:
         return self._tasks.get(run_id)
 
@@ -121,7 +136,8 @@ class RunTaskRegistry:
         if task is None or task.done():
             return False
         self._cancel_reasons[run_id] = reason
-        task.cancel()
+        if task.cancelling() == 0:
+            task.cancel()
         return True
 
     def cancel_reason(self, run_id: uuid.UUID) -> CancelReason | None:
@@ -137,9 +153,8 @@ class RunTaskRegistry:
             await _persist_shutdown_intent([run_id for run_id, _task in items])
         except SQLAlchemyError:
             logger.exception("failed to persist conversation run shutdown intent")
-        for run_id, task in items:
-            self._cancel_reasons[run_id] = "shutdown"
-            task.cancel()
+        for run_id, _task in items:
+            self.request_cancel(run_id, reason="shutdown")
         tasks = [task for _, task in items]
         if tasks:
             try:
@@ -251,26 +266,38 @@ async def start_conversation_run(
     if user.id != target.conversation.context.user_id:
         raise conversation_not_found()
     async with _session_factory()() as session:
+        try:
+            await load_agent_tree_for_execution(
+                session,
+                AgentExecutionTarget(
+                    target.conversation.agent_id,
+                    target.conversation.context,
+                ),
+            )
+        except AppError as error:
+            if error.code == "AGENT_ARCHIVED":
+                raise
+            raise conversation_not_found() from error
         if await lock_executable_run(session, target) is None:
             raise conversation_not_found()
-    registry = registry or get_run_task_registry()
-    ctx = stream_service.prepare_stream_context(conversation_id, run_id=str(run_id))
-    task = asyncio.create_task(
-        _run_conversation(
-            run_id=run_id,
-            conversation_id=conversation_id,
-            cfg=cfg,
-            user=user,
-            input_payload=input_payload,
-            moldy_source=moldy_source,
-            executor_fn=executor_fn,
-            ctx=ctx,
-            registry=registry,
-            attachment_ids=attachment_ids,
-        ),
-        name=f"conversation-run-{run_id}",
-    )
-    registry.start(run_id, task)
+        registry = registry or get_run_task_registry()
+        ctx = stream_service.prepare_stream_context(conversation_id, run_id=str(run_id))
+        task = asyncio.create_task(
+            _run_conversation(
+                run_id=run_id,
+                conversation_id=conversation_id,
+                cfg=cfg,
+                user=user,
+                input_payload=input_payload,
+                moldy_source=moldy_source,
+                executor_fn=executor_fn,
+                ctx=ctx,
+                registry=registry,
+                attachment_ids=attachment_ids,
+            ),
+            name=f"conversation-run-{run_id}",
+        )
+        registry.start(run_id, task)
     return ctx
 
 
@@ -356,6 +383,34 @@ async def _transition_to_running(
     status 로 분기한다.
     """
     async with _session_factory()() as session:
+        try:
+            await load_agent_tree_for_execution(
+                session,
+                AgentExecutionTarget(
+                    target.conversation.agent_id,
+                    target.conversation.context,
+                ),
+            )
+        except AppError:
+            run = await session.scalar(
+                select(ConversationRun)
+                .where(
+                    ConversationRun.id == target.run_id,
+                    ConversationRun.conversation_id == target.conversation.conversation_id,
+                    ConversationRun.agent_id == target.conversation.agent_id,
+                    ConversationRun.user_id == target.conversation.context.user_id,
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True, autoflush=False)
+            )
+            if run is None or not run.is_active:
+                return run, False
+            if run.status == "queued":
+                await conversation_run_service.request_cancel_run(
+                    session, run, reason="authority_revoked"
+                )
+                await session.commit()
+            return None, False
         run = await lock_executable_run(session, target)
         if run is None:
             return None, False
@@ -877,6 +932,7 @@ async def _run_conversation(
 
 __all__ = [
     "RunTaskRegistry",
+    "RunTaskRegistrationError",
     "RunTaskAlreadyRegisteredError",
     "get_run_task_registry",
     "reset_run_task_registry_for_tests",

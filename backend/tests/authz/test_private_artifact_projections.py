@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, assert_never
+from typing import TYPE_CHECKING, Final, Literal, assert_never
 from uuid import uuid4
 
 import pytest
@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 
 pytest_plugins = ["tests.authz.test_private_artifact_scope"]
 Projection = Literal["library", "favorite"]
+RETAINED_AGENT_NAME: Final = "Collector fixture"
+PEER_AGENT_NAME: Final = "Peer private name"
+PEER_AGENT_PROMPT: Final = "Peer private prompt marker"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,8 +54,8 @@ async def artifact_projection_case(
         model_id=await db.scalar(
             select(Agent.model_id).where(Agent.id == private_artifact.agent_id)
         ),
-        name="Peer private name",
-        system_prompt="Fixture",
+        name=PEER_AGENT_NAME,
+        system_prompt=PEER_AGENT_PROMPT,
     )
     db.add(peer_agent)
     await db.flush()
@@ -73,7 +76,7 @@ async def artifact_projection_case(
 
 
 @pytest.mark.parametrize("projection", ["library", "favorite"])
-async def test_private_artifact_excludes_peer_agent_name(
+async def test_private_artifact_uses_retained_label_without_peer_agent_data(
     db: AsyncSession, artifact_projection_case: ProjectionCase, projection: Projection
 ) -> None:
     case = artifact_projection_case
@@ -92,12 +95,16 @@ async def test_private_artifact_excludes_peer_agent_name(
             )
             assert len(page.items) == 1
             assert page.items[0].id == case.artifact.id
-            assert page.items[0].agent_name is None
+            summary = page.items[0]
         case "favorite":
             summary = await set_artifact_favorite(
                 db, context=case.context, artifact_id=case.artifact.id, is_favorite=True
             )
             assert summary.id == case.artifact.id
-            assert summary.agent_name is None
         case unreachable:
             assert_never(unreachable)
+
+    assert summary.agent_name == RETAINED_AGENT_NAME
+    serialized = summary.model_dump_json()
+    assert PEER_AGENT_NAME not in serialized
+    assert PEER_AGENT_PROMPT not in serialized

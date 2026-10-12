@@ -7,13 +7,15 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
-from app.agent_runtime.protocol_events import (
-    StoredProtocolEvent,
-    stored_custom_protocol_event,
-    stored_protocol_event,
-)
+from app.agent_runtime.protocol_events import StoredProtocolEvent
 from app.models.message_event import MessageEvent
 from app.services import trace_storage
+from app.services.conversation_protocol_legacy_projection import (
+    LegacyEventProjectionRequest,
+)
+from app.services.conversation_protocol_legacy_projection import (
+    protocol_events_from_legacy_sse as _protocol_events_from_legacy_sse,
+)
 
 
 def protocol_events_from_legacy_sse(
@@ -22,58 +24,7 @@ def protocol_events_from_legacy_sse(
     record: MessageEvent,
     seq: int,
 ) -> list[StoredProtocolEvent]:
-    name = raw.get("event")
-    data = _as_mapping(raw.get("data"))
-    raw_id = _optional_str(raw.get("id"))
-
-    match name:
-        case event_names.MESSAGE_END:
-            return [
-                _legacy_protocol_event(
-                    record,
-                    seq=seq,
-                    method="lifecycle",
-                    data=_terminal_lifecycle_data(record, data),
-                    event_id=_derived_event_id(raw_id, "lifecycle"),
-                )
-            ]
-        case event_names.STALE:
-            return [
-                _legacy_protocol_event(
-                    record,
-                    seq=seq,
-                    method="lifecycle",
-                    data={
-                        **data,
-                        "event": event_names.STALE,
-                        "status": "error",
-                        "run_id": data.get("run_id") or record.assistant_msg_id,
-                    },
-                    event_id=_derived_event_id(raw_id, "lifecycle"),
-                ),
-                _legacy_custom_protocol_event(
-                    record,
-                    seq=seq,
-                    name=event_names.STALE,
-                    payload={
-                        **data,
-                        "run_id": data.get("run_id") or record.assistant_msg_id,
-                    },
-                    event_id=_derived_event_id(raw_id, event_names.STALE),
-                ),
-            ]
-        case event_names.ERROR:
-            return [
-                _legacy_protocol_event(
-                    record,
-                    seq=seq,
-                    method="error",
-                    data=data,
-                    event_id=_derived_event_id(raw_id, "error"),
-                )
-            ]
-        case _:
-            return []
+    return _protocol_events_from_legacy_sse(LegacyEventProjectionRequest(raw, record, seq))
 
 
 async def legacy_state_messages(
@@ -177,54 +128,6 @@ def _content_from_deltas(events: list[dict[str, Any]]) -> str:
     return "".join(parts)
 
 
-def _terminal_lifecycle_data(record: MessageEvent, data: Mapping[str, Any]) -> dict[str, Any]:
-    status = _optional_str(data.get("status")) or "completed"
-    return {
-        **dict(data),
-        "event": status,
-        "status": status,
-        "run_id": record.assistant_msg_id,
-    }
-
-
-def _legacy_protocol_event(
-    record: MessageEvent,
-    *,
-    seq: int,
-    method: str,
-    data: dict[str, Any],
-    event_id: str | None,
-) -> StoredProtocolEvent:
-    return stored_protocol_event(
-        run_id=record.assistant_msg_id,
-        thread_id=str(record.conversation_id),
-        seq=seq,
-        method=method,
-        data=data,
-        event_id=event_id,
-        id=event_id,
-    )
-
-
-def _legacy_custom_protocol_event(
-    record: MessageEvent,
-    *,
-    seq: int,
-    name: str,
-    payload: dict[str, Any],
-    event_id: str | None,
-) -> StoredProtocolEvent:
-    return stored_custom_protocol_event(
-        run_id=record.assistant_msg_id,
-        thread_id=str(record.conversation_id),
-        seq=seq,
-        name=name,
-        payload=payload,
-        event_id=event_id,
-        id=event_id,
-    )
-
-
 def _usage_metadata(raw: Any) -> dict[str, Any]:
     usage = _as_mapping(raw)
     if not usage:
@@ -259,10 +162,6 @@ def _content_to_text(value: Any) -> str:
                     parts.append(text)
         return "".join(parts)
     return "" if value is None else str(value)
-
-
-def _derived_event_id(raw_id: str | None, suffix: str) -> str | None:
-    return f"{raw_id}:{suffix}" if raw_id else None
 
 
 def _optional_str(value: Any) -> str | None:
