@@ -242,7 +242,7 @@ real-participant U-05 study are future gates.
 - [x] B-05 — registration policies, atomic invitation acceptance/resend and signup scope/bootstrap.
 - [x] B-06 — organization filters for private data.
 - [ ] B-07 — organization switching and administration UI.
-- [ ] B-08 — ownership constraints and agent archive lifecycle.
+- [x] B-08 — ownership constraints and agent archive lifecycle.
 - [ ] B-09 — frontend state reset and transport inspection.
 - [x] B-10 — company context, suspension and deployment modes.
 - [ ] B-11 — company administration API.
@@ -3433,3 +3433,31 @@ precondition baseline 부재로 실행할 수 없어 candidate-bound final check
 shared-database migration을 주장하지 않는다. 이 append는 current source seal 이후의 문서
 기록이므로, 다음 candidate freeze가 필요하면 이 문서 상태를 포함해 새 source union을
 고정해야 한다.
+
+## B-08 Task 15 adopted validation (2026-10-12, Asia/Seoul)
+
+Task 15와 F1–F5 검토를 통과한 B08 candidate를 채택했다. candidate는
+`c5cea625ee1e1470e386525edf120b02178bdbaf`이며, 3,488개 경로의 complete source
+manifest SHA-256은 `df500998aac88c91facfc8f4cf66111beef53794698803c521df8acc222816b3`이다.
+
+- Whole backend는 **6,047 passed / 기존 MCP 경고 3개**였고, canonical native는
+  **269 selected / 269 executed / 0 failed / 0 skipped / 0 unexpected deselected**였다.
+  Native 범위 안에 current 51개 노드가 포함되었다. completion은 passed receipt와 exact
+  inventory로 확인했다.
+- `b08_agent_lifecycle` migration roundtrip은 실제 downgrade에서 head 부재를 확인한 뒤
+  재upgrade하고 fingerprint를 복원하는 경로로 통과했다.
+- 별도 runtime audit은 네 가지 가설을 실제 통과 node assertion으로 반증했으며, global
+  provider counter나 live provider 성공을 주장하지 않는다.
+- F1–F5는 모두 같은 candidate와 source manifest를 가리키는 PASS 기록이다. 최종
+  candidate-bound validator도 `B08_ACCEPTANCE_VERIFIED`로 통과했으며, source-pin 변조와
+  review lane 누락 negative control은 각각 `B08_SOURCE_DRIFT`와
+  `B08_FIVE_REVIEWS_REQUIRED`로 차단되었다.
+
+권위 증거는 `.omo/evidence/b08/typed-final-gate-bundle.md`,
+`.omo/evidence/b08/typed-final-acceptance-report.md`,
+`.omo/evidence/b08/typed-final-acceptance.raw`,
+`.omo/evidence/b08/typed-final-negative-controls.raw` 및
+`.omo/evidence/b08/typed-final-reviews.json`에 보존되어 있다. 이 채택은 B08 backend
+lifecycle 및 Conversation-owned retained-history 범위에 한정한다. C02/C04 grant
+projection/outbox, E08 retention scheduling/policy, U04 full UI, live provider·human-browser
+검증과 나머지 P0–P8은 계속 남아 있다.
