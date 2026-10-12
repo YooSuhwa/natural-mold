@@ -1,4 +1,6 @@
 """Add retained Agent lifecycle history and purge preparation schema."""
+# allow: SIZE_OK — self-contained Alembic DDL/data-backfill
+# revision remains one stable migration unit for DDL/backfill symmetry.
 
 from __future__ import annotations
 

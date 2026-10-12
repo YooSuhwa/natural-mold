@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid as _uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import nullcontext
 from typing import Any
 
@@ -11,6 +11,7 @@ from langgraph.types import Command
 
 from app.agent_runtime.agent_stream_runner import _hook_ctx_for_agent, _hook_result_from_usage
 from app.agent_runtime.langgraph_streaming import stream_agent_response_langgraph
+from app.agent_runtime.message_utils import RuntimeMessage
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.run_metrics_callback import configure_run_metrics_callback
 from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
@@ -24,7 +25,7 @@ from app.observability.langfuse import LangfuseTraceRecord, build_langfuse_run_c
 async def _run_langgraph_agent_stream(
     cfg: AgentConfig,
     *,
-    messages_history: list[dict[str, str]],
+    messages_history: Sequence[RuntimeMessage],
     stream_input: Any,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
@@ -72,7 +73,7 @@ async def _run_langgraph_agent_stream(
 async def _stream_langgraph_with_secrets(
     cfg: AgentConfig,
     *,
-    messages_history: list[dict[str, str]],
+    messages_history: Sequence[RuntimeMessage],
     stream_input: Any,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
@@ -197,7 +198,7 @@ def _append_run_message_id(msg_id_sink: list[str] | None, run_id: str | None) ->
 
 async def execute_agent_stream_langgraph(
     cfg: AgentConfig,
-    messages_history: list[dict[str, str]] | dict[str, Any],
+    messages_history: Sequence[RuntimeMessage] | dict[str, Any],
     *,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,

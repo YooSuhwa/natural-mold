@@ -786,7 +786,7 @@
           "name": "cfg"
         },
         {
-          "annotation": "list[dict[str, str]]",
+          "annotation": "Sequence[RuntimeMessage]",
           "default": "required",
           "kind": "keyword_only",
           "name": "messages_history"
@@ -902,7 +902,7 @@
           "name": "cfg"
         },
         {
-          "annotation": "list[dict[str, str]]",
+          "annotation": "Sequence[RuntimeMessage]",
           "default": "required",
           "kind": "keyword_only",
           "name": "messages_history"
@@ -1085,7 +1085,7 @@
           "name": "cfg"
         },
         {
-          "annotation": "list[dict[str, str]]",
+          "annotation": "Sequence[RuntimeMessage]",
           "default": "required",
           "kind": "positional_or_keyword",
           "name": "messages_history"
@@ -1114,7 +1114,7 @@
           "name": "cfg"
         },
         {
-          "annotation": "list[dict[str, str]] | dict[str, Any]",
+          "annotation": "Sequence[RuntimeMessage] | dict[str, Any]",
           "default": "required",
           "kind": "positional_or_keyword",
           "name": "messages_history"
@@ -1185,7 +1185,7 @@
           "name": "cfg"
         },
         {
-          "annotation": "list[dict[str, str]] | dict[str, Any]",
+          "annotation": "Sequence[RuntimeMessage] | dict[str, Any]",
           "default": "required",
           "kind": "positional_or_keyword",
           "name": "messages_history"

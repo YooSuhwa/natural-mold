@@ -82,6 +82,7 @@ def test_agent_lifecycle_runner_selects_only_named_lifecycle_nodes(
             "tests/integration/test_agent_lifecycle_locking.py",
             "tests/integration/test_agent_lifecycle_migration.py",
             "tests/authz/test_agent_lifecycle_migration_integration.py",
+            "tests/authz/test_agent_lifecycle_retention_constraints_integration.py",
             "tests/integration/test_agent_lifecycle_run_ownership.py",
             "tests/integration/test_agent_lifecycle_archive.py",
             "tests/integration/test_agent_deletion_lifecycle.py",

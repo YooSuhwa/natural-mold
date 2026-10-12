@@ -5,8 +5,10 @@ from collections.abc import AsyncGenerator
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Literal
+from typing import Literal, TypedDict
 
+from pydantic import TypeAdapter
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -15,6 +17,7 @@ from app.agent_api.access import authorize_deployment, ensure_key_can_access_dep
 from app.agent_api.dependencies import ApiKeyPrincipal, refresh_api_key_principal
 from app.agent_api.service import utc_now_naive
 from app.agent_runtime.agent_stream_runner import execute_agent_invoke, execute_agent_stream
+from app.agent_runtime.message_utils import RuntimeMessage, is_runtime_message
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.agent_runtime.streaming import StreamErrorRecord
@@ -28,6 +31,7 @@ from app.exceptions import ConflictError, ForbiddenError, NotFoundError, Validat
 from app.models.agent_api import AgentApiRun, AgentApiThread, AgentDeployment
 from app.models.conversation import Conversation
 from app.schemas.agent_api import AgentRunRequest, AgentThreadCreateRequest, AgentThreadResponse
+from app.schemas.conversation_refs import JsonValue
 from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import chat_service
 from app.services.agent_execution_owner import (
@@ -58,7 +62,14 @@ class ApiOwnedExecution:
     context: OrgContext
     public_run_id: str
     config: AgentConfig
-    messages: list[dict[str, Any]]
+    messages: list[RuntimeMessage]
+
+
+class AgentApiRunInputPayload(TypedDict):
+    messages: list[RuntimeMessage]
+
+
+_API_MESSAGES = TypeAdapter(list[dict[str, JsonValue]])
 
 
 def external_run_id(row_id: uuid.UUID) -> str:
@@ -216,8 +227,8 @@ async def create_run_row(
     conversation_id: uuid.UUID | None,
     thread_id: uuid.UUID | None,
     mode: str,
-    input_payload: dict[str, Any],
-    metadata: dict[str, Any] | None,
+    input_payload: AgentApiRunInputPayload,
+    metadata: dict[str, JsonValue] | None,
 ) -> AgentApiRun:
     authorized = await authorize_deployment(db, principal, deployment.id)
     principal, deployment = authorized.principal, authorized.deployment
@@ -298,7 +309,7 @@ async def create_run_row(
 
 
 async def mark_run_succeeded(
-    db: AsyncSession, run: AgentApiRun, *, output: dict[str, Any]
+    db: AsyncSession, run: AgentApiRun, *, output: dict[str, JsonValue]
 ) -> AgentApiRun:
     await db.refresh(run)
     run.output = output
@@ -430,11 +441,19 @@ async def build_config_for_run(
     )
 
 
-def validate_messages(request: AgentRunRequest) -> list[dict[str, Any]]:
-    messages = request.input.messages
+def validate_messages(request: AgentRunRequest) -> list[RuntimeMessage]:
+    try:
+        messages = _API_MESSAGES.validate_python(request.input.messages, strict=True)
+    except PydanticValidationError:
+        raise ValidationError(
+            "AGENT_API_MESSAGE_INVALID",
+            "messages must contain JSON-compatible values",
+        ) from None
     if not messages:
         raise ValidationError("AGENT_API_MESSAGES_REQUIRED", "messages are required")
+    runtime_messages: list[RuntimeMessage] = []
     for message in messages:
-        if not isinstance(message.get("role"), str) or "content" not in message:
+        if not is_runtime_message(message):
             raise ValidationError("AGENT_API_MESSAGE_INVALID", "message role/content required")
-    return messages
+        runtime_messages.append(message)
+    return runtime_messages

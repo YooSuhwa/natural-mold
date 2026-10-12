@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_api import runtime_service, service
 from app.agent_api.dependencies import ApiKeyPrincipal
+from app.agent_api.runtime_service import AgentApiRunInputPayload
 from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.models.agent import Agent
@@ -143,7 +144,7 @@ async def test_runtime_run_rejects_foreign_agent_before_durable_row(
             conversation_id=None,
             thread_id=None,
             mode="wait",
-            input_payload={},
+            input_payload=AgentApiRunInputPayload(messages=[]),
             metadata=None,
         )
     except AppError:

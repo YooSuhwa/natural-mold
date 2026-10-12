@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any, assert_never
@@ -67,7 +68,7 @@ from app.agent_runtime.filesystem_permissions import (
     build_filesystem_permissions,
 )
 from app.agent_runtime.mcp_tool_loader import _build_mcp_tools
-from app.agent_runtime.message_utils import convert_to_langchain_messages
+from app.agent_runtime.message_utils import RuntimeMessage, convert_to_langchain_messages
 from app.agent_runtime.middleware_registry import (
     DEEPAGENT_BUILTIN_TYPES,
     build_middleware_instances,
@@ -750,7 +751,7 @@ async def _prepare_runtime_components(
 async def _prepare_agent(
     cfg: AgentConfig,
     *,
-    messages_history: list[dict[str, str]],
+    messages_history: Sequence[RuntimeMessage],
     is_trigger_mode: bool = False,
     run_id: str | None = None,
 ) -> tuple[Any, list, dict]:

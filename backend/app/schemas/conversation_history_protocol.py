@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, NotRequired, TypedDict
+from typing import NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,7 +30,7 @@ class HistoryRequest(BaseModel):
 
     limit: int = Field(default=10, ge=1, le=100)
     before: ThreadHistoryCursor | None = None
-    metadata: dict[str, Any] | None = None
+    metadata: dict[str, JsonValue] | None = None
     checkpoint: ThreadCheckpoint | None = None
 
 

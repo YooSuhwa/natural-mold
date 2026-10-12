@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid as _uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import nullcontext
 from datetime import UTC, datetime
 from typing import Any
 
-from app.agent_runtime.message_utils import content_to_text
+from app.agent_runtime.message_utils import RuntimeMessage, content_to_text
 from app.agent_runtime.offload_protocol_projection import project_offload_egress_data
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
@@ -89,7 +89,7 @@ def _hook_result_from_usage(duration_ms: int, usage_sink: dict[str, Any]) -> Hoo
 async def _run_agent_stream(
     cfg: AgentConfig,
     *,
-    messages_history: list[dict[str, str]],
+    messages_history: Sequence[RuntimeMessage],
     stream_input: Any,
     hook_metadata_extra: dict[str, Any] | None = None,
     trace_sink: list[dict[str, Any]] | None = None,
@@ -260,7 +260,7 @@ _USE_PREPPED_LC_MESSAGES: Any = object()
 
 async def execute_agent_stream(
     cfg: AgentConfig,
-    messages_history: list[dict[str, str]] | dict[str, Any],
+    messages_history: Sequence[RuntimeMessage] | dict[str, Any],
     *,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
@@ -362,7 +362,7 @@ async def resume_agent_stream(
 
 async def execute_agent_invoke(
     cfg: AgentConfig,
-    messages_history: list[dict[str, str]],
+    messages_history: Sequence[RuntimeMessage],
     *,
     run_id: str | None = None,
     moldy_source: str = "trigger",
@@ -385,7 +385,7 @@ async def execute_agent_invoke(
 
 async def _execute_agent_invoke_inner(
     cfg: AgentConfig,
-    messages_history: list[dict[str, str]],
+    messages_history: Sequence[RuntimeMessage],
     *,
     run_id: str | None = None,
     moldy_source: str = "trigger",

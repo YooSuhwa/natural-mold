@@ -6,6 +6,7 @@ from typing import Any
 
 from langgraph.checkpoint.base import CheckpointTuple
 
+from app.schemas.conversation_refs import JsonValue
 from app.services.conversation_protocol_projection import (
     checkpoint_channel_values,
     serialize_checkpoint_value,
@@ -60,7 +61,7 @@ async def _find_checkpoint_tuple(
     return None
 
 
-def _channel_values_from_tuple(checkpoint_tuple: CheckpointTuple) -> dict[str, Any]:
+def _channel_values_from_tuple(checkpoint_tuple: CheckpointTuple) -> dict[str, JsonValue]:
     return checkpoint_channel_values(checkpoint_tuple)
 
 

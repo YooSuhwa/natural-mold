@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_api import runtime_service
 from app.agent_api.dependencies import ApiKeyPrincipal
+from app.agent_api.runtime_service import AgentApiRunInputPayload
 from app.models.agent_api import AgentApiRun, AgentApiThread
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
@@ -48,7 +49,7 @@ async def test_api_envelopes_persist_original_deployment_public_id_snapshot(
         conversation_id=None,
         thread_id=thread.id,
         mode="wait",
-        input_payload={},
+        input_payload=AgentApiRunInputPayload(messages=[]),
         metadata=None,
     )
     deployment.public_id = "snapshot-deployment-renamed"

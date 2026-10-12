@@ -4,9 +4,61 @@ import uuid
 
 import pytest
 
+from app.agent_api.runtime_service import validate_messages
+from app.agent_runtime.message_utils import convert_to_langchain_messages
+from app.exceptions import ValidationError
+from app.schemas.agent_api import AgentRunInput, AgentRunRequest
+from app.schemas.conversation_refs import JsonValue
 from tests.test_agent_runtime_public_api import _seed_deployed_agent_with_key
 
 pytestmark = pytest.mark.anyio
+
+
+async def test_api_message_boundary_preserves_multimodal_tool_use_extensions() -> None:
+    message = {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "Find the deployment",
+                "cache_control": {"type": "ephemeral"},
+            },
+            {
+                "type": "tool_use",
+                "id": "call-1",
+                "name": "lookup_deployment",
+                "input": {"query": "agent", "options": {"locale": "ko", "limit": 3}},
+                "provider_extension": {"trace": {"sampled": True}},
+            },
+        ],
+        "provider_options": {"priority": "high", "nested": {"attempt": 1}},
+    }
+    request = AgentRunRequest(agent_id="agent-1", input=AgentRunInput(messages=[message]))
+
+    messages = validate_messages(request)
+    converted = convert_to_langchain_messages(messages)
+
+    assert messages == [message]
+    assert converted[0].content == message["content"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"role": 7, "content": "invalid role"},
+        {"role": "user", "content": [42]},
+    ],
+    ids=["non-string-role", "non-block-content"],
+)
+async def test_api_message_boundary_rejects_malformed_role_or_content(
+    message: dict[str, JsonValue],
+) -> None:
+    request = AgentRunRequest(agent_id="agent-1", input=AgentRunInput(messages=[message]))
+
+    with pytest.raises(ValidationError) as error:
+        validate_messages(request)
+
+    assert error.value.code == "AGENT_API_MESSAGE_INVALID"
 
 
 async def test_dify_chat_messages_blocking_adapter(client, db, monkeypatch):

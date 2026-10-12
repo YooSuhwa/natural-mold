@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import AsyncGenerator
-from typing import Any
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import TypedDict, Unpack
 from uuid import UUID
 
 import anyio
 import pytest
 from sqlalchemy import func, select
 
+from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.streaming import StreamErrorRecord
 from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
+from app.observability.langfuse import LangfuseTraceRecord
+from app.schemas.conversation_refs import JsonValue
 from app.schemas.conversation_scope import ConversationPromotion
 from app.services import (
     agent_execution_owner,
@@ -25,11 +29,13 @@ from app.services import (
 )
 from app.services.agent_deletion import AgentArchiveRequest, stage_agent_archive
 from app.services.agent_execution_owner import OwnedExecutionRequest, notify_local_owner
+from app.services.artifact_service import ArtifactDeltaRecorder
 from app.services.chat.conversations import (
     create_conversation,
     prepare_executable_conversation,
     promote_draft_conversation,
 )
+from app.services.conversation_run_terminal_delivery import OwnerTerminalDelivery
 from tests.authz.agent_lifecycle_fixture import (
     registered_lifecycle_fixture,
 )
@@ -38,6 +44,19 @@ from tests.integration.agent_lifecycle_chat_races_support import (
     _seed_same_owner_chat,
     assert_native_revoked_inactive_recovery_preserves_history_without_payload_hydration,
 )
+
+
+class _ExecutorKeywordArgs(TypedDict):
+    moldy_source: str
+    trace_sink: list[dict[str, JsonValue]]
+    msg_id_sink: list[str]
+    error_sink: list[StreamErrorRecord]
+    broker: OwnerTerminalDelivery
+    persist_callback: Callable[[list[dict[str, JsonValue]]], Awaitable[None]]
+    run_id: str
+    langfuse_sink: list[LangfuseTraceRecord]
+    run_metrics: RunMetricsAccumulator
+    artifact_recorder: ArtifactDeltaRecorder | None
 
 
 async def test_native_archive_first_config_first_and_recovery_zero_launch(
@@ -155,7 +174,9 @@ async def test_native_launch_first_owner_cancels_and_acknowledges(
         started = anyio.Event()
 
         async def blocking_executor(
-            _cfg: AgentConfig, _payload: dict[str, Any], **_kwargs: Any
+            _cfg: AgentConfig,
+            _payload: dict[str, JsonValue],
+            **_kwargs: Unpack[_ExecutorKeywordArgs],
         ) -> AsyncGenerator[str, None]:
             fixture.sentinel.provider_invocations += 1
             started.set()

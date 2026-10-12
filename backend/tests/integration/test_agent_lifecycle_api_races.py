@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from typing import cast
 
 import anyio
 import pytest
@@ -163,10 +162,14 @@ async def test_native_api_stream_consumer_close_persists_owner_ack(
                     principal=harness.principal,
                     thread_id=None,
                 )
-                body = cast(AsyncGenerator[str, None], response.body_iterator)
+                body = response.body_iterator
+                assert isinstance(body, AsyncGenerator)
                 while True:
                     chunk = await anext(body)
-                    if "native" in chunk:
+                    found = (
+                        "native" in chunk if isinstance(chunk, str) else b"native" in bytes(chunk)
+                    )
+                    if found:
                         break
                 await body.aclose()
                 await closed.wait()
