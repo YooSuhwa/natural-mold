@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterable
 from dataclasses import dataclass
-from typing import Literal, assert_never, cast
+from typing import Literal, assert_never
 
 import pytest
 from httpx import AsyncClient, Response
@@ -43,11 +43,13 @@ def api_runtime_case(
 async def consume_until(
     body_iterator: AsyncIterable[Content],
     marker: str,
-) -> AsyncGenerator[str | bytes, None]:
-    body = cast(AsyncGenerator[str | bytes, None], body_iterator)
+) -> AsyncGenerator[Content, None]:
+    if not isinstance(body_iterator, AsyncGenerator):
+        raise AssertionError("stream body iterator must be a closable async generator")
+    body = body_iterator
     while True:
         chunk = await anext(body)
-        found = marker.encode() in chunk if isinstance(chunk, bytes) else marker in chunk
+        found = marker in chunk if isinstance(chunk, str) else marker.encode() in bytes(chunk)
         if found:
             return body
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
-from typing import Any
 from uuid import UUID
 
 import pytest
@@ -143,7 +142,7 @@ async def test_archived_agent_denies_worker_registration_before_executor(
     executor_calls = 0
 
     async def executor(
-        _cfg: AgentConfig, _payload: dict[str, Any], **_kwargs: Any
+        _cfg: AgentConfig, _payload: object, **_kwargs: object
     ) -> AsyncGenerator[str, None]:
         nonlocal executor_calls
         executor_calls += 1
