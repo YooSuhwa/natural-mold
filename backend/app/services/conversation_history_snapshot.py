@@ -9,7 +9,7 @@ from app.authz.agent_lifecycle_scope import (
     AgentLifecycleAuthorization,
     authorize_agent_lifecycle,
 )
-from app.exceptions import ValidationError
+from app.exceptions import ConflictError
 from app.models.conversation import Conversation
 from app.models.conversation_history import (
     ConversationHistoryCheckpoint,
@@ -35,7 +35,7 @@ from app.services.conversation_history_types import (
 )
 
 
-class HistorySnapshotIncompleteError(ValidationError):
+class HistorySnapshotIncompleteError(ConflictError):
     """The complete sanitized history could not be proven."""
 
     def __init__(self, reason: str) -> None:
