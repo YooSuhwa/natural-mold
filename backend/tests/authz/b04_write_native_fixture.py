@@ -96,7 +96,7 @@ async def seed_native_b04(sessions: NativeB04Sessions, client: AsyncClient) -> N
     key = uuid4().hex
     auth = await register_session(
         client,
-        email=f"b04-native-admin-{key}@example.test",
+        email=f"b04-native-admin-{key}@example.com",
         name="B04 native admin",
     )
     actor_id = UUID(auth.body["user"]["id"])
