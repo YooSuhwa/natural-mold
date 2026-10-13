@@ -1,7 +1,6 @@
-"""Isolated HTTP contract for the SaaS operator company directory."""
-
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncGenerator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -21,6 +20,7 @@ from app.models.audit_event import AuditEvent
 from app.models.organization import Organization, Tenant, TenantMember
 from app.routers.platform_tenant_directory import router
 from app.routers.tenant_overview import router as tenant_overview_router
+from app.schemas.admin_tenant import PlatformTenantMetadataPatch
 from app.services.tenants.versioning import etag
 
 if TYPE_CHECKING:
@@ -180,6 +180,9 @@ async def test_detail_and_patch_are_metadata_only_without_operator_membership(
     original_etag = etag(target.updated_at)
     app = _directory_app(db, actor)
     token, headers = _csrf_headers(actor, original_etag)
+    field_schema = PlatformTenantMetadataPatch.model_json_schema()["properties"][
+        "allow_system_models"
+    ]
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         detail = await client.get(f"/api/admin/tenants/{target_id}")
@@ -195,11 +198,29 @@ async def test_detail_and_patch_are_metadata_only_without_operator_membership(
                 "allow_system_models": True,
             },
         )
+        disabled = await client.patch(
+            f"/api/admin/tenants/{target_id}",
+            headers={**headers, "If-Match": updated.headers["etag"]},
+            json={"allow_system_models": False},
+        )
+        omitted = await client.patch(
+            f"/api/admin/tenants/{target_id}",
+            headers={**headers, "If-Match": disabled.headers["etag"]},
+            json={},
+        )
+        rejected_null = await client.patch(
+            f"/api/admin/tenants/{target_id}",
+            headers={**headers, "If-Match": omitted.headers["etag"]},
+            json={"allow_system_models": None},
+        )
         private = await client.get(f"/api/tenants/{target_id}")
 
-    assert detail.status_code == updated.status_code == 200
-    assert detail.headers["etag"] == original_etag
-    assert updated.headers["etag"] != original_etag
+    assert detail.status_code == updated.status_code == disabled.status_code == 200
+    assert omitted.status_code == 200 and rejected_null.status_code == 422
+    assert field_schema["type"] == "boolean" and "anyOf" not in field_schema
+    assert detail.headers["etag"] == original_etag != updated.headers["etag"]
+    assert disabled.headers["etag"] != updated.headers["etag"]
+    assert omitted.headers["etag"] == disabled.headers["etag"]
     assert updated.json()["name"] == "Renamed Foreign"
     assert updated.json()["limits"] == {
         "member_limit": 5,
@@ -207,20 +228,11 @@ async def test_detail_and_patch_are_metadata_only_without_operator_membership(
         "concurrent_run_limit": 3,
         "allow_system_models": True,
     }
+    assert disabled.json()["limits"]["allow_system_models"] is False
+    assert omitted.json()["limits"]["allow_system_models"] is False
     assert private.status_code == 404
-    rendered = detail.text + updated.text
-    assert all(
-        hidden not in rendered
-        for hidden in (
-            "settings",
-            "data_keys",
-            "secrets_namespace",
-            "keep-setting-secret",
-            "keep-data-key",
-            "keep-namespace",
-            "keep-limit-secret",
-        )
-    )
+    hidden_pattern = r"settings|data_keys|secrets_namespace|keep-(setting|data|namespace|limit)"
+    assert re.search(hidden_pattern, detail.text + updated.text) is None
     preserved = (
         await db.execute(
             select(
@@ -232,14 +244,11 @@ async def test_detail_and_patch_are_metadata_only_without_operator_membership(
     assert preserved.data_keys == {"private": "keep-data-key"}
     assert preserved.secrets_namespace == "tenants/keep-namespace"
     assert preserved.limits["reserved"] == "keep-limit-secret"
-    assert (
-        await db.scalar(
-            select(func.count())
-            .select_from(TenantMember)
-            .where(TenantMember.tenant_id == target_id)
-        )
-        == 0
+    assert preserved.limits["allow_system_models"] is False
+    member_count = await db.scalar(
+        select(func.count()).select_from(TenantMember).where(TenantMember.tenant_id == target_id)
     )
+    assert member_count == 0
     audits = (
         await db.scalars(
             select(AuditEvent).where(
@@ -247,33 +256,18 @@ async def test_detail_and_patch_are_metadata_only_without_operator_membership(
             )
         )
     ).all()
-    assert len(audits) == 1
-    assert audits[0].actor_user_id == actor.id
-    assert audits[0].event_metadata == {
+    assert len(audits) == 2 and audits[0].actor_user_id == actor.id
+    metadata = audits[0].event_metadata
+    assert metadata is not None
+    assert metadata["tenant_id"] == str(target_id)
+    assert metadata["changed_fields"] == [
+        "allow_system_models",
+        "concurrent_run_limit",
+        "member_limit",
+        "monthly_spend_limit",
+        "name",
+    ]
+    assert audits[1].event_metadata == {
         "tenant_id": str(target_id),
-        "changed_fields": [
-            "allow_system_models",
-            "concurrent_run_limit",
-            "member_limit",
-            "monthly_spend_limit",
-            "name",
-        ],
+        "changed_fields": ["allow_system_models"],
     }
-
-
-async def test_patch_requires_csrf_before_tenant_lookup(
-    db: AsyncSession,
-    org_fixture: OrgFixture,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "deployment_mode", "multi_tenant")
-    app = _directory_app(db, replace(org_fixture.user, is_super_user=True))
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.patch(
-            "/api/admin/tenants/00000000-0000-0000-0000-000000000099",
-            json={"name": "Rejected"},
-        )
-
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "csrf_mismatch"

@@ -135,16 +135,17 @@ async def update_platform_tenant(
     mutation: PlatformTenantMutation, payload: PlatformTenantMetadataPatch
 ) -> AdminTenantDetail:
     """Apply allowlisted metadata and its audit event in one transaction."""
-    tenant = await mutation.db.scalar(
-        select(Tenant)
-        .options(_SAFE_TENANT_COLUMNS)
-        .where(Tenant.id == mutation.tenant_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if tenant is None:
-        raise authorization_error("not_found")
-    require_current_version(tenant.updated_at, mutation.expected_version)
+    with mutation.db.no_autoflush:
+        tenant = await mutation.db.scalar(
+            select(Tenant)
+            .options(_SAFE_TENANT_COLUMNS)
+            .where(Tenant.id == mutation.tenant_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if tenant is None:
+            raise authorization_error("not_found")
+        require_current_version(tenant.updated_at, mutation.expected_version)
 
     changed_fields: list[str] = []
     if (

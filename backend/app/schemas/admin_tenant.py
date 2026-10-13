@@ -55,7 +55,7 @@ class PlatformTenantMetadataPatch(BaseModel):
     member_limit: int | None = Field(default=None, ge=0)
     monthly_spend_limit: Decimal | None = Field(default=None, ge=0)
     concurrent_run_limit: int | None = Field(default=None, ge=0)
-    allow_system_models: bool | None = None
+    allow_system_models: bool = False
 
 
 class AdminTenantMetadata(BaseModel):

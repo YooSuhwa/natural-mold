@@ -55,39 +55,87 @@ def _mutation_app(db: AsyncSession, actor: CurrentUser) -> FastAPI:
     return app
 
 
-@pytest.mark.parametrize("if_match", [None, "not-an-etag", '"2000-01-01T00:00:00+00:00"'])
-async def test_patch_rejects_missing_malformed_and_stale_version_without_audit(
+async def test_patch_requires_csrf_before_tenant_lookup(
     db: AsyncSession,
     org_fixture: OrgFixture,
     monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "deployment_mode", "multi_tenant")
+    app = _mutation_app(db, replace(org_fixture.user, is_super_user=True))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.patch(
+            "/api/admin/tenants/00000000-0000-0000-0000-000000000099",
+            json={"name": "Rejected"},
+        )
+
+    assert response.status_code == 403 and response.json()["error"]["code"] == "csrf_mismatch"
+
+
+@pytest.mark.parametrize(
+    ("missing_target", "if_match"),
+    [
+        (False, None),
+        (False, "not-an-etag"),
+        (False, '"2000-01-01T00:00:00+00:00"'),
+        (True, None),
+    ],
+)
+async def test_patch_denials_do_not_autoflush_caller_state_or_audit(
+    db: AsyncSession,
+    org_fixture: OrgFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    missing_target: bool,
     if_match: str | None,
 ) -> None:
     monkeypatch.setattr(settings, "deployment_mode", "multi_tenant")
     actor = replace(org_fixture.user, is_super_user=True)
     target = await db.get(Tenant, org_fixture.tenant)
     assert target is not None
-    target_id, original_name = target.id, target.name
+    target_id = target.id
+    pending = await db.scalar(select(Tenant).where(Tenant.id != target_id))
+    assert pending is not None
+    pending_id = pending.id
+    original_name = pending.name
+    original_version = pending.updated_at
+    pending.name = "caller-pending-state"
     token = create_csrf_token(actor.id)
     headers = {"X-CSRF-Token": token}
-    if if_match is not None:
+    if missing_target:
+        headers["If-Match"] = etag(target.updated_at)
+    if not missing_target and if_match is not None:
         headers["If-Match"] = if_match
     app = _mutation_app(db, actor)
+    flushes = 0
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        client.cookies.set(settings.cookie_name_csrf, token)
-        response = await client.patch(
-            f"/api/admin/tenants/{target_id}", headers=headers, json={"name": "Rejected"}
-        )
+    def count_flush(_session, _flush_context, _instances) -> None:
+        nonlocal flushes
+        flushes += 1
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "stale_version"
-    refreshed = await db.get(Tenant, target_id, populate_existing=True)
+    event.listen(db.sync_session, "before_flush", count_flush)
+    request_target = "00000000-0000-0000-0000-000000000099" if missing_target else target_id
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            client.cookies.set(settings.cookie_name_csrf, token)
+            response = await client.patch(
+                f"/api/admin/tenants/{request_target}",
+                headers=headers,
+                json={"name": "Rejected"},
+            )
+    finally:
+        event.remove(db.sync_session, "before_flush", count_flush)
+
+    assert response.status_code == (404 if missing_target else 409)
+    assert flushes == 0
+    assert pending in db.dirty
+    assert pending.updated_at == original_version
+    await db.rollback()
+    refreshed = await db.get(Tenant, pending_id, populate_existing=True)
     assert refreshed is not None and refreshed.name == original_name
     assert (
         await db.scalar(
-            select(func.count())
-            .select_from(AuditEvent)
-            .where(AuditEvent.action == "tenant.update", AuditEvent.target_id == str(target_id))
+            select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "tenant.update")
         )
         == 0
     )
