@@ -45,7 +45,11 @@ async def org_members_context(
     user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> OrgControlContext:
-    return await load_org_control(db, user, OrgControlTarget(org_id, "can_manage_members"))
+    return await load_org_control(
+        db,
+        user,
+        OrgControlTarget(org_id, "can_manage_members", lock_organization=False),
+    )
 
 
 @router.get("/{org_id}", response_model=OrganizationView)

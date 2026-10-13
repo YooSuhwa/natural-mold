@@ -119,13 +119,14 @@ async def create_member(
     context: OrgControlContext,
     payload: MemberCreate,
 ) -> tuple[MemberView, bool]:
-    context = await members_write_context(mutation, context)
     db = mutation.db
-    await lock_member_rows(
-        db, context.organization.tenant_id, context.organization.id, payload.user_id
-    )
-    await company_member_target(db, context, payload.user_id)
-    existing = (await db.execute(member_for_user(context, payload.user_id))).tuples().first()
+    with db.no_autoflush:
+        context = await members_write_context(mutation, context)
+        await lock_member_rows(
+            db, context.organization.tenant_id, context.organization.id, payload.user_id
+        )
+        await company_member_target(db, context, payload.user_id)
+        existing = (await db.execute(member_for_user(context, payload.user_id))).tuples().first()
     created = existing is None
     member = (
         existing[0]
@@ -169,17 +170,22 @@ async def change_member_status(
     context: OrgControlContext,
     payload: MemberPatch,
 ) -> MemberView:
-    context = await members_write_context(mutation.request, context)
     db = mutation.request.db
-    await lock_member_rows(
-        db, context.organization.tenant_id, context.organization.id, mutation.user_id
-    )
-    row = (await db.execute(member_for_user(context, mutation.user_id))).tuples().first()
-    if row is None or row[0].status == "removed":
-        raise authorization_error("not_found")
-    member = row[0]
+    with db.no_autoflush:
+        context = await members_write_context(mutation.request, context)
+        await lock_member_rows(
+            db, context.organization.tenant_id, context.organization.id, mutation.user_id
+        )
+        row = (await db.execute(member_for_user(context, mutation.user_id))).tuples().first()
+        if row is None or row[0].status == "removed":
+            raise authorization_error("not_found")
+        member = row[0]
+        administrators = (
+            await active_administrators(db, context.organization)
+            if member.status != payload.status
+            else set()
+        )
     if member.status != payload.status:
-        administrators = await active_administrators(db, context.organization)
         async with db.begin_nested():
             member.status = payload.status
             await db.flush()
@@ -201,15 +207,16 @@ async def change_member_status(
 
 
 async def remove_member(mutation: MemberMutationRequest, context: OrgControlContext) -> None:
-    context = await members_write_context(mutation.request, context)
     db = mutation.request.db
-    row = (await db.execute(member_for_user(context, mutation.user_id))).tuples().first()
-    if row is None:
-        raise authorization_error("not_found")
-    member = row[0]
-    if member.status == "removed":
-        return
-    plan = await preflight_member_exit(db, context, mutation.user_id)
+    with db.no_autoflush:
+        context = await members_write_context(mutation.request, context)
+        row = (await db.execute(member_for_user(context, mutation.user_id))).tuples().first()
+        if row is None:
+            raise authorization_error("not_found")
+        member = row[0]
+        if member.status == "removed":
+            return
+        plan = await preflight_member_exit(db, context, mutation.user_id)
     async with db.begin_nested():
         await apply_member_exit(db, plan)
         await db.flush()

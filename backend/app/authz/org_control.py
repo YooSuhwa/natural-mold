@@ -27,6 +27,7 @@ class OrgControlActor(OrganizationActor, Protocol):
 class OrgControlTarget:
     org_id: UUID
     permission: OrgControlPermission | None = None
+    lock_organization: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +41,7 @@ async def load_org_control(
     db: AsyncSession, actor: OrgControlActor, target: OrgControlTarget
 ) -> OrgControlContext:
     query = select(Organization).where(Organization.id == target.org_id)
-    if target.permission is not None:
+    if target.permission is not None and target.lock_organization:
         query = query.with_for_update()
     organization = await db.scalar(query.execution_options(populate_existing=True))
     if organization is None:
@@ -81,4 +82,8 @@ async def load_org_write_control(
 ) -> OrgControlContext:
     """Lock the parent scope before revalidating write authority."""
     await lock_tenant_org_write(db, tenant_id, (target.org_id,))
-    return await load_org_control(db, actor, target)
+    return await load_org_control(
+        db,
+        actor,
+        OrgControlTarget(target.org_id, target.permission, lock_organization=False),
+    )

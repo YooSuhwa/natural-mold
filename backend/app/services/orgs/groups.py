@@ -50,17 +50,18 @@ class GroupWrite:
 async def members_write_context(
     mutation: OrgMutationRequest, context: OrgControlContext
 ) -> OrgControlContext:
-    fresh = await load_org_write_control(
-        mutation.db,
-        context.actor,
-        OrgControlTarget(
-            context.organization.id,
-            "can_manage_members",
-        ),
-        context.organization.tenant_id,
-    )
-    require_current_version(fresh.organization, mutation.expected_version)
-    return fresh
+    with mutation.db.no_autoflush:
+        fresh = await load_org_write_control(
+            mutation.db,
+            context.actor,
+            OrgControlTarget(
+                context.organization.id,
+                "can_manage_members",
+            ),
+            context.organization.tenant_id,
+        )
+        require_current_version(fresh.organization, mutation.expected_version)
+        return fresh
 
 
 async def finish_group_write(
@@ -115,9 +116,13 @@ async def get_group(db: AsyncSession, context: OrgControlContext, group_id: UUID
 async def create_group(
     mutation: OrgMutationRequest, context: OrgControlContext, payload: GroupCreate
 ) -> GroupView:
-    context = await members_write_context(mutation, context)
-    if await mutation.db.scalar(group_query(context).where(Group.name == payload.name)) is not None:
-        raise authorization_error("conflict")
+    with mutation.db.no_autoflush:
+        context = await members_write_context(mutation, context)
+        if (
+            await mutation.db.scalar(group_query(context).where(Group.name == payload.name))
+            is not None
+        ):
+            raise authorization_error("conflict")
     group = Group(
         org_id=context.organization.id,
         tenant_id=context.organization.tenant_id,
@@ -135,22 +140,23 @@ async def create_group(
 async def update_group(
     mutation: GroupMutationRequest, context: OrgControlContext, payload: GroupPatch
 ) -> GroupView:
-    context = await members_write_context(mutation.request, context)
     db = mutation.request.db
-    group = await scoped_group(db, context, mutation.group_id)
-    if group.source != "manual":
-        raise authorization_error("policy_locked")
-    name = payload.name if payload.name is not None else group.name
-    description = (
-        payload.description if "description" in payload.model_fields_set else group.description
-    )
-    if name == group.name and description == group.description:
-        return GroupView.model_validate(group)
-    duplicate = await db.scalar(
-        group_query(context).where(Group.name == name, Group.id != group.id)
-    )
-    if duplicate is not None:
-        raise authorization_error("conflict")
+    with db.no_autoflush:
+        context = await members_write_context(mutation.request, context)
+        group = await scoped_group(db, context, mutation.group_id)
+        if group.source != "manual":
+            raise authorization_error("policy_locked")
+        name = payload.name if payload.name is not None else group.name
+        description = (
+            payload.description if "description" in payload.model_fields_set else group.description
+        )
+        if name == group.name and description == group.description:
+            return GroupView.model_validate(group)
+        duplicate = await db.scalar(
+            group_query(context).where(Group.name == name, Group.id != group.id)
+        )
+        if duplicate is not None:
+            raise authorization_error("conflict")
     group.name, group.description, group.updated_at = name, description, datetime.now(UTC)
     await finish_group_write(
         mutation.request, context, GroupWrite(group, audit_actions.GROUP_UPDATE)
@@ -159,12 +165,13 @@ async def update_group(
 
 
 async def delete_group(mutation: GroupMutationRequest, context: OrgControlContext) -> None:
-    context = await members_write_context(mutation.request, context)
     db = mutation.request.db
-    group = await scoped_group(db, context, mutation.group_id)
-    if group.source != "manual":
-        raise authorization_error("policy_locked")
-    administrators = await active_administrators(db, context.organization)
+    with db.no_autoflush:
+        context = await members_write_context(mutation.request, context)
+        group = await scoped_group(db, context, mutation.group_id)
+        if group.source != "manual":
+            raise authorization_error("policy_locked")
+        administrators = await active_administrators(db, context.organization)
     async with db.begin_nested():
         await delete_group_links(db, context, group)
         await db.delete(group)

@@ -57,6 +57,13 @@ async def lock_tenant_org_writes(
     db: AsyncSession, targets: Collection[TenantOrgWriteTarget]
 ) -> TenantOrgWriteSet:
     """Lock every Tenant parent before any sorted Organization child."""
+    with db.no_autoflush:
+        return await _lock_tenant_org_writes(db, targets)
+
+
+async def _lock_tenant_org_writes(
+    db: AsyncSession, targets: Collection[TenantOrgWriteTarget]
+) -> TenantOrgWriteSet:
     missing_by_tenant: dict[UUID, ErrorCode] = {}
     for target in targets:
         missing_by_tenant.setdefault(target.tenant_id, target.missing_code)

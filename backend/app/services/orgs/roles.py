@@ -62,28 +62,31 @@ async def list_roles(
 async def replace_roles(
     mutation: OrgMutationRequest, context: OrgControlContext, payload: RoleAssignment
 ) -> DirectoryPage[RoleGrantView]:
-    context = await members_write_context(mutation, context)
     db = mutation.db
-    if payload.roles:
-        await validate_principal(
-            db,
-            context,
-            PrincipalTarget(
-                payload.principal,
-                auditor_only=set(payload.roles) == {"auditor"},
-            ),
+    with db.no_autoflush:
+        context = await members_write_context(mutation, context)
+        if payload.roles:
+            await validate_principal(
+                db,
+                context,
+                PrincipalTarget(
+                    payload.principal,
+                    auditor_only=set(payload.roles) == {"auditor"},
+                ),
+            )
+        statement = role_query(context).where(
+            OrganizationRoleGrant.principal_type == payload.principal.type,
+            OrganizationRoleGrant.principal_id == payload.principal.id,
         )
-    statement = role_query(context).where(
-        OrganizationRoleGrant.principal_type == payload.principal.type,
-        OrganizationRoleGrant.principal_id == payload.principal.id,
-    )
-    current = list(
-        (await db.scalars(statement.order_by(OrganizationRoleGrant.id).with_for_update())).all()
-    )
-    wanted = set(payload.roles)
-    existing = {row.role for row in current}
+        current = list(
+            (await db.scalars(statement.order_by(OrganizationRoleGrant.id).with_for_update())).all()
+        )
+        wanted = set(payload.roles)
+        existing = {row.role for row in current}
+        administrators = (
+            await active_administrators(db, context.organization) if wanted != existing else set()
+        )
     if wanted != existing:
-        administrators = await active_administrators(db, context.organization)
         async with db.begin_nested():
             for row in current:
                 if row.role not in wanted:
