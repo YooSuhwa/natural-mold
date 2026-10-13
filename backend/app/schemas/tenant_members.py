@@ -80,3 +80,26 @@ class TenantMemberAdminView(TenantMemberSummary):
             roles=projection.roles,
             created_at=projection.member.created_at,
         )
+
+
+class TenantMemberPage(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    items: tuple[TenantMemberAdminView, ...]
+    next_cursor: str | None
+    has_more: bool
+
+
+class TenantRoleView(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    user_id: UUID
+    roles: tuple[TenantRole, ...]
+
+
+class TenantRolePage(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    items: tuple[TenantRoleView, ...]
+    next_cursor: str | None
+    has_more: bool
