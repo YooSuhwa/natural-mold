@@ -67,8 +67,9 @@ def test_live_upgrade_downgrade_repeats_and_preserves_reviewed_constraints() -> 
 
 
 def test_mapped_models_reject_cross_org_membership_and_clear_deleted_active_org() -> None:
-    # Given: two companies, one member in A, and a group in A.
+    # Given: the current B11 schema, two companies, one member in A, and a group in A.
     with organization_lab() as lab, Session(lab.engine) as session, session.begin():
+        command.upgrade(lab.config, "b11_company_administration")
         user = User(email="org-model@example.test", name="Organization user")
         tenants = [Tenant(name=name, slug=name, secrets_namespace=name) for name in ("a", "b")]
         session.add_all([user, *tenants])

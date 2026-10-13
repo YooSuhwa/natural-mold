@@ -30,11 +30,11 @@ from tests.conftest import register_session
 pytestmark = pytest.mark.integration
 
 
-async def test_live_m83_metadata_policy_uses_real_cookies_and_locked_versions(
+async def test_live_b11_metadata_policy_uses_real_cookies_and_locked_versions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "m83_org_scope_not_null")
+        await run_sync(command.upgrade, lab.config, "b11_company_administration")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:
@@ -80,7 +80,7 @@ async def test_live_m83_metadata_policy_uses_real_cookies_and_locked_versions(
                             principal_id=user_id,
                         )
                     )
-                # Given: actual m83 schema, real JWT/CSRF cookies and the same original version.
+                # Given: actual B11 schema, real JWT/CSRF cookies and the same original version.
                 original = await client.get(f"/api/orgs/{organization.id}")
                 assert original.status_code == 200
                 assert "opaque_existing_setting" not in original.json()["settings"]
@@ -174,7 +174,7 @@ async def test_live_m83_metadata_policy_uses_real_cookies_and_locked_versions(
                 )
                 assert joined.status_code == 201
                 headers["If-Match"] = joined.headers["etag"]
-                # A private m83 resource must be transferred before its member can leave.
+                # A private B11 resource must be transferred before its member can leave.
                 source = schema_metadata(scope_columns=True)
                 async with sessions() as db, db.begin():
                     model_id = (

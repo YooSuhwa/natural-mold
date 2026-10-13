@@ -23,7 +23,7 @@ pytestmark = pytest.mark.integration
 
 async def test_exit_entry_points_only_affect_the_selected_organization() -> None:
     async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "m83_org_scope_not_null")
+        await run_sync(command.upgrade, lab.config, "b11_company_administration")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:

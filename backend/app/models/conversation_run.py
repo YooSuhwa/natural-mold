@@ -4,7 +4,17 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,6 +26,15 @@ RUN_ACTIVE_STATUSES = ("queued", "running", "canceling")
 RUN_TERMINAL_STATUSES = ("completed", "failed", "interrupted", "canceled", "stale")
 RUN_STATUS_VALUES = RUN_ACTIVE_STATUSES + RUN_TERMINAL_STATUSES
 RUN_EVENT_ID_MAX_LENGTH = 255
+
+_RUNTIME_MATERIALIZATION_HEX_CHECK = (
+    "runtime_materialization_sha256 IS NULL OR ("
+    "length(runtime_materialization_sha256) = 64 AND "
+    "replace(replace(replace(replace(replace(replace(replace(replace("
+    "replace(replace(replace(replace(replace(replace(replace(replace("
+    "runtime_materialization_sha256,'0',''),'1',''),'2',''),'3',''),'4',''),'5',''),"
+    "'6',''),'7',''),'8',''),'9',''),'a',''),'b',''),'c',''),'d',''),'e',''),'f','') = '')"
+)
 
 
 def utc_now_naive() -> datetime:
@@ -39,6 +58,16 @@ class ConversationRun(Base):
             unique=True,
             sqlite_where=text("is_active = 1"),
             postgresql_where=text("is_active = true"),
+        ),
+        CheckConstraint(
+            "(runtime_materialized_at IS NULL AND runtime_materialization_sha256 IS NULL) OR "
+            "(runtime_materialized_at IS NOT NULL "
+            "AND runtime_materialization_sha256 IS NOT NULL)",
+            name="ck_conversation_runs_runtime_materialization_pair",
+        ),
+        CheckConstraint(
+            _RUNTIME_MATERIALIZATION_HEX_CHECK,
+            name="ck_conversation_runs_runtime_materialization_sha256",
         ),
     )
 
@@ -89,6 +118,10 @@ class ConversationRun(Base):
     runtime_policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     runtime_policy_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     runtime_policy_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    runtime_materialized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    runtime_materialization_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     metrics: Mapped[ConversationRunMetrics | None] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",

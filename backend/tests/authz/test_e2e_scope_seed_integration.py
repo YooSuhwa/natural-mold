@@ -1,4 +1,4 @@
-"""Development bootstrap is explicitly scoped and serialized on actual m83."""
+"""Development bootstrap is explicitly scoped and serialized on actual B11."""
 
 from uuid import UUID
 
@@ -21,7 +21,7 @@ from tests.authz.organization_migration_fixture import async_organization_lab
 pytestmark = pytest.mark.integration
 
 
-async def test_concurrent_seed_creates_one_explicit_development_membership_on_m83(
+async def test_concurrent_seed_creates_one_explicit_development_membership_on_b11(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Given: two development backends share a freshly migrated, owned test database.
@@ -30,7 +30,7 @@ async def test_concurrent_seed_creates_one_explicit_development_membership_on_m8
     monkeypatch.setattr(settings, "e2e_user_email", "native-e2e-scope@example.test")
     monkeypatch.setattr(settings, "e2e_user_password", "native-fixture-password")
     async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "m83_org_scope_not_null")
+        await run_sync(command.upgrade, lab.config, "b11_company_administration")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         seeded: list[UUID] = []

@@ -69,6 +69,7 @@ async def test_agentless_history_uses_real_jwt_scope_and_rejects_continuation(
     monkeypatch.setattr(settings, "artifact_storage_dir", str(tmp_path))
     async with agentless_history_app(monkeypatch) as stack:
         async with stack.sessions() as db:
+            # The deployable tip includes B11 while retaining the B08 lifecycle schema.
             schema_state = (
                 await db.execute(
                     text(
@@ -81,7 +82,7 @@ async def test_agentless_history_uses_real_jwt_scope_and_rejects_continuation(
                 )
             ).one()
             assert schema_state == (
-                "b08_agent_lifecycle",
+                "b11_company_administration",
                 "conversation_history_manifests",
                 True,
             )

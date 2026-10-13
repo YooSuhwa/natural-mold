@@ -1,4 +1,4 @@
-"""Actual m83 PostgreSQL verifies scoped inventory and concurrent invitation retries."""
+"""Actual B11 PostgreSQL verifies scoped inventory and concurrent invitation retries."""
 
 from collections.abc import AsyncGenerator
 from uuid import UUID
@@ -36,7 +36,7 @@ async def test_live_catalog_scope_and_serialized_invitation_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "m83_org_scope_not_null")
+        await run_sync(command.upgrade, lab.config, "b11_company_administration")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:
@@ -102,7 +102,7 @@ async def test_live_catalog_scope_and_serialized_invitation_retries(
                 assert original.status_code == 200
                 ids = {row["id"] for row in original.json()["items"]}
                 assert str(models[0].id) in ids and str(models[1].id) not in ids
-                # When: policy is changed through authenticated HTTP on m83.
+                # When: policy is changed through authenticated HTTP on B11.
                 changed = await client.put(
                     path,
                     json={"items": [{"type": "tool", "id": str(tool.id), "enabled": False}]},

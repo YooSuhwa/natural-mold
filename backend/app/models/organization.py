@@ -97,6 +97,11 @@ class Organization(Identity, Timestamps, Base):
             "monthly_spend_limit IS NULL OR monthly_spend_limit >= 0",
             name="ck_organizations_monthly_spend_limit",
         ),
+        CheckConstraint(
+            "(status = 'archived' AND archived_at IS NOT NULL) OR "
+            "(status <> 'archived' AND archived_at IS NULL)",
+            name="ck_organizations_archive_state",
+        ),
         Index(
             "uq_organizations_default",
             "tenant_id",
@@ -112,6 +117,7 @@ class Organization(Identity, Timestamps, Base):
     name: Mapped[str] = mapped_column(String(200))
     slug: Mapped[str] = mapped_column(String(120))
     status: Mapped[str] = mapped_column(String(20), server_default="active")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_default: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     settings: Mapped[dict[str, JsonValue]] = mapped_column(JSON, server_default="{}")
     monthly_spend_limit: Mapped[Decimal | None] = mapped_column(Numeric(20, 8))

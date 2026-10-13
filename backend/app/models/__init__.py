@@ -81,6 +81,7 @@ from app.models.skill_revision import SkillRevision
 from app.models.skill_usage_event import SkillUsageEvent
 from app.models.system_llm_setting import SystemLlmSetting
 from app.models.template import Template
+from app.models.tenant_invitation import TenantInvitation
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
@@ -164,6 +165,7 @@ __all__ = [
     "SkillUsageEvent",
     "SystemLlmSetting",
     "Template",
+    "TenantInvitation",
     "TokenUsage",
     "Tool",
     "UserMemorySettings",

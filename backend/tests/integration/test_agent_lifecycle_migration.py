@@ -50,7 +50,7 @@ def _write_graph_receipt(
     destination.write_text(json.dumps(payload, sort_keys=True) + "\n")
 
 
-def test_agent_lifecycle_lane_runs_deployable_b08_head() -> None:
+def test_agent_lifecycle_lane_runs_deployable_b11_head() -> None:
     # Given the disposable lane already upgraded through the deployable chain.
     dsn = os.environ["DATABASE_URL_SYNC"]
 
@@ -58,8 +58,8 @@ def test_agent_lifecycle_lane_runs_deployable_b08_head() -> None:
     with psycopg.connect(dsn) as connection:
         row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
 
-    # Then Task 5 is bound to the actual B08 migration, not ORM create_all.
-    assert row == ("b08_agent_lifecycle",)
+    # Then the lane reaches B11 while retaining B08 lifecycle history, not ORM create_all.
+    assert row == ("b11_company_administration",)
 
 
 async def test_full_lifecycle_graph_has_real_auth_roles_rows_and_bytes(
