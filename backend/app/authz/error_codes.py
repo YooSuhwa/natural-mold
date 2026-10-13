@@ -34,6 +34,18 @@ ErrorCode = Literal[
     "AGENT_PURGE_NAME_MISMATCH",
     "AGENT_HISTORY_SNAPSHOT_INCOMPLETE",
     "AGENT_LIFECYCLE_PERMISSION_REQUIRED",
+    "duplicate_tenant_slug",
+    "tenant_namespace_collision",
+    "last_tenant_admin",
+    "last_organization",
+    "organization_archive_name_mismatch",
+    "organization_restore_expired",
+    "default_organization_archive_forbidden",
+    "tenant_invitation_invalid",
+    "tenant_invitation_used",
+    "tenant_invitation_expired",
+    "tenant_invitation_email_mismatch",
+    "tenant_invitation_revoked",
 ]
 
 
@@ -83,6 +95,20 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         "AGENT_LIFECYCLE_PERMISSION_REQUIRED": ErrorSpec(
             403, "에이전트 수명주기 관리 권한이 필요합니다"
         ),
+        "duplicate_tenant_slug": ErrorSpec(409, "같은 회사 슬러그가 이미 있습니다"),
+        "tenant_namespace_collision": ErrorSpec(500, "회사 내부 식별자 충돌이 발생했습니다"),
+        "last_tenant_admin": ErrorSpec(409, "마지막 회사 관리자를 제거할 수 없습니다"),
+        "last_organization": ErrorSpec(409, "마지막 조직은 보관할 수 없습니다"),
+        "organization_archive_name_mismatch": ErrorSpec(409, "조직 이름 확인이 일치하지 않습니다"),
+        "organization_restore_expired": ErrorSpec(410, "조직 복원 가능 기간이 만료되었습니다"),
+        "default_organization_archive_forbidden": ErrorSpec(409, "기본 조직은 보관할 수 없습니다"),
+        "tenant_invitation_invalid": ErrorSpec(404, "사용할 수 없는 회사 초대 링크입니다"),
+        "tenant_invitation_used": ErrorSpec(409, "이미 사용한 회사 초대 링크입니다"),
+        "tenant_invitation_expired": ErrorSpec(410, "회사 초대 링크가 만료되었습니다"),
+        "tenant_invitation_email_mismatch": ErrorSpec(
+            403, "초대받은 이메일의 계정으로 로그인해 주세요"
+        ),
+        "tenant_invitation_revoked": ErrorSpec(404, "사용할 수 없는 회사 초대 링크입니다"),
     }
 )
 
