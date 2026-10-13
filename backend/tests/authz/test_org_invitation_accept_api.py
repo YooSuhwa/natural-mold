@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, assert_never
-from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
@@ -16,45 +14,14 @@ from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.config import settings
 from app.models.audit_event import AuditEvent
 from app.models.organization import OrganizationMember, OrganizationRoleGrant, Tenant, TenantMember
-from app.models.organization_group import Group, GroupMember, OrgInvitation
-from tests.authz.test_org_groups_api import grant_admin
-from tests.conftest import AuthSession, register_session
+from app.models.organization_group import GroupMember, OrgInvitation
+from tests.authz.org_invitation_accept_fixture import pending_invitation
+from tests.conftest import register_session
 
 if TYPE_CHECKING:
     from tests.authz.org_context_fixture import OrgFixture
 
 pytest_plugins = ["tests.authz.org_context_fixture"]
-
-
-@dataclass(frozen=True, slots=True)
-class AcceptanceFixture:
-    id: UUID
-    token: str
-    recipient_id: UUID
-    session: AuthSession
-    group_id: UUID
-
-
-async def pending_invitation(
-    db: AsyncSession, client: AsyncClient, fixture: OrgFixture
-) -> AcceptanceFixture:
-    await grant_admin(db, fixture)
-    group = await db.scalar(select(Group).where(Group.org_id == fixture.first))
-    assert group is not None
-    created = await client.post(
-        f"/api/orgs/{fixture.first}/invitations",
-        json={"email": "recipient@example.com", "role": "builder", "group_ids": [str(group.id)]},
-        headers=fixture.session.headers(),
-    )
-    assert created.status_code == 201
-    session = await register_session(client, email="recipient@example.com", name="Recipient")
-    return AcceptanceFixture(
-        id=UUID(created.json()["id"]),
-        token=created.json()["token"],
-        recipient_id=UUID(session.body["user"]["id"]),
-        session=session,
-        group_id=group.id,
-    )
 
 
 async def test_acceptance_joins_company_org_group_role_and_selects_org_atomically(
@@ -210,87 +177,6 @@ async def test_invalid_token_length_never_echoes_the_secret_in_validation_detail
     # Then: the error identifies the field without copying the secret back to clients/logs.
     assert result.status_code == 422
     assert invitation.token not in result.text
-
-
-@pytest.mark.parametrize(
-    "state", ["company_member", "company_removed", "org_member", "deleted_group", "old_removed"]
-)
-async def test_acceptance_cannot_restore_blocked_membership_or_stale_groups(
-    db: AsyncSession,
-    raw_client: AsyncClient,
-    org_fixture: OrgFixture,
-    state: Literal[
-        "company_member", "company_removed", "org_member", "deleted_group", "old_removed"
-    ],
-) -> None:
-    # Given: a pending link whose membership/group context has changed since issuance.
-    invitation = await pending_invitation(db, raw_client, org_fixture)
-    expected = 403
-    match state:
-        case "company_member":
-            db.add(
-                TenantMember(
-                    tenant_id=org_fixture.tenant,
-                    user_id=invitation.recipient_id,
-                    status="suspended",
-                )
-            )
-        case "company_removed":
-            db.add(
-                TenantMember(
-                    tenant_id=org_fixture.tenant,
-                    user_id=invitation.recipient_id,
-                    status="removed",
-                )
-            )
-        case "org_member":
-            db.add(
-                OrganizationMember(
-                    org_id=org_fixture.first,
-                    tenant_id=org_fixture.tenant,
-                    user_id=invitation.recipient_id,
-                    status="suspended",
-                )
-            )
-        case "deleted_group":
-            group = await db.get(Group, invitation.group_id)
-            assert group is not None
-            await db.delete(group)
-            expected = 409
-        case "old_removed":
-            db.add(
-                OrganizationMember(
-                    org_id=org_fixture.first,
-                    tenant_id=org_fixture.tenant,
-                    user_id=invitation.recipient_id,
-                    status="removed",
-                    removed_at=datetime.now(UTC),
-                )
-            )
-            expected = 404
-        case unreachable:
-            assert_never(unreachable)
-    await db.commit()
-    # When: the old link is presented.
-    result = await raw_client.post(
-        "/api/invitations/accept",
-        json={"token": invitation.token},
-        headers=invitation.session.headers(),
-    )
-    # Then: no consumption or new grant is persisted.
-    assert result.status_code == expected
-    row = await db.get(OrgInvitation, invitation.id)
-    assert row is not None and row.accepted_at is None
-    grants = list(
-        (
-            await db.scalars(
-                select(OrganizationRoleGrant).where(
-                    OrganizationRoleGrant.principal_id == invitation.recipient_id
-                )
-            )
-        ).all()
-    )
-    assert grants == []
 
 
 async def test_existing_invitation_hash_survives_signing_secret_rotation(
