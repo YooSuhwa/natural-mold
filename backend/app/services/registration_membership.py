@@ -8,7 +8,7 @@ from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
-from app.authz.registration_queries import RegistrationOrganization, locked_registration_company
+from app.authz.registration_queries import RegistrationOrganization
 from app.models.organization import (
     OrganizationMember,
     OrganizationRoleGrant,
@@ -32,9 +32,12 @@ class DefaultEnrollment:
 async def enroll_default_organization(
     db: AsyncSession, enrollment: DefaultEnrollment, request: Request
 ) -> None:
-    org, user = enrollment.scope.organization, enrollment.user
-    company = await locked_registration_company(db, org.tenant_id)
-    ensure_signup_scope_active(RegistrationOrganization(org, company))
+    org, company, user = (
+        enrollment.scope.organization,
+        enrollment.scope.tenant,
+        enrollment.user,
+    )
+    ensure_signup_scope_active(enrollment.scope)
     db.add(TenantMember(tenant_id=company.id, user_id=user.id))
     db.add(
         OrganizationMember(org_id=org.id, tenant_id=company.id, user_id=user.id, status="active")

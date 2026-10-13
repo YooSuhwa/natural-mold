@@ -1,8 +1,11 @@
 """Accept once under org/company locks, with fresh account/email and status checks."""
 
+from __future__ import annotations
+
 import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from pydantic import JsonValue, SecretStr
@@ -11,6 +14,8 @@ from sqlalchemy import select
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
 from app.authz.invitation_queries import locked_invitation_scope
+from app.authz.tenant_org_write_locks import lock_member_rows
+from app.models.organization import Organization, Tenant
 from app.models.organization_group import OrgInvitation
 from app.models.user import User
 from app.schemas.invitation_accept import InvitationAccepted
@@ -24,11 +29,22 @@ from app.services.orgs.invitation_membership import (
 from app.services.orgs.versioning import bump_version, utc_timestamp
 from app.tenancy.context import ensure_tenant_active
 
+if TYPE_CHECKING:
+    from app.services.registration_policy import RegistrationScope
+
 
 @dataclass(frozen=True, slots=True)
 class InvitationAcceptance:
     mutation: OrgMutationRequest
     user_id: UUID
+    token: SecretStr
+
+
+@dataclass(frozen=True, slots=True)
+class RegistrationInvitationAcceptance:
+    mutation: OrgMutationRequest
+    scope: RegistrationScope
+    user: User
     token: SecretStr
 
 
@@ -52,6 +68,52 @@ async def accept_invitation(attempt: InvitationAcceptance) -> InvitationAccepted
     )
     if user is None or not user.is_active:
         raise authorization_error("invitation_invalid")
+    return await _apply_locked_acceptance(
+        attempt.mutation,
+        organization,
+        tenant,
+        invitation,
+        user,
+        digest,
+    )
+
+
+async def accept_registration_invitation(
+    attempt: RegistrationInvitationAcceptance,
+) -> InvitationAccepted:
+    invitation = attempt.scope.invitation
+    if invitation is None:
+        raise authorization_error("invitation_invalid")
+    digest = hashlib.sha256(attempt.token.get_secret_value().encode()).hexdigest()
+    return await _apply_locked_acceptance(
+        attempt.mutation,
+        attempt.scope.target.organization,
+        attempt.scope.target.tenant,
+        invitation,
+        attempt.user,
+        digest,
+    )
+
+
+async def _apply_locked_acceptance(
+    mutation: OrgMutationRequest,
+    organization: Organization,
+    tenant: Tenant,
+    invitation: OrgInvitation,
+    user: User,
+    digest: str,
+) -> InvitationAccepted:
+    db = mutation.db
+    if (
+        invitation.token_hash != digest
+        or invitation.org_id != organization.id
+        or invitation.tenant_id != tenant.id
+        or organization.tenant_id != tenant.id
+    ):
+        raise authorization_error("invitation_invalid")
+    if not user.is_active:
+        raise authorization_error("invitation_invalid")
+    await lock_member_rows(db, tenant.id, organization.id, user.id)
     require_pending_invitation(invitation, user.email)
     ensure_tenant_active(tenant)
     if organization.status != "active":
@@ -60,7 +122,7 @@ async def accept_invitation(attempt: InvitationAcceptance) -> InvitationAccepted
     invitation.accepted_at, invitation.accepted_by = datetime.now(UTC), user.id
     user.last_active_org_id = organization.id
     bump_version(organization)
-    await record_acceptance(attempt.mutation, facts)
+    await record_acceptance(mutation, facts)
     await db.flush()
     return InvitationAccepted(org_id=organization.id, tenant_id=tenant.id, user_id=user.id)
 

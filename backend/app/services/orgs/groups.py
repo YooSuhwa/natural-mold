@@ -12,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
 from app.authz.org_administrators import active_administrators
-from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
+from app.authz.org_control import (
+    OrgControlContext,
+    OrgControlTarget,
+    load_org_control,
+    load_org_write_control,
+)
 from app.authz.org_directory import group_query, scoped_group
 from app.models.organization import OrganizationRoleGrant
 from app.models.organization_group import Group, GroupMember, OrgCapabilityGrant
@@ -45,13 +50,14 @@ class GroupWrite:
 async def members_write_context(
     mutation: OrgMutationRequest, context: OrgControlContext
 ) -> OrgControlContext:
-    fresh = await load_org_control(
+    fresh = await load_org_write_control(
         mutation.db,
         context.actor,
         OrgControlTarget(
             context.organization.id,
             "can_manage_members",
         ),
+        context.organization.tenant_id,
     )
     require_current_version(fresh.organization, mutation.expected_version)
     return fresh

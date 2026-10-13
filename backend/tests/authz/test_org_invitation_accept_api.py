@@ -212,12 +212,16 @@ async def test_invalid_token_length_never_echoes_the_secret_in_validation_detail
     assert invitation.token not in result.text
 
 
-@pytest.mark.parametrize("state", ["company_member", "org_member", "deleted_group", "old_removed"])
+@pytest.mark.parametrize(
+    "state", ["company_member", "company_removed", "org_member", "deleted_group", "old_removed"]
+)
 async def test_acceptance_cannot_restore_blocked_membership_or_stale_groups(
     db: AsyncSession,
     raw_client: AsyncClient,
     org_fixture: OrgFixture,
-    state: Literal["company_member", "org_member", "deleted_group", "old_removed"],
+    state: Literal[
+        "company_member", "company_removed", "org_member", "deleted_group", "old_removed"
+    ],
 ) -> None:
     # Given: a pending link whose membership/group context has changed since issuance.
     invitation = await pending_invitation(db, raw_client, org_fixture)
@@ -229,6 +233,14 @@ async def test_acceptance_cannot_restore_blocked_membership_or_stale_groups(
                     tenant_id=org_fixture.tenant,
                     user_id=invitation.recipient_id,
                     status="suspended",
+                )
+            )
+        case "company_removed":
+            db.add(
+                TenantMember(
+                    tenant_id=org_fixture.tenant,
+                    user_id=invitation.recipient_id,
+                    status="removed",
                 )
             )
         case "org_member":

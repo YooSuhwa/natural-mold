@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.error_codes import authorization_error
 from app.authz.org_context import OrganizationActor
 from app.authz.org_permissions import organization_permissions
+from app.authz.tenant_org_write_locks import lock_tenant_org_write
 from app.exceptions import AppError
 from app.models.organization import Organization, OrganizationMember
 from app.tenancy.context import resolve_tenant_context
@@ -70,3 +71,14 @@ async def load_org_control(
     if target.permission is not None and target.permission not in permissions:
         raise authorization_error("permission_required")
     return OrgControlContext(organization=organization, actor=actor, permissions=permissions)
+
+
+async def load_org_write_control(
+    db: AsyncSession,
+    actor: OrgControlActor,
+    target: OrgControlTarget,
+    tenant_id: UUID,
+) -> OrgControlContext:
+    """Lock the parent scope before revalidating write authority."""
+    await lock_tenant_org_write(db, tenant_id, (target.org_id,))
+    return await load_org_control(db, actor, target)

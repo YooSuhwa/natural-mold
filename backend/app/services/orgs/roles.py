@@ -77,7 +77,9 @@ async def replace_roles(
         OrganizationRoleGrant.principal_type == payload.principal.type,
         OrganizationRoleGrant.principal_id == payload.principal.id,
     )
-    current = list((await db.scalars(statement)).all())
+    current = list(
+        (await db.scalars(statement.order_by(OrganizationRoleGrant.id).with_for_update())).all()
+    )
     wanted = set(payload.roles)
     existing = {row.role for row in current}
     if wanted != existing:

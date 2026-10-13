@@ -1,5 +1,6 @@
 """Exit guards keep resource ownership and background entry points scoped to the org."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -8,17 +9,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
 from app.authz.error_codes import authorization_error
+from app.authz.org_administrators import active_administrators
 from app.authz.org_control import OrgControlContext
+from app.authz.tenant_org_write_locks import lock_member_rows
 from app.models.agent import Agent
 from app.models.agent_api import AgentApiKey
 from app.models.agent_trigger import AgentTrigger
 from app.models.credential import Credential
 from app.models.marketplace import MarketplaceItem
 from app.models.mcp_server import McpServer
-from app.models.organization import OrganizationRoleGrant
+from app.models.organization import OrganizationMember, OrganizationRoleGrant
 from app.models.organization_group import GroupMember, OrgCapabilityGrant
 from app.models.skill import Skill
 from app.models.tool import Tool
+
+
+@dataclass(frozen=True, slots=True)
+class MemberExitPlan:
+    context: OrgControlContext
+    member: OrganizationMember
 
 
 def owner_queries(user_id: UUID) -> tuple[Select[tuple[UUID]], ...]:
@@ -41,14 +50,89 @@ async def require_no_owned_resources(
         # m81's physical scope exists before B-06 promotes the corresponding ORM mappings.
         if (
             await db.scalar(
-                query.where(column("org_id", Uuid()) == context.organization.id).limit(1)
+                query.where(column("org_id", Uuid()) == context.organization.id)
+                .order_by(column("id", Uuid()))
+                .with_for_update()
+                .limit(1)
             )
             is not None
         ):
             raise authorization_error("resource_transfer_required")
 
 
+async def lock_member_entry_points(
+    db: AsyncSession, context: OrgControlContext, user_id: UUID
+) -> None:
+    """Lock resource parents before trigger and API-key children."""
+    await db.scalars(
+        select(Agent)
+        .where(
+            Agent.tenant_id == context.organization.tenant_id,
+            Agent.org_id == context.organization.id,
+        )
+        .order_by(Agent.id)
+        .with_for_update()
+    )
+    await db.scalars(
+        select(AgentTrigger)
+        .where(
+            AgentTrigger.tenant_id == context.organization.tenant_id,
+            AgentTrigger.org_id == context.organization.id,
+            AgentTrigger.user_id == user_id,
+        )
+        .order_by(AgentTrigger.id)
+        .with_for_update()
+    )
+    await db.scalars(
+        select(AgentApiKey)
+        .where(
+            AgentApiKey.tenant_id == context.organization.tenant_id,
+            AgentApiKey.org_id == context.organization.id,
+            AgentApiKey.user_id == user_id,
+        )
+        .order_by(AgentApiKey.id)
+        .with_for_update()
+    )
+
+
+async def preflight_member_exit(
+    db: AsyncSession, context: OrgControlContext, user_id: UUID
+) -> MemberExitPlan:
+    """Validate one organization exit without changing persistent state."""
+    await lock_member_rows(
+        db,
+        context.organization.tenant_id,
+        context.organization.id,
+        user_id,
+    )
+    member = await db.scalar(
+        select(OrganizationMember)
+        .where(
+            OrganizationMember.org_id == context.organization.id,
+            OrganizationMember.tenant_id == context.organization.tenant_id,
+            OrganizationMember.user_id == user_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if member is None:
+        raise authorization_error("not_found")
+    administrators = await active_administrators(db, context.organization)
+    if member.status == "active" and user_id in administrators and len(administrators) == 1:
+        raise authorization_error("last_admin")
+    await require_no_owned_resources(db, context, user_id)
+    await lock_member_entry_points(db, context, user_id)
+    return MemberExitPlan(context, member)
+
+
 async def pause_member_triggers(
+    db: AsyncSession, context: OrgControlContext, user_id: UUID
+) -> None:
+    await lock_member_entry_points(db, context, user_id)
+    await pause_locked_member_triggers(db, context, user_id)
+
+
+async def pause_locked_member_triggers(
     db: AsyncSession, context: OrgControlContext, user_id: UUID
 ) -> None:
     if (
@@ -68,7 +152,14 @@ async def pause_member_triggers(
 async def stop_member_entry_points(
     db: AsyncSession, context: OrgControlContext, user_id: UUID
 ) -> None:
-    await pause_member_triggers(db, context, user_id)
+    await lock_member_entry_points(db, context, user_id)
+    await stop_locked_member_entry_points(db, context, user_id)
+
+
+async def stop_locked_member_entry_points(
+    db: AsyncSession, context: OrgControlContext, user_id: UUID
+) -> None:
+    await pause_locked_member_triggers(db, context, user_id)
     if (
         await db.scalar(select(AgentApiKey.id).where(AgentApiKey.user_id == user_id).limit(1))
         is not None
@@ -110,3 +201,11 @@ async def clear_member_assignments(
             OrgCapabilityGrant.principal_id == user_id,
         )
     )
+
+
+async def apply_member_exit(db: AsyncSession, plan: MemberExitPlan) -> None:
+    """Apply a preflighted organization exit without committing."""
+    plan.member.status = "removed"
+    plan.member.removed_at = datetime.now(UTC)
+    await clear_member_assignments(db, plan.context, plan.member.user_id)
+    await stop_locked_member_entry_points(db, plan.context, plan.member.user_id)

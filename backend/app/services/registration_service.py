@@ -11,7 +11,10 @@ from app.models.user import User
 from app.schemas.auth import RegisterRequest
 from app.services import user_service
 from app.services.orgs.info import OrgMutationRequest
-from app.services.orgs.invitation_acceptance import InvitationAcceptance, accept_invitation
+from app.services.orgs.invitation_acceptance import (
+    RegistrationInvitationAcceptance,
+    accept_registration_invitation,
+)
 from app.services.registration_membership import DefaultEnrollment, enroll_default_organization
 from app.services.registration_policy import prepare_registration
 
@@ -34,10 +37,11 @@ async def register_user(db: AsyncSession, payload: RegisterRequest, request: Req
             db, DefaultEnrollment(scope.default, user, promote), request
         )
     if payload.invitation_token is not None:
-        await accept_invitation(
-            InvitationAcceptance(
+        await accept_registration_invitation(
+            RegistrationInvitationAcceptance(
                 OrgMutationRequest(db=db, request=request, expected_version=None),
-                user.id,
+                scope,
+                user,
                 payload.invitation_token,
             )
         )

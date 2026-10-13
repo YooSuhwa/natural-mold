@@ -8,11 +8,9 @@ from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.error_codes import authorization_error
-from app.authz.invitation_queries import locked_invitation_scope
 from app.authz.registration_queries import (
     RegistrationOrganization,
-    locked_default_organization,
-    locked_registration_company,
+    locked_registration_scope,
 )
 from app.config import settings
 from app.models.organization_group import OrgInvitation
@@ -55,20 +53,22 @@ async def prepare_registration(db: AsyncSession, payload: RegisterRequest) -> Re
         raise authorization_error("registration_closed")
     if settings.registration_policy == "invite_only" and payload.invitation_token is None:
         raise authorization_error("registration_invitation_required")
-    default = await locked_default_organization(db)
-    invitation = None
+    digest = None
     if payload.invitation_token is not None:
         digest = hashlib.sha256(payload.invitation_token.get_secret_value().encode()).hexdigest()
-        organization, tenant, invitation = await locked_invitation_scope(db, digest)
+    locked = await locked_registration_scope(
+        db,
+        digest,
+        include_default=settings.allow_first_user_as_admin,
+    )
+    invitation = locked.invitation
+    if invitation is not None:
         require_pending_invitation(invitation, str(payload.email))
-        target = RegistrationOrganization(organization, tenant)
-    else:
-        tenant = await locked_registration_company(db, default.tenant.id)
-        target = RegistrationOrganization(default.organization, tenant)
+    target = locked.target
     ensure_signup_scope_active(target)
     policy = effective_signup_policy(target)
     if policy == "closed":
         raise authorization_error("registration_closed")
     if policy == "invite_only" and invitation is None:
         raise authorization_error("registration_invitation_required")
-    return RegistrationScope(default, target, invitation)
+    return RegistrationScope(locked.default, target, invitation)
