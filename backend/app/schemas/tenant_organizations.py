@@ -9,6 +9,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     EmailStr,
+    Field,
     StringConstraints,
     TypeAdapter,
     model_validator,
@@ -16,6 +17,7 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 
 from app.models.organization import Organization
+from app.schemas.org_invitations import InvitationCreated
 
 OrganizationStatus = Literal["active", "suspended", "archived"]
 ORGANIZATION_STATUS_ADAPTER = TypeAdapter(OrganizationStatus)
@@ -63,6 +65,14 @@ class TenantOrganizationAuditorSummary(BaseModel):
     member_count: int
 
 
+class TenantOrganizationAuditorPage(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    items: tuple[TenantOrganizationAuditorSummary, ...]
+    next_cursor: str | None
+    has_more: bool
+
+
 @dataclass(frozen=True, slots=True)
 class TenantOrganizationProjection:
     organization: Organization
@@ -101,3 +111,46 @@ class TenantOrganizationSummary(BaseModel):
             administrator_user_id=projection.administrator_user_id,
             updated_at=organization.updated_at,
         )
+
+
+class TenantOrganizationAdminPage(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    items: tuple[TenantOrganizationSummary, ...]
+    next_cursor: str | None
+    has_more: bool
+
+
+class TenantOrganizationNoAdministrator(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["none"] = "none"
+
+
+class TenantOrganizationMemberAdministrator(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["member"] = "member"
+    user_id: UUID
+
+
+class TenantOrganizationInvitationAdministrator(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["invitation"] = "invitation"
+    invitation: InvitationCreated
+
+
+TenantOrganizationAdministratorResult = Annotated[
+    TenantOrganizationNoAdministrator
+    | TenantOrganizationMemberAdministrator
+    | TenantOrganizationInvitationAdministrator,
+    Field(discriminator="kind"),
+]
+
+
+class TenantOrganizationCreateResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    organization: TenantOrganizationSummary
+    administrator: TenantOrganizationAdministratorResult
