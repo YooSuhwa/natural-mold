@@ -12,6 +12,6 @@ class InvitationAccept(BaseModel):
 
 class InvitationAccepted(BaseModel):
     model_config = ConfigDict(frozen=True)
-    org_id: UUID
+    org_id: UUID | None
     tenant_id: UUID
     user_id: UUID

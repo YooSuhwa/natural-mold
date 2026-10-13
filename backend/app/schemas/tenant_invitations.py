@@ -60,4 +60,12 @@ class TenantInvitationView(BaseModel):
 
 
 class TenantInvitationCreated(TenantInvitationView):
-    token: str
+    token: str | None
+
+
+class TenantInvitationPage(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    items: list[TenantInvitationView]
+    next_cursor: str | None
+    has_more: bool

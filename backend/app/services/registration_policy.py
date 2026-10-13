@@ -1,4 +1,4 @@
-"""Installation/company/org restrictions intersect; no narrower scope can reopen signup."""
+"""Typed default, organization-invite and company-invite signup preparation."""
 
 import hashlib
 from dataclasses import dataclass
@@ -8,15 +8,16 @@ from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.error_codes import authorization_error
-from app.authz.registration_queries import (
-    RegistrationOrganization,
-    locked_registration_scope,
-)
+from app.authz.registration_queries import RegistrationOrganization, locked_registration_scope
 from app.config import settings
+from app.models.organization import Tenant
 from app.models.organization_group import OrgInvitation
+from app.models.tenant_invitation import TenantInvitation
 from app.schemas.auth import RegisterRequest
 from app.schemas.org import OrganizationSettings, RegistrationPolicy
 from app.services.orgs.invitation_acceptance import require_pending_invitation
+from app.services.tenants.invitation_acceptance import require_pending_tenant_invitation
+from app.services.tenants.invitation_queries import locked_registration_invitation
 from app.tenancy.context import ensure_tenant_active
 
 POLICY: Final = TypeAdapter(RegistrationPolicy | None)
@@ -27,6 +28,23 @@ class RegistrationScope:
     default: RegistrationOrganization
     target: RegistrationOrganization
     invitation: OrgInvitation | None
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultRegistrationScope:
+    default: RegistrationOrganization
+
+
+@dataclass(frozen=True, slots=True)
+class TenantInvitationRegistrationScope:
+    target: Tenant
+    invitation: TenantInvitation
+    bootstrap_tenant: Tenant | None
+
+
+PreparedRegistration = (
+    DefaultRegistrationScope | RegistrationScope | TenantInvitationRegistrationScope
+)
 
 
 def effective_signup_policy(scope: RegistrationOrganization) -> RegistrationPolicy:
@@ -48,14 +66,21 @@ def ensure_signup_scope_active(scope: RegistrationOrganization) -> None:
         raise authorization_error("organization_unavailable")
 
 
-async def prepare_registration(db: AsyncSession, payload: RegisterRequest) -> RegistrationScope:
+def _require_global_policy(payload: RegisterRequest) -> None:
     if settings.registration_policy == "closed":
         raise authorization_error("registration_closed")
     if settings.registration_policy == "invite_only" and payload.invitation_token is None:
         raise authorization_error("registration_invitation_required")
+
+
+async def prepare_registration(db: AsyncSession, payload: RegisterRequest) -> PreparedRegistration:
+    _require_global_policy(payload)
+    token = payload.invitation_token
+    if token is not None and token.get_secret_value().startswith("tv1."):
+        return await _prepare_tenant_invitation(db, payload)
     digest = None
-    if payload.invitation_token is not None:
-        digest = hashlib.sha256(payload.invitation_token.get_secret_value().encode()).hexdigest()
+    if token is not None:
+        digest = hashlib.sha256(token.get_secret_value().encode()).hexdigest()
     locked = await locked_registration_scope(
         db,
         digest,
@@ -64,11 +89,30 @@ async def prepare_registration(db: AsyncSession, payload: RegisterRequest) -> Re
     invitation = locked.invitation
     if invitation is not None:
         require_pending_invitation(invitation, str(payload.email))
-    target = locked.target
-    ensure_signup_scope_active(target)
-    policy = effective_signup_policy(target)
+    ensure_signup_scope_active(locked.target)
+    policy = effective_signup_policy(locked.target)
     if policy == "closed":
         raise authorization_error("registration_closed")
     if policy == "invite_only" and invitation is None:
         raise authorization_error("registration_invitation_required")
-    return RegistrationScope(locked.default, target, invitation)
+    if invitation is None:
+        return DefaultRegistrationScope(locked.default)
+    return RegistrationScope(locked.default, locked.target, invitation)
+
+
+async def _prepare_tenant_invitation(
+    db: AsyncSession, payload: RegisterRequest
+) -> TenantInvitationRegistrationScope:
+    token = payload.invitation_token
+    if token is None:
+        raise authorization_error("tenant_invitation_invalid")
+    digest = hashlib.sha256(token.get_secret_value().encode()).hexdigest()
+    tenant, invitation, bootstrap = await locked_registration_invitation(
+        db, digest, settings.allow_first_user_as_admin
+    )
+    require_pending_tenant_invitation(invitation, str(payload.email))
+    ensure_tenant_active(tenant)
+    tenant_policy = POLICY.validate_python(tenant.settings.get("registration_policy"))
+    if tenant_policy == "closed":
+        raise authorization_error("registration_closed")
+    return TenantInvitationRegistrationScope(tenant, invitation, bootstrap)

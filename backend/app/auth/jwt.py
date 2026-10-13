@@ -98,6 +98,13 @@ def create_org_invitation_token(invitation_id: uuid.UUID) -> str:
     return f"v1.{invitation_id.hex}.{signature}"
 
 
+def create_tenant_invitation_token(invitation_id: uuid.UUID) -> str:
+    """Reproduce a company invite using a company-specific MAC purpose."""
+    message = b"moldy/tenant-invitation/v1\x00" + invitation_id.bytes
+    signature = hmac.new(_resolve_secret().encode(), message, hashlib.sha256).hexdigest()
+    return f"tv1.{invitation_id.hex}.{signature}"
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 

@@ -10,6 +10,10 @@ from app.routers.orgs import mutation_request
 from app.schemas.invitation_accept import InvitationAccept, InvitationAccepted
 from app.services.orgs.info import OrgMutationRequest
 from app.services.orgs.invitation_acceptance import InvitationAcceptance, accept_invitation
+from app.services.tenants.invitation_acceptance import (
+    TenantInvitationAcceptance,
+    accept_tenant_invitation,
+)
 
 router = APIRouter(prefix="/api/invitations", tags=["invitation acceptance"])
 
@@ -19,7 +23,13 @@ async def authenticated_acceptance(
     user: CurrentUser = Depends(get_current_user),
     mutation: OrgMutationRequest = Depends(mutation_request),
 ) -> InvitationAccepted:
-    result = await accept_invitation(InvitationAcceptance(mutation, user.id, payload.token))
+    token = payload.token.get_secret_value()
+    if token.startswith("tv1."):
+        result = await accept_tenant_invitation(
+            TenantInvitationAcceptance(mutation, user.id, payload.token)
+        )
+    else:
+        result = await accept_invitation(InvitationAcceptance(mutation, user.id, payload.token))
     await mutation.db.commit()
     return result
 
@@ -30,5 +40,6 @@ async def accept_invitation_link(
     result: InvitationAccepted = Depends(authenticated_acceptance),
 ) -> JSONResponse:
     response = JSONResponse(content=result.model_dump(mode="json"))
-    set_active_org_cookie(response, result.org_id)
+    if result.org_id is not None:
+        set_active_org_cookie(response, result.org_id)
     return response
