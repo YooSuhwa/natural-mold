@@ -96,7 +96,8 @@ async def _resolve_user(token: str, db: AsyncSession) -> CurrentUser | None:
         user_id = uuid.UUID(payload.sub)
     except (TypeError, ValueError):
         return None
-    user = await user_service.get_by_id(db, user_id)
+    with db.no_autoflush:
+        user = await user_service.get_by_id(db, user_id)
     if user is None or not user.is_active:
         return None
     return CurrentUser(
