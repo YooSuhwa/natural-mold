@@ -1,11 +1,14 @@
 from dataclasses import replace
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, event, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrganizationActor
 from app.exceptions import AppError
+from app.models.audit_event import AuditEvent
 from app.models.organization import (
     Organization,
     OrganizationMember,
@@ -16,6 +19,45 @@ from app.models.organization import (
 from app.tenancy.admin_context import TenantAdminTarget, load_tenant_admin_context
 
 pytest_plugins = ["tests.authz.org_context_fixture"]
+
+
+async def _assert_denial_does_not_flush(
+    db: AsyncSession,
+    actor: OrganizationActor,
+    target: TenantAdminTarget,
+    *,
+    expected_status: int,
+    expected_code: str,
+) -> None:
+    assert db.autoflush is True
+    audit_count = await db.scalar(select(func.count()).select_from(AuditEvent))
+    pending_id = uuid4()
+    pending = Tenant(
+        id=pending_id,
+        name="Pending unrelated company",
+        slug=f"pending-{pending_id.hex}",
+        secrets_namespace=f"tenants/{pending_id}",
+    )
+    unchanged = (pending.name, pending.slug, pending.secrets_namespace)
+    db.add(pending)
+    flush = Mock()
+    event.listen(db.sync_session, "before_flush", flush)
+    try:
+        with pytest.raises(AppError) as captured:
+            await load_tenant_admin_context(db, actor, target)
+    finally:
+        event.remove(db.sync_session, "before_flush", flush)
+
+    with db.no_autoflush:
+        persisted = await db.scalar(select(Tenant.id).where(Tenant.id == pending_id))
+        audit_count_after = await db.scalar(select(func.count()).select_from(AuditEvent))
+
+    assert (captured.value.status, captured.value.code) == (expected_status, expected_code)
+    assert flush.call_count == 0
+    assert pending in db.new
+    assert persisted is None
+    assert (pending.name, pending.slug, pending.secrets_namespace) == unchanged
+    assert audit_count_after == audit_count
 
 
 @pytest.mark.parametrize(
@@ -137,3 +179,57 @@ async def test_nonplatform_company_status_denial_is_preserved(
     with pytest.raises(AppError) as captured:
         await load_tenant_admin_context(db, org_fixture.user, TenantAdminTarget(org_fixture.tenant))
     assert (captured.value.status, captured.value.code) == (403, code)
+
+
+async def test_foreign_company_denial_does_not_flush_unrelated_pending_tenant(
+    db: AsyncSession, org_fixture
+) -> None:
+    foreign_tenant = await db.scalar(
+        select(Organization.tenant_id).where(Organization.id == org_fixture.foreign)
+    )
+    assert foreign_tenant is not None
+    await _assert_denial_does_not_flush(
+        db,
+        org_fixture.user,
+        TenantAdminTarget(foreign_tenant, permission="can_manage_tenant"),
+        expected_status=404,
+        expected_code="not_found",
+    )
+
+
+async def test_inactive_company_member_denial_does_not_flush_unrelated_pending_tenant(
+    db: AsyncSession, org_fixture
+) -> None:
+    await db.execute(
+        update(TenantMember)
+        .where(TenantMember.tenant_id == org_fixture.tenant)
+        .values(status="suspended")
+    )
+    await db.commit()
+    await _assert_denial_does_not_flush(
+        db,
+        org_fixture.user,
+        TenantAdminTarget(org_fixture.tenant),
+        expected_status=404,
+        expected_code="not_found",
+    )
+
+
+async def test_auditor_permission_denial_does_not_flush_unrelated_pending_tenant(
+    db: AsyncSession, org_fixture
+) -> None:
+    db.add(
+        TenantRoleGrant(
+            tenant_id=org_fixture.tenant,
+            user_id=org_fixture.user.id,
+            role="auditor",
+        )
+    )
+    await db.commit()
+    await _assert_denial_does_not_flush(
+        db,
+        org_fixture.user,
+        TenantAdminTarget(org_fixture.tenant, permission="can_manage_tenant"),
+        expected_status=403,
+        expected_code="permission_required",
+    )

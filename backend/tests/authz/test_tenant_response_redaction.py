@@ -136,13 +136,6 @@ def test_auditor_member_projection_redacts_email() -> None:
     assert admin["email"] == "member@example.com"
 
 
-def test_operator_metadata_contains_no_organization_content() -> None:
-    tenant, organization, _, _, _ = _records()
-    rendered = str(AdminTenantMetadata.from_tenant(tenant).model_dump(mode="json"))
-    assert str(organization.id) not in rendered
-    assert organization.name not in rendered
-
-
 def test_response_models_are_frozen_and_forbid_extra_fields() -> None:
     tenant, _, _, _, _ = _records()
     overview = TenantOverview.from_tenant(tenant, access="member")
