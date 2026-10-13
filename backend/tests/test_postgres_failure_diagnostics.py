@@ -56,6 +56,38 @@ def test_failed_lifecycle_retains_redacted_traceback_after_owned_root_cleanup(
     assert diagnostics["schema_identifiers"] == ["column:signup_app", "relation:users"]
 
 
+def test_failed_all_retains_redacted_traceback_after_owned_root_cleanup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Given the same bounded child failure evidence in the canonical all-mode runner.
+    child_output = "\n".join(
+        [
+            "_____ test_all_mode_failure _____",
+            "tests/integration/test_company_administration.py:41: in test_all_mode_failure",
+            "Authorization: Bearer dummy-all-bearer-secret",
+            "tests/integration/test_company_administration.py:52: AssertionError",
+            'sqlalchemy.exc.ProgrammingError: column "signup_app" '
+            'of relation "users" does not exist',
+        ]
+    )
+    _configure_failed_lifecycle_scenario(monkeypatch, tmp_path, child_output)
+
+    # When the failed all-mode child outcome survives owned-root cleanup.
+    outcome = postgres_test_runner._run_scenario(
+        "all", process_id=999999, process_identity="d" * 64
+    )
+
+    # Then the canonical bounded structural diagnostics are returned without secrets.
+    assert outcome["failure_reason"] == "child_exit", outcome
+    assert outcome["cleanup_run_root_removed"] is True
+    diagnostics = outcome["child_failure_diagnostics"]
+    assert isinstance(diagnostics, dict)
+    serialized = json.dumps(diagnostics, sort_keys=True)
+    assert "test_company_administration.py:41:in test_all_mode_failure" in serialized
+    assert "test_company_administration.py:52:AssertionError" in serialized
+    assert "dummy-all-bearer-secret" not in serialized
+
+
 def test_failure_diagnostics_reports_record_and_text_truncation_without_values() -> None:
     # Given more structural records than the manifest bound and one oversized path.
     long_path = f"tests/{'a' * 600}.py:1: in test_long_path"

@@ -232,7 +232,7 @@ def _run_scenario(
                 "tmpfs_storage": tmpfs_owned,
             }
         )
-        if exit_code != expected and kind == "agent-lifecycle":
+        if exit_code != expected and kind in {"agent-lifecycle", "all"}:
             outcome["child_failure_diagnostics"] = build_child_failure_diagnostics(output)
         if kind == "agent-lifecycle":
             graph_receipt = run_root / "lifecycle-graph-receipt.json"
