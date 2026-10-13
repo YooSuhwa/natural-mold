@@ -21,7 +21,10 @@ from tests.authz.b04_write_native_fixture import (
     wait_for_lock_wait,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = (
+    pytest.mark.integration,
+    pytest.mark.usefixtures("native_b04_cleanup_guard"),
+)
 pytest_plugins = ["tests.authz.b04_write_native_fixture"]
 
 Winner = Literal["add", "exit"]

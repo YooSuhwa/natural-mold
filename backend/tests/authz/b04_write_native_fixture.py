@@ -169,13 +169,16 @@ async def wait_for_lock_wait(sessions: NativeB04Sessions, application_name: str)
 async def cleanup_native_b04(sessions: NativeB04Sessions, case: NativeB04Case) -> None:
     async with sessions.observer() as db:
         await db.execute(delete(AuditEvent).where(AuditEvent.target_id == str(case.target_id)))
+        await db.execute(
+            delete(OrganizationRoleGrant).where(OrganizationRoleGrant.tenant_id == case.tenant_id)
+        )
         await db.execute(delete(Organization).where(Organization.tenant_id == case.tenant_id))
         await db.execute(delete(Tenant).where(Tenant.id == case.tenant_id))
         await db.execute(delete(User).where(User.id == case.target_id))
         await db.commit()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 async def native_b04_cleanup_guard(
     native_b04_sessions: NativeB04Sessions,
 ) -> AsyncIterator[None]:
@@ -189,6 +192,9 @@ async def native_b04_cleanup_guard(
             delete(AuditEvent).where(AuditEvent.actor_email_snapshot.like("b04-native-admin-%"))
         )
         if tenant_ids:
+            await db.execute(
+                delete(OrganizationRoleGrant).where(OrganizationRoleGrant.tenant_id.in_(tenant_ids))
+            )
             await db.execute(delete(Organization).where(Organization.tenant_id.in_(tenant_ids)))
             await db.execute(delete(Tenant).where(Tenant.id.in_(tenant_ids)))
         await db.execute(
