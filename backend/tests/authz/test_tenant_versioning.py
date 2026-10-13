@@ -37,8 +37,22 @@ def test_tenant_and_organization_etags_use_the_same_timestamp_contract() -> None
     )
 
 
-@pytest.mark.parametrize("supplied", [None, "not-an-etag", '"2026-10-12T00:00:00+00:00"'])
-def test_tenant_version_rejects_missing_malformed_and_stale_if_match(supplied: str | None) -> None:
+@pytest.mark.parametrize(
+    ("supplied", "should_reject"),
+    [
+        (None, True),
+        ("not-an-etag", True),
+        ('"2026-10-12T00:00:00+00:00"', True),
+        ("2026-10-13T00:00:00+00:00", True),
+        ('"2026-10-13T00:00:00+00:00', True),
+        ('2026-10-13T00:00:00+00:00"', True),
+        ('""2026-10-13T00:00:00+00:00""', True),
+        ('"2026-10-13T00:00:00+00:00"', False),
+    ],
+)
+def test_tenant_version_requires_one_complete_current_etag(
+    supplied: str | None, should_reject: bool
+) -> None:
     # Given: a tenant with one known persisted version.
     tenant = Tenant(
         name="Tenant",
@@ -46,11 +60,14 @@ def test_tenant_version_rejects_missing_malformed_and_stale_if_match(supplied: s
         secrets_namespace="tenants/example",
         updated_at=datetime(2026, 10, 13, tzinfo=UTC),
     )
-    # When: the request supplies a missing, malformed, or stale version.
-    with pytest.raises(AppError) as raised:
+    # When: the request supplies one valid ETag or an invalid quote/timestamp shape.
+    if should_reject:
+        with pytest.raises(AppError) as raised:
+            require_current_version(tenant.updated_at, supplied)
+        # Then: malformed or stale input keeps the exact stale-version 409 response.
+        assert (raised.value.status, raised.value.code) == (409, "stale_version")
+    else:
         require_current_version(tenant.updated_at, supplied)
-    # Then: product concurrency remains the exact stale-version 409 response.
-    assert (raised.value.status, raised.value.code) == (409, "stale_version")
 
 
 def test_bump_timestamp_strictly_advances_tenant_version() -> None:
