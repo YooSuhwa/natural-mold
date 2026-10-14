@@ -7,6 +7,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.organization import Tenant
+from app.schemas.tenant_invitations import TenantInvitationCreated
+from app.schemas.tenant_organizations import TenantOrganizationSummary
 from app.schemas.tenant_overview import (
     TENANT_STATUS_ADAPTER,
     TenantName,
@@ -85,3 +87,11 @@ class AdminTenantMetadata(BaseModel):
 class AdminTenantDetail(AdminTenantMetadata):
     organization_count: int
     active_member_count: int
+
+
+class PlatformTenantCreateResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tenant: AdminTenantDetail
+    organization: TenantOrganizationSummary
+    invitation: TenantInvitationCreated
