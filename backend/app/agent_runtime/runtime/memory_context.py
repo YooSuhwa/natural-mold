@@ -8,12 +8,29 @@ from __future__ import annotations
 
 import logging
 import uuid as _uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _memory_session(db: AsyncSession | None) -> AsyncIterator[AsyncSession]:
+    """The caller's (locked) session, else the legacy fresh application session."""
+
+    if db is not None:
+        yield db
+        return
+    from app.database import async_session as _async_session_factory
+
+    async with _async_session_factory() as session:
+        yield session
 
 
 def _parse_uuid(value: str | None) -> _uuid.UUID | None:
@@ -53,25 +70,33 @@ async def _load_memory_context(cfg: AgentConfig) -> tuple[str, list[dict[str, An
     stream-head event so the chat can show which memories informed this run.
     """
     assert_pre_marker("_load_memory_context")
+    return await load_memory_context_in(cfg, None)
+
+
+async def load_memory_context_in(
+    cfg: AgentConfig, db: AsyncSession | None
+) -> tuple[str, list[dict[str, Any]]]:
+    """``_load_memory_context`` reading through ``db`` (the prepared adapter's
+    locked transaction); ``None`` is the legacy fresh-session read."""
+    assert_pre_marker("_load_memory_context")
 
     user_uuid = _parse_uuid(cfg.user_id)
     if user_uuid is None:
         return "", []
     agent_uuid = _parse_uuid(cfg.agent_id)
     try:
-        from app.database import async_session as _async_session_factory
         from app.services import memory_service
 
-        async with _async_session_factory() as db:
+        async with _memory_session(db) as session:
             policy = await memory_service.resolve_effective_policy(
-                db,
+                session,
                 context=cfg.org_context,
                 agent_id=agent_uuid,
             )
             if not policy.read_enabled:
                 return "", []
             records = await memory_service.list_runtime_memory_records(
-                db,
+                session,
                 context=cfg.org_context,
                 agent_id=agent_uuid,
                 allowed_scopes=policy.allowed_scopes,
@@ -84,17 +109,24 @@ async def _load_memory_context(cfg: AgentConfig) -> tuple[str, list[dict[str, An
 
 
 async def _memory_write_policy_for_run(cfg: AgentConfig, *, is_trigger_mode: bool) -> str:
+    return await memory_write_policy_in(cfg, None, is_trigger_mode=is_trigger_mode)
+
+
+async def memory_write_policy_in(
+    cfg: AgentConfig, db: AsyncSession | None, *, is_trigger_mode: bool
+) -> str:
+    """``_memory_write_policy_for_run`` reading through ``db`` (``None`` = own session)."""
+    assert_pre_marker("_memory_write_policy_for_run")
     user_uuid = _parse_uuid(cfg.user_id)
     if user_uuid is None:
         return "off"
     agent_uuid = _parse_uuid(cfg.agent_id)
     try:
-        from app.database import async_session as _async_session_factory
         from app.services import memory_service
 
-        async with _async_session_factory() as db:
+        async with _memory_session(db) as session:
             policy = await memory_service.resolve_effective_policy(
-                db,
+                session,
                 context=cfg.org_context,
                 agent_id=agent_uuid,
             )

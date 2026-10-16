@@ -58,6 +58,7 @@ from app.agent_runtime.prepared_run_participants import (
     build_lease_models,
     child_policy,
     lease_digest,
+    mcp_interrupt_on,
     model_specs,
     with_models,
 )
@@ -145,7 +146,7 @@ async def materialize_prepared_lease(
         common: dict[str, Any] = {
             "backend": backend,
             "projector": PreparedStateProjector(),
-            "interrupt_on": inputs.interrupt_on,
+            "interrupt_on": mcp_interrupt_on(inputs, mcp),
             "skills": inputs.skills,
         }
         root_common = {

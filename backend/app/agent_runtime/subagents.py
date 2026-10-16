@@ -19,6 +19,7 @@ from app.agent_runtime.runtime_component_builder import (
     _prepare_runtime_components,
 )
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.error_codes import agent_not_found
 from app.models.agent import Agent
@@ -84,8 +85,14 @@ async def build_subagents_config(
     parent_cfg: AgentConfig,
     is_trigger_mode: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    """Convert one-hop linked child agents into Deep Agents SubAgent specs."""
+    """Convert one-hop linked child agents into Deep Agents SubAgent specs.
 
+    Legacy (unleased) path only: a prepared lease runs the children I15
+    compiled before the marker, so reaching this after the marker (child
+    hydration) fails closed with ``post_marker_hydration_denied``.
+    """
+
+    assert_pre_marker("build_subagents_config")
     await load_agent_tree_for_execution(
         db,
         AgentExecutionTarget(parent_agent.id, parent_cfg.org_context),

@@ -41,8 +41,13 @@ async def resolve_agent_context(
     *,
     context: OrgContext,
     checkpoint_id: str | None = None,
+    include_subagents: bool = True,
 ) -> AgentConfig:
-    """conversation + agent 조회 -> AgentConfig 생성."""
+    """conversation + agent 조회 -> AgentConfig 생성.
+
+    ``include_subagents=False`` (prepared-lease adapter) skips compiling the
+    legacy child ``RuntimeComponents``; the adapter prepares children itself.
+    """
 
     await require_private_conversation(db, conversation_id, context)
     conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
@@ -158,12 +163,13 @@ async def resolve_agent_context(
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
     )
-    cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
-        agent,
-        db=db,
-        parent_cfg=cfg,
-        is_trigger_mode=False,
-    )
+    if include_subagents:
+        cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
+            agent,
+            db=db,
+            parent_cfg=cfg,
+            is_trigger_mode=False,
+        )
     # ``.update`` (not ``=``) so the subagent secrets already unioned into the
     # set by ``build_subagents_config`` above survive (ADR-021 H1).
     cfg.secret_values.update(collect_cfg_secret_values(cfg))

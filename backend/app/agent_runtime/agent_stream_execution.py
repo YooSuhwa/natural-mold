@@ -1,6 +1,8 @@
 """Shared prepare + hook + Langfuse stream body for the legacy SSE runner.
 
 Collaborators patched on ``agent_stream_runner`` are resolved at call time.
+``_run_prepared_agent_stream`` is the opt-in prepared-lease variant (Task 10
+I20): the frozen lease graph replaces ``_prepare_agent``.
 """
 
 from __future__ import annotations
@@ -14,6 +16,13 @@ from typing import Any
 
 from app.agent_runtime.agent_stream_facade_bindings import stream_attr
 from app.agent_runtime.message_utils import RuntimeMessage
+from app.agent_runtime.prepared_run_dispatch import (
+    USE_LEASE_MESSAGES,
+    PreparedRunHandle,
+    lease_graph_input,
+    lease_run_config,
+    prepared_dispatch,
+)
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
 from app.observability.langfuse import LangfuseTraceRecord
@@ -100,6 +109,7 @@ async def _stream_with_secrets(
     artifact_recorder: Any | None,
     moldy_source: str,
     langfuse_sink: list[LangfuseTraceRecord] | None,
+    hooks_enabled: bool = True,
 ) -> AsyncGenerator[str, None]:
     """Inner streaming body — runs with the run-scoped secret ContextVar set.
 
@@ -124,7 +134,8 @@ async def _stream_with_secrets(
     if langfuse_sink is not None and langfuse_ctx.trace is not None:
         langfuse_sink.append(langfuse_ctx.trace)
 
-    ctx = stream_attr("_hook_ctx_for_agent")(cfg)
+    # Prepared leases skip the DB-writing hooks (outside the I14 write capability).
+    ctx = stream_attr("_hook_ctx_for_agent")(cfg) if hooks_enabled else None
     if ctx is not None:
         if hook_metadata_extra:
             ctx.metadata.update(hook_metadata_extra)
@@ -191,3 +202,49 @@ async def _stream_with_secrets(
 # straight into ``stream_agent_response`` (execute path). Resume path passes a
 # concrete ``Command(resume=...)`` instead.
 _USE_PREPPED_LC_MESSAGES: Any = object()
+
+
+async def _run_prepared_agent_stream(
+    cfg: AgentConfig,
+    handle: PreparedRunHandle,
+    *,
+    stream_input: Any = USE_LEASE_MESSAGES,
+    hook_metadata_extra: dict[str, Any] | None = None,
+    trace_sink: list[dict[str, Any]] | None = None,
+    msg_id_sink: list[str] | None = None,
+    error_sink: list[StreamErrorRecord] | None = None,
+    broker: Any | None = None,
+    persist_callback: Any | None = None,
+    run_id: str | None = None,
+    artifact_recorder: Any | None = None,
+    moldy_source: str = "chat",
+    langfuse_sink: list[LangfuseTraceRecord] | None = None,
+) -> AsyncGenerator[str, None]:
+    """Stream the exact activated lease graph.
+
+    ``cfg`` is Langfuse/cost metadata only (hooks skipped). Never calls
+    ``_prepare_agent``: ``prepared_dispatch`` claims the exact
+    lease, installs its secret set, runs under ``post_marker_execution`` and
+    terminalizes the lease (children first) however the stream ends.
+    """
+
+    async with prepared_dispatch(handle) as lease:
+        async for chunk in stream_attr("_stream_with_secrets")(
+            cfg,
+            agent=lease.runnable,
+            lc_messages=[],
+            config=lease_run_config(lease),
+            stream_input=lease_graph_input(lease, stream_input),
+            hook_metadata_extra=hook_metadata_extra,
+            trace_sink=trace_sink,
+            msg_id_sink=msg_id_sink,
+            error_sink=error_sink,
+            broker=broker,
+            persist_callback=persist_callback,
+            run_id=run_id or str(lease.binding.run_id),
+            artifact_recorder=artifact_recorder,
+            moldy_source=moldy_source,
+            langfuse_sink=langfuse_sink,
+            hooks_enabled=False,
+        ):
+            yield chunk

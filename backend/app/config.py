@@ -279,6 +279,10 @@ class Settings(AuthzSettings):
     # a transient "압축 중…" indicator + a permanent "이전 대화를 요약했어요" marker.
     # Off = legacy behavior (summarization tokens flow through, no marker).
     compaction_marker_enabled: bool = True
+    # Parent Task 10 — opt-in gate for executing runs through a prepared lease
+    # (materialize under the canonical locks, then dispatch the frozen graph).
+    # Off = every entry keeps the legacy ``_prepare_agent`` path.
+    prepared_run_lease_enabled: bool = False
 
     # CORS allowed origins. Comma-separated origins, e.g.
     # "https://moldy.dev,https://staging.moldy.dev". Default permits the

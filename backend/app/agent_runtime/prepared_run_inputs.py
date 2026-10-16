@@ -103,6 +103,9 @@ class PreparationInputs:
     custom_middleware: tuple[AgentMiddleware[Any, Any, Any], ...] = ()
     preloaded_resources: Mapping[str, Iterable[str]] = field(default_factory=dict)
     interrupt_on: dict[str, Any] | None = None
+    # Interactive (non-trigger) runs: merge each discovered MCP tool's required
+    # approval policy into ``interrupt_on`` before compile and digest.
+    mcp_interrupts: bool = False
     skills: list[str] | None = None
     memory: list[str] | None = None
     checkpoint_id: str | None = None

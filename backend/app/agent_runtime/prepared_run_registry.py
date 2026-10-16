@@ -1,6 +1,8 @@
 """Process-local registry of prepared run leases (parent Task 10).
 
-States: ``reserved -> pending_commit -> active -> terminalizing -> removed``.
+States: ``reserved -> pending_commit -> active [-> dispatching] -> terminalizing
+-> removed``. ``claim_dispatch`` is the single-use ``active -> dispatching``
+transition the runner takes; a dispatching lease stays live for permits.
 A pending lease is never handed out; activation after the materialization
 commit requires the exact token and digest, and ``acquire`` the exact binding,
 token and digest. A persisted materialization marker without an active lease
@@ -45,7 +47,11 @@ class LeaseState(StrEnum):
     RESERVED = "reserved"
     PENDING_COMMIT = "pending_commit"
     ACTIVE = "active"
+    DISPATCHING = "dispatching"
     TERMINALIZING = "terminalizing"
+
+
+_LIVE = (LeaseState.ACTIVE, LeaseState.DISPATCHING)
 
 
 @dataclass(eq=False, slots=True)
@@ -70,7 +76,7 @@ class PreparedRunRegistry:
         return None if entry is None else entry.state
 
     def active_run_ids(self) -> set[uuid.UUID]:
-        return {key for key, entry in self._entries.items() if entry.state is LeaseState.ACTIVE}
+        return {key for key, entry in self._entries.items() if entry.state in _LIVE}
 
     def reserve(self, binding: PreparedRunBinding) -> str:
         if binding.run_id in self._entries or binding.run_id in self._retired:
@@ -106,10 +112,22 @@ class PreparedRunRegistry:
         entry.state = LeaseState.ACTIVE
 
     def acquire(self, binding: PreparedRunBinding, *, token: str, digest: str) -> PreparedRunLease:
-        entry = self._entry(binding.run_id, LeaseState.ACTIVE)
+        entry = self._entry(binding.run_id, *_LIVE)
         if entry.binding != binding:
             raise PreparedRunLeaseError(LEASE_MISMATCH)
         return self._require_exact(entry, token=token, digest=digest)
+
+    def claim_dispatch(
+        self, binding: PreparedRunBinding, *, token: str, digest: str
+    ) -> PreparedRunLease:
+        """Single-use ``active -> dispatching``; a second claim is ``lease_missing``."""
+
+        entry = self._entry(binding.run_id, LeaseState.ACTIVE)
+        if entry.binding != binding:
+            raise PreparedRunLeaseError(LEASE_MISMATCH)
+        lease = self._require_exact(entry, token=token, digest=digest)
+        entry.state = LeaseState.DISPATCHING
+        return lease
 
     def ensure_live_for_marker(self, run_id: uuid.UUID, *, marker_digest: str) -> None:
         """Fail closed unless a persisted marker has its exact live lease.
@@ -117,7 +135,7 @@ class PreparedRunRegistry:
         Returns nothing: the persisted row alone never yields the lease.
         """
 
-        entry = self._entry(run_id, LeaseState.ACTIVE)
+        entry = self._entry(run_id, *_LIVE)
         if entry.digest is None or not secrets.compare_digest(entry.digest, marker_digest):
             raise PreparedRunLeaseError(LEASE_MISMATCH)
 
@@ -130,9 +148,9 @@ class PreparedRunRegistry:
             entry.cleanup = asyncio.ensure_future(self._cleanup(run_id, entry))
         return await asyncio.shield(entry.cleanup)
 
-    def _entry(self, run_id: uuid.UUID, state: LeaseState) -> _Entry:
+    def _entry(self, run_id: uuid.UUID, *states: LeaseState) -> _Entry:
         entry = self._entries.get(run_id)
-        if entry is None or entry.state is not state:
+        if entry is None or entry.state not in states:
             raise PreparedRunLeaseError(LEASE_MISSING)
         return entry
 

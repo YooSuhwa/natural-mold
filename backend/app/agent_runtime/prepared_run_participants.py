@@ -11,6 +11,8 @@ every descriptor ID — never secret values or snapshot content.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -45,6 +47,25 @@ from app.agent_runtime.runtime_effective_capabilities import (
     lease_descriptor_ids,
 )
 from app.agent_runtime.tool_access_policy import ToolOrigin
+from app.tools.risk import interrupt_policy_for_tool
+
+
+def mcp_interrupt_on(inputs: PreparationInputs, mcp: PreparedMcpResources) -> dict[str, Any] | None:
+    """``interrupt_on`` plus required MCP approvals (an explicit ``False`` cannot disable)."""
+
+    if not inputs.mcp_interrupts:
+        return inputs.interrupt_on
+    policy = dict(inputs.interrupt_on or {})
+    for item in mcp.tools:
+        for name, config in interrupt_policy_for_tool(item.tool).items():
+            if policy.get(name, False) is False:
+                policy[name] = config
+    return policy or None
+
+
+def _policy_digest(policy: Mapping[str, Any] | None) -> str:
+    encoded = json.dumps(policy or {}, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode()).hexdigest()
 
 
 def model_specs(inputs: PreparationInputs) -> dict[str, LeaseModelSpec]:
@@ -170,6 +191,7 @@ def lease_digest(
             **inputs.snapshot_catalog.digests(),
             "child_catalog": catalog.digest,
             "mcp": mcp.digest,
+            "interrupt_on": _policy_digest(mcp_interrupt_on(inputs, mcp)),
             **{f"census:{path}": census.digest() for path, census in censuses.items()},
         },
         tool_access=tool_access,

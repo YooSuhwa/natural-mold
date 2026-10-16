@@ -21,10 +21,12 @@ from typing import Any
 from app.agent_runtime.agent_invoke_runner import (
     _execute_agent_invoke_inner,
     execute_agent_invoke,
+    execute_prepared_agent_invoke,
 )
 from app.agent_runtime.agent_stream_execution import (
     _USE_PREPPED_LC_MESSAGES,
     _run_agent_stream,
+    _run_prepared_agent_stream,
     _stream_with_secrets,
 )
 from app.agent_runtime.agent_stream_hooks import _hook_ctx_for_agent, _hook_result_from_usage
@@ -45,6 +47,8 @@ __all__ += ["_prepare_agent", "_stream_with_secrets", "build_langfuse_run_contex
 __all__ += ["execute_agent_invoke", "hooks", "nullcontext", "project_offload_egress_data"]
 __all__ += ["redact_protocol_data", "reset_run_secrets", "set_run_secrets"]
 __all__ += ["stream_agent_response", "time", "_uuid"]
+# Opt-in prepared-lease (Task 10 I20) entry points used by I16-I19.
+__all__ += ["_run_prepared_agent_stream", "execute_prepared_agent_invoke"]
 
 
 async def execute_agent_stream(

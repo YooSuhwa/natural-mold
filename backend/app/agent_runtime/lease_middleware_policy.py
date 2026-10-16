@@ -7,9 +7,10 @@ in place of the tool, and an unknown class is unreviewed dispatch surface.
 
 The list covers what the installed ``create_deep_agent`` stack adds by default
 (skills, filesystem, subagents, summarization, patch-tool-calls, Anthropic
-prompt caching, memory, HITL, tool exclusion), ``TodoListMiddleware`` and the
-app's lease guards. App classes are referenced by qualname string so this
-module imports no other slice.
+prompt caching, memory, HITL, tool exclusion), ``TodoListMiddleware``, the
+app's lease guards and the app's model-call ``EmptyContentRetryMiddleware``.
+App classes are referenced by qualname string so this module imports no
+other slice.
 
 Ordering: middleware listed after ``LeaseBoundToolMiddleware`` wraps tool calls
 *inside* it (within the open permit). Such a position is accepted only for
@@ -27,6 +28,7 @@ from langchain.agents.middleware import AgentMiddleware
 LEASE_TOOL_GUARD = "app.agent_runtime.lease_bound_tool.LeaseBoundToolMiddleware"
 PREPARED_TASK_DISPATCH = "app.agent_runtime.prepared_task_middleware.PreparedTaskDispatchMiddleware"
 FILESYSTEM_MIDDLEWARE = "deepagents.middleware.filesystem.FilesystemMiddleware"
+EMPTY_CONTENT_RETRY = "app.agent_runtime.runtime.reliability.EmptyContentRetryMiddleware"
 
 LEASE_MIDDLEWARE_ALLOWLIST: frozenset[str] = frozenset(
     {
@@ -42,6 +44,9 @@ LEASE_MIDDLEWARE_ALLOWLIST: frozenset[str] = frozenset(
         "langchain_anthropic.middleware.prompt_caching.AnthropicPromptCachingMiddleware",
         "langchain.agents.middleware.human_in_the_loop.HumanInTheLoopMiddleware",
         "langchain.agents.middleware.todo.TodoListMiddleware",
+        # Re-calls the model handler, so every retry is a normal lease send that
+        # opens its own fresh provider permit (``LeaseSendGuard``).
+        EMPTY_CONTENT_RETRY,
     }
 )
 INNER_TOOL_WRAPPERS: frozenset[str] = frozenset({FILESYSTEM_MIDDLEWARE})

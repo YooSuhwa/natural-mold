@@ -71,7 +71,7 @@ async def open_dispatch_permit(
     if descriptor_id not in allowed_descriptors:
         raise DispatchDeniedError(DESCRIPTOR_NOT_PREPARED)
     registry = get_prepared_run_registry()
-    if registry.state(lease.binding.run_id) is not LeaseState.ACTIVE:
+    if registry.state(lease.binding.run_id) not in (LeaseState.ACTIVE, LeaseState.DISPATCHING):
         raise DispatchDeniedError("prepared_run_lease_missing")
     async with session_factory() as db:
         try:
