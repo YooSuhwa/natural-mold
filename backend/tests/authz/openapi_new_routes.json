@@ -353,6 +353,91 @@
         ]
       }
     },
+    "/api/agents": {
+      "get": {
+        "operationId": "list_agents_api_agents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/AgentAccessResponse"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AgentRunnerView"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AgentResponse"
+                      }
+                    ]
+                  },
+                  "title": "Response List Agents Api Agents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Agents",
+        "tags": [
+          "agents"
+        ]
+      },
+      "post": {
+        "operationId": "create_agent_api_agents_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentAccessResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentRunnerView"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentResponse"
+                    }
+                  ],
+                  "title": "Response Create Agent Api Agents Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/api/agents/archived": {
       "get": {
         "operationId": "list_archived_agent_metadata_api_agents_archived_get",
@@ -373,6 +458,188 @@
           }
         },
         "summary": "List Archived Agent Metadata",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/summary": {
+      "get": {
+        "operationId": "list_agent_summaries_api_agents_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/AgentSummaryAccessResponse"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AgentSummaryResponse"
+                      }
+                    ]
+                  },
+                  "title": "Response List Agent Summaries Api Agents Summary Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Agent Summaries",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/{agent_id}": {
+      "delete": {
+        "operationId": "delete_agent_api_agents__agent_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Agent",
+        "tags": [
+          "agents"
+        ]
+      },
+      "get": {
+        "operationId": "get_agent_api_agents__agent_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentAccessResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentRunnerView"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentResponse"
+                    }
+                  ],
+                  "title": "Response Get Agent Api Agents  Agent Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent",
+        "tags": [
+          "agents"
+        ]
+      },
+      "put": {
+        "operationId": "update_agent_api_agents__agent_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentAccessResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentRunnerView"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentResponse"
+                    }
+                  ],
+                  "title": "Response Update Agent Api Agents  Agent Id  Put"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Agent",
         "tags": [
           "agents"
         ]
@@ -674,6 +941,156 @@
         "tags": [
           "conversations",
           "conversations"
+        ]
+      }
+    },
+    "/api/agents/{agent_id}/favorite": {
+      "patch": {
+        "operationId": "toggle_favorite_api_agents__agent_id__favorite_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentAccessResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentRunnerView"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentResponse"
+                    }
+                  ],
+                  "title": "Response Toggle Favorite Api Agents  Agent Id  Favorite Patch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Toggle Favorite",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/{agent_id}/image": {
+      "get": {
+        "operationId": "get_agent_image_api_agents__agent_id__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "variant",
+            "required": false,
+            "schema": {
+              "default": "original",
+              "enum": [
+                "original",
+                "preview"
+              ],
+              "title": "Variant",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Image",
+        "tags": [
+          "agents"
+        ]
+      },
+      "post": {
+        "operationId": "generate_agent_image_api_agents__agent_id__image_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateImageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Agent Image",
+        "tags": [
+          "agents"
         ]
       }
     },
@@ -6019,6 +6436,33 @@
         "summary": "Upsert Feedback",
         "tags": [
           "feedback"
+        ]
+      }
+    },
+    "/api/middlewares": {
+      "get": {
+        "description": "Return the available middleware catalog.\n\ndeepagents\uac00 \uc790\ub3d9 \ucd94\uac00\ud558\ub294 \ube4c\ud2b8\uc778 \ubbf8\ub4e4\uc6e8\uc5b4\ub294 \uc81c\uc678\ud55c\ub2e4.",
+        "operationId": "list_middlewares_api_middlewares_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Middlewares Api Middlewares Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Middlewares",
+        "tags": [
+          "middlewares"
         ]
       }
     },
@@ -13278,6 +13722,266 @@
       "title": "AdminTenantDetail",
       "type": "object"
     },
+    "AgentAccessResponse": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "identity_mode": {
+          "title": "Identity Mode",
+          "type": "string"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Url"
+        },
+        "is_favorite": {
+          "default": false,
+          "title": "Is Favorite",
+          "type": "boolean"
+        },
+        "last_used_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Used At"
+        },
+        "mcp_tools": {
+          "items": {
+            "$ref": "#/components/schemas/McpToolBrief"
+          },
+          "title": "Mcp Tools",
+          "type": "array"
+        },
+        "middleware_configs": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Middleware Configs",
+          "type": "array"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ModelBrief"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model_fallback_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Model Fallback Ids",
+          "type": "array"
+        },
+        "model_params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Params"
+        },
+        "my_permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "My Permissions",
+          "type": "array"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "opener_questions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Opener Questions"
+        },
+        "runtime_name": {
+          "title": "Runtime Name",
+          "type": "string"
+        },
+        "runtime_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RuntimePolicyV1-Output"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime_policy_effective": {
+          "$ref": "#/components/schemas/RuntimePolicyV1-Output"
+        },
+        "runtime_policy_source": {
+          "$ref": "#/components/schemas/RuntimePolicySnapshotSource"
+        },
+        "skills": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/SkillBrief"
+          },
+          "title": "Skills",
+          "type": "array"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "sub_agents": {
+          "items": {
+            "$ref": "#/components/schemas/AgentBrief"
+          },
+          "title": "Sub Agents",
+          "type": "array"
+        },
+        "system_prompt": {
+          "title": "System Prompt",
+          "type": "string"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Template Id"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/components/schemas/ToolBrief"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "unread_count": {
+          "default": 0,
+          "title": "Unread Count",
+          "type": "integer"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "runtime_name",
+        "identity_mode",
+        "name",
+        "description",
+        "system_prompt",
+        "tools",
+        "runtime_policy_effective",
+        "runtime_policy_source",
+        "status",
+        "template_id",
+        "created_at",
+        "updated_at",
+        "my_permissions"
+      ],
+      "title": "AgentAccessResponse",
+      "type": "object"
+    },
+    "AgentBrief": {
+      "description": "\uac00\ubcbc\uc6b4 \uc5d0\uc774\uc804\ud2b8 \uce74\ub4dc\uc6a9 \ud45c\ud604 (\uc11c\ube0c\uc5d0\uc774\uc804\ud2b8 \ubaa9\ub85d \ub4f1).",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Url"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "AgentBrief",
+      "type": "object"
+    },
     "AgentCommandParams": {
       "additionalProperties": true,
       "properties": {
@@ -13440,6 +14144,153 @@
         "method"
       ],
       "title": "AgentCommandRequest",
+      "type": "object"
+    },
+    "AgentCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "identity_mode": {
+          "default": "per_user",
+          "title": "Identity Mode",
+          "type": "string"
+        },
+        "mcp_tool_ids": {
+          "default": [],
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Mcp Tool Ids",
+          "type": "array"
+        },
+        "middleware_configs": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/MiddlewareConfigEntry"
+          },
+          "title": "Middleware Configs",
+          "type": "array"
+        },
+        "model_fallback_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Fallback Ids"
+        },
+        "model_id": {
+          "format": "uuid",
+          "title": "Model Id",
+          "type": "string"
+        },
+        "model_params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Params"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "opener_questions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Opener Questions"
+        },
+        "runtime_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RuntimePolicyV1-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skill_ids": {
+          "default": [],
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Skill Ids",
+          "type": "array"
+        },
+        "sub_agent_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Sub Agent Ids",
+          "type": "array"
+        },
+        "system_prompt": {
+          "title": "System Prompt",
+          "type": "string"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Template Id"
+        },
+        "tool_ids": {
+          "default": [],
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Tool Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "system_prompt",
+        "model_id"
+      ],
+      "title": "AgentCreate",
       "type": "object"
     },
     "AgentLifecycleMetadataResponse": {
@@ -13694,6 +14545,216 @@
       "title": "AgentPurgeRequest",
       "type": "object"
     },
+    "AgentResponse": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "identity_mode": {
+          "title": "Identity Mode",
+          "type": "string"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Url"
+        },
+        "is_favorite": {
+          "default": false,
+          "title": "Is Favorite",
+          "type": "boolean"
+        },
+        "last_used_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Used At"
+        },
+        "mcp_tools": {
+          "items": {
+            "$ref": "#/components/schemas/McpToolBrief"
+          },
+          "title": "Mcp Tools",
+          "type": "array"
+        },
+        "middleware_configs": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Middleware Configs",
+          "type": "array"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ModelBrief"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model_fallback_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Model Fallback Ids",
+          "type": "array"
+        },
+        "model_params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Params"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "opener_questions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Opener Questions"
+        },
+        "runtime_name": {
+          "title": "Runtime Name",
+          "type": "string"
+        },
+        "runtime_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RuntimePolicyV1-Output"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime_policy_effective": {
+          "$ref": "#/components/schemas/RuntimePolicyV1-Output"
+        },
+        "runtime_policy_source": {
+          "$ref": "#/components/schemas/RuntimePolicySnapshotSource"
+        },
+        "skills": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/SkillBrief"
+          },
+          "title": "Skills",
+          "type": "array"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "sub_agents": {
+          "items": {
+            "$ref": "#/components/schemas/AgentBrief"
+          },
+          "title": "Sub Agents",
+          "type": "array"
+        },
+        "system_prompt": {
+          "title": "System Prompt",
+          "type": "string"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Template Id"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/components/schemas/ToolBrief"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "unread_count": {
+          "default": 0,
+          "title": "Unread Count",
+          "type": "integer"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "runtime_name",
+        "identity_mode",
+        "name",
+        "description",
+        "system_prompt",
+        "tools",
+        "runtime_policy_effective",
+        "runtime_policy_source",
+        "status",
+        "template_id",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "AgentResponse",
+      "type": "object"
+    },
     "AgentRestoreResponse": {
       "additionalProperties": false,
       "description": "Restore returns the same metadata-only governance projection.",
@@ -13789,6 +14850,514 @@
         "can_purge"
       ],
       "title": "AgentRestoreResponse",
+      "type": "object"
+    },
+    "AgentRunnerView": {
+      "description": "Runner summary: name, description, icon, opener questions, owner, my level.",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Url"
+        },
+        "is_favorite": {
+          "default": false,
+          "title": "Is Favorite",
+          "type": "boolean"
+        },
+        "my_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "My Level"
+        },
+        "my_permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "My Permissions",
+          "type": "array"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "opener_questions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Opener Questions"
+        },
+        "owner_id": {
+          "format": "uuid",
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "unread_count": {
+          "default": 0,
+          "title": "Unread Count",
+          "type": "integer"
+        },
+        "view": {
+          "const": "runner",
+          "default": "runner",
+          "title": "View",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "owner_id",
+        "my_level",
+        "my_permissions"
+      ],
+      "title": "AgentRunnerView",
+      "type": "object"
+    },
+    "AgentSummaryAccessResponse": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "fallback_count": {
+          "default": 0,
+          "title": "Fallback Count",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Url"
+        },
+        "is_favorite": {
+          "default": false,
+          "title": "Is Favorite",
+          "type": "boolean"
+        },
+        "last_used_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Used At"
+        },
+        "model_display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Display Name"
+        },
+        "my_permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "My Permissions",
+          "type": "array"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "tool_count": {
+          "default": 0,
+          "title": "Tool Count",
+          "type": "integer"
+        },
+        "unread_count": {
+          "default": 0,
+          "title": "Unread Count",
+          "type": "integer"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "status",
+        "created_at",
+        "updated_at",
+        "my_permissions"
+      ],
+      "title": "AgentSummaryAccessResponse",
+      "type": "object"
+    },
+    "AgentSummaryResponse": {
+      "description": "Dashboard/sidebar card payload without eager-loaded nested resources.",
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "fallback_count": {
+          "default": 0,
+          "title": "Fallback Count",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Url"
+        },
+        "is_favorite": {
+          "default": false,
+          "title": "Is Favorite",
+          "type": "boolean"
+        },
+        "last_used_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Used At"
+        },
+        "model_display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Display Name"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "tool_count": {
+          "default": 0,
+          "title": "Tool Count",
+          "type": "integer"
+        },
+        "unread_count": {
+          "default": 0,
+          "title": "Unread Count",
+          "type": "integer"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "AgentSummaryResponse",
+      "type": "object"
+    },
+    "AgentUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "identity_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Identity Mode"
+        },
+        "is_favorite": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Is Favorite"
+        },
+        "mcp_tool_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mcp Tool Ids"
+        },
+        "middleware_configs": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/MiddlewareConfigEntry"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Middleware Configs"
+        },
+        "model_fallback_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Fallback Ids"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Id"
+        },
+        "model_params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Params"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "opener_questions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Opener Questions"
+        },
+        "runtime_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RuntimePolicyV1-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skill_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Skill Ids"
+        },
+        "sub_agent_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sub Agent Ids"
+        },
+        "system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "System Prompt"
+        },
+        "tool_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tool Ids"
+        }
+      },
+      "title": "AgentUpdate",
       "type": "object"
     },
     "ArtifactFavoriteUpdate": {
@@ -17542,6 +19111,23 @@
       "title": "FileItem",
       "type": "object"
     },
+    "FilesystemPolicyV1": {
+      "additionalProperties": false,
+      "description": "Filesystem capability selection persisted in RuntimePolicyV1.",
+      "properties": {
+        "mode": {
+          "default": "artifact_write",
+          "enum": [
+            "inspect",
+            "artifact_write"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "FilesystemPolicyV1",
+      "type": "object"
+    },
     "FollowupSuggestionResponse": {
       "properties": {
         "suggestion": {
@@ -17560,6 +19146,19 @@
         "suggestion"
       ],
       "title": "FollowupSuggestionResponse",
+      "type": "object"
+    },
+    "GenerateImageResponse": {
+      "properties": {
+        "image_url": {
+          "title": "Image Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "image_url"
+      ],
+      "title": "GenerateImageResponse",
       "type": "object"
     },
     "GroupCreate": {
@@ -19645,6 +21244,43 @@
       "title": "McpTestResponse",
       "type": "object"
     },
+    "McpToolBrief": {
+      "description": "Per-server MCP tool reference for agent responses.",
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "server_id": {
+          "format": "uuid",
+          "title": "Server Id",
+          "type": "string"
+        },
+        "server_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Server Name"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "server_id"
+      ],
+      "title": "McpToolBrief",
+      "type": "object"
+    },
     "McpToolResponse": {
       "properties": {
         "created_at": {
@@ -20748,6 +22384,56 @@
         "messages"
       ],
       "title": "MessagesEnvelope",
+      "type": "object"
+    },
+    "MiddlewareConfigEntry": {
+      "description": "Per-agent middleware configuration.",
+      "properties": {
+        "params": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Params",
+          "type": "object"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "MiddlewareConfigEntry",
+      "type": "object"
+    },
+    "ModelBrief": {
+      "properties": {
+        "context_window": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Context Window"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "display_name"
+      ],
+      "title": "ModelBrief",
       "type": "object"
     },
     "ModelCreate": {
@@ -22425,6 +24111,64 @@
       "title": "RunMetadata",
       "type": "object"
     },
+    "RuntimePolicySnapshotSource": {
+      "enum": [
+        "legacy_compat",
+        "stored",
+        "server_owned"
+      ],
+      "type": "string"
+    },
+    "RuntimePolicyV1-Input": {
+      "additionalProperties": false,
+      "description": "Strict persisted runtime behavior policy, discriminated by version.",
+      "properties": {
+        "filesystem": {
+          "$ref": "#/components/schemas/FilesystemPolicyV1"
+        },
+        "summarization": {
+          "$ref": "#/components/schemas/SummarizationPolicyV1"
+        },
+        "todo": {
+          "$ref": "#/components/schemas/TodoPolicyV1"
+        },
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "title": "RuntimePolicyV1",
+      "type": "object"
+    },
+    "RuntimePolicyV1-Output": {
+      "additionalProperties": false,
+      "description": "Strict persisted runtime behavior policy, discriminated by version.",
+      "properties": {
+        "filesystem": {
+          "$ref": "#/components/schemas/FilesystemPolicyV1"
+        },
+        "summarization": {
+          "$ref": "#/components/schemas/SummarizationPolicyV1"
+        },
+        "todo": {
+          "$ref": "#/components/schemas/TodoPolicyV1"
+        },
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "title": "RuntimePolicyV1",
+      "type": "object"
+    },
     "ShareLinkResponse": {
       "description": "Owner-facing share link metadata (returned on create / fetch).",
       "properties": {
@@ -22556,6 +24300,83 @@
         "shared_at"
       ],
       "title": "SharedConversationView",
+      "type": "object"
+    },
+    "SkillBrief": {
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "execution_profile": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Execution Profile"
+        },
+        "health": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/SkillHealthSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "package"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "latest_evaluation_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/SkillLatestEvaluationSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "kind",
+        "description"
+      ],
+      "title": "SkillBrief",
       "type": "object"
     },
     "SkillBuilderFileContentResponse": {
@@ -25038,6 +26859,59 @@
       "title": "SubscribeRequest",
       "type": "object"
     },
+    "SummarizationAutoPolicyV1": {
+      "additionalProperties": false,
+      "description": "Use Deep Agents' automatic summarization defaults.",
+      "properties": {
+        "mode": {
+          "const": "auto",
+          "default": "auto",
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "SummarizationAutoPolicyV1",
+      "type": "object"
+    },
+    "SummarizationPolicyV1": {
+      "discriminator": {
+        "mapping": {
+          "auto": "#/components/schemas/SummarizationAutoPolicyV1",
+          "preset": "#/components/schemas/SummarizationPresetPolicyV1"
+        },
+        "propertyName": "mode"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/components/schemas/SummarizationAutoPolicyV1"
+        },
+        {
+          "$ref": "#/components/schemas/SummarizationPresetPolicyV1"
+        }
+      ]
+    },
+    "SummarizationPresetPolicyV1": {
+      "additionalProperties": false,
+      "description": "Use the sole named summarization preset supported by policy v1.",
+      "properties": {
+        "mode": {
+          "const": "preset",
+          "title": "Mode",
+          "type": "string"
+        },
+        "preset": {
+          "const": "balanced_context_v1",
+          "title": "Preset",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "preset"
+      ],
+      "title": "SummarizationPresetPolicyV1",
+      "type": "object"
+    },
     "SwitchBranchRequest": {
       "description": "Flip the active branch by checkpoint id.\n\nThe backend can't truly \"switch heads\" in LangGraph (re-invocation is the\nonly way to advance the timeline) so this endpoint just records the\nuser's choice; subsequent edits will fork from this checkpoint.",
       "properties": {
@@ -26429,6 +28303,19 @@
       "title": "ThreadStateResponse",
       "type": "object"
     },
+    "TodoPolicyV1": {
+      "additionalProperties": false,
+      "description": "Todo middleware selection persisted in RuntimePolicyV1.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "TodoPolicyV1",
+      "type": "object"
+    },
     "TokenUsageBreakdown": {
       "description": "W7 \u2014 \uba54\uc2dc\uc9c0\ubcc4 4\uc885 \ud1a0\ud070 \ubd84\ud574 (LangChain ``usage_metadata`` \ud3c9\ud0c4\ud654).\n\nLangChain\uc740 ``input_token_details``\ub85c cache_creation/cache_read\ub97c \ubd84\ub9ac\ud574\n\uc804\ub2ec\ud55c\ub2e4. \ud074\ub77c\uc774\uc5b8\ud2b8 hover \ud31d\uc624\ubc84\uac00 \uc9c1\uc811 \ucc38\uc870\ud558\ubbc0\ub85c \ud3c9\ud0c4\ud55c 4 \ud544\ub4dc + \ube44\uc6a9\n\ud615\ud0dc\ub85c \uc9c1\ub82c\ud654. \ubaa8\ub4e0 \ud544\ub4dc 0\uc774\uba74 \uc751\ub2f5\uc5d0\uc11c ``null`` \uc790\ub9ac\ub97c \ubc18\ud658\ud558\uace0 \ud074\ub77c\uc774\uc5b8\ud2b8\ub294\n\ub80c\ub354 \uc790\uccb4\ub97c \uac74\ub108\ub6f4\ub2e4.",
       "properties": {
@@ -26500,6 +28387,36 @@
         "cache_read_tokens"
       ],
       "title": "TokenUsageBreakdown",
+      "type": "object"
+    },
+    "ToolBrief": {
+      "properties": {
+        "icon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon Id"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "ToolBrief",
       "type": "object"
     },
     "ToolCreate": {

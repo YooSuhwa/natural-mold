@@ -68,9 +68,13 @@ def projection_options(context: OrgContext) -> tuple[LoaderOption, ...]:
 
 
 async def load_agent_presentation(
-    db: AsyncSession, agent_id: UUID, context: OrgContext
+    db: AsyncSession, agent_id: UUID, context: OrgContext, *, viewer: OrgContext | None = None
 ) -> AgentPresentation | None:
-    """Read current presentation links without changing persisted associations."""
+    """Read current presentation links without changing persisted associations.
+
+    ``viewer`` (default ``context``) scopes the unread count; a shared agent is read
+    in its owner's ``context`` once the route has authorized the viewer.
+    """
     with db.no_autoflush:
         await require_private_actor(db, context)
         agent = await db.scalar(
@@ -84,7 +88,7 @@ async def load_agent_presentation(
                 select(func.coalesce(func.sum(Conversation.unread_count), 0))
                 .where(
                     Conversation.agent_id == agent_id,
-                    private_scope_predicate(Conversation, context),
+                    private_scope_predicate(Conversation, viewer or context),
                 )
                 .execution_options(autoflush=False)
             )

@@ -64,7 +64,8 @@ def _old_row(connection: Connection, row_id: int, created_at: datetime, obj: str
 
 def test_single_head_is_the_c04_revision() -> None:
     script = ScriptDirectory.from_config(Config(str(BACKEND_ROOT / "alembic.ini")))
-    assert script.get_heads() == ["c04_outbox_sequence"]
+    (head,) = script.get_heads()  # later revisions (D-02 onward) build on c04
+    assert "c04_outbox_sequence" in {r.revision for r in script.iterate_revisions(head, "base")}
     revision = script.get_revision("c04_outbox_sequence")
     assert revision is not None and revision.down_revision == "c01_marketplace_acl_grants"
 

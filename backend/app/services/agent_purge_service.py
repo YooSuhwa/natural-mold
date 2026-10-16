@@ -6,6 +6,7 @@ from app.agent_runtime.checkpointer import get_checkpointer
 from app.exceptions import AppError
 from app.models.agent_purge import AgentPurgeReceipt
 from app.schemas.agent_lifecycle import AgentPurgeReceiptResponse
+from app.services.agent_purge_authz import apply_agent_tuple_deletes, queue_agent_tuple_deletes
 from app.services.agent_purge_cleanup import process_agent_purge_cleanup
 from app.services.agent_purge_preparation import prepare_agent_purge
 from app.services.agent_purge_relational import finalize_agent_purge
@@ -61,8 +62,10 @@ async def purge_agent(command: AgentPurgeCommand) -> AgentPurgeReceiptResponse:
                         )
                     )
                     await command.db.commit()
+            tuple_deletes = await queue_agent_tuple_deletes(command.db, command.agent_id)
             await finalize_agent_purge(command, prepared)
             await command.db.commit()
+            await apply_agent_tuple_deletes(tuple_deletes)
         except AppError as error:
             prepared = await _recover_committed_purge(command, error)
 

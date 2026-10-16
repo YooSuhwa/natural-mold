@@ -8,6 +8,7 @@ from typing import Any, cast
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.authz.agent_projection_scope import (
     AgentPresentation,
@@ -94,16 +95,23 @@ async def list_agents(db: AsyncSession, context: OrgContext) -> list[Agent]:
     return agents
 
 
-async def list_agent_summaries(db: AsyncSession, context: OrgContext) -> list[dict]:
-    """List user's agents as lean dashboard/sidebar summary rows."""
+async def list_agent_summaries(
+    db: AsyncSession, context: OrgContext, *, agent_scope: ColumnElement[bool] | None = None
+) -> list[dict]:
+    """List user's agents as lean dashboard/sidebar summary rows.
+
+    ``agent_scope`` replaces the owner scope with an already authorized id set
+    (enforce mode); conversation and link counts stay in the caller's scope.
+    """
 
     await require_private_actor(db, context)
+    scope = agent_scope if agent_scope is not None else private_scope_predicate(Agent, context)
     from app.models.conversation import Conversation
 
     user_agent_ids = (
         select(Agent.id)
         .where(
-            private_scope_predicate(Agent, context),
+            scope,
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
             Agent.archived_at.is_(None),
         )
@@ -162,7 +170,7 @@ async def list_agent_summaries(db: AsyncSession, context: OrgContext) -> list[di
         .outerjoin(tool_summary, Agent.id == tool_summary.c.agent_id)
         .outerjoin(mcp_tool_summary, Agent.id == mcp_tool_summary.c.agent_id)
         .where(
-            private_scope_predicate(Agent, context),
+            scope,
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
             Agent.archived_at.is_(None),
         )

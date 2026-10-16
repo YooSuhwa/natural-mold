@@ -1,4 +1,3 @@
-DELETE /api/agents/{agent_id}
 DELETE /api/agents/{agent_id}/triggers/{trigger_id}
 DELETE /api/auth/me/avatar-image
 DELETE /api/marketplace/installations/{installation_id}
@@ -9,10 +8,6 @@ GET /api/agent-api/deployments
 GET /api/agent-api/keys
 GET /api/agent-blueprints
 GET /api/agent-blueprints/{blueprint_id}
-GET /api/agents
-GET /api/agents/summary
-GET /api/agents/{agent_id}
-GET /api/agents/{agent_id}/image
 GET /api/agents/{agent_id}/triggers
 GET /api/agents/{agent_id}/usage
 GET /api/audit-events
@@ -25,7 +20,6 @@ GET /api/marketplace/items/page
 GET /api/marketplace/items/{item_id}
 GET /api/marketplace/items/{item_id}/versions
 GET /api/marketplace/versions/{version_id}
-GET /api/middlewares
 GET /api/templates
 GET /api/templates/{template_id}
 GET /api/triggers
@@ -37,7 +31,6 @@ GET /v1/agents
 GET /v1/health
 GET /v1/threads/{thread_id}
 PATCH /api/agent-api/deployments/{deployment_id}
-PATCH /api/agents/{agent_id}/favorite
 PATCH /api/auth/me/profile
 PATCH /api/marketplace/items/{item_id}
 PATCH /api/triggers/{trigger_id}
@@ -45,10 +38,8 @@ POST /api/agent-api/deployments
 POST /api/agent-api/keys
 POST /api/agent-api/keys/{api_key_id}/revoke
 POST /api/agent-blueprints/{blueprint_id}/create-agent
-POST /api/agents
 POST /api/agents/{agent_id}/assistant/message
 POST /api/agents/{agent_id}/assistant/message/resume
-POST /api/agents/{agent_id}/image
 POST /api/agents/{agent_id}/triggers
 POST /api/auth/login
 POST /api/auth/logout
@@ -81,5 +72,4 @@ POST /v1/threads
 POST /v1/threads/{thread_id}/runs/stream
 POST /v1/threads/{thread_id}/runs/wait
 POST /v1/workflows/run
-PUT /api/agents/{agent_id}
 PUT /api/agents/{agent_id}/triggers/{trigger_id}

@@ -250,26 +250,6 @@
     "count": 1
   },
   {
-    "file": "services/agent_service.py",
-    "expression": "Agent.user_id == user_id",
-    "count": 5
-  },
-  {
-    "file": "services/agent_service.py",
-    "expression": "McpServer.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/agent_service.py",
-    "expression": "Skill.user_id == user_id",
-    "count": 2
-  },
-  {
-    "file": "services/agent_service.py",
-    "expression": "Tool.visible_to(user_id)",
-    "count": 2
-  },
-  {
     "file": "services/artifacts/library.py",
     "expression": "ConversationArtifact.user_id == user_id",
     "count": 6

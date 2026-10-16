@@ -60,7 +60,10 @@ def migrated(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Connection, Modu
 def test_single_head_chain_follows_b11() -> None:
     script = ScriptDirectory.from_config(Config(str(BACKEND_ROOT / "alembic.ini")))
 
-    assert script.get_heads() == ["c04_outbox_sequence"]
+    (head,) = script.get_heads()  # later revisions (C-04, D-02 onward) build on c01
+    assert "c01_marketplace_acl_grants" in {
+        r.revision for r in script.iterate_revisions(head, "base")
+    }
     core = script.get_revision("c01_authz_core")
     grants = script.get_revision("c01_marketplace_acl_grants")
     assert core is not None and grants is not None
