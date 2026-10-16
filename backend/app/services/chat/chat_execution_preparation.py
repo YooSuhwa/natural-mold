@@ -23,6 +23,7 @@ from app.authz.agent_execution_scope import (
 from app.authz.conversation_scope import lock_private_conversation
 from app.authz.error_codes import agent_archived
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import acquire_execution_proof
 from app.authz.private_actor import require_private_actor
 from app.authz.scoping import private_scope_predicate
 from app.error_codes import conversation_not_found
@@ -82,18 +83,12 @@ async def require_executable_conversation(
     conversation_id: uuid.UUID,
     context: OrgContext,
 ) -> uuid.UUID:
-    """Lock and assert Agent lifecycle before any private execution hydration."""
-    marker_key = (conversation_id, context.user_id, context.org_id, context.tenant_id)
-    current_transaction = db.get_transaction()
-    marker = db.info.setdefault("moldy_executable_conversations", {}).get(marker_key)
-    if (
-        current_transaction is not None
-        and isinstance(marker, tuple)
-        and len(marker) == 2
-        and marker[0] is current_transaction
-        and isinstance(marker[1], uuid.UUID)
-    ):
-        return marker[1]
+    """Acquire the execution proof and assert Agent lifecycle before private hydration.
+
+    The canonical gateway locks Tenant -> Organization -> owner memberships ->
+    User -> Agent lifecycle -> this Conversation once per root transaction; a
+    repeated call in the same transaction reuses that proof without lock SQL.
+    """
     try:
         await require_private_actor(db, context)
     except AppError as exc:
@@ -112,11 +107,10 @@ async def require_executable_conversation(
         raise conversation_not_found()
     if row.agent_id is None or row.agent_lifecycle_state == "purged":
         raise agent_archived()
-    await load_agent_tree_for_execution(db, AgentExecutionTarget(row.agent_id, context))
-    db.info["moldy_executable_conversations"][marker_key] = (
-        db.get_transaction(),
-        row.agent_id,
+    await acquire_execution_proof(
+        db, context, root_agent_id=row.agent_id, conversation_ids=(conversation_id,)
     )
+    await load_agent_tree_for_execution(db, AgentExecutionTarget(row.agent_id, context))
     return row.agent_id
 
 

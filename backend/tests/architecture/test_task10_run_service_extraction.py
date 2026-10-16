@@ -167,16 +167,27 @@ async def test_stream_ctx_finalize_callback_observes_late_facade_patch(monkeypat
 
 
 async def test_create_run_observes_late_facade_active_run_patch(monkeypatch) -> None:
-    async def lock_conversation(_db: object, target: Any) -> object:
-        return SimpleNamespace(id=target.conversation_id)
+    from app.models.conversation import Conversation
 
-    async def ensure_policy(_db: object, _target: object) -> tuple[None, None, object]:
+    conversation_id, agent_id = uuid.uuid4(), uuid.uuid4()
+    held = Conversation(id=conversation_id, agent_id=agent_id)
+    proof = SimpleNamespace(
+        require_live=lambda _db: None,
+        require_scope=lambda _scope: None,
+        covers_conversation=lambda _cid: True,
+        cursor=SimpleNamespace(held_row=lambda _cls, _cid: held),
+    )
+
+    async def ensure_policy(_db: object, _proof: object, _target: object) -> tuple:
         return None, None, object()
 
-    monkeypatch.setattr(conversation_run_creation, "lock_run_conversation", lock_conversation)
+    monkeypatch.setattr(conversation_run_creation, "live_proof", lambda _db: proof)
     monkeypatch.setattr(
-        conversation_run_creation, "ensure_conversation_runtime_policy", ensure_policy
+        conversation_run_creation,
+        "ensure_conversation_runtime_policy_from_locked_proof",
+        ensure_policy,
     )
+    monkeypatch.setattr(conversation_run_creation, "execution_scope", lambda _ctx: None)
     seen: list[str] = []
     for label in ("first", "second"):
 
@@ -188,8 +199,8 @@ async def test_create_run_observes_late_facade_active_run_patch(monkeypatch) -> 
         with pytest.raises(HTTPException) as raised:
             await conversation_run_service.create_run(
                 SimpleNamespace(),  # type: ignore[arg-type]
-                conversation_id=uuid.uuid4(),
-                agent_id=uuid.uuid4(),
+                conversation_id=conversation_id,
+                agent_id=agent_id,
                 context=SimpleNamespace(),  # type: ignore[arg-type]
                 source="chat",
                 input_preview=None,

@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.authz.execution_lock_cursor import ExecutionProofError
 from app.exceptions import AppError
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,17 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status,
             content={"error": {"code": exc.code, "message": exc.message}},
+        )
+
+    @app.exception_handler(ExecutionProofError)
+    async def execution_proof_error_handler(
+        request: Request, exc: ExecutionProofError
+    ) -> JSONResponse:
+        # Canonical execution-order violations are conflicts, never 500s.
+        logger.warning("execution proof denied: %s %s", exc.code, request.url.path)
+        return JSONResponse(
+            status_code=409,
+            content={"error": {"code": exc.code, "message": "실행 권한 확인에 실패했습니다"}},
         )
 
     @app.exception_handler(RequestValidationError)

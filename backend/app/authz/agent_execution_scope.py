@@ -9,7 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.error_codes import agent_archived
+from app.authz.execution_lock_cursor import ExecutionProofError
+from app.authz.execution_transaction_tracker import claimed_locks
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_proof import execution_scope, live_proof
 from app.authz.private_actor import require_private_actor
 from app.authz.scoping import private_scope_predicate
 from app.error_codes import agent_not_found
@@ -75,10 +78,32 @@ async def authorize_agent_root_mutation(db: AsyncSession, target: AgentExecution
 async def load_agent_tree_for_execution(
     db: AsyncSession, target: AgentExecutionTarget
 ) -> ExecutableAgentTree:
-    """Fresh-authorize and lock a complete active tree before loading Agent content."""
-    await require_private_actor(db, target.context)
+    """Fresh-authorize and lock a complete active tree before loading Agent content.
+
+    Inside a live execution proof the tree's lifecycle locks are already held,
+    so the exact tree is re-read without lock SQL; any other tree is denied.
+    """
+    proof = live_proof(db)
+    if proof is None:
+        # Canonical order: the parent/member/User prefix precedes any
+        # lifecycle advisory lock even when no execution proof is issued.
+        from app.authz.organization_execution_gateway import require_execution_prefix
+
+        await require_private_actor(db, target.context)
+        await require_execution_prefix(db, target.context)
     with db.no_autoflush:
-        snapshot = await lock_agent_tree_preserving_unrelated_writes(db, target.root_agent_id)
+        if proof is not None:
+            proof.require_scope(execution_scope(target.context))
+            snapshot = await read_agent_tree(db, target.root_agent_id)
+            if target.root_agent_id not in proof.agent_ids or not set(snapshot.agent_ids).issubset(
+                proof.agent_ids
+            ):
+                raise ExecutionProofError("execution_scope_expansion_denied")
+        else:
+            with claimed_locks(db):
+                snapshot = await lock_agent_tree_preserving_unrelated_writes(
+                    db, target.root_agent_id
+                )
         assert_agent_tree_executable(snapshot, target.context)
         agents = tuple(
             sorted(

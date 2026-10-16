@@ -6,7 +6,9 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import held_conversation, lock_many, lock_query
 from app.authz.private_actor import require_private_actor
 from app.authz.scoping import private_scope_predicate
 from app.exceptions import AppError
@@ -42,6 +44,9 @@ async def lock_owned_conversation(
     conversation_id: uuid.UUID,
     context: OrgContext,
 ) -> Conversation:
+    held = held_conversation(db, conversation_id)
+    if held is not None:
+        return held
     try:
         await require_private_actor(db, context)
     except AppError as exc:
@@ -96,14 +101,16 @@ async def _pending_input_for_update(
         conversation_id=conversation_id,
         context=context,
     )
-    queued = await db.scalar(
+    queued = await lock_query(
+        db,
+        LockClass.INPUT,
         select(ConversationRunInput)
         .where(
             ConversationRunInput.id == input_id,
             ConversationRunInput.conversation_id == conversation_id,
             ConversationRunInput.user_id == user_id,
         )
-        .with_for_update()
+        .with_for_update(),
     )
     if queued is None:
         raise queue_input_not_found()
@@ -175,16 +182,17 @@ async def reorder_pending_inputs(
         conversation_id=conversation_id,
         context=context,
     )
-    result = await db.execute(
+    pending = await lock_many(
+        db,
+        LockClass.INPUT,
         select(ConversationRunInput)
         .where(
             ConversationRunInput.conversation_id == conversation_id,
             ConversationRunInput.user_id == user_id,
             ConversationRunInput.status == "pending",
         )
-        .with_for_update()
+        .with_for_update(),
     )
-    pending = list(result.scalars().all())
     by_id = {item.id: item for item in pending}
     if len(ordered_input_ids) != len(set(ordered_input_ids)) or set(ordered_input_ids) != set(
         by_id

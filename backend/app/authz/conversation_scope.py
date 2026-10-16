@@ -63,6 +63,11 @@ def require_conversation_agent_id(conversation: Conversation) -> UUID:
 async def lock_private_conversation(
     db: AsyncSession, conversation_id: UUID, context: OrgContext
 ) -> Conversation:
+    from app.authz.organization_execution_gateway import held_conversation
+
+    held = held_conversation(db, conversation_id)
+    if held is not None:
+        return held
     await _require_current_actor(db, context)
     row = await db.scalar(
         select(Conversation)

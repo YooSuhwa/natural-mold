@@ -7,7 +7,9 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import lock_query
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
 from app.services.conversation_run_queue_mutations import (
@@ -48,14 +50,31 @@ async def promote_pending_input(
     if conversation.queue_paused:
         raise _conflict("Resume the conversation queue before steering")
 
-    queued = await db.scalar(
+    # Canonical order locks the active Run before any Input row (the held
+    # Conversation lock already serializes both); validation order is unchanged.
+    active = await conversation_run_service.get_active_run(
+        db,
+        conversation_id=conversation_id,
+        context=context,
+    )
+    if active is not None:
+        active = await conversation_run_service.get_run_for_user(
+            db,
+            conversation_id=conversation_id,
+            run_id=active.id,
+            context=context,
+            for_update=True,
+        )
+    queued = await lock_query(
+        db,
+        LockClass.INPUT,
         select(ConversationRunInput)
         .where(
             ConversationRunInput.id == input_id,
             ConversationRunInput.conversation_id == conversation_id,
             ConversationRunInput.user_id == user_id,
         )
-        .with_for_update()
+        .with_for_update(),
     )
     if queued is None:
         raise queue_input_not_found()
@@ -75,20 +94,6 @@ async def promote_pending_input(
     )
     if interrupted is not None:
         raise _conflict("Resolve the pending approval before steering")
-
-    active = await conversation_run_service.get_active_run(
-        db,
-        conversation_id=conversation_id,
-        context=context,
-    )
-    if active is not None:
-        active = await conversation_run_service.get_run_for_user(
-            db,
-            conversation_id=conversation_id,
-            run_id=active.id,
-            context=context,
-            for_update=True,
-        )
 
     queued.priority = _INTERRUPT_PRIORITY
     queued.revision += 1

@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import require_execution_prefix
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scope_predicate
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, Agent
@@ -55,6 +56,8 @@ async def get_or_create_skill_builder_agent(db: AsyncSession, context: OrgContex
     if existing is not None:
         return existing
 
+    # Parent creation gate before the hidden Agent insert (archived org denies).
+    await require_execution_prefix(db, context)
     resolved = await resolve_system_model(db, "text_primary")
     agent = Agent(
         user_id=context.user_id,

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.identity import make_agent_runtime_name, validate_identity_mode
 from app.agent_runtime.runtime_policy import runtime_policy_to_json
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import require_execution_prefix
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scope_predicate, resource_candidates
 from app.models.agent import Agent
@@ -111,6 +112,9 @@ async def create_agent(db: AsyncSession, data: AgentCreate, context: OrgContext)
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    # Parent creation gate: Tenant -> Organization -> owner memberships -> User,
+    # freshly revalidated, before the Agent insert (archived org denies).
+    await require_execution_prefix(db, context)
     await _validate_agent_binding_ids(db, data, context)
     fallback_ids = data.model_fallback_ids or []
 

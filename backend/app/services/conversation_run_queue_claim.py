@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import lock_query
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
@@ -61,7 +63,9 @@ async def claim_next_input(
         await db.flush()
         return None
 
-    queued = await db.scalar(
+    queued = await lock_query(
+        db,
+        LockClass.INPUT,
         select(ConversationRunInput)
         .where(
             ConversationRunInput.conversation_id == conversation_id,
@@ -74,7 +78,7 @@ async def claim_next_input(
             ConversationRunInput.created_at,
         )
         .limit(1)
-        .with_for_update()
+        .with_for_update(),
     )
     if queued is None:
         return None

@@ -25,7 +25,9 @@ from app.authz.conversation_run_scope import (
     private_run_predicate,
     resume_parent_predicate,
 )
+from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import lock_query
 from app.authz.private_actor import require_private_actor
 from app.config import settings
 from app.exceptions import ConflictError
@@ -218,7 +220,7 @@ async def get_run_for_user(
         private_run_predicate(context),
     )
     if for_update:
-        stmt = stmt.with_for_update()
+        return await lock_query(db, LockClass.RUN, stmt.with_for_update())
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 

@@ -11,7 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import acquire_execution_proof, lock_row
 from app.authz.trigger_scope import require_trigger_actor
 from app.exceptions import AppError
 from app.models.agent import Agent
@@ -49,12 +51,18 @@ async def claim_trigger_run(
 
     try:
         context = await require_trigger_actor(db, trigger)
+        # The unlocked lookup above is only an ID hint: enter the canonical
+        # gateway (parent/member/User prefix + Agent tree) before the trigger lock.
+        proof = await acquire_execution_proof(db, context, root_agent_id=trigger.agent_id)
         await load_agent_tree_for_execution(db, AgentExecutionTarget(trigger.agent_id, context))
-        trigger = await db.scalar(
+        trigger = await lock_row(
+            db,
+            proof.cursor,
+            LockClass.TRIGGER,
+            trigger_uuid,
             select(AgentTrigger)
             .where(AgentTrigger.id == trigger_uuid, AgentTrigger.agent_id == trigger.agent_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
+            .with_for_update(),
         )
         if trigger is None:
             return None

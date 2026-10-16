@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import require_execution_prefix
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.error_codes import session_not_found
 from app.models.agent import Agent
@@ -74,6 +75,8 @@ async def confirm_build(
             db, context, config.get("tools", [])
         )
 
+        # Parent creation gate before the Agent insert (archived org denies).
+        await require_execution_prefix(db, context)
         # 에이전트 생성
         agent = Agent(
             user_id=context.user_id,

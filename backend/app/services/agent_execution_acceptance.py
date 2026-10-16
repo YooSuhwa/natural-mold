@@ -18,14 +18,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only, noload
 
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import acquire_execution_proof, lock_row
+from app.authz.organization_execution_proof import ExecutionTransactionProof
 from app.models.agent_api import AgentApiRun
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
-from app.services import conversation_run_service
 from app.services.agent_lifecycle_locks import AgentTreeSnapshot
+from app.services.conversation_run_creation import create_run_from_locked_proof
 from app.services.conversation_run_envelope_projection import (
     api_status_for_run,
     trigger_status_for_run,
@@ -99,6 +102,7 @@ def _participant_paths(snapshot: AgentTreeSnapshot) -> Mapping[uuid.UUID, tuple[
 async def _validated_envelope(
     db: AsyncSession,
     request: OwnedExecutionRequest,
+    proof: ExecutionTransactionProof,
 ) -> AgentApiRun | AgentTriggerRun | None:
     envelope = request.envelope
     if request.source == "chat":
@@ -108,7 +112,11 @@ async def _validated_envelope(
     if envelope is None or envelope.kind != request.source:
         raise ExecutionOwnershipError("External execution requires its matching business envelope")
     if request.source == "api":
-        row: AgentApiRun | AgentTriggerRun | None = await db.scalar(
+        row: AgentApiRun | AgentTriggerRun | None = await lock_row(
+            db,
+            proof.cursor,
+            LockClass.ENVELOPE,
+            envelope.envelope_id,
             select(AgentApiRun)
             .options(
                 load_only(
@@ -123,11 +131,14 @@ async def _validated_envelope(
                 noload(AgentApiRun.thread),
             )
             .where(AgentApiRun.id == envelope.envelope_id)
-            .with_for_update()
-            .execution_options(populate_existing=True, autoflush=False)
+            .with_for_update(),
         )
     else:
-        row = await db.scalar(
+        row = await lock_row(
+            db,
+            proof.cursor,
+            LockClass.ENVELOPE,
+            envelope.envelope_id,
             select(AgentTriggerRun)
             .options(
                 load_only(
@@ -143,8 +154,7 @@ async def _validated_envelope(
                 noload(AgentTriggerRun.conversation),
             )
             .where(AgentTriggerRun.id == envelope.envelope_id)
-            .with_for_update()
-            .execution_options(populate_existing=True, autoflush=False)
+            .with_for_update(),
         )
     if (
         row is None
@@ -193,13 +203,25 @@ async def accept_owned_execution(
     db: AsyncSession,
     request: OwnedExecutionRequest,
 ) -> OwnedExecutionAcceptance:
-    """Accept one run, its full tree, and its business link under lifecycle locks."""
+    """Accept one run, its full tree, and its business link under lifecycle locks.
+
+    The canonical execution proof (parent/member/User prefix, Agent tree,
+    Conversation) is obtained before the envelope is validated or the run is
+    created; every later lock follows the proof's cursor.
+    """
+    proof = await acquire_execution_proof(
+        db,
+        request.context,
+        root_agent_id=request.root_agent_id,
+        conversation_ids=(request.conversation_id,),
+    )
     executable = await load_agent_tree_for_execution(
         db, AgentExecutionTarget(request.root_agent_id, request.context)
     )
-    envelope = await _validated_envelope(db, request)
-    run = await conversation_run_service.create_run(
+    envelope = await _validated_envelope(db, request, proof)
+    run = await create_run_from_locked_proof(
         db,
+        proof,
         conversation_id=request.conversation_id,
         agent_id=request.root_agent_id,
         context=request.context,
