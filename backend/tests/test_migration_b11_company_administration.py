@@ -23,10 +23,12 @@ IMMUTABLE_REVISIONS = {
 }
 
 
-def test_b11_is_the_single_head_after_immutable_b08() -> None:
+def test_b11_follows_immutable_b08_on_the_single_head_chain() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["b11_company_administration"]
+    heads = script.get_heads()
+    assert len(heads) == 1
+    assert "b11_company_administration" in {rev.revision for rev in script.walk_revisions()}
     revision = script.get_revision("b11_company_administration")
     assert revision is not None
     assert revision.down_revision == "b08_agent_lifecycle"

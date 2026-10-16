@@ -58,8 +58,8 @@ def test_agent_lifecycle_lane_runs_deployable_b11_head() -> None:
     with psycopg.connect(dsn) as connection:
         row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
 
-    # Then the lane reaches B11 while retaining B08 lifecycle history, not ORM create_all.
-    assert row == ("b11_company_administration",)
+    # Then the lane reaches the C01 head while retaining B08 history, not ORM create_all.
+    assert row == ("c01_marketplace_acl_grants",)
 
 
 async def test_full_lifecycle_graph_has_real_auth_roles_rows_and_bytes(

@@ -16,6 +16,7 @@ from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.audit_event import AuditEvent
+from app.models.authz import AuthzOutbox, AuthzRevocation, AuthzShadowDiff, ResourceGrant
 from app.models.builder_session import BuilderSession
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
@@ -116,6 +117,9 @@ __all__ = [
     "AgentTrigger",
     "AgentTriggerRun",
     "AuditEvent",
+    "AuthzOutbox",
+    "AuthzRevocation",
+    "AuthzShadowDiff",
     "BuilderSession",
     "Conversation",
     "ConversationArtifact",
@@ -153,6 +157,7 @@ __all__ = [
     "MessageFeedback",
     "Model",
     "RefreshToken",
+    "ResourceGrant",
     "ShareLink",
     "Skill",
     "SkillBuilderSession",

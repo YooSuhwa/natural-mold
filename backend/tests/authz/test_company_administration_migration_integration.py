@@ -38,7 +38,7 @@ def test_b08_upgrade_backfills_archive_timestamp_and_roundtrips() -> None:
             )
             assert observed == expected
         command.downgrade(lane.config, "b08_agent_lifecycle")
-        command.upgrade(lane.config, "head")
+        command.upgrade(lane.config, "b11_company_administration")
         with lane.engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
                 "b11_company_administration"
