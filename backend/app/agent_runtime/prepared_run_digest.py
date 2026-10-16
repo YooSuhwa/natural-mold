@@ -29,6 +29,7 @@ class PreparedRunDigestMaterial:
     tool_access: Mapping[str, str]
     checkpoint_lineage: tuple[str, str, str | None]
     secret_reference_ids: tuple[str, ...]
+    descriptor_ids: frozenset[str] = frozenset()
 
 
 def _strings(field_name: str, values: Mapping[str, str]) -> dict[str, str]:
@@ -71,6 +72,7 @@ def canonical_digest_bytes(material: PreparedRunDigestMaterial) -> bytes:
         "tool_access": _strings("tool_access", material.tool_access),
         "checkpoint_lineage": _lineage(material.checkpoint_lineage),
         "secret_reference_ids": sorted(set(material.secret_reference_ids)),
+        "descriptor_ids": sorted(material.descriptor_ids),
     }
     return json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
 

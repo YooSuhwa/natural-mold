@@ -210,6 +210,9 @@ class PreparedRunLease:
     tool_access: Mapping[str, ToolAccessClass]
     secret_values: frozenset[str] = field(repr=False)
     close: Callable[[], Awaitable[None]] | None = field(default=None, repr=False)
+    # Frozen union of every participant's effective capability descriptor IDs
+    # (``lease_descriptor_ids``); leaf guards dispatch only IDs in this set.
+    descriptor_ids: frozenset[str] = frozenset()
 
     def __reduce_ex__(self, protocol: object) -> NoReturn:
         raise TypeError("PreparedRunLease is process-local and cannot be serialized or copied")

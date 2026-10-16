@@ -48,6 +48,7 @@ def test_digest_is_deterministic_across_mapping_order() -> None:
         {"tool_access": {"search": "live_application_resource", "write_file": "run_output"}},
         {"checkpoint_lineage": ("thread", "", "checkpoint-2")},
         {"secret_reference_ids": ("credential:llm",)},
+        {"descriptor_ids": frozenset({"tool:root:registry:search"})},
     ],
 )
 def test_digest_changes_with_any_bound_field(override: dict[str, object]) -> None:

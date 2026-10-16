@@ -195,6 +195,7 @@ def build_agent_impl(
     name: str | None = None,
     subagents: list[dict[str, Any]] | None = None,
     bindings: DeepAgentFactoryBindings,
+    prepared_task_middleware: AgentMiddleware | None = None,
 ) -> Any:
     resolved_backend = backend if backend is not None else StateBackend()
     compatible_middleware = bindings.with_compatibility(
@@ -202,15 +203,23 @@ def build_agent_impl(
         backend=resolved_backend,
         permissions=permissions,
     )
-    compatible_subagents = bindings.normalize_subagents(
-        subagents,
-        model=model,
-        tools=tools,
-        backend=resolved_backend,
-        permissions=permissions,
-        interrupt_on=interrupt_on,
-        skills=skills,
-    )
+    if prepared_task_middleware is not None:
+        # Prepared leases: every child is already a compiled base child (including
+        # general-purpose) and the interceptor is the first app tool-call wrapper.
+        if not subagents or any("runnable" not in spec for spec in subagents):
+            raise ValueError("prepared runs require precompiled subagents")
+        compatible_middleware = [prepared_task_middleware, *compatible_middleware]
+        compatible_subagents = list(subagents)
+    else:
+        compatible_subagents = bindings.normalize_subagents(
+            subagents,
+            model=model,
+            tools=tools,
+            backend=resolved_backend,
+            permissions=permissions,
+            interrupt_on=interrupt_on,
+            skills=skills,
+        )
     return bindings.create_deep_agent(
         model=model,
         tools=tools,
