@@ -180,11 +180,21 @@ class ItemGate:
                 return moderated
         row = await self._load(item_id, scope=_reachable(self.ctx))
         await self._require(item_id, row, Verdict.NOT_FOUND)
-        if row is None or not _status_visible(row, self.ctx, self.permission):
+        if row is None or not await self._status_ok(item_id, row):
             raise marketplace_item_not_found()
         if self.then is not None:
             await self.then(row)
         return row
+
+    async def _status_ok(self, item_id: UUID, row: Item) -> bool:
+        """The status rule; like the legacy owner, a manager also views a hidden state
+        (a non-owner manager's disable read-back is the item, not a 404 after commit)."""
+        if _status_visible(row, self.ctx, self.permission):
+            return True
+        if self.permission != "can_view":
+            return False
+        p, obj = Principal.for_user(self.ctx), f"{FGA_TYPE}:{item_id}"
+        return await self.authz.my_permissions(p, obj, ["can_manage"], legacy=[]) != []
 
     async def _require(self, item_id: UUID, row: Item | None, legacy: Verdict) -> None:
         await self.authz.require(
