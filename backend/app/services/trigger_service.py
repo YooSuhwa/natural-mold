@@ -39,6 +39,13 @@ from app.services.agent_execution_runtime import RuntimeOwnershipRequest, run_ow
 from app.services.conversation_runtime_policy import (
     ensure_conversation_runtime_policy as _ensure_conversation_runtime_policy,
 )
+from app.services.prepared_trigger_entry import (
+    run_prepared_trigger as run_prepared_trigger_execution,
+)
+from app.services.prepared_trigger_resolver import (
+    PreparedTriggerTarget,
+    PreparedTriggerTerminalError,
+)
 from app.services.trigger_control_service import (
     _ensure_agent_fixed_for_trigger,
     _validate_target_conversation,
@@ -194,9 +201,12 @@ async def schedule_summary(db: AsyncSession, context: OrgContext) -> dict[str, i
 __all__ = [
     "ExecutionEnvelopeRef",
     "OwnedExecutionRequest",
+    "PreparedTriggerTarget",
+    "PreparedTriggerTerminalError",
     "RuntimeOwnershipRequest",
     "accept_owned_execution",
     "run_owned_execution",
+    "run_prepared_trigger_execution",
 ]
 __all__ += ["CronTrigger", "ResolvedRuntimePolicy", "AgentExecutionTarget"]
 __all__ += ["load_agent_tree_for_execution", "private_scoped", "conversation_not_found"]

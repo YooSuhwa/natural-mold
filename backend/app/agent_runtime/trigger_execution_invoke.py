@@ -13,11 +13,17 @@ from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.identity import AgentIdentityError
 from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.trigger_agent_config import (
+    TriggerConfigSource,
+    build_trigger_agent_config,
+)
 from app.agent_runtime.trigger_execution_materialization import (
     TriggerMaterialized,
     TriggerOutcome,
 )
+from app.config import settings
 from app.exceptions import AppError
+from app.models.agent import Agent
 from app.services import trigger_service
 
 logger = logging.getLogger("app.agent_runtime.trigger_executor")
@@ -29,6 +35,16 @@ def _executor_attr(name: str) -> Any:
     from app.agent_runtime import trigger_executor
 
     return getattr(trigger_executor, name)
+
+
+async def _configure_legacy_children(db: AsyncSession, agent: Agent, cfg: AgentConfig) -> None:
+    await _executor_attr("_configure_trigger_subagents")(
+        _executor_attr("_TriggerSubagentBuild")(agent, db, cfg)
+    )
+    # ADR-021 H1 — populate the eager secret set (subagents resolved above)
+    # so value-based redaction masks trigger-run trace persistence too.
+    # ``.update`` preserves the subagent secrets already unioned above.
+    cfg.secret_values.update(collect_cfg_secret_values(cfg))
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,64 +72,41 @@ async def invoke_trigger_run(
     api_key = await _executor_attr("resolve_llm_api_key_for_agent")(
         db, agent, AgentCredentialAccess(context, identity)
     )
-    base_url = agent.model.base_url
-
     fallback_chain = await _executor_attr("_resolve_fallback_chain")(db, agent.model_fallback_list)
-    provider_api_keys: dict[str, str | None] | None = (
-        {agent.model.provider: api_key} if api_key else None
-    )
-
-    cfg = AgentConfig(
-        org_context=context,
-        provider=agent.model.provider,
-        model_name=agent.model.model_name,
-        api_key=api_key,
-        base_url=base_url,
-        system_prompt=effective_prompt,
-        tools_config=tools_config,
-        thread_id=str(conversation.id),
-        runtime_policy=runtime_policy,
-        model_params=agent.model_params,
-        middleware_configs=agent.middleware_configs,
-        agent_skills=agent_skills or None,
-        agent_id=str(agent.id),
-        agent_name=agent.name,
-        provider_api_keys=provider_api_keys,
-        context_window=agent.model.context_window,
-        user_id=str(agent.user_id),
-        model_id=str(agent.model.id) if agent.model else None,
-        llm_credential_id=(
-            str(agent.llm_credential.id) if agent.llm_credential is not None else None
-        ),
-        model_fallback_chain=fallback_chain,
-        agent_owner_user_id=str(agent.user_id),
-        caller_user_id=None,
-        credential_subject_user_id=str(identity.credential_subject_user_id),
-        identity_mode=identity.identity_mode,
-        agent_runtime_name=identity.runtime_name,
+    cfg = build_trigger_agent_config(
+        TriggerConfigSource(
+            agent=agent,
+            context=context,
+            identity=identity,
+            effective_prompt=effective_prompt,
+            agent_skills=agent_skills,
+            tools_config=tools_config,
+            thread_id=str(conversation.id),
+            runtime_policy=runtime_policy,
+            api_key=api_key,
+            fallback_chain=fallback_chain,
+        )
     )
     await db.flush()
-    try:
-        await _executor_attr("_configure_trigger_subagents")(
-            _executor_attr("_TriggerSubagentBuild")(agent, db, cfg)
-        )
-    except AgentIdentityError as exc:
-        logger.warning("Trigger %s blocked by subagent identity policy: %s", trigger_id, exc)
-        await trigger_service.finish_trigger_run(
-            db,
-            trigger=trigger,
-            run=run,
-            conversation=conversation,
-            status="failed",
-            error_message=str(exc),
-            thread_id=str(conversation.id),
-        )
-        await db.refresh(run)
-        return TriggerOutcome(run)
-    # ADR-021 H1 — populate the eager secret set (subagents resolved above)
-    # so value-based redaction masks trigger-run trace persistence too.
-    # ``.update`` preserves the subagent secrets already unioned above.
-    cfg.secret_values.update(collect_cfg_secret_values(cfg))
+    # Task 10 I18: a prepared trigger resolves children under the materialization
+    # locks; the legacy child config is deferred to the unsupported fallback.
+    prepared = settings.prepared_run_lease_enabled
+    if not prepared:
+        try:
+            await _configure_legacy_children(db, agent, cfg)
+        except AgentIdentityError as exc:
+            logger.warning("Trigger %s blocked by subagent identity policy: %s", trigger_id, exc)
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=conversation,
+                status="failed",
+                error_message=str(exc),
+                thread_id=str(conversation.id),
+            )
+            await db.refresh(run)
+            return TriggerOutcome(run)
     run.conversation_id = conversation.id
     await db.flush()
     accepted = await trigger_service.accept_owned_execution(
@@ -134,16 +127,40 @@ async def invoke_trigger_run(
             _executor_attr("_TriggerInvocation")(cfg, trigger.input_message, accepted.run_id)
         )
 
+    ownership = trigger_service.RuntimeOwnershipRequest(
+        run_id=accepted.run_id,
+        conversation_id=conversation.id,
+        root_agent_id=agent.id,
+        context=context,
+    )
+
+    async def legacy_fallback() -> str:
+        async with _executor_attr("async_session")() as child_db:
+            await _configure_legacy_children(child_db, agent, cfg)
+        return await invoke()
+
     try:
-        output = await trigger_service.run_owned_execution(
-            trigger_service.RuntimeOwnershipRequest(
-                run_id=accepted.run_id,
-                conversation_id=conversation.id,
-                root_agent_id=agent.id,
-                context=context,
-            ),
-            invoke,
+        if prepared:
+            # Task 10 I18: lock, revalidate, materialize and dispatch the lease;
+            # unsupported shapes fall back to the legacy invoke before the marker.
+            target = trigger_service.PreparedTriggerTarget(
+                trigger.id, run.id, run.source == "run_now", ownership
+            )
+            output = await trigger_service.run_prepared_trigger_execution(target, legacy_fallback)
+        else:
+            output = await trigger_service.run_owned_execution(ownership, invoke)
+    except trigger_service.PreparedTriggerTerminalError as exc:
+        logger.info("Trigger %s %s before activation", trigger_id, exc.status)
+        await trigger_service.finish_trigger_run(
+            db,
+            trigger=trigger,
+            run=run,
+            conversation=conversation,
+            status=exc.status,
+            error_message=exc.message,
         )
+        await db.refresh(run)
+        return TriggerOutcome(run)
     except AppError as exc:
         logger.info("Trigger %s stopped before invoke: %s", trigger_id, exc.code)
         await db.refresh(run)
