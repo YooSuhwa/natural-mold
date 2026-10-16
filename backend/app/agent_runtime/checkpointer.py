@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
 from app.config import settings
@@ -8,6 +9,8 @@ from app.config import settings
 if TYPE_CHECKING:
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from psycopg_pool import AsyncConnectionPool
+
+    from app.agent_runtime.lease_checkpoint_saver import LeaseCheckpointSaver
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +93,36 @@ def get_checkpointer() -> AsyncPostgresSaver:
     if _checkpointer is None:
         raise RuntimeError("Checkpointer not initialized. Call init_checkpointer() first.")
     return _checkpointer
+
+
+async def create_lease_checkpointer(
+    *,
+    thread_id: str,
+    checkpoint_id: str | None,
+    run_id: str,
+    child_node_names: Iterable[str],
+    delta_channels: Sequence[str],
+) -> LeaseCheckpointSaver:
+    """Capture the run's seed once (caller holds the canonical locks) and bind a saver."""
+    from app.agent_runtime.checkpoint_seed import capture_checkpoint_seed
+    from app.agent_runtime.lease_checkpoint_namespace import LeaseNamespaceAuthority
+    from app.agent_runtime.lease_checkpoint_saver import LeaseCheckpointSaver
+
+    upstream = get_checkpointer()
+    names = tuple(child_node_names)
+    seed = await capture_checkpoint_seed(
+        upstream,
+        thread_id=thread_id,
+        checkpoint_id=checkpoint_id,
+        delta_channels=delta_channels,
+        child_node_names=names,
+    )
+    return LeaseCheckpointSaver(
+        upstream,
+        seed=seed,
+        run_id=run_id,
+        namespaces=LeaseNamespaceAuthority(names),
+    )
 
 
 async def delete_thread(thread_id: str) -> None:
