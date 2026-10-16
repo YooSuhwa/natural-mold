@@ -174,7 +174,9 @@ async def build_agent_config_for_loaded_agent(
     current_user: CurrentUser | None = None,
     checkpoint_id: str | None = None,
     runtime_policy: ResolvedRuntimePolicy = LEGACY_RUNTIME_POLICY,
+    include_subagents: bool = True,
 ) -> AgentConfig:
+    """``include_subagents=False`` (prepared-lease adapters) skips legacy child compilation."""
     require_runtime_capability_tree(agent, context)
     if agent.model is None:
         raise ValidationError("AGENT_MODEL_REQUIRED", "agent has no model bound")
@@ -244,12 +246,13 @@ async def build_agent_config_for_loaded_agent(
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
     )
-    cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
-        agent,
-        db=db,
-        parent_cfg=cfg,
-        is_trigger_mode=source == "trigger",
-    )
+    if include_subagents:
+        cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
+            agent,
+            db=db,
+            parent_cfg=cfg,
+            is_trigger_mode=source == "trigger",
+        )
     # ADR-021 H1 — populate the eager secret set so value-based redaction works
     # for Agent API / non-chat entrypoints (Agent API stream already installs
     # the ContextVar via execute_agent_stream, so this set becomes effective).

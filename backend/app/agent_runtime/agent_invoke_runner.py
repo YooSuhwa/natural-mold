@@ -77,6 +77,7 @@ async def execute_prepared_agent_invoke(
     *,
     stream_input: Any = USE_LEASE_MESSAGES,
     moldy_source: str = "trigger",
+    run_id: str | None = None,
 ) -> str:
     """Invoke the exact activated lease graph (Task 10 I20); never ``_prepare_agent``.
 
@@ -91,7 +92,7 @@ async def execute_prepared_agent_invoke(
             lease.runnable,
             lease_graph_input(lease, stream_input),
             lease_run_config(lease),
-            run_id=str(lease.binding.run_id),
+            run_id=run_id or str(lease.binding.run_id),
             moldy_source=moldy_source,
             secret_values=lease.secret_values,
             hooks_enabled=False,

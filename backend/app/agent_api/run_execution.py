@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, Literal
@@ -18,6 +19,7 @@ from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.agent_runtime.streaming import StreamErrorRecord
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scoped
+from app.config import settings
 from app.exceptions import ConflictError, NotFoundError
 from app.models.agent_api import AgentApiRun, AgentDeployment
 from app.models.conversation import Conversation
@@ -38,6 +40,14 @@ def _runtime_attr(name: str) -> Any:
     from app.agent_api import runtime_service
 
     return getattr(runtime_service, name)
+
+
+def _prepared() -> Any:
+    """Call-time import: ``prepared_execution`` depends on this module's builder."""
+
+    from app.agent_api import prepared_execution
+
+    return prepared_execution
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +89,10 @@ async def mark_run_failed(
 
 
 async def execute_owned_wait(request: ApiOwnedExecution) -> str:
+    if settings.prepared_run_lease_enabled:
+        prepared = await _prepared().materialize_api_run(request, "invoke")
+        if prepared is not None:
+            return await _prepared().execute_prepared_wait(request, prepared)
     ownership = RuntimeOwnershipRequest(
         request.conversation_run_id,
         request.conversation_id,
@@ -96,6 +110,13 @@ async def execute_owned_wait(request: ApiOwnedExecution) -> str:
 
 
 async def stream_owned_run(request: ApiOwnedExecution) -> AsyncGenerator[str, None]:
+    if settings.prepared_run_lease_enabled:
+        prepared = await _prepared().materialize_api_run(request, "stream")
+        if prepared is not None:
+            async with aclosing(_prepared().stream_prepared_run(request, prepared)) as chunks:
+                async for chunk in chunks:
+                    yield chunk
+            return
     ownership = RuntimeOwnershipRequest(
         request.conversation_run_id,
         request.conversation_id,
@@ -138,6 +159,7 @@ async def build_config_for_run(
     conversation: Conversation,
     external_user: str | None,
     required_scope: Literal["invoke", "stream"],
+    include_subagents: bool = True,
 ):
     authorized = await authorize_deployment(db, principal, deployment.id)
     principal, deployment = authorized.principal, authorized.deployment
@@ -181,4 +203,5 @@ async def build_config_for_run(
         ),
         source="api",
         runtime_policy=runtime_policy,
+        **({} if include_subagents else {"include_subagents": False}),
     )
