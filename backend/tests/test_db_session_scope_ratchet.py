@@ -43,6 +43,7 @@ PLATFORM_REASONS: dict[str, str] = {
     "authz.outbox_drain": "8.6 item 6 leader drain of the instance-wide outbox",
     "authz.expiry_cleanup": "8.6 item 7 leader expiry of every company's grants + pruning",
     "authz.backlog_alert": "14.3 instance-wide outbox lag and stuck-marker alert",
+    "authz.revocation_overlay": "8.6 step 4 instance-wide pending-marker hint + overlay",
     "conversation_run.lifecycle": "interim run-id keyed lifecycle writes (I-06 threading)",
     "conversation_run.queue": "interim queue claim/recovery; dispatch resolves company",
 }

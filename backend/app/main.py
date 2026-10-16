@@ -64,6 +64,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.authz.policies import register_legacy_policies
+from app.authz.runtime import open_authz_runtime
 from app.config import settings
 from app.database import platform_session
 from app.hooks import register_default_hooks
@@ -213,6 +214,9 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     # One backend owns shared jobs at a time. Every process keeps checking the
     # PostgreSQL advisory lock so leadership fails over and DB-authored trigger
     # changes are reconciled even when they came through a non-leader worktree.
+    # The AuthzService (P3-0) is closed by shutdown_runtime_resources after the
+    # scheduler stops and background runs drain, before the database is disposed.
+    await open_authz_runtime(app)
     async with scheduler_leadership_runtime():
         yield
 
