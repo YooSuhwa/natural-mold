@@ -53,7 +53,7 @@ async def create_invitation(
     now, email = datetime.now(UTC), str(payload.email).casefold()
     candidates = await pending_same_content(mutation.db, locked.tenant.id, email, role, now)
     if candidates:
-        return creation_view(candidates[0]), False
+        return await _reissue(mutation, locked, candidates[0]), False
     require_current_version(locked.tenant.updated_at, mutation.expected_version)
     row = _new_invitation(locked, email, role, now)
     mutation.db.add(row)
@@ -100,10 +100,9 @@ async def resend_invitation(
     )
     if original.status == "revoked" and original.revoked_at is not None:
         for candidate in pending:
-            if utc_timestamp(candidate.created_at) >= utc_timestamp(original.revoked_at):
-                view = creation_view(candidate)
-                if view.token is not None:
-                    return view, False
+            fresh = utc_timestamp(candidate.created_at) >= utc_timestamp(original.revoked_at)
+            if fresh and creation_view(candidate).token is not None:
+                return await _reissue(mutation, locked, candidate), False
     for row in pending:
         _revoke(row, locked.actor.id, now)
     if original.status != "revoked":
@@ -189,6 +188,17 @@ async def _record(
         request=mutation.request,
         metadata={"tenant_id": str(context.tenant.id), "role": row.role},
     )
+
+
+async def _reissue(
+    mutation: TenantOverviewMutation, context: TenantAdminContext, row: TenantInvitation
+) -> TenantInvitationCreated:
+    """An idempotent retry hands out a live token again, so it is audited (no version bump)."""
+    view = creation_view(row)
+    if view.token is not None:
+        await _record(mutation, context, row, audit_actions.TENANT_INVITATION_REISSUE)
+        await mutation.db.commit()
+    return view
 
 
 async def _finish(mutation: TenantOverviewMutation, context: TenantAdminContext) -> None:

@@ -67,6 +67,17 @@ async def test_create_retry_list_revoke_and_repeat_resend_are_hash_only(
     )
     assert retried.status_code == 200
     assert (retried.json()["id"], retried.json()["token"]) == (invitation_id, token)
+    reissued = list(
+        (
+            await db.scalars(
+                select(AuditEvent).where(AuditEvent.action == "tenant.invitation_reissue")
+            )
+        ).all()
+    )
+    assert [(row.target_id, row.actor_user_id) for row in reissued] == [
+        (invitation_id, org_fixture.user.id)
+    ]
+    assert reissued[0].event_metadata == {"tenant_id": str(org_fixture.tenant), "role": "auditor"}
 
     listed = await client.get(path)
     assert listed.status_code == 200
@@ -98,6 +109,7 @@ async def test_create_retry_list_revoke_and_repeat_resend_are_hash_only(
     )
     assert sorted((row[0], row[1]) for row in actions.all()) == [
         ("tenant.invitation_create", 1),
+        ("tenant.invitation_reissue", 2),
         ("tenant.invitation_resend", 1),
         ("tenant.invitation_revoke", 1),
     ]

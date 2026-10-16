@@ -44,31 +44,50 @@ class TenantMemberWriteContext:
 async def lock_tenant_member_write(
     command: TenantMemberWrite, *, lock_children: bool
 ) -> TenantMemberWriteContext:
-    """Lock Tenant first, then freshly authorize; DELETE may defer child locks to exit."""
+    """Lock Tenant first, authorize the caller, then lock children; DELETE defers them to exit."""
     db = command.db
     with db.no_autoflush:
         locked = await lock_tenant_org_write(db, command.tenant_id, ())
-        ensure_tenant_active(locked.tenant)
-        member_query = select(TenantMember).where(TenantMember.tenant_id == command.tenant_id)
-        role_query = select(TenantRoleGrant).where(TenantRoleGrant.tenant_id == command.tenant_id)
+        members, roles = await _child_rows(command, actor_only=True, lock=False)
+        _authorize(locked.tenant, members, roles, command.actor.id)
         if lock_children:
-            member_query = member_query.order_by(TenantMember.user_id).with_for_update()
-            role_query = role_query.order_by(
-                TenantRoleGrant.user_id, TenantRoleGrant.id
-            ).with_for_update()
-        else:
-            member_query = member_query.where(TenantMember.user_id == command.actor.id)
-            role_query = role_query.where(TenantRoleGrant.user_id == command.actor.id)
-        members = tuple(
-            (await db.scalars(member_query.execution_options(populate_existing=True))).all()
-        )
-        roles = tuple(
-            (await db.scalars(role_query.execution_options(populate_existing=True))).all()
-        )
-        actor_member = next((row for row in members if row.user_id == command.actor.id), None)
-        if actor_member is None or actor_member.status != "active":
-            raise authorization_error("not_found")
-        if not any(row.user_id == command.actor.id and row.role == "admin" for row in roles):
-            raise authorization_error("permission_required")
+            members, roles = await _child_rows(command, actor_only=False, lock=True)
+            _authorize(locked.tenant, members, roles, command.actor.id)
         require_current_version(locked.tenant.updated_at, command.expected_version)
         return TenantMemberWriteContext(locked.tenant, members, roles)
+
+
+async def _child_rows(
+    command: TenantMemberWrite, *, actor_only: bool, lock: bool
+) -> tuple[tuple[TenantMember, ...], tuple[TenantRoleGrant, ...]]:
+    member_query = select(TenantMember).where(TenantMember.tenant_id == command.tenant_id)
+    role_query = select(TenantRoleGrant).where(TenantRoleGrant.tenant_id == command.tenant_id)
+    if actor_only:
+        member_query = member_query.where(TenantMember.user_id == command.actor.id)
+        role_query = role_query.where(TenantRoleGrant.user_id == command.actor.id)
+    if lock:
+        member_query = member_query.order_by(TenantMember.user_id).with_for_update()
+        role_query = role_query.order_by(
+            TenantRoleGrant.user_id, TenantRoleGrant.id
+        ).with_for_update()
+    db = command.db
+    members = tuple(
+        (await db.scalars(member_query.execution_options(populate_existing=True))).all()
+    )
+    roles = tuple((await db.scalars(role_query.execution_options(populate_existing=True))).all())
+    return members, roles
+
+
+def _authorize(
+    tenant: Tenant,
+    members: tuple[TenantMember, ...],
+    roles: tuple[TenantRoleGrant, ...],
+    actor_id: UUID,
+) -> None:
+    """Non-members get the enumeration-safe 404 before any company status is revealed."""
+    actor_member = next((row for row in members if row.user_id == actor_id), None)
+    if actor_member is None or actor_member.status != "active":
+        raise authorization_error("not_found")
+    ensure_tenant_active(tenant)
+    if not any(row.user_id == actor_id and row.role == "admin" for row in roles):
+        raise authorization_error("permission_required")

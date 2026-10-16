@@ -66,6 +66,7 @@ def test_company_audit_actions_have_exact_stable_names() -> None:
         audit_actions.TENANT_INVITATION_ACCEPT,
         audit_actions.TENANT_INVITATION_REVOKE,
         audit_actions.TENANT_INVITATION_RESEND,
+        audit_actions.TENANT_INVITATION_REISSUE,
     )
     # Then: each value remains the machine-consumed audit action identifier.
     assert actions == (
@@ -80,4 +81,5 @@ def test_company_audit_actions_have_exact_stable_names() -> None:
         "tenant.invitation_accept",
         "tenant.invitation_revoke",
         "tenant.invitation_resend",
+        "tenant.invitation_reissue",
     )
