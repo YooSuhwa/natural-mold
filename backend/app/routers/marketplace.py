@@ -447,7 +447,12 @@ async def update_installation(
     authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceInstallationOut:
     installation = await install_service.update_installation(
-        db, installation_id=installation_id, user=user, context=context, body=body
+        db,
+        installation_id=installation_id,
+        user=user,
+        context=context,
+        body=body,
+        authorize=item_gate(db, authz, context, user, "can_install"),
     )
     created = await installation_created(db, authz, context, installation)
     await db.commit()

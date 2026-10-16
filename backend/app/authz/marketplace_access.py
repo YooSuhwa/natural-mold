@@ -93,12 +93,21 @@ def _platform() -> ColumnElement[bool]:
     return and_(Item.is_system.is_(True), Item.org_id.is_(None), Item.tenant_id.is_(None))
 
 
+def _company_public(ctx: OrgContext) -> ColumnElement[bool]:
+    """E-09: approved and still ``public`` (a later visibility narrowing closes it)."""
+    return and_(
+        Item.tenant_id == ctx.tenant_id,
+        Item.tenant_publication == "approved",
+        Item.visibility == "public",
+    )
+
+
 def _reachable(ctx: OrgContext) -> ColumnElement[bool]:
     """Rows a decision can be made about: own org, platform, company-public (E-09)."""
     return or_(
         and_(Item.org_id == ctx.org_id, Item.tenant_id == ctx.tenant_id),
         _platform(),
-        and_(Item.tenant_id == ctx.tenant_id, Item.tenant_publication == "approved"),
+        _company_public(ctx),
     )
 
 
@@ -110,7 +119,9 @@ def item_org(row: Item | None, ctx: OrgContext) -> UUID | None:
         return ctx.org_id  # platform: allowed_org/tenant fanout decides
     if row.tenant_id != ctx.tenant_id:
         return None
-    if row.org_id == ctx.org_id or row.tenant_publication == "approved":
+    if row.org_id == ctx.org_id or (
+        row.tenant_publication == "approved" and row.visibility == "public"
+    ):
         return ctx.org_id
     return None
 
@@ -239,9 +250,8 @@ class CatalogGate:
 
     def view_predicate(self) -> ColumnElement[bool]:
         shared = candidate_predicate(Item, FGA_TYPE, self.ctx, platform=True)
-        company = and_(Item.tenant_id == self.ctx.tenant_id, Item.tenant_publication == "approved")
         return and_(
-            or_(shared, company),
+            or_(shared, _company_public(self.ctx)),
             or_(
                 _owned(self.ctx),
                 and_(Item.status != "disabled", Item.visibility == "system"),

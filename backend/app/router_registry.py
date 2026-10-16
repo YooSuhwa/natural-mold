@@ -22,6 +22,7 @@ def include_app_routers(app: FastAPI) -> None:
         health,
         invitation_accept,
         marketplace,
+        marketplace_tenant_publication,
         mcp,
         mcp_apps,
         me_installation,
@@ -56,6 +57,8 @@ def include_app_routers(app: FastAPI) -> None:
         tenant_organization_lifecycle,
         tenant_organizations,
         tenant_overview,
+        tenant_policies,
+        tenant_publication_requests,
         tools,
         triggers,
         uploads,
@@ -77,6 +80,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(health.router)
     app.include_router(invitation_accept.router)
     app.include_router(marketplace.router)
+    app.include_router(marketplace_tenant_publication.router)
     app.include_router(memory.router)
     app.include_router(me_installation.router)
     app.include_router(me_orgs.router)
@@ -93,6 +97,8 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(org_group_members.router)
     app.include_router(org_assignments.router)
     app.include_router(tenant_overview.router)
+    app.include_router(tenant_policies.router)
+    app.include_router(tenant_publication_requests.router)
     app.include_router(tenant_organizations.router)
     app.include_router(tenant_organization_lifecycle.router)
     app.include_router(tenant_members.router)

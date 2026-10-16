@@ -7875,6 +7875,90 @@
         ]
       }
     },
+    "/api/marketplace/items/{item_id}/tenant-publication": {
+      "delete": {
+        "operationId": "withdraw_tenant_publication_api_marketplace_items__item_id__tenant_publication_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantPublicationState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw Tenant Publication",
+        "tags": [
+          "marketplace"
+        ]
+      },
+      "post": {
+        "operationId": "request_tenant_publication_api_marketplace_items__item_id__tenant_publication_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantPublicationState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Tenant Publication",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
     "/api/marketplace/items/{item_id}/versions": {
       "get": {
         "operationId": "list_versions_api_marketplace_items__item_id__versions_get",
@@ -15836,6 +15920,304 @@
           }
         },
         "summary": "Post Organization Restore",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/policies": {
+      "get": {
+        "operationId": "get_tenant_policies_api_tenants__tenant_id__policies_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantPolicies"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tenant Policies",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "put": {
+        "operationId": "put_tenant_policies_api_tenants__tenant_id__policies_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantPoliciesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantPolicies"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Tenant Policies",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/publication-requests": {
+      "get": {
+        "operationId": "get_publication_requests_api_tenants__tenant_id__publication_requests_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationRequestPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Publication Requests",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/publication-requests/{item_id}/approve": {
+      "post": {
+        "operationId": "approve_publication_request_api_tenants__tenant_id__publication_requests__item_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantPublicationState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Publication Request",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/publication-requests/{item_id}/reject": {
+      "post": {
+        "operationId": "reject_publication_request_api_tenants__tenant_id__publication_requests__item_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicationRejection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantPublicationState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Publication Request",
         "tags": [
           "company administration"
         ]
@@ -30473,6 +30855,177 @@
       "title": "PublicChatResourceReference",
       "type": "object"
     },
+    "PublicationRejection": {
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "note"
+      ],
+      "title": "PublicationRejection",
+      "type": "object"
+    },
+    "PublicationRequestItem": {
+      "additionalProperties": false,
+      "description": "What an approver may see (10.2): never the item's contents (D8).",
+      "properties": {
+        "credential_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Credential Types",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "item_id": {
+          "format": "uuid",
+          "title": "Item Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "organization": {
+          "$ref": "#/components/schemas/PublicationRequestOrganization"
+        },
+        "publisher": {
+          "$ref": "#/components/schemas/PublicationRequestPublisher"
+        },
+        "requested_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Requested At"
+        },
+        "resource_type": {
+          "title": "Resource Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "name",
+        "description",
+        "resource_type",
+        "organization",
+        "publisher",
+        "requested_at",
+        "credential_types"
+      ],
+      "title": "PublicationRequestItem",
+      "type": "object"
+    },
+    "PublicationRequestOrganization": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "PublicationRequestOrganization",
+      "type": "object"
+    },
+    "PublicationRequestPage": {
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/PublicationRequestItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "has_more"
+      ],
+      "title": "PublicationRequestPage",
+      "type": "object"
+    },
+    "PublicationRequestPublisher": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "PublicationRequestPublisher",
+      "type": "object"
+    },
     "PublishAgentIn": {
       "properties": {
         "acl_user_ids": {
@@ -35169,6 +35722,116 @@
         "name"
       ],
       "title": "TenantOverviewPatch",
+      "type": "object"
+    },
+    "TenantPolicies": {
+      "additionalProperties": false,
+      "description": "``GET /api/tenants/{tenant_id}/policies`` (company members may read).",
+      "properties": {
+        "marketplace_tenant_publish": {
+          "enum": [
+            "disabled",
+            "open",
+            "approval"
+          ],
+          "title": "Marketplace Tenant Publish",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "marketplace_tenant_publish",
+        "updated_at"
+      ],
+      "title": "TenantPolicies",
+      "type": "object"
+    },
+    "TenantPoliciesUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "marketplace_tenant_publish": {
+          "enum": [
+            "disabled",
+            "open",
+            "approval"
+          ],
+          "title": "Marketplace Tenant Publish",
+          "type": "string"
+        }
+      },
+      "required": [
+        "marketplace_tenant_publish"
+      ],
+      "title": "TenantPoliciesUpdate",
+      "type": "object"
+    },
+    "TenantPublicationState": {
+      "additionalProperties": false,
+      "description": "The item's company publication state, returned to the publisher.",
+      "properties": {
+        "item_id": {
+          "format": "uuid",
+          "title": "Item Id",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "requested_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Requested At"
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reviewed At"
+        },
+        "tenant_publication": {
+          "enum": [
+            "none",
+            "pending",
+            "approved",
+            "rejected"
+          ],
+          "title": "Tenant Publication",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "tenant_publication",
+        "requested_at",
+        "reviewed_at",
+        "note"
+      ],
+      "title": "TenantPublicationState",
       "type": "object"
     },
     "TenantRolePage": {

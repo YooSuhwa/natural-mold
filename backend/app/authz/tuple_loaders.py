@@ -76,8 +76,8 @@ async def active_grant_rows(
 async def marketplace_item_row(db: AsyncSession, item_id: UUID) -> rows.MarketplaceItemRow | None:
     """The item row; its ``tenant`` tuple shares a key with organization fanout grants.
 
-    The ORM has no ``tenant_publication`` yet (m81), so company-public items load as
-    ``none``; that only drops the ``installer`` tuple, never the shared ``tenant`` key.
+    ``tenant_publication`` is loaded from the row: ``approved`` adds the company
+    ``installer`` tuple (E-09); the shared ``tenant`` key is projected in every state.
     """
     item = await db.get(MarketplaceItem, item_id)
     if item is None:
@@ -88,6 +88,7 @@ async def marketplace_item_row(db: AsyncSession, item_id: UUID) -> rows.Marketpl
         tenant_id=item.tenant_id,
         owner_id=item.owner_user_id,
         is_system=item.is_system,
+        tenant_publication=item.tenant_publication or "none",
     )
 
 

@@ -52,6 +52,8 @@ ErrorCode = Literal[
     "tenant_suspended",
     "quota_exceeded",
     "authz_unavailable",
+    "policy_disabled",
+    "tenant_publication_invalid",
 ]
 
 
@@ -122,6 +124,10 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         "quota_exceeded": ErrorSpec(429, "사용 한도를 초과했습니다"),
         "authz_unavailable": ErrorSpec(
             503, "권한을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요"
+        ),
+        "policy_disabled": ErrorSpec(403, "회사 정책상 회사 전체 공개를 할 수 없습니다"),
+        "tenant_publication_invalid": ErrorSpec(
+            409, "게시된 공개 항목만 회사 전체에 공개할 수 있습니다"
         ),
     }
 )

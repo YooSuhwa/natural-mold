@@ -39,7 +39,7 @@ def _schemas(app: FastAPI) -> dict[str, JsonValue]:
 def test_assembled_app_registers_exact_company_inventory_once() -> None:
     app = create_app()
     assert company_route_violations(app.routes) == []
-    assert len(COMPANY_ROUTES) == 23
+    assert len(COMPANY_ROUTES) == 28
     assert slug_schema_violations(_schemas(app)) == []
 
 
@@ -80,7 +80,7 @@ def test_inventory_rejects_later_task_paths_app_wide() -> None:
         "/auth/callback/{connection_id}",
         "/api/admin/authz/reconcile/{job_id}",
         "/api/tenants/{id}/models/{model_id}",
-        "/api/marketplace/items/{item_id}/tenant-publication",
+        "/api/tenants/{id}/domains/{domain_id}",
     )
     for path in (*paths, "/api/usage-limits-history", "/api/auth/login"):
         app.add_api_route(path, lambda: True, methods=["GET"])

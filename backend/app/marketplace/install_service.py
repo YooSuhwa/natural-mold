@@ -66,6 +66,7 @@ from app.marketplace.install.skill import (
     _refresh_skill_installation_bindings,
 )
 from app.marketplace.install.snapshot import _rmtree_skill_storage
+from app.marketplace.install.source_gate import installable_source
 from app.marketplace.install_locks import lock_marketplace_item_install
 from app.marketplace.schemas import (
     InstallMarketplaceItemIn,
@@ -216,6 +217,7 @@ async def update_installation(
     user: CurrentUser,
     context: OrgContext,
     body: UpdateMarketplaceInstallationIn,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceInstallation:
     """Apply an update strategy to an existing installation.
 
@@ -235,8 +237,8 @@ async def update_installation(
     if installation is None or installation.user_id != user.id:
         raise marketplace_item_not_found()
 
-    item = await load_install_source_item(db, installation.item_id, context)
-    if not can_install_item(item, user) or item.latest_version_id is None:
+    item = await installable_source(db, installation.item_id, context, user, authorize)
+    if item.latest_version_id is None:
         raise marketplace_item_not_found()
 
     latest = await _resolve_version(db, item=item, version_id=None)

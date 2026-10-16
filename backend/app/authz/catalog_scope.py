@@ -63,6 +63,15 @@ def catalog_view_candidate_predicate(context: OrgContext) -> ColumnElement[bool]
         and_(
             MarketplaceItem.status == "published",
             MarketplaceItem.visibility.in_(("public", "unlisted")),
+            # E-09 (10.2): a pending or rejected company publication stays inside the
+            # publishing organization; untouched (``none``) rows keep the legacy reach.
+            or_(
+                MarketplaceItem.tenant_publication.in_(("none", "approved")),
+                and_(
+                    MarketplaceItem.org_id == context.org_id,
+                    MarketplaceItem.tenant_id == context.tenant_id,
+                ),
+            ),
         ),
         and_(
             MarketplaceItem.org_id == context.org_id,

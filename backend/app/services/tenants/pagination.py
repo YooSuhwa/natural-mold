@@ -14,6 +14,7 @@ TenantListKind = Literal[
     "tenant_members",
     "tenant_roles",
     "tenant_invitations",
+    "tenant_publication_requests",
     "platform_tenants",
 ]
 
@@ -33,7 +34,13 @@ class TenantCursorScope(BaseModel):
             case "platform_tenants":
                 if self.tenant_id is not None:
                     raise ValueError("platform list cannot have a tenant scope")
-            case "tenant_organizations" | "tenant_members" | "tenant_roles" | "tenant_invitations":
+            case (
+                "tenant_organizations"
+                | "tenant_members"
+                | "tenant_roles"
+                | "tenant_invitations"
+                | "tenant_publication_requests"
+            ):
                 if self.tenant_id is None:
                     raise ValueError("tenant list requires a tenant scope")
             case unreachable:

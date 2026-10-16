@@ -61,7 +61,15 @@ B12_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"POST {_A}/{{tenant_id}}/suspend": CompanyRoute("SUPER", 200, False),
     f"POST {_A}/{{tenant_id}}/resume": CompanyRoute("SUPER", 200, False),
 }
-COMPANY_ROUTES: Final = {**B11_ROUTES, **B12_ROUTES}
+# E-09 company publication policy and approval queue (9.7, S05).
+E09_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_T}/policies": CompanyRoute("SELF", 200, False),
+    f"PUT {_T}/policies": CompanyRoute("GOVERNANCE", 200, True),
+    f"GET {_T}/publication-requests": CompanyRoute("GOVERNANCE", 200, False),
+    f"POST {_T}/publication-requests/{{item_id}}/approve": CompanyRoute("GOVERNANCE", 200, False),
+    f"POST {_T}/publication-requests/{{item_id}}/reject": CompanyRoute("GOVERNANCE", 200, False),
+}
+COMPANY_ROUTES: Final = {**B11_ROUTES, **B12_ROUTES, **E09_ROUTES}
 # Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
 # owned by C05/E07/E08/E09/H03/H06/H08/I07. Matched app-wide by path, with parameter
 # names erased, at the path itself or below it (CRUD collection/item routes).
@@ -79,11 +87,8 @@ DEFERRED_PATHS: Final = frozenset(
         "/api/tenants/{}/usage",
         "/api/tenants/{}/audit-events",
         "/api/tenants/{}/limits",
-        "/api/tenants/{}/publication-requests",
         "/api/tenants/{}/domains",
         "/api/tenants/{}/sso-connections",
-        "/api/tenants/{}/policies",
-        "/api/marketplace/items/{}/tenant-publication",
         "/api/orgs/{}/retention",
         "/api/usage-limits",
         "/api/me/usage-limits",
