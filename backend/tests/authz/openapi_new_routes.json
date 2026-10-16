@@ -11582,6 +11582,140 @@
         ]
       }
     },
+    "/api/orgs/{org_id}/members/{user_id}/exit-preview": {
+      "get": {
+        "description": "10.7 / S15 steps (1)-(2): what removing the member settles and stops.",
+        "operationId": "preview_member_exit_api_orgs__org_id__members__user_id__exit_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberExitPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Member Exit",
+        "tags": [
+          "organization members"
+        ]
+      }
+    },
+    "/api/orgs/{org_id}/members/{user_id}/removal": {
+      "post": {
+        "description": "10.7 / S15: transfer or delete the member's resources, revoke their grants, stop\ntheir entry points and remove the membership in one transaction.",
+        "operationId": "remove_member_with_settlement_api_orgs__org_id__members__user_id__removal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberRemoval"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRemovalResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Member With Settlement",
+        "tags": [
+          "organization members"
+        ]
+      }
+    },
     "/api/orgs/{org_id}/principals": {
       "get": {
         "operationId": "find_principals_api_orgs__org_id__principals_get",
@@ -26330,6 +26464,54 @@
       "title": "EditMessageRequest",
       "type": "object"
     },
+    "ExitResolution": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "default": "transfer",
+          "enum": [
+            "transfer",
+            "delete"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "new_owner_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "New Owner Id"
+        },
+        "resource_id": {
+          "format": "uuid",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "enum": [
+            "agent",
+            "skill",
+            "tool",
+            "mcp_server",
+            "credential"
+          ],
+          "title": "Resource Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id"
+      ],
+      "title": "ExitResolution",
+      "type": "object"
+    },
     "FileItem": {
       "description": "Unified conversation file-list entry (D12): generated artifact OR sent\nattachment, normalized to one shape.\n\n``GET /api/conversations/{id}/files`` merges generated artifacts and sent\nattachments into a single created_at-sorted stream. ``source`` tags the\norigin and ``editable`` is false for attachments (read-only, D5). Both\nsurfaces dispatch through the same frontend preview registry via\n``mime_type`` / ``extension`` / ``preview_url`` (unsupported \u2192 download\nfallback).",
       "properties": {
@@ -26945,6 +27127,36 @@
         "name"
       ],
       "title": "HealthSummaryEntry",
+      "type": "object"
+    },
+    "HeldGrant": {
+      "properties": {
+        "grant_id": {
+          "format": "uuid",
+          "title": "Grant Id",
+          "type": "string"
+        },
+        "relation": {
+          "title": "Relation",
+          "type": "string"
+        },
+        "resource_id": {
+          "format": "uuid",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "title": "Resource Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grant_id",
+        "resource_type",
+        "resource_id",
+        "relation"
+      ],
+      "title": "HeldGrant",
       "type": "object"
     },
     "HistoryRequest": {
@@ -29729,6 +29941,91 @@
       "title": "MemberCreate",
       "type": "object"
     },
+    "MemberExitPreview": {
+      "description": "Step (1)-(2) of S15: what the removal transfers, revokes and stops.",
+      "properties": {
+        "api_key_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Api Key Ids",
+          "type": "array"
+        },
+        "deployment_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Deployment Ids",
+          "type": "array"
+        },
+        "grants": {
+          "items": {
+            "$ref": "#/components/schemas/HeldGrant"
+          },
+          "title": "Grants",
+          "type": "array"
+        },
+        "group_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Group Ids",
+          "type": "array"
+        },
+        "is_last_admin": {
+          "title": "Is Last Admin",
+          "type": "boolean"
+        },
+        "owned": {
+          "items": {
+            "$ref": "#/components/schemas/OwnedResource"
+          },
+          "title": "Owned",
+          "type": "array"
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Roles",
+          "type": "array"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "trigger_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Trigger Ids",
+          "type": "array"
+        },
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "status",
+        "is_last_admin",
+        "owned",
+        "grants",
+        "group_ids",
+        "roles",
+        "trigger_ids",
+        "deployment_ids",
+        "api_key_ids"
+      ],
+      "title": "MemberExitPreview",
+      "type": "object"
+    },
     "MemberPatch": {
       "additionalProperties": false,
       "properties": {
@@ -29745,6 +30042,77 @@
         "status"
       ],
       "title": "MemberPatch",
+      "type": "object"
+    },
+    "MemberRemoval": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "resolutions": {
+          "items": {
+            "$ref": "#/components/schemas/ExitResolution"
+          },
+          "maxItems": 500,
+          "title": "Resolutions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "MemberRemoval",
+      "type": "object"
+    },
+    "MemberRemovalResult": {
+      "properties": {
+        "deleted": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Deleted",
+          "type": "array"
+        },
+        "revoked_grant_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Revoked Grant Ids",
+          "type": "array"
+        },
+        "status": {
+          "const": "removed",
+          "title": "Status",
+          "type": "string"
+        },
+        "transferred": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Transferred",
+          "type": "array"
+        },
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "status",
+        "transferred",
+        "deleted",
+        "revoked_grant_ids"
+      ],
+      "title": "MemberRemovalResult",
       "type": "object"
     },
     "MemberView": {
@@ -31676,6 +32044,52 @@
         "permissions"
       ],
       "title": "OrganizationView",
+      "type": "object"
+    },
+    "OwnedResource": {
+      "properties": {
+        "archived": {
+          "default": false,
+          "title": "Archived",
+          "type": "boolean"
+        },
+        "blocked_by": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Blocked By"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "resource_id": {
+          "format": "uuid",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "title": "Resource Type",
+          "type": "string"
+        },
+        "transferable": {
+          "default": true,
+          "title": "Transferable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "name"
+      ],
+      "title": "OwnedResource",
       "type": "object"
     },
     "OwnershipTransfer": {

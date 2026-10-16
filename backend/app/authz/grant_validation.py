@@ -76,11 +76,15 @@ async def check_target(db: AsyncSession, ctx: OrgContext, target: GrantTarget) -
 async def check_principal(db: AsyncSession, ctx: OrgContext, request: GrantRequest) -> None:
     principal = request.principal_id
     match request.principal_type:
-        case "user":
-            query = select(OrganizationMember.user_id).where(
-                OrganizationMember.org_id == ctx.org_id,
-                OrganizationMember.user_id == principal,
-                OrganizationMember.status == "active",
+        case "user":  # FOR SHARE: serializes with a member removal (E-02, FOR UPDATE)
+            query = (
+                select(OrganizationMember.user_id)
+                .where(
+                    OrganizationMember.org_id == ctx.org_id,
+                    OrganizationMember.user_id == principal,
+                    OrganizationMember.status == "active",
+                )
+                .with_for_update(read=True)
             )
         case "group":
             query = select(Group.id).where(Group.id == principal, Group.org_id == ctx.org_id)

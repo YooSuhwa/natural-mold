@@ -34,7 +34,7 @@ from app.authz.resource_lifecycle import LifecycleChange, on_owner_changed
 from app.authz.service import AuthzService
 from app.authz.share_targets import ShareRow, ShareType, authorize_target, is_owner
 from app.authz.share_transfer_blocks import check_transferable
-from app.authz.sharing import share_grants
+from app.authz.sharing import lock_org_row, share_grants
 from app.models.agent import Agent
 from app.models.skill import Skill
 from app.schemas.grant import OwnershipTransfer, OwnershipTransferResult
@@ -74,6 +74,23 @@ async def transfer(
     service: GrantService | None = None,
 ) -> TransferResult:
     row = await authorize_target(db, authz, ctx, kind, resource_id, "can_govern")
+    return await transfer_row(db, authz, ctx, kind, row, body, service=service)
+
+
+async def transfer_row(
+    db: AsyncSession,
+    authz: AuthzService,
+    ctx: OrgContext,
+    kind: ShareType,
+    row: ShareRow,
+    body: OwnershipTransfer,
+    *,
+    service: GrantService | None = None,
+    exiting: UUID | None = None,
+) -> TransferResult:
+    """The transfer once ``can_govern`` is established (the API above, or the member-exit
+    flow of E-02 whose ``can_manage_members`` holders are the organization's governors).
+    ``exiting``: dependents of that leaving member are stopped by the caller."""
     previous = row.user_id
     governing = not is_owner(row, ctx)
     reason = (body.reason or "").strip() or None
@@ -91,9 +108,10 @@ async def transfer(
     )
     if body.new_owner_id == previous:
         return TransferResult(result, LifecycleChange())
+    await lock_org_row(db, ctx.org_id)  # org → member row → grants → resource (E-02 order)
     await check_principal(db, ctx, GrantRequest("manager", "user", body.new_owner_id))
     await _check_name_free(db, row, body.new_owner_id)
-    await check_transferable(db, row, previous)  # 409 transfer_blocked, nothing written
+    await check_transferable(db, row, previous, exiting=exiting)  # 409, nothing written
     grants = service or GrantService()
     outbox: list[UUID] = []
     for held in await share_grants(db, ctx, kind, row.id):

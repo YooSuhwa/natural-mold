@@ -9,14 +9,24 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz.account_erasure import lock_account_history, require_account_resources_released
+from app.authz.account_erasure import (
+    lock_account_history,
+    lock_account_scopes,
+    require_account_resources_released,
+    require_no_account_grants,
+    revoke_account_grants,
+)
 from app.models.conversation_run import ConversationRun
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
+
+if TYPE_CHECKING:
+    from app.authz.resource_lifecycle import LifecycleChange
 
 logger = logging.getLogger(__name__)
 
@@ -221,19 +231,35 @@ async def cleanup_user_resources(db: AsyncSession, user_id: uuid.UUID) -> None:
     )
 
 
-async def delete_user(db: AsyncSession, user_id: uuid.UUID) -> None:
-    """Hard-delete a user.
+async def delete_user(
+    db: AsyncSession, user_id: uuid.UUID, *, operator_id: uuid.UUID | None = None
+) -> LifecycleChange:
+    """Hard-delete a user (10.7 "사용자 삭제", E-02).
 
     Caller is responsible for calling ``commit`` after — we keep the
     transaction open so the audit/logging layer at the router level can
-    decide whether to roll back on a failure mid-way.
-    """
+    decide whether to roll back on a failure mid-way — and then for
+    ``apply_lifecycle`` on the returned grant revocations.
 
+    Owned resources refuse first (409 ``resource_transfer_required`` with the list).
+    The account's company/organization/member rows are locked, its grants revoked
+    with ``operator_id`` (default: the account itself, self-service deletion) as the
+    actor, then the User row is locked and both checks repeat; a grant that slipped in
+    answers 409 ``conflict``. No route calls this yet (E-02 follow-up).
+    """
+    from app.authz.resource_lifecycle import LifecycleChange  # call-time: import cycle
+
+    if await db.scalar(select(User.id).where(User.id == user_id)) is None:
+        return LifecycleChange()
+    await require_account_resources_released(db, user_id)
+    await lock_account_scopes(db, user_id)
+    change = await revoke_account_grants(db, user_id, operator_id or user_id)
     user = await db.scalar(select(User).where(User.id == user_id).with_for_update())
     if user is None:
-        return
-
+        return change
     await require_account_resources_released(db, user_id)
+    await require_no_account_grants(db, user_id)
     await cleanup_user_resources(db, user_id)
     await db.delete(user)
     await db.flush()
+    return change

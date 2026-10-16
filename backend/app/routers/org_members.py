@@ -5,12 +5,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.member_exit_preview import member_exit_preview
 from app.authz.org_control import OrgControlContext
 from app.authz.policies import SELF, authz_policy
-from app.dependencies import verify_csrf
+from app.authz.resource_lifecycle import apply_lifecycle
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.dependencies import get_db, verify_csrf
 from app.routers.orgs import mutation_request, org_members_context, org_read_context
 from app.schemas.org_groups import DirectoryPage, DirectoryQuery
+from app.schemas.org_member_exit import MemberExitPreview, MemberRemoval, MemberRemovalResult
 from app.schemas.org_members import MemberCreate, MemberPatch, MemberView
 from app.services.orgs import members
 from app.services.orgs.info import OrgMutationRequest
@@ -69,11 +75,44 @@ async def change_member_status(
     )
 
 
+@router.get("/{user_id}/exit-preview", response_model=MemberExitPreview)
+@authz_policy(SELF)
+async def preview_member_exit(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    context: OrgControlContext = Depends(org_members_context),
+) -> MemberExitPreview:
+    """10.7 / S15 steps (1)-(2): what removing the member settles and stops."""
+    return await member_exit_preview(db, context, user_id)
+
+
+@router.post(
+    "/{user_id}/removal", response_model=MemberRemovalResult, dependencies=[Depends(verify_csrf)]
+)
+@authz_policy(SELF)
+async def remove_member_with_settlement(
+    payload: MemberRemoval,
+    context: OrgControlContext = Depends(org_members_context),
+    mutation: MemberMutationRequest = Depends(member_mutation_request),
+    authz: AuthzService = Depends(get_authz),
+) -> JSONResponse:
+    """10.7 / S15: transfer or delete the member's resources, revoke their grants, stop
+    their entry points and remove the membership in one transaction."""
+    outcome = await members.remove_member(mutation, context, authz, payload)
+    await apply_lifecycle(outcome.change, authz)
+    return JSONResponse(
+        content=outcome.view().model_dump(mode="json"),
+        headers={"ETag": etag(context.organization.updated_at)},
+    )
+
+
 @router.delete("/{user_id}", status_code=204, dependencies=[Depends(verify_csrf)])
 @authz_policy(SELF)
 async def remove_member(
     context: OrgControlContext = Depends(org_members_context),
     mutation: MemberMutationRequest = Depends(member_mutation_request),
+    authz: AuthzService = Depends(get_authz),
 ) -> Response:
-    await members.remove_member(mutation, context)
+    outcome = await members.remove_member(mutation, context, authz)
+    await apply_lifecycle(outcome.change, authz)
     return Response(status_code=204)

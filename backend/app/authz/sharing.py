@@ -53,6 +53,7 @@ from app.authz.share_targets import (
     share_object,
 )
 from app.models.authz import ResourceGrant
+from app.models.organization import Organization
 from app.schemas.grant import GrantCreate, GrantView, PrincipalRef
 
 # Grants this API shows and manages; delegation/system_fanout rows have their own owners.
@@ -78,6 +79,14 @@ def grant_view(grant: ResourceGrant) -> GrantView:
         granted_by=grant.granted_by,
         granted_at=utc(grant.granted_at) or grant.granted_at,
     )
+
+
+async def lock_org_row(db: AsyncSession, org_id: UUID) -> None:
+    """Single lock order for every grant write (E-02): the organization row first, then
+    member rows (``check_principal`` FOR SHARE), grants, resource. A level change revokes
+    and an expiry change records a marker — both bump the org epoch — so share and
+    transfer take this lock up front, as a member removal does."""
+    await db.execute(select(Organization.id).where(Organization.id == org_id).with_for_update())
 
 
 async def share_grants(
@@ -135,6 +144,7 @@ async def share(
     others = [g for g in held if g.relation != body.level]
     if same and not others and utc(same[0].expires_at) == utc(body.expires_at):
         return ShareResult(same[0], created=False, change=LifecycleChange())
+    await lock_org_row(db, ctx.org_id)  # before check_principal's member row (E-02)
     grants = service or GrantService()
     outbox: list[UUID] = []
     for stale in others:  # a level change: revoke, then create (both audited)

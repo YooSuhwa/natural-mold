@@ -6,6 +6,7 @@ from uuid import UUID
 
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
+from app.authz.member_exit_settlement import MemberExitSettlement
 from app.authz.org_administrators import active_administrators
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
 from app.authz.org_member_exit import (
@@ -14,14 +15,21 @@ from app.authz.org_member_exit import (
     preflight_member_exit,
 )
 from app.authz.org_member_queries import company_member_target, member_for_user, member_query
+from app.authz.service import AuthzService
 from app.authz.tenant_org_write_locks import lock_member_rows
 from app.models.organization import OrganizationMember, OrganizationRoleGrant
 from app.schemas.org import OrganizationSettings
 from app.schemas.org_groups import DirectoryPage, DirectoryQuery
+from app.schemas.org_member_exit import MemberRemoval
 from app.schemas.org_members import MemberCreate, MemberPatch, MemberView
 from app.services import audit_service
 from app.services.orgs.groups import members_write_context
 from app.services.orgs.info import OrgMutationRequest
+from app.services.orgs.member_removal import (
+    MemberRemovalOutcome,
+    clear_active_org,
+    exit_metadata,
+)
 from app.services.orgs.pagination import decode_cursor, encode_cursor
 from app.services.orgs.versioning import bump_version, utc_timestamp
 
@@ -40,6 +48,7 @@ class MemberWrite:
         "org.member_suspend",
         "org.member_remove",
     ]
+    metadata: dict[str, object] | None = None
 
 
 def member_view(
@@ -82,6 +91,7 @@ async def finish_member_write(
             "org_id": str(context.organization.id),
             "status": change.member.status,
             "authz_epoch": context.organization.authz_epoch,
+            **(change.metadata or {}),
         },
     )
     await mutation.db.commit()
@@ -206,7 +216,16 @@ async def change_member_status(
     return member_view(row, True)
 
 
-async def remove_member(mutation: MemberMutationRequest, context: OrgControlContext) -> None:
+async def remove_member(
+    mutation: MemberMutationRequest,
+    context: OrgControlContext,
+    authz: AuthzService,
+    removal: MemberRemoval | None = None,
+) -> MemberRemovalOutcome:
+    """10.7 "구성원 제거" (E-02): settle owned resources and held grants, then the exit.
+
+    Idempotent: an already removed member writes nothing. Concurrent removals serialize
+    on the organization row (``members_write_context``)."""
     db = mutation.request.db
     with db.no_autoflush:
         context = await members_write_context(mutation.request, context)
@@ -214,12 +233,24 @@ async def remove_member(mutation: MemberMutationRequest, context: OrgControlCont
         if row is None:
             raise authorization_error("not_found")
         member = row[0]
-        if member.status == "removed":
-            return
-        plan = await preflight_member_exit(db, context, mutation.user_id)
+        settle = MemberExitSettlement(db, authz, context, mutation.user_id, removal)
+        if member.status == "removed":  # re-run cleans grants of pre-E-02 removals
+            org = context.organization
+            await lock_member_rows(db, org.tenant_id, org.id, mutation.user_id)
+            await settle.revoke_held()
+            if settle.result.revoked_grant_ids:
+                await db.refresh(org)  # revocations bumped authz_epoch (8.6)
+                await db.commit()
+            return MemberRemovalOutcome(mutation.user_id, settle.result)
+        plan = await preflight_member_exit(db, context, mutation.user_id, settle=settle)
     async with db.begin_nested():
         await apply_member_exit(db, plan)
+        await clear_active_org(db, mutation.user_id, context.organization.id)
         await db.flush()
+    await db.refresh(context.organization)  # revocations bumped authz_epoch (8.6)
     await finish_member_write(
-        mutation.request, context, MemberWrite(member, audit_actions.ORG_MEMBER_REMOVE)
+        mutation.request,
+        context,
+        MemberWrite(member, audit_actions.ORG_MEMBER_REMOVE, exit_metadata(settle.result)),
     )
+    return MemberRemovalOutcome(mutation.user_id, settle.result)

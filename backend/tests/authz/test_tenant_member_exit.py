@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import pytest
@@ -61,12 +61,12 @@ async def test_org_removal_preflights_before_marking_member_removed(
     original_preflight = members.preflight_member_exit
 
     async def observe_preflight(
-        session: AsyncSession, context: OrgControlContext, user_id: UUID
+        session: AsyncSession, context: OrgControlContext, user_id: UUID, **kwargs: Any
     ) -> MemberExitPlan:
         member = await session.get(OrganizationMember, (context.organization.id, user_id))
         assert member is not None
         observed_statuses.append(member.status)
-        return await original_preflight(session, context, user_id)
+        return await original_preflight(session, context, user_id, **kwargs)
 
     monkeypatch.setattr(members, "preflight_member_exit", observe_preflight)
     roster = await raw_client.get(f"/api/orgs/{org_fixture.first}/members")

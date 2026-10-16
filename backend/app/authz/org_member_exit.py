@@ -1,5 +1,6 @@
 """Exit guards keep resource ownership and background entry points scoped to the org."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -13,7 +14,7 @@ from app.authz.org_administrators import active_administrators
 from app.authz.org_control import OrgControlContext
 from app.authz.tenant_org_write_locks import lock_member_rows
 from app.models.agent import Agent
-from app.models.agent_api import AgentApiKey
+from app.models.agent_api import AgentApiKey, AgentDeployment
 from app.models.agent_trigger import AgentTrigger
 from app.models.credential import Credential
 from app.models.marketplace import MarketplaceItem
@@ -30,34 +31,46 @@ class MemberExitPlan:
     member: OrganizationMember
 
 
-def owner_queries(user_id: UUID) -> tuple[Select[tuple[UUID]], ...]:
+ExitSettlement = Callable[[], Awaitable[None]]  # E-02 writes between the member and resource locks
+
+
+def owner_queries(
+    user_id: UUID, *, include_archived: bool = True
+) -> tuple[tuple[str, Select[tuple[UUID]]], ...]:
+    """Restricted owner FKs by resource type. An organization exit leaves archived agents
+    (trash, 10.7 "보관") with their owner; account erasure counts them (m83 RESTRICT)."""
+    agents = select(Agent.id).where(Agent.user_id == user_id)
     return (
-        select(Agent.id).where(Agent.user_id == user_id),
-        select(Skill.id).where(Skill.user_id == user_id),
-        select(McpServer.id).where(McpServer.user_id == user_id),
-        select(Tool.id).where(Tool.user_id == user_id),
-        select(Credential.id).where(Credential.user_id == user_id),
-        select(MarketplaceItem.id).where(MarketplaceItem.owner_user_id == user_id),
+        ("agent", agents if include_archived else agents.where(Agent.archived_at.is_(None))),
+        ("skill", select(Skill.id).where(Skill.user_id == user_id)),
+        ("mcp_server", select(McpServer.id).where(McpServer.user_id == user_id)),
+        ("tool", select(Tool.id).where(Tool.user_id == user_id)),
+        ("credential", select(Credential.id).where(Credential.user_id == user_id)),
+        (
+            "marketplace_item",
+            select(MarketplaceItem.id).where(MarketplaceItem.owner_user_id == user_id),
+        ),
     )
 
 
 async def require_no_owned_resources(
     db: AsyncSession, context: OrgControlContext, user_id: UUID
 ) -> None:
-    for query in owner_queries(user_id):
+    """409 ``resource_transfer_required`` listing the org resources the member still owns."""
+    remaining: dict[str, list[str]] = {}
+    for kind, query in owner_queries(user_id, include_archived=False):
         if await db.scalar(query.limit(1)) is None:
             continue
         # m81's physical scope exists before B-06 promotes the corresponding ORM mappings.
-        if (
-            await db.scalar(
-                query.where(column("org_id", Uuid()) == context.organization.id)
-                .order_by(column("id", Uuid()))
-                .with_for_update()
-                .limit(1)
-            )
-            is not None
-        ):
-            raise authorization_error("resource_transfer_required")
+        owned = await db.scalars(
+            query.where(column("org_id", Uuid()) == context.organization.id)
+            .order_by(column("id", Uuid()))
+            .with_for_update()
+        )
+        if ids := [str(value) for value in owned]:
+            remaining[kind] = ids
+    if remaining:
+        raise authorization_error("resource_transfer_required", {"resources": remaining})
 
 
 async def lock_member_entry_points(
@@ -84,6 +97,16 @@ async def lock_member_entry_points(
         .with_for_update()
     )
     await db.scalars(
+        select(AgentDeployment)
+        .where(
+            AgentDeployment.tenant_id == context.organization.tenant_id,
+            AgentDeployment.org_id == context.organization.id,
+            AgentDeployment.user_id == user_id,
+        )
+        .order_by(AgentDeployment.id)
+        .with_for_update()
+    )
+    await db.scalars(
         select(AgentApiKey)
         .where(
             AgentApiKey.tenant_id == context.organization.tenant_id,
@@ -96,9 +119,15 @@ async def lock_member_entry_points(
 
 
 async def preflight_member_exit(
-    db: AsyncSession, context: OrgControlContext, user_id: UUID
+    db: AsyncSession,
+    context: OrgControlContext,
+    user_id: UUID,
+    *,
+    settle: ExitSettlement | None = None,
 ) -> MemberExitPlan:
-    """Validate one organization exit without changing persistent state."""
+    """Validate one organization exit; only ``settle`` (E-02 transfers and grant
+    revocations) writes, after the member checks and before the resource locks so the
+    order stays organization → grants → resource."""
     await lock_member_rows(
         db,
         context.organization.tenant_id,
@@ -120,6 +149,8 @@ async def preflight_member_exit(
     administrators = await active_administrators(db, context.organization)
     if member.status == "active" and user_id in administrators and len(administrators) == 1:
         raise authorization_error("last_admin")
+    if settle is not None:
+        await settle()
     await require_no_owned_resources(db, context, user_id)
     await lock_member_entry_points(db, context, user_id)
     return MemberExitPlan(context, member)
@@ -173,6 +204,15 @@ async def stop_locked_member_entry_points(
             )
             .values(revoked_at=datetime.now(UTC).replace(tzinfo=None))
         )
+    await db.execute(  # owner-bound Agent API entry points (10.7 item 4)
+        update(AgentDeployment)
+        .where(
+            AgentDeployment.user_id == user_id,
+            AgentDeployment.org_id == context.organization.id,
+            AgentDeployment.status == "active",
+        )
+        .values(status="disabled", updated_at=datetime.now(UTC).replace(tzinfo=None))
+    )
 
 
 async def clear_member_assignments(
