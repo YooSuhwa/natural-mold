@@ -1,18 +1,15 @@
 """Conversation CRUD, keyset pagination cursors, and titles.
 
 BE-S1 split from ``app.services.chat_service`` — pure move, no behavior
-change.
+change. Task 10 I4 moved execution preparation to ``chat_execution_preparation``
+and keyset pagination to ``conversation_pages``; both are re-exported here.
 """
 
 from __future__ import annotations
 
-import base64
-import json
 import logging
 import uuid
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal, assert_never
 
 from fastapi import HTTPException
 from sqlalchemy import and_, delete, func, or_, select, update
@@ -50,36 +47,50 @@ from app.schemas.conversation_scope import (
     ConversationPromotion,
     DraftConversationCleanup,
 )
-from app.services.chat.conversation_mutations import (
-    clear_active_branch_override as clear_active_branch_override,
+from app.services.chat.chat_execution_preparation import (
+    conversation_title_from_content,
+    create_conversation,
+    prepare_executable_conversation,
+    promote_draft_conversation,
+    require_executable_conversation,
 )
 from app.services.chat.conversation_mutations import (
-    mark_conversation_read as mark_conversation_read,
+    clear_active_branch_override,
+    mark_conversation_read,
+    maybe_set_auto_title,
+    set_active_branch,
+    touch_conversation,
+    update_conversation,
 )
-from app.services.chat.conversation_mutations import (
-    maybe_set_auto_title as maybe_set_auto_title,
-)
-from app.services.chat.conversation_mutations import (
-    set_active_branch as set_active_branch,
-)
-from app.services.chat.conversation_mutations import (
-    touch_conversation as touch_conversation,
-)
-from app.services.chat.conversation_mutations import (
-    update_conversation as update_conversation,
+from app.services.chat.conversation_pages import (
+    ConversationCursorScope,
+    ConversationPageCursor,
+    _conversation_sort_column,
+    _conversation_sort_value,
+    _decode_conversation_cursor,
+    _encode_conversation_cursor,
+    _escape_like,
+    list_conversations_page,
+    list_global_conversations_page,
 )
 from app.services.conversation_runtime_policy import ensure_conversation_runtime_policy
 
 logger = logging.getLogger(__name__)
 
-
-def conversation_title_from_content(content: str) -> str:
-    title = content.strip().replace("\n", " ")
-    if not title:
-        return "새 대화"
-    if len(title) > 40:
-        return title[:37] + "..."
-    return title
+# Compatibility re-exports: names this module exposed before the I4 split.
+__all__ = ["clear_active_branch_override", "mark_conversation_read", "maybe_set_auto_title"]
+__all__ += ["set_active_branch", "touch_conversation", "update_conversation"]
+__all__ += ["create_conversation", "prepare_executable_conversation"]
+__all__ += ["require_executable_conversation", "ConversationCursorScope", "ConversationPageCursor"]
+__all__ += ["_conversation_sort_column", "_conversation_sort_value", "_decode_conversation_cursor"]
+__all__ += ["_encode_conversation_cursor", "_escape_like", "list_conversations_page"]
+__all__ += ["list_global_conversations_page", "ensure_conversation_runtime_policy"]
+__all__ += ["conversation_title_from_content", "promote_draft_conversation", "and_", "func"]
+__all__ += ["InstrumentedAttribute", "contains_eager", "SKILL_BUILDER_RUNTIME_POLICY"]
+__all__ += ["RuntimePolicySnapshotError", "runtime_policy_to_json", "AgentExecutionTarget"]
+__all__ += ["load_agent_tree_for_execution", "agent_archived", "ConflictError", "AppError"]
+__all__ += ["AGENT_RUNTIME_PROFILE_SKILL_BUILDER", "AGENT_RUNTIME_PROFILE_STANDARD"]
+__all__ += ["ConversationSort", "ConversationPolicyTarget", "ConversationPromotion", "or_"]
 
 
 # ---------------------------------------------------------------------------
@@ -113,340 +124,6 @@ async def is_agent_owned_by_user(
         .limit(1)
     )
     return result.scalar_one_or_none() is not None
-
-
-ConversationCursorScope = Literal["agent", "global"]
-
-
-@dataclass(frozen=True, slots=True)
-class ConversationPageCursor:
-    scope: ConversationCursorScope
-    sort: ConversationSort
-    timestamp: datetime
-    id: uuid.UUID
-    is_pinned: bool | None = None
-
-
-def _escape_like(term: str) -> str:
-    """LIKE 메타문자(``\\``, ``%``, ``_``)를 리터럴로 이스케이프한다 (escape="\\\\"와 짝)."""
-    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-def _conversation_sort_column(sort: ConversationSort) -> InstrumentedAttribute[datetime]:
-    match sort:
-        case "updated":
-            return Conversation.updated_at
-        case "created":
-            return Conversation.created_at
-        case unreachable:
-            assert_never(unreachable)
-
-
-def _conversation_sort_value(conversation: Conversation, sort: ConversationSort) -> datetime:
-    match sort:
-        case "updated":
-            return conversation.updated_at
-        case "created":
-            return conversation.created_at
-        case unreachable:
-            assert_never(unreachable)
-
-
-def _encode_conversation_cursor(
-    conversation: Conversation,
-    *,
-    scope: ConversationCursorScope,
-    sort: ConversationSort,
-) -> str:
-    payload: dict[str, str | bool] = {
-        "scope": scope,
-        "sort": sort,
-        "timestamp": _conversation_sort_value(conversation, sort).isoformat(),
-        "id": str(conversation.id),
-    }
-    if scope == "agent":
-        payload["is_pinned"] = bool(conversation.is_pinned)
-    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-
-
-def _decode_conversation_cursor(
-    cursor: str,
-    *,
-    expected_scope: ConversationCursorScope,
-    expected_sort: ConversationSort,
-) -> ConversationPageCursor:
-    padded = cursor + "=" * (-len(cursor) % 4)
-    try:
-        payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
-        scope = payload["scope"]
-        sort = payload["sort"]
-        if scope != expected_scope or sort != expected_sort:
-            raise ValueError("conversation cursor scope or sort mismatch")
-        is_pinned = bool(payload["is_pinned"]) if scope == "agent" else None
-        timestamp = datetime.fromisoformat(str(payload["timestamp"]))
-        if timestamp.tzinfo is not None:
-            # DB 컬럼은 naive UTC — aware 커서는 UTC로 환산 후 naive로 정규화
-            timestamp = timestamp.astimezone(UTC).replace(tzinfo=None)
-        return ConversationPageCursor(
-            scope=expected_scope,
-            sort=expected_sort,
-            timestamp=timestamp,
-            id=uuid.UUID(str(payload["id"])),
-            is_pinned=is_pinned,
-        )
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise ValueError("invalid conversation cursor") from exc
-
-
-async def list_conversations_page(
-    db: AsyncSession,
-    agent_id: uuid.UUID,
-    *,
-    context: OrgContext,
-    limit: int,
-    cursor: str | None = None,
-    q: str | None = None,
-    sort: ConversationSort = "updated",
-) -> tuple[list[Conversation], str | None, bool]:
-    await require_private_actor(db, context)
-    timestamp_column = _conversation_sort_column(sort)
-    query = select(Conversation).where(
-        Conversation.agent_id == agent_id,
-        Conversation.source == "ui",
-        private_scope_predicate(Conversation, context),
-    )
-
-    search = (q or "").strip()
-    if search:
-        query = query.where(
-            func.lower(func.coalesce(Conversation.title, "")).like(
-                f"%{_escape_like(search.lower())}%", escape="\\"
-            )
-        )
-
-    if cursor:
-        page_cursor = _decode_conversation_cursor(
-            cursor,
-            expected_scope="agent",
-            expected_sort=sort,
-        )
-        if page_cursor.is_pinned is None:
-            raise ValueError("agent conversation cursor missing pin state")
-        same_bucket_after = and_(
-            Conversation.is_pinned == page_cursor.is_pinned,
-            or_(
-                timestamp_column < page_cursor.timestamp,
-                and_(timestamp_column == page_cursor.timestamp, Conversation.id < page_cursor.id),
-            ),
-        )
-        if page_cursor.is_pinned:
-            query = query.where(or_(Conversation.is_pinned.is_(False), same_bucket_after))
-        else:
-            query = query.where(same_bucket_after)
-
-    result = await db.execute(
-        query.order_by(
-            Conversation.is_pinned.desc(),
-            timestamp_column.desc(),
-            Conversation.id.desc(),
-        ).limit(limit + 1)
-    )
-    rows = list(result.scalars().all())
-    has_more = len(rows) > limit
-    items = rows[:limit]
-    next_cursor = (
-        _encode_conversation_cursor(items[-1], scope="agent", sort=sort)
-        if has_more and items
-        else None
-    )
-    return items, next_cursor, has_more
-
-
-async def list_global_conversations_page(
-    db: AsyncSession,
-    context: OrgContext,
-    *,
-    limit: int,
-    cursor: str | None = None,
-    q: str | None = None,
-    sort: ConversationSort = "updated",
-) -> tuple[list[Conversation], str | None, bool]:
-    await require_private_actor(db, context)
-    timestamp_column = _conversation_sort_column(sort)
-    query = (
-        select(Conversation)
-        .outerjoin(
-            Agent,
-            and_(Conversation.agent_id == Agent.id, private_scope_predicate(Agent, context)),
-        )
-        .where(
-            private_scope_predicate(Conversation, context),
-            # 히든 런타임 에이전트(스킬 빌더 등)의 대화는 네비게이터/최근 대화에
-            # 노출하지 않는다 — 빌더 라우트가 전용 진입점이다.
-            or_(Agent.id.is_(None), Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD),
-            Conversation.source == "ui",
-        )
-        .options(contains_eager(Conversation.agent))
-        .execution_options(populate_existing=True)
-    )
-
-    search = (q or "").strip()
-    if search:
-        query = query.where(
-            func.lower(func.coalesce(Conversation.title, "")).like(
-                f"%{_escape_like(search.lower())}%", escape="\\"
-            )
-        )
-
-    if cursor:
-        page_cursor = _decode_conversation_cursor(
-            cursor,
-            expected_scope="global",
-            expected_sort=sort,
-        )
-        query = query.where(
-            or_(
-                timestamp_column < page_cursor.timestamp,
-                and_(timestamp_column == page_cursor.timestamp, Conversation.id < page_cursor.id),
-            )
-        )
-
-    result = await db.execute(
-        query.order_by(timestamp_column.desc(), Conversation.id.desc()).limit(limit + 1)
-    )
-    rows = list(result.unique().scalars().all())
-    has_more = len(rows) > limit
-    items = rows[:limit]
-    next_cursor = (
-        _encode_conversation_cursor(items[-1], scope="global", sort=sort)
-        if has_more and items
-        else None
-    )
-    return items, next_cursor, has_more
-
-
-async def create_conversation(
-    db: AsyncSession,
-    agent_id: uuid.UUID,
-    title: str | None = None,
-    *,
-    context: OrgContext,
-    source: str = "ui",
-) -> Conversation:
-    executable = await load_agent_tree_for_execution(db, AgentExecutionTarget(agent_id, context))
-    agent = next(item for item in executable.agents if item.id == agent_id)
-    conv = Conversation(
-        agent_id=agent_id,
-        user_id=context.user_id,
-        org_id=context.org_id,
-        tenant_id=context.tenant_id,
-        agent_name_snapshot=agent.name,
-        last_activity_at=datetime.now(UTC),
-        title=title or "새 대화",
-        source=source,
-    )
-    if source == "draft":
-        runtime_profile = await db.scalar(select(Agent.runtime_profile).where(Agent.id == agent_id))
-        if runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER:
-            conv.runtime_policy_snapshot = runtime_policy_to_json(
-                SKILL_BUILDER_RUNTIME_POLICY.effective
-            )
-            conv.runtime_policy_version = SKILL_BUILDER_RUNTIME_POLICY.effective.version
-            conv.runtime_policy_hash = SKILL_BUILDER_RUNTIME_POLICY.policy_hash
-            conv.runtime_policy_source = SKILL_BUILDER_RUNTIME_POLICY.source
-    db.add(conv)
-    await db.flush()
-    await db.refresh(conv)
-    return conv
-
-
-async def require_executable_conversation(
-    db: AsyncSession,
-    conversation_id: uuid.UUID,
-    context: OrgContext,
-) -> uuid.UUID:
-    """Lock and assert Agent lifecycle before any private execution hydration."""
-    marker_key = (conversation_id, context.user_id, context.org_id, context.tenant_id)
-    current_transaction = db.get_transaction()
-    marker = db.info.setdefault("moldy_executable_conversations", {}).get(marker_key)
-    if (
-        current_transaction is not None
-        and isinstance(marker, tuple)
-        and len(marker) == 2
-        and marker[0] is current_transaction
-        and isinstance(marker[1], uuid.UUID)
-    ):
-        return marker[1]
-    try:
-        await require_private_actor(db, context)
-    except AppError as exc:
-        raise conversation_not_found() from exc
-    row = (
-        await db.execute(
-            select(Conversation.agent_id, Conversation.agent_lifecycle_state)
-            .where(
-                Conversation.id == conversation_id,
-                private_scope_predicate(Conversation, context),
-            )
-            .execution_options(populate_existing=True, autoflush=False)
-        )
-    ).one_or_none()
-    if row is None:
-        raise conversation_not_found()
-    if row.agent_id is None or row.agent_lifecycle_state == "purged":
-        raise agent_archived()
-    await load_agent_tree_for_execution(db, AgentExecutionTarget(row.agent_id, context))
-    db.info["moldy_executable_conversations"][marker_key] = (
-        db.get_transaction(),
-        row.agent_id,
-    )
-    return row.agent_id
-
-
-async def prepare_executable_conversation(
-    db: AsyncSession,
-    conversation_id: uuid.UUID,
-    context: OrgContext,
-) -> uuid.UUID:
-    """Initialize policy, then reacquire lifecycle authority for config hydration."""
-    await require_executable_conversation(db, conversation_id, context)
-    try:
-        await ensure_conversation_runtime_policy(
-            db, ConversationPolicyTarget(conversation_id, context)
-        )
-    except RuntimePolicySnapshotError as exc:
-        raise ConflictError(exc.code, exc.code) from None
-    await db.commit()
-    return await require_executable_conversation(db, conversation_id, context)
-
-
-async def promote_draft_conversation(
-    db: AsyncSession, target: ConversationPromotion
-) -> Conversation:
-    try:
-        await require_private_actor(db, target.context)
-    except AppError as exc:
-        raise conversation_not_found() from exc
-    agent_id = await db.scalar(
-        select(Conversation.agent_id)
-        .where(
-            Conversation.id == target.conversation_id,
-            private_scope_predicate(Conversation, target.context),
-        )
-        .execution_options(autoflush=False)
-    )
-    if agent_id is not None:
-        await require_executable_conversation(db, target.conversation_id, target.context)
-    conv = await lock_private_conversation(db, target.conversation_id, target.context)
-    if conv.source != "draft":
-        return conv
-    conv.source = "ui"
-    if target.title_from_content:
-        conv.title = conversation_title_from_content(target.title_from_content)
-    await db.flush()
-    await db.refresh(conv)
-    return conv
 
 
 async def gc_orphan_draft_conversations(db: AsyncSession, cleanup: DraftConversationCleanup) -> int:

@@ -1,11 +1,15 @@
+"""Conversation stream compatibility facade (Task 10 I4 split).
+
+Agent context, SSE protocol, and persistence live in ``conversation_agent_context``,
+``conversation_stream_protocol``, and ``conversation_stream_persistence``; those
+resolve patched collaborators through this module at call time.
+"""
+
 from __future__ import annotations
 
 import json
 import logging
 import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable
-from pathlib import Path
-from typing import Any, NamedTuple, cast
 
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -51,7 +55,24 @@ from app.services.artifact_service import (
     finalize_artifacts_for_run,
     link_artifacts_to_messages,
 )
+from app.services.conversation_agent_context import (
+    _resolve_skill_builder_agent_context,
+    resolve_agent_context,
+)
 from app.services.conversation_runtime_policy import snapshot_from_conversation
+from app.services.conversation_stream_persistence import (
+    build_artifact_recorder,
+    build_persist_callback,
+    finalize_trace,
+    prepare_stream_context,
+)
+from app.services.conversation_stream_protocol import (
+    SSE_HEADERS,
+    StreamCtx,
+    error_sse_pair,
+    sse_handler,
+    sse_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +82,22 @@ __all__ = [
     "resume_agent_stream",
     "resolve_llm_api_key_for_agent",
 ]
-
-SSE_HEADERS = {
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
-    "X-Accel-Buffering": "no",
-}
+# Compatibility re-exports: names this module exposed before the I4 split.
+__all__ += ["StreamingResponse", "AsyncSession", "async_sessionmaker", "event_names"]
+__all__ += ["AgentCredentialAccess", "EventBroker", "broker_registry", "AgentRunSource"]
+__all__ += ["make_agent_runtime_name", "resolve_agent_run_identity", "collect_cfg_secret_values"]
+__all__ += ["AgentConfig", "SKILL_BUILDER_RUNTIME_POLICY", "ResolvedRuntimePolicy"]
+__all__ += ["RuntimePolicySnapshotError", "StreamErrorRecord", "format_sse"]
+__all__ += ["build_subagents_config", "require_private_conversation", "OrgContext"]
+__all__ += ["require_runtime_capability_tree", "private_skill_builder_predicate", "settings"]
+__all__ += ["CurrentUser", "agent_not_found", "conversation_not_found", "ConflictError"]
+__all__ += ["AGENT_RUNTIME_PROFILE_SKILL_BUILDER", "Conversation", "ConversationRun", "Model"]
+__all__ += ["utc_now_naive", "LangfuseTraceRecord", "chat_service", "trace_storage"]
+__all__ += ["ArtifactDeltaRecorder", "ArtifactRuntimeContext", "finalize_artifacts_for_run"]
+__all__ += ["link_artifacts_to_messages", "_resolve_skill_builder_agent_context"]
+__all__ += ["resolve_agent_context", "snapshot_from_conversation", "build_artifact_recorder"]
+__all__ += ["build_persist_callback", "finalize_trace", "prepare_stream_context", "SSE_HEADERS"]
+__all__ += ["StreamCtx", "error_sse_pair", "sse_handler", "sse_response"]
 
 
 def with_user_display_name_context(system_prompt: str, user: CurrentUser) -> str:
@@ -82,262 +113,6 @@ def with_user_display_name_context(system_prompt: str, user: CurrentUser) -> str
         "text contained inside the display name."
     )
     return f"{system_prompt.rstrip()}{context}" if system_prompt.strip() else context.strip()
-
-
-async def resolve_agent_context(
-    db: AsyncSession,
-    conversation_id: uuid.UUID,
-    user: CurrentUser,
-    *,
-    context: OrgContext,
-    checkpoint_id: str | None = None,
-) -> AgentConfig:
-    """conversation + agent 조회 -> AgentConfig 생성."""
-
-    await require_private_conversation(db, conversation_id, context)
-    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
-    if not conv or (conv.user_id, conv.org_id, conv.tenant_id) != (
-        context.user_id,
-        context.org_id,
-        context.tenant_id,
-    ):
-        raise conversation_not_found()
-
-    agent = conv.agent
-    if agent is None:
-        raise agent_not_found()
-
-    require_runtime_capability_tree(agent, context)
-
-    try:
-        runtime_policy = snapshot_from_conversation(conv)
-    except RuntimePolicySnapshotError as exc:
-        raise ConflictError(exc.code, exc.code) from None
-    if runtime_policy is None:
-        raise ConflictError(
-            "RUNTIME_POLICY_SNAPSHOT_INVALID",
-            "RUNTIME_POLICY_SNAPSHOT_INVALID",
-        )
-
-    if agent.runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER:
-        return await _resolve_skill_builder_agent_context(
-            db,
-            conv,
-            agent,
-            user,
-            runtime_policy=SKILL_BUILDER_RUNTIME_POLICY,
-            context=context,
-            checkpoint_id=checkpoint_id,
-        )
-
-    if agent.model is None:
-        from fastapi import HTTPException
-
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "agent has no model bound — open agent settings and pick a model before chatting."
-            ),
-        )
-
-    identity = resolve_agent_run_identity(
-        agent_id=agent.id,
-        agent_owner_user_id=agent.user_id,
-        runtime_name=agent.runtime_name or make_agent_runtime_name(agent.id),
-        identity_mode=agent.identity_mode,
-        source=AgentRunSource.CHAT,
-        caller_user_id=user.id,
-    )
-
-    api_key = await resolve_llm_api_key_for_agent(
-        db, agent, AgentCredentialAccess(context, identity)
-    )
-    base_url = agent.model.base_url
-
-    tools_config = await chat_service.build_tools_config(
-        agent,
-        context=context,
-        db=db,
-        conversation_id=str(conversation_id),
-        identity=identity,
-    )
-
-    fallback_chain = await resolve_fallback_chain(db, agent.model_fallback_list)
-    provider_api_keys: dict[str, str | None] | None = (
-        {agent.model.provider: api_key} if api_key else None
-    )
-
-    effective_prompt = with_user_display_name_context(
-        chat_service.build_effective_prompt(agent),
-        user,
-    )
-
-    cfg = AgentConfig(
-        org_context=context,
-        provider=agent.model.provider,
-        model_name=agent.model.model_name,
-        api_key=api_key,
-        base_url=base_url,
-        system_prompt=effective_prompt,
-        tools_config=tools_config,
-        thread_id=str(conversation_id),
-        runtime_policy=runtime_policy,
-        model_params=agent.model_params,
-        middleware_configs=agent.middleware_configs,
-        agent_skills=chat_service.build_agent_skills(agent, context) or None,
-        agent_id=str(agent.id),
-        agent_name=agent.name,
-        provider_api_keys=provider_api_keys,
-        cost_per_input_token=(
-            float(agent.model.cost_per_input_token) if agent.model.cost_per_input_token else None
-        ),
-        cost_per_output_token=(
-            float(agent.model.cost_per_output_token) if agent.model.cost_per_output_token else None
-        ),
-        context_window=agent.model.context_window,
-        user_id=str(user.id),
-        model_id=str(agent.model.id) if agent.model else None,
-        llm_credential_id=(
-            str(agent.llm_credential.id) if agent.llm_credential is not None else None
-        ),
-        model_fallback_chain=fallback_chain,
-        checkpoint_id=checkpoint_id,
-        agent_owner_user_id=str(agent.user_id),
-        caller_user_id=str(user.id),
-        credential_subject_user_id=str(identity.credential_subject_user_id),
-        identity_mode=identity.identity_mode,
-        agent_runtime_name=identity.runtime_name,
-    )
-    cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
-        agent,
-        db=db,
-        parent_cfg=cfg,
-        is_trigger_mode=False,
-    )
-    # ``.update`` (not ``=``) so the subagent secrets already unioned into the
-    # set by ``build_subagents_config`` above survive (ADR-021 H1).
-    cfg.secret_values.update(collect_cfg_secret_values(cfg))
-    return cfg
-
-
-async def _resolve_skill_builder_agent_context(
-    db: AsyncSession,
-    conv: Any,
-    agent: Any,
-    user: CurrentUser,
-    *,
-    context: OrgContext,
-    runtime_policy: ResolvedRuntimePolicy,
-    checkpoint_id: str | None,
-) -> AgentConfig:
-    """히든 빌더 에이전트의 대화 → AgentConfig (스펙 AD-1/AD-3/AD-5).
-
-    모델은 seed 시점 FK가 아니라 **항상** System LLM(text_primary)로 재해석하고
-    (ADR-019), 빌더 세션을 conversation_id 역참조로 찾아 드래프트 워크스페이스
-    경로와 ``moldy.skill_draft`` stream-head 페이로드를 cfg에 싣는다.
-    """
-
-    from sqlalchemy import select
-
-    from app.error_codes import system_llm_not_configured
-    from app.models.skill_builder_session import SkillBuilderSession
-    from app.services import skill_draft_workspace
-    from app.services.system_credential_resolver import (
-        SystemModelNotConfiguredError,
-        resolve_system_model,
-    )
-
-    if user.id != context.user_id:
-        raise conversation_not_found()
-    await require_private_conversation(db, conv.id, context)
-
-    result = await db.execute(
-        select(SkillBuilderSession)
-        .where(
-            SkillBuilderSession.conversation_id == conv.id,
-            private_skill_builder_predicate(context),
-        )
-        # 세션↔대화 1:1은 DB 제약이 아니라 관례다 — 방어적으로 최신 1건만
-        # 취해 MultipleResultsFound 500을 차단한다 (R2).
-        .order_by(SkillBuilderSession.created_at.desc())
-        .limit(1)
-        .with_for_update(of=SkillBuilderSession)
-        .execution_options(populate_existing=True, autoflush=False)
-    )
-    session = result.scalar_one_or_none()
-    if session is None:
-        # 빌더 대화인데 매칭 세션이 없거나 남의 세션 — 접근 불가로 통일
-        # (enumeration-safe 404).
-        raise conversation_not_found()
-
-    if session.draft_workspace_path is not None and (
-        session.draft_workspace_path != skill_draft_workspace.workspace_storage_path(session.id)
-    ):
-        raise conversation_not_found()
-
-    try:
-        resolved = await resolve_system_model(db, "text_primary")
-    except SystemModelNotConfiguredError as exc:
-        raise system_llm_not_configured() from exc
-
-    if not session.draft_workspace_path:
-        # start v2가 항상 채우지만, 방어적으로 재생성 (멱등).
-        session.draft_workspace_path = skill_draft_workspace.create_workspace(session.id)
-        await db.flush()
-
-    # AD-4 — 세션 동의를 정책 제외 목록으로 스레딩. 드래프트가 지금
-    # ``requires_network`` 상태면 기록된 동의가 있어도 무시한다 (동의 이후
-    # 드래프트가 네트워크 요구로 바뀌었을 수 있음 — 매 resolve 재검증).
-    from app.agent_runtime.skill_builder.tools import SESSION_CONSENT_ELIGIBLE_TOOLS
-
-    consented_tools: list[str] = []
-    consent_offer_tools: list[str] = []
-    if not skill_draft_workspace.draft_requires_network(session.draft_workspace_path):
-        consented_tools = sorted(
-            name for name in (session.tool_consents or {}) if name in SESSION_CONSENT_ELIGIBLE_TOOLS
-        )
-        # 아직 동의되지 않은 eligible 도구 → 승인 카드에 동의 옵션 노출.
-        consent_offer_tools = sorted(SESSION_CONSENT_ELIGIBLE_TOOLS - set(consented_tools))
-
-    identity = resolve_agent_run_identity(
-        agent_id=agent.id,
-        agent_owner_user_id=agent.user_id,
-        runtime_name=agent.runtime_name or make_agent_runtime_name(agent.id),
-        identity_mode=agent.identity_mode,
-        source=AgentRunSource.CHAT,
-        caller_user_id=user.id,
-    )
-
-    cfg = AgentConfig(
-        org_context=context,
-        provider=resolved.provider,
-        model_name=resolved.model_name,
-        api_key=resolved.api_key,
-        base_url=resolved.base_url,
-        # 자리표시자 — ``_prepare_skill_builder_components`` 가 prompt.md로 교체.
-        system_prompt=agent.system_prompt,
-        tools_config=[],
-        thread_id=str(conv.id),
-        runtime_policy=runtime_policy,
-        agent_id=str(agent.id),
-        agent_name=agent.name,
-        user_id=str(user.id),
-        model_id=str(agent.model_id) if agent.model_id else None,
-        checkpoint_id=checkpoint_id,
-        agent_owner_user_id=str(agent.user_id),
-        caller_user_id=str(user.id),
-        credential_subject_user_id=str(identity.credential_subject_user_id),
-        identity_mode=identity.identity_mode,
-        agent_runtime_name=identity.runtime_name,
-        runtime_profile="skill_builder",
-        skill_builder_session_id=str(session.id),
-        draft_workspace_path=session.draft_workspace_path,
-        skill_draft_brief=skill_draft_workspace.build_skill_draft_brief(session),
-        skill_builder_consented_tools=consented_tools or None,
-        skill_builder_consent_offer_tools=consent_offer_tools or None,
-    )
-    cfg.secret_values.update(collect_cfg_secret_values(cfg))
-    return cfg
 
 
 async def resolve_fallback_chain(
@@ -372,258 +147,3 @@ async def resolve_fallback_chain(
             }
         )
     return chain or None
-
-
-def error_sse_pair(error_message: str) -> list[str]:
-    return [
-        format_sse(event_names.ERROR, {"message": error_message}),
-        format_sse(event_names.MESSAGE_END, {"usage": {}, "content": ""}),
-    ]
-
-
-def sse_response(
-    generator: AsyncGenerator[str, None],
-    *,
-    extra_headers: dict[str, str] | None = None,
-) -> StreamingResponse:
-    headers = dict(SSE_HEADERS)
-    if extra_headers:
-        headers.update(extra_headers)
-    return StreamingResponse(generator, media_type="text/event-stream", headers=headers)
-
-
-def sse_handler(
-    executor_fn: Callable[[], AsyncGenerator[str, None]],
-    *,
-    log_msg: str,
-    user_msg: str,
-    on_complete: Callable[[bool], Awaitable[None]] | None = None,
-    failure_probe: Callable[[], bool] | None = None,
-    run_id: str | None = None,
-    extra_headers: dict[str, str] | None = None,
-) -> StreamingResponse:
-    async def generate() -> AsyncGenerator[str, None]:
-        success = False
-        try:
-            async for chunk in executor_fn():
-                yield chunk
-            failed = False
-            if failure_probe is not None:
-                try:
-                    failed = failure_probe()
-                except Exception:
-                    logger.exception("stream failure probe failed (%s)", log_msg)
-                    failed = True
-            success = not failed
-        except Exception:
-            logger.exception(log_msg)
-            for chunk in error_sse_pair(user_msg):
-                yield chunk
-        finally:
-            if on_complete is not None:
-                try:
-                    await on_complete(success)
-                except Exception:
-                    logger.exception("on_complete hook failed (%s)", log_msg)
-
-    extra: dict[str, str] = dict(extra_headers or {})
-    if run_id:
-        extra["X-Run-Id"] = run_id
-    return sse_response(generate(), extra_headers=extra or None)
-
-
-class StreamCtx(NamedTuple):
-    run_id: str
-    broker: EventBroker
-    persist_cb: Callable[[list[dict[str, Any]]], Awaitable[None]]
-    trace_sink: list[dict[str, Any]]
-    msg_id_sink: list[str]
-    error_sink: list[StreamErrorRecord]
-    langfuse_sink: list[LangfuseTraceRecord]
-
-    def as_stream_kwargs(self) -> dict[str, Any]:
-        return {
-            "trace_sink": self.trace_sink,
-            "msg_id_sink": self.msg_id_sink,
-            "error_sink": self.error_sink,
-            "broker": self.broker,
-            "persist_callback": self.persist_cb,
-            "run_id": self.run_id,
-            "langfuse_sink": self.langfuse_sink,
-        }
-
-    def has_stream_error(self) -> bool:
-        return bool(self.error_sink)
-
-    def finalize_callback(self, conversation_id: uuid.UUID) -> Callable[[bool], Awaitable[None]]:
-        async def _cb(success: bool) -> None:
-            await finalize_trace(
-                conversation_id,
-                self.run_id,
-                self.trace_sink,
-                self.msg_id_sink,
-                self.langfuse_sink,
-                success=success,
-            )
-
-        return _cb
-
-
-def prepare_stream_context(
-    conversation_id: uuid.UUID,
-    *,
-    run_id: str | None = None,
-) -> StreamCtx:
-    broker_registry.close_for_conversation(str(conversation_id))
-    resolved_run_id = run_id or str(uuid.uuid4())
-    broker = broker_registry.get_or_create(resolved_run_id, conversation_id=str(conversation_id))
-    persist_cb = build_persist_callback(conversation_id, resolved_run_id)
-    return StreamCtx(
-        run_id=resolved_run_id,
-        broker=broker,
-        persist_cb=persist_cb,
-        trace_sink=[],
-        msg_id_sink=[],
-        error_sink=[],
-        langfuse_sink=[],
-    )
-
-
-def build_artifact_recorder(
-    *,
-    conversation_id: uuid.UUID,
-    cfg: AgentConfig,
-    user: CurrentUser,
-    run_id: str,
-) -> ArtifactDeltaRecorder | None:
-    if not cfg.agent_id:
-        return None
-    return ArtifactDeltaRecorder(
-        session_factory=cast(async_sessionmaker[AsyncSession], async_session),
-        context=ArtifactRuntimeContext(
-            conversation_id=conversation_id,
-            org_context=cfg.org_context,
-            agent_id=uuid.UUID(cfg.agent_id),
-            assistant_msg_id=run_id,
-            output_dir=(Path(settings.conversation_output_dir) / str(conversation_id)).resolve(),
-            branch_checkpoint_id=cfg.checkpoint_id,
-        ),
-    )
-
-
-def build_persist_callback(
-    conversation_id: uuid.UUID, run_id: str
-) -> Callable[[list[dict[str, Any]]], Awaitable[None]]:
-    # BE-P5(d): run-scoped persisted-event-id 캐시. append_events 는 partial
-    # flush 마다 누적 chunk 전체 id 를 재 SELECT 했다(긴 턴에서 O(T²/64)).
-    # 첫 flush 에서 DB 시드 후 증분 유지한다. 불변식: 캐시 ⊆ DB — commit
-    # 성공분만 반영하고, 실패 시 None 으로 리셋해 재시도 chunk 가 DB 재로드
-    # 경로로 dedup 되게 한다 (캐시가 DB 를 앞서면 재시도 이벤트가 유실된다).
-    seen_event_ids: set[str] | None = None
-
-    async def _callback(events_chunk: list[dict[str, Any]]) -> None:
-        nonlocal seen_event_ids
-        if not events_chunk:
-            return
-        try:
-            async with async_session() as session:
-                if seen_event_ids is None:
-                    seen_event_ids = await trace_storage.load_persisted_event_ids(
-                        session, assistant_msg_id=run_id
-                    )
-                known = seen_event_ids
-                await trace_storage.append_events(
-                    session,
-                    conversation_id=conversation_id,
-                    assistant_msg_id=run_id,
-                    events_chunk=events_chunk,
-                    status="streaming",
-                    known_event_ids=known,
-                )
-                last_id = events_chunk[-1].get("id")
-                if isinstance(last_id, str) and last_id:
-                    try:
-                        run_uuid = uuid.UUID(run_id)
-                    except ValueError:
-                        run_uuid = None
-                    if run_uuid is not None:
-                        run = await session.get(ConversationRun, run_uuid)
-                        if run is not None:
-                            run.last_event_id = last_id
-                            if run.is_active:
-                                run.heartbeat_at = utc_now_naive()
-                await session.commit()
-        except Exception:
-            seen_event_ids = None
-            raise
-        # commit 성공 후에만 캐시 갱신 — chunk id 는 known 과의 차집합이
-        # 곧 방금 persist 된 id 셋이므로 그대로 합류한다 (idempotent).
-        known.update(
-            event_id
-            for evt in events_chunk
-            if isinstance(event_id := evt.get("id"), str) and event_id
-        )
-
-    return _callback
-
-
-async def finalize_trace(
-    conversation_id: uuid.UUID,
-    run_id: str,
-    trace_sink: list[dict[str, Any]],
-    msg_id_sink: list[str],
-    langfuse_sink: list[LangfuseTraceRecord],
-    *,
-    success: bool,
-    status: trace_storage.TraceStatus | None = None,
-    run_status: str | None = None,
-) -> None:
-    final_status: trace_storage.TraceStatus = status or ("completed" if success else "failed")
-    trace_record = langfuse_sink[0] if langfuse_sink else None
-    async with async_session() as session:
-        conversation = await session.get(Conversation, conversation_id)
-        if conversation is None:
-            return
-        artifact_context = OrgContext(
-            user_id=conversation.user_id,
-            org_id=conversation.org_id,
-            tenant_id=conversation.tenant_id,
-        )
-        finalized = await trace_storage.finalize_turn(
-            session,
-            assistant_msg_id=run_id,
-            status=final_status,
-            raw_msg_ids=msg_id_sink,
-            conversation_id=conversation_id,
-            external_trace_provider=trace_record.provider if trace_record else None,
-            external_trace_id=trace_record.trace_id if trace_record else None,
-            external_trace_url=trace_record.trace_url if trace_record else None,
-        )
-        if finalized is None and trace_sink:
-            finalized = await trace_storage.record_turn(
-                session,
-                conversation_id=conversation_id,
-                events=trace_sink,
-                raw_msg_ids=msg_id_sink,
-                status=final_status,
-                external_trace_provider=trace_record.provider if trace_record else None,
-                external_trace_id=trace_record.trace_id if trace_record else None,
-                external_trace_url=trace_record.trace_url if trace_record else None,
-            )
-        if finalized is not None and finalized.linked_message_ids:
-            await link_artifacts_to_messages(
-                session,
-                context=artifact_context,
-                conversation_id=conversation_id,
-                assistant_msg_id=run_id,
-                linked_message_ids=[str(message_id) for message_id in finalized.linked_message_ids],
-            )
-        if run_status is not None:
-            await finalize_artifacts_for_run(
-                session,
-                context=artifact_context,
-                conversation_id=conversation_id,
-                assistant_msg_id=run_id,
-                run_status=run_status,
-            )
-        await session.commit()

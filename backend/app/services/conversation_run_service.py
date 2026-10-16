@@ -1,10 +1,15 @@
+"""Conversation run service compatibility facade (Task 10 I4 split).
+
+``create_run`` and the run state machine live in ``conversation_run_creation``;
+terminal-output and stale-sweep persistence live in ``conversation_run_creation_persistence``.
+Both are re-exported here unchanged; read queries stay here.
+"""
+
 from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable, Sequence
-from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from collections.abc import Sequence
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
@@ -31,6 +36,24 @@ from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import trace_storage
 from app.services.artifact_service import finalize_artifacts_for_run
 from app.services.conversation_audit_service import record_conversation_run_audit
+from app.services.conversation_run_creation import (
+    ALLOWED_TRANSITIONS,
+    RunSource,
+    RunStatus,
+    _conflict,
+    _is_active_run_unique_violation,
+    create_run,
+    heartbeat_run,
+    request_cancel_run,
+    transition_run,
+    utc_now_naive,
+)
+from app.services.conversation_run_creation_persistence import (
+    _pause_uncertain_owned_run_queues,
+    finalize_run_outputs_for_status,
+    mark_stale_active_runs,
+    sweep_stale_conversation_runs,
+)
 from app.services.conversation_run_envelope_projection import project_owned_envelopes
 from app.services.conversation_runtime_policy import (
     copy_snapshot_to_run,
@@ -39,44 +62,6 @@ from app.services.conversation_runtime_policy import (
 )
 
 logger = logging.getLogger(__name__)
-
-RunSource = Literal["chat", "start", "edit", "regenerate", "resume"]
-RunStatus = Literal[
-    "queued",
-    "running",
-    "interrupted",
-    "canceling",
-    "canceled",
-    "completed",
-    "failed",
-    "stale",
-]
-
-ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    "queued": {"running", "failed", "stale", "canceling"},
-    "running": {"completed", "failed", "interrupted", "canceling", "stale"},
-    "canceling": {"canceled", "failed", "stale"},
-    "completed": set(),
-    "failed": set(),
-    "interrupted": set(),
-    "canceled": set(),
-    "stale": set(),
-}
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
-
-
-def _conflict(message: str) -> HTTPException:
-    return HTTPException(status_code=409, detail=message)
-
-
-def _is_active_run_unique_violation(exc: IntegrityError) -> bool:
-    text = f"{exc} {getattr(exc, 'orig', '')}".lower()
-    return "uq_conversation_runs_active_conversation" in text or (
-        "unique constraint failed" in text and "conversation_runs.conversation_id" in text
-    )
 
 
 async def _latest_interrupted_run(
@@ -238,387 +223,6 @@ async def get_run_for_user(
     return result.scalar_one_or_none()
 
 
-async def create_run(
-    db: AsyncSession,
-    *,
-    conversation_id: uuid.UUID,
-    agent_id: uuid.UUID,
-    context: OrgContext,
-    source: RunSource,
-    input_preview: str | None,
-    parent_run_id: uuid.UUID | None = None,
-    interrupt_id: str | None = None,
-    metadata: dict[str, Any] | None = None,
-    allow_legacy_resume: bool = False,
-) -> ConversationRun:
-    conversation = await lock_run_conversation(
-        db, RunConversationTarget(conversation_id, agent_id, context)
-    )
-    if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    try:
-        _, _, runtime_policy = await ensure_conversation_runtime_policy(
-            db, ConversationPolicyTarget(conversation.id, context)
-        )
-    except RuntimePolicySnapshotError as exc:
-        raise ConflictError(exc.code, exc.code) from None
-
-    active = await get_active_run(db, conversation_id=conversation_id, context=context)
-    if active is not None:
-        raise _conflict("Conversation already has an active run")
-
-    if source == "resume":
-        if parent_run_id is None:
-            if not allow_legacy_resume or not interrupt_id:
-                raise _conflict("Resume run requires an interrupted parent run")
-            existing_legacy_resume = await db.execute(
-                select(ConversationRun)
-                .where(
-                    ConversationRun.conversation_id == conversation_id,
-                    private_run_predicate(context),
-                    ConversationRun.source == "resume",
-                    ConversationRun.parent_run_id.is_(None),
-                    ConversationRun.interrupt_id == interrupt_id,
-                )
-                .limit(1)
-            )
-            if existing_legacy_resume.scalar_one_or_none() is not None:
-                raise _conflict("Legacy interrupted run was already resumed")
-        else:
-            latest = await _latest_interrupted_run(
-                db,
-                conversation_id=conversation_id,
-                context=context,
-            )
-            if latest is None or latest.id != parent_run_id:
-                raise _conflict("Resume run must target the latest interrupted run")
-            if latest.interrupt_id and latest.interrupt_id != interrupt_id:
-                raise _conflict("Resume interrupt id does not match the interrupted run")
-            try:
-                require_parent_snapshot_match(latest, runtime_policy)
-            except RuntimePolicySnapshotError as exc:
-                raise ConflictError(exc.code, exc.code) from None
-
-    run = ConversationRun(
-        conversation_id=conversation.id,
-        agent_id=agent_id,
-        user_id=context.user_id,
-        parent_run_id=parent_run_id,
-        source=source,
-        status="queued",
-        is_active=True,
-        interrupt_id=interrupt_id if source == "resume" else None,
-        input_preview=(input_preview[:500] if input_preview else None),
-        metadata_json=metadata,
-    )
-    copy_snapshot_to_run(run, runtime_policy)
-    db.add(run)
-    try:
-        await db.flush()
-    except IntegrityError as exc:
-        if _is_active_run_unique_violation(exc):
-            await db.rollback()
-            raise _conflict("Conversation already has an active run") from exc
-        raise
-    return run
-
-
-async def transition_run(
-    db: AsyncSession,
-    run: ConversationRun,
-    status: RunStatus,
-    *,
-    worker_instance_id: str | None = None,
-    interrupt_id: str | None = None,
-    error_code: str | None = None,
-    error_message: str | None = None,
-    last_event_id: str | None = None,
-    cancellation_ack_worker_id: str | None = None,
-    allow_workerless_cancellation_ack: bool = False,
-) -> ConversationRun:
-    """run 상태 전이의 단일 진입점.
-
-    동시성 계약: 같은 row 를 갱신하는 경로(worker 전이, heartbeat, cancel API,
-    stale sweep)가 서로 다른 세션에서 read-modify-write 하므로, 상태를 바꾸는
-    호출자는 run 을 ``with_for_update`` 로 로드해 stale read 기반 lost update 를
-    막아야 한다. 단일 프로세스/단일 asyncio 워커(현 기본 배포)에서는 트랜잭션이
-    짧아 실질 경합이 드물지만, 멀티 워커 확장 시 이 계약이 필수가 된다.
-    """
-    if status not in ALLOWED_TRANSITIONS.get(run.status, set()):
-        raise ValueError(f"Invalid run status transition: {run.status} -> {status}")
-
-    if status in RUN_TERMINAL_STATUSES and run.cancel_requested_at is not None:
-        owner_ack = (
-            cancellation_ack_worker_id is not None
-            and run.worker_instance_id == cancellation_ack_worker_id
-        )
-        workerless_ack = allow_workerless_cancellation_ack and run.worker_instance_id is None
-        if not (owner_ack or workerless_ack) and (
-            cancellation_ack_worker_id is not None or allow_workerless_cancellation_ack
-        ):
-            raise ValueError("Cancellation acknowledgment requires the owning worker")
-
-    now = utc_now_naive()
-    run.status = status
-    if last_event_id:
-        run.last_event_id = last_event_id
-
-    if status == "running":
-        run.is_active = True
-        run.started_at = run.started_at or now
-        run.heartbeat_at = now
-        if worker_instance_id:
-            run.worker_instance_id = worker_instance_id
-    elif status == "canceling":
-        run.is_active = True
-        run.cancel_requested_at = run.cancel_requested_at or now
-    elif status in RUN_TERMINAL_STATUSES:
-        run.is_active = False
-        run.completed_at = run.completed_at or now
-        if run.cancel_requested_at is not None:
-            owner_ack = (
-                cancellation_ack_worker_id is not None
-                and run.worker_instance_id == cancellation_ack_worker_id
-            )
-            workerless_ack = allow_workerless_cancellation_ack and run.worker_instance_id is None
-            if owner_ack or workerless_ack:
-                run.cancellation_acknowledged_at = run.cancellation_acknowledged_at or now
-        if status == "interrupted" and interrupt_id:
-            run.interrupt_id = interrupt_id
-        if status in {"failed", "stale"}:
-            run.error_code = error_code
-            run.error_message = error_message
-
-    await project_owned_envelopes(db, run)
-    await db.flush()
-    return run
-
-
-async def request_cancel_run(
-    db: AsyncSession,
-    run: ConversationRun,
-    *,
-    reason: str = "stop",
-) -> ConversationRun:
-    if run.status in RUN_TERMINAL_STATUSES or run.status == "canceling":
-        return run
-    if run.status not in {"queued", "running"}:
-        raise ValueError(f"Run cannot be canceled from status: {run.status}")
-    run.cancel_reason = reason
-    return await transition_run(db, run, "canceling")
-
-
-async def heartbeat_run(db: AsyncSession, run_id: uuid.UUID) -> bool:
-    run = await db.get(ConversationRun, run_id, with_for_update=True)
-    if run is None or not run.is_active or run.status not in RUN_ACTIVE_STATUSES:
-        return False
-    run.heartbeat_at = utc_now_naive()
-    await db.flush()
-    return True
-
-
-async def finalize_run_outputs_for_status(
-    db: AsyncSession,
-    run: ConversationRun,
-    status: RunStatus,
-    *,
-    append_terminal_event: bool = False,
-    terminal_event: dict[str, Any] | None = None,
-) -> None:
-    if terminal_event is None and append_terminal_event and status == "canceled":
-        event_id = f"{run.id}-canceled"
-        terminal_event = {
-            "id": event_id,
-            "event": event_names.MESSAGE_END,
-            "data": {"usage": {}, "content": "", "status": "canceled"},
-        }
-    if terminal_event is not None:
-        event_id = terminal_event.get("id")
-        await trace_storage.append_events(
-            db,
-            conversation_id=run.conversation_id,
-            assistant_msg_id=str(run.id),
-            events_chunk=[terminal_event],
-            status="completed" if status in {"completed", "interrupted", "canceled"} else "failed",
-        )
-        if isinstance(event_id, str) and event_id:
-            run.last_event_id = event_id
-    if status not in {"canceled", "stale", "failed"}:
-        return
-    await trace_storage.finalize_turn(
-        db,
-        assistant_msg_id=str(run.id),
-        status="completed" if status == "canceled" else "failed",
-        conversation_id=run.conversation_id,
-    )
-    conversation = await db.get(Conversation, run.conversation_id)
-    if conversation is None:
-        return
-    await finalize_artifacts_for_run(
-        db,
-        context=OrgContext(
-            user_id=conversation.user_id,
-            org_id=conversation.org_id,
-            tenant_id=conversation.tenant_id,
-        ),
-        conversation_id=run.conversation_id,
-        assistant_msg_id=str(run.id),
-        run_status=status,
-    )
-
-
-async def mark_stale_active_runs(
-    db: AsyncSession,
-    *,
-    stale_before: datetime,
-    worker_instance_id: str | None,
-    include_workerless: bool,
-    protected_run_ids: Sequence[uuid.UUID] | None = None,
-    conversation_id: uuid.UUID | None = None,
-) -> int:
-    reference_time = func.coalesce(
-        ConversationRun.heartbeat_at,
-        ConversationRun.started_at,
-        ConversationRun.created_at,
-    )
-    conditions = [
-        ConversationRun.is_active.is_(True),
-        ConversationRun.status.in_(RUN_ACTIVE_STATUSES),
-        reference_time <= stale_before,
-        ConversationRun.status != "canceling",
-    ]
-    if conversation_id is not None:
-        conditions.append(ConversationRun.conversation_id == conversation_id)
-    if protected_run_ids:
-        conditions.append(ConversationRun.id.notin_(list(protected_run_ids)))
-    if worker_instance_id is not None:
-        ownership_conditions = [ConversationRun.worker_instance_id == worker_instance_id]
-        if include_workerless:
-            ownership_conditions.append(ConversationRun.worker_instance_id.is_(None))
-        conditions.append(or_(*ownership_conditions))
-    elif not include_workerless:
-        conditions.append(ConversationRun.worker_instance_id.is_not(None))
-
-    result = await db.execute(select(ConversationRun).where(*conditions).with_for_update())
-    runs = list(result.scalars().all())
-    marked = 0
-    for run in runs:
-        try:
-            await transition_run(
-                db,
-                run,
-                "stale",
-                error_code="stale_heartbeat",
-                error_message="Run heartbeat exceeded the stale threshold.",
-            )
-        except ValueError:
-            # 다른 경로(worker finalize/cancel)가 먼저 terminal 전이를 끝낸 run.
-            # 한 run 의 경합이 같은 배치의 나머지 sweep 을 막지 않도록 skip.
-            logger.warning(
-                "skipping stale sweep for run %s: already transitioned to %s",
-                run.id,
-                run.status,
-            )
-            continue
-        await finalize_run_outputs_for_status(db, run, "stale")
-        await record_conversation_run_audit(
-            db,
-            action="conversation.run_stale",
-            run=run,
-            status="stale",
-        )
-        marked += 1
-    return marked
-
-
-async def _pause_uncertain_owned_run_queues(
-    db: AsyncSession,
-    *,
-    stale_before: datetime,
-    protected_run_ids: Sequence[uuid.UUID],
-) -> None:
-    reference_time = func.coalesce(
-        ConversationRun.heartbeat_at,
-        ConversationRun.started_at,
-        ConversationRun.created_at,
-    )
-    pending_input_exists = (
-        select(ConversationRunInput.id)
-        .where(
-            ConversationRunInput.conversation_id == ConversationRun.conversation_id,
-            ConversationRunInput.status == "pending",
-        )
-        .exists()
-    )
-    conditions = [
-        ConversationRun.is_active.is_(True),
-        ConversationRun.worker_instance_id.is_not(None),
-        reference_time <= stale_before,
-        pending_input_exists,
-    ]
-    if protected_run_ids:
-        conditions.append(ConversationRun.id.notin_(list(protected_run_ids)))
-    conversation_ids = list(
-        (
-            await db.scalars(select(ConversationRun.conversation_id).where(*conditions).distinct())
-        ).all()
-    )
-    if not conversation_ids:
-        return
-    conversations = list(
-        (
-            await db.scalars(
-                select(Conversation)
-                .where(Conversation.id.in_(conversation_ids))
-                .order_by(Conversation.id)
-                .with_for_update()
-            )
-        ).all()
-    )
-    now = utc_now_naive()
-    for conversation in conversations:
-        conversation.queue_paused = True
-        conversation.queue_paused_at = conversation.queue_paused_at or now
-    await db.flush()
-
-
-async def sweep_stale_conversation_runs(
-    *,
-    session_factory: Callable[[], AsyncSession],
-) -> None:
-    """Mark active conversation runs stale after their heartbeat threshold.
-
-    BE-S9 — 본문은 ``app.scheduler``에서 이관. keep-cron-alive try/except 포함.
-    """
-    # conversation_run_worker imports this module — keep the import call-local.
-    from app.services.conversation_run_worker import get_run_task_registry
-
-    stale_before = datetime.now(UTC).replace(tzinfo=None) - timedelta(
-        seconds=settings.chat_run_stale_after_seconds
-    )
-    try:
-        async with session_factory() as db:
-            registry = get_run_task_registry()
-            await _pause_uncertain_owned_run_queues(
-                db,
-                stale_before=stale_before,
-                protected_run_ids=tuple(registry.active_run_ids()),
-            )
-            marked = await mark_stale_active_runs(
-                db,
-                stale_before=stale_before,
-                worker_instance_id=None,
-                include_workerless=True,
-                protected_run_ids=tuple(registry.active_run_ids()),
-            )
-            await db.commit()
-        if marked:
-            logger.warning("Marked %d stale conversation run(s)", marked)
-    except Exception:  # noqa: BLE001 — keep cron alive
-        logger.exception("Conversation run stale sweep failed; will retry next run")
-
-
 __all__ = [
     "ALLOWED_TRANSITIONS",
     "RUN_ACTIVE_STATUSES",
@@ -637,3 +241,14 @@ __all__ = [
     "sweep_stale_conversation_runs",
     "transition_run",
 ]
+# Compatibility re-exports: names this module exposed before the I4 split.
+__all__ += ["HTTPException", "IntegrityError", "AsyncSession", "aliased", "event_names"]
+__all__ += ["RuntimePolicySnapshotError", "RunConversationTarget", "lock_run_conversation"]
+__all__ += ["private_run_predicate", "resume_parent_predicate", "OrgContext", "settings"]
+__all__ += ["require_private_actor", "ConflictError", "Conversation", "ConversationRun"]
+__all__ += ["ConversationRunInput", "ConversationPolicyTarget", "trace_storage", "func", "or_"]
+__all__ += ["finalize_artifacts_for_run", "record_conversation_run_audit", "select"]
+__all__ += ["_conflict", "_is_active_run_unique_violation", "RunSource", "RunStatus"]
+__all__ += ["_pause_uncertain_owned_run_queues", "utc_now_naive", "project_owned_envelopes"]
+__all__ += ["copy_snapshot_to_run", "ensure_conversation_runtime_policy"]
+__all__ += ["require_parent_snapshot_match"]
