@@ -6,12 +6,14 @@ Organization locks, a locked ``is_default`` row returns
 ``409 default_organization_archive_forbidden`` before any version, name or
 last-organization check, with no state or audit change. Nondefault archives
 apply stale ``If-Match``, then active state, then the exact confirmation name,
-then the last-nonarchived-organization rule. Restore applies stale ``If-Match``,
-then archived state, then the 30-day window, and clears the archive stamp
-only; it never changes ``is_default`` and never re-enables or replays work.
+then the last-nonarchived-organization rule; only then does the accepted
+branch run the I22 enumeration/terminalization cascade in the same
+transaction. Restore applies stale ``If-Match``, then archived state, then the
+30-day window, and clears the archive stamp only (``organization_restore``);
+it never changes ``is_default`` and never re-enables or replays work.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -19,6 +21,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
+from app.authz.execution_lock_cursor import ExecutionProofError
 from app.authz.tenant_org_write_locks import lock_tenant_org_write
 from app.exceptions import AppError
 from app.models.organization import Organization
@@ -26,14 +29,14 @@ from app.schemas.tenant_organization_lifecycle import TenantOrganizationArchive
 from app.schemas.tenant_organizations import TenantOrganizationSummary
 from app.services import audit_service
 from app.services.orgs.versioning import bump_version, require_current_version
+from app.services.tenants import organization_archive_terminalizer as terminalizer
+from app.services.tenants.organization_restore import restore_archive_metadata
 from app.services.tenants.organizations import TenantOrganizationMutation, _projections
 from app.tenancy.admin_context import (
     TenantAdminContext,
     TenantAdminTarget,
     load_tenant_admin_context,
 )
-
-RESTORE_WINDOW = timedelta(days=30)
 
 
 async def _locked_target(
@@ -97,6 +100,7 @@ async def archive_organization(
     payload: TenantOrganizationArchive,
 ) -> TenantOrganizationSummary:
     db = mutation.db
+    paused_trigger_ids: tuple[UUID, ...] = ()
     try:
         organization = await _locked_target(mutation, context, org_id)
         if organization.is_default:
@@ -110,15 +114,29 @@ async def archive_organization(
             raise authorization_error("organization_archive_name_mismatch")
         if await _other_nonarchived_count(mutation, organization) == 0:
             raise authorization_error("last_organization")
+        archived_at = datetime.now(UTC)
+        cascade = await terminalizer.cascade_organization_archive(db, organization, archived_at)
+        paused_trigger_ids = cascade.paused_trigger_ids
         organization.status = "archived"
-        organization.archived_at = datetime.now(UTC)
+        organization.archived_at = archived_at
         bump_version(organization)
         await _record(mutation, context, organization, audit_actions.ORG_ARCHIVE)
         await db.commit()
-    except (AppError, SQLAlchemyError):
+    except (AppError, SQLAlchemyError, ExecutionProofError):
         await db.rollback()
         raise
+    _unschedule(paused_trigger_ids)
     return await _summary(mutation, organization)
+
+
+def _unschedule(trigger_ids: tuple[UUID, ...]) -> None:
+    """Post-commit: drop scheduler jobs so a later restore cannot fire paused triggers."""
+    if not trigger_ids:
+        return
+    from app import scheduler
+
+    for trigger_id in trigger_ids:
+        scheduler.remove_trigger_job(trigger_id)
 
 
 async def restore_organization(
@@ -130,15 +148,7 @@ async def restore_organization(
     try:
         organization = await _locked_target(mutation, context, org_id)
         require_current_version(organization, mutation.expected_version)
-        archived_at = organization.archived_at
-        if organization.status != "archived" or archived_at is None:
-            raise authorization_error("organization_unavailable")
-        if archived_at.tzinfo is None:
-            archived_at = archived_at.replace(tzinfo=UTC)
-        if datetime.now(UTC) - archived_at > RESTORE_WINDOW:
-            raise authorization_error("organization_restore_expired")
-        organization.status = "active"
-        organization.archived_at = None
+        restore_archive_metadata(organization)
         bump_version(organization)
         await _record(mutation, context, organization, audit_actions.ORG_RESTORE)
         await db.commit()
