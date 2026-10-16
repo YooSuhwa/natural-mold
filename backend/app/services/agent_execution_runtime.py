@@ -12,6 +12,13 @@ import anyio
 from sqlalchemy import select
 from sqlalchemy.orm import load_only, noload
 
+from app.agent_runtime.prepared_run_inputs import MaterializerSeams
+from app.agent_runtime.prepared_run_transaction import (
+    PrepareInputs,
+    Schedule,
+    materialize_and_activate,
+)
+from app.agent_runtime.runtime_config import PreparedRunLease
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.conversation_run_scope import (
     RunConversationTarget,
@@ -26,6 +33,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_TERMINAL_STATUSES, ConversationRun
 from app.services import conversation_run_service
 from app.services.conversation_run_worker import get_run_task_registry
+from app.services.prepared_run_state import fail_prepared_run, mark_prepared_running
 
 TerminalOutcome = Literal["completed", "failed", "canceled"]
 async_session = default_async_session
@@ -248,3 +256,24 @@ async def stream_owned_execution[T](
     async with _owned_runtime(request):
         async for item in operation():
             yield item
+
+
+async def materialize_prepared_execution(
+    request: RuntimeOwnershipRequest,
+    *,
+    prepare_inputs: PrepareInputs,
+    schedule: Schedule,
+    seams: MaterializerSeams | None = None,
+) -> PreparedRunLease:
+    """Opt-in I15 lease entry; chat/API/trigger callers switch over in I16-I18."""
+    async with async_session() as db:
+        return await materialize_and_activate(
+            db,
+            _execution_target(request),
+            prepare_inputs=prepare_inputs,
+            mark_running=mark_prepared_running(get_run_task_registry().worker_instance_id),
+            fail_running=fail_prepared_run,
+            schedule=schedule,
+            session_factory=lambda: async_session(),
+            seams=seams,
+        )
