@@ -1,6 +1,6 @@
 """Explicit authorization fixture for database/route tests."""
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 
 from app.authz.client import AuthzUnavailable, CheckQuery, Consistency, ListQuery
@@ -68,6 +68,14 @@ class FakeTupleStore:
         self._guard("delete", tuples)
         for item in tuples:
             self.tuples.pop((item.user, item.relation, item.object), None)
+
+    async def read_all(self, *, page_size: int = 100) -> AsyncIterator[RelationTuple]:
+        """Paged read like OpenFGA; ``fail_calls`` also fails reads."""
+        if self.fail_calls > 0:
+            self.fail_calls -= 1
+            raise AuthzUnavailable("read")
+        for item in sorted(self.tuples.values(), key=lambda t: t.sort_key):
+            yield item
 
     def stored(self) -> set[RelationTuple]:
         return set(self.tuples.values())

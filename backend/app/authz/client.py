@@ -1,7 +1,7 @@
 """Bounded native SDK adapter; unavailable authorization never becomes an allow."""
 
 from collections import Counter
-from collections.abc import AsyncIterator, Awaitable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from time import monotonic
@@ -27,8 +27,17 @@ from openfga_sdk.client.models.list_objects_request import ClientListObjectsRequ
 from openfga_sdk.configuration import RetryParams
 from openfga_sdk.credentials import CredentialConfiguration, Credentials
 from openfga_sdk.exceptions import ApiException, FgaValidationException
+from openfga_sdk.models.read_request_tuple_key import ReadRequestTupleKey
 from openfga_sdk.models.relationship_condition import RelationshipCondition
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, TypeAdapter, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    StrictBool,
+    TypeAdapter,
+    ValidationError,
+)
 
 from app.authz.config import AuthzSettings
 from app.authz.tuple_types import RelationTuple
@@ -178,6 +187,24 @@ class FgaClient:
         )
         return TypeAdapter(tuple[str, ...]).validate_python(response.objects)
 
+    async def read_all(self, *, page_size: int = 100) -> AsyncIterator[RelationTuple]:
+        """Every stored tuple, page by page (each page bounded by the client timeout)."""
+        token = ""
+        while True:
+            page, token = await self._run("read", self._read_page(token, page_size))
+            for item in page:
+                yield item
+            if not token:
+                return
+
+    async def _read_page(self, token: str, size: int) -> tuple[list[RelationTuple], str]:
+        options: dict[str, int | str | dict[str, int | str]] = {"page_size": size}
+        if token:
+            options["continuation_token"] = token
+        response = await self.sdk.read(ReadRequestTupleKey(), options)
+        found = [_relation_tuple(item.key) for item in response.tuples or ()]
+        return found, response.continuation_token or ""
+
     async def write(self, tuples: Sequence[RelationTuple]) -> None:
         """Idempotent tuple write (duplicates ignored), used by the outbox (8.6)."""
         if tuples:
@@ -205,6 +232,14 @@ def _client_tuple(item: RelationTuple, *, with_condition: bool) -> ClientTuple:
     if with_condition and item.condition is not None:
         condition = RelationshipCondition(name=item.condition.name, context=item.condition.context)
     return ClientTuple(item.user, item.relation, item.object, condition=condition)
+
+
+def _relation_tuple(key: Any) -> RelationTuple:
+    condition = key.condition
+    if condition is None:
+        return RelationTuple(key.user, key.relation, key.object)
+    context = TypeAdapter(Mapping[str, JsonValue]).validate_python(condition.context or {})
+    return RelationTuple.of(key.user, key.relation, key.object, condition.name, context)
 
 
 @asynccontextmanager
